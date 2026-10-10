@@ -1,0 +1,7 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  zeta?: <span class="hl-type">string</span>;
+  alpha: <span class="hl-type">number</span>;
+  mid: <span class="hl-type">boolean</span>;
+  beta?: <span class="hl-type">number</span>;
+  omega?: <span class="hl-type">string</span>[];
+}

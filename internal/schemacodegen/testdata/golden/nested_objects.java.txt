@@ -1,0 +1,25 @@
+package com.shop.events.orders.aggregate;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public record UnknownEventData(
+    String id,
+    Map<String, Object> profile
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UnknownEventData fromMap(Map<String, Object> map) {
+        return new UnknownEventData(
+            (String) map.get("id"),
+            (Map<String, Object>) map.get("profile")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("id", id);
+        map.put("profile", profile);
+        return map;
+    }
+}

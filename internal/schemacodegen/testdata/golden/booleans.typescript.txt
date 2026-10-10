@@ -1,0 +1,8 @@
+export interface UserCreatedData {
+  enabled: boolean;
+  maybe?: boolean | null;
+  alwaysTrue: true;
+  alwaysFalse?: false;
+  nothing: null;
+  flags?: boolean[];
+}

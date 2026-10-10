@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "applicationCode": {
+      "type": "string"
+    },
+    "created": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "deactivated": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "syncedEmails": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "updated": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "applicationCode",
+    "created",
+    "updated",
+    "deactivated",
+    "syncedEmails"
+  ],
+  "type": "object"
+}

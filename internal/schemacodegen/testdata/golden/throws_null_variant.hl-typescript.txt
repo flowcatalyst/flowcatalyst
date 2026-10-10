@@ -1,0 +1,1 @@
+<span class="hl-comment">// Unable to generate TypeScript interface</span>

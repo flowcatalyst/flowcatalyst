@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "o": { "const": { "z": 1, "a": [1, { "b": null }], "7": "int-like", "m": {} } },
+    "arr": { "const": [] },
+    "empty": { "const": {} },
+    "nul": { "const": null },
+    "str": { "const": "tab\there \"q\" \\ / <&>" },
+    "dupKeys": { "const": { "a": 1, "b": 2, "a": 3 } }
+  },
+  "required": ["o", "nul"]
+}

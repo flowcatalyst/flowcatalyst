@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "properties": {
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "website": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "birthday": {
+      "type": "string",
+      "format": "date"
+    },
+    "short": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 10
+    }
+  },
+  "required": [
+    "createdAt",
+    "id",
+    "email"
+  ]
+}

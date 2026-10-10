@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "INACTIVE",
+        "PENDING"
+      ]
+    },
+    "level": {
+      "type": "integer",
+      "enum": [
+        1,
+        2,
+        3
+      ]
+    },
+    "mode": {
+      "enum": [
+        "a",
+        "b"
+      ]
+    },
+    "kind": {
+      "const": "user"
+    },
+    "version": {
+      "const": 2
+    },
+    "flag": {
+      "const": true
+    }
+  },
+  "required": [
+    "status",
+    "kind"
+  ]
+}

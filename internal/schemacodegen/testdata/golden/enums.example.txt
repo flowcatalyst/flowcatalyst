@@ -1,0 +1,8 @@
+{
+  "status": "string",
+  "level": 0,
+  "mode": {},
+  "kind": "user",
+  "version": 2,
+  "flag": true
+}

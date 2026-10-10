@@ -1,0 +1,49 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserCreatedData
+{
+    public function __construct(
+        public string $a<b>&c,
+        public string $q"uote,
+        public ?int $s'ingle,
+        public ?bool $amp&lt;,
+        public ?string $</span><script>alert(1)</script>,
+        public ?string $tick`s,
+        public ?string $back\slash,
+        public ?string $apos'const,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            a<b>&c: $data['a<b>&c'],
+            q"uote: $data['q"uote'],
+            s'ingle: $data['s'ingle'],
+            amp&lt;: $data['amp&lt;'],
+            </span><script>alert(1)</script>: $data['</span><script>alert(1)</script>'],
+            tick`s: $data['tick`s'],
+            back\slash: $data['back\slash'],
+            apos'const: $data['apos'const'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'a<b>&c' => $this->a<b>&c,
+            'q"uote' => $this->q"uote,
+            's'ingle' => $this->s'ingle,
+            'amp&lt;' => $this->amp&lt;,
+            '</span><script>alert(1)</script>' => $this-></span><script>alert(1)</script>,
+            'tick`s' => $this->tick`s,
+            'back\slash' => $this->back\slash,
+            'apos'const' => $this->apos'const,
+        ];
+    }
+}

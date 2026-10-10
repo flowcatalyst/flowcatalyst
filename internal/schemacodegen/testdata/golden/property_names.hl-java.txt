@@ -1,0 +1,100 @@
+<span class="hl-kw">package</span> com.my_app.events.sub-domain.order_line;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> OrderLineItemAddedData(
+    <span class="hl-type">String</span> <span class="hl-num">1</span>,
+    <span class="hl-type">String</span> <span class="hl-num">2</span>,
+    <span class="hl-type">String</span> <span class="hl-num">10</span>,
+    <span class="hl-type">String</span> <span class="hl-num">4294967294</span>,
+    <span class="hl-type">String</span> snake_case_name,
+    <span class="hl-type">String</span> kebab-<span class="hl-kw">case</span>-name,
+    <span class="hl-type">String</span> camelCaseName,
+    <span class="hl-type">String</span> PascalCaseName,
+    <span class="hl-type">Integer</span> HTTPStatusCode,
+    <span class="hl-type">String</span> 9lives,
+    <span class="hl-type">String</span> <span class="hl-kw">class</span>,
+    <span class="hl-type">Integer</span> <span class="hl-type">int</span>,
+    <span class="hl-type">Boolean</span> <span class="hl-kw">public</span>,
+    <span class="hl-type">String</span> def,
+    <span class="hl-type">String</span> <span class="hl-kw">import</span>,
+    <span class="hl-type">String</span> <span class="hl-kw">new</span>,
+    <span class="hl-type">String</span> <span class="hl-kw">return</span>,
+    <span class="hl-type">String</span> function,
+    <span class="hl-type">String</span> None,
+    <span class="hl-type">String</span> with space,
+    <span class="hl-type">String</span> dotted.name,
+    <span class="hl-type">String</span> Anything,
+    <span class="hl-type">String</span> ,
+    <span class="hl-type">String</span> b,
+    <span class="hl-type">String</span> <span class="hl-num">01</span>,
+    <span class="hl-type">String</span> a,
+    <span class="hl-type">String</span> <span class="hl-num">4294967295</span>
+) {
+
+    <span class="hl-comment">@SuppressWarnings</span>(<span class="hl-str">&quot;unchecked&quot;</span>)
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> OrderLineItemAddedData fromMap(<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; map) {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> OrderLineItemAddedData(
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;1&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;2&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;10&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;4294967294&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;snake_case_name&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;kebab-case-name&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;camelCaseName&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;PascalCaseName&quot;</span>),
+            (<span class="hl-type">Integer</span>) map.get(<span class="hl-str">&quot;HTTPStatusCode&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;9lives&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;class&quot;</span>),
+            (<span class="hl-type">Integer</span>) map.get(<span class="hl-str">&quot;int&quot;</span>),
+            (<span class="hl-type">Boolean</span>) map.get(<span class="hl-str">&quot;public&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;def&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;import&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;new&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;return&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;function&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;None&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;with space&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;dotted.name&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;Anything&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;b&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;01&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;a&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;4294967295&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;1&quot;</span>, <span class="hl-num">1</span>);
+        map.put(<span class="hl-str">&quot;2&quot;</span>, <span class="hl-num">2</span>);
+        map.put(<span class="hl-str">&quot;10&quot;</span>, <span class="hl-num">10</span>);
+        map.put(<span class="hl-str">&quot;4294967294&quot;</span>, <span class="hl-num">4294967294</span>);
+        map.put(<span class="hl-str">&quot;snake_case_name&quot;</span>, snake_case_name);
+        map.put(<span class="hl-str">&quot;kebab-case-name&quot;</span>, kebab-<span class="hl-kw">case</span>-name);
+        map.put(<span class="hl-str">&quot;camelCaseName&quot;</span>, camelCaseName);
+        map.put(<span class="hl-str">&quot;PascalCaseName&quot;</span>, PascalCaseName);
+        map.put(<span class="hl-str">&quot;HTTPStatusCode&quot;</span>, HTTPStatusCode);
+        map.put(<span class="hl-str">&quot;9lives&quot;</span>, 9lives);
+        map.put(<span class="hl-str">&quot;class&quot;</span>, <span class="hl-kw">class</span>);
+        map.put(<span class="hl-str">&quot;int&quot;</span>, <span class="hl-type">int</span>);
+        map.put(<span class="hl-str">&quot;public&quot;</span>, <span class="hl-kw">public</span>);
+        map.put(<span class="hl-str">&quot;def&quot;</span>, def);
+        map.put(<span class="hl-str">&quot;import&quot;</span>, <span class="hl-kw">import</span>);
+        map.put(<span class="hl-str">&quot;new&quot;</span>, <span class="hl-kw">new</span>);
+        map.put(<span class="hl-str">&quot;return&quot;</span>, <span class="hl-kw">return</span>);
+        map.put(<span class="hl-str">&quot;function&quot;</span>, function);
+        map.put(<span class="hl-str">&quot;None&quot;</span>, None);
+        map.put(<span class="hl-str">&quot;with space&quot;</span>, with space);
+        map.put(<span class="hl-str">&quot;dotted.name&quot;</span>, dotted.name);
+        map.put(<span class="hl-str">&quot;Anything&quot;</span>, Anything);
+        map.put(<span class="hl-str">&quot;&quot;</span>, );
+        map.put(<span class="hl-str">&quot;b&quot;</span>, b);
+        map.put(<span class="hl-str">&quot;01&quot;</span>, <span class="hl-num">01</span>);
+        map.put(<span class="hl-str">&quot;a&quot;</span>, a);
+        map.put(<span class="hl-str">&quot;4294967295&quot;</span>, <span class="hl-num">4294967295</span>);
+        <span class="hl-kw">return</span> map;
+    }
+}

@@ -1,0 +1,13 @@
+export interface UserCreatedData {
+  labels: Record<string, string>;
+  counters?: Record<string, number>;
+  free?: Record<string, unknown>;
+  closed?: Record<string, unknown>;
+  patterned?: Record<string, number>;
+  bare?: Record<string, unknown>;
+  nestedMap?: Record<string, Record<string, boolean>>;
+  listMap?: Record<string, string[]>;
+  withProps?: {
+    k?: string;
+  };
+}

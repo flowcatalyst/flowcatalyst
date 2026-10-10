@@ -1,0 +1,13 @@
+{
+  <span class="hl-key">"id"</span>: <span class="hl-str">"string"</span>,
+  <span class="hl-key">"profile"</span>: {
+    <span class="hl-key">"name"</span>: <span class="hl-str">"string"</span>,
+    <span class="hl-key">"address"</span>: {
+      <span class="hl-key">"street"</span>: <span class="hl-str">"string"</span>,
+      <span class="hl-key">"geo"</span>: {
+        <span class="hl-key">"lat"</span>: <span class="hl-num">0</span>,
+        <span class="hl-key">"lng"</span>: <span class="hl-num">0</span>
+      }
+    }
+  }
+}

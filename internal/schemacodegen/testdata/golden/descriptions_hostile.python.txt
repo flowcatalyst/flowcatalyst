@@ -1,0 +1,40 @@
+from __future__ import annotations
+from typing import Literal
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    a<b>&c: str
+    q"uote: str
+    s'ingle: int | None = None
+    amp&lt;: bool | None = None
+    </span><script>alert(1)</script>: str = None
+    tick`s: str = None
+    back\slash: str = None
+    apos'const: Literal["a'b", "c\"d"] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            a<b>&c=data.get("a<b>&c"),
+            q"uote=data.get("q"uote"),
+            s'ingle=data.get("s'ingle"),
+            amp&lt;=data.get("amp&lt;"),
+            </span><script>alert(1)</script>=data.get("</span><script>alert(1)</script>"),
+            tick`s=data.get("tick`s"),
+            back\slash=data.get("back\slash"),
+            apos'const=data.get("apos'const"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "a<b>&c": self.a<b>&c,
+            "q"uote": self.q"uote,
+            "s'ingle": self.s'ingle,
+            "amp&lt;": self.amp&lt;,
+            "</span><script>alert(1)</script>": self.</span><script>alert(1)</script>,
+            "tick`s": self.tick`s,
+            "back\slash": self.back\slash,
+            "apos'const": self.apos'const,
+        }

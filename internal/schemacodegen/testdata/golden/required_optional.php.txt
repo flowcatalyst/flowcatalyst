@@ -1,0 +1,40 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserCreatedData
+{
+    public function __construct(
+        public ?string $zeta,
+        public int $alpha,
+        public bool $mid,
+        public ?float $beta,
+        public ?array $omega,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            zeta: $data['zeta'],
+            alpha: $data['alpha'],
+            mid: $data['mid'],
+            beta: $data['beta'],
+            omega: $data['omega'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'zeta' => $this->zeta,
+            'alpha' => $this->alpha,
+            'mid' => $this->mid,
+            'beta' => $this->beta,
+            'omega' => $this->omega,
+        ];
+    }
+}

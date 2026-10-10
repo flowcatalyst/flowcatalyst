@@ -1,0 +1,79 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public record UserCreatedData(
+    String onePointZero,
+    String sciHundred,
+    String tenth,
+    String tiny,
+    String small,
+    String edgeLow,
+    String big,
+    String huge,
+    String e21,
+    String e20,
+    String negZero,
+    String negZeroF,
+    String neg,
+    String minDouble,
+    String maxDouble,
+    String overflow,
+    String capE,
+    String third,
+    String list,
+    Integer plain
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserCreatedData fromMap(Map<String, Object> map) {
+        return new UserCreatedData(
+            (String) map.get("onePointZero"),
+            (String) map.get("sciHundred"),
+            (String) map.get("tenth"),
+            (String) map.get("tiny"),
+            (String) map.get("small"),
+            (String) map.get("edgeLow"),
+            (String) map.get("big"),
+            (String) map.get("huge"),
+            (String) map.get("e21"),
+            (String) map.get("e20"),
+            (String) map.get("negZero"),
+            (String) map.get("negZeroF"),
+            (String) map.get("neg"),
+            (String) map.get("minDouble"),
+            (String) map.get("maxDouble"),
+            (String) map.get("overflow"),
+            (String) map.get("capE"),
+            (String) map.get("third"),
+            (String) map.get("list"),
+            (Integer) map.get("plain")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("onePointZero", onePointZero);
+        map.put("sciHundred", sciHundred);
+        map.put("tenth", tenth);
+        map.put("tiny", tiny);
+        map.put("small", small);
+        map.put("edgeLow", edgeLow);
+        map.put("big", big);
+        map.put("huge", huge);
+        map.put("e21", e21);
+        map.put("e20", e20);
+        map.put("negZero", negZero);
+        map.put("negZeroF", negZeroF);
+        map.put("neg", neg);
+        map.put("minDouble", minDouble);
+        map.put("maxDouble", maxDouble);
+        map.put("overflow", overflow);
+        map.put("capE", capE);
+        map.put("third", third);
+        map.put("list", list);
+        map.put("plain", plain);
+        return map;
+    }
+}

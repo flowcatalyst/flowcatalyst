@@ -1,0 +1,12 @@
+{
+  "added": [
+    "string"
+  ],
+  "principalId": "string",
+  "removed": [
+    "string"
+  ],
+  "roles": [
+    "string"
+  ]
+}

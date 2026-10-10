@@ -1,0 +1,15 @@
+export interface UserCreatedData {
+  payload: {
+    a: string;
+    b?: number;
+  } | {
+    c?: boolean;
+  };
+  value: string | number | boolean;
+  dup?: number;
+  listOf?: (string | null)[];
+  nullFirst?: null | string;
+  allNull?: null;
+  nestedAny?: string | number | boolean;
+  plain?: string;
+}

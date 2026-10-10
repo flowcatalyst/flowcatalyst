@@ -1,0 +1,34 @@
+from __future__ import annotations
+from typing import Any
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class SoloData:
+    status: str
+    kind: str
+    level: int | None = None
+    mode: Any = None
+    version: str = None
+    flag: str = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SoloData:
+        return cls(
+            status=data.get("status"),
+            kind=data.get("kind"),
+            level=data.get("level"),
+            mode=data.get("mode"),
+            version=data.get("version"),
+            flag=data.get("flag"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "kind": self.kind,
+            "level": self.level,
+            "mode": self.mode,
+            "version": self.version,
+            "flag": self.flag,
+        }

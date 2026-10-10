@@ -1,0 +1,40 @@
+from __future__ import annotations
+from typing import Any, Literal
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    payload: dict[str, Any]
+    value: str | float | bool
+    dup: int | float | None = None
+    list_of: list[str | None] | None = None
+    null_first: str | None = None
+    all_null: Literal[] | None = None
+    nested_any: str | int | bool | None = None
+    plain: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            payload=data.get("payload"),
+            value=data.get("value"),
+            dup=data.get("dup"),
+            list_of=data.get("listOf"),
+            null_first=data.get("nullFirst"),
+            all_null=data.get("allNull"),
+            nested_any=data.get("nestedAny"),
+            plain=data.get("plain"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "payload": self.payload,
+            "value": self.value,
+            "dup": self.dup,
+            "listOf": self.list_of,
+            "nullFirst": self.null_first,
+            "allNull": self.all_null,
+            "nestedAny": self.nested_any,
+            "plain": self.plain,
+        }

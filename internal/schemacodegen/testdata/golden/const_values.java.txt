@@ -1,0 +1,37 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public record UserCreatedData(
+    String o,
+    String arr,
+    String empty,
+    String nul,
+    String str,
+    String dupKeys
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserCreatedData fromMap(Map<String, Object> map) {
+        return new UserCreatedData(
+            (String) map.get("o"),
+            (String) map.get("arr"),
+            (String) map.get("empty"),
+            (String) map.get("nul"),
+            (String) map.get("str"),
+            (String) map.get("dupKeys")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("o", o);
+        map.put("arr", arr);
+        map.put("empty", empty);
+        map.put("nul", nul);
+        map.put("str", str);
+        map.put("dupKeys", dupKeys);
+        return map;
+    }
+}

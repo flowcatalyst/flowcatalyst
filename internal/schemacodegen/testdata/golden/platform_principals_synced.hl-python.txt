@@ -1,0 +1,30 @@
+<span class="hl-kw">from</span> __future__ <span class="hl-kw">import</span> annotations
+<span class="hl-kw">from</span> dataclasses <span class="hl-kw">import</span> dataclass
+
+
+<span class="hl-comment">@dataclass(frozen=True)</span>
+<span class="hl-kw">class</span> PrincipalsSyncedData:
+    application_code: <span class="hl-type">str</span>
+    created: <span class="hl-type">int</span>
+    deactivated: <span class="hl-type">int</span>
+    synced_emails: <span class="hl-type">list</span>[<span class="hl-type">str</span>]
+    updated: <span class="hl-type">int</span>
+
+    @classmethod
+    <span class="hl-kw">def</span> from_dict(<span class="hl-kw">cls</span>, data: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]) -&gt; PrincipalsSyncedData:
+        <span class="hl-kw">return</span> <span class="hl-kw">cls</span>(
+            application_code=data.get(<span class="hl-str">&quot;applicationCode&quot;</span>),
+            created=data.get(<span class="hl-str">&quot;created&quot;</span>),
+            deactivated=data.get(<span class="hl-str">&quot;deactivated&quot;</span>),
+            synced_emails=data.get(<span class="hl-str">&quot;syncedEmails&quot;</span>),
+            updated=data.get(<span class="hl-str">&quot;updated&quot;</span>),
+        )
+
+    <span class="hl-kw">def</span> to_dict(<span class="hl-kw">self</span>) -&gt; <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]:
+        <span class="hl-kw">return</span> {
+            <span class="hl-str">&quot;applicationCode&quot;</span>: <span class="hl-kw">self</span>.application_code,
+            <span class="hl-str">&quot;created&quot;</span>: <span class="hl-kw">self</span>.created,
+            <span class="hl-str">&quot;deactivated&quot;</span>: <span class="hl-kw">self</span>.deactivated,
+            <span class="hl-str">&quot;syncedEmails&quot;</span>: <span class="hl-kw">self</span>.synced_emails,
+            <span class="hl-str">&quot;updated&quot;</span>: <span class="hl-kw">self</span>.updated,
+        }

@@ -1,0 +1,4 @@
+[
+  {"application":"a","subdomain":"b","aggregate":"c","event":"d","currentSchema":""},
+  {"application":"a","subdomain":"b","aggregate":"c","event":"e","currentSchema":"oops"}
+]

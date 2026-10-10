@@ -1,0 +1,35 @@
+<span class="hl-kw">package</span> com.platform.events.iam.user;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">List</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> UserCreatedData(
+    <span class="hl-type">List</span>&lt;<span class="hl-type">String</span>&gt; names,
+    <span class="hl-type">List</span>&lt;<span class="hl-type">Double</span>&gt; scores,
+    <span class="hl-type">List</span>&lt;<span class="hl-type">Integer</span>&gt; counts,
+    <span class="hl-type">List</span>&lt;<span class="hl-type">Boolean</span>&gt; flags,
+    <span class="hl-type">List</span>&lt;<span class="hl-type">String</span>&gt; maybe
+) {
+
+    <span class="hl-comment">@SuppressWarnings</span>(<span class="hl-str">&quot;unchecked&quot;</span>)
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> UserCreatedData fromMap(<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; map) {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> UserCreatedData(
+            (<span class="hl-type">List</span>&lt;<span class="hl-type">String</span>&gt;) map.get(<span class="hl-str">&quot;names&quot;</span>),
+            (<span class="hl-type">List</span>&lt;<span class="hl-type">Double</span>&gt;) map.get(<span class="hl-str">&quot;scores&quot;</span>),
+            (<span class="hl-type">List</span>&lt;<span class="hl-type">Integer</span>&gt;) map.get(<span class="hl-str">&quot;counts&quot;</span>),
+            (<span class="hl-type">List</span>&lt;<span class="hl-type">Boolean</span>&gt;) map.get(<span class="hl-str">&quot;flags&quot;</span>),
+            (<span class="hl-type">List</span>&lt;<span class="hl-type">String</span>&gt;) map.get(<span class="hl-str">&quot;maybe&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;names&quot;</span>, names);
+        map.put(<span class="hl-str">&quot;scores&quot;</span>, scores);
+        map.put(<span class="hl-str">&quot;counts&quot;</span>, counts);
+        map.put(<span class="hl-str">&quot;flags&quot;</span>, flags);
+        map.put(<span class="hl-str">&quot;maybe&quot;</span>, maybe);
+        <span class="hl-kw">return</span> map;
+    }
+}

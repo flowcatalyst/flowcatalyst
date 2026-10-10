@@ -1,0 +1,16 @@
+from __future__ import annotations
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    pass
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+        }

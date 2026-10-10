@@ -1,0 +1,12 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  l1: ({
+    l2: {
+      l3?: {
+        deep?: <span class="hl-type">string</span>;
+      } | <span class="hl-type">null</span>;
+      m?: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, {
+        q?: <span class="hl-type">number</span>;
+      }&gt;;
+    };
+  })[];
+}

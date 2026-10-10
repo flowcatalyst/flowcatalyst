@@ -1,0 +1,8 @@
+{
+  <span class="hl-key">"status"</span>: <span class="hl-str">"string"</span>,
+  <span class="hl-key">"level"</span>: <span class="hl-num">0</span>,
+  <span class="hl-key">"mode"</span>: {},
+  <span class="hl-key">"kind"</span>: <span class="hl-str">"user"</span>,
+  <span class="hl-key">"version"</span>: <span class="hl-num">2</span>,
+  <span class="hl-key">"flag"</span>: <span class="hl-kw">true</span>
+}

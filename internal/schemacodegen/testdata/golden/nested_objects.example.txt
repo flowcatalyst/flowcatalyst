@@ -1,0 +1,13 @@
+{
+  "id": "string",
+  "profile": {
+    "name": "string",
+    "address": {
+      "street": "string",
+      "geo": {
+        "lat": 0,
+        "lng": 0
+      }
+    }
+  }
+}

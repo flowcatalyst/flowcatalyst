@@ -1,0 +1,106 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\MyApp\SubDomain\OrderLine;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> OrderLineItemAddedData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$1</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$2</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$10</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$4294967294</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$snake_case_name</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$kebab</span>-case-name,
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$camelCaseName</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$PascalCaseName</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">int</span> <span class="hl-var">$HTTPStatusCode</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$9lives</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$class</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">int</span> <span class="hl-var">$int</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">bool</span> <span class="hl-var">$public</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$def</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$import</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$new</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$return</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$function</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$None</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$with</span> space,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$dotted</span>.name,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$Anything</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> $,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$b</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$01</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$a</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$4294967295</span>,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            <span class="hl-num">1</span>: <span class="hl-var">$data</span>[<span class="hl-str">'1'</span>],
+            <span class="hl-num">2</span>: <span class="hl-var">$data</span>[<span class="hl-str">'2'</span>],
+            <span class="hl-num">10</span>: <span class="hl-var">$data</span>[<span class="hl-str">'10'</span>],
+            <span class="hl-num">4294967294</span>: <span class="hl-var">$data</span>[<span class="hl-str">'4294967294'</span>],
+            snake_case_name: <span class="hl-var">$data</span>[<span class="hl-str">'snake_case_name'</span>],
+            kebab-case-name: <span class="hl-var">$data</span>[<span class="hl-str">'kebab-case-name'</span>],
+            camelCaseName: <span class="hl-var">$data</span>[<span class="hl-str">'camelCaseName'</span>],
+            PascalCaseName: <span class="hl-var">$data</span>[<span class="hl-str">'PascalCaseName'</span>],
+            HTTPStatusCode: <span class="hl-var">$data</span>[<span class="hl-str">'HTTPStatusCode'</span>],
+            9lives: <span class="hl-var">$data</span>[<span class="hl-str">'9lives'</span>],
+            <span class="hl-kw">class</span>: <span class="hl-var">$data</span>[<span class="hl-str">'class'</span>],
+            <span class="hl-kw">int</span>: <span class="hl-var">$data</span>[<span class="hl-str">'int'</span>],
+            <span class="hl-kw">public</span>: <span class="hl-var">$data</span>[<span class="hl-str">'public'</span>],
+            def: <span class="hl-var">$data</span>[<span class="hl-str">'def'</span>],
+            import: <span class="hl-var">$data</span>[<span class="hl-str">'import'</span>],
+            <span class="hl-kw">new</span>: <span class="hl-var">$data</span>[<span class="hl-str">'new'</span>],
+            <span class="hl-kw">return</span>: <span class="hl-var">$data</span>[<span class="hl-str">'return'</span>],
+            <span class="hl-kw">function</span>: <span class="hl-var">$data</span>[<span class="hl-str">'function'</span>],
+            None: <span class="hl-var">$data</span>[<span class="hl-str">'None'</span>],
+            with space: <span class="hl-var">$data</span>[<span class="hl-str">'with space'</span>],
+            dotted.name: <span class="hl-var">$data</span>[<span class="hl-str">'dotted.name'</span>],
+            Anything: <span class="hl-var">$data</span>[<span class="hl-str">'Anything'</span>],
+            : <span class="hl-var">$data</span>[<span class="hl-str">''</span>],
+            b: <span class="hl-var">$data</span>[<span class="hl-str">'b'</span>],
+            <span class="hl-num">01</span>: <span class="hl-var">$data</span>[<span class="hl-str">'01'</span>],
+            a: <span class="hl-var">$data</span>[<span class="hl-str">'a'</span>],
+            <span class="hl-num">4294967295</span>: <span class="hl-var">$data</span>[<span class="hl-str">'4294967295'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'1'</span> =&gt; <span class="hl-var">$this</span>-&gt;<span class="hl-num">1</span>,
+            <span class="hl-str">'2'</span> =&gt; <span class="hl-var">$this</span>-&gt;<span class="hl-num">2</span>,
+            <span class="hl-str">'10'</span> =&gt; <span class="hl-var">$this</span>-&gt;<span class="hl-num">10</span>,
+            <span class="hl-str">'4294967294'</span> =&gt; <span class="hl-var">$this</span>-&gt;<span class="hl-num">4294967294</span>,
+            <span class="hl-str">'snake_case_name'</span> =&gt; <span class="hl-var">$this</span>-&gt;snake_case_name,
+            <span class="hl-str">'kebab-case-name'</span> =&gt; <span class="hl-var">$this</span>-&gt;kebab-case-name,
+            <span class="hl-str">'camelCaseName'</span> =&gt; <span class="hl-var">$this</span>-&gt;camelCaseName,
+            <span class="hl-str">'PascalCaseName'</span> =&gt; <span class="hl-var">$this</span>-&gt;PascalCaseName,
+            <span class="hl-str">'HTTPStatusCode'</span> =&gt; <span class="hl-var">$this</span>-&gt;HTTPStatusCode,
+            <span class="hl-str">'9lives'</span> =&gt; <span class="hl-var">$this</span>-&gt;9lives,
+            <span class="hl-str">'class'</span> =&gt; <span class="hl-var">$this</span>-&gt;<span class="hl-kw">class</span>,
+            <span class="hl-str">'int'</span> =&gt; <span class="hl-var">$this</span>-&gt;<span class="hl-kw">int</span>,
+            <span class="hl-str">'public'</span> =&gt; <span class="hl-var">$this</span>-&gt;<span class="hl-kw">public</span>,
+            <span class="hl-str">'def'</span> =&gt; <span class="hl-var">$this</span>-&gt;def,
+            <span class="hl-str">'import'</span> =&gt; <span class="hl-var">$this</span>-&gt;import,
+            <span class="hl-str">'new'</span> =&gt; <span class="hl-var">$this</span>-&gt;<span class="hl-kw">new</span>,
+            <span class="hl-str">'return'</span> =&gt; <span class="hl-var">$this</span>-&gt;<span class="hl-kw">return</span>,
+            <span class="hl-str">'function'</span> =&gt; <span class="hl-var">$this</span>-&gt;<span class="hl-kw">function</span>,
+            <span class="hl-str">'None'</span> =&gt; <span class="hl-var">$this</span>-&gt;None,
+            <span class="hl-str">'with space'</span> =&gt; <span class="hl-var">$this</span>-&gt;with space,
+            <span class="hl-str">'dotted.name'</span> =&gt; <span class="hl-var">$this</span>-&gt;dotted.name,
+            <span class="hl-str">'Anything'</span> =&gt; <span class="hl-var">$this</span>-&gt;Anything,
+            <span class="hl-str">''</span> =&gt; <span class="hl-var">$this</span>-&gt;,
+            <span class="hl-str">'b'</span> =&gt; <span class="hl-var">$this</span>-&gt;b,
+            <span class="hl-str">'01'</span> =&gt; <span class="hl-var">$this</span>-&gt;<span class="hl-num">01</span>,
+            <span class="hl-str">'a'</span> =&gt; <span class="hl-var">$this</span>-&gt;a,
+            <span class="hl-str">'4294967295'</span> =&gt; <span class="hl-var">$this</span>-&gt;<span class="hl-num">4294967295</span>,
+        ];
+    }
+}

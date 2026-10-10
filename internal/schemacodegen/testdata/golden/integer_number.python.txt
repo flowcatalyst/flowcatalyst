@@ -1,0 +1,33 @@
+from __future__ import annotations
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    count: int
+    ratio: float
+    opt_count: int | None = None
+    opt_ratio: float | None = None
+    ints: list[int] | None = None
+    nums: list[float] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            count=data.get("count"),
+            ratio=data.get("ratio"),
+            opt_count=data.get("optCount"),
+            opt_ratio=data.get("optRatio"),
+            ints=data.get("ints"),
+            nums=data.get("nums"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "count": self.count,
+            "ratio": self.ratio,
+            "optCount": self.opt_count,
+            "optRatio": self.opt_ratio,
+            "ints": self.ints,
+            "nums": self.nums,
+        }

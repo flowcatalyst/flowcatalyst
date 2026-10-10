@@ -1,0 +1,36 @@
+from __future__ import annotations
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    email: str
+    email_domain: str
+    is_anchor_user: bool
+    name: str
+    principal_id: str
+    scope: str
+    client_id: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            email=data.get("email"),
+            email_domain=data.get("emailDomain"),
+            is_anchor_user=data.get("isAnchorUser"),
+            name=data.get("name"),
+            principal_id=data.get("principalId"),
+            scope=data.get("scope"),
+            client_id=data.get("clientId"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "email": self.email,
+            "emailDomain": self.email_domain,
+            "isAnchorUser": self.is_anchor_user,
+            "name": self.name,
+            "principalId": self.principal_id,
+            "scope": self.scope,
+            "clientId": self.client_id,
+        }

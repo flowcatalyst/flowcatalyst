@@ -1,0 +1,8 @@
+export interface SoloData {
+  status: string;
+  level?: number;
+  mode?: unknown;
+  kind: "user";
+  version?: 2;
+  flag?: true;
+}

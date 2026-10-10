@@ -1,0 +1,17 @@
+export interface UserLoggedInData {
+  email: string;
+  federatedClaims?: {
+    accessToken: Record<string, unknown>;
+    idToken: Record<string, unknown>;
+  } | null;
+  flowcatalystClaims: {
+    applications: string[];
+    clients: string[];
+    email: string;
+    roles: string[];
+    type: string;
+  };
+  identityProviderCode?: string | null;
+  loginMethod: string;
+  userId: string;
+}

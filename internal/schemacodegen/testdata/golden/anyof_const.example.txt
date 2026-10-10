@@ -1,0 +1,14 @@
+{
+  "color": "red",
+  "maybeColor": "red",
+  "nested": "x",
+  "oneOfConst": 1,
+  "mixedConst": "s",
+  "objConst": {
+    "a": 1,
+    "b": [
+      true,
+      null
+    ]
+  }
+}

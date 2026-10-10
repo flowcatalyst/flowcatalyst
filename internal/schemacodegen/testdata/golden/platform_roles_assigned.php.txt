@@ -1,0 +1,37 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserRolesAssignedData
+{
+    public function __construct(
+        public array $added,
+        public string $principalId,
+        public array $removed,
+        public array $roles,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            added: $data['added'],
+            principalId: $data['principalId'],
+            removed: $data['removed'],
+            roles: $data['roles'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'added' => $this->added,
+            'principalId' => $this->principalId,
+            'removed' => $this->removed,
+            'roles' => $this->roles,
+        ];
+    }
+}

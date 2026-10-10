@@ -1,0 +1,27 @@
+{
+  "labels": {
+    "key": "string"
+  },
+  "counters": {
+    "key": 0
+  },
+  "free": {},
+  "closed": {},
+  "patterned": {
+    "key": 0
+  },
+  "bare": {},
+  "nestedMap": {
+    "key": {
+      "key": true
+    }
+  },
+  "listMap": {
+    "key": [
+      "string"
+    ]
+  },
+  "withProps": {
+    "k": "string"
+  }
+}

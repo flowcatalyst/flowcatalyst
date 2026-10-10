@@ -1,0 +1,8 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  count: <span class="hl-type">number</span>;
+  ratio: <span class="hl-type">number</span>;
+  optCount?: <span class="hl-type">number</span> | <span class="hl-type">null</span>;
+  optRatio?: <span class="hl-type">number</span> | <span class="hl-type">null</span>;
+  ints?: <span class="hl-type">number</span>[];
+  nums?: <span class="hl-type">number</span>[];
+}

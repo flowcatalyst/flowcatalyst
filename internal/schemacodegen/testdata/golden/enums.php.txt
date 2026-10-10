@@ -1,0 +1,43 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Solo\Domain\Aggregate;
+
+final readonly class UnknownEventData
+{
+    public function __construct(
+        public string $status,
+        public ?int $level,
+        public mixed $mode,
+        public string $kind,
+        public ?string $version,
+        public ?string $flag,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            status: $data['status'],
+            level: $data['level'],
+            mode: $data['mode'],
+            kind: $data['kind'],
+            version: $data['version'],
+            flag: $data['flag'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'status' => $this->status,
+            'level' => $this->level,
+            'mode' => $this->mode,
+            'kind' => $this->kind,
+            'version' => $this->version,
+            'flag' => $this->flag,
+        ];
+    }
+}

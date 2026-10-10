@@ -1,0 +1,28 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"zeta"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    },
+    <span class="hl-key">"alpha"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"integer"</span>
+    },
+    <span class="hl-key">"mid"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"boolean"</span>
+    },
+    <span class="hl-key">"beta"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"number"</span>
+    },
+    <span class="hl-key">"omega"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>,
+      <span class="hl-key">"items"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+      }
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"mid"</span>,
+    <span class="hl-str">"alpha"</span>,
+    <span class="hl-str">"ghost"</span>
+  ]
+}

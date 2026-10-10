@@ -1,0 +1,43 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserCreatedData
+{
+    public function __construct(
+        public int $count,
+        public float $ratio,
+        public ?int $optCount,
+        public ?float $optRatio,
+        public ?array $ints,
+        public ?array $nums,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            count: $data['count'],
+            ratio: $data['ratio'],
+            optCount: $data['optCount'],
+            optRatio: $data['optRatio'],
+            ints: $data['ints'],
+            nums: $data['nums'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'count' => $this->count,
+            'ratio' => $this->ratio,
+            'optCount' => $this->optCount,
+            'optRatio' => $this->optRatio,
+            'ints' => $this->ints,
+            'nums' => $this->nums,
+        ];
+    }
+}

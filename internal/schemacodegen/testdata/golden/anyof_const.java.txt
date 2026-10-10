@@ -1,0 +1,37 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public record UserCreatedData(
+    String color,
+    String maybeColor,
+    String nested,
+    String oneOfConst,
+    String mixedConst,
+    String objConst
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserCreatedData fromMap(Map<String, Object> map) {
+        return new UserCreatedData(
+            (String) map.get("color"),
+            (String) map.get("maybeColor"),
+            (String) map.get("nested"),
+            (String) map.get("oneOfConst"),
+            (String) map.get("mixedConst"),
+            (String) map.get("objConst")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("color", color);
+        map.put("maybeColor", maybeColor);
+        map.put("nested", nested);
+        map.put("oneOfConst", oneOfConst);
+        map.put("mixedConst", mixedConst);
+        map.put("objConst", objConst);
+        return map;
+    }
+}

@@ -1,0 +1,33 @@
+from __future__ import annotations
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    o: str
+    nul: str
+    arr: str = None
+    empty: str = None
+    str: str = None
+    dup_keys: str = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            o=data.get("o"),
+            nul=data.get("nul"),
+            arr=data.get("arr"),
+            empty=data.get("empty"),
+            str=data.get("str"),
+            dup_keys=data.get("dupKeys"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "o": self.o,
+            "nul": self.nul,
+            "arr": self.arr,
+            "empty": self.empty,
+            "str": self.str,
+            "dupKeys": self.dup_keys,
+        }

@@ -1,0 +1,90 @@
+{
+  <span class="hl-key">"$schema"</span>: <span class="hl-str">"http://json-schema.org/draft-07/schema#"</span>,
+  <span class="hl-key">"additionalProperties"</span>: <span class="hl-kw">true</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"email"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    },
+    <span class="hl-key">"federatedClaims"</span>: {
+      <span class="hl-key">"oneOf"</span>: [
+        {
+          <span class="hl-key">"properties"</span>: {
+            <span class="hl-key">"accessToken"</span>: {
+              <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>
+            },
+            <span class="hl-key">"idToken"</span>: {
+              <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>
+            }
+          },
+          <span class="hl-key">"required"</span>: [
+            <span class="hl-str">"accessToken"</span>,
+            <span class="hl-str">"idToken"</span>
+          ],
+          <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>
+        },
+        {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"null"</span>
+        }
+      ]
+    },
+    <span class="hl-key">"flowcatalystClaims"</span>: {
+      <span class="hl-key">"properties"</span>: {
+        <span class="hl-key">"applications"</span>: {
+          <span class="hl-key">"items"</span>: {
+            <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+          },
+          <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>
+        },
+        <span class="hl-key">"clients"</span>: {
+          <span class="hl-key">"items"</span>: {
+            <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+          },
+          <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>
+        },
+        <span class="hl-key">"email"</span>: {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+        },
+        <span class="hl-key">"roles"</span>: {
+          <span class="hl-key">"items"</span>: {
+            <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+          },
+          <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>
+        },
+        <span class="hl-key">"type"</span>: {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+        }
+      },
+      <span class="hl-key">"required"</span>: [
+        <span class="hl-str">"email"</span>,
+        <span class="hl-str">"type"</span>,
+        <span class="hl-str">"roles"</span>,
+        <span class="hl-str">"clients"</span>,
+        <span class="hl-str">"applications"</span>
+      ],
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>
+    },
+    <span class="hl-key">"identityProviderCode"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"string"</span>,
+        <span class="hl-str">"null"</span>
+      ]
+    },
+    <span class="hl-key">"loginMethod"</span>: {
+      <span class="hl-key">"enum"</span>: [
+        <span class="hl-str">"INTERNAL"</span>,
+        <span class="hl-str">"OIDC"</span>
+      ],
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    },
+    <span class="hl-key">"userId"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"userId"</span>,
+    <span class="hl-str">"email"</span>,
+    <span class="hl-str">"loginMethod"</span>,
+    <span class="hl-str">"flowcatalystClaims"</span>
+  ],
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>
+}

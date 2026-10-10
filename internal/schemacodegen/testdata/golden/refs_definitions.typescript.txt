@@ -1,0 +1,5 @@
+export interface UserCreatedData {
+  home: unknown;
+  price?: unknown;
+  all?: unknown[];
+}

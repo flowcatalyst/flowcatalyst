@@ -1,0 +1,67 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\A\B\C;
+
+final readonly class CDData
+{
+    public function __construct(
+        public string $a,
+        public int $b,
+        public ?float $c,
+        public ?bool $d,
+        public mixed $e,
+        public mixed $f,
+        public ?array $g,
+        public ?array $h,
+        public mixed $i,
+        public string $j,
+        public int $k,
+        public ?string $l,
+        public ?string $m,
+        public mixed $n,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            a: $data['a'],
+            b: $data['b'],
+            c: $data['c'],
+            d: $data['d'],
+            e: $data['e'],
+            f: $data['f'],
+            g: $data['g'],
+            h: $data['h'],
+            i: $data['i'],
+            j: $data['j'],
+            k: $data['k'],
+            l: $data['l'],
+            m: $data['m'],
+            n: $data['n'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'a' => $this->a,
+            'b' => $this->b,
+            'c' => $this->c,
+            'd' => $this->d,
+            'e' => $this->e,
+            'f' => $this->f,
+            'g' => $this->g,
+            'h' => $this->h,
+            'i' => $this->i,
+            'j' => $this->j,
+            'k' => $this->k,
+            'l' => $this->l,
+            'm' => $this->m,
+            'n' => $this->n,
+        ];
+    }
+}

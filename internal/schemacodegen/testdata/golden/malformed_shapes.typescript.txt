@@ -1,0 +1,17 @@
+export interface UserCreatedData {
+  propsAsArray?: {
+    0?: string;
+    1?: number;
+  };
+  propsAsTrue?: {
+  };
+  propsAsZero?: Record<string, unknown>;
+  itemsFalse?: unknown[];
+  addlArray?: Record<string, unknown>;
+  addlNull?: Record<string, unknown>;
+  patternEmpty?: Record<string, unknown>;
+  patternFalsy?: Record<string, unknown>;
+  typeNumber?: unknown;
+  typeMixedArray?: string | unknown;
+  requiredBad?: string;
+}

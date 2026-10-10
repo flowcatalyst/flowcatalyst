@@ -1,0 +1,31 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Shop\Orders\Aggregate;
+
+final readonly class UnknownEventData
+{
+    public function __construct(
+        public string $id,
+        public array $profile,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            id: $data['id'],
+            profile: $data['profile'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'profile' => $this->profile,
+        ];
+    }
+}

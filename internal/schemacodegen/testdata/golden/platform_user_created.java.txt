@@ -1,0 +1,40 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public record UserCreatedData(
+    String clientId,
+    String email,
+    String emailDomain,
+    boolean isAnchorUser,
+    String name,
+    String principalId,
+    String scope
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserCreatedData fromMap(Map<String, Object> map) {
+        return new UserCreatedData(
+            (String) map.get("clientId"),
+            (String) map.get("email"),
+            (String) map.get("emailDomain"),
+            (Boolean) map.get("isAnchorUser"),
+            (String) map.get("name"),
+            (String) map.get("principalId"),
+            (String) map.get("scope")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("clientId", clientId);
+        map.put("email", email);
+        map.put("emailDomain", emailDomain);
+        map.put("isAnchorUser", isAnchorUser);
+        map.put("name", name);
+        map.put("principalId", principalId);
+        map.put("scope", scope);
+        return map;
+    }
+}

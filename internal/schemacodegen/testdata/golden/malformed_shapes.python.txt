@@ -1,0 +1,49 @@
+from __future__ import annotations
+from typing import Any
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    props_as_array: dict[str, Any] | None = None
+    props_as_true: dict[str, Any] | None = None
+    props_as_zero: dict[str, Any] | None = None
+    items_false: list | None = None
+    addl_array: dict[str, Any] | None = None
+    addl_null: dict[str, Any] | None = None
+    pattern_empty: dict[str, Any] | None = None
+    pattern_falsy: dict[str, Any] | None = None
+    type_number: Any = None
+    type_mixed_array: str | Any | None = None
+    required_bad: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            props_as_array=data.get("propsAsArray"),
+            props_as_true=data.get("propsAsTrue"),
+            props_as_zero=data.get("propsAsZero"),
+            items_false=data.get("itemsFalse"),
+            addl_array=data.get("addlArray"),
+            addl_null=data.get("addlNull"),
+            pattern_empty=data.get("patternEmpty"),
+            pattern_falsy=data.get("patternFalsy"),
+            type_number=data.get("typeNumber"),
+            type_mixed_array=data.get("typeMixedArray"),
+            required_bad=data.get("requiredBad"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "propsAsArray": self.props_as_array,
+            "propsAsTrue": self.props_as_true,
+            "propsAsZero": self.props_as_zero,
+            "itemsFalse": self.items_false,
+            "addlArray": self.addl_array,
+            "addlNull": self.addl_null,
+            "patternEmpty": self.pattern_empty,
+            "patternFalsy": self.pattern_falsy,
+            "typeNumber": self.type_number,
+            "typeMixedArray": self.type_mixed_array,
+            "requiredBad": self.required_bad,
+        }

@@ -1,0 +1,35 @@
+package com.platform.events.iam.principals;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public record PrincipalsSyncedData(
+    String applicationCode,
+    int created,
+    int deactivated,
+    List<String> syncedEmails,
+    int updated
+) {
+
+    @SuppressWarnings("unchecked")
+    public static PrincipalsSyncedData fromMap(Map<String, Object> map) {
+        return new PrincipalsSyncedData(
+            (String) map.get("applicationCode"),
+            (Integer) map.get("created"),
+            (Integer) map.get("deactivated"),
+            (List<String>) map.get("syncedEmails"),
+            (Integer) map.get("updated")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("applicationCode", applicationCode);
+        map.put("created", created);
+        map.put("deactivated", deactivated);
+        map.put("syncedEmails", syncedEmails);
+        map.put("updated", updated);
+        return map;
+    }
+}

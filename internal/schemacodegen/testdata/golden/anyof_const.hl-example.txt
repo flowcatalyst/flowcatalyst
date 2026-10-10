@@ -1,0 +1,14 @@
+{
+  <span class="hl-key">"color"</span>: <span class="hl-str">"red"</span>,
+  <span class="hl-key">"maybeColor"</span>: <span class="hl-str">"red"</span>,
+  <span class="hl-key">"nested"</span>: <span class="hl-str">"x"</span>,
+  <span class="hl-key">"oneOfConst"</span>: <span class="hl-num">1</span>,
+  <span class="hl-key">"mixedConst"</span>: <span class="hl-str">"s"</span>,
+  <span class="hl-key">"objConst"</span>: {
+    <span class="hl-key">"a"</span>: <span class="hl-num">1</span>,
+    <span class="hl-key">"b"</span>: [
+      <span class="hl-kw">true</span>,
+      <span class="hl-kw">null</span>
+    ]
+  }
+}

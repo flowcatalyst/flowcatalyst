@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "properties": {
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ratio": {
+      "type": "number",
+      "exclusiveMaximum": 1
+    },
+    "optCount": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "optRatio": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "ints": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "nums": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    }
+  },
+  "required": [
+    "count",
+    "ratio"
+  ]
+}

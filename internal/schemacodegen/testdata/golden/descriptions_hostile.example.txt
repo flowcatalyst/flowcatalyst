@@ -1,0 +1,10 @@
+{
+  "a<b>&c": "string",
+  "q\"uote": "string",
+  "s'ingle": 0,
+  "amp&lt;": true,
+  "</span><script>alert(1)</script>": "</span><script>alert(2)</script>",
+  "tick`s": "it's \"fine\" & <b>bold</b>",
+  "back\\slash": "C:\\path\\to",
+  "apos'const": "a'b"
+}

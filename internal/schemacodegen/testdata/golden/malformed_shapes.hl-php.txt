@@ -1,0 +1,58 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\Platform\Iam\User;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> UserCreatedData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$propsAsArray</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$propsAsTrue</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$propsAsZero</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$itemsFalse</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$addlArray</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$addlNull</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$patternEmpty</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$patternFalsy</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">mixed</span> <span class="hl-var">$typeNumber</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">mixed</span> <span class="hl-var">$typeMixedArray</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$requiredBad</span>,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            propsAsArray: <span class="hl-var">$data</span>[<span class="hl-str">'propsAsArray'</span>],
+            propsAsTrue: <span class="hl-var">$data</span>[<span class="hl-str">'propsAsTrue'</span>],
+            propsAsZero: <span class="hl-var">$data</span>[<span class="hl-str">'propsAsZero'</span>],
+            itemsFalse: <span class="hl-var">$data</span>[<span class="hl-str">'itemsFalse'</span>],
+            addlArray: <span class="hl-var">$data</span>[<span class="hl-str">'addlArray'</span>],
+            addlNull: <span class="hl-var">$data</span>[<span class="hl-str">'addlNull'</span>],
+            patternEmpty: <span class="hl-var">$data</span>[<span class="hl-str">'patternEmpty'</span>],
+            patternFalsy: <span class="hl-var">$data</span>[<span class="hl-str">'patternFalsy'</span>],
+            typeNumber: <span class="hl-var">$data</span>[<span class="hl-str">'typeNumber'</span>],
+            typeMixedArray: <span class="hl-var">$data</span>[<span class="hl-str">'typeMixedArray'</span>],
+            requiredBad: <span class="hl-var">$data</span>[<span class="hl-str">'requiredBad'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'propsAsArray'</span> =&gt; <span class="hl-var">$this</span>-&gt;propsAsArray,
+            <span class="hl-str">'propsAsTrue'</span> =&gt; <span class="hl-var">$this</span>-&gt;propsAsTrue,
+            <span class="hl-str">'propsAsZero'</span> =&gt; <span class="hl-var">$this</span>-&gt;propsAsZero,
+            <span class="hl-str">'itemsFalse'</span> =&gt; <span class="hl-var">$this</span>-&gt;itemsFalse,
+            <span class="hl-str">'addlArray'</span> =&gt; <span class="hl-var">$this</span>-&gt;addlArray,
+            <span class="hl-str">'addlNull'</span> =&gt; <span class="hl-var">$this</span>-&gt;addlNull,
+            <span class="hl-str">'patternEmpty'</span> =&gt; <span class="hl-var">$this</span>-&gt;patternEmpty,
+            <span class="hl-str">'patternFalsy'</span> =&gt; <span class="hl-var">$this</span>-&gt;patternFalsy,
+            <span class="hl-str">'typeNumber'</span> =&gt; <span class="hl-var">$this</span>-&gt;typeNumber,
+            <span class="hl-str">'typeMixedArray'</span> =&gt; <span class="hl-var">$this</span>-&gt;typeMixedArray,
+            <span class="hl-str">'requiredBad'</span> =&gt; <span class="hl-var">$this</span>-&gt;requiredBad,
+        ];
+    }
+}

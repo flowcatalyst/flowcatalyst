@@ -1,0 +1,34 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserCreatedData
+{
+    public function __construct(
+        public mixed $home,
+        public mixed $price,
+        public ?array $all,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            home: $data['home'],
+            price: $data['price'],
+            all: $data['all'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'home' => $this->home,
+            'price' => $this->price,
+            'all' => $this->all,
+        ];
+    }
+}

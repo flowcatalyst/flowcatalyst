@@ -1,0 +1,39 @@
+{
+  <span class="hl-key">"$schema"</span>: <span class="hl-str">"http://json-schema.org/draft-07/schema#"</span>,
+  <span class="hl-key">"additionalProperties"</span>: <span class="hl-kw">false</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"clientId"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"string"</span>,
+        <span class="hl-str">"null"</span>
+      ]
+    },
+    <span class="hl-key">"email"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    },
+    <span class="hl-key">"emailDomain"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    },
+    <span class="hl-key">"isAnchorUser"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"boolean"</span>
+    },
+    <span class="hl-key">"name"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    },
+    <span class="hl-key">"principalId"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    },
+    <span class="hl-key">"scope"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"principalId"</span>,
+    <span class="hl-str">"email"</span>,
+    <span class="hl-str">"emailDomain"</span>,
+    <span class="hl-str">"name"</span>,
+    <span class="hl-str">"scope"</span>,
+    <span class="hl-str">"isAnchorUser"</span>
+  ],
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>
+}

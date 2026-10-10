@@ -1,0 +1,13 @@
+export interface ShopOrdersData {
+  id: string;
+  profile: {
+    name: string;
+    address?: {
+      street: string;
+      geo?: {
+        lat: number;
+        lng: number;
+      };
+    };
+  };
+}

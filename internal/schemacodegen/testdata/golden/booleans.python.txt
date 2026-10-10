@@ -1,0 +1,33 @@
+from __future__ import annotations
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    enabled: bool
+    always_true: str
+    nothing: None
+    maybe: bool | None = None
+    always_false: str = None
+    flags: list[bool] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            enabled=data.get("enabled"),
+            always_true=data.get("alwaysTrue"),
+            nothing=data.get("nothing"),
+            maybe=data.get("maybe"),
+            always_false=data.get("alwaysFalse"),
+            flags=data.get("flags"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "alwaysTrue": self.always_true,
+            "nothing": self.nothing,
+            "maybe": self.maybe,
+            "alwaysFalse": self.always_false,
+            "flags": self.flags,
+        }

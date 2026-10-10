@@ -1,0 +1,43 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\Platform\Iam\User;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> UserCreatedData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$o</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$arr</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$empty</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$nul</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$str</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$dupKeys</span>,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            o: <span class="hl-var">$data</span>[<span class="hl-str">'o'</span>],
+            arr: <span class="hl-var">$data</span>[<span class="hl-str">'arr'</span>],
+            empty: <span class="hl-var">$data</span>[<span class="hl-str">'empty'</span>],
+            nul: <span class="hl-var">$data</span>[<span class="hl-str">'nul'</span>],
+            str: <span class="hl-var">$data</span>[<span class="hl-str">'str'</span>],
+            dupKeys: <span class="hl-var">$data</span>[<span class="hl-str">'dupKeys'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'o'</span> =&gt; <span class="hl-var">$this</span>-&gt;o,
+            <span class="hl-str">'arr'</span> =&gt; <span class="hl-var">$this</span>-&gt;arr,
+            <span class="hl-str">'empty'</span> =&gt; <span class="hl-var">$this</span>-&gt;empty,
+            <span class="hl-str">'nul'</span> =&gt; <span class="hl-var">$this</span>-&gt;nul,
+            <span class="hl-str">'str'</span> =&gt; <span class="hl-var">$this</span>-&gt;str,
+            <span class="hl-str">'dupKeys'</span> =&gt; <span class="hl-var">$this</span>-&gt;dupKeys,
+        ];
+    }
+}

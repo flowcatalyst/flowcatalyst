@@ -1,0 +1,27 @@
+from __future__ import annotations
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserRolesAssignedData:
+    added: list[str]
+    principal_id: str
+    removed: list[str]
+    roles: list[str]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserRolesAssignedData:
+        return cls(
+            added=data.get("added"),
+            principal_id=data.get("principalId"),
+            removed=data.get("removed"),
+            roles=data.get("roles"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "added": self.added,
+            "principalId": self.principal_id,
+            "removed": self.removed,
+            "roles": self.roles,
+        }

@@ -1,0 +1,19 @@
+from __future__ import annotations
+from typing import Any
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    l1: list[dict[str, Any]]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            l1=data.get("l1"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "l1": self.l1,
+        }

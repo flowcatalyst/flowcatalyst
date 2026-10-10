@@ -1,0 +1,7 @@
+export interface PrincipalsSyncedData {
+  applicationCode: string;
+  created: number;
+  deactivated: number;
+  syncedEmails: string[];
+  updated: number;
+}

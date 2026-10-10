@@ -1,0 +1,40 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"o"</span>: {
+      <span class="hl-key">"const"</span>: {
+        <span class="hl-key">"7"</span>: <span class="hl-str">"int-like"</span>,
+        <span class="hl-key">"z"</span>: <span class="hl-num">1</span>,
+        <span class="hl-key">"a"</span>: [
+          <span class="hl-num">1</span>,
+          {
+            <span class="hl-key">"b"</span>: <span class="hl-kw">null</span>
+          }
+        ],
+        <span class="hl-key">"m"</span>: {}
+      }
+    },
+    <span class="hl-key">"arr"</span>: {
+      <span class="hl-key">"const"</span>: []
+    },
+    <span class="hl-key">"empty"</span>: {
+      <span class="hl-key">"const"</span>: {}
+    },
+    <span class="hl-key">"nul"</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-kw">null</span>
+    },
+    <span class="hl-key">"str"</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-str">"tab\there \"q\" \\ / &lt;&amp;&gt;"</span>
+    },
+    <span class="hl-key">"dupKeys"</span>: {
+      <span class="hl-key">"const"</span>: {
+        <span class="hl-key">"a"</span>: <span class="hl-num">3</span>,
+        <span class="hl-key">"b"</span>: <span class="hl-num">2</span>
+      }
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"o"</span>,
+    <span class="hl-str">"nul"</span>
+  ]
+}

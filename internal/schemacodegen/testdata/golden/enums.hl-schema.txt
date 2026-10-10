@@ -1,0 +1,40 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"status"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>,
+      <span class="hl-key">"enum"</span>: [
+        <span class="hl-str">"ACTIVE"</span>,
+        <span class="hl-str">"INACTIVE"</span>,
+        <span class="hl-str">"PENDING"</span>
+      ]
+    },
+    <span class="hl-key">"level"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"integer"</span>,
+      <span class="hl-key">"enum"</span>: [
+        <span class="hl-num">1</span>,
+        <span class="hl-num">2</span>,
+        <span class="hl-num">3</span>
+      ]
+    },
+    <span class="hl-key">"mode"</span>: {
+      <span class="hl-key">"enum"</span>: [
+        <span class="hl-str">"a"</span>,
+        <span class="hl-str">"b"</span>
+      ]
+    },
+    <span class="hl-key">"kind"</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-str">"user"</span>
+    },
+    <span class="hl-key">"version"</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-num">2</span>
+    },
+    <span class="hl-key">"flag"</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-kw">true</span>
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"status"</span>,
+    <span class="hl-str">"kind"</span>
+  ]
+}

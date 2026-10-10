@@ -1,0 +1,37 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\Platform\Iam\User;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> UserRolesAssignedData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> <span class="hl-kw">array</span> <span class="hl-var">$added</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$principalId</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">array</span> <span class="hl-var">$removed</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">array</span> <span class="hl-var">$roles</span>,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            added: <span class="hl-var">$data</span>[<span class="hl-str">'added'</span>],
+            principalId: <span class="hl-var">$data</span>[<span class="hl-str">'principalId'</span>],
+            removed: <span class="hl-var">$data</span>[<span class="hl-str">'removed'</span>],
+            roles: <span class="hl-var">$data</span>[<span class="hl-str">'roles'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'added'</span> =&gt; <span class="hl-var">$this</span>-&gt;added,
+            <span class="hl-str">'principalId'</span> =&gt; <span class="hl-var">$this</span>-&gt;principalId,
+            <span class="hl-str">'removed'</span> =&gt; <span class="hl-var">$this</span>-&gt;removed,
+            <span class="hl-str">'roles'</span> =&gt; <span class="hl-var">$this</span>-&gt;roles,
+        ];
+    }
+}

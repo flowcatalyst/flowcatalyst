@@ -1,0 +1,43 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\Platform\Iam\User;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> UserLoggedInData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$email</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$federatedClaims</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">array</span> <span class="hl-var">$flowcatalystClaims</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$identityProviderCode</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$loginMethod</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$userId</span>,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            email: <span class="hl-var">$data</span>[<span class="hl-str">'email'</span>],
+            federatedClaims: <span class="hl-var">$data</span>[<span class="hl-str">'federatedClaims'</span>],
+            flowcatalystClaims: <span class="hl-var">$data</span>[<span class="hl-str">'flowcatalystClaims'</span>],
+            identityProviderCode: <span class="hl-var">$data</span>[<span class="hl-str">'identityProviderCode'</span>],
+            loginMethod: <span class="hl-var">$data</span>[<span class="hl-str">'loginMethod'</span>],
+            userId: <span class="hl-var">$data</span>[<span class="hl-str">'userId'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'email'</span> =&gt; <span class="hl-var">$this</span>-&gt;email,
+            <span class="hl-str">'federatedClaims'</span> =&gt; <span class="hl-var">$this</span>-&gt;federatedClaims,
+            <span class="hl-str">'flowcatalystClaims'</span> =&gt; <span class="hl-var">$this</span>-&gt;flowcatalystClaims,
+            <span class="hl-str">'identityProviderCode'</span> =&gt; <span class="hl-var">$this</span>-&gt;identityProviderCode,
+            <span class="hl-str">'loginMethod'</span> =&gt; <span class="hl-var">$this</span>-&gt;loginMethod,
+            <span class="hl-str">'userId'</span> =&gt; <span class="hl-var">$this</span>-&gt;userId,
+        ];
+    }
+}

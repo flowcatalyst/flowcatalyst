@@ -1,0 +1,10 @@
+export interface UserCreatedData {
+  lines: {
+    sku: string;
+    qty: number;
+    tags?: string[];
+  }[];
+  matrix?: number[][];
+  untyped?: unknown[];
+  mixed?: (string | number)[];
+}

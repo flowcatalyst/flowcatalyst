@@ -1,0 +1,75 @@
+from __future__ import annotations
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    one_point_zero: str
+    sci_hundred: str = None
+    tenth: str = None
+    tiny: str = None
+    small: str = None
+    edge_low: str = None
+    big: str = None
+    huge: str = None
+    e21: str = None
+    e20: str = None
+    neg_zero: str = None
+    neg_zero_f: str = None
+    neg: str = None
+    min_double: str = None
+    max_double: str = None
+    overflow: str = None
+    cap_e: str = None
+    third: str = None
+    list: str = None
+    plain: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            one_point_zero=data.get("onePointZero"),
+            sci_hundred=data.get("sciHundred"),
+            tenth=data.get("tenth"),
+            tiny=data.get("tiny"),
+            small=data.get("small"),
+            edge_low=data.get("edgeLow"),
+            big=data.get("big"),
+            huge=data.get("huge"),
+            e21=data.get("e21"),
+            e20=data.get("e20"),
+            neg_zero=data.get("negZero"),
+            neg_zero_f=data.get("negZeroF"),
+            neg=data.get("neg"),
+            min_double=data.get("minDouble"),
+            max_double=data.get("maxDouble"),
+            overflow=data.get("overflow"),
+            cap_e=data.get("capE"),
+            third=data.get("third"),
+            list=data.get("list"),
+            plain=data.get("plain"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "onePointZero": self.one_point_zero,
+            "sciHundred": self.sci_hundred,
+            "tenth": self.tenth,
+            "tiny": self.tiny,
+            "small": self.small,
+            "edgeLow": self.edge_low,
+            "big": self.big,
+            "huge": self.huge,
+            "e21": self.e21,
+            "e20": self.e20,
+            "negZero": self.neg_zero,
+            "negZeroF": self.neg_zero_f,
+            "neg": self.neg,
+            "minDouble": self.min_double,
+            "maxDouble": self.max_double,
+            "overflow": self.overflow,
+            "capE": self.cap_e,
+            "third": self.third,
+            "list": self.list,
+            "plain": self.plain,
+        }

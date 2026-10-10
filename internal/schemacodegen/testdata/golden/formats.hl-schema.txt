@@ -1,0 +1,36 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"createdAt"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>,
+      <span class="hl-key">"format"</span>: <span class="hl-str">"date-time"</span>
+    },
+    <span class="hl-key">"id"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>,
+      <span class="hl-key">"format"</span>: <span class="hl-str">"uuid"</span>
+    },
+    <span class="hl-key">"email"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>,
+      <span class="hl-key">"format"</span>: <span class="hl-str">"email"</span>
+    },
+    <span class="hl-key">"website"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>,
+      <span class="hl-key">"format"</span>: <span class="hl-str">"uri"</span>,
+      <span class="hl-key">"pattern"</span>: <span class="hl-str">"^https?://"</span>
+    },
+    <span class="hl-key">"birthday"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>,
+      <span class="hl-key">"format"</span>: <span class="hl-str">"date"</span>
+    },
+    <span class="hl-key">"short"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>,
+      <span class="hl-key">"minLength"</span>: <span class="hl-num">1</span>,
+      <span class="hl-key">"maxLength"</span>: <span class="hl-num">10</span>
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"createdAt"</span>,
+    <span class="hl-str">"id"</span>,
+    <span class="hl-str">"email"</span>
+  ]
+}

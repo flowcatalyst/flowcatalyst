@@ -1,0 +1,43 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\Solo\Domain\Aggregate;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> UnknownEventData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$status</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">int</span> <span class="hl-var">$level</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">mixed</span> <span class="hl-var">$mode</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$kind</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$version</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$flag</span>,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            status: <span class="hl-var">$data</span>[<span class="hl-str">'status'</span>],
+            level: <span class="hl-var">$data</span>[<span class="hl-str">'level'</span>],
+            mode: <span class="hl-var">$data</span>[<span class="hl-str">'mode'</span>],
+            kind: <span class="hl-var">$data</span>[<span class="hl-str">'kind'</span>],
+            version: <span class="hl-var">$data</span>[<span class="hl-str">'version'</span>],
+            flag: <span class="hl-var">$data</span>[<span class="hl-str">'flag'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'status'</span> =&gt; <span class="hl-var">$this</span>-&gt;status,
+            <span class="hl-str">'level'</span> =&gt; <span class="hl-var">$this</span>-&gt;level,
+            <span class="hl-str">'mode'</span> =&gt; <span class="hl-var">$this</span>-&gt;mode,
+            <span class="hl-str">'kind'</span> =&gt; <span class="hl-var">$this</span>-&gt;kind,
+            <span class="hl-str">'version'</span> =&gt; <span class="hl-var">$this</span>-&gt;version,
+            <span class="hl-str">'flag'</span> =&gt; <span class="hl-var">$this</span>-&gt;flag,
+        ];
+    }
+}

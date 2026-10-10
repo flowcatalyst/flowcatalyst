@@ -1,0 +1,9 @@
+{
+  "clientId": {},
+  "email": "string",
+  "emailDomain": "string",
+  "isAnchorUser": true,
+  "name": "string",
+  "principalId": "string",
+  "scope": "string"
+}

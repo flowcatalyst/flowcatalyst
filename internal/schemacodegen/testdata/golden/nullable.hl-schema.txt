@@ -1,0 +1,106 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"a"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"string"</span>,
+        <span class="hl-str">"null"</span>
+      ]
+    },
+    <span class="hl-key">"b"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"integer"</span>,
+        <span class="hl-str">"null"</span>
+      ]
+    },
+    <span class="hl-key">"c"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"number"</span>,
+        <span class="hl-str">"null"</span>
+      ]
+    },
+    <span class="hl-key">"d"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"boolean"</span>,
+        <span class="hl-str">"null"</span>
+      ]
+    },
+    <span class="hl-key">"e"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"string"</span>,
+        <span class="hl-str">"integer"</span>
+      ]
+    },
+    <span class="hl-key">"f"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"string"</span>,
+        <span class="hl-str">"number"</span>,
+        <span class="hl-str">"null"</span>
+      ]
+    },
+    <span class="hl-key">"g"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"array"</span>,
+        <span class="hl-str">"null"</span>
+      ],
+      <span class="hl-key">"items"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+      }
+    },
+    <span class="hl-key">"h"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"object"</span>,
+        <span class="hl-str">"null"</span>
+      ],
+      <span class="hl-key">"properties"</span>: {
+        <span class="hl-key">"x"</span>: {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+        }
+      }
+    },
+    <span class="hl-key">"i"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"null"</span>
+      ]
+    },
+    <span class="hl-key">"j"</span>: {
+      <span class="hl-key">"anyOf"</span>: [
+        {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+        },
+        {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"null"</span>
+        }
+      ]
+    },
+    <span class="hl-key">"k"</span>: {
+      <span class="hl-key">"oneOf"</span>: [
+        {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"integer"</span>
+        },
+        {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"null"</span>
+        }
+      ]
+    },
+    <span class="hl-key">"l"</span>: {
+      <span class="hl-key">"anyOf"</span>: [
+        {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"null"</span>
+        }
+      ]
+    },
+    <span class="hl-key">"m"</span>: {
+      <span class="hl-key">"anyOf"</span>: []
+    },
+    <span class="hl-key">"n"</span>: {
+      <span class="hl-key">"type"</span>: []
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"a"</span>,
+    <span class="hl-str">"b"</span>,
+    <span class="hl-str">"j"</span>,
+    <span class="hl-str">"k"</span>
+  ]
+}

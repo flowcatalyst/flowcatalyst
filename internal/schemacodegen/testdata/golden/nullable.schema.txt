@@ -1,0 +1,106 @@
+{
+  "type": "object",
+  "properties": {
+    "a": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "b": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "c": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "d": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "e": {
+      "type": [
+        "string",
+        "integer"
+      ]
+    },
+    "f": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ]
+    },
+    "g": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "h": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "x": {
+          "type": "string"
+        }
+      }
+    },
+    "i": {
+      "type": [
+        "null"
+      ]
+    },
+    "j": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "k": {
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "l": {
+      "anyOf": [
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "m": {
+      "anyOf": []
+    },
+    "n": {
+      "type": []
+    }
+  },
+  "required": [
+    "a",
+    "b",
+    "j",
+    "k"
+  ]
+}

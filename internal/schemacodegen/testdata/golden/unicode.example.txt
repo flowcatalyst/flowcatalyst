@@ -1,0 +1,13 @@
+{
+  "café": "string",
+  "日本語": "string",
+  "emoji😀": 0,
+  "ctrl\u0001\u001f\b\f\n\r\t": true,
+  "sep  ": "line sep ",
+  "slash//": "a/b",
+  "nul\u0000": "x\u0000y",
+  "del": "",
+  "lone\ud800": "\ud800",
+  "pair😀": "😀\udc00",
+  "rev\udc00\ud800": "\udc00\ud800"
+}

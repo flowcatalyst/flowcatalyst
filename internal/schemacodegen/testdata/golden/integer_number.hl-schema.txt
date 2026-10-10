@@ -1,0 +1,41 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"count"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"integer"</span>,
+      <span class="hl-key">"minimum"</span>: <span class="hl-num">0</span>
+    },
+    <span class="hl-key">"ratio"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"number"</span>,
+      <span class="hl-key">"exclusiveMaximum"</span>: <span class="hl-num">1</span>
+    },
+    <span class="hl-key">"optCount"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"integer"</span>,
+        <span class="hl-str">"null"</span>
+      ]
+    },
+    <span class="hl-key">"optRatio"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"number"</span>,
+        <span class="hl-str">"null"</span>
+      ]
+    },
+    <span class="hl-key">"ints"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>,
+      <span class="hl-key">"items"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"integer"</span>
+      }
+    },
+    <span class="hl-key">"nums"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>,
+      <span class="hl-key">"items"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"number"</span>
+      }
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"count"</span>,
+    <span class="hl-str">"ratio"</span>
+  ]
+}

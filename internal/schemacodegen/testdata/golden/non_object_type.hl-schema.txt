@@ -1,0 +1,4 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>,
+  <span class="hl-key">"format"</span>: <span class="hl-str">"uuid"</span>
+}

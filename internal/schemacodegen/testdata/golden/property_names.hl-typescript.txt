@@ -1,0 +1,29 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> OrderLineItemAddedData {
+  <span class="hl-num">1</span>?: <span class="hl-type">string</span>;
+  <span class="hl-num">2</span>?: <span class="hl-type">string</span>;
+  <span class="hl-num">10</span>: <span class="hl-type">string</span>;
+  <span class="hl-num">4294967294</span>?: <span class="hl-type">string</span>;
+  snake_case_name?: <span class="hl-type">string</span>;
+  kebab-case-name: <span class="hl-type">string</span>;
+  camelCaseName: <span class="hl-type">string</span>;
+  PascalCaseName?: <span class="hl-type">string</span>;
+  HTTPStatusCode?: <span class="hl-type">number</span>;
+  9lives?: <span class="hl-type">string</span>;
+  <span class="hl-kw">class</span>: <span class="hl-type">string</span>;
+  int?: <span class="hl-type">number</span>;
+  public?: <span class="hl-type">boolean</span>;
+  def?: <span class="hl-type">string</span>;
+  <span class="hl-kw">import</span>?: <span class="hl-type">string</span>;
+  <span class="hl-kw">new</span>?: <span class="hl-type">string</span>;
+  <span class="hl-kw">return</span>?: <span class="hl-type">string</span>;
+  <span class="hl-kw">function</span>?: <span class="hl-type">string</span>;
+  None?: <span class="hl-type">string</span>;
+  with space?: <span class="hl-type">string</span>;
+  dotted.name?: <span class="hl-type">string</span>;
+  Anything?: <span class="hl-type">string</span>;
+  ?: <span class="hl-type">string</span>;
+  b?: <span class="hl-type">string</span>;
+  <span class="hl-num">01</span>?: <span class="hl-type">string</span>;
+  a?: <span class="hl-type">string</span>;
+  <span class="hl-num">4294967295</span>?: <span class="hl-type">string</span>;
+}

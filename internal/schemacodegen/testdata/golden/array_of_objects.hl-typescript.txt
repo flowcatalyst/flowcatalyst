@@ -1,0 +1,10 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  lines: {
+    sku: <span class="hl-type">string</span>;
+    qty: <span class="hl-type">number</span>;
+    tags?: <span class="hl-type">string</span>[];
+  }[];
+  matrix?: <span class="hl-type">number</span>[][];
+  untyped?: <span class="hl-type">unknown</span>[];
+  mixed?: (<span class="hl-type">string</span> | <span class="hl-type">number</span>)[];
+}

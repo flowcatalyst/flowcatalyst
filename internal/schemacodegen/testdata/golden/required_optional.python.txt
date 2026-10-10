@@ -1,0 +1,30 @@
+from __future__ import annotations
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    alpha: int
+    mid: bool
+    zeta: str | None = None
+    beta: float | None = None
+    omega: list[str] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            alpha=data.get("alpha"),
+            mid=data.get("mid"),
+            zeta=data.get("zeta"),
+            beta=data.get("beta"),
+            omega=data.get("omega"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "alpha": self.alpha,
+            "mid": self.mid,
+            "zeta": self.zeta,
+            "beta": self.beta,
+            "omega": self.omega,
+        }

@@ -1,0 +1,43 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public record UserCreatedData(
+    String a<b>&c,
+    String q"uote,
+    Integer s'ingle,
+    Boolean amp&lt;,
+    String </span><script>alert(1)</script>,
+    String tick`s,
+    String back\slash,
+    String apos'const
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserCreatedData fromMap(Map<String, Object> map) {
+        return new UserCreatedData(
+            (String) map.get("a<b>&c"),
+            (String) map.get("q"uote"),
+            (Integer) map.get("s'ingle"),
+            (Boolean) map.get("amp&lt;"),
+            (String) map.get("</span><script>alert(1)</script>"),
+            (String) map.get("tick`s"),
+            (String) map.get("back\slash"),
+            (String) map.get("apos'const")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("a<b>&c", a<b>&c);
+        map.put("q"uote", q"uote);
+        map.put("s'ingle", s'ingle);
+        map.put("amp&lt;", amp&lt;);
+        map.put("</span><script>alert(1)</script>", </span><script>alert(1)</script>);
+        map.put("tick`s", tick`s);
+        map.put("back\slash", back\slash);
+        map.put("apos'const", apos'const);
+        return map;
+    }
+}

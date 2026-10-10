@@ -1,0 +1,53 @@
+<span class="hl-kw">package</span> com.platform.events.iam.user;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">List</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> UserCreatedData(
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; propsAsArray,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; propsAsTrue,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; propsAsZero,
+    <span class="hl-type">List</span>&lt;<span class="hl-type">Object</span>&gt; itemsFalse,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; addlArray,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; addlNull,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; patternEmpty,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; patternFalsy,
+    <span class="hl-type">Object</span> typeNumber,
+    <span class="hl-type">Object</span> typeMixedArray,
+    <span class="hl-type">String</span> requiredBad
+) {
+
+    <span class="hl-comment">@SuppressWarnings</span>(<span class="hl-str">&quot;unchecked&quot;</span>)
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> UserCreatedData fromMap(<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; map) {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> UserCreatedData(
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;propsAsArray&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;propsAsTrue&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;propsAsZero&quot;</span>),
+            (<span class="hl-type">List</span>&lt;<span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;itemsFalse&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;addlArray&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;addlNull&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;patternEmpty&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;patternFalsy&quot;</span>),
+            (<span class="hl-type">Object</span>) map.get(<span class="hl-str">&quot;typeNumber&quot;</span>),
+            (<span class="hl-type">Object</span>) map.get(<span class="hl-str">&quot;typeMixedArray&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;requiredBad&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;propsAsArray&quot;</span>, propsAsArray);
+        map.put(<span class="hl-str">&quot;propsAsTrue&quot;</span>, propsAsTrue);
+        map.put(<span class="hl-str">&quot;propsAsZero&quot;</span>, propsAsZero);
+        map.put(<span class="hl-str">&quot;itemsFalse&quot;</span>, itemsFalse);
+        map.put(<span class="hl-str">&quot;addlArray&quot;</span>, addlArray);
+        map.put(<span class="hl-str">&quot;addlNull&quot;</span>, addlNull);
+        map.put(<span class="hl-str">&quot;patternEmpty&quot;</span>, patternEmpty);
+        map.put(<span class="hl-str">&quot;patternFalsy&quot;</span>, patternFalsy);
+        map.put(<span class="hl-str">&quot;typeNumber&quot;</span>, typeNumber);
+        map.put(<span class="hl-str">&quot;typeMixedArray&quot;</span>, typeMixedArray);
+        map.put(<span class="hl-str">&quot;requiredBad&quot;</span>, requiredBad);
+        <span class="hl-kw">return</span> map;
+    }
+}

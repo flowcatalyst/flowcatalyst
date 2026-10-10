@@ -1,0 +1,18 @@
+{
+  "propsAsArray": {
+    "0": "string",
+    "1": 0
+  },
+  "propsAsTrue": {},
+  "propsAsZero": {},
+  "itemsFalse": [],
+  "addlArray": {
+    "key": {}
+  },
+  "addlNull": {},
+  "patternEmpty": {},
+  "patternFalsy": {},
+  "typeNumber": {},
+  "typeMixedArray": {},
+  "requiredBad": "string"
+}

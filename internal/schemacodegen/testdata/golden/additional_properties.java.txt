@@ -1,0 +1,47 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public record UserCreatedData(
+    Map<String, String> labels,
+    Map<String, Integer> counters,
+    Map<String, Object> free,
+    Map<String, Object> closed,
+    Map<String, Double> patterned,
+    Map<String, Object> bare,
+    Map<String, Map<String, Boolean>> nestedMap,
+    Map<String, List<String>> listMap,
+    Map<String, Object> withProps
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserCreatedData fromMap(Map<String, Object> map) {
+        return new UserCreatedData(
+            (Map<String, String>) map.get("labels"),
+            (Map<String, Integer>) map.get("counters"),
+            (Map<String, Object>) map.get("free"),
+            (Map<String, Object>) map.get("closed"),
+            (Map<String, Double>) map.get("patterned"),
+            (Map<String, Object>) map.get("bare"),
+            (Map<String, Map<String, Boolean>>) map.get("nestedMap"),
+            (Map<String, List<String>>) map.get("listMap"),
+            (Map<String, Object>) map.get("withProps")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("labels", labels);
+        map.put("counters", counters);
+        map.put("free", free);
+        map.put("closed", closed);
+        map.put("patterned", patterned);
+        map.put("bare", bare);
+        map.put("nestedMap", nestedMap);
+        map.put("listMap", listMap);
+        map.put("withProps", withProps);
+        return map;
+    }
+}

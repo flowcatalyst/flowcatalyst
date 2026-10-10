@@ -1,0 +1,22 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  onePointZero: <span class="hl-num">1</span>;
+  sciHundred?: <span class="hl-num">100</span>;
+  tenth?: <span class="hl-num">0.1</span>;
+  tiny?: <span class="hl-num">1</span>.5e-<span class="hl-num">7</span>;
+  small?: <span class="hl-num">0.000001</span>;
+  edgeLow?: 1e-<span class="hl-num">7</span>;
+  big?: <span class="hl-num">9007199254740992</span>;
+  huge?: <span class="hl-num">1</span>.2345678901234568e+<span class="hl-num">29</span>;
+  e21?: 1e+<span class="hl-num">21</span>;
+  e20?: <span class="hl-num">100000000000000000000</span>;
+  negZero?: <span class="hl-num">0</span>;
+  negZeroF?: <span class="hl-num">0</span>;
+  neg?: -<span class="hl-num">12.5</span>;
+  minDouble?: 5e-<span class="hl-num">324</span>;
+  maxDouble?: <span class="hl-num">1</span>.7976931348623157e+<span class="hl-num">308</span>;
+  overflow?: <span class="hl-type">null</span>;
+  capE?: <span class="hl-num">2000</span>;
+  third?: <span class="hl-num">0.30000000000000004</span>;
+  list?: [<span class="hl-num">1</span>,<span class="hl-num">2.5</span>,<span class="hl-num">3</span>,<span class="hl-num">0</span>];
+  plain?: <span class="hl-type">number</span>;
+}

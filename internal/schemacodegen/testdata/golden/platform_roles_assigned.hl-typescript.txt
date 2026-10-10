@@ -1,0 +1,6 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserRolesAssignedData {
+  added: <span class="hl-type">string</span>[];
+  principalId: <span class="hl-type">string</span>;
+  removed: <span class="hl-type">string</span>[];
+  roles: <span class="hl-type">string</span>[];
+}

@@ -1,0 +1,41 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"café"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    },
+    <span class="hl-key">"日本語"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    },
+    <span class="hl-key">"emoji😀"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"integer"</span>
+    },
+    <span class="hl-key">"ctrl\u0001\u001f\b\f\n\r\t"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"boolean"</span>
+    },
+    <span class="hl-key">"sep  "</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-str">"line sep "</span>
+    },
+    <span class="hl-key">"slash//"</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-str">"a/b"</span>
+    },
+    <span class="hl-key">"nul\u0000"</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-str">"x\u0000y"</span>
+    },
+    <span class="hl-key">"del"</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-str">""</span>
+    },
+    <span class="hl-key">"lone\ud800"</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-str">"\ud800"</span>
+    },
+    <span class="hl-key">"pair😀"</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-str">"😀\udc00"</span>
+    },
+    <span class="hl-key">"rev\udc00\ud800"</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-str">"\udc00\ud800"</span>
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"café"</span>
+  ]
+}

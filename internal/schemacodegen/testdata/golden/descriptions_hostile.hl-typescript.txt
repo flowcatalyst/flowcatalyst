@@ -1,0 +1,10 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  a&lt;b&gt;&amp;c: <span class="hl-type">string</span>;
+  q<span class="hl-str">&quot;uote: string;
+  s'ingle?: number;
+  amp&amp;lt;?: boolean;
+  &lt;/span&gt;&lt;script&gt;alert(1)&lt;/script&gt;?: &quot;</span>&lt;/span&gt;&lt;script&gt;alert(<span class="hl-num">2</span>)&lt;/script&gt;<span class="hl-str">&quot;;
+  tick`s?: &quot;</span>it<span class="hl-str">'s \&quot;fine\&quot; &amp; &lt;b&gt;bold&lt;/b&gt;&quot;;
+  back\slash?: &quot;C:\\path\\to&quot;;
+  apos'</span><span class="hl-kw">const</span>?: <span class="hl-str">&quot;a'b&quot;</span> | <span class="hl-str">&quot;c\&quot;</span>d&quot;;
+}

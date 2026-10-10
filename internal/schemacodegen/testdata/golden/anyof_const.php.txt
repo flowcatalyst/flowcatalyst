@@ -1,0 +1,43 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserCreatedData
+{
+    public function __construct(
+        public string $color,
+        public ?string $maybeColor,
+        public ?string $nested,
+        public ?string $oneOfConst,
+        public string $mixedConst,
+        public ?string $objConst,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            color: $data['color'],
+            maybeColor: $data['maybeColor'],
+            nested: $data['nested'],
+            oneOfConst: $data['oneOfConst'],
+            mixedConst: $data['mixedConst'],
+            objConst: $data['objConst'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'color' => $this->color,
+            'maybeColor' => $this->maybeColor,
+            'nested' => $this->nested,
+            'oneOfConst' => $this->oneOfConst,
+            'mixedConst' => $this->mixedConst,
+            'objConst' => $this->objConst,
+        ];
+    }
+}

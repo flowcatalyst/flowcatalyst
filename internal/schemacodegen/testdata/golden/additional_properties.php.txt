@@ -1,0 +1,52 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserCreatedData
+{
+    public function __construct(
+        public array $labels,
+        public ?array $counters,
+        public ?array $free,
+        public ?array $closed,
+        public ?array $patterned,
+        public ?array $bare,
+        public ?array $nestedMap,
+        public ?array $listMap,
+        public ?array $withProps,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            labels: $data['labels'],
+            counters: $data['counters'],
+            free: $data['free'],
+            closed: $data['closed'],
+            patterned: $data['patterned'],
+            bare: $data['bare'],
+            nestedMap: $data['nestedMap'],
+            listMap: $data['listMap'],
+            withProps: $data['withProps'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'labels' => $this->labels,
+            'counters' => $this->counters,
+            'free' => $this->free,
+            'closed' => $this->closed,
+            'patterned' => $this->patterned,
+            'bare' => $this->bare,
+            'nestedMap' => $this->nestedMap,
+            'listMap' => $this->listMap,
+            'withProps' => $this->withProps,
+        ];
+    }
+}

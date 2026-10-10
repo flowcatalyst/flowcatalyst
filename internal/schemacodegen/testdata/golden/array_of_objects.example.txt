@@ -1,0 +1,20 @@
+{
+  "lines": [
+    {
+      "sku": "string",
+      "qty": 0,
+      "tags": [
+        "string"
+      ]
+    }
+  ],
+  "matrix": [
+    [
+      0
+    ]
+  ],
+  "untyped": [],
+  "mixed": [
+    "string"
+  ]
+}

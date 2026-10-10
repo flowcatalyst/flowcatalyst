@@ -1,0 +1,4 @@
+{
+  "type": "object",
+  "properties": { "ok": { "type": "string" }, "bad": 5 }
+}

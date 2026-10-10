@@ -1,0 +1,15 @@
+{
+  "payload": {
+    "a": "string",
+    "b": 0
+  },
+  "value": "string",
+  "dup": 0,
+  "listOf": [
+    "string"
+  ],
+  "nullFirst": "string",
+  "allNull": null,
+  "nestedAny": "string",
+  "plain": "string"
+}

@@ -1,0 +1,67 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\A\B\C;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> CDData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$a</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">int</span> <span class="hl-var">$b</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">float</span> <span class="hl-var">$c</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">bool</span> <span class="hl-var">$d</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">mixed</span> <span class="hl-var">$e</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">mixed</span> <span class="hl-var">$f</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$g</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$h</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">mixed</span> <span class="hl-var">$i</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$j</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">int</span> <span class="hl-var">$k</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$l</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$m</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">mixed</span> <span class="hl-var">$n</span>,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            a: <span class="hl-var">$data</span>[<span class="hl-str">'a'</span>],
+            b: <span class="hl-var">$data</span>[<span class="hl-str">'b'</span>],
+            c: <span class="hl-var">$data</span>[<span class="hl-str">'c'</span>],
+            d: <span class="hl-var">$data</span>[<span class="hl-str">'d'</span>],
+            e: <span class="hl-var">$data</span>[<span class="hl-str">'e'</span>],
+            f: <span class="hl-var">$data</span>[<span class="hl-str">'f'</span>],
+            g: <span class="hl-var">$data</span>[<span class="hl-str">'g'</span>],
+            h: <span class="hl-var">$data</span>[<span class="hl-str">'h'</span>],
+            i: <span class="hl-var">$data</span>[<span class="hl-str">'i'</span>],
+            j: <span class="hl-var">$data</span>[<span class="hl-str">'j'</span>],
+            k: <span class="hl-var">$data</span>[<span class="hl-str">'k'</span>],
+            l: <span class="hl-var">$data</span>[<span class="hl-str">'l'</span>],
+            m: <span class="hl-var">$data</span>[<span class="hl-str">'m'</span>],
+            n: <span class="hl-var">$data</span>[<span class="hl-str">'n'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'a'</span> =&gt; <span class="hl-var">$this</span>-&gt;a,
+            <span class="hl-str">'b'</span> =&gt; <span class="hl-var">$this</span>-&gt;b,
+            <span class="hl-str">'c'</span> =&gt; <span class="hl-var">$this</span>-&gt;c,
+            <span class="hl-str">'d'</span> =&gt; <span class="hl-var">$this</span>-&gt;d,
+            <span class="hl-str">'e'</span> =&gt; <span class="hl-var">$this</span>-&gt;e,
+            <span class="hl-str">'f'</span> =&gt; <span class="hl-var">$this</span>-&gt;f,
+            <span class="hl-str">'g'</span> =&gt; <span class="hl-var">$this</span>-&gt;g,
+            <span class="hl-str">'h'</span> =&gt; <span class="hl-var">$this</span>-&gt;h,
+            <span class="hl-str">'i'</span> =&gt; <span class="hl-var">$this</span>-&gt;i,
+            <span class="hl-str">'j'</span> =&gt; <span class="hl-var">$this</span>-&gt;j,
+            <span class="hl-str">'k'</span> =&gt; <span class="hl-var">$this</span>-&gt;k,
+            <span class="hl-str">'l'</span> =&gt; <span class="hl-var">$this</span>-&gt;l,
+            <span class="hl-str">'m'</span> =&gt; <span class="hl-var">$this</span>-&gt;m,
+            <span class="hl-str">'n'</span> =&gt; <span class="hl-var">$this</span>-&gt;n,
+        ];
+    }
+}

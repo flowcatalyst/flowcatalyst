@@ -1,0 +1,49 @@
+<span class="hl-kw">from</span> __future__ <span class="hl-kw">import</span> annotations
+<span class="hl-kw">from</span> typing <span class="hl-kw">import</span> <span class="hl-type">Any</span>
+<span class="hl-kw">from</span> dataclasses <span class="hl-kw">import</span> dataclass
+
+
+<span class="hl-comment">@dataclass(frozen=True)</span>
+<span class="hl-kw">class</span> UserCreatedData:
+    props_as_array: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    props_as_true: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    props_as_zero: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    items_false: <span class="hl-type">list</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    addl_array: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    addl_null: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    pattern_empty: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    pattern_falsy: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    type_number: <span class="hl-type">Any</span> = <span class="hl-kw">None</span>
+    type_mixed_array: <span class="hl-type">str</span> | <span class="hl-type">Any</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    required_bad: <span class="hl-type">str</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+
+    @classmethod
+    <span class="hl-kw">def</span> from_dict(<span class="hl-kw">cls</span>, data: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]) -&gt; UserCreatedData:
+        <span class="hl-kw">return</span> <span class="hl-kw">cls</span>(
+            props_as_array=data.get(<span class="hl-str">&quot;propsAsArray&quot;</span>),
+            props_as_true=data.get(<span class="hl-str">&quot;propsAsTrue&quot;</span>),
+            props_as_zero=data.get(<span class="hl-str">&quot;propsAsZero&quot;</span>),
+            items_false=data.get(<span class="hl-str">&quot;itemsFalse&quot;</span>),
+            addl_array=data.get(<span class="hl-str">&quot;addlArray&quot;</span>),
+            addl_null=data.get(<span class="hl-str">&quot;addlNull&quot;</span>),
+            pattern_empty=data.get(<span class="hl-str">&quot;patternEmpty&quot;</span>),
+            pattern_falsy=data.get(<span class="hl-str">&quot;patternFalsy&quot;</span>),
+            type_number=data.get(<span class="hl-str">&quot;typeNumber&quot;</span>),
+            type_mixed_array=data.get(<span class="hl-str">&quot;typeMixedArray&quot;</span>),
+            required_bad=data.get(<span class="hl-str">&quot;requiredBad&quot;</span>),
+        )
+
+    <span class="hl-kw">def</span> to_dict(<span class="hl-kw">self</span>) -&gt; <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]:
+        <span class="hl-kw">return</span> {
+            <span class="hl-str">&quot;propsAsArray&quot;</span>: <span class="hl-kw">self</span>.props_as_array,
+            <span class="hl-str">&quot;propsAsTrue&quot;</span>: <span class="hl-kw">self</span>.props_as_true,
+            <span class="hl-str">&quot;propsAsZero&quot;</span>: <span class="hl-kw">self</span>.props_as_zero,
+            <span class="hl-str">&quot;itemsFalse&quot;</span>: <span class="hl-kw">self</span>.items_false,
+            <span class="hl-str">&quot;addlArray&quot;</span>: <span class="hl-kw">self</span>.addl_array,
+            <span class="hl-str">&quot;addlNull&quot;</span>: <span class="hl-kw">self</span>.addl_null,
+            <span class="hl-str">&quot;patternEmpty&quot;</span>: <span class="hl-kw">self</span>.pattern_empty,
+            <span class="hl-str">&quot;patternFalsy&quot;</span>: <span class="hl-kw">self</span>.pattern_falsy,
+            <span class="hl-str">&quot;typeNumber&quot;</span>: <span class="hl-kw">self</span>.type_number,
+            <span class="hl-str">&quot;typeMixedArray&quot;</span>: <span class="hl-kw">self</span>.type_mixed_array,
+            <span class="hl-str">&quot;requiredBad&quot;</span>: <span class="hl-kw">self</span>.required_bad,
+        }

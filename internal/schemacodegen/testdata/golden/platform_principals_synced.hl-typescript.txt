@@ -1,0 +1,7 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> PrincipalsSyncedData {
+  applicationCode: <span class="hl-type">string</span>;
+  created: <span class="hl-type">number</span>;
+  deactivated: <span class="hl-type">number</span>;
+  syncedEmails: <span class="hl-type">string</span>[];
+  updated: <span class="hl-type">number</span>;
+}

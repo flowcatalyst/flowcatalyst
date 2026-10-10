@@ -1,0 +1,15 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  payload: {
+    a: <span class="hl-type">string</span>;
+    b?: <span class="hl-type">number</span>;
+  } | {
+    c?: <span class="hl-type">boolean</span>;
+  };
+  value: <span class="hl-type">string</span> | <span class="hl-type">number</span> | <span class="hl-type">boolean</span>;
+  dup?: <span class="hl-type">number</span>;
+  listOf?: (<span class="hl-type">string</span> | <span class="hl-type">null</span>)[];
+  nullFirst?: <span class="hl-type">null</span> | <span class="hl-type">string</span>;
+  allNull?: <span class="hl-type">null</span>;
+  nestedAny?: <span class="hl-type">string</span> | <span class="hl-type">number</span> | <span class="hl-type">boolean</span>;
+  plain?: <span class="hl-type">string</span>;
+}

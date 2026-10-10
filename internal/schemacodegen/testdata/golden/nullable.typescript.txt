@@ -1,0 +1,18 @@
+export interface EFData {
+  a: string | null;
+  b: number | null;
+  c?: number | null;
+  d?: boolean | null;
+  e?: string | number;
+  f?: string | number | null;
+  g?: unknown[] | null;
+  h?: {
+    x?: string;
+  } | null;
+  i?: null;
+  j: string | null;
+  k: number | null;
+  l?: null;
+  m?: ;
+  n?: ;
+}

@@ -1,0 +1,49 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\Platform\Iam\User;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> UserCreatedData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> <span class="hl-kw">mixed</span> <span class="hl-var">$payload</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">mixed</span> <span class="hl-var">$value</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">mixed</span> <span class="hl-var">$dup</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$listOf</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$nullFirst</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$allNull</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">mixed</span> <span class="hl-var">$nestedAny</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$plain</span>,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            payload: <span class="hl-var">$data</span>[<span class="hl-str">'payload'</span>],
+            value: <span class="hl-var">$data</span>[<span class="hl-str">'value'</span>],
+            dup: <span class="hl-var">$data</span>[<span class="hl-str">'dup'</span>],
+            listOf: <span class="hl-var">$data</span>[<span class="hl-str">'listOf'</span>],
+            nullFirst: <span class="hl-var">$data</span>[<span class="hl-str">'nullFirst'</span>],
+            allNull: <span class="hl-var">$data</span>[<span class="hl-str">'allNull'</span>],
+            nestedAny: <span class="hl-var">$data</span>[<span class="hl-str">'nestedAny'</span>],
+            plain: <span class="hl-var">$data</span>[<span class="hl-str">'plain'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'payload'</span> =&gt; <span class="hl-var">$this</span>-&gt;payload,
+            <span class="hl-str">'value'</span> =&gt; <span class="hl-var">$this</span>-&gt;value,
+            <span class="hl-str">'dup'</span> =&gt; <span class="hl-var">$this</span>-&gt;dup,
+            <span class="hl-str">'listOf'</span> =&gt; <span class="hl-var">$this</span>-&gt;listOf,
+            <span class="hl-str">'nullFirst'</span> =&gt; <span class="hl-var">$this</span>-&gt;nullFirst,
+            <span class="hl-str">'allNull'</span> =&gt; <span class="hl-var">$this</span>-&gt;allNull,
+            <span class="hl-str">'nestedAny'</span> =&gt; <span class="hl-var">$this</span>-&gt;nestedAny,
+            <span class="hl-str">'plain'</span> =&gt; <span class="hl-var">$this</span>-&gt;plain,
+        ];
+    }
+}

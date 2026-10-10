@@ -1,0 +1,18 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> EFData {
+  a: <span class="hl-type">string</span> | <span class="hl-type">null</span>;
+  b: <span class="hl-type">number</span> | <span class="hl-type">null</span>;
+  c?: <span class="hl-type">number</span> | <span class="hl-type">null</span>;
+  d?: <span class="hl-type">boolean</span> | <span class="hl-type">null</span>;
+  e?: <span class="hl-type">string</span> | <span class="hl-type">number</span>;
+  f?: <span class="hl-type">string</span> | <span class="hl-type">number</span> | <span class="hl-type">null</span>;
+  g?: <span class="hl-type">unknown</span>[] | <span class="hl-type">null</span>;
+  h?: {
+    x?: <span class="hl-type">string</span>;
+  } | <span class="hl-type">null</span>;
+  i?: <span class="hl-type">null</span>;
+  j: <span class="hl-type">string</span> | <span class="hl-type">null</span>;
+  k: <span class="hl-type">number</span> | <span class="hl-type">null</span>;
+  l?: <span class="hl-type">null</span>;
+  m?: ;
+  n?: ;
+}

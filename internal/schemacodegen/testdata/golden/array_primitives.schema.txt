@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "properties": {
+    "names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scores": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "counts": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "flags": {
+      "type": "array",
+      "items": {
+        "type": "boolean"
+      }
+    },
+    "maybe": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    }
+  },
+  "required": [
+    "names",
+    "scores"
+  ]
+}

@@ -1,0 +1,8 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> SoloData {
+  status: <span class="hl-type">string</span>;
+  level?: <span class="hl-type">number</span>;
+  mode?: <span class="hl-type">unknown</span>;
+  kind: <span class="hl-str">&quot;user&quot;</span>;
+  version?: <span class="hl-num">2</span>;
+  flag?: true;
+}

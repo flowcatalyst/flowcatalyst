@@ -1,0 +1,58 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserCreatedData
+{
+    public function __construct(
+        public ?array $propsAsArray,
+        public ?array $propsAsTrue,
+        public ?array $propsAsZero,
+        public ?array $itemsFalse,
+        public ?array $addlArray,
+        public ?array $addlNull,
+        public ?array $patternEmpty,
+        public ?array $patternFalsy,
+        public mixed $typeNumber,
+        public mixed $typeMixedArray,
+        public ?string $requiredBad,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            propsAsArray: $data['propsAsArray'],
+            propsAsTrue: $data['propsAsTrue'],
+            propsAsZero: $data['propsAsZero'],
+            itemsFalse: $data['itemsFalse'],
+            addlArray: $data['addlArray'],
+            addlNull: $data['addlNull'],
+            patternEmpty: $data['patternEmpty'],
+            patternFalsy: $data['patternFalsy'],
+            typeNumber: $data['typeNumber'],
+            typeMixedArray: $data['typeMixedArray'],
+            requiredBad: $data['requiredBad'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'propsAsArray' => $this->propsAsArray,
+            'propsAsTrue' => $this->propsAsTrue,
+            'propsAsZero' => $this->propsAsZero,
+            'itemsFalse' => $this->itemsFalse,
+            'addlArray' => $this->addlArray,
+            'addlNull' => $this->addlNull,
+            'patternEmpty' => $this->patternEmpty,
+            'patternFalsy' => $this->patternFalsy,
+            'typeNumber' => $this->typeNumber,
+            'typeMixedArray' => $this->typeMixedArray,
+            'requiredBad' => $this->requiredBad,
+        ];
+    }
+}

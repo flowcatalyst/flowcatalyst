@@ -1,0 +1,17 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserLoggedInData {
+  email: <span class="hl-type">string</span>;
+  federatedClaims?: {
+    accessToken: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">unknown</span>&gt;;
+    idToken: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">unknown</span>&gt;;
+  } | <span class="hl-type">null</span>;
+  flowcatalystClaims: {
+    applications: <span class="hl-type">string</span>[];
+    clients: <span class="hl-type">string</span>[];
+    email: <span class="hl-type">string</span>;
+    roles: <span class="hl-type">string</span>[];
+    <span class="hl-kw">type</span>: <span class="hl-type">string</span>;
+  };
+  identityProviderCode?: <span class="hl-type">string</span> | <span class="hl-type">null</span>;
+  loginMethod: <span class="hl-type">string</span>;
+  userId: <span class="hl-type">string</span>;
+}

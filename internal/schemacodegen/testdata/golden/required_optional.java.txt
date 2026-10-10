@@ -1,0 +1,35 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public record UserCreatedData(
+    String zeta,
+    int alpha,
+    boolean mid,
+    Double beta,
+    List<String> omega
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserCreatedData fromMap(Map<String, Object> map) {
+        return new UserCreatedData(
+            (String) map.get("zeta"),
+            (Integer) map.get("alpha"),
+            (Boolean) map.get("mid"),
+            (Double) map.get("beta"),
+            (List<String>) map.get("omega")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("zeta", zeta);
+        map.put("alpha", alpha);
+        map.put("mid", mid);
+        map.put("beta", beta);
+        map.put("omega", omega);
+        return map;
+    }
+}

@@ -1,0 +1,43 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\Platform\Iam\User;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> UserCreatedData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$color</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$maybeColor</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$nested</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$oneOfConst</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$mixedConst</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$objConst</span>,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            color: <span class="hl-var">$data</span>[<span class="hl-str">'color'</span>],
+            maybeColor: <span class="hl-var">$data</span>[<span class="hl-str">'maybeColor'</span>],
+            nested: <span class="hl-var">$data</span>[<span class="hl-str">'nested'</span>],
+            oneOfConst: <span class="hl-var">$data</span>[<span class="hl-str">'oneOfConst'</span>],
+            mixedConst: <span class="hl-var">$data</span>[<span class="hl-str">'mixedConst'</span>],
+            objConst: <span class="hl-var">$data</span>[<span class="hl-str">'objConst'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'color'</span> =&gt; <span class="hl-var">$this</span>-&gt;color,
+            <span class="hl-str">'maybeColor'</span> =&gt; <span class="hl-var">$this</span>-&gt;maybeColor,
+            <span class="hl-str">'nested'</span> =&gt; <span class="hl-var">$this</span>-&gt;nested,
+            <span class="hl-str">'oneOfConst'</span> =&gt; <span class="hl-var">$this</span>-&gt;oneOfConst,
+            <span class="hl-str">'mixedConst'</span> =&gt; <span class="hl-var">$this</span>-&gt;mixedConst,
+            <span class="hl-str">'objConst'</span> =&gt; <span class="hl-var">$this</span>-&gt;objConst,
+        ];
+    }
+}

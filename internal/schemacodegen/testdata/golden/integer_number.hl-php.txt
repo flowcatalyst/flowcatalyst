@@ -1,0 +1,43 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\Platform\Iam\User;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> UserCreatedData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> <span class="hl-kw">int</span> <span class="hl-var">$count</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">float</span> <span class="hl-var">$ratio</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">int</span> <span class="hl-var">$optCount</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">float</span> <span class="hl-var">$optRatio</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$ints</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$nums</span>,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            count: <span class="hl-var">$data</span>[<span class="hl-str">'count'</span>],
+            ratio: <span class="hl-var">$data</span>[<span class="hl-str">'ratio'</span>],
+            optCount: <span class="hl-var">$data</span>[<span class="hl-str">'optCount'</span>],
+            optRatio: <span class="hl-var">$data</span>[<span class="hl-str">'optRatio'</span>],
+            ints: <span class="hl-var">$data</span>[<span class="hl-str">'ints'</span>],
+            nums: <span class="hl-var">$data</span>[<span class="hl-str">'nums'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'count'</span> =&gt; <span class="hl-var">$this</span>-&gt;count,
+            <span class="hl-str">'ratio'</span> =&gt; <span class="hl-var">$this</span>-&gt;ratio,
+            <span class="hl-str">'optCount'</span> =&gt; <span class="hl-var">$this</span>-&gt;optCount,
+            <span class="hl-str">'optRatio'</span> =&gt; <span class="hl-var">$this</span>-&gt;optRatio,
+            <span class="hl-str">'ints'</span> =&gt; <span class="hl-var">$this</span>-&gt;ints,
+            <span class="hl-str">'nums'</span> =&gt; <span class="hl-var">$this</span>-&gt;nums,
+        ];
+    }
+}

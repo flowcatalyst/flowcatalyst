@@ -1,0 +1,34 @@
+{
+  <span class="hl-key">"$schema"</span>: <span class="hl-str">"http://json-schema.org/draft-07/schema#"</span>,
+  <span class="hl-key">"additionalProperties"</span>: <span class="hl-kw">false</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"added"</span>: {
+      <span class="hl-key">"items"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+      },
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>
+    },
+    <span class="hl-key">"principalId"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    },
+    <span class="hl-key">"removed"</span>: {
+      <span class="hl-key">"items"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+      },
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>
+    },
+    <span class="hl-key">"roles"</span>: {
+      <span class="hl-key">"items"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+      },
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"principalId"</span>,
+    <span class="hl-str">"roles"</span>,
+    <span class="hl-str">"added"</span>,
+    <span class="hl-str">"removed"</span>
+  ],
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>
+}

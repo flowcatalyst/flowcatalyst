@@ -1,0 +1,4 @@
+{
+  "type": "object",
+  "properties": { "a": { "type": "array", "items": null }, "b": { "type": "array", "items": "str" } }
+}

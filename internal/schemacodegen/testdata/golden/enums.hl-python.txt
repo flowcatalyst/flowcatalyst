@@ -1,0 +1,34 @@
+<span class="hl-kw">from</span> __future__ <span class="hl-kw">import</span> annotations
+<span class="hl-kw">from</span> typing <span class="hl-kw">import</span> <span class="hl-type">Any</span>
+<span class="hl-kw">from</span> dataclasses <span class="hl-kw">import</span> dataclass
+
+
+<span class="hl-comment">@dataclass(frozen=True)</span>
+<span class="hl-kw">class</span> SoloData:
+    status: <span class="hl-type">str</span>
+    kind: <span class="hl-type">str</span>
+    level: <span class="hl-type">int</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    mode: <span class="hl-type">Any</span> = <span class="hl-kw">None</span>
+    version: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    flag: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+
+    @classmethod
+    <span class="hl-kw">def</span> from_dict(<span class="hl-kw">cls</span>, data: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]) -&gt; SoloData:
+        <span class="hl-kw">return</span> <span class="hl-kw">cls</span>(
+            status=data.get(<span class="hl-str">&quot;status&quot;</span>),
+            kind=data.get(<span class="hl-str">&quot;kind&quot;</span>),
+            level=data.get(<span class="hl-str">&quot;level&quot;</span>),
+            mode=data.get(<span class="hl-str">&quot;mode&quot;</span>),
+            version=data.get(<span class="hl-str">&quot;version&quot;</span>),
+            flag=data.get(<span class="hl-str">&quot;flag&quot;</span>),
+        )
+
+    <span class="hl-kw">def</span> to_dict(<span class="hl-kw">self</span>) -&gt; <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]:
+        <span class="hl-kw">return</span> {
+            <span class="hl-str">&quot;status&quot;</span>: <span class="hl-kw">self</span>.status,
+            <span class="hl-str">&quot;kind&quot;</span>: <span class="hl-kw">self</span>.kind,
+            <span class="hl-str">&quot;level&quot;</span>: <span class="hl-kw">self</span>.level,
+            <span class="hl-str">&quot;mode&quot;</span>: <span class="hl-kw">self</span>.mode,
+            <span class="hl-str">&quot;version&quot;</span>: <span class="hl-kw">self</span>.version,
+            <span class="hl-str">&quot;flag&quot;</span>: <span class="hl-kw">self</span>.flag,
+        }

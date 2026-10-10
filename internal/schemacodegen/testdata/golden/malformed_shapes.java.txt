@@ -1,0 +1,53 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public record UserCreatedData(
+    Map<String, Object> propsAsArray,
+    Map<String, Object> propsAsTrue,
+    Map<String, Object> propsAsZero,
+    List<Object> itemsFalse,
+    Map<String, Object> addlArray,
+    Map<String, Object> addlNull,
+    Map<String, Object> patternEmpty,
+    Map<String, Object> patternFalsy,
+    Object typeNumber,
+    Object typeMixedArray,
+    String requiredBad
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserCreatedData fromMap(Map<String, Object> map) {
+        return new UserCreatedData(
+            (Map<String, Object>) map.get("propsAsArray"),
+            (Map<String, Object>) map.get("propsAsTrue"),
+            (Map<String, Object>) map.get("propsAsZero"),
+            (List<Object>) map.get("itemsFalse"),
+            (Map<String, Object>) map.get("addlArray"),
+            (Map<String, Object>) map.get("addlNull"),
+            (Map<String, Object>) map.get("patternEmpty"),
+            (Map<String, Object>) map.get("patternFalsy"),
+            (Object) map.get("typeNumber"),
+            (Object) map.get("typeMixedArray"),
+            (String) map.get("requiredBad")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("propsAsArray", propsAsArray);
+        map.put("propsAsTrue", propsAsTrue);
+        map.put("propsAsZero", propsAsZero);
+        map.put("itemsFalse", itemsFalse);
+        map.put("addlArray", addlArray);
+        map.put("addlNull", addlNull);
+        map.put("patternEmpty", patternEmpty);
+        map.put("patternFalsy", patternFalsy);
+        map.put("typeNumber", typeNumber);
+        map.put("typeMixedArray", typeMixedArray);
+        map.put("requiredBad", requiredBad);
+        return map;
+    }
+}

@@ -1,0 +1,34 @@
+from __future__ import annotations
+from typing import Any
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserLoggedInData:
+    email: str
+    flowcatalyst_claims: dict[str, Any]
+    login_method: str
+    user_id: str
+    federated_claims: dict[str, Any] | None = None
+    identity_provider_code: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserLoggedInData:
+        return cls(
+            email=data.get("email"),
+            flowcatalyst_claims=data.get("flowcatalystClaims"),
+            login_method=data.get("loginMethod"),
+            user_id=data.get("userId"),
+            federated_claims=data.get("federatedClaims"),
+            identity_provider_code=data.get("identityProviderCode"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "email": self.email,
+            "flowcatalystClaims": self.flowcatalyst_claims,
+            "loginMethod": self.login_method,
+            "userId": self.user_id,
+            "federatedClaims": self.federated_claims,
+            "identityProviderCode": self.identity_provider_code,
+        }

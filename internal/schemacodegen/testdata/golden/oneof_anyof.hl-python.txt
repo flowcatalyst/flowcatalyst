@@ -1,0 +1,40 @@
+<span class="hl-kw">from</span> __future__ <span class="hl-kw">import</span> annotations
+<span class="hl-kw">from</span> typing <span class="hl-kw">import</span> <span class="hl-type">Any</span>, <span class="hl-type">Literal</span>
+<span class="hl-kw">from</span> dataclasses <span class="hl-kw">import</span> dataclass
+
+
+<span class="hl-comment">@dataclass(frozen=True)</span>
+<span class="hl-kw">class</span> UserCreatedData:
+    payload: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]
+    value: <span class="hl-type">str</span> | <span class="hl-type">float</span> | <span class="hl-type">bool</span>
+    dup: <span class="hl-type">int</span> | <span class="hl-type">float</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    list_of: <span class="hl-type">list</span>[<span class="hl-type">str</span> | <span class="hl-kw">None</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    null_first: <span class="hl-type">str</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    all_null: <span class="hl-type">Literal</span>[] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    nested_any: <span class="hl-type">str</span> | <span class="hl-type">int</span> | <span class="hl-type">bool</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    plain: <span class="hl-type">str</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+
+    @classmethod
+    <span class="hl-kw">def</span> from_dict(<span class="hl-kw">cls</span>, data: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]) -&gt; UserCreatedData:
+        <span class="hl-kw">return</span> <span class="hl-kw">cls</span>(
+            payload=data.get(<span class="hl-str">&quot;payload&quot;</span>),
+            value=data.get(<span class="hl-str">&quot;value&quot;</span>),
+            dup=data.get(<span class="hl-str">&quot;dup&quot;</span>),
+            list_of=data.get(<span class="hl-str">&quot;listOf&quot;</span>),
+            null_first=data.get(<span class="hl-str">&quot;nullFirst&quot;</span>),
+            all_null=data.get(<span class="hl-str">&quot;allNull&quot;</span>),
+            nested_any=data.get(<span class="hl-str">&quot;nestedAny&quot;</span>),
+            plain=data.get(<span class="hl-str">&quot;plain&quot;</span>),
+        )
+
+    <span class="hl-kw">def</span> to_dict(<span class="hl-kw">self</span>) -&gt; <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]:
+        <span class="hl-kw">return</span> {
+            <span class="hl-str">&quot;payload&quot;</span>: <span class="hl-kw">self</span>.payload,
+            <span class="hl-str">&quot;value&quot;</span>: <span class="hl-kw">self</span>.value,
+            <span class="hl-str">&quot;dup&quot;</span>: <span class="hl-kw">self</span>.dup,
+            <span class="hl-str">&quot;listOf&quot;</span>: <span class="hl-kw">self</span>.list_of,
+            <span class="hl-str">&quot;nullFirst&quot;</span>: <span class="hl-kw">self</span>.null_first,
+            <span class="hl-str">&quot;allNull&quot;</span>: <span class="hl-kw">self</span>.all_null,
+            <span class="hl-str">&quot;nestedAny&quot;</span>: <span class="hl-kw">self</span>.nested_any,
+            <span class="hl-str">&quot;plain&quot;</span>: <span class="hl-kw">self</span>.plain,
+        }

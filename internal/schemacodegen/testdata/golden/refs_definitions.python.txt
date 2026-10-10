@@ -1,0 +1,25 @@
+from __future__ import annotations
+from typing import Any
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    home: Any
+    price: Any = None
+    all: list[Any] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            home=data.get("home"),
+            price=data.get("price"),
+            all=data.get("all"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "home": self.home,
+            "price": self.price,
+            "all": self.all,
+        }

@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "properties": {
+    "café": {
+      "type": "string"
+    },
+    "日本語": {
+      "type": "string"
+    },
+    "emoji😀": {
+      "type": "integer"
+    },
+    "ctrl\u0001\u001f\b\f\n\r\t": {
+      "type": "boolean"
+    },
+    "sep  ": {
+      "const": "line sep "
+    },
+    "slash//": {
+      "const": "a/b"
+    },
+    "nul\u0000": {
+      "const": "x\u0000y"
+    },
+    "del": {
+      "const": ""
+    },
+    "lone\ud800": {
+      "const": "\ud800"
+    },
+    "pair😀": {
+      "const": "😀\udc00"
+    },
+    "rev\udc00\ud800": {
+      "const": "\udc00\ud800"
+    }
+  },
+  "required": [
+    "café"
+  ]
+}

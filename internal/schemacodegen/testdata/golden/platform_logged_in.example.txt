@@ -1,0 +1,23 @@
+{
+  "email": "string",
+  "federatedClaims": {
+    "accessToken": {},
+    "idToken": {}
+  },
+  "flowcatalystClaims": {
+    "applications": [
+      "string"
+    ],
+    "clients": [
+      "string"
+    ],
+    "email": "string",
+    "roles": [
+      "string"
+    ],
+    "type": "string"
+  },
+  "identityProviderCode": {},
+  "loginMethod": "string",
+  "userId": "string"
+}

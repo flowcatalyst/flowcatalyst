@@ -1,0 +1,34 @@
+from __future__ import annotations
+from typing import Literal
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    color: Literal["red", "green", "blue"]
+    mixed_const: Literal["s", 3, null, [1,"a",null]]
+    maybe_color: Literal["red", "green"] | None = None
+    nested: Literal["x", "y", "z"] | None = None
+    one_of_const: Literal[1, 2] | None = None
+    obj_const: str = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            color=data.get("color"),
+            mixed_const=data.get("mixedConst"),
+            maybe_color=data.get("maybeColor"),
+            nested=data.get("nested"),
+            one_of_const=data.get("oneOfConst"),
+            obj_const=data.get("objConst"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "color": self.color,
+            "mixedConst": self.mixed_const,
+            "maybeColor": self.maybe_color,
+            "nested": self.nested,
+            "oneOfConst": self.one_of_const,
+            "objConst": self.obj_const,
+        }

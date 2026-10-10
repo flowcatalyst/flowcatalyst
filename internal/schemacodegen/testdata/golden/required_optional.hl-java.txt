@@ -1,0 +1,35 @@
+<span class="hl-kw">package</span> com.platform.events.iam.user;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">List</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> UserCreatedData(
+    <span class="hl-type">String</span> zeta,
+    <span class="hl-type">int</span> alpha,
+    <span class="hl-type">boolean</span> mid,
+    <span class="hl-type">Double</span> beta,
+    <span class="hl-type">List</span>&lt;<span class="hl-type">String</span>&gt; omega
+) {
+
+    <span class="hl-comment">@SuppressWarnings</span>(<span class="hl-str">&quot;unchecked&quot;</span>)
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> UserCreatedData fromMap(<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; map) {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> UserCreatedData(
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;zeta&quot;</span>),
+            (<span class="hl-type">Integer</span>) map.get(<span class="hl-str">&quot;alpha&quot;</span>),
+            (<span class="hl-type">Boolean</span>) map.get(<span class="hl-str">&quot;mid&quot;</span>),
+            (<span class="hl-type">Double</span>) map.get(<span class="hl-str">&quot;beta&quot;</span>),
+            (<span class="hl-type">List</span>&lt;<span class="hl-type">String</span>&gt;) map.get(<span class="hl-str">&quot;omega&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;zeta&quot;</span>, zeta);
+        map.put(<span class="hl-str">&quot;alpha&quot;</span>, alpha);
+        map.put(<span class="hl-str">&quot;mid&quot;</span>, mid);
+        map.put(<span class="hl-str">&quot;beta&quot;</span>, beta);
+        map.put(<span class="hl-str">&quot;omega&quot;</span>, omega);
+        <span class="hl-kw">return</span> map;
+    }
+}

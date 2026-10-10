@@ -1,0 +1,13 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> ShopOrdersData {
+  id: <span class="hl-type">string</span>;
+  profile: {
+    name: <span class="hl-type">string</span>;
+    address?: {
+      street: <span class="hl-type">string</span>;
+      geo?: {
+        lat: <span class="hl-type">number</span>;
+        lng: <span class="hl-type">number</span>;
+      };
+    };
+  };
+}

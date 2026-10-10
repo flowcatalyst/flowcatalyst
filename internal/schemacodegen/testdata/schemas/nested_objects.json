@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "address": {
+          "type": "object",
+          "properties": {
+            "street": { "type": "string" },
+            "geo": {
+              "type": "object",
+              "properties": { "lat": { "type": "number" }, "lng": { "type": "number" } },
+              "required": ["lat", "lng"]
+            }
+          },
+          "required": ["street"]
+        }
+      },
+      "required": ["name"]
+    }
+  },
+  "required": ["id", "profile"]
+}

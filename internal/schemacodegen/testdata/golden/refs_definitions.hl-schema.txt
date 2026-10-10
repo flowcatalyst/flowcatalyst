@@ -1,0 +1,35 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"definitions"</span>: {
+    <span class="hl-key">"Address"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"properties"</span>: {
+        <span class="hl-key">"street"</span>: {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+        }
+      }
+    }
+  },
+  <span class="hl-key">"$defs"</span>: {
+    <span class="hl-key">"Money"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"number"</span>
+    }
+  },
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"home"</span>: {
+      <span class="hl-key">"$ref"</span>: <span class="hl-str">"#/definitions/Address"</span>
+    },
+    <span class="hl-key">"price"</span>: {
+      <span class="hl-key">"$ref"</span>: <span class="hl-str">"#/$defs/Money"</span>
+    },
+    <span class="hl-key">"all"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>,
+      <span class="hl-key">"items"</span>: {
+        <span class="hl-key">"$ref"</span>: <span class="hl-str">"#/definitions/Address"</span>
+      }
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"home"</span>
+  ]
+}

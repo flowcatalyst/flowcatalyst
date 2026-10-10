@@ -1,0 +1,27 @@
+{
+  <span class="hl-key">"labels"</span>: {
+    <span class="hl-key">"key"</span>: <span class="hl-str">"string"</span>
+  },
+  <span class="hl-key">"counters"</span>: {
+    <span class="hl-key">"key"</span>: <span class="hl-num">0</span>
+  },
+  <span class="hl-key">"free"</span>: {},
+  <span class="hl-key">"closed"</span>: {},
+  <span class="hl-key">"patterned"</span>: {
+    <span class="hl-key">"key"</span>: <span class="hl-num">0</span>
+  },
+  <span class="hl-key">"bare"</span>: {},
+  <span class="hl-key">"nestedMap"</span>: {
+    <span class="hl-key">"key"</span>: {
+      <span class="hl-key">"key"</span>: <span class="hl-kw">true</span>
+    }
+  },
+  <span class="hl-key">"listMap"</span>: {
+    <span class="hl-key">"key"</span>: [
+      <span class="hl-str">"string"</span>
+    ]
+  },
+  <span class="hl-key">"withProps"</span>: {
+    <span class="hl-key">"k"</span>: <span class="hl-str">"string"</span>
+  }
+}

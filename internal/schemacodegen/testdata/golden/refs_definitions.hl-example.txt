@@ -1,0 +1,7 @@
+{
+  <span class="hl-key">"home"</span>: {},
+  <span class="hl-key">"price"</span>: {},
+  <span class="hl-key">"all"</span>: [
+    {}
+  ]
+}

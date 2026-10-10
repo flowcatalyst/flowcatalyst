@@ -1,0 +1,8 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  o: {<span class="hl-str">&quot;7&quot;</span>:<span class="hl-str">&quot;int-like&quot;</span>,<span class="hl-str">&quot;z&quot;</span>:<span class="hl-num">1</span>,<span class="hl-str">&quot;a&quot;</span>:[<span class="hl-num">1</span>,{<span class="hl-str">&quot;b&quot;</span>:<span class="hl-type">null</span>}],<span class="hl-str">&quot;m&quot;</span>:{}};
+  arr?: [];
+  empty?: {};
+  nul: <span class="hl-type">null</span>;
+  str?: <span class="hl-str">&quot;tab\there \&quot;</span>q\<span class="hl-str">&quot; \\ / &lt;&amp;&gt;&quot;</span>;
+  dupKeys?: {<span class="hl-str">&quot;a&quot;</span>:<span class="hl-num">3</span>,<span class="hl-str">&quot;b&quot;</span>:<span class="hl-num">2</span>};
+}

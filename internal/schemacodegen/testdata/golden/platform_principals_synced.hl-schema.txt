@@ -1,0 +1,35 @@
+{
+  <span class="hl-key">"$schema"</span>: <span class="hl-str">"http://json-schema.org/draft-07/schema#"</span>,
+  <span class="hl-key">"additionalProperties"</span>: <span class="hl-kw">false</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"applicationCode"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    },
+    <span class="hl-key">"created"</span>: {
+      <span class="hl-key">"minimum"</span>: <span class="hl-num">0</span>,
+      <span class="hl-key">"type"</span>: <span class="hl-str">"integer"</span>
+    },
+    <span class="hl-key">"deactivated"</span>: {
+      <span class="hl-key">"minimum"</span>: <span class="hl-num">0</span>,
+      <span class="hl-key">"type"</span>: <span class="hl-str">"integer"</span>
+    },
+    <span class="hl-key">"syncedEmails"</span>: {
+      <span class="hl-key">"items"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+      },
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>
+    },
+    <span class="hl-key">"updated"</span>: {
+      <span class="hl-key">"minimum"</span>: <span class="hl-num">0</span>,
+      <span class="hl-key">"type"</span>: <span class="hl-str">"integer"</span>
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"applicationCode"</span>,
+    <span class="hl-str">"created"</span>,
+    <span class="hl-str">"updated"</span>,
+    <span class="hl-str">"deactivated"</span>,
+    <span class="hl-str">"syncedEmails"</span>
+  ],
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>
+}

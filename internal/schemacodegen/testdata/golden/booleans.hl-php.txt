@@ -1,0 +1,43 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\Platform\Iam\User;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> UserCreatedData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> <span class="hl-kw">bool</span> <span class="hl-var">$enabled</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">bool</span> <span class="hl-var">$maybe</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$alwaysTrue</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$alwaysFalse</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">mixed</span> <span class="hl-var">$nothing</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$flags</span>,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            enabled: <span class="hl-var">$data</span>[<span class="hl-str">'enabled'</span>],
+            maybe: <span class="hl-var">$data</span>[<span class="hl-str">'maybe'</span>],
+            alwaysTrue: <span class="hl-var">$data</span>[<span class="hl-str">'alwaysTrue'</span>],
+            alwaysFalse: <span class="hl-var">$data</span>[<span class="hl-str">'alwaysFalse'</span>],
+            nothing: <span class="hl-var">$data</span>[<span class="hl-str">'nothing'</span>],
+            flags: <span class="hl-var">$data</span>[<span class="hl-str">'flags'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'enabled'</span> =&gt; <span class="hl-var">$this</span>-&gt;enabled,
+            <span class="hl-str">'maybe'</span> =&gt; <span class="hl-var">$this</span>-&gt;maybe,
+            <span class="hl-str">'alwaysTrue'</span> =&gt; <span class="hl-var">$this</span>-&gt;alwaysTrue,
+            <span class="hl-str">'alwaysFalse'</span> =&gt; <span class="hl-var">$this</span>-&gt;alwaysFalse,
+            <span class="hl-str">'nothing'</span> =&gt; <span class="hl-var">$this</span>-&gt;nothing,
+            <span class="hl-str">'flags'</span> =&gt; <span class="hl-var">$this</span>-&gt;flags,
+        ];
+    }
+}

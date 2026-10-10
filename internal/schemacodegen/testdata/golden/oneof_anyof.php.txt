@@ -1,0 +1,49 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserCreatedData
+{
+    public function __construct(
+        public mixed $payload,
+        public mixed $value,
+        public mixed $dup,
+        public ?array $listOf,
+        public ?string $nullFirst,
+        public ?string $allNull,
+        public mixed $nestedAny,
+        public ?string $plain,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            payload: $data['payload'],
+            value: $data['value'],
+            dup: $data['dup'],
+            listOf: $data['listOf'],
+            nullFirst: $data['nullFirst'],
+            allNull: $data['allNull'],
+            nestedAny: $data['nestedAny'],
+            plain: $data['plain'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'payload' => $this->payload,
+            'value' => $this->value,
+            'dup' => $this->dup,
+            'listOf' => $this->listOf,
+            'nullFirst' => $this->nullFirst,
+            'allNull' => $this->allNull,
+            'nestedAny' => $this->nestedAny,
+            'plain' => $this->plain,
+        ];
+    }
+}

@@ -1,0 +1,100 @@
+package com.my_app.events.sub-domain.order_line;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public record OrderLineItemAddedData(
+    String 1,
+    String 2,
+    String 10,
+    String 4294967294,
+    String snake_case_name,
+    String kebab-case-name,
+    String camelCaseName,
+    String PascalCaseName,
+    Integer HTTPStatusCode,
+    String 9lives,
+    String class,
+    Integer int,
+    Boolean public,
+    String def,
+    String import,
+    String new,
+    String return,
+    String function,
+    String None,
+    String with space,
+    String dotted.name,
+    String Anything,
+    String ,
+    String b,
+    String 01,
+    String a,
+    String 4294967295
+) {
+
+    @SuppressWarnings("unchecked")
+    public static OrderLineItemAddedData fromMap(Map<String, Object> map) {
+        return new OrderLineItemAddedData(
+            (String) map.get("1"),
+            (String) map.get("2"),
+            (String) map.get("10"),
+            (String) map.get("4294967294"),
+            (String) map.get("snake_case_name"),
+            (String) map.get("kebab-case-name"),
+            (String) map.get("camelCaseName"),
+            (String) map.get("PascalCaseName"),
+            (Integer) map.get("HTTPStatusCode"),
+            (String) map.get("9lives"),
+            (String) map.get("class"),
+            (Integer) map.get("int"),
+            (Boolean) map.get("public"),
+            (String) map.get("def"),
+            (String) map.get("import"),
+            (String) map.get("new"),
+            (String) map.get("return"),
+            (String) map.get("function"),
+            (String) map.get("None"),
+            (String) map.get("with space"),
+            (String) map.get("dotted.name"),
+            (String) map.get("Anything"),
+            (String) map.get(""),
+            (String) map.get("b"),
+            (String) map.get("01"),
+            (String) map.get("a"),
+            (String) map.get("4294967295")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("1", 1);
+        map.put("2", 2);
+        map.put("10", 10);
+        map.put("4294967294", 4294967294);
+        map.put("snake_case_name", snake_case_name);
+        map.put("kebab-case-name", kebab-case-name);
+        map.put("camelCaseName", camelCaseName);
+        map.put("PascalCaseName", PascalCaseName);
+        map.put("HTTPStatusCode", HTTPStatusCode);
+        map.put("9lives", 9lives);
+        map.put("class", class);
+        map.put("int", int);
+        map.put("public", public);
+        map.put("def", def);
+        map.put("import", import);
+        map.put("new", new);
+        map.put("return", return);
+        map.put("function", function);
+        map.put("None", None);
+        map.put("with space", with space);
+        map.put("dotted.name", dotted.name);
+        map.put("Anything", Anything);
+        map.put("", );
+        map.put("b", b);
+        map.put("01", 01);
+        map.put("a", a);
+        map.put("4294967295", 4294967295);
+        return map;
+    }
+}

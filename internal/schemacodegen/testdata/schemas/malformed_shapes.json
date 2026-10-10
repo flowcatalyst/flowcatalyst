@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "propsAsArray": { "type": "object", "properties": [{ "type": "string" }, { "type": "integer" }] },
+    "propsAsTrue": { "type": "object", "properties": true },
+    "propsAsZero": { "type": "object", "properties": 0 },
+    "itemsFalse": { "type": "array", "items": false },
+    "addlArray": { "type": "object", "additionalProperties": [{ "type": "string" }] },
+    "addlNull": { "type": "object", "additionalProperties": null },
+    "patternEmpty": { "type": "object", "patternProperties": {} },
+    "patternFalsy": { "type": "object", "patternProperties": { "x": null } },
+    "typeNumber": { "type": 5 },
+    "typeMixedArray": { "type": ["string", 5, {}] },
+    "requiredBad": { "type": "string" }
+  },
+  "required": "propsAsArray"
+}

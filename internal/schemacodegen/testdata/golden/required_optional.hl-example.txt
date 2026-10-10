@@ -1,0 +1,9 @@
+{
+  <span class="hl-key">"zeta"</span>: <span class="hl-str">"string"</span>,
+  <span class="hl-key">"alpha"</span>: <span class="hl-num">0</span>,
+  <span class="hl-key">"mid"</span>: <span class="hl-kw">true</span>,
+  <span class="hl-key">"beta"</span>: <span class="hl-num">0</span>,
+  <span class="hl-key">"omega"</span>: [
+    <span class="hl-str">"string"</span>
+  ]
+}

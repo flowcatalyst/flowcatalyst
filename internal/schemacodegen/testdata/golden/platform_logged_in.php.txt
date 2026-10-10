@@ -1,0 +1,43 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserLoggedInData
+{
+    public function __construct(
+        public string $email,
+        public ?array $federatedClaims,
+        public array $flowcatalystClaims,
+        public ?string $identityProviderCode,
+        public string $loginMethod,
+        public string $userId,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            email: $data['email'],
+            federatedClaims: $data['federatedClaims'],
+            flowcatalystClaims: $data['flowcatalystClaims'],
+            identityProviderCode: $data['identityProviderCode'],
+            loginMethod: $data['loginMethod'],
+            userId: $data['userId'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'email' => $this->email,
+            'federatedClaims' => $this->federatedClaims,
+            'flowcatalystClaims' => $this->flowcatalystClaims,
+            'identityProviderCode' => $this->identityProviderCode,
+            'loginMethod' => $this->loginMethod,
+            'userId' => $this->userId,
+        ];
+    }
+}

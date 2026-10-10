@@ -1,0 +1,17 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  propsAsArray?: {
+    <span class="hl-num">0</span>?: <span class="hl-type">string</span>;
+    <span class="hl-num">1</span>?: <span class="hl-type">number</span>;
+  };
+  propsAsTrue?: {
+  };
+  propsAsZero?: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">unknown</span>&gt;;
+  itemsFalse?: <span class="hl-type">unknown</span>[];
+  addlArray?: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">unknown</span>&gt;;
+  addlNull?: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">unknown</span>&gt;;
+  patternEmpty?: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">unknown</span>&gt;;
+  patternFalsy?: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">unknown</span>&gt;;
+  typeNumber?: <span class="hl-type">unknown</span>;
+  typeMixedArray?: <span class="hl-type">string</span> | <span class="hl-type">unknown</span>;
+  requiredBad?: <span class="hl-type">string</span>;
+}

@@ -1,0 +1,8 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  createdAt: <span class="hl-type">string</span>;
+  id: <span class="hl-type">string</span>;
+  email: <span class="hl-type">string</span>;
+  website?: <span class="hl-type">string</span>;
+  birthday?: <span class="hl-type">string</span>;
+  short?: <span class="hl-type">string</span>;
+}

@@ -1,0 +1,27 @@
+{
+  <span class="hl-key">"onePointZero"</span>: <span class="hl-num">1</span>,
+  <span class="hl-key">"sciHundred"</span>: <span class="hl-num">100</span>,
+  <span class="hl-key">"tenth"</span>: <span class="hl-num">0.1</span>,
+  <span class="hl-key">"tiny"</span>: <span class="hl-num">1.5e-7</span>,
+  <span class="hl-key">"small"</span>: <span class="hl-num">0.000001</span>,
+  <span class="hl-key">"edgeLow"</span>: <span class="hl-num">1e-7</span>,
+  <span class="hl-key">"big"</span>: <span class="hl-num">9007199254740992</span>,
+  <span class="hl-key">"huge"</span>: <span class="hl-num">1.2345678901234568e+29</span>,
+  <span class="hl-key">"e21"</span>: <span class="hl-num">1e+21</span>,
+  <span class="hl-key">"e20"</span>: <span class="hl-num">100000000000000000000</span>,
+  <span class="hl-key">"negZero"</span>: <span class="hl-num">0</span>,
+  <span class="hl-key">"negZeroF"</span>: <span class="hl-num">0</span>,
+  <span class="hl-key">"neg"</span>: <span class="hl-num">-12.5</span>,
+  <span class="hl-key">"minDouble"</span>: <span class="hl-num">5e-324</span>,
+  <span class="hl-key">"maxDouble"</span>: <span class="hl-num">1.7976931348623157e+308</span>,
+  <span class="hl-key">"overflow"</span>: <span class="hl-kw">null</span>,
+  <span class="hl-key">"capE"</span>: <span class="hl-num">2000</span>,
+  <span class="hl-key">"third"</span>: <span class="hl-num">0.30000000000000004</span>,
+  <span class="hl-key">"list"</span>: [
+    <span class="hl-num">1</span>,
+    <span class="hl-num">2.5</span>,
+    <span class="hl-num">3</span>,
+    <span class="hl-num">0</span>
+  ],
+  <span class="hl-key">"plain"</span>: <span class="hl-num">0</span>
+}

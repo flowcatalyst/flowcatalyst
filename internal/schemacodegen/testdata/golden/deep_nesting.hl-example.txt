@@ -1,0 +1,16 @@
+{
+  <span class="hl-key">"l1"</span>: [
+    {
+      <span class="hl-key">"l2"</span>: {
+        <span class="hl-key">"l3"</span>: {
+          <span class="hl-key">"deep"</span>: <span class="hl-str">"string"</span>
+        },
+        <span class="hl-key">"m"</span>: {
+          <span class="hl-key">"key"</span>: {
+            <span class="hl-key">"q"</span>: <span class="hl-num">0</span>
+          }
+        }
+      }
+    }
+  ]
+}

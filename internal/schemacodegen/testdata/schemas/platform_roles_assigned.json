@@ -1,0 +1,1 @@
+{"$schema":"http://json-schema.org/draft-07/schema#","additionalProperties":false,"properties":{"added":{"items":{"type":"string"},"type":"array"},"principalId":{"type":"string"},"removed":{"items":{"type":"string"},"type":"array"},"roles":{"items":{"type":"string"},"type":"array"}},"required":["principalId","roles","added","removed"],"type":"object"}

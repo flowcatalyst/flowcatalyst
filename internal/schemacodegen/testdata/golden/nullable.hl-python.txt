@@ -1,0 +1,58 @@
+<span class="hl-kw">from</span> __future__ <span class="hl-kw">import</span> annotations
+<span class="hl-kw">from</span> typing <span class="hl-kw">import</span> <span class="hl-type">Any</span>, <span class="hl-type">Literal</span>
+<span class="hl-kw">from</span> dataclasses <span class="hl-kw">import</span> dataclass
+
+
+<span class="hl-comment">@dataclass(frozen=True)</span>
+<span class="hl-kw">class</span> EFData:
+    a: <span class="hl-type">str</span> | <span class="hl-kw">None</span>
+    b: <span class="hl-type">int</span> | <span class="hl-kw">None</span>
+    j: <span class="hl-type">str</span> | <span class="hl-kw">None</span>
+    k: <span class="hl-type">int</span> | <span class="hl-kw">None</span>
+    c: <span class="hl-type">float</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    d: <span class="hl-type">bool</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    e: <span class="hl-type">str</span> | <span class="hl-type">int</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    f: <span class="hl-type">str</span> | <span class="hl-type">float</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    g: <span class="hl-type">list</span>[<span class="hl-type">str</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    h: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    i:  | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    l: <span class="hl-type">Literal</span>[] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    m: <span class="hl-type">Literal</span>[] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    n:  | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+
+    @classmethod
+    <span class="hl-kw">def</span> from_dict(<span class="hl-kw">cls</span>, data: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]) -&gt; EFData:
+        <span class="hl-kw">return</span> <span class="hl-kw">cls</span>(
+            a=data.get(<span class="hl-str">&quot;a&quot;</span>),
+            b=data.get(<span class="hl-str">&quot;b&quot;</span>),
+            j=data.get(<span class="hl-str">&quot;j&quot;</span>),
+            k=data.get(<span class="hl-str">&quot;k&quot;</span>),
+            c=data.get(<span class="hl-str">&quot;c&quot;</span>),
+            d=data.get(<span class="hl-str">&quot;d&quot;</span>),
+            e=data.get(<span class="hl-str">&quot;e&quot;</span>),
+            f=data.get(<span class="hl-str">&quot;f&quot;</span>),
+            g=data.get(<span class="hl-str">&quot;g&quot;</span>),
+            h=data.get(<span class="hl-str">&quot;h&quot;</span>),
+            i=data.get(<span class="hl-str">&quot;i&quot;</span>),
+            l=data.get(<span class="hl-str">&quot;l&quot;</span>),
+            m=data.get(<span class="hl-str">&quot;m&quot;</span>),
+            n=data.get(<span class="hl-str">&quot;n&quot;</span>),
+        )
+
+    <span class="hl-kw">def</span> to_dict(<span class="hl-kw">self</span>) -&gt; <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]:
+        <span class="hl-kw">return</span> {
+            <span class="hl-str">&quot;a&quot;</span>: <span class="hl-kw">self</span>.a,
+            <span class="hl-str">&quot;b&quot;</span>: <span class="hl-kw">self</span>.b,
+            <span class="hl-str">&quot;j&quot;</span>: <span class="hl-kw">self</span>.j,
+            <span class="hl-str">&quot;k&quot;</span>: <span class="hl-kw">self</span>.k,
+            <span class="hl-str">&quot;c&quot;</span>: <span class="hl-kw">self</span>.c,
+            <span class="hl-str">&quot;d&quot;</span>: <span class="hl-kw">self</span>.d,
+            <span class="hl-str">&quot;e&quot;</span>: <span class="hl-kw">self</span>.e,
+            <span class="hl-str">&quot;f&quot;</span>: <span class="hl-kw">self</span>.f,
+            <span class="hl-str">&quot;g&quot;</span>: <span class="hl-kw">self</span>.g,
+            <span class="hl-str">&quot;h&quot;</span>: <span class="hl-kw">self</span>.h,
+            <span class="hl-str">&quot;i&quot;</span>: <span class="hl-kw">self</span>.i,
+            <span class="hl-str">&quot;l&quot;</span>: <span class="hl-kw">self</span>.l,
+            <span class="hl-str">&quot;m&quot;</span>: <span class="hl-kw">self</span>.m,
+            <span class="hl-str">&quot;n&quot;</span>: <span class="hl-kw">self</span>.n,
+        }

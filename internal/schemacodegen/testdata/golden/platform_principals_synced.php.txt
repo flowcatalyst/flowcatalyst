@@ -1,0 +1,40 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\Principals;
+
+final readonly class PrincipalsSyncedData
+{
+    public function __construct(
+        public string $applicationCode,
+        public int $created,
+        public int $deactivated,
+        public array $syncedEmails,
+        public int $updated,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            applicationCode: $data['applicationCode'],
+            created: $data['created'],
+            deactivated: $data['deactivated'],
+            syncedEmails: $data['syncedEmails'],
+            updated: $data['updated'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'applicationCode' => $this->applicationCode,
+            'created' => $this->created,
+            'deactivated' => $this->deactivated,
+            'syncedEmails' => $this->syncedEmails,
+            'updated' => $this->updated,
+        ];
+    }
+}

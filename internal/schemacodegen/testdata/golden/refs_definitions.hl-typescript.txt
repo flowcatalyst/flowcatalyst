@@ -1,0 +1,5 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  home: <span class="hl-type">unknown</span>;
+  price?: <span class="hl-type">unknown</span>;
+  all?: <span class="hl-type">unknown</span>[];
+}

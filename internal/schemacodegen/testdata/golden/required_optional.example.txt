@@ -1,0 +1,9 @@
+{
+  "zeta": "string",
+  "alpha": 0,
+  "mid": true,
+  "beta": 0,
+  "omega": [
+    "string"
+  ]
+}

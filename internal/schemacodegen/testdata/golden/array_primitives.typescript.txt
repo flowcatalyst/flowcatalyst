@@ -1,0 +1,7 @@
+export interface UserCreatedData {
+  names: string[];
+  scores: number[];
+  counts?: number[];
+  flags?: boolean[];
+  maybe?: (string | null)[];
+}

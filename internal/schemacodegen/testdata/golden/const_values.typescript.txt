@@ -1,0 +1,8 @@
+export interface UserCreatedData {
+  o: {"7":"int-like","z":1,"a":[1,{"b":null}],"m":{}};
+  arr?: [];
+  empty?: {};
+  nul: null;
+  str?: "tab\there \"q\" \\ / <&>";
+  dupKeys?: {"a":3,"b":2};
+}

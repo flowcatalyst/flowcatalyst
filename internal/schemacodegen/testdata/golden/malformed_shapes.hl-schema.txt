@@ -1,0 +1,64 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"propsAsArray"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"properties"</span>: [
+        {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+        },
+        {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"integer"</span>
+        }
+      ]
+    },
+    <span class="hl-key">"propsAsTrue"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"properties"</span>: <span class="hl-kw">true</span>
+    },
+    <span class="hl-key">"propsAsZero"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"properties"</span>: <span class="hl-num">0</span>
+    },
+    <span class="hl-key">"itemsFalse"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>,
+      <span class="hl-key">"items"</span>: <span class="hl-kw">false</span>
+    },
+    <span class="hl-key">"addlArray"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"additionalProperties"</span>: [
+        {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+        }
+      ]
+    },
+    <span class="hl-key">"addlNull"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"additionalProperties"</span>: <span class="hl-kw">null</span>
+    },
+    <span class="hl-key">"patternEmpty"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"patternProperties"</span>: {}
+    },
+    <span class="hl-key">"patternFalsy"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"patternProperties"</span>: {
+        <span class="hl-key">"x"</span>: <span class="hl-kw">null</span>
+      }
+    },
+    <span class="hl-key">"typeNumber"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-num">5</span>
+    },
+    <span class="hl-key">"typeMixedArray"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"string"</span>,
+        <span class="hl-num">5</span>,
+        {}
+      ]
+    },
+    <span class="hl-key">"requiredBad"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    }
+  },
+  <span class="hl-key">"required"</span>: <span class="hl-str">"propsAsArray"</span>
+}

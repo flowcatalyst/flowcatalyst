@@ -1,0 +1,9 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  clientId?: <span class="hl-type">string</span> | <span class="hl-type">null</span>;
+  email: <span class="hl-type">string</span>;
+  emailDomain: <span class="hl-type">string</span>;
+  isAnchorUser: <span class="hl-type">boolean</span>;
+  name: <span class="hl-type">string</span>;
+  principalId: <span class="hl-type">string</span>;
+  scope: <span class="hl-type">string</span>;
+}

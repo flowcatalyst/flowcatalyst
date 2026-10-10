@@ -1,0 +1,9 @@
+export interface UserCreatedData {
+  clientId?: string | null;
+  email: string;
+  emailDomain: string;
+  isAnchorUser: boolean;
+  name: string;
+  principalId: string;
+  scope: string;
+}

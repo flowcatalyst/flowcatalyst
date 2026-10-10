@@ -1,0 +1,10 @@
+{
+  <span class="hl-key">"enabled"</span>: <span class="hl-kw">true</span>,
+  <span class="hl-key">"maybe"</span>: {},
+  <span class="hl-key">"alwaysTrue"</span>: <span class="hl-kw">true</span>,
+  <span class="hl-key">"alwaysFalse"</span>: <span class="hl-kw">false</span>,
+  <span class="hl-key">"nothing"</span>: <span class="hl-kw">null</span>,
+  <span class="hl-key">"flags"</span>: [
+    <span class="hl-kw">true</span>
+  ]
+}

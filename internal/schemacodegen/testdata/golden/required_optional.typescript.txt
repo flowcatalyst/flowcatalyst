@@ -1,0 +1,7 @@
+export interface UserCreatedData {
+  zeta?: string;
+  alpha: number;
+  mid: boolean;
+  beta?: number;
+  omega?: string[];
+}

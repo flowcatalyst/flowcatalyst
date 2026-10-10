@@ -1,0 +1,8 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  color: <span class="hl-str">&quot;red&quot;</span> | <span class="hl-str">&quot;green&quot;</span> | <span class="hl-str">&quot;blue&quot;</span>;
+  maybeColor?: <span class="hl-str">&quot;red&quot;</span> | <span class="hl-str">&quot;green&quot;</span> | <span class="hl-type">null</span>;
+  nested?: <span class="hl-str">&quot;x&quot;</span> | <span class="hl-str">&quot;y&quot;</span> | <span class="hl-str">&quot;z&quot;</span>;
+  oneOfConst?: <span class="hl-num">1</span> | <span class="hl-num">2</span>;
+  mixedConst: <span class="hl-str">&quot;s&quot;</span> | <span class="hl-num">3</span> | <span class="hl-type">null</span> | [<span class="hl-num">1</span>,<span class="hl-str">&quot;a&quot;</span>,<span class="hl-type">null</span>];
+  objConst?: {<span class="hl-str">&quot;a&quot;</span>:<span class="hl-num">1</span>,<span class="hl-str">&quot;b&quot;</span>:[true,<span class="hl-type">null</span>]};
+}

@@ -1,0 +1,85 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserCreatedData
+{
+    public function __construct(
+        public string $onePointZero,
+        public ?string $sciHundred,
+        public ?string $tenth,
+        public ?string $tiny,
+        public ?string $small,
+        public ?string $edgeLow,
+        public ?string $big,
+        public ?string $huge,
+        public ?string $e21,
+        public ?string $e20,
+        public ?string $negZero,
+        public ?string $negZeroF,
+        public ?string $neg,
+        public ?string $minDouble,
+        public ?string $maxDouble,
+        public ?string $overflow,
+        public ?string $capE,
+        public ?string $third,
+        public ?string $list,
+        public ?int $plain,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            onePointZero: $data['onePointZero'],
+            sciHundred: $data['sciHundred'],
+            tenth: $data['tenth'],
+            tiny: $data['tiny'],
+            small: $data['small'],
+            edgeLow: $data['edgeLow'],
+            big: $data['big'],
+            huge: $data['huge'],
+            e21: $data['e21'],
+            e20: $data['e20'],
+            negZero: $data['negZero'],
+            negZeroF: $data['negZeroF'],
+            neg: $data['neg'],
+            minDouble: $data['minDouble'],
+            maxDouble: $data['maxDouble'],
+            overflow: $data['overflow'],
+            capE: $data['capE'],
+            third: $data['third'],
+            list: $data['list'],
+            plain: $data['plain'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'onePointZero' => $this->onePointZero,
+            'sciHundred' => $this->sciHundred,
+            'tenth' => $this->tenth,
+            'tiny' => $this->tiny,
+            'small' => $this->small,
+            'edgeLow' => $this->edgeLow,
+            'big' => $this->big,
+            'huge' => $this->huge,
+            'e21' => $this->e21,
+            'e20' => $this->e20,
+            'negZero' => $this->negZero,
+            'negZeroF' => $this->negZeroF,
+            'neg' => $this->neg,
+            'minDouble' => $this->minDouble,
+            'maxDouble' => $this->maxDouble,
+            'overflow' => $this->overflow,
+            'capE' => $this->capE,
+            'third' => $this->third,
+            'list' => $this->list,
+            'plain' => $this->plain,
+        ];
+    }
+}

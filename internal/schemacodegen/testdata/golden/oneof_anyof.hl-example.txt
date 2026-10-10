@@ -1,0 +1,15 @@
+{
+  <span class="hl-key">"payload"</span>: {
+    <span class="hl-key">"a"</span>: <span class="hl-str">"string"</span>,
+    <span class="hl-key">"b"</span>: <span class="hl-num">0</span>
+  },
+  <span class="hl-key">"value"</span>: <span class="hl-str">"string"</span>,
+  <span class="hl-key">"dup"</span>: <span class="hl-num">0</span>,
+  <span class="hl-key">"listOf"</span>: [
+    <span class="hl-str">"string"</span>
+  ],
+  <span class="hl-key">"nullFirst"</span>: <span class="hl-str">"string"</span>,
+  <span class="hl-key">"allNull"</span>: <span class="hl-kw">null</span>,
+  <span class="hl-key">"nestedAny"</span>: <span class="hl-str">"string"</span>,
+  <span class="hl-key">"plain"</span>: <span class="hl-str">"string"</span>
+}

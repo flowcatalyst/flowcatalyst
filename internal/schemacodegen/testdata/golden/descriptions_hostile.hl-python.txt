@@ -1,0 +1,40 @@
+<span class="hl-kw">from</span> __future__ <span class="hl-kw">import</span> annotations
+<span class="hl-kw">from</span> typing <span class="hl-kw">import</span> <span class="hl-type">Literal</span>
+<span class="hl-kw">from</span> dataclasses <span class="hl-kw">import</span> dataclass
+
+
+<span class="hl-comment">@dataclass(frozen=True)</span>
+<span class="hl-kw">class</span> UserCreatedData:
+    a&lt;b&gt;&amp;c: <span class="hl-type">str</span>
+    q<span class="hl-str">&quot;uote: str
+    s'ingle: int | None = None
+    amp&amp;lt;: bool | None = None
+    &lt;/span&gt;&lt;script&gt;alert(1)&lt;/script&gt;: str = None
+    tick`s: str = None
+    back\slash: str = None
+    apos'const: Literal[&quot;</span>a<span class="hl-str">'b&quot;, &quot;c\&quot;d&quot;] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -&gt; UserCreatedData:
+        return cls(
+            a&lt;b&gt;&amp;c=data.get(&quot;a&lt;b&gt;&amp;c&quot;),
+            q&quot;uote=data.get(&quot;q&quot;uote&quot;),
+            s'</span>ingle=data.get(<span class="hl-str">&quot;s'ingle&quot;</span>),
+            amp&amp;lt;=data.get(<span class="hl-str">&quot;amp&amp;lt;&quot;</span>),
+            &lt;/span&gt;&lt;script&gt;alert(<span class="hl-num">1</span>)&lt;/script&gt;=data.get(<span class="hl-str">&quot;&lt;/span&gt;&lt;script&gt;alert(1)&lt;/script&gt;&quot;</span>),
+            tick`s=data.get(<span class="hl-str">&quot;tick`s&quot;</span>),
+            back\slash=data.get(<span class="hl-str">&quot;back\slash&quot;</span>),
+            apos<span class="hl-str">'const=data.get(&quot;apos'</span>const<span class="hl-str">&quot;),
+        )
+
+    def to_dict(self) -&gt; dict[str, Any]:
+        return {
+            &quot;</span>a&lt;b&gt;&amp;c<span class="hl-str">&quot;: self.a&lt;b&gt;&amp;c,
+            &quot;</span>q<span class="hl-str">&quot;uote&quot;</span>: <span class="hl-kw">self</span>.q<span class="hl-str">&quot;uote,
+            &quot;</span>s<span class="hl-str">'ingle&quot;: self.s'</span>ingle,
+            <span class="hl-str">&quot;amp&amp;lt;&quot;</span>: <span class="hl-kw">self</span>.amp&amp;lt;,
+            <span class="hl-str">&quot;&lt;/span&gt;&lt;script&gt;alert(1)&lt;/script&gt;&quot;</span>: <span class="hl-kw">self</span>.&lt;/span&gt;&lt;script&gt;alert(<span class="hl-num">1</span>)&lt;/script&gt;,
+            <span class="hl-str">&quot;tick`s&quot;</span>: <span class="hl-kw">self</span>.tick`s,
+            <span class="hl-str">&quot;back\slash&quot;</span>: <span class="hl-kw">self</span>.back\slash,
+            <span class="hl-str">&quot;apos'const&quot;</span>: <span class="hl-kw">self</span>.apos'const,
+        }

@@ -1,0 +1,37 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public record UserCreatedData(
+    String createdAt,
+    String id,
+    String email,
+    String website,
+    String birthday,
+    String short
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserCreatedData fromMap(Map<String, Object> map) {
+        return new UserCreatedData(
+            (String) map.get("createdAt"),
+            (String) map.get("id"),
+            (String) map.get("email"),
+            (String) map.get("website"),
+            (String) map.get("birthday"),
+            (String) map.get("short")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("createdAt", createdAt);
+        map.put("id", id);
+        map.put("email", email);
+        map.put("website", website);
+        map.put("birthday", birthday);
+        map.put("short", short);
+        return map;
+    }
+}

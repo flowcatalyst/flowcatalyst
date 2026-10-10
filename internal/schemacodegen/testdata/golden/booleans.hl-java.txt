@@ -1,0 +1,38 @@
+<span class="hl-kw">package</span> com.platform.events.iam.user;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">List</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> UserCreatedData(
+    <span class="hl-type">boolean</span> enabled,
+    <span class="hl-type">Boolean</span> maybe,
+    <span class="hl-type">String</span> alwaysTrue,
+    <span class="hl-type">String</span> alwaysFalse,
+    Void nothing,
+    <span class="hl-type">List</span>&lt;<span class="hl-type">Boolean</span>&gt; flags
+) {
+
+    <span class="hl-comment">@SuppressWarnings</span>(<span class="hl-str">&quot;unchecked&quot;</span>)
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> UserCreatedData fromMap(<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; map) {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> UserCreatedData(
+            (<span class="hl-type">Boolean</span>) map.get(<span class="hl-str">&quot;enabled&quot;</span>),
+            (<span class="hl-type">Boolean</span>) map.get(<span class="hl-str">&quot;maybe&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;alwaysTrue&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;alwaysFalse&quot;</span>),
+            (Void) map.get(<span class="hl-str">&quot;nothing&quot;</span>),
+            (<span class="hl-type">List</span>&lt;<span class="hl-type">Boolean</span>&gt;) map.get(<span class="hl-str">&quot;flags&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;enabled&quot;</span>, enabled);
+        map.put(<span class="hl-str">&quot;maybe&quot;</span>, maybe);
+        map.put(<span class="hl-str">&quot;alwaysTrue&quot;</span>, alwaysTrue);
+        map.put(<span class="hl-str">&quot;alwaysFalse&quot;</span>, alwaysFalse);
+        map.put(<span class="hl-str">&quot;nothing&quot;</span>, nothing);
+        map.put(<span class="hl-str">&quot;flags&quot;</span>, flags);
+        <span class="hl-kw">return</span> map;
+    }
+}

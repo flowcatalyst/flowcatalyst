@@ -1,0 +1,85 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\Platform\Iam\User;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> UserCreatedData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$onePointZero</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$sciHundred</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$tenth</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$tiny</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$small</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$edgeLow</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$big</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$huge</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$e21</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$e20</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$negZero</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$negZeroF</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$neg</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$minDouble</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$maxDouble</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$overflow</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$capE</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$third</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$list</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">int</span> <span class="hl-var">$plain</span>,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            onePointZero: <span class="hl-var">$data</span>[<span class="hl-str">'onePointZero'</span>],
+            sciHundred: <span class="hl-var">$data</span>[<span class="hl-str">'sciHundred'</span>],
+            tenth: <span class="hl-var">$data</span>[<span class="hl-str">'tenth'</span>],
+            tiny: <span class="hl-var">$data</span>[<span class="hl-str">'tiny'</span>],
+            small: <span class="hl-var">$data</span>[<span class="hl-str">'small'</span>],
+            edgeLow: <span class="hl-var">$data</span>[<span class="hl-str">'edgeLow'</span>],
+            big: <span class="hl-var">$data</span>[<span class="hl-str">'big'</span>],
+            huge: <span class="hl-var">$data</span>[<span class="hl-str">'huge'</span>],
+            e21: <span class="hl-var">$data</span>[<span class="hl-str">'e21'</span>],
+            e20: <span class="hl-var">$data</span>[<span class="hl-str">'e20'</span>],
+            negZero: <span class="hl-var">$data</span>[<span class="hl-str">'negZero'</span>],
+            negZeroF: <span class="hl-var">$data</span>[<span class="hl-str">'negZeroF'</span>],
+            neg: <span class="hl-var">$data</span>[<span class="hl-str">'neg'</span>],
+            minDouble: <span class="hl-var">$data</span>[<span class="hl-str">'minDouble'</span>],
+            maxDouble: <span class="hl-var">$data</span>[<span class="hl-str">'maxDouble'</span>],
+            overflow: <span class="hl-var">$data</span>[<span class="hl-str">'overflow'</span>],
+            capE: <span class="hl-var">$data</span>[<span class="hl-str">'capE'</span>],
+            third: <span class="hl-var">$data</span>[<span class="hl-str">'third'</span>],
+            list: <span class="hl-var">$data</span>[<span class="hl-str">'list'</span>],
+            plain: <span class="hl-var">$data</span>[<span class="hl-str">'plain'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'onePointZero'</span> =&gt; <span class="hl-var">$this</span>-&gt;onePointZero,
+            <span class="hl-str">'sciHundred'</span> =&gt; <span class="hl-var">$this</span>-&gt;sciHundred,
+            <span class="hl-str">'tenth'</span> =&gt; <span class="hl-var">$this</span>-&gt;tenth,
+            <span class="hl-str">'tiny'</span> =&gt; <span class="hl-var">$this</span>-&gt;tiny,
+            <span class="hl-str">'small'</span> =&gt; <span class="hl-var">$this</span>-&gt;small,
+            <span class="hl-str">'edgeLow'</span> =&gt; <span class="hl-var">$this</span>-&gt;edgeLow,
+            <span class="hl-str">'big'</span> =&gt; <span class="hl-var">$this</span>-&gt;big,
+            <span class="hl-str">'huge'</span> =&gt; <span class="hl-var">$this</span>-&gt;huge,
+            <span class="hl-str">'e21'</span> =&gt; <span class="hl-var">$this</span>-&gt;e21,
+            <span class="hl-str">'e20'</span> =&gt; <span class="hl-var">$this</span>-&gt;e20,
+            <span class="hl-str">'negZero'</span> =&gt; <span class="hl-var">$this</span>-&gt;negZero,
+            <span class="hl-str">'negZeroF'</span> =&gt; <span class="hl-var">$this</span>-&gt;negZeroF,
+            <span class="hl-str">'neg'</span> =&gt; <span class="hl-var">$this</span>-&gt;neg,
+            <span class="hl-str">'minDouble'</span> =&gt; <span class="hl-var">$this</span>-&gt;minDouble,
+            <span class="hl-str">'maxDouble'</span> =&gt; <span class="hl-var">$this</span>-&gt;maxDouble,
+            <span class="hl-str">'overflow'</span> =&gt; <span class="hl-var">$this</span>-&gt;overflow,
+            <span class="hl-str">'capE'</span> =&gt; <span class="hl-var">$this</span>-&gt;capE,
+            <span class="hl-str">'third'</span> =&gt; <span class="hl-var">$this</span>-&gt;third,
+            <span class="hl-str">'list'</span> =&gt; <span class="hl-var">$this</span>-&gt;list,
+            <span class="hl-str">'plain'</span> =&gt; <span class="hl-var">$this</span>-&gt;plain,
+        ];
+    }
+}

@@ -1,0 +1,4 @@
+[
+  <span class="hl-num">1</span>,
+  <span class="hl-num">2</span>
+]

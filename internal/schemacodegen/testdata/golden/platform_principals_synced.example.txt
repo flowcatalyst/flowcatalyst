@@ -1,0 +1,9 @@
+{
+  "applicationCode": "string",
+  "created": 0,
+  "deactivated": 0,
+  "syncedEmails": [
+    "string"
+  ],
+  "updated": 0
+}

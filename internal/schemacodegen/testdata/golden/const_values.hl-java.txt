@@ -1,0 +1,37 @@
+<span class="hl-kw">package</span> com.platform.events.iam.user;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> UserCreatedData(
+    <span class="hl-type">String</span> o,
+    <span class="hl-type">String</span> arr,
+    <span class="hl-type">String</span> empty,
+    <span class="hl-type">String</span> nul,
+    <span class="hl-type">String</span> str,
+    <span class="hl-type">String</span> dupKeys
+) {
+
+    <span class="hl-comment">@SuppressWarnings</span>(<span class="hl-str">&quot;unchecked&quot;</span>)
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> UserCreatedData fromMap(<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; map) {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> UserCreatedData(
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;o&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;arr&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;empty&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;nul&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;str&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;dupKeys&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;o&quot;</span>, o);
+        map.put(<span class="hl-str">&quot;arr&quot;</span>, arr);
+        map.put(<span class="hl-str">&quot;empty&quot;</span>, empty);
+        map.put(<span class="hl-str">&quot;nul&quot;</span>, nul);
+        map.put(<span class="hl-str">&quot;str&quot;</span>, str);
+        map.put(<span class="hl-str">&quot;dupKeys&quot;</span>, dupKeys);
+        <span class="hl-kw">return</span> map;
+    }
+}

@@ -1,0 +1,58 @@
+from __future__ import annotations
+from typing import Any, Literal
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class EFData:
+    a: str | None
+    b: int | None
+    j: str | None
+    k: int | None
+    c: float | None = None
+    d: bool | None = None
+    e: str | int | None = None
+    f: str | float | None = None
+    g: list[str] | None = None
+    h: dict[str, Any] | None = None
+    i:  | None = None
+    l: Literal[] | None = None
+    m: Literal[] | None = None
+    n:  | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EFData:
+        return cls(
+            a=data.get("a"),
+            b=data.get("b"),
+            j=data.get("j"),
+            k=data.get("k"),
+            c=data.get("c"),
+            d=data.get("d"),
+            e=data.get("e"),
+            f=data.get("f"),
+            g=data.get("g"),
+            h=data.get("h"),
+            i=data.get("i"),
+            l=data.get("l"),
+            m=data.get("m"),
+            n=data.get("n"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "a": self.a,
+            "b": self.b,
+            "j": self.j,
+            "k": self.k,
+            "c": self.c,
+            "d": self.d,
+            "e": self.e,
+            "f": self.f,
+            "g": self.g,
+            "h": self.h,
+            "i": self.i,
+            "l": self.l,
+            "m": self.m,
+            "n": self.n,
+        }

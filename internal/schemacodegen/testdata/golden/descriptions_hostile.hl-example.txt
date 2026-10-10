@@ -1,0 +1,10 @@
+{
+  <span class="hl-key">"a&lt;b&gt;&amp;c"</span>: <span class="hl-str">"string"</span>,
+  <span class="hl-key">"q\"uote"</span>: <span class="hl-str">"string"</span>,
+  <span class="hl-key">"s'ingle"</span>: <span class="hl-num">0</span>,
+  <span class="hl-key">"amp&amp;lt;"</span>: <span class="hl-kw">true</span>,
+  <span class="hl-key">"&lt;/span&gt;&lt;script&gt;alert(1)&lt;/script&gt;"</span>: <span class="hl-str">"&lt;/span&gt;&lt;script&gt;alert(2)&lt;/script&gt;"</span>,
+  <span class="hl-key">"tick`s"</span>: <span class="hl-str">"it's \"fine\" &amp; &lt;b&gt;bold&lt;/b&gt;"</span>,
+  <span class="hl-key">"back\\slash"</span>: <span class="hl-str">"C:\\path\\to"</span>,
+  <span class="hl-key">"apos'const"</span>: <span class="hl-str">"a'b"</span>
+}

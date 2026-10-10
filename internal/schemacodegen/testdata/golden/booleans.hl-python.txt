@@ -1,0 +1,33 @@
+<span class="hl-kw">from</span> __future__ <span class="hl-kw">import</span> annotations
+<span class="hl-kw">from</span> dataclasses <span class="hl-kw">import</span> dataclass
+
+
+<span class="hl-comment">@dataclass(frozen=True)</span>
+<span class="hl-kw">class</span> UserCreatedData:
+    enabled: <span class="hl-type">bool</span>
+    always_true: <span class="hl-type">str</span>
+    nothing: <span class="hl-kw">None</span>
+    maybe: <span class="hl-type">bool</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    always_false: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    flags: <span class="hl-type">list</span>[<span class="hl-type">bool</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+
+    @classmethod
+    <span class="hl-kw">def</span> from_dict(<span class="hl-kw">cls</span>, data: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]) -&gt; UserCreatedData:
+        <span class="hl-kw">return</span> <span class="hl-kw">cls</span>(
+            enabled=data.get(<span class="hl-str">&quot;enabled&quot;</span>),
+            always_true=data.get(<span class="hl-str">&quot;alwaysTrue&quot;</span>),
+            nothing=data.get(<span class="hl-str">&quot;nothing&quot;</span>),
+            maybe=data.get(<span class="hl-str">&quot;maybe&quot;</span>),
+            always_false=data.get(<span class="hl-str">&quot;alwaysFalse&quot;</span>),
+            flags=data.get(<span class="hl-str">&quot;flags&quot;</span>),
+        )
+
+    <span class="hl-kw">def</span> to_dict(<span class="hl-kw">self</span>) -&gt; <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]:
+        <span class="hl-kw">return</span> {
+            <span class="hl-str">&quot;enabled&quot;</span>: <span class="hl-kw">self</span>.enabled,
+            <span class="hl-str">&quot;alwaysTrue&quot;</span>: <span class="hl-kw">self</span>.always_true,
+            <span class="hl-str">&quot;nothing&quot;</span>: <span class="hl-kw">self</span>.nothing,
+            <span class="hl-str">&quot;maybe&quot;</span>: <span class="hl-kw">self</span>.maybe,
+            <span class="hl-str">&quot;alwaysFalse&quot;</span>: <span class="hl-kw">self</span>.always_false,
+            <span class="hl-str">&quot;flags&quot;</span>: <span class="hl-kw">self</span>.flags,
+        }

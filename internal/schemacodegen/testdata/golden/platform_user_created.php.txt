@@ -1,0 +1,46 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserCreatedData
+{
+    public function __construct(
+        public ?string $clientId,
+        public string $email,
+        public string $emailDomain,
+        public bool $isAnchorUser,
+        public string $name,
+        public string $principalId,
+        public string $scope,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            clientId: $data['clientId'],
+            email: $data['email'],
+            emailDomain: $data['emailDomain'],
+            isAnchorUser: $data['isAnchorUser'],
+            name: $data['name'],
+            principalId: $data['principalId'],
+            scope: $data['scope'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'clientId' => $this->clientId,
+            'email' => $this->email,
+            'emailDomain' => $this->emailDomain,
+            'isAnchorUser' => $this->isAnchorUser,
+            'name' => $this->name,
+            'principalId' => $this->principalId,
+            'scope' => $this->scope,
+        ];
+    }
+}

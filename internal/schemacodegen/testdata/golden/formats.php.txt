@@ -1,0 +1,43 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserCreatedData
+{
+    public function __construct(
+        public string $createdAt,
+        public string $id,
+        public string $email,
+        public ?string $website,
+        public ?string $birthday,
+        public ?string $short,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            createdAt: $data['createdAt'],
+            id: $data['id'],
+            email: $data['email'],
+            website: $data['website'],
+            birthday: $data['birthday'],
+            short: $data['short'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'createdAt' => $this->createdAt,
+            'id' => $this->id,
+            'email' => $this->email,
+            'website' => $this->website,
+            'birthday' => $this->birthday,
+            'short' => $this->short,
+        ];
+    }
+}

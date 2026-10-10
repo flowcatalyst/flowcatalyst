@@ -1,0 +1,38 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public record UserCreatedData(
+    int count,
+    double ratio,
+    Integer optCount,
+    Double optRatio,
+    List<Integer> ints,
+    List<Double> nums
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserCreatedData fromMap(Map<String, Object> map) {
+        return new UserCreatedData(
+            (Integer) map.get("count"),
+            (Double) map.get("ratio"),
+            (Integer) map.get("optCount"),
+            (Double) map.get("optRatio"),
+            (List<Integer>) map.get("ints"),
+            (List<Double>) map.get("nums")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("count", count);
+        map.put("ratio", ratio);
+        map.put("optCount", optCount);
+        map.put("optRatio", optRatio);
+        map.put("ints", ints);
+        map.put("nums", nums);
+        return map;
+    }
+}

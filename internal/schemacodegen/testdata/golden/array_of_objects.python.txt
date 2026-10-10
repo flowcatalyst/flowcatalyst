@@ -1,0 +1,28 @@
+from __future__ import annotations
+from typing import Any
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    lines: list[dict[str, Any]]
+    matrix: list[list[float]] | None = None
+    untyped: list | None = None
+    mixed: list[str | int] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            lines=data.get("lines"),
+            matrix=data.get("matrix"),
+            untyped=data.get("untyped"),
+            mixed=data.get("mixed"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "lines": self.lines,
+            "matrix": self.matrix,
+            "untyped": self.untyped,
+            "mixed": self.mixed,
+        }

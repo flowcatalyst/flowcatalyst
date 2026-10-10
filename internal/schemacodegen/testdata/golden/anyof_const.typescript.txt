@@ -1,0 +1,8 @@
+export interface UserCreatedData {
+  color: "red" | "green" | "blue";
+  maybeColor?: "red" | "green" | null;
+  nested?: "x" | "y" | "z";
+  oneOfConst?: 1 | 2;
+  mixedConst: "s" | 3 | null | [1,"a",null];
+  objConst?: {"a":1,"b":[true,null]};
+}

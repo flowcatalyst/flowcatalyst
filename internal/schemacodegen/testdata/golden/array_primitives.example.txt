@@ -1,0 +1,17 @@
+{
+  "names": [
+    "string"
+  ],
+  "scores": [
+    0
+  ],
+  "counts": [
+    0
+  ],
+  "flags": [
+    true
+  ],
+  "maybe": [
+    {}
+  ]
+}

@@ -1,0 +1,62 @@
+package com.a.events.b.c;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public record CDData(
+    String a,
+    Integer b,
+    Double c,
+    Boolean d,
+    Object e,
+    Object f,
+    List<String> g,
+    Map<String, Object> h,
+    Object i,
+    String j,
+    Integer k,
+    String l,
+    String m,
+    Object n
+) {
+
+    @SuppressWarnings("unchecked")
+    public static CDData fromMap(Map<String, Object> map) {
+        return new CDData(
+            (String) map.get("a"),
+            (Integer) map.get("b"),
+            (Double) map.get("c"),
+            (Boolean) map.get("d"),
+            (Object) map.get("e"),
+            (Object) map.get("f"),
+            (List<String>) map.get("g"),
+            (Map<String, Object>) map.get("h"),
+            (Object) map.get("i"),
+            (String) map.get("j"),
+            (Integer) map.get("k"),
+            (String) map.get("l"),
+            (String) map.get("m"),
+            (Object) map.get("n")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("a", a);
+        map.put("b", b);
+        map.put("c", c);
+        map.put("d", d);
+        map.put("e", e);
+        map.put("f", f);
+        map.put("g", g);
+        map.put("h", h);
+        map.put("i", i);
+        map.put("j", j);
+        map.put("k", k);
+        map.put("l", l);
+        map.put("m", m);
+        map.put("n", n);
+        return map;
+    }
+}

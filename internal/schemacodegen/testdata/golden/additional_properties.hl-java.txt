@@ -1,0 +1,47 @@
+<span class="hl-kw">package</span> com.platform.events.iam.user;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">List</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> UserCreatedData(
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">String</span>&gt; labels,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Integer</span>&gt; counters,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; free,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; closed,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Double</span>&gt; patterned,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; bare,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Boolean</span>&gt;&gt; nestedMap,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">List</span>&lt;<span class="hl-type">String</span>&gt;&gt; listMap,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; withProps
+) {
+
+    <span class="hl-comment">@SuppressWarnings</span>(<span class="hl-str">&quot;unchecked&quot;</span>)
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> UserCreatedData fromMap(<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; map) {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> UserCreatedData(
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">String</span>&gt;) map.get(<span class="hl-str">&quot;labels&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Integer</span>&gt;) map.get(<span class="hl-str">&quot;counters&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;free&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;closed&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Double</span>&gt;) map.get(<span class="hl-str">&quot;patterned&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;bare&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Boolean</span>&gt;&gt;) map.get(<span class="hl-str">&quot;nestedMap&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">List</span>&lt;<span class="hl-type">String</span>&gt;&gt;) map.get(<span class="hl-str">&quot;listMap&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;withProps&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;labels&quot;</span>, labels);
+        map.put(<span class="hl-str">&quot;counters&quot;</span>, counters);
+        map.put(<span class="hl-str">&quot;free&quot;</span>, free);
+        map.put(<span class="hl-str">&quot;closed&quot;</span>, closed);
+        map.put(<span class="hl-str">&quot;patterned&quot;</span>, patterned);
+        map.put(<span class="hl-str">&quot;bare&quot;</span>, bare);
+        map.put(<span class="hl-str">&quot;nestedMap&quot;</span>, nestedMap);
+        map.put(<span class="hl-str">&quot;listMap&quot;</span>, listMap);
+        map.put(<span class="hl-str">&quot;withProps&quot;</span>, withProps);
+        <span class="hl-kw">return</span> map;
+    }
+}

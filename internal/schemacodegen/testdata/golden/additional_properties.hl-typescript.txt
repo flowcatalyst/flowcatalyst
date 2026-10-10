@@ -1,0 +1,13 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  labels: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">string</span>&gt;;
+  counters?: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">number</span>&gt;;
+  free?: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">unknown</span>&gt;;
+  closed?: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">unknown</span>&gt;;
+  patterned?: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">number</span>&gt;;
+  bare?: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">unknown</span>&gt;;
+  nestedMap?: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">boolean</span>&gt;&gt;;
+  listMap?: <span class="hl-type">Record</span>&lt;<span class="hl-type">string</span>, <span class="hl-type">string</span>[]&gt;;
+  withProps?: {
+    k?: <span class="hl-type">string</span>;
+  };
+}

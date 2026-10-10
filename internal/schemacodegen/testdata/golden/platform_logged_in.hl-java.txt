@@ -1,0 +1,37 @@
+<span class="hl-kw">package</span> com.platform.events.iam.user;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> UserLoggedInData(
+    <span class="hl-type">String</span> email,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; federatedClaims,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; flowcatalystClaims,
+    <span class="hl-type">String</span> identityProviderCode,
+    <span class="hl-type">String</span> loginMethod,
+    <span class="hl-type">String</span> userId
+) {
+
+    <span class="hl-comment">@SuppressWarnings</span>(<span class="hl-str">&quot;unchecked&quot;</span>)
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> UserLoggedInData fromMap(<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; map) {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> UserLoggedInData(
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;email&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;federatedClaims&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;flowcatalystClaims&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;identityProviderCode&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;loginMethod&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;userId&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;email&quot;</span>, email);
+        map.put(<span class="hl-str">&quot;federatedClaims&quot;</span>, federatedClaims);
+        map.put(<span class="hl-str">&quot;flowcatalystClaims&quot;</span>, flowcatalystClaims);
+        map.put(<span class="hl-str">&quot;identityProviderCode&quot;</span>, identityProviderCode);
+        map.put(<span class="hl-str">&quot;loginMethod&quot;</span>, loginMethod);
+        map.put(<span class="hl-str">&quot;userId&quot;</span>, userId);
+        <span class="hl-kw">return</span> map;
+    }
+}

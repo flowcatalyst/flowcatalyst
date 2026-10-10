@@ -1,0 +1,29 @@
+export interface OrderLineItemAddedData {
+  1?: string;
+  2?: string;
+  10: string;
+  4294967294?: string;
+  snake_case_name?: string;
+  kebab-case-name: string;
+  camelCaseName: string;
+  PascalCaseName?: string;
+  HTTPStatusCode?: number;
+  9lives?: string;
+  class: string;
+  int?: number;
+  public?: boolean;
+  def?: string;
+  import?: string;
+  new?: string;
+  return?: string;
+  function?: string;
+  None?: string;
+  with space?: string;
+  dotted.name?: string;
+  Anything?: string;
+  ?: string;
+  b?: string;
+  01?: string;
+  a?: string;
+  4294967295?: string;
+}

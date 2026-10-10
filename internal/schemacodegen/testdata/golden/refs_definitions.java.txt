@@ -1,0 +1,29 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public record UserCreatedData(
+    Object home,
+    Object price,
+    List<Object> all
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserCreatedData fromMap(Map<String, Object> map) {
+        return new UserCreatedData(
+            (Object) map.get("home"),
+            (Object) map.get("price"),
+            (List<Object>) map.get("all")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("home", home);
+        map.put("price", price);
+        map.put("all", all);
+        return map;
+    }
+}

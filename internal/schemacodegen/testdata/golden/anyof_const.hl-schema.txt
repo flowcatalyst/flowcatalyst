@@ -1,0 +1,91 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"color"</span>: {
+      <span class="hl-key">"anyOf"</span>: [
+        {
+          <span class="hl-key">"const"</span>: <span class="hl-str">"red"</span>
+        },
+        {
+          <span class="hl-key">"const"</span>: <span class="hl-str">"green"</span>
+        },
+        {
+          <span class="hl-key">"const"</span>: <span class="hl-str">"blue"</span>
+        }
+      ]
+    },
+    <span class="hl-key">"maybeColor"</span>: {
+      <span class="hl-key">"anyOf"</span>: [
+        {
+          <span class="hl-key">"const"</span>: <span class="hl-str">"red"</span>
+        },
+        {
+          <span class="hl-key">"const"</span>: <span class="hl-str">"green"</span>
+        },
+        {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"null"</span>
+        }
+      ]
+    },
+    <span class="hl-key">"nested"</span>: {
+      <span class="hl-key">"anyOf"</span>: [
+        {
+          <span class="hl-key">"anyOf"</span>: [
+            {
+              <span class="hl-key">"const"</span>: <span class="hl-str">"x"</span>
+            },
+            {
+              <span class="hl-key">"const"</span>: <span class="hl-str">"y"</span>
+            }
+          ]
+        },
+        {
+          <span class="hl-key">"const"</span>: <span class="hl-str">"z"</span>
+        }
+      ]
+    },
+    <span class="hl-key">"oneOfConst"</span>: {
+      <span class="hl-key">"oneOf"</span>: [
+        {
+          <span class="hl-key">"const"</span>: <span class="hl-num">1</span>
+        },
+        {
+          <span class="hl-key">"const"</span>: <span class="hl-num">2</span>
+        }
+      ]
+    },
+    <span class="hl-key">"mixedConst"</span>: {
+      <span class="hl-key">"anyOf"</span>: [
+        {
+          <span class="hl-key">"const"</span>: <span class="hl-str">"s"</span>
+        },
+        {
+          <span class="hl-key">"const"</span>: <span class="hl-num">3</span>
+        },
+        {
+          <span class="hl-key">"const"</span>: <span class="hl-kw">null</span>
+        },
+        {
+          <span class="hl-key">"const"</span>: [
+            <span class="hl-num">1</span>,
+            <span class="hl-str">"a"</span>,
+            <span class="hl-kw">null</span>
+          ]
+        }
+      ]
+    },
+    <span class="hl-key">"objConst"</span>: {
+      <span class="hl-key">"const"</span>: {
+        <span class="hl-key">"a"</span>: <span class="hl-num">1</span>,
+        <span class="hl-key">"b"</span>: [
+          <span class="hl-kw">true</span>,
+          <span class="hl-kw">null</span>
+        ]
+      }
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"color"</span>,
+    <span class="hl-str">"mixedConst"</span>
+  ]
+}

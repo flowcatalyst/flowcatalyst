@@ -1,0 +1,20 @@
+{
+  <span class="hl-key">"lines"</span>: [
+    {
+      <span class="hl-key">"sku"</span>: <span class="hl-str">"string"</span>,
+      <span class="hl-key">"qty"</span>: <span class="hl-num">0</span>,
+      <span class="hl-key">"tags"</span>: [
+        <span class="hl-str">"string"</span>
+      ]
+    }
+  ],
+  <span class="hl-key">"matrix"</span>: [
+    [
+      <span class="hl-num">0</span>
+    ]
+  ],
+  <span class="hl-key">"untyped"</span>: [],
+  <span class="hl-key">"mixed"</span>: [
+    <span class="hl-str">"string"</span>
+  ]
+}

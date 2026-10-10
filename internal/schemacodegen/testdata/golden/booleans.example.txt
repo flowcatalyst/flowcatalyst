@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "maybe": {},
+  "alwaysTrue": true,
+  "alwaysFalse": false,
+  "nothing": null,
+  "flags": [
+    true
+  ]
+}

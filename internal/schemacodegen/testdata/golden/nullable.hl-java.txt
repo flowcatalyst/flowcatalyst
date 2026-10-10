@@ -1,0 +1,62 @@
+<span class="hl-kw">package</span> com.a.events.b.c;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">List</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> CDData(
+    <span class="hl-type">String</span> a,
+    <span class="hl-type">Integer</span> b,
+    <span class="hl-type">Double</span> c,
+    <span class="hl-type">Boolean</span> d,
+    <span class="hl-type">Object</span> e,
+    <span class="hl-type">Object</span> f,
+    <span class="hl-type">List</span>&lt;<span class="hl-type">String</span>&gt; g,
+    <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; h,
+    <span class="hl-type">Object</span> i,
+    <span class="hl-type">String</span> j,
+    <span class="hl-type">Integer</span> k,
+    <span class="hl-type">String</span> l,
+    <span class="hl-type">String</span> m,
+    <span class="hl-type">Object</span> n
+) {
+
+    <span class="hl-comment">@SuppressWarnings</span>(<span class="hl-str">&quot;unchecked&quot;</span>)
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> CDData fromMap(<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; map) {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> CDData(
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;a&quot;</span>),
+            (<span class="hl-type">Integer</span>) map.get(<span class="hl-str">&quot;b&quot;</span>),
+            (<span class="hl-type">Double</span>) map.get(<span class="hl-str">&quot;c&quot;</span>),
+            (<span class="hl-type">Boolean</span>) map.get(<span class="hl-str">&quot;d&quot;</span>),
+            (<span class="hl-type">Object</span>) map.get(<span class="hl-str">&quot;e&quot;</span>),
+            (<span class="hl-type">Object</span>) map.get(<span class="hl-str">&quot;f&quot;</span>),
+            (<span class="hl-type">List</span>&lt;<span class="hl-type">String</span>&gt;) map.get(<span class="hl-str">&quot;g&quot;</span>),
+            (<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;) map.get(<span class="hl-str">&quot;h&quot;</span>),
+            (<span class="hl-type">Object</span>) map.get(<span class="hl-str">&quot;i&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;j&quot;</span>),
+            (<span class="hl-type">Integer</span>) map.get(<span class="hl-str">&quot;k&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;l&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;m&quot;</span>),
+            (<span class="hl-type">Object</span>) map.get(<span class="hl-str">&quot;n&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;a&quot;</span>, a);
+        map.put(<span class="hl-str">&quot;b&quot;</span>, b);
+        map.put(<span class="hl-str">&quot;c&quot;</span>, c);
+        map.put(<span class="hl-str">&quot;d&quot;</span>, d);
+        map.put(<span class="hl-str">&quot;e&quot;</span>, e);
+        map.put(<span class="hl-str">&quot;f&quot;</span>, f);
+        map.put(<span class="hl-str">&quot;g&quot;</span>, g);
+        map.put(<span class="hl-str">&quot;h&quot;</span>, h);
+        map.put(<span class="hl-str">&quot;i&quot;</span>, i);
+        map.put(<span class="hl-str">&quot;j&quot;</span>, j);
+        map.put(<span class="hl-str">&quot;k&quot;</span>, k);
+        map.put(<span class="hl-str">&quot;l&quot;</span>, l);
+        map.put(<span class="hl-str">&quot;m&quot;</span>, m);
+        map.put(<span class="hl-str">&quot;n&quot;</span>, n);
+        <span class="hl-kw">return</span> map;
+    }
+}

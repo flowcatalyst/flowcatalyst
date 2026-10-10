@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "properties": {
+    "ok": { "type": "string" },
+    "bad": { "anyOf": [null, { "type": "string" }] }
+  }
+}

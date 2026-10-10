@@ -1,0 +1,8 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  enabled: <span class="hl-type">boolean</span>;
+  maybe?: <span class="hl-type">boolean</span> | <span class="hl-type">null</span>;
+  alwaysTrue: true;
+  alwaysFalse?: false;
+  nothing: <span class="hl-type">null</span>;
+  flags?: <span class="hl-type">boolean</span>[];
+}

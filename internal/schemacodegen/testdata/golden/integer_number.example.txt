@@ -1,0 +1,12 @@
+{
+  "count": 0,
+  "ratio": 0,
+  "optCount": {},
+  "optRatio": {},
+  "ints": [
+    0
+  ],
+  "nums": [
+    0
+  ]
+}

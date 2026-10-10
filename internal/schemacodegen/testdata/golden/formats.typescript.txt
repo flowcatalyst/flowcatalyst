@@ -1,0 +1,8 @@
+export interface UserCreatedData {
+  createdAt: string;
+  id: string;
+  email: string;
+  website?: string;
+  birthday?: string;
+  short?: string;
+}

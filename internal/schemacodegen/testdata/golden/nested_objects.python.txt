@@ -1,0 +1,22 @@
+from __future__ import annotations
+from typing import Any
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class ShopOrdersData:
+    id: str
+    profile: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ShopOrdersData:
+        return cls(
+            id=data.get("id"),
+            profile=data.get("profile"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "profile": self.profile,
+        }

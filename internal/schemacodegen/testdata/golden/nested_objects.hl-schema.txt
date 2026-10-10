@@ -1,0 +1,50 @@
+{
+  <span class="hl-key">"$schema"</span>: <span class="hl-str">"http://json-schema.org/draft-07/schema#"</span>,
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"id"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+    },
+    <span class="hl-key">"profile"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"properties"</span>: {
+        <span class="hl-key">"name"</span>: {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+        },
+        <span class="hl-key">"address"</span>: {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+          <span class="hl-key">"properties"</span>: {
+            <span class="hl-key">"street"</span>: {
+              <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+            },
+            <span class="hl-key">"geo"</span>: {
+              <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+              <span class="hl-key">"properties"</span>: {
+                <span class="hl-key">"lat"</span>: {
+                  <span class="hl-key">"type"</span>: <span class="hl-str">"number"</span>
+                },
+                <span class="hl-key">"lng"</span>: {
+                  <span class="hl-key">"type"</span>: <span class="hl-str">"number"</span>
+                }
+              },
+              <span class="hl-key">"required"</span>: [
+                <span class="hl-str">"lat"</span>,
+                <span class="hl-str">"lng"</span>
+              ]
+            }
+          },
+          <span class="hl-key">"required"</span>: [
+            <span class="hl-str">"street"</span>
+          ]
+        }
+      },
+      <span class="hl-key">"required"</span>: [
+        <span class="hl-str">"name"</span>
+      ]
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"id"</span>,
+    <span class="hl-str">"profile"</span>
+  ]
+}

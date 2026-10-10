@@ -1,0 +1,43 @@
+<span class="hl-kw">from</span> __future__ <span class="hl-kw">import</span> annotations
+<span class="hl-kw">from</span> typing <span class="hl-kw">import</span> <span class="hl-type">Any</span>
+<span class="hl-kw">from</span> dataclasses <span class="hl-kw">import</span> dataclass
+
+
+<span class="hl-comment">@dataclass(frozen=True)</span>
+<span class="hl-kw">class</span> UserCreatedData:
+    labels: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">str</span>]
+    counters: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">int</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    free: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    closed: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    patterned: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">float</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    bare: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    nested_map: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">bool</span>]] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    list_map: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">list</span>[<span class="hl-type">str</span>]] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    with_props: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+
+    @classmethod
+    <span class="hl-kw">def</span> from_dict(<span class="hl-kw">cls</span>, data: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]) -&gt; UserCreatedData:
+        <span class="hl-kw">return</span> <span class="hl-kw">cls</span>(
+            labels=data.get(<span class="hl-str">&quot;labels&quot;</span>),
+            counters=data.get(<span class="hl-str">&quot;counters&quot;</span>),
+            free=data.get(<span class="hl-str">&quot;free&quot;</span>),
+            closed=data.get(<span class="hl-str">&quot;closed&quot;</span>),
+            patterned=data.get(<span class="hl-str">&quot;patterned&quot;</span>),
+            bare=data.get(<span class="hl-str">&quot;bare&quot;</span>),
+            nested_map=data.get(<span class="hl-str">&quot;nestedMap&quot;</span>),
+            list_map=data.get(<span class="hl-str">&quot;listMap&quot;</span>),
+            with_props=data.get(<span class="hl-str">&quot;withProps&quot;</span>),
+        )
+
+    <span class="hl-kw">def</span> to_dict(<span class="hl-kw">self</span>) -&gt; <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]:
+        <span class="hl-kw">return</span> {
+            <span class="hl-str">&quot;labels&quot;</span>: <span class="hl-kw">self</span>.labels,
+            <span class="hl-str">&quot;counters&quot;</span>: <span class="hl-kw">self</span>.counters,
+            <span class="hl-str">&quot;free&quot;</span>: <span class="hl-kw">self</span>.free,
+            <span class="hl-str">&quot;closed&quot;</span>: <span class="hl-kw">self</span>.closed,
+            <span class="hl-str">&quot;patterned&quot;</span>: <span class="hl-kw">self</span>.patterned,
+            <span class="hl-str">&quot;bare&quot;</span>: <span class="hl-kw">self</span>.bare,
+            <span class="hl-str">&quot;nestedMap&quot;</span>: <span class="hl-kw">self</span>.nested_map,
+            <span class="hl-str">&quot;listMap&quot;</span>: <span class="hl-kw">self</span>.list_map,
+            <span class="hl-str">&quot;withProps&quot;</span>: <span class="hl-kw">self</span>.with_props,
+        }

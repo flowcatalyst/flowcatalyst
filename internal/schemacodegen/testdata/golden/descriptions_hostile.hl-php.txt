@@ -1,0 +1,49 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\Platform\Iam\User;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> UserCreatedData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$a</span>&lt;b&gt;&amp;c,
+        <span class="hl-kw">public</span> <span class="hl-kw">string</span> <span class="hl-var">$q</span>&quot;uote,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">int</span> <span class="hl-var">$s</span><span class="hl-str">'ingle,
+        public ?bool $amp&amp;lt;,
+        public ?string $&lt;/span&gt;&lt;script&gt;alert(1)&lt;/script&gt;,
+        public ?string $tick`s,
+        public ?string $back\slash,
+        public ?string $apos'</span>const,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            a&lt;b&gt;&amp;c: <span class="hl-var">$data</span>[<span class="hl-str">'a&lt;b&gt;&amp;c'</span>],
+            q&quot;uote: <span class="hl-var">$data</span>[<span class="hl-str">'q&quot;uote'</span>],
+            s<span class="hl-str">'ingle: $data['</span>s<span class="hl-str">'ingle'</span>],
+            amp&amp;lt;: <span class="hl-var">$data</span>[<span class="hl-str">'amp&amp;lt;'</span>],
+            &lt;/span&gt;&lt;script&gt;alert(<span class="hl-num">1</span>)&lt;/script&gt;: <span class="hl-var">$data</span>[<span class="hl-str">'&lt;/span&gt;&lt;script&gt;alert(1)&lt;/script&gt;'</span>],
+            tick`s: <span class="hl-var">$data</span>[<span class="hl-str">'tick`s'</span>],
+            back\slash: <span class="hl-var">$data</span>[<span class="hl-str">'back\slash'</span>],
+            apos<span class="hl-str">'const: $data['</span>apos<span class="hl-str">'const'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'a&lt;b&gt;&amp;c'</span> =&gt; <span class="hl-var">$this</span>-&gt;a&lt;b&gt;&amp;c,
+            <span class="hl-str">'q&quot;uote'</span> =&gt; <span class="hl-var">$this</span>-&gt;q&quot;uote,
+            <span class="hl-str">'s'</span>ingle<span class="hl-str">' =&gt; $this-&gt;s'</span>ingle,
+            <span class="hl-str">'amp&amp;lt;'</span> =&gt; <span class="hl-var">$this</span>-&gt;amp&amp;lt;,
+            <span class="hl-str">'&lt;/span&gt;&lt;script&gt;alert(1)&lt;/script&gt;'</span> =&gt; <span class="hl-var">$this</span>-&gt;&lt;/span&gt;&lt;script&gt;alert(<span class="hl-num">1</span>)&lt;/script&gt;,
+            <span class="hl-str">'tick`s'</span> =&gt; <span class="hl-var">$this</span>-&gt;tick`s,
+            <span class="hl-str">'back\slash'</span> =&gt; <span class="hl-var">$this</span>-&gt;back\slash,
+            <span class="hl-str">'apos'</span>const<span class="hl-str">' =&gt; $this-&gt;apos'</span>const,
+        ];
+    }
+}

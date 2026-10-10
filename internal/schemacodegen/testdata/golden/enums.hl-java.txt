@@ -1,0 +1,37 @@
+<span class="hl-kw">package</span> com.solo.events.domain.aggregate;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> UnknownEventData(
+    <span class="hl-type">String</span> status,
+    <span class="hl-type">Integer</span> level,
+    <span class="hl-type">Object</span> mode,
+    <span class="hl-type">String</span> kind,
+    <span class="hl-type">String</span> version,
+    <span class="hl-type">String</span> flag
+) {
+
+    <span class="hl-comment">@SuppressWarnings</span>(<span class="hl-str">&quot;unchecked&quot;</span>)
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> UnknownEventData fromMap(<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; map) {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> UnknownEventData(
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;status&quot;</span>),
+            (<span class="hl-type">Integer</span>) map.get(<span class="hl-str">&quot;level&quot;</span>),
+            (<span class="hl-type">Object</span>) map.get(<span class="hl-str">&quot;mode&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;kind&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;version&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;flag&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;status&quot;</span>, status);
+        map.put(<span class="hl-str">&quot;level&quot;</span>, level);
+        map.put(<span class="hl-str">&quot;mode&quot;</span>, mode);
+        map.put(<span class="hl-str">&quot;kind&quot;</span>, kind);
+        map.put(<span class="hl-str">&quot;version&quot;</span>, version);
+        map.put(<span class="hl-str">&quot;flag&quot;</span>, flag);
+        <span class="hl-kw">return</span> map;
+    }
+}

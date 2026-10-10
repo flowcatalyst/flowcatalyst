@@ -1,0 +1,27 @@
+<span class="hl-kw">from</span> __future__ <span class="hl-kw">import</span> annotations
+<span class="hl-kw">from</span> dataclasses <span class="hl-kw">import</span> dataclass
+
+
+<span class="hl-comment">@dataclass(frozen=True)</span>
+<span class="hl-kw">class</span> UserRolesAssignedData:
+    added: <span class="hl-type">list</span>[<span class="hl-type">str</span>]
+    principal_id: <span class="hl-type">str</span>
+    removed: <span class="hl-type">list</span>[<span class="hl-type">str</span>]
+    roles: <span class="hl-type">list</span>[<span class="hl-type">str</span>]
+
+    @classmethod
+    <span class="hl-kw">def</span> from_dict(<span class="hl-kw">cls</span>, data: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]) -&gt; UserRolesAssignedData:
+        <span class="hl-kw">return</span> <span class="hl-kw">cls</span>(
+            added=data.get(<span class="hl-str">&quot;added&quot;</span>),
+            principal_id=data.get(<span class="hl-str">&quot;principalId&quot;</span>),
+            removed=data.get(<span class="hl-str">&quot;removed&quot;</span>),
+            roles=data.get(<span class="hl-str">&quot;roles&quot;</span>),
+        )
+
+    <span class="hl-kw">def</span> to_dict(<span class="hl-kw">self</span>) -&gt; <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]:
+        <span class="hl-kw">return</span> {
+            <span class="hl-str">&quot;added&quot;</span>: <span class="hl-kw">self</span>.added,
+            <span class="hl-str">&quot;principalId&quot;</span>: <span class="hl-kw">self</span>.principal_id,
+            <span class="hl-str">&quot;removed&quot;</span>: <span class="hl-kw">self</span>.removed,
+            <span class="hl-str">&quot;roles&quot;</span>: <span class="hl-kw">self</span>.roles,
+        }

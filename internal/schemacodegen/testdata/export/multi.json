@@ -1,0 +1,13 @@
+[
+  {"application":"platform","subdomain":"iam","aggregate":"user","event":"created",
+   "currentSchema":"{\"type\":\"object\",\"properties\":{\"principalId\":{\"type\":\"string\"},\"email\":{\"type\":[\"string\",\"null\"]},\"roles\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"required\":[\"principalId\"]}"},
+  {"application":"my-app","subdomain":"order_mgmt","aggregate":"order-line","event":"item_added",
+   "currentSchema":"{\"type\":\"object\",\"properties\":{\"sku\":{\"type\":\"string\"},\"qty\":{\"type\":\"integer\"},\"unitPrice\":{\"type\":\"number\"}},\"required\":[\"sku\",\"qty\"]}"},
+  {"application":"Shop","subdomain":"Cart","aggregate":"CartItem","event":"removed","currentSchema":""},
+  {"application":"bad","subdomain":"json","aggregate":"thing","event":"broke","currentSchema":"{ not json"},
+  {"application":"nul","subdomain":"schema","aggregate":"thing","event":"null","currentSchema":"null"},
+  {"application":"prim","subdomain":"schema","aggregate":"thing","event":"str","currentSchema":"\"abc\""},
+  {"application":"platform","subdomain":"iam","aggregate":"user","event":"created",
+   "currentSchema":"{\"type\":\"object\",\"properties\":{\"replaced\":{\"type\":\"boolean\"}}}"},
+  {"application":"throw","subdomain":"schema","aggregate":"thing","event":"bad","currentSchema":"{\"type\":\"object\",\"properties\":{\"x\":5}}"}
+]

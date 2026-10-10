@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "properties": {
+    "zeta": {
+      "type": "string"
+    },
+    "alpha": {
+      "type": "integer"
+    },
+    "mid": {
+      "type": "boolean"
+    },
+    "beta": {
+      "type": "number"
+    },
+    "omega": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "mid",
+    "alpha",
+    "ghost"
+  ]
+}

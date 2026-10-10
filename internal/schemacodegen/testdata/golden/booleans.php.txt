@@ -1,0 +1,43 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\Platform\Iam\User;
+
+final readonly class UserCreatedData
+{
+    public function __construct(
+        public bool $enabled,
+        public ?bool $maybe,
+        public string $alwaysTrue,
+        public ?string $alwaysFalse,
+        public mixed $nothing,
+        public ?array $flags,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            enabled: $data['enabled'],
+            maybe: $data['maybe'],
+            alwaysTrue: $data['alwaysTrue'],
+            alwaysFalse: $data['alwaysFalse'],
+            nothing: $data['nothing'],
+            flags: $data['flags'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'enabled' => $this->enabled,
+            'maybe' => $this->maybe,
+            'alwaysTrue' => $this->alwaysTrue,
+            'alwaysFalse' => $this->alwaysFalse,
+            'nothing' => $this->nothing,
+            'flags' => $this->flags,
+        ];
+    }
+}

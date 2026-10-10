@@ -1,0 +1,8 @@
+export interface UserCreatedData {
+  count: number;
+  ratio: number;
+  optCount?: number | null;
+  optRatio?: number | null;
+  ints?: number[];
+  nums?: number[];
+}

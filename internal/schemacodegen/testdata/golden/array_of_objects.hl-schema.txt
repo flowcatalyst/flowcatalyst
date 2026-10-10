@@ -1,0 +1,57 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"lines"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>,
+      <span class="hl-key">"items"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+        <span class="hl-key">"properties"</span>: {
+          <span class="hl-key">"sku"</span>: {
+            <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+          },
+          <span class="hl-key">"qty"</span>: {
+            <span class="hl-key">"type"</span>: <span class="hl-str">"integer"</span>
+          },
+          <span class="hl-key">"tags"</span>: {
+            <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>,
+            <span class="hl-key">"items"</span>: {
+              <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+            }
+          }
+        },
+        <span class="hl-key">"required"</span>: [
+          <span class="hl-str">"sku"</span>,
+          <span class="hl-str">"qty"</span>
+        ]
+      }
+    },
+    <span class="hl-key">"matrix"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>,
+      <span class="hl-key">"items"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>,
+        <span class="hl-key">"items"</span>: {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"number"</span>
+        }
+      }
+    },
+    <span class="hl-key">"untyped"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>
+    },
+    <span class="hl-key">"mixed"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>,
+      <span class="hl-key">"items"</span>: {
+        <span class="hl-key">"anyOf"</span>: [
+          {
+            <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+          },
+          {
+            <span class="hl-key">"type"</span>: <span class="hl-str">"integer"</span>
+          }
+        ]
+      }
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"lines"</span>
+  ]
+}

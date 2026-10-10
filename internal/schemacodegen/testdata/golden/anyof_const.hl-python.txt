@@ -1,0 +1,34 @@
+<span class="hl-kw">from</span> __future__ <span class="hl-kw">import</span> annotations
+<span class="hl-kw">from</span> typing <span class="hl-kw">import</span> <span class="hl-type">Literal</span>
+<span class="hl-kw">from</span> dataclasses <span class="hl-kw">import</span> dataclass
+
+
+<span class="hl-comment">@dataclass(frozen=True)</span>
+<span class="hl-kw">class</span> UserCreatedData:
+    color: <span class="hl-type">Literal</span>[<span class="hl-str">&quot;red&quot;</span>, <span class="hl-str">&quot;green&quot;</span>, <span class="hl-str">&quot;blue&quot;</span>]
+    mixed_const: <span class="hl-type">Literal</span>[<span class="hl-str">&quot;s&quot;</span>, <span class="hl-num">3</span>, null, [<span class="hl-num">1</span>,<span class="hl-str">&quot;a&quot;</span>,null]]
+    maybe_color: <span class="hl-type">Literal</span>[<span class="hl-str">&quot;red&quot;</span>, <span class="hl-str">&quot;green&quot;</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    nested: <span class="hl-type">Literal</span>[<span class="hl-str">&quot;x&quot;</span>, <span class="hl-str">&quot;y&quot;</span>, <span class="hl-str">&quot;z&quot;</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    one_of_const: <span class="hl-type">Literal</span>[<span class="hl-num">1</span>, <span class="hl-num">2</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    obj_const: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+
+    @classmethod
+    <span class="hl-kw">def</span> from_dict(<span class="hl-kw">cls</span>, data: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]) -&gt; UserCreatedData:
+        <span class="hl-kw">return</span> <span class="hl-kw">cls</span>(
+            color=data.get(<span class="hl-str">&quot;color&quot;</span>),
+            mixed_const=data.get(<span class="hl-str">&quot;mixedConst&quot;</span>),
+            maybe_color=data.get(<span class="hl-str">&quot;maybeColor&quot;</span>),
+            nested=data.get(<span class="hl-str">&quot;nested&quot;</span>),
+            one_of_const=data.get(<span class="hl-str">&quot;oneOfConst&quot;</span>),
+            obj_const=data.get(<span class="hl-str">&quot;objConst&quot;</span>),
+        )
+
+    <span class="hl-kw">def</span> to_dict(<span class="hl-kw">self</span>) -&gt; <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]:
+        <span class="hl-kw">return</span> {
+            <span class="hl-str">&quot;color&quot;</span>: <span class="hl-kw">self</span>.color,
+            <span class="hl-str">&quot;mixedConst&quot;</span>: <span class="hl-kw">self</span>.mixed_const,
+            <span class="hl-str">&quot;maybeColor&quot;</span>: <span class="hl-kw">self</span>.maybe_color,
+            <span class="hl-str">&quot;nested&quot;</span>: <span class="hl-kw">self</span>.nested,
+            <span class="hl-str">&quot;oneOfConst&quot;</span>: <span class="hl-kw">self</span>.one_of_const,
+            <span class="hl-str">&quot;objConst&quot;</span>: <span class="hl-kw">self</span>.obj_const,
+        }

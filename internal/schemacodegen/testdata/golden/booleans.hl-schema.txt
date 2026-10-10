@@ -1,0 +1,34 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"enabled"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"boolean"</span>
+    },
+    <span class="hl-key">"maybe"</span>: {
+      <span class="hl-key">"type"</span>: [
+        <span class="hl-str">"boolean"</span>,
+        <span class="hl-str">"null"</span>
+      ]
+    },
+    <span class="hl-key">"alwaysTrue"</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-kw">true</span>
+    },
+    <span class="hl-key">"alwaysFalse"</span>: {
+      <span class="hl-key">"const"</span>: <span class="hl-kw">false</span>
+    },
+    <span class="hl-key">"nothing"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"null"</span>
+    },
+    <span class="hl-key">"flags"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>,
+      <span class="hl-key">"items"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"boolean"</span>
+      }
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"enabled"</span>,
+    <span class="hl-str">"alwaysTrue"</span>,
+    <span class="hl-str">"nothing"</span>
+  ]
+}

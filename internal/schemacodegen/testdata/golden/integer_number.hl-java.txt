@@ -1,0 +1,38 @@
+<span class="hl-kw">package</span> com.platform.events.iam.user;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">List</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> UserCreatedData(
+    <span class="hl-type">int</span> count,
+    <span class="hl-type">double</span> ratio,
+    <span class="hl-type">Integer</span> optCount,
+    <span class="hl-type">Double</span> optRatio,
+    <span class="hl-type">List</span>&lt;<span class="hl-type">Integer</span>&gt; ints,
+    <span class="hl-type">List</span>&lt;<span class="hl-type">Double</span>&gt; nums
+) {
+
+    <span class="hl-comment">@SuppressWarnings</span>(<span class="hl-str">&quot;unchecked&quot;</span>)
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> UserCreatedData fromMap(<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; map) {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> UserCreatedData(
+            (<span class="hl-type">Integer</span>) map.get(<span class="hl-str">&quot;count&quot;</span>),
+            (<span class="hl-type">Double</span>) map.get(<span class="hl-str">&quot;ratio&quot;</span>),
+            (<span class="hl-type">Integer</span>) map.get(<span class="hl-str">&quot;optCount&quot;</span>),
+            (<span class="hl-type">Double</span>) map.get(<span class="hl-str">&quot;optRatio&quot;</span>),
+            (<span class="hl-type">List</span>&lt;<span class="hl-type">Integer</span>&gt;) map.get(<span class="hl-str">&quot;ints&quot;</span>),
+            (<span class="hl-type">List</span>&lt;<span class="hl-type">Double</span>&gt;) map.get(<span class="hl-str">&quot;nums&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;count&quot;</span>, count);
+        map.put(<span class="hl-str">&quot;ratio&quot;</span>, ratio);
+        map.put(<span class="hl-str">&quot;optCount&quot;</span>, optCount);
+        map.put(<span class="hl-str">&quot;optRatio&quot;</span>, optRatio);
+        map.put(<span class="hl-str">&quot;ints&quot;</span>, ints);
+        map.put(<span class="hl-str">&quot;nums&quot;</span>, nums);
+        <span class="hl-kw">return</span> map;
+    }
+}

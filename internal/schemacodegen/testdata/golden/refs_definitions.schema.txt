@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "definitions": {
+    "Address": {
+      "type": "object",
+      "properties": {
+        "street": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Money": {
+      "type": "number"
+    }
+  },
+  "properties": {
+    "home": {
+      "$ref": "#/definitions/Address"
+    },
+    "price": {
+      "$ref": "#/$defs/Money"
+    },
+    "all": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Address"
+      }
+    }
+  },
+  "required": [
+    "home"
+  ]
+}

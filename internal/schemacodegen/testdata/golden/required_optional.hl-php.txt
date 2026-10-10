@@ -1,0 +1,40 @@
+<span class="hl-kw">&lt;?php</span>
+
+<span class="hl-kw">declare</span>(<span class="hl-kw">strict_types</span>=<span class="hl-num">1</span>);
+
+<span class="hl-kw">namespace</span> Flowcatalyst\Events\Platform\Iam\User;
+
+<span class="hl-kw">final</span> <span class="hl-kw">readonly</span> <span class="hl-kw">class</span> UserCreatedData
+{
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> __construct(
+        <span class="hl-kw">public</span> ?<span class="hl-kw">string</span> <span class="hl-var">$zeta</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">int</span> <span class="hl-var">$alpha</span>,
+        <span class="hl-kw">public</span> <span class="hl-kw">bool</span> <span class="hl-var">$mid</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">float</span> <span class="hl-var">$beta</span>,
+        <span class="hl-kw">public</span> ?<span class="hl-kw">array</span> <span class="hl-var">$omega</span>,
+    ) {}
+
+    <span class="hl-comment">/** @param array&lt;string, mixed&gt; $data */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> <span class="hl-kw">function</span> fromArray(<span class="hl-kw">array</span> <span class="hl-var">$data</span>): <span class="hl-kw">self</span>
+    {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> <span class="hl-kw">self</span>(
+            zeta: <span class="hl-var">$data</span>[<span class="hl-str">'zeta'</span>],
+            alpha: <span class="hl-var">$data</span>[<span class="hl-str">'alpha'</span>],
+            mid: <span class="hl-var">$data</span>[<span class="hl-str">'mid'</span>],
+            beta: <span class="hl-var">$data</span>[<span class="hl-str">'beta'</span>],
+            omega: <span class="hl-var">$data</span>[<span class="hl-str">'omega'</span>],
+        );
+    }
+
+    <span class="hl-comment">/** @return array&lt;string, mixed&gt; */</span>
+    <span class="hl-kw">public</span> <span class="hl-kw">function</span> toArray(): <span class="hl-kw">array</span>
+    {
+        <span class="hl-kw">return</span> [
+            <span class="hl-str">'zeta'</span> =&gt; <span class="hl-var">$this</span>-&gt;zeta,
+            <span class="hl-str">'alpha'</span> =&gt; <span class="hl-var">$this</span>-&gt;alpha,
+            <span class="hl-str">'mid'</span> =&gt; <span class="hl-var">$this</span>-&gt;mid,
+            <span class="hl-str">'beta'</span> =&gt; <span class="hl-var">$this</span>-&gt;beta,
+            <span class="hl-str">'omega'</span> =&gt; <span class="hl-var">$this</span>-&gt;omega,
+        ];
+    }
+}

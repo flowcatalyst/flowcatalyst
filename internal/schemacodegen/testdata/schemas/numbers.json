@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "properties": {
+    "onePointZero": { "const": 1.0 },
+    "sciHundred": { "const": 1e2 },
+    "tenth": { "const": 0.1 },
+    "tiny": { "const": 1.5e-7 },
+    "small": { "const": 0.000001 },
+    "edgeLow": { "const": 1e-7 },
+    "big": { "const": 9007199254740993 },
+    "huge": { "const": 123456789012345678901234567890 },
+    "e21": { "const": 1e21 },
+    "e20": { "const": 100000000000000000000 },
+    "negZero": { "const": -0 },
+    "negZeroF": { "const": -0.0 },
+    "neg": { "const": -12.50 },
+    "minDouble": { "const": 5e-324 },
+    "maxDouble": { "const": 1.7976931348623157e308 },
+    "overflow": { "const": 1e999 },
+    "capE": { "const": 2E+3 },
+    "third": { "const": 0.30000000000000004 },
+    "list": { "const": [1.0, 2.50, 3e0, -0] },
+    "plain": { "type": "integer", "minimum": 0.0, "maximum": 1E3, "multipleOf": 0.5 }
+  },
+  "required": ["onePointZero"]
+}

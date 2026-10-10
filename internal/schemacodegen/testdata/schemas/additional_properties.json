@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+    "counters": { "type": "object", "additionalProperties": { "type": "integer" } },
+    "free": { "type": "object", "additionalProperties": true },
+    "closed": { "type": "object", "additionalProperties": false },
+    "patterned": { "type": "object", "patternProperties": { "^x-": { "type": "number" } } },
+    "bare": { "type": "object" },
+    "nestedMap": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": { "type": "boolean" } } },
+    "listMap": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } },
+    "withProps": { "type": "object", "properties": { "k": { "type": "string" } }, "additionalProperties": { "type": "string" } }
+  },
+  "required": ["labels"],
+  "additionalProperties": false
+}

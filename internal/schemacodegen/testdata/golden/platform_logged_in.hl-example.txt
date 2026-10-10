@@ -1,0 +1,23 @@
+{
+  <span class="hl-key">"email"</span>: <span class="hl-str">"string"</span>,
+  <span class="hl-key">"federatedClaims"</span>: {
+    <span class="hl-key">"accessToken"</span>: {},
+    <span class="hl-key">"idToken"</span>: {}
+  },
+  <span class="hl-key">"flowcatalystClaims"</span>: {
+    <span class="hl-key">"applications"</span>: [
+      <span class="hl-str">"string"</span>
+    ],
+    <span class="hl-key">"clients"</span>: [
+      <span class="hl-str">"string"</span>
+    ],
+    <span class="hl-key">"email"</span>: <span class="hl-str">"string"</span>,
+    <span class="hl-key">"roles"</span>: [
+      <span class="hl-str">"string"</span>
+    ],
+    <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+  },
+  <span class="hl-key">"identityProviderCode"</span>: {},
+  <span class="hl-key">"loginMethod"</span>: <span class="hl-str">"string"</span>,
+  <span class="hl-key">"userId"</span>: <span class="hl-str">"string"</span>
+}

@@ -1,0 +1,69 @@
+{
+  <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+  <span class="hl-key">"properties"</span>: {
+    <span class="hl-key">"labels"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"additionalProperties"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+      }
+    },
+    <span class="hl-key">"counters"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"additionalProperties"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"integer"</span>
+      }
+    },
+    <span class="hl-key">"free"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"additionalProperties"</span>: <span class="hl-kw">true</span>
+    },
+    <span class="hl-key">"closed"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"additionalProperties"</span>: <span class="hl-kw">false</span>
+    },
+    <span class="hl-key">"patterned"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"patternProperties"</span>: {
+        <span class="hl-key">"^x-"</span>: {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"number"</span>
+        }
+      }
+    },
+    <span class="hl-key">"bare"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>
+    },
+    <span class="hl-key">"nestedMap"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"additionalProperties"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+        <span class="hl-key">"additionalProperties"</span>: {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"boolean"</span>
+        }
+      }
+    },
+    <span class="hl-key">"listMap"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"additionalProperties"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"array"</span>,
+        <span class="hl-key">"items"</span>: {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+        }
+      }
+    },
+    <span class="hl-key">"withProps"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"object"</span>,
+      <span class="hl-key">"properties"</span>: {
+        <span class="hl-key">"k"</span>: {
+          <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+        }
+      },
+      <span class="hl-key">"additionalProperties"</span>: {
+        <span class="hl-key">"type"</span>: <span class="hl-str">"string"</span>
+      }
+    }
+  },
+  <span class="hl-key">"required"</span>: [
+    <span class="hl-str">"labels"</span>
+  ],
+  <span class="hl-key">"additionalProperties"</span>: <span class="hl-kw">false</span>
+}

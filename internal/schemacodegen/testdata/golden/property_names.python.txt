@@ -1,0 +1,96 @@
+from __future__ import annotations
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class OrderLineItemAddedData:
+    10: str
+    kebab-case-name: str
+    camel_case_name: str
+    class: str
+    1: str | None = None
+    2: str | None = None
+    4294967294: str | None = None
+    snake_case_name: str | None = None
+    pascal_case_name: str | None = None
+    h_t_t_p_status_code: int | None = None
+    9lives: str | None = None
+    int: int | None = None
+    public: bool | None = None
+    def: str | None = None
+    import: str | None = None
+    new: str | None = None
+    return: str | None = None
+    function: str | None = None
+    none: str | None = None
+    with space: str | None = None
+    dotted.name: str | None = None
+    anything: str | None = None
+    : str | None = None
+    b: str | None = None
+    01: str | None = None
+    a: str | None = None
+    4294967295: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OrderLineItemAddedData:
+        return cls(
+            10=data.get("10"),
+            kebab-case-name=data.get("kebab-case-name"),
+            camel_case_name=data.get("camelCaseName"),
+            class=data.get("class"),
+            1=data.get("1"),
+            2=data.get("2"),
+            4294967294=data.get("4294967294"),
+            snake_case_name=data.get("snake_case_name"),
+            pascal_case_name=data.get("PascalCaseName"),
+            h_t_t_p_status_code=data.get("HTTPStatusCode"),
+            9lives=data.get("9lives"),
+            int=data.get("int"),
+            public=data.get("public"),
+            def=data.get("def"),
+            import=data.get("import"),
+            new=data.get("new"),
+            return=data.get("return"),
+            function=data.get("function"),
+            none=data.get("None"),
+            with space=data.get("with space"),
+            dotted.name=data.get("dotted.name"),
+            anything=data.get("Anything"),
+            =data.get(""),
+            b=data.get("b"),
+            01=data.get("01"),
+            a=data.get("a"),
+            4294967295=data.get("4294967295"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "10": self.10,
+            "kebab-case-name": self.kebab-case-name,
+            "camelCaseName": self.camel_case_name,
+            "class": self.class,
+            "1": self.1,
+            "2": self.2,
+            "4294967294": self.4294967294,
+            "snake_case_name": self.snake_case_name,
+            "PascalCaseName": self.pascal_case_name,
+            "HTTPStatusCode": self.h_t_t_p_status_code,
+            "9lives": self.9lives,
+            "int": self.int,
+            "public": self.public,
+            "def": self.def,
+            "import": self.import,
+            "new": self.new,
+            "return": self.return,
+            "function": self.function,
+            "None": self.none,
+            "with space": self.with space,
+            "dotted.name": self.dotted.name,
+            "Anything": self.anything,
+            "": self.,
+            "b": self.b,
+            "01": self.01,
+            "a": self.a,
+            "4294967295": self.4294967295,
+        }

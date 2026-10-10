@@ -1,0 +1,3 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  [key: <span class="hl-type">string</span>]: <span class="hl-type">unknown</span>;
+}

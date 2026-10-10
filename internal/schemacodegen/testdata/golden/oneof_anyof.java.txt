@@ -1,0 +1,44 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public record UserCreatedData(
+    Object payload,
+    Object value,
+    Object dup,
+    List<String> listOf,
+    String nullFirst,
+    String allNull,
+    Object nestedAny,
+    String plain
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserCreatedData fromMap(Map<String, Object> map) {
+        return new UserCreatedData(
+            (Object) map.get("payload"),
+            (Object) map.get("value"),
+            (Object) map.get("dup"),
+            (List<String>) map.get("listOf"),
+            (String) map.get("nullFirst"),
+            (String) map.get("allNull"),
+            (Object) map.get("nestedAny"),
+            (String) map.get("plain")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("payload", payload);
+        map.put("value", value);
+        map.put("dup", dup);
+        map.put("listOf", listOf);
+        map.put("nullFirst", nullFirst);
+        map.put("allNull", allNull);
+        map.put("nestedAny", nestedAny);
+        map.put("plain", plain);
+        return map;
+    }
+}

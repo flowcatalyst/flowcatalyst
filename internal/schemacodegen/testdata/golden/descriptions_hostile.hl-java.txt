@@ -1,0 +1,43 @@
+<span class="hl-kw">package</span> com.platform.events.iam.user;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> UserCreatedData(
+    <span class="hl-type">String</span> a&lt;b&gt;&amp;c,
+    <span class="hl-type">String</span> q<span class="hl-str">&quot;uote,
+    Integer s'ingle,
+    Boolean amp&amp;lt;,
+    String &lt;/span&gt;&lt;script&gt;alert(1)&lt;/script&gt;,
+    String tick`s,
+    String back\slash,
+    String apos'const
+) {
+
+    @SuppressWarnings(&quot;</span>unchecked<span class="hl-str">&quot;)
+    public static UserCreatedData fromMap(Map&lt;String, Object&gt; map) {
+        return new UserCreatedData(
+            (String) map.get(&quot;</span>a&lt;b&gt;&amp;c<span class="hl-str">&quot;),
+            (String) map.get(&quot;</span>q<span class="hl-str">&quot;uote&quot;</span>),
+            (<span class="hl-type">Integer</span>) map.get(<span class="hl-str">&quot;s'ingle&quot;</span>),
+            (<span class="hl-type">Boolean</span>) map.get(<span class="hl-str">&quot;amp&amp;lt;&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;&lt;/span&gt;&lt;script&gt;alert(1)&lt;/script&gt;&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;tick`s&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;back\slash&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;apos'const&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;a&lt;b&gt;&amp;c&quot;</span>, a&lt;b&gt;&amp;c);
+        map.put(<span class="hl-str">&quot;q&quot;</span>uote<span class="hl-str">&quot;, q&quot;</span>uote);
+        map.put(<span class="hl-str">&quot;s'ingle&quot;</span>, s'ingle);
+        map.put(<span class="hl-str">&quot;amp&amp;lt;&quot;</span>, amp&amp;lt;);
+        map.put(<span class="hl-str">&quot;&lt;/span&gt;&lt;script&gt;alert(1)&lt;/script&gt;&quot;</span>, &lt;/span&gt;&lt;script&gt;alert(<span class="hl-num">1</span>)&lt;/script&gt;);
+        map.put(<span class="hl-str">&quot;tick`s&quot;</span>, tick`s);
+        map.put(<span class="hl-str">&quot;back\slash&quot;</span>, back\slash);
+        map.put(<span class="hl-str">&quot;apos'const&quot;</span>, apos'const);
+        <span class="hl-kw">return</span> map;
+    }
+}

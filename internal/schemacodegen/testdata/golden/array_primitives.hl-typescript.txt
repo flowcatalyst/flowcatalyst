@@ -1,0 +1,7 @@
+<span class="hl-kw">export</span> <span class="hl-kw">interface</span> UserCreatedData {
+  names: <span class="hl-type">string</span>[];
+  scores: <span class="hl-type">number</span>[];
+  counts?: <span class="hl-type">number</span>[];
+  flags?: <span class="hl-type">boolean</span>[];
+  maybe?: (<span class="hl-type">string</span> | <span class="hl-type">null</span>)[];
+}

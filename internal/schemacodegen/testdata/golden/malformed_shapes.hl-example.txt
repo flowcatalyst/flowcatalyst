@@ -1,0 +1,18 @@
+{
+  <span class="hl-key">"propsAsArray"</span>: {
+    <span class="hl-key">"0"</span>: <span class="hl-str">"string"</span>,
+    <span class="hl-key">"1"</span>: <span class="hl-num">0</span>
+  },
+  <span class="hl-key">"propsAsTrue"</span>: {},
+  <span class="hl-key">"propsAsZero"</span>: {},
+  <span class="hl-key">"itemsFalse"</span>: [],
+  <span class="hl-key">"addlArray"</span>: {
+    <span class="hl-key">"key"</span>: {}
+  },
+  <span class="hl-key">"addlNull"</span>: {},
+  <span class="hl-key">"patternEmpty"</span>: {},
+  <span class="hl-key">"patternFalsy"</span>: {},
+  <span class="hl-key">"typeNumber"</span>: {},
+  <span class="hl-key">"typeMixedArray"</span>: {},
+  <span class="hl-key">"requiredBad"</span>: <span class="hl-str">"string"</span>
+}

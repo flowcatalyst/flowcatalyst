@@ -1,0 +1,37 @@
+package com.solo.events.domain.aggregate;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public record UnknownEventData(
+    String status,
+    Integer level,
+    Object mode,
+    String kind,
+    String version,
+    String flag
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UnknownEventData fromMap(Map<String, Object> map) {
+        return new UnknownEventData(
+            (String) map.get("status"),
+            (Integer) map.get("level"),
+            (Object) map.get("mode"),
+            (String) map.get("kind"),
+            (String) map.get("version"),
+            (String) map.get("flag")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("status", status);
+        map.put("level", level);
+        map.put("mode", mode);
+        map.put("kind", kind);
+        map.put("version", version);
+        map.put("flag", flag);
+        return map;
+    }
+}

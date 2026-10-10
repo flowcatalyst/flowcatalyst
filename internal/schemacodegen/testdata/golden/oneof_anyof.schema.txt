@@ -1,0 +1,111 @@
+{
+  "type": "object",
+  "properties": {
+    "payload": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "string"
+            },
+            "b": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "a"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "c": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "value": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    },
+    "dup": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        }
+      ]
+    },
+    "listOf": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "nullFirst": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "allNull": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nestedAny": {
+      "anyOf": [
+        {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    },
+    "plain": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "payload",
+    "value"
+  ]
+}

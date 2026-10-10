@@ -1,0 +1,75 @@
+<span class="hl-kw">from</span> __future__ <span class="hl-kw">import</span> annotations
+<span class="hl-kw">from</span> dataclasses <span class="hl-kw">import</span> dataclass
+
+
+<span class="hl-comment">@dataclass(frozen=True)</span>
+<span class="hl-kw">class</span> UserCreatedData:
+    one_point_zero: <span class="hl-type">str</span>
+    sci_hundred: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    tenth: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    tiny: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    small: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    edge_low: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    big: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    huge: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    e21: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    e20: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    neg_zero: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    neg_zero_f: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    neg: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    min_double: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    max_double: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    overflow: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    cap_e: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    third: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    <span class="hl-type">list</span>: <span class="hl-type">str</span> = <span class="hl-kw">None</span>
+    plain: <span class="hl-type">int</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+
+    @classmethod
+    <span class="hl-kw">def</span> from_dict(<span class="hl-kw">cls</span>, data: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]) -&gt; UserCreatedData:
+        <span class="hl-kw">return</span> <span class="hl-kw">cls</span>(
+            one_point_zero=data.get(<span class="hl-str">&quot;onePointZero&quot;</span>),
+            sci_hundred=data.get(<span class="hl-str">&quot;sciHundred&quot;</span>),
+            tenth=data.get(<span class="hl-str">&quot;tenth&quot;</span>),
+            tiny=data.get(<span class="hl-str">&quot;tiny&quot;</span>),
+            small=data.get(<span class="hl-str">&quot;small&quot;</span>),
+            edge_low=data.get(<span class="hl-str">&quot;edgeLow&quot;</span>),
+            big=data.get(<span class="hl-str">&quot;big&quot;</span>),
+            huge=data.get(<span class="hl-str">&quot;huge&quot;</span>),
+            e21=data.get(<span class="hl-str">&quot;e21&quot;</span>),
+            e20=data.get(<span class="hl-str">&quot;e20&quot;</span>),
+            neg_zero=data.get(<span class="hl-str">&quot;negZero&quot;</span>),
+            neg_zero_f=data.get(<span class="hl-str">&quot;negZeroF&quot;</span>),
+            neg=data.get(<span class="hl-str">&quot;neg&quot;</span>),
+            min_double=data.get(<span class="hl-str">&quot;minDouble&quot;</span>),
+            max_double=data.get(<span class="hl-str">&quot;maxDouble&quot;</span>),
+            overflow=data.get(<span class="hl-str">&quot;overflow&quot;</span>),
+            cap_e=data.get(<span class="hl-str">&quot;capE&quot;</span>),
+            third=data.get(<span class="hl-str">&quot;third&quot;</span>),
+            <span class="hl-type">list</span>=data.get(<span class="hl-str">&quot;list&quot;</span>),
+            plain=data.get(<span class="hl-str">&quot;plain&quot;</span>),
+        )
+
+    <span class="hl-kw">def</span> to_dict(<span class="hl-kw">self</span>) -&gt; <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]:
+        <span class="hl-kw">return</span> {
+            <span class="hl-str">&quot;onePointZero&quot;</span>: <span class="hl-kw">self</span>.one_point_zero,
+            <span class="hl-str">&quot;sciHundred&quot;</span>: <span class="hl-kw">self</span>.sci_hundred,
+            <span class="hl-str">&quot;tenth&quot;</span>: <span class="hl-kw">self</span>.tenth,
+            <span class="hl-str">&quot;tiny&quot;</span>: <span class="hl-kw">self</span>.tiny,
+            <span class="hl-str">&quot;small&quot;</span>: <span class="hl-kw">self</span>.small,
+            <span class="hl-str">&quot;edgeLow&quot;</span>: <span class="hl-kw">self</span>.edge_low,
+            <span class="hl-str">&quot;big&quot;</span>: <span class="hl-kw">self</span>.big,
+            <span class="hl-str">&quot;huge&quot;</span>: <span class="hl-kw">self</span>.huge,
+            <span class="hl-str">&quot;e21&quot;</span>: <span class="hl-kw">self</span>.e21,
+            <span class="hl-str">&quot;e20&quot;</span>: <span class="hl-kw">self</span>.e20,
+            <span class="hl-str">&quot;negZero&quot;</span>: <span class="hl-kw">self</span>.neg_zero,
+            <span class="hl-str">&quot;negZeroF&quot;</span>: <span class="hl-kw">self</span>.neg_zero_f,
+            <span class="hl-str">&quot;neg&quot;</span>: <span class="hl-kw">self</span>.neg,
+            <span class="hl-str">&quot;minDouble&quot;</span>: <span class="hl-kw">self</span>.min_double,
+            <span class="hl-str">&quot;maxDouble&quot;</span>: <span class="hl-kw">self</span>.max_double,
+            <span class="hl-str">&quot;overflow&quot;</span>: <span class="hl-kw">self</span>.overflow,
+            <span class="hl-str">&quot;capE&quot;</span>: <span class="hl-kw">self</span>.cap_e,
+            <span class="hl-str">&quot;third&quot;</span>: <span class="hl-kw">self</span>.third,
+            <span class="hl-str">&quot;list&quot;</span>: <span class="hl-kw">self</span>.<span class="hl-type">list</span>,
+            <span class="hl-str">&quot;plain&quot;</span>: <span class="hl-kw">self</span>.plain,
+        }

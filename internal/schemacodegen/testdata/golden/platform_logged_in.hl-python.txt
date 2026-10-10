@@ -1,0 +1,34 @@
+<span class="hl-kw">from</span> __future__ <span class="hl-kw">import</span> annotations
+<span class="hl-kw">from</span> typing <span class="hl-kw">import</span> <span class="hl-type">Any</span>
+<span class="hl-kw">from</span> dataclasses <span class="hl-kw">import</span> dataclass
+
+
+<span class="hl-comment">@dataclass(frozen=True)</span>
+<span class="hl-kw">class</span> UserLoggedInData:
+    email: <span class="hl-type">str</span>
+    flowcatalyst_claims: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]
+    login_method: <span class="hl-type">str</span>
+    user_id: <span class="hl-type">str</span>
+    federated_claims: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>] | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+    identity_provider_code: <span class="hl-type">str</span> | <span class="hl-kw">None</span> = <span class="hl-kw">None</span>
+
+    @classmethod
+    <span class="hl-kw">def</span> from_dict(<span class="hl-kw">cls</span>, data: <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]) -&gt; UserLoggedInData:
+        <span class="hl-kw">return</span> <span class="hl-kw">cls</span>(
+            email=data.get(<span class="hl-str">&quot;email&quot;</span>),
+            flowcatalyst_claims=data.get(<span class="hl-str">&quot;flowcatalystClaims&quot;</span>),
+            login_method=data.get(<span class="hl-str">&quot;loginMethod&quot;</span>),
+            user_id=data.get(<span class="hl-str">&quot;userId&quot;</span>),
+            federated_claims=data.get(<span class="hl-str">&quot;federatedClaims&quot;</span>),
+            identity_provider_code=data.get(<span class="hl-str">&quot;identityProviderCode&quot;</span>),
+        )
+
+    <span class="hl-kw">def</span> to_dict(<span class="hl-kw">self</span>) -&gt; <span class="hl-type">dict</span>[<span class="hl-type">str</span>, <span class="hl-type">Any</span>]:
+        <span class="hl-kw">return</span> {
+            <span class="hl-str">&quot;email&quot;</span>: <span class="hl-kw">self</span>.email,
+            <span class="hl-str">&quot;flowcatalystClaims&quot;</span>: <span class="hl-kw">self</span>.flowcatalyst_claims,
+            <span class="hl-str">&quot;loginMethod&quot;</span>: <span class="hl-kw">self</span>.login_method,
+            <span class="hl-str">&quot;userId&quot;</span>: <span class="hl-kw">self</span>.user_id,
+            <span class="hl-str">&quot;federatedClaims&quot;</span>: <span class="hl-kw">self</span>.federated_claims,
+            <span class="hl-str">&quot;identityProviderCode&quot;</span>: <span class="hl-kw">self</span>.identity_provider_code,
+        }

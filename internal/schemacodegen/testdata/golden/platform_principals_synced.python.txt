@@ -1,0 +1,30 @@
+from __future__ import annotations
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class PrincipalsSyncedData:
+    application_code: str
+    created: int
+    deactivated: int
+    synced_emails: list[str]
+    updated: int
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PrincipalsSyncedData:
+        return cls(
+            application_code=data.get("applicationCode"),
+            created=data.get("created"),
+            deactivated=data.get("deactivated"),
+            synced_emails=data.get("syncedEmails"),
+            updated=data.get("updated"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "applicationCode": self.application_code,
+            "created": self.created,
+            "deactivated": self.deactivated,
+            "syncedEmails": self.synced_emails,
+            "updated": self.updated,
+        }

@@ -1,0 +1,106 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Flowcatalyst\Events\MyApp\SubDomain\OrderLine;
+
+final readonly class OrderLineItemAddedData
+{
+    public function __construct(
+        public ?string $1,
+        public ?string $2,
+        public string $10,
+        public ?string $4294967294,
+        public ?string $snake_case_name,
+        public string $kebab-case-name,
+        public string $camelCaseName,
+        public ?string $PascalCaseName,
+        public ?int $HTTPStatusCode,
+        public ?string $9lives,
+        public string $class,
+        public ?int $int,
+        public ?bool $public,
+        public ?string $def,
+        public ?string $import,
+        public ?string $new,
+        public ?string $return,
+        public ?string $function,
+        public ?string $None,
+        public ?string $with space,
+        public ?string $dotted.name,
+        public ?string $Anything,
+        public ?string $,
+        public ?string $b,
+        public ?string $01,
+        public ?string $a,
+        public ?string $4294967295,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            1: $data['1'],
+            2: $data['2'],
+            10: $data['10'],
+            4294967294: $data['4294967294'],
+            snake_case_name: $data['snake_case_name'],
+            kebab-case-name: $data['kebab-case-name'],
+            camelCaseName: $data['camelCaseName'],
+            PascalCaseName: $data['PascalCaseName'],
+            HTTPStatusCode: $data['HTTPStatusCode'],
+            9lives: $data['9lives'],
+            class: $data['class'],
+            int: $data['int'],
+            public: $data['public'],
+            def: $data['def'],
+            import: $data['import'],
+            new: $data['new'],
+            return: $data['return'],
+            function: $data['function'],
+            None: $data['None'],
+            with space: $data['with space'],
+            dotted.name: $data['dotted.name'],
+            Anything: $data['Anything'],
+            : $data[''],
+            b: $data['b'],
+            01: $data['01'],
+            a: $data['a'],
+            4294967295: $data['4294967295'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            '1' => $this->1,
+            '2' => $this->2,
+            '10' => $this->10,
+            '4294967294' => $this->4294967294,
+            'snake_case_name' => $this->snake_case_name,
+            'kebab-case-name' => $this->kebab-case-name,
+            'camelCaseName' => $this->camelCaseName,
+            'PascalCaseName' => $this->PascalCaseName,
+            'HTTPStatusCode' => $this->HTTPStatusCode,
+            '9lives' => $this->9lives,
+            'class' => $this->class,
+            'int' => $this->int,
+            'public' => $this->public,
+            'def' => $this->def,
+            'import' => $this->import,
+            'new' => $this->new,
+            'return' => $this->return,
+            'function' => $this->function,
+            'None' => $this->None,
+            'with space' => $this->with space,
+            'dotted.name' => $this->dotted.name,
+            'Anything' => $this->Anything,
+            '' => $this->,
+            'b' => $this->b,
+            '01' => $this->01,
+            'a' => $this->a,
+            '4294967295' => $this->4294967295,
+        ];
+    }
+}

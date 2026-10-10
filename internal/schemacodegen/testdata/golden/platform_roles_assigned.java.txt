@@ -1,0 +1,32 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public record UserRolesAssignedData(
+    List<String> added,
+    String principalId,
+    List<String> removed,
+    List<String> roles
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserRolesAssignedData fromMap(Map<String, Object> map) {
+        return new UserRolesAssignedData(
+            (List<String>) map.get("added"),
+            (String) map.get("principalId"),
+            (List<String>) map.get("removed"),
+            (List<String>) map.get("roles")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("added", added);
+        map.put("principalId", principalId);
+        map.put("removed", removed);
+        map.put("roles", roles);
+        return map;
+    }
+}

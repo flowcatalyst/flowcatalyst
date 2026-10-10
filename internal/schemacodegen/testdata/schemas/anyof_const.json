@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "color": { "anyOf": [{ "const": "red" }, { "const": "green" }, { "const": "blue" }] },
+    "maybeColor": { "anyOf": [{ "const": "red" }, { "const": "green" }, { "type": "null" }] },
+    "nested": { "anyOf": [{ "anyOf": [{ "const": "x" }, { "const": "y" }] }, { "const": "z" }] },
+    "oneOfConst": { "oneOf": [{ "const": 1 }, { "const": 2 }] },
+    "mixedConst": { "anyOf": [{ "const": "s" }, { "const": 3 }, { "const": null }, { "const": [1, "a", null] }] },
+    "objConst": { "const": { "a": 1, "b": [true, null] } }
+  },
+  "required": ["color", "mixedConst"]
+}

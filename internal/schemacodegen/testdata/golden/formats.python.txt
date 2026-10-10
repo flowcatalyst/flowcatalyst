@@ -1,0 +1,33 @@
+from __future__ import annotations
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    created_at: str
+    id: str
+    email: str
+    website: str | None = None
+    birthday: str | None = None
+    short: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            created_at=data.get("createdAt"),
+            id=data.get("id"),
+            email=data.get("email"),
+            website=data.get("website"),
+            birthday=data.get("birthday"),
+            short=data.get("short"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "createdAt": self.created_at,
+            "id": self.id,
+            "email": self.email,
+            "website": self.website,
+            "birthday": self.birthday,
+            "short": self.short,
+        }

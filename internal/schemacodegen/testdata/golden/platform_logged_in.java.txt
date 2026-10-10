@@ -1,0 +1,37 @@
+package com.platform.events.iam.user;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public record UserLoggedInData(
+    String email,
+    Map<String, Object> federatedClaims,
+    Map<String, Object> flowcatalystClaims,
+    String identityProviderCode,
+    String loginMethod,
+    String userId
+) {
+
+    @SuppressWarnings("unchecked")
+    public static UserLoggedInData fromMap(Map<String, Object> map) {
+        return new UserLoggedInData(
+            (String) map.get("email"),
+            (Map<String, Object>) map.get("federatedClaims"),
+            (Map<String, Object>) map.get("flowcatalystClaims"),
+            (String) map.get("identityProviderCode"),
+            (String) map.get("loginMethod"),
+            (String) map.get("userId")
+        );
+    }
+
+    public Map<String, Object> toMap() {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("email", email);
+        map.put("federatedClaims", federatedClaims);
+        map.put("flowcatalystClaims", flowcatalystClaims);
+        map.put("identityProviderCode", identityProviderCode);
+        map.put("loginMethod", loginMethod);
+        map.put("userId", userId);
+        return map;
+    }
+}

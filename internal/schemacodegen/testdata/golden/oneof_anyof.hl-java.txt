@@ -1,0 +1,44 @@
+<span class="hl-kw">package</span> com.platform.events.iam.user;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">List</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> UserCreatedData(
+    <span class="hl-type">Object</span> payload,
+    <span class="hl-type">Object</span> value,
+    <span class="hl-type">Object</span> dup,
+    <span class="hl-type">List</span>&lt;<span class="hl-type">String</span>&gt; listOf,
+    <span class="hl-type">String</span> nullFirst,
+    <span class="hl-type">String</span> allNull,
+    <span class="hl-type">Object</span> nestedAny,
+    <span class="hl-type">String</span> plain
+) {
+
+    <span class="hl-comment">@SuppressWarnings</span>(<span class="hl-str">&quot;unchecked&quot;</span>)
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> UserCreatedData fromMap(<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; map) {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> UserCreatedData(
+            (<span class="hl-type">Object</span>) map.get(<span class="hl-str">&quot;payload&quot;</span>),
+            (<span class="hl-type">Object</span>) map.get(<span class="hl-str">&quot;value&quot;</span>),
+            (<span class="hl-type">Object</span>) map.get(<span class="hl-str">&quot;dup&quot;</span>),
+            (<span class="hl-type">List</span>&lt;<span class="hl-type">String</span>&gt;) map.get(<span class="hl-str">&quot;listOf&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;nullFirst&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;allNull&quot;</span>),
+            (<span class="hl-type">Object</span>) map.get(<span class="hl-str">&quot;nestedAny&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;plain&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;payload&quot;</span>, payload);
+        map.put(<span class="hl-str">&quot;value&quot;</span>, value);
+        map.put(<span class="hl-str">&quot;dup&quot;</span>, dup);
+        map.put(<span class="hl-str">&quot;listOf&quot;</span>, listOf);
+        map.put(<span class="hl-str">&quot;nullFirst&quot;</span>, nullFirst);
+        map.put(<span class="hl-str">&quot;allNull&quot;</span>, allNull);
+        map.put(<span class="hl-str">&quot;nestedAny&quot;</span>, nestedAny);
+        map.put(<span class="hl-str">&quot;plain&quot;</span>, plain);
+        <span class="hl-kw">return</span> map;
+    }
+}

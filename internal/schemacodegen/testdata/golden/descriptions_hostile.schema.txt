@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "description": "Top </span><script>alert(1)</script> & \"quoted\" 'single' \\ backslash",
+  "properties": {
+    "a<b>&c": {
+      "type": "string",
+      "description": "has < > & \" ' and \\ and unicode é ☃ 😀"
+    },
+    "q\"uote": {
+      "type": "string"
+    },
+    "s'ingle": {
+      "type": "integer"
+    },
+    "amp&lt;": {
+      "type": "boolean",
+      "description": "&lt;script&gt;"
+    },
+    "</span><script>alert(1)</script>": {
+      "const": "</span><script>alert(2)</script>"
+    },
+    "tick`s": {
+      "const": "it's \"fine\" & <b>bold</b>"
+    },
+    "back\\slash": {
+      "const": "C:\\path\\to"
+    },
+    "apos'const": {
+      "anyOf": [
+        {
+          "const": "a'b"
+        },
+        {
+          "const": "c\"d"
+        }
+      ]
+    }
+  },
+  "required": [
+    "a<b>&c",
+    "q\"uote"
+  ]
+}

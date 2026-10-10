@@ -1,0 +1,79 @@
+<span class="hl-kw">package</span> com.platform.events.iam.user;
+
+<span class="hl-kw">import</span> java.util.<span class="hl-type">LinkedHashMap</span>;
+<span class="hl-kw">import</span> java.util.<span class="hl-type">Map</span>;
+
+<span class="hl-kw">public</span> <span class="hl-kw">record</span> UserCreatedData(
+    <span class="hl-type">String</span> onePointZero,
+    <span class="hl-type">String</span> sciHundred,
+    <span class="hl-type">String</span> tenth,
+    <span class="hl-type">String</span> tiny,
+    <span class="hl-type">String</span> small,
+    <span class="hl-type">String</span> edgeLow,
+    <span class="hl-type">String</span> big,
+    <span class="hl-type">String</span> huge,
+    <span class="hl-type">String</span> e21,
+    <span class="hl-type">String</span> e20,
+    <span class="hl-type">String</span> negZero,
+    <span class="hl-type">String</span> negZeroF,
+    <span class="hl-type">String</span> neg,
+    <span class="hl-type">String</span> minDouble,
+    <span class="hl-type">String</span> maxDouble,
+    <span class="hl-type">String</span> overflow,
+    <span class="hl-type">String</span> capE,
+    <span class="hl-type">String</span> third,
+    <span class="hl-type">String</span> list,
+    <span class="hl-type">Integer</span> plain
+) {
+
+    <span class="hl-comment">@SuppressWarnings</span>(<span class="hl-str">&quot;unchecked&quot;</span>)
+    <span class="hl-kw">public</span> <span class="hl-kw">static</span> UserCreatedData fromMap(<span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; map) {
+        <span class="hl-kw">return</span> <span class="hl-kw">new</span> UserCreatedData(
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;onePointZero&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;sciHundred&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;tenth&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;tiny&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;small&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;edgeLow&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;big&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;huge&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;e21&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;e20&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;negZero&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;negZeroF&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;neg&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;minDouble&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;maxDouble&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;overflow&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;capE&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;third&quot;</span>),
+            (<span class="hl-type">String</span>) map.get(<span class="hl-str">&quot;list&quot;</span>),
+            (<span class="hl-type">Integer</span>) map.get(<span class="hl-str">&quot;plain&quot;</span>)
+        );
+    }
+
+    <span class="hl-kw">public</span> <span class="hl-type">Map</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt; toMap() {
+        <span class="hl-kw">var</span> map = <span class="hl-kw">new</span> <span class="hl-type">LinkedHashMap</span>&lt;<span class="hl-type">String</span>, <span class="hl-type">Object</span>&gt;();
+        map.put(<span class="hl-str">&quot;onePointZero&quot;</span>, onePointZero);
+        map.put(<span class="hl-str">&quot;sciHundred&quot;</span>, sciHundred);
+        map.put(<span class="hl-str">&quot;tenth&quot;</span>, tenth);
+        map.put(<span class="hl-str">&quot;tiny&quot;</span>, tiny);
+        map.put(<span class="hl-str">&quot;small&quot;</span>, small);
+        map.put(<span class="hl-str">&quot;edgeLow&quot;</span>, edgeLow);
+        map.put(<span class="hl-str">&quot;big&quot;</span>, big);
+        map.put(<span class="hl-str">&quot;huge&quot;</span>, huge);
+        map.put(<span class="hl-str">&quot;e21&quot;</span>, e21);
+        map.put(<span class="hl-str">&quot;e20&quot;</span>, e20);
+        map.put(<span class="hl-str">&quot;negZero&quot;</span>, negZero);
+        map.put(<span class="hl-str">&quot;negZeroF&quot;</span>, negZeroF);
+        map.put(<span class="hl-str">&quot;neg&quot;</span>, neg);
+        map.put(<span class="hl-str">&quot;minDouble&quot;</span>, minDouble);
+        map.put(<span class="hl-str">&quot;maxDouble&quot;</span>, maxDouble);
+        map.put(<span class="hl-str">&quot;overflow&quot;</span>, overflow);
+        map.put(<span class="hl-str">&quot;capE&quot;</span>, capE);
+        map.put(<span class="hl-str">&quot;third&quot;</span>, third);
+        map.put(<span class="hl-str">&quot;list&quot;</span>, list);
+        map.put(<span class="hl-str">&quot;plain&quot;</span>, plain);
+        <span class="hl-kw">return</span> map;
+    }
+}

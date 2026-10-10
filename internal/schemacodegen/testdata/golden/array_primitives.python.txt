@@ -1,0 +1,30 @@
+from __future__ import annotations
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UserCreatedData:
+    names: list[str]
+    scores: list[float]
+    counts: list[int] | None = None
+    flags: list[bool] | None = None
+    maybe: list[str | None] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UserCreatedData:
+        return cls(
+            names=data.get("names"),
+            scores=data.get("scores"),
+            counts=data.get("counts"),
+            flags=data.get("flags"),
+            maybe=data.get("maybe"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "names": self.names,
+            "scores": self.scores,
+            "counts": self.counts,
+            "flags": self.flags,
+            "maybe": self.maybe,
+        }

@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "properties": {
+    "snake_case_name": { "type": "string" },
+    "kebab-case-name": { "type": "string" },
+    "camelCaseName": { "type": "string" },
+    "PascalCaseName": { "type": "string" },
+    "HTTPStatusCode": { "type": "integer" },
+    "9lives": { "type": "string" },
+    "class": { "type": "string" },
+    "int": { "type": "integer" },
+    "public": { "type": "boolean" },
+    "def": { "type": "string" },
+    "import": { "type": "string" },
+    "new": { "type": "string" },
+    "return": { "type": "string" },
+    "function": { "type": "string" },
+    "None": { "type": "string" },
+    "with space": { "type": "string" },
+    "dotted.name": { "type": "string" },
+    "Anything": { "type": "string" },
+    "": { "type": "string" },
+    "2": { "type": "string" },
+    "10": { "type": "string" },
+    "1": { "type": "string" },
+    "b": { "type": "string" },
+    "01": { "type": "string" },
+    "a": { "type": "string" },
+    "4294967295": { "type": "string" },
+    "4294967294": { "type": "string" }
+  },
+  "required": ["class", "10", "kebab-case-name", "camelCaseName"]
+}
