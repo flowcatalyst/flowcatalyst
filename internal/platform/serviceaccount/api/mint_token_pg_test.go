@@ -65,6 +65,7 @@ func TestMintServiceAccountToken(t *testing.T) {
 	s := &State{
 		Repo:       saRepo,
 		Principals: principals,
+		Roles:      role.NewRepository(pool),
 		Auth:       svc,
 		FlattenPermissions: func(_ context.Context, _ []string) ([]string, error) {
 			return []string{"platform:events:create"}, nil
@@ -142,6 +143,7 @@ func TestMintServiceAccountTokenCarriesApplicationScope(t *testing.T) {
 	s := &State{
 		Repo:       saRepo,
 		Principals: principals,
+		Roles:      role.NewRepository(pool),
 		Auth:       svc,
 		FlattenPermissions: func(_ context.Context, _ []string) ([]string, error) {
 			return []string{"platform:events:create"}, nil
@@ -185,7 +187,7 @@ func TestServiceAccountRolesAgreeAcrossRoutes(t *testing.T) {
 		roleops.CreateCommand{ApplicationCode: "agree", RoleName: "beta", DisplayName: "Beta"}, testpg.TestEC())
 	require.NoError(t, err)
 
-	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.AssignRolesToServiceAccount(saRepo, principals),
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.AssignRolesToServiceAccount(saRepo, principals, role.NewRepository(pool)),
 		operations.AssignRolesCommand{ServiceAccountID: res.ServiceAccount.ID, Roles: []string{roleA.Name, roleB.Name}},
 		testpg.TestEC())
 	require.NoError(t, err)
@@ -235,6 +237,7 @@ func TestMintStampsLastUsedAt(t *testing.T) {
 	s := &State{
 		Repo:       saRepo,
 		Principals: principals,
+		Roles:      role.NewRepository(pool),
 		Auth:       svc,
 		FlattenPermissions: func(_ context.Context, _ []string) ([]string, error) {
 			return []string{"platform:events:create"}, nil

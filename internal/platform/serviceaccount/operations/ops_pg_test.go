@@ -15,6 +15,7 @@ import (
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
@@ -554,7 +555,7 @@ func TestAssignRolesToServiceAccount_HappyPathAndReplace(t *testing.T) {
 	res := mustProvision(t, saRepo, principals, oauthRepo, uow, "saroles-happy", "Roles Happy")
 	saID := res.ServiceAccount.ID
 
-	first, err := runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals),
+	first, err := runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals, role.NewRepository(pool)),
 		operations.AssignRolesCommand{ServiceAccountID: saID, Roles: []string{"saroles:admin", "saroles:viewer"}})
 	require.NoError(t, err)
 	assert.Equal(t, saID, first.ServiceAccountID)
@@ -573,7 +574,7 @@ func TestAssignRolesToServiceAccount_HappyPathAndReplace(t *testing.T) {
 	assert.ElementsMatch(t, []string{"saroles:admin", "saroles:viewer"}, gotRoles)
 
 	// Declarative replace: the event carries the set-difference.
-	second, err := runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals),
+	second, err := runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals, role.NewRepository(pool)),
 		operations.AssignRolesCommand{ServiceAccountID: saID, Roles: []string{"saroles:viewer", "saroles:auditor"}})
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"saroles:auditor"}, second.RolesAdded)
@@ -597,11 +598,11 @@ func TestAssignRolesToServiceAccount_Errors(t *testing.T) {
 	principals := principal.NewRepository(pool)
 	uow := testpg.NewUoW(t)
 
-	_, err := runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals),
+	_, err := runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals, role.NewRepository(pool)),
 		operations.AssignRolesCommand{Roles: []string{"x"}})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "SERVICE_ACCOUNT_ID_REQUIRED")
 
-	_, err = runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals),
+	_, err = runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals, role.NewRepository(pool)),
 		operations.AssignRolesCommand{ServiceAccountID: "sa_doesnotexist1", Roles: []string{"x"}})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ServiceAccount_NOT_FOUND")
 }

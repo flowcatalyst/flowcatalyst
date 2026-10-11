@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -34,9 +36,15 @@ const serviceAccountRoleSource = "ADMIN_ASSIGNED"
 // the junction in the same transaction as the event. (The previous version
 // mutated the service-account aggregate, whose Persist never touched the
 // junction, so assignments were silently dropped.)
+//
+// The role ceiling (role.RequireRolesWithinCaller, F8) bounds the change: the
+// caller may add or remove only roles whose platform permissions it holds, so
+// a holder of service-account:update cannot give an account (and then mint
+// its token) authority it does not have itself. 403 ROLE_ABOVE_CALLER.
 func AssignRolesToServiceAccount(
 	saRepo *serviceaccount.Repository,
 	principals *principal.Repository,
+	roles *role.Repository,
 ) usecaseop.Operation[AssignRolesCommand, ServiceAccountRolesAssigned] {
 	return usecaseop.Operation[AssignRolesCommand, ServiceAccountRolesAssigned]{
 		Name: "AssignRolesToServiceAccount",
@@ -46,9 +54,9 @@ func AssignRolesToServiceAccount(
 			}
 			return nil
 		},
-		// The coarse anchor-only permission is enforced at the controller; this
-		// admin-managed assignment has no per-client resource check, so the
-		// operation is intentionally open.
+		// The permission, anchor reach and application confinement are the
+		// controller's (authorizeWrite); the role ceiling runs post-load in
+		// Execute, against the account's current roles.
 		Authorize: usecaseop.Public[AssignRolesCommand],
 		Execute: func(ctx context.Context, cmd AssignRolesCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ServiceAccountRolesAssigned], error) {
 			sa, err := saRepo.FindByID(ctx, cmd.ServiceAccountID)
@@ -68,6 +76,15 @@ func AssignRolesToServiceAccount(
 			if p == nil {
 				return nil, usecase.Internal("PRINCIPAL", "service account has no linked principal",
 					errors.New("no SERVICE principal for service account "+cmd.ServiceAccountID))
+			}
+
+			previous := make([]string, 0, len(p.Roles))
+			for _, ra := range p.Roles {
+				previous = append(previous, ra.Role)
+			}
+			if err := role.RequireRolesWithinCaller(ctx, auth.FromContext(ctx),
+				role.ChangedRoles(previous, cmd.Roles), role.PermissionsFrom(roles)); err != nil {
+				return nil, err
 			}
 
 			// Set-difference for added/removed against the principal's current roles.

@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -40,6 +41,9 @@ type State struct {
 	// needs one assigned-client grant per link.
 	Clients *client.Repository
 	Grants  *principal.ClientAccessGrantRepo
+	// Roles backs the role ceiling (F8) on assigning roles and on the admin
+	// token mint. Required by both; nil refuses them (fail closed).
+	Roles *role.Repository
 	// Auth mints the admin-requested bearer on POST /{id}/token. Optional —
 	// nil disables that endpoint (fail closed).
 	Auth *authservice.AuthService
@@ -327,7 +331,10 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicomm
 	// The operation resolves the linked SERVICE principal, computes the
 	// added/removed diff, and writes iam_principal_roles in one transaction;
 	// the 404 for an unknown id is raised there too.
-	ev, err := usecaseop.Run(ctx, s.UoW, operations.AssignRolesToServiceAccount(s.Repo, s.Principals),
+	if s.Roles == nil {
+		return nil, usecase.Internal("ROLES", "role ceiling is not wired", nil)
+	}
+	ev, err := usecaseop.Run(ctx, s.UoW, operations.AssignRolesToServiceAccount(s.Repo, s.Principals, s.Roles),
 		operations.AssignRolesCommand{ServiceAccountID: in.ID, Roles: in.Body.Roles}, ec)
 	if err != nil {
 		return nil, err
@@ -403,14 +410,23 @@ func (s *State) mintToken(ctx context.Context, in *apicommon.IDInput) (*apicommo
 			"the service account's principal is deactivated")
 	}
 
+	names := make([]string, 0, len(p.Roles))
+	for _, ra := range p.Roles {
+		names = append(names, ra.Role)
+	}
+	// The minted bearer carries the account's whole authority, so the caller
+	// must hold it: every platform permission of every role the account holds
+	// (the role ceiling, F8). Otherwise a holder of service-account:update
+	// could mint a token for an account a super-admin had made stronger than
+	// the caller. 403 ROLE_ABOVE_CALLER.
+	if err := s.requireMintWithinCaller(ctx, ac, names); err != nil {
+		return nil, err
+	}
+
 	// Same grant computation as the client_credentials path: the principal's
 	// full permission ceiling, flattened from its roles.
 	var granted []string
 	if s.FlattenPermissions != nil {
-		names := make([]string, 0, len(p.Roles))
-		for _, ra := range p.Roles {
-			names = append(names, ra.Role)
-		}
 		if granted, err = s.FlattenPermissions(ctx, names); err != nil {
 			return nil, usecase.Internal("SCOPE", "permission flattening failed", err)
 		}
@@ -449,6 +465,24 @@ func (s *State) mintToken(ctx context.Context, in *apicommon.IDInput) (*apicommo
 		resp.Scope = &j
 	}
 	return &apicommon.Out[ServiceAccountTokenResponse]{Body: resp}, nil
+}
+
+// requireMintWithinCaller refuses a mint for an account holding a role the
+// caller could not assign (role.RolesAboveCaller), naming the roles.
+func (s *State) requireMintWithinCaller(ctx context.Context, ac *auth.AuthContext, roleNames []string) error {
+	if s.Roles == nil {
+		return usecase.Internal("ROLES", "role ceiling is not wired", nil)
+	}
+	above, err := role.RolesAboveCaller(ctx, ac, roleNames, role.PermissionsFrom(s.Roles))
+	if err != nil {
+		return err
+	}
+	if len(above) == 0 {
+		return nil
+	}
+	return usecase.Authorization(role.CeilingCode,
+		"You may only mint a token for a service account whose roles' permissions you hold yourself: "+
+			strings.Join(above, ", "))
 }
 
 func (s *State) regenerateSigningSecret(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[RegenerateSigningSecretResponse], error) {
