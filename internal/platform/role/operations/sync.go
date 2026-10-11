@@ -28,7 +28,11 @@ type SyncPlatformRolesCommand struct{}
 // Authorization is [usecaseop.Public]: the catalogue is static code with no
 // client or application dimension, so there is no per-resource check. The sole
 // entry point (the anchor-only BFF /bff/roles/sync-platform) does the coarse
-// gate (RequireAnchor).
+// gate (RequireAnchor and the three role permissions). The permission ceiling
+// (F10) bounds the change: every platform permission the sync adds to or
+// removes from a role (restoring a role trimmed by hand, sweeping a stale one)
+// must be the caller's, or the whole sync is refused before any write, 403
+// role.PermissionCeilingCode.
 //
 // Rules:
 //   - For each role in the catalogue:
@@ -51,6 +55,7 @@ func SyncPlatformRoles(repo *role.Repository, codeRoles []role.Role) usecaseop.O
 				updated    uint32
 				removed    uint32
 				codeByName = make(map[string]struct{}, len(codeRoles))
+				changed    []string
 			)
 
 			for i := range codeRoles {
@@ -69,6 +74,7 @@ func SyncPlatformRoles(repo *role.Repository, codeRoles []role.Role) usecaseop.O
 					}
 					existing.DisplayName = def.DisplayName
 					existing.Description = def.Description
+					changed = append(changed, role.ChangedPermissions(existing.Permissions, def.Permissions)...)
 					existing.Permissions = append([]string(nil), def.Permissions...)
 					saves = append(saves, usecasepgx.SyncSaveItem[role.Role]{
 						Aggregate: existing,
@@ -87,6 +93,7 @@ func SyncPlatformRoles(repo *role.Repository, codeRoles []role.Role) usecaseop.O
 				row.Description = def.Description
 				row.Permissions = append([]string(nil), def.Permissions...)
 				row.Source = role.SourceCode
+				changed = append(changed, row.Permissions...)
 				saves = append(saves, usecasepgx.SyncSaveItem[role.Role]{
 					Aggregate: row,
 					Event: RoleCreated{
@@ -117,6 +124,7 @@ func SyncPlatformRoles(repo *role.Repository, codeRoles []role.Role) usecaseop.O
 						"role", cur.Name, "assignments", count)
 					continue
 				}
+				changed = append(changed, cur.Permissions...)
 				deletes = append(deletes, usecasepgx.SyncDeleteItem[role.Role]{
 					Aggregate: &cur,
 					Event: RoleDeleted{
@@ -126,6 +134,10 @@ func SyncPlatformRoles(repo *role.Repository, codeRoles []role.Role) usecaseop.O
 					},
 				})
 				removed++
+			}
+
+			if err := role.RequirePermissionsWithinCaller(auth.FromContext(ctx), changed); err != nil {
+				return nil, err
 			}
 
 			rollup := RolesSynced{
@@ -178,6 +190,11 @@ type SyncRolesCommand struct {
 // Authorization: the controller does the coarse "may sync roles" check and
 // resolves the application; the use case enforces the per-resource rule — the
 // caller must have access to the target application (CanAccessApplication).
+// The permission ceiling (F10) bounds the change: a platform permission a
+// synced role gains or loses (a removed role loses them all) must be the
+// caller's, or the whole sync is refused before any write, 403
+// role.PermissionCeilingCode. An application's own permissions are outside
+// it, so an SDK syncing them passes for any caller.
 //
 // Emits per-row [RoleCreated]/[RoleUpdated]/[RoleDeleted] events plus one
 // [RolesSynced] rollup, all atomic with the row writes via [usecaseop.Sync].
@@ -217,6 +234,7 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 				created     uint32
 				updated     uint32
 				deleted     uint32
+				changed     []string
 			)
 
 			for _, in := range cmd.Roles {
@@ -240,6 +258,7 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 					// in the FlowCatalyst UI; an empty/omitted list must NOT wipe them.
 					// Only a non-empty list replaces the stored permissions.
 					if len(in.Permissions) > 0 {
+						changed = append(changed, role.ChangedPermissions(cur.Permissions, in.Permissions)...)
 						cur.Permissions = append([]string(nil), in.Permissions...)
 					}
 					cur.ClientManaged = in.ClientManaged
@@ -264,6 +283,7 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 				row.Description = in.Description
 				row.Permissions = append([]string(nil), in.Permissions...)
 				row.ClientManaged = in.ClientManaged
+				changed = append(changed, row.Permissions...)
 				saves = append(saves, usecasepgx.SyncSaveItem[role.Role]{
 					Aggregate: row,
 					Event: RoleCreated{
@@ -293,6 +313,7 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 							fmt.Sprintf("Cannot remove role '%s' — %d principal(s) still hold it. "+
 								"Strip the assignments before syncing.", cur.Name, count))
 					}
+					changed = append(changed, cur.Permissions...)
 					deletes = append(deletes, usecasepgx.SyncDeleteItem[role.Role]{
 						Aggregate: cur,
 						Event: RoleDeleted{
@@ -303,6 +324,10 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 					})
 					deleted++
 				}
+			}
+
+			if err := role.RequirePermissionsWithinCaller(auth.FromContext(ctx), changed); err != nil {
+				return nil, err
 			}
 
 			rollup := RolesSynced{

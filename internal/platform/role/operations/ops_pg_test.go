@@ -633,3 +633,63 @@ func TestSyncPlatformRoles_CatalogueLifecycle(t *testing.T) {
 	require.NotNil(t, admin, "production catalogue rows must never be swept")
 	assert.Equal(t, role.SourceCode, admin.Source)
 }
+
+// TestSyncPlatformRoles_BoundedByCallersPermissions: the permission ceiling
+// (F10) on POST /bff/roles/sync-platform. The catalogue is code, but the sync
+// adds and removes platform permissions (restoring a role trimmed by hand,
+// sweeping a stale one), so a caller may run it only when every platform
+// permission it changes is one it holds. SERIAL, after the lifecycle test,
+// for the same reason (the sync sweeps every CODE role absent from the
+// catalogue).
+func TestSyncPlatformRoles_BoundedByCallersPermissions(t *testing.T) {
+	ctx := context.Background()
+	repo := role.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	ec := testpg.TestEC()
+
+	const (
+		view = "platform:roleceil:thing:view"
+		edit = "platform:roleceil:thing:edit"
+	)
+	mk := func(perms ...string) role.Role {
+		r := role.New("roleceil", "code", "Code ceiling")
+		r.Source = role.SourceCode
+		r.Permissions = perms
+		return *r
+	}
+	with := func(extra ...role.Role) []role.Role {
+		return append(append([]role.Role{}, seed.PlatformRoles()...), extra...)
+	}
+	sync := func(c context.Context, catalogue []role.Role) error {
+		_, err := usecaseop.Run(c, uow, operations.SyncPlatformRoles(repo, catalogue), operations.SyncPlatformRolesCommand{}, ec)
+		return err
+	}
+	lesser := testpg.WithAuth(ctx, &auth.AuthContext{
+		PrincipalID: "prn_roleceilsync1", Scope: auth.ScopeAnchor,
+		Permissions: []string{"platform:iam:role:create", "platform:iam:role:update", "platform:iam:role:delete", view},
+	})
+	permsOf := func() []string {
+		r, err := repo.FindByName(ctx, "roleceil:code")
+		require.NoError(t, err)
+		if r == nil {
+			return nil
+		}
+		return r.Permissions
+	}
+
+	require.NoError(t, sync(testpg.AnchorCtx(), with(mk(view))))
+	require.NoError(t, sync(lesser, with(mk(view))), "nothing changes, nothing to check")
+
+	err := sync(lesser, with(mk(view, edit)))
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "PERMISSION_ABOVE_CALLER")
+	assert.Contains(t, err.Error(), edit)
+	assert.Equal(t, []string{view}, permsOf(), "a refused sync writes nothing")
+
+	require.NoError(t, sync(testpg.AnchorCtx(), with(mk(view, edit))), "the wildcard holder may")
+	err = sync(lesser, with())
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "PERMISSION_ABOVE_CALLER")
+	assert.ElementsMatch(t, []string{view, edit}, permsOf(), "sweeping the role removes a lacking permission")
+
+	require.NoError(t, sync(testpg.AnchorCtx(), with()))
+	assert.Nil(t, permsOf())
+}

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -27,8 +28,11 @@ func DeleteRole(repo *role.Repository) usecaseop.Operation[DeleteCommand, RoleDe
 			return nil
 		},
 		// Roles are global (no per-client resource dimension), so there is no
-		// use-case-level authz; the coarse CanDeleteRoles permission is enforced
-		// at the controller.
+		// per-resource authz; the coarse CanDeleteRoles permission is enforced
+		// at the controller. The permission ceiling (F10) is checked post-load:
+		// deleting a role strips it from everyone holding it, so it removes
+		// each of its permissions, and each platform one must be the caller's
+		// (403 role.PermissionCeilingCode).
 		Authorize: usecaseop.Public[DeleteCommand],
 		Execute: func(ctx context.Context, cmd DeleteCommand, ec usecase.ExecutionContext) (usecaseop.Plan[RoleDeleted], error) {
 			r, err := repo.FindByID(ctx, cmd.ID)
@@ -40,6 +44,9 @@ func DeleteRole(repo *role.Repository) usecaseop.Operation[DeleteCommand, RoleDe
 			}
 			if r.Source == role.SourceCode {
 				return nil, usecase.Conflict("CODE_ROLE_IMMUTABLE", "Roles with source=CODE cannot be deleted")
+			}
+			if err := role.RequirePermissionsWithinCaller(auth.FromContext(ctx), r.Permissions); err != nil {
+				return nil, err
 			}
 			event := RoleDeleted{
 				Metadata: usecase.NewEventMetadata(ec, RoleDeletedType, Source, subjectFor(r.ID)),

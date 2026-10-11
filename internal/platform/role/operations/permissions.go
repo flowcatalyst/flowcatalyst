@@ -3,10 +3,12 @@ package operations
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -35,8 +37,10 @@ func GrantPermission(repo *role.Repository) usecaseop.Operation[GrantPermissionC
 			return nil
 		},
 		// Roles are global (no per-client resource dimension), so there is no
-		// use-case-level authz; the permission for the operation (CanCreateRoles,
-		// CanUpdateRoles) is enforced at the controller.
+		// per-resource authz; the permission for the operation (CanUpdateRoles)
+		// is enforced at the controller. The permission ceiling (F10) is checked
+		// post-load on the change (a no-op change is not checked), 403
+		// role.PermissionCeilingCode.
 		Authorize: usecaseop.Public[GrantPermissionCommand],
 		Execute: func(ctx context.Context, cmd GrantPermissionCommand, ec usecase.ExecutionContext) (usecaseop.Plan[RolePermissionGranted], error) {
 			r, err := repo.FindByName(ctx, cmd.RoleName)
@@ -46,7 +50,12 @@ func GrantPermission(repo *role.Repository) usecaseop.Operation[GrantPermissionC
 			if r == nil {
 				return nil, httperror.NotFound("Role", cmd.RoleName)
 			}
+			before := slices.Clone(r.Permissions)
 			r.GrantPermission(cmd.Permission)
+			if err := role.RequirePermissionsWithinCaller(auth.FromContext(ctx),
+				role.ChangedPermissions(before, r.Permissions)); err != nil {
+				return nil, err
+			}
 			event := RolePermissionGranted{
 				Metadata:   usecase.NewEventMetadata(ec, RolePermissionGrantedType, Source, subjectFor(r.ID)),
 				RoleID:     r.ID,
@@ -78,8 +87,10 @@ func RevokePermission(repo *role.Repository) usecaseop.Operation[RevokePermissio
 			return nil
 		},
 		// Roles are global (no per-client resource dimension), so there is no
-		// use-case-level authz; the permission for the operation (CanCreateRoles,
-		// CanUpdateRoles) is enforced at the controller.
+		// per-resource authz; the permission for the operation (CanUpdateRoles)
+		// is enforced at the controller. The permission ceiling (F10) is checked
+		// post-load on the change (a no-op change is not checked), 403
+		// role.PermissionCeilingCode.
 		Authorize: usecaseop.Public[RevokePermissionCommand],
 		Execute: func(ctx context.Context, cmd RevokePermissionCommand, ec usecase.ExecutionContext) (usecaseop.Plan[RolePermissionRevoked], error) {
 			r, err := repo.FindByName(ctx, cmd.RoleName)
@@ -89,7 +100,12 @@ func RevokePermission(repo *role.Repository) usecaseop.Operation[RevokePermissio
 			if r == nil {
 				return nil, httperror.NotFound("Role", cmd.RoleName)
 			}
+			before := slices.Clone(r.Permissions)
 			r.RevokePermission(cmd.Permission)
+			if err := role.RequirePermissionsWithinCaller(auth.FromContext(ctx),
+				role.ChangedPermissions(before, r.Permissions)); err != nil {
+				return nil, err
+			}
 			event := RolePermissionRevoked{
 				Metadata:   usecase.NewEventMetadata(ec, RolePermissionRevokedType, Source, subjectFor(r.ID)),
 				RoleID:     r.ID,

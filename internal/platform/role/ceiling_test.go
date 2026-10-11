@@ -95,3 +95,31 @@ func TestChangedRoles(t *testing.T) {
 	assert.Equal(t, []string{"c", "a"}, ChangedRoles([]string{"a", "b"}, []string{"b", "c", "c"}))
 	assert.Empty(t, ChangedRoles([]string{"a"}, []string{"a"}))
 }
+
+// The permission ceiling (F10): the wildcard covers everything, a caller
+// lacking a platform permission cannot add or remove it, held wildcards cover
+// what they name, application permissions are outside it, and a nil caller
+// holds nothing.
+func TestPermissionCeiling(t *testing.T) {
+	require.NoError(t, RequirePermissionsWithinCaller(caller("platform:*:*:*"),
+		[]string{"platform:*:*:*", "platform:iam:user:create"}))
+
+	err := RequirePermissionsWithinCaller(caller("platform:iam:role:update"),
+		[]string{"platform:iam:role:update", "platform:*:*:*", "platform:iam:user:view", "platform:*:*:*"})
+	var ue *usecase.Error
+	require.True(t, errors.As(err, &ue))
+	assert.Equal(t, usecase.KindAuthorization, ue.Kind)
+	assert.Equal(t, PermissionCeilingCode, ue.Code)
+	assert.Equal(t, "You may only add or remove permissions you hold yourself: platform:*:*:*, platform:iam:user:view", ue.Message)
+
+	require.NoError(t, RequirePermissionsWithinCaller(caller("platform:iam:*:*"), []string{"platform:iam:user:create"}))
+	require.Error(t, RequirePermissionsWithinCaller(caller("platform:iam:user:*"), []string{"platform:iam:*:*"}))
+	require.NoError(t, RequirePermissionsWithinCaller(caller(), []string{"orders:order:create"}))
+	require.Error(t, RequirePermissionsWithinCaller(nil, []string{"platform:iam:user:view"}))
+	require.NoError(t, RequirePermissionsWithinCaller(nil, nil))
+}
+
+func TestChangedPermissions(t *testing.T) {
+	assert.Equal(t, []string{"p:c", "p:a"}, ChangedPermissions([]string{"p:a", "p:b"}, []string{"p:b", "p:c"}))
+	assert.Empty(t, ChangedPermissions([]string{"p:a", "p:b"}, []string{"p:b", "p:a"}))
+}

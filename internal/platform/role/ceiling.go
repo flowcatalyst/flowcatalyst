@@ -10,14 +10,19 @@ import (
 )
 
 // The role ceiling: nobody hands out platform authority they do not hold
-// (docs/platform-bug-fixes.md F8; the Java RoleCeiling and the Rust
-// role::ceiling make the same rule, with the same code and wording).
+// (docs/platform-bug-fixes.md F8 and F10; the Java RoleCeiling and the Rust
+// role::ceiling make the same rule, with the same codes and wording).
 //
-//   - A caller may add or remove a role only when it holds every one of that
-//     role's platform permissions. The rule applies to the change: roles the
-//     target keeps are not checked, so an administrator can still edit the
-//     other roles of someone who holds more than they do. Removal counts, so
-//     a lesser administrator cannot strip a super-admin.
+//   - Roles (F8). A caller may add or remove a role only when it holds every
+//     one of that role's platform permissions. The rule applies to the change:
+//     roles the target keeps are not checked, so an administrator can still
+//     edit the other roles of someone who holds more than they do. Removal
+//     counts, so a lesser administrator cannot strip a super-admin.
+//   - Permissions (F10). A caller may add a permission to a role, or remove
+//     one from it (deleting the role removes them all), only when it holds
+//     that permission. Otherwise the role rule is one edit away: add
+//     `platform:*:*:*` to a role you already hold. Again only the change is
+//     checked.
 //   - Platform permissions only: those whose first segment is `platform`, the
 //     authority an escalation reaches for and what `platform:*:*:*` covers. An
 //     application's own permissions (`orders:order:create`) are held by nobody
@@ -33,8 +38,13 @@ import (
 // application provisioning, the IdP role sync at login) do not run through
 // this rule: they act for no caller.
 
-// CeilingCode is the 403 code of a refusal (Java and Rust use the same code).
+// CeilingCode is the 403 code of a role refusal (Java and Rust use the same
+// code).
 const CeilingCode = "ROLE_ABOVE_CALLER"
+
+// PermissionCeilingCode is the 403 code of a permission refusal (Java and Rust
+// use the same code).
+const PermissionCeilingCode = "PERMISSION_ABOVE_CALLER"
 
 const platformPermissionPrefix = "platform:"
 
@@ -121,9 +131,28 @@ func RequireRolesWithinCaller(ctx context.Context, caller *auth.AuthContext, cha
 		"You may only assign or remove roles whose permissions you hold yourself: "+strings.Join(above, ", "))
 }
 
+// RequirePermissionsWithinCaller refuses, 403 PERMISSION_ABOVE_CALLER naming
+// the permissions, when any platform permission in changed is one caller does
+// not hold. Pass ChangedPermissions(before, after) for an edit, a new role's
+// permissions for a create, a deleted role's for a delete.
+func RequirePermissionsWithinCaller(caller *auth.AuthContext, changed []string) error {
+	above := PermissionsAboveCaller(caller, changed)
+	if len(above) == 0 {
+		return nil
+	}
+	return usecase.Authorization(PermissionCeilingCode,
+		"You may only add or remove permissions you hold yourself: "+strings.Join(above, ", "))
+}
+
+// ChangedPermissions is what an edit of a role's permissions from before to
+// after adds or removes (the same set difference as ChangedRoles).
+func ChangedPermissions(before, after []string) []string { return changed(before, after) }
+
 // ChangedRoles is what a change from before to after adds or removes: after
 // minus before, then before minus after, each in order and without repeats.
-func ChangedRoles(before, after []string) []string {
+func ChangedRoles(before, after []string) []string { return changed(before, after) }
+
+func changed(before, after []string) []string {
 	inBefore := make(map[string]struct{}, len(before))
 	for _, b := range before {
 		inBefore[b] = struct{}{}

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
@@ -36,8 +37,10 @@ func CreateRole(repo *role.Repository) usecaseop.Operation[CreateCommand, RoleCr
 			return nil
 		},
 		// Roles are global (no per-client resource dimension), so there is no
-		// use-case-level authz; the permission for the operation (CanCreateRoles,
-		// CanUpdateRoles) is enforced at the controller.
+		// per-resource authz; the permission for the operation (CanCreateRoles)
+		// is enforced at the controller. The permission ceiling (F10) is checked
+		// in Execute: the role may carry only platform permissions the caller
+		// holds, 403 role.PermissionCeilingCode.
 		Authorize: usecaseop.Public[CreateCommand],
 		Execute: func(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[RoleCreated], error) {
 			fullName := cmd.ApplicationCode + ":" + cmd.RoleName
@@ -53,6 +56,9 @@ func CreateRole(repo *role.Repository) usecaseop.Operation[CreateCommand, RoleCr
 			r.ClientManaged = cmd.ClientManaged
 			for _, p := range cmd.Permissions {
 				r.GrantPermission(p)
+			}
+			if err := role.RequirePermissionsWithinCaller(auth.FromContext(ctx), r.Permissions); err != nil {
+				return nil, err
 			}
 
 			event := RoleCreated{

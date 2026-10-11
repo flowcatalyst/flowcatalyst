@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -35,8 +36,10 @@ func UpdateRole(repo *role.Repository) usecaseop.Operation[UpdateCommand, RoleUp
 			return nil
 		},
 		// Roles are global (no per-client resource dimension), so there is no
-		// use-case-level authz; the permission for the operation (CanCreateRoles,
-		// CanUpdateRoles) is enforced at the controller.
+		// per-resource authz; the permission for the operation (CanUpdateRoles)
+		// is enforced at the controller. The permission ceiling (F10) is checked
+		// post-load: only platform permissions the caller holds may be added or
+		// removed, 403 role.PermissionCeilingCode.
 		Authorize: usecaseop.Public[UpdateCommand],
 		Execute: func(ctx context.Context, cmd UpdateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[RoleUpdated], error) {
 			r, err := repo.FindByID(ctx, cmd.ID)
@@ -56,6 +59,10 @@ func UpdateRole(repo *role.Repository) usecaseop.Operation[UpdateCommand, RoleUp
 				r.Description = cmd.Description
 			}
 			if cmd.Permissions != nil {
+				if err := role.RequirePermissionsWithinCaller(auth.FromContext(ctx),
+					role.ChangedPermissions(r.Permissions, cmd.Permissions)); err != nil {
+					return nil, err
+				}
 				r.Permissions = cmd.Permissions
 			}
 			if cmd.ClientManaged != nil {
