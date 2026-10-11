@@ -494,6 +494,87 @@ failed before its fix.
   add/remove role handlers; Rust already checks `user:assign-roles`. Both keep the syncs' any-of
   gate, as Go does.
 
+### F8. Role assignment not bounded by the caller's own permissions (owner instruction 2026-10-11)
+
+- **Found**: a holder of `service-account:update` could give any service account any role,
+  `platform:super-admin` included, then mint its token (`POST /api/service-accounts/{id}/token`)
+  and act as super-admin. The same gap on the user side: an anchor holder of
+  `user:assign-roles` could give anyone, itself included, super-admin; the principal syncs
+  (`POST /api/principals/sync`, `POST /api/applications/{appCode}/principals/sync`, gated on any
+  user permission) wrote whatever role names the body carried onto any email; and
+  `POST /api/applications/{id}/provision-service-account` checked anchor scope only, so any anchor
+  principal, an application's own service account included, could provision an account holding
+  `platform:application-service` for any application and take its client secret.
+- **Rule** (`role.RequireRolesWithinCaller`, `internal/platform/role/ceiling.go`; ported from Java
+  `RoleCeiling` and Rust `role::ceiling`, same code and wording): a caller may add or remove a role
+  only when it holds every one of that role's **platform** permissions (first segment `platform`),
+  matched with the enforcement rule (`auth.Grants`, segment wildcards). Holders of
+  `platform:*:*:*` may assign anything. The rule applies to the change (`role.ChangedRoles`): roles
+  the target keeps are not checked, removal counts (a lesser administrator cannot strip a
+  super-admin). A role name that does not exist grants nothing and is never above anyone. A nil
+  caller holds nothing; an unwired role repository refuses. Refusal: 403 `ROLE_ABOVE_CALLER`,
+  "You may only assign or remove roles whose permissions you hold yourself: <roles>".
+- **Chosen**: application permissions (`orders:order:view`) are outside the ceiling, as in Java and
+  Rust. Nobody outside an application's roles holds them, not even a super-admin by matching, so
+  a literal "subset of the caller's permissions" would stop every administrator, client
+  administrators included, from assigning application roles. They stay bounded by the existing
+  application rules (`assertAssignableRoles` for client administrators).
+- **Fix**, every path that gives a principal roles, with how each is treated:
+
+  | Path | Treatment |
+  | --- | --- |
+  | `PUT /api/service-accounts/{id}/roles` (`AssignRolesToServiceAccount`) | ceiling on the change, post-load (`09b33e8`) |
+  | `POST /api/service-accounts/{id}/token` (mint) | refused when the account holds a role above the caller: the token carries the account's whole authority. Same code, message "You may only mint a token for a service account whose roles' permissions you hold yourself" (`09b33e8`) |
+  | `PUT`/`POST /api/principals/{id}/roles`, `DELETE .../roles/{role}`, bulk-import rows (`AssignRoles`) | ceiling on the change, post-load, after the scope rules and role existence (`70c9ca7`); a refused import row reports "created, but roles not applied" |
+  | `POST /api/principals/sync`, `POST /api/applications/{appCode}/principals/sync` (`SyncPrincipals`) | ceiling on every role added or removed across the sync, before any write; the whole sync is refused (`e08eee4`). An SDK syncing its own application's roles (application permissions only) passes for any caller |
+  | `POST /api/applications/{id}/provision-service-account`, `/ui` provisioning | gate is now anchor + `service-account:create` + `application:update` (`auth.CanProvisionApplicationServiceAccount`, the Java/Rust gate), then the ceiling on `platform:application-service` (`appops.RequireProvisionWithinCaller`), in the handlers (`8b1cb0f`) |
+  | `POST /api/service-accounts` (create) | carries no roles (Go has no create-with-roles), unchanged |
+  | fcdev init `provisionAppCredentials` (`ProvisionServiceAccount` with no caller) | system path, not bounded: the ceiling is in the handlers, not the operation |
+  | seed bootstrap admin (`seed/admin.go`), fcdev `createAdmin`, `router_bootstrap.go`, `mcp_bootstrap.go` | direct SQL inserts into `iam_principal_roles`, system paths, unchanged |
+  | IdP role sync at login (`SyncIdpRoles`, `bridge/login_endpoint.go`) | the system's, from configured mappings; unchanged (the mappings themselves are a new finding below) |
+  | email-domain `MoveMappingToProvider` | removes IdP-synced roles only, as the system; unchanged |
+  | regenerate auth token / signing secret | webhook credentials (outbound to receivers), not platform authority; unchanged (F4 gate) |
+
+  SPA (`90e4113`): `isRoleAboveUser` (`utils/admin-permissions.ts`, the same rule) locks such roles
+  in the user and service-account role pickers (no add, no remove, a lock with the reason);
+  the application drawer offers Provision Service Account only under
+  `canProvisionApplicationServiceAccount`. `/ui` (in `8b1cb0f`) offers its button under the same
+  gate; it has no role pickers.
+- **Wire impact**: no shape change, OpenAPI lock unchanged. New 403 `ROLE_ABOVE_CALLER` on the
+  role routes, the mint, the two principal syncs and provisioning; provisioning by an anchor
+  lacking `service-account:create` or `application:update` is now 403 `PERMISSION_REQUIRED`
+  (seeded: only `platform:super-admin` holds service-account create, so in practice only
+  super-admins provision, as before for every non-system path). Super-admins and SDK syncs of an
+  application's own roles see no change.
+- **Tests** (each failed with its check removed or stubbed): `role/ceiling_test.go` (lacking,
+  subset, wildcard incl. role wildcards, application permissions, unknown role, nil caller,
+  lookup failure); `serviceaccount/api/role_ceiling_pg_test.go`
+  `TestServiceAccountRoles_BoundedByCallersPermissions` (assign, removal, mint);
+  `principal/api/role_ceiling_pg_test.go` `TestUserRoles_BoundedByCallersPermissions` (replace,
+  add, remove, wildcard, bulk import); `principal/api/sync_role_ceiling_pg_test.go`,
+  `sdksync/sync_principals_ceiling_pg_test.go` (both syncs);
+  `application/api/provision_gate_pg_test.go` `TestProvisionServiceAccount_GateAndRoleCeiling`
+  (gate, ceiling, super-admin, the no-caller system path still provisions);
+  `shared/auth/auth_test.go`; `ui/pages/applications_test.go`;
+  `frontend/tests/admin-permissions.test.ts` ("role ceiling (F8)"). Existing system-path tests
+  (`TestProvisionServiceAccount_AssignsRoleAndScopesClient`, the seed and fcdev tests) unchanged
+  and passing.
+- **Java/Rust mirror**:
+  - Already match: the ceiling itself and its use on service-account roles (Java
+    `AssignRolesToServiceAccount` → `RoleCeiling.requireRoles`; Rust
+    `service_account/operations/assign_roles.rs` → `ceiling::require_role_change`), user roles
+    (Java `AssignRoles`; Rust `principal/operations/assign_roles.rs`) and the platform-route user
+    sync (Java `SyncPrincipals.requireCeiling`; Rust `sync_users.rs`). The provisioning gate
+    (Java `ApplicationApi.provisionServiceAccount`, Rust `application/api.rs`
+    `provision_service_account`: anchor + `SERVICE_ACCOUNT_CREATE` + `APPLICATION_UPDATE`).
+  - Go goes further, to mirror if the owner keeps it: (1) the **mint** is bounded (Java
+    `MintServiceAccountToken.mint` and Rust `mint_service_account_token` flatten and mint with no
+    ceiling, so a holder of `service-account:update` can still mint a token for an account a
+    super-admin made stronger); (2) **provisioning** applies the ceiling to
+    `platform:application-service` (Java/Rust: the gate only); (3) the **app-scoped** principal
+    sync applies the ceiling (Java and Rust exempt it because they confine it to the
+    application's own roles, `requireSyncableRoles` / `ROLE_APP_FORBIDDEN`, which Go lacks).
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -519,12 +600,16 @@ failed before its fix.
     subscription bindings follow migration 070's rename.
 14. Service accounts (F4): assign roles, regenerate and mint need `service-account:update`; an
     application-scoped caller is confined to accounts of its applications.
+15. Role ceiling (F8): platform permissions only (application permissions are outside it, as in
+    Java and Rust); the change is checked, removal included; the mint, provisioning and the
+    app-scoped principal sync are bounded too (beyond Java/Rust); the mint reuses
+    `ROLE_ABOVE_CALLER`.
 
 ## New findings, not fixed
 
 Fixed in the second batch (above): the scheduled-job runner reports (F1), event-type `clientId`
 (F2), client event names (F3), service accounts (F4), the sync paths' client identifier (F5), the
-SPA's sync and role controls (F6).
+SPA's sync and role controls (F6); after it, user role changes (F7) and the role ceiling (F8).
 
 - **`DELETE /api/event-types/{id}`** is documented "Archive an event type" and the TS SDK calls it
   `archive()`, but it hard-deletes (now only an archived or never-published type).
@@ -549,9 +634,23 @@ SPA's sync and role controls (F6).
   wildcard holders reach those pages.
 - **The dashboard's OpenAPI sync** is shown to everyone; `POST /bff/developer/sync-platform-openapi`
   needs anchor and `developer:application-openapi:sync` (the same exposure as F6, not in scope).
-- **Service-account role assignment is unbounded**: a holder of `service-account:update` can assign
-  any role, super-admin included, to a service account and mint its token (the user path bounds
-  client administrators; this path has no such bound).
+- ~~**Service-account role assignment is unbounded**~~: fixed in F8.
+- **Role permission edits are not bounded** (found in F8): a holder of `role:update` can add
+  `platform:*:*:*` to a role it already holds (or `role:create` a role with it and, with
+  assign-roles, take it), one edit past the role ceiling. Java and Rust refuse with 403
+  `PERMISSION_ABOVE_CALLER` (`RoleCeiling.requirePermissions` in Create/Update/Grant/Revoke/
+  DeleteRole; Rust `role/operations/*` `ceiling::require_permissions`).
+- **IdP role mappings are not bounded** (F8): a mapping from an IdP group to
+  `platform:super-admin` grants it at the next login. Java (`CreateIdpRoleMapping`,
+  `DeleteIdpRoleMapping`) and Rust (`create_idp_role_mapping.rs`, identity-provider create/update)
+  apply the ceiling.
+- **The principal syncs have no target reach or application confinement** (F8): they upsert any
+  email, an anchor administrator's included, and the app-scoped route accepts any role name. Java
+  and Rust refuse an out-of-reach user (`SYNC_TARGET_FORBIDDEN`) and another application's role
+  (`ROLE_APP_FORBIDDEN`). The ceiling (F8) now stops platform roles; the rest is open.
+- **Rotating a service account's OAuth client secret** (`platform:auth:oauth-client:regenerate-secret`,
+  anchor) hands out a credential with the account's whole authority through `client_credentials`,
+  with no role ceiling (the mint now has one). Java and Rust not checked.
 
 ## Not verified
 
@@ -565,3 +664,8 @@ SPA's sync and role controls (F6).
 - F7: no browser run of the SPA role controls. The Java and Rust checks were read, not run
   (Java `Access.requireRoleAssigner`, `PrincipalApi`; Rust `authorization_service.rs`
   requires `USER_ASSIGN_ROLES`).
+- F8: no browser run of the SPA pickers' locked roles or the `/ui` and SPA provisioning button;
+  no run against a seeded or deployed database (integration tests create their own roles; the
+  provisioning test installs `platform:application-service` from the seed catalogue). The Java and
+  Rust code was read, not run. fcdev init was not run end to end; its provisioning path is
+  covered by the no-caller case of `TestProvisionServiceAccount_GateAndRoleCeiling`.
