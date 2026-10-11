@@ -15,8 +15,10 @@ import (
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	saops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -31,6 +33,16 @@ import (
 // subscription, role, and process sync), all scoped to the SA's own
 // application. See internal/platform/seed/roles.go ("application-service").
 const applicationServiceRoleName = "platform:application-service"
+
+// RequireProvisionWithinCaller is the role ceiling (F8) on provisioning: the
+// provisioned account is given the application-service role, so the caller
+// must hold that role's platform permissions (role.RequireRolesWithinCaller,
+// 403 ROLE_ABOVE_CALLER). The API and /ui handlers call it with the request's
+// caller; fcdev init runs the operation as the system and does not.
+func RequireProvisionWithinCaller(ctx context.Context, roles *role.Repository) error {
+	return role.RequireRolesWithinCaller(ctx, auth.FromContext(ctx),
+		[]string{applicationServiceRoleName}, role.PermissionsFrom(roles))
+}
 
 // ProvisionServiceAccountCommand provisions a dedicated service account
 // (+ its SERVICE principal + a confidential OAuth client) for an
@@ -65,8 +77,8 @@ type ProvisionServiceAccountResult struct {
 // This is a multi-aggregate orchestration: it writes several aggregates and
 // returns a custom result, so it uses the [usecaseop.TxOperation] envelope
 // run by [usecaseop.RunTx]. An application is platform-level, so the use case
-// has no resource-level access check — the coarse anchor requirement
-// (auth.RequireAnchor) is enforced at the controller.
+// has no resource-level access check: the controller enforces
+// auth.CanProvisionApplicationServiceAccount and RequireProvisionWithinCaller.
 func ProvisionServiceAccount(
 	appRepo *application.Repository,
 	saRepo *serviceaccount.Repository,

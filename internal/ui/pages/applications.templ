@@ -189,7 +189,7 @@ templ appDrawerBody(d appDetail) {
 				}
 			</div>
 			@kit.Alert(kit.AlertProps{Icon: "info", Description: "Service account credentials are managed in the OAuth Clients section. The client secret can only be viewed at creation time or when rotated.", Class: "mt-3"})
-		} else if d.Perms.Provision {
+		} else if d.Perms.ProvisionServiceAccount {
 			<form method="post" action={ d.ActionBase + "/provision-service-account" } data-on:submit={ kit.SubmitForm } data-indicator="appSaBusy">
 				<input type="hidden" name="drawer" data-attr:value={ "$" + appDrawerSig }/>
 				@poolActionItem("Provision Service Account", "Create a service account with OAuth credentials for machine-to-machine authentication.") {
@@ -199,7 +199,7 @@ templ appDrawerBody(d appDetail) {
 				}
 			</form>
 		} else {
-			<p class="text-sm text-muted-foreground">No service account. Provisioning one needs the anchor scope.</p>
+			<p class="text-sm text-muted-foreground">No service account. Provisioning one needs the anchor scope and the service-account create and application update permissions.</p>
 		}
 	}
 	@kit.FormSection(kit.FormSectionProps{Title: "Documentation"}) {

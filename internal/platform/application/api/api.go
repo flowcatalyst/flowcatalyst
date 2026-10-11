@@ -282,8 +282,10 @@ func (s *State) disableForClient(ctx context.Context, in *clientToggleInput) (*a
 // transactional flow. The OAuth client secret is returned once
 // (plaintext); it's stored hashed.
 func (s *State) provisionServiceAccount(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationProvisionServiceAccountResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanProvisionApplicationServiceAccount(auth.FromContext(ctx)); err != nil {
+		return nil, err
+	}
+	if err := operations.RequireProvisionWithinCaller(ctx, s.Roles); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)

@@ -18,6 +18,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	etops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	sjops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
@@ -298,7 +299,9 @@ type ApplicationOps struct {
 	ServiceAccounts *serviceaccount.Repository
 	Principals      *principal.Repository
 	OAuthClients    *platformauth.OAuthClientRepo
-	UoW             *usecasepgx.UnitOfWork
+	// Roles backs the role ceiling on provisioning (F8).
+	Roles *role.Repository
+	UoW   *usecasepgx.UnitOfWork
 }
 
 // Create runs CreateApplication and returns the new application's id.
@@ -336,6 +339,9 @@ func (o ApplicationOps) Delete(ctx context.Context, id string) error {
 
 // ProvisionServiceAccount runs ProvisionServiceAccount (one transaction).
 func (o ApplicationOps) ProvisionServiceAccount(ctx context.Context, id string) (appops.ProvisionServiceAccountResult, error) {
+	if err := appops.RequireProvisionWithinCaller(ctx, o.Roles); err != nil {
+		return appops.ProvisionServiceAccountResult{}, err
+	}
 	return usecaseop.RunTx(ctx, o.UoW, appops.ProvisionServiceAccount(o.Repo, o.ServiceAccounts, o.Principals, o.OAuthClients),
 		appops.ProvisionServiceAccountCommand{ApplicationID: id}, auth.NewExecutionContext(ctx))
 }

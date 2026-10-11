@@ -330,8 +330,9 @@ type appCredentials struct {
 func (h *Applications) provisionServiceAccount(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
-	// POST /api/applications/{id}/provision-service-account's check.
-	if err := auth.RequireAnchor(ac); err != nil {
+	// POST /api/applications/{id}/provision-service-account's check; the
+	// role ceiling runs in Ops.ProvisionServiceAccount.
+	if err := auth.CanProvisionApplicationServiceAccount(ac); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}

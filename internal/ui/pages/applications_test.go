@@ -156,7 +156,18 @@ func TestApplicationsPermissions(t *testing.T) {
 	}
 	client := &auth.AuthContext{PrincipalID: "p", Scope: auth.ScopeClient, Clients: []string{"clt_a"}, Roles: []string{"r"}, Permissions: []string{appViewPerm, "platform:admin:application:update"}, PrincipalType: auth.PrincipalTypeUser}
 	drawer := h.do(t, client, req{target: "/ui/applications/app_2", datastar: true})
-	mustContain(t, drawer, "Provisioning one needs the anchor scope.")
+	mustContain(t, drawer, "Provisioning one needs the anchor scope")
+	// An anchor holding application view and update but not
+	// service-account:create is not offered the service-account provisioning
+	// (the API refuses it), while the login client stays anchor-only.
+	anchorUpdater := &auth.AuthContext{PrincipalID: "p", Scope: auth.ScopeAnchor, Roles: []string{"r"}, Permissions: []string{appViewPerm, "platform:admin:application:update"}, PrincipalType: auth.PrincipalTypeUser}
+	anchorDrawer := h.do(t, anchorUpdater, req{target: "/ui/applications/app_2", datastar: true})
+	mustNotContain(t, anchorDrawer, "Provision Service Account")
+	mustContain(t, anchorDrawer, "Provision Login Client", "service-account create and application update permissions")
+	h.do(t, anchorUpdater, req{method: http.MethodPost, target: "/ui/applications/app_2/provision-service-account", datastar: true, form: url.Values{}})
+	if len(h.ops.actions) != 0 {
+		t.Fatal("an anchor without service-account:create provisioned a service account")
+	}
 	mustNotContain(t, drawer, "Provision Login Client")
 	h.do(t, client, req{method: http.MethodPost, target: "/ui/applications/app_2/provision-service-account", datastar: true, form: url.Values{}})
 	if len(h.ops.actions) != 0 {

@@ -117,6 +117,16 @@ func TestCanAssignPrincipalRoles_NeedsAssignRoles(t *testing.T) {
 	assert.NoError(t, CanAssignPrincipalRoles(wildcard))
 }
 
+func TestCanProvisionApplicationServiceAccount_NeedsAnchorAndBothPermissions(t *testing.T) {
+	both := []string{"platform:iam:service-account:create", "platform:admin:application:update"}
+	assert.Error(t, CanProvisionApplicationServiceAccount(&AuthContext{Scope: ScopeAnchor}), "anchor reach alone")
+	assert.Error(t, CanProvisionApplicationServiceAccount(&AuthContext{Scope: ScopeAnchor, Permissions: both[:1]}))
+	assert.Error(t, CanProvisionApplicationServiceAccount(&AuthContext{Scope: ScopeAnchor, Permissions: both[1:]}))
+	assert.Error(t, CanProvisionApplicationServiceAccount(&AuthContext{Scope: ScopeClient, Permissions: both}), "not anchor")
+	assert.NoError(t, CanProvisionApplicationServiceAccount(&AuthContext{Scope: ScopeAnchor, Permissions: both}))
+	assert.NoError(t, CanProvisionApplicationServiceAccount(&AuthContext{Scope: ScopeAnchor, Permissions: []string{"platform:*:*:*"}}))
+}
+
 func TestNonAnchorWithoutPermissionDenied(t *testing.T) {
 	a := &AuthContext{Scope: ScopeClient, Permissions: []string{"platform:messaging:event:view"}}
 	assert.Error(t, CanReadEventTypes(a), "an unrelated permission must not grant event-type view")

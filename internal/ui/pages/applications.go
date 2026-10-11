@@ -153,9 +153,10 @@ func (h *Applications) renderPage(w http.ResponseWriter, r *http.Request, status
 
 // appPerms are the API's checks, the permission for the operation: create
 // CanCreateApplications; edit, activate and deactivate CanUpdateApplications;
-// delete CanDeleteApplications. Provisioning is anchor-only, as the API.
+// delete CanDeleteApplications. Provisioning a login client is anchor-only
+// and a service account CanProvisionApplicationServiceAccount, as the API.
 type appPerms struct {
-	Create, Update, Delete, Provision bool
+	Create, Update, Delete, Provision, ProvisionServiceAccount bool
 }
 
 func appPermsFor(ac *auth.AuthContext) appPerms {
@@ -164,6 +165,8 @@ func appPermsFor(ac *auth.AuthContext) appPerms {
 		Update:    auth.CanUpdateApplications(ac) == nil,
 		Delete:    auth.CanDeleteApplications(ac) == nil,
 		Provision: auth.RequireAnchor(ac) == nil,
+		// The role ceiling (F8) is checked on submit; this is the gate.
+		ProvisionServiceAccount: auth.CanProvisionApplicationServiceAccount(ac) == nil,
 	}
 }
 

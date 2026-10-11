@@ -817,6 +817,21 @@ func CanDeleteServiceAccounts(a *AuthContext) error {
 	return requirePermission(a, permServiceAccountDelete)
 }
 
+// CanProvisionApplicationServiceAccount guards
+// POST /api/applications/{id}/provision-service-account (and the /ui button):
+// anchor reach, service-account:create (it creates a service account and
+// issues its credential) and application:update (it rewrites the
+// application's service-account link), as Java and Rust gate it. It was
+// anchor-only, so any anchor principal, an application's own service account
+// included, could provision an account for any application and take its
+// client secret.
+func CanProvisionApplicationServiceAccount(a *AuthContext) error {
+	if err := anchorWith(a, permServiceAccountCreate); err != nil {
+		return err
+	}
+	return requirePermission(a, permApplicationUpdate)
+}
+
 func CanWriteServiceAccounts(a *AuthContext) error {
 	return requireAny(a, permServiceAccountCreate, permServiceAccountUpdate, permServiceAccountDelete)
 }

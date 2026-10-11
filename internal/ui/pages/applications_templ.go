@@ -981,7 +981,7 @@ func appDrawerBody(d appDetail) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			} else if d.Perms.Provision {
+			} else if d.Perms.ProvisionServiceAccount {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<form method=\"post\" action=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -1070,7 +1070,7 @@ func appDrawerBody(d appDetail) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<p class=\"text-sm text-muted-foreground\">No service account. Provisioning one needs the anchor scope.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<p class=\"text-sm text-muted-foreground\">No service account. Provisioning one needs the anchor scope and the service-account create and application update permissions.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

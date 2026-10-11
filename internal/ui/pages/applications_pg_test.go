@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
@@ -35,7 +36,7 @@ func TestApplicationsPageAgainstPostgres(t *testing.T) {
 		Apps: apps,
 		Ops: ApplicationOps{
 			Repo: apps, ServiceAccounts: serviceaccount.NewRepository(pool), Principals: principal.NewRepository(pool),
-			OAuthClients: oauth, UoW: testpg.NewUoW(t),
+			OAuthClients: oauth, Roles: role.NewRepository(pool), UoW: testpg.NewUoW(t),
 		},
 		Logins: oauth, Docs: appdocs.NewRepository(pool), Shell: shellForTest(),
 	}
