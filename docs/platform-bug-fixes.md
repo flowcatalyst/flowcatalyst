@@ -590,12 +590,89 @@ failed before its fix.
   `ToDataJSON` output with `jsonschema-go` during the change (the other nine, the scheduled-job and
   dispatch-job events with unexported embedded data, were read off the code); that check was not
   committed.
-- **Not changed**: the 16 catalogued codes nothing emits (below) stay, so the picker shows e.g.
-  both `platform:iam:role:created` and `platform:admin:role:created` as "Role Created". Renaming
-  or dropping them is a 070-style migration for the owner to rule on. The existing
-  `platform:admin:dispatch-pool:*` schemas name `dispatchPoolId` while the use cases emit `poolId`
-  (the older schemas were not audited).
+- **Not changed then** (done in the follow-up below): the 16 catalogued codes nothing emits, and
+  the older schemas, which were not audited.
 - **Java/Rust mirror**: catalogue the same 79 codes and schemas.
+
+#### F9 follow-up: unemitted codes pruned, older schemas fixed (owner ruling 2026-10-11)
+
+- **Ruling**: delete every catalogue entry nothing emits; emitted codes keep their names (renaming
+  one would break stored events and subscriptions, so the emitted `platform:admin:*` stay); fix
+  the older schemas against what the use cases emit.
+- **Pruned 16** (`45537af`): `platform:iam:role:{created,updated,deleted}`,
+  `platform:iam:roles:synced`, `platform:iam:anchor-domain:{created,deleted}`,
+  `platform:iam:auth-config:{created,updated,deleted}`, `platform:admin:idp:{created,updated,deleted}`,
+  `platform:admin:edm:{created,updated,deleted}`, `platform:iam:user:password-reset-requested`.
+  The set is catalogued minus emitted (the `events.go` scan), checked three ways: a repo-wide
+  grep finds each code only in the seed and this ledger (no other emitter, no SPA, SDK or `/ui`
+  reference; the `platform:iam:role:*` hits elsewhere are permissions); the schema audit below
+  instantiates every event struct (136, covering all 138 emitted codes) and none returns one of
+  them; `git log -S` shows no Go code ever emitted one. Emitted equivalents, for anyone re-binding:
+  `platform:admin:role:*`, `platform:admin:roles:synced`, `platform:admin:anchor-domain:*`,
+  `platform:admin:auth-config:*`, `platform:admin:identity-provider:*`,
+  `platform:admin:email-domain-mapping:*`; password-reset-requested has none. The catalogue is
+  now the 138 emitted codes.
+- **Migration 071** (`071_prune_unemitted_event_types.sql`) deletes the 16 rows and their schema
+  versions from existing databases (the seeder only upserts, so it would never remove them).
+  What references an event type: subscription bindings (`msg_subscription_event_types`, a code
+  pattern plus an optional row id, no foreign key), schema versions (deleted with the type),
+  stored events and dispatch jobs (the code as text; nothing emitted these codes, so none exist,
+  and stored events are not touched), the SPA and `/ui` (read the catalogue through the API; no
+  hard-coded code). No other table names an event type.
+- **Chosen for bindings**: a binding naming one of the 16 exactly, or pointing at one of the rows,
+  never matched an event. It is **archived**, moved to the new
+  `msg_subscription_event_types_archive` (original id, subscription, row id, code, spec version,
+  reason `071_event_type_not_emitted`, time), not deleted outright (what the subscriber picked
+  stays visible and Down restores it) and **not re-pointed** at the emitted equivalent (unlike
+  070's rename: these rows were never the emitted event, the payloads differ, and re-pointing
+  would start deliveries nobody asked for). Wildcard bindings (`platform:iam:role:*`) name no row
+  and stay. A subscription left with no binding matches nothing, as it did before; its status is
+  unchanged. Down puts the bindings back and drops the archive; it does not recreate the types
+  (a build whose seed lists them adds them on boot). One statement with data-modifying CTEs, no
+  temp table (sqlc reads migrations and would model one; the sqlc models regenerated here also
+  pick up 070's temp table, which the committed models lacked). `fcdev fresh` truncates the
+  archive.
+- **Schemas fixed 28** (`4c23adf`): every catalogued schema was validated with `jsonschema-go`
+  against real `ToDataJSON` output of a fully populated and a zero-valued instance of each event
+  struct, and compared with the fields sent (a property never sent, or a field always sent but
+  not required, counts as a mismatch). All 28 wrong schemas predate `8ddaed4`; the 79 added there
+  passed (the nine scheduled-job and dispatch-job ones read off the code then pass too).
+
+  | Codes | Was | Emitted |
+  | --- | --- | --- |
+  | `platform:admin:dispatch-pool:{created,updated,archived,deleted}` | `dispatchPoolId`; `clientId`, `rateLimit`, `concurrency` | `poolId` + `code`/`name` |
+  | `platform:admin:eventtype:schema-{added,finalised,deprecated}` | `version`; added also `mimeType`, `schemaType` | `specVersion` (finalised + optional `deprecatedVersion`) |
+  | `platform:admin:eventtype:updated` | `name` optional | `name` always |
+  | `platform:iam:user:created` | `emailDomain`, `name`, `scope`, `isAnchorUser`, `clientId` | `principalId`, `email` |
+  | `platform:iam:user:{updated,deactivated,deleted,password-reset-completed}` | updated `email`, deactivated `reason`, reset `email` (never sent); deleted lacked `email`; updated `name` optional | `principalId` (+ `name` / `email` as sent) |
+  | `platform:iam:application:{created,updated,activated,deactivated,deleted}` | `applicationType`, `description`, `code` (activate/deactivate), `name` (deleted) | `applicationId` + `code`/`name` as sent |
+  | `platform:iam:serviceaccount:{created,updated}` | `applicationId`, `clientIds`, `description`, `clientIdsAdded/Removed` | `serviceAccountId`, `code`, `name` / `serviceAccountId`, `name` |
+  | `platform:admin:connection:{created,updated,deleted}` | `endpoint`, `serviceAccountId`, `clientId`, `status`; updated required `code` | `connectionId` + `code`/`name` as sent |
+  | `platform:admin:subscription:{created,updated,paused,resumed}` | `connectionId`, `eventTypes`, `clientId`, `eventTypesAdded/Removed`; paused/resumed `code` | `subscriptionId` (+ `code`, `name` as sent) |
+  | `platform:iam:client:applications-updated` | arrays | each list `null` when empty |
+
+  The seeder never replaces an attached 1.0, so **migration 072**
+  (`072_platform_event_schema_fixes.sql`) replaces each on existing databases while it is still
+  exactly what a seed wrote (each code had one seeded form in every earlier seed, checked by
+  running each historical `platformEventSchemas`); an edited schema is left alone. Down restores
+  the seeded forms. The audit test was temporary and is not committed.
+- **Tests**: `seed/emitted_catalogue_test.go` `TestEveryCataloguedEventTypeIsEmitted` (new:
+  catalogued ⊆ emitted) beside `TestEveryEmittedEventTypeIsCatalogued` (emitted ⊆ catalogued), so
+  drift either way fails; `seed/prune_event_types_pg_test.go` (071 on a scratch embedded
+  database: two seeded dead types with schemas, one emitted; bindings by row and code, by code
+  only, wildcard, and to an emitted type; types and schemas gone, emitted kept, the two bindings
+  archived as they were, the others kept; the seed does not add them back; re-run no-op; Down
+  restores the bindings under their ids and drops the archive); `seed/event_schema_fixes_pg_test.go`
+  (072: its corrected schemas equal the seed's, two seeded forms spelled out; all 28 seeded then
+  replaced, an edited one kept, re-run no-op, the seed attaches no second schema, Down).
+- **Wire impact**: `GET /api/event-types` and Sync Platform Events lose the 16 codes; the 28
+  schemas served change to the emitted shapes. Event payloads are unchanged.
+- **Java/Rust mirror**: drop the same 16 codes from the seed catalogue (and their schemas) and
+  remove them from existing databases the same way (071's SQL is portable; archive or delete
+  bindings, do not re-point); fix the same 28 schemas to their platform's emitted data (the Go
+  field names above are the cross-platform contract only where the platforms already agree;
+  check each platform's own event data, e.g. whether its dispatch-pool events send `poolId`);
+  add the catalogued ⊆ emitted test.
 
 ## Decisions taken conservatively (owner to confirm)
 
@@ -626,24 +703,25 @@ failed before its fix.
     Java and Rust); the change is checked, removal included; the mint, provisioning and the
     app-scoped principal sync are bounded too (beyond Java/Rust); the mint reuses
     `ROLE_ABOVE_CALLER`.
+16. Unemitted event types (F9 follow-up): subscription bindings to the 16 pruned codes are
+    archived (`msg_subscription_event_types_archive`), not deleted outright and not re-pointed at
+    the emitted equivalent; a subscription left without bindings keeps its status. The 28 schema
+    fixes replace a database's 1.0 only while it is exactly as seeded.
 
 ## New findings, not fixed
 
 Fixed in the second batch (above): the scheduled-job runner reports (F1), event-type `clientId`
 (F2), client event names (F3), service accounts (F4), the sync paths' client identifier (F5), the
 SPA's sync and role controls (F6); after it, user role changes (F7), the role ceiling (F8) and
-the catalogue drift (F9).
+the catalogue drift (F9, with its follow-up: unemitted codes pruned, older schemas fixed).
 
 - **`DELETE /api/event-types/{id}`** is documented "Archive an event type" and the TS SDK calls it
   `archive()`, but it hard-deletes (now only an archived or never-published type).
 - `GET /api/dispatch-jobs` documents a default of 50 rows; the repository's default is 100.
 - **Event-type client scoping is dead code** (F2): the read paths filter on a client that is never
   stored.
-- **The event-type catalogue lags what is emitted** (F3): ~~79 emitted codes are not
-  catalogued~~ (catalogued in F9); 16 catalogued codes are never emitted
-  (`platform:admin:edm:*`, `platform:admin:idp:*`, `platform:iam:anchor-domain:*`,
-  `platform:iam:auth-config:*`, `platform:iam:role:*`, `platform:iam:roles:synced`,
-  `platform:iam:user:password-reset-requested`): the same rename drift as the client events.
+- ~~**The event-type catalogue lags what is emitted**~~ (F3): the 79 uncatalogued codes were
+  catalogued in F9, the 16 never-emitted ones pruned in its follow-up.
 - **Route permissions not in the seed**: the SPA's `ROUTE_PERMISSIONS` and the `/ui` nav gate pages
   on codes no role grants (`platform:iam:identity-provider:view`, seeded `platform:iam:idp:view`;
   `platform:iam:oauth-client:*`, seeded `platform:auth:oauth-client:*`;
