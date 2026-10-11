@@ -5,30 +5,21 @@ import (
 )
 
 // platformEventSchemas returns the JSON-Schema map. Keys match
-// event-type codes exactly. The DSL helpers (obj/reqStr/optStr/etc.)
-// build the schemas consumed cross-language — keep the emitted shapes
-// stable for existing consumers.
+// event-type codes exactly. Each schema describes the data its use case
+// emits (ToDataJSON): a field always sent is required, an omitempty field
+// optional, a nil slice null. The DSL helpers (obj/reqStr/optStr/etc.)
+// build the schemas consumed cross-language. A schema change reaches an
+// existing database only through a migration (the seeder never replaces an
+// attached 1.0); see 072.
 func platformEventSchemas() map[string]json.RawMessage {
 	m := map[string]json.RawMessage{}
 
 	// ── platform:iam:user ───────────────────────────────────────────────
-	m["platform:iam:user:created"] = obj(
-		reqStr("principalId"),
-		reqStr("email"),
-		reqStr("emailDomain"),
-		reqStr("name"),
-		reqStr("scope"),
-		optStr("clientId"),
-		reqBool("isAnchorUser"),
-	)
-	m["platform:iam:user:updated"] = obj(
-		reqStr("principalId"),
-		optStr("name"),
-		optStr("email"),
-	)
+	m["platform:iam:user:created"] = obj(reqStr("principalId"), reqStr("email"))
+	m["platform:iam:user:updated"] = obj(reqStr("principalId"), reqStr("name"))
 	m["platform:iam:user:activated"] = obj(reqStr("principalId"))
-	m["platform:iam:user:deactivated"] = obj(reqStr("principalId"), optStr("reason"))
-	m["platform:iam:user:deleted"] = obj(reqStr("principalId"))
+	m["platform:iam:user:deactivated"] = obj(reqStr("principalId"))
+	m["platform:iam:user:deleted"] = obj(reqStr("principalId"), reqStr("email"))
 	m["platform:iam:user:roles-assigned"] = obj(
 		reqStr("principalId"),
 		reqStrArray("roles"),
@@ -84,7 +75,7 @@ func platformEventSchemas() map[string]json.RawMessage {
 		"required":             []string{"userId", "email", "loginMethod", "flowcatalystClaims"},
 		"additionalProperties": true,
 	})
-	m["platform:iam:user:password-reset-completed"] = obj(reqStr("principalId"), reqStr("email"))
+	m["platform:iam:user:password-reset-completed"] = obj(reqStr("principalId"))
 
 	// ── platform:iam:principals (sync — plural aggregate) ───────────────
 	m["platform:iam:principals:synced"] = obj(
@@ -98,12 +89,8 @@ func platformEventSchemas() map[string]json.RawMessage {
 	// ── platform:iam:serviceaccount ─────────────────────────────────────
 	m["platform:iam:serviceaccount:created"] = obj(
 		reqStr("serviceAccountId"), reqStr("code"), reqStr("name"),
-		optStr("applicationId"), reqStrArray("clientIds"),
 	)
-	m["platform:iam:serviceaccount:updated"] = obj(
-		reqStr("serviceAccountId"), optStr("name"), optStr("description"),
-		reqStrArray("clientIdsAdded"), reqStrArray("clientIdsRemoved"),
-	)
+	m["platform:iam:serviceaccount:updated"] = obj(reqStr("serviceAccountId"), reqStr("name"))
 	m["platform:iam:serviceaccount:deleted"] = obj(reqStr("serviceAccountId"), reqStr("code"))
 	m["platform:iam:serviceaccount:roles-assigned"] = obj(
 		reqStr("serviceAccountId"),
@@ -128,23 +115,20 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:admin:client:note-added"] = obj(reqStr("clientId"), reqStr("category"), reqStr("text"))
 
 	// ── platform:iam:client ─────────────────────────────────────────────
+	// Each list is null when empty.
 	m["platform:iam:client:applications-updated"] = obj(
-		reqStr("clientId"), reqStrArray("enabledApplicationIds"),
-		reqStrArray("enabledAdded"), reqStrArray("disabledRemoved"),
+		reqStr("clientId"), reqNullableStrArray("enabledApplicationIds"),
+		reqNullableStrArray("enabledAdded"), reqNullableStrArray("disabledRemoved"),
 	)
 
 	// ── platform:iam:application ────────────────────────────────────────
 	m["platform:iam:application:created"] = obj(
-		reqStr("applicationId"), reqStr("code"), reqStr("name"), reqStr("applicationType"),
-	)
-	m["platform:iam:application:updated"] = obj(
-		reqStr("applicationId"), optStr("name"), optStr("description"),
-	)
-	m["platform:iam:application:activated"] = obj(reqStr("applicationId"), reqStr("code"))
-	m["platform:iam:application:deactivated"] = obj(reqStr("applicationId"), reqStr("code"))
-	m["platform:iam:application:deleted"] = obj(
 		reqStr("applicationId"), reqStr("code"), reqStr("name"),
 	)
+	m["platform:iam:application:updated"] = obj(reqStr("applicationId"), reqStr("name"))
+	m["platform:iam:application:activated"] = obj(reqStr("applicationId"))
+	m["platform:iam:application:deactivated"] = obj(reqStr("applicationId"))
+	m["platform:iam:application:deleted"] = obj(reqStr("applicationId"), reqStr("code"))
 	m["platform:iam:application:service-account-provisioned"] = obj(
 		reqStr("applicationId"), reqStr("applicationCode"),
 		reqStr("serviceAccountId"), reqStr("serviceAccountCode"),
@@ -167,17 +151,15 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqStr("eventName"), optStr("clientId"),
 	)
 	m["platform:admin:eventtype:updated"] = obj(
-		reqStr("eventTypeId"), optStr("name"), optStr("description"),
+		reqStr("eventTypeId"), reqStr("name"), optStr("description"),
 	)
 	m["platform:admin:eventtype:archived"] = obj(reqStr("eventTypeId"), reqStr("code"))
 	m["platform:admin:eventtype:deleted"] = obj(reqStr("eventTypeId"), reqStr("code"))
-	m["platform:admin:eventtype:schema-added"] = obj(
-		reqStr("eventTypeId"), reqStr("version"), reqStr("mimeType"), reqStr("schemaType"),
-	)
+	m["platform:admin:eventtype:schema-added"] = obj(reqStr("eventTypeId"), reqStr("specVersion"))
 	m["platform:admin:eventtype:schema-finalised"] = obj(
-		reqStr("eventTypeId"), reqStr("version"), optStr("deprecatedVersion"),
+		reqStr("eventTypeId"), reqStr("specVersion"), optStr("deprecatedVersion"),
 	)
-	m["platform:admin:eventtype:schema-deprecated"] = obj(reqStr("eventTypeId"), reqStr("version"))
+	m["platform:admin:eventtype:schema-deprecated"] = obj(reqStr("eventTypeId"), reqStr("specVersion"))
 	m["platform:admin:eventtypes:synced"] = obj(
 		reqStr("applicationCode"),
 		reqU32("created"), reqU32("updated"), reqU32("deleted"),
@@ -186,16 +168,10 @@ func platformEventSchemas() map[string]json.RawMessage {
 
 	// ── platform:admin:connection ───────────────────────────────────────
 	m["platform:admin:connection:created"] = obj(
-		reqStr("connectionId"), reqStr("code"), reqStr("name"), reqStr("endpoint"),
-		reqStr("serviceAccountId"), optStr("clientId"),
+		reqStr("connectionId"), reqStr("code"), reqStr("name"),
 	)
-	m["platform:admin:connection:updated"] = obj(
-		reqStr("connectionId"), reqStr("code"),
-		optStr("name"), optStr("endpoint"), optStr("status"),
-	)
-	m["platform:admin:connection:deleted"] = obj(
-		reqStr("connectionId"), reqStr("code"), optStr("clientId"),
-	)
+	m["platform:admin:connection:updated"] = obj(reqStr("connectionId"), reqStr("name"))
+	m["platform:admin:connection:deleted"] = obj(reqStr("connectionId"), reqStr("code"))
 	m["platform:admin:connection:synced"] = obj(
 		reqStr("applicationCode"), optStr("clientId"),
 		reqU32("created"), reqU32("updated"), reqU32("deleted"),
@@ -203,15 +179,10 @@ func platformEventSchemas() map[string]json.RawMessage {
 	)
 
 	// ── platform:admin:dispatch-pool ────────────────────────────────────
-	m["platform:admin:dispatch-pool:created"] = obj(
-		reqStr("dispatchPoolId"), reqStr("code"), reqStr("name"), optStr("clientId"),
-	)
-	m["platform:admin:dispatch-pool:updated"] = obj(
-		reqStr("dispatchPoolId"), optStr("name"),
-		optU32("rateLimit"), optU32("concurrency"),
-	)
-	m["platform:admin:dispatch-pool:archived"] = obj(reqStr("dispatchPoolId"), reqStr("code"))
-	m["platform:admin:dispatch-pool:deleted"] = obj(reqStr("dispatchPoolId"), reqStr("code"))
+	m["platform:admin:dispatch-pool:created"] = obj(reqStr("poolId"), reqStr("code"), reqStr("name"))
+	m["platform:admin:dispatch-pool:updated"] = obj(reqStr("poolId"), reqStr("name"))
+	m["platform:admin:dispatch-pool:archived"] = obj(reqStr("poolId"), reqStr("code"))
+	m["platform:admin:dispatch-pool:deleted"] = obj(reqStr("poolId"), reqStr("code"))
 	m["platform:admin:dispatch-pools:synced"] = obj(
 		reqStr("applicationCode"),
 		reqU32("created"), reqU32("updated"), reqU32("deleted"),
@@ -221,23 +192,16 @@ func platformEventSchemas() map[string]json.RawMessage {
 	// ── platform:admin:subscription ─────────────────────────────────────
 	m["platform:admin:subscription:created"] = obj(
 		reqStr("subscriptionId"), reqStr("code"), reqStr("name"),
-		reqStr("connectionId"), reqStrArray("eventTypes"), optStr("clientId"),
 	)
-	m["platform:admin:subscription:updated"] = obj(
-		reqStr("subscriptionId"), optStr("name"),
-		reqStrArray("eventTypesAdded"), reqStrArray("eventTypesRemoved"),
-	)
-	m["platform:admin:subscription:paused"] = obj(reqStr("subscriptionId"), reqStr("code"))
-	m["platform:admin:subscription:resumed"] = obj(reqStr("subscriptionId"), reqStr("code"))
+	m["platform:admin:subscription:updated"] = obj(reqStr("subscriptionId"), reqStr("name"))
+	m["platform:admin:subscription:paused"] = obj(reqStr("subscriptionId"))
+	m["platform:admin:subscription:resumed"] = obj(reqStr("subscriptionId"))
 	m["platform:admin:subscription:deleted"] = obj(reqStr("subscriptionId"), reqStr("code"))
 	m["platform:admin:subscription:synced"] = obj(
 		reqStr("applicationCode"), optStr("clientId"),
 		reqU32("created"), reqU32("updated"), reqU32("deleted"),
 		reqStrArray("syncedCodes"),
 	)
-
-	// The schemas below describe the data each use case emits (its
-	// ToDataJSON): an omitempty field is optional, a nil slice is null.
 
 	// ── platform:iam:user (developer credentials) ───────────────────────
 	m["platform:iam:user:developer-credential-set"] = obj(reqStr("userId"))
@@ -462,10 +426,6 @@ func reqBool(name string) prop {
 
 func reqU32(name string) prop {
 	return prop{name: name, schema: map[string]any{"type": "integer", "minimum": 0}, required: true}
-}
-
-func optU32(name string) prop {
-	return prop{name: name, schema: map[string]any{"type": []string{"integer", "null"}, "minimum": 0}}
 }
 
 func reqStrArray(name string) prop {
