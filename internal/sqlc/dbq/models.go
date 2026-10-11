@@ -746,6 +746,16 @@ type MsgSubscriptionEventType struct {
 	SpecVersion    *string `db:"spec_version"`
 }
 
+type MsgSubscriptionEventTypesArchive struct {
+	ID             int32     `db:"id"`
+	SubscriptionID string    `db:"subscription_id"`
+	EventTypeID    *string   `db:"event_type_id"`
+	EventTypeCode  string    `db:"event_type_code"`
+	SpecVersion    *string   `db:"spec_version"`
+	ArchivedReason string    `db:"archived_reason"`
+	ArchivedAt     time.Time `db:"archived_at"`
+}
+
 type OauthClient struct {
 	ID                        string     `db:"id"`
 	ClientID                  string     `db:"client_id"`
@@ -905,6 +915,11 @@ type PortalLoginFlow struct {
 	CodeChallengeMethod *string   `db:"code_challenge_method"`
 	CreatedAt           time.Time `db:"created_at"`
 	ExpiresAt           time.Time `db:"expires_at"`
+}
+
+type Tmp070ClientRename struct {
+	OldCode *string `db:"old_code"`
+	NewCode *string `db:"new_code"`
 }
 
 type TntAnchorDomain struct {

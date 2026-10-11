@@ -106,3 +106,22 @@ func TestEveryEmittedEventTypeIsCatalogued(t *testing.T) {
 		}
 	}
 }
+
+// Every catalogued event type is one a use case emits, so the catalogue offers
+// no event that never fires. Older seeds catalogued 16 codes nothing emits
+// (platform:iam:role:*, platform:admin:idp:*, ...): a subscription made to one
+// never received anything. They were dropped and migration 071 removed them
+// from existing databases (docs/platform-bug-fixes.md F9).
+func TestEveryCataloguedEventTypeIsEmitted(t *testing.T) {
+	emitted := emittedEventTypes(t)
+	var dead []string
+	for _, d := range PlatformEventTypes() {
+		if _, ok := emitted[d.Code]; !ok {
+			dead = append(dead, d.Code)
+		}
+	}
+	sort.Strings(dead)
+	for _, code := range dead {
+		t.Errorf("catalogued but no use case emits it: %s", code)
+	}
+}

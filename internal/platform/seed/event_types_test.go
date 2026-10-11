@@ -8,8 +8,8 @@ import (
 
 func TestPlatformEventTypesCatalogShape(t *testing.T) {
 	defs := PlatformEventTypes()
-	if len(defs) < 154 {
-		t.Fatalf("expected 154+ event-type definitions, got %d", len(defs))
+	if len(defs) < 138 {
+		t.Fatalf("expected 138+ event-type definitions, got %d", len(defs))
 	}
 	subdomains := map[string]bool{"iam": true, "admin": true, "messaging": true, "developer": true, "portal": true}
 	seen := map[string]bool{}

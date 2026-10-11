@@ -20,7 +20,10 @@ type PlatformEventTypeDef struct {
 }
 
 // PlatformEventTypes returns the full catalog. Codes are
-// {application}:{subdomain}:{aggregate}:{event}.
+// {application}:{subdomain}:{aggregate}:{event}. It lists exactly what the
+// platform's use cases emit (emitted_catalogue_test.go fails on drift either
+// way); migration 071 removed the 16 codes older seeds wrote that nothing
+// emits.
 func PlatformEventTypes() []PlatformEventTypeDef {
 	schemas := platformEventSchemas()
 	out := make([]PlatformEventTypeDef, 0, 160)
@@ -53,7 +56,7 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 		"created", "updated", "activated", "deactivated", "deleted",
 		"roles-assigned", "application-access-assigned",
 		"client-access-granted", "client-access-revoked",
-		"logged-in", "password-reset-requested", "password-reset-completed",
+		"logged-in", "password-reset-completed",
 		"developer-credential-set", "developer-credential-revoked")
 	push("platform:iam:principals:synced", "Principals Synced")
 
@@ -67,26 +70,15 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	// Migration 070 renamed the platform:iam:client:* rows an older seed wrote.
 	group("platform:iam:client", "applications-updated")
 
-	group("platform:iam:role", "created", "updated", "deleted")
-	push("platform:iam:roles:synced", "Roles Synced")
-
 	group("platform:iam:application",
 		"created", "updated", "activated", "deactivated", "deleted",
 		"service-account-provisioned", "enabled-for-client", "disabled-for-client")
-
-	group("platform:iam:anchor-domain", "created", "deleted")
-
-	group("platform:iam:auth-config", "created", "updated", "deleted")
 
 	// ── platform:admin ──────────────────────────────────────────────────
 	group("platform:admin:client",
 		"created", "updated", "activated", "suspended", "deactivated", "deleted", "note-added")
 
 	group("platform:admin:cors", "origin-added", "origin-deleted")
-
-	group("platform:admin:idp", "created", "updated", "deleted")
-
-	group("platform:admin:edm", "created", "updated", "deleted")
 
 	group("platform:admin:eventtype",
 		"created", "updated", "archived", "deleted",

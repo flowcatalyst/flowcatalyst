@@ -84,7 +84,6 @@ func platformEventSchemas() map[string]json.RawMessage {
 		"required":             []string{"userId", "email", "loginMethod", "flowcatalystClaims"},
 		"additionalProperties": true,
 	})
-	m["platform:iam:user:password-reset-requested"] = obj(reqStr("principalId"), reqStr("email"))
 	m["platform:iam:user:password-reset-completed"] = obj(reqStr("principalId"), reqStr("email"))
 
 	// ── platform:iam:principals (sync — plural aggregate) ───────────────
@@ -134,22 +133,6 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqStrArray("enabledAdded"), reqStrArray("disabledRemoved"),
 	)
 
-	// ── platform:iam:role ───────────────────────────────────────────────
-	m["platform:iam:role:created"] = obj(
-		reqStr("roleId"), reqStr("code"), reqStr("displayName"),
-		reqStr("applicationCode"), reqStrArray("permissions"),
-	)
-	m["platform:iam:role:updated"] = obj(
-		reqStr("roleId"), optStr("displayName"), optStr("description"),
-		reqStrArray("permissionsAdded"), reqStrArray("permissionsRemoved"),
-	)
-	m["platform:iam:role:deleted"] = obj(reqStr("roleId"), reqStr("code"))
-	m["platform:iam:roles:synced"] = obj(
-		reqStr("applicationCode"),
-		reqU32("created"), reqU32("updated"), reqU32("deleted"),
-		reqStrArray("syncedNames"),
-	)
-
 	// ── platform:iam:application ────────────────────────────────────────
 	m["platform:iam:application:created"] = obj(
 		reqStr("applicationId"), reqStr("code"), reqStr("name"), reqStr("applicationType"),
@@ -173,35 +156,9 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqStr("applicationId"), reqStr("clientId"), reqStr("configId"),
 	)
 
-	// ── platform:iam:anchor-domain ──────────────────────────────────────
-	m["platform:iam:anchor-domain:created"] = obj(reqStr("anchorDomainId"), reqStr("domain"))
-	m["platform:iam:anchor-domain:deleted"] = obj(reqStr("anchorDomainId"), reqStr("domain"))
-
-	// ── platform:iam:auth-config ────────────────────────────────────────
-	m["platform:iam:auth-config:created"] = obj(
-		reqStr("authConfigId"), reqStr("emailDomain"), reqStr("configType"),
-	)
-	m["platform:iam:auth-config:updated"] = obj(reqStr("authConfigId"), reqStr("emailDomain"))
-	m["platform:iam:auth-config:deleted"] = obj(reqStr("authConfigId"), reqStr("emailDomain"))
-
 	// ── platform:admin:cors ─────────────────────────────────────────────
 	m["platform:admin:cors:origin-added"] = obj(reqStr("originId"), reqStr("origin"))
 	m["platform:admin:cors:origin-deleted"] = obj(reqStr("originId"), reqStr("origin"))
-
-	// ── platform:admin:idp ──────────────────────────────────────────────
-	m["platform:admin:idp:created"] = obj(
-		reqStr("idpId"), reqStr("code"), reqStr("name"), reqStr("idpType"),
-	)
-	m["platform:admin:idp:updated"] = obj(reqStr("idpId"), optStr("name"))
-	m["platform:admin:idp:deleted"] = obj(reqStr("idpId"), reqStr("code"))
-
-	// ── platform:admin:edm ──────────────────────────────────────────────
-	m["platform:admin:edm:created"] = obj(
-		reqStr("mappingId"), reqStr("emailDomain"),
-		reqStr("identityProviderId"), reqStr("scopeType"),
-	)
-	m["platform:admin:edm:updated"] = obj(reqStr("mappingId"), reqStr("emailDomain"))
-	m["platform:admin:edm:deleted"] = obj(reqStr("mappingId"), reqStr("emailDomain"))
 
 	// ── platform:admin:eventtype ────────────────────────────────────────
 	m["platform:admin:eventtype:created"] = obj(
