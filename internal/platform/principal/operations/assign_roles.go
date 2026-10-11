@@ -9,6 +9,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -30,7 +31,8 @@ type AssignRolesCommand struct {
 // 2026-10-11: assign-roles, not update, governs a user's roles). The
 // application-scoped role BOUNDING for non-anchor admins (assertAssignableRoles
 // + preserved roles) is command-shaping the controller still performs before
-// building the desired set.
+// building the desired set. The role ceiling (role.RequireRolesWithinCaller,
+// F8) then bounds the change for every caller: 403 ROLE_ABOVE_CALLER.
 func AssignRoles(repo *principal.Repository, roles *role.Repository) usecaseop.Operation[AssignRolesCommand, RolesAssigned] {
 	return usecaseop.Operation[AssignRolesCommand, RolesAssigned]{
 		Name: "AssignRoles",
@@ -70,6 +72,12 @@ func AssignRoles(repo *principal.Repository, roles *role.Repository) usecaseop.O
 			previous := make([]string, 0, len(p.Roles))
 			for _, ra := range p.Roles {
 				previous = append(previous, ra.Role)
+			}
+			// The role ceiling (F8): only roles whose platform permissions the
+			// caller holds may be added or removed; kept roles are not checked.
+			if err := role.RequireRolesWithinCaller(ctx, auth.FromContext(ctx),
+				role.ChangedRoles(previous, cmd.Roles), role.PermissionsFrom(roles)); err != nil {
+				return nil, err
 			}
 			added := stringDifference(cmd.Roles, previous)
 			removed := stringDifference(previous, cmd.Roles)
