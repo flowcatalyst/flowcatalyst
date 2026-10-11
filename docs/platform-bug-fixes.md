@@ -674,6 +674,79 @@ failed before its fix.
   check each platform's own event data, e.g. whether its dispatch-pool events send `poolId`);
   add the catalogued ⊆ emitted test.
 
+### F10. Role permission edits not bounded by the caller's own permissions (owner approval 2026-10-11)
+
+- **Found** (in F8): a holder of `role:update` could add `platform:*:*:*`, or any platform
+  permission it lacks, to a role it already holds and become super-admin, one edit past the F8
+  role ceiling; `role:create` could mint such a role. The SDK role sync wrote whatever permissions
+  its body carried, so an application's service account could put `platform:*:*:*` on a role its
+  users hold, and the platform role sync could restore a trimmed catalogue role for a caller
+  holding that role.
+- **Rule** (`role.RequirePermissionsWithinCaller`, `internal/platform/role/ceiling.go`; the
+  permission half of Java `RoleCeiling.requirePermissions` and Rust
+  `role::ceiling::require_permissions`, same code and wording): a caller may add a permission to a
+  role, or remove one from it, only when it holds that permission. Platform permissions only
+  (first segment `platform`), matched with `auth.Grants`; holders of `platform:*:*:*` may add or
+  remove anything. Only the change is checked (`role.ChangedPermissions`): kept permissions are
+  not, a no-op grant or revoke is not, and removal counts. A nil caller holds nothing. Refusal:
+  403 `PERMISSION_ABOVE_CALLER`, "You may only add or remove permissions you hold yourself:
+  <permissions>".
+- **Fix** (`c56a68c`), in the operations, so every route that reaches them is bounded:
+
+  | Operation | Checked | Routes |
+  | --- | --- | --- |
+  | `CreateRole` | every permission of the new role, after the duplicate check | `POST /api/roles`, `POST /bff/roles` |
+  | `UpdateRole` | the change, post-load, after the CODE-role refusal; not when no permissions are sent | `PUT /api/roles/{id}`, `PUT /bff/roles/{roleName}` |
+  | `DeleteRole` | every permission of the role (deleting strips it from everyone), after the CODE-role refusal | `DELETE /api/roles/{id}`, `DELETE /bff/roles/{roleName}` |
+  | `GrantPermission`, `RevokePermission` | the change (granting a held one or revoking an absent one changes nothing) | `POST /api/roles/{roleName}/permissions/{permission}`, `POST /api/roles/{roleName}/permissions` (body), `DELETE /api/roles/{roleName}/permissions/{permission}` |
+  | `SyncRoles` (SDK) | each synced role's change, a new role's permissions, a `removeUnlisted` deletion's permissions; the whole sync refused before any write | `POST /api/applications/{appCode}/roles/sync` |
+  | `SyncPlatformRoles` | each catalogue role's change, a new one's permissions, a swept stale one's; whole sync refused | `POST /bff/roles/sync-platform` |
+  | permission catalogue (`DELETE /api/roles/permissions/{permission}`, `POST /bff/roles/permissions`) | not a role edit (roles keep their permission strings); unchanged | |
+  | seed, fcdev, migrations | direct SQL, system paths; unchanged | |
+
+  `/ui` has no role pages. SPA (`5a712d7`): `isPermissionAboveUser` (`utils/admin-permissions.ts`,
+  the same rule; `isRoleAboveUser` builds on it) locks such a permission in the role editor as it
+  stands (no toggle, skipped by the per-application select/deselect-all, a lock with the reason and
+  a note above the grid), and the role list shows a lock with the reason in place of delete for a
+  role holding one. The editor lists only the role's application's catalogue, so on a
+  non-platform role its platform permissions are not shown and are sent back unchanged. Create
+  Role sends no permissions. The platform role sync's refusal (it cannot be predicted in the
+  browser) reaches the global toast.
+- **Wire impact**: no shape change, OpenAPI lock unchanged. New 403 `PERMISSION_ABOVE_CALLER` on the
+  routes above. Super-admins see no change; an SDK syncing its application's own permissions sees
+  none; a platform role sync by a non-super-admin is refused when the catalogue would add or remove
+  a platform permission it lacks (a super-admin runs it).
+- **Tests** (each failed before the fix): `role/api/permission_ceiling_pg_test.go`
+  `TestRolePermissions_BoundedByCallersPermissions` (self-escalation of the caller's own role by
+  update and both grants; create; add lacking by grant and update; held wildcard; removal by
+  update, revoke and delete; kept permission unchecked; no-op revoke; application permissions for
+  a caller holding none; wildcard holder grants, revokes, deletes);
+  `shared/bff/roles_permission_ceiling_pg_test.go` (create, update adding and removing, delete:
+  403 and the exact envelope); `sdksync/sync_roles_ceiling_pg_test.go` (application permissions
+  pass; new and existing role refused, nothing written; removal by list and by
+  `removeUnlisted`; unchanged and empty lists pass); `role/operations/ops_pg_test.go`
+  `TestSyncPlatformRoles_BoundedByCallersPermissions`; `role/ceiling_test.go`
+  `TestPermissionCeiling`, `TestChangedPermissions`; `frontend/tests/admin-permissions.test.ts`
+  ("permission ceiling (F10)"). Browser: driven on an isolated fcdev (API 18181, embedded PG
+  25433) as an anchor user holding the role permissions and `user:view`: the live API answered 403
+  `PERMISSION_ABOVE_CALLER` to adding `platform:*:*:*` to the user's own role (BFF update and
+  grant); the editor of a platform DATABASE role locked 37 catalogue permissions, kept the locked
+  `user:create` selected on click, toggled the held `user:view`; the list showed the lock in place
+  of delete on roles holding `user:create` and the trash on a `user:view`-only role.
+- **Java/Rust mirror**:
+  - Already match: create, update, delete, grant and revoke (Java `CreateRole`, `UpdateRole`,
+    `DeleteRole`, `GrantPermission`, `RevokePermission` → `RoleCeiling.requirePermissions`; Rust
+    `role/operations/{create,update,delete,permission_grants}.rs` →
+    `ceiling::require_permissions`), same code, status, message and change-only rule.
+  - Ordering differs only in which refusal wins: Rust checks in `authorize`, so its ceiling comes
+    before `ROLE_EXISTS` and the CODE-role refusal; Go follows Java (after both).
+  - Go goes further, to mirror if the owner keeps it: the **SDK role sync** and the **platform
+    role sync** are bounded (Java `SyncRoles`, `SyncPlatformRoles` and Rust `role/operations/sync.rs`
+    are not). Java and Rust close the SDK path differently: an application's roles may hold only
+    that application's permissions (Java `Role.confined`, S1.5, 400
+    `PERMISSION_OUTSIDE_APPLICATION`; Rust `role/operations/mod.rs`), which Go lacks (new finding
+    below); a super-admin may cross applications through the admin API only.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -707,13 +780,17 @@ failed before its fix.
     archived (`msg_subscription_event_types_archive`), not deleted outright and not re-pointed at
     the emitted equivalent; a subscription left without bindings keeps its status. The 28 schema
     fixes replace a database's 1.0 only while it is exactly as seeded.
+17. Permission ceiling (F10): the same rule as Java and Rust (platform permissions only, the
+    change checked, removal and role deletion included); the SDK and platform role syncs are
+    bounded too (beyond Java/Rust).
 
 ## New findings, not fixed
 
 Fixed in the second batch (above): the scheduled-job runner reports (F1), event-type `clientId`
 (F2), client event names (F3), service accounts (F4), the sync paths' client identifier (F5), the
 SPA's sync and role controls (F6); after it, user role changes (F7), the role ceiling (F8) and
-the catalogue drift (F9, with its follow-up: unemitted codes pruned, older schemas fixed).
+the catalogue drift (F9, with its follow-up: unemitted codes pruned, older schemas fixed) and the
+permission ceiling (F10).
 
 - **`DELETE /api/event-types/{id}`** is documented "Archive an event type" and the TS SDK calls it
   `archive()`, but it hard-deletes (now only an archived or never-published type).
@@ -731,11 +808,12 @@ the catalogue drift (F9, with its follow-up: unemitted codes pruned, older schem
 - **The dashboard's OpenAPI sync** is shown to everyone; `POST /bff/developer/sync-platform-openapi`
   needs anchor and `developer:application-openapi:sync` (the same exposure as F6, not in scope).
 - ~~**Service-account role assignment is unbounded**~~: fixed in F8.
-- **Role permission edits are not bounded** (found in F8): a holder of `role:update` can add
-  `platform:*:*:*` to a role it already holds (or `role:create` a role with it and, with
-  assign-roles, take it), one edit past the role ceiling. Java and Rust refuse with 403
-  `PERMISSION_ABOVE_CALLER` (`RoleCeiling.requirePermissions` in Create/Update/Grant/Revoke/
-  DeleteRole; Rust `role/operations/*` `ceiling::require_permissions`).
+- ~~**Role permission edits are not bounded**~~: fixed in F10.
+- **Role permissions are not confined to the role's application** (F10): Go lets any role, an
+  SDK-synced one included, hold another application's permissions. Java (`Role.confined`, S1.5)
+  and Rust (`role/operations/mod.rs`) refuse with 400 `PERMISSION_OUTSIDE_APPLICATION`, except a
+  super-admin through the admin API. F10's ceiling stops the platform permissions; another
+  application's permissions on an SDK role are still accepted.
 - **IdP role mappings are not bounded** (F8): a mapping from an IdP group to
   `platform:super-admin` grants it at the next login. Java (`CreateIdpRoleMapping`,
   `DeleteIdpRoleMapping`) and Rust (`create_idp_role_mapping.rs`, identity-provider create/update)
@@ -765,3 +843,5 @@ the catalogue drift (F9, with its follow-up: unemitted codes pruned, older schem
   provisioning test installs `platform:application-service` from the seed catalogue). The Java and
   Rust code was read, not run. fcdev init was not run end to end; its provisioning path is
   covered by the no-caller case of `TestProvisionServiceAccount_GateAndRoleCeiling`.
+- F10: the browser run covered the role editor and list only (not the dashboard's role sync card);
+  no run against a deployed database. The Java and Rust code was read, not run.
