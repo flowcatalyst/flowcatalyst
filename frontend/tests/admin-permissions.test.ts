@@ -12,6 +12,7 @@ import {
 	canAssignUserRoles,
 	canCreateRoles,
 	canProvisionApplicationServiceAccount,
+	isPermissionAboveUser,
 	isRoleAboveUser,
 	canDeleteRoles,
 	canSyncPlatformEventTypes,
@@ -111,7 +112,9 @@ describe("role editors", () => {
 		const list = source("pages/authorization/RoleListPage.vue");
 		expect(list).toMatch(/<Button v-if="canCreate" label="Create Role"/);
 		expect(list).toContain(`v-if="data.source === 'DATABASE' && canUpdate"`);
-		expect(list).toContain(`v-if="data.source === 'DATABASE' && canDelete"`);
+		expect(list).toContain(
+			`v-else-if="data.source === 'DATABASE' && canDelete"`,
+		);
 
 		const drawer = source("pages/authorization/RoleDetailDrawer.vue");
 		expect(drawer).toContain(
@@ -256,6 +259,62 @@ describe("role ceiling (F8)", () => {
 		);
 		expect(drawer).toContain(
 			'<template v-else-if="canProvisionServiceAccount">',
+		);
+	});
+});
+
+describe("permission ceiling (F10)", () => {
+	it("locks a platform permission the user lacks", () => {
+		const roleAdmin = anchor(
+			"platform:iam:role:update",
+			"platform:iam:user:view",
+		);
+		expect(isPermissionAboveUser(roleAdmin, "platform:*:*:*")).toBe(true);
+		expect(isPermissionAboveUser(roleAdmin, "platform:iam:user:create")).toBe(
+			true,
+		);
+		expect(isPermissionAboveUser(roleAdmin, "platform:iam:user:view")).toBe(
+			false,
+		);
+		// Application permissions are outside the ceiling.
+		expect(isPermissionAboveUser(roleAdmin, "orders:order:create")).toBe(false);
+		expect(isPermissionAboveUser(null, "platform:iam:user:view")).toBe(true);
+	});
+
+	it("honours wildcards: the super-admin may add or remove anything", () => {
+		expect(
+			isPermissionAboveUser(anchor("platform:*:*:*"), "platform:*:*:*"),
+		).toBe(false);
+		expect(
+			isPermissionAboveUser(
+				anchor("platform:iam:*:*"),
+				"platform:iam:user:create",
+			),
+		).toBe(false);
+		expect(
+			isPermissionAboveUser(anchor("platform:iam:user:*"), "platform:iam:*:*"),
+		).toBe(true);
+	});
+
+	it("is applied by the role editor and the role list's delete", () => {
+		const editor = source("pages/authorization/RoleEditPage.vue");
+		expect(editor).toContain(
+			"return isPermissionAboveUser(authStore.user, permissionString);",
+		);
+		expect(editor).toMatch(
+			/function togglePermission\(permissionString: string\) \{\s*if \(isLocked\(permissionString\)\) return;/,
+		);
+		expect(editor).toContain(
+			"if (!isLocked(perm.permission)) selectedPermissions.value.add(perm.permission);",
+		);
+		expect(editor).toContain(
+			"if (!isLocked(perm.permission)) selectedPermissions.value.delete(perm.permission);",
+		);
+		expect(editor).toContain(':disabled="isLocked(perm.permission)"');
+		const list = source("pages/authorization/RoleListPage.vue");
+		expect(list).toContain("return isRoleAboveUser(authStore.user, role);");
+		expect(list).toContain(
+			"v-if=\"data.source === 'DATABASE' && canDelete && isDeleteLocked(data)\"",
 		);
 	});
 });

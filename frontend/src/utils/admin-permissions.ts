@@ -94,12 +94,36 @@ export function isRoleAboveUser(
 	user: SessionUser,
 	role: { permissions?: string[] } | null | undefined,
 ): boolean {
-	if (!role || userHasPermission(user, SUPER_ADMIN)) return false;
-	return (role.permissions ?? []).some(
-		(p) => p.startsWith("platform:") && !userHasPermission(user, p),
+	if (!role) return false;
+	return (role.permissions ?? []).some((p) => isPermissionAboveUser(user, p));
+}
+
+/**
+ * The permission ceiling (docs/platform-bug-fixes.md F10): a platform
+ * permission the user does not hold (wildcards honoured; application
+ * permissions are outside it; the super-admin holds everything). The API
+ * refuses adding it to a role or removing it from one (403
+ * PERMISSION_ABOVE_CALLER), and deleting a role that holds it, so the role
+ * editor locks it and the role list offers no delete.
+ */
+export function isPermissionAboveUser(
+	user: SessionUser,
+	permission: string,
+): boolean {
+	if (userHasPermission(user, SUPER_ADMIN)) return false;
+	return (
+		permission.startsWith("platform:") && !userHasPermission(user, permission)
 	);
 }
 
 /** The pickers' explanation for a locked role. */
 export const ROLE_ABOVE_USER_HINT =
 	"This role holds permissions you do not have, so you cannot add or remove it.";
+
+/** The role editor's explanation for a locked permission. */
+export const PERMISSION_ABOVE_USER_HINT =
+	"You do not hold this permission, so you cannot add it to or remove it from a role.";
+
+/** The role list's explanation for a role it offers no delete for. */
+export const ROLE_DELETE_ABOVE_USER_HINT =
+	"This role holds permissions you do not have, so you cannot delete it.";

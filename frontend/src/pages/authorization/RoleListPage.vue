@@ -16,6 +16,8 @@ import {
 	canCreateRoles,
 	canDeleteRoles,
 	canUpdateRoles,
+	isRoleAboveUser,
+	ROLE_DELETE_ABOVE_USER_HINT,
 } from "@/utils/admin-permissions";
 
 const router = useRouter();
@@ -28,6 +30,13 @@ const authStore = useAuthStore();
 const canCreate = computed(() => canCreateRoles(authStore.user));
 const canUpdate = computed(() => canUpdateRoles(authStore.user));
 const canDelete = computed(() => canDeleteRoles(authStore.user));
+
+// Deleting a role removes each of its permissions, so the API refuses it when
+// the role holds a platform permission the user lacks (403
+// PERMISSION_ABOVE_CALLER); such a role shows a lock in place of the delete.
+function isDeleteLocked(role: Role): boolean {
+	return isRoleAboveUser(authStore.user, role);
+}
 
 // Data
 const roles = ref<Role[]>([]);
@@ -330,8 +339,13 @@ function getSourceLabel(source: RoleSource) {
                 v-tooltip.left="'Edit role'"
                 @click="editRole(data)"
               />
+              <i
+                v-if="data.source === 'DATABASE' && canDelete && isDeleteLocked(data)"
+                v-tooltip.left="ROLE_DELETE_ABOVE_USER_HINT"
+                class="pi pi-lock delete-locked-icon"
+              ></i>
               <Button
-                v-if="data.source === 'DATABASE' && canDelete"
+                v-else-if="data.source === 'DATABASE' && canDelete"
                 icon="pi pi-trash"
                 text
                 rounded
@@ -486,7 +500,13 @@ function getSourceLabel(source: RoleSource) {
 
 .action-buttons {
   display: flex;
+  align-items: center;
   gap: 4px;
+}
+
+.delete-locked-icon {
+  color: #64748b;
+  padding: 0 10px;
 }
 
 .empty-message {

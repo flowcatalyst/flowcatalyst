@@ -5,7 +5,11 @@ import { useRoute, useRouter } from "vue-router";
 import { rolesApi, type Role } from "@/api/roles";
 import { permissionsApi, type Permission } from "@/api/permissions";
 import { useAuthStore } from "@/stores/auth";
-import { canUpdateRoles } from "@/utils/admin-permissions";
+import {
+	canUpdateRoles,
+	isPermissionAboveUser,
+	PERMISSION_ABOVE_USER_HINT,
+} from "@/utils/admin-permissions";
 
 const route = useRoute();
 const router = useRouter();
@@ -151,7 +155,19 @@ async function loadPermissions() {
 	}
 }
 
+// Platform permissions the signed-in user does not hold: the API refuses
+// adding them to a role or removing them from one (403
+// PERMISSION_ABOVE_CALLER), so the editor locks them as they are.
+function isLocked(permissionString: string): boolean {
+	return isPermissionAboveUser(authStore.user, permissionString);
+}
+
+const hasLockedPermissions = computed(() =>
+	allPermissions.value.some((p) => isLocked(p.permission)),
+);
+
 function togglePermission(permissionString: string) {
+	if (isLocked(permissionString)) return;
 	if (selectedPermissions.value.has(permissionString)) {
 		selectedPermissions.value.delete(permissionString);
 	} else {
@@ -185,7 +201,7 @@ function addCustomPermission() {
 function selectAllInApplication(application: string) {
 	const perms = permissionsByApplication.value.get(application) || [];
 	for (const perm of perms) {
-		selectedPermissions.value.add(perm.permission);
+		if (!isLocked(perm.permission)) selectedPermissions.value.add(perm.permission);
 	}
 	selectedPermissions.value = new Set(selectedPermissions.value);
 }
@@ -193,7 +209,7 @@ function selectAllInApplication(application: string) {
 function deselectAllInApplication(application: string) {
 	const perms = permissionsByApplication.value.get(application) || [];
 	for (const perm of perms) {
-		selectedPermissions.value.delete(perm.permission);
+		if (!isLocked(perm.permission)) selectedPermissions.value.delete(perm.permission);
 	}
 	selectedPermissions.value = new Set(selectedPermissions.value);
 }
@@ -378,6 +394,11 @@ function getActionSeverity(action: string) {
           </small>
         </div>
 
+        <small v-if="hasLockedPermissions" class="locked-hint">
+          <i class="pi pi-lock"></i>
+          Locked permissions are ones you do not hold: you cannot add them to this role or remove them from it.
+        </small>
+
         <div v-if="allPermissions.length === 0" class="empty-permissions">
           <i class="pi pi-lock"></i>
           <span>No permissions available</span>
@@ -415,12 +436,14 @@ function getActionSeverity(action: string) {
                 v-for="perm in permissionsByApplication.get(application)"
                 :key="perm.permission"
                 class="permission-item"
-                :class="{ selected: selectedPermissions.has(perm.permission) }"
+                :class="{ selected: selectedPermissions.has(perm.permission), locked: isLocked(perm.permission) }"
+                :title="isLocked(perm.permission) ? PERMISSION_ABOVE_USER_HINT : undefined"
                 @click="togglePermission(perm.permission)"
               >
                 <Checkbox
                   :modelValue="selectedPermissions.has(perm.permission)"
                   :binary="true"
+                  :disabled="isLocked(perm.permission)"
                   @click.stop
                   @update:modelValue="togglePermission(perm.permission)"
                 />
@@ -434,6 +457,7 @@ function getActionSeverity(action: string) {
                       :severity="getActionSeverity(perm.action)"
                       class="action-tag"
                     />
+                    <i v-if="isLocked(perm.permission)" class="pi pi-lock locked-icon"></i>
                   </div>
                   <div v-if="perm.description" class="permission-description">
                     {{ perm.description }}
@@ -669,6 +693,25 @@ function getActionSeverity(action: string) {
 .permission-item.selected {
   border-color: #3b82f6;
   background: #eff6ff;
+}
+
+.permission-item.locked {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.locked-icon {
+  color: #64748b;
+  margin-left: 8px;
+}
+
+.locked-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 12px;
 }
 
 .permission-info {
