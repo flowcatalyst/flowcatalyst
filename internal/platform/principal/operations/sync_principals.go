@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -63,9 +64,18 @@ type SyncPrincipalsCommand struct {
 // roles are now up for stripping, see removeUnlisted below), so THAT
 // combination is gated here, anchor-only, regardless of entry point.
 //
+// The role ceiling (role.RequireRolesWithinCaller, F8) bounds every role the
+// sync adds or removes, on both entry points: the caller must hold each such
+// role's platform permissions, or the whole sync is refused with 403
+// ROLE_ABOVE_CALLER and nothing is written. Application roles holding only
+// their application's permissions pass for any caller, so an SDK syncing its
+// own roles is unaffected. (Java exempts its app-scoped route because it
+// confines that route to the application's own roles; Go does not, so the
+// ceiling is what stops it handing out platform roles.)
+//
 // Emits per-row [UserCreated]/[UserUpdated] events plus one [PrincipalsSynced]
 // rollup, all atomic with the writes via [usecaseop.Sync].
-func SyncPrincipals(principals *principal.Repository) usecaseop.Operation[SyncPrincipalsCommand, PrincipalsSynced] {
+func SyncPrincipals(principals *principal.Repository, roles *role.Repository) usecaseop.Operation[SyncPrincipalsCommand, PrincipalsSynced] {
 	return usecaseop.Operation[SyncPrincipalsCommand, PrincipalsSynced]{
 		Name: "SyncPrincipals",
 		Validate: func(_ context.Context, cmd SyncPrincipalsCommand) error {
@@ -100,7 +110,17 @@ func SyncPrincipals(principals *principal.Repository) usecaseop.Operation[SyncPr
 				created      uint32
 				updated      uint32
 				deactivated  uint32
+				// changed collects every role the sync adds or removes, for
+				// the role ceiling below.
+				changed []string
 			)
+			roleNames := func(ras []serviceaccount.RoleAssignment) []string {
+				out := make([]string, 0, len(ras))
+				for _, ra := range ras {
+					out = append(out, ra.Role)
+				}
+				return out
+			}
 
 			for _, in := range cmd.Principals {
 				email := strings.ToLower(in.Email)
@@ -130,6 +150,7 @@ func SyncPrincipals(principals *principal.Repository) usecaseop.Operation[SyncPr
 						merged = append(merged, ra)
 					}
 					merged = append(merged, roleAssignments...)
+					changed = append(changed, role.ChangedRoles(roleNames(existing.Roles), roleNames(merged))...)
 					existing.Roles = merged
 					existing.Name = in.Name
 					existing.Active = in.Active
@@ -156,6 +177,7 @@ func SyncPrincipals(principals *principal.Repository) usecaseop.Operation[SyncPr
 				p.Name = in.Name
 				p.Active = in.Active
 				p.Roles = roleAssignments
+				changed = append(changed, roleNames(roleAssignments)...)
 				// Carry a migrated credential verbatim (e.g. an upstream Laravel
 				// bcrypt hash) so the user keeps their password; login verifies and
 				// re-encodes it to the native scheme on first success.
@@ -212,6 +234,7 @@ func SyncPrincipals(principals *principal.Repository) usecaseop.Operation[SyncPr
 						}
 						kept = append(kept, ra)
 					}
+					changed = append(changed, role.ChangedRoles(roleNames(pr.Roles), roleNames(kept))...)
 					pr.Roles = kept
 					pr.UpdatedAt = now
 					saves = append(saves, usecasepgx.SyncSaveItem[principal.Principal]{
@@ -224,6 +247,11 @@ func SyncPrincipals(principals *principal.Repository) usecaseop.Operation[SyncPr
 					})
 					deactivated++
 				}
+			}
+
+			if err := role.RequireRolesWithinCaller(ctx, auth.FromContext(ctx), changed,
+				role.PermissionsFrom(roles)); err != nil {
+				return nil, err
 			}
 
 			subject := "platform.principals"

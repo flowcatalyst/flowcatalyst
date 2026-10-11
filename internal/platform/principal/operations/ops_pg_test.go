@@ -1107,7 +1107,7 @@ func TestSyncPrincipals_UpsertMergeAndRemoveUnlisted(t *testing.T) {
 
 	// First sync: one update (merge) + one create. Role names and the new
 	// email arrive mixed-case to pin the lower-casing.
-	first, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+	first, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo, role.NewRepository(testpg.Pool(t))), operations.SyncPrincipalsCommand{
 		ApplicationCode: "prnsync",
 		Principals: []operations.SyncPrincipalInput{
 			{Email: "prn-sync-existing@example.com", Name: "Existing Renamed", Roles: []string{"PRNSYNC:VIEWER"}, Active: true},
@@ -1143,7 +1143,7 @@ func TestSyncPrincipals_UpsertMergeAndRemoveUnlisted(t *testing.T) {
 	// Second sync with RemoveUnlisted: the new user is absent from the
 	// payload, so its SDK_SYNC roles are stripped — the principal itself is
 	// NOT deleted or deactivated.
-	second, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+	second, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo, role.NewRepository(testpg.Pool(t))), operations.SyncPrincipalsCommand{
 		ApplicationCode: "prnsync",
 		Principals: []operations.SyncPrincipalInput{
 			{Email: "prn-sync-existing@example.com", Name: "Existing Renamed", Roles: []string{"prnsync:viewer"}, Active: true},
@@ -1177,14 +1177,14 @@ func TestSyncPrincipals_Validation(t *testing.T) {
 
 	// Empty ApplicationCode is now allowed — the platform-level
 	// POST /api/principals/sync calls the op with no app code.
-	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo),
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo, role.NewRepository(testpg.Pool(t))),
 		operations.SyncPrincipalsCommand{
 			Principals: []operations.SyncPrincipalInput{{Email: "prn-sync-noappcode@example.com", Name: "No App", Active: true}},
 		}, testpg.TestEC())
 	require.NoError(t, err)
 
 	// An empty principal list is still rejected.
-	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo),
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo, role.NewRepository(testpg.Pool(t))),
 		operations.SyncPrincipalsCommand{ApplicationCode: "prnsyncval"}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "PRINCIPALS_REQUIRED")
 }
@@ -1203,7 +1203,7 @@ func TestSyncPrincipals_RemoveUnlisted_NarrowedToApplication(t *testing.T) {
 	ec := testpg.TestEC()
 
 	// Seed a principal holding ONLY an app-A SDK_SYNC role.
-	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo, role.NewRepository(testpg.Pool(t))), operations.SyncPrincipalsCommand{
 		ApplicationCode: "prnnarrowa",
 		Principals: []operations.SyncPrincipalInput{
 			{Email: "prn-sync-narrowa@example.com", Name: "Narrow A", Roles: []string{"prnnarrowa:viewer"}, Active: true},
@@ -1215,7 +1215,7 @@ func TestSyncPrincipals_RemoveUnlisted_NarrowedToApplication(t *testing.T) {
 	// RemoveUnlisted set. Under the old (unnarrowed) sweep this stripped
 	// every SDK_SYNC role on every unlisted principal system-wide, regardless
 	// of which application it belonged to.
-	swept, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+	swept, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo, role.NewRepository(testpg.Pool(t))), operations.SyncPrincipalsCommand{
 		ApplicationCode: "prnnarrowb",
 		Principals:      []operations.SyncPrincipalInput{{Email: "prn-sync-narrowb-nobody@example.com", Name: "Nobody", Active: true}},
 		RemoveUnlisted:  true,
@@ -1247,20 +1247,20 @@ func TestSyncPrincipals_PlatformScope_RemoveUnlisted_AnchorOnly(t *testing.T) {
 	})
 
 	// Non-sweeping, application-less sync: unaffected.
-	_, err := usecaseop.Run(nonAnchor, uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+	_, err := usecaseop.Run(nonAnchor, uow, operations.SyncPrincipals(repo, role.NewRepository(testpg.Pool(t))), operations.SyncPrincipalsCommand{
 		Principals: []operations.SyncPrincipalInput{{Email: "prn-sync-panchor1@example.com", Name: "X", Active: true}},
 	}, ec)
 	require.NoError(t, err)
 
 	// The SAME application-less shape with RemoveUnlisted is refused.
-	_, err = usecaseop.Run(nonAnchor, uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+	_, err = usecaseop.Run(nonAnchor, uow, operations.SyncPrincipals(repo, role.NewRepository(testpg.Pool(t))), operations.SyncPrincipalsCommand{
 		Principals:     []operations.SyncPrincipalInput{{Email: "prn-sync-panchor1@example.com", Name: "X", Active: true}},
 		RemoveUnlisted: true,
 	}, ec)
 	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "ANCHOR_REQUIRED_FOR_PLATFORM_SWEEP")
 
 	// An application-scoped sweep (has ApplicationCode) is fine for non-anchor.
-	_, err = usecaseop.Run(nonAnchor, uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+	_, err = usecaseop.Run(nonAnchor, uow, operations.SyncPrincipals(repo, role.NewRepository(testpg.Pool(t))), operations.SyncPrincipalsCommand{
 		ApplicationCode: "prnanchorapp",
 		Principals:      []operations.SyncPrincipalInput{{Email: "prn-sync-panchor2@example.com", Name: "Y", Active: true}},
 		RemoveUnlisted:  true,
@@ -1268,7 +1268,7 @@ func TestSyncPrincipals_PlatformScope_RemoveUnlisted_AnchorOnly(t *testing.T) {
 	require.NoError(t, err)
 
 	// An anchor may sweep application-less too.
-	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo, role.NewRepository(testpg.Pool(t))), operations.SyncPrincipalsCommand{
 		Principals:     []operations.SyncPrincipalInput{{Email: "prn-sync-panchor1@example.com", Name: "X", Active: true}},
 		RemoveUnlisted: true,
 	}, ec)

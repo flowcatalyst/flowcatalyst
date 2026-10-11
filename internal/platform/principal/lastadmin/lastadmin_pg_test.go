@@ -24,6 +24,7 @@ import (
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -186,7 +187,7 @@ func TestSync_DeactivatingLastAdmin_Refused(t *testing.T) {
 	a := f.admin(t, "a")
 	got, err := f.repo.FindByID(context.Background(), a)
 	require.NoError(t, err)
-	err = run(f, operations.SyncPrincipals(f.repo),
+	err = run(f, operations.SyncPrincipals(f.repo, role.NewRepository(testpg.Pool(t))),
 		operations.SyncPrincipalsCommand{Principals: []operations.SyncPrincipalInput{
 			{Email: got.UserIdentity.Email, Name: got.Name, Active: false},
 		}})

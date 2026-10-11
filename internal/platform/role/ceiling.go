@@ -2,6 +2,7 @@ package role
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -41,9 +42,13 @@ const platformPermissionPrefix = "platform:"
 // does not exist.
 type PermissionsOf func(ctx context.Context, roleName string) ([]string, error)
 
-// PermissionsFrom is the PermissionsOf of a role repository.
+// PermissionsFrom is the PermissionsOf of a role repository. A nil repository
+// fails every lookup, so an unwired ceiling refuses rather than admits.
 func PermissionsFrom(repo *Repository) PermissionsOf {
 	return func(ctx context.Context, name string) ([]string, error) {
+		if repo == nil {
+			return nil, errors.New("role ceiling: no role repository wired")
+		}
 		r, err := repo.FindByName(ctx, name)
 		if err != nil || r == nil {
 			return nil, err

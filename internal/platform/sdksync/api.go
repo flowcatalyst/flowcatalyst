@@ -535,7 +535,7 @@ func (s *State) syncPrincipals(ctx context.Context, in *syncPrincipalsInput) (*s
 		RemoveUnlisted:  in.RemoveUnlisted,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	ev, err := usecaseop.Run(ctx, s.UoW, principalops.SyncPrincipals(s.Principals), cmd, ec)
+	ev, err := usecaseop.Run(ctx, s.UoW, principalops.SyncPrincipals(s.Principals, s.Roles), cmd, ec)
 	if err != nil {
 		return nil, err
 	}

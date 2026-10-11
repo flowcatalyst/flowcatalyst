@@ -62,7 +62,7 @@ func (s *State) syncUsers(ctx context.Context, in *apicommon.In[SyncUsersRequest
 	}
 
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	ev, err := usecaseop.Run(ctx, s.UoW, operations.SyncPrincipals(s.Repo),
+	ev, err := usecaseop.Run(ctx, s.UoW, operations.SyncPrincipals(s.Repo, s.Roles),
 		operations.SyncPrincipalsCommand{Principals: inputs}, ec)
 	if err != nil {
 		return nil, err
