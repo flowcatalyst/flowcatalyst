@@ -494,6 +494,9 @@ func (s *State) importRow(ctx context.Context, ac *auth.AuthContext, ec usecase.
 		return "error", errMessage(err)
 	}
 	userID := event.UserID
+	// The row's roles go through AssignRoles, which needs user:assign-roles: a
+	// caller holding only user:create gets the user created and the row
+	// reported "roles not applied" (a row without roles needs no more).
 	if len(roles) > 0 {
 		if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignRoles(s.Repo, s.Roles),
 			operations.AssignRolesCommand{UserID: userID, Roles: roles}, ec); err != nil {
@@ -1118,8 +1121,9 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicomm
 	ac := auth.FromContext(ctx)
 	// Coarse permission gate BEFORE any load (PR-3(a)): no permission means
 	// nothing is touched, so an unauthorized caller can't distinguish a real id
-	// from an invented one via this route's response.
-	if err := auth.CanUpdatePrincipals(ac); err != nil {
+	// from an invented one via this route's response. Changing roles needs
+	// user:assign-roles itself, not user:update (owner ruling 2026-10-11).
+	if err := auth.CanAssignPrincipalRoles(ac); err != nil {
 		return nil, err
 	}
 	// Load the target to shape the desired role set for non-anchor admins; the
@@ -1715,8 +1719,9 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[P
 	ac := auth.FromContext(ctx)
 	// Coarse permission gate BEFORE any load (PR-3(a)): no permission means
 	// nothing is touched, so an unauthorized caller can't distinguish a real id
-	// from an invented one via this route's response.
-	if err := auth.CanUpdatePrincipals(ac); err != nil {
+	// from an invented one via this route's response. Changing roles needs
+	// user:assign-roles itself, not user:update (owner ruling 2026-10-11).
+	if err := auth.CanAssignPrincipalRoles(ac); err != nil {
 		return nil, err
 	}
 	// Load the target to bound the role for non-anchor admins and to apply the
@@ -1778,8 +1783,9 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon
 	ac := auth.FromContext(ctx)
 	// Coarse permission gate BEFORE any load (PR-3(a)): no permission means
 	// nothing is touched, so an unauthorized caller can't distinguish a real id
-	// from an invented one via this route's response.
-	if err := auth.CanUpdatePrincipals(ac); err != nil {
+	// from an invented one via this route's response. Changing roles needs
+	// user:assign-roles itself, not user:update (owner ruling 2026-10-11).
+	if err := auth.CanAssignPrincipalRoles(ac); err != nil {
 		return nil, err
 	}
 	// Load the target to bound the role for non-anchor admins and to apply the

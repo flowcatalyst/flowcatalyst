@@ -88,7 +88,7 @@ func newScopeFixture(t *testing.T, suffix string) scopeFixture {
 		PrincipalID: "prn_scopeadmin_" + suffix,
 		Scope:       auth.ScopeClient,
 		Clients:     []string{evA.ClientID},
-		Permissions: []string{"platform:iam:user:view", "platform:iam:user:create", "platform:iam:user:update", "platform:iam:user:delete"},
+		Permissions: []string{"platform:iam:user:view", "platform:iam:user:create", "platform:iam:user:update", "platform:iam:user:delete", "platform:iam:user:assign-roles"},
 	})
 
 	return scopeFixture{

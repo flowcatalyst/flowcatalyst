@@ -40,8 +40,8 @@ func requireUserResourceAccess(ctx context.Context, p *principal.Principal) erro
 }
 
 // requireUserAdmin is the post-load resource-level authorization shared by the
-// user-administration operations (assign_roles, assign_application_access,
-// developer_credential's admin branch). The coarse "may administer users"
+// user-administration operations (assign_roles through requireRoleAssigner,
+// assign_application_access, developer_credential's admin branch). The coarse "may administer users"
 // permission is enforced at the controller BEFORE the target is loaded (PR-3);
 // this is purely the per-resource gate that runs after: the target must be a
 // CLIENT-scope user (blockNonClientTarget) homed at a client the caller can
@@ -57,6 +57,17 @@ func requireUserAdmin(ctx context.Context, p *principal.Principal) error {
 		return httperror.NotFound("User", string(p.ID))
 	}
 	return nil
+}
+
+// requireRoleAssigner is requireUserAdmin for a change to the user's role set:
+// the same scope rules, then user:assign-roles itself (owner ruling
+// 2026-10-11). Holding user:update, create or delete does not let a caller
+// change roles.
+func requireRoleAssigner(ctx context.Context, p *principal.Principal) error {
+	if err := requireUserAdmin(ctx, p); err != nil {
+		return err
+	}
+	return auth.CanAssignPrincipalRoles(auth.FromContext(ctx))
 }
 
 // blockNonClientTarget stops a non-anchor administrator (client-admin) from

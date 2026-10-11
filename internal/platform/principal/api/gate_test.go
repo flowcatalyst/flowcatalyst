@@ -33,14 +33,16 @@ func gateRefuses(t *testing.T, perm string, call func(ctx context.Context) error
 // Each user write needs the permission for its operation, not any of
 // create/update/delete (docs/platform-bug-fixes.md): creating users needs
 // create; every change to an existing user (edit, activate, deactivate,
-// passwords, roles, application access, someone else's developer credential)
-// needs update; delete needs delete.
+// passwords, application access, someone else's developer credential) needs
+// update; a change to the user's roles (replace, add, remove) needs
+// assign-roles, not update (owner ruling 2026-10-11); delete needs delete.
 func TestWriteGatesCheckTheOperationsPermission(t *testing.T) {
 	s := &State{}
 	const (
 		create = "platform:iam:user:create"
 		update = "platform:iam:user:update"
 		del    = "platform:iam:user:delete"
+		assign = "platform:iam:user:assign-roles"
 	)
 	client := "clt_x"
 	id := &apicommon.IDInput{ID: "prn_target00001"}
@@ -70,15 +72,15 @@ func TestWriteGatesCheckTheOperationsPermission(t *testing.T) {
 			_, err := s.sendPasswordReset(ctx, &sendPasswordResetInput{ID: "prn_target00001"})
 			return err
 		}},
-		"assign roles": {update, func(ctx context.Context) error {
+		"assign roles": {assign, func(ctx context.Context) error {
 			_, err := s.assignRoles(ctx, &assignRolesInput{ID: "prn_target00001"})
 			return err
 		}},
-		"add role": {update, func(ctx context.Context) error {
+		"add role": {assign, func(ctx context.Context) error {
 			_, err := s.addRole(ctx, &addRoleInput{ID: "prn_target00001"})
 			return err
 		}},
-		"remove role": {update, func(ctx context.Context) error {
+		"remove role": {assign, func(ctx context.Context) error {
 			_, err := s.removeRole(ctx, &removeRoleInput{ID: "prn_target00001", Role: "app:r"})
 			return err
 		}},
@@ -93,7 +95,7 @@ func TestWriteGatesCheckTheOperationsPermission(t *testing.T) {
 		"delete": {del, func(ctx context.Context) error { _, err := s.delete(ctx, id); return err }},
 	}
 	for name, op := range ops {
-		for _, held := range []string{create, update, del} {
+		for _, held := range []string{create, update, del, assign} {
 			refused := gateRefuses(t, held, op.call)
 			if want := held != op.need; refused != want {
 				t.Errorf("%s with only %s: refused=%v, want %v", name, held, refused, want)

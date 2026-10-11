@@ -72,7 +72,7 @@ func TestAddRole_AlreadyPresentRefusedCrossTenant(t *testing.T) {
 	)
 	mustSeedPrincipalWithRole(t, ctx, repo, targetPID, targetClient, roleName)
 
-	authCtx := auth.WithContext(ctx, clientScopedCaller("prn_authzarcaller1", callerClient, testPermUserUpdate))
+	authCtx := auth.WithContext(ctx, clientScopedCaller("prn_authzarcaller1", callerClient, testPermUserAssignRoles))
 	_, err := s.addRole(authCtx, &addRoleInput{ID: targetPID, Body: AddRoleRequest{Role: roleName}})
 	require.Error(t, err, "a cross-tenant caller must be refused even when the role is already present")
 }
@@ -140,7 +140,7 @@ func TestRemoveRole_NotPresentRefusedCrossTenant(t *testing.T) {
 	)
 	mustSeedPrincipalWithRole(t, ctx, repo, targetPID, targetClient, "")
 
-	authCtx := auth.WithContext(ctx, clientScopedCaller("prn_authzrrcaller1", callerClient, testPermUserUpdate))
+	authCtx := auth.WithContext(ctx, clientScopedCaller("prn_authzrrcaller1", callerClient, testPermUserAssignRoles))
 	_, err := s.removeRole(authCtx, &removeRoleInput{ID: targetPID, Role: "someapp:never-had"})
 	require.Error(t, err, "a cross-tenant caller must be refused even when the role is already absent")
 }

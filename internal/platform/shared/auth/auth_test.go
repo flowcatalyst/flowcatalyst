@@ -104,6 +104,19 @@ func TestRequireUserAdmin_ChecksTheOperationsPermission(t *testing.T) {
 	assert.Error(t, RequireUserAdmin(deleter, nil, CanUpdatePrincipals))
 }
 
+// Changing a user's roles needs user:assign-roles itself (owner ruling
+// 2026-10-11); user:update no longer grants it, and assign-roles grants no
+// other user write.
+func TestCanAssignPrincipalRoles_NeedsAssignRoles(t *testing.T) {
+	updater := &AuthContext{Scope: ScopeAnchor, Permissions: []string{"platform:iam:user:update"}}
+	assert.Error(t, CanAssignPrincipalRoles(updater))
+	assigner := &AuthContext{Scope: ScopeAnchor, Permissions: []string{"platform:iam:user:assign-roles"}}
+	assert.NoError(t, CanAssignPrincipalRoles(assigner))
+	assert.Error(t, CanUpdatePrincipals(assigner))
+	wildcard := &AuthContext{Scope: ScopeAnchor, Permissions: []string{"platform:*:*:*"}}
+	assert.NoError(t, CanAssignPrincipalRoles(wildcard))
+}
+
 func TestNonAnchorWithoutPermissionDenied(t *testing.T) {
 	a := &AuthContext{Scope: ScopeClient, Permissions: []string{"platform:messaging:event:view"}}
 	assert.Error(t, CanReadEventTypes(a), "an unrelated permission must not grant event-type view")

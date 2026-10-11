@@ -27,12 +27,13 @@ import (
 //     PrincipalResponse for any tenant's principal.
 //
 // permUserView ("platform:iam:user:view", auth.CanReadPrincipals) and
-// permUserUpdate ("platform:iam:user:update", auth.CanUpdatePrincipals) are
+// permUserAssignRoles ("platform:iam:user:assign-roles",
+// auth.CanAssignPrincipalRoles, the role routes' gate) are
 // unexported in the auth package, so the literal strings are used directly —
 // matching the pattern in connection/dispatchpool/eventtype's ops_pg_test.go.
 const (
-	testPermUserView   = "platform:iam:user:view"
-	testPermUserUpdate = "platform:iam:user:update"
+	testPermUserView        = "platform:iam:user:view"
+	testPermUserAssignRoles = "platform:iam:user:assign-roles"
 )
 
 // clientScopedCaller builds a non-anchor AuthContext holding perm for the

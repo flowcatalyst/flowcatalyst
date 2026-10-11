@@ -22,11 +22,15 @@ type AssignRolesCommand struct {
 // AssignRoles replaces a user principal's full role set and emits
 // [RolesAssigned].
 //
-// Resource-level authorization (requireUserAdmin against the loaded principal —
-// the use-case move of the controller's auth.RequireUserAdmin +
-// blockNonClientTarget) runs post-load in Execute. The application-scoped role
-// BOUNDING for non-anchor admins (assertAssignableRoles + preserved roles) is
-// command-shaping the controller still performs before building the desired set.
+// Resource-level authorization (requireRoleAssigner against the loaded
+// principal: the controller's auth.RequireUserAdmin + blockNonClientTarget,
+// then user:assign-roles) runs post-load in Execute. The permission is checked
+// here as well as at the routes' pre-load gate so every caller of the
+// operation needs it, the bulk import's rows included (owner ruling
+// 2026-10-11: assign-roles, not update, governs a user's roles). The
+// application-scoped role BOUNDING for non-anchor admins (assertAssignableRoles
+// + preserved roles) is command-shaping the controller still performs before
+// building the desired set.
 func AssignRoles(repo *principal.Repository, roles *role.Repository) usecaseop.Operation[AssignRolesCommand, RolesAssigned] {
 	return usecaseop.Operation[AssignRolesCommand, RolesAssigned]{
 		Name: "AssignRoles",
@@ -45,7 +49,7 @@ func AssignRoles(repo *principal.Repository, roles *role.Repository) usecaseop.O
 			if p == nil {
 				return nil, httperror.NotFound("User", string(cmd.UserID))
 			}
-			if err := requireUserAdmin(ctx, p); err != nil {
+			if err := requireRoleAssigner(ctx, p); err != nil {
 				return nil, err
 			}
 			if p.Type != principal.TypeUser {

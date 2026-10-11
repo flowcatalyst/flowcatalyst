@@ -930,6 +930,14 @@ func CanReadPrincipals(a *AuthContext) error   { return requirePermission(a, per
 func CanCreatePrincipals(a *AuthContext) error { return requirePermission(a, permUserCreate) }
 func CanUpdatePrincipals(a *AuthContext) error { return requirePermission(a, permUserUpdate) }
 func CanDeletePrincipals(a *AuthContext) error { return requirePermission(a, permUserDelete) }
+
+// CanAssignPrincipalRoles gates every change to a user's role set (replace,
+// add one, remove one, the roles of a bulk-import row): user:assign-roles
+// itself, not user:update (owner ruling 2026-10-11).
+func CanAssignPrincipalRoles(a *AuthContext) error {
+	return requirePermission(a, permUserAssignRoles)
+}
+
 func CanWritePrincipals(a *AuthContext) error {
 	return requireAny(a, permUserCreate, permUserUpdate, permUserDelete)
 }
