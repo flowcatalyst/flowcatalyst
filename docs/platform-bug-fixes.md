@@ -24,7 +24,7 @@ previous code, or, for a test of a new function, because the behaviour it pins d
 | - | processes | `1f83887` | create `process:create`; update, archive `process:update`; delete unchanged |
 | - | roles | `e03e54a` | create `role:create`; update and granting/revoking a permission `role:update`; delete unchanged |
 | - | service accounts | `b49b73a` | create `service-account:create`; update, deactivate `service-account:update`; delete unchanged (anchor scope on create/update/delete unchanged, owner decision #19) |
-| - | principals (users) | `4c87621` | creating users (create, createUser, bulk import) `user:create`; every change to an existing user (edit, activate, deactivate, passwords, 2FA reset, roles, application access, someone else's developer credential) and the reset-approval queue (list, approve, deny) `user:update`; delete unchanged. `auth.RequireUserAdmin` now takes the operation's check |
+| - | principals (users) | `4c87621`, `e02159b` | creating users (create, createUser, bulk import) `user:create`; every change to an existing user (edit, activate, deactivate, passwords, 2FA reset, application access, someone else's developer credential) and the reset-approval queue (list, approve, deny) `user:update`; a change to the user's roles `user:assign-roles` (owner ruling 2026-10-11, F7); delete unchanged. `auth.RequireUserAdmin` now takes the operation's check |
 | - | comments | `54dcaa0` | role and application use-case comments name the per-operation gates |
 
 - **Wire impact**: no shape change. A caller holding only some of create/update/delete is now
@@ -33,9 +33,9 @@ previous code, or, for a test of a new function, because the behaviour it pins d
   application-service grant.
 - **Chosen**: lifecycle operations (pause, resume, activate, deactivate, archive) need **update**
   where there is no dedicated check today. The seed defines `user:activate`, `user:deactivate`,
-  `user:assign-roles`, `scheduled-job:pause`, `event-type:archive` and `process:archive`, but no
-  check reads them; switching to them would lock out custom roles that hold update only. Left as a
-  decision (below).
+  `scheduled-job:pause`, `event-type:archive` and `process:archive`, but no check reads them;
+  switching to them would lock out custom roles that hold update only. Left as a decision (below).
+  `user:assign-roles` was in this list; the owner ruled it canonical for role changes (F7).
 - **Not changed**: `POST /api/scheduled-jobs/instances/{id}/log` and `/complete` keep the any-of
   gate (they are the runner's reports, not job writes; see new findings).
 - **Tests**: `gate_test.go` in each `*/api` package (subscription, application, scheduledjob,
@@ -450,11 +450,56 @@ failed before its fix.
 - **Wire impact**: none. **Tests**: `frontend/tests/admin-permissions.test.ts`.
 - **Java/Rust mirror**: none (SPA).
 
+### F7. A user's roles changed under `user:update` (owner ruling 2026-10-11)
+
+- **Found**: the first batch (`4c87621`) gated the user role routes on `user:update`, because no
+  check read the seeded `platform:iam:user:assign-roles` and switching was thought to lock out
+  custom roles holding update only (decision 1). The Java platform checks `USER_ASSIGN_ROLES`
+  (`Access.requireRoleAssigner`) and Rust `user:assign-roles` (`authorization_service.rs`), so Go
+  was the odd one out.
+- **Ruling**: `user:assign-roles` is the permission for assigning or changing a user's roles.
+- **Fix** (`e02159b`): `auth.CanAssignPrincipalRoles`. `PUT /api/principals/{id}/roles`,
+  `POST /api/principals/{id}/roles` and `DELETE /api/principals/{id}/roles/{role}` check it before
+  any load (in place of `user:update`); the `AssignRoles` use case checks it post-load after the
+  scope rules (`requireRoleAssigner`), so every caller needs it. The bulk import creates users
+  under `user:create` and assigns a row's roles through `AssignRoles`: without assign-roles the
+  user is created and the row reports "created, but roles not applied" (Java does the same); a row
+  without roles needs nothing more. There is no combined call: `PUT /api/principals/{id}` carries
+  no roles, and no BFF or `/ui` path assigns user roles (`/ui` links to the SPA's user pages).
+  SPA (`18c0c27`): `canAssignUserRoles` (`utils/admin-permissions.ts`, permission only, no anchor
+  check: a client administrator holding it assigns its client's application roles). Without it
+  the user drawer shows roles read-only (no Manage Roles / Assign Roles), Developer Users offers no
+  Grant or Remove Developer Role (credential actions stay), and the CSV import dialog says the
+  Roles column will not be applied.
+- **Not changed**: the principal syncs (`POST /api/principals/sync`,
+  `POST /api/applications/{appCode}/principals/sync`) keep their any-of gate (manage, create,
+  update, delete or assign-roles), as on Java (`PrincipalApi.syncUsers`, `SdkSyncApi`); they write
+  `SDK_SYNC` role assignments, not `ADMIN_ASSIGNED` ones. Service-account roles keep
+  `service-account:update` (F4). The IdP role sync at login is the system's, not a caller's.
+- **Seed**: `platform:iam-admin` and `platform:client-admin` hold update and assign-roles together
+  (since `31fb230` and `9df6124`), `platform:super-admin` the wildcard; no seeded role holds update
+  without assign-roles, so no migration. The seeder never rewrites an existing role, so a
+  deployment that removed assign-roles from a built-in role by hand keeps that edit.
+- **Wire impact**: no shape change. A caller holding `user:update` without `user:assign-roles` (a
+  custom role) gets 403 `PERMISSION_REQUIRED` on the three role routes, and its import rows'
+  roles are not applied; a caller holding assign-roles without update can now change roles.
+- **Tests** (each failed before): `principal/api/gate_test.go` (each role route with each single
+  permission), `principal/api/assign_roles_permission_pg_test.go`
+  (`TestRoleChanges_RefusedWithUpdateOnly`, `TestRoleChanges_AllowedWithAssignRolesOnly`: role
+  changes allowed, profile edit 403; `TestBulkImport_RowRolesNeedAssignRoles`),
+  `shared/auth/auth_test.go` `TestCanAssignPrincipalRoles_NeedsAssignRoles`,
+  `frontend/tests/admin-permissions.test.ts` ("user role assignment"). The role-route scope tests
+  now hold assign-roles.
+- **Java/Rust mirror**: none. Java already checks `USER_ASSIGN_ROLES` in `AssignRoles` and the
+  add/remove role handlers; Rust already checks `user:assign-roles`. Both keep the syncs' any-of
+  gate, as Go does.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
-   (`user:activate`, `user:deactivate`, `user:assign-roles`, `scheduled-job:pause`,
-   `event-type:archive`, `process:archive`).
+   (`user:activate`, `user:deactivate`, `scheduled-job:pause`, `event-type:archive`,
+   `process:archive`). `user:assign-roles` is no longer in this list: the owner ruled it
+   canonical for user role changes (F7, 2026-10-11).
 2. Subscription `clientScoped`/`sequence`: accepted on **create** only (update unchanged; the SPA's
    edit still sends `sequence`, which is dropped).
 3. Queue: the SPA offers the two accepted values; the API is unchanged.
@@ -517,3 +562,6 @@ SPA's sync and role controls (F6).
   executing its SQL; through goose on every test database), never on a deployed one; the gated
   `TestDropInSafety` was not run; no browser run of the SPA role and sync controls.
 - Routing of a newly created client-scoped pool end to end through a running router.
+- F7: no browser run of the SPA role controls. The Java and Rust checks were read, not run
+  (Java `Access.requireRoleAssigner`, `PrincipalApi`; Rust `authorization_service.rs`
+  requires `USER_ASSIGN_ROLES`).
