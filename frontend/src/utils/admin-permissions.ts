@@ -63,3 +63,43 @@ export function canSyncPlatformRoles(user: SessionUser): boolean {
 export function canAssignUserRoles(user: SessionUser): boolean {
 	return userHasPermission(user, USER_ASSIGN_ROLES);
 }
+
+export const SERVICE_ACCOUNT_CREATE = "platform:iam:service-account:create";
+export const APPLICATION_UPDATE = "platform:admin:application:update";
+const SUPER_ADMIN = "platform:*:*:*";
+
+/**
+ * POST /api/applications/{id}/provision-service-account: anchor scope,
+ * service-account:create and application:update (docs/platform-bug-fixes.md
+ * F8). The role ceiling is the API's to apply on submit.
+ */
+export function canProvisionApplicationServiceAccount(
+	user: SessionUser,
+): boolean {
+	return (
+		isAnchor(user) &&
+		userHasPermission(user, SERVICE_ACCOUNT_CREATE) &&
+		userHasPermission(user, APPLICATION_UPDATE)
+	);
+}
+
+/**
+ * The role ceiling (docs/platform-bug-fixes.md F8): a role is above the user
+ * when it holds a platform permission the user does not (wildcards honoured;
+ * an application's own permissions are outside the ceiling). The API refuses
+ * adding or removing such a role (403 ROLE_ABOVE_CALLER), for users and for
+ * service accounts alike, so the role pickers lock it.
+ */
+export function isRoleAboveUser(
+	user: SessionUser,
+	role: { permissions?: string[] } | null | undefined,
+): boolean {
+	if (!role || userHasPermission(user, SUPER_ADMIN)) return false;
+	return (role.permissions ?? []).some(
+		(p) => p.startsWith("platform:") && !userHasPermission(user, p),
+	);
+}
+
+/** The pickers' explanation for a locked role. */
+export const ROLE_ABOVE_USER_HINT =
+	"This role holds permissions you do not have, so you cannot add or remove it.";

@@ -11,6 +11,8 @@ import { describe, expect, it } from "vitest";
 import {
 	canAssignUserRoles,
 	canCreateRoles,
+	canProvisionApplicationServiceAccount,
+	isRoleAboveUser,
 	canDeleteRoles,
 	canSyncPlatformEventTypes,
 	canSyncPlatformRoles,
@@ -183,6 +185,77 @@ describe("user role assignment", () => {
 
 		const importer = source("components/UserImportDialog.vue");
 		expect(importer).toContain("canAssignUserRoles(authStore.user)");
-		expect(importer).toContain('<p v-if="!canAssignRoles" class="dialog-note">');
+		expect(importer).toContain(
+			'<p v-if="!canAssignRoles" class="dialog-note">',
+		);
+	});
+});
+
+describe("role ceiling (F8)", () => {
+	const power = {
+		permissions: ["platform:iam:user:create", "platform:iam:user:view"],
+	};
+	const messaging = { permissions: ["platform:messaging:*:*"] };
+	const appOnly = { permissions: ["orders:order:view"] };
+
+	it("locks a role holding a platform permission the user lacks", () => {
+		const viewer = anchor("platform:iam:user:view");
+		expect(isRoleAboveUser(viewer, power)).toBe(true);
+		expect(
+			isRoleAboveUser(viewer, { permissions: ["platform:iam:user:view"] }),
+		).toBe(false);
+		// Application permissions are outside the ceiling.
+		expect(isRoleAboveUser(viewer, appOnly)).toBe(false);
+	});
+
+	it("honours wildcards: the super-admin may assign anything", () => {
+		expect(isRoleAboveUser(anchor("platform:*:*:*"), power)).toBe(false);
+		expect(isRoleAboveUser(anchor("platform:*:*:*"), messaging)).toBe(false);
+		expect(isRoleAboveUser(anchor("platform:iam:*:*"), power)).toBe(false);
+		expect(isRoleAboveUser(anchor("platform:iam:*:*"), messaging)).toBe(true);
+		expect(isRoleAboveUser(anchor("platform:messaging:*:*"), messaging)).toBe(
+			false,
+		);
+		expect(isRoleAboveUser(null, power)).toBe(true);
+	});
+
+	it("is applied by the user and service-account role pickers", () => {
+		for (const path of [
+			"pages/users/UserDetailBody.vue",
+			"pages/service-accounts/ServiceAccountDetailDrawer.vue",
+		]) {
+			const page = source(path);
+			expect(page).toContain("isRoleAboveUser(authStore.user, r)");
+			expect(page).toMatch(
+				/function toggleRole\(roleName: string\) \{\s*if \(lockedRoleNames\.value\.has\(roleName\)\) return;/,
+			);
+			expect(page).toMatch(
+				/function removeSelectedRole\(roleName: string\) \{\s*if \(lockedRoleNames\.value\.has\(roleName\)\) return;/,
+			);
+			expect(page).toContain("locked: lockedRoleNames.has(role.name)");
+		}
+	});
+
+	it("offers service-account provisioning only under the API's gate", () => {
+		const both = [
+			"platform:iam:service-account:create",
+			"platform:admin:application:update",
+		];
+		expect(canProvisionApplicationServiceAccount(anchor(...both))).toBe(true);
+		expect(
+			canProvisionApplicationServiceAccount(anchor("platform:*:*:*")),
+		).toBe(true);
+		expect(canProvisionApplicationServiceAccount(anchor(both[0]))).toBe(false);
+		expect(canProvisionApplicationServiceAccount(anchor(both[1]))).toBe(false);
+		expect(canProvisionApplicationServiceAccount(clientUser(...both))).toBe(
+			false,
+		);
+		const drawer = source("pages/applications/ApplicationDetailDrawer.vue");
+		expect(drawer).toContain(
+			"canProvisionApplicationServiceAccount(authStore.user)",
+		);
+		expect(drawer).toContain(
+			'<template v-else-if="canProvisionServiceAccount">',
+		);
 	});
 });

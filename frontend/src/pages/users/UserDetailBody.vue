@@ -20,7 +20,11 @@ import { useClientOptions } from "@/composables/useClientOptions";
 import { useDirtyForm } from "@/composables/useDirtyForm";
 import { useConfirm } from "primevue/useconfirm";
 import { useAuthStore } from "@/stores/auth";
-import { canAssignUserRoles } from "@/utils/admin-permissions";
+import {
+	canAssignUserRoles,
+	isRoleAboveUser,
+	ROLE_ABOVE_USER_HINT,
+} from "@/utils/admin-permissions";
 
 const props = defineProps<{
 	userId: string;
@@ -271,6 +275,17 @@ const filteredAvailableRoles = computed(() => {
 			r.displayName?.toLowerCase().includes(query),
 	);
 });
+
+// Roles holding permissions the signed-in user lacks: the API refuses adding
+// or removing them (403 ROLE_ABOVE_CALLER), so the picker locks them.
+const lockedRoleNames = computed(
+	() =>
+		new Set(
+			availableRoles.value
+				.filter((r) => isRoleAboveUser(authStore.user, r))
+				.map((r) => r.name),
+		),
+);
 
 // Check if there are unsaved changes in the role picker
 const hasRoleChanges = computed(() => {
@@ -735,6 +750,7 @@ function openRolePicker() {
 }
 
 function toggleRole(roleName: string) {
+	if (lockedRoleNames.value.has(roleName)) return;
 	if (selectedRoleNames.value.has(roleName)) {
 		selectedRoleNames.value.delete(roleName);
 	} else {
@@ -745,6 +761,7 @@ function toggleRole(roleName: string) {
 }
 
 function removeSelectedRole(roleName: string) {
+	if (lockedRoleNames.value.has(roleName)) return;
 	selectedRoleNames.value.delete(roleName);
 	selectedRoleNames.value = new Set(selectedRoleNames.value);
 }
@@ -1289,7 +1306,8 @@ function formatDate(dateStr: string | null | undefined) {
             v-for="role in filteredAvailableRoles"
             :key="role.name"
             class="role-item"
-            :class="{ selected: selectedRoleNames.has(role.name) }"
+            :class="{ selected: selectedRoleNames.has(role.name), locked: lockedRoleNames.has(role.name) }"
+            :title="lockedRoleNames.has(role.name) ? ROLE_ABOVE_USER_HINT : undefined"
             @click="toggleRole(role.name)"
           >
             <div class="role-item-content">
@@ -1323,7 +1341,13 @@ function formatDate(dateStr: string | null | undefined) {
               <span class="role-display-name">{{ getRoleDisplay(roleName).displayName }}</span>
               <span class="role-name-code">{{ roleName }}</span>
             </div>
+            <i
+              v-if="lockedRoleNames.has(roleName)"
+              v-tooltip.top="ROLE_ABOVE_USER_HINT"
+              class="pi pi-lock locked-icon"
+            ></i>
             <Button
+              v-else
               v-tooltip.top="'Remove'"
               icon="pi pi-times"
               text
@@ -1842,6 +1866,16 @@ function formatDate(dateStr: string | null | undefined) {
 
 .role-item.selected {
   background: #eff6ff;
+}
+
+.role-item.locked {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.locked-icon {
+  color: #64748b;
+  padding: 0 8px;
 }
 
 .role-item.selected-item {

@@ -19,6 +19,8 @@ import { clientsApi, type Client } from "@/api/clients";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
 import { useDirtyForm } from "@/composables/useDirtyForm";
+import { useAuthStore } from "@/stores/auth";
+import { isRoleAboveUser, ROLE_ABOVE_USER_HINT } from "@/utils/admin-permissions";
 
 const emit = defineEmits<{
 	changed: [];
@@ -26,6 +28,7 @@ const emit = defineEmits<{
 
 const route = useRoute();
 const confirm = useConfirm();
+const authStore = useAuthStore();
 
 // Edit mode — doubles as the drawer's dirty flag.
 const editMode = ref(false);
@@ -140,6 +143,17 @@ const filteredAvailableRoles = computed(() => {
 			r.displayName?.toLowerCase().includes(query),
 	);
 });
+
+// Roles holding permissions the signed-in user lacks: the API refuses adding
+// or removing them (403 ROLE_ABOVE_CALLER), so the picker locks them.
+const lockedRoleNames = computed(
+	() =>
+		new Set(
+			availableRoles.value
+				.filter((r) => isRoleAboveUser(authStore.user, r))
+				.map((r) => r.name),
+		),
+);
 
 const hasRoleChanges = computed(() => {
 	const currentRoles = new Set(roleAssignments.value.map((r) => r.roleName));
@@ -538,6 +552,7 @@ function openRolePicker() {
 }
 
 function toggleRole(roleName: string) {
+	if (lockedRoleNames.value.has(roleName)) return;
 	if (selectedRoleNames.value.has(roleName)) {
 		selectedRoleNames.value.delete(roleName);
 	} else {
@@ -547,6 +562,7 @@ function toggleRole(roleName: string) {
 }
 
 function removeSelectedRole(roleName: string) {
+	if (lockedRoleNames.value.has(roleName)) return;
 	selectedRoleNames.value.delete(roleName);
 	selectedRoleNames.value = new Set(selectedRoleNames.value);
 }
@@ -1080,7 +1096,8 @@ async function deleteServiceAccount() {
               v-for="role in filteredAvailableRoles"
               :key="role.name"
               class="role-item"
-              :class="{ selected: selectedRoleNames.has(role.name) }"
+              :class="{ selected: selectedRoleNames.has(role.name), locked: lockedRoleNames.has(role.name) }"
+              :title="lockedRoleNames.has(role.name) ? ROLE_ABOVE_USER_HINT : undefined"
               @click="toggleRole(role.name)"
             >
               <div class="role-item-content">
@@ -1107,7 +1124,13 @@ async function deleteServiceAccount() {
                 <span class="role-display-name">{{ getRoleDisplay(roleName).displayName }}</span>
                 <span class="role-name-code">{{ roleName }}</span>
               </div>
+              <i
+                v-if="lockedRoleNames.has(roleName)"
+                v-tooltip.top="ROLE_ABOVE_USER_HINT"
+                class="pi pi-lock locked-icon"
+              ></i>
               <Button
+                v-else
                 icon="pi pi-times"
                 text
                 rounded
@@ -1463,6 +1486,16 @@ async function deleteServiceAccount() {
 
 .role-item.selected {
   background: #eff6ff;
+}
+
+.role-item.locked {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.locked-icon {
+  color: #64748b;
+  padding: 0 8px;
 }
 
 .role-item.selected-item {

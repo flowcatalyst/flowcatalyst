@@ -13,6 +13,8 @@ import { docsApi, type DocSummary } from "@/api/docs";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
 import { useDirtyForm } from "@/composables/useDirtyForm";
+import { useAuthStore } from "@/stores/auth";
+import { canProvisionApplicationServiceAccount } from "@/utils/admin-permissions";
 
 const emit = defineEmits<{
 	changed: [];
@@ -20,6 +22,12 @@ const emit = defineEmits<{
 
 const route = useRoute();
 const confirm = useConfirm();
+const authStore = useAuthStore();
+// Provisioning needs anchor scope, service-account:create and
+// application:update (docs/platform-bug-fixes.md F8).
+const canProvisionServiceAccount = computed(() =>
+	canProvisionApplicationServiceAccount(authStore.user),
+);
 
 const editing = ref(false);
 
@@ -456,7 +464,7 @@ function formatDate(dateString: string) {
             secret can only be viewed at creation time or when rotated.
           </Message>
         </template>
-        <template v-else>
+        <template v-else-if="canProvisionServiceAccount">
           <div class="action-item">
             <div class="action-info">
               <strong>Provision Service Account</strong>
@@ -473,6 +481,7 @@ function formatDate(dateString: string) {
             />
           </div>
         </template>
+        <p v-else>No service account.</p>
       </FcFormSection>
 
       <!-- Documentation (synced by the application's SDK) -->
