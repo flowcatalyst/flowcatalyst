@@ -8,17 +8,19 @@ import (
 
 func TestPlatformEventTypesCatalogShape(t *testing.T) {
 	defs := PlatformEventTypes()
-	if len(defs) < 41 {
-		t.Fatalf("expected 41+ event-type definitions, got %d", len(defs))
+	if len(defs) < 154 {
+		t.Fatalf("expected 154+ event-type definitions, got %d", len(defs))
 	}
+	subdomains := map[string]bool{"iam": true, "admin": true, "messaging": true, "developer": true, "portal": true}
 	seen := map[string]bool{}
 	for _, d := range defs {
 		if seen[d.Code] {
 			t.Fatalf("duplicate definition: %s", d.Code)
 		}
 		seen[d.Code] = true
-		if !strings.HasPrefix(d.Code, "platform:iam:") && !strings.HasPrefix(d.Code, "platform:admin:") {
-			t.Fatalf("unexpected prefix on %s — must be platform:iam or platform:admin", d.Code)
+		parts := strings.Split(d.Code, ":")
+		if len(parts) != 4 || parts[0] != "platform" || !subdomains[parts[1]] {
+			t.Fatalf("unexpected code %s — must be platform:{iam|admin|messaging|developer|portal}:{aggregate}:{event}", d.Code)
 		}
 		if d.Name == "" {
 			t.Fatalf("%s: empty name", d.Code)

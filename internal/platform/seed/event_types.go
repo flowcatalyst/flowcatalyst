@@ -23,18 +23,22 @@ type PlatformEventTypeDef struct {
 // {application}:{subdomain}:{aggregate}:{event}.
 func PlatformEventTypes() []PlatformEventTypeDef {
 	schemas := platformEventSchemas()
-	out := make([]PlatformEventTypeDef, 0, 64)
+	out := make([]PlatformEventTypeDef, 0, 160)
 
-	group := func(prefix string, events ...string) {
-		aggregate := lastSegment(prefix, ':')
+	// groupAs names each event "<label> <Event>"; group derives the label
+	// from the aggregate segment.
+	groupAs := func(prefix, label string, events ...string) {
 		for _, ev := range events {
 			code := prefix + ":" + ev
 			out = append(out, PlatformEventTypeDef{
 				Code:   code,
-				Name:   titleCase(aggregate) + " " + titleCase(ev),
+				Name:   label + " " + titleCase(ev),
 				Schema: schemas[code],
 			})
 		}
+	}
+	group := func(prefix string, events ...string) {
+		groupAs(prefix, titleCase(lastSegment(prefix, ':')), events...)
 	}
 	push := func(code, name string) {
 		out = append(out, PlatformEventTypeDef{
@@ -49,11 +53,12 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 		"created", "updated", "activated", "deactivated", "deleted",
 		"roles-assigned", "application-access-assigned",
 		"client-access-granted", "client-access-revoked",
-		"logged-in", "password-reset-requested", "password-reset-completed")
+		"logged-in", "password-reset-requested", "password-reset-completed",
+		"developer-credential-set", "developer-credential-revoked")
 	push("platform:iam:principals:synced", "Principals Synced")
 
 	group("platform:iam:serviceaccount",
-		"created", "updated", "deleted", "roles-assigned",
+		"created", "updated", "deactivated", "deleted", "roles-assigned",
 		"token-regenerated", "secret-regenerated")
 
 	// Client lifecycle events are emitted under platform:admin (the client
@@ -91,11 +96,57 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	group("platform:admin:connection", "created", "updated", "deleted", "synced")
 
 	group("platform:admin:dispatch-pool",
-		"created", "updated", "archived", "deleted")
+		"created", "updated", "suspended", "activated", "archived", "deleted")
 	push("platform:admin:dispatch-pools:synced", "Dispatch Pools Synced")
 
 	group("platform:admin:subscription",
 		"created", "updated", "paused", "resumed", "deleted", "synced")
+
+	// Identity and access administration (the auth, identity-provider,
+	// email-domain-mapping, role and webauthn use cases emit these under
+	// platform:admin).
+	group("platform:admin:anchor-domain", "created", "updated", "deleted")
+	group("platform:admin:auth-config", "created", "updated", "deleted")
+	groupAs("platform:admin:oauth-client", "OAuth Client",
+		"created", "updated", "activated", "deactivated", "deleted",
+		"secret-rotated", "previous-secret-revoked")
+	group("platform:admin:identity-provider", "created", "updated", "deleted")
+	group("platform:admin:email-domain-mapping",
+		"created", "updated", "provider-changed", "deleted")
+	groupAs("platform:admin:idp-role-mapping", "IdP Role Mapping", "created", "deleted")
+	group("platform:admin:role",
+		"created", "updated", "deleted", "permission-granted", "permission-revoked")
+	push("platform:admin:roles:synced", "Roles Synced")
+	group("platform:admin:passkey", "registered", "authenticated", "revoked")
+
+	group("platform:admin:platform-config", "property-set", "access-granted", "access-revoked")
+
+	group("platform:admin:process", "created", "updated", "archived", "deleted")
+	push("platform:admin:processes:synced", "Processes Synced")
+
+	group("platform:admin:scheduled-job",
+		"created", "updated", "paused", "resumed", "archived", "deleted", "fired-manually")
+	push("platform:admin:scheduledjobs:synced", "Scheduled Jobs Synced")
+
+	group("platform:admin:function", "created", "updated", "deleted", "promoted")
+	group("platform:admin:function-version", "published", "retired")
+	group("platform:admin:function-alias", "set", "deleted")
+	group("platform:admin:function-setting", "set", "deleted")
+	group("platform:admin:function-route", "set", "deleted")
+	group("platform:admin:function-schedule", "wired")
+	group("platform:admin:function-domain", "claimed", "released")
+
+	// ── platform:messaging ──────────────────────────────────────────────
+	group("platform:messaging:dispatch-job", "cancelled", "completed")
+	push("platform:messaging:dispatch-jobs:resent", "Dispatch Jobs Resent")
+
+	// ── platform:developer ──────────────────────────────────────────────
+	push("platform:developer:application-openapi:synced", "Application OpenAPI Synced")
+
+	// ── platform:portal ─────────────────────────────────────────────────
+	groupAs("platform:portal:app", "Portal App", "created", "updated", "deleted")
+	groupAs("platform:portal:identity", "Portal Identity",
+		"ensured", "status-set", "deleted", "app-granted", "app-revoked")
 
 	return out
 }

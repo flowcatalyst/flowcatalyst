@@ -18,91 +18,12 @@ import (
 var eventCodePattern = regexp.MustCompile(`^platform:[a-z-]+:[a-z-]+:[a-z-]+$`)
 
 // knownUncataloguedEventTypes are event types the platform emits that the
-// seeded catalogue does not list yet (found 2026-10-10 while aligning the
-// client events, docs/platform-bug-fixes.md "New findings"). A subscription
-// cannot pick them from the catalogue. The list may only shrink: an entry that
-// becomes catalogued, or stops being emitted, fails the test until removed.
-var knownUncataloguedEventTypes = map[string]bool{
-	"platform:admin:anchor-domain:created":                 true,
-	"platform:admin:anchor-domain:deleted":                 true,
-	"platform:admin:anchor-domain:updated":                 true,
-	"platform:admin:auth-config:created":                   true,
-	"platform:admin:auth-config:deleted":                   true,
-	"platform:admin:auth-config:updated":                   true,
-	"platform:admin:dispatch-pool:activated":               true,
-	"platform:admin:dispatch-pool:suspended":               true,
-	"platform:admin:email-domain-mapping:created":          true,
-	"platform:admin:email-domain-mapping:deleted":          true,
-	"platform:admin:email-domain-mapping:provider-changed": true,
-	"platform:admin:email-domain-mapping:updated":          true,
-	"platform:admin:function-alias:deleted":                true,
-	"platform:admin:function-alias:set":                    true,
-	"platform:admin:function-domain:claimed":               true,
-	"platform:admin:function-domain:released":              true,
-	"platform:admin:function-route:deleted":                true,
-	"platform:admin:function-route:set":                    true,
-	"platform:admin:function-schedule:wired":               true,
-	"platform:admin:function-setting:deleted":              true,
-	"platform:admin:function-setting:set":                  true,
-	"platform:admin:function-version:published":            true,
-	"platform:admin:function-version:retired":              true,
-	"platform:admin:function:created":                      true,
-	"platform:admin:function:deleted":                      true,
-	"platform:admin:function:promoted":                     true,
-	"platform:admin:function:updated":                      true,
-	"platform:admin:identity-provider:created":             true,
-	"platform:admin:identity-provider:deleted":             true,
-	"platform:admin:identity-provider:updated":             true,
-	"platform:admin:idp-role-mapping:created":              true,
-	"platform:admin:idp-role-mapping:deleted":              true,
-	"platform:admin:oauth-client:activated":                true,
-	"platform:admin:oauth-client:created":                  true,
-	"platform:admin:oauth-client:deactivated":              true,
-	"platform:admin:oauth-client:deleted":                  true,
-	"platform:admin:oauth-client:previous-secret-revoked":  true,
-	"platform:admin:oauth-client:secret-rotated":           true,
-	"platform:admin:oauth-client:updated":                  true,
-	"platform:admin:passkey:authenticated":                 true,
-	"platform:admin:passkey:registered":                    true,
-	"platform:admin:passkey:revoked":                       true,
-	"platform:admin:platform-config:access-granted":        true,
-	"platform:admin:platform-config:access-revoked":        true,
-	"platform:admin:platform-config:property-set":          true,
-	"platform:admin:process:archived":                      true,
-	"platform:admin:process:created":                       true,
-	"platform:admin:process:deleted":                       true,
-	"platform:admin:process:updated":                       true,
-	"platform:admin:processes:synced":                      true,
-	"platform:admin:role:created":                          true,
-	"platform:admin:role:deleted":                          true,
-	"platform:admin:role:permission-granted":               true,
-	"platform:admin:role:permission-revoked":               true,
-	"platform:admin:role:updated":                          true,
-	"platform:admin:roles:synced":                          true,
-	"platform:admin:scheduled-job:archived":                true,
-	"platform:admin:scheduled-job:created":                 true,
-	"platform:admin:scheduled-job:deleted":                 true,
-	"platform:admin:scheduled-job:fired-manually":          true,
-	"platform:admin:scheduled-job:paused":                  true,
-	"platform:admin:scheduled-job:resumed":                 true,
-	"platform:admin:scheduled-job:updated":                 true,
-	"platform:admin:scheduledjobs:synced":                  true,
-	"platform:developer:application-openapi:synced":        true,
-	"platform:iam:serviceaccount:deactivated":              true,
-	"platform:iam:user:developer-credential-revoked":       true,
-	"platform:iam:user:developer-credential-set":           true,
-	"platform:messaging:dispatch-job:cancelled":            true,
-	"platform:messaging:dispatch-job:completed":            true,
-	"platform:messaging:dispatch-jobs:resent":              true,
-	"platform:portal:app:created":                          true,
-	"platform:portal:app:deleted":                          true,
-	"platform:portal:app:updated":                          true,
-	"platform:portal:identity:app-granted":                 true,
-	"platform:portal:identity:app-revoked":                 true,
-	"platform:portal:identity:deleted":                     true,
-	"platform:portal:identity:ensured":                     true,
-	"platform:portal:identity:status-set":                  true,
-}
+// seeded catalogue does not list yet. A subscription cannot pick them from the
+// catalogue. Empty since the 79 found 2026-10-10 were catalogued
+// (docs/platform-bug-fixes.md F9); keep it empty: catalogue a new emitted code
+// rather than listing it here. The list may only shrink: an entry that becomes
+// catalogued, or stops being emitted, fails the test until removed.
+var knownUncataloguedEventTypes = map[string]bool{}
 
 // emittedEventTypes collects the event-type codes the platform's use cases
 // emit: every string constant declared in an events.go under
@@ -157,9 +78,9 @@ func emittedEventTypes(t *testing.T) map[string]string {
 }
 
 // Every event type a use case emits is in the seeded catalogue (so a
-// subscription can pick it), except the known gaps above. The client events
-// were catalogued as platform:iam:client:* while the client use cases emit
-// platform:admin:client:*.
+// subscription can pick it), except the known gaps above (none). The client
+// events were once catalogued as platform:iam:client:* while the client use
+// cases emit platform:admin:client:* (F3), and 79 other codes were missing (F9).
 func TestEveryEmittedEventTypeIsCatalogued(t *testing.T) {
 	catalogued := map[string]bool{}
 	for _, d := range PlatformEventTypes() {

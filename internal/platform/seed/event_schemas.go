@@ -279,6 +279,189 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqStrArray("syncedCodes"),
 	)
 
+	// The schemas below describe the data each use case emits (its
+	// ToDataJSON): an omitempty field is optional, a nil slice is null.
+
+	// ── platform:iam:user (developer credentials) ───────────────────────
+	m["platform:iam:user:developer-credential-set"] = obj(reqStr("userId"))
+	m["platform:iam:user:developer-credential-revoked"] = obj(reqStr("userId"))
+
+	// ── platform:iam:serviceaccount ─────────────────────────────────────
+	m["platform:iam:serviceaccount:deactivated"] = obj(reqStr("serviceAccountId"))
+
+	// ── platform:admin:dispatch-pool ────────────────────────────────────
+	m["platform:admin:dispatch-pool:suspended"] = obj(reqStr("poolId"), reqStr("code"))
+	m["platform:admin:dispatch-pool:activated"] = obj(reqStr("poolId"), reqStr("code"))
+
+	// ── platform:admin:anchor-domain ────────────────────────────────────
+	m["platform:admin:anchor-domain:created"] = obj(reqStr("anchorDomainId"), reqStr("domain"))
+	m["platform:admin:anchor-domain:updated"] = obj(reqStr("anchorDomainId"), reqStr("domain"))
+	m["platform:admin:anchor-domain:deleted"] = obj(reqStr("anchorDomainId"), reqStr("domain"))
+
+	// ── platform:admin:auth-config ──────────────────────────────────────
+	m["platform:admin:auth-config:created"] = obj(reqStr("authConfigId"), reqStr("emailDomain"))
+	m["platform:admin:auth-config:updated"] = obj(reqStr("authConfigId"), reqStr("emailDomain"))
+	m["platform:admin:auth-config:deleted"] = obj(reqStr("authConfigId"), reqStr("emailDomain"))
+
+	// ── platform:admin:oauth-client ─────────────────────────────────────
+	m["platform:admin:oauth-client:created"] = obj(
+		reqStr("oauthClientId"), reqStr("clientId"), reqStr("clientName"),
+	)
+	m["platform:admin:oauth-client:updated"] = obj(reqStr("oauthClientId"), reqStr("clientName"))
+	m["platform:admin:oauth-client:activated"] = obj(reqStr("oauthClientId"))
+	m["platform:admin:oauth-client:deactivated"] = obj(reqStr("oauthClientId"))
+	m["platform:admin:oauth-client:deleted"] = obj(reqStr("oauthClientId"), reqStr("clientId"))
+	m["platform:admin:oauth-client:secret-rotated"] = obj(
+		reqStr("oauthClientId"), optDateTime("previousSecretExpiresAt"),
+	)
+	m["platform:admin:oauth-client:previous-secret-revoked"] = obj(reqStr("oauthClientId"))
+
+	// ── platform:admin:identity-provider ────────────────────────────────
+	m["platform:admin:identity-provider:created"] = obj(reqStr("identityProviderId"), reqStr("code"))
+	m["platform:admin:identity-provider:updated"] = obj(reqStr("identityProviderId"), reqStr("code"))
+	m["platform:admin:identity-provider:deleted"] = obj(reqStr("identityProviderId"), reqStr("code"))
+
+	// ── platform:admin:email-domain-mapping ─────────────────────────────
+	m["platform:admin:email-domain-mapping:created"] = obj(reqStr("mappingId"), reqStr("emailDomain"))
+	m["platform:admin:email-domain-mapping:updated"] = obj(reqStr("mappingId"), reqStr("emailDomain"))
+	m["platform:admin:email-domain-mapping:provider-changed"] = obj(
+		reqStr("mappingId"), reqStr("emailDomain"),
+		reqStr("fromIdentityProviderId"), reqStr("toIdentityProviderId"),
+	)
+	m["platform:admin:email-domain-mapping:deleted"] = obj(reqStr("mappingId"), reqStr("emailDomain"))
+
+	// ── platform:admin:idp-role-mapping ─────────────────────────────────
+	m["platform:admin:idp-role-mapping:created"] = obj(
+		reqStr("mappingId"), reqStr("idpType"), reqStr("idpRoleName"), reqStr("platformRoleName"),
+	)
+	m["platform:admin:idp-role-mapping:deleted"] = obj(reqStr("mappingId"), reqStr("idpRoleName"))
+
+	// ── platform:admin:role ─────────────────────────────────────────────
+	m["platform:admin:role:created"] = obj(reqStr("roleId"), reqStr("name"))
+	m["platform:admin:role:updated"] = obj(reqStr("roleId"), reqStr("name"))
+	m["platform:admin:role:deleted"] = obj(reqStr("roleId"), reqStr("name"))
+	m["platform:admin:role:permission-granted"] = obj(
+		reqStr("roleId"), reqStr("roleName"), reqStr("permission"),
+	)
+	m["platform:admin:role:permission-revoked"] = obj(
+		reqStr("roleId"), reqStr("roleName"), reqStr("permission"),
+	)
+	// The application-scoped sync sets applicationCode and syncedCodes; the
+	// platform-catalogue sync leaves both out.
+	m["platform:admin:roles:synced"] = obj(
+		reqU32("created"), reqU32("updated"), reqU32("removed"), reqU32("total"),
+		optStr("applicationCode"), optStrArray("syncedCodes"),
+	)
+
+	// ── platform:admin:passkey ──────────────────────────────────────────
+	m["platform:admin:passkey:registered"] = obj(reqStr("credentialId"), reqStr("userId"), optStr("name"))
+	m["platform:admin:passkey:authenticated"] = obj(reqStr("credentialId"), reqStr("userId"))
+	m["platform:admin:passkey:revoked"] = obj(reqStr("credentialId"), reqStr("userId"))
+
+	// ── platform:admin:platform-config ──────────────────────────────────
+	m["platform:admin:platform-config:property-set"] = obj(
+		reqStr("configId"), reqStr("applicationCode"), reqStr("section"), reqStr("property"),
+	)
+	m["platform:admin:platform-config:access-granted"] = obj(
+		reqStr("accessId"), reqStr("applicationCode"), reqStr("roleCode"), reqBool("canWrite"),
+	)
+	m["platform:admin:platform-config:access-revoked"] = obj(
+		reqStr("accessId"), reqStr("applicationCode"), reqStr("roleCode"),
+	)
+
+	// ── platform:admin:process ──────────────────────────────────────────
+	m["platform:admin:process:created"] = obj(reqStr("processId"), reqStr("code"), reqStr("name"))
+	m["platform:admin:process:updated"] = obj(reqStr("processId"), reqStr("name"))
+	m["platform:admin:process:archived"] = obj(reqStr("processId"), reqStr("code"))
+	m["platform:admin:process:deleted"] = obj(reqStr("processId"), reqStr("code"))
+	m["platform:admin:processes:synced"] = obj(
+		reqStr("applicationCode"),
+		reqU32("created"), reqU32("updated"), reqU32("deleted"),
+		reqStrArray("syncedCodes"),
+	)
+
+	// ── platform:admin:scheduled-job ────────────────────────────────────
+	for _, ev := range []string{"created", "updated", "paused", "resumed", "archived", "deleted"} {
+		m["platform:admin:scheduled-job:"+ev] = obj(reqStr("scheduledJobId"), reqStr("code"))
+	}
+	m["platform:admin:scheduled-job:fired-manually"] = obj(
+		reqStr("scheduledJobId"), reqStr("code"), reqStr("instanceId"),
+	)
+	// Each list holds scheduled-job ids; an empty one is null.
+	m["platform:admin:scheduledjobs:synced"] = obj(
+		reqStr("applicationCode"),
+		reqNullableStrArray("created"), reqNullableStrArray("updated"), reqNullableStrArray("archived"),
+	)
+
+	// ── platform:admin:function ─────────────────────────────────────────
+	m["platform:admin:function:created"] = obj(reqStr("functionId"), reqStr("address"), reqStr("name"))
+	m["platform:admin:function:updated"] = obj(reqStr("functionId"), reqStr("address"))
+	m["platform:admin:function:deleted"] = obj(reqStr("functionId"), reqStr("address"))
+	// number is the version now live, 0 when live was removed.
+	m["platform:admin:function:promoted"] = obj(
+		reqStr("functionId"), reqStr("address"), reqU32("number"), reqStr("dispatchPoolCode"),
+		reqU32("subscriptionsCreated"), reqU32("subscriptionsUpdated"), reqU32("subscriptionsDeleted"),
+		reqU32("schedulesCreated"), reqU32("schedulesUpdated"), reqU32("schedulesDeleted"),
+	)
+	m["platform:admin:function-version:published"] = obj(
+		reqStr("functionId"), reqStr("address"), reqU32("number"), reqStr("digest"), reqStr("runtime"),
+	)
+	m["platform:admin:function-version:retired"] = obj(
+		reqStr("functionId"), reqStr("address"), reqU32("number"),
+	)
+	m["platform:admin:function-alias:set"] = obj(
+		reqStr("functionId"), reqStr("address"), reqStr("alias"), reqU32("number"),
+	)
+	m["platform:admin:function-alias:deleted"] = obj(
+		reqStr("functionId"), reqStr("address"), reqStr("alias"),
+	)
+	m["platform:admin:function-setting:set"] = obj(reqStr("functionId"), reqStr("kind"), reqStr("key"))
+	m["platform:admin:function-setting:deleted"] = obj(reqStr("functionId"), reqStr("kind"), reqStr("key"))
+	m["platform:admin:function-route:set"] = obj(
+		reqStr("functionId"), reqStr("routeId"), reqStr("hostname"), reqStr("pathPrefix"),
+	)
+	m["platform:admin:function-route:deleted"] = obj(
+		reqStr("functionId"), reqStr("routeId"), reqStr("hostname"), reqStr("pathPrefix"),
+	)
+	m["platform:admin:function-schedule:wired"] = obj(
+		reqStr("functionId"), reqStr("scheduledJobId"), reqStr("code"),
+		reqEnum("action", "created", "updated", "deleted"),
+	)
+	m["platform:admin:function-domain:claimed"] = obj(reqStr("domainId"), reqStr("zone"), optStr("clientId"))
+	m["platform:admin:function-domain:released"] = obj(reqStr("domainId"), reqStr("zone"))
+
+	// ── platform:messaging:dispatch-job ─────────────────────────────────
+	m["platform:messaging:dispatch-job:cancelled"] = obj(reqStr("dispatchJobId"))
+	m["platform:messaging:dispatch-job:completed"] = obj(reqStr("dispatchJobId"))
+	m["platform:messaging:dispatch-jobs:resent"] = obj(reqStrArray("ids"))
+
+	// ── platform:developer:application-openapi ──────────────────────────
+	m["platform:developer:application-openapi:synced"] = obj(
+		reqStr("applicationId"), reqStr("applicationCode"), reqStr("specId"),
+		reqStr("version"), reqStr("specHash"), optStr("archivedPriorVersion"),
+		reqBool("hasBreaking"), reqBool("unchanged"),
+	)
+
+	// ── platform:portal ─────────────────────────────────────────────────
+	for _, ev := range []string{"created", "updated", "deleted"} {
+		m["platform:portal:app:"+ev] = obj(
+			reqStr("portalAppId"), reqStr("clientId"), reqStr("code"), reqStr("name"),
+		)
+	}
+	m["platform:portal:identity:ensured"] = obj(
+		reqStr("identityId"), reqStr("clientId"), reqStr("email"), reqBool("created"),
+		reqStr("source"), optStr("portalAppId"), optStr("portalAppCode"),
+	)
+	m["platform:portal:identity:status-set"] = obj(reqStr("identityId"), reqStr("clientId"), reqStr("status"))
+	m["platform:portal:identity:deleted"] = obj(reqStr("identityId"), reqStr("clientId"), reqStr("email"))
+	m["platform:portal:identity:app-granted"] = obj(
+		reqStr("identityId"), reqStr("clientId"), reqStr("portalAppId"), reqStr("portalAppCode"),
+		reqStr("source"),
+	)
+	m["platform:portal:identity:app-revoked"] = obj(
+		reqStr("identityId"), reqStr("clientId"), reqStr("portalAppId"), reqStr("portalAppCode"),
+	)
+
 	return m
 }
 
@@ -334,6 +517,29 @@ func reqStrArray(name string) prop {
 		schema:   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		required: true,
 	}
+}
+
+// optStrArray is a string array the producer leaves out when empty.
+func optStrArray(name string) prop {
+	return prop{name: name, schema: map[string]any{"type": "array", "items": map[string]any{"type": "string"}}}
+}
+
+// reqNullableStrArray is a string array always present, null when empty.
+func reqNullableStrArray(name string) prop {
+	return prop{
+		name:     name,
+		schema:   map[string]any{"type": []string{"array", "null"}, "items": map[string]any{"type": "string"}},
+		required: true,
+	}
+}
+
+// optDateTime is an RFC 3339 timestamp the producer leaves out when unset.
+func optDateTime(name string) prop {
+	return prop{name: name, schema: map[string]any{"type": "string", "format": "date-time"}}
+}
+
+func reqEnum(name string, values ...string) prop {
+	return prop{name: name, schema: map[string]any{"type": "string", "enum": values}, required: true}
 }
 
 func mustRaw(v any) json.RawMessage {
