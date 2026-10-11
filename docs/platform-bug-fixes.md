@@ -389,7 +389,7 @@ failed before its fix.
   once, re-run no-op, Down; and the clash case).
 - **Found here, not fixed**: 79 other emitted codes are not catalogued either (the commit message
   says 78; the list in the test has 79). The test lists them as known gaps it only lets shrink (an
-  entry catalogued or no longer emitted fails it). See new findings.
+  entry catalogued or no longer emitted fails it). Catalogued in F9.
 - **Java/Rust mirror**: catalogue `platform:admin:client:*` (seven, with these schemas) and
   `platform:iam:client:applications-updated`; the same rename migration (its SQL is portable);
   the consistency test over the emitted constants. The Rust seed already carries both sets.
@@ -575,6 +575,28 @@ failed before its fix.
     sync applies the ceiling (Java and Rust exempt it because they confine it to the
     application's own roles, `requireSyncableRoles` / `ROLE_APP_FORBIDDEN`, which Go lacks).
 
+### F9. Catalogue drift closed (owner ruling 2026-10-11: "catalogue please")
+
+- **Found** (F3): 79 emitted event-type codes were not in the seed catalogue, so no subscription
+  could pick them.
+- **Fix** (`8ddaed4`): `seed.PlatformEventTypes()` catalogues all 79 (154 entries, was 75), each
+  named in the existing style ("OAuth Client Secret Rotated", "Portal Identity App Granted") with a
+  1.0 JSON schema of the data its use case emits (`ToDataJSON`; an omitempty field optional, a nil
+  slice null). New subdomains in the catalogue: `platform:messaging`, `platform:developer`,
+  `platform:portal`. The boot seeder upserts by code, so an existing database gains the rows on the
+  next start; no migration (nothing renamed). The catalogue has no descriptions, as before.
+- **Tests**: `knownUncataloguedEventTypes` is empty; `TestEveryEmittedEventTypeIsCatalogued` keeps
+  failing on any new uncatalogued code. 70 of the 79 schemas were checked against real
+  `ToDataJSON` output with `jsonschema-go` during the change (the other nine, the scheduled-job and
+  dispatch-job events with unexported embedded data, were read off the code); that check was not
+  committed.
+- **Not changed**: the 16 catalogued codes nothing emits (below) stay, so the picker shows e.g.
+  both `platform:iam:role:created` and `platform:admin:role:created` as "Role Created". Renaming
+  or dropping them is a 070-style migration for the owner to rule on. The existing
+  `platform:admin:dispatch-pool:*` schemas name `dispatchPoolId` while the use cases emit `poolId`
+  (the older schemas were not audited).
+- **Java/Rust mirror**: catalogue the same 79 codes and schemas.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -609,23 +631,19 @@ failed before its fix.
 
 Fixed in the second batch (above): the scheduled-job runner reports (F1), event-type `clientId`
 (F2), client event names (F3), service accounts (F4), the sync paths' client identifier (F5), the
-SPA's sync and role controls (F6); after it, user role changes (F7) and the role ceiling (F8).
+SPA's sync and role controls (F6); after it, user role changes (F7), the role ceiling (F8) and
+the catalogue drift (F9).
 
 - **`DELETE /api/event-types/{id}`** is documented "Archive an event type" and the TS SDK calls it
   `archive()`, but it hard-deletes (now only an archived or never-published type).
 - `GET /api/dispatch-jobs` documents a default of 50 rows; the repository's default is 100.
 - **Event-type client scoping is dead code** (F2): the read paths filter on a client that is never
   stored.
-- **The event-type catalogue lags what is emitted** (F3): 79 emitted codes are not catalogued
-  (anchor domains, auth configs, dispatch-pool activate/suspend, email-domain mappings, functions,
-  identity providers, IdP role mappings, OAuth clients, passkeys, platform config, processes, roles,
-  scheduled jobs, the OpenAPI sync, service-account deactivate, developer credentials, dispatch-job
-  cancel/complete/resend, portal apps and identities; the list is
-  `knownUncataloguedEventTypes` in `seed/emitted_catalogue_test.go`), so no subscription can pick
-  them; and 16 catalogued codes are never emitted (`platform:admin:edm:*`, `platform:admin:idp:*`,
-  `platform:iam:anchor-domain:*`, `platform:iam:auth-config:*`, `platform:iam:role:*`,
-  `platform:iam:roles:synced`, `platform:iam:user:password-reset-requested`): the same rename
-  drift as the client events.
+- **The event-type catalogue lags what is emitted** (F3): ~~79 emitted codes are not
+  catalogued~~ (catalogued in F9); 16 catalogued codes are never emitted
+  (`platform:admin:edm:*`, `platform:admin:idp:*`, `platform:iam:anchor-domain:*`,
+  `platform:iam:auth-config:*`, `platform:iam:role:*`, `platform:iam:roles:synced`,
+  `platform:iam:user:password-reset-requested`): the same rename drift as the client events.
 - **Route permissions not in the seed**: the SPA's `ROUTE_PERMISSIONS` and the `/ui` nav gate pages
   on codes no role grants (`platform:iam:identity-provider:view`, seeded `platform:iam:idp:view`;
   `platform:iam:oauth-client:*`, seeded `platform:auth:oauth-client:*`;
