@@ -184,9 +184,12 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		// The SDK outbox writers send operationData as a JSON string holding
+		// the encoded object; store the object (F13, UnwrapEncodedJSON), and
+		// unwrap first so the redaction backstop below can see inside it.
+		opData := UnwrapEncodedJSON(it.OperationData)
 		// Backstop: an SDK that predates audit redaction, or an app writing its
 		// own outbox rows, still never stores a password or secret.
-		opData := it.OperationData
 		if len(opData) > 0 {
 			if red, err := usecase.RedactAuditJSON(opData, nil); err == nil {
 				opData = red

@@ -182,7 +182,10 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 			results[i] = BatchResultItem{ID: it.ID, Status: "BAD_REQUEST", Error: eventTypeAppRefused}
 			continue
 		}
-		ev := event.New(it.Type, it.Source, it.Subject, it.Data)
+		// The SDK outbox writers send data as a JSON string holding the
+		// encoded object; store the object (F13, sdk.UnwrapEncodedJSON for
+		// the exact rule). The singular POST /api/events is not changed.
+		ev := event.New(it.Type, it.Source, it.Subject, sdk.UnwrapEncodedJSON(it.Data))
 		if it.ID != "" {
 			ev.ID = it.ID
 		}

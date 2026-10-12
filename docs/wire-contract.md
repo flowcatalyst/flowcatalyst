@@ -177,6 +177,36 @@ identity plane (docs/portal-identity-plan.md Phase 2.5 v2) has its own
 principals remains as Phase-1 behaviour for non-portal apps. Portal-flagged
 OAuth clients are refused at `/oauth/authorize` outright.
 
+## Encoded `data` and `operationData` at batch ingest
+
+The SDK outbox writers (Java, TypeScript, Laravel, Rust, the framework) put an
+event's `data` and an audit entry's `operationData` into the batch item as a
+JSON **string** holding the serialised value (`"data":"{\"a\":1}"`); the Go
+SDK sends the value itself. `POST /api/events/batch` (`data`) and
+`POST /api/audit-logs/batch` (`operationData`) unwrap it at ingest (owner
+ruling 2026-10-12, `sdk.UnwrapEncodedJSON`), so the stored event, the
+dispatch job fanned out from it, the delivery envelope's `data`, a `dataOnly`
+body and the audit view all carry the object.
+
+The rule, applied once per member:
+
+- A member that is not a JSON string (object, array, number, boolean, null)
+  is stored as sent.
+- A string whose text, less surrounding JSON whitespace, starts with `{` or
+  `[` and is exactly one valid JSON value is replaced by that value.
+- Every other string is stored as sent: `"hello"`, `""`, `"42"`, `"true"`,
+  `"null"` (Java's encoding of a null map), an encoded string, and text that
+  only looks like JSON (`"{not json"`, `"{} trailing"`).
+- At most one level is removed; the result is never a string, so nothing is
+  unwrapped twice, and a value encoded twice is kept as sent.
+- Audit redaction runs after the unwrap, so it sees inside the value.
+
+Edge case, accepted: a writer that means a string whose text is a JSON object
+or array gets the object; to send such text as text, wrap it in an object.
+Not changed: the singular `POST /api/events` (it receives the value itself),
+dispatch-job `payload` (a string by contract, with `payloadContentType`), and
+function-emitted events.
+
 ## Webhook signatures
 
 Webhook delivery (router → subscriber) signs
