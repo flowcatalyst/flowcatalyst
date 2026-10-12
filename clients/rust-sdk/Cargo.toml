@@ -1,0 +1,82 @@
+[package]
+name = "flowcatalyst-sdk"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "Apache-2.0"
+description = "FlowCatalyst SDK for Rust: platform API client, definition sync, transactional outbox payloads, webhook verification and TSIDs"
+authors = ["FlowCatalyst Team"]
+repository = "https://github.com/flowcatalyst/flowcatalyst"
+readme = "README.md"
+keywords = ["flowcatalyst", "outbox", "webhook", "events"]
+categories = ["api-bindings", "web-programming"]
+# The crate is not published yet (docs/rust-sdk.md); remove when the first
+# release is cut through the platform repository's release tooling.
+publish = false
+
+[features]
+default = ["client", "outbox", "webhook"]
+# Platform HTTP API client, client-credentials tokens, definition sync.
+client = ["dep:reqwest", "dep:tokio", "dep:url", "dep:chrono"]
+# Outbox payload builders (events, dispatch jobs, audit logs), the canonical
+# `outbox_messages` DDL and the driver-agnostic `OutboxManager`.
+outbox = ["dep:url", "dep:chrono"]
+# sqlx drivers for the outbox. Each brings only its own database driver.
+outbox-postgres = ["outbox", "dep:sqlx", "sqlx/postgres"]
+outbox-mysql = ["outbox", "dep:sqlx", "sqlx/mysql"]
+# Inbound webhook (delivery) signature verification and the mediation response.
+webhook = ["dep:sha2"]
+# OIDC: access-token claims, JWKS (RS256) and HS256 validation, the OAuth
+# authorization-code client (PKCE, refresh, revoke, introspect, userinfo).
+auth = ["client", "dep:jsonwebtoken", "dep:sha2", "dep:base64"]
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+thiserror = "2.0.17"
+getrandom = "0.3.4"
+
+chrono = { version = "0.4.42", default-features = false, features = ["std", "clock", "serde"], optional = true }
+url = { version = "2.5.7", optional = true }
+sha2 = { version = "0.10.9", optional = true }
+base64 = { version = "0.22.1", optional = true }
+# `default-features = false`: rustls only, never native-tls/OpenSSL.
+reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls"], optional = true }
+tokio = { version = "1.48.0", features = ["sync", "time"], optional = true }
+jsonwebtoken = { version = "10.2.0", default-features = false, features = ["rust_crypto", "use_pem"], optional = true }
+# No TLS and no other driver: the application's own sqlx dependency decides
+# those, and Cargo unifies the features.
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "chrono"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "net", "io-util", "sync", "time"] }
+
+[[example]]
+name = "list-event-types"
+required-features = ["client"]
+
+[[example]]
+name = "fc-sync"
+required-features = ["client"]
+
+[[example]]
+name = "outbox-postgres"
+required-features = ["outbox-postgres"]
+
+[[example]]
+name = "webhook-verify"
+required-features = ["webhook"]
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+await_holding_lock = "warn"
+let_underscore_must_use = "warn"

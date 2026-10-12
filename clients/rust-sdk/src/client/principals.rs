@@ -1,0 +1,481 @@
+//! Principal (user/service) management operations.
+
+use super::{ClientError, FlowCatalystClient};
+use crate::client::SyncResult;
+use crate::client::seg;
+use serde::{Deserialize, Serialize};
+
+/// Request to create a user principal.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateUserRequest {
+    pub email: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// When set to `false`, the platform skips its password complexity rules
+    /// (uppercase/lowercase/digit/special) and only enforces a 2-character minimum.
+    /// Use when your application enforces its own password policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enforce_password_complexity: Option<bool>,
+}
+
+/// Request to reset a principal's password via the admin API.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetPasswordRequest {
+    pub new_password: String,
+    /// When set to `false`, the platform skips its password complexity rules
+    /// (uppercase/lowercase/digit/special) and only enforces a 2-character minimum.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enforce_password_complexity: Option<bool>,
+}
+
+/// Request to update a principal (Go's `UpdatePrincipalRequest`).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePrincipalRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active: Option<bool>,
+    /// Asserted against the stored email: a different value is rejected,
+    /// not treated as a rename.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+}
+
+/// Filters for listing principals.
+#[derive(Debug, Clone, Default)]
+pub struct PrincipalFilters {
+    pub client_id: Option<String>,
+    pub r#type: Option<String>,
+    pub active: Option<String>,
+    /// Case-insensitive substring search across name and email (`q`).
+    pub q: Option<String>,
+}
+
+/// Principal response from the platform API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrincipalResponse {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub principal_type: String,
+    pub scope: String,
+    #[serde(default)]
+    pub client_id: Option<String>,
+    pub name: String,
+    pub active: bool,
+    #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
+    pub idp_type: Option<String>,
+    #[serde(default)]
+    pub roles: Vec<String>,
+    #[serde(default)]
+    pub is_anchor_user: bool,
+    #[serde(default)]
+    pub granted_client_ids: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Role assignment returned by GET /api/principals/{id}/roles.
+///
+/// Matches the platform's `RoleAssignmentDto` — uses `roleName` and
+/// `assignmentSource`, not `name` and `source`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrincipalRoleResponse {
+    pub id: String,
+    pub role_name: String,
+    pub assignment_source: String,
+    pub assigned_at: String,
+}
+
+/// Client access grant for a principal.
+///
+/// Matches the platform's `ClientAccessGrantResponse` — `id`, `clientId`,
+/// `grantedAt`, optional `expiresAt`. No client name / identifier fields
+/// (those were in an older SDK version that didn't reflect the backend).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientAccessGrantResponse {
+    pub id: String,
+    pub client_id: String,
+    pub granted_at: String,
+    #[serde(default)]
+    pub expires_at: Option<String>,
+}
+
+/// Request to assign a single role (additive — keeps existing roles).
+///
+/// The backend expects `{ "role": "..." }`, not `{ "roleName": "..." }`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssignRoleRequest {
+    pub role: String,
+}
+
+/// Request to replace all roles.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceRolesRequest {
+    pub roles: Vec<String>,
+}
+
+/// Request to grant client access.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrantClientAccessRequest {
+    pub client_id: String,
+}
+
+/// Paginated list of principals — `GET /api/principals`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrincipalListResponse {
+    pub principals: Vec<PrincipalResponse>,
+    #[serde(default)]
+    pub total: u64,
+}
+
+/// List of role assignments for a principal — `GET /api/principals/{id}/roles`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrincipalRoleListResponse {
+    pub roles: Vec<PrincipalRoleResponse>,
+}
+
+/// List of client access grants — `GET /api/principals/{id}/client-access`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientAccessListResponse {
+    pub grants: Vec<ClientAccessGrantResponse>,
+}
+
+/// Request body for the per-resource sync endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncPrincipalsRequest {
+    pub principals: Vec<SyncPrincipalItem>,
+}
+
+/// A principal item for sync. Matched by email.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncPrincipalItem {
+    pub email: String,
+    pub name: String,
+    /// Role short names (without the `<app>:` prefix — the platform adds it).
+    #[serde(default)]
+    pub roles: Vec<String>,
+    /// Defaults to `true` server-side when omitted.
+    #[serde(default = "default_true")]
+    pub active: bool,
+    /// Optional pre-hashed password (bcrypt, argon2), stored verbatim on a
+    /// user the sync creates. Ignored for an existing user; the result's
+    /// `password_hash_ignored` names those.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password_hash: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Principals resource accessor — created via [`FlowCatalystClient::principals`].
+#[derive(Debug, Clone, Copy)]
+pub struct Principals<'a> {
+    pub(crate) client: &'a FlowCatalystClient,
+}
+
+impl Principals<'_> {
+    /// Create a new user principal.
+    pub async fn create_user(
+        &self,
+        req: &CreateUserRequest,
+    ) -> Result<PrincipalResponse, ClientError> {
+        self.client.post("/api/principals/users", req).await
+    }
+
+    /// List principals with optional filters.
+    pub async fn list(
+        &self,
+        filters: &PrincipalFilters,
+    ) -> Result<PrincipalListResponse, ClientError> {
+        let mut params = Vec::new();
+        if let Some(ref t) = filters.r#type {
+            params.push(("type", t.clone()));
+        }
+        if let Some(ref cid) = filters.client_id {
+            params.push(("clientId", cid.clone()));
+        }
+        if let Some(ref a) = filters.active {
+            params.push(("active", a.clone()));
+        }
+        if let Some(ref q) = filters.q {
+            params.push(("q", q.clone()));
+        }
+        let query = FlowCatalystClient::query_string(&params);
+        self.client.get(&format!("/api/principals{}", query)).await
+    }
+
+    /// Get a principal by ID.
+    pub async fn get(&self, id: &str) -> Result<PrincipalResponse, ClientError> {
+        self.client
+            .get(&format!("/api/principals/{}", seg(id)))
+            .await
+    }
+
+    /// Find principals by email.
+    ///
+    /// Searches with `q` (Go's substring search over name and email), then
+    /// keeps only the principals whose email equals `email`
+    /// (case-insensitive). More than one can match across clients, so pick
+    /// the expected one rather than assuming index 0.
+    pub async fn find_by_email(&self, email: &str) -> Result<PrincipalListResponse, ClientError> {
+        let mut resp = self
+            .list(&PrincipalFilters {
+                q: Some(email.to_string()),
+                ..Default::default()
+            })
+            .await?;
+        resp.principals.retain(|p| {
+            p.email
+                .as_deref()
+                .is_some_and(|e| e.eq_ignore_ascii_case(email))
+        });
+        resp.total = resp.principals.len() as u64;
+        Ok(resp)
+    }
+
+    /// Update a principal.
+    pub async fn update(
+        &self,
+        id: &str,
+        req: &UpdatePrincipalRequest,
+    ) -> Result<PrincipalResponse, ClientError> {
+        self.client
+            .put(&format!("/api/principals/{}", seg(id)), req)
+            .await
+    }
+
+    /// Activate a principal.
+    ///
+    /// The platform returns `{ "message": "..." }` only. Call `get(id)` if
+    /// you need the refreshed record.
+    pub async fn activate(&self, id: &str) -> Result<(), ClientError> {
+        let _: serde_json::Value = self
+            .client
+            .post_action(&format!("/api/principals/{}/activate", seg(id)))
+            .await?;
+        Ok(())
+    }
+
+    /// Deactivate a principal. The platform returns a message only.
+    pub async fn deactivate(&self, id: &str) -> Result<(), ClientError> {
+        let _: serde_json::Value = self
+            .client
+            .post_action(&format!("/api/principals/{}/deactivate", seg(id)))
+            .await?;
+        Ok(())
+    }
+
+    /// Get roles assigned to a principal.
+    pub async fn roles(&self, id: &str) -> Result<PrincipalRoleListResponse, ClientError> {
+        self.client
+            .get(&format!("/api/principals/{}/roles", seg(id)))
+            .await
+    }
+
+    /// Add a single role to a principal (additive — keeps existing roles).
+    ///
+    /// Distinct from [`set_roles`] which replaces the full set. Renamed from
+    /// the original `assign_role` / `assign_roles` pair to make the
+    /// additive-vs-replace distinction visible at the call site.
+    pub async fn add_role(&self, id: &str, role_name: &str) -> Result<(), ClientError> {
+        let body = AssignRoleRequest {
+            role: role_name.to_string(),
+        };
+        let _: serde_json::Value = self
+            .client
+            .post(&format!("/api/principals/{}/roles", seg(id)), &body)
+            .await?;
+        Ok(())
+    }
+
+    /// Remove a role from a principal.
+    pub async fn remove_role(&self, id: &str, role_name: &str) -> Result<(), ClientError> {
+        self.client
+            .delete_req(&format!(
+                "/api/principals/{}/roles/{}",
+                seg(id),
+                seg(role_name)
+            ))
+            .await
+    }
+
+    /// Replace all roles on a principal with the given set.
+    pub async fn set_roles(&self, id: &str, roles: Vec<String>) -> Result<(), ClientError> {
+        let body = ReplaceRolesRequest { roles };
+        let _: serde_json::Value = self
+            .client
+            .put(&format!("/api/principals/{}/roles", seg(id)), &body)
+            .await?;
+        Ok(())
+    }
+
+    /// Get client access grants for a principal.
+    pub async fn client_access_grants(
+        &self,
+        id: &str,
+    ) -> Result<ClientAccessListResponse, ClientError> {
+        self.client
+            .get(&format!("/api/principals/{}/client-access", seg(id)))
+            .await
+    }
+
+    /// Grant client access to a principal.
+    pub async fn grant_client_access(
+        &self,
+        principal_id: &str,
+        client_id: &str,
+    ) -> Result<(), ClientError> {
+        let body = GrantClientAccessRequest {
+            client_id: client_id.to_string(),
+        };
+        let _: serde_json::Value = self
+            .client
+            .post(
+                &format!("/api/principals/{}/client-access", seg(principal_id)),
+                &body,
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Revoke client access from a principal.
+    pub async fn revoke_client_access(
+        &self,
+        principal_id: &str,
+        client_id: &str,
+    ) -> Result<(), ClientError> {
+        self.client
+            .delete_req(&format!(
+                "/api/principals/{}/client-access/{}",
+                seg(principal_id),
+                seg(client_id)
+            ))
+            .await
+    }
+
+    /// Reset a principal's password via the admin API.
+    pub async fn reset_password(
+        &self,
+        principal_id: &str,
+        req: &ResetPasswordRequest,
+    ) -> Result<(), ClientError> {
+        let _: serde_json::Value = self
+            .client
+            .post(
+                &format!("/api/principals/{}/reset-password", seg(principal_id)),
+                req,
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Sync principals for an application — declarative reconciliation
+    /// against `POST /api/applications/{appCode}/principals/sync`.
+    ///
+    /// When `remove_unlisted` is true the platform strips SDK-sourced role
+    /// assignments from principals not in the list (principals themselves
+    /// are never deleted by sync). A `password_hash` is used only to create a
+    /// user; the result's `password_hash_ignored` lists the existing users
+    /// whose hash was not applied.
+    pub async fn sync(
+        &self,
+        app_code: &str,
+        req: &SyncPrincipalsRequest,
+        remove_unlisted: bool,
+    ) -> Result<SyncResult, ClientError> {
+        let query = if remove_unlisted {
+            "?removeUnlisted=true"
+        } else {
+            ""
+        };
+        self.client
+            .post(
+                &format!(
+                    "/api/applications/{}/principals/sync{}",
+                    seg(app_code),
+                    query
+                ),
+                req,
+            )
+            .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::test_support::MockPlatform;
+
+    fn principal(id: &str, email: &str) -> String {
+        format!(
+            r#"{{"id":"{id}","type":"USER","scope":"CLIENT","name":"N","active":true,
+            "email":"{email}","roles":[],"isAnchorUser":false,"grantedClientIds":[],
+            "hasDeveloperCredential":false,"createdAt":"t","updatedAt":"t"}}"#
+        )
+    }
+
+    #[tokio::test]
+    async fn find_by_email_sends_q_and_keeps_exact_matches() {
+        let list = format!(
+            r#"{{"principals":[{},{}],"total":2}}"#,
+            principal("prn_1", "Ann+x@Example.com"),
+            principal("prn_2", "joann+x@example.com")
+        );
+        let stub = MockPlatform::start(&[("GET", "/api/principals", 200, &list)]).await;
+        let found = stub
+            .client()
+            .principals()
+            .find_by_email("ann+x@example.com")
+            .await
+            .unwrap();
+        assert_eq!(found.principals.len(), 1);
+        assert_eq!(found.principals[0].id, "prn_1");
+        assert_eq!(found.total, 1);
+        assert_eq!(
+            stub.single().query_pairs(),
+            vec![("q".to_string(), "ann+x@example.com".to_string())]
+        );
+    }
+
+    #[tokio::test]
+    async fn update_sends_gos_members() {
+        let body = principal("prn_1", "a@example.com");
+        let stub = MockPlatform::start(&[("PUT", "/api/principals/prn_1", 200, &body)]).await;
+        stub.client()
+            .principals()
+            .update(
+                "prn_1",
+                &UpdatePrincipalRequest {
+                    name: Some("Ann".into()),
+                    active: Some(true),
+                    email: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            stub.single().json(),
+            serde_json::json!({"name": "Ann", "active": true})
+        );
+    }
+}
