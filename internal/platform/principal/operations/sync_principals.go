@@ -2,6 +2,7 @@ package operations
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -29,10 +30,11 @@ type SyncPrincipalInput struct {
 	Roles  []string
 	Active bool
 	// PasswordHash, when non-empty, is an already-hashed credential stored
-	// verbatim on the principal (no re-hashing) so a migrated user keeps their
-	// existing password — the login flow verifies it (bcrypt/argon2i/argon2id)
-	// and re-encodes it to the native scheme on first success. Nil/empty leaves
-	// any existing hash untouched, so a hash-less sync never locks users out.
+	// verbatim on a principal the sync creates (no re-hashing) so a migrated
+	// user keeps their existing password — the login flow verifies it
+	// (bcrypt/argon2i/argon2id) and re-encodes it to the native scheme on
+	// first success. It is never applied to an existing principal (F13, see
+	// PasswordHashesIgnored), so a sync never changes a user's password.
 	PasswordHash *string
 }
 
@@ -48,8 +50,9 @@ type SyncPrincipalsCommand struct {
 //
 //   - Matches by lowercased email. An existing principal keeps its non-SDK_SYNC
 //     role assignments and has its SDK_SYNC assignments replaced with the
-//     incoming set; name and active are updated. A new principal is created as
-//     a CLIENT-scoped USER with the incoming SDK_SYNC roles.
+//     incoming set; name and active are updated; a passwordHash is never
+//     applied to it (F13). A new principal is created as a CLIENT-scoped USER
+//     with the incoming SDK_SYNC roles and the passwordHash, if any.
 //   - RemoveUnlisted does NOT delete principals: it strips SDK_SYNC role
 //     assignments from any USER principal whose email is absent from the
 //     payload (counted as "deactivated" in the rollup).
@@ -187,11 +190,15 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 					existing.Name = in.Name
 					existing.Active = in.Active
 					existing.UpdatedAt = now
-					// Overwrite the credential only when the sync carries one; an
-					// omitted hash preserves the existing one (FindByEmail hydrated it),
-					// so a roles-only sync never wipes a user's password.
+					// Never on an existing principal, whoever the caller (F13, owner
+					// ruling 2026-09-25, as Java and Rust): a hash is a credential for
+					// the account, and a password change belongs to the explicit,
+					// audited routes. The rest of the entry applies; the route's
+					// response names the email (PasswordHashesIgnored). The stored
+					// hash (hydrated by FindByEmail) is written back unchanged.
 					if in.PasswordHash != nil && *in.PasswordHash != "" {
-						existing.SetPasswordHash(*in.PasswordHash)
+						slog.InfoContext(ctx, "principal sync: passwordHash ignored for an existing principal",
+							"principalId", existing.ID)
 					}
 					saves = append(saves, usecasepgx.SyncSaveItem[principal.Principal]{
 						Aggregate: existing,
@@ -308,6 +315,34 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 			return usecaseop.Sync(principal.RolesPersister{Repository: principals}, saves, nil, rollup), nil
 		},
 	}
+}
+
+// PasswordHashesIgnored returns the emails (lower-cased, trimmed, each once,
+// in payload order) of the entries carrying a non-empty passwordHash for a
+// principal that already exists: the sync will not apply those hashes (F13,
+// owner ruling 2026-09-25; Java SyncPrincipals.passwordHashesIgnored, Rust
+// password_hashes_ignored). The routes read it before the sync runs, for
+// their passwordHashIgnored response field. A principal created concurrently
+// in between is missed here, and its hash is still not applied.
+func PasswordHashesIgnored(ctx context.Context, principals *principal.Repository, inputs []SyncPrincipalInput) ([]string, error) {
+	var out []string
+	for _, in := range inputs {
+		if in.PasswordHash == nil || *in.PasswordHash == "" {
+			continue
+		}
+		email := strings.ToLower(strings.TrimSpace(in.Email))
+		if slices.Contains(out, email) {
+			continue
+		}
+		p, err := principals.FindByEmail(ctx, email)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "find_by_email failed", err)
+		}
+		if p != nil {
+			out = append(out, email)
+		}
+	}
+	return out, nil
 }
 
 // requireSyncableRoles is the sync's role rule (F12): on an application's

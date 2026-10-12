@@ -30,7 +30,7 @@ func bcryptHash(t *testing.T, plaintext string) string {
 
 // A synced principal carrying a passwordHash keeps that hash verbatim so the
 // migrated user logs in with their existing password; a later hash-less sync
-// must NOT wipe it; and a sync carrying a new hash overwrites it.
+// must NOT wipe it; and a sync carrying a new hash leaves it too (F13).
 func TestSyncPrincipals_PasswordHashCarry(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -73,12 +73,24 @@ func TestSyncPrincipals_PasswordHashCarry(t *testing.T) {
 	assert.Equal(t, origHash, *got.UserIdentity.PasswordHash, "hash-less sync must not wipe the password")
 	assert.Equal(t, "Synced User Renamed", got.Name, "other fields still update")
 
-	// 3. Re-sync with a NEW hash — overwrite semantics.
+	// 3. Re-sync with a NEW hash (F13, owner ruling 2026-09-25 as Java and
+	// Rust): a sync never applies a hash to an existing user, whoever the
+	// caller (an anchor here); the rest of the entry still applies.
 	newHash := bcryptHash(t, "laravel-changed-pw")
+	ignored, err := operations.PasswordHashesIgnored(ctx, repo, []operations.SyncPrincipalInput{
+		{Email: "  PRN-Sync-PWHash@Example.com ", PasswordHash: new(newHash)},
+		{Email: email, PasswordHash: new(newHash)},
+		{Email: email},
+		{Email: "prn-sync-pwhash-new@example.com", PasswordHash: new(newHash)},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{email}, ignored,
+		"the existing user's email, normalised, once; a hash-less entry and a new user are not listed")
+
 	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo, role.NewRepository(testpg.Pool(t)), nil), operations.SyncPrincipalsCommand{
 		ApplicationCode: "syncpw",
 		Principals: []operations.SyncPrincipalInput{{
-			Email: email, Name: "Synced User Renamed", Active: true, PasswordHash: new(newHash),
+			Email: email, Name: "Synced User Renamed Again", Active: true, PasswordHash: new(newHash),
 		}},
 	}, ec)
 	require.NoError(t, err)
@@ -86,9 +98,9 @@ func TestSyncPrincipals_PasswordHashCarry(t *testing.T) {
 	got, err = repo.FindByEmail(ctx, email)
 	require.NoError(t, err)
 	require.NotNil(t, got.UserIdentity.PasswordHash)
-	assert.Equal(t, newHash, *got.UserIdentity.PasswordHash, "a hash on the sync overwrites the old one")
-	assert.NoError(t, passwordhash.Verify("laravel-changed-pw", *got.UserIdentity.PasswordHash))
-	assert.Error(t, passwordhash.Verify("laravel-original-pw", *got.UserIdentity.PasswordHash))
+	assert.Equal(t, origHash, *got.UserIdentity.PasswordHash, "a hash on the sync never replaces an existing user's")
+	assert.NoError(t, passwordhash.Verify("laravel-original-pw", *got.UserIdentity.PasswordHash))
+	assert.Equal(t, "Synced User Renamed Again", got.Name, "the rest of the entry applies")
 }
 
 // A synced user with no passwordHash at all stays password-less (the OIDC

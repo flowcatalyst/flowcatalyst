@@ -3110,7 +3110,7 @@ export type SyncPrincipalInputRequest = {
     email: string;
     name: string;
     /**
-     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login
+     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored).
      */
     passwordHash?: string;
     /**
@@ -3173,6 +3173,10 @@ export type SyncResultResponse = {
     applicationCode: string;
     created: number;
     deleted: number;
+    /**
+     * Principal sync only: emails whose passwordHash was ignored because the user already exists (omitted when none)
+     */
+    passwordHashIgnored?: Array<string>;
     syncedCodes: Array<string>;
     updated: number;
 };
@@ -3287,7 +3291,7 @@ export type SyncUserInput = {
      */
     name: string;
     /**
-     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login. Omit to leave any existing password untouched.
+     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored).
      */
     passwordHash?: string;
     /**
@@ -3312,6 +3316,10 @@ export type SyncUsersResponse = {
     readonly $schema?: string;
     created: number;
     deleted: number;
+    /**
+     * Emails whose passwordHash was ignored because the user already exists (omitted when none)
+     */
+    passwordHashIgnored?: Array<string>;
     syncedEmails: Array<string>;
     updated: number;
 };
@@ -5566,6 +5574,10 @@ export type SyncResultResponseWritable = {
     applicationCode: string;
     created: number;
     deleted: number;
+    /**
+     * Principal sync only: emails whose passwordHash was ignored because the user already exists (omitted when none)
+     */
+    passwordHashIgnored?: Array<string>;
     syncedCodes: Array<string>;
     updated: number;
 };
@@ -5603,6 +5615,10 @@ export type SyncUsersRequestWritable = {
 export type SyncUsersResponseWritable = {
     created: number;
     deleted: number;
+    /**
+     * Emails whose passwordHash was ignored because the user already exists (omitted when none)
+     */
+    passwordHashIgnored?: Array<string>;
     syncedEmails: Array<string>;
     updated: number;
 };

@@ -8824,7 +8824,7 @@
             "type": "string"
           },
           "passwordHash": {
-            "description": "Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login",
+            "description": "Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored).",
             "type": "string"
           },
           "roles": {
@@ -8975,6 +8975,13 @@
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "passwordHashIgnored": {
+            "description": "Principal sync only: emails whose passwordHash was ignored because the user already exists (omitted when none)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "syncedCodes": {
             "items": {
@@ -9285,7 +9292,7 @@
             "type": "string"
           },
           "passwordHash": {
-            "description": "Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login. Omit to leave any existing password untouched.",
+            "description": "Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored).",
             "type": "string"
           },
           "roles": {
@@ -9347,6 +9354,13 @@
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "passwordHashIgnored": {
+            "description": "Emails whose passwordHash was ignored because the user already exists (omitted when none)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "syncedEmails": {
             "items": {

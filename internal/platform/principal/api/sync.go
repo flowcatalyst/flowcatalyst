@@ -18,7 +18,7 @@ type SyncUserInput struct {
 	Name         string   `json:"name" doc:"Display name"`
 	Roles        []string `json:"roles,omitempty" doc:"Role names to assign (SDK_SYNC source; replaces this source's prior set)"`
 	Active       *bool    `json:"active,omitempty" doc:"Whether the user is active (default true)"`
-	PasswordHash *string  `json:"passwordHash,omitempty" doc:"Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login. Omit to leave any existing password untouched."`
+	PasswordHash *string  `json:"passwordHash,omitempty" doc:"Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored)."`
 }
 
 // SyncUsersRequest is the body for POST /api/principals/sync.
@@ -32,6 +32,10 @@ type SyncUsersResponse struct {
 	Updated      uint32   `json:"updated"`
 	Deleted      uint32   `json:"deleted"`
 	SyncedEmails []string `json:"syncedEmails"`
+	// PasswordHashIgnored names the entries whose passwordHash was not applied
+	// because the user already existed (F13; Java's and Rust's field). Omitted
+	// when empty.
+	PasswordHashIgnored []string `json:"passwordHashIgnored,omitempty" doc:"Emails whose passwordHash was ignored because the user already exists (omitted when none)"`
 }
 
 // syncUsers handles POST /api/principals/sync — a declarative, application-less
@@ -61,6 +65,11 @@ func (s *State) syncUsers(ctx context.Context, in *apicommon.In[SyncUsersRequest
 		})
 	}
 
+	// Read before the sync runs: the existing users whose hash it will not apply.
+	ignored, err := operations.PasswordHashesIgnored(ctx, s.Repo, inputs)
+	if err != nil {
+		return nil, err
+	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	ev, err := usecaseop.Run(ctx, s.UoW, operations.SyncPrincipals(s.Repo, s.Roles, s.ClientConfigs),
 		operations.SyncPrincipalsCommand{Principals: inputs}, ec)
@@ -68,9 +77,10 @@ func (s *State) syncUsers(ctx context.Context, in *apicommon.In[SyncUsersRequest
 		return nil, err
 	}
 	return &apicommon.Out[SyncUsersResponse]{Body: SyncUsersResponse{
-		Created:      ev.Created,
-		Updated:      ev.Updated,
-		Deleted:      ev.Deactivated,
-		SyncedEmails: ev.SyncedEmails,
+		Created:             ev.Created,
+		Updated:             ev.Updated,
+		Deleted:             ev.Deactivated,
+		SyncedEmails:        ev.SyncedEmails,
+		PasswordHashIgnored: ignored,
 	}}, nil
 }

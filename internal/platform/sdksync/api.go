@@ -89,6 +89,10 @@ type SyncResultResponse struct {
 	Updated         uint32   `json:"updated"`
 	Deleted         uint32   `json:"deleted"`
 	SyncedCodes     []string `json:"syncedCodes"`
+	// PasswordHashIgnored (principal sync only): the emails whose passwordHash
+	// was not applied because the user already existed (F13; Java's and
+	// Rust's field). Omitted when empty, so every other sync is unchanged.
+	PasswordHashIgnored []string `json:"passwordHashIgnored,omitempty" doc:"Principal sync only: emails whose passwordHash was ignored because the user already exists (omitted when none)"`
 }
 
 // Register mounts the SDK sync endpoints on the supplied huma API,
@@ -487,8 +491,9 @@ type syncPrincipalInputRequest struct {
 	// Laravel bcrypt/argon2i hash) so migrated users keep their existing
 	// password. Stored verbatim — NOT re-hashed; the login flow verifies it
 	// and transparently re-encodes it to the native scheme on first login.
-	// Omit for OIDC users or to leave an existing hash untouched.
-	PasswordHash *string `json:"passwordHash,omitempty" doc:"Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login"`
+	// Applied only to a user the sync creates; an existing user's hash is
+	// never replaced (F13) and the response lists it in passwordHashIgnored.
+	PasswordHash *string `json:"passwordHash,omitempty" doc:"Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored)."`
 }
 
 type syncPrincipalsRequest struct {
@@ -534,17 +539,23 @@ func (s *State) syncPrincipals(ctx context.Context, in *syncPrincipalsInput) (*s
 		Principals:      inputs,
 		RemoveUnlisted:  in.RemoveUnlisted,
 	}
+	// Read before the sync runs: the existing users whose hash it will not apply.
+	ignored, err := principalops.PasswordHashesIgnored(ctx, s.Principals, inputs)
+	if err != nil {
+		return nil, err
+	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	ev, err := usecaseop.Run(ctx, s.UoW, principalops.SyncPrincipals(s.Principals, s.Roles, nil), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
 	return &syncResultOutput{Body: SyncResultResponse{
-		ApplicationCode: ev.ApplicationCode,
-		Created:         ev.Created,
-		Updated:         ev.Updated,
-		Deleted:         ev.Deactivated,
-		SyncedCodes:     ev.SyncedEmails,
+		ApplicationCode:     ev.ApplicationCode,
+		Created:             ev.Created,
+		Updated:             ev.Updated,
+		Deleted:             ev.Deactivated,
+		SyncedCodes:         ev.SyncedEmails,
+		PasswordHashIgnored: ignored,
 	}}, nil
 }
 
