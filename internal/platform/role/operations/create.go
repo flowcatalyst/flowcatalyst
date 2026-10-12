@@ -20,6 +20,12 @@ type CreateCommand struct {
 	ClientManaged   bool     `json:"clientManaged"`
 }
 
+// crossApplication reports whether an admin-API write may put another
+// application's permissions on a role (F12): only a super-admin's, as in Java
+// (Access.crossApplication) and Rust (cross_application). The SDK and platform
+// role syncs never pass it.
+func crossApplication(ctx context.Context) bool { return auth.FromContext(ctx).IsSuperAdmin() }
+
 // CreateRole creates a new role and emits RoleCreated.
 func CreateRole(repo *role.Repository) usecaseop.Operation[CreateCommand, RoleCreated] {
 	return usecaseop.Operation[CreateCommand, RoleCreated]{
@@ -38,9 +44,11 @@ func CreateRole(repo *role.Repository) usecaseop.Operation[CreateCommand, RoleCr
 		},
 		// Roles are global (no per-client resource dimension), so there is no
 		// per-resource authz; the permission for the operation (CanCreateRoles)
-		// is enforced at the controller. The permission ceiling (F10) is checked
-		// in Execute: the role may carry only platform permissions the caller
-		// holds, 403 role.PermissionCeilingCode.
+		// is enforced at the controller. In Execute, after the duplicate check:
+		// confinement (F12), the role may carry only its own application's
+		// permissions unless the caller is a super-admin, 400
+		// role.OutsideApplicationCode; then the permission ceiling (F10), only
+		// platform permissions the caller holds, 403 role.PermissionCeilingCode.
 		Authorize: usecaseop.Public[CreateCommand],
 		Execute: func(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[RoleCreated], error) {
 			fullName := cmd.ApplicationCode + ":" + cmd.RoleName
@@ -56,6 +64,10 @@ func CreateRole(repo *role.Repository) usecaseop.Operation[CreateCommand, RoleCr
 			r.ClientManaged = cmd.ClientManaged
 			for _, p := range cmd.Permissions {
 				r.GrantPermission(p)
+			}
+			if err := role.RequirePermissionsInApplication(r.OwningApplicationCode(), r.Permissions,
+				crossApplication(ctx)); err != nil {
+				return nil, err
 			}
 			if err := role.RequirePermissionsWithinCaller(auth.FromContext(ctx), r.Permissions); err != nil {
 				return nil, err

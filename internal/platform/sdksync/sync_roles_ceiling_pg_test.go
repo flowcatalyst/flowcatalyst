@@ -12,6 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	appops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
+	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -57,11 +58,19 @@ func TestSyncRoles_PermissionsBoundedByCallersPermissions(t *testing.T) {
 	// The application's own permissions: synced for any caller.
 	require.NoError(t, syncAs(sdk, false, syncRoleInputRequest{Name: "clerk", Permissions: []string{appCode + ":order:view"}}))
 
-	// A platform permission the caller lacks: refused on create and update, nothing written.
-	refused("new role", syncAs(sdk, false,
-		syncRoleInputRequest{Name: "escalated", Permissions: []string{"platform:*:*:*"}}), "platform:*:*:*")
-	refused("existing role", syncAs(sdk, false,
-		syncRoleInputRequest{Name: "clerk", Permissions: []string{appCode + ":order:view", "platform:*:*:*"}}), "platform:*:*:*")
+	// Adding a platform permission: since confinement (F12) an application's
+	// role may not gain one at all (400 before the ceiling), on create and
+	// update, nothing written.
+	outside := func(label string, err error) {
+		t.Helper()
+		ue := usecase.AsError(err)
+		require.NotNil(t, ue, "%s: want a refusal, got %v", label, err)
+		assert.Equal(t, "PERMISSION_OUTSIDE_APPLICATION", ue.Code, label)
+	}
+	outside("new role", syncAs(sdk, false,
+		syncRoleInputRequest{Name: "escalated", Permissions: []string{"platform:*:*:*"}}))
+	outside("existing role", syncAs(sdk, false,
+		syncRoleInputRequest{Name: "clerk", Permissions: []string{appCode + ":order:view", "platform:*:*:*"}}))
 	none, err := roles.FindByName(ctx, appCode+":escalated")
 	require.NoError(t, err)
 	assert.Nil(t, none)
@@ -70,10 +79,12 @@ func TestSyncRoles_PermissionsBoundedByCallersPermissions(t *testing.T) {
 	require.NotNil(t, clerk)
 	assert.Equal(t, []string{appCode + ":order:view"}, clerk.Permissions)
 
-	// The wildcard holder may; then removal counts, by a replacing list or by
-	// removeUnlisted deleting the role.
-	require.NoError(t, syncAs([]string{"platform:*:*:*"}, false,
-		syncRoleInputRequest{Name: "clerk", Permissions: []string{appCode + ":order:view", "platform:iam:user:view"}}))
+	// A super-admin put a platform permission on the role through the admin
+	// API (the one way left to do it); removal counts, by a replacing list or
+	// by removeUnlisted deleting the role.
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, roleops.GrantPermission(roles),
+		roleops.GrantPermissionCommand{RoleName: appCode + ":clerk", Permission: "platform:iam:user:view"}, testpg.TestEC())
+	require.NoError(t, err)
 	refused("removing", syncAs(sdk, false,
 		syncRoleInputRequest{Name: "clerk", Permissions: []string{appCode + ":order:view"}}), "platform:iam:user:view")
 	refused("removeUnlisted", syncAs(sdk, true,

@@ -37,9 +37,12 @@ func UpdateRole(repo *role.Repository) usecaseop.Operation[UpdateCommand, RoleUp
 		},
 		// Roles are global (no per-client resource dimension), so there is no
 		// per-resource authz; the permission for the operation (CanUpdateRoles)
-		// is enforced at the controller. The permission ceiling (F10) is checked
-		// post-load: only platform permissions the caller holds may be added or
-		// removed, 403 role.PermissionCeilingCode.
+		// is enforced at the controller. Post-load, after the CODE-role refusal:
+		// confinement (F12) on the permissions the update adds (only the role's
+		// own application's, unless the caller is a super-admin), 400
+		// role.OutsideApplicationCode; then the permission ceiling (F10), only
+		// platform permissions the caller holds may be added or removed, 403
+		// role.PermissionCeilingCode.
 		Authorize: usecaseop.Public[UpdateCommand],
 		Execute: func(ctx context.Context, cmd UpdateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[RoleUpdated], error) {
 			r, err := repo.FindByID(ctx, cmd.ID)
@@ -59,6 +62,10 @@ func UpdateRole(repo *role.Repository) usecaseop.Operation[UpdateCommand, RoleUp
 				r.Description = cmd.Description
 			}
 			if cmd.Permissions != nil {
+				if err := role.RequirePermissionsInApplication(r.OwningApplicationCode(),
+					role.AddedPermissions(r.Permissions, cmd.Permissions), crossApplication(ctx)); err != nil {
+					return nil, err
+				}
 				if err := role.RequirePermissionsWithinCaller(auth.FromContext(ctx),
 					role.ChangedPermissions(r.Permissions, cmd.Permissions)); err != nil {
 					return nil, err

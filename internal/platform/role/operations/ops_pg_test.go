@@ -652,7 +652,9 @@ func TestSyncPlatformRoles_BoundedByCallersPermissions(t *testing.T) {
 		edit = "platform:roleceil:thing:edit"
 	)
 	mk := func(perms ...string) role.Role {
-		r := role.New("roleceil", "code", "Code ceiling")
+		// A platform role: confinement (F12) refuses platform permissions on
+		// any other application's role before the ceiling is reached.
+		r := role.New("platform", "roleceil-code", "Code ceiling")
 		r.Source = role.SourceCode
 		r.Permissions = perms
 		return *r
@@ -669,7 +671,7 @@ func TestSyncPlatformRoles_BoundedByCallersPermissions(t *testing.T) {
 		Permissions: []string{"platform:iam:role:create", "platform:iam:role:update", "platform:iam:role:delete", view},
 	})
 	permsOf := func() []string {
-		r, err := repo.FindByName(ctx, "roleceil:code")
+		r, err := repo.FindByName(ctx, "platform:roleceil-code")
 		require.NoError(t, err)
 		if r == nil {
 			return nil
@@ -692,4 +694,54 @@ func TestSyncPlatformRoles_BoundedByCallersPermissions(t *testing.T) {
 
 	require.NoError(t, sync(testpg.AnchorCtx(), with()))
 	assert.Nil(t, permsOf())
+}
+
+// Confinement (F12) on the platform role sync: the built-in catalogue (every
+// role a platform role holding platform permissions) syncs as before, but a
+// catalogue role cannot be given another application's permission, not even by
+// a super-admin (the catalogue sync never crosses applications). SERIAL,
+// after the two tests above (the sync sweeps every CODE role absent from the
+// catalogue).
+func TestSyncPlatformRoles_PermissionsConfinedToTheirApplication(t *testing.T) {
+	ctx := context.Background()
+	repo := role.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	ec := testpg.TestEC()
+
+	mk := func(perms ...string) role.Role {
+		r := role.New("platform", "confcat", "Confinement catalogue")
+		r.Source = role.SourceCode
+		r.Permissions = perms
+		return *r
+	}
+	sync := func(catalogue []role.Role) error {
+		_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPlatformRoles(repo, catalogue),
+			operations.SyncPlatformRolesCommand{}, ec)
+		return err
+	}
+	with := func(extra ...role.Role) []role.Role {
+		return append(append([]role.Role{}, seed.PlatformRoles()...), extra...)
+	}
+	permsOf := func() []string {
+		r, err := repo.FindByName(ctx, "platform:confcat")
+		require.NoError(t, err)
+		if r == nil {
+			return nil
+		}
+		return r.Permissions
+	}
+
+	require.NoError(t, sync(with()), "the built-in catalogue is confined")
+	require.NoError(t, sync(with(mk("platform:confcat:thing:view"))))
+
+	err := sync(with(mk("platform:confcat:thing:view", "other:thing:view")))
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "PERMISSION_OUTSIDE_APPLICATION")
+	assert.Contains(t, err.Error(), "Permission 'other:thing:view' does not belong to application 'platform'")
+	assert.Equal(t, []string{"platform:confcat:thing:view"}, permsOf(), "a refused sync writes nothing")
+
+	require.NoError(t, sync(with()))
+	assert.Nil(t, permsOf())
+	err = sync(with(mk("other:thing:view")))
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "PERMISSION_OUTSIDE_APPLICATION")
+	assert.Nil(t, permsOf(), "a refused new catalogue role is not created")
 }

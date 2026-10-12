@@ -38,8 +38,10 @@ func GrantPermission(repo *role.Repository) usecaseop.Operation[GrantPermissionC
 		},
 		// Roles are global (no per-client resource dimension), so there is no
 		// per-resource authz; the permission for the operation (CanUpdateRoles)
-		// is enforced at the controller. The permission ceiling (F10) is checked
-		// post-load on the change (a no-op change is not checked), 403
+		// is enforced at the controller. Post-load, on the change (granting a
+		// held permission is not checked): confinement (F12), only the role's
+		// own application's permission unless the caller is a super-admin, 400
+		// role.OutsideApplicationCode; then the permission ceiling (F10), 403
 		// role.PermissionCeilingCode.
 		Authorize: usecaseop.Public[GrantPermissionCommand],
 		Execute: func(ctx context.Context, cmd GrantPermissionCommand, ec usecase.ExecutionContext) (usecaseop.Plan[RolePermissionGranted], error) {
@@ -52,6 +54,10 @@ func GrantPermission(repo *role.Repository) usecaseop.Operation[GrantPermissionC
 			}
 			before := slices.Clone(r.Permissions)
 			r.GrantPermission(cmd.Permission)
+			if err := role.RequirePermissionsInApplication(r.OwningApplicationCode(),
+				role.AddedPermissions(before, r.Permissions), crossApplication(ctx)); err != nil {
+				return nil, err
+			}
 			if err := role.RequirePermissionsWithinCaller(auth.FromContext(ctx),
 				role.ChangedPermissions(before, r.Permissions)); err != nil {
 				return nil, err
@@ -74,6 +80,8 @@ type RevokePermissionCommand struct {
 }
 
 // RevokePermission removes the permission and emits [RolePermissionRevoked].
+// Confinement (F12) never refuses a removal: a stray permission already on a
+// role can always be taken off.
 func RevokePermission(repo *role.Repository) usecaseop.Operation[RevokePermissionCommand, RolePermissionRevoked] {
 	return usecaseop.Operation[RevokePermissionCommand, RolePermissionRevoked]{
 		Name: "RevokePermission",

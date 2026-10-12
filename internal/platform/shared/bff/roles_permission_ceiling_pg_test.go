@@ -48,31 +48,33 @@ func TestBffRoles_PermissionsBoundedByCallersPermissions(t *testing.T) {
 		assert.Equal(t, "You may only add or remove permissions you hold yourself: "+named, body["message"], label)
 	}
 
+	// Platform roles: confinement (F12) refuses a platform permission on
+	// another application's role before the ceiling is reached.
 	status, body := send(admin, http.MethodPost, "/bff/roles",
-		`{"applicationCode":"bffceil","roleName":"escalated","displayName":"Escalated","permissions":["platform:*:*:*"]}`)
+		`{"applicationCode":"platform","roleName":"bffceil-escalated","displayName":"Escalated","permissions":["platform:*:*:*"]}`)
 	refused("create", status, body, "platform:*:*:*")
 
 	status, _ = send(admin, http.MethodPost, "/bff/roles",
-		`{"applicationCode":"bffceil","roleName":"clerk","displayName":"Clerk","permissions":["platform:iam:user:view","bffceil:order:view"]}`)
+		`{"applicationCode":"platform","roleName":"bffceil-clerk","displayName":"Clerk","permissions":["platform:iam:user:view"]}`)
 	require.Equal(t, http.StatusCreated, status)
 
-	status, body = send(admin, http.MethodPut, "/bff/roles/bffceil:clerk",
-		`{"permissions":["platform:iam:user:view","bffceil:order:view","platform:*:*:*"]}`)
+	status, body = send(admin, http.MethodPut, "/bff/roles/platform:bffceil-clerk",
+		`{"permissions":["platform:iam:user:view","platform:*:*:*"]}`)
 	refused("update adding", status, body, "platform:*:*:*")
 
-	status, _ = send(superAdmin, http.MethodPut, "/bff/roles/bffceil:clerk",
-		`{"permissions":["platform:iam:user:view","bffceil:order:view","platform:iam:user:create"]}`)
+	status, _ = send(superAdmin, http.MethodPut, "/bff/roles/platform:bffceil-clerk",
+		`{"permissions":["platform:iam:user:view","platform:iam:user:create"]}`)
 	require.Equal(t, http.StatusNoContent, status, "the wildcard holder may add anything")
 
-	status, body = send(admin, http.MethodPut, "/bff/roles/bffceil:clerk",
+	status, body = send(admin, http.MethodPut, "/bff/roles/platform:bffceil-clerk",
 		`{"permissions":["platform:iam:user:view"]}`)
 	refused("update removing", status, body, "platform:iam:user:create")
 
-	status, body = send(admin, http.MethodDelete, "/bff/roles/bffceil:clerk", "")
+	status, body = send(admin, http.MethodDelete, "/bff/roles/platform:bffceil-clerk", "")
 	refused("delete", status, body, "platform:iam:user:create")
 
-	clerk, err := repo.FindByName(t.Context(), "bffceil:clerk")
+	clerk, err := repo.FindByName(t.Context(), "platform:bffceil-clerk")
 	require.NoError(t, err)
 	require.NotNil(t, clerk)
-	assert.ElementsMatch(t, []string{"platform:iam:user:view", "bffceil:order:view", "platform:iam:user:create"}, clerk.Permissions)
+	assert.ElementsMatch(t, []string{"platform:iam:user:view", "platform:iam:user:create"}, clerk.Permissions)
 }

@@ -28,7 +28,10 @@ type SyncPlatformRolesCommand struct{}
 // Authorization is [usecaseop.Public]: the catalogue is static code with no
 // client or application dimension, so there is no per-resource check. The sole
 // entry point (the anchor-only BFF /bff/roles/sync-platform) does the coarse
-// gate (RequireAnchor and the three role permissions). The permission ceiling
+// gate (RequireAnchor and the three role permissions). Confinement (F12): a
+// catalogue role may gain only its own application's permissions (the
+// built-in catalogue is all platform roles with platform permissions), with no
+// super-admin exception, 400 role.OutsideApplicationCode. The permission ceiling
 // (F10) bounds the change: every platform permission the sync adds to or
 // removes from a role (restoring a role trimmed by hand, sweeping a stale one)
 // must be the caller's, or the whole sync is refused before any write, 403
@@ -74,6 +77,10 @@ func SyncPlatformRoles(repo *role.Repository, codeRoles []role.Role) usecaseop.O
 					}
 					existing.DisplayName = def.DisplayName
 					existing.Description = def.Description
+					if err := role.RequirePermissionsInApplication(existing.OwningApplicationCode(),
+						role.AddedPermissions(existing.Permissions, def.Permissions), false); err != nil {
+						return nil, err
+					}
 					changed = append(changed, role.ChangedPermissions(existing.Permissions, def.Permissions)...)
 					existing.Permissions = append([]string(nil), def.Permissions...)
 					saves = append(saves, usecasepgx.SyncSaveItem[role.Role]{
@@ -93,6 +100,9 @@ func SyncPlatformRoles(repo *role.Repository, codeRoles []role.Role) usecaseop.O
 				row.Description = def.Description
 				row.Permissions = append([]string(nil), def.Permissions...)
 				row.Source = role.SourceCode
+				if err := role.RequirePermissionsInApplication(row.OwningApplicationCode(), row.Permissions, false); err != nil {
+					return nil, err
+				}
 				changed = append(changed, row.Permissions...)
 				saves = append(saves, usecasepgx.SyncSaveItem[role.Role]{
 					Aggregate: row,
@@ -194,7 +204,10 @@ type SyncRolesCommand struct {
 // synced role gains or loses (a removed role loses them all) must be the
 // caller's, or the whole sync is refused before any write, 403
 // role.PermissionCeilingCode. An application's own permissions are outside
-// it, so an SDK syncing them passes for any caller.
+// it, so an SDK syncing them passes for any caller. Before it, confinement
+// (F12): a synced role may gain only this application's permissions, with no
+// super-admin exception (400 role.OutsideApplicationCode, whole sync refused);
+// a role that already holds another application's permission keeps it.
 //
 // Emits per-row [RoleCreated]/[RoleUpdated]/[RoleDeleted] events plus one
 // [RolesSynced] rollup, all atomic with the row writes via [usecaseop.Sync].
@@ -258,6 +271,10 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 					// in the FlowCatalyst UI; an empty/omitted list must NOT wipe them.
 					// Only a non-empty list replaces the stored permissions.
 					if len(in.Permissions) > 0 {
+						if err := role.RequirePermissionsInApplication(cmd.ApplicationCode,
+							role.AddedPermissions(cur.Permissions, in.Permissions), false); err != nil {
+							return nil, err
+						}
 						changed = append(changed, role.ChangedPermissions(cur.Permissions, in.Permissions)...)
 						cur.Permissions = append([]string(nil), in.Permissions...)
 					}
@@ -283,6 +300,9 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 				row.Description = in.Description
 				row.Permissions = append([]string(nil), in.Permissions...)
 				row.ClientManaged = in.ClientManaged
+				if err := role.RequirePermissionsInApplication(cmd.ApplicationCode, row.Permissions, false); err != nil {
+					return nil, err
+				}
 				changed = append(changed, row.Permissions...)
 				saves = append(saves, usecasepgx.SyncSaveItem[role.Role]{
 					Aggregate: row,

@@ -67,12 +67,15 @@ func TestRolePermissions_BoundedByCallersPermissions(t *testing.T) {
 	superAdmin := callerHolding(nil, superAdminPerm)
 
 	// The caller's own role: what it holds is exactly this role's permissions.
+	// The roles holding platform permissions are platform roles: confinement
+	// (F12) refuses a platform permission on another application's role before
+	// the ceiling is reached.
 	ownPerms := []string{permRoleCreate, permRoleUpdate, permRoleDelete, permUserView}
 	_, err := s.create(superAdmin, &apicommon.In[CreateRoleRequest]{Body: CreateRoleRequest{
-		ApplicationCode: "permceil", RoleName: "role-admin", DisplayName: "Role Admin", Permissions: ownPerms,
+		ApplicationCode: "platform", RoleName: "permceil-role-admin", DisplayName: "Role Admin", Permissions: ownPerms,
 	}})
 	require.NoError(t, err)
-	const own = "permceil:role-admin"
+	const own = "platform:permceil-role-admin"
 	ownRow, err := repo.FindByName(context.Background(), own)
 	require.NoError(t, err)
 	require.NotNil(t, ownRow)
@@ -91,27 +94,25 @@ func TestRolePermissions_BoundedByCallersPermissions(t *testing.T) {
 	requirePermissionAboveCaller(t, err, "grant (body) on own role", superAdminPerm)
 	assert.ElementsMatch(t, ownPerms, permissionsOf(t, repo, own), "own role unchanged")
 
-	// Create: only permissions it holds; application permissions aside.
+	// Create: only permissions it holds.
 	_, err = s.create(admin, &apicommon.In[CreateRoleRequest]{Body: CreateRoleRequest{
-		ApplicationCode: "permceil", RoleName: "escalated", DisplayName: "Escalated",
-		Permissions: []string{permUserView, permUserCreate, "permceil:order:view"},
+		ApplicationCode: "platform", RoleName: "permceil-escalated", DisplayName: "Escalated",
+		Permissions: []string{permUserView, permUserCreate},
 	}})
 	requirePermissionAboveCaller(t, err, "create", permUserCreate)
-	gone, err := repo.FindByName(context.Background(), "permceil:escalated")
+	gone, err := repo.FindByName(context.Background(), "platform:permceil-escalated")
 	require.NoError(t, err)
 	assert.Nil(t, gone, "a refused create writes nothing")
 	_, err = s.create(admin, &apicommon.In[CreateRoleRequest]{Body: CreateRoleRequest{
-		ApplicationCode: "permceil", RoleName: "clerk", DisplayName: "Clerk",
-		Permissions: []string{permUserView, "permceil:order:view"},
+		ApplicationCode: "platform", RoleName: "permceil-clerk", DisplayName: "Clerk",
+		Permissions: []string{permUserView},
 	}})
 	require.NoError(t, err)
-	const clerk = "permceil:clerk"
+	const clerk = "platform:permceil-clerk"
 
-	// Adding a held permission or an application one: allowed. Adding one it
-	// lacks: refused by every route.
+	// Adding a held permission: allowed. Adding one it lacks: refused by
+	// every route.
 	_, err = s.grantPermission(admin, &rolePermissionGrantInput{RoleName: clerk, Permission: permRoleUpdate})
-	require.NoError(t, err)
-	_, err = s.grantPermission(admin, &rolePermissionGrantInput{RoleName: clerk, Permission: "permceil:order:create"})
 	require.NoError(t, err)
 	_, err = s.grantPermission(admin, &rolePermissionGrantInput{RoleName: clerk, Permission: permUserCreate})
 	requirePermissionAboveCaller(t, err, "grant lacking", permUserCreate)
@@ -121,9 +122,7 @@ func TestRolePermissions_BoundedByCallersPermissions(t *testing.T) {
 		Permissions: append(append([]string{}, clerkRow.Permissions...), permUserCreate),
 	}})
 	requirePermissionAboveCaller(t, err, "update adding lacking", permUserCreate)
-	assert.ElementsMatch(t,
-		[]string{permUserView, "permceil:order:view", permRoleUpdate, "permceil:order:create"},
-		permissionsOf(t, repo, clerk))
+	assert.ElementsMatch(t, []string{permUserView, permRoleUpdate}, permissionsOf(t, repo, clerk))
 
 	// A held wildcard covers what it names.
 	wide := callerHolding(nil, permRoleUpdate, "platform:iam:user:*")
@@ -148,14 +147,14 @@ func TestRolePermissions_BoundedByCallersPermissions(t *testing.T) {
 	_, err = s.update(admin, &updateInput{ID: clerkRow.ID, Body: UpdateRoleRequest{DisplayName: &newName}})
 	require.NoError(t, err, "no permission change, nothing to check")
 	_, err = s.update(admin, &updateInput{ID: clerkRow.ID, Body: UpdateRoleRequest{
-		Permissions: []string{permUserCreate, permUserView, "permceil:order:view", permRoleUpdate},
+		Permissions: []string{permUserCreate, permUserView, permRoleUpdate},
 	}})
-	require.NoError(t, err, "the lacking permission is kept, the application one removed")
+	require.NoError(t, err, "the lacking permission is kept, so not checked")
 	_, err = s.revokePermission(admin, &rolePermissionGrantInput{RoleName: clerk, Permission: permRoleUpdate})
 	require.NoError(t, err, "a held permission may be revoked")
 	_, err = s.revokePermission(admin, &rolePermissionGrantInput{RoleName: clerk, Permission: "platform:never:held:x"})
 	require.NoError(t, err, "revoking a permission the role lacks changes nothing")
-	assert.ElementsMatch(t, []string{permUserCreate, permUserView, "permceil:order:view"}, permissionsOf(t, repo, clerk))
+	assert.ElementsMatch(t, []string{permUserCreate, permUserView}, permissionsOf(t, repo, clerk))
 
 	// Application permissions are outside the ceiling, even for a caller
 	// holding none of them.
