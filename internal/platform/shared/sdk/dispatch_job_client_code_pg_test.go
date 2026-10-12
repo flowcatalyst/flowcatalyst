@@ -51,8 +51,10 @@ func newClientCodeFixture(t *testing.T) *clientCodeFixture {
 	f.bID = insertClient(t, pool, f.bCode)
 	perms := []string{"platform:messaging:batch:dispatch-jobs-write"}
 	f.anchor = &auth.AuthContext{PrincipalID: "p_cc_anchor", Scope: auth.ScopeAnchor, Permissions: perms, AllApplications: true}
-	f.clientAC = &auth.AuthContext{PrincipalID: "p_cc_client", Scope: auth.ScopeClient, Clients: []string{f.aID},
-		Permissions: perms, AllApplications: true}
+	f.clientAC = &auth.AuthContext{
+		PrincipalID: "p_cc_client", Scope: auth.ScopeClient, Clients: []string{f.aID},
+		Permissions: perms, AllApplications: true,
+	}
 
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {

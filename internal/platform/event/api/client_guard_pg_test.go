@@ -55,8 +55,10 @@ func TestEventIngest_ClientGuard(t *testing.T) {
 
 	str := func(v string) *string { return &v }
 	item := func(clientID, clientCode *string) BatchEventItem {
-		return BatchEventItem{ID: tsid.GenerateUntyped(), Type: "eg:sales:order:created", Source: "eg",
-			Data: json.RawMessage(`{"n":1}`), ClientID: clientID, ClientCode: clientCode}
+		return BatchEventItem{
+			ID: tsid.GenerateUntyped(), Type: "eg:sales:order:created", Source: "eg",
+			Data: json.RawMessage(`{"n":1}`), ClientID: clientID, ClientCode: clientCode,
+		}
 	}
 	ingest := func(ctx context.Context, items ...BatchEventItem) ([]BatchResultItem, error) {
 		out, err := s.batchIngest(ctx, &apicommon.In[BatchRequest]{Body: BatchRequest{Items: items}})
@@ -149,7 +151,8 @@ func TestEventIngest_ClientGuard(t *testing.T) {
 	// caller with clients defaults to its first; the explicit guard holds.
 	create := func(ctx context.Context, clientID *string) (*CreatedEvent, error) {
 		out, err := s.create(ctx, &apicommon.In[CreateEventRequest]{Body: CreateEventRequest{
-			EventType: "eg:sales:order:created", Source: "eg", Data: json.RawMessage(`{"n":1}`), ClientID: clientID}})
+			EventType: "eg:sales:order:created", Source: "eg", Data: json.RawMessage(`{"n":1}`), ClientID: clientID,
+		}})
 		if err != nil {
 			return nil, err
 		}
