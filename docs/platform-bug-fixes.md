@@ -572,8 +572,9 @@ failed before its fix.
     ceiling, so a holder of `service-account:update` can still mint a token for an account a
     super-admin made stronger); (2) **provisioning** applies the ceiling to
     `platform:application-service` (Java/Rust: the gate only); (3) the **app-scoped** principal
-    sync applies the ceiling (Java and Rust exempt it because they confine it to the
-    application's own roles, `requireSyncableRoles` / `ROLE_APP_FORBIDDEN`, which Go lacks).
+    sync applies the ceiling (Java and Rust exempted it because they confine it to the
+    application's own roles, `requireSyncableRoles` / `ROLE_APP_FORBIDDEN`; both apply the
+    ceiling there too since their mirrors of F8, and Go has the confinement since F12).
 
 ### F9. Catalogue drift closed (owner ruling 2026-10-11: "catalogue please")
 
@@ -744,8 +745,8 @@ failed before its fix.
     role sync** are bounded (Java `SyncRoles`, `SyncPlatformRoles` and Rust `role/operations/sync.rs`
     are not). Java and Rust close the SDK path differently: an application's roles may hold only
     that application's permissions (Java `Role.confined`, S1.5, 400
-    `PERMISSION_OUTSIDE_APPLICATION`; Rust `role/operations/mod.rs`), which Go lacks (new finding
-    below); a super-admin may cross applications through the admin API only.
+    `PERMISSION_OUTSIDE_APPLICATION`; Rust `role/operations/mod.rs`); a super-admin may cross
+    applications through the admin API only. Go has that rule too since F12.
 
 ### F11. Function events in the `platform:function:*` family (owner ruling 2026-10-12)
 
@@ -829,6 +830,129 @@ failed before its fix.
   9. Envelope `source`: every Go function event, the renamed one included, says `platform:admin`;
      Java/Rust say `platform:function`. Not data, left as is; one constant to change.
 
+### F12. Role confinement and principal-sync reach (owner approval 2026-10-12)
+
+- **Found** (F8, F10 "new findings"): any role could hold any application's permissions, so a
+  holder of `role:create`/`role:update` could put another application's permissions, or a platform
+  permission it holds (which F10's ceiling lets through), on an application role, and an SDK role
+  sync could put another application's permissions on its roles. The principal syncs touched any
+  existing user by email (a client administrator holding a user permission could rename,
+  deactivate or re-role an anchor administrator), the application route accepted any role name
+  (another application's roles, and platform roles the F8 ceiling let through: one holding no
+  platform permission, or any for a caller holding them), and the platform route let a client
+  administrator give its users roles it could not assign through `PUT /api/principals/{id}/roles`.
+- **Rule 1, confinement** (`role.RequirePermissionsInApplication`, `internal/platform/role/confinement.go`;
+  Java `Role.confined` (S1.5), Rust `role::operations::require_confined`, same code and text): a
+  role may hold only its own application's permissions (first segment = the role's application,
+  `role.OwningApplicationCode`: its application code, or on a row without one its name's prefix).
+  Refusal: 400 `PERMISSION_OUTSIDE_APPLICATION`, "Permission '<p>' does not belong to application
+  '<app>'; a role may only hold its own application's permissions" (the first offender). Only what
+  a write **adds** is checked (`role.AddedPermissions`, Rust's rule, the owner's "changes only"):
+  existing roles holding foreign permissions load and read as before, keep them through edits that
+  do not add them (the role editor sends them back unchanged), and can lose them; a removal is
+  never refused, and granting a held permission changes nothing. The admin API lets a
+  **super-admin** cross applications (Java `Access.crossApplication`, Rust `cross_application`);
+  the crossing is logged. It runs before the F10 ceiling (Java's order), so for anyone but a
+  super-admin the ceiling is left bounding platform permissions on `platform:` roles.
+
+  | Operation | Checked | Super-admin may cross | Routes |
+  | --- | --- | --- | --- |
+  | `CreateRole` | every permission, after `ROLE_EXISTS` | yes | `POST /api/roles`, `POST /bff/roles` |
+  | `UpdateRole` | the permissions added, after the CODE-role refusal | yes | `PUT /api/roles/{id}`, `PUT /bff/roles/{roleName}` |
+  | `GrantPermission` | the permission, unless held | yes | `POST /api/roles/{roleName}/permissions/{permission}`, `POST /api/roles/{roleName}/permissions` |
+  | `RevokePermission`, `DeleteRole` | never (removal) | | |
+  | `SyncRoles` (SDK) | a new role's permissions, an existing SDK role's added ones (a non-empty list only, as before); whole sync refused | no | `POST /api/applications/{appCode}/roles/sync` |
+  | `SyncPlatformRoles` | a new catalogue role's permissions, an existing one's added ones; whole sync refused | no | `POST /bff/roles/sync-platform` |
+
+  The built-in catalogue is all `platform:` roles holding `platform:` permissions, so the platform
+  sync is unchanged in practice (`TestSyncPlatformRoles_PermissionsConfinedToTheirApplication`
+  syncs it). `/ui` has no role pages. **SPA**: no change; the role editor lists only the role's
+  application's catalogue (`/bff/roles/permissions?application=` filters by first segment) and
+  prefixes a custom permission with the role's application, so it cannot offer a foreign one; a
+  refusal reaches the global toast.
+- **Rule 2, target reach** (`administers`, `principal/operations/authz.go`; Java
+  `Access.administers`, Rust `principal::operations::sync::administers`): an existing principal is
+  touched only within the caller's reach: an anchor reaches everyone; anyone else only CLIENT-scope
+  users homed at a client it can access (`auth.CanAccessScope`, so a clientless one only as a
+  super-admin). A listed email matching one out of reach refuses the whole sync before any write,
+  403 `SYNC_TARGET_FORBIDDEN`, "Not authorised to manage principal '<email>'" (the email
+  lower-cased); the `removeUnlisted` sweep skips such users instead (it ranges over every user, so
+  refusing would make any non-anchor sweep impossible). Both routes,
+  `POST /api/principals/sync` and `POST /api/applications/{appCode}/principals/sync` (there is no
+  BFF principal sync). A new email is created as before. An application's provisioned service
+  account is anchor-tier, so reach does not narrow it (as in Java and Rust); rule 3 and the F8
+  ceiling bound what it hands out.
+- **Rule 3, the syncs' roles** (`requireSyncableRoles`, `principal/operations/sync_principals.go`;
+  Java `SyncPrincipals.requireSyncableRoles`):
+  - Application route, whoever the caller: every role must be the application's, 403
+    `ROLE_APP_FORBIDDEN`, "role '<name>' does not belong to application '<app>'" (Java's and
+    Rust's text). A role belongs to its application; a name that is not a role belongs to the
+    application its prefix names (so `platform:…` and `otherapp:…` are refused whether or not they
+    exist). A name that is not a role and has no prefix, or this application's prefix, is accepted
+    as before (it grants nothing).
+  - Platform route, a non-anchor caller: only roles it could assign through
+    `PUT /api/principals/{id}/roles`, application roles of an application the target's home client
+    is entitled to, so none on a user the sync creates (no client): 400 `UNKNOWN_ROLE`, 403
+    `PLATFORM_ROLE_FORBIDDEN` or `ROLE_APP_FORBIDDEN` "role belongs to an application the client
+    cannot access", the existing assignment codes. That check moved to
+    `operations.RequireAssignableRoles` / `operations.ClientApplicationIDs`, which the role routes
+    now share (`assertAssignableRoles`, `clientAppIDs` delegate). An anchor may name any role, as
+    before. `SyncPrincipals` takes the client-config repository for this (the application route
+    passes nil).
+  - Order per entry: reach, then roles; the F8 ceiling still runs once after the loop. On the
+    application route confinement now stops platform roles, and the ceiling stops an
+    own-application role a super-admin gave platform permissions.
+- **Fix**: `7f87172` (rule 1), `2ab9a97` (rule 2), `55909de` (rule 3).
+- **Wire impact**: no shape change, OpenAPI lock unchanged. New 400 `PERMISSION_OUTSIDE_APPLICATION`
+  on the role routes and both role syncs above; new 403 `SYNC_TARGET_FORBIDDEN` on both principal
+  syncs; new 403 `ROLE_APP_FORBIDDEN` on the application principal sync; on the platform principal
+  sync a non-anchor now gets 400 `UNKNOWN_ROLE` / 403 `PLATFORM_ROLE_FORBIDDEN` /
+  `ROLE_APP_FORBIDDEN`. Unchanged: super-admins on the admin API, an SDK syncing its own roles and
+  permissions and its own users' roles, anchors on the platform principal sync, platform admin
+  roles with platform permissions, and reads of every existing role.
+- **Tests** (each new test failed before its fix): `role/confinement_test.go`;
+  `role/api/permission_confinement_pg_test.go` `TestRolePermissions_ConfinedToTheirApplication`
+  (create, update, both grants, a platform role refused an application permission, a held
+  platform permission refused on an application role, own-application and platform-role flows,
+  super-admin crossing, a legacy role holding foreign permissions read, renamed, re-sent, re-granted,
+  revoked and deleted by a non-super-admin); `shared/bff/roles_permission_confinement_pg_test.go`
+  (400 and the exact envelope, super-admin crossing, a kept foreign permission re-sent);
+  `sdksync/sync_roles_confinement_pg_test.go` (another application's, a held platform and the
+  wildcard refused on new and existing roles, a super-admin caller too, nothing written; a role
+  holding a foreign permission re-syncs with the same list, none, an own one added, and drops it);
+  `role/operations/ops_pg_test.go` `TestSyncPlatformRoles_PermissionsConfinedToTheirApplication`;
+  `principal/api/sync_target_reach_pg_test.go` `TestUserSync_TargetsWithinCallersReach` (another
+  client's, anchor, partner and clientless users refused, mixed case, a mixed batch writes
+  nothing, own-client and new users pass, an anchor reaches all);
+  `sdksync/sync_principals_reach_pg_test.go` (refusals, nothing written, the sweep strips the
+  in-reach unlisted user and skips the out-of-reach one (mutant: skip removed, fails), an
+  anchor-tier caller reaches all); `sdksync/sync_principals_role_app_pg_test.go` (another
+  application's, a platform role holding nothing, an unknown foreign-prefixed name, a super-admin
+  caller, mixed case; own roles and unprefixed or own-prefixed non-roles pass);
+  `principal/api/sync_assignable_roles_pg_test.go` (each code and message, a new user gets no role,
+  nothing written; an entitled role, a role-less new user and an anchor pass).
+  The F10 ceiling tests used application roles holding platform permissions, which confinement
+  now refuses first: they use `platform:` roles instead, and the SDK sync's removal cases get their
+  platform permission from a super-admin through the admin API. `sdksync`'s password-hash fixture
+  now wires the role repository (an unwired one refuses, as the ceiling's does).
+- **Java/Rust mirror**:
+  - Already match: confinement's code, status, text and super-admin exception on create, update
+    and grant (Java, Rust); target reach on both routes, its code, text and sweep skip (Java, Rust);
+    `ROLE_APP_FORBIDDEN` on the application route (Java, Rust); the platform route's assignable
+    check (Java).
+  - Differ, to mirror if the owner keeps Go's choice: (1) **change-only confinement**: Java checks
+    the whole list an update, the SDK sync or the catalogue sync supplies, and a grant of a
+    permission the role already holds, so an existing role holding a foreign permission cannot be
+    re-saved as it stands by a non-super-admin; Rust checks only what create/update/grant add but
+    every permission an SDK sync supplies. (2) Rust's platform role sync does not call `require_confined`, and its
+    platform user sync (`sync_users.rs`) has no assignable-role check (found by grep, not run). (3)
+    **Unknown role names on the application route**: Java refuses every name that is not a role
+    (400 `UNKNOWN_ROLE`); Rust refuses only names prefixed `platform` or an existing application's
+    code; Go refuses a non-role by any foreign prefix and accepts unprefixed or own-prefixed
+    non-roles (no `UNKNOWN_ROLE` there, so an SDK syncing users before its roles is not broken).
+    (4) Java checks the ceiling per entry; Go once after the loop (as noted in Java's
+    2026-10-12 ledger).
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -869,14 +993,21 @@ failed before its fix.
     was renamed; its bindings follow migration 073, and when the new code is already a row the old
     duplicate row is deleted. Wildcard bindings are not rewritten. The other 14 wait on the list in
     F11.
+19. Confinement and sync reach (F12): confinement checks only what a write adds (Rust's rule; Java
+    checks the whole supplied list), so existing roles holding foreign permissions keep working; a
+    super-admin may cross applications on create, update and grant, never through a sync. The
+    application principal sync refuses a non-role name by its foreign prefix and accepts unprefixed
+    or own-prefixed non-roles (Java refuses every unknown name, Rust only `platform` or an existing
+    application's prefix). The platform principal sync holds a non-anchor to the
+    `PUT /api/principals/{id}/roles` rule (Java's), so it cannot give a user it creates any role.
 
 ## New findings, not fixed
 
 Fixed in the second batch (above): the scheduled-job runner reports (F1), event-type `clientId`
 (F2), client event names (F3), service accounts (F4), the sync paths' client identifier (F5), the
 SPA's sync and role controls (F6); after it, user role changes (F7), the role ceiling (F8) and
-the catalogue drift (F9, with its follow-up: unemitted codes pruned, older schemas fixed) and the
-permission ceiling (F10).
+the catalogue drift (F9, with its follow-up: unemitted codes pruned, older schemas fixed), the
+permission ceiling (F10), and role confinement and principal-sync reach (F12).
 
 - **`DELETE /api/event-types/{id}`** is documented "Archive an event type" and the TS SDK calls it
   `archive()`, but it hard-deletes (now only an archived or never-published type).
@@ -895,19 +1026,24 @@ permission ceiling (F10).
   needs anchor and `developer:application-openapi:sync` (the same exposure as F6, not in scope).
 - ~~**Service-account role assignment is unbounded**~~: fixed in F8.
 - ~~**Role permission edits are not bounded**~~: fixed in F10.
-- **Role permissions are not confined to the role's application** (F10): Go lets any role, an
-  SDK-synced one included, hold another application's permissions. Java (`Role.confined`, S1.5)
-  and Rust (`role/operations/mod.rs`) refuse with 400 `PERMISSION_OUTSIDE_APPLICATION`, except a
-  super-admin through the admin API. F10's ceiling stops the platform permissions; another
-  application's permissions on an SDK role are still accepted.
+- ~~**Role permissions are not confined to the role's application**~~ (F10): fixed in F12.
 - **IdP role mappings are not bounded** (F8): a mapping from an IdP group to
   `platform:super-admin` grants it at the next login. Java (`CreateIdpRoleMapping`,
   `DeleteIdpRoleMapping`) and Rust (`create_idp_role_mapping.rs`, identity-provider create/update)
   apply the ceiling.
-- **The principal syncs have no target reach or application confinement** (F8): they upsert any
-  email, an anchor administrator's included, and the app-scoped route accepts any role name. Java
-  and Rust refuse an out-of-reach user (`SYNC_TARGET_FORBIDDEN`) and another application's role
-  (`ROLE_APP_FORBIDDEN`). The ceiling (F8) now stops platform roles; the rest is open.
+- ~~**The principal syncs have no target reach or application confinement**~~ (F8): fixed in F12.
+- **The application principal sync replaces every `SDK_SYNC` role of a user it lists** (F12): the
+  merge drops all of the user's `SDK_SYNC` roles, other applications' included, before adding the
+  payload's, so application A's sync strips application B's synced roles from a shared user (the
+  `removeUnlisted` sweep was already confined to the sync's application, X-02(c)). Java
+  (`syncSourcedRoles`) and Rust (`is_own_sdk_role`) replace only the sync's own application's
+  `SDK_SYNC` roles. Confinement (F12) stops adding another application's roles; this removal is
+  open.
+- **The principal syncs overwrite an existing user's password hash** (F12): a `passwordHash` on an
+  entry for an existing user replaces the stored one. Java and Rust never apply it to an existing
+  principal (owner ruling 2026-09-25, item 4 in Java; Rust decision #22) and log it. Target reach
+  (F12) now limits it to users within the caller's reach; inside it, it is still a credential
+  change outside the audited password routes.
 - **Rotating a service account's OAuth client secret** (`platform:auth:oauth-client:regenerate-secret`,
   anchor) hands out a credential with the account's whole authority through `client_credentials`,
   with no role ceiling (the mint now has one). Java and Rust not checked.
@@ -931,6 +1067,9 @@ permission ceiling (F10).
   covered by the no-caller case of `TestProvisionServiceAccount_GateAndRoleCeiling`.
 - F10: the browser run covered the role editor and list only (not the dashboard's role sync card);
   no run against a deployed database. The Java and Rust code was read, not run.
+- F12: no browser run (no SPA or `/ui` change); no run against a seeded or deployed database
+  (integration tests create their own roles, applications and users). The Java and Rust code was
+  read, not run.
 - F11: migration 073 ran on embedded scratch databases only (Up, re-run, Down by executing its SQL;
   through goose on every test database), never on a deployed one or one a Java/Rust seeder shared.
   The Java and Rust events were read, not run.
