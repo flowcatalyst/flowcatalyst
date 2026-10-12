@@ -747,6 +747,88 @@ failed before its fix.
     `PERMISSION_OUTSIDE_APPLICATION`; Rust `role/operations/mod.rs`), which Go lacks (new finding
     below); a super-admin may cross applications through the admin API only.
 
+### F11. Function events in the `platform:function:*` family (owner ruling 2026-10-12)
+
+- **Ruling**: the function events use the `platform:function:*` family Java and Rust emit. Go
+  emitted 15 `platform:admin:function*` codes. Rename where the data matches; list the rest for
+  the owner, no guessing.
+- **Compared** (read-only: Java `FunctionEvents.java`, Rust
+  `fc-platform-functions/src/function/operations/events.rs`, both `docs/go-mirror/2026-10-11-event-catalogue.md`
+  ledgers; Java and Rust emit the same 14 codes with the same data). The two sets are not one
+  rename apart (15 against 14, one extra): they are separate designs that share 9 events and
+  differ in their data. Subject (`platform.function.{id}`, `platform.function-domain.{id}`) and
+  message group match on every pair; the envelope `source` does not (Go `platform:admin`, Java and
+  Rust `platform:function`).
+
+  | Go (was) | Go data | Java/Rust | Java/Rust data | Verdict |
+  | --- | --- | --- | --- | --- |
+  | `platform:admin:function:deleted` | `{functionId, address}` | `platform:function:function:deleted` | `{functionId, address}` | **renamed** |
+  | `platform:admin:function:created` | `{functionId, address, name}` | `platform:function:function:created` | `{functionId, address, applicationId, clientId?, runtime}` | owner (1) |
+  | `platform:admin:function:updated` | `{functionId, address}` | `platform:function:function:updated` | `{functionId, address, description?, status}` | owner (2) |
+  | `platform:admin:function-version:published` | `{functionId, address, number, digest, runtime}` | `platform:function:version:published` | `{functionId, address, versionId, version, digest, pool, signerIssuer?, signerSubject?}` | owner (3) |
+  | `platform:admin:function-version:retired` | `{functionId, address, number}` | `platform:function:version:retired` | `{functionId, address, versionId, version}` | owner (3) |
+  | `platform:admin:function-alias:set` | `{functionId, address, alias, number}` | `platform:function:alias:changed` | `{functionId, address, alias, versionId, version, previousVersionId?}` | owner (4) |
+  | `platform:admin:function-alias:deleted` | `{functionId, address, alias}` | `platform:function:alias:removed` | `{functionId, address, alias, versionId, version}` | owner (4) |
+  | `platform:admin:function-setting:{set,deleted}` | `{functionId, kind, key}` | `platform:function:secret:{set,deleted}`; `platform:function:config:updated` | `{functionId, address, key}`; `{functionId, address, keys}` | owner (5) |
+  | `platform:admin:function-domain:claimed` | `{domainId, zone, clientId?}` | `platform:function:domain:claimed` | `{domainId, hostname, owner}` | owner (6) |
+  | `platform:admin:function-domain:released` | `{domainId, zone}` | `platform:function:domain:released` | `{domainId, hostname, owner}` | owner (6) |
+  | `platform:admin:function:promoted` | wiring summary | none (Java/Rust promote emits `alias:changed` for `live`) | | owner (7) |
+  | `platform:admin:function-route:{set,deleted}` | `{functionId, routeId, hostname, pathPrefix}` | none | | owner (7) |
+  | `platform:admin:function-schedule:wired` | `{functionId, scheduledJobId, code, action}` | none | | owner (7) |
+  | none | | `platform:function:version:ready`, `platform:function:policy:updated` | | owner (8) |
+
+- **Fix** (`1aa67fe`): `FunctionDeleted` emits `platform:function:function:deleted` (function
+  delete use case); the seed catalogues it (name "Function Deleted", same schema, the same as Java's
+  and Rust's) in place of the old code. The other 14 codes are unchanged.
+- **Migration 073** (`073_function_event_type_codes.sql`): renames the catalogue row an older
+  seed wrote (id, status and schema versions kept; subdomain `function`, aggregate `function`) and
+  re-points the subscription bindings naming it, by row or by code (the same event under its new
+  code, so re-pointing is right here, unlike 071). When the new code is already a row (this
+  build's seeder ran first, or a Java/Rust seeder on the same database), the bindings move to that
+  row, a binding that would duplicate one the subscription already has is dropped, and the old row
+  is deleted with its schema versions: no unique-constraint failure. Wildcard bindings
+  (`platform:admin:function:*`) are patterns and are left alone (such a subscription stops
+  receiving function deletions). Stored events and dispatch jobs keep the code they were written
+  with. Idempotent; Down renames back where the old code is free (a deleted duplicate or dropped
+  binding is not recreated). Plain statements with inline `VALUES`, no temp table.
+- **Tests**: `seed/function_event_codes_pg_test.go` on scratch embedded databases:
+  `TestMigration073_RenamesFunctionDeleted` (old row with schema; bindings by row and code, by code
+  only, wildcard, another function code; renamed with its id and schema, bindings follow, wildcard
+  and the other code kept; the seed adds no second row or schema; re-run no-op; Down renames row and
+  bindings back) and `TestMigration073_MergesIntoAnExistingNewRow` (both rows present; bindings
+  moved to the new row, the duplicate dropped, old row and schema gone, new row's schema kept;
+  re-run no-op). `seed/emitted_catalogue_test.go` `TestFunctionEventTypesFollowJavaAndRust`: a
+  `platform:function:*` code Go emits must be one of Java/Rust's 14, and the 14 remaining
+  `platform:admin:function*` codes are a list that may only shrink (a new one fails).
+  `function/operations/ops_pg_test.go` `TestDeleteFunction_HappyPath` checks the code and data.
+- **Wire impact**: `GET /api/event-types` and Sync Platform Events list
+  `platform:function:function:deleted` instead of `platform:admin:function:deleted`; function
+  deletions are stored and dispatched under the new code. OpenAPI lock unchanged. No SDK, SPA or
+  `/ui` names any function event code (repo-wide grep, `clients/` included).
+- **Java/Rust mirror**: nothing for the renamed event (both already emit it with this data).
+- **For the owner** (not changed):
+  1. `function:created`: Go sends `name`; Java/Rust send `applicationId`, `clientId?`, `runtime`
+     and no name. Rename after Go sends their data (dropping `name`?), or keep Go's code.
+  2. `function:updated`: Java/Rust add `description?` and `status`; Go sends neither.
+  3. Versions: Go identifies a version by `number`; Java/Rust by `versionId` + `version`. Published
+     also differs (`runtime` against `pool` and the signer pair).
+  4. Aliases: the verb differs (`set`/`deleted` against `changed`/`removed`) and Java/Rust send
+     `versionId`, `version` (`previousVersionId?` on changed). Java/Rust refuse removing `live`;
+     Go's removal of `live` unwires (and also emits `promoted`).
+  5. Settings: Go has one setting event with `kind` (config, secret, db) per key; Java/Rust split
+     secrets (`secret:set`/`deleted` per key, with `address`) from config (`config:updated`, a
+     full replacement listing `keys`) and have no `db` kind.
+  6. Domains: Go sends `zone` and `clientId?`; Java/Rust send `hostname` and `owner`, the latter on
+     release too.
+  7. Go-only events, no Java/Rust counterpart: `function:promoted` (the wiring reconciliation
+     summary), `function-route:{set,deleted}`, `function-schedule:wired`. Keep under
+     `platform:admin:function*`, or name them in the `platform:function:*` family (Java/Rust would
+     then need to know the names are taken)?
+  8. Java/Rust-only events Go has no operation for: `version:ready` (host heartbeat),
+     `policy:updated` (signer policy).
+  9. Envelope `source`: every Go function event, the renamed one included, says `platform:admin`;
+     Java/Rust say `platform:function`. Not data, left as is; one constant to change.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -783,6 +865,10 @@ failed before its fix.
 17. Permission ceiling (F10): the same rule as Java and Rust (platform permissions only, the
     change checked, removal and role deletion included); the SDK and platform role syncs are
     bounded too (beyond Java/Rust).
+18. Function event codes (F11): only `platform:admin:function:deleted` (same data as Java/Rust)
+    was renamed; its bindings follow migration 073, and when the new code is already a row the old
+    duplicate row is deleted. Wildcard bindings are not rewritten. The other 14 wait on the list in
+    F11.
 
 ## New findings, not fixed
 
@@ -845,3 +931,6 @@ permission ceiling (F10).
   covered by the no-caller case of `TestProvisionServiceAccount_GateAndRoleCeiling`.
 - F10: the browser run covered the role editor and list only (not the dashboard's role sync card);
   no run against a deployed database. The Java and Rust code was read, not run.
+- F11: migration 073 ran on embedded scratch databases only (Up, re-run, Down by executing its SQL;
+  through goose on every test database), never on a deployed one or one a Java/Rust seeder shared.
+  The Java and Rust events were read, not run.
