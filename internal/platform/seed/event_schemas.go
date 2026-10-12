@@ -314,10 +314,11 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqNullableStrArray("created"), reqNullableStrArray("updated"), reqNullableStrArray("archived"),
 	)
 
-	// ── platform:admin:function ─────────────────────────────────────────
+	// ── platform:admin:function, platform:function ──────────────────────
 	m["platform:admin:function:created"] = obj(reqStr("functionId"), reqStr("address"), reqStr("name"))
 	m["platform:admin:function:updated"] = obj(reqStr("functionId"), reqStr("address"))
-	m["platform:admin:function:deleted"] = obj(reqStr("functionId"), reqStr("address"))
+	// The same data, and schema, as Java's and Rust's.
+	m["platform:function:function:deleted"] = obj(reqStr("functionId"), reqStr("address"))
 	// number is the version now live, 0 when live was removed.
 	m["platform:admin:function:promoted"] = obj(
 		reqStr("functionId"), reqStr("address"), reqU32("number"), reqStr("dispatchPoolCode"),

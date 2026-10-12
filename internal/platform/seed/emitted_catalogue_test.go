@@ -125,3 +125,77 @@ func TestEveryCataloguedEventTypeIsEmitted(t *testing.T) {
 		t.Errorf("catalogued but no use case emits it: %s", code)
 	}
 }
+
+// javaRustFunctionEventTypes are the 14 function event types Java
+// (FunctionEvents) and Rust (fc-platform-functions events.rs) emit. The owner
+// ruled (2026-10-12) that the function events use this family.
+var javaRustFunctionEventTypes = map[string]bool{
+	"platform:function:function:created":  true,
+	"platform:function:function:updated":  true,
+	"platform:function:function:deleted":  true,
+	"platform:function:version:published": true,
+	"platform:function:version:ready":     true,
+	"platform:function:version:retired":   true,
+	"platform:function:alias:changed":     true,
+	"platform:function:alias:removed":     true,
+	"platform:function:policy:updated":    true,
+	"platform:function:config:updated":    true,
+	"platform:function:secret:set":        true,
+	"platform:function:secret:deleted":    true,
+	"platform:function:domain:claimed":    true,
+	"platform:function:domain:released":   true,
+}
+
+// functionEventTypesAwaitingRuling are the function event types Go still
+// emits under platform:admin:function*: their data differs from the Java/Rust
+// event they would map to, or Java/Rust have no such event, so they were not
+// renamed (docs/platform-bug-fixes.md F11). The list may only shrink: a new
+// platform:admin:function* code fails, and so does an entry no longer emitted.
+var functionEventTypesAwaitingRuling = map[string]bool{
+	"platform:admin:function:created":           true,
+	"platform:admin:function:updated":           true,
+	"platform:admin:function:promoted":          true,
+	"platform:admin:function-version:published": true,
+	"platform:admin:function-version:retired":   true,
+	"platform:admin:function-alias:set":         true,
+	"platform:admin:function-alias:deleted":     true,
+	"platform:admin:function-setting:set":       true,
+	"platform:admin:function-setting:deleted":   true,
+	"platform:admin:function-route:set":         true,
+	"platform:admin:function-route:deleted":     true,
+	"platform:admin:function-schedule:wired":    true,
+	"platform:admin:function-domain:claimed":    true,
+	"platform:admin:function-domain:released":   true,
+}
+
+// Go's function events stay in step with Java's and Rust's: a code Go emits in
+// the platform:function:* family is one of theirs (Go does not invent codes in
+// it), and the old platform:admin:function* family only shrinks (F11).
+func TestFunctionEventTypesFollowJavaAndRust(t *testing.T) {
+	emitted := emittedEventTypes(t)
+	var codes []string
+	for code := range emitted {
+		codes = append(codes, code)
+	}
+	sort.Strings(codes)
+	for _, code := range codes {
+		switch {
+		case strings.HasPrefix(code, "platform:function:"):
+			if !javaRustFunctionEventTypes[code] {
+				t.Errorf("%s (%s) is in the platform:function family but Java and Rust do not emit it", code, emitted[code])
+			}
+		case strings.HasPrefix(code, "platform:admin:function"):
+			if !functionEventTypesAwaitingRuling[code] {
+				t.Errorf("%s (%s) is a new platform:admin:function* code; function events use platform:function:*", code, emitted[code])
+			}
+		}
+	}
+	for code := range functionEventTypesAwaitingRuling {
+		if _, ok := emitted[code]; !ok {
+			t.Errorf("%s is no longer emitted; remove it from functionEventTypesAwaitingRuling", code)
+		}
+	}
+	if _, ok := emitted["platform:function:function:deleted"]; !ok {
+		t.Error("FunctionDeleted no longer emits platform:function:function:deleted")
+	}
+}

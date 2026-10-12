@@ -387,6 +387,11 @@ func TestDeleteFunction_HappyPath(t *testing.T) {
 	ev, err := runAuthorizedTx(uow, operations.DeleteFunction(repo, testWiring(pool)), operations.DeleteCommand{ID: seeded.FunctionID})
 	require.NoError(t, err)
 	assert.Equal(t, seeded.FunctionID, ev.Event.FunctionID)
+	// Java's and Rust's code and data for the same event (F11).
+	assert.Equal(t, "platform:function:function:deleted", ev.Event.EventType())
+	data, err := ev.Event.ToDataJSON()
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"functionId":"`+seeded.FunctionID+`","address":"`+ev.Event.Address+`"}`, string(data))
 
 	got, err := repo.FindByID(ctx, seeded.FunctionID)
 	require.NoError(t, err)

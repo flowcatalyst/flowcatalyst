@@ -7,10 +7,16 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
+// Event-type codes. The function events belong in the platform:function:*
+// family Java and Rust emit (owner ruling 2026-10-12). FunctionDeleted is in it
+// (same data as theirs; migration 073 renamed the catalogue row and its
+// subscription bindings); the others keep their platform:admin:function* codes
+// until the owner rules on their differing data (docs/platform-bug-fixes.md
+// F11).
 const (
 	FunctionCreatedType          = "platform:admin:function:created"
 	FunctionUpdatedType          = "platform:admin:function:updated"
-	FunctionDeletedType          = "platform:admin:function:deleted"
+	FunctionDeletedType          = "platform:function:function:deleted"
 	FunctionVersionPublishedType = "platform:admin:function-version:published"
 	FunctionVersionRetiredType   = "platform:admin:function-version:retired"
 	FunctionAliasSetType         = "platform:admin:function-alias:set"

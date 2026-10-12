@@ -120,7 +120,12 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 		"created", "updated", "paused", "resumed", "archived", "deleted", "fired-manually")
 	push("platform:admin:scheduledjobs:synced", "Scheduled Jobs Synced")
 
-	group("platform:admin:function", "created", "updated", "deleted", "promoted")
+	// Function events: the platform:function:* family Java and Rust emit
+	// (owner ruling 2026-10-12). Only "deleted" carries the same data there
+	// and was renamed (migration 073); the rest wait on the owner
+	// (docs/platform-bug-fixes.md F11).
+	group("platform:admin:function", "created", "updated", "promoted")
+	group("platform:function:function", "deleted")
 	group("platform:admin:function-version", "published", "retired")
 	group("platform:admin:function-alias", "set", "deleted")
 	group("platform:admin:function-setting", "set", "deleted")
