@@ -9,7 +9,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
@@ -25,7 +24,8 @@ import (
 type State struct {
 	Repo *event.Repository
 	// Clients resolves a clientCode → client_id on ingest (client-centric
-	// linkage). Optional: when nil, clientCode is ignored.
+	// linkage). Nil resolves every code as unknown: an anchor's event is
+	// then platform-scoped, anyone else's refused.
 	Clients *client.Repository
 	// Apps resolves an event type's application code → application on ingest,
 	// to confine application-scoped callers to their own applications.
@@ -115,13 +115,16 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateEventRequest]
 	}
 
 	// Client ID: explicit value wins; otherwise non-anchor callers default
-	// to their first accessible client.
-	clientID := req.ClientID
+	// to their first accessible client (the singular route only, as Java).
+	// Then the ingest client guard: a non-anchor with no client is refused
+	// rather than writing a platform-scoped event (F14).
+	clientID := sdk.NonBlank(req.ClientID)
 	if clientID == nil && !ac.IsAnchor() && len(ac.Clients) > 0 {
 		clientID = &ac.Clients[0]
 	}
-	if clientID != nil && !ac.CanAccessClient(*clientID) {
-		return nil, httperror.Forbidden("No access to client: " + *clientID)
+	clientID, err := sdk.RequireWritableClient(ac, clientID)
+	if err != nil {
+		return nil, err
 	}
 
 	ev := event.New(req.EventType, req.Source, req.Subject, req.Data)
@@ -163,8 +166,8 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 	events := make([]event.Event, 0, len(in.Body.Items))
 	eventSlot := make([]int, 0, len(in.Body.Items)) // events[i] → results index
 	// Per-batch cache of clientCode → client_id (a batch usually shares one
-	// client). A nil entry means "looked up, not found" so we don't re-query.
-	clientByCode := map[string]*string{}
+	// client).
+	codes := sdk.NewClientCodes(s.Clients)
 	appScope := sdk.NewAppScope(s.Apps)
 	for i, it := range in.Body.Items {
 		if msg := validateBatchItem(&it); msg != "" {
@@ -195,26 +198,16 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 		if it.DeduplicationID != "" {
 			ev.DeduplicationID = it.DeduplicationID
 		}
-		ev.ClientID = it.ClientID
-		// Resolve clientCode → client_id when no explicit clientId was given.
-		// An unknown code leaves the event unlinked rather than failing the
-		// batch (the event is a fact; keep it).
-		if ev.ClientID == nil && it.ClientCode != nil && *it.ClientCode != "" && s.Clients != nil {
-			code := *it.ClientCode
-			id, seen := clientByCode[code]
-			if !seen {
-				c, err := s.Clients.FindByIdentifier(ctx, code)
-				if err != nil {
-					return nil, usecase.Internal("REPO", "client find_by_identifier failed", err)
-				}
-				if c != nil {
-					cid := c.ID
-					id = ids.StringPtr(&cid)
-				}
-				clientByCode[code] = id
-			}
-			ev.ClientID = id
+		// The client: an explicit clientId wins, else clientCode resolves;
+		// the caller must reach it, and only an anchor writes a
+		// platform-scoped event (sdk.ResolveEventClient for the rule). A
+		// refusal rejects the whole batch before anything is written; an
+		// anchor's unknown code leaves the event unscoped (a fact; kept).
+		clientID, err := sdk.ResolveEventClient(ctx, ac, codes, it.ClientID, it.ClientCode)
+		if err != nil {
+			return nil, err
 		}
+		ev.ClientID = clientID
 		ev.MessageGroup = it.MessageGroup
 		ev.CorrelationID = it.CorrelationID
 		ev.CausationID = it.CausationID

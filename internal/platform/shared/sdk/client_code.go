@@ -71,11 +71,8 @@ func NonBlank(s *string) *string {
 //
 // Neither id nor code: no client (unchanged).
 func ResolveJobClient(ctx context.Context, ac *auth.AuthContext, codes *ClientCodes, clientID, clientCode *string) (*string, error) {
-	if id := NonBlank(clientID); id != nil {
-		if !ac.CanAccessClient(*id) {
-			return nil, httperror.Forbidden("No access to client: " + *id)
-		}
-		return id, nil
+	if NonBlank(clientID) != nil {
+		return RequireWritableClient(ac, clientID)
 	}
 	code := NonBlank(clientCode)
 	if code == nil {
@@ -93,4 +90,63 @@ func ResolveJobClient(ctx context.Context, ac *auth.AuthContext, codes *ClientCo
 	default:
 		return nil, httperror.Forbidden("No access to client: " + *code)
 	}
+}
+
+// PlatformScopedRefused is the refusal of a platform-scoped write by a
+// caller that is not an anchor and does not reach exactly one client.
+const PlatformScopedRefused = "clientId is required: a client-scoped caller cannot write platform-scoped rows"
+
+// RequireWritableClient is the ingest client guard (Java
+// IngestApi.requireWritableClient, Rust caller_reach::require_writable_client):
+// it answers the client a row is written under, or a 403 FORBIDDEN.
+//
+//   - A clientId (non-blank) the caller cannot reach: "No access to client: <id>".
+//   - No clientId: an anchor writes a platform-scoped row (nil); a caller
+//     confined to exactly one client writes under that client; any other
+//     caller is refused with PlatformScopedRefused (a platform-scoped event
+//     matches platform-wide subscriptions, so it acts beyond the caller's
+//     reach).
+func RequireWritableClient(ac *auth.AuthContext, clientID *string) (*string, error) {
+	if id := NonBlank(clientID); id != nil {
+		if !ac.CanAccessClient(*id) {
+			return nil, httperror.Forbidden("No access to client: " + *id)
+		}
+		return id, nil
+	}
+	if ac.IsAnchor() {
+		return nil, nil
+	}
+	if ac != nil && len(ac.Clients) == 1 && ac.Clients[0] != "*" {
+		only := ac.Clients[0]
+		return &only, nil
+	}
+	return nil, httperror.Forbidden(PlatformScopedRefused)
+}
+
+// ResolveEventClient is the event-ingest client rule (owner ruling
+// 2026-10-12, F14; Java's and Rust's events batch): an explicit clientId wins
+// and passes RequireWritableClient; otherwise a clientCode resolves to its
+// client, which the caller must reach, and an unknown code leaves an anchor's
+// event platform-scoped (the event is a fact; kept) and refuses anyone else's;
+// a refused code answers 403 "No access to client: <clientCode>" whether it
+// names another client or none. Neither: RequireWritableClient(nil).
+func ResolveEventClient(ctx context.Context, ac *auth.AuthContext, codes *ClientCodes, clientID, clientCode *string) (*string, error) {
+	if NonBlank(clientID) != nil {
+		return RequireWritableClient(ac, clientID)
+	}
+	code := NonBlank(clientCode)
+	if code == nil {
+		return RequireWritableClient(ac, nil)
+	}
+	id, err := codes.Resolve(ctx, *code)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case id == nil && ac.IsAnchor():
+		return nil, nil
+	case id == nil || !ac.CanAccessClient(*id):
+		return nil, httperror.Forbidden("No access to client: " + *code)
+	}
+	return id, nil
 }
