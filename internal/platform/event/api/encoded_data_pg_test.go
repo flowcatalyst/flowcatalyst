@@ -59,19 +59,16 @@ func TestBatchIngest_UnwrapsEncodedEventData(t *testing.T) {
 	assert.Equal(t, "object", typ)
 	assert.JSONEq(t, `{"orderId":"ord_1","total":1500}`, data)
 
-	// The minimal fixture carries no source, which the batch requires.
-	assert.Equal(t, BatchResultItem{Status: "BAD_REQUEST", Error: "source is required"},
-		ingest(string(rustWireFixture(t, "event-minimal.json"))))
-	var minimal map[string]any
-	require.NoError(t, json.Unmarshal(rustWireFixture(t, "event-minimal.json"), &minimal))
-	minimal["source"] = "orders"
-	withSource, err := json.Marshal(minimal)
-	require.NoError(t, err)
-	res = ingest(string(withSource))
+	// The minimal fixture carries no source: the platform defaults it to the
+	// type's {application}:{subdomain} (F14).
+	res = ingest(string(rustWireFixture(t, "event-minimal.json")))
 	require.Equal(t, "SUCCESS", res.Status, res.Error)
 	typ, data = stored(res.ID)
 	assert.Equal(t, "object", typ)
 	assert.JSONEq(t, `{}`, data)
+	var source string
+	require.NoError(t, pool.QueryRow(ctx, `SELECT source FROM msg_events WHERE id = $1`, res.ID).Scan(&source))
+	assert.Equal(t, "orders:sales", source)
 
 	for _, c := range []struct{ data, typ, want string }{
 		{`{"orderId":"ord_2"}`, "object", `{"orderId":"ord_2"}`}, // the Go SDK's form: the value itself

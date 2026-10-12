@@ -99,11 +99,16 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateEventRequest]
 		return nil, err
 	}
 	req := in.Body
-	// eventType/source/data are schema-required; huma rejects absent fields
+	// eventType/data are schema-required; huma rejects absent fields
 	// before the handler runs. Guard data here too so an explicit JSON
 	// `null` doesn't slip an empty payload through.
 	if len(req.Data) == 0 || string(req.Data) == "null" {
 		return nil, httperror.BadRequest("VALIDATION", "data is required")
+	}
+	// An absent or blank source defaults to the type's application and
+	// subdomain (F14, eventSource).
+	if req.Source = eventSource(req.Source, req.EventType); req.Source == "" {
+		return nil, httperror.BadRequest("VALIDATION", "source is required")
 	}
 
 	// Application confinement: an application-scoped caller may only ingest
@@ -236,20 +241,44 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 // and inaccessible application are deliberately indistinguishable.
 const eventTypeAppRefused = "event type belongs to an application this credential cannot ingest for"
 
-// validateBatchItem mirrors the singular create's schema-required fields
-// (type, source, data) for a batch item, whose wire type keeps every field
-// optional so the SDK's snake_case aliases can coalesce. Returns the
-// per-item error message, or "" when the item is acceptable.
+// validateBatchItem mirrors the singular create's required fields (type,
+// data; source defaulted by eventSource) for a batch item, whose wire type
+// keeps every field optional so the SDK's snake_case aliases can coalesce.
+// It stores the defaulted source on it. Returns the per-item error message,
+// or "" when the item is acceptable.
 func validateBatchItem(it *BatchEventItem) string {
-	switch {
-	case strings.TrimSpace(it.Type) == "":
+	if strings.TrimSpace(it.Type) == "" {
 		return "type is required"
-	case strings.TrimSpace(it.Source) == "":
+	}
+	if it.Source = eventSource(it.Source, it.Type); it.Source == "" {
 		return "source is required"
-	case len(it.Data) == 0 || string(it.Data) == "null":
+	}
+	if len(it.Data) == 0 || string(it.Data) == "null" {
 		return "data is required"
 	}
 	return ""
+}
+
+// eventSource answers an event's source: the one given when it is not blank,
+// else the type's `{application}:{subdomain}` (its first two segments, the
+// source every platform and SDK domain event carries, e.g. "platform:admin"
+// for "platform:admin:client:created"; the first segment alone when there is
+// no second). Owner ruling 2026-10-12 (F14): the Java, TypeScript and
+// Laravel SDKs omit an unset source. "" when the type has no application
+// segment either, which the caller refuses as "source is required".
+func eventSource(source, eventType string) string {
+	if strings.TrimSpace(source) != "" {
+		return source
+	}
+	app, rest, _ := strings.Cut(strings.TrimSpace(eventType), ":")
+	if strings.TrimSpace(app) == "" {
+		return ""
+	}
+	subdomain, _, _ := strings.Cut(rest, ":")
+	if strings.TrimSpace(subdomain) == "" {
+		return app
+	}
+	return app + ":" + subdomain
 }
 
 // ── list / detail ────────────────────────────────────────────────────────

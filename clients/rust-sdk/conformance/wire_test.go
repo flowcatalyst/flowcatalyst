@@ -82,7 +82,10 @@ func TestDispatchJobFixturesDecodeStrictlyIntoTheBatchItem(t *testing.T) {
 }
 
 // The event payloads use only BatchEventItem's camelCase members and carry
-// what the batch endpoint requires (type, source handled per item, data).
+// what the batch endpoint requires (type, data; an absent source is defaulted
+// to the type's {application}:{subdomain}, F14). The integration test
+// internal/platform/event/api/encoded_data_pg_test.go sends both through the
+// batch handler.
 func TestEventFixturesUseTheBatchEventItemMembers(t *testing.T) {
 	known := jsonKeys(reflect.TypeFor[eventapi.BatchEventItem]())
 	for _, name := range []string{"event-full.json", "event-minimal.json"} {

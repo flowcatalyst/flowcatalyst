@@ -178,11 +178,11 @@ func rawFromEntity(e *event.Event) RawEventResponse {
 
 // CreateEventRequest is the wire body for POST /api/events, the singular
 // SDK ingest. 1:1 with the
-// Laravel SDK's Model\CreateEventRequest: required eventType/source/data,
-// the rest optional.
+// Laravel SDK's Model\CreateEventRequest: required eventType/data, the
+// rest optional (source defaulted, F14).
 type CreateEventRequest struct {
 	EventType       string            `json:"eventType" doc:"Event type code (e.g., \"orders:fulfillment:shipment:shipped\")"`
-	Source          string            `json:"source" doc:"Event source URI"`
+	Source          string            `json:"source,omitempty" doc:"Event source URI. When absent or blank, the type's {application}:{subdomain} (its first two segments)"`
 	Subject         string            `json:"subject,omitempty" doc:"Event subject (optional context)"`
 	Data            json.RawMessage   `json:"data" doc:"Event payload data"`
 	MessageGroup    *string           `json:"messageGroup,omitempty" doc:"Message group for FIFO ordering"`
@@ -259,7 +259,7 @@ type BatchEventItem struct {
 	ID              string          `json:"id,omitempty"`
 	SpecVersion     string          `json:"specVersion,omitempty"`
 	Type            string          `json:"type,omitempty"`
-	Source          string          `json:"source,omitempty"`
+	Source          string          `json:"source,omitempty" doc:"Event source. When absent or blank, the type's {application}:{subdomain} (its first two segments)"`
 	Subject         string          `json:"subject,omitempty"`
 	Data            json.RawMessage `json:"data,omitempty"`
 	DeduplicationID string          `json:"deduplicationId,omitempty"`
