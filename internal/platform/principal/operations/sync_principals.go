@@ -49,8 +49,9 @@ type SyncPrincipalsCommand struct {
 // single transaction:
 //
 //   - Matches by lowercased email. An existing principal keeps its non-SDK_SYNC
-//     role assignments and has its SDK_SYNC assignments replaced with the
-//     incoming set; name and active are updated; a passwordHash is never
+//     role assignments and other applications' SDK_SYNC assignments, and has
+//     this sync's application's SDK_SYNC assignments (every SDK_SYNC one on the
+//     platform route) replaced with the incoming set (F13); name and active are updated; a passwordHash is never
 //     applied to it (F13). A new principal is created as a CLIENT-scoped USER
 //     with the incoming SDK_SYNC roles and the passwordHash, if any.
 //   - RemoveUnlisted does NOT delete principals: it strips SDK_SYNC role
@@ -140,6 +141,19 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 				// the role ceiling below.
 				changed []string
 			)
+			// belongsToThisSync selects the assignments this sync owns, the
+			// ones its merge replaces and its sweep strips (X-02(c), F13):
+			// SDK_SYNC roles of this sync's application (role names are
+			// app-prefixed "app:role", see role.New), or every SDK_SYNC role
+			// on the platform-level sync (no ApplicationCode). Java
+			// Principal.belongsToApplicationSync, Rust is_own_sdk_role.
+			appPrefix := cmd.ApplicationCode + ":"
+			belongsToThisSync := func(ra serviceaccount.RoleAssignment) bool {
+				if ra.AssignmentSource == nil || *ra.AssignmentSource != SdkSyncSource {
+					return false
+				}
+				return cmd.ApplicationCode == "" || strings.HasPrefix(ra.Role, appPrefix)
+			}
 			roleNames := func(ras []serviceaccount.RoleAssignment) []string {
 				out := make([]string, 0, len(ras))
 				for _, ra := range ras {
@@ -176,15 +190,28 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 					return nil, err
 				}
 				if existing != nil {
-					// Merge: keep non-SDK_SYNC assignments, replace the SDK_SYNC set.
+					// Merge (F13, Java Principal.syncSourcedRoles): replace only
+					// this sync's own SDK_SYNC set (belongsToThisSync), keeping
+					// every other assignment, another application's SDK_SYNC
+					// roles included. A named role the principal still holds
+					// keeps that assignment and its source, so an administrator's
+					// grant is never relabelled SDK_SYNC (and later swept).
 					merged := make([]serviceaccount.RoleAssignment, 0, len(existing.Roles)+len(roleAssignments))
+					held := make(map[string]struct{}, len(existing.Roles))
 					for _, ra := range existing.Roles {
-						if ra.AssignmentSource != nil && *ra.AssignmentSource == SdkSyncSource {
+						if belongsToThisSync(ra) {
 							continue
 						}
 						merged = append(merged, ra)
+						held[ra.Role] = struct{}{}
 					}
-					merged = append(merged, roleAssignments...)
+					for _, ra := range roleAssignments {
+						if _, ok := held[ra.Role]; ok {
+							continue
+						}
+						held[ra.Role] = struct{}{}
+						merged = append(merged, ra)
+					}
 					changed = append(changed, role.ChangedRoles(roleNames(existing.Roles), roleNames(merged))...)
 					existing.Roles = merged
 					existing.Name = in.Name
@@ -236,20 +263,9 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 
 			if cmd.RemoveUnlisted {
 				// X-02(c): strip only SDK_SYNC roles belonging to THIS sync's
-				// application — role names are app-prefixed "app:role" (see
-				// role.New / role/entity.go). Without this an app-scoped SDK sync
-				// with removeUnlisted would strip every OTHER application's
-				// SDK_SYNC roles too, on any principal that happens to also lack a
-				// role from THIS payload. An empty ApplicationCode (the
-				// platform-level /api/principals/sync) matches every SDK_SYNC role,
-				// same as before — that combination is anchor-gated above.
-				appPrefix := cmd.ApplicationCode + ":"
-				belongsToThisSync := func(ra serviceaccount.RoleAssignment) bool {
-					if ra.AssignmentSource == nil || *ra.AssignmentSource != SdkSyncSource {
-						return false
-					}
-					return cmd.ApplicationCode == "" || strings.HasPrefix(ra.Role, appPrefix)
-				}
+				// application (belongsToThisSync). The platform-level sweep (no
+				// ApplicationCode) strips every SDK_SYNC role; that combination
+				// is anchor-gated above.
 				all, err := principals.FindAll(ctx)
 				if err != nil {
 					return nil, usecase.Internal("REPO", "find_all failed", err)
