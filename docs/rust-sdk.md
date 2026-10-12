@@ -46,18 +46,19 @@ the way `fn-rust` has one:
 
 ## Open questions for the owner
 
-1. Event `data` and audit `operationData` are embedded as JSON strings by the
-   Java, TypeScript, fc-sdk and framework writers (this SDK follows them); the
-   platform stores them as strings, so subscribers receive a string `data` and
-   a `dataOnly` body is a quoted string. Fix in every SDK, or unwrap at ingest?
-2. The Go SDK's `outboxpgx` audit rows are snake_case and are refused by
-   `/api/audit-logs/batch` (camelCase only, `principalId` required).
-3. Principal sync: Go applies `passwordHash` to existing users and never sends
-   `passwordHashIgnored` (the Java platform ruled otherwise on 2026-09-25); and
-   all SDK docs claimed the platform prefixes bare role names, which Go does
-   not (this SDK now prefixes them itself).
-4. The dispatch-jobs batch does not resolve `clientCode`.
+1. ~~Event `data` and audit `operationData` embedded as JSON strings~~:
+   resolved by unwrapping at ingest (owner ruling 2026-10-12,
+   `docs/platform-bug-fixes.md` F13; the rule is in `docs/wire-contract.md`).
+2. ~~The Go SDK's `outboxpgx` audit rows are snake_case~~: fixed (F13).
+3. Principal sync: ~~Go applies `passwordHash` to existing users and never
+   sends `passwordHashIgnored`~~ (fixed, F13); all SDK docs claimed the
+   platform prefixes bare role names, which Go does not (this SDK now
+   prefixes them itself).
+4. The dispatch-jobs batch does not resolve `clientCode` (design question
+   for the owner, F13 in `docs/platform-bug-fixes.md`).
 5. `docs/wire-contract.md` names `tests/golden/webhook/`, which does not exist.
+6. `event-minimal.json` has no `source`, which `/api/events/batch` requires
+   (that item is refused `BAD_REQUEST` "source is required").
 
 ## The Rust platform
 

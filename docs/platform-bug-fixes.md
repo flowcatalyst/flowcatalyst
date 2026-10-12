@@ -953,6 +953,124 @@ failed before its fix.
     (4) Java checks the ceiling per entry; Go once after the loop (as noted in Java's
     2026-10-12 ledger).
 
+### F13. Principal-sync passwords and roles, encoded event data, Go SDK (owner approval 2026-10-12)
+
+- **Password hashes** (F12 "new findings"). Both principal syncs
+  (`POST /api/principals/sync`, `POST /api/applications/{appCode}/principals/sync`) replaced an
+  existing user's password hash with an entry's `passwordHash`: a credential change outside the
+  audited password routes. **Fix** (`004f8d4`, as Java `SyncPrincipals` and Rust decision #22,
+  owner ruling 2026-09-25): a `passwordHash` is stored only on a user the sync creates; for an
+  existing user it is ignored, whoever the caller (an anchor included), and logged
+  (`principalId`); the rest of the entry applies. Both responses gained `passwordHashIgnored`
+  (Java's name and type: the emails, lower-cased and trimmed, each once, in payload order; omitted
+  when empty), read before the sync runs (`operations.PasswordHashesIgnored`, as Java and Rust), so
+  a user created concurrently in between is missed there and its hash still not applied. On the
+  application route it is a member of the shared `SyncResultResponse`, so every other sync's
+  response is unchanged (empty, omitted). An empty `passwordHash` counts as none.
+- **An application's sync replaced other applications' synced roles** (F12 "new findings"). The
+  merge dropped every `SDK_SYNC` assignment of a listed user before adding the payload's.
+  **Fix** (`bdecf5d`, Java `Principal.syncSourcedRoles`, Rust `is_own_sdk_role`): the merge
+  replaces only the assignments the sweep would strip, one predicate for both
+  (`belongsToThisSync`: `SDK_SYNC` and the role name prefixed `<appCode>:`; every `SDK_SYNC` one on
+  the platform route, unchanged). Found while fixing: a named role the user already held from
+  another source (`ADMIN_ASSIGNED`, `IDP_SYNC`) was re-inserted as `SDK_SYNC` (the role insert's
+  `ON CONFLICT` overwrote the source), so a later `removeUnlisted` sweep stripped an
+  administrator's grant; the merge now keeps the existing assignment and its source (Java's rule).
+- **Encoded event `data` and audit `operationData`** (Rust SDK README ambiguity 1). The Java,
+  TypeScript, Laravel, Rust (`fc-sdk` and the new SDK) and framework outbox writers send them as a
+  JSON string holding the encoded value (`"data":"{\"a\":1}"`, Java `writeValueAsString(Map)`,
+  TS `JSON.stringify(Record)`, PHP `json_encode(array)`); the Go SDK sends the value itself. The
+  outbox processor posts each row's payload unchanged (`internal/outbox/http_dispatcher.go`), and
+  the batch endpoints stored the string: `msg_events.data` a JSONB string, which the fan-out copies
+  into the job's payload (`internal/stream/fan_out.go`), so the delivery envelope's `data` was a
+  string and a `dataOnly` body a quoted string (`dispatchjob/processing`); `aud_logs.operation_json`
+  a string, so the audit view's `operationJson` parsed to a string, and the redaction backstop
+  (`usecase.RedactAuditJSON`) could not see inside it (a password inside an encoded
+  `operationData` was stored; the new test shows it). Java and Rust store it as sent too.
+  **Fix** (`8bf67d1`, owner ruling 2026-10-12, unwrap at ingest): `sdk.UnwrapEncodedJSON` on
+  `POST /api/events/batch` (`data`) and `POST /api/audit-logs/batch` (`operationData`, before
+  redaction). **The rule**: a member that is not a JSON string is stored as sent; a string whose
+  text, less surrounding JSON whitespace, starts with `{` or `[` and is exactly one valid JSON value
+  is replaced by that value; every other string is stored as sent. At most one level: the result is
+  an object or array, never a string, so nothing is unwrapped twice and a value encoded twice is
+  kept. **Edge cases**: kept as strings: `"hello"`, `""`, `"42"`, `"true"`, `"null"` (Java's
+  encoding of a null map: unwrapping it would make the event `data is required` and refuse it),
+  `"\"x\""`, `"{not json"`, `"[1,"`, `"{} trailing"`, `"{}{}"`; unwrapped: `"{}"`, `"[]"` (PHP's
+  `json_encode([])`), encoded objects and lists with nested string members left intact. **Accepted
+  cost**: a direct API caller that means a string whose text is a JSON object or array gets the
+  object; there is no way to tell it from an SDK's encoding (none of the platform's writers sends
+  one). Not changed: the singular `POST /api/events` (receives the value itself; a test pins that
+  a string stays a string), dispatch-job `payload` (a string by contract, with
+  `payloadContentType`), function-emitted events (`function/control/events.go`), the outbox
+  processor. Documented in `docs/wire-contract.md`.
+  - **Stored rows** (not changed, not inspected: the dev database is off limits). Rows ingested
+    from the string-writing SDKs before this fix are `jsonb_typeof(data) = 'string'` in
+    `msg_events`, the same text quoted in `msg_events_read.data` (TEXT), the quoted string as
+    `msg_dispatch_jobs.payload` (TEXT) of every job fanned out from them, and
+    `jsonb_typeof(operation_json) = 'string'` in `aud_logs`. To size it on a database:
+    `SELECT count(*) FROM msg_events WHERE jsonb_typeof(data) = 'string' AND left(ltrim(data #>> '{}'), 1) IN ('{', '[')`
+    (and `aud_logs` on `operation_json`). **No migration written**: the tables are partitioned
+    and large, dispatch jobs and their read rows record what was delivered (rewriting them changes
+    history and a redelivery's body), the rule needs a JSON-validity test per row in SQL
+    (`pg_input_is_valid(..., 'jsonb')` is Postgres 16+), and the audit rows would also need the
+    redaction that could not run on them. Owner to decide (see the question below).
+- **Go SDK** (Rust SDK README ambiguity 2, and two found with it). `outboxpgx` wrote snake_case
+  audit rows (`entity_type`, `principal_id`, `operation_json`, ...) that the camelCase-only
+  `POST /api/audit-logs/batch` refused, every row "principalId is required". **Fix** (`69857fb`):
+  the row is the endpoint's item (`entityType`, `entityId`, `operation`, `operationData` as an
+  object, `principalId`, `performedAt`), plus `applicationCode` from a new optional
+  `Config.ApplicationCode`, which the endpoint requires of an application-scoped credential (an
+  application's own service account; without it the row is refused "applicationCode is required
+  for an application-scoped credential"). Events stay snake_case (accepted through the aliases).
+  `client.ListInstanceLogs` decoded the platform's bare array as `{logs,total}` and failed; the
+  runner's `HandlerContext.Log` omitted the required `level`, so every log line was refused.
+  **Fix** (`0edbd15`): the array is decoded and wrapped (`Total` = lines returned; the log
+  response gained `scheduledJobId`, `clientId`), `Log` and `LogForInstance` send `INFO` unless a
+  level is given; the test platform mock now answers as the platform does (204, `level` and
+  `message` required). Nothing else under `clients/` vendors the Go SDK (`pkg/fcsdk`). Not
+  released or tagged.
+- **Dispatch-jobs `clientCode`** (framework `contracts/write-path.md` 7a, Rust SDK README 5):
+  **not implemented**, a design question. The change is small (resolve `clientCode` when no
+  `clientId` is given, then the batch's existing `CanAccessClient` guard), but "as the events batch
+  does" is not one rule: Go's events batch leaves an unknown code unscoped and checks no client
+  access at all (a new finding below), Java's leaves it unscoped for an anchor and refuses it, 403,
+  for anyone else (S3.2, `requireWritableClient`), and the dispatch batch refuses the whole batch
+  where the events batch reports per item. An unknown code silently unscoping a job would deliver
+  it with no `X-FlowCatalyst-Client` header. Neither Java nor Rust accepts `clientCode` on dispatch
+  jobs. Proposal for the owner: Java's events rule (explicit `clientId` wins; a known code resolves
+  and must pass the client guard; an unknown code 403 for a non-anchor and, unlike Java's events,
+  also 400 for an anchor, since a job is not a fact to keep), the same on the singular
+  `POST /api/dispatch-jobs` (it shares `BatchItem`), mirrored in Java and Rust.
+- **Wire impact**: `passwordHashIgnored` added to `SyncUsersResponse` and `SyncResultResponse`
+  (optional, omitted when empty), and both `passwordHash` descriptions; the lock and the SPA's
+  generated types were regenerated (`make api-bump`, `pnpm api:generate`). The application sync
+  keeps other applications' roles; the batch endpoints store encoded members as objects. No status
+  code changed.
+- **Tests** (each failed before its fix): `principal/operations/sync_principals_pg_test.go`
+  `TestSyncPrincipals_PasswordHashCarry` (now: kept, rest applied, the ignored list normalised and
+  deduplicated); `principal/api/sync_password_hash_pg_test.go` and
+  `sdksync/sync_principals_password_hash_pg_test.go` (both routes, Java's test case: kept, new user
+  takes its hash, the field and its omission); `sdksync/sync_principals_own_roles_pg_test.go`
+  (another application's role survives the sync and its sweep, an `ADMIN_ASSIGNED` role keeps its
+  source through the sync and the sweep, the platform route still replaces every `SDK_SYNC` role);
+  `shared/sdk/encoded_json_test.go` (the rule's cases and idempotence);
+  `event/api/encoded_data_pg_test.go` (the Rust SDK's `event-full.json` and `event-minimal.json`
+  golden payloads, encoded arrays, kept strings, the singular create unchanged);
+  `shared/sdk/audit_encoded_operation_data_pg_test.go` (the Rust SDK's `audit-log-full.json`, a
+  password in an encoded `operationData` now redacted, an object and a plain string kept);
+  `shared/sdk/go_sdk_audit_pg_test.go` and `event/api/go_sdk_event_pg_test.go` (the Go SDK's
+  `outboxpgx.Sink` writes into `outbox_messages` on the embedded database, and the stored payload
+  goes through the batch handler: audit accepted for an all-applications and an
+  application-scoped credential, redacted object stored; event data stored as sent);
+  `pkg/fcsdk/outboxpgx/payload_test.go`; `pkg/fcsdk/client` `TestScheduledJobsListInstanceLogsDecodesTheArray`,
+  `TestScheduledJobsLogForInstanceDefaultsTheLevel`; `pkg/fcsdk/scheduledjobs` `TestLogSendsALevel`
+  and the level assertion in `TestProcessDispatchesHandlerAndReportsSuccess`. The Rust SDK's Go
+  conformance test (`clients/rust-sdk/conformance`) still passes.
+- **Java/Rust mirror**: password hashes and own-application roles already match (Go now follows
+  them). **To mirror**: the ingest unwrap (Java `IngestApi` and Rust `batch_create_events` /
+  `sdk_audit_batch_api.rs` store the string as sent), and the own-role merge's keep-the-existing-
+  source rule in Rust (not checked).
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -1001,13 +1119,22 @@ failed before its fix.
     application's prefix). The platform principal sync holds a non-anchor to the
     `PUT /api/principals/{id}/roles` rule (Java's), so it cannot give a user it creates any role.
 
+20. Principal syncs and ingest (F13): `passwordHashIgnored` lists trimmed, lower-cased emails, read
+    before the sync (Java's and Rust's timing); a named role already held from another source keeps
+    that source (Java's). The ingest unwrap takes only an encoded object or array, never a scalar
+    (so Java's `"null"` stays a string rather than refusing the event), and leaves the singular
+    `POST /api/events` alone. Already-stored string rows are not migrated. The Go SDK gained
+    `Config.ApplicationCode` for application-scoped credentials. Dispatch-jobs `clientCode` is not
+    implemented (design question in F13).
+
 ## New findings, not fixed
 
 Fixed in the second batch (above): the scheduled-job runner reports (F1), event-type `clientId`
 (F2), client event names (F3), service accounts (F4), the sync paths' client identifier (F5), the
 SPA's sync and role controls (F6); after it, user role changes (F7), the role ceiling (F8) and
 the catalogue drift (F9, with its follow-up: unemitted codes pruned, older schemas fixed), the
-permission ceiling (F10), and role confinement and principal-sync reach (F12).
+permission ceiling (F10), role confinement and principal-sync reach (F12), and the principal
+syncs' password hashes and other applications' roles (F13).
 
 - **`DELETE /api/event-types/{id}`** is documented "Archive an event type" and the TS SDK calls it
   `archive()`, but it hard-deletes (now only an archived or never-published type).
@@ -1032,21 +1159,22 @@ permission ceiling (F10), and role confinement and principal-sync reach (F12).
   `DeleteIdpRoleMapping`) and Rust (`create_idp_role_mapping.rs`, identity-provider create/update)
   apply the ceiling.
 - ~~**The principal syncs have no target reach or application confinement**~~ (F8): fixed in F12.
-- **The application principal sync replaces every `SDK_SYNC` role of a user it lists** (F12): the
-  merge drops all of the user's `SDK_SYNC` roles, other applications' included, before adding the
-  payload's, so application A's sync strips application B's synced roles from a shared user (the
-  `removeUnlisted` sweep was already confined to the sync's application, X-02(c)). Java
-  (`syncSourcedRoles`) and Rust (`is_own_sdk_role`) replace only the sync's own application's
-  `SDK_SYNC` roles. Confinement (F12) stops adding another application's roles; this removal is
-  open.
-- **The principal syncs overwrite an existing user's password hash** (F12): a `passwordHash` on an
-  entry for an existing user replaces the stored one. Java and Rust never apply it to an existing
-  principal (owner ruling 2026-09-25, item 4 in Java; Rust decision #22) and log it. Target reach
-  (F12) now limits it to users within the caller's reach; inside it, it is still a credential
-  change outside the audited password routes.
+- ~~**The application principal sync replaces every `SDK_SYNC` role of a user it lists**~~: fixed
+  in F13.
+- ~~**The principal syncs overwrite an existing user's password hash**~~: fixed in F13.
 - **Rotating a service account's OAuth client secret** (`platform:auth:oauth-client:regenerate-secret`,
   anchor) hands out a credential with the account's whole authority through `client_credentials`,
   with no role ceiling (the mint now has one). Java and Rust not checked.
+- **The events batch has no client guard** (F13): `POST /api/events/batch` stores any `clientId`,
+  or the client a `clientCode` resolves to, without `CanAccessClient`, and lets a client-scoped
+  caller write platform-scoped events. Java refuses both (`requireWritableClient`, S3.2: 403 "No
+  access to client", "clientId is required: a client-scoped caller cannot write platform-scoped
+  rows"; an unknown `clientCode` 403 for a non-anchor). The dispatch-jobs batch has the access
+  check but not the platform-scoped refusal.
+- **An event without `source` is refused** (F13): the Rust SDK's `event-minimal.json` has none, and
+  the Java, TypeScript and Laravel SDKs omit an unset source; `/api/events/batch` answers
+  `BAD_REQUEST` "source is required", terminal for that outbox row.
+- **Already-stored encoded event data and audit rows** (F13): not migrated; owner question in F13.
 
 ## Not verified
 
@@ -1073,3 +1201,7 @@ permission ceiling (F10), and role confinement and principal-sync reach (F12).
 - F11: migration 073 ran on embedded scratch databases only (Up, re-run, Down by executing its SQL;
   through goose on every test database), never on a deployed one or one a Java/Rust seeder shared.
   The Java and Rust events were read, not run.
+- F13: no run against a seeded or deployed database, and the stored-row query was not run (the dev
+  database is off limits); no browser run (the SPA only gained a generated type). The Go SDK was
+  exercised through the batch handlers, not through a running outbox processor. The Java and Rust
+  code was read, not run.

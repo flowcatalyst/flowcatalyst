@@ -65,9 +65,9 @@ pub struct SyncResult {
     pub updated: u32,
     pub deleted: u32,
     pub synced_codes: Vec<String>,
-    /// Legacy field: the Go platform never sends it (it applies a
-    /// `passwordHash` to existing users too), so it is always empty against
-    /// Go. Kept for compatibility with platforms that report it.
+    /// Principal sync only: the existing users (emails) whose `passwordHash`
+    /// the platform did not apply (it stores a hash only on a user the sync
+    /// creates). Omitted by the platform when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub password_hash_ignored: Vec<String>,
 }

@@ -184,8 +184,9 @@ and never fires), and malformed docs slugs. Scheduled jobs are sent per
 `client_id` group (Go refuses a platform-scoped sync from a non-anchor caller)
 and `synced_codes` no longer includes archived codes. Principal role names
 without `app:` are prefixed with the application (Go stores names verbatim,
-contrary to fc-sdk's and the Java SDK's docs). The `passwordHashIgnored` docs
-now say the Go platform never sends it and applies a hash to existing users.
+contrary to fc-sdk's and the Java SDK's docs). `passwordHashIgnored` is read:
+the platform stores a `passwordHash` only on a user the sync creates and
+reports the others there (Go F13, as Java and Rust).
 `SyncResult::into_result()` turns any failed category into an error.
 
 ## Wire-contract ambiguities found
@@ -193,22 +194,16 @@ now say the Go platform never sends it and applies a hash to existing users.
 These are reported, not decided here; the SDK follows the Java SDK (the
 framework's reference) where SDKs disagree.
 
-1. **Event `data` and audit `operationData` are JSON strings.** Java, TypeScript,
-   fc-sdk and the framework embed them as a string (`"data":"{\"a\":1}"`); the
-   Go SDK's `outboxpgx` writes an object. The platform stores `data` raw
-   (`json.RawMessage`), so a string stays a string: the fan-out copies it into
-   the dispatch job's payload (`internal/stream/fan_out.go`) and the delivery
-   envelope's `data` is then a JSON string, not an object
-   (`dispatchjob/processing/processing.go`); a `dataOnly` subscriber receives a
-   quoted string. Likewise the audit `operationJson` the SPA parses is a string
-   inside a string, and the platform's redaction backstop cannot see into it.
-   Needs an owner ruling (all SDKs change in lockstep, or the platform unwraps a
-   string `data` at ingest).
-2. **The Go SDK's outbox payloads do not match the audit endpoint.** `outboxpgx`
-   writes snake_case audit rows (`entity_type`, `principal_id`, ...), but
-   `/api/audit-logs/batch` decodes camelCase only (`AuditBatchItem`), so every
-   such row is refused `principalId is required`. Its events use snake_case
-   too, which the events batch accepts through aliases.
+1. ~~**Event `data` and audit `operationData` are JSON strings.**~~ Resolved
+   on the platform (Go F13, owner ruling 2026-10-12): `/api/events/batch` and
+   `/api/audit-logs/batch` unwrap a string member whose text is an encoded
+   JSON object or array, so subscribers, `dataOnly` bodies and the audit view
+   get the object; the SDKs keep writing the string. The exact rule is in
+   `docs/wire-contract.md` ("Encoded `data` and `operationData` at batch
+   ingest").
+2. ~~**The Go SDK's outbox payloads do not match the audit endpoint.**~~ Fixed
+   (Go F13): `outboxpgx` writes camelCase audit rows with `operationData` as an
+   object and an optional `applicationCode`.
 3. **Audit `source`, `correlationId` and `metadata`** are written by the Java SDK
    and this one but ignored by `/api/audit-logs/batch`.
 4. **Dispatch-job `kind` default.** The platform defaults to `EVENT`; the
@@ -223,16 +218,20 @@ framework's reference) where SDKs disagree.
 6. **Webhook timestamp.** `docs/wire-contract.md` describes only the millisecond
    ISO form; every SDK also accepts Unix seconds. The framework contract's
    "Unix seconds must be ASCII digits" applies to that form only.
-7. **Principal sync and password hashes.** The Java platform ruled (2026-09-25)
-   that a sync uses `passwordHash` only to create a user and reports the others
-   in `passwordHashIgnored`; the Go platform still overwrites existing users'
-   hashes and never sends the field.
+7. ~~**Principal sync and password hashes.**~~ Fixed (Go F13): the Go platform
+   now uses `passwordHash` only to create a user and reports the others in
+   `passwordHashIgnored`, as Java (ruling 2026-09-25) and Rust.
 8. **Role names in principal sync.** The SDKs' docs said the platform adds the
    `app:` prefix; Go stores names verbatim. This SDK now prefixes bare names;
    the other SDKs still document the old behaviour.
 9. **`tests/golden/webhook/`**, named by `docs/wire-contract.md` and the router's
    `signWebhook` comment, does not exist; the shared vector lives in the SDKs'
    tests (now also in `tests/fixtures/wire/webhook-signatures.json`).
+10. **An event without `source` is refused.** `event-minimal.json` has no
+    `source`; `/api/events/batch` answers that item `BAD_REQUEST` "source is
+    required" (terminal), as it does for a Java, TypeScript or Laravel event
+    whose source was left unset. The SDK should require or default `source`
+    (found by the platform's F13 fixture test).
 
 ## Licence
 

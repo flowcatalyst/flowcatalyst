@@ -395,9 +395,9 @@ impl Principals<'_> {
     ///
     /// When `remove_unlisted` is true the platform strips SDK-sourced role
     /// assignments from principals not in the list (principals themselves
-    /// are never deleted by sync). A `password_hash` is applied to existing
-    /// users as well as new ones; the Go platform never reports
-    /// `password_hash_ignored` (the field stays empty).
+    /// are never deleted by sync). A `password_hash` is stored only on a
+    /// user the sync creates; for an existing user it is ignored and the
+    /// email is reported in `password_hash_ignored`.
     pub async fn sync(
         &self,
         app_code: &str,
