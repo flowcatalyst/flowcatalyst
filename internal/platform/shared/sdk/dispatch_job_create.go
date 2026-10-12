@@ -25,29 +25,32 @@ import (
 // serviceAccountId; metadata is a string map (the batch items carry the
 // entity's [{key,value}] array instead).
 type CreateDispatchJobRequest struct {
-	Source             *string           `json:"source,omitempty"`
-	Kind               string            `json:"kind,omitempty"`
-	Code               string            `json:"code"`
-	Subject            *string           `json:"subject,omitempty"`
-	EventID            *string           `json:"eventId,omitempty"`
-	CorrelationID      *string           `json:"correlationId,omitempty"`
-	TargetURL          string            `json:"targetUrl"`
-	Payload            *string           `json:"payload,omitempty"`
-	PayloadContentType string            `json:"payloadContentType,omitempty"`
-	DataOnly           bool              `json:"dataOnly,omitempty"`
-	ServiceAccountID   *string           `json:"serviceAccountId,omitempty"`
-	ClientID           *string           `json:"clientId,omitempty"`
-	SubscriptionID     *string           `json:"subscriptionId,omitempty"`
-	Mode               string            `json:"mode,omitempty"`
-	DispatchPoolID     *string           `json:"dispatchPoolId,omitempty"`
-	MessageGroup       *string           `json:"messageGroup,omitempty"`
-	Sequence           *int32            `json:"sequence,omitempty"`
-	TimeoutSeconds     uint32            `json:"timeoutSeconds,omitempty"`
-	MaxRetries         uint32            `json:"maxRetries,omitempty"`
-	RetryStrategy      string            `json:"retryStrategy,omitempty"`
-	IdempotencyKey     *string           `json:"idempotencyKey,omitempty"`
-	ExternalID         *string           `json:"externalId,omitempty"`
-	Metadata           map[string]string `json:"metadata,omitempty"`
+	Source             *string `json:"source,omitempty"`
+	Kind               string  `json:"kind,omitempty"`
+	Code               string  `json:"code"`
+	Subject            *string `json:"subject,omitempty"`
+	EventID            *string `json:"eventId,omitempty"`
+	CorrelationID      *string `json:"correlationId,omitempty"`
+	TargetURL          string  `json:"targetUrl"`
+	Payload            *string `json:"payload,omitempty"`
+	PayloadContentType string  `json:"payloadContentType,omitempty"`
+	DataOnly           bool    `json:"dataOnly,omitempty"`
+	ServiceAccountID   *string `json:"serviceAccountId,omitempty"`
+	ClientID           *string `json:"clientId,omitempty"`
+	// ClientCode is the client's identifier slug, resolved as on the batch
+	// (ResolveJobClient).
+	ClientCode     *string           `json:"clientCode,omitempty"`
+	SubscriptionID *string           `json:"subscriptionId,omitempty"`
+	Mode           string            `json:"mode,omitempty"`
+	DispatchPoolID *string           `json:"dispatchPoolId,omitempty"`
+	MessageGroup   *string           `json:"messageGroup,omitempty"`
+	Sequence       *int32            `json:"sequence,omitempty"`
+	TimeoutSeconds uint32            `json:"timeoutSeconds,omitempty"`
+	MaxRetries     uint32            `json:"maxRetries,omitempty"`
+	RetryStrategy  string            `json:"retryStrategy,omitempty"`
+	IdempotencyKey *string           `json:"idempotencyKey,omitempty"`
+	ExternalID     *string           `json:"externalId,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
 	// Queue is the job's own dispatch priority: DEFAULT or HIGH_PRIORITY,
 	// matched ignoring case. Validated the same way a subscription's is —
 	// anything else is a 400 naming the field. Omitted stays absent, never
@@ -100,9 +103,10 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Tenant guard — same rule as the batch loop.
-	if req.ClientID != nil && !ac.CanAccessClient(*req.ClientID) {
-		httperror.Write(w, httperror.Forbidden("No access to client: "+*req.ClientID))
+	// Tenant guard — same rule as the batch loop, clientCode included.
+	clientID, err := ResolveJobClient(r.Context(), ac, NewClientCodes(s.Clients), req.ClientID, req.ClientCode)
+	if err != nil {
+		httperror.Write(w, err)
 		return
 	}
 
@@ -121,7 +125,7 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 		DataOnly:           req.DataOnly,
 		EventID:            req.EventID,
 		CorrelationID:      req.CorrelationID,
-		ClientID:           req.ClientID,
+		ClientID:           clientID,
 		SubscriptionID:     req.SubscriptionID,
 		ServiceAccountID:   req.ServiceAccountID,
 		DispatchPoolID:     req.DispatchPoolID,

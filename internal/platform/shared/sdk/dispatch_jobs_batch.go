@@ -20,6 +20,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
@@ -38,6 +39,9 @@ type DispatchJobsBatchState struct {
 	// callers with all-applications access never consult them.
 	Apps *application.Repository
 	Subs *subscription.Repository
+	// Clients resolves an item's clientCode to its client (ClientCodes). Nil
+	// means every code is unknown, so an item carrying one is refused.
+	Clients *client.Repository
 }
 
 // checkJobApplication enforces application confinement for an
@@ -94,28 +98,31 @@ func (s *DispatchJobsBatchState) checkJobApplication(ctx context.Context, ac *au
 
 // BatchItem is one row in the inbound batch.
 type BatchItem struct {
-	ID                 *string                `json:"id,omitempty"` // SDK may supply for idempotency; otherwise minted server-side
-	ExternalID         *string                `json:"externalId,omitempty"`
-	Kind               string                 `json:"kind"`
-	Code               string                 `json:"code"`
-	Source             *string                `json:"source,omitempty"`
-	Subject            *string                `json:"subject,omitempty"`
-	TargetURL          string                 `json:"targetUrl"`
-	Payload            *string                `json:"payload,omitempty"`
-	PayloadContentType string                 `json:"payloadContentType,omitempty"`
-	DataOnly           bool                   `json:"dataOnly"`
-	EventID            *string                `json:"eventId,omitempty"`
-	CorrelationID      *string                `json:"correlationId,omitempty"`
-	ClientID           *string                `json:"clientId,omitempty"`
-	SubscriptionID     *string                `json:"subscriptionId,omitempty"`
-	ServiceAccountID   *string                `json:"serviceAccountId,omitempty"`
-	DispatchPoolID     *string                `json:"dispatchPoolId,omitempty"`
-	MessageGroup       *string                `json:"messageGroup,omitempty"`
-	Mode               string                 `json:"mode,omitempty"`
-	Sequence           int32                  `json:"sequence,omitempty"`
-	TimeoutSeconds     uint32                 `json:"timeoutSeconds,omitempty"`
-	MaxRetries         uint32                 `json:"maxRetries,omitempty"`
-	Metadata           []dispatchjob.Metadata `json:"metadata,omitempty"`
+	ID                 *string `json:"id,omitempty"` // SDK may supply for idempotency; otherwise minted server-side
+	ExternalID         *string `json:"externalId,omitempty"`
+	Kind               string  `json:"kind"`
+	Code               string  `json:"code"`
+	Source             *string `json:"source,omitempty"`
+	Subject            *string `json:"subject,omitempty"`
+	TargetURL          string  `json:"targetUrl"`
+	Payload            *string `json:"payload,omitempty"`
+	PayloadContentType string  `json:"payloadContentType,omitempty"`
+	DataOnly           bool    `json:"dataOnly"`
+	EventID            *string `json:"eventId,omitempty"`
+	CorrelationID      *string `json:"correlationId,omitempty"`
+	ClientID           *string `json:"clientId,omitempty"`
+	// ClientCode is the client's identifier slug, resolved to its id when no
+	// clientId is given (ResolveJobClient); never stored itself.
+	ClientCode       *string                `json:"clientCode,omitempty"`
+	SubscriptionID   *string                `json:"subscriptionId,omitempty"`
+	ServiceAccountID *string                `json:"serviceAccountId,omitempty"`
+	DispatchPoolID   *string                `json:"dispatchPoolId,omitempty"`
+	MessageGroup     *string                `json:"messageGroup,omitempty"`
+	Mode             string                 `json:"mode,omitempty"`
+	Sequence         int32                  `json:"sequence,omitempty"`
+	TimeoutSeconds   uint32                 `json:"timeoutSeconds,omitempty"`
+	MaxRetries       uint32                 `json:"maxRetries,omitempty"`
+	Metadata         []dispatchjob.Metadata `json:"metadata,omitempty"`
 	// Queue is the job's own dispatch priority: DEFAULT or HIGH_PRIORITY,
 	// matched ignoring case, same as a subscription's. Validated on the way
 	// in — anything else is a 400 naming the field. Omitted means "not
@@ -258,6 +265,7 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 
 	jobs := make([]dispatchjob.DispatchJob, 0, len(body.Items))
 	scope := NewAppScope(s.Apps)
+	codes := NewClientCodes(s.Clients)
 	subApp := map[string]string{}
 	for idx, it := range body.Items {
 		j, err := jobFromItem(it)
@@ -270,11 +278,14 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		// Tenant guard: SDK service accounts can only ingest for clients
-		// they have access to.
-		if j.ClientID != nil && !ac.CanAccessClient(string(*j.ClientID)) {
-			httperror.Write(w, httperror.Forbidden("No access to client: "+string(*j.ClientID)))
+		// they have access to; a clientCode resolves (ResolveJobClient for
+		// the rule). Any refusal rejects the whole batch.
+		cid, err := ResolveJobClient(r.Context(), ac, codes, it.ClientID, it.ClientCode)
+		if err != nil {
+			httperror.Write(w, err)
 			return
 		}
+		j.ClientID = cid
 		// Application confinement (application-scoped callers only): any
 		// offending item rejects the whole batch, like the client guard above.
 		msg, err := s.checkJobApplication(r.Context(), ac, scope, subApp, &j)

@@ -497,7 +497,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Grants:     repos.principalGrantRepo,
 			Auth:       svcs.authSvc,
 		})
-		sdkapi.RegisterRoutes(r, &sdkapi.DispatchJobsBatchState{Repo: repos.dispatchJobRepo, Apps: repos.applicationRepo, Subs: repos.subscriptionRepo})
+		sdkapi.RegisterRoutes(r, &sdkapi.DispatchJobsBatchState{Repo: repos.dispatchJobRepo, Apps: repos.applicationRepo, Subs: repos.subscriptionRepo, Clients: repos.clientRepo})
 		sdkapi.RegisterAuditRoutes(r, &sdkapi.AuditBatchState{Repo: repos.auditRepo, Apps: repos.applicationRepo, Clients: repos.clientRepo})
 	})
 
