@@ -187,7 +187,7 @@ func TestSync_DeactivatingLastAdmin_Refused(t *testing.T) {
 	a := f.admin(t, "a")
 	got, err := f.repo.FindByID(context.Background(), a)
 	require.NoError(t, err)
-	err = run(f, operations.SyncPrincipals(f.repo, role.NewRepository(testpg.Pool(t))),
+	err = run(f, operations.SyncPrincipals(f.repo, role.NewRepository(testpg.Pool(t)), nil),
 		operations.SyncPrincipalsCommand{Principals: []operations.SyncPrincipalInput{
 			{Email: got.UserIdentity.Email, Name: got.Name, Active: false},
 		}})

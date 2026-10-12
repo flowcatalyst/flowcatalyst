@@ -907,52 +907,20 @@ func blockNonClientTarget(ac *auth.AuthContext, p *principal.Principal) error {
 	return nil
 }
 
-// assertAssignableRoles bounds a non-anchor (client-admin) role assignment:
-// every role must be application-scoped (ApplicationID set — i.e. NOT a platform
-// role) and belong to an application the TARGET CLIENT can access (allowed). A
-// client-admin can therefore grant any role for any application the client is
-// entitled to — not just the apps the admin personally holds. This still stops
-// granting platform roles (escalation) or app roles the client isn't entitled
-// to. Anchors are not subject to this (callers skip it).
+// assertAssignableRoles bounds a non-anchor (client-admin) role assignment
+// (operations.RequireAssignableRoles, shared with the platform principal
+// sync): every role must be application-scoped (ApplicationID set, i.e. not a
+// platform role) and belong to an application the TARGET CLIENT can access
+// (allowed). Anchors are not subject to this (callers skip it).
 func (s *State) assertAssignableRoles(ctx context.Context, roleNames []string, allowed map[string]bool) error {
-	for _, name := range roleNames {
-		r, err := s.Roles.FindByName(ctx, name)
-		if err != nil {
-			return usecase.Internal("REPO", "find_role failed", err)
-		}
-		if r == nil {
-			return usecase.Validation("UNKNOWN_ROLE", "role not found: "+name)
-		}
-		if r.ApplicationID == nil {
-			return usecase.Authorization("PLATFORM_ROLE_FORBIDDEN",
-				"client administrators cannot assign platform roles")
-		}
-		if !allowed[string(*r.ApplicationID)] {
-			return usecase.Authorization("ROLE_APP_FORBIDDEN",
-				"role belongs to an application the client cannot access")
-		}
-	}
-	return nil
+	return operations.RequireAssignableRoles(ctx, s.Roles, roleNames, allowed)
 }
 
 // clientAppIDs returns the set of application IDs the given client is entitled
-// to — the applications it has an enabled client-config for. This is the bound
-// a non-anchor (client-admin) is held to when assigning roles/applications.
+// to (operations.ClientApplicationIDs): the bound a non-anchor (client-admin)
+// is held to when assigning roles/applications.
 func (s *State) clientAppIDs(ctx context.Context, clientID string) (map[string]bool, error) {
-	allowed := map[string]bool{}
-	if clientID == "" || s.ClientConfigs == nil {
-		return allowed, nil
-	}
-	cfgs, err := s.ClientConfigs.FindByClient(ctx, clientID)
-	if err != nil {
-		return nil, usecase.Internal("REPO", "find_client_configs failed", err)
-	}
-	for _, c := range cfgs {
-		if c.Enabled {
-			allowed[string(c.ApplicationID)] = true
-		}
-	}
-	return allowed, nil
+	return operations.ClientApplicationIDs(ctx, s.ClientConfigs, clientID)
 }
 
 // clientIDOf returns a principal's client id, or "" when it has none.

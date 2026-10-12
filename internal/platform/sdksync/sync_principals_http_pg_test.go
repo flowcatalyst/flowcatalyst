@@ -15,6 +15,7 @@ import (
 	appops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -42,6 +43,7 @@ func TestSyncPrincipals_Endpoint_SetsPasswordHash(t *testing.T) {
 	s := &State{
 		Apps:       application.NewRepository(pool),
 		Principals: principal.NewRepository(pool),
+		Roles:      role.NewRepository(pool),
 		UoW:        uow,
 	}
 

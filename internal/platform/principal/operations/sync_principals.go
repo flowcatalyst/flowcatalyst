@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -73,18 +74,30 @@ type SyncPrincipalsCommand struct {
 // An application's provisioned service account is anchor-tier, so reach does
 // not narrow it; its own roles bound what it can hand out.
 //
+// Application confinement (F12, as Java's requireSyncableRoles): on the
+// application's route every role named must be that application's, whoever
+// the caller (requireApplicationRoles, 403 ROLE_APP_FORBIDDEN); on the platform
+// route a non-anchor may name only roles it could assign through
+// PUT /api/principals/{id}/roles, application roles of an application the
+// target's home client is entitled to, so none on a principal the sync creates
+// (RequireAssignableRoles: 400 UNKNOWN_ROLE, 403 PLATFORM_ROLE_FORBIDDEN or
+// ROLE_APP_FORBIDDEN). An anchor may name any role there, as before.
+// clientConfigs resolves the entitlements; the application's route does not
+// use it (nil is fine there).
+//
 // The role ceiling (role.RequireRolesWithinCaller, F8) bounds every role the
 // sync adds or removes, on both entry points: the caller must hold each such
 // role's platform permissions, or the whole sync is refused with 403
 // ROLE_ABOVE_CALLER and nothing is written. Application roles holding only
 // their application's permissions pass for any caller, so an SDK syncing its
-// own roles is unaffected. (Java exempts its app-scoped route because it
-// confines that route to the application's own roles; Go does not, so the
-// ceiling is what stops it handing out platform roles.)
+// own roles is unaffected. On the application's route confinement already
+// stops platform roles; the ceiling stops an own-application role a
+// super-admin gave platform permissions (Java and Rust do the same since
+// Go's F8).
 //
 // Emits per-row [UserCreated]/[UserUpdated] events plus one [PrincipalsSynced]
 // rollup, all atomic with the writes via [usecaseop.Sync].
-func SyncPrincipals(principals *principal.Repository, roles *role.Repository) usecaseop.Operation[SyncPrincipalsCommand, PrincipalsSynced] {
+func SyncPrincipals(principals *principal.Repository, roles *role.Repository, clientConfigs *application.ClientConfigRepo) usecaseop.Operation[SyncPrincipalsCommand, PrincipalsSynced] {
 	return usecaseop.Operation[SyncPrincipalsCommand, PrincipalsSynced]{
 		Name: "SyncPrincipals",
 		Validate: func(_ context.Context, cmd SyncPrincipalsCommand) error {
@@ -137,8 +150,10 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository) us
 				syncedEmails = append(syncedEmails, email)
 				syncedSet[email] = struct{}{}
 
+				names := make([]string, 0, len(in.Roles))
 				roleAssignments := make([]serviceaccount.RoleAssignment, 0, len(in.Roles))
 				for _, r := range in.Roles {
+					names = append(names, strings.ToLower(r))
 					roleAssignments = append(roleAssignments, serviceaccount.RoleAssignment{
 						Role:             strings.ToLower(r),
 						AssignmentSource: &sdkSource,
@@ -153,6 +168,9 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository) us
 				if existing != nil && !administers(ac, existing) {
 					return nil, usecase.Authorization("SYNC_TARGET_FORBIDDEN",
 						"Not authorised to manage principal '"+email+"'")
+				}
+				if err := requireSyncableRoles(ctx, roles, clientConfigs, ac, cmd.ApplicationCode, names, existing); err != nil {
+					return nil, err
 				}
 				if existing != nil {
 					// Merge: keep non-SDK_SYNC assignments, replace the SDK_SYNC set.
@@ -290,4 +308,31 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository) us
 			return usecaseop.Sync(principal.RolesPersister{Repository: principals}, saves, nil, rollup), nil
 		},
 	}
+}
+
+// requireSyncableRoles is the sync's role rule (F12): on an application's
+// route every name is that application's; on the platform route a non-anchor
+// names only roles assignable to target (nil: a principal the sync creates,
+// which has no client, so no role at all).
+func requireSyncableRoles(ctx context.Context, roles *role.Repository, clientConfigs *application.ClientConfigRepo,
+	ac *auth.AuthContext, applicationCode string, names []string, target *principal.Principal,
+) error {
+	if len(names) == 0 {
+		return nil
+	}
+	if applicationCode != "" {
+		return requireApplicationRoles(ctx, roles, applicationCode, names)
+	}
+	if ac.IsAnchor() {
+		return nil
+	}
+	clientID := ""
+	if target != nil && target.ClientID != nil {
+		clientID = string(*target.ClientID)
+	}
+	allowed, err := ClientApplicationIDs(ctx, clientConfigs, clientID)
+	if err != nil {
+		return err
+	}
+	return RequireAssignableRoles(ctx, roles, names, allowed)
 }
