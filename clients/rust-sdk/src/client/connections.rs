@@ -1,6 +1,7 @@
 //! Connection management operations.
 
 use super::{ClientError, FlowCatalystClient};
+use crate::client::SyncResult;
 use crate::client::seg;
 use serde::{Deserialize, Serialize};
 
@@ -79,6 +80,29 @@ pub struct ConnectionResponse {
     pub updated_at: String,
 }
 
+/// Request body for `POST /api/applications/{appCode}/connections/sync`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncConnectionsRequest {
+    /// Scope the sync to one client. Absent syncs the application's global
+    /// connections.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    pub connections: Vec<SyncConnectionItem>,
+}
+
+/// A connection item for sync (`SyncConnectionInputRequest`).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncConnectionItem {
+    pub code: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_id: Option<String>,
+}
+
 /// Connections resource accessor — created via [`FlowCatalystClient::connections`].
 #[derive(Debug, Clone, Copy)]
 pub struct Connections<'a> {
@@ -136,6 +160,33 @@ impl Connections<'_> {
     pub async fn pause(&self, id: &str) -> Result<ConnectionResponse, ClientError> {
         self.client
             .post_action(&format!("/api/connections/{}/pause", seg(id)))
+            .await
+    }
+
+    /// Sync connections for an application — declarative reconciliation
+    /// against `POST /api/applications/{appCode}/connections/sync`.
+    /// `removeUnlisted=true` is sent only when `remove_unlisted` is set.
+    pub async fn sync(
+        &self,
+        app_code: &str,
+        req: &SyncConnectionsRequest,
+        remove_unlisted: bool,
+    ) -> Result<SyncResult, ClientError> {
+        let params: Vec<(&str, String)> = if remove_unlisted {
+            vec![("removeUnlisted", "true".to_string())]
+        } else {
+            Vec::new()
+        };
+        let query = FlowCatalystClient::query_string(&params);
+        self.client
+            .post(
+                &format!(
+                    "/api/applications/{}/connections/sync{}",
+                    seg(app_code),
+                    query
+                ),
+                req,
+            )
             .await
     }
 
@@ -205,6 +256,33 @@ mod tests {
                 ("status".to_string(), "ACTIVE".to_string()),
                 ("clientId".to_string(), "clt_1".to_string())
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn sync_posts_body_and_remove_unlisted_only_when_set() {
+        let ok = r#"{"applicationCode":"orders","created":1,"updated":0,"deleted":0,"syncedCodes":["billing"]}"#;
+        let stub =
+            MockPlatform::start(&[("POST", "/api/applications/orders/connections/sync", 200, ok)])
+                .await;
+        let req = SyncConnectionsRequest {
+            client_id: Some("clt_1".into()),
+            connections: vec![SyncConnectionItem {
+                code: "billing".into(),
+                name: "Billing".into(),
+                ..Default::default()
+            }],
+        };
+        let c = stub.client();
+        let r = c.connections().sync("orders", &req, false).await.unwrap();
+        assert_eq!(r.synced_codes, vec!["billing".to_string()]);
+        c.connections().sync("orders", &req, true).await.unwrap();
+        let reqs = stub.requests();
+        assert_eq!(reqs[0].query, "");
+        assert_eq!(reqs[1].query, "removeUnlisted=true");
+        assert_eq!(
+            reqs[0].json(),
+            serde_json::json!({"clientId":"clt_1","connections":[{"code":"billing","name":"Billing"}]})
         );
     }
 }

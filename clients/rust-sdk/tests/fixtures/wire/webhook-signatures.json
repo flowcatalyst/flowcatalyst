@@ -1,0 +1,23 @@
+[
+  {
+    "name": "shared SDK vector (Java/TS/Laravel)",
+    "secret": "secret",
+    "timestamp": "2026-08-07T09:32:12.123Z",
+    "body": "hello",
+    "signature": "a7d62aade7a79e88792f84e035b72788a3c78a30f46ad265ec8d6fb12a4e9f91"
+  },
+  {
+    "name": "router mediation payload, millisecond ISO-8601",
+    "secret": "test-secret-do-not-use-in-prod",
+    "timestamp": "2026-05-24T08:30:00.123Z",
+    "body": "{\"messageId\":\"msg_TEST123456\"}",
+    "signature": "0278cfb47ccbf20a2356584cca6e076cbade089ccc961dbe553f0e768cbf9059"
+  },
+  {
+    "name": "Unix-seconds timestamp, UTF-8 body",
+    "secret": "s3crét",
+    "timestamp": "1786095132",
+    "body": "{\"name\":\"Zoë\",\"emoji\":\"✓\"}",
+    "signature": "b059d3518989f4f1fa649fe7295432f389337d7ade30f185684d013e1c07a3ca"
+  }
+]

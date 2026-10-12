@@ -1,0 +1,60 @@
+# Supply-chain policy for flowcatalyst-sdk, which applications link into their
+# own code. Mirrors the platform's deny-sdk.toml (flowcatalyst-rust): no
+# strong-copyleft licence (AGPL, GPL, LGPL) may reach an application through
+# this crate. Run from this directory:
+#
+#   cargo deny --all-features check
+#
+# (`make deny`). Advisories, bans and sources are checked too.
+
+[graph]
+all-features = true
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+
+[licenses]
+confidence-threshold = 0.9
+unused-allowed-license = "allow"
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "CC0-1.0",
+    "BSL-1.0",
+    "Unlicense",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "CDLA-Permissive-2.0",
+]
+exceptions = []
+
+[licenses.private]
+ignore = false
+
+[advisories]
+# The `rsa` crate (pulled in by jsonwebtoken's `rust_crypto` backend, `auth`
+# feature only) has the Marvin timing side channel. It affects RSA private-key
+# operations (decryption, signing); this crate only verifies RS256 signatures
+# with public keys, which the advisory does not cover. No fixed `rsa` exists.
+ignore = [
+    { id = "RUSTSEC-2023-0071", reason = "public-key RS256 verification only (auth feature); no private-key operations" },
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

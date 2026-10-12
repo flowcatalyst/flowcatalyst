@@ -8,7 +8,9 @@
 //! be assembled inline at the call site.
 
 use crate::client::SyncEventTypeItem;
+use crate::client::connections::SyncConnectionItem;
 use crate::client::dispatch_pools::SyncDispatchPoolItem;
+use crate::client::docs::SyncDocItem;
 use crate::client::principals::SyncPrincipalItem;
 use crate::client::processes::SyncProcessInput;
 use crate::client::roles::SyncRoleItem;
@@ -21,8 +23,12 @@ use crate::client::subscriptions::{SyncEventTypeBinding, SyncSubscriptionItem};
 
 /// A role declaration.
 ///
-/// `name` is the short name — the platform stores it prefixed with the
-/// application code (`"orders:" + name`). Do NOT include the prefix yourself.
+/// `name` may be the short name or the full `app:name`; the platform lowercases
+/// it and stores it prefixed with the application code (`"orders:" + name`).
+///
+/// Every permission must belong to the role's application (its first
+/// `:`-segment equals the application code); the synchronizer lowercases the
+/// permissions and fails the roles category locally otherwise.
 #[derive(Debug, Clone, Default)]
 pub struct RoleDefinition {
     pub name: String,
@@ -139,8 +145,14 @@ impl SubscriptionBinding {
     }
 }
 
-/// A subscription declaration. Either `target` (webhook URL) or
-/// `connection_id` (named connection) must end up populated.
+/// A subscription declaration.
+///
+/// `target` is always required and must resolve to an absolute `http(s)` URL.
+/// A path-style target (starting with `/`) is resolved against the
+/// synchronizer's
+/// [`with_subscription_target_base_url`](super::DefinitionSynchronizer::with_subscription_target_base_url).
+/// `connection_code` / `shared_connection` select a connection by code;
+/// `shared_connection` requires `connection_code`.
 #[derive(Debug, Clone, Default)]
 pub struct SubscriptionDefinition {
     pub code: String,
@@ -148,6 +160,8 @@ pub struct SubscriptionDefinition {
     pub description: Option<String>,
     pub target: String,
     pub connection_id: Option<String>,
+    pub connection_code: Option<String>,
+    pub shared_connection: Option<bool>,
     pub event_types: Vec<SubscriptionBinding>,
     pub dispatch_pool_code: Option<String>,
     pub mode: Option<String>,
@@ -177,6 +191,19 @@ impl SubscriptionDefinition {
 
     pub fn with_connection_id(mut self, connection_id: impl Into<String>) -> Self {
         self.connection_id = Some(connection_id.into());
+        self
+    }
+
+    /// Resolve the connection by its (environment-stable) code.
+    pub fn with_connection_code(mut self, connection_code: impl Into<String>) -> Self {
+        self.connection_code = Some(connection_code.into());
+        self
+    }
+
+    /// Resolve `connection_code` among the shared (application-less)
+    /// connections. Requires `connection_code`.
+    pub fn with_shared_connection(mut self, shared: bool) -> Self {
+        self.shared_connection = Some(shared);
         self
     }
 
@@ -222,6 +249,8 @@ impl SubscriptionDefinition {
             description: self.description,
             target: self.target,
             connection_id: self.connection_id,
+            connection_code: self.connection_code,
+            shared_connection: self.shared_connection,
             event_types: self
                 .event_types
                 .into_iter()
@@ -296,12 +325,15 @@ impl DispatchPoolDefinition {
 pub struct PrincipalDefinition {
     pub email: String,
     pub name: String,
-    /// Role short names (no `<app>:` prefix — the platform adds it).
+    /// Role names. The platform stores principal roles verbatim and does not
+    /// add the application prefix, so give the full `app:role` name. As a
+    /// convenience the synchronizer prefixes a name without a `:` with
+    /// `{app}:` (the application code, lowercased) before sending.
     pub roles: Vec<String>,
     /// Defaults to `true` if not set.
     pub active: Option<bool>,
-    /// Optional pre-hashed password, used only when the sync creates the
-    /// user (never applied to an existing one).
+    /// Optional pre-hashed password. Against the Go platform it is applied to
+    /// existing users as well as newly created ones.
     pub password_hash: Option<String>,
 }
 
@@ -326,18 +358,32 @@ impl PrincipalDefinition {
         self
     }
 
-    /// A pre-hashed password (bcrypt, argon2) for the platform to store if,
-    /// and only if, the sync creates this user.
+    /// A pre-hashed password (bcrypt, argon2) for the platform to store
+    /// verbatim — on a new user and on an existing one alike.
     pub fn with_password_hash(mut self, hash: impl Into<String>) -> Self {
         self.password_hash = Some(hash.into());
         self
     }
 
-    pub(crate) fn into_wire(self) -> SyncPrincipalItem {
+    /// Wire form for `app`: a role without `:` gets the `{app}:` prefix
+    /// (application code lowercased); a role containing `:` is sent verbatim.
+    pub(crate) fn into_wire_for_app(self, app: &str) -> SyncPrincipalItem {
+        let prefix = format!("{}:", app.to_lowercase());
+        let roles = self
+            .roles
+            .into_iter()
+            .map(|r| {
+                if r.contains(':') {
+                    r
+                } else {
+                    format!("{prefix}{r}")
+                }
+            })
+            .collect();
         SyncPrincipalItem {
             email: self.email,
             name: self.name,
-            roles: self.roles,
+            roles,
             active: self.active.unwrap_or(true),
             password_hash: self.password_hash,
         }
@@ -411,8 +457,14 @@ impl ProcessDefinition {
 ///
 /// `code` is the full identifier the platform uses (the per-application
 /// convention is `{app}:{job-name}`, but the SDK doesn't enforce a shape).
-/// `crons` accepts standard 5-field cron expressions; the platform's
-/// scheduler evaluates them in `timezone` (defaults to UTC).
+/// `crons` are 6-field, seconds-first expressions
+/// (`sec min hour dom mon dow`); the synchronizer fails the category locally
+/// for any other field count. The scheduler evaluates them in `timezone`
+/// (defaults to UTC).
+///
+/// `client_id` scopes the job to one client; it is not part of the wire item.
+/// The synchronizer groups jobs by `client_id` and sends one request per
+/// group (`None` = platform-scoped, anchor only).
 #[derive(Debug, Clone, Default)]
 pub struct ScheduledJobDefinition {
     pub code: String,
@@ -433,6 +485,7 @@ pub struct ScheduledJobDefinition {
     pub timeout_seconds: Option<i32>,
     pub delivery_max_attempts: Option<i32>,
     pub target_url: Option<String>,
+    pub client_id: Option<String>,
 }
 
 impl ScheduledJobDefinition {
@@ -494,6 +547,12 @@ impl ScheduledJobDefinition {
         self
     }
 
+    /// Scope this job to one client (sent at request level, grouped).
+    pub fn with_client_id(mut self, client_id: impl Into<String>) -> Self {
+        self.client_id = Some(client_id.into());
+        self
+    }
+
     pub(crate) fn into_wire(self) -> SyncScheduledJobItem {
         SyncScheduledJobItem {
             code: self.code,
@@ -511,16 +570,94 @@ impl ScheduledJobDefinition {
     }
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// Connection
+// ───────────────────────────────────────────────────────────────────────────
+
+/// A connection declaration (owned by the application being synced).
+#[derive(Debug, Clone, Default)]
+pub struct ConnectionDefinition {
+    pub code: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub external_id: Option<String>,
+}
+
+impl ConnectionDefinition {
+    pub fn make(code: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            name: name.into(),
+            ..Self::default()
+        }
+    }
+
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    pub fn with_external_id(mut self, external_id: impl Into<String>) -> Self {
+        self.external_id = Some(external_id.into());
+        self
+    }
+
+    pub(crate) fn into_wire(self) -> SyncConnectionItem {
+        SyncConnectionItem {
+            code: self.code,
+            name: self.name,
+            description: self.description,
+            external_id: self.external_id,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Doc
+// ───────────────────────────────────────────────────────────────────────────
+
+/// A documentation page. `slug` must match `^[a-z0-9][a-z0-9-]*$` (checked
+/// locally); `content` is Markdown.
+#[derive(Debug, Clone, Default)]
+pub struct DocDefinition {
+    pub slug: String,
+    pub content: String,
+    pub title: Option<String>,
+}
+
+impl DocDefinition {
+    pub fn make(slug: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            slug: slug.into(),
+            content: content.into(),
+            title: None,
+        }
+    }
+
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    pub(crate) fn into_wire(self) -> SyncDocItem {
+        SyncDocItem {
+            slug: self.slug,
+            content: self.content,
+            title: self.title,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::client::SyncResult;
 
-    /// Owner decision 22 of 2026-09-25: a sync carries a password hash for
-    /// users it creates; the platform reports the existing users it ignored.
+    /// A sync carries the password hash; the legacy ignored list is still read
+    /// when a platform sends it.
     #[test]
     fn principal_password_hash_is_sent_only_when_set_and_ignored_list_is_read() {
-        let plain = PrincipalDefinition::make("a@example.com", "A").into_wire();
+        let plain = PrincipalDefinition::make("a@example.com", "A").into_wire_for_app("hr");
         assert!(
             serde_json::to_value(&plain)
                 .unwrap()
@@ -530,7 +667,7 @@ mod tests {
 
         let hashed = PrincipalDefinition::make("a@example.com", "A")
             .with_password_hash("$2y$10$hash")
-            .into_wire();
+            .into_wire_for_app("hr");
         assert_eq!(
             serde_json::to_value(&hashed).unwrap()["passwordHash"],
             "$2y$10$hash"
@@ -584,10 +721,10 @@ mod tests {
     #[test]
     fn principal_active_defaults_to_true_when_unset() {
         let def = PrincipalDefinition::make("u@example.com", "User");
-        assert!(def.into_wire().active);
+        assert!(def.into_wire_for_app("app").active);
 
         let def_false = PrincipalDefinition::make("u@example.com", "User").with_active(false);
-        assert!(!def_false.into_wire().active);
+        assert!(!def_false.into_wire_for_app("app").active);
     }
 
     #[test]
@@ -625,5 +762,28 @@ mod tests {
             "orders:fulfilment:shipment:shipped"
         );
         assert_eq!(json["eventTypes"][0]["filter"], "subject like 'orders.%'");
+    }
+
+    #[test]
+    fn principal_roles_without_colon_get_the_lowercased_app_prefix() {
+        let wire = PrincipalDefinition::make("a@example.com", "A")
+            .with_roles(vec!["admin".into(), "other:viewer".into()])
+            .into_wire_for_app("HR");
+        assert_eq!(wire.roles, vec!["hr:admin", "other:viewer"]);
+    }
+
+    #[test]
+    fn subscription_wire_carries_connection_code_only_when_set() {
+        let plain = SubscriptionDefinition::make("a", "A", "https://x.example/h").into_wire();
+        let v = serde_json::to_value(&plain).unwrap();
+        assert!(v.get("connectionCode").is_none());
+        assert!(v.get("sharedConnection").is_none());
+        let with = SubscriptionDefinition::make("a", "A", "https://x.example/h")
+            .with_connection_code("billing")
+            .with_shared_connection(true)
+            .into_wire();
+        let v = serde_json::to_value(&with).unwrap();
+        assert_eq!(v["connectionCode"], "billing");
+        assert_eq!(v["sharedConnection"], true);
     }
 }

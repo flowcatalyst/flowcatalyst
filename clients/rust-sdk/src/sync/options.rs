@@ -23,10 +23,12 @@ pub struct SyncOptions {
     pub sync_event_types: bool,
     pub sync_subscriptions: bool,
     pub sync_dispatch_pools: bool,
+    pub sync_connections: bool,
     pub sync_principals: bool,
     pub sync_processes: bool,
     pub sync_scheduled_jobs: bool,
     pub sync_openapi: bool,
+    pub sync_docs: bool,
 }
 
 impl Default for SyncOptions {
@@ -44,10 +46,12 @@ impl SyncOptions {
             sync_event_types: true,
             sync_subscriptions: true,
             sync_dispatch_pools: true,
+            sync_connections: true,
             sync_principals: true,
             sync_processes: true,
             sync_scheduled_jobs: true,
             sync_openapi: true,
+            sync_docs: true,
         }
     }
 
@@ -60,10 +64,12 @@ impl SyncOptions {
             sync_event_types: false,
             sync_subscriptions: false,
             sync_dispatch_pools: false,
+            sync_connections: false,
             sync_principals: false,
             sync_processes: false,
             sync_scheduled_jobs: false,
             sync_openapi: false,
+            sync_docs: false,
         }
     }
 
@@ -105,6 +111,20 @@ impl SyncOptions {
     pub const fn dispatch_pools_only() -> Self {
         Self {
             sync_dispatch_pools: true,
+            ..Self::none()
+        }
+    }
+
+    pub const fn connections_only() -> Self {
+        Self {
+            sync_connections: true,
+            ..Self::none()
+        }
+    }
+
+    pub const fn docs_only() -> Self {
+        Self {
+            sync_docs: true,
             ..Self::none()
         }
     }
@@ -154,6 +174,16 @@ mod tests {
         assert!(opts.sync_processes);
         assert!(opts.sync_scheduled_jobs);
         assert!(opts.sync_openapi);
+        assert!(opts.sync_connections);
+        assert!(opts.sync_docs);
+    }
+
+    #[test]
+    fn connections_and_docs_only_isolate() {
+        let c = SyncOptions::connections_only();
+        assert!(c.sync_connections && !c.sync_docs && !c.sync_subscriptions);
+        let d = SyncOptions::docs_only();
+        assert!(d.sync_docs && !d.sync_connections);
     }
 
     #[test]

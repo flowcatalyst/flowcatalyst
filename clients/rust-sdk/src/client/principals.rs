@@ -170,15 +170,16 @@ pub struct SyncPrincipalsRequest {
 pub struct SyncPrincipalItem {
     pub email: String,
     pub name: String,
-    /// Role short names (without the `<app>:` prefix — the platform adds it).
+    /// Full role names (`app:role`). The platform stores them verbatim and
+    /// does NOT add the application prefix; a name that matches no role is
+    /// not assigned.
     #[serde(default)]
     pub roles: Vec<String>,
     /// Defaults to `true` server-side when omitted.
     #[serde(default = "default_true")]
     pub active: bool,
-    /// Optional pre-hashed password (bcrypt, argon2), stored verbatim on a
-    /// user the sync creates. Ignored for an existing user; the result's
-    /// `password_hash_ignored` names those.
+    /// Optional pre-hashed password (bcrypt, argon2), stored verbatim. The
+    /// Go platform applies it to existing users as well as new ones.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub password_hash: Option<String>,
 }
@@ -394,9 +395,9 @@ impl Principals<'_> {
     ///
     /// When `remove_unlisted` is true the platform strips SDK-sourced role
     /// assignments from principals not in the list (principals themselves
-    /// are never deleted by sync). A `password_hash` is used only to create a
-    /// user; the result's `password_hash_ignored` lists the existing users
-    /// whose hash was not applied.
+    /// are never deleted by sync). A `password_hash` is applied to existing
+    /// users as well as new ones; the Go platform never reports
+    /// `password_hash_ignored` (the field stays empty).
     pub async fn sync(
         &self,
         app_code: &str,
@@ -477,5 +478,19 @@ mod tests {
             stub.single().json(),
             serde_json::json!({"name": "Ann", "active": true})
         );
+    }
+
+    #[tokio::test]
+    async fn sync_item_serializes_full_role_names_and_optional_hash() {
+        let item = SyncPrincipalItem {
+            email: "a@example.com".into(),
+            name: "A".into(),
+            roles: vec!["hr:admin".into()],
+            active: true,
+            password_hash: None,
+        };
+        let v = serde_json::to_value(&item).unwrap();
+        assert_eq!(v["roles"][0], "hr:admin");
+        assert!(v.get("passwordHash").is_none());
     }
 }

@@ -28,6 +28,7 @@ pub mod audit_logs;
 pub mod clients;
 pub mod connections;
 pub mod dispatch_pools;
+pub mod docs;
 pub mod event_types;
 pub mod me;
 pub mod openapi;
@@ -64,9 +65,9 @@ pub struct SyncResult {
     pub updated: u32,
     pub deleted: u32,
     pub synced_codes: Vec<String>,
-    /// Principal syncs only: the emails whose `passwordHash` the platform
-    /// ignored because the user already existed. Empty (omitted on the wire)
-    /// otherwise.
+    /// Legacy field: the Go platform never sends it (it applies a
+    /// `passwordHash` to existing users too), so it is always empty against
+    /// Go. Kept for compatibility with platforms that report it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub password_hash_ignored: Vec<String>,
 }
@@ -77,6 +78,7 @@ pub use audit_logs::*;
 pub use clients::*;
 pub use connections::*;
 pub use dispatch_pools::*;
+pub use docs::*;
 pub use event_types::*;
 pub use me::*;
 pub use openapi::*;
@@ -246,6 +248,11 @@ impl FlowCatalystClient {
     /// OpenAPI specs — `/api/applications/{appCode}/openapi/sync`.
     pub fn openapi(&self) -> openapi::OpenApi<'_> {
         openapi::OpenApi { client: self }
+    }
+
+    /// Application documentation pages — `/api/applications/{appCode}/docs/sync`.
+    pub fn docs(&self) -> docs::Docs<'_> {
+        docs::Docs { client: self }
     }
 
     /// Roles — `/api/roles/*`.

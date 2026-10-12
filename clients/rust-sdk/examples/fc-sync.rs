@@ -51,15 +51,15 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
             RoleDefinition::make(format!("{app}:admin"))
                 .with_display_name("Billing Admin")
                 .with_permissions(vec![
-                    "invoice:create".into(),
-                    "invoice:read".into(),
-                    "invoice:void".into(),
+                    format!("{app}:invoices:invoice:create"),
+                    format!("{app}:invoices:invoice:read"),
+                    format!("{app}:invoices:invoice:void"),
                 ]),
         )
         .add_role(
             RoleDefinition::make(format!("{app}:viewer"))
                 .with_display_name("Billing Viewer")
-                .with_permissions(vec!["invoice:read".into()]),
+                .with_permissions(vec![format!("{app}:invoices:invoice:read")]),
         )
         // ── Event types ─────────────────────────────────────────────────
         .add_event_type(EventTypeDefinition::make(
@@ -84,7 +84,10 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         );
 
     let synchronizer = DefinitionSynchronizer::new(client);
-    let result = synchronizer.sync(&set, &SyncOptions::default()).await;
+    let result = synchronizer
+        .sync(&set, &SyncOptions::default())
+        .await
+        .into_result()?;
 
     println!("✓ sync complete for application '{app}'");
     println!("  roles:         {:?}", result.roles);

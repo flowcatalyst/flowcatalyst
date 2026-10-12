@@ -154,6 +154,10 @@ pub struct SubscriptionResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncSubscriptionsRequest {
+    /// Scope the sync to one client (`clientId` in the body). Absent syncs
+    /// the application's global subscriptions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
     pub subscriptions: Vec<SyncSubscriptionItem>,
 }
 
@@ -165,10 +169,18 @@ pub struct SyncSubscriptionItem {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Webhook endpoint URL
+    /// Delivery URL. Always required: an absolute `http(s)` URL.
     pub target: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub connection_id: Option<String>,
+    /// Connection code, stable across environments. Resolves a connection
+    /// owned by this application unless `shared_connection` is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_code: Option<String>,
+    /// Resolve `connection_code` among the shared (application-less)
+    /// connections. Requires `connection_code`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_connection: Option<bool>,
     pub event_types: Vec<SyncEventTypeBinding>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dispatch_pool_code: Option<String>,
@@ -295,6 +307,46 @@ impl Subscriptions<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn sync_item_carries_connection_code_and_client_id() {
+        use crate::client::test_support::MockPlatform;
+        let stub = MockPlatform::start(&[(
+            "POST",
+            "/api/applications/orders/subscriptions/sync",
+            200,
+            r#"{"applicationCode":"orders","created":1,"updated":0,"deleted":0,"syncedCodes":["a"]}"#,
+        )])
+        .await;
+        let req = SyncSubscriptionsRequest {
+            client_id: Some("clt_1".into()),
+            subscriptions: vec![SyncSubscriptionItem {
+                code: "a".into(),
+                name: "A".into(),
+                description: None,
+                target: "https://x.example/hook".into(),
+                connection_id: None,
+                connection_code: Some("billing".into()),
+                shared_connection: Some(true),
+                event_types: vec![],
+                dispatch_pool_code: None,
+                mode: None,
+                max_retries: None,
+                timeout_seconds: None,
+                data_only: false,
+            }],
+        };
+        stub.client()
+            .subscriptions()
+            .sync("orders", &req, false)
+            .await
+            .unwrap();
+        let body = stub.single().json();
+        assert_eq!(body["clientId"], "clt_1");
+        assert_eq!(body["subscriptions"][0]["connectionCode"], "billing");
+        assert_eq!(body["subscriptions"][0]["sharedConnection"], true);
+        assert!(body["subscriptions"][0].get("connectionId").is_none());
+    }
 
     /// `source` is a plain `Option<String>`, not a closed enum — a
     /// `FUNCTION`-sourced subscription (function promotion) must deserialize

@@ -160,12 +160,13 @@ impl CreateAuditLogDto {
     }
 
     /// The payload JSON written to the outbox row. `performedAt` is RFC 3339
-    /// UTC with microseconds (the platform's timestamp format).
+    /// UTC formatted as Java's `Instant.toString` (0, 3, 6 or 9 fractional
+    /// digits, `Z`), so the bytes equal the Java SDK's.
     pub fn to_payload(&self) -> Result<String, OutboxError> {
         let performed_at = self
             .performed_at
             .unwrap_or_else(Utc::now)
-            .to_rfc3339_opts(SecondsFormat::Micros, true);
+            .to_rfc3339_opts(SecondsFormat::AutoSi, true);
         Ok(serde_json::to_string(&AuditPayload {
             entity_type: &self.entity_type,
             entity_id: &self.entity_id,
@@ -203,7 +204,7 @@ mod tests {
             .performed_at(at);
         assert_eq!(
             a.to_payload().unwrap(),
-            r#"{"entityType":"Order","entityId":"o1","operation":"Create","operationData":"{\"password\":\"***\",\"total\":1}","principalId":"prn_1","performedAt":"2026-08-07T09:32:12.000000Z"}"#
+            r#"{"entityType":"Order","entityId":"o1","operation":"Create","operationData":"{\"password\":\"***\",\"total\":1}","principalId":"prn_1","performedAt":"2026-08-07T09:32:12Z"}"#
         );
     }
 }

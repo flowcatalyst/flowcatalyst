@@ -278,6 +278,7 @@ pub struct SyncScheduledJobItem {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// 6-field, seconds-first cron expressions (`sec min hour dom mon dow`).
     pub crons: Vec<String>,
     /// Defaults to `UTC` server-side.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -366,10 +367,10 @@ impl ScheduledJobs<'_> {
         code: &str,
         client_id: Option<&str>,
     ) -> Result<ScheduledJobResponse, ClientError> {
-        let query = match client_id {
-            Some(c) => format!("?clientId={}", c),
-            None => String::new(),
-        };
+        let params: Vec<(&str, String)> = client_id
+            .map(|c| vec![("clientId", c.to_string())])
+            .unwrap_or_default();
+        let query = FlowCatalystClient::query_string(&params);
         self.client
             .get(&format!(
                 "/api/scheduled-jobs/by-code/{}{}",
@@ -534,6 +535,26 @@ impl ScheduledJobs<'_> {
 mod tests {
     use super::*;
     use crate::client::test_support::MockPlatform;
+
+    #[tokio::test]
+    async fn get_by_code_encodes_the_client_id_query() {
+        let stub = MockPlatform::start(&[(
+            "GET",
+            "/api/scheduled-jobs/by-code/orders:nightly",
+            200,
+            JOB,
+        )])
+        .await;
+        stub.client()
+            .scheduled_jobs()
+            .get_by_code("orders:nightly", Some("a&b=c d"))
+            .await
+            .unwrap();
+        assert_eq!(
+            stub.single().query_pairs(),
+            vec![("clientId".to_string(), "a&b=c d".to_string())]
+        );
+    }
 
     const JOB: &str = r#"{"id":"sj_1","code":"nightly","name":"Nightly","status":"ACTIVE",
         "crons":["0 0 * * *"],"timezone":"UTC","concurrent":false,"tracksCompletion":true,

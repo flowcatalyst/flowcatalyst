@@ -33,7 +33,14 @@
 //! ```
 //!
 //! Failures are captured per-category on the returned [`SyncResult`] rather
-//! than propagated — one round-trip, full visibility.
+//! than propagated — one round-trip, full visibility. The result is
+//! `#[must_use]`; call [`SyncResult::into_result`] to turn any failed
+//! category into a [`DefinitionSyncError`] instead of checking by hand.
+//!
+//! Categories run in the order roles, event types, dispatch pools,
+//! connections, subscriptions, processes, scheduled jobs, principals,
+//! openapi, docs. Each category is validated locally first (duplicates,
+//! code shapes, URLs, ...) and fails without any request when invalid.
 //!
 //! For one-off per-category sync without bundling, use the lower-level
 //! [`crate::client::sync`] wrappers directly.
@@ -43,12 +50,14 @@ mod definitions;
 mod options;
 mod result;
 mod synchronizer;
+mod validate;
 
 pub use definition_set::DefinitionSet;
 pub use definitions::{
-    DispatchPoolDefinition, EventTypeDefinition, PrincipalDefinition, ProcessDefinition,
-    RoleDefinition, SubscriptionBinding, SubscriptionDefinition,
+    ConnectionDefinition, DispatchPoolDefinition, DocDefinition, EventTypeDefinition,
+    PrincipalDefinition, ProcessDefinition, RoleDefinition, ScheduledJobDefinition,
+    SubscriptionBinding, SubscriptionDefinition,
 };
 pub use options::SyncOptions;
-pub use result::{CategorySyncResult, SyncResult};
+pub use result::{CategorySyncResult, DefinitionSyncError, SyncResult};
 pub use synchronizer::DefinitionSynchronizer;

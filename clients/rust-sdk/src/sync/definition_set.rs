@@ -9,8 +9,9 @@
 //! same way across all three SDKs.
 
 use super::definitions::{
-    DispatchPoolDefinition, EventTypeDefinition, PrincipalDefinition, ProcessDefinition,
-    RoleDefinition, ScheduledJobDefinition, SubscriptionDefinition,
+    ConnectionDefinition, DispatchPoolDefinition, DocDefinition, EventTypeDefinition,
+    PrincipalDefinition, ProcessDefinition, RoleDefinition, ScheduledJobDefinition,
+    SubscriptionDefinition,
 };
 
 /// Container for all definitions belonging to one application.
@@ -25,6 +26,12 @@ pub struct DefinitionSet {
     pub event_types: Vec<EventTypeDefinition>,
     pub subscriptions: Vec<SubscriptionDefinition>,
     pub dispatch_pools: Vec<DispatchPoolDefinition>,
+    pub connections: Vec<ConnectionDefinition>,
+    pub docs: Vec<DocDefinition>,
+    /// Scope for the connections and subscriptions requests (`clientId` in
+    /// the body). `None` syncs the application's global rows. Scheduled jobs
+    /// are scoped per job (`ScheduledJobDefinition::client_id`) instead.
+    pub client_id: Option<String>,
     pub principals: Vec<PrincipalDefinition>,
     pub processes: Vec<ProcessDefinition>,
     pub scheduled_jobs: Vec<ScheduledJobDefinition>,
@@ -42,6 +49,40 @@ impl DefinitionSet {
             application_code: application_code.into(),
             ..Self::default()
         }
+    }
+
+    /// Like [`for_application`](Self::for_application), scoping the
+    /// connections and subscriptions requests to `client_id`.
+    pub fn for_client(application_code: impl Into<String>, client_id: impl Into<String>) -> Self {
+        Self {
+            client_id: Some(client_id.into()),
+            ..Self::for_application(application_code)
+        }
+    }
+
+    pub fn with_client_id(mut self, client_id: impl Into<String>) -> Self {
+        self.client_id = Some(client_id.into());
+        self
+    }
+
+    pub fn with_connections(mut self, connections: Vec<ConnectionDefinition>) -> Self {
+        self.connections = connections;
+        self
+    }
+
+    pub fn add_connection(mut self, connection: ConnectionDefinition) -> Self {
+        self.connections.push(connection);
+        self
+    }
+
+    pub fn with_docs(mut self, docs: Vec<DocDefinition>) -> Self {
+        self.docs = docs;
+        self
+    }
+
+    pub fn add_doc(mut self, doc: DocDefinition) -> Self {
+        self.docs.push(doc);
+        self
     }
 
     pub fn with_roles(mut self, roles: Vec<RoleDefinition>) -> Self {
@@ -137,6 +178,14 @@ impl DefinitionSet {
         !self.dispatch_pools.is_empty()
     }
 
+    pub fn has_connections(&self) -> bool {
+        !self.connections.is_empty()
+    }
+
+    pub fn has_docs(&self) -> bool {
+        !self.docs.is_empty()
+    }
+
     pub fn has_principals(&self) -> bool {
         !self.principals.is_empty()
     }
@@ -158,6 +207,8 @@ impl DefinitionSet {
             && !self.has_event_types()
             && !self.has_subscriptions()
             && !self.has_dispatch_pools()
+            && !self.has_connections()
+            && !self.has_docs()
             && !self.has_principals()
             && !self.has_processes()
             && !self.has_scheduled_jobs()
