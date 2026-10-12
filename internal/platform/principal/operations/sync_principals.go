@@ -64,6 +64,15 @@ type SyncPrincipalsCommand struct {
 // roles are now up for stripping, see removeUnlisted below), so THAT
 // combination is gated here, anchor-only, regardless of entry point.
 //
+// Target reach (F12, as Java and Rust): an existing principal is touched only
+// within the caller's reach (administers: a non-anchor reaches only
+// CLIENT-scope users homed at a client it can access). A listed email matching
+// one out of reach refuses the whole sync, 403 SYNC_TARGET_FORBIDDEN, before
+// any write; the RemoveUnlisted sweep skips such principals instead (it ranges
+// over every user, so refusing would make any non-anchor sweep impossible).
+// An application's provisioned service account is anchor-tier, so reach does
+// not narrow it; its own roles bound what it can hand out.
+//
 // The role ceiling (role.RequireRolesWithinCaller, F8) bounds every role the
 // sync adds or removes, on both entry points: the caller must hold each such
 // role's platform permissions, or the whole sync is refused with 403
@@ -100,6 +109,7 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository) us
 			return nil
 		},
 		Execute: func(ctx context.Context, cmd SyncPrincipalsCommand, ec usecase.ExecutionContext) (usecaseop.Plan[PrincipalsSynced], error) {
+			ac := auth.FromContext(ctx)
 			now := time.Now().UTC()
 			sdkSource := SdkSyncSource
 
@@ -139,6 +149,10 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository) us
 				existing, err := principals.FindByEmail(ctx, email)
 				if err != nil {
 					return nil, usecase.Internal("REPO", "find_by_email failed", err)
+				}
+				if existing != nil && !administers(ac, existing) {
+					return nil, usecase.Authorization("SYNC_TARGET_FORBIDDEN",
+						"Not authorised to manage principal '"+email+"'")
 				}
 				if existing != nil {
 					// Merge: keep non-SDK_SYNC assignments, replace the SDK_SYNC set.
@@ -223,6 +237,10 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository) us
 					if _, present := syncedSet[strings.ToLower(pr.UserIdentity.Email)]; present {
 						continue
 					}
+					// Never past the caller's reach (F12).
+					if !administers(ac, pr) {
+						continue
+					}
 					hasSdkRoles := slices.ContainsFunc(pr.Roles, belongsToThisSync)
 					if !hasSdkRoles {
 						continue
@@ -249,7 +267,7 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository) us
 				}
 			}
 
-			if err := role.RequireRolesWithinCaller(ctx, auth.FromContext(ctx), changed,
+			if err := role.RequireRolesWithinCaller(ctx, ac, changed,
 				role.PermissionsFrom(roles)); err != nil {
 				return nil, err
 			}

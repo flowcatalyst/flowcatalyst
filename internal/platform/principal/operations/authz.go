@@ -80,3 +80,20 @@ func blockNonClientTarget(ac *auth.AuthContext, p *principal.Principal) error {
 	}
 	return nil
 }
+
+// administers reports whether ac reaches p as its administrator: the scope
+// rules of requireUserAdmin (blockNonClientTarget, CanAccessScope) as a
+// boolean, without the permission. An anchor reaches every principal; anyone
+// else only CLIENT-scope principals homed at a client it can access (a
+// clientless one only as a super-admin). The principal syncs' rule for which
+// existing principals they may touch (F12; Java Access.administers, Rust
+// principal::operations::sync::administers).
+func administers(ac *auth.AuthContext, p *principal.Principal) bool {
+	if ac == nil || p == nil {
+		return false
+	}
+	if !ac.IsAnchor() && p.Scope != principal.ScopeClient {
+		return false
+	}
+	return auth.CanAccessScope(ac, ids.StringPtr(p.ClientID))
+}
