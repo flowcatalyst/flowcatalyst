@@ -101,9 +101,11 @@ type HandlerContext struct {
 // errors are forwarded to the runner's OnError hook (if configured)
 // and then swallowed; logging failures never fail the handler.
 func (h *HandlerContext) Log(ctx context.Context, message string, opts *LogOptions) {
-	req := &client.InstanceLogRequest{Message: message}
+	req := &client.InstanceLogRequest{Message: message, Level: client.LogLevelInfo}
 	if opts != nil {
-		req.Level = client.LogLevel(opts.Level)
+		if opts.Level != "" {
+			req.Level = client.LogLevel(opts.Level)
+		}
 		req.Metadata = opts.Metadata
 	}
 	if _, err := h.api.ScheduledJobs().LogForInstance(ctx, h.instanceID, req); err != nil {

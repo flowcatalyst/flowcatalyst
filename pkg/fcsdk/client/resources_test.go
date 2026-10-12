@@ -345,3 +345,34 @@ func TestRolesListForApplication(t *testing.T) {
 	require.Len(t, r.Roles, 1)
 	assert.Equal(t, "orders:admin", r.Roles[0].Name)
 }
+
+// GET /api/scheduled-jobs/instances/{id}/logs answers a bare array of log
+// lines (the platform's []ScheduledJobInstanceLogResponse). Before the fix
+// ListInstanceLogs decoded it into a {logs,total} object and failed.
+func TestScheduledJobsListInstanceLogsDecodesTheArray(t *testing.T) {
+	srv, seen := newMockSrv(t, `[{"id":"sjl_1","instanceId":"sji_1","scheduledJobId":"sjb_1","level":"INFO","message":"starting","metadata":{"n":1},"createdAt":"2026-10-12T09:30:00.123456Z"},`+
+		`{"id":"sjl_2","instanceId":"sji_1","level":"ERROR","message":"failed","createdAt":"2026-10-12T09:30:01.000000Z"}]`)
+	c := client.New(srv.URL)
+
+	r, err := c.ScheduledJobs().ListInstanceLogs(context.Background(), "sji_1")
+	require.NoError(t, err)
+	assert.Equal(t, "/api/scheduled-jobs/instances/sji_1/logs", seen.path)
+	require.Len(t, r.Logs, 2)
+	assert.Equal(t, uint64(2), r.Total)
+	assert.Equal(t, "starting", r.Logs[0].Message)
+	assert.Equal(t, "sjb_1", r.Logs[0].ScheduledJobID)
+	assert.JSONEq(t, `{"n":1}`, string(r.Logs[0].Metadata))
+	assert.Equal(t, "ERROR", r.Logs[1].Level)
+}
+
+// LogForInstance sends INFO when the request has no level: the platform
+// requires one.
+func TestScheduledJobsLogForInstanceDefaultsTheLevel(t *testing.T) {
+	srv, seen := newMockSrv(t, ``)
+	c := client.New(srv.URL)
+
+	_, err := c.ScheduledJobs().LogForInstance(context.Background(), "sji_1", &client.InstanceLogRequest{Message: "hello"})
+	require.NoError(t, err)
+	assert.Equal(t, "/api/scheduled-jobs/instances/sji_1/log", seen.path)
+	assert.JSONEq(t, `{"message":"hello","level":"INFO"}`, seen.body)
+}

@@ -54,8 +54,13 @@ func newPlatform(t *testing.T) (*httptest.Server, *platformMock) {
 			pm.mu.Lock()
 			pm.logs = append(pm.logs, logEntry{InstanceID: instanceID, Body: body})
 			pm.mu.Unlock()
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"id":"lg_1","instanceId":"` + instanceID + `","level":"INFO","message":"","createdAt":""}`))
+			// The platform requires level and message (WriteInstanceLogRequest)
+			// and answers 204 No Content.
+			if body.Level == "" || body.Message == "" {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
 		case "complete":
 			var body client.InstanceCompleteRequest
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
@@ -125,6 +130,32 @@ func TestProcessDispatchesHandlerAndReportsSuccess(t *testing.T) {
 	assert.JSONEq(t, `{"processed":42}`, string(pm.complete.Body.Result))
 	require.Len(t, pm.logs, 1)
 	assert.Equal(t, "starting", pm.logs[0].Body.Message)
+	assert.Equal(t, client.LogLevelInfo, pm.logs[0].Body.Level, "level is required by the platform; INFO by default")
+}
+
+// HandlerContext.Log always sends a level (the platform requires one): INFO
+// when no options or an empty level are given, the given level otherwise.
+// Before the fix it omitted level, and the platform refused every line.
+func TestLogSendsALevel(t *testing.T) {
+	srv, pm := newPlatform(t)
+	var errs atomic.Int32
+	r := scheduledjobs.NewBuilder(client.New(srv.URL), lock.NewNoOp()).
+		Handler("daily", func(ctx context.Context, hctx *scheduledjobs.HandlerContext) (json.RawMessage, error) {
+			hctx.Log(ctx, "no options", nil)
+			hctx.Log(ctx, "empty level", &scheduledjobs.LogOptions{})
+			hctx.Log(ctx, "warned", &scheduledjobs.LogOptions{Level: "WARN"})
+			return nil, nil
+		}).
+		OnError(func(error, *scheduledjobs.Envelope) { errs.Add(1) }).
+		Build()
+
+	r.Process(makeEnvelope("daily", "ins_lvl", false))
+	r.Wait()
+	require.Len(t, pm.logs, 3)
+	assert.Equal(t, client.LogLevelInfo, pm.logs[0].Body.Level)
+	assert.Equal(t, client.LogLevelInfo, pm.logs[1].Body.Level)
+	assert.Equal(t, client.LogLevelWarn, pm.logs[2].Body.Level)
+	assert.Zero(t, errs.Load(), "no log call was refused")
 }
 
 func TestProcessReportsHandlerFailure(t *testing.T) {

@@ -57,10 +57,12 @@ const (
 	LogLevelError LogLevel = "ERROR"
 )
 
-// InstanceLogRequest — append a log entry to a running instance.
+// InstanceLogRequest — append a log entry to a running instance. The
+// platform requires Level; LogForInstance sends LogLevelInfo when it is
+// empty.
 type InstanceLogRequest struct {
 	Message  string          `json:"message"`
-	Level    LogLevel        `json:"level,omitempty"`
+	Level    LogLevel        `json:"level"`
 	Metadata json.RawMessage `json:"metadata,omitempty"`
 }
 
@@ -150,12 +152,14 @@ type ScheduledJobInstanceResponse struct {
 
 // InstanceLogResponse — one log line from an instance.
 type InstanceLogResponse struct {
-	ID         string          `json:"id"`
-	InstanceID string          `json:"instanceId"`
-	Level      string          `json:"level"`
-	Message    string          `json:"message"`
-	Metadata   json.RawMessage `json:"metadata,omitempty"`
-	CreatedAt  string          `json:"createdAt"`
+	ID             string          `json:"id"`
+	InstanceID     string          `json:"instanceId"`
+	ScheduledJobID string          `json:"scheduledJobId,omitempty"`
+	ClientID       string          `json:"clientId,omitempty"`
+	Level          string          `json:"level"`
+	Message        string          `json:"message"`
+	Metadata       json.RawMessage `json:"metadata,omitempty"`
+	CreatedAt      string          `json:"createdAt"`
 }
 
 // ScheduledJobListResponse — paginated list for List().
@@ -176,7 +180,10 @@ type ScheduledJobInstanceListResponse struct {
 	TotalPages uint32                         `json:"totalPages"`
 }
 
-// InstanceLogListResponse — GET /api/scheduled-jobs/instances/{id}/logs.
+// InstanceLogListResponse — the log lines of an instance. The platform
+// answers GET /api/scheduled-jobs/instances/{id}/logs with a bare array (at
+// most 500 lines, oldest first); ListInstanceLogs wraps it, with Total the
+// number of lines returned.
 type InstanceLogListResponse struct {
 	Logs  []InstanceLogResponse `json:"logs"`
 	Total uint64                `json:"total,omitempty"`
@@ -362,18 +369,27 @@ func (r *ScheduledJobsResource) GetInstance(ctx context.Context, instanceID stri
 
 // ListInstanceLogs — GET /api/scheduled-jobs/instances/{id}/logs.
 func (r *ScheduledJobsResource) ListInstanceLogs(ctx context.Context, instanceID string) (*InstanceLogListResponse, error) {
-	var out InstanceLogListResponse
-	if err := r.c.Get(ctx, "/api/scheduled-jobs/instances/"+instanceID+"/logs", &out); err != nil {
+	var logs []InstanceLogResponse
+	if err := r.c.Get(ctx, "/api/scheduled-jobs/instances/"+instanceID+"/logs", &logs); err != nil {
 		return nil, err
 	}
-	return &out, nil
+	return &InstanceLogListResponse{Logs: logs, Total: uint64(len(logs))}, nil
 }
 
 // LogForInstance — SDK callback to append a log entry to a running instance.
-// POST /api/scheduled-jobs/instances/{id}/log.
+// POST /api/scheduled-jobs/instances/{id}/log. An empty Level is sent as
+// LogLevelInfo (the platform requires one). The platform answers 204 No
+// Content, so the returned response is empty.
 func (r *ScheduledJobsResource) LogForInstance(ctx context.Context, instanceID string, req *InstanceLogRequest) (*InstanceLogResponse, error) {
+	body := InstanceLogRequest{}
+	if req != nil {
+		body = *req
+	}
+	if body.Level == "" {
+		body.Level = LogLevelInfo
+	}
 	var out InstanceLogResponse
-	if err := r.c.Post(ctx, "/api/scheduled-jobs/instances/"+instanceID+"/log", req, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/scheduled-jobs/instances/"+instanceID+"/log", &body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
