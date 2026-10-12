@@ -17,7 +17,7 @@ func TestAuditPayloadIsRedactedBeforeItReachesTheOutbox(t *testing.T) {
 	payload, err := buildAuditPayload(testEvent{}, webhookCmd{
 		Code:               "sa-1",
 		WebhookCredentials: map[string]string{"token": "leaked-token", "signingSecret": "leaked-secret", "authType": "HMAC_SIGNATURE"},
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -21,6 +21,12 @@ type Config struct {
 	// should only enable this for admin / human-initiated operations,
 	// not for every transactional event.
 	AuditEnabled bool
+	// ApplicationCode, when set, is written as each audit row's
+	// applicationCode, attributing it to the application. The platform
+	// requires it when the credential the outbox processor uses is
+	// application-scoped (an application's own service account), and
+	// refuses the row otherwise.
+	ApplicationCode string
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -73,7 +79,7 @@ func (s *Sink) WriteAudit(ctx context.Context, tx *usecasepgx.DbTx, event usecas
 	if !s.cfg.AuditEnabled {
 		return nil
 	}
-	payload, err := buildAuditPayload(event, command)
+	payload, err := buildAuditPayload(event, command, s.cfg.ApplicationCode)
 	if err != nil {
 		return err
 	}
@@ -89,9 +95,11 @@ VALUES ($1, 'AUDIT_LOG', $2, $3, 0, 0, NOW(), NOW(), $4, $5)`
 	return err
 }
 
-// buildEventPayload serializes a domain event into the snake_case JSON
-// shape the outbox processor parses. The shape is byte-for-byte
-// identical across SDKs.
+// buildEventPayload serializes a domain event into the JSON the outbox
+// processor sends to POST /api/events/batch. Its snake_case members are the
+// aliases that endpoint accepts beside the camelCase ones the other SDKs
+// write; data is the object itself (the other SDKs send it JSON-encoded as a
+// string, which the platform unwraps at ingest).
 func buildEventPayload(event usecase.DomainEvent) ([]byte, error) {
 	data, err := event.ToDataJSON()
 	if err != nil {
@@ -123,8 +131,12 @@ func buildEventPayload(event usecase.DomainEvent) ([]byte, error) {
 	return json.Marshal(payload)
 }
 
-// buildAuditPayload serializes an audit log row.
-func buildAuditPayload(event usecase.DomainEvent, command any) ([]byte, error) {
+// buildAuditPayload serializes an audit log row in the shape
+// POST /api/audit-logs/batch reads (its AuditBatchItem, camelCase only):
+// entityType, entityId, operation, operationData (the redacted command, as
+// an object), principalId, performedAt (RFC 3339) and, when configured,
+// applicationCode. The platform refuses a row without principalId.
+func buildAuditPayload(event usecase.DomainEvent, command any, applicationCode string) ([]byte, error) {
 	// Redacted before it reaches the outbox (usecase.RedactAuditJSON).
 	cmdJSON, err := usecase.RedactedAuditCommand(command)
 	if err != nil {
@@ -143,12 +155,15 @@ func buildAuditPayload(event usecase.DomainEvent, command any) ([]byte, error) {
 	}
 
 	payload := map[string]any{
-		"entity_type":    usecase.ExtractAggregateType(event.Subject()),
-		"entity_id":      usecase.ExtractEntityID(event.Subject()),
-		"operation":      cmdName,
-		"operation_json": json.RawMessage(cmdJSON),
-		"principal_id":   event.PrincipalID(),
-		"performed_at":   event.Time().UTC().Format("2006-01-02T15:04:05.000000000Z07:00"),
+		"entityType":    usecase.ExtractAggregateType(event.Subject()),
+		"entityId":      usecase.ExtractEntityID(event.Subject()),
+		"operation":     cmdName,
+		"operationData": json.RawMessage(cmdJSON),
+		"principalId":   event.PrincipalID(),
+		"performedAt":   event.Time().UTC().Format("2006-01-02T15:04:05.000000000Z07:00"),
+	}
+	if applicationCode != "" {
+		payload["applicationCode"] = applicationCode
 	}
 	return json.Marshal(payload)
 }
