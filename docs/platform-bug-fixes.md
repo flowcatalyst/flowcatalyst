@@ -1040,7 +1040,8 @@ failed before its fix.
   jobs. Proposal for the owner: Java's events rule (explicit `clientId` wins; a known code resolves
   and must pass the client guard; an unknown code 403 for a non-anchor and, unlike Java's events,
   also 400 for an anchor, since a job is not a fact to keep), the same on the singular
-  `POST /api/dispatch-jobs` (it shares `BatchItem`), mirrored in Java and Rust.
+  `POST /api/dispatch-jobs` (it shares `BatchItem`), mirrored in Java and Rust. **Ruled and
+  implemented in F14.**
 - **Wire impact**: `passwordHashIgnored` added to `SyncUsersResponse` and `SyncResultResponse`
   (optional, omitted when empty), and both `passwordHash` descriptions; the lock and the SPA's
   generated types were regenerated (`make api-bump`, `pnpm api:generate`). The application sync
@@ -1070,6 +1071,107 @@ failed before its fix.
   them). **To mirror**: the ingest unwrap (Java `IngestApi` and Rust `batch_create_events` /
   `sdk_audit_batch_api.rs` store the string as sent), and the own-role merge's keep-the-existing-
   source rule in Rust (not checked).
+
+### F14. Ingest client guard, dispatch-job `clientCode`, default event `source` (owner rulings 2026-10-12)
+
+The shared helpers are in `internal/platform/shared/sdk/client_code.go` (`ClientCodes`, a
+per-request memoised `clientCode` → client id resolver, one `FindByIdentifier` per distinct code;
+`NonBlank`; `RequireWritableClient`; `ResolveEventClient`; `ResolveJobClient`). Throughout, a
+`clientId` or `clientCode` that is absent, `null`, empty or only whitespace counts as not given
+(Rust's `non_blank`; before, a blank `clientId` was stored as `""` for an anchor and refused for
+anyone else).
+
+- **Dispatch-jobs `clientCode`** (F13's design question; framework `write-path.md` 7a, Rust SDK
+  README 5). **Fix** (`fe25501`): `POST /api/dispatch-jobs/batch` items and the singular
+  `POST /api/dispatch-jobs` body accept `clientCode` (the client's identifier slug; never stored).
+  **The rule** (`ResolveJobClient`), in order:
+  1. a `clientId` wins (the code is then ignored, even one naming another client) and must pass
+     the existing guard: 403 `FORBIDDEN` "No access to client: `<clientId>`";
+  2. else a `clientCode` that names a client the caller reaches resolves to that client;
+  3. a code naming a client the caller does not reach, **or no client**, from a non-anchor: 403
+     `FORBIDDEN` "No access to client: `<clientCode>`" (one refusal for both, naming the code: it
+     neither confirms that a code exists nor reveals another tenant's client id);
+  4. a code naming no client from an anchor: **400 `CLIENT_NOT_FOUND` "Client not found:
+     `<clientCode>`"** (the shape Go uses for an unknown reference in a body: `ROLE_NOT_FOUND`
+     "Role not found: …", `APPLICATION_NOT_FOUND` "Application not found: …"; 400 is terminal in
+     the outbox processor, which retries a 404). A job is never written unscoped because of an
+     unknown code: unscoped, it would be delivered with no `X-FlowCatalyst-Client` header;
+  5. neither: no client (unchanged; see the open divergence below).
+
+  As before on this route, any refusal rejects the whole batch before anything is written (no
+  `items[i]` prefix, as the client guard had none). No platform-scoped refusal was added here (not
+  in the ruling). The routes are chi-mounted, outside the OpenAPI lock: no lock change.
+- **Events client guard** (F13 "new findings"). `POST /api/events/batch` (and `/bff/events/batch`,
+  the same handler) stored any `clientId`, or the client a `clientCode` resolved to, with no
+  access check, and wrote a platform-scoped event for any caller; the singular `POST /api/events`
+  checked access but let a non-anchor with no clients write a platform-scoped event. **Fix**
+  (`abd2ae9`, Java `IngestApi.requireWritableClient`, Rust
+  `caller_reach::require_writable_client`, their codes and messages):
+  - `RequireWritableClient`: a `clientId` the caller cannot reach is 403 `FORBIDDEN` "No access to
+    client: `<clientId>`". With no client: an anchor writes a platform-scoped event; a caller whose
+    `clients` is exactly one id (not `*`) writes under that client; anyone else is 403 `FORBIDDEN`
+    "clientId is required: a client-scoped caller cannot write platform-scoped rows".
+  - Batch (`ResolveEventClient`): a `clientId` wins and goes through `RequireWritableClient`; else a
+    `clientCode` naming a client the caller reaches resolves to it; one naming another client or
+    none is 403 `FORBIDDEN` "No access to client: `<clientCode>`" for a non-anchor; an anchor's
+    unknown code leaves the event platform-scoped (Java's and Rust's rule, F13's "the event is a
+    fact"); no client at all goes through `RequireWritableClient`. Order per item: the per-item
+    `BAD_REQUEST` checks (type, source, data), then application confinement (per item), then the
+    client guard, whose refusal rejects the **whole batch** (nothing written), as Java and Rust.
+  - Singular: unchanged default (no `clientId` from a non-anchor with clients: its first client;
+    Java's §5 D3), then `RequireWritableClient`. No `clientCode` on the singular (as Java).
+  - Application-scoped service accounts are unaffected: every application-provisioned account is
+    `ANCHOR` (`serviceaccount/operations/client_reach.go`); the confinement tests still pass.
+    A client-linked account (`CLIENT`, one client) now writes its events under its client when it
+    names none (before: platform-scoped).
+- **Events without `source`** (F13 "new findings", Rust SDK README 10). **Fix** (`4c3654a`): both
+  `POST /api/events/batch` and `POST /api/events` default an absent, `null` or blank `source`
+  instead of refusing it. **The default**: the event type's `{application}:{subdomain}`, its first
+  two `:` segments of the trimmed type (`orders:sales:order:created` → `orders:sales`); the first
+  segment alone when there is no non-blank second (`orders` → `orders`). **Evidence**: every
+  platform event carries exactly that (`platform:admin` for `platform:admin:client:created`), the
+  framework's event metadata rule is source = `{application}:{domain}` (`write-path.md` §6), the
+  Go SDK's domain events do the same (`gosdk:sales`), and the framework already defaults a
+  dispatch job's source from its code's application segment (7a). It depends on the event alone
+  (not on the caller, so all three platforms compute it identically), and the caller's
+  application code is not knowable for an all-applications credential. Java and Rust refuse it in
+  the batch ("source is required"); Java's singular stores `""`, Rust's singular requires it. A
+  type with a blank first segment (`:sales:order:created`) still answers "source is required"
+  (batch item `BAD_REQUEST`, singular 400 `VALIDATION`). A given source is stored as sent.
+  `CreateEventRequest.source` is no longer required (lock and SPA types regenerated, both
+  `source` descriptions state the default). The Rust SDK's `event-minimal.json` now passes the
+  batch handler (`encoded_data_pg_test.go`, stored source `orders:sales`).
+- **Wire impact**: dispatch-job items and the singular body gained optional `clientCode`; a
+  dispatch-job batch with an unknown code is now refused (400 for an anchor, 403 otherwise) where
+  the code was ignored; event ingest now 403s writes it accepted (above); `source` optional on
+  `CreateEventRequest`, and a missing source succeeds where it was 400/`BAD_REQUEST`. Documented in
+  `docs/wire-contract.md` ("SDK ingest: client and source").
+- **Tests** (each failed before its fix): `shared/sdk/dispatch_job_client_code_pg_test.go`
+  (`TestDispatchJobs_ClientCode`: anchor resolves a code, explicit id wins, blank code ignored,
+  unknown code 400 and nothing of the batch written, client-scoped own code resolves, another
+  client's code and an unknown code the same 403 naming the code, the singular route's three
+  cases); `event/api/client_guard_pg_test.go` (`TestEventIngest_ClientGuard`: the three 403s with
+  a valid item before them not written, own id/code/none, explicit id over code, partner and
+  no-client callers refused without a client, an anchor's known, unknown and absent code, per-item
+  validation before the guard, the singular route); `event/api/source_default_pg_test.go`
+  (`TestEventIngest_DefaultsAMissingSource`: absent, `null`, blank, snake_case type, given, one-
+  and two-segment types, blank application; the singular route through huma); and
+  `event/api/encoded_data_pg_test.go` (the minimal fixture now `SUCCESS`).
+- **Java/Rust mirror** (Java `IngestApi`, Rust `fc-platform-messaging` `shared/batch_api.rs`,
+  `event/api.rs`, `dispatch_job/api.rs`, `fc-platform-core` `caller_reach.rs`):
+  1. Dispatch-job `clientCode` on the batch item and the singular body, with `ResolveJobClient`'s
+     rule and codes above (neither accepts the field today).
+  2. Event `source` default in both event routes (Java `invalidBatchEventItem` and
+     `EventIngestMapper`, which stores `""` on the singular; Rust `batch_api.rs` line ~178 and the
+     singular `CreateEventRequest.source: String`).
+  3. A `clientCode` that resolves to a client the caller cannot reach: Go answers "No access to
+     client: `<clientCode>`"; Java and Rust pass the resolved id to `requireWritableClient`, so
+     their message carries the other tenant's client id (and differs from the unknown-code
+     message, confirming the code exists). Mirror Go's message.
+  4. Java treats only `null` as no `clientId` (a blank one is refused for a non-anchor, stored
+     `""` for an anchor); Go and Rust treat blank as absent.
+  Already identical: the events guard's statuses, codes and messages, the single-client default,
+  whole-batch refusal, the anchor's unknown-code-unscoped rule.
 
 ## Decisions taken conservatively (owner to confirm)
 
@@ -1125,7 +1227,13 @@ failed before its fix.
     (so Java's `"null"` stays a string rather than refusing the event), and leaves the singular
     `POST /api/events` alone. Already-stored string rows are not migrated. The Go SDK gained
     `Config.ApplicationCode` for application-scoped credentials. Dispatch-jobs `clientCode` is not
-    implemented (design question in F13).
+    implemented (design question in F13; ruled and implemented in F14).
+21. Ingest (F14): an anchor's unknown dispatch-job `clientCode` is 400 `CLIENT_NOT_FOUND`, a
+    non-anchor's 403 "No access to client: `<clientCode>`" (the same as another tenant's code, and
+    the same for events); a code-resolved refusal names the code, not the resolved id (Java and
+    Rust name the id); blank `clientId`/`clientCode` count as absent; the dispatch-job routes did
+    not gain the platform-scoped refusal. The missing event `source` defaults to the type's
+    `{application}:{subdomain}`, not the caller's application.
 
 ## New findings, not fixed
 
@@ -1133,8 +1241,9 @@ Fixed in the second batch (above): the scheduled-job runner reports (F1), event-
 (F2), client event names (F3), service accounts (F4), the sync paths' client identifier (F5), the
 SPA's sync and role controls (F6); after it, user role changes (F7), the role ceiling (F8) and
 the catalogue drift (F9, with its follow-up: unemitted codes pruned, older schemas fixed), the
-permission ceiling (F10), role confinement and principal-sync reach (F12), and the principal
-syncs' password hashes and other applications' roles (F13).
+permission ceiling (F10), role confinement and principal-sync reach (F12), the principal
+syncs' password hashes and other applications' roles (F13), and the events client guard and the
+missing event source (F14).
 
 - **`DELETE /api/event-types/{id}`** is documented "Archive an event type" and the TS SDK calls it
   `archive()`, but it hard-deletes (now only an archived or never-published type).
@@ -1165,15 +1274,14 @@ syncs' password hashes and other applications' roles (F13).
 - **Rotating a service account's OAuth client secret** (`platform:auth:oauth-client:regenerate-secret`,
   anchor) hands out a credential with the account's whole authority through `client_credentials`,
   with no role ceiling (the mint now has one). Java and Rust not checked.
-- **The events batch has no client guard** (F13): `POST /api/events/batch` stores any `clientId`,
-  or the client a `clientCode` resolves to, without `CanAccessClient`, and lets a client-scoped
-  caller write platform-scoped events. Java refuses both (`requireWritableClient`, S3.2: 403 "No
-  access to client", "clientId is required: a client-scoped caller cannot write platform-scoped
-  rows"; an unknown `clientCode` 403 for a non-anchor). The dispatch-jobs batch has the access
-  check but not the platform-scoped refusal.
-- **An event without `source` is refused** (F13): the Rust SDK's `event-minimal.json` has none, and
-  the Java, TypeScript and Laravel SDKs omit an unset source; `/api/events/batch` answers
-  `BAD_REQUEST` "source is required", terminal for that outbox row.
+- ~~**The events batch has no client guard**~~ (F13): fixed in F14.
+- **The dispatch-job routes have no platform-scoped refusal** (F13, F14): `POST
+  /api/dispatch-jobs/batch` and `POST /api/dispatch-jobs` check access to a given or resolved
+  client, but a non-anchor that names none still writes a platform-scoped job (Java and Rust apply
+  `requireWritableClient` there too: one client → that client, otherwise 403 "clientId is
+  required: …"). Not in the F14 ruling; Java's comment notes an SDK outbox never sends a
+  `clientId` on a dispatch job, so a multi-client credential's jobs would be refused.
+- ~~**An event without `source` is refused**~~ (F13): fixed in F14 (defaulted).
 - **Already-stored encoded event data and audit rows** (F13): not migrated; owner question in F13.
 
 ## Not verified
@@ -1205,3 +1313,6 @@ syncs' password hashes and other applications' roles (F13).
   database is off limits); no browser run (the SPA only gained a generated type). The Go SDK was
   exercised through the batch handlers, not through a running outbox processor. The Java and Rust
   code was read, not run.
+- F14: integration tests on embedded databases only; no run through a running outbox processor
+  or a deployed platform; no browser run (the SPA only gained a generated type, `vue-tsc -b`
+  passes). The Java and Rust code was read, not run.

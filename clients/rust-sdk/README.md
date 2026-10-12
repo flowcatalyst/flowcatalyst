@@ -211,10 +211,13 @@ framework's reference) where SDKs disagree.
    follows. The code rule is the framework's `{application}:{rest}`, looser
    than Java's four-segment `QualifiedCode` for events.
 5. **`clientId` on dispatch jobs** must be the platform client id (at most 17
-   characters); the batch does not resolve a `clientCode` as the events batch
-   does, and the outbox table's `client_id` is `VARCHAR(26)` while a client
+   characters); the outbox table's `client_id` is `VARCHAR(26)` while a client
    identifier may be 100 characters (the framework widens it in its own second
-   migration).
+   migration). ~~The batch does not resolve a `clientCode`~~: resolved on the
+   Go platform (F14, owner ruling 2026-10-12): both dispatch-job routes accept
+   `clientCode`; an unknown one is refused (400 `CLIENT_NOT_FOUND` for an
+   anchor, 403 otherwise), never stored unscoped. Java and Rust platforms not
+   yet.
 6. **Webhook timestamp.** `docs/wire-contract.md` describes only the millisecond
    ISO form; every SDK also accepts Unix seconds. The framework contract's
    "Unix seconds must be ASCII digits" applies to that form only.
@@ -227,11 +230,11 @@ framework's reference) where SDKs disagree.
 9. **`tests/golden/webhook/`**, named by `docs/wire-contract.md` and the router's
    `signWebhook` comment, does not exist; the shared vector lives in the SDKs'
    tests (now also in `tests/fixtures/wire/webhook-signatures.json`).
-10. **An event without `source` is refused.** `event-minimal.json` has no
-    `source`; `/api/events/batch` answers that item `BAD_REQUEST` "source is
-    required" (terminal), as it does for a Java, TypeScript or Laravel event
-    whose source was left unset. The SDK should require or default `source`
-    (found by the platform's F13 fixture test).
+10. ~~**An event without `source` is refused.**~~ Resolved on the Go platform
+    (F14, owner ruling 2026-10-12): an absent or blank `source` is stored as
+    the type's `{application}:{subdomain}` (`event-minimal.json` →
+    `orders:sales`), in the batch and the singular route. The Java and Rust
+    platforms still refuse it until they mirror the rule.
 
 ## Licence
 

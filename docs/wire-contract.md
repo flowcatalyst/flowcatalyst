@@ -207,6 +207,48 @@ Not changed: the singular `POST /api/events` (it receives the value itself),
 dispatch-job `payload` (a string by contract, with `payloadContentType`), and
 function-emitted events.
 
+## SDK ingest: client and source
+
+Owner rulings 2026-10-12 (`docs/platform-bug-fixes.md` F14;
+`internal/platform/shared/sdk/client_code.go`). A `clientId` or `clientCode`
+that is absent, `null`, empty or whitespace counts as not given.
+
+**Event client** (`POST /api/events/batch`, `/bff/events/batch`,
+`POST /api/events`):
+
+- A `clientId` the caller cannot reach: `403 {"error":"FORBIDDEN","message":"No access to client: <clientId>"}`.
+- Batch only, no `clientId`: a `clientCode` naming a client the caller
+  reaches resolves to it; naming another client, or no client, from a
+  non-anchor: `403 FORBIDDEN "No access to client: <clientCode>"`; an
+  anchor's unknown code leaves the event platform-scoped.
+- No client at all (singular: a non-anchor first defaults to its first
+  client): an anchor writes a platform-scoped event; a caller whose `clients`
+  is exactly one id writes under it; anyone else:
+  `403 FORBIDDEN "clientId is required: a client-scoped caller cannot write platform-scoped rows"`.
+- In the batch these refusals reject the whole request (nothing written);
+  type/source/data problems and application confinement stay per item
+  (`BAD_REQUEST` in that item's `results[]` slot) and are checked first.
+
+**Dispatch-job client** (`POST /api/dispatch-jobs/batch`,
+`POST /api/dispatch-jobs`; both accept `clientCode`, never stored):
+
+- A `clientId` wins (any `clientCode` is ignored) and must be reachable:
+  `403 FORBIDDEN "No access to client: <clientId>"`.
+- Else a `clientCode` naming a client the caller reaches resolves to it.
+- A code naming another client or no client, from a non-anchor:
+  `403 FORBIDDEN "No access to client: <clientCode>"`.
+- A code naming no client, from an anchor:
+  `400 {"error":"CLIENT_NOT_FOUND","message":"Client not found: <clientCode>"}`.
+- Any refusal rejects the whole batch. Neither given: no client.
+
+**Event source** (both event routes): an absent, `null` or blank `source` is
+stored as the trimmed type's `{application}:{subdomain}`, its first two `:`
+segments (`orders:sales:order:created` → `orders:sales`), or the first alone
+when there is no non-blank second (`orders` → `orders`). A type whose first
+segment is blank still answers `source is required` (batch item
+`BAD_REQUEST`, singular `400 VALIDATION`). A given source is stored as sent.
+`source` is optional on `CreateEventRequest`.
+
 ## Webhook signatures
 
 Webhook delivery (router → subscriber) signs
