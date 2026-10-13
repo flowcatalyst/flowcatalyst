@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,6 +29,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/notify"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/versioncache"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
@@ -68,6 +70,10 @@ type serviceSet struct {
 	// functionWiring bundles the repositories + FC_FUNCTIONS_RUNNER_URL
 	// template the promote wiring reconciliation (WP8) composes against.
 	functionWiring functionops.WiringDeps
+	// sessionCSRF guards unsafe requests authenticated by the fc_session
+	// cookie (platformmw.SessionCSRF); the authenticated group runs it right
+	// after the Authenticator.
+	sessionCSRF func(http.Handler) http.Handler
 }
 
 // functionDescribeMemoryLimitBytes / functionDescribeMemoryReserveBytes size
@@ -316,6 +322,14 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	// no DB configured.
 	if pool != nil {
 		svcs.functionControlListener = functioncontrol.NewListener(pool, nil)
+	}
+
+	// Cookie-session request guard for the authenticated group (provenance +
+	// JSON-only for unsafe requests the fc_session cookie authenticates). The
+	// public base URL is trusted for a proxy that rewrites Host, as for /ui.
+	svcs.sessionCSRF, err = platformmw.SessionCSRF(publicOrigins(cfg.JWTIssuer))
+	if err != nil {
+		return nil, fmt.Errorf("session CSRF guard: %w", err)
 	}
 
 	return svcs, nil

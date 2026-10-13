@@ -97,13 +97,14 @@ func buildVersion() string {
 }
 
 // publicOrigins trusts the configured public base URL (FC_JWT_ISSUER /
-// FC_EXTERNAL_BASE_URL) for UI posts, for proxies that rewrite Host. A value
-// that is not an http(s) URL is left out, with a warning, rather than
-// failing the platform's boot over the UI.
+// FC_EXTERNAL_BASE_URL) for cookie-session posts (/ui and the API's
+// SessionCSRF), for proxies that rewrite Host. A value that is not an
+// http(s) URL is left out, with a warning, rather than failing the
+// platform's boot.
 func publicOrigins(base string) []string {
 	u, err := url.Parse(base)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		slog.Warn("ui: public base URL is not an http(s) URL; /ui accepts same-origin posts only", "value", base)
+		slog.Warn("public base URL is not an http(s) URL; cookie-session posts are accepted from the request's own host only", "value", base)
 		return nil
 	}
 	return []string{u.Scheme + "://" + u.Host}

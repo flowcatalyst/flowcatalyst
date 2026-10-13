@@ -94,6 +94,11 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Provider:         svcs.authProvider,
 			AllowTestHeaders: cfg.AuthAllowTestHeaders,
 		}))
+		// An unsafe request the fc_session cookie authenticated must come
+		// from this origin and carry JSON (platformmw.SessionCSRF); bearer
+		// callers are not affected. Before the profile gate, so a refused
+		// request gets the same answer whatever the caller's roles.
+		r.Use(svcs.sessionCSRF)
 		// A USER with no platform role reaches only their own profile
 		// (/auth/*, GET /api/me) — see ProfileOnlyWithoutRole.
 		r.Use(platformmw.ProfileOnlyWithoutRole)

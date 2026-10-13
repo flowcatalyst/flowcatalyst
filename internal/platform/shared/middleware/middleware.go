@@ -94,6 +94,9 @@ func Authenticator(cfg AuthConfig) func(http.Handler) http.Handler {
 				} else if ac != nil {
 					ctx = auth.WithContext(ctx, ac)
 					ctx = logging.WithPrincipalID(ctx, ac.PrincipalID)
+					if fromCookie {
+						ctx = context.WithValue(ctx, cookieSessionKey{}, true)
+					}
 				}
 
 			case cfg.AllowTestHeaders && r.Header.Get("X-FC-Test-Principal") != "":
