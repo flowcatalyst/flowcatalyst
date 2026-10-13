@@ -128,10 +128,11 @@ public final class CreateAuditLogDto {
 
     /**
      * Build the audit log payload for the outbox (nulls omitted).
-     * {@code operationData} is embedded as a JSON string; {@code performedAt}
-     * defaults to now.
+     * {@code operationData} is embedded once as a JSON string (the platform
+     * stores, and redacts, the value it holds, F13); {@code performedAt}
+     * defaults to {@code now}, the outbox manager's clock.
      */
-    Map<String, Object> toPayload(tools.jackson.databind.ObjectMapper mapper) {
+    Map<String, Object> toPayload(tools.jackson.databind.ObjectMapper mapper, Instant now) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("entityType", entityType);
         payload.put("entityId", entityId);
@@ -145,7 +146,7 @@ public final class CreateAuditLogDto {
             }
         }
         putIfNotNull(payload, "principalId", principalId);
-        payload.put("performedAt", (performedAt != null ? performedAt : Instant.now()).toString());
+        payload.put("performedAt", (performedAt != null ? performedAt : now).toString());
         putIfNotNull(payload, "source", source);
         putIfNotNull(payload, "correlationId", correlationId);
         putIfNotNull(payload, "applicationCode", applicationCode);

@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
  *
  * <p>Categories are sync'd in a fixed order — roles, event types,
  * connections, subscriptions, dispatch pools, principals, processes,
- * scheduled jobs, OpenAPI — so that subscriptions can reference the
+ * scheduled jobs, OpenAPI, documentation pages — so that subscriptions can reference the
  * connections, event types and dispatch pools that were just created. Each
  * category sync is an independent HTTP call; a failure in one does NOT roll
  * back earlier successes.
@@ -136,9 +136,12 @@ public final class DefinitionSynchronizer {
         Category openapi = options.skips(SyncCategory.OPENAPI) || set.openapiSpec() == null
                 ? Category.SKIPPED
                 : syncOpenapi(app, set.openapiSpec());
+        Category docs = options.skips(SyncCategory.DOCS) || set.docs().isEmpty()
+                ? Category.SKIPPED
+                : syncDocs(app, set.docs());
 
         return new SyncResult(app, roles, eventTypes, scoped.connections(), scoped.subscriptions(),
-                dispatchPools, principals, processes, scheduledJobs, openapi);
+                dispatchPools, principals, processes, scheduledJobs, openapi, docs);
     }
 
     /**
@@ -234,6 +237,7 @@ public final class DefinitionSynchronizer {
         List<Definitions.ScheduledJob> scheduledJobs = new ArrayList<>();
         List<ConnectionRow> connectionRows = new ArrayList<>();
         List<SubscriptionRow> subscriptionRows = new ArrayList<>();
+        List<Definitions.Doc> docs = new ArrayList<>();
         Map<String, Object> openapiSpec = null;
 
         for (DefinitionSet set : sets) {
@@ -245,6 +249,7 @@ public final class DefinitionSynchronizer {
             scheduledJobs.addAll(set.scheduledJobs());
             connectionRows.addAll(toConnectionRows(set));
             subscriptionRows.addAll(toSubscriptionRows(set));
+            docs.addAll(set.docs());
             // Only one OpenAPI document makes sense per application; keep
             // whichever set actually attached one (first wins — arbitrary
             // but deterministic).
@@ -280,10 +285,13 @@ public final class DefinitionSynchronizer {
         Category openapiResult = options.skips(SyncCategory.OPENAPI) || openapiSpec == null
                 ? Category.SKIPPED
                 : syncOpenapi(app, openapiSpec);
+        Category docsResult = options.skips(SyncCategory.DOCS) || docs.isEmpty()
+                ? Category.SKIPPED
+                : syncDocs(app, docs);
 
         return new SyncResult(app, rolesResult, eventTypesResult, scoped.connections(),
                 scoped.subscriptions(), dispatchPoolsResult, principalsResult, processesResult,
-                scheduledJobsResult, openapiResult);
+                scheduledJobsResult, openapiResult, docsResult);
     }
 
     // ── connections + subscriptions: client grouping ───────────────────
@@ -742,6 +750,24 @@ public final class DefinitionSynchronizer {
         int updated = result.archivedPriorVersion() != null ? 1 : 0;
         return new Category.Synced(result.applicationCode(), created, updated, 0,
                 List.of(result.version()));
+    }
+
+    private Category syncDocs(String app, List<Definitions.Doc> docs) {
+        // Two sets merged for one application declaring the same page is a
+        // configuration error: fail locally, as for every other category,
+        // rather than letting the platform refuse the whole set.
+        List<String> duplicates = findDuplicates(docs.stream().map(Definitions.Doc::slug).toList());
+        if (!duplicates.isEmpty()) {
+            return new Category.Failed(0, 0, 0, List.of(), String.format(
+                    "Duplicate documentation slug(s) for %s: %s", scopeLabel(app, null),
+                    String.join(", ", duplicates)));
+        }
+        // Declarative: the payload is the application's whole page set, so there
+        // is no removeUnlisted parameter on this route.
+        return transport.post(
+                "/api/applications/" + Transport.enc(app) + "/docs/sync",
+                Map.of("docs", docs),
+                Category.Synced.class);
     }
 
     // ── transport ───────────────────────────────────────────────────

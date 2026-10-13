@@ -37,18 +37,68 @@ public record SyncResult(
          * carries [version]; created/updated reflect newly-published vs
          * replaced (both zero on a byte-identical re-sync).
          */
-        Category openapi) {
+        Category openapi,
+        /*
+         * Documentation pages (POST /api/applications/{app}/docs/sync). The
+         * payload is the application's whole page set: pages not sent are
+         * deleted (removeUnlisted does not apply). Skipped when the set
+         * declares no pages.
+         */
+        Category docs) {
+
+    /** The 0.0.12 shape, without {@code docs} (reported {@link Category#SKIPPED}). */
+    public SyncResult(
+            String applicationCode,
+            Category roles,
+            Category eventTypes,
+            Category connections,
+            Category subscriptions,
+            Category dispatchPools,
+            Category principals,
+            Category processes,
+            Category scheduledJobs,
+            Category openapi) {
+        this(applicationCode, roles, eventTypes, connections, subscriptions, dispatchPools,
+                principals, processes, scheduledJobs, openapi, Category.SKIPPED);
+    }
 
     /** Per-category outcome. */
     public sealed interface Category {
 
+        /**
+         * The platform's {@code SyncResultResponse}.
+         *
+         * @param skippedRoles principal sync only: role names that are not roles, so were not
+         *     assigned to anyone (lower-cased, each once, in payload order); the rest of the sync
+         *     applied. Empty when none (the platform omits it), and always empty for every other
+         *     category
+         * @param passwordHashIgnored principal sync only: emails whose {@code passwordHash} was
+         *     not applied because the user already exists (the platform stores a hash only on a
+         *     user the sync creates). Empty when none
+         */
         record Synced(
                 String applicationCode,
                 int created,
                 int updated,
                 int deleted,
-                List<String> syncedCodes)
-                implements Category {}
+                List<String> syncedCodes,
+                List<String> skippedRoles,
+                List<String> passwordHashIgnored)
+                implements Category {
+
+            public Synced {
+                syncedCodes = syncedCodes == null ? List.of() : List.copyOf(syncedCodes);
+                skippedRoles = skippedRoles == null ? List.of() : List.copyOf(skippedRoles);
+                passwordHashIgnored =
+                        passwordHashIgnored == null ? List.of() : List.copyOf(passwordHashIgnored);
+            }
+
+            /** The 0.0.12 shape: nothing skipped, no hash ignored. */
+            public Synced(String applicationCode, int created, int updated, int deleted,
+                    List<String> syncedCodes) {
+                this(applicationCode, created, updated, deleted, syncedCodes, List.of(), List.of());
+            }
+        }
 
         record Skipped() implements Category {}
 

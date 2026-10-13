@@ -131,13 +131,18 @@ public final class CreateEventDto {
 
     /**
      * Build the event payload for the outbox (nulls omitted). {@code data} is
-     * embedded as a JSON string, matching the wire contract.
+     * embedded once as a JSON string (the framework's writer and the conformance
+     * vectors do the same; the platform stores the value it holds, F13). A blank
+     * {@code source} is left out (the platform defaults it to the type's
+     * {@code application:subdomain}), and without a {@code deduplicationId} the
+     * row id is used, so a batch the outbox processor sends again after a lost
+     * response does not create a second event.
      */
-    Map<String, Object> toPayload(tools.jackson.databind.ObjectMapper mapper) {
+    Map<String, Object> toPayload(tools.jackson.databind.ObjectMapper mapper, String rowId) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("specVersion", "1.0");
         payload.put("type", type);
-        putIfNotNull(payload, "source", source);
+        putIfNotNull(payload, "source", source == null || source.isBlank() ? null : source);
         putIfNotNull(payload, "subject", subject);
         try {
             payload.put("data", mapper.writeValueAsString(data));
@@ -146,7 +151,8 @@ public final class CreateEventDto {
         }
         putIfNotNull(payload, "correlationId", correlationId);
         putIfNotNull(payload, "causationId", causationId);
-        putIfNotNull(payload, "deduplicationId", deduplicationId);
+        putIfNotNull(payload, "deduplicationId",
+                deduplicationId == null || deduplicationId.isBlank() ? rowId : deduplicationId);
         putIfNotNull(payload, "messageGroup", messageGroup);
         putIfNotNull(payload, "clientCode", clientCode);
         if (!contextData.isEmpty()) {

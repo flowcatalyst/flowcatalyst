@@ -119,6 +119,7 @@ public final class DefinitionSyncException extends FlowCatalystException {
         describeIfFailed(failures, applicationCode, "processes", result.processes());
         describeIfFailed(failures, applicationCode, "scheduledJobs", result.scheduledJobs());
         describeIfFailed(failures, applicationCode, "openapi", result.openapi());
+        describeIfFailed(failures, applicationCode, "docs", result.docs());
         return failures;
     }
 

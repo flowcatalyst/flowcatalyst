@@ -28,11 +28,11 @@ SDK and is not part of it.
 | Package | What it does |
 |---|---|
 | `io.flowcatalyst.sdk` | `FlowCatalystClient` — builder config, resource accessors |
-| `…sdk.resources` | 15 typed resource families (event types, subscriptions, dispatch pools, connections, roles, permissions, applications, clients, principals, processes, scheduled jobs, audit logs, me, router) |
+| `…sdk.resources` | 16 typed resource families (event types, subscriptions, dispatch pools, dispatch jobs, connections, roles, permissions, applications, clients, principals, processes, scheduled jobs, audit logs, me, router) |
 | `…sdk.error` | `sealed interface SdkError` + `FlowCatalystException` — handle failures with a pattern-matching `switch` |
 | `…sdk.outbox` | Transactional outbox: `OutboxManager`, DTO builders, `OutboxDriver` SPI + `JdbcOutboxDriver`, raw SQL migrations in `migrations/` |
 | `…sdk.tsid` | TSID generation (13-char Crockford Base32, platform-compatible; collision-free monotonic sequence) |
-| `…sdk.sync` | `DefinitionSynchronizer` + `DefinitionSet` — bulk-sync roles / event types / connections / subscriptions / dispatch pools / principals / processes / scheduled jobs / OpenAPI per application, optionally scoped to one client (`forClient`) and merged across sets (`syncGrouped`) |
+| `…sdk.sync` | `DefinitionSynchronizer` + `DefinitionSet` — bulk-sync roles / event types / connections / subscriptions / dispatch pools / principals / processes / scheduled jobs / OpenAPI / documentation pages per application, optionally scoped to one client (`forClient`) and merged across sets (`syncGrouped`) |
 | `…sdk.annotations` | `@AsEventType` / `@AsConnection` / `@AsSubscription` (with `connectionCode` / `sharedConnection` / `client`) / `@AsDispatchPool` / `@AsRole` + `DefinitionScanner` (explicit class registration — no classpath scanning) |
 | `…sdk.webhook` | `WebhookSignature.verify(...)` — HMAC-SHA256 verification of signed deliveries |
 
@@ -84,8 +84,46 @@ driver.withTransaction(tx -> {
 });
 ```
 
-Event `type`s and dispatch-job `code`s must be fully qualified
-`application:subdomain:aggregate:action` strings — the SDK rejects bare codes.
+Event `type`s must be fully qualified `application:subdomain:aggregate:action`
+strings — the SDK rejects bare codes. An event without a `source` (or with a
+blank one) leaves it out and the platform uses the type's
+`application:subdomain`; an event without a `deduplicationId` carries its row
+id, so a batch the outbox processor sends again does not create a second event.
+`data` and audit `operationData` are written as one encoded JSON string, as the
+framework's writer does; the platform stores the value it holds.
+
+### Dispatch jobs
+
+A dispatch job row is one item of `POST /api/dispatch-jobs/batch`, checked by
+`validate()` before it is written (a job the platform would refuse is never
+stored). `CreateDispatchJobDto.of(code, targetUrl)` uses the platform's
+defaults (kind `TASK`, source the code's application segment, payload `{}`,
+`dataOnly` false, sequence/timeout/retries left to the platform);
+`create(source, code, targetUrl, payload, dispatchPoolId)` keeps the 0.0.12
+defaults (`dataOnly` true, 30 s, 5 retries, a four-segment code).
+
+```java
+outbox.createDispatchJob(CreateDispatchJobDto
+        .of("ingest:orders:record", "https://api.example.com/records")
+        .withId(recordId)                  // the row id and the job id; generated when unset
+        .withClientCode("acme")            // the client's identifier; or withPlatformClientId(id)
+        .withPayload(line, "text/csv")
+        .withDataOnly(true)
+        .withMessageGroup(fileId)
+        .withSequence(lineNumber)          // at least 1
+        .withMetadata("source", "sftp"), tx);
+```
+
+`metadata` is written as the platform's `[{"key","value"}]` array, and the
+members the batch endpoint ignores (`headers`, `retryStrategy`,
+`scheduledFor`, `expiresAt`, `idempotencyKey`, `connectionId`) are not written.
+An unknown `clientCode` refuses the whole batch (400 for an anchor, 403
+otherwise). Jobs that need not be atomic with a database write can go straight
+to the platform: `client.dispatchJobs().createBatch(jobs)`.
+
+The rows match the framework's conformance vectors
+(`flowcatalyst-framework/conformance/outbox`, copied into
+`src/test/resources/conformance`; `OutboxConformanceTest`).
 
 ## Creating users and invitations
 
@@ -136,6 +174,13 @@ var set = Definitions.DefinitionSet.define("orders")
 
 client.definitions().sync(set, SyncOptions.removingUnlisted());
 ```
+
+Principals name roles in full (`orders:admin`; the platform adds no prefix).
+A name that is not a role is reported in the principals result's
+`skippedRoles()`, and the email of an existing user whose `passwordHash` was
+not applied in `passwordHashIgnored()`. Documentation pages
+(`withDocs(List.of(Definitions.Doc.of("getting-started", markdown)))`) replace
+the application's whole page set on each sync.
 
 Or with annotations and explicit registration:
 

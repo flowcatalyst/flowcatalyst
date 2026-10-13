@@ -137,10 +137,16 @@ public final class Definitions {
         }
     }
 
-    /** How dispatch job failures interact with a subscription's delivery order. */
+    /**
+     * How dispatch job failures interact with a subscription's delivery order. The application
+     * sync accepts {@code mode} for wire compatibility but does not apply it: a synced
+     * subscription takes the platform's default mode (set it in the platform when it matters).
+     */
     public enum SubscriptionMode {
         /** Deliver independently; failures don't block other deliveries. */
         IMMEDIATE,
+        /** FIFO per message group; a failed delivery is retried later and the group moves on. */
+        NEXT_ON_ERROR,
         /** On failure, hold subsequent deliveries for the same message group. */
         BLOCK_ON_ERROR
     }
@@ -323,7 +329,12 @@ public final class Definitions {
 
     /**
      * A dispatch pool declaration — concurrency cap and per-minute rate limit
-     * for outbound delivery.
+     * for outbound delivery. Pools are platform-wide (matched by code across
+     * every application); each sync sets every field, so an omitted
+     * {@code rateLimit} REMOVES an existing pool's limit and an omitted
+     * {@code concurrency} sets it to 10. {@code removeUnlisted} on pools
+     * archives every other pool on the platform and needs an anchor
+     * credential.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record DispatchPool(
@@ -337,34 +348,95 @@ public final class Definitions {
             return new DispatchPool(code, name, description, rateLimit, concurrency);
         }
 
-        /** Rate limit in requests per minute; platform default 100. */
+        /**
+         * Messages per minute, at least 1 (the platform refuses 0 on sync). Unset means no rate
+         * limit (concurrency only).
+         */
         public DispatchPool withRateLimit(int rateLimit) {
+            if (rateLimit < 1) {
+                throw new IllegalArgumentException(
+                        "dispatch pool rateLimit must be at least 1; use withoutRateLimit() for no limit");
+            }
             return new DispatchPool(code, name, description, rateLimit, concurrency);
         }
 
-        /** Concurrency cap; platform default 10. */
+        /** No rate limit (concurrency only); a sync removes an existing limit. */
+        public DispatchPool withoutRateLimit() {
+            return new DispatchPool(code, name, description, null, concurrency);
+        }
+
+        /** Concurrency cap, at least 1; the platform uses 10 when unset. */
         public DispatchPool withConcurrency(int concurrency) {
+            if (concurrency < 1) {
+                throw new IllegalArgumentException("dispatch pool concurrency must be at least 1");
+            }
             return new DispatchPool(code, name, description, rateLimit, concurrency);
         }
     }
 
     /**
-     * A principal (user) declaration, matched by email. {@code roles} lists
-     * role short names WITHOUT the application prefix (the platform adds
-     * {@code <app>:} per role).
+     * A principal (user) declaration, matched by email.
+     *
+     * <p>{@code roles} are the application's own role names in full,
+     * {@code <app>:<role>} (e.g. {@code orders:admin}), matched ignoring case.
+     * The platform does NOT add the application prefix: a bare {@code admin}
+     * is not the role {@code orders:admin}. A name that is not a role is not
+     * assigned and comes back in {@link SyncResult.Category.Synced#skippedRoles()}
+     * (the rest of the sync applies); another application's role refuses the
+     * whole sync ({@code 403 ROLE_APP_FORBIDDEN}).
+     *
+     * <p>{@code passwordHash} is an already-hashed credential (bcrypt,
+     * argon2i, argon2id) stored on a user the sync CREATES; it is never applied
+     * to an existing user, whose email then comes back in
+     * {@link SyncResult.Category.Synced#passwordHashIgnored()}.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record Principal(String email, String name, List<String> roles, Boolean active) {
-        public static Principal of(String email, String name) {
-            return new Principal(email, name, null, null);
+    public record Principal(
+            String email, String name, List<String> roles, Boolean active, String passwordHash) {
+
+        /** The 0.0.12 shape, without a password hash. */
+        public Principal(String email, String name, List<String> roles, Boolean active) {
+            this(email, name, roles, active, null);
         }
 
+        public static Principal of(String email, String name) {
+            return new Principal(email, name, null, null, null);
+        }
+
+        /** Full role names, {@code <app>:<role>} (see the record doc). */
         public Principal withRoles(List<String> roles) {
-            return new Principal(email, name, roles, active);
+            return new Principal(email, name, roles, active, passwordHash);
         }
 
         public Principal withActive(boolean active) {
-            return new Principal(email, name, roles, active);
+            return new Principal(email, name, roles, active, passwordHash);
+        }
+
+        /**
+         * An already-hashed credential for a user the sync creates (pass the HASH, never a
+         * plaintext password); ignored for an existing user (see the record doc).
+         */
+        public Principal withPasswordHash(String passwordHash) {
+            return new Principal(email, name, roles, active, passwordHash);
+        }
+    }
+
+    /**
+     * A documentation page, shown to administrators under Platform → Documentation.
+     * {@code slug} is kebab-case ({@code [a-z0-9][a-z0-9-]*}), unique within the
+     * application; {@code content} is Markdown (Mermaid fences render as
+     * diagrams), at most 512 KB; {@code title} defaults to the content's first
+     * {@code # } heading, then the slug. The sync is declarative: every call
+     * replaces the application's whole page set (at most 100 pages, 4 MB).
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Doc(String slug, String title, String content) {
+        public static Doc of(String slug, String content) {
+            return new Doc(slug, null, content);
+        }
+
+        public Doc withTitle(String title) {
+            return new Doc(slug, title, content);
         }
     }
 
@@ -497,6 +569,7 @@ public final class Definitions {
         private final List<Principal> principals = new ArrayList<>();
         private final List<Process> processes = new ArrayList<>();
         private final List<ScheduledJob> scheduledJobs = new ArrayList<>();
+        private final List<Doc> docs = new ArrayList<>();
         private Map<String, Object> openapiSpec;
         private String clientId;
         private String targetBaseUrl;
@@ -660,6 +733,21 @@ public final class Definitions {
         public DefinitionSet withScheduledJobs(List<ScheduledJob> jobs) {
             this.scheduledJobs.addAll(jobs);
             return this;
+        }
+
+        /**
+         * Add documentation pages. The platform replaces the application's whole
+         * page set with what one sync sends, so every page of the application
+         * belongs in the sets synced together (pages from several sets for one
+         * application are merged by {@link DefinitionSynchronizer#syncGrouped}).
+         */
+        public DefinitionSet withDocs(List<Doc> docs) {
+            this.docs.addAll(docs);
+            return this;
+        }
+
+        public List<Doc> docs() {
+            return docs;
         }
 
         /**

@@ -7,6 +7,7 @@ import io.flowcatalyst.sdk.resources.ApplicationsResource;
 import io.flowcatalyst.sdk.resources.AuditLogsResource;
 import io.flowcatalyst.sdk.resources.ClientsResource;
 import io.flowcatalyst.sdk.resources.ConnectionsResource;
+import io.flowcatalyst.sdk.resources.DispatchJobsResource;
 import io.flowcatalyst.sdk.resources.DispatchPoolsResource;
 import io.flowcatalyst.sdk.resources.EventTypesResource;
 import io.flowcatalyst.sdk.resources.MeResource;
@@ -57,6 +58,7 @@ public final class FlowCatalystClient {
     private RouterResource router;
     private ScheduledJobsResource scheduledJobs;
     private AuditLogsResource auditLogs;
+    private DispatchJobsResource dispatchJobs;
     private io.flowcatalyst.sdk.sync.DefinitionSynchronizer definitions;
 
     private FlowCatalystClient(Builder builder) {
@@ -162,9 +164,17 @@ public final class FlowCatalystClient {
     }
 
     /**
+     * Dispatch-job ingest ({@code POST /api/dispatch-jobs/batch}) for jobs that need not be
+     * atomic with a database write; the outbox writes the same items transactionally.
+     */
+    public synchronized DispatchJobsResource dispatchJobs() {
+        return dispatchJobs != null ? dispatchJobs : (dispatchJobs = new DispatchJobsResource(transport));
+    }
+
+    /**
      * Definition synchronizer — bulk-sync roles, event types, connections,
      * subscriptions, dispatch pools, principals, processes, scheduled jobs,
-     * and an OpenAPI doc per application.
+     * documentation pages and an OpenAPI doc per application.
      */
     public synchronized io.flowcatalyst.sdk.sync.DefinitionSynchronizer definitions() {
         return definitions != null

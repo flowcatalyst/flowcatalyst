@@ -635,6 +635,9 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "confirmSelfRestriction": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1178,6 +1181,7 @@
             "type": "string"
           },
           "source": {
+            "description": "Event source. When absent or blank, the type's {application}:{subdomain} (its first two segments)",
             "type": "string"
           },
           "specVersion": {
@@ -2388,7 +2392,7 @@
             "type": "string"
           },
           "source": {
-            "description": "Event source URI",
+            "description": "Event source URI. When absent or blank, the type's {application}:{subdomain} (its first two segments)",
             "type": "string"
           },
           "subject": {
@@ -2398,7 +2402,6 @@
         },
         "required": [
           "eventType",
-          "source",
           "data"
         ],
         "type": "object"
@@ -2448,7 +2451,7 @@
             "type": "string"
           },
           "clientId": {
-            "description": "Optional client scope; absent means anchor-level",
+            "description": "Ignored. Event types are platform-wide and have no client; a value is accepted for compatibility and not stored (creating an event type needs anchor scope). Use clientScoped to mark events of this type as carried per client.",
             "type": "string"
           },
           "clientScoped": {
@@ -3195,6 +3198,10 @@
           "clientId": {
             "type": "string"
           },
+          "clientScoped": {
+            "description": "Subscribes to client-scoped event types. Omitted means false.",
+            "type": "boolean"
+          },
           "code": {
             "type": "string"
           },
@@ -3248,6 +3255,11 @@
           "queue": {
             "description": "Dispatch priority: DEFAULT or HIGH_PRIORITY (matched ignoring case). Selects which of the client's two dispatch queues jobs raised from this subscription publish to. Omitted or blank leaves it unset, which publishes as DEFAULT.",
             "type": "string"
+          },
+          "sequence": {
+            "description": "Orders this subscription's dispatch jobs within a message group, lower first. Omitted means 99. Not negative.",
+            "format": "int32",
+            "type": "integer"
           },
           "serviceAccountId": {
             "type": "string"
@@ -7011,6 +7023,234 @@
         ],
         "type": "object"
       },
+      "RequeueByFilterPreviewRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RequeueByFilterPreviewRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "aggregates": {
+            "description": "CSV of aggregates",
+            "type": "string"
+          },
+          "applications": {
+            "description": "CSV of application codes",
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "clientIds": {
+            "description": "CSV of client ids",
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "codes": {
+            "description": "CSV of codes",
+            "type": "string"
+          },
+          "dispatchPoolId": {
+            "type": "string"
+          },
+          "messageGroup": {
+            "description": "Exact message group",
+            "type": "string"
+          },
+          "since": {
+            "description": "RFC3339 timestamp",
+            "type": "string"
+          },
+          "source": {
+            "description": "Free-text source filter",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "statuses": {
+            "description": "CSV of statuses",
+            "type": "string"
+          },
+          "subdomains": {
+            "description": "CSV of subdomains",
+            "type": "string"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "until": {
+            "description": "RFC3339 timestamp",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RequeueByFilterPreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RequeueByFilterPreviewResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "byStatus": {
+            "additionalProperties": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "description": "count broken down by status",
+            "type": "object"
+          },
+          "count": {
+            "description": "Jobs the filter matches that the caller can see",
+            "format": "int64",
+            "type": "integer"
+          },
+          "eligibleCount": {
+            "description": "How many of them a requeue would reset for this caller; send it back as confirmCount",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "byStatus",
+          "eligibleCount"
+        ],
+        "type": "object"
+      },
+      "RequeueByFilterRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RequeueByFilterRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "aggregates": {
+            "description": "CSV of aggregates",
+            "type": "string"
+          },
+          "applications": {
+            "description": "CSV of application codes",
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "clientIds": {
+            "description": "CSV of client ids",
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "codes": {
+            "description": "CSV of codes",
+            "type": "string"
+          },
+          "confirmCount": {
+            "description": "The eligibleCount the caller was shown. If more jobs are eligible now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "dispatchPoolId": {
+            "type": "string"
+          },
+          "limit": {
+            "description": "Most jobs to reset in this request (default and maximum 10000)",
+            "format": "int64",
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "messageGroup": {
+            "description": "Exact message group",
+            "type": "string"
+          },
+          "since": {
+            "description": "RFC3339 timestamp",
+            "type": "string"
+          },
+          "source": {
+            "description": "Free-text source filter",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "statuses": {
+            "description": "CSV of statuses",
+            "type": "string"
+          },
+          "subdomains": {
+            "description": "CSV of subdomains",
+            "type": "string"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "until": {
+            "description": "RFC3339 timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmCount"
+        ],
+        "type": "object"
+      },
+      "RequeueByFilterResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RequeueByFilterResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "remaining": {
+            "description": "Eligible jobs still matching after the run; run again to continue",
+            "format": "int64",
+            "type": "integer"
+          },
+          "requeued": {
+            "description": "Jobs reset to PENDING",
+            "format": "int64",
+            "type": "integer"
+          },
+          "truncated": {
+            "description": "The run stopped at its limit (or at confirmCount) with eligible jobs left",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "requeued",
+          "truncated",
+          "remaining"
+        ],
+        "type": "object"
+      },
       "RequeueRequest": {
         "additionalProperties": true,
         "properties": {
@@ -8584,11 +8824,11 @@
             "type": "string"
           },
           "passwordHash": {
-            "description": "Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login",
+            "description": "Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored).",
             "type": "string"
           },
           "roles": {
-            "description": "Role short names (prefixed with applicationCode)",
+            "description": "Role names, the application's own (app:role, matched case-insensitively and not prefixed by the platform). A name that is not a role is not assigned and is reported in skippedRoles; another application's role refuses the sync (403 ROLE_APP_FORBIDDEN).",
             "items": {
               "type": "string"
             },
@@ -8735,6 +8975,20 @@
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "passwordHashIgnored": {
+            "description": "Principal sync only: emails whose passwordHash was ignored because the user already exists (omitted when none)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "skippedRoles": {
+            "description": "Principal sync only: role names that are not roles and so were not assigned to anyone (lower-cased, each once, in payload order; omitted when none). The rest of the sync applied.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "syncedCodes": {
             "items": {
@@ -9045,7 +9299,7 @@
             "type": "string"
           },
           "passwordHash": {
-            "description": "Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login. Omit to leave any existing password untouched.",
+            "description": "Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored).",
             "type": "string"
           },
           "roles": {
@@ -9107,6 +9361,13 @@
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "passwordHashIgnored": {
+            "description": "Emails whose passwordHash was ignored because the user already exists (omitted when none)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "syncedEmails": {
             "items": {
@@ -9341,12 +9602,14 @@
             "type": "integer"
           },
           "description": {
+            "description": "Omitted leaves it; blank clears it.",
             "type": "string"
           },
           "name": {
             "type": "string"
           },
           "rateLimit": {
+            "description": "Messages per minute. Omitted leaves it; 0 clears it (no limit).",
             "format": "int32",
             "type": "integer"
           }
@@ -13421,35 +13684,6 @@
             }
           },
           {
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "offset",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Max rows (default 50, max 1000)",
-            "explode": false,
-            "in": "query",
-            "name": "size",
-            "schema": {
-              "description": "Max rows (default 50, max 1000)",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
             "description": "CSV of client ids",
             "explode": false,
             "in": "query",
@@ -13517,6 +13751,35 @@
             "schema": {
               "description": "Free-text source filter",
               "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Max rows (default 50, max 1000)",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "description": "Max rows (default 50, max 1000)",
+              "format": "int64",
+              "type": "integer"
             }
           },
           {
@@ -13755,35 +14018,6 @@
             }
           },
           {
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "offset",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Max rows (default 50, max 1000)",
-            "explode": false,
-            "in": "query",
-            "name": "size",
-            "schema": {
-              "description": "Max rows (default 50, max 1000)",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
             "description": "CSV of client ids",
             "explode": false,
             "in": "query",
@@ -13851,6 +14085,35 @@
             "schema": {
               "description": "Free-text source filter",
               "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Max rows (default 50, max 1000)",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "description": "Max rows (default 50, max 1000)",
+              "format": "int64",
+              "type": "integer"
             }
           },
           {
@@ -13970,35 +14233,6 @@
             }
           },
           {
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "offset",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Max rows (default 50, max 1000)",
-            "explode": false,
-            "in": "query",
-            "name": "size",
-            "schema": {
-              "description": "Max rows (default 50, max 1000)",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
             "description": "CSV of client ids",
             "explode": false,
             "in": "query",
@@ -14066,6 +14300,35 @@
             "schema": {
               "description": "Free-text source filter",
               "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Max rows (default 50, max 1000)",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "description": "Max rows (default 50, max 1000)",
+              "format": "int64",
+              "type": "integer"
             }
           },
           {
@@ -14146,6 +14409,88 @@
           }
         },
         "summary": "Reset dispatch jobs to PENDING for re-dispatch",
+        "tags": [
+          "dispatch-jobs"
+        ]
+      }
+    },
+    "/api/dispatch-jobs/requeue-by-filter": {
+      "post": {
+        "operationId": "requeueDispatchJobsByFilter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequeueByFilterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequeueByFilterResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Reset every dispatch job a filter matches to PENDING (confirmed count, capped)",
+        "tags": [
+          "dispatch-jobs"
+        ]
+      }
+    },
+    "/api/dispatch-jobs/requeue-by-filter/preview": {
+      "post": {
+        "operationId": "previewRequeueDispatchJobsByFilter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequeueByFilterPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequeueByFilterPreviewResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Count the dispatch jobs a filter matches and how many a requeue would reset",
         "tags": [
           "dispatch-jobs"
         ]

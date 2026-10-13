@@ -31,13 +31,14 @@ import javax.sql.DataSource;
  */
 public final class JdbcOutboxDriver implements OutboxDriver {
 
+    // Byte for byte the framework's statement (conformance/sql/outbox/insert.sql, no trailing
+    // newline) once the table name is filled in; OutboxConformanceTest holds it there.
     private static final String INSERT_SQL = """
             INSERT INTO %s (
               id, type, message_group, payload, status, created_at, updated_at,
               client_id, payload_size, headers
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """;
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""";
 
     private final DataSource dataSource;
     private final String insertSql;
@@ -50,6 +51,11 @@ public final class JdbcOutboxDriver implements OutboxDriver {
     public JdbcOutboxDriver(DataSource dataSource, String table) {
         this.dataSource = dataSource;
         this.insertSql = INSERT_SQL.formatted(table);
+    }
+
+    /** The INSERT this driver sends, with JDBC {@code ?} placeholders. */
+    public String insertSql() {
+        return insertSql;
     }
 
     @Override

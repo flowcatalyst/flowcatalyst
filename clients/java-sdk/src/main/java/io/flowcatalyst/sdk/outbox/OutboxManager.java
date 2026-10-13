@@ -6,6 +6,7 @@ import io.flowcatalyst.sdk.http.Json;
 import io.flowcatalyst.sdk.tsid.Tsid;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.InstantSource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,7 @@ public final class OutboxManager {
 
     private final OutboxDriver driver;
     private final String clientId;
+    private final InstantSource clock;
     private final ObjectMapper mapper = Json.newMapper();
 
     /**
@@ -35,8 +37,18 @@ public final class OutboxManager {
      *                 outbox rows, e.g. {@code clt_0HZXEQ5Y8JY5Z}
      */
     public OutboxManager(OutboxDriver driver, String clientId) {
+        this(driver, clientId, InstantSource.system());
+    }
+
+    /**
+     * As {@link #OutboxManager(OutboxDriver, String)}, with the clock that dates each row
+     * ({@code created_at}, {@code updated_at}) and an audit entry without its own
+     * {@code performedAt}.
+     */
+    public OutboxManager(OutboxDriver driver, String clientId, InstantSource clock) {
         this.driver = driver;
         this.clientId = clientId;
+        this.clock = clock;
     }
 
     public String createEvent(CreateEventDto event) {
@@ -54,8 +66,8 @@ public final class OutboxManager {
         ensureClientId();
         String id = Tsid.generate();
         driver.insert(buildMessage(id, OutboxMessage.MessageType.EVENT,
-                serialize(event.toPayload(mapper)), event.messageGroup(),
-                nullIfEmpty(event.headers())), tx);
+                serialize(event.toPayload(mapper, id)), event.messageGroup(),
+                nullIfEmpty(event.headers()), clock.instant()), tx);
         return id;
     }
 
@@ -67,14 +79,15 @@ public final class OutboxManager {
     public List<String> createEvents(List<CreateEventDto> events, Object tx) {
         if (events.isEmpty()) return List.of();
         ensureClientId();
+        Instant now = clock.instant();
         List<String> ids = new ArrayList<>(events.size());
         List<OutboxMessage> messages = new ArrayList<>(events.size());
         for (CreateEventDto event : events) {
             String id = Tsid.generate();
             ids.add(id);
             messages.add(buildMessage(id, OutboxMessage.MessageType.EVENT,
-                    serialize(event.toPayload(mapper)), event.messageGroup(),
-                    nullIfEmpty(event.headers())));
+                    serialize(event.toPayload(mapper, id)), event.messageGroup(),
+                    nullIfEmpty(event.headers()), now));
         }
         driver.insertBatch(messages, tx);
         return ids;
@@ -84,12 +97,18 @@ public final class OutboxManager {
         return createDispatchJob(job, null);
     }
 
-    /** Create a single dispatch job in the outbox. Returns the generated TSID. */
+    /**
+     * Create a single dispatch job in the outbox. Returns the job id, which is also the row id:
+     * the one given with {@link CreateDispatchJobDto#withId}, or a generated TSID.
+     *
+     * @throws IllegalArgumentException when {@link CreateDispatchJobDto#validate()} refuses the
+     *     job (nothing is written)
+     */
     public String createDispatchJob(CreateDispatchJobDto job, Object tx) {
         ensureClientId();
-        String id = Tsid.generate();
+        String id = job.id() != null ? job.id() : Tsid.generate();
         driver.insert(buildMessage(id, OutboxMessage.MessageType.DISPATCH_JOB,
-                serialize(job.toPayload()), job.messageGroup(), null), tx);
+                serialize(job.toPayload(id)), job.messageGroup(), null, clock.instant()), tx);
         return id;
     }
 
@@ -97,17 +116,22 @@ public final class OutboxManager {
         return createDispatchJobs(jobs, null);
     }
 
-    /** Create multiple dispatch jobs in the outbox (batch). Returns the generated TSIDs. */
+    /**
+     * Create multiple dispatch jobs in the outbox (batch). Returns the job ids (see
+     * {@link #createDispatchJob(CreateDispatchJobDto, Object)}); every job is validated before
+     * any row is written.
+     */
     public List<String> createDispatchJobs(List<CreateDispatchJobDto> jobs, Object tx) {
         if (jobs.isEmpty()) return List.of();
         ensureClientId();
+        Instant now = clock.instant();
         List<String> ids = new ArrayList<>(jobs.size());
         List<OutboxMessage> messages = new ArrayList<>(jobs.size());
         for (CreateDispatchJobDto job : jobs) {
-            String id = Tsid.generate();
+            String id = job.id() != null ? job.id() : Tsid.generate();
             ids.add(id);
             messages.add(buildMessage(id, OutboxMessage.MessageType.DISPATCH_JOB,
-                    serialize(job.toPayload()), job.messageGroup(), null));
+                    serialize(job.toPayload(id)), job.messageGroup(), null, now));
         }
         driver.insertBatch(messages, tx);
         return ids;
@@ -121,9 +145,10 @@ public final class OutboxManager {
     public String createAuditLog(CreateAuditLogDto auditLog, Object tx) {
         ensureClientId();
         String id = Tsid.generate();
+        Instant now = clock.instant();
         driver.insert(buildMessage(id, OutboxMessage.MessageType.AUDIT_LOG,
-                serialize(auditLog.toPayload(mapper)), null,
-                nullIfEmpty(auditLog.headers())), tx);
+                serialize(auditLog.toPayload(mapper, now)), null,
+                nullIfEmpty(auditLog.headers()), now), tx);
         return id;
     }
 
@@ -135,14 +160,15 @@ public final class OutboxManager {
     public List<String> createAuditLogs(List<CreateAuditLogDto> auditLogs, Object tx) {
         if (auditLogs.isEmpty()) return List.of();
         ensureClientId();
+        Instant now = clock.instant();
         List<String> ids = new ArrayList<>(auditLogs.size());
         List<OutboxMessage> messages = new ArrayList<>(auditLogs.size());
         for (CreateAuditLogDto auditLog : auditLogs) {
             String id = Tsid.generate();
             ids.add(id);
             messages.add(buildMessage(id, OutboxMessage.MessageType.AUDIT_LOG,
-                    serialize(auditLog.toPayload(mapper)), null,
-                    nullIfEmpty(auditLog.headers())));
+                    serialize(auditLog.toPayload(mapper, now)), null,
+                    nullIfEmpty(auditLog.headers()), now));
         }
         driver.insertBatch(messages, tx);
         return ids;
@@ -157,8 +183,8 @@ public final class OutboxManager {
             OutboxMessage.MessageType type,
             String payload,
             String messageGroup,
-            Map<String, String> headers) {
-        Instant now = Instant.now();
+            Map<String, String> headers,
+            Instant now) {
         return new OutboxMessage(
                 id,
                 type,
