@@ -99,6 +99,11 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// callers are not affected. Before the profile gate, so a refused
 		// request gets the same answer whatever the caller's roles.
 		r.Use(svcs.sessionCSRF)
+		// Passkey sign-in is public and mints the fc_session cookie like
+		// /auth/login, so it takes the same login-CSRF guard. The huma routes
+		// cannot carry chi middleware one by one, hence the path match.
+		r.Use(forPaths(svcs.credentialCSRF,
+			"/auth/webauthn/authenticate/begin", "/auth/webauthn/authenticate/complete"))
 		// A USER with no platform role reaches only their own profile
 		// (/auth/*, GET /api/me) — see ProfileOnlyWithoutRole.
 		r.Use(platformmw.ProfileOnlyWithoutRole)
@@ -116,11 +121,13 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		humaCfg := apiroute.PlatformAPIConfig("FlowCatalyst Platform API", "dev")
 		humaCfg.OpenAPIPath = ""
 		humaCfg.DocsPath = ""
-		// Drop huma's $schema link injection. The wire contract never emits it
-		// and the field clutters response bodies that SPAs / SDKs parse
-		// strictly. The OpenAPI document still describes every response
-		// (served from the parent router via /openapi.json) — clients
-		// that want the schema can fetch it there.
+		// No /schemas route. This does NOT drop huma's "$schema" field: the
+		// link transformer comes from a create hook in huma.DefaultConfig,
+		// so responses still carry "$schema" (pointing at the issuer) and the
+		// spec still declares it on every response schema (217 in
+		// api/openapi.lock.json, read-only in the generated SDK types).
+		// Removing the hook would change the lock and every generated SDK, so
+		// it is left (docs/platform-bug-fixes.md, F16 follow-up).
 		humaCfg.SchemasPath = ""
 		humaAPI = humachi.New(r, humaCfg)
 
@@ -296,7 +303,9 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			g.Use(ratelimit.GovernorMiddleware(oidcGov, "Too many authentication requests"))
 			bridgeLoginEP.RegisterRoutes(g)
 			bridgeLoginEP.RegisterPortalRoutes(g)
-			portalAuthState.RegisterRoutes(g)
+			// Portal password login and reset: the login-CSRF guard, as on
+			// the platform plane (GET /portal/authorize is a safe method).
+			portalAuthState.RegisterRoutes(g.With(svcs.credentialCSRF))
 		})
 
 		corsapi.Register(humaAPI, &corsapi.State{
@@ -517,4 +526,23 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 	httpcompat.StripBFFPaths(humaAPI)
 
 	return humaAPI
+}
+
+// forPaths applies mw to requests whose path is exactly one of paths and
+// passes every other request straight through.
+func forPaths(mw func(http.Handler) http.Handler, paths ...string) func(http.Handler) http.Handler {
+	set := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		set[p] = true
+	}
+	return func(next http.Handler) http.Handler {
+		guarded := mw(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if set[r.URL.Path] {
+				guarded.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

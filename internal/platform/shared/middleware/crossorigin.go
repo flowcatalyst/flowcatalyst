@@ -27,6 +27,13 @@ func AuthenticatedBySessionCookie(ctx context.Context) bool {
 	return v
 }
 
+// WithSessionCookieAuth records on ctx that its AuthContext came from the
+// fc_session cookie. The Authenticator calls it; another authenticator that
+// accepts the cookie, or a test standing in for one, does the same.
+func WithSessionCookieAuth(ctx context.Context) context.Context {
+	return context.WithValue(ctx, cookieSessionKey{}, true)
+}
+
 // Wire codes of the session guard's refusals.
 const (
 	CodeCrossOriginRequest   = "CROSS_ORIGIN_REQUEST"
@@ -65,18 +72,9 @@ var errNoProvenance = errors.New("unsafe request without Sec-Fetch-Site or Origi
 // OAuth/OIDC endpoints and the dispatch callbacks are mounted outside the
 // authenticated group and do not pass through this guard.
 func SessionCSRF(trustedOrigins []string) (func(http.Handler) http.Handler, error) {
-	cop := http.NewCrossOriginProtection()
-	for _, o := range trustedOrigins {
-		if o == "" {
-			continue
-		}
-		u, err := url.Parse(o)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return nil, fmt.Errorf("middleware: trusted origin %q is not an http(s) origin", o)
-		}
-		if err := cop.AddTrustedOrigin(u.Scheme + "://" + u.Host); err != nil {
-			return nil, fmt.Errorf("middleware: trusted origin %q: %w", o, err)
-		}
+	cop, err := newCrossOriginProtection(trustedOrigins)
+	if err != nil {
+		return nil, err
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +104,75 @@ func SessionCSRF(trustedOrigins []string) (func(http.Handler) http.Handler, erro
 			next.ServeHTTP(w, r)
 		})
 	}, nil
+}
+
+// CredentialCSRF guards the public routes that sign a browser in or set its
+// credentials (password login, the 2FA steps that finish it, passkey sign-in,
+// the password-reset and set-password flow, the portal password login): login
+// CSRF, where a page on another site makes the victim's browser sign in to the
+// attacker's account. It applies to every unsafe request, authenticated or
+// not:
+//
+//  1. Provenance (net/http.CrossOriginProtection, unchanged): a request a
+//     browser marks as cross-origin (Sec-Fetch-Site other than same-origin or
+//     none, or else an Origin naming neither the request's Host nor a trusted
+//     origin) is refused, 403 CROSS_ORIGIN_REQUEST. A request with neither
+//     header passes: it did not come from a browser, and login CSRF needs the
+//     victim's browser (every browser sends Origin on a cross-origin POST).
+//     This is where it differs from SessionCSRF, which refuses that case
+//     because there the request presents the browser's session cookie.
+//  2. JSON only, for every caller: a request with a body must declare
+//     application/json (or a +json type), else 415 UNSUPPORTED_MEDIA_TYPE.
+//     A cross-origin page can send only text/plain, form and multipart bodies
+//     (or none) without a CORS preflight, and the platform answers none.
+func CredentialCSRF(trustedOrigins []string) (func(http.Handler) http.Handler, error) {
+	cop, err := newCrossOriginProtection(trustedOrigins)
+	if err != nil {
+		return nil, err
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if safeMethod(r.Method) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if err := cop.Check(r); err != nil {
+				slog.WarnContext(r.Context(), "sign-in request refused: not from this origin",
+					"method", r.Method, "path", r.URL.Path, "origin", r.Header.Get("Origin"),
+					"secFetchSite", r.Header.Get("Sec-Fetch-Site"), "err", err)
+				writeEnvelope(w, http.StatusForbidden, CodeCrossOriginRequest,
+					"This request was refused because it did not come from this site. "+
+						"Sign-in and credential requests must be sent by the platform's own pages.")
+				return
+			}
+			if hasBody(r) && !isJSONMediaType(r.Header.Get("Content-Type")) {
+				writeEnvelope(w, http.StatusUnsupportedMediaType, CodeUnsupportedMediaType,
+					"This endpoint accepts only a JSON body (Content-Type: application/json).")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}, nil
+}
+
+// newCrossOriginProtection builds the provenance check both guards use, with
+// trustedOrigins (the public base URL) accepted as Origin for a proxy that
+// rewrites Host.
+func newCrossOriginProtection(trustedOrigins []string) (*http.CrossOriginProtection, error) {
+	cop := http.NewCrossOriginProtection()
+	for _, o := range trustedOrigins {
+		if o == "" {
+			continue
+		}
+		u, err := url.Parse(o)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return nil, fmt.Errorf("middleware: trusted origin %q is not an http(s) origin", o)
+		}
+		if err := cop.AddTrustedOrigin(u.Scheme + "://" + u.Host); err != nil {
+			return nil, fmt.Errorf("middleware: trusted origin %q: %w", o, err)
+		}
+	}
+	return cop, nil
 }
 
 func safeMethod(m string) bool {

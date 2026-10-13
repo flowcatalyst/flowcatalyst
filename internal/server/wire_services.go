@@ -74,6 +74,9 @@ type serviceSet struct {
 	// cookie (platformmw.SessionCSRF); the authenticated group runs it right
 	// after the Authenticator.
 	sessionCSRF func(http.Handler) http.Handler
+	// credentialCSRF guards the public routes that sign a browser in or set
+	// its credentials (platformmw.CredentialCSRF): login CSRF.
+	credentialCSRF func(http.Handler) http.Handler
 }
 
 // functionDescribeMemoryLimitBytes / functionDescribeMemoryReserveBytes size
@@ -256,12 +259,22 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	svcs.notifier = notify.New(svcs.emailSvc).WithName(svcs.platformName)
 	svcs.twofaPolicy = twofa.Policy{Mappings: repos.edmRepo, IDPs: repos.idpRepo}
 
+	// Login-CSRF guard for the public sign-in and credential routes
+	// (provenance when a browser states it, JSON-only for everyone). Built
+	// before the login endpoint, which applies it to /auth/login and the
+	// /auth/2fa/* steps that finish a login.
+	svcs.credentialCSRF, err = platformmw.CredentialCSRF(publicOrigins(cfg.JWTIssuer))
+	if err != nil {
+		return nil, fmt.Errorf("credential CSRF guard: %w", err)
+	}
+
 	// Public auth surface: SPA login + cookie acquisition. MUST live
 	// outside the bearer-token middleware — a stale fc_session cookie from
 	// a previous run would otherwise 401 the request before the SPA could
 	// re-authenticate. Registered in registerPublicRoutes; the
 	// authenticated /auth/me half registers inside the platform group.
 	svcs.loginEP = login.New(login.Config{
+		CredentialGuard:   svcs.credentialCSRF,
 		Provider:          authProvider,
 		Principals:        repos.principalRepo,
 		Mappings:          repos.edmRepo,

@@ -54,7 +54,11 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 	// prod); when SMTP isn't configured the message is logged instead. Delivery
 	// is best-effort — a send failure never fails the request.
 	// emailSvc is the shared mailer constructed with the 2FA services.
-	passwordresetapi.RegisterRoutes(r, &passwordresetapi.State{
+	//
+	// Every route here takes the credential guard (login CSRF): confirm sets
+	// a password and an INVITE confirm signs the browser in; the two request
+	// routes mint tokens and send mail. GET validate is a safe method.
+	passwordresetapi.RegisterRoutes(r.With(svcs.credentialCSRF), &passwordresetapi.State{
 		Principals:       repos.principalRepo,
 		PortalIdentities: repos.portalIdentityRepo,
 		Tokens:           repos.resetTokenRepo,

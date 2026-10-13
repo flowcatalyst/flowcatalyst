@@ -90,6 +90,11 @@ type Config struct {
 	// tokens. Zero falls back to defaults (10m / 30m).
 	PendingTokenTTL time.Duration
 	EnrollTokenTTL  time.Duration
+
+	// CredentialGuard (optional) wraps POST /auth/login and the public
+	// /auth/2fa/* routes, the ones that sign a browser in: the server passes
+	// platformmw.CredentialCSRF (login CSRF). Nil mounts them unguarded.
+	CredentialGuard func(http.Handler) http.Handler
 }
 
 // Endpoint is the bag of HTTP handlers.
@@ -123,10 +128,18 @@ func (e *Endpoint) RegisterPublicRoutes(r chi.Router) {
 	// GET variant is a distinct
 	// (legacy) query-param shape. See handleCheckDomainQuery.
 	r.Get("/auth/check-domain", e.handleCheckDomainQuery)
-	r.Post("/auth/login", e.handleLogin)
+	// The routes that sign a browser in take the credential guard (login
+	// CSRF: JSON only, refused when a browser says another origin sent it).
+	// Logout issues nothing, check-domain reads, and refresh answers tokens
+	// in the body without a cookie, so they are not guarded.
+	signIn := r
+	if e.cfg.CredentialGuard != nil {
+		signIn = r.With(e.cfg.CredentialGuard)
+	}
+	signIn.Post("/auth/login", e.handleLogin)
 	r.Post("/auth/logout", e.handleLogout)
 	// 2FA challenge + enrollment endpoints (no-op when MFA isn't wired).
-	e.RegisterTwoFactorRoutes(r)
+	e.RegisterTwoFactorRoutes(signIn)
 	// /auth/refresh rotates a refresh token without an existing session, so
 	// it lives on the public router. Only mounted when its deps are wired.
 	if e.cfg.RefreshTokens != nil && e.cfg.Auth != nil {
