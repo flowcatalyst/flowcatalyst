@@ -95,6 +95,12 @@ FROM fng_settings
 WHERE function_id = $1
 ORDER BY kind, key;
 
+-- name: FunctionSettingKeysByKind :many
+SELECT key
+FROM fng_settings
+WHERE function_id = $1 AND kind = $2
+ORDER BY key;
+
 -- name: FunctionRunnerUpsertHeartbeat :exec
 INSERT INTO fng_runners (id, pool, heartbeat_at, report)
 VALUES ($1, $2, $3, $4)

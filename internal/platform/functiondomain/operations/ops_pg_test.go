@@ -247,3 +247,43 @@ func itoa(n int) string {
 	}
 	return string(b)
 }
+
+// Claim and release store Java's and Rust's domain:claimed and
+// domain:released: source platform:function, the domain's group, data
+// {domainId, hostname, owner} with the owner on release too.
+func TestDomainEvents_ClaimAndReleaseStoreTheSharedData(t *testing.T) {
+	t.Parallel()
+	pool := testpg.Pool(t)
+	repo := functiondomain.NewRepository(pool)
+	uow := testpg.NewUoW(t)
+
+	cid := newClientID()
+	zone := "events-" + short(t) + ".test"
+	claimed, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateDomain(repo),
+		operations.CreateCommand{Zone: zone, ClientID: &cid}, testpg.TestEC())
+	require.NoError(t, err)
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.DeleteDomain(repo, nil),
+		operations.DeleteCommand{ID: claimed.DomainID}, testpg.TestEC())
+	require.NoError(t, err)
+
+	rows, err := pool.Query(context.Background(),
+		`SELECT type, source, message_group, data::text FROM msg_events WHERE subject = $1 ORDER BY id`,
+		"platform.function-domain."+claimed.DomainID)
+	require.NoError(t, err)
+	defer rows.Close()
+	var got [][4]string
+	for rows.Next() {
+		var r [4]string
+		require.NoError(t, rows.Scan(&r[0], &r[1], &r[2], &r[3]))
+		got = append(got, r)
+	}
+	require.NoError(t, rows.Err())
+	require.Len(t, got, 2)
+	data := `{"domainId":"` + claimed.DomainID + `","hostname":"` + zone + `","owner":"` + cid + `"}`
+	for i, typ := range []string{"platform:function:domain:claimed", "platform:function:domain:released"} {
+		assert.Equal(t, typ, got[i][0])
+		assert.Equal(t, "platform:function", got[i][1])
+		assert.Equal(t, "platform:function-domain:"+claimed.DomainID, got[i][2])
+		assert.JSONEq(t, data, got[i][3])
+	}
+}

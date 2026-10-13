@@ -137,10 +137,11 @@ func CreateFunction(repo *function.Repository, apps *application.Repository) use
 			f.CreatedBy = &ec.PrincipalID
 
 			event := FunctionCreated{
-				Metadata:   usecase.NewEventMetadata(ec, FunctionCreatedType, Source, subjectFor(f.ID)),
-				FunctionID: f.ID,
-				Address:    f.Address,
-				Name:       f.Name,
+				Metadata:      usecase.NewEventMetadata(ec, FunctionCreatedType, Source, subjectFor(f.ID)),
+				FunctionID:    f.ID,
+				Address:       f.Address,
+				ApplicationID: f.ApplicationID,
+				ClientID:      f.ClientID,
 			}
 			return usecaseop.Save(f, repo, event), nil
 		},

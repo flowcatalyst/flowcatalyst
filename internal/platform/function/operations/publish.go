@@ -75,7 +75,7 @@ type PublishResult struct {
 // repo.InsertVersionTx on the scoped transaction (s.WithTx) rather than
 // through the [usecaseop.Plan] machinery — the same pattern
 // application/operations/provision_service_account.go uses for its linked
-// principal row — while [FunctionVersionPublished] is still emitted as a
+// principal row — while [VersionPublished] is still emitted as a
 // proper atomic domain event via EmitEventScoped.
 func Publish(repo *function.Repository, artifacts artifact.Store, loader *runtimes.Loader) usecaseop.TxOperation[PublishCommand, PublishResult] {
 	return usecaseop.TxOperation[PublishCommand, PublishResult]{
@@ -215,13 +215,14 @@ func Publish(repo *function.Repository, artifacts artifact.Store, loader *runtim
 				return zero, usecase.Internal("REPO", "publish write failed", err)
 			}
 
-			event := FunctionVersionPublished{
-				Metadata:   usecase.NewEventMetadata(ec, FunctionVersionPublishedType, Source, subjectFor(f.ID)),
+			event := VersionPublished{
+				Metadata:   usecase.NewEventMetadata(ec, VersionPublishedType, Source, subjectFor(f.ID)),
 				FunctionID: f.ID,
 				Address:    f.Address,
-				Number:     v.Number,
+				VersionID:  v.ID,
+				Version:    v.Number,
 				Digest:     v.Digest,
-				Runtime:    v.Runtime,
+				Pool:       f.RunnerPool(),
 			}
 			if r := usecasepgx.EmitEventScoped(ctx, s, event, cmd); !usecase.IsSuccess(r) {
 				_, e := usecase.Into(r)
@@ -372,11 +373,12 @@ func RetireVersion(repo *function.Repository) usecaseop.TxOperation[RetireComman
 				return zero, usecase.Internal("REPO", "retire write failed", err)
 			}
 
-			event := FunctionVersionRetired{
-				Metadata:   usecase.NewEventMetadata(ec, FunctionVersionRetiredType, Source, subjectFor(f.ID)),
+			event := VersionRetired{
+				Metadata:   usecase.NewEventMetadata(ec, VersionRetiredType, Source, subjectFor(f.ID)),
 				FunctionID: f.ID,
 				Address:    f.Address,
-				Number:     cmd.Number,
+				VersionID:  v.ID,
+				Version:    v.Number,
 			}
 			if r := usecasepgx.EmitEventScoped(ctx, s, event, cmd); !usecase.IsSuccess(r) {
 				_, e := usecase.Into(r)

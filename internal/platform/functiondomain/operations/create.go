@@ -74,8 +74,8 @@ func CreateDomain(repo *functiondomain.Repository) usecaseop.Operation[CreateCom
 			event := DomainClaimed{
 				Metadata: usecase.NewEventMetadata(ec, DomainClaimedType, Source, subjectFor(d.ID)),
 				DomainID: d.ID,
-				Zone:     d.Zone,
-				ClientID: d.ClientID,
+				Hostname: d.Zone,
+				Owner:    OwnerOf(d.ClientID),
 			}
 			return usecaseop.Save(d, repo, event), nil
 		},

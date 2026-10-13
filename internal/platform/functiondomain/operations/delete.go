@@ -65,7 +65,8 @@ func DeleteDomain(repo *functiondomain.Repository, routeHostnames RouteHostnames
 			event := DomainReleased{
 				Metadata: usecase.NewEventMetadata(ec, DomainReleasedType, Source, subjectFor(d.ID)),
 				DomainID: d.ID,
-				Zone:     d.Zone,
+				Hostname: d.Zone,
+				Owner:    OwnerOf(d.ClientID),
 			}
 			return usecaseop.Delete(d, repo, event), nil
 		},

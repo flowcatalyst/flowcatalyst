@@ -146,31 +146,45 @@ var javaRustFunctionEventTypes = map[string]bool{
 	"platform:function:domain:released":   true,
 }
 
-// functionEventTypesAwaitingRuling are the function event types Go still
-// emits under platform:admin:function*: their data differs from the Java/Rust
-// event they would map to, or Java/Rust have no such event, so they were not
-// renamed (docs/platform-bug-fixes.md F11). The list may only shrink: a new
-// platform:admin:function* code fails, and so does an entry no longer emitted.
-var functionEventTypesAwaitingRuling = map[string]bool{
-	"platform:admin:function:created":           true,
-	"platform:admin:function:updated":           true,
-	"platform:admin:function:promoted":          true,
-	"platform:admin:function-version:published": true,
-	"platform:admin:function-version:retired":   true,
-	"platform:admin:function-alias:set":         true,
-	"platform:admin:function-alias:deleted":     true,
-	"platform:admin:function-setting:set":       true,
-	"platform:admin:function-setting:deleted":   true,
-	"platform:admin:function-route:set":         true,
-	"platform:admin:function-route:deleted":     true,
-	"platform:admin:function-schedule:wired":    true,
-	"platform:admin:function-domain:claimed":    true,
-	"platform:admin:function-domain:released":   true,
+// goOnlyFunctionEventTypes are the function event types Go emits that Java
+// and Rust have no counterpart for, so they keep their platform:admin:function*
+// codes, source and data (docs/platform-bug-fixes.md F11, owner ruling
+// 2026-10-13: reshape to Java/Rust where a mapping exists, keep the rest):
+//
+//   - function:promoted: the summary of the wiring promote reconciles
+//     (dispatch pool, subscriptions, scheduled jobs). Java and Rust promote
+//     emits only alias:changed, which Go now emits too.
+//   - function-schedule:wired: one per scheduled job that reconciliation
+//     creates, updates or deletes.
+//   - function-route:{set,deleted}: Go's public routes are their own records;
+//     Java's and Rust's routes live in the version manifest and emit nothing.
+//   - function-setting:{set,deleted}: now only for DB settings. Java and Rust
+//     have no DB kind; CONFIG and SECRET settings emit config:updated and
+//     secret:{set,deleted}.
+//
+// The list may only shrink: a new platform:admin:function* code fails, and so
+// does an entry no longer emitted.
+var goOnlyFunctionEventTypes = map[string]bool{
+	"platform:admin:function:promoted":        true,
+	"platform:admin:function-schedule:wired":  true,
+	"platform:admin:function-route:set":       true,
+	"platform:admin:function-route:deleted":   true,
+	"platform:admin:function-setting:set":     true,
+	"platform:admin:function-setting:deleted": true,
+}
+
+// javaRustOnlyFunctionEventTypes are the Java/Rust function events Go has no
+// operation for: version:ready (Go marks a version READY from the runner
+// heartbeat without an event) and policy:updated (Go has no signer policy).
+var javaRustOnlyFunctionEventTypes = map[string]bool{
+	"platform:function:version:ready":  true,
+	"platform:function:policy:updated": true,
 }
 
 // Go's function events stay in step with Java's and Rust's: a code Go emits in
 // the platform:function:* family is one of theirs (Go does not invent codes in
-// it), and the old platform:admin:function* family only shrinks (F11).
+// it), Go emits every one of theirs it has an operation for, and the Go-only
+// platform:admin:function* family only shrinks (F11).
 func TestFunctionEventTypesFollowJavaAndRust(t *testing.T) {
 	emitted := emittedEventTypes(t)
 	var codes []string
@@ -185,17 +199,23 @@ func TestFunctionEventTypesFollowJavaAndRust(t *testing.T) {
 				t.Errorf("%s (%s) is in the platform:function family but Java and Rust do not emit it", code, emitted[code])
 			}
 		case strings.HasPrefix(code, "platform:admin:function"):
-			if !functionEventTypesAwaitingRuling[code] {
+			if !goOnlyFunctionEventTypes[code] {
 				t.Errorf("%s (%s) is a new platform:admin:function* code; function events use platform:function:*", code, emitted[code])
 			}
 		}
 	}
-	for code := range functionEventTypesAwaitingRuling {
+	for code := range goOnlyFunctionEventTypes {
 		if _, ok := emitted[code]; !ok {
-			t.Errorf("%s is no longer emitted; remove it from functionEventTypesAwaitingRuling", code)
+			t.Errorf("%s is no longer emitted; remove it from goOnlyFunctionEventTypes", code)
 		}
 	}
-	if _, ok := emitted["platform:function:function:deleted"]; !ok {
-		t.Error("FunctionDeleted no longer emits platform:function:function:deleted")
+	for code := range javaRustFunctionEventTypes {
+		_, ok := emitted[code]
+		switch {
+		case !ok && !javaRustOnlyFunctionEventTypes[code]:
+			t.Errorf("Go does not emit %s", code)
+		case ok && javaRustOnlyFunctionEventTypes[code]:
+			t.Errorf("Go emits %s now; remove it from javaRustOnlyFunctionEventTypes", code)
+		}
 	}
 }

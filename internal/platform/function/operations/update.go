@@ -69,9 +69,11 @@ func UpdateFunction(repo *function.Repository) usecaseop.Operation[UpdateCommand
 			f.Limits = newLimits
 
 			event := FunctionUpdated{
-				Metadata:   usecase.NewEventMetadata(ec, FunctionUpdatedType, Source, subjectFor(f.ID)),
-				FunctionID: f.ID,
-				Address:    f.Address,
+				Metadata:    usecase.NewEventMetadata(ec, FunctionUpdatedType, Source, subjectFor(f.ID)),
+				FunctionID:  f.ID,
+				Address:     f.Address,
+				Description: f.Description,
+				Status:      FunctionStatusActive,
 			}
 			return usecaseop.Save(f, repo, event), nil
 		},

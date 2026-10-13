@@ -120,18 +120,21 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 		"created", "updated", "paused", "resumed", "archived", "deleted", "fired-manually")
 	push("platform:admin:scheduledjobs:synced", "Scheduled Jobs Synced")
 
-	// Function events: the platform:function:* family Java and Rust emit
-	// (owner ruling 2026-10-12). Only "deleted" carries the same data there
-	// and was renamed (migration 073); the rest wait on the owner
-	// (docs/platform-bug-fixes.md F11).
-	group("platform:admin:function", "created", "updated", "promoted")
-	group("platform:function:function", "deleted")
-	group("platform:admin:function-version", "published", "retired")
-	group("platform:admin:function-alias", "set", "deleted")
+	// Function events: the platform:function:* family Java and Rust emit,
+	// named as theirs (owner rulings 2026-10-12, 2026-10-13; migrations 073
+	// and 074 renamed the older platform:admin:function* rows). The Go-only
+	// events, which Java and Rust have no counterpart for, keep their
+	// platform:admin:function* codes (docs/platform-bug-fixes.md F11).
+	groupAs("platform:function:function", "Function", "created", "updated", "deleted")
+	groupAs("platform:function:version", "Function Version", "published", "retired")
+	groupAs("platform:function:alias", "Function Alias", "changed", "removed")
+	groupAs("platform:function:config", "Function Config", "updated")
+	groupAs("platform:function:secret", "Function Secret", "set", "deleted")
+	groupAs("platform:function:domain", "Function Domain", "claimed", "released")
+	group("platform:admin:function", "promoted")
 	group("platform:admin:function-setting", "set", "deleted")
 	group("platform:admin:function-route", "set", "deleted")
 	group("platform:admin:function-schedule", "wired")
-	group("platform:admin:function-domain", "claimed", "released")
 
 	// ── platform:messaging ──────────────────────────────────────────────
 	group("platform:messaging:dispatch-job", "cancelled", "completed")

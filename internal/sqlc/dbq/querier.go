@@ -155,6 +155,7 @@ type Querier interface {
 	FunctionPoolRevisionGet(ctx context.Context, pool string) (int64, error)
 	FunctionRunnerUpsertHeartbeat(ctx context.Context, arg FunctionRunnerUpsertHeartbeatParams) error
 	FunctionSettingDelete(ctx context.Context, arg FunctionSettingDeleteParams) error
+	FunctionSettingKeysByKind(ctx context.Context, arg FunctionSettingKeysByKindParams) ([]string, error)
 	FunctionSettingList(ctx context.Context, functionID string) ([]FngSetting, error)
 	FunctionSettingUpsert(ctx context.Context, arg FunctionSettingUpsertParams) error
 	FunctionUpsert(ctx context.Context, arg FunctionUpsertParams) error

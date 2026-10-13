@@ -314,29 +314,46 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqNullableStrArray("created"), reqNullableStrArray("updated"), reqNullableStrArray("archived"),
 	)
 
-	// ── platform:admin:function, platform:function ──────────────────────
-	m["platform:admin:function:created"] = obj(reqStr("functionId"), reqStr("address"), reqStr("name"))
-	m["platform:admin:function:updated"] = obj(reqStr("functionId"), reqStr("address"))
-	// The same data, and schema, as Java's and Rust's.
+	// ── platform:function (shared with Java and Rust), platform:admin:function* (Go-only)
+	// The shared codes carry Java's and Rust's schemas, except that
+	// function:created has no runtime (a Go function has none; Go's runtime
+	// is per version). The signer pair is never sent (Go does not sign).
+	m["platform:function:function:created"] = obj(
+		reqStr("functionId"), reqStr("address"), reqStr("applicationId"), optStr("clientId"),
+	)
+	m["platform:function:function:updated"] = obj(
+		reqStr("functionId"), reqStr("address"), optStr("description"), reqStr("status"),
+	)
 	m["platform:function:function:deleted"] = obj(reqStr("functionId"), reqStr("address"))
+	m["platform:function:version:published"] = obj(
+		reqStr("functionId"), reqStr("address"), reqStr("versionId"), reqU32("version"),
+		reqStr("digest"), reqStr("pool"), optStr("signerIssuer"), optStr("signerSubject"),
+	)
+	m["platform:function:version:retired"] = obj(
+		reqStr("functionId"), reqStr("address"), reqStr("versionId"), reqU32("version"),
+	)
+	// previousVersionId is absent when the alias is new.
+	m["platform:function:alias:changed"] = obj(
+		reqStr("functionId"), reqStr("address"), reqStr("alias"), reqStr("versionId"),
+		reqU32("version"), optStr("previousVersionId"),
+	)
+	m["platform:function:alias:removed"] = obj(
+		reqStr("functionId"), reqStr("address"), reqStr("alias"), reqStr("versionId"), reqU32("version"),
+	)
+	// Keys only, never values.
+	m["platform:function:config:updated"] = obj(reqStr("functionId"), reqStr("address"), reqStrArray("keys"))
+	m["platform:function:secret:set"] = obj(reqStr("functionId"), reqStr("address"), reqStr("key"))
+	m["platform:function:secret:deleted"] = obj(reqStr("functionId"), reqStr("address"), reqStr("key"))
+	// owner is "platform" or the owning client's id.
+	m["platform:function:domain:claimed"] = obj(reqStr("domainId"), reqStr("hostname"), reqStr("owner"))
+	m["platform:function:domain:released"] = obj(reqStr("domainId"), reqStr("hostname"), reqStr("owner"))
 	// number is the version now live, 0 when live was removed.
 	m["platform:admin:function:promoted"] = obj(
 		reqStr("functionId"), reqStr("address"), reqU32("number"), reqStr("dispatchPoolCode"),
 		reqU32("subscriptionsCreated"), reqU32("subscriptionsUpdated"), reqU32("subscriptionsDeleted"),
 		reqU32("schedulesCreated"), reqU32("schedulesUpdated"), reqU32("schedulesDeleted"),
 	)
-	m["platform:admin:function-version:published"] = obj(
-		reqStr("functionId"), reqStr("address"), reqU32("number"), reqStr("digest"), reqStr("runtime"),
-	)
-	m["platform:admin:function-version:retired"] = obj(
-		reqStr("functionId"), reqStr("address"), reqU32("number"),
-	)
-	m["platform:admin:function-alias:set"] = obj(
-		reqStr("functionId"), reqStr("address"), reqStr("alias"), reqU32("number"),
-	)
-	m["platform:admin:function-alias:deleted"] = obj(
-		reqStr("functionId"), reqStr("address"), reqStr("alias"),
-	)
+	// DB settings only (kind is "DB"); CONFIG and SECRET emit the shared codes.
 	m["platform:admin:function-setting:set"] = obj(reqStr("functionId"), reqStr("kind"), reqStr("key"))
 	m["platform:admin:function-setting:deleted"] = obj(reqStr("functionId"), reqStr("kind"), reqStr("key"))
 	m["platform:admin:function-route:set"] = obj(
@@ -349,8 +366,6 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqStr("functionId"), reqStr("scheduledJobId"), reqStr("code"),
 		reqEnum("action", "created", "updated", "deleted"),
 	)
-	m["platform:admin:function-domain:claimed"] = obj(reqStr("domainId"), reqStr("zone"), optStr("clientId"))
-	m["platform:admin:function-domain:released"] = obj(reqStr("domainId"), reqStr("zone"))
 
 	// ── platform:messaging:dispatch-job ─────────────────────────────────
 	m["platform:messaging:dispatch-job:cancelled"] = obj(reqStr("dispatchJobId"))

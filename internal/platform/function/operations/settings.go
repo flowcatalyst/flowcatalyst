@@ -99,9 +99,17 @@ func PutSetting(repo *function.Repository) usecaseop.TxOperation[PutSettingComma
 				Key:        cmd.Key,
 				Value:      cmd.Value,
 			}
+			var configKeys []string
 			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
 				if setErr := repo.UpsertSettingTx(ctx, &setting, tx); setErr != nil {
 					return setErr
+				}
+				if cmd.Kind == function.SettingConfig {
+					keys, keysErr := repo.ListSettingKeysTx(ctx, f.ID, function.SettingConfig, tx)
+					if keysErr != nil {
+						return keysErr
+					}
+					configKeys = keys
 				}
 				_, bumpErr := repo.BumpPoolRevision(ctx, usecasepgx.WrapTxForBootstrap(tx), f.RunnerPool())
 				return bumpErr
@@ -116,12 +124,7 @@ func PutSetting(repo *function.Repository) usecaseop.TxOperation[PutSettingComma
 				return zero, usecase.Internal("REPO", "setting write failed", err)
 			}
 
-			event := FunctionSettingSet{
-				Metadata:   usecase.NewEventMetadata(ec, FunctionSettingSetType, Source, subjectFor(f.ID)),
-				FunctionID: f.ID,
-				Kind:       string(cmd.Kind),
-				Key:        cmd.Key,
-			}
+			event := settingEvent(ec, f, cmd.Kind, cmd.Key, configKeys, true)
 			if r := usecasepgx.EmitEventScoped(ctx, s, event, cmd); !usecase.IsSuccess(r) {
 				_, e := usecase.Into(r)
 				return zero, e
@@ -178,9 +181,17 @@ func DeleteSetting(repo *function.Repository) usecaseop.TxOperation[DeleteSettin
 				return zero, err
 			}
 
+			var configKeys []string
 			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
 				if delErr := repo.DeleteSettingTx(ctx, f.ID, cmd.Kind, cmd.Key, tx); delErr != nil {
 					return delErr
+				}
+				if cmd.Kind == function.SettingConfig {
+					keys, keysErr := repo.ListSettingKeysTx(ctx, f.ID, function.SettingConfig, tx)
+					if keysErr != nil {
+						return keysErr
+					}
+					configKeys = keys
 				}
 				_, bumpErr := repo.BumpPoolRevision(ctx, usecasepgx.WrapTxForBootstrap(tx), f.RunnerPool())
 				return bumpErr
@@ -188,18 +199,47 @@ func DeleteSetting(repo *function.Repository) usecaseop.TxOperation[DeleteSettin
 				return zero, usecase.Internal("REPO", "setting delete failed", err)
 			}
 
-			event := FunctionSettingDeleted{
-				Metadata:   usecase.NewEventMetadata(ec, FunctionSettingDeletedType, Source, subjectFor(f.ID)),
-				FunctionID: f.ID,
-				Kind:       string(cmd.Kind),
-				Key:        cmd.Key,
-			}
+			event := settingEvent(ec, f, cmd.Kind, cmd.Key, configKeys, false)
 			if r := usecasepgx.EmitEventScoped(ctx, s, event, cmd); !usecase.IsSuccess(r) {
 				_, e := usecase.Into(r)
 				return zero, e
 			}
 			return zero, nil
 		},
+	}
+}
+
+// settingEvent is the event a setting write emits (docs/platform-bug-fixes.md
+// F11): a CONFIG write [ConfigUpdated] with every CONFIG key after it
+// (configKeys), a SECRET write [SecretSet] / [SecretDeleted], a DB write the
+// Go-only [DBSettingSet] / [DBSettingDeleted]. None carries a value.
+func settingEvent(ec usecase.ExecutionContext, f *function.Function, kind function.SettingKind, key string, configKeys []string, set bool) usecase.DomainEvent {
+	switch {
+	case kind == function.SettingConfig:
+		return ConfigUpdated{
+			Metadata:   usecase.NewEventMetadata(ec, ConfigUpdatedType, Source, subjectFor(f.ID)),
+			FunctionID: f.ID, Address: f.Address, Keys: configKeys,
+		}
+	case kind == function.SettingSecret && set:
+		return SecretSet{
+			Metadata:   usecase.NewEventMetadata(ec, SecretSetType, Source, subjectFor(f.ID)),
+			FunctionID: f.ID, Address: f.Address, Key: key,
+		}
+	case kind == function.SettingSecret:
+		return SecretDeleted{
+			Metadata:   usecase.NewEventMetadata(ec, SecretDeletedType, Source, subjectFor(f.ID)),
+			FunctionID: f.ID, Address: f.Address, Key: key,
+		}
+	case set:
+		return DBSettingSet{
+			Metadata:   usecase.NewEventMetadata(ec, DBSettingSetType, AdminSource, subjectFor(f.ID)),
+			FunctionID: f.ID, Key: key,
+		}
+	default:
+		return DBSettingDeleted{
+			Metadata:   usecase.NewEventMetadata(ec, DBSettingDeletedType, AdminSource, subjectFor(f.ID)),
+			FunctionID: f.ID, Key: key,
+		}
 	}
 }
 

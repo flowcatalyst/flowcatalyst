@@ -232,6 +232,38 @@ func (q *Queries) FunctionSettingDelete(ctx context.Context, arg FunctionSetting
 	return err
 }
 
+const functionSettingKeysByKind = `-- name: FunctionSettingKeysByKind :many
+SELECT key
+FROM fng_settings
+WHERE function_id = $1 AND kind = $2
+ORDER BY key
+`
+
+type FunctionSettingKeysByKindParams struct {
+	FunctionID string `db:"function_id"`
+	Kind       string `db:"kind"`
+}
+
+func (q *Queries) FunctionSettingKeysByKind(ctx context.Context, arg FunctionSettingKeysByKindParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, functionSettingKeysByKind, arg.FunctionID, arg.Kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		items = append(items, key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const functionSettingList = `-- name: FunctionSettingList :many
 SELECT function_id, kind, key, value, updated_at
 FROM fng_settings

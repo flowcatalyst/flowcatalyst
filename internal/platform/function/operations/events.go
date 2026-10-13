@@ -4,41 +4,62 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
-// Event-type codes. The function events belong in the platform:function:*
-// family Java and Rust emit (owner ruling 2026-10-12). FunctionDeleted is in it
-// (same data as theirs; migration 073 renamed the catalogue row and its
-// subscription bindings); the others keep their platform:admin:function* codes
-// until the owner rules on their differing data (docs/platform-bug-fixes.md
-// F11).
+// Event-type codes (docs/platform-bug-fixes.md F11, owner rulings 2026-10-12
+// and 2026-10-13). The function events Java (FunctionEvents) and Rust
+// (fc-platform-functions events.rs) also emit use their platform:function:*
+// codes, their source and their data; migrations 073 and 074 renamed the
+// catalogue rows and subscription bindings of Go's older
+// platform:admin:function* codes. The events Java and Rust have no
+// counterpart for keep their platform:admin:function* codes and source
+// (seed/emitted_catalogue_test.go lists them, with why).
 const (
-	FunctionCreatedType          = "platform:admin:function:created"
-	FunctionUpdatedType          = "platform:admin:function:updated"
-	FunctionDeletedType          = "platform:function:function:deleted"
-	FunctionVersionPublishedType = "platform:admin:function-version:published"
-	FunctionVersionRetiredType   = "platform:admin:function-version:retired"
-	FunctionAliasSetType         = "platform:admin:function-alias:set"
-	FunctionAliasDeletedType     = "platform:admin:function-alias:deleted"
-	FunctionSettingSetType       = "platform:admin:function-setting:set"
-	FunctionSettingDeletedType   = "platform:admin:function-setting:deleted"
-	FunctionPromotedType         = "platform:admin:function:promoted"
-	FunctionScheduleWiredType    = "platform:admin:function-schedule:wired"
-	RouteSetType                 = "platform:admin:function-route:set"
-	RouteDeletedType             = "platform:admin:function-route:deleted"
-	Source                       = "platform:admin"
+	FunctionCreatedType  = "platform:function:function:created"
+	FunctionUpdatedType  = "platform:function:function:updated"
+	FunctionDeletedType  = "platform:function:function:deleted"
+	VersionPublishedType = "platform:function:version:published"
+	VersionRetiredType   = "platform:function:version:retired"
+	AliasChangedType     = "platform:function:alias:changed"
+	AliasRemovedType     = "platform:function:alias:removed"
+	ConfigUpdatedType    = "platform:function:config:updated"
+	SecretSetType        = "platform:function:secret:set"
+	SecretDeletedType    = "platform:function:secret:deleted"
+	// Source is the envelope source of the events shared with Java and Rust.
+	Source = "platform:function"
+
+	// Go-only: the promote wiring summary, the scheduled jobs it wires, the
+	// public routes, and DB settings (Java and Rust have no DB kind).
+	FunctionPromotedType      = "platform:admin:function:promoted"
+	FunctionScheduleWiredType = "platform:admin:function-schedule:wired"
+	RouteSetType              = "platform:admin:function-route:set"
+	RouteDeletedType          = "platform:admin:function-route:deleted"
+	DBSettingSetType          = "platform:admin:function-setting:set"
+	DBSettingDeletedType      = "platform:admin:function-setting:deleted"
+	// AdminSource is the envelope source of the Go-only events.
+	AdminSource = "platform:admin"
+
+	// FunctionStatusActive is function:updated's status. Java's and Rust's
+	// functions are ACTIVE or DISABLED; a Go function has no disabled state,
+	// so it is always ACTIVE.
+	FunctionStatusActive = "ACTIVE"
 )
 
 func subjectFor(id string) string { return "platform.function." + id }
 func groupFor(id string) string   { return "platform:function:" + id }
 
-// FunctionCreated is emitted on successful creation.
+// FunctionCreated is emitted on successful creation: {functionId, address,
+// applicationId, clientId?}. Java and Rust also send the function's runtime;
+// a Go function has none (Go's runtime is per version), so it is absent.
 type FunctionCreated struct {
-	Metadata   usecase.EventMetadata
-	FunctionID string
-	Address    string
-	Name       string
+	Metadata      usecase.EventMetadata
+	FunctionID    string
+	Address       string
+	ApplicationID string
+	// ClientID is the owning client; nil (absent) for a platform function.
+	ClientID *string
 }
 
 func (e FunctionCreated) EventID() string       { return e.Metadata.EventID }
@@ -54,18 +75,22 @@ func (e FunctionCreated) ExecutionID() string   { return e.Metadata.ExecutionID 
 func (e FunctionCreated) MessageGroup() string  { return groupFor(e.FunctionID) }
 func (e FunctionCreated) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		FunctionID string `json:"functionId"`
-		Address    string `json:"address"`
-		Name       string `json:"name"`
-	}{e.FunctionID, e.Address, e.Name})
+		FunctionID    string  `json:"functionId"`
+		Address       string  `json:"address"`
+		ApplicationID string  `json:"applicationId"`
+		ClientID      *string `json:"clientId,omitempty"`
+	}{e.FunctionID, e.Address, e.ApplicationID, e.ClientID})
 }
 
 // FunctionUpdated is emitted on a settings update (description, pool, warm,
-// limits).
+// limits): {functionId, address, description?, status}.
 type FunctionUpdated struct {
-	Metadata   usecase.EventMetadata
-	FunctionID string
-	Address    string
+	Metadata    usecase.EventMetadata
+	FunctionID  string
+	Address     string
+	Description *string
+	// Status is always FunctionStatusActive.
+	Status string
 }
 
 func (e FunctionUpdated) EventID() string       { return e.Metadata.EventID }
@@ -81,9 +106,11 @@ func (e FunctionUpdated) ExecutionID() string   { return e.Metadata.ExecutionID 
 func (e FunctionUpdated) MessageGroup() string  { return groupFor(e.FunctionID) }
 func (e FunctionUpdated) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		FunctionID string `json:"functionId"`
-		Address    string `json:"address"`
-	}{e.FunctionID, e.Address})
+		FunctionID  string  `json:"functionId"`
+		Address     string  `json:"address"`
+		Description *string `json:"description,omitempty"`
+		Status      string  `json:"status"`
+	}{e.FunctionID, e.Address, e.Description, e.Status})
 }
 
 // FunctionDeleted is emitted on deletion.
@@ -111,129 +138,233 @@ func (e FunctionDeleted) ToDataJSON() ([]byte, error) {
 	}{e.FunctionID, e.Address})
 }
 
-// FunctionVersionPublished is emitted when publish stores a new version (not
-// on the idempotent same-digest replay, which persists nothing).
-type FunctionVersionPublished struct {
+// VersionPublished is emitted when publish stores a new version (not on the
+// idempotent same-digest replay, which persists nothing): {functionId,
+// address, versionId, version, digest, pool}. pool is the runner pool. Java's
+// and Rust's signer pair is never sent (Go does not sign versions).
+type VersionPublished struct {
 	Metadata   usecase.EventMetadata
 	FunctionID string
 	Address    string
-	Number     int32
+	VersionID  string
+	Version    int32
 	Digest     string
-	Runtime    string
+	Pool       string
 }
 
-func (e FunctionVersionPublished) EventID() string       { return e.Metadata.EventID }
-func (e FunctionVersionPublished) EventType() string     { return FunctionVersionPublishedType }
-func (e FunctionVersionPublished) SpecVersion() string   { return "1.0" }
-func (e FunctionVersionPublished) Source() string        { return Source }
-func (e FunctionVersionPublished) Subject() string       { return subjectFor(e.FunctionID) }
-func (e FunctionVersionPublished) Time() time.Time       { return e.Metadata.OccurredAt }
-func (e FunctionVersionPublished) PrincipalID() string   { return e.Metadata.PrincipalID }
-func (e FunctionVersionPublished) CorrelationID() string { return e.Metadata.CorrelationID }
-func (e FunctionVersionPublished) CausationID() string   { return e.Metadata.CausationID }
-func (e FunctionVersionPublished) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e FunctionVersionPublished) MessageGroup() string  { return groupFor(e.FunctionID) }
-func (e FunctionVersionPublished) ToDataJSON() ([]byte, error) {
+func (e VersionPublished) EventID() string       { return e.Metadata.EventID }
+func (e VersionPublished) EventType() string     { return VersionPublishedType }
+func (e VersionPublished) SpecVersion() string   { return "1.0" }
+func (e VersionPublished) Source() string        { return Source }
+func (e VersionPublished) Subject() string       { return subjectFor(e.FunctionID) }
+func (e VersionPublished) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e VersionPublished) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e VersionPublished) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e VersionPublished) CausationID() string   { return e.Metadata.CausationID }
+func (e VersionPublished) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e VersionPublished) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e VersionPublished) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		FunctionID string `json:"functionId"`
 		Address    string `json:"address"`
-		Number     int32  `json:"number"`
+		VersionID  string `json:"versionId"`
+		Version    int32  `json:"version"`
 		Digest     string `json:"digest"`
-		Runtime    string `json:"runtime"`
-	}{e.FunctionID, e.Address, e.Number, e.Digest, e.Runtime})
+		Pool       string `json:"pool"`
+	}{e.FunctionID, e.Address, e.VersionID, e.Version, e.Digest, e.Pool})
 }
 
-// FunctionVersionRetired is emitted when a version is retired.
-type FunctionVersionRetired struct {
+// VersionRetired is emitted when a version is retired: {functionId, address,
+// versionId, version}.
+type VersionRetired struct {
 	Metadata   usecase.EventMetadata
 	FunctionID string
 	Address    string
-	Number     int32
+	VersionID  string
+	Version    int32
 }
 
-func (e FunctionVersionRetired) EventID() string       { return e.Metadata.EventID }
-func (e FunctionVersionRetired) EventType() string     { return FunctionVersionRetiredType }
-func (e FunctionVersionRetired) SpecVersion() string   { return "1.0" }
-func (e FunctionVersionRetired) Source() string        { return Source }
-func (e FunctionVersionRetired) Subject() string       { return subjectFor(e.FunctionID) }
-func (e FunctionVersionRetired) Time() time.Time       { return e.Metadata.OccurredAt }
-func (e FunctionVersionRetired) PrincipalID() string   { return e.Metadata.PrincipalID }
-func (e FunctionVersionRetired) CorrelationID() string { return e.Metadata.CorrelationID }
-func (e FunctionVersionRetired) CausationID() string   { return e.Metadata.CausationID }
-func (e FunctionVersionRetired) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e FunctionVersionRetired) MessageGroup() string  { return groupFor(e.FunctionID) }
-func (e FunctionVersionRetired) ToDataJSON() ([]byte, error) {
+func (e VersionRetired) EventID() string       { return e.Metadata.EventID }
+func (e VersionRetired) EventType() string     { return VersionRetiredType }
+func (e VersionRetired) SpecVersion() string   { return "1.0" }
+func (e VersionRetired) Source() string        { return Source }
+func (e VersionRetired) Subject() string       { return subjectFor(e.FunctionID) }
+func (e VersionRetired) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e VersionRetired) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e VersionRetired) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e VersionRetired) CausationID() string   { return e.Metadata.CausationID }
+func (e VersionRetired) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e VersionRetired) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e VersionRetired) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		FunctionID string `json:"functionId"`
 		Address    string `json:"address"`
-		Number     int32  `json:"number"`
-	}{e.FunctionID, e.Address, e.Number})
+		VersionID  string `json:"versionId"`
+		Version    int32  `json:"version"`
+	}{e.FunctionID, e.Address, e.VersionID, e.Version})
 }
 
-// FunctionAliasSet is emitted when an alias is created or repointed. Promote
-// (setting the `live` alias) uses [FunctionPromoted] instead, which carries
-// the wiring diff; FunctionAliasSet is for every other alias name, and for
-// `live`'s own pointer-move bookkeeping alongside FunctionPromoted.
-type FunctionAliasSet struct {
+// AliasChanged is emitted whenever an alias is pointed at a version, `live`
+// (promote, which also emits [FunctionPromoted]) included: {functionId,
+// address, alias, versionId, version, previousVersionId?}.
+// previousVersionId is the version the alias pointed at before; absent when
+// it is new.
+type AliasChanged struct {
+	Metadata          usecase.EventMetadata
+	FunctionID        string
+	Address           string
+	Alias             string
+	VersionID         string
+	Version           int32
+	PreviousVersionID *string
+}
+
+func (e AliasChanged) EventID() string       { return e.Metadata.EventID }
+func (e AliasChanged) EventType() string     { return AliasChangedType }
+func (e AliasChanged) SpecVersion() string   { return "1.0" }
+func (e AliasChanged) Source() string        { return Source }
+func (e AliasChanged) Subject() string       { return subjectFor(e.FunctionID) }
+func (e AliasChanged) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e AliasChanged) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e AliasChanged) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e AliasChanged) CausationID() string   { return e.Metadata.CausationID }
+func (e AliasChanged) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e AliasChanged) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e AliasChanged) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		FunctionID        string  `json:"functionId"`
+		Address           string  `json:"address"`
+		Alias             string  `json:"alias"`
+		VersionID         string  `json:"versionId"`
+		Version           int32   `json:"version"`
+		PreviousVersionID *string `json:"previousVersionId,omitempty"`
+	}{e.FunctionID, e.Address, e.Alias, e.VersionID, e.Version, e.PreviousVersionID})
+}
+
+// AliasRemoved is emitted when an alias is removed: {functionId, address,
+// alias, versionId, version}, the version it pointed at. Removing `live` also
+// unwires and emits [FunctionPromoted] (Java and Rust refuse to remove
+// `live`). Removing an alias that does not exist emits nothing.
+type AliasRemoved struct {
 	Metadata   usecase.EventMetadata
 	FunctionID string
 	Address    string
 	Alias      string
-	Number     int32
+	VersionID  string
+	Version    int32
 }
 
-func (e FunctionAliasSet) EventID() string       { return e.Metadata.EventID }
-func (e FunctionAliasSet) EventType() string     { return FunctionAliasSetType }
-func (e FunctionAliasSet) SpecVersion() string   { return "1.0" }
-func (e FunctionAliasSet) Source() string        { return Source }
-func (e FunctionAliasSet) Subject() string       { return subjectFor(e.FunctionID) }
-func (e FunctionAliasSet) Time() time.Time       { return e.Metadata.OccurredAt }
-func (e FunctionAliasSet) PrincipalID() string   { return e.Metadata.PrincipalID }
-func (e FunctionAliasSet) CorrelationID() string { return e.Metadata.CorrelationID }
-func (e FunctionAliasSet) CausationID() string   { return e.Metadata.CausationID }
-func (e FunctionAliasSet) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e FunctionAliasSet) MessageGroup() string  { return groupFor(e.FunctionID) }
-func (e FunctionAliasSet) ToDataJSON() ([]byte, error) {
+func (e AliasRemoved) EventID() string       { return e.Metadata.EventID }
+func (e AliasRemoved) EventType() string     { return AliasRemovedType }
+func (e AliasRemoved) SpecVersion() string   { return "1.0" }
+func (e AliasRemoved) Source() string        { return Source }
+func (e AliasRemoved) Subject() string       { return subjectFor(e.FunctionID) }
+func (e AliasRemoved) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e AliasRemoved) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e AliasRemoved) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e AliasRemoved) CausationID() string   { return e.Metadata.CausationID }
+func (e AliasRemoved) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e AliasRemoved) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e AliasRemoved) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		FunctionID string `json:"functionId"`
 		Address    string `json:"address"`
 		Alias      string `json:"alias"`
-		Number     int32  `json:"number"`
-	}{e.FunctionID, e.Address, e.Alias, e.Number})
+		VersionID  string `json:"versionId"`
+		Version    int32  `json:"version"`
+	}{e.FunctionID, e.Address, e.Alias, e.VersionID, e.Version})
 }
 
-// FunctionAliasDeleted is emitted when an alias is removed. Removing `live`
-// also unwires (see FunctionPromoted's doc); this event still fires for the
-// pointer removal itself.
-type FunctionAliasDeleted struct {
+// ConfigUpdated is emitted when a CONFIG setting is set or deleted:
+// {functionId, address, keys}, every CONFIG key the function holds after the
+// change, sorted; never a value. Java and Rust replace the whole config map
+// and list its keys; Go writes one key at a time and lists the same thing.
+type ConfigUpdated struct {
 	Metadata   usecase.EventMetadata
 	FunctionID string
 	Address    string
-	Alias      string
+	Keys       []string
 }
 
-func (e FunctionAliasDeleted) EventID() string       { return e.Metadata.EventID }
-func (e FunctionAliasDeleted) EventType() string     { return FunctionAliasDeletedType }
-func (e FunctionAliasDeleted) SpecVersion() string   { return "1.0" }
-func (e FunctionAliasDeleted) Source() string        { return Source }
-func (e FunctionAliasDeleted) Subject() string       { return subjectFor(e.FunctionID) }
-func (e FunctionAliasDeleted) Time() time.Time       { return e.Metadata.OccurredAt }
-func (e FunctionAliasDeleted) PrincipalID() string   { return e.Metadata.PrincipalID }
-func (e FunctionAliasDeleted) CorrelationID() string { return e.Metadata.CorrelationID }
-func (e FunctionAliasDeleted) CausationID() string   { return e.Metadata.CausationID }
-func (e FunctionAliasDeleted) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e FunctionAliasDeleted) MessageGroup() string  { return groupFor(e.FunctionID) }
-func (e FunctionAliasDeleted) ToDataJSON() ([]byte, error) {
+func (e ConfigUpdated) EventID() string       { return e.Metadata.EventID }
+func (e ConfigUpdated) EventType() string     { return ConfigUpdatedType }
+func (e ConfigUpdated) SpecVersion() string   { return "1.0" }
+func (e ConfigUpdated) Source() string        { return Source }
+func (e ConfigUpdated) Subject() string       { return subjectFor(e.FunctionID) }
+func (e ConfigUpdated) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e ConfigUpdated) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e ConfigUpdated) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e ConfigUpdated) CausationID() string   { return e.Metadata.CausationID }
+func (e ConfigUpdated) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e ConfigUpdated) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e ConfigUpdated) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		FunctionID string   `json:"functionId"`
+		Address    string   `json:"address"`
+		Keys       []string `json:"keys"`
+	}{e.FunctionID, e.Address, nonNil(e.Keys)})
+}
+
+// SecretSet is emitted when a SECRET setting is written: {functionId,
+// address, key}. The value is never in it.
+type SecretSet struct {
+	Metadata   usecase.EventMetadata
+	FunctionID string
+	Address    string
+	Key        string
+}
+
+func (e SecretSet) EventID() string       { return e.Metadata.EventID }
+func (e SecretSet) EventType() string     { return SecretSetType }
+func (e SecretSet) SpecVersion() string   { return "1.0" }
+func (e SecretSet) Source() string        { return Source }
+func (e SecretSet) Subject() string       { return subjectFor(e.FunctionID) }
+func (e SecretSet) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e SecretSet) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e SecretSet) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e SecretSet) CausationID() string   { return e.Metadata.CausationID }
+func (e SecretSet) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e SecretSet) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e SecretSet) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		FunctionID string `json:"functionId"`
 		Address    string `json:"address"`
-		Alias      string `json:"alias"`
-	}{e.FunctionID, e.Address, e.Alias})
+		Key        string `json:"key"`
+	}{e.FunctionID, e.Address, e.Key})
+}
+
+// SecretDeleted is emitted when a SECRET setting is removed: {functionId,
+// address, key}.
+type SecretDeleted struct {
+	Metadata   usecase.EventMetadata
+	FunctionID string
+	Address    string
+	Key        string
+}
+
+func (e SecretDeleted) EventID() string       { return e.Metadata.EventID }
+func (e SecretDeleted) EventType() string     { return SecretDeletedType }
+func (e SecretDeleted) SpecVersion() string   { return "1.0" }
+func (e SecretDeleted) Source() string        { return Source }
+func (e SecretDeleted) Subject() string       { return subjectFor(e.FunctionID) }
+func (e SecretDeleted) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e SecretDeleted) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e SecretDeleted) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e SecretDeleted) CausationID() string   { return e.Metadata.CausationID }
+func (e SecretDeleted) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e SecretDeleted) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e SecretDeleted) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		FunctionID string `json:"functionId"`
+		Address    string `json:"address"`
+		Key        string `json:"key"`
+	}{e.FunctionID, e.Address, e.Key})
 }
 
 // FunctionPromoted is emitted when the `live` alias moves (promote) or is
 // removed (unwire), carrying the wiring reconciliation summary (WP8, plan
-// §8.5).
+// §8.5). Go-only: the alias move itself is [AliasChanged] / [AliasRemoved],
+// emitted first.
 type FunctionPromoted struct {
 	Metadata usecase.EventMetadata
 
@@ -256,7 +387,7 @@ type FunctionPromoted struct {
 func (e FunctionPromoted) EventID() string       { return e.Metadata.EventID }
 func (e FunctionPromoted) EventType() string     { return FunctionPromotedType }
 func (e FunctionPromoted) SpecVersion() string   { return "1.0" }
-func (e FunctionPromoted) Source() string        { return Source }
+func (e FunctionPromoted) Source() string        { return AdminSource }
 func (e FunctionPromoted) Subject() string       { return subjectFor(e.FunctionID) }
 func (e FunctionPromoted) Time() time.Time       { return e.Metadata.OccurredAt }
 func (e FunctionPromoted) PrincipalID() string   { return e.Metadata.PrincipalID }
@@ -305,7 +436,7 @@ type FunctionScheduleWired struct {
 func (e FunctionScheduleWired) EventID() string       { return e.Metadata.EventID }
 func (e FunctionScheduleWired) EventType() string     { return FunctionScheduleWiredType }
 func (e FunctionScheduleWired) SpecVersion() string   { return "1.0" }
-func (e FunctionScheduleWired) Source() string        { return Source }
+func (e FunctionScheduleWired) Source() string        { return AdminSource }
 func (e FunctionScheduleWired) Subject() string       { return subjectFor(e.FunctionID) }
 func (e FunctionScheduleWired) Time() time.Time       { return e.Metadata.OccurredAt }
 func (e FunctionScheduleWired) PrincipalID() string   { return e.Metadata.PrincipalID }
@@ -334,7 +465,7 @@ type RouteSet struct {
 func (e RouteSet) EventID() string       { return e.Metadata.EventID }
 func (e RouteSet) EventType() string     { return RouteSetType }
 func (e RouteSet) SpecVersion() string   { return "1.0" }
-func (e RouteSet) Source() string        { return Source }
+func (e RouteSet) Source() string        { return AdminSource }
 func (e RouteSet) Subject() string       { return subjectFor(e.FunctionID) }
 func (e RouteSet) Time() time.Time       { return e.Metadata.OccurredAt }
 func (e RouteSet) PrincipalID() string   { return e.Metadata.PrincipalID }
@@ -363,7 +494,7 @@ type RouteDeleted struct {
 func (e RouteDeleted) EventID() string       { return e.Metadata.EventID }
 func (e RouteDeleted) EventType() string     { return RouteDeletedType }
 func (e RouteDeleted) SpecVersion() string   { return "1.0" }
-func (e RouteDeleted) Source() string        { return Source }
+func (e RouteDeleted) Source() string        { return AdminSource }
 func (e RouteDeleted) Subject() string       { return subjectFor(e.FunctionID) }
 func (e RouteDeleted) Time() time.Time       { return e.Metadata.OccurredAt }
 func (e RouteDeleted) PrincipalID() string   { return e.Metadata.PrincipalID }
@@ -380,57 +511,66 @@ func (e RouteDeleted) ToDataJSON() ([]byte, error) {
 	}{e.FunctionID, e.RouteID, e.Hostname, e.PathPrefix})
 }
 
-// FunctionSettingSet is emitted when a config/secret/db setting is written.
-// Value is NEVER included (settings are write-only on the wire — plan §8.2).
-type FunctionSettingSet struct {
+// DBSettingSet is emitted when a DB setting (a database connection, keyed by
+// its name) is written. Go-only (Java and Rust have no DB kind), so it keeps
+// the function-setting code and data it had for every kind: {functionId,
+// kind: "DB", key}. The value is never in it.
+type DBSettingSet struct {
 	Metadata   usecase.EventMetadata
 	FunctionID string
-	Kind       string
 	Key        string
 }
 
-func (e FunctionSettingSet) EventID() string       { return e.Metadata.EventID }
-func (e FunctionSettingSet) EventType() string     { return FunctionSettingSetType }
-func (e FunctionSettingSet) SpecVersion() string   { return "1.0" }
-func (e FunctionSettingSet) Source() string        { return Source }
-func (e FunctionSettingSet) Subject() string       { return subjectFor(e.FunctionID) }
-func (e FunctionSettingSet) Time() time.Time       { return e.Metadata.OccurredAt }
-func (e FunctionSettingSet) PrincipalID() string   { return e.Metadata.PrincipalID }
-func (e FunctionSettingSet) CorrelationID() string { return e.Metadata.CorrelationID }
-func (e FunctionSettingSet) CausationID() string   { return e.Metadata.CausationID }
-func (e FunctionSettingSet) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e FunctionSettingSet) MessageGroup() string  { return groupFor(e.FunctionID) }
-func (e FunctionSettingSet) ToDataJSON() ([]byte, error) {
+func (e DBSettingSet) EventID() string       { return e.Metadata.EventID }
+func (e DBSettingSet) EventType() string     { return DBSettingSetType }
+func (e DBSettingSet) SpecVersion() string   { return "1.0" }
+func (e DBSettingSet) Source() string        { return AdminSource }
+func (e DBSettingSet) Subject() string       { return subjectFor(e.FunctionID) }
+func (e DBSettingSet) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e DBSettingSet) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e DBSettingSet) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e DBSettingSet) CausationID() string   { return e.Metadata.CausationID }
+func (e DBSettingSet) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e DBSettingSet) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e DBSettingSet) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		FunctionID string `json:"functionId"`
 		Kind       string `json:"kind"`
 		Key        string `json:"key"`
-	}{e.FunctionID, e.Kind, e.Key})
+	}{e.FunctionID, string(function.SettingDB), e.Key})
 }
 
-// FunctionSettingDeleted is emitted when a setting is removed.
-type FunctionSettingDeleted struct {
+// DBSettingDeleted is emitted when a DB setting is removed: {functionId,
+// kind: "DB", key}. Go-only, like [DBSettingSet].
+type DBSettingDeleted struct {
 	Metadata   usecase.EventMetadata
 	FunctionID string
-	Kind       string
 	Key        string
 }
 
-func (e FunctionSettingDeleted) EventID() string       { return e.Metadata.EventID }
-func (e FunctionSettingDeleted) EventType() string     { return FunctionSettingDeletedType }
-func (e FunctionSettingDeleted) SpecVersion() string   { return "1.0" }
-func (e FunctionSettingDeleted) Source() string        { return Source }
-func (e FunctionSettingDeleted) Subject() string       { return subjectFor(e.FunctionID) }
-func (e FunctionSettingDeleted) Time() time.Time       { return e.Metadata.OccurredAt }
-func (e FunctionSettingDeleted) PrincipalID() string   { return e.Metadata.PrincipalID }
-func (e FunctionSettingDeleted) CorrelationID() string { return e.Metadata.CorrelationID }
-func (e FunctionSettingDeleted) CausationID() string   { return e.Metadata.CausationID }
-func (e FunctionSettingDeleted) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e FunctionSettingDeleted) MessageGroup() string  { return groupFor(e.FunctionID) }
-func (e FunctionSettingDeleted) ToDataJSON() ([]byte, error) {
+func (e DBSettingDeleted) EventID() string       { return e.Metadata.EventID }
+func (e DBSettingDeleted) EventType() string     { return DBSettingDeletedType }
+func (e DBSettingDeleted) SpecVersion() string   { return "1.0" }
+func (e DBSettingDeleted) Source() string        { return AdminSource }
+func (e DBSettingDeleted) Subject() string       { return subjectFor(e.FunctionID) }
+func (e DBSettingDeleted) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e DBSettingDeleted) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e DBSettingDeleted) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e DBSettingDeleted) CausationID() string   { return e.Metadata.CausationID }
+func (e DBSettingDeleted) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e DBSettingDeleted) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e DBSettingDeleted) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		FunctionID string `json:"functionId"`
 		Kind       string `json:"kind"`
 		Key        string `json:"key"`
-	}{e.FunctionID, e.Kind, e.Key})
+	}{e.FunctionID, string(function.SettingDB), e.Key})
+}
+
+// nonNil sends an empty list as [], never null.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

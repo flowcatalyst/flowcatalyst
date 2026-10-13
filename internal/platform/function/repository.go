@@ -545,6 +545,14 @@ func (r *Repository) DeleteSettingTx(ctx context.Context, functionID string, kin
 	})
 }
 
+// ListSettingKeysTx returns functionID's keys of one kind, sorted, read on an
+// already-open transaction (so a write earlier in it is seen).
+func (r *Repository) ListSettingKeysTx(ctx context.Context, functionID string, kind SettingKind, tx pgx.Tx) ([]string, error) {
+	return r.q.WithTx(tx).FunctionSettingKeysByKind(ctx, dbq.FunctionSettingKeysByKindParams{
+		FunctionID: functionID, Kind: string(kind),
+	})
+}
+
 // ListSettings returns every setting for functionID. SECRET and DB values
 // are NEVER decrypted or returned here — Value is always "" for those two
 // kinds (plan §8.2: "Secrets are write-only and never returned"). Only

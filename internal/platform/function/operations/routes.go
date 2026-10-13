@@ -168,7 +168,7 @@ func PutRoute(repo *function.Repository, domains *functiondomain.Repository) use
 			}
 
 			event := RouteSet{
-				Metadata:   usecase.NewEventMetadata(ec, RouteSetType, Source, subjectFor(f.ID)),
+				Metadata:   usecase.NewEventMetadata(ec, RouteSetType, AdminSource, subjectFor(f.ID)),
 				FunctionID: f.ID,
 				RouteID:    route.ID,
 				Hostname:   route.Hostname,
@@ -239,7 +239,7 @@ func DeleteRoute(repo *function.Repository) usecaseop.TxOperation[DeleteRouteCom
 			}
 
 			event := RouteDeleted{
-				Metadata:   usecase.NewEventMetadata(ec, RouteDeletedType, Source, subjectFor(f.ID)),
+				Metadata:   usecase.NewEventMetadata(ec, RouteDeletedType, AdminSource, subjectFor(f.ID)),
 				FunctionID: f.ID,
 				RouteID:    rt.ID,
 				Hostname:   rt.Hostname,

@@ -435,7 +435,7 @@ func reconcileSchedules(
 			}
 			cur.Version++
 			event := FunctionScheduleWired{
-				Metadata:       usecase.NewEventMetadata(ec, FunctionScheduleWiredType, Source, subjectFor(f.ID)),
+				Metadata:       usecase.NewEventMetadata(ec, FunctionScheduleWiredType, AdminSource, subjectFor(f.ID)),
 				FunctionID:     f.ID,
 				ScheduledJobID: cur.ID,
 				Code:           cur.Code,
@@ -462,7 +462,7 @@ func reconcileSchedules(
 		nj.CreatedBy = &pid
 
 		event := FunctionScheduleWired{
-			Metadata:       usecase.NewEventMetadata(ec, FunctionScheduleWiredType, Source, subjectFor(f.ID)),
+			Metadata:       usecase.NewEventMetadata(ec, FunctionScheduleWiredType, AdminSource, subjectFor(f.ID)),
 			FunctionID:     f.ID,
 			ScheduledJobID: nj.ID,
 			Code:           nj.Code,
@@ -480,7 +480,7 @@ func reconcileSchedules(
 			continue
 		}
 		event := FunctionScheduleWired{
-			Metadata:       usecase.NewEventMetadata(ec, FunctionScheduleWiredType, Source, subjectFor(f.ID)),
+			Metadata:       usecase.NewEventMetadata(ec, FunctionScheduleWiredType, AdminSource, subjectFor(f.ID)),
 			FunctionID:     f.ID,
 			ScheduledJobID: cur.ID,
 			Code:           cur.Code,

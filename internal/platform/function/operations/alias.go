@@ -37,10 +37,12 @@ type PutAliasResult struct {
 	Wiring  wiringSummary
 }
 
-// PutAlias points (functionId, name) at a READY version. Promoting `live`
-// additionally reconciles wiring (WP8) in the SAME transaction as the
-// pointer move and the pool-revision bump, refusing SETTINGS_MISSING when a
-// declared config/secret/db key of the target version has no setting value.
+// PutAlias points (functionId, name) at a READY version and emits
+// [AliasChanged]. Promoting `live` additionally reconciles wiring (WP8) in
+// the SAME transaction as the pointer move and the pool-revision bump,
+// refusing SETTINGS_MISSING when a declared config/secret/db key of the
+// target version has no setting value, and emits [FunctionPromoted] after
+// [AliasChanged].
 func PutAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOperation[PutAliasCommand, PutAliasResult] {
 	return usecaseop.TxOperation[PutAliasCommand, PutAliasResult]{
 		Name: "PutFunctionAlias",
@@ -89,6 +91,11 @@ func PutAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOperatio
 					fmt.Sprintf("version %d is %s, not READY", cmd.Number, v.Status))
 			}
 
+			previous, err := findAlias(ctx, repo, f.ID, cmd.Name)
+			if err != nil {
+				return zero, err
+			}
+
 			var summary wiringSummary
 			if cmd.Name == function.LiveAlias {
 				d, err := abi.ParseDescribe(v.Describe)
@@ -128,9 +135,25 @@ func PutAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOperatio
 				return zero, usecase.Internal("REPO", "alias write failed", err)
 			}
 
+			changed := AliasChanged{
+				Metadata:   usecase.NewEventMetadata(ec, AliasChangedType, Source, subjectFor(f.ID)),
+				FunctionID: f.ID,
+				Address:    f.Address,
+				Alias:      cmd.Name,
+				VersionID:  v.ID,
+				Version:    v.Number,
+			}
+			if previous != nil {
+				changed.PreviousVersionID = &previous.VersionID
+			}
+			if r := usecasepgx.EmitEventScoped(ctx, s, changed, cmd); !usecase.IsSuccess(r) {
+				_, e := usecase.Into(r)
+				return zero, e
+			}
+
 			if cmd.Name == function.LiveAlias {
 				event := FunctionPromoted{
-					Metadata:             usecase.NewEventMetadata(ec, FunctionPromotedType, Source, subjectFor(f.ID)),
+					Metadata:             usecase.NewEventMetadata(ec, FunctionPromotedType, AdminSource, subjectFor(f.ID)),
 					FunctionID:           f.ID,
 					Address:              f.Address,
 					Number:               v.Number,
@@ -146,23 +169,25 @@ func PutAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOperatio
 					_, e := usecase.Into(r)
 					return zero, e
 				}
-			} else {
-				event := FunctionAliasSet{
-					Metadata:   usecase.NewEventMetadata(ec, FunctionAliasSetType, Source, subjectFor(f.ID)),
-					FunctionID: f.ID,
-					Address:    f.Address,
-					Alias:      cmd.Name,
-					Number:     v.Number,
-				}
-				if r := usecasepgx.EmitEventScoped(ctx, s, event, cmd); !usecase.IsSuccess(r) {
-					_, e := usecase.Into(r)
-					return zero, e
-				}
 			}
 
 			return PutAliasResult{Alias: *alias, Version: *v, Wiring: summary}, nil
 		},
 	}
+}
+
+// findAlias returns functionID's alias name, or nil when there is none.
+func findAlias(ctx context.Context, repo *function.Repository, functionID, name string) (*function.Alias, error) {
+	aliases, err := repo.ListAliases(ctx, functionID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "list_aliases failed", err)
+	}
+	for i := range aliases {
+		if aliases[i].Name == name {
+			return &aliases[i], nil
+		}
+	}
+	return nil, nil
 }
 
 // missingSettings returns the sorted list of "KIND/key" strings declared by
@@ -231,11 +256,13 @@ type DeleteAliasResult struct {
 	Wiring wiringSummary
 }
 
-// DeleteAlias removes one alias. Removing `live` unwires the function (WP8):
-// every function-owned subscription and scheduled job is deleted, in the
-// same transaction as the alias removal and the pool-revision bump. The
-// dispatch pool itself is left — plan §8.5: deleted only when the function
-// is deleted.
+// DeleteAlias removes one alias, emitting [AliasRemoved] when there was one
+// to remove (removing a missing alias is a no-op without an event). Removing
+// `live` also unwires the function (WP8): every function-owned subscription
+// and scheduled job is deleted, in the same transaction as the alias removal
+// and the pool-revision bump, and [FunctionPromoted] follows [AliasRemoved].
+// The dispatch pool itself is left — plan §8.5: deleted only when the
+// function is deleted.
 func DeleteAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOperation[DeleteAliasCommand, DeleteAliasResult] {
 	return usecaseop.TxOperation[DeleteAliasCommand, DeleteAliasResult]{
 		Name: "DeleteFunctionAlias",
@@ -263,6 +290,23 @@ func DeleteAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOpera
 				return zero, err
 			}
 
+			// The version the alias names, for AliasRemoved; nil when there is
+			// no such alias (nothing is removed, so no AliasRemoved).
+			var removedVersion *function.Version
+			existing, err := findAlias(ctx, repo, f.ID, cmd.Name)
+			if err != nil {
+				return zero, err
+			}
+			if existing != nil {
+				removedVersion, err = repo.GetVersionByID(ctx, existing.VersionID)
+				if err != nil {
+					return zero, usecase.Internal("REPO", "get_version_by_id failed", err)
+				}
+				if removedVersion == nil {
+					return zero, usecase.Internal("CORRUPT_ALIAS", "alias "+cmd.Name+" names a missing version", nil)
+				}
+			}
+
 			var summary wiringSummary
 			if cmd.Name == function.LiveAlias {
 				summary, err = reconcileWiring(ctx, s, wiring, f, &abi.Describe{}, ec)
@@ -281,9 +325,24 @@ func DeleteAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOpera
 				return zero, usecase.Internal("REPO", "alias delete failed", err)
 			}
 
+			if removedVersion != nil {
+				removed := AliasRemoved{
+					Metadata:   usecase.NewEventMetadata(ec, AliasRemovedType, Source, subjectFor(f.ID)),
+					FunctionID: f.ID,
+					Address:    f.Address,
+					Alias:      cmd.Name,
+					VersionID:  removedVersion.ID,
+					Version:    removedVersion.Number,
+				}
+				if r := usecasepgx.EmitEventScoped(ctx, s, removed, cmd); !usecase.IsSuccess(r) {
+					_, e := usecase.Into(r)
+					return zero, e
+				}
+			}
+
 			if cmd.Name == function.LiveAlias {
 				event := FunctionPromoted{
-					Metadata:             usecase.NewEventMetadata(ec, FunctionPromotedType, Source, subjectFor(f.ID)),
+					Metadata:             usecase.NewEventMetadata(ec, FunctionPromotedType, AdminSource, subjectFor(f.ID)),
 					FunctionID:           f.ID,
 					Address:              f.Address,
 					Number:               0,
@@ -294,17 +353,6 @@ func DeleteAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOpera
 					SchedulesCreated:     summary.SchedulesCreated,
 					SchedulesUpdated:     summary.SchedulesUpdated,
 					SchedulesDeleted:     summary.SchedulesDeleted,
-				}
-				if r := usecasepgx.EmitEventScoped(ctx, s, event, cmd); !usecase.IsSuccess(r) {
-					_, e := usecase.Into(r)
-					return zero, e
-				}
-			} else {
-				event := FunctionAliasDeleted{
-					Metadata:   usecase.NewEventMetadata(ec, FunctionAliasDeletedType, Source, subjectFor(f.ID)),
-					FunctionID: f.ID,
-					Address:    f.Address,
-					Alias:      cmd.Name,
 				}
 				if r := usecasepgx.EmitEventScoped(ctx, s, event, cmd); !usecase.IsSuccess(r) {
 					_, e := usecase.Into(r)
