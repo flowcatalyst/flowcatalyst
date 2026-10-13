@@ -112,9 +112,9 @@ func (s *Synchronizer) runRoles(ctx context.Context, app string, defs []RoleDefi
 }
 
 func (s *Synchronizer) runEventTypes(ctx context.Context, app string, defs []EventTypeDefinition, removeUnlisted bool) *CategoryResult {
-	items := make([]client.CreateEventTypeRequest, 0, len(defs))
+	items := make([]client.SyncEventTypeItem, 0, len(defs))
 	for _, d := range defs {
-		items = append(items, client.CreateEventTypeRequest{
+		items = append(items, client.SyncEventTypeItem{
 			Code:        d.Code,
 			Name:        d.Name,
 			Description: d.Description,
@@ -192,7 +192,18 @@ func (s *Synchronizer) runPrincipals(ctx context.Context, app string, defs []Pri
 // application. Pure upsert: it never strips roles from unlisted users.
 func (s *Synchronizer) SyncUsers(ctx context.Context, defs []PrincipalDefinition) *CategoryResult {
 	res, err := s.client.Principals().SyncUsers(ctx, &client.SyncPrincipalsRequest{Principals: principalItems(defs)})
-	return toCategoryResult(res, err)
+	if err != nil {
+		return toCategoryResult(nil, err)
+	}
+	// The application-less sync names its principals by email; SyncedCodes
+	// carries them so callers read one field across every category.
+	return toCategoryResult(&client.SyncResult{
+		Created:             res.Created,
+		Updated:             res.Updated,
+		Deleted:             res.Deleted,
+		SyncedCodes:         res.SyncedEmails,
+		PasswordHashIgnored: res.PasswordHashIgnored,
+	}, nil)
 }
 
 func (s *Synchronizer) runProcesses(ctx context.Context, app string, defs []ProcessDefinition, removeUnlisted bool) *CategoryResult {

@@ -139,9 +139,10 @@ type SubscriptionsResource struct {
 	c *FlowCatalystClient
 }
 
-// Create — POST /api/subscriptions.
-func (r *SubscriptionsResource) Create(ctx context.Context, req *CreateSubscriptionRequest) (*SubscriptionResponse, error) {
-	var out SubscriptionResponse
+// Create — POST /api/subscriptions. Returns the new subscription's id; call
+// Get for the subscription.
+func (r *SubscriptionsResource) Create(ctx context.Context, req *CreateSubscriptionRequest) (*CreatedResponse, error) {
+	var out CreatedResponse
 	if err := r.c.Post(ctx, "/api/subscriptions", req, &out); err != nil {
 		return nil, err
 	}
@@ -167,13 +168,10 @@ func (r *SubscriptionsResource) List(ctx context.Context, clientID, status strin
 	return &out, nil
 }
 
-// Update — PUT /api/subscriptions/{id}.
-func (r *SubscriptionsResource) Update(ctx context.Context, id string, req *UpdateSubscriptionRequest) (*SubscriptionResponse, error) {
-	var out SubscriptionResponse
-	if err := r.c.Put(ctx, "/api/subscriptions/"+id, req, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+// Update — PUT /api/subscriptions/{id}. The platform answers 204 No
+// Content; call Get(id) for the updated subscription.
+func (r *SubscriptionsResource) Update(ctx context.Context, id string, req *UpdateSubscriptionRequest) error {
+	return r.c.Put(ctx, "/api/subscriptions/"+id, req, nil)
 }
 
 // Pause — POST /api/subscriptions/{id}/pause.

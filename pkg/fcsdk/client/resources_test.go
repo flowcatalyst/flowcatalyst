@@ -127,7 +127,7 @@ func TestConnectionsListEncodesFilters(t *testing.T) {
 	srv, seen := newMockSrv(t, `{"connections":[]}`)
 	c := client.New(srv.URL)
 
-	_, err := c.Connections().List(context.Background(), "clt_1", "ACTIVE", "")
+	_, err := c.Connections().List(context.Background(), "clt_1", "ACTIVE")
 	require.NoError(t, err)
 	assert.Equal(t, "/api/connections", seen.path)
 	assert.Equal(t, "clt_1", seen.query.Get("clientId"))
@@ -136,10 +136,12 @@ func TestConnectionsListEncodesFilters(t *testing.T) {
 }
 
 func TestConnectionsPauseIsPost(t *testing.T) {
-	srv, seen := newMockSrv(t, ``)
+	srv, seen := newMockSrv(t, `{"id":"con_1","code":"c","name":"n","status":"PAUSED","serviceAccountId":"sa_1","source":"UI","createdAt":"","updatedAt":""}`)
 	c := client.New(srv.URL)
 
-	require.NoError(t, c.Connections().Pause(context.Background(), "con_1"))
+	r, err := c.Connections().Pause(context.Background(), "con_1")
+	require.NoError(t, err)
+	assert.Equal(t, "PAUSED", r.Status)
 	assert.Equal(t, http.MethodPost, seen.method)
 	assert.Equal(t, "/api/connections/con_1/pause", seen.path)
 }
@@ -245,13 +247,11 @@ func TestApplicationsListRolesUsesByID(t *testing.T) {
 }
 
 func TestApplicationsEnableForClient(t *testing.T) {
-	srv, seen := newMockSrv(t, `{"id":"cfg_1","applicationId":"app_1","clientId":"clt_1","enabled":true}`)
+	srv, seen := newMockSrv(t, ``)
 	c := client.New(srv.URL)
 
-	r, err := c.Applications().EnableForClient(context.Background(), "app_1", "clt_1")
-	require.NoError(t, err)
+	require.NoError(t, c.Applications().EnableForClient(context.Background(), "app_1", "clt_1"))
 	assert.Equal(t, "/api/applications/app_1/clients/clt_1/enable", seen.path)
-	assert.True(t, r.Enabled)
 }
 
 func TestPrincipalsSyncUsersPostsAppLessWithPasswordHash(t *testing.T) {
@@ -285,10 +285,12 @@ func TestPrincipalsSyncUsersPostsAppLessWithPasswordHash(t *testing.T) {
 }
 
 func TestPrincipalsAddRoleSendsRoleField(t *testing.T) {
-	srv, seen := newMockSrv(t, ``)
+	srv, seen := newMockSrv(t, `{"id":"prn_1","type":"USER","scope":"CLIENT","name":"A","active":true,"roles":["orders:admin"],"isAnchorUser":false,"grantedClientIds":[],"hasDeveloperCredential":false,"createdAt":"","updatedAt":""}`)
 	c := client.New(srv.URL)
 
-	require.NoError(t, c.Principals().AddRole(context.Background(), "prn_1", "orders:admin"))
+	p, err := c.Principals().AddRole(context.Background(), "prn_1", "orders:admin")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"orders:admin"}, p.Roles)
 	assert.Equal(t, "/api/principals/prn_1/roles", seen.path)
 	assert.Equal(t, http.MethodPost, seen.method)
 	var body client.AssignRoleRequest
@@ -297,10 +299,12 @@ func TestPrincipalsAddRoleSendsRoleField(t *testing.T) {
 }
 
 func TestPrincipalsSetRolesReplaces(t *testing.T) {
-	srv, seen := newMockSrv(t, ``)
+	srv, seen := newMockSrv(t, `{"added":["orders:viewer"],"removed":[],"roles":[{"id":"r1","roleName":"orders:admin","assignmentSource":"MANUAL","assignedAt":"2026-01-01T00:00:00Z"}]}`)
 	c := client.New(srv.URL)
 
-	require.NoError(t, c.Principals().SetRoles(context.Background(), "prn_1", []string{"orders:admin", "orders:viewer"}))
+	res, err := c.Principals().SetRoles(context.Background(), "prn_1", []string{"orders:admin", "orders:viewer"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"orders:viewer"}, res.Added)
 	assert.Equal(t, http.MethodPut, seen.method)
 	assert.Equal(t, "/api/principals/prn_1/roles", seen.path)
 	var body client.ReplaceRolesRequest
@@ -309,10 +313,12 @@ func TestPrincipalsSetRolesReplaces(t *testing.T) {
 }
 
 func TestPrincipalsGrantAndRevokeClientAccess(t *testing.T) {
-	srv, seen := newMockSrv(t, ``)
+	srv, seen := newMockSrv(t, `{"id":"g1","clientId":"clt_x","grantedAt":"2026-01-01T00:00:00Z"}`)
 	c := client.New(srv.URL)
 
-	require.NoError(t, c.Principals().GrantClientAccess(context.Background(), "prn_1", "clt_x"))
+	grant, err := c.Principals().GrantClientAccess(context.Background(), "prn_1", "clt_x")
+	require.NoError(t, err)
+	assert.Equal(t, "clt_x", grant.ClientID)
 	assert.Equal(t, http.MethodPost, seen.method)
 	assert.Equal(t, "/api/principals/prn_1/client-access", seen.path)
 	var body client.GrantClientAccessRequest
@@ -341,14 +347,14 @@ func TestRolesGrantAndRevokePermission(t *testing.T) {
 }
 
 func TestRolesListForApplication(t *testing.T) {
-	srv, seen := newMockSrv(t, `{"roles":[{"id":"rol_1","name":"orders:admin","shortName":"admin","displayName":"Admin","applicationCode":"orders","source":"PLATFORM","createdAt":"","updatedAt":""}],"total":1}`)
+	srv, seen := newMockSrv(t, `[{"id":"rol_1","name":"orders:admin","displayName":"Admin","applicationCode":"orders","clientManaged":false,"permissions":[],"source":"PLATFORM","createdAt":"","updatedAt":""}]`)
 	c := client.New(srv.URL)
 
 	r, err := c.Roles().ListForApplication(context.Background(), "app_1")
 	require.NoError(t, err)
 	assert.Equal(t, "/api/roles/by-application/app_1", seen.path)
-	require.Len(t, r.Roles, 1)
-	assert.Equal(t, "orders:admin", r.Roles[0].Name)
+	require.Len(t, r, 1)
+	assert.Equal(t, "orders:admin", r[0].Name)
 }
 
 // GET /api/scheduled-jobs/instances/{id}/logs answers a bare array of log
@@ -376,7 +382,7 @@ func TestScheduledJobsLogForInstanceDefaultsTheLevel(t *testing.T) {
 	srv, seen := newMockSrv(t, ``)
 	c := client.New(srv.URL)
 
-	_, err := c.ScheduledJobs().LogForInstance(context.Background(), "sji_1", &client.InstanceLogRequest{Message: "hello"})
+	err := c.ScheduledJobs().LogForInstance(context.Background(), "sji_1", &client.InstanceLogRequest{Message: "hello"})
 	require.NoError(t, err)
 	assert.Equal(t, "/api/scheduled-jobs/instances/sji_1/log", seen.path)
 	assert.JSONEq(t, `{"message":"hello","level":"INFO"}`, seen.body)

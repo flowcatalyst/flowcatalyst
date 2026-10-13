@@ -50,7 +50,6 @@ func TestWireRoundTrip(t *testing.T) {
 			`{"id":"cfg_1","applicationId":"app_1","clientId":"clt_1","enabled":true,"baseUrlOverride":"https://x","configJson":{"a":1},"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z"}`,
 		},
 		{"CreatedResponse", &client.CreatedResponse{}, `{"id":"x_1"}`},
-		{"SuccessResponse", &client.SuccessResponse{}, `{"success":true,"message":"ok"}`},
 		{
 			"AuditLogResponse", &client.AuditLogResponse{},
 			`{"id":"aud_1","operation":"CREATE","operationJson":"{\"a\":1}","entityType":"Principal","entityId":"prn_1","principalId":"prn_2","principalName":"P","applicationId":"app_1","clientId":"clt_1","performedAt":"2026-01-01T00:00:00Z"}`,

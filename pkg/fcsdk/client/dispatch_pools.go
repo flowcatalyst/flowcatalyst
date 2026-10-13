@@ -67,9 +67,10 @@ type DispatchPoolsResource struct {
 	c *FlowCatalystClient
 }
 
-// Create — POST /api/dispatch-pools.
-func (r *DispatchPoolsResource) Create(ctx context.Context, req *CreateDispatchPoolRequest) (*DispatchPoolResponse, error) {
-	var out DispatchPoolResponse
+// Create — POST /api/dispatch-pools. Returns the new pool's id; call Get for
+// the pool.
+func (r *DispatchPoolsResource) Create(ctx context.Context, req *CreateDispatchPoolRequest) (*CreatedResponse, error) {
+	var out CreatedResponse
 	if err := r.c.Post(ctx, "/api/dispatch-pools", req, &out); err != nil {
 		return nil, err
 	}
@@ -95,40 +96,31 @@ func (r *DispatchPoolsResource) List(ctx context.Context, clientID, status strin
 	return &out, nil
 }
 
-// Update — PUT /api/dispatch-pools/{id}.
-func (r *DispatchPoolsResource) Update(ctx context.Context, id string, req *UpdateDispatchPoolRequest) (*DispatchPoolResponse, error) {
-	var out DispatchPoolResponse
-	if err := r.c.Put(ctx, "/api/dispatch-pools/"+id, req, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+// Update — PUT /api/dispatch-pools/{id}. The platform answers 204 No
+// Content; call Get(id) for the updated pool.
+func (r *DispatchPoolsResource) Update(ctx context.Context, id string, req *UpdateDispatchPoolRequest) error {
+	return r.c.Put(ctx, "/api/dispatch-pools/"+id, req, nil)
 }
 
-// Archive — DELETE /api/dispatch-pools/{id} (soft archive, returns updated row).
-func (r *DispatchPoolsResource) Archive(ctx context.Context, id string) (*DispatchPoolResponse, error) {
-	var out DispatchPoolResponse
-	if err := r.c.Delete(ctx, "/api/dispatch-pools/"+id, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+// Archive — POST /api/dispatch-pools/{id}/archive (204 No Content). The
+// pool is kept and no longer dispatches; Delete removes it.
+func (r *DispatchPoolsResource) Archive(ctx context.Context, id string) error {
+	return r.c.Post(ctx, "/api/dispatch-pools/"+id+"/archive", nil, nil)
 }
 
-// Suspend — POST /api/dispatch-pools/{id}/suspend.
-func (r *DispatchPoolsResource) Suspend(ctx context.Context, id string) (*DispatchPoolResponse, error) {
-	var out DispatchPoolResponse
-	if err := r.c.Post(ctx, "/api/dispatch-pools/"+id+"/suspend", nil, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+// Delete — DELETE /api/dispatch-pools/{id} (204 No Content).
+func (r *DispatchPoolsResource) Delete(ctx context.Context, id string) error {
+	return r.c.Delete(ctx, "/api/dispatch-pools/"+id, nil)
 }
 
-// Activate — POST /api/dispatch-pools/{id}/activate.
-func (r *DispatchPoolsResource) Activate(ctx context.Context, id string) (*DispatchPoolResponse, error) {
-	var out DispatchPoolResponse
-	if err := r.c.Post(ctx, "/api/dispatch-pools/"+id+"/activate", nil, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+// Suspend — POST /api/dispatch-pools/{id}/suspend (204 No Content).
+func (r *DispatchPoolsResource) Suspend(ctx context.Context, id string) error {
+	return r.c.Post(ctx, "/api/dispatch-pools/"+id+"/suspend", nil, nil)
+}
+
+// Activate — POST /api/dispatch-pools/{id}/activate (204 No Content).
+func (r *DispatchPoolsResource) Activate(ctx context.Context, id string) error {
+	return r.c.Post(ctx, "/api/dispatch-pools/"+id+"/activate", nil, nil)
 }
 
 // Sync — POST /api/applications/{appCode}/dispatch-pools/sync.

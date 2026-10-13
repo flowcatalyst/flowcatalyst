@@ -70,9 +70,10 @@ type ProcessesResource struct {
 	c *FlowCatalystClient
 }
 
-// Create — POST /api/processes.
-func (r *ProcessesResource) Create(ctx context.Context, req *CreateProcessRequest) (*ProcessResponse, error) {
-	var out ProcessResponse
+// Create — POST /api/processes. Returns the new process's id; call Get for
+// the process.
+func (r *ProcessesResource) Create(ctx context.Context, req *CreateProcessRequest) (*CreatedResponse, error) {
+	var out CreatedResponse
 	if err := r.c.Post(ctx, "/api/processes", req, &out); err != nil {
 		return nil, err
 	}
@@ -97,9 +98,24 @@ func (r *ProcessesResource) GetByCode(ctx context.Context, code string) (*Proces
 	return &out, nil
 }
 
-// List — GET /api/processes?application=&status=&clientId=.
-func (r *ProcessesResource) List(ctx context.Context, application, status, clientID string) (*ProcessListResponse, error) {
-	q := EncodeQuery("application", application, "status", status, "clientId", clientID)
+// ProcessFilters — query parameters for GET /api/processes. Empty fields are
+// omitted.
+type ProcessFilters struct {
+	Application string
+	Subdomain   string
+	Status      string
+}
+
+// List — GET /api/processes with optional filters (nil lists everything).
+func (r *ProcessesResource) List(ctx context.Context, filters *ProcessFilters) (*ProcessListResponse, error) {
+	q := ""
+	if filters != nil {
+		q = NewQuery().
+			String("application", filters.Application).
+			String("subdomain", filters.Subdomain).
+			String("status", filters.Status).
+			Encode()
+	}
 	var out ProcessListResponse
 	if err := r.c.Get(ctx, "/api/processes"+q, &out); err != nil {
 		return nil, err
@@ -107,24 +123,22 @@ func (r *ProcessesResource) List(ctx context.Context, application, status, clien
 	return &out, nil
 }
 
-// Update — PUT /api/processes/{id}.
-func (r *ProcessesResource) Update(ctx context.Context, id string, req *UpdateProcessRequest) (*ProcessResponse, error) {
-	var out ProcessResponse
-	if err := r.c.Put(ctx, "/api/processes/"+id, req, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+// Update — PUT /api/processes/{id}. The platform answers 204 No Content;
+// call Get(id) for the updated process.
+func (r *ProcessesResource) Update(ctx context.Context, id string, req *UpdateProcessRequest) error {
+	return r.c.Put(ctx, "/api/processes/"+id, req, nil)
 }
 
-// Archive — DELETE /api/processes/{id} (soft archive).
+// Archive — POST /api/processes/{id}/archive (204 No Content). The process
+// is kept, marked archived.
 func (r *ProcessesResource) Archive(ctx context.Context, id string) error {
-	return r.c.Delete(ctx, "/api/processes/"+id, nil)
+	return r.c.Post(ctx, "/api/processes/"+id+"/archive", nil, nil)
 }
 
-// Delete — hard delete; depends on platform allowing. Most callers want
-// Archive instead.
+// Delete — DELETE /api/processes/{id} (204 No Content): removes the process
+// for good. Most callers want Archive instead.
 func (r *ProcessesResource) Delete(ctx context.Context, id string) error {
-	return r.c.Delete(ctx, "/api/processes/"+id+"?hard=true", nil)
+	return r.c.Delete(ctx, "/api/processes/"+id, nil)
 }
 
 // Sync — POST /api/applications/{appCode}/processes/sync.

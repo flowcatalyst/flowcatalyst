@@ -20,7 +20,9 @@ can copy the right idiom without spelunking through godoc.
 
 The platform HTTP client returns a typed `*APIError` for every
 non-2xx response. There are no sentinels; all branching is by
-status code on the typed value.
+status code on the typed value. A success status never produces an error:
+routes that answer `204 No Content` return only an `error` (nil on success), so
+there is no body to decode.
 
 ```go
 import "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"

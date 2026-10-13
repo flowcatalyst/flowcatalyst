@@ -69,11 +69,15 @@ func TestProcessesUseThePlatformShape(t *testing.T) {
 	srv, seen := newMockSrv(t, `{"id":"prc_1","code":"orders:sales:checkout","name":"Checkout","status":"CURRENT","source":"API",
 		"application":"orders","subdomain":"sales","processName":"checkout","body":"graph TD","diagramType":"mermaid","tags":["t"],
 		"createdAt":"2026-10-13T00:00:00Z","updatedAt":"2026-10-13T00:00:00Z"}`)
-	p, err := client.New(srv.URL).Processes().Create(context.Background(), &client.CreateProcessRequest{
+	created, err := client.New(srv.URL).Processes().Create(context.Background(), &client.CreateProcessRequest{
 		Code: "orders:sales:checkout", Name: "Checkout", Body: "graph TD", Tags: []string{"t"},
 	})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"code":"orders:sales:checkout","name":"Checkout","body":"graph TD","tags":["t"]}`, seen.body)
+	assert.Equal(t, "prc_1", created.ID)
+
+	p, err := client.New(srv.URL).Processes().Get(context.Background(), created.ID)
+	require.NoError(t, err)
 	assert.Equal(t, "graph TD", p.Body)
 	assert.Equal(t, "mermaid", p.DiagramType)
 	assert.Equal(t, "checkout", p.ProcessName)

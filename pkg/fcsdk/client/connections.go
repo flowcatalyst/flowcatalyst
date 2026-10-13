@@ -19,7 +19,8 @@ type CreateConnectionRequest struct {
 
 // UpdateConnectionRequest — PUT /api/connections/{id}.
 type UpdateConnectionRequest struct {
-	Name        *string `json:"name,omitempty"`
+	// Name is required by the platform on every update.
+	Name        string  `json:"name"`
 	Description *string `json:"description,omitempty"`
 	ExternalID  *string `json:"externalId,omitempty"`
 	Status      *string `json:"status,omitempty"`
@@ -80,9 +81,10 @@ type ConnectionsResource struct {
 	c *FlowCatalystClient
 }
 
-// Create — POST /api/connections. Returns the new connection's id.
-func (r *ConnectionsResource) Create(ctx context.Context, req *CreateConnectionRequest) (*CreatedResponse, error) {
-	var out CreatedResponse
+// Create — POST /api/connections. The platform answers 201 with the whole
+// connection.
+func (r *ConnectionsResource) Create(ctx context.Context, req *CreateConnectionRequest) (*ConnectionResponse, error) {
+	var out ConnectionResponse
 	if err := r.c.Post(ctx, "/api/connections", req, &out); err != nil {
 		return nil, err
 	}
@@ -98,12 +100,11 @@ func (r *ConnectionsResource) Get(ctx context.Context, id string) (*ConnectionRe
 	return &out, nil
 }
 
-// List — GET /api/connections with optional filters.
-func (r *ConnectionsResource) List(ctx context.Context, clientID, status, serviceAccountID string) (*ConnectionsListResponse, error) {
+// List — GET /api/connections?clientId=&status=. Empty strings are omitted.
+func (r *ConnectionsResource) List(ctx context.Context, clientID, status string) (*ConnectionsListResponse, error) {
 	q := NewQuery().
 		String("clientId", clientID).
 		String("status", status).
-		String("serviceAccountId", serviceAccountID).
 		Encode()
 	var out ConnectionsListResponse
 	if err := r.c.Get(ctx, "/api/connections"+q, &out); err != nil {
@@ -112,7 +113,7 @@ func (r *ConnectionsResource) List(ctx context.Context, clientID, status, servic
 	return &out, nil
 }
 
-// Update — PUT /api/connections/{id}.
+// Update — PUT /api/connections/{id}. The platform answers 204 No Content.
 func (r *ConnectionsResource) Update(ctx context.Context, id string, req *UpdateConnectionRequest) error {
 	return r.c.Put(ctx, "/api/connections/"+id, req, nil)
 }
@@ -122,14 +123,22 @@ func (r *ConnectionsResource) Delete(ctx context.Context, id string) error {
 	return r.c.Delete(ctx, "/api/connections/"+id, nil)
 }
 
-// Pause — POST /api/connections/{id}/pause.
-func (r *ConnectionsResource) Pause(ctx context.Context, id string) error {
-	return r.c.Post(ctx, "/api/connections/"+id+"/pause", nil, nil)
+// Pause — POST /api/connections/{id}/pause. Returns the updated connection.
+func (r *ConnectionsResource) Pause(ctx context.Context, id string) (*ConnectionResponse, error) {
+	var out ConnectionResponse
+	if err := r.c.Post(ctx, "/api/connections/"+id+"/pause", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
-// Activate — POST /api/connections/{id}/activate.
-func (r *ConnectionsResource) Activate(ctx context.Context, id string) error {
-	return r.c.Post(ctx, "/api/connections/"+id+"/activate", nil, nil)
+// Activate — POST /api/connections/{id}/activate. Returns the updated connection.
+func (r *ConnectionsResource) Activate(ctx context.Context, id string) (*ConnectionResponse, error) {
+	var out ConnectionResponse
+	if err := r.c.Post(ctx, "/api/connections/"+id+"/activate", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // Sync — POST /api/applications/{appCode}/connections/sync. Sync

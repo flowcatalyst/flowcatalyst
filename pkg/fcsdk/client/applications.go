@@ -33,11 +33,11 @@ type UpdateApplicationRequest struct {
 	Website        *string `json:"website,omitempty"`
 }
 
-// ClientConfigRequest — body for PUT /api/applications/{id}/clients/{clientId}.
-type ClientConfigRequest struct {
-	Enabled         *bool           `json:"enabled,omitempty"`
-	BaseURLOverride *string         `json:"baseUrlOverride,omitempty"`
-	Config          json.RawMessage `json:"config,omitempty"`
+// LinkServiceAccountRequest — body for POST /api/applications/{id}/service-account.
+// Both members are required; the platform checks they name the same account.
+type LinkServiceAccountRequest struct {
+	ServiceAccountID   string `json:"serviceAccountId"`
+	ServiceAccountCode string `json:"serviceAccountCode"`
 }
 
 // ─── Response DTOs ───────────────────────────────────────────────────
@@ -67,26 +67,6 @@ type ApplicationResponse struct {
 type ApplicationListResponse struct {
 	Applications []ApplicationResponse `json:"applications"`
 	Total        uint64                `json:"total,omitempty"`
-}
-
-// ServiceAccountResponse is the platform's service-account record.
-type ServiceAccountResponse struct {
-	ID            string `json:"id"`
-	Code          string `json:"code"`
-	Name          string `json:"name"`
-	Description   string `json:"description,omitempty"`
-	Active        bool   `json:"active"`
-	ApplicationID string `json:"applicationId,omitempty"`
-	// AuthType is the credential scheme, e.g. BEARER_TOKEN.
-	AuthType      string   `json:"authType"`
-	ClientIDs     []string `json:"clientIds"`
-	OAuthClientID string   `json:"oauthClientId,omitempty"`
-	PrincipalID   string   `json:"principalId,omitempty"`
-	Roles         []string `json:"roles"`
-	Scope         string   `json:"scope,omitempty"`
-	LastUsedAt    string   `json:"lastUsedAt,omitempty"`
-	CreatedAt     string   `json:"createdAt"`
-	UpdatedAt     string   `json:"updatedAt"`
 }
 
 // ServiceAccountCredentials is the service account created by
@@ -136,12 +116,6 @@ type CreatedResponse struct {
 	ID string `json:"id"`
 }
 
-// SuccessResponse — generic { success, message } envelope.
-type SuccessResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message,omitempty"`
-}
-
 // ─── Resource ────────────────────────────────────────────────────────
 
 // ApplicationsResource — /api/applications/*.
@@ -158,10 +132,11 @@ func (r *ApplicationsResource) Create(ctx context.Context, req *CreateApplicatio
 	return &out, nil
 }
 
-// List — GET /api/applications with optional active/page/pageSize filters.
-// Pass nil for each parameter you want omitted.
-func (r *ApplicationsResource) List(ctx context.Context, active *bool, page, pageSize *uint32) (*ApplicationListResponse, error) {
-	q := NewQuery().Bool("active", active).Uint32("page", page).Uint32("pageSize", pageSize).Encode()
+// List — GET /api/applications?type=&active=. The platform returns every
+// matching application in one response (there is no paging). Pass an empty
+// appType and a nil active to list them all.
+func (r *ApplicationsResource) List(ctx context.Context, appType string, active *bool) (*ApplicationListResponse, error) {
+	q := NewQuery().String("type", appType).Bool("active", active).Encode()
 	var out ApplicationListResponse
 	if err := r.c.Get(ctx, "/api/applications"+q, &out); err != nil {
 		return nil, err
@@ -187,13 +162,10 @@ func (r *ApplicationsResource) GetByCode(ctx context.Context, code string) (*App
 	return &out, nil
 }
 
-// Update — PUT /api/applications/{id}.
-func (r *ApplicationsResource) Update(ctx context.Context, id string, req *UpdateApplicationRequest) (*ApplicationResponse, error) {
-	var out ApplicationResponse
-	if err := r.c.Put(ctx, "/api/applications/"+id, req, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+// Update — PUT /api/applications/{id}. The platform answers 204 No
+// Content; call Get(id) for the updated record.
+func (r *ApplicationsResource) Update(ctx context.Context, id string, req *UpdateApplicationRequest) error {
+	return r.c.Put(ctx, "/api/applications/"+id, req, nil)
 }
 
 // Delete — DELETE /api/applications/{id}.
@@ -229,13 +201,12 @@ func (r *ApplicationsResource) ProvisionServiceAccount(ctx context.Context, id s
 	return &out, nil
 }
 
-// GetServiceAccount — GET /api/applications/{id}/service-account.
-func (r *ApplicationsResource) GetServiceAccount(ctx context.Context, id string) (*ServiceAccountResponse, error) {
-	var out ServiceAccountResponse
-	if err := r.c.Get(ctx, "/api/applications/"+id+"/service-account", &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+// LinkServiceAccount — POST /api/applications/{id}/service-account. Points
+// the application at an existing service account (the platform answers 204).
+// The application's current account is on ApplicationResponse.ServiceAccountID;
+// read the account itself with ServiceAccounts().Get.
+func (r *ApplicationsResource) LinkServiceAccount(ctx context.Context, id string, req *LinkServiceAccountRequest) error {
+	return r.c.Post(ctx, "/api/applications/"+id+"/service-account", req, nil)
 }
 
 // ListRoles — GET /api/applications/by-id/{id}/roles. The platform
@@ -262,29 +233,25 @@ func (r *ApplicationsResource) ListClients(ctx context.Context, id string) (*Cli
 	return &out, nil
 }
 
-// UpdateClientConfig — PUT /api/applications/{id}/clients/{clientId}.
-func (r *ApplicationsResource) UpdateClientConfig(ctx context.Context, id, clientID string, req *ClientConfigRequest) (*ClientConfigResponse, error) {
+// GetClientConfig — GET /api/applications/{id}/clients/{clientId}: the
+// application's configuration for one client. The platform has no route
+// that edits it; EnableForClient / DisableForClient flip it on and off.
+func (r *ApplicationsResource) GetClientConfig(ctx context.Context, id, clientID string) (*ClientConfigResponse, error) {
 	var out ClientConfigResponse
-	if err := r.c.Put(ctx, fmt.Sprintf("/api/applications/%s/clients/%s", id, clientID), req, &out); err != nil {
+	if err := r.c.Get(ctx, fmt.Sprintf("/api/applications/%s/clients/%s", id, clientID), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
 }
 
-// EnableForClient — POST /api/applications/{id}/clients/{clientId}/enable.
-func (r *ApplicationsResource) EnableForClient(ctx context.Context, id, clientID string) (*ClientConfigResponse, error) {
-	var out ClientConfigResponse
-	if err := r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/clients/%s/enable", id, clientID), nil, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+// EnableForClient — POST /api/applications/{id}/clients/{clientId}/enable
+// (204 No Content).
+func (r *ApplicationsResource) EnableForClient(ctx context.Context, id, clientID string) error {
+	return r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/clients/%s/enable", id, clientID), nil, nil)
 }
 
-// DisableForClient — POST /api/applications/{id}/clients/{clientId}/disable.
-func (r *ApplicationsResource) DisableForClient(ctx context.Context, id, clientID string) (*ClientConfigResponse, error) {
-	var out ClientConfigResponse
-	if err := r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/clients/%s/disable", id, clientID), nil, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+// DisableForClient — POST /api/applications/{id}/clients/{clientId}/disable
+// (204 No Content).
+func (r *ApplicationsResource) DisableForClient(ctx context.Context, id, clientID string) error {
+	return r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/clients/%s/disable", id, clientID), nil, nil)
 }

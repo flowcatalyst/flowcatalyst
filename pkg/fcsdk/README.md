@@ -200,13 +200,20 @@ cc := auth.NewClientCredentialsProvider(auth.ClientCredentialsConfig{
 	IssuerURL: "https://auth.flowcatalyst.io", ClientID: "svc-app", ClientSecret: secret,
 })
 c := client.New("https://api.flowcatalyst.io", client.WithTokenProvider(cc.Token))
-types, err := c.EventTypes().List(ctx, "orders", "", "") // application, status, clientId
+types, err := c.EventTypes().List(ctx, &client.EventTypeFilters{Application: "orders"})
 ```
 
 `client` retries transient 5xx and returns `*client.APIError` for non-2xx.
 `auth.NewTokenValidator` validates incoming RS256 bearer tokens through OIDC
 discovery and a cached JWKS; `auth.OAuthClient` does PKCE, refresh, revoke,
 introspect, userinfo and RP-initiated logout. See `examples/list-event-types`.
+
+Every `client` method follows the platform's OpenAPI lock: a route that
+answers `204 No Content` (update, suspend, activate, archive, delete, pause,
+resume, enable, disable) returns only an `error`; a create route that answers
+`{ "id" }` returns `*client.CreatedResponse` (call `Get` for the record); and
+a route that answers a body returns it. `go test ./client/` checks all of this
+against `api/openapi.lock.json`.
 
 ## Packages
 
@@ -249,6 +256,55 @@ through a local `replace` and through `go get` of a git tag), and
 this tree through `replace ... => ./pkg/fcsdk`. The SDK imports nothing from
 the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock
 `api/openapi.lock.json`.
+
+## Changes before 0.1.0
+
+The platform client was audited method by method against the OpenAPI lock.
+These signatures changed:
+
+- **204 routes return only `error`** (they decoded an empty body into a
+  struct before): `Applications.Update`, `Applications.EnableForClient`,
+  `Applications.DisableForClient`, `Clients.Update`, `Clients.EnableApplication`,
+  `Clients.DisableApplication`, `Clients.UpdateApplications`,
+  `DispatchPools.Update/Archive/Suspend/Activate`, `EventTypes.Update`,
+  `Subscriptions.Update`, `Processes.Update`,
+  `ScheduledJobs.Update/Pause/Resume/Archive/LogForInstance/CompleteInstance`.
+- **`{id}` creates return `*CreatedResponse`**, not a fabricated aggregate:
+  `DispatchPools.Create`, `EventTypes.Create`, `Subscriptions.Create`,
+  `Processes.Create`. (`Connections.Create` is the opposite: the platform
+  answers 201 with the whole connection, so it returns `*ConnectionResponse`.)
+- **Responses that were discarded are returned**: `Connections.Pause/Activate`
+  (`*ConnectionResponse`), `Principals.AddRole/RemoveRole`
+  (`*PrincipalResponse`), `Principals.SetRoles` (`*SetRolesResponse`),
+  `Principals.GrantClientAccess` (`*ClientAccessGrantResponse`).
+  `Principals.SyncUsers` returns `*SyncUsersResult` (`syncedEmails`, not
+  `syncedCodes`). `Roles.ListForApplication` returns `[]RoleResponse` (the
+  platform answers a bare array). `ScheduledJobs.Fire` also carries `id` and
+  `scheduledJobId`.
+- **Routes the platform does not have, removed**: `Applications.GetServiceAccount`
+  (`GET /api/applications/{id}/service-account` does not exist; read the
+  account with the new `ServiceAccounts().Get`, and point an application at one
+  with the new `Applications.LinkServiceAccount`) and
+  `Applications.UpdateClientConfig` (`PUT .../clients/{clientId}` does not
+  exist; use `Applications.GetClientConfig`, `EnableForClient` and
+  `DisableForClient`). `ClientConfigRequest` and `SuccessResponse` are gone.
+- **Query parameters match the lock**: `Applications.List(ctx, appType, active)`
+  (no paging), `Clients.List(ctx)` (no filters or paging),
+  `Connections.List(ctx, clientID, status)`, `EventTypes.List(ctx, *EventTypeFilters)`
+  (adds subdomain and aggregate), `Processes.List(ctx, *ProcessFilters)`
+  (application, subdomain, status; clientId was never accepted),
+  `PrincipalFilters` gains roles, paging and sorting, and `InstanceFilters`
+  drops `TriggerKind`, `From` and `To`.
+- **Wrong routes fixed**: `Processes.Archive` called the hard `DELETE`; it now
+  posts `/archive`, and `Processes.Delete` no longer sends a `?hard=true` the
+  platform ignores. `DispatchPools.Archive` called `DELETE` (a real delete); it
+  now posts `/archive`, and `DispatchPools.Delete` is new.
+- **Required request members are always sent**: `UpdateConnectionRequest.Name`,
+  `UpdateEventTypeRequest.Name` and `AddSchemaVersionRequest.Version` are
+  required fields; `CreateRoleRequest.ClientManaged` and
+  `CreateScheduledJobRequest.Concurrent/TracksCompletion` are sent when false.
+  `SyncEventTypesRequest` takes `[]SyncEventTypeItem` (code, name, description:
+  the sync schema has no schema or client members).
 
 ## Errors
 

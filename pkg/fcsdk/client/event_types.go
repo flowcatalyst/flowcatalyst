@@ -30,14 +30,18 @@ type CreateEventTypeRequest struct {
 
 // UpdateEventTypeRequest is the body for PUT /api/event-types/{id}.
 type UpdateEventTypeRequest struct {
-	Name         *string `json:"name,omitempty"`
+	// Name is required by the platform on every update.
+	Name         string  `json:"name"`
 	Description  *string `json:"description,omitempty"`
 	ClientScoped *bool   `json:"clientScoped,omitempty"`
 }
 
 // AddSchemaVersionRequest is the body for POST /api/event-types/{id}/versions.
 type AddSchemaVersionRequest struct {
-	Schema json.RawMessage `json:"schema"`
+	// Version names the new schema version (e.g. "1.1"); the platform
+	// requires it.
+	Version string          `json:"version"`
+	Schema  json.RawMessage `json:"schema"`
 }
 
 // EventTypeResponse is the platform's event-type representation.
@@ -69,9 +73,18 @@ type SpecVersionResponse struct {
 	CreatedAt string          `json:"createdAt"`
 }
 
+// SyncEventTypeItem is one event type in the per-app sync payload. The sync
+// declares code, name and description only: schemas are added with
+// AddSchemaVersion.
+type SyncEventTypeItem struct {
+	Code        string `json:"code"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
 // SyncEventTypesRequest is the body for the per-app sync endpoint.
 type SyncEventTypesRequest struct {
-	EventTypes []CreateEventTypeRequest `json:"eventTypes"`
+	EventTypes []SyncEventTypeItem `json:"eventTypes"`
 }
 
 // EventTypesResource is the accessor for /api/event-types/*.
@@ -80,9 +93,10 @@ type EventTypesResource struct {
 	c *FlowCatalystClient
 }
 
-// Create — POST /api/event-types.
-func (r *EventTypesResource) Create(ctx context.Context, req *CreateEventTypeRequest) (*EventTypeResponse, error) {
-	var out EventTypeResponse
+// Create — POST /api/event-types. Returns the new event type's id; call Get
+// for the event type.
+func (r *EventTypesResource) Create(ctx context.Context, req *CreateEventTypeRequest) (*CreatedResponse, error) {
+	var out CreatedResponse
 	if err := r.c.Post(ctx, "/api/event-types", req, &out); err != nil {
 		return nil, err
 	}
@@ -107,9 +121,28 @@ func (r *EventTypesResource) GetByCode(ctx context.Context, code string) (*Event
 	return &out, nil
 }
 
-// List — GET /api/event-types?application=&status=&clientId=.
-func (r *EventTypesResource) List(ctx context.Context, application, status, clientID string) (*EventTypeListResponse, error) {
-	q := EncodeQuery("application", application, "status", status, "clientId", clientID)
+// EventTypeFilters — query parameters for GET /api/event-types. Empty fields
+// are omitted.
+type EventTypeFilters struct {
+	Application string
+	Subdomain   string
+	Aggregate   string
+	Status      string
+	ClientID    string
+}
+
+// List — GET /api/event-types with optional filters (nil lists everything).
+func (r *EventTypesResource) List(ctx context.Context, filters *EventTypeFilters) (*EventTypeListResponse, error) {
+	q := ""
+	if filters != nil {
+		q = NewQuery().
+			String("application", filters.Application).
+			String("subdomain", filters.Subdomain).
+			String("aggregate", filters.Aggregate).
+			String("status", filters.Status).
+			String("clientId", filters.ClientID).
+			Encode()
+	}
 	var out EventTypeListResponse
 	if err := r.c.Get(ctx, "/api/event-types"+q, &out); err != nil {
 		return nil, err
@@ -117,13 +150,10 @@ func (r *EventTypesResource) List(ctx context.Context, application, status, clie
 	return &out, nil
 }
 
-// Update — PUT /api/event-types/{id}.
-func (r *EventTypesResource) Update(ctx context.Context, id string, req *UpdateEventTypeRequest) (*EventTypeResponse, error) {
-	var out EventTypeResponse
-	if err := r.c.Put(ctx, "/api/event-types/"+id, req, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+// Update — PUT /api/event-types/{id}. The platform answers 204 No Content;
+// call Get(id) for the updated event type.
+func (r *EventTypesResource) Update(ctx context.Context, id string, req *UpdateEventTypeRequest) error {
+	return r.c.Put(ctx, "/api/event-types/"+id, req, nil)
 }
 
 // AddSchemaVersion — POST /api/event-types/{id}/versions.

@@ -68,6 +68,15 @@ type PrincipalFilters struct {
 	// Email is sent as `q`, the platform's case-insensitive substring search
 	// over name and email; it is not an exact-match filter.
 	Email string
+	// Roles filters to principals holding the role(s) (the platform's `roles`
+	// parameter; comma-separated for several).
+	Roles string
+	// Page and PageSize page the listing; nil takes the platform default.
+	Page     *uint32
+	PageSize *uint32
+	// SortField and SortOrder order it (SortOrder is "asc" or "desc").
+	SortField string
+	SortOrder string
 }
 
 // ─── Response DTOs ───────────────────────────────────────────────────
@@ -116,6 +125,27 @@ type PrincipalRoleResponse struct {
 // PrincipalRoleListResponse — GET /api/principals/{id}/roles.
 type PrincipalRoleListResponse struct {
 	Roles []PrincipalRoleResponse `json:"roles"`
+}
+
+// SetRolesResponse — PUT /api/principals/{id}/roles: the role names added and
+// removed by the replace, and the resulting assignments.
+type SetRolesResponse struct {
+	Added   []string                `json:"added"`
+	Removed []string                `json:"removed"`
+	Roles   []PrincipalRoleResponse `json:"roles"`
+}
+
+// SyncUsersResult — the response of POST /api/principals/sync. Unlike the
+// per-application syncs it names the synced principals by email, and carries
+// no application code.
+type SyncUsersResult struct {
+	Created      uint32   `json:"created"`
+	Updated      uint32   `json:"updated"`
+	Deleted      uint32   `json:"deleted"`
+	SyncedEmails []string `json:"syncedEmails"`
+	// PasswordHashIgnored lists the emails (lower-cased) whose passwordHash
+	// was ignored because the user already exists.
+	PasswordHashIgnored []string `json:"passwordHashIgnored,omitempty"`
 }
 
 // ClientAccessGrantResponse — one item from GET /api/principals/{id}/client-access.
@@ -178,6 +208,11 @@ func (r *PrincipalsResource) List(ctx context.Context, filters *PrincipalFilters
 			String("type", filters.Type).
 			String("active", filters.Active).
 			String("q", filters.Email).
+			String("roles", filters.Roles).
+			Uint32("page", filters.Page).
+			Uint32("pageSize", filters.PageSize).
+			String("sortField", filters.SortField).
+			String("sortOrder", filters.SortOrder).
 			Encode()
 	}
 	var out PrincipalListResponse
@@ -231,7 +266,8 @@ func (r *PrincipalsResource) Activate(ctx context.Context, id string) error {
 	return r.c.Post(ctx, "/api/principals/"+id+"/activate", nil, nil)
 }
 
-// Deactivate — POST /api/principals/{id}/deactivate.
+// Deactivate — POST /api/principals/{id}/deactivate. Like Activate, the
+// { message } response is discarded.
 func (r *PrincipalsResource) Deactivate(ctx context.Context, id string) error {
 	return r.c.Post(ctx, "/api/principals/"+id+"/deactivate", nil, nil)
 }
@@ -246,19 +282,34 @@ func (r *PrincipalsResource) Roles(ctx context.Context, id string) (*PrincipalRo
 }
 
 // AddRole — POST /api/principals/{id}/roles (additive — keeps existing
-// roles). Distinct from SetRoles which replaces the full set.
-func (r *PrincipalsResource) AddRole(ctx context.Context, id, roleName string) error {
-	return r.c.Post(ctx, "/api/principals/"+id+"/roles", &AssignRoleRequest{Role: roleName}, nil)
+// roles). Distinct from SetRoles which replaces the full set. Returns the
+// updated principal.
+func (r *PrincipalsResource) AddRole(ctx context.Context, id, roleName string) (*PrincipalResponse, error) {
+	var out PrincipalResponse
+	if err := r.c.Post(ctx, "/api/principals/"+id+"/roles", &AssignRoleRequest{Role: roleName}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
-// RemoveRole — DELETE /api/principals/{id}/roles/{roleName}.
-func (r *PrincipalsResource) RemoveRole(ctx context.Context, id, roleName string) error {
-	return r.c.Delete(ctx, fmt.Sprintf("/api/principals/%s/roles/%s", id, roleName), nil)
+// RemoveRole — DELETE /api/principals/{id}/roles/{roleName}. Returns the
+// updated principal.
+func (r *PrincipalsResource) RemoveRole(ctx context.Context, id, roleName string) (*PrincipalResponse, error) {
+	var out PrincipalResponse
+	if err := r.c.Delete(ctx, fmt.Sprintf("/api/principals/%s/roles/%s", id, roleName), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
-// SetRoles — PUT /api/principals/{id}/roles. Replaces the full set.
-func (r *PrincipalsResource) SetRoles(ctx context.Context, id string, roles []string) error {
-	return r.c.Put(ctx, "/api/principals/"+id+"/roles", &ReplaceRolesRequest{Roles: roles}, nil)
+// SetRoles — PUT /api/principals/{id}/roles. Replaces the full set; the
+// response says what was added and removed.
+func (r *PrincipalsResource) SetRoles(ctx context.Context, id string, roles []string) (*SetRolesResponse, error) {
+	var out SetRolesResponse
+	if err := r.c.Put(ctx, "/api/principals/"+id+"/roles", &ReplaceRolesRequest{Roles: roles}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // ClientAccessGrants — GET /api/principals/{id}/client-access.
@@ -270,10 +321,15 @@ func (r *PrincipalsResource) ClientAccessGrants(ctx context.Context, id string) 
 	return &out, nil
 }
 
-// GrantClientAccess — POST /api/principals/{id}/client-access.
-func (r *PrincipalsResource) GrantClientAccess(ctx context.Context, principalID, clientID string) error {
-	return r.c.Post(ctx, "/api/principals/"+principalID+"/client-access",
-		&GrantClientAccessRequest{ClientID: clientID}, nil)
+// GrantClientAccess — POST /api/principals/{id}/client-access. Returns the
+// grant.
+func (r *PrincipalsResource) GrantClientAccess(ctx context.Context, principalID, clientID string) (*ClientAccessGrantResponse, error) {
+	var out ClientAccessGrantResponse
+	if err := r.c.Post(ctx, "/api/principals/"+principalID+"/client-access",
+		&GrantClientAccessRequest{ClientID: clientID}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // RevokeClientAccess — DELETE /api/principals/{id}/client-access/{clientId}.
@@ -282,7 +338,8 @@ func (r *PrincipalsResource) RevokeClientAccess(ctx context.Context, principalID
 		fmt.Sprintf("/api/principals/%s/client-access/%s", principalID, clientID), nil)
 }
 
-// ResetPassword — POST /api/principals/{id}/reset-password.
+// ResetPassword — POST /api/principals/{id}/reset-password. The platform
+// answers { message } only, which this discards.
 func (r *PrincipalsResource) ResetPassword(ctx context.Context, principalID string, req *ResetPasswordRequest) error {
 	return r.c.Post(ctx, "/api/principals/"+principalID+"/reset-password", req, nil)
 }
@@ -308,8 +365,8 @@ func (r *PrincipalsResource) Sync(ctx context.Context, appCode string, req *Sync
 // "just sync users" — migrating accounts and (via SyncPrincipalItem.PasswordHash)
 // their existing password hashes — without wrapping the call in an application.
 // Pure upsert: it never strips roles from unlisted users.
-func (r *PrincipalsResource) SyncUsers(ctx context.Context, req *SyncPrincipalsRequest) (*SyncResult, error) {
-	var out SyncResult
+func (r *PrincipalsResource) SyncUsers(ctx context.Context, req *SyncPrincipalsRequest) (*SyncUsersResult, error) {
+	var out SyncUsersResult
 	if err := r.c.Post(ctx, "/api/principals/sync", req, &out); err != nil {
 		return nil, err
 	}

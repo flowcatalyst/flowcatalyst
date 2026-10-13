@@ -108,7 +108,7 @@ func (h *HandlerContext) Log(ctx context.Context, message string, opts *LogOptio
 		}
 		req.Metadata = opts.Metadata
 	}
-	if _, err := h.api.ScheduledJobs().LogForInstance(ctx, h.instanceID, req); err != nil {
+	if err := h.api.ScheduledJobs().LogForInstance(ctx, h.instanceID, req); err != nil {
 		if h.onError != nil {
 			h.onError(&RunnerError{Kind: ErrCallbackFailed, Cause: err}, &h.Envelope)
 		}
@@ -359,7 +359,7 @@ func (r *Runner) runInBackground(env Envelope, handler HandlerFunc) {
 			req.Status = client.CompletionStatusFailure
 			req.Result = json.RawMessage(fmt.Sprintf(`{"error":%q}`, handlerErr.Error()))
 		}
-		if _, err := r.api.ScheduledJobs().CompleteInstance(ctx, env.InstanceID, req); err != nil {
+		if err := r.api.ScheduledJobs().CompleteInstance(ctx, env.InstanceID, req); err != nil {
 			r.fireOnError(&RunnerError{Kind: ErrCallbackFailed, Cause: err}, &env)
 		}
 	}
@@ -394,7 +394,7 @@ func (r *Runner) reportSkipped(ctx context.Context, env *Envelope) {
 		Status: client.CompletionStatusFailure,
 		Result: json.RawMessage(`{"skipped":true,"reason":"lock-held"}`),
 	}
-	if _, err := r.api.ScheduledJobs().CompleteInstance(ctx, env.InstanceID, req); err != nil {
+	if err := r.api.ScheduledJobs().CompleteInstance(ctx, env.InstanceID, req); err != nil {
 		r.fireOnError(&RunnerError{Kind: ErrCallbackFailed, Cause: err}, env)
 	}
 }

@@ -14,7 +14,8 @@ type CreateRoleRequest struct {
 	DisplayName     string   `json:"displayName"`
 	Description     string   `json:"description,omitempty"`
 	Permissions     []string `json:"permissions,omitempty"`
-	ClientManaged   bool     `json:"clientManaged,omitempty"`
+	// ClientManaged is required by the platform, so false is sent, not omitted.
+	ClientManaged bool `json:"clientManaged"`
 }
 
 // UpdateRoleRequest — PUT /api/roles/{name}.
@@ -124,13 +125,14 @@ func (r *RolesResource) Delete(ctx context.Context, name string) error {
 	return r.c.Delete(ctx, "/api/roles/"+name, nil)
 }
 
-// ListForApplication — GET /api/roles/by-application/{applicationId}.
-func (r *RolesResource) ListForApplication(ctx context.Context, applicationID string) (*RoleListResponse, error) {
-	var out RoleListResponse
+// ListForApplication — GET /api/roles/by-application/{applicationId}. The
+// platform answers a bare array of roles.
+func (r *RolesResource) ListForApplication(ctx context.Context, applicationID string) ([]RoleResponse, error) {
+	var out []RoleResponse
 	if err := r.c.Get(ctx, "/api/roles/by-application/"+applicationID, &out); err != nil {
 		return nil, err
 	}
-	return &out, nil
+	return out, nil
 }
 
 // GrantPermission — POST /api/roles/{name}/permissions. Returns the updated role.

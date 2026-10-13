@@ -131,7 +131,7 @@ func TestSubscriptionsUpdateSendsReplaceableMembers(t *testing.T) {
 
 	pool := "dp_1"
 	bindings := []client.EventTypeBinding{{EventTypeCode: "a:b:c:d", SpecVersion: "1.0"}}
-	_, err := c.Subscriptions().Update(context.Background(), "sub_1", &client.UpdateSubscriptionRequest{
+	err := c.Subscriptions().Update(context.Background(), "sub_1", &client.UpdateSubscriptionRequest{
 		DispatchPoolID: &pool, EventTypes: &bindings,
 	})
 	require.NoError(t, err)

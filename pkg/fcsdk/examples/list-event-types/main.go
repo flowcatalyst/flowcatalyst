@@ -44,11 +44,9 @@ func main() {
 
 	c := client.New(baseURL, pickAuthOption()...)
 
-	// Optional filters — pass empty strings to omit. Three filter
-	// args is the convention across List endpoints: scope-by-app,
-	// scope-by-status, scope-by-client.
+	// Optional filters — empty fields are omitted; a nil filter lists all.
 	app := os.Getenv("FC_APP")
-	out, err := c.EventTypes().List(context.Background(), app, "", "")
+	out, err := c.EventTypes().List(context.Background(), &client.EventTypeFilters{Application: app})
 	if err != nil {
 		// APIError carries the HTTP status + body for non-2xx; the
 		// errors.As pattern is the convention across the SDK for any
