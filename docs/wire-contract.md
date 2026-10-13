@@ -104,7 +104,11 @@ type Envelope struct {
 Status-code mapping: Validation→400,
 Unauthorized/InvalidCredentials/TokenExpired/InvalidToken→401, Forbidden→403,
 NotFound→404, Duplicate/BusinessRule/Concurrency→409, TooManyRequests→429,
-catch-all→500. **There is no 422 in the mapping.**
+catch-all→500. **There is no 422 in the mapping.** The session-cookie guard
+adds 403 `CROSS_ORIGIN_REQUEST` and 415 `UNSUPPORTED_MEDIA_TYPE` (see
+Authentication); an unknown path under `/api`, `/bff`, `/oauth`,
+`/.well-known`, `/control` or `/q` is 404 `NOT_FOUND` (it used to be the SPA's
+`index.html` with 200).
 
 ## Pagination shapes
 
@@ -164,6 +168,19 @@ so it does **not** appear in that lock — by design. The inventory:
 | GET | `/api/me`, `/api/me/applications` | caller identity + accessible applications |
 | GET/POST | `/oauth/authorize`, `/oauth/token` | OAuth/OIDC provider surface |
 | GET | `/.well-known/openid-configuration`, `/.well-known/jwks.json` | OIDC discovery + JWKS |
+
+**Session-cookie requests (since 2026-10-13, docs/platform-bug-fixes.md F16).**
+A POST, PUT, PATCH or DELETE under the authenticated group (`/api/*`,
+`/bff/*`, `/auth/*` session routes) that the `fc_session` cookie authenticates
+must come from the platform's own origin: `Sec-Fetch-Site: same-origin` or
+`none`, or, without that header, an `Origin` naming the request's host or the
+public base URL (`FC_JWT_ISSUER`). Otherwise, and when neither header is
+present, the answer is **403 `CROSS_ORIGIN_REQUEST`**. Its body, when it has
+one, must be `application/json` (or `application/*+json`), else **415
+`UNSUPPORTED_MEDIA_TYPE`**. Requests authenticated by `Authorization: Bearer`
+(SDKs, service accounts, the router), the OAuth/OIDC endpoints and the
+dispatch callbacks are not subject to either rule. A script that replays a
+browser's cookie must send a matching `Origin` (or use a bearer token).
 
 **`/oauth/authorize?provider=<idp-id>` (direct-IdP entry, since 2026-07-22):**
 `?provider=` chains into the OIDC bridge (`/auth/oidc/login?provider_id=` +

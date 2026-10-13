@@ -1308,6 +1308,145 @@ anyone else).
      and report `skippedRoles` with the shape above; keep `ROLE_APP_FORBIDDEN` for known foreign
      roles and leave the platform route alone.
 
+### F16. Cookie-session CSRF on /api, /bff and /auth; SPA serving (design review, 2026-10-13)
+
+Two findings from a design review, each verified first with real requests through the whole
+platform router (`WirePlatform` on embedded Postgres, `internal/server/crossorigin_pg_test.go`) or
+through the SPA handler (`frontend/handler_test.go`, a fixture tree and the real embedded build).
+
+- **Cookie-authenticated writes had no cross-origin check** (finding 1). The SPA authenticates to
+  `/api`, `/bff` and the `/auth` session routes with the `fc_session` cookie (HttpOnly,
+  SameSite=Lax, a JWT resolved per request); only `/ui` ran a CSRF guard (`guard.CSRF`). **Observed
+  before the fix**, a request carrying the cookie with `Sec-Fetch-Site: same-site` and
+  `Origin: https://evil.example.com` (a sibling subdomain, which Lax does not block):
+  - `POST /bff/roles/permissions` with a `text/plain` JSON body (a no-preflight "simple" request):
+    **201**, permission created. The chi handlers decode JSON whatever the `Content-Type`
+    (`text/plain`, form and multipart bodies were all accepted, 201);
+  - `POST /api/clients/{id}/activate` (huma, no body): **200**, client activated;
+  - `POST /api/clients` with a JSON body and **no** `Content-Type` (what `fetch` sends for a Blob
+    body, no preflight): **201**: huma assumes JSON when the header is absent;
+  - `POST /api/clients` with `text/plain`, form or multipart bodies: **refused**, 400
+    `VALIDATION` "unknown content type" (huma's 415, turned into 400 by `httpcompat.newError`);
+    `RelaxRequestBodies` relaxes only `additionalProperties`, not the media type;
+  - with `Sec-Fetch-Site: cross-site`, with a foreign `Origin` and no `Sec-Fetch-Site`, and with
+    neither header: all accepted (201).
+  So a page on a same-site sibling (or any page, in a browser that ignores SameSite) could change
+  state through the chi routes with a simple request and through body-less or Content-Type-less
+  huma routes. **Confirmed in Chrome** (headless, system Chrome via playwright-core, an isolated
+  fcdev on its own port and embedded Postgres, `app.example.com`, `evil.example.com` and
+  `attacker.test` mapped to loopback): signed in on `app.example.com`, a page on
+  `evil.example.com` sent `fetch(app + "/bff/roles/permissions", {method: "POST", mode:
+  "no-cors", credentials: "include", headers: {"Content-Type": "text/plain"}})`; on the
+  pre-fix binary the permission row was created; the same request from `attacker.test`
+  (cross-site) carried no cookie and created nothing (SameSite=Lax). On the fixed binary neither
+  created anything; the sibling's request was refused 403 by the new rule (logged; over plain
+  HTTP Chrome sends no `Sec-Fetch-Site`, so the `Origin` check refused it).
+  **Not exploitable**: no state-changing GET (the 111 GET operations in `api/openapi.lock.json`,
+  reviewed by operation id and summary, the 15 not named as reads one by one, and the chi GET
+  routes all read only, except `GET /auth/oidc/session/end`, OIDC RP-initiated logout,
+  which only clears the cookie by design); no method override (`X-HTTP-Method-Override`,
+  `_method`) is honoured; non-simple methods (PUT, PATCH, DELETE) and JSON bodies need a CORS
+  preflight from another origin, and the platform answers none (no CORS middleware). The cookie is
+  read only by the `Authenticator` (the API group, `/ui`, the debug gate) and by
+  `GET /oauth/authorize` (the OAuth flow, `state` required).
+  **Fix** (`94a4c79`): `platformmw.SessionCSRF`
+  (`internal/platform/shared/middleware/crossorigin.go`), run
+  in the authenticated group right after the `Authenticator`, which now records when the
+  AuthContext came from the cookie (`AuthenticatedBySessionCookie`). **The rule**, for a POST, PUT,
+  PATCH or DELETE the cookie authenticated:
+  1. `Sec-Fetch-Site` `same-origin` or `none` passes; any other value is refused, unless `Origin`
+     is a trusted origin; without `Sec-Fetch-Site`, `Origin` must name the request's `Host` or a
+     trusted origin (net/http `CrossOriginProtection`); the trusted origin is the public base URL
+     (`FC_JWT_ISSUER`), as for `/ui`, for a proxy that rewrites `Host`;
+  2. a request with **neither** header is refused (owner preference; stricter than
+     `CrossOriginProtection`, which lets it through as "not a browser");
+  3. refusal: **403 `CROSS_ORIGIN_REQUEST`**, logged (warn) with method, path, `Origin` and
+     `Sec-Fetch-Site`;
+  4. then, a request with a body (non-zero or unknown `Content-Length`) must declare
+     `application/json` or `application/*+json`; otherwise, an absent or malformed header
+     included, **415 `UNSUPPORTED_MEDIA_TYPE`**. A body-less request needs no `Content-Type`.
+  **Not affected**: safe methods; requests authenticated by `Authorization: Bearer` (the bearer
+  wins when both are sent, so the cookie rules do not apply); the dev test headers; a stale or
+  invalid cookie (it authenticates nothing; the handler refuses the request as unauthenticated);
+  everything outside the authenticated group: `/oauth/*` and `/.well-known/*`, the public login,
+  2FA and password-reset routes, `POST /api/dispatch/process` and `/settled` (HMAC). `/ui` keeps
+  its own `guard.CSRF` (it posts multipart forms, so the JSON rule is not applied there).
+- **SPA serving** (finding 2, `frontend/handler.go`). **Observed before the fix** (fixture tree):
+  a missing hashed asset (`/assets/index-OLDHASH.js`), `/favicon.ico`, `/robots.txt` and every
+  unknown path under `/api`, `/bff`, `/oauth`, `/.well-known`, `/control` and `/q`, for GET,
+  POST and DELETE alike, answered **200 with `index.html`** (`no-cache, no-store,
+  must-revalidate`); the code served a POST to a client route the same way. No security headers. The pre-fix binary
+  in the browser run answered `/assets/index-STALEHASH.js` and `/api/does-not-exist` the same
+  way (200, `text/html`); the fixed one 404 (`text/plain`, `no-store`) and 404 JSON, with
+  `index.html` `no-cache` plus an ETag and the hashed bundle immutable. **Fix** (`ff9e495`), the
+  handler (the server's NotFound fallback) now:
+  1. answers a path under those API prefixes (whole first segment: `/apiary` is a client route)
+     with **404** and the JSON envelope `{"error":"NOT_FOUND","message":"No route for GET /api/x"}`;
+  2. answers methods other than GET and HEAD with 405 (`Allow: GET, HEAD`);
+  3. serves an existing file with its MIME type and a content-hash `ETag` (embedded files have
+     no modification time); `/assets/*` with `public, max-age=31536000, immutable`, any other file
+     with `no-cache`;
+  4. answers a missing file under `/assets/`, or with a static-asset extension (an allow-list:
+     `.js .css .map .json .png .svg .ico .woff2 ...`, not "has a dot", since client routes carry
+     identifiers), with **404**, `no-store` (a deploy in progress must not leave a cached 404);
+  5. serves `index.html` for every other GET (an extension-less client route), **`no-cache`**
+     with its `ETag` (304 on `If-None-Match`), replacing `no-store`;
+  6. sets on every response `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`,
+     `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'; object-src
+     'none'; base-uri 'self'`.
+  The run loop's GET-method-mismatch fallback (`mountFallback`, kept for `GET /auth/login` against
+  `POST /auth/login`) now keeps 405 for an API path (`RunOptions.IsAPIPath` =
+  `frontend.IsAPIPath`), where it served the SPA.
+  **CSP on scripts and styles: skipped.** The SPA has not been run under one: PrimeVue injects
+  `<style>` elements at runtime (`style-src` would need `'unsafe-inline'`), the Swagger UI chunk
+  (`DeveloperApiDocsTab`) uses the `Function` constructor (`script-src` would need
+  `'unsafe-eval'`), and mermaid, login-theme logos and client branding were not checked. The
+  policy set restricts only framing, plugins and `<base>`, which the SPA does not use (no
+  iframes, `<object>` or `<base>` in `frontend/src`); a test pins that it names no `default-src`,
+  `script-src`, `style-src` or `connect-src`.
+- **Decisions** (owner to confirm):
+  1. No `Sec-Fetch-Site` and no `Origin` on a cookie-authenticated unsafe request: refused (owner
+     preference). Effect: a non-browser client that replays a browser's `fc_session` cookie
+     (curl, a script) must now send `Origin: <the platform's URL>` or use a bearer token. No
+     first-party client does: the SPA is a browser, the SDKs, router, function runner and
+     Laravel/TypeScript integrations use bearer tokens (their own `fc_session` cookie is on the
+     application's domain, not the platform's), and the vitest suites make no API calls.
+  2. JSON only: refuses `text/plain`, forms, multipart and a body without `Content-Type`, on
+     cookie-authenticated requests only. A cookie-authenticated function artifact upload
+     (`PUT /api/functions/{id}/artifacts/{digest}`, `application/wasm`) is now refused 415; the
+     SPA does not upload artifacts, and bearer uploads are unaffected.
+  3. Trusted origin: the public base URL only (as `/ui`); no configuration for further origins.
+  4. A request that is cross-origin and has a non-JSON body gets 403, not 415 (provenance first).
+  5. The login routes are left alone (see "New findings").
+  6. Unknown API paths answer 404 with `NOT_FOUND` in the JSON envelope; a GET to an API route
+     registered for another method answers a bare 405 (as non-GET mismatches always did).
+  7. Referrer-Policy `same-origin` (as `/ui`): no `Referer` leaves the platform, including to an
+     identity provider on SSO redirects.
+- **Wire impact**: no OpenAPI change (middleware and the fallback are not in the spec; the lock
+  was not regenerated). New answers: 403 `CROSS_ORIGIN_REQUEST`, 415 `UNSUPPORTED_MEDIA_TYPE`,
+  404 `NOT_FOUND` for unknown API paths (was 200 `index.html`), 405 for a GET to a non-GET API
+  route (was 200 `index.html`), 404 for missing assets (was 200 `index.html`). Documented in
+  `docs/wire-contract.md` ("Error envelope", "Authentication"). The SPA is unaffected (it sends
+  `Content-Type: application/json` with every body from its own origin); bearer clients (SDKs,
+  Laravel, router, function runner) are unaffected.
+- **Tests** (each failed before its fix, as observed above): `internal/server/crossorigin_pg_test.go`
+  (integration): cross-origin cookie writes refused across chi and huma routes, with and without
+  a body or `Content-Type`, DELETE included; same-origin, `Sec-Fetch-Site: none`, Origin-only,
+  rewritten-Host-with-public-Origin and GET allowed; non-JSON cookie bodies 415 on both route
+  kinds; bearer requests with a foreign `Origin`, with no browser headers, beside a cookie, and
+  body-less, allowed; `/oauth/token` cross-site with the cookie not refused by the rule; an invalid
+  cookie not treated as a session. `middleware/crossorigin_test.go`: the rule's matrix (incl.
+  `Origin: null`, malformed `Content-Type`, `+json`, body-less requests declaring `text/plain`,
+  HEAD/OPTIONS). `frontend/handler_test.go`: client routes, missing assets, API prefixes by
+  segment, methods, cache headers and 304, security headers, traversal, the real embedded build.
+  `internal/server/fallback_test.go`: `mountFallback`. Mutation-checked: dropping the
+  neither-header refusal, applying the rule to bearer requests, dropping the JSON rule, not
+  recording the cookie in the `Authenticator`, recording it for bearers, not wiring the guard, the
+  API-prefix branch, the asset 404, `no-store` on the index, the missing ETag and the API-path
+  405 each fail at least one test.
+- **Java/Rust mirror**: not checked in this pass; the same rule applies to any port that
+  authenticates the SPA by cookie.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -1379,6 +1518,11 @@ anyone else).
     tell a foreign role that exists, 403, from one that does not, skipped); the platform does not
     add the `app:` prefix to bare names; `skippedRoles` is a flat list of names, not per email
     (the shape of `passwordHashIgnored`); the platform principal sync is not changed.
+23. Cookie-session guard and SPA serving (F16): a cookie-authenticated write with neither
+    `Sec-Fetch-Site` nor `Origin` is refused; JSON only for cookie-authenticated bodies (a
+    cookie-authenticated artifact upload is refused); the public base URL is the only trusted
+    origin; the login routes are not guarded; no script or style CSP; `Referrer-Policy:
+    same-origin`. Details in F16's decisions.
 
 ## New findings, not fixed
 
@@ -1433,6 +1577,20 @@ missing event source (F14), and unknown roles in the application principal sync 
   platform prefixes bare role names with the application; it never has. Their bare names were
   stored as assignments that matched no role; they are now skipped and listed in `skippedRoles`.
   The Rust SDK prefixes bare names itself.
+- **Login CSRF** (F16, not fixed): `POST /auth/login` (public, outside the authenticated group)
+  decodes JSON whatever the `Content-Type`, so a cross-site `<form enctype="text/plain">` can
+  sign a victim's browser in to the attacker's account (a response to a top-level navigation may
+  set a Lax cookie). Read, not run. The same provenance rule on the public routes that mint the
+  session (`/auth/login`, passkey sign-in, the INVITE password-reset confirm, 2FA verify) would
+  close it; owner decision, since it would refuse non-browser password logins without `Origin`.
+- **huma's `$schema` is still emitted** (F16, not fixed): responses carry `"$schema":
+  "<issuer>/<Type>.json"` (seen in the huma responses of the F16 tests, error envelopes included),
+  although `wire_routes.go` clears `SchemasPath` to drop it: huma's link transformer is added by a
+  create hook in `huma.DefaultConfig`, and clearing the path only changes the URL it points at.
+- **Debug endpoints by cookie** (F16, not fixed): the debug gate accepts the anchor's session
+  cookie, so a cross-site top-level navigation can start `GET .../debug/pprof/profile` (a CPU
+  profile, read by nobody but the browser). Low impact; the gate's only unsafe route,
+  `POST /debug/pprof/symbol`, is read-only.
 
 ## Not verified
 
@@ -1473,3 +1631,14 @@ missing event source (F14), and unknown roles in the application principal sync 
 - F15: integration tests on embedded databases only, through the route handlers; no live
   platform run (the binaries did not build at the time: another session's function-event work was
   mid-edit) and no browser run (the SPA only gained a generated type).
+- F16: the browser run (Chrome, pre-fix and fixed fcdev binaries with the embedded SPA built
+  2026-10-09, isolated port and embedded Postgres) was over plain HTTP on mapped hostnames, so
+  Chrome sent no `Sec-Fetch-Site` (it sends it only to secure origins) and the `Origin` path
+  decided; the `Sec-Fetch-Site` path (HTTPS, as deployed) is covered by the integration and unit
+  tests only. In that run the SPA signed in, nine pages were walked with no console error other
+  than the expected pre-login 401 on `/auth/me` and the probes' own 404s and 403, a client was
+  created through the API from the SPA's page and through the create drawer (201 both), and the
+  headers and 404s above were observed. Not run: SSO and passkey sign-in, the theme and Swagger
+  pages under the new headers, Firefox and Safari, a deployed environment behind a proxy, Vite's
+  dev proxy (it rewrites `Host`; browsers send `Sec-Fetch-Site: same-origin` to localhost, which
+  passes). A Blob body without `Content-Type` was sent by hand in the tests, not by a browser.
