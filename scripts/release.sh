@@ -2,7 +2,8 @@
 # Cut a FlowCatalyst release from the flowcatalyst-go repo.
 #
 # Usage: scripts/release.sh <kind> <bump>
-#   <kind>  release line — currently: dev (the fcdev developer binary)
+#   <kind>  release line: dev (the fcdev developer binary), ts, laravel, java,
+#           go-sdk, fn-ts, fn-rust, fn-go
 #   <bump>  patch | minor | major | X.Y.Z[-suffix]
 #
 # The version source of truth is a per-line VERSION file, seeded from the Rust
@@ -17,7 +18,7 @@ kind="${1:-}"
 bump="${2:-}"
 
 usage() {
-	echo "usage: scripts/release.sh <dev|ts|laravel|java|fn-ts|fn-rust|fn-go> <patch|minor|major|X.Y.Z[-suffix]>" >&2
+	echo "usage: scripts/release.sh <dev|ts|laravel|java|go-sdk|fn-ts|fn-rust|fn-go> <patch|minor|major|X.Y.Z[-suffix]>" >&2
 	exit 2
 }
 [ -n "$kind" ] && [ -n "$bump" ] || usage
@@ -29,8 +30,10 @@ usage() {
 #
 # The function SDKs add: manifest_toml (Cargo.toml, first top-level
 # `version = "…"`), lock_npm (package-lock.json root version, two places) and
-# lock_cargo (Cargo.lock entry for $lock_cargo_crate). fn-go has none: a Go
-# module is versioned purely by its tag (clients/fn-go/vX.Y.Z).
+# lock_cargo (Cargo.lock entry for $lock_cargo_crate). The Go modules (go-sdk,
+# fn-go) have none: a Go module is versioned purely by its tag
+# (pkg/fcsdk/vX.Y.Z, clients/fn-go/vX.Y.Z); go_module names the module path
+# its go.mod must declare (guarded below).
 #
 # RELEASE_DRY_RUN=1 runs every check and shows the bump diff, then reverts and
 # exits without committing, tagging or pushing.
@@ -41,14 +44,17 @@ lock_npm=""
 lock_cargo=""
 lock_cargo_crate=""
 workflow=""
+go_module=""
+go_mod_file=""
 case "$kind" in
 	dev)     prefix="fcdev";         version_file="cmd/fcdev/VERSION";             label="fcdev" ;;
 	ts)      prefix="typescript-sdk"; version_file="clients/typescript-sdk/VERSION"; label="typescript-sdk"; manifest="clients/typescript-sdk/package.json" ;;
 	laravel) prefix="laravel-sdk";    version_file="clients/laravel-sdk/VERSION";    label="laravel-sdk" ;;
 	java)    prefix="java-sdk";       version_file="clients/java-sdk/VERSION";       label="java-sdk"; manifest_pom="clients/java-sdk/pom.xml" ;;
+	go-sdk)  prefix="pkg/fcsdk";      version_file="pkg/fcsdk/VERSION";             label="go-sdk"; go_module="github.com/flowcatalyst/flowcatalyst/pkg/fcsdk"; go_mod_file="pkg/fcsdk/go.mod" ;;
 	fn-ts)   prefix="fn-ts-sdk";      version_file="clients/fn-ts/VERSION";         label="fn-ts-sdk"; manifest="clients/fn-ts/package.json"; lock_npm="clients/fn-ts/package-lock.json"; workflow="split-fn-ts-sdk.yml" ;;
 	fn-rust) prefix="fn-rust-sdk";    version_file="clients/fn-rust/VERSION";       label="fn-rust-sdk"; manifest_toml="clients/fn-rust/Cargo.toml"; lock_cargo="clients/fn-rust/Cargo.lock"; lock_cargo_crate="flowcatalyst-fn"; workflow="split-fn-rust-sdk.yml" ;;
-	fn-go)   prefix="clients/fn-go";  version_file="clients/fn-go/VERSION";         label="fn-go-sdk" ;;
+	fn-go)   prefix="clients/fn-go";  version_file="clients/fn-go/VERSION";         label="fn-go-sdk"; go_module="github.com/flowcatalyst/flowcatalyst/clients/fn-go"; go_mod_file="clients/fn-go/go.mod" ;;
 	*)       echo "✗ unknown release kind: $kind" >&2; usage ;;
 esac
 
@@ -63,14 +69,18 @@ fi
 
 [ -f "$version_file" ] || { echo "✗ missing version file: $version_file" >&2; exit 1; }
 
-# fn-go is consumed through the Go module proxy, which resolves the module path
-# to the repo URL: a tag on a module whose path does not match the repo is
+# The Go modules (go-sdk, fn-go) are consumed through the Go module proxy,
+# which resolves the module path to the repo URL and the tag prefix to the
+# module's directory: a tag on a module whose path does not match the repo is
 # permanently unfetchable (proxies cache it). Refuse until go.mod is right.
-fn_go_module="github.com/flowcatalyst/flowcatalyst/clients/fn-go"
-if [ "$kind" = "fn-go" ]; then
-	have="$(awk '/^module[[:space:]]/ {print $2; exit}' clients/fn-go/go.mod)"
-	if [ "$have" != "$fn_go_module" ]; then
-		echo "✗ clients/fn-go/go.mod declares '$have'; it must be '$fn_go_module' to be fetchable from this repo's tags. See docs/releasing.md." >&2
+if [ -n "$go_module" ]; then
+	have="$(awk '/^module[[:space:]]/ {print $2; exit}' "$go_mod_file")"
+	if [ "$have" != "$go_module" ]; then
+		echo "✗ $go_mod_file declares '$have'; it must be '$go_module' to be fetchable from this repo's tags. See docs/releasing.md." >&2
+		exit 1
+	fi
+	if [ "$prefix" != "${go_mod_file%/go.mod}" ]; then
+		echo "✗ tag prefix '$prefix' must be the module directory '${go_mod_file%/go.mod}'." >&2
 		exit 1
 	fi
 fi
@@ -239,8 +249,8 @@ git push origin HEAD "$prefix/v$new"
 
 echo ""
 echo "✓ Released $label v$new"
-if [ "$kind" = "fn-go" ]; then
-	echo "  Consume:  go get $fn_go_module@v$new (module proxy; no workflow)"
+if [ -n "$go_module" ]; then
+	echo "  Consume:  go get $go_module@v$new (module proxy; no workflow)"
 else
 	echo "  Workflow: https://github.com/flowcatalyst/flowcatalyst-go/actions/workflows/${workflow:-release-$prefix.yml}"
 fi

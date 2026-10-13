@@ -4,7 +4,8 @@
 	lint lint-fix analyze fmt fmt-check sqlc sqlc-verify ui-generate ui-fmt ui-verify ui-kit-sync ci clean \
 	dump-spec api-bump api-diff release-dev sdk-spec sdk-generate \
 	release-ts-sdk release-laravel-sdk build-java-sdk release-java-sdk \
-	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk install-tools help
+	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk install-tools help \
+	test-go-sdk lint-go-sdk go-sdk-smoke release-go-sdk
 
 GO ?= go
 PNPM ?= pnpm
@@ -81,8 +82,19 @@ db-reset: ## Wipe the embedded Postgres data dir, then start fresh
 
 test: test-unit test-integration ## Run all tests
 
-test-unit: ## Run unit tests (no DB required)
+test-unit: ## Run unit tests (no DB required), the platform's and the Go SDK module's
 	$(GO) test -race -short ./...
+	$(GO) -C pkg/fcsdk test -race -short ./...
+
+# The Go SDK (pkg/fcsdk) is its own module: `./...` at the root does not reach
+# it, so it has its own test/lint targets (also folded into test-unit / lint).
+test-go-sdk: ## Build, vet and test the Go SDK module on its own (pkg/fcsdk)
+	$(GO) -C pkg/fcsdk build ./...
+	$(GO) -C pkg/fcsdk vet ./...
+	$(GO) -C pkg/fcsdk test -race ./...
+
+go-sdk-smoke: ## Consume the Go SDK from a scratch module (local replace + `go get` via git tag)
+	@scripts/go-sdk-smoke.sh all
 
 test-integration: ## Run integration tests (embedded Postgres via internal/testpg)
 	# -p 1 serializes test binaries: each integration package boots its own
@@ -100,8 +112,11 @@ watch-test: ## Re-run unit tests on file changes (requires gotestsum)
 	@which gotestsum >/dev/null 2>&1 || { echo "gotestsum not found — run 'make install-tools'"; exit 1; }
 	gotestsum --watch -- -short ./...
 
-lint: ## Run golangci-lint
+lint: lint-go-sdk ## Run golangci-lint (platform + Go SDK module)
 	golangci-lint run ./...
+
+lint-go-sdk: ## Run golangci-lint on the Go SDK module (pkg/fcsdk)
+	cd pkg/fcsdk && golangci-lint run ./...
 
 lint-fix: ## Run golangci-lint with autofix
 	golangci-lint run --fix ./...
@@ -112,6 +127,7 @@ analyze: ## Run custom analyzers (UoW seal, id conversions)
 
 fmt: ## Format the codebase
 	$(GO) fmt ./...
+	$(GO) -C pkg/fcsdk fmt ./...
 	$(GO) tool goimports -w .
 
 fmt-check: ## Check formatting without writing (CI-style)
@@ -219,6 +235,11 @@ release-laravel-sdk: ## Cut a Laravel SDK release: BUMP=… (tags laravel-sdk/vX
 
 release-java-sdk: ## Cut a Java SDK release: BUMP=… (bumps pom.xml, tags java-sdk/vX.Y.Z)
 	@scripts/release.sh java "$(BUMP)"
+
+# The Go SDK (pkg/fcsdk) is consumed straight from this repo through the Go
+# module proxy: `go get github.com/flowcatalyst/flowcatalyst/pkg/fcsdk@vX.Y.Z`.
+release-go-sdk: ## Cut a Go SDK release: BUMP=… (tags pkg/fcsdk/vX.Y.Z)
+	@scripts/release.sh go-sdk "$(BUMP)"
 
 # Function-runner SDKs (docs/releasing.md). fn-go is consumed straight from
 # this repo via the Go module proxy; fn-ts / fn-rust are split to standalone

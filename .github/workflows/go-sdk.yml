@@ -1,0 +1,75 @@
+name: go-sdk
+
+# The Go SDK (pkg/fcsdk) is its own Go module: the root module's `./...` (ci.yml)
+# does not reach it. This builds, vets, tests and lints it on its own, and
+# consumes it from a scratch module the way an application does.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: pkg/fcsdk
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 1.26 is the module's `go` directive (the oldest it compiles at);
+        # 1.27 is the platform's toolchain.
+        go: ["1.26", "1.27"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+          cache-dependency-path: pkg/fcsdk/go.sum
+      - name: Verify go.mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+      - name: Build (packages and examples)
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -race ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache: true
+          cache-dependency-path: pkg/fcsdk/go.sum
+      # Same as ci.yml's lint job: build golangci-lint with the workflow's own
+      # toolchain (prebuilt binaries lag the Go release). The config is the
+      # repository's .golangci.yml, found by walking up from pkg/fcsdk.
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          install-mode: goinstall
+          working-directory: pkg/fcsdk
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the smoke test clones HEAD and tags the clone.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache: true
+          cache-dependency-path: pkg/fcsdk/go.sum
+      - name: Consume from a scratch module (local replace, then go get via a git tag)
+        working-directory: .
+        run: scripts/go-sdk-smoke.sh all
