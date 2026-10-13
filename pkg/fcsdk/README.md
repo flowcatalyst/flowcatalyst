@@ -4,7 +4,7 @@ Go SDK for the FlowCatalyst platform. Sibling of `crates/fc-sdk` (legacy platfor
 `clients/typescript-sdk`, and `clients/laravel-sdk`. Module path:
 
 ```
-github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk
+github.com/flowcatalyst/flowcatalyst/pkg/fcsdk
 ```
 
 Wire-compatible with the other three SDKs — a token, event payload,
@@ -126,8 +126,8 @@ Apps that talk to Postgres via pgx (most performance-sensitive choice):
 
 ```go
 import (
-    "github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
-    "github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/outboxpgx"
+    "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+    "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outboxpgx"
 )
 
 sink := outboxpgx.NewSink(outboxpgx.Config{
@@ -145,8 +145,8 @@ Apps that need MySQL (or want one code path across drivers via
 
 ```go
 import (
-    "github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasesql"
-    "github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/outboxsql"
+    "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasesql"
+    "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outboxsql"
 )
 
 sink := outboxsql.NewSink(outboxsql.Config{ /* ... */ })
@@ -164,8 +164,8 @@ For server-side apps calling the platform with a confidential client:
 
 ```go
 import (
-    "github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/auth"
-    "github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/client"
+    "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
+    "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
 )
 
 cc := auth.NewClientCredentialsProvider(auth.ClientCredentialsConfig{
@@ -215,9 +215,6 @@ opt-in driver packages, the multi-backend story.
 
 Copyright © 2026 Belac (FlowCatalyst)
 
-Mozilla Public License 2.0 — see [`LICENSE`](LICENSE) in this directory.
-
-MPL-2.0 is file-level copyleft: modifications to the SDK's own files must be
-released under the MPL, but an application that imports the SDK stays under
-whatever licence its authors choose. Note this differs from the rest of the
-repository, which is Apache-2.0.
+Licensed under the Apache License, Version 2.0 — see [`LICENSE`](LICENSE) and
+[`NOTICE`](NOTICE) in this directory (the module ships its own copies; a module
+download contains only this directory).

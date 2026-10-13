@@ -1,6 +1,6 @@
 // Package fcsdk is the entry-point overview for the FlowCatalyst Go
 // SDK. There is no Go code in the root — this file exists so that
-// `go doc github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk` returns a
+// `go doc github.com/flowcatalyst/flowcatalyst/pkg/fcsdk` returns a
 // useful map of what's where.
 //
 // The SDK has byte-for-byte wire parity with the TypeScript and
@@ -100,14 +100,12 @@
 //
 //   - internal/sealed (under pkg/fcsdk/internal/) — Token type that
 //     gates usecase.Success. Constructable only by packages under
-//     github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/ (Go's internal
+//     github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/ (Go's internal
 //     rule), which scopes the seal to the SDK.
 //
 // # License
 //
-// Copyright 2026 Belac (FlowCatalyst). The SDK packages under pkg/fcsdk are
-// licensed under the Mozilla Public License 2.0 (see the LICENSE file in this
-// directory), NOT the Apache-2.0 licence that covers the rest of the
-// repository. MPL-2.0 is file-level copyleft, so importing the SDK does not
-// affect the licence of the importing application.
+// Copyright 2026 Belac (FlowCatalyst). Licensed under the Apache License,
+// Version 2.0 (see the LICENSE and NOTICE files in this directory), the same
+// licence as the rest of the repository.
 package fcsdk

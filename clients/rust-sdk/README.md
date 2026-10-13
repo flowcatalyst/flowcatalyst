@@ -240,6 +240,5 @@ framework's reference) where SDKs disagree.
 
 ## Licence
 
-Apache-2.0 (`LICENSE`), like fc-sdk. Note this differs from the Go SDK
-(`pkg/fcsdk`, MPL-2.0). `deny.toml` keeps strong-copyleft licences out of the
-dependency graph.
+Apache-2.0 (`LICENSE`), like fc-sdk and the Go SDK (`pkg/fcsdk`). `deny.toml`
+keeps strong-copyleft licences out of the dependency graph.

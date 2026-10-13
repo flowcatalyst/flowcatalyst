@@ -359,11 +359,11 @@ Copyright © 2026 Belac (FlowCatalyst)
 | Component | License | Text |
 | --- | --- | --- |
 | Platform (`cmd/`, `internal/`, and everything not listed below) | Apache-2.0 | [`LICENSE`](LICENSE), [`NOTICE`](NOTICE) |
-| Go SDK (`pkg/fcsdk/`) | MPL-2.0 | [`pkg/fcsdk/LICENSE`](pkg/fcsdk/LICENSE) |
+| Go SDK (`pkg/fcsdk/`, its own Go module) | Apache-2.0 | [`pkg/fcsdk/LICENSE`](pkg/fcsdk/LICENSE), [`pkg/fcsdk/NOTICE`](pkg/fcsdk/NOTICE) |
 
-The platform is permissively licensed so that anyone can run it, modify it and
-build on it without a legal review standing in the way; the Apache licence also
-carries an explicit patent grant. The Go SDK is imported directly into
-applications: MPL-2.0 is file-level copyleft — changes to the SDK's own files
-stay open, while an application that merely imports it remains under whatever
-licence its authors choose.
+The platform and the Go SDK are permissively licensed so that anyone can run,
+modify and build on them without a legal review standing in the way; the Apache
+licence also carries an explicit patent grant. The Go SDK is a separate Go
+module (`github.com/flowcatalyst/flowcatalyst/pkg/fcsdk`) and carries its own
+copy of the licence and notice, because a module download contains only the
+module's own directory.
