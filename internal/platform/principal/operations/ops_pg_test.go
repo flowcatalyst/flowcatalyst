@@ -1096,10 +1096,11 @@ func TestSyncPrincipals_UpsertMergeAndRemoveUnlisted(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	ec := testpg.TestEC()
 
-	// Only the ADMIN_ASSIGNED merge seed must exist as a role row —
-	// SyncPrincipals does NOT validate the SDK role names it
-	// writes, and iam_principal_roles has no FK on role_name.
+	// Every role the application's sync names must exist: a name that is not
+	// a role is skipped, not assigned (F15).
 	admin := mustCreateRole(t, uow, "prnsync", "admin")
+	mustCreateRole(t, uow, "prnsync", "viewer")
+	mustCreateRole(t, uow, "prnsync", "editor")
 	existing := mustCreateUser(t, repo, uow, "prn-sync-existing@example.com", "ANCHOR", nil)
 	_, err := runAuthorized(uow, operations.AssignRoles(repo, roles),
 		operations.AssignRolesCommand{UserID: existing.UserID, Roles: []string{admin}})
@@ -1202,7 +1203,9 @@ func TestSyncPrincipals_RemoveUnlisted_NarrowedToApplication(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	ec := testpg.TestEC()
 
-	// Seed a principal holding ONLY an app-A SDK_SYNC role.
+	// Seed a principal holding ONLY an app-A SDK_SYNC role (the role must
+	// exist, or the sync skips it, F15).
+	mustCreateRole(t, uow, "prnnarrowa", "viewer")
 	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo, role.NewRepository(testpg.Pool(t)), nil), operations.SyncPrincipalsCommand{
 		ApplicationCode: "prnnarrowa",
 		Principals: []operations.SyncPrincipalInput{

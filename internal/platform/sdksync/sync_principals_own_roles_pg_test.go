@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
+	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -51,6 +52,13 @@ func TestSyncPrincipals_AppRouteReplacesOnlyItsOwnSyncedRoles(t *testing.T) {
 	for _, code := range []string{"ownra", "ownrb"} {
 		_, err := usecaseop.Run(testpg.AnchorCtx(), uow, appops.CreateApplication(application.NewRepository(pool)),
 			appops.CreateCommand{Code: code, Name: code}, testpg.TestEC())
+		require.NoError(t, err)
+	}
+	// The roles the application's sync names exist (a name that is not a role
+	// is skipped, F15).
+	for _, name := range []string{"new", "admin"} {
+		_, err := usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(role.NewRepository(pool)),
+			roleops.CreateCommand{ApplicationCode: "ownra", RoleName: name, DisplayName: name}, testpg.TestEC())
 		require.NoError(t, err)
 	}
 	const id, email = "prn_ownroles0001", "shared@ownroles.test"

@@ -249,6 +249,29 @@ segment is blank still answers `source is required` (batch item
 `BAD_REQUEST`, singular `400 VALIDATION`). A given source is stored as sent.
 `source` is optional on `CreateEventRequest`.
 
+## SDK sync: roles
+
+Owner rulings 2026-10-13 (`docs/platform-bug-fixes.md` F15).
+
+**Role sync** (`POST /api/applications/{appCode}/roles/sync`): a platform
+permission (first segment `platform`) that a synced role gains or loses, every
+permission of a new role and of a role `removeUnlisted` deletes, must be one
+the caller holds, as on the role-edit routes:
+`403 {"error":"PERMISSION_ABOVE_CALLER","message":"You may only add or remove permissions you hold yourself: <permissions>"}`.
+Only the change is checked; an empty `permissions` keeps the stored list and
+checks nothing. The sync is all-or-nothing: a refusal rejects it whole,
+nothing written.
+
+**Application principal sync**
+(`POST /api/applications/{appCode}/principals/sync`): role names are matched
+lower-cased and as given (the platform adds no `app:` prefix). A name that is
+not a role, whatever its prefix, is not assigned to anyone and creates
+nothing; the rest of the sync applies, and the response lists it in
+`skippedRoles` (lower-cased, each name once, in payload order; omitted when
+none). Another application's role still refuses the whole sync,
+`403 ROLE_APP_FORBIDDEN`. The platform route `POST /api/principals/sync` is
+unchanged and has no `skippedRoles`.
+
 ## Webhook signatures
 
 Webhook delivery (router → subscriber) signs

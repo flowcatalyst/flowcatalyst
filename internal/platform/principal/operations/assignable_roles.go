@@ -2,7 +2,6 @@ package operations
 
 import (
 	"context"
-	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
@@ -58,30 +57,29 @@ func RequireAssignableRoles(ctx context.Context, roles *role.Repository, roleNam
 	return nil
 }
 
-// requireApplicationRoles confines an application's principal sync to that
+// applicationRoles confines an application's principal sync to that
 // application's roles, whoever the caller (403 ROLE_APP_FORBIDDEN, Java's and
-// Rust's message). A role belongs to its application (role.OwningApplicationCode);
-// a name that is not a role belongs to the application its prefix names. A
-// name that is not a role and has no prefix is accepted, as before (it grants
-// nothing).
-func requireApplicationRoles(ctx context.Context, roles *role.Repository, applicationCode string, roleNames []string) error {
+// Rust's message; F12): a role belongs to its application
+// (role.OwningApplicationCode). A name that is not a role is not refused and
+// not assigned (F15, owner ruling 2026-10-13): it is returned in skipped,
+// whatever its prefix, and left out of assign. Both keep the order given.
+func applicationRoles(ctx context.Context, roles *role.Repository, applicationCode string, roleNames []string) (assign, skipped []string, err error) {
 	for _, name := range roleNames {
 		r, err := findRole(ctx, roles, name)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
-		owner := ""
-		if r != nil {
-			owner = r.OwningApplicationCode()
-		} else if prefix, _, found := strings.Cut(name, ":"); found {
-			owner = prefix
+		if r == nil {
+			skipped = append(skipped, name)
+			continue
 		}
-		if owner != "" && owner != applicationCode {
-			return usecase.Authorization("ROLE_APP_FORBIDDEN",
+		if r.OwningApplicationCode() != applicationCode {
+			return nil, nil, usecase.Authorization("ROLE_APP_FORBIDDEN",
 				"role '"+name+"' does not belong to application '"+applicationCode+"'")
 		}
+		assign = append(assign, name)
 	}
-	return nil
+	return assign, skipped, nil
 }
 
 // findRole looks a role up by name; an unwired repository refuses rather than

@@ -433,6 +433,10 @@ type PrincipalsSynced struct {
 	Updated         uint32
 	Deactivated     uint32
 	SyncedEmails    []string
+	// SkippedRoles: the role names the application's route did not assign
+	// because they are not roles (F15), for the route's response. Not part of
+	// the event's data (ToDataJSON), so the catalogued schema is unchanged.
+	SkippedRoles []string
 }
 
 func (e PrincipalsSynced) EventID() string     { return e.Metadata.EventID }

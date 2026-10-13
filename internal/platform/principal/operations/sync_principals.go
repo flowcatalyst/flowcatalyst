@@ -80,7 +80,11 @@ type SyncPrincipalsCommand struct {
 //
 // Application confinement (F12, as Java's requireSyncableRoles): on the
 // application's route every role named must be that application's, whoever
-// the caller (requireApplicationRoles, 403 ROLE_APP_FORBIDDEN); on the platform
+// the caller (applicationRoles, 403 ROLE_APP_FORBIDDEN). There a name that is
+// not a role (F15, owner ruling 2026-10-13) is neither refused nor assigned:
+// it is left out of the entry's roles, so it creates no assignment (and no
+// role), the rest of the sync applies, and it is logged and reported in
+// PrincipalsSynced.SkippedRoles (the route's skippedRoles). On the platform
 // route a non-anchor may name only roles it could assign through
 // PUT /api/principals/{id}/roles, application roles of an application the
 // target's home client is entitled to, so none on a principal the sync creates
@@ -140,6 +144,9 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 				// changed collects every role the sync adds or removes, for
 				// the role ceiling below.
 				changed []string
+				// skipped: the names on the application's route that are not
+				// roles (F15), each once, in payload order.
+				skipped []string
 			)
 			// belongsToThisSync selects the assignments this sync owns, the
 			// ones its merge replaces and its sweep strips (X-02(c), F13):
@@ -168,14 +175,8 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 				syncedSet[email] = struct{}{}
 
 				names := make([]string, 0, len(in.Roles))
-				roleAssignments := make([]serviceaccount.RoleAssignment, 0, len(in.Roles))
 				for _, r := range in.Roles {
 					names = append(names, strings.ToLower(r))
-					roleAssignments = append(roleAssignments, serviceaccount.RoleAssignment{
-						Role:             strings.ToLower(r),
-						AssignmentSource: &sdkSource,
-						AssignedAt:       now,
-					})
 				}
 
 				existing, err := principals.FindByEmail(ctx, email)
@@ -186,8 +187,22 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 					return nil, usecase.Authorization("SYNC_TARGET_FORBIDDEN",
 						"Not authorised to manage principal '"+email+"'")
 				}
-				if err := requireSyncableRoles(ctx, roles, clientConfigs, ac, cmd.ApplicationCode, names, existing); err != nil {
+				names, unknown, err := syncableRoles(ctx, roles, clientConfigs, ac, cmd.ApplicationCode, names, existing)
+				if err != nil {
 					return nil, err
+				}
+				for _, name := range unknown {
+					if !slices.Contains(skipped, name) {
+						skipped = append(skipped, name)
+					}
+				}
+				roleAssignments := make([]serviceaccount.RoleAssignment, 0, len(names))
+				for _, name := range names {
+					roleAssignments = append(roleAssignments, serviceaccount.RoleAssignment{
+						Role:             name,
+						AssignmentSource: &sdkSource,
+						AssignedAt:       now,
+					})
 				}
 				if existing != nil {
 					// Merge (F13, Java Principal.syncSourcedRoles): replace only
@@ -312,6 +327,11 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 				role.PermissionsFrom(roles)); err != nil {
 				return nil, err
 			}
+			if len(skipped) > 0 {
+				// Never silently: logged here, and the route reports them.
+				slog.WarnContext(ctx, "principal sync: role names that are not roles were not assigned",
+					"applicationCode", cmd.ApplicationCode, "roles", skipped)
+			}
 
 			subject := "platform.principals"
 			if cmd.ApplicationCode != "" {
@@ -324,6 +344,7 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 				Updated:         updated,
 				Deactivated:     deactivated,
 				SyncedEmails:    syncedEmails,
+				SkippedRoles:    skipped,
 			}
 			// RolesPersister rewrites iam_principal_roles for each synced user from
 			// its merged Roles slice — the base principal Persist writes only the
@@ -361,21 +382,22 @@ func PasswordHashesIgnored(ctx context.Context, principals *principal.Repository
 	return out, nil
 }
 
-// requireSyncableRoles is the sync's role rule (F12): on an application's
-// route every name is that application's; on the platform route a non-anchor
-// names only roles assignable to target (nil: a principal the sync creates,
-// which has no client, so no role at all).
-func requireSyncableRoles(ctx context.Context, roles *role.Repository, clientConfigs *application.ClientConfigRepo,
+// syncableRoles is the sync's role rule (F12, F15). On an application's route
+// every role is that application's (403 ROLE_APP_FORBIDDEN), and a name that is
+// not a role is returned in skipped instead of assign. On the platform route
+// every name is assigned, a non-anchor's only when assignable to target (nil: a
+// principal the sync creates, which has no client, so no role at all).
+func syncableRoles(ctx context.Context, roles *role.Repository, clientConfigs *application.ClientConfigRepo,
 	ac *auth.AuthContext, applicationCode string, names []string, target *principal.Principal,
-) error {
+) (assign, skipped []string, err error) {
 	if len(names) == 0 {
-		return nil
+		return nil, nil, nil
 	}
 	if applicationCode != "" {
-		return requireApplicationRoles(ctx, roles, applicationCode, names)
+		return applicationRoles(ctx, roles, applicationCode, names)
 	}
 	if ac.IsAnchor() {
-		return nil
+		return names, nil, nil
 	}
 	clientID := ""
 	if target != nil && target.ClientID != nil {
@@ -383,7 +405,10 @@ func requireSyncableRoles(ctx context.Context, roles *role.Repository, clientCon
 	}
 	allowed, err := ClientApplicationIDs(ctx, clientConfigs, clientID)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	return RequireAssignableRoles(ctx, roles, names, allowed)
+	if err := RequireAssignableRoles(ctx, roles, names, allowed); err != nil {
+		return nil, nil, err
+	}
+	return names, nil, nil
 }

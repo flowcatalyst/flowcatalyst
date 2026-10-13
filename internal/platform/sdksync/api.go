@@ -93,6 +93,10 @@ type SyncResultResponse struct {
 	// was not applied because the user already existed (F13; Java's and
 	// Rust's field). Omitted when empty, so every other sync is unchanged.
 	PasswordHashIgnored []string `json:"passwordHashIgnored,omitempty" doc:"Principal sync only: emails whose passwordHash was ignored because the user already exists (omitted when none)"`
+	// SkippedRoles (principal sync only): the role names that are not roles,
+	// so were not assigned (F15). Omitted when empty, so every other sync is
+	// unchanged.
+	SkippedRoles []string `json:"skippedRoles,omitempty" doc:"Principal sync only: role names that are not roles and so were not assigned to anyone (lower-cased, each once, in payload order; omitted when none). The rest of the sync applied."`
 }
 
 // Register mounts the SDK sync endpoints on the supplied huma API,
@@ -485,7 +489,7 @@ func (s *State) resolveClientRef(ctx context.Context, ref string) (*string, erro
 type syncPrincipalInputRequest struct {
 	Email  string   `json:"email" doc:"User's email address (unique identifier for matching)"`
 	Name   string   `json:"name"`
-	Roles  []string `json:"roles,omitempty" doc:"Role short names (prefixed with applicationCode)"`
+	Roles  []string `json:"roles,omitempty" doc:"Role names, the application's own (app:role, matched case-insensitively and not prefixed by the platform). A name that is not a role is not assigned and is reported in skippedRoles; another application's role refuses the sync (403 ROLE_APP_FORBIDDEN)."`
 	Active *bool    `json:"active,omitempty" doc:"Whether the user is active (default true)"`
 	// PasswordHash carries an already-hashed credential (e.g. an upstream
 	// Laravel bcrypt/argon2i hash) so migrated users keep their existing
@@ -556,6 +560,7 @@ func (s *State) syncPrincipals(ctx context.Context, in *syncPrincipalsInput) (*s
 		Deleted:             ev.Deactivated,
 		SyncedCodes:         ev.SyncedEmails,
 		PasswordHashIgnored: ignored,
+		SkippedRoles:        ev.SkippedRoles,
 	}}, nil
 }
 

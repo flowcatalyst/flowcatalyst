@@ -87,18 +87,17 @@ func TestSyncPrincipals_AppRouteOnlyTheApplicationsRoles(t *testing.T) {
 	absent("a@rolefbsdk.test")
 	forbidden("a platform role", sync(caller, "b@rolefbsdk.test", platformRole), platformRole)
 	absent("b@rolefbsdk.test")
-	forbidden("an unknown role named for another application", sync(caller, "c@rolefbsdk.test", "ghostapp:admin"),
-		"ghostapp:admin")
-	absent("c@rolefbsdk.test")
+	// A name that is not a role, even one prefixed for another application, is
+	// skipped instead since F15 (sync_principals_unknown_roles_pg_test.go).
 	forbidden("a super-admin caller too", sync(as("platform:*:*:*"), "d@rolefbsdk.test", foreign), foreign)
 	absent("d@rolefbsdk.test")
 	forbidden("mixed case is lowered first", sync(caller, "e@rolefbsdk.test", "RoleFbOther:Clerk"), foreign)
 
 	// The legitimate flow: the application's own roles; names that are not
-	// roles and name no other application stay accepted, as before.
+	// roles are not refused, and since F15 not assigned either.
 	require.NoError(t, sync(caller, "ok@rolefbsdk.test", clerk, appCode+":not-yet-synced", "unprefixed"))
 	p, err := principals.FindByEmail(ctx, "ok@rolefbsdk.test")
 	require.NoError(t, err)
 	require.NotNil(t, p)
-	assert.ElementsMatch(t, []string{clerk, appCode + ":not-yet-synced", "unprefixed"}, roleNamesOfAssignments(p))
+	assert.Equal(t, []string{clerk}, roleNamesOfAssignments(p))
 }
