@@ -807,28 +807,80 @@ failed before its fix.
   deletions are stored and dispatched under the new code. OpenAPI lock unchanged. No SDK, SPA or
   `/ui` names any function event code (repo-wide grep, `clients/` included).
 - **Java/Rust mirror**: nothing for the renamed event (both already emit it with this data).
-- **For the owner** (not changed):
-  1. `function:created`: Go sends `name`; Java/Rust send `applicationId`, `clientId?`, `runtime`
-     and no name. Rename after Go sends their data (dropping `name`?), or keep Go's code.
-  2. `function:updated`: Java/Rust add `description?` and `status`; Go sends neither.
-  3. Versions: Go identifies a version by `number`; Java/Rust by `versionId` + `version`. Published
-     also differs (`runtime` against `pool` and the signer pair).
-  4. Aliases: the verb differs (`set`/`deleted` against `changed`/`removed`) and Java/Rust send
-     `versionId`, `version` (`previousVersionId?` on changed). Java/Rust refuse removing `live`;
-     Go's removal of `live` unwires (and also emits `promoted`).
-  5. Settings: Go has one setting event with `kind` (config, secret, db) per key; Java/Rust split
-     secrets (`secret:set`/`deleted` per key, with `address`) from config (`config:updated`, a
-     full replacement listing `keys`) and have no `db` kind.
-  6. Domains: Go sends `zone` and `clientId?`; Java/Rust send `hostname` and `owner`, the latter on
-     release too.
-  7. Go-only events, no Java/Rust counterpart: `function:promoted` (the wiring reconciliation
-     summary), `function-route:{set,deleted}`, `function-schedule:wired`. Keep under
-     `platform:admin:function*`, or name them in the `platform:function:*` family (Java/Rust would
-     then need to know the names are taken)?
-  8. Java/Rust-only events Go has no operation for: `version:ready` (host heartbeat),
-     `policy:updated` (signer policy).
-  9. Envelope `source`: every Go function event, the renamed one included, says `platform:admin`;
-     Java/Rust say `platform:function`. Not data, left as is; one constant to change.
+- **For the owner** (at the time; ruled 2026-10-13, below): `function:created` (`name` against
+  `applicationId`, `clientId?`, `runtime`), `function:updated` (`description?`, `status`), the
+  version events (`number` against `versionId` + `version`; `runtime` against `pool` and the
+  signer), the alias verbs and data, the settings (one event with `kind` against `secret:*` and
+  `config:updated`), the domains (`zone`, `clientId?` against `hostname`, `owner`), the Go-only
+  events, the Java/Rust-only events, and the envelope `source`.
+
+#### F11 follow-up: the rest reshaped (owner ruling 2026-10-13)
+
+- **Ruling**: "if reshaping Go's events to the Java/Rust design is better, do it." Every Go
+  event with a Java/Rust counterpart now carries its code, envelope (`source`
+  `platform:function`, subject and group unchanged) and data; the events Java and Rust have no
+  counterpart for keep their `platform:admin:function*` code, `platform:admin` source and data.
+- **Decisions** (code `3450265`):
+
+  | Go (was) | Go now | Data now | Note |
+  | --- | --- | --- | --- |
+  | `platform:admin:function:created` `{functionId, address, name}` | `platform:function:function:created` | `{functionId, address, applicationId, clientId?}` | Java/Rust also send a required `runtime`; a Go function has none (Go's runtime is per version, `wasm`/`js`), so it is absent. `name` dropped (it is the address's last label). |
+  | `platform:admin:function:updated` `{functionId, address}` | `platform:function:function:updated` | `{functionId, address, description?, status}` | `status` is always `ACTIVE`: a Go function has no disabled state. |
+  | `platform:admin:function-version:published` `{…, number, digest, runtime}` | `platform:function:version:published` | `{functionId, address, versionId, version, digest, pool}` | `pool` = the runner pool (`Function.RunnerPool()`); `runtime` dropped (on the version via the API); the signer pair never sent (Go does not sign). |
+  | `platform:admin:function-version:retired` `{…, number}` | `platform:function:version:retired` | `{functionId, address, versionId, version}` | |
+  | `platform:admin:function-alias:set` `{…, alias, number}` | `platform:function:alias:changed` | `{functionId, address, alias, versionId, version, previousVersionId?}` | Now emitted for `live` too (Java/Rust promote emits it), before `function:promoted`. `previousVersionId` is the version the alias left, absent when new. |
+  | `platform:admin:function-alias:deleted` `{…, alias}` | `platform:function:alias:removed` | `{functionId, address, alias, versionId, version}` | The version the alias named. Removing a missing alias emits nothing now (it emitted `deleted` before). Removing `live` (Java/Rust refuse it) emits it, then `function:promoted`. |
+  | `platform:admin:function-setting:set` `{functionId, kind, key}` | CONFIG: `platform:function:config:updated`; SECRET: `platform:function:secret:set`; DB: unchanged | `{functionId, address, keys}`; `{functionId, address, key}`; `{functionId, kind: "DB", key}` | `keys` = every CONFIG key the function holds after the write, sorted (Java/Rust replace the whole map and list its keys; Go writes one key and lists the same thing). Java/Rust have no DB kind. |
+  | `platform:admin:function-setting:deleted` | CONFIG: `config:updated`; SECRET: `secret:deleted`; DB: unchanged | as above | |
+  | `platform:admin:function-domain:claimed` `{domainId, zone, clientId?}` | `platform:function:domain:claimed` | `{domainId, hostname, owner}` | `hostname` = the zone; `owner` = client id or `platform`. |
+  | `platform:admin:function-domain:released` `{domainId, zone}` | `platform:function:domain:released` | `{domainId, hostname, owner}` | |
+  | `platform:admin:function:promoted` | kept (Go-only) | unchanged | The wiring summary; Java/Rust have no wiring event. |
+  | `platform:admin:function-schedule:wired` | kept (Go-only) | unchanged | One per scheduled job the wiring writes. |
+  | `platform:admin:function-route:{set,deleted}` | kept (Go-only) | unchanged | Java/Rust routes live in the version manifest and emit nothing. |
+
+  `platform:function:function:deleted` (renamed in F11) now also says source `platform:function`.
+  Java/Rust's `version:ready` and `policy:updated` stay unemitted: Go marks a version READY from the
+  runner heartbeat without an event and has no signer policy (not in scope; adding `version:ready`
+  would be new behaviour).
+- **Seed**: the catalogue lists the shared codes under Java's names ("Function Version Published",
+  "Function Alias Changed", ...) with Java's schemas, except `function:created` without
+  `runtime`; the Go-only codes keep theirs (`function-setting:*` now describes DB settings).
+- **Migration 074** (`074_function_event_type_reshape.sql`, `faed9ce`): for the eight renamed
+  codes, 073's approach (catalogue row renamed with its id and status, subdomain/aggregate
+  recomputed; bindings by row or code re-pointed, since each is the same event under its new code;
+  merged into an existing new-code row, a duplicate binding dropped, old row and schemas deleted),
+  plus: the renamed row's 1.0 schema becomes the new data's while it is still exactly what a seed
+  wrote (an edited schema, or a new-code row's own schema, is left). The setting codes are not
+  renamed (they remain, for DB); a subscription bound to `function-setting:set` also gets bindings
+  to `secret:set` and `config:updated`, one bound to `function-setting:deleted` to `secret:deleted`
+  and `config:updated` (unless it has them), so no subscriber stops receiving a setting change it
+  picked. That is neither 073's re-point nor 071's archive: the old binding still names a live
+  event, so nothing is archived, and the added bindings carry what the old code used to. A
+  set-only subscriber also receives CONFIG removals (`config:updated` does not distinguish).
+  Wildcard bindings are left alone. Idempotent; Down renames rows and bindings back and restores
+  the seeded schemas, and leaves the added setting bindings (they never match on a build that does
+  not emit those codes).
+- **Tests** (failing first): `function/operations/events_test.go` and
+  `functiondomain/operations/events_test.go` (code, source, subject, group and exact data of
+  every event, optionals present and absent); `function/operations/events_pg_test.go` (the stored
+  `msg_events` rows for create/update, publish/retire, every alias move and removal including
+  `live` and a missing alias, and each setting kind with the CONFIG key list);
+  `functiondomain/operations/ops_pg_test.go` `TestDomainEvents_ClaimAndReleaseStoreTheSharedData`;
+  `seed/function_event_schemas_test.go` (every function event's real `ToDataJSON` validates against
+  its seeded schema; the shared schemas equal Java's but for `runtime`);
+  `seed/emitted_catalogue_test.go` `TestFunctionEventTypesFollowJavaAndRust` (Go emits every
+  Java/Rust code but `version:ready` and `policy:updated`; the Go-only set, renamed
+  `goOnlyFunctionEventTypes`, may only shrink); `seed/function_event_reshape_pg_test.go` (074's
+  schema rows equal the old seed and the new seed; rename with ids, schemas, an edited schema
+  kept, bindings, setting bindings added once, wildcard and kept codes untouched, no second row or
+  schema after seeding, re-run no-op, Down; merge into an existing row with Java's schema).
+- **Wire impact**: `GET /api/event-types` and Sync Platform Events list the new codes and names;
+  function events are stored and dispatched under the new codes with the new data and source; a
+  CONFIG or SECRET write no longer emits `function-setting:*`. OpenAPI lock unchanged; no SDK, SPA
+  or `/ui` names a function event code.
+- **Java/Rust mirror**: none (not mirrored, per instruction). Shared-database note: when a
+  Java/Rust seeder created `platform:function:function:created` first, its schema requires
+  `runtime`, which Go's event does not send.
 
 ### F12. Role confinement and principal-sync reach (owner approval 2026-10-12)
 
@@ -1292,10 +1344,13 @@ anyone else).
 17. Permission ceiling (F10): the same rule as Java and Rust (platform permissions only, the
     change checked, removal and role deletion included); the SDK and platform role syncs are
     bounded too (beyond Java/Rust).
-18. Function event codes (F11): only `platform:admin:function:deleted` (same data as Java/Rust)
-    was renamed; its bindings follow migration 073, and when the new code is already a row the old
-    duplicate row is deleted. Wildcard bindings are not rewritten. The other 14 wait on the list in
-    F11.
+18. Function event codes (F11, follow-up 2026-10-13): every Go function event with a Java/Rust
+    counterpart carries its code, source and data (`function:created` without `runtime`,
+    `function:updated` status always `ACTIVE`, `alias:changed` for `live` too, no event for removing
+    a missing alias, CONFIG settings as `config:updated` with all keys); promoted, schedule-wired,
+    routes and DB settings stay Go-only under `platform:admin`. Migrations 073/074 rename rows and
+    re-point bindings; subscribers to the setting codes also get the secret and config codes.
+    Wildcard bindings are not rewritten.
 19. Confinement and sync reach (F12): confinement checks only what a write adds (Rust's rule; Java
     checks the whole supplied list), so existing roles holding foreign permissions keep working; a
     super-admin may cross applications on create, update and grant, never through a sync. The
@@ -1404,6 +1459,10 @@ missing event source (F14), and unknown roles in the application principal sync 
 - F11: migration 073 ran on embedded scratch databases only (Up, re-run, Down by executing its SQL;
   through goose on every test database), never on a deployed one or one a Java/Rust seeder shared.
   The Java and Rust events were read, not run.
+- F11 follow-up: migration 074 likewise ran on embedded scratch databases only (Up, re-run, Down by
+  executing its SQL; through goose on every test database). No run on a live platform (the
+  `/verify` flow needs the dev fcdev and database, off limits for this work) and no browser run (no
+  SPA or `/ui` change). The Java and Rust events were read, not run.
 - F13: no run against a seeded or deployed database, and the stored-row query was not run (the dev
   database is off limits); no browser run (the SPA only gained a generated type). The Go SDK was
   exercised through the batch handlers, not through a running outbox processor. The Java and Rust
