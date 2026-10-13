@@ -64,3 +64,4 @@ frontend/*.tsbuildinfo
 # the Hey-API-generated TS client checked in alongside the Rust spec;
 # until Go's OpenAPI emitter lands we treat the generated dir as the
 # source of truth (matches what the Rust repo does today).
+fcdev
