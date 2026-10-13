@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/webhook"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/webhook"
 )
 
 func TestValidateAcceptsFreshSignedRequest(t *testing.T) {

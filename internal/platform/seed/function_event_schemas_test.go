@@ -10,7 +10,7 @@ import (
 
 	fnops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/operations"
 	domainops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain/operations"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
 
 // Every function event's real data (ToDataJSON), with its optional fields

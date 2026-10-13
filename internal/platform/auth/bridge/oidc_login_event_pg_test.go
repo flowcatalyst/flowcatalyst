@@ -36,7 +36,7 @@ import (
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 )
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }

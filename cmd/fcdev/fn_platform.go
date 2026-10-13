@@ -18,7 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	fcauth "github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/auth"
+	fcauth "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
 )
 
 // fnCredentials is what `fcdev fn` authenticates with. In CI, flags or

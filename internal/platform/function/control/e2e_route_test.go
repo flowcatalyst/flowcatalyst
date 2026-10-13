@@ -34,7 +34,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain"
 	fdops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 )
 
 // e2eScript is a minimal JS guest for the shared engine (mirrors

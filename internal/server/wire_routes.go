@@ -60,7 +60,7 @@ import (
 	sdkapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/sdk"
 	subscriptionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/api"
 	webauthnapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn/api"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
 
 // registerPlatformAPI wires the authenticated platform surface: a chi

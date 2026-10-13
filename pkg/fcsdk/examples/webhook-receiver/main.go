@@ -25,7 +25,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/webhook"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/webhook"
 )
 
 func main() {

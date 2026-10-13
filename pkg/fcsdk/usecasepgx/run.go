@@ -3,8 +3,8 @@ package usecasepgx
 import (
 	"context"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/internal/sealed"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/internal/sealed"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/jackc/pgx/v5"
 )
 

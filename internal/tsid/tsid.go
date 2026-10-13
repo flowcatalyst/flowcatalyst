@@ -16,7 +16,7 @@
 package tsid
 
 import (
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/tsid"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
 )
 
 // EntityType is a strongly-typed enum of platform-known entity prefixes.

@@ -16,8 +16,8 @@ import (
 
 	eventapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/event/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/sdk"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/tsid"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/webhook"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/webhook"
 )
 
 func fixture(t *testing.T, name string) []byte {

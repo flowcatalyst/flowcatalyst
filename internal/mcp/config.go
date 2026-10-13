@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/client"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
 )
 
 // defaultBaseURL is the platform URL assumed when none is configured — the

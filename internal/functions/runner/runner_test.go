@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/webhook"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/webhook"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/budget"

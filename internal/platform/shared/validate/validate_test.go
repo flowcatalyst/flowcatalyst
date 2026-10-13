@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
 
 func assertValidation(t *testing.T, err error, code, message string) {

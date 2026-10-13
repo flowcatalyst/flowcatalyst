@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
 
 // CodePattern is the strict resource-code rule:

@@ -15,7 +15,7 @@ import (
 	outboxmongo "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/mongo"
 	outboxpg "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/postgres"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/database"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/outboxsql"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outboxsql"
 )
 
 // newOutboxCreateTableCmd provisions the SDK `outbox_messages` table (or, for

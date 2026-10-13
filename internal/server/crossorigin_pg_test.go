@@ -19,7 +19,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/tsid"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
 )
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }

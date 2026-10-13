@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
 
 // ErrTransitionRefused is returned by an operator action's persister when its

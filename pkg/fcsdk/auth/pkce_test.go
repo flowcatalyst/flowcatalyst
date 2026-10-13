@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/auth"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
 )
 
 func TestPkceChallengeUsesS256OfVerifier(t *testing.T) {

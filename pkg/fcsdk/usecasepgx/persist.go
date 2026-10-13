@@ -3,7 +3,7 @@ package usecasepgx
 import (
 	"context"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
 
 // Persist is implemented by a repository to upsert and delete aggregates

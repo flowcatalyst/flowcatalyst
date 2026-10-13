@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
 
 // EventTypeCreated is the domain event emitted on successful creation.

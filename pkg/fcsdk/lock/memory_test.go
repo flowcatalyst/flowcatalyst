@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/lock"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/lock"
 )
 
 func TestNoOpAlwaysSucceeds(t *testing.T) {

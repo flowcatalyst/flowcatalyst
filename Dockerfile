@@ -21,8 +21,11 @@ RUN pnpm install --frozen-lockfile && pnpm build
 FROM golang:1.27-alpine3.24 AS build
 WORKDIR /src
 ENV CGO_ENABLED=0
-# Module layer cached independently of source.
+# Module layer cached independently of source. The Go SDK (pkg/fcsdk) is its
+# own module that go.mod pulls in through a `replace ./pkg/fcsdk`, so its
+# go.mod/go.sum must be present before `go mod download` resolves the graph.
 COPY go.mod go.sum ./
+COPY pkg/fcsdk/go.mod pkg/fcsdk/go.sum ./pkg/fcsdk/
 RUN go mod download
 COPY . .
 # Overlay the freshly-built SPA so frontend/embed.go embeds a real dashboard

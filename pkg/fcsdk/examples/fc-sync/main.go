@@ -20,8 +20,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/client"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/sync"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/sync"
 )
 
 const appCode = "orders"

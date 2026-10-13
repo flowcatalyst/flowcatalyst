@@ -42,8 +42,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/client"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/lock"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/lock"
 )
 
 // DefaultLockTTL is how long a job's serialisation lock is held when

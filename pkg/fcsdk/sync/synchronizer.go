@@ -3,7 +3,7 @@ package sync
 import (
 	"context"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/client"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
 )
 
 // Synchronizer orchestrates per-category sync calls against a

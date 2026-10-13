@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/client"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/lock"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/scheduledjobs"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/lock"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/scheduledjobs"
 )
 
 // platformMock records inbound calls to /log and /complete so tests

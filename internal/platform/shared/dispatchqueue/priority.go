@@ -8,7 +8,7 @@ package dispatchqueue
 import (
 	"strings"
 
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
 
 // Priority is a subscription's dispatch priority: which of the client's two
