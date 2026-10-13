@@ -6,14 +6,13 @@ import "context"
 // list + get. Mutation of permission grants happens via the role itself
 // — see RolesResource.GrantPermission / RevokePermission.
 
-// PermissionResponse is one permission catalogue entry.
+// PermissionResponse is one permission catalogue entry. Permission is the
+// canonical `application:context:aggregate:action` code.
 type PermissionResponse struct {
 	Permission  string `json:"permission"`
-	Application string `json:"application"`
-	Context     string `json:"context"`
-	Aggregate   string `json:"aggregate"`
-	Action      string `json:"action"`
-	Description string `json:"description"`
+	Name        string `json:"name"`
+	Category    string `json:"category,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 // PermissionListResponse — GET /api/roles/permissions.

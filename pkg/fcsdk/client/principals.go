@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // ─── Request DTOs ────────────────────────────────────────────────────
@@ -17,14 +18,24 @@ type CreateUserRequest struct {
 	// upper/lower/digit/special rules (2-char minimum still applies).
 	// Use when your application enforces its own password policy.
 	EnforcePasswordComplexity *bool `json:"enforcePasswordComplexity,omitempty"`
+	// Scope is ANCHOR, PARTNER or CLIENT; empty lets the platform derive it
+	// (CLIENT unless the email domain maps to ANCHOR or PARTNER).
+	Scope string `json:"scope,omitempty"`
+	// SendInvitation emails the user an invitation to set their password.
+	SendInvitation *bool `json:"sendInvitation,omitempty"`
+	// ReturnInviteLink returns the invitation link in
+	// PrincipalResponse.InviteLink instead of relying on email delivery.
+	ReturnInviteLink *bool `json:"returnInviteLink,omitempty"`
+	// InviteRedirectURI is where the invitation flow sends the user once
+	// they have set their password.
+	InviteRedirectURI string `json:"inviteRedirectUri,omitempty"`
 }
 
 // UpdatePrincipalRequest — PUT /api/principals/{id}.
 type UpdatePrincipalRequest struct {
-	Name      *string `json:"name,omitempty"`
-	FirstName *string `json:"firstName,omitempty"`
-	LastName  *string `json:"lastName,omitempty"`
-	Active    *bool   `json:"active,omitempty"`
+	Name   *string `json:"name,omitempty"`
+	Email  *string `json:"email,omitempty"`
+	Active *bool   `json:"active,omitempty"`
 }
 
 // ResetPasswordRequest — POST /api/principals/{id}/reset-password.
@@ -54,7 +65,9 @@ type PrincipalFilters struct {
 	ClientID string
 	Type     string
 	Active   string
-	Email    string
+	// Email is sent as `q`, the platform's case-insensitive substring search
+	// over name and email; it is not an exact-match filter.
+	Email string
 }
 
 // ─── Response DTOs ───────────────────────────────────────────────────
@@ -72,8 +85,17 @@ type PrincipalResponse struct {
 	Roles            []string `json:"roles,omitempty"`
 	IsAnchorUser     bool     `json:"isAnchorUser,omitempty"`
 	GrantedClientIDs []string `json:"grantedClientIds,omitempty"`
-	CreatedAt        string   `json:"createdAt"`
-	UpdatedAt        string   `json:"updatedAt"`
+	// ServiceAccountID is set for SERVICE principals.
+	ServiceAccountID string `json:"serviceAccountId,omitempty"`
+	// HasDeveloperCredential reports whether a developer credential is set.
+	HasDeveloperCredential       bool     `json:"hasDeveloperCredential"`
+	DeveloperCredentialUpdatedAt string   `json:"developerCredentialUpdatedAt,omitempty"`
+	TwoFactorMethods             []string `json:"twoFactorMethods,omitempty"`
+	// InviteLink is set only on the create-user response, when
+	// CreateUserRequest.ReturnInviteLink was requested.
+	InviteLink string `json:"inviteLink,omitempty"`
+	CreatedAt  string `json:"createdAt"`
+	UpdatedAt  string `json:"updatedAt"`
 }
 
 // PrincipalListResponse — GET /api/principals.
@@ -155,7 +177,7 @@ func (r *PrincipalsResource) List(ctx context.Context, filters *PrincipalFilters
 			String("clientId", filters.ClientID).
 			String("type", filters.Type).
 			String("active", filters.Active).
-			String("email", filters.Email).
+			String("q", filters.Email).
 			Encode()
 	}
 	var out PrincipalListResponse
@@ -174,12 +196,24 @@ func (r *PrincipalsResource) Get(ctx context.Context, id string) (*PrincipalResp
 	return &out, nil
 }
 
-// FindByEmail — convenience over List with the email filter. Returns
-// every principal the caller is authorised to see whose email matches
-// exactly (case-insensitive). Callers should pick the expected one by
-// email rather than assuming index 0.
+// FindByEmail — convenience over List. The platform only offers a substring
+// search (`q`), so the result is narrowed client-side to principals whose
+// email equals the argument (case-insensitive). Callers should pick the
+// expected one by email rather than assuming index 0.
 func (r *PrincipalsResource) FindByEmail(ctx context.Context, email string) (*PrincipalListResponse, error) {
-	return r.List(ctx, &PrincipalFilters{Email: email})
+	out, err := r.List(ctx, &PrincipalFilters{Email: email})
+	if err != nil {
+		return nil, err
+	}
+	exact := make([]PrincipalResponse, 0, len(out.Principals))
+	for i := range out.Principals {
+		if strings.EqualFold(out.Principals[i].Email, email) {
+			exact = append(exact, out.Principals[i])
+		}
+	}
+	out.Principals = exact
+	out.Total = uint64(len(exact))
+	return out, nil
 }
 
 // Update — PUT /api/principals/{id}.

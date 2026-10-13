@@ -12,6 +12,9 @@ type CreateConnectionRequest struct {
 	ServiceAccountID string `json:"serviceAccountId"`
 	ExternalID       string `json:"externalId,omitempty"`
 	ClientID         string `json:"clientId,omitempty"`
+	// ApplicationCode owns the connection to that application; empty
+	// leaves it unowned.
+	ApplicationCode string `json:"applicationCode,omitempty"`
 }
 
 // UpdateConnectionRequest — PUT /api/connections/{id}.
@@ -20,6 +23,8 @@ type UpdateConnectionRequest struct {
 	Description *string `json:"description,omitempty"`
 	ExternalID  *string `json:"externalId,omitempty"`
 	Status      *string `json:"status,omitempty"`
+	// ApplicationCode re-homes the connection to that application.
+	ApplicationCode *string `json:"applicationCode,omitempty"`
 }
 
 // ─── Response DTOs ───────────────────────────────────────────────────
@@ -35,8 +40,12 @@ type ConnectionResponse struct {
 	ServiceAccountID string `json:"serviceAccountId"`
 	ClientID         string `json:"clientId,omitempty"`
 	ClientIdentifier string `json:"clientIdentifier,omitempty"`
-	CreatedAt        string `json:"createdAt"`
-	UpdatedAt        string `json:"updatedAt"`
+	// ApplicationCode is the owning application, empty for a shared connection.
+	ApplicationCode string `json:"applicationCode,omitempty"`
+	// Source is how the connection was created (e.g. UI or SDK).
+	Source    string `json:"source"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 // ConnectionsListResponse — GET /api/connections.

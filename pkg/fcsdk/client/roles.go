@@ -22,6 +22,8 @@ type UpdateRoleRequest struct {
 	DisplayName   *string `json:"displayName,omitempty"`
 	Description   *string `json:"description,omitempty"`
 	ClientManaged *bool   `json:"clientManaged,omitempty"`
+	// Permissions replaces the role's permission set when non-nil.
+	Permissions []string `json:"permissions,omitempty"`
 }
 
 // GrantPermissionRequest — body for POST /api/roles/{name}/permissions.
@@ -35,13 +37,13 @@ type GrantPermissionRequest struct {
 type RoleResponse struct {
 	ID              string   `json:"id"`
 	Name            string   `json:"name"`
-	ShortName       string   `json:"shortName"`
 	DisplayName     string   `json:"displayName"`
 	Description     string   `json:"description,omitempty"`
 	ApplicationCode string   `json:"applicationCode"`
-	Permissions     []string `json:"permissions,omitempty"`
+	ApplicationID   string   `json:"applicationId,omitempty"`
+	Permissions     []string `json:"permissions"`
 	Source          string   `json:"source"`
-	ClientManaged   bool     `json:"clientManaged,omitempty"`
+	ClientManaged   bool     `json:"clientManaged"`
 	CreatedAt       string   `json:"createdAt"`
 	UpdatedAt       string   `json:"updatedAt"`
 }

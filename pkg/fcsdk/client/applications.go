@@ -16,6 +16,10 @@ type CreateApplicationRequest struct {
 	ApplicationType string `json:"type,omitempty"`
 	DefaultBaseURL  string `json:"defaultBaseUrl,omitempty"`
 	IconURL         string `json:"iconUrl,omitempty"`
+	// Logo is inline logo markup (e.g. SVG); LogoMimeType names its media type.
+	Logo         string `json:"logo,omitempty"`
+	LogoMimeType string `json:"logoMimeType,omitempty"`
+	Website      string `json:"website,omitempty"`
 }
 
 // UpdateApplicationRequest — PUT /api/applications/{id}.
@@ -24,6 +28,9 @@ type UpdateApplicationRequest struct {
 	Description    *string `json:"description,omitempty"`
 	DefaultBaseURL *string `json:"defaultBaseUrl,omitempty"`
 	IconURL        *string `json:"iconUrl,omitempty"`
+	Logo           *string `json:"logo,omitempty"`
+	LogoMimeType   *string `json:"logoMimeType,omitempty"`
+	Website        *string `json:"website,omitempty"`
 }
 
 // ClientConfigRequest — body for PUT /api/applications/{id}/clients/{clientId}.
@@ -44,10 +51,16 @@ type ApplicationResponse struct {
 	ApplicationType  string `json:"type"`
 	DefaultBaseURL   string `json:"defaultBaseUrl,omitempty"`
 	IconURL          string `json:"iconUrl,omitempty"`
+	Logo             string `json:"logo,omitempty"`
+	LogoMimeType     string `json:"logoMimeType,omitempty"`
+	Website          string `json:"website,omitempty"`
 	ServiceAccountID string `json:"serviceAccountId,omitempty"`
-	Active           bool   `json:"active"`
-	CreatedAt        string `json:"createdAt"`
-	UpdatedAt        string `json:"updatedAt"`
+	// HasLoginClient reports whether a login OAuth client is provisioned
+	// for the application.
+	HasLoginClient bool   `json:"hasLoginClient"`
+	Active         bool   `json:"active"`
+	CreatedAt      string `json:"createdAt"`
+	UpdatedAt      string `json:"updatedAt"`
 }
 
 // ApplicationListResponse — GET /api/applications.
@@ -56,7 +69,7 @@ type ApplicationListResponse struct {
 	Total        uint64                `json:"total,omitempty"`
 }
 
-// ServiceAccountResponse — POST /api/applications/{id}/provision-service-account.
+// ServiceAccountResponse is the platform's service-account record.
 type ServiceAccountResponse struct {
 	ID            string `json:"id"`
 	Code          string `json:"code"`
@@ -64,48 +77,68 @@ type ServiceAccountResponse struct {
 	Description   string `json:"description,omitempty"`
 	Active        bool   `json:"active"`
 	ApplicationID string `json:"applicationId,omitempty"`
-	CreatedAt     string `json:"createdAt"`
+	// AuthType is the credential scheme, e.g. BEARER_TOKEN.
+	AuthType      string   `json:"authType"`
+	ClientIDs     []string `json:"clientIds"`
+	OAuthClientID string   `json:"oauthClientId,omitempty"`
+	PrincipalID   string   `json:"principalId,omitempty"`
+	Roles         []string `json:"roles"`
+	Scope         string   `json:"scope,omitempty"`
+	LastUsedAt    string   `json:"lastUsedAt,omitempty"`
+	CreatedAt     string   `json:"createdAt"`
+	UpdatedAt     string   `json:"updatedAt"`
 }
 
-// ApplicationRoleResponse — one item from GET /api/applications/by-id/{id}/roles.
-type ApplicationRoleResponse struct {
-	ID              string   `json:"id"`
-	Code            string   `json:"code"`
-	DisplayName     string   `json:"displayName"`
-	Description     string   `json:"description,omitempty"`
-	ApplicationCode string   `json:"applicationCode"`
-	Permissions     []string `json:"permissions,omitempty"`
-	Source          string   `json:"source"`
-	ClientManaged   bool     `json:"clientManaged,omitempty"`
+// ServiceAccountCredentials is the service account created by
+// ProvisionServiceAccount, with the OAuth client that authenticates it.
+type ServiceAccountCredentials struct {
+	Name        string                 `json:"name"`
+	PrincipalID string                 `json:"principalId"`
+	OAuthClient OAuthClientCredentials `json:"oauthClient"`
 }
 
-// ClientConfigResponse — one entry in GET /api/applications/{id}/clients.
+// OAuthClientCredentials identifies an OAuth client. ClientSecret is
+// present only in the response that created it.
+type OAuthClientCredentials struct {
+	ID           string `json:"id"`
+	ClientID     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret,omitempty"`
+}
+
+// ProvisionServiceAccountResponse — POST /api/applications/{id}/provision-service-account.
+type ProvisionServiceAccountResponse struct {
+	Message        string                    `json:"message"`
+	ServiceAccount ServiceAccountCredentials `json:"serviceAccount"`
+}
+
+// ClientConfigResponse — one application-to-client configuration, as
+// returned by GET /api/applications/{id}/clients.
 type ClientConfigResponse struct {
-	ID               string          `json:"id"`
-	ApplicationID    string          `json:"applicationId"`
-	ClientID         string          `json:"clientId"`
-	ClientName       string          `json:"clientName,omitempty"`
-	ClientIdentifier string          `json:"clientIdentifier,omitempty"`
-	Enabled          bool            `json:"enabled,omitempty"`
-	BaseURLOverride  string          `json:"baseUrlOverride,omitempty"`
-	EffectiveBaseURL string          `json:"effectiveBaseUrl,omitempty"`
-	Config           json.RawMessage `json:"config,omitempty"`
+	ID              string `json:"id"`
+	ApplicationID   string `json:"applicationId"`
+	ClientID        string `json:"clientId"`
+	Enabled         bool   `json:"enabled"`
+	BaseURLOverride string `json:"baseUrlOverride,omitempty"`
+	// ConfigJSON is the free-form per-client configuration document.
+	ConfigJSON json.RawMessage `json:"configJson,omitempty"`
+	CreatedAt  string          `json:"createdAt"`
+	UpdatedAt  string          `json:"updatedAt"`
 }
 
-// ClientConfigsResponse — GET /api/applications/{id}/clients.
+// ClientConfigsResponse — GET /api/applications/{id}/clients, which wraps
+// the entries in `items`.
 type ClientConfigsResponse struct {
-	ClientConfigs []ClientConfigResponse `json:"clientConfigs"`
-	Total         uint64                 `json:"total,omitempty"`
+	ClientConfigs []ClientConfigResponse `json:"items"`
 }
 
 // CreatedResponse — returned by create endpoints that emit only an id.
 type CreatedResponse struct {
-	ID      string `json:"id"`
-	Message string `json:"message,omitempty"`
+	ID string `json:"id"`
 }
 
-// SuccessResponse — generic { message } envelope.
+// SuccessResponse — generic { success, message } envelope.
 type SuccessResponse struct {
+	Success bool   `json:"success"`
 	Message string `json:"message,omitempty"`
 }
 
@@ -187,8 +220,9 @@ func (r *ApplicationsResource) Deactivate(ctx context.Context, id string) (*Appl
 }
 
 // ProvisionServiceAccount — POST /api/applications/{id}/provision-service-account.
-func (r *ApplicationsResource) ProvisionServiceAccount(ctx context.Context, id string) (*ServiceAccountResponse, error) {
-	var out ServiceAccountResponse
+// The response carries the new client secret exactly once.
+func (r *ApplicationsResource) ProvisionServiceAccount(ctx context.Context, id string) (*ProvisionServiceAccountResponse, error) {
+	var out ProvisionServiceAccountResponse
 	if err := r.c.Post(ctx, "/api/applications/"+id+"/provision-service-account", nil, &out); err != nil {
 		return nil, err
 	}
@@ -204,16 +238,19 @@ func (r *ApplicationsResource) GetServiceAccount(ctx context.Context, id string)
 	return &out, nil
 }
 
-// ListRoles — GET /api/applications/by-id/{id}/roles.
+// ListRoles — GET /api/applications/by-id/{id}/roles. The platform
+// answers `{ roles: [name, ...] }`; this returns the role names.
 //
 // The platform mounts the admin TSID lookup under /by-id so it doesn't
 // collide with the SDK's /{appCode}/roles/sync route.
-func (r *ApplicationsResource) ListRoles(ctx context.Context, id string) ([]ApplicationRoleResponse, error) {
-	var out []ApplicationRoleResponse
+func (r *ApplicationsResource) ListRoles(ctx context.Context, id string) ([]string, error) {
+	var out struct {
+		Roles []string `json:"roles"`
+	}
 	if err := r.c.Get(ctx, "/api/applications/by-id/"+id+"/roles", &out); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return out.Roles, nil
 }
 
 // ListClients — GET /api/applications/{id}/clients.

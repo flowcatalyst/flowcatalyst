@@ -24,12 +24,15 @@ type CreateEventTypeRequest struct {
 	Schema json.RawMessage `json:"schema,omitempty"`
 	// Client ID for multi-tenant scoping.
 	ClientID string `json:"clientId,omitempty"`
+	// ClientScoped marks the event type as scoped to ClientID.
+	ClientScoped bool `json:"clientScoped,omitempty"`
 }
 
 // UpdateEventTypeRequest is the body for PUT /api/event-types/{id}.
 type UpdateEventTypeRequest struct {
-	Name        *string `json:"name,omitempty"`
-	Description *string `json:"description,omitempty"`
+	Name         *string `json:"name,omitempty"`
+	Description  *string `json:"description,omitempty"`
+	ClientScoped *bool   `json:"clientScoped,omitempty"`
 }
 
 // AddSchemaVersionRequest is the body for POST /api/event-types/{id}/versions.
@@ -39,25 +42,31 @@ type AddSchemaVersionRequest struct {
 
 // EventTypeResponse is the platform's event-type representation.
 type EventTypeResponse struct {
-	ID           string                `json:"id"`
-	Code         string                `json:"code"`
-	Name         string                `json:"name"`
-	Description  string                `json:"description,omitempty"`
-	Status       string                `json:"status"`
-	Application  string                `json:"application,omitempty"`
-	Subdomain    string                `json:"subdomain,omitempty"`
-	Aggregate    string                `json:"aggregate,omitempty"`
-	EventName    string                `json:"event,omitempty"`
-	SpecVersions []SpecVersionResponse `json:"specVersions,omitempty"`
+	ID          string `json:"id"`
+	Code        string `json:"code"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Status      string `json:"status"`
+	Application string `json:"application"`
+	Subdomain   string `json:"subdomain"`
+	Aggregate   string `json:"aggregate"`
+	// EventName is the last segment of Code.
+	EventName string `json:"eventName"`
+	// Source is how the event type was created (e.g. UI or SDK).
+	Source       string                `json:"source"`
+	ClientID     string                `json:"clientId,omitempty"`
+	CreatedBy    string                `json:"createdBy,omitempty"`
+	SpecVersions []SpecVersionResponse `json:"specVersions"`
 	CreatedAt    string                `json:"createdAt"`
 	UpdatedAt    string                `json:"updatedAt"`
 }
 
 // SpecVersionResponse is one schema version on an event type.
 type SpecVersionResponse struct {
-	Version string          `json:"version"`
-	Status  string          `json:"status"`
-	Schema  json.RawMessage `json:"schema,omitempty"`
+	Version   string          `json:"version"`
+	Status    string          `json:"status"`
+	Schema    json.RawMessage `json:"schema"`
+	CreatedAt string          `json:"createdAt"`
 }
 
 // SyncEventTypesRequest is the body for the per-app sync endpoint.

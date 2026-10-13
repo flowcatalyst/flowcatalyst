@@ -1,30 +1,38 @@
 package client
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // ─── Request DTOs ────────────────────────────────────────────────────
 
-// AuditLogFilters — query parameters for GET /api/audit-logs.
+// AuditLogFilters — query parameters for GET /api/audit-logs. The listing
+// is cursor-paged: pass the previous page's NextCursor as After.
 type AuditLogFilters struct {
 	EntityType  string
 	EntityID    string
 	Operation   string
 	PrincipalID string
-	ClientID    string
-	From        string
-	To          string
-	Page        *uint32
-	PageSize    *uint32
+	// ApplicationIDs and ClientIDs filter to those ids (sent as CSV).
+	ApplicationIDs []string
+	ClientIDs      []string
+	// After is the opaque cursor from a previous page's NextCursor.
+	After string
+	// PageSize defaults to 50 server-side and is capped at 200.
+	PageSize *uint32
 }
 
 // ─── Response DTOs ───────────────────────────────────────────────────
 
 // AuditLogResponse is a single audit log row.
 type AuditLogResponse struct {
-	ID            string `json:"id"`
-	Operation     string `json:"operation"`
-	EntityType    string `json:"entityType"`
-	EntityID      string `json:"entityId,omitempty"`
+	ID         string `json:"id"`
+	Operation  string `json:"operation"`
+	EntityType string `json:"entityType"`
+	EntityID   string `json:"entityId"`
+	// OperationJSON is the serialised operation payload, when recorded.
+	OperationJSON string `json:"operationJson,omitempty"`
 	PrincipalID   string `json:"principalId,omitempty"`
 	PrincipalName string `json:"principalName,omitempty"`
 	ApplicationID string `json:"applicationId,omitempty"`
@@ -32,12 +40,12 @@ type AuditLogResponse struct {
 	PerformedAt   string `json:"performedAt"`
 }
 
-// AuditLogListResponse — GET /api/audit-logs.
+// AuditLogListResponse — GET /api/audit-logs, cursor-paged: while HasMore
+// is true, pass NextCursor as AuditLogFilters.After to fetch the next page.
 type AuditLogListResponse struct {
-	AuditLogs []AuditLogResponse `json:"auditLogs"`
-	Total     int64              `json:"total,omitempty"`
-	Page      int32              `json:"page,omitempty"`
-	PageSize  int32              `json:"pageSize,omitempty"`
+	AuditLogs  []AuditLogResponse `json:"auditLogs"`
+	HasMore    bool               `json:"hasMore"`
+	NextCursor string             `json:"nextCursor,omitempty"`
 }
 
 // ─── Resource ────────────────────────────────────────────────────────
@@ -56,10 +64,9 @@ func (r *AuditLogsResource) List(ctx context.Context, filters *AuditLogFilters) 
 			String("entityId", filters.EntityID).
 			String("operation", filters.Operation).
 			String("principalId", filters.PrincipalID).
-			String("clientId", filters.ClientID).
-			String("from", filters.From).
-			String("to", filters.To).
-			Uint32("page", filters.Page).
+			String("applicationIds", strings.Join(filters.ApplicationIDs, ",")).
+			String("clientIds", strings.Join(filters.ClientIDs, ",")).
+			String("after", filters.After).
 			Uint32("pageSize", filters.PageSize).
 			Encode()
 	}

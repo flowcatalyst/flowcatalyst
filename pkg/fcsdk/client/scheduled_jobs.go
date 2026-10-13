@@ -108,6 +108,7 @@ type InstanceFilters struct {
 type ScheduledJobResponse struct {
 	ID                  string          `json:"id"`
 	ClientID            string          `json:"clientId,omitempty"`
+	ApplicationID       string          `json:"applicationId,omitempty"`
 	Code                string          `json:"code"`
 	Name                string          `json:"name"`
 	Description         string          `json:"description,omitempty"`
@@ -168,7 +169,7 @@ type ScheduledJobListResponse struct {
 	Page       uint32                 `json:"page"`
 	Size       uint32                 `json:"size"`
 	Total      uint64                 `json:"total"`
-	TotalPages uint32                 `json:"totalPages"`
+	TotalPages uint32                 `json:"total_pages"`
 }
 
 // ScheduledJobInstanceListResponse — paginated list for ListInstances().
@@ -177,7 +178,7 @@ type ScheduledJobInstanceListResponse struct {
 	Page       uint32                         `json:"page"`
 	Size       uint32                         `json:"size"`
 	Total      uint64                         `json:"total"`
-	TotalPages uint32                         `json:"totalPages"`
+	TotalPages uint32                         `json:"total_pages"`
 }
 
 // InstanceLogListResponse — the log lines of an instance. The platform

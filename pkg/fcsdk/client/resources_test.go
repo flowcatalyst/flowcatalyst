@@ -43,24 +43,28 @@ type seenRequest struct {
 }
 
 func TestAuditLogsListBuildsQuery(t *testing.T) {
-	srv, seen := newMockSrv(t, `{"auditLogs":[],"total":0,"page":1,"pageSize":50}`)
+	srv, seen := newMockSrv(t, `{"auditLogs":[],"hasMore":false}`)
 	c := client.New(srv.URL)
 
-	page := uint32(2)
 	pageSize := uint32(25)
 	_, err := c.AuditLogs().List(context.Background(), &client.AuditLogFilters{
-		EntityType: "Principal",
-		Operation:  "ROLE_ASSIGNED",
-		Page:       &page,
-		PageSize:   &pageSize,
+		EntityType:     "Principal",
+		Operation:      "ROLE_ASSIGNED",
+		ApplicationIDs: []string{"app_1", "app_2"},
+		ClientIDs:      []string{"clt_1"},
+		After:          "cursor-1",
+		PageSize:       &pageSize,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodGet, seen.method)
 	assert.Equal(t, "/api/audit-logs", seen.path)
 	assert.Equal(t, "Principal", seen.query.Get("entityType"))
 	assert.Equal(t, "ROLE_ASSIGNED", seen.query.Get("operation"))
-	assert.Equal(t, "2", seen.query.Get("page"))
+	assert.Equal(t, "app_1,app_2", seen.query.Get("applicationIds"))
+	assert.Equal(t, "clt_1", seen.query.Get("clientIds"))
+	assert.Equal(t, "cursor-1", seen.query.Get("after"))
 	assert.Equal(t, "25", seen.query.Get("pageSize"))
+	assert.False(t, seen.query.Has("page"))
 }
 
 func TestAuditLogsGetDeserializes(t *testing.T) {
@@ -218,25 +222,26 @@ func TestOpenAPISyncPostsSpec(t *testing.T) {
 // ─── B: deferred methods on existing resources ───────────────────────
 
 func TestApplicationsProvisionServiceAccount(t *testing.T) {
-	srv, seen := newMockSrv(t, `{"id":"prn_svc","code":"svc","name":"Svc","active":true,"applicationId":"app_1","createdAt":""}`)
+	srv, seen := newMockSrv(t, `{"message":"ok","serviceAccount":{"name":"Svc","principalId":"prn_svc","oauthClient":{"id":"oc_1","clientId":"cid","clientSecret":"s3cret"}}}`)
 	c := client.New(srv.URL)
 
 	r, err := c.Applications().ProvisionServiceAccount(context.Background(), "app_1")
 	require.NoError(t, err)
 	assert.Equal(t, "/api/applications/app_1/provision-service-account", seen.path)
 	assert.Equal(t, http.MethodPost, seen.method)
-	assert.Equal(t, "prn_svc", r.ID)
+	assert.Equal(t, "prn_svc", r.ServiceAccount.PrincipalID)
+	assert.Equal(t, "s3cret", r.ServiceAccount.OAuthClient.ClientSecret)
 }
 
 func TestApplicationsListRolesUsesByID(t *testing.T) {
-	srv, seen := newMockSrv(t, `[{"id":"rol_1","code":"orders:admin","displayName":"Admin","applicationCode":"orders","source":"PLATFORM"}]`)
+	srv, seen := newMockSrv(t, `{"roles":["orders:admin"]}`)
 	c := client.New(srv.URL)
 
 	r, err := c.Applications().ListRoles(context.Background(), "app_1")
 	require.NoError(t, err)
 	assert.Equal(t, "/api/applications/by-id/app_1/roles", seen.path)
 	require.Len(t, r, 1)
-	assert.Equal(t, "orders:admin", r[0].Code)
+	assert.Equal(t, "orders:admin", r[0])
 }
 
 func TestApplicationsEnableForClient(t *testing.T) {

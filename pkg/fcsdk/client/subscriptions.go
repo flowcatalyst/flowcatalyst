@@ -21,7 +21,11 @@ type ConfigEntry struct {
 // filter expression. Patterns support `*` wildcards per segment.
 type EventTypeBinding struct {
 	EventTypeCode string `json:"eventTypeCode"`
-	Filter        string `json:"filter,omitempty"`
+	// EventTypeID and SpecVersion pin the binding to an event type row and
+	// schema version; both are optional.
+	EventTypeID string `json:"eventTypeId,omitempty"`
+	Filter      string `json:"filter,omitempty"`
+	SpecVersion string `json:"specVersion,omitempty"`
 }
 
 // CreateSubscriptionRequest — POST /api/subscriptions.
@@ -39,6 +43,13 @@ type CreateSubscriptionRequest struct {
 	TimeoutSeconds   *uint32            `json:"timeoutSeconds,omitempty"`
 	MaxRetries       *uint32            `json:"maxRetries,omitempty"`
 	DataOnly         bool               `json:"dataOnly,omitempty"`
+	// ClientScoped scopes the subscription to ClientID.
+	ClientScoped  bool          `json:"clientScoped,omitempty"`
+	CustomConfig  []ConfigEntry `json:"customConfig,omitempty"`
+	MaxAgeSeconds *uint32       `json:"maxAgeSeconds,omitempty"`
+	DelaySeconds  *uint32       `json:"delaySeconds,omitempty"`
+	Sequence      *int32        `json:"sequence,omitempty"`
+	Queue         string        `json:"queue,omitempty"`
 }
 
 // UpdateSubscriptionRequest — PUT /api/subscriptions/{id}.
@@ -49,6 +60,16 @@ type UpdateSubscriptionRequest struct {
 	ConnectionID   *string `json:"connectionId,omitempty"`
 	TimeoutSeconds *uint32 `json:"timeoutSeconds,omitempty"`
 	MaxRetries     *uint32 `json:"maxRetries,omitempty"`
+	// The members below replace the stored value when non-nil.
+	EventTypes       *[]EventTypeBinding `json:"eventTypes,omitempty"`
+	CustomConfig     *[]ConfigEntry      `json:"customConfig,omitempty"`
+	DispatchPoolID   *string             `json:"dispatchPoolId,omitempty"`
+	ServiceAccountID *string             `json:"serviceAccountId,omitempty"`
+	Mode             *string             `json:"mode,omitempty"`
+	DataOnly         *bool               `json:"dataOnly,omitempty"`
+	MaxAgeSeconds    *uint32             `json:"maxAgeSeconds,omitempty"`
+	DelaySeconds     *uint32             `json:"delaySeconds,omitempty"`
+	Queue            *string             `json:"queue,omitempty"`
 }
 
 // SubscriptionResponse is the platform's subscription representation.
@@ -78,6 +99,7 @@ type SubscriptionResponse struct {
 	ApplicationCode  string             `json:"applicationCode,omitempty"`
 	ClientScoped     bool               `json:"clientScoped,omitempty"`
 	CustomConfig     []ConfigEntry      `json:"customConfig,omitempty"`
+	CreatedBy        string             `json:"createdBy,omitempty"`
 	CreatedAt        string             `json:"createdAt"`
 	UpdatedAt        string             `json:"updatedAt"`
 }

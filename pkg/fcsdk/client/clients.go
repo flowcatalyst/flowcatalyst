@@ -44,8 +44,18 @@ type ClientResponse struct {
 	Status          string `json:"status"`
 	StatusReason    string `json:"statusReason,omitempty"`
 	StatusChangedAt string `json:"statusChangedAt,omitempty"`
-	CreatedAt       string `json:"createdAt"`
-	UpdatedAt       string `json:"updatedAt"`
+	// Notes is the client's audit-note history.
+	Notes     []NoteResponse `json:"notes"`
+	CreatedAt string         `json:"createdAt"`
+	UpdatedAt string         `json:"updatedAt"`
+}
+
+// NoteResponse is one note on a client.
+type NoteResponse struct {
+	Category string `json:"category"`
+	Text     string `json:"text"`
+	AddedBy  string `json:"addedBy,omitempty"`
+	AddedAt  string `json:"addedAt"`
 }
 
 // ClientListResponse — GET /api/clients.

@@ -12,7 +12,9 @@ type CreateDispatchPoolRequest struct {
 	Description string `json:"description,omitempty"`
 	// Concurrency is the max concurrent in-flight dispatches.
 	Concurrency uint32 `json:"concurrency,omitempty"`
-	ClientID    string `json:"clientId,omitempty"`
+	// RateLimit is messages per minute; nil leaves the pool unthrottled.
+	RateLimit *uint32 `json:"rateLimit,omitempty"`
+	ClientID  string  `json:"clientId,omitempty"`
 }
 
 // UpdateDispatchPoolRequest — PUT /api/dispatch-pools/{id}.
@@ -20,6 +22,7 @@ type UpdateDispatchPoolRequest struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
 	Concurrency *uint32 `json:"concurrency,omitempty"`
+	RateLimit   *uint32 `json:"rateLimit,omitempty"`
 }
 
 // DispatchPoolResponse is the platform's dispatch pool.
@@ -28,16 +31,20 @@ type DispatchPoolResponse struct {
 	Code        string `json:"code"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-	Concurrency uint32 `json:"concurrency,omitempty"`
-	Status      string `json:"status"`
-	ClientID    string `json:"clientId,omitempty"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
+	Concurrency uint32 `json:"concurrency"`
+	// RateLimit is messages per minute; nil means unthrottled.
+	RateLimit        *uint32 `json:"rateLimit,omitempty"`
+	Status           string  `json:"status"`
+	ClientID         string  `json:"clientId,omitempty"`
+	ClientIdentifier string  `json:"clientIdentifier,omitempty"`
+	CreatedAt        string  `json:"createdAt"`
+	UpdatedAt        string  `json:"updatedAt"`
 }
 
 // DispatchPoolListResponse — GET /api/dispatch-pools.
 type DispatchPoolListResponse struct {
-	Items []DispatchPoolResponse `json:"items"`
+	Pools []DispatchPoolResponse `json:"pools"`
+	Total uint64                 `json:"total"`
 }
 
 // SyncDispatchPoolItem — one item in the sync payload.
