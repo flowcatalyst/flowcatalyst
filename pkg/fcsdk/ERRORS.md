@@ -214,8 +214,20 @@ No sentinels. The writers return:
 - the driver's error from the `INSERT` (`pgx` / `database/sql`), unwrapped.
 
 Inside `usecaseop.Run` / `usecasepgx.Commit*` both surface as a
-`usecase.Internal` error (`EVENT_WRITE`, `AUDIT_WRITE`) wrapping the cause,
-and the transaction rolls back.
+`usecase.Internal` error (`EVENT_WRITE`, `DISPATCH_JOB_WRITE`, `AUDIT_WRITE`)
+wrapping the cause, and the transaction rolls back.
+
+Dispatch jobs on a plan (`Plan.Dispatch`, `usecasepgx.WithDispatchJobs`) are
+checked before the transaction opens, so these write nothing:
+
+| Code | Kind | When |
+|---|---|---|
+| `DISPATCH_JOB_INVALID` | `internal` | a job breaks a 7a rule; `Message` is the rule's text exactly (as `DispatchJob.Validate` returns it), `Details["index"]` the job's position |
+| `DISPATCH_JOB_UNSUPPORTED` | `internal` | the `UnitOfWork`'s sink is not a `usecasepgx.DispatchJobSink` |
+
+Check job values that come from the command in `Validate` (see
+`examples/dispatch-jobs`), so the caller gets a `validation` error (400)
+rather than `internal`.
 
 ## `sync`
 

@@ -55,14 +55,16 @@ HTTP request → command
                   the Plan is applied in ONE transaction:
                     repository Persist      → orders
                     Sink.WriteEvent         → outbox_messages (EVENT)
+                    Sink.WriteDispatchJobs  → outbox_messages (DISPATCH_JOB, if the plan has jobs)
                     Sink.WriteAudit         → outbox_messages (AUDIT_LOG)
              → (event, error) → HTTP 201 / 4xx / 500
 ```
 
 An operation is a value with named phases; `Execute` can reach the database
 only by returning a `Plan` (`usecaseop.Save`, `Delete`, `Emit`, `SaveAll`,
-`Sync`), and `usecaseop.Run` is the only thing that applies one, so "row
-written ⇒ event and audit written, atomically" holds by construction.
+`Sync`, plus `.Dispatch(jobs...)` for dispatch jobs), and `usecaseop.Run` is
+the only thing that applies one, so "row written ⇒ event, jobs and audit
+written, atomically" holds by construction.
 
 ```go
 func PlaceOrder(repo OrderRepository) usecaseop.Operation[PlaceOrderCommand, OrderPlaced] {
@@ -131,23 +133,63 @@ application framework's outbox conformance vector, pinned by
 
 ### Dispatch jobs
 
-```go
-job, err := outbox.NewDispatchJob("orders:billing:export-order", "https://billing.example.com/exports").
-	WithClientCode("acme"). // or WithPlatformClientID; the platform resolves the code
-	WithCorrelationID(ec.CorrelationID).
-	WithJSONPayload(map[string]string{"orderId": orderID})
-if err != nil { /* ... */ }
+A use case declares dispatch jobs on its plan, next to the aggregate write
+and the event (framework write-path contract 7a; `examples/dispatch-jobs`):
 
-err = usecasepgx.RunErr(ctx, uow, func(s *usecasepgx.TxScopedUnitOfWork) error {
-	// ... EmitEventScoped / CommitScoped for the event ...
-	return s.WithTx(ctx, func(tx pgx.Tx) error { return sink.WriteDispatchJob(ctx, tx, job) })
-})
+```go
+Execute: func(_ context.Context, cmd IssueInvoiceCommand, ec usecase.ExecutionContext) (usecaseop.Plan[InvoiceIssued], error) {
+	inv, event := /* ... */
+	export, err := outbox.NewDispatchJob("billing:ledger:export", "https://ledger.example.com/exports").
+		WithEventID(event.EventID()).
+		WithJSONPayload(map[string]any{"invoiceId": inv.ID})
+	if err != nil {
+		return nil, err
+	}
+	notify := outbox.NewDispatchJob("billing:invoice:notify", cmd.NotifyURL).
+		WithClientCode(cmd.ClientCode). // or WithPlatformClientID; the platform resolves the code
+		WithMessageGroup("invoice:" + inv.ID)
+	return usecaseop.Save(inv, repo, event).Dispatch(export, notify), nil
+},
 ```
 
-The job is validated before it is written (code `{application}:{rest}`,
-absolute `http(s)` target with no user info, ids `[0-9A-Za-z_-]{1,17}`, ...):
-a row the platform would refuse terminally is never stored. Defaults: kind
-`TASK`, source the code's application, payload `{}` as `application/json`.
+`usecaseop.Run` writes, in ONE transaction: the aggregate, the event, the
+jobs (in the order the plan lists them), the audit row. If anything fails,
+nothing is written.
+
+- Every job is validated before the transaction opens (code
+  `{application}:{rest}`, absolute `http(s)` target with no user info, ids
+  `[0-9A-Za-z_-]{1,17}`, ...): a row the platform would refuse terminally is
+  never stored. An invalid job fails the operation as `internal`
+  `DISPATCH_JOB_INVALID` whose message is the rule's text; check values that
+  come from the command in `Validate` (`job.Validate()`) to answer 400.
+- Defaults: kind `TASK`, source the code's application, payload `{}` as
+  `application/json`, a generated 13-character id (in the payload, so a
+  redelivered batch creates the job with the same id), and the plan's
+  correlation id (its event's; a `Sync` plan's rollup) unless the job sets
+  one. The causation id is never sent (the batch endpoint has no such
+  field), and `eventId` only when the job sets it.
+- No client unless the job names one: the sink's `ClientCode` is not
+  inherited. `WithClientCode` (resolved by the platform; an unknown code
+  refuses the whole batch) or `WithPlatformClientID`, not both. Without
+  either the job is platform-scoped and uses the default pool.
+- `Dispatch` returns a new plan; calls accumulate. A plan always has its
+  event, so a job never travels alone.
+- The sink must implement `usecasepgx.DispatchJobSink` (`outboxpgx.Sink`
+  does); otherwise `DISPATCH_JOB_UNSUPPORTED`, again before any write.
+
+Lower-level paths, for code outside the `usecaseop` envelope:
+
+```go
+// a scoped commit inside usecasepgx.RunErr: same order, same checks
+usecasepgx.CommitScoped(ctx, s, inv, repo, event, cmd, usecasepgx.WithDispatchJobs(job))
+
+// a transaction the application runs itself: just the row
+err = sink.WriteDispatchJob(ctx, tx, job) // tx is a pgx.Tx
+```
+
+`Sink.WriteDispatchJob` (and `outboxsql.Writer.WriteDispatchJob`) validate
+and write the row only: no ordering with an event, no correlation id from
+anywhere, and the transaction is the caller's.
 
 ### `database/sql` and MySQL
 
@@ -220,10 +262,10 @@ against `api/openapi.lock.json`.
 | Package | Purpose |
 |---|---|
 | `usecase` | `DomainEvent`, `EventMetadata`, `ExecutionContext`, typed `*Error`, the sealed `Result[E]`, audit redaction. No I/O. |
-| `usecaseop` | The use-case envelope: `Operation[C,E]` (Validate / Authorize / Execute → `Plan`), `Run`, `TxOperation` / `RunTx` for multi-aggregate operations. |
-| `usecasepgx` | pgx unit of work: `New`, `Persist[A]`, `Sink`, `Commit*` / `EmitEvent`, `Run` / `RunErr` with `TxScopedUnitOfWork`. |
+| `usecaseop` | The use-case envelope: `Operation[C,E]` (Validate / Authorize / Execute → `Plan`, with `Plan.Dispatch` for dispatch jobs), `Run`, `TxOperation` / `RunTx` for multi-aggregate operations. |
+| `usecasepgx` | pgx unit of work: `New`, `Persist[A]`, `Sink` / `DispatchJobSink`, `Commit*` / `EmitEvent` (with `WithDispatchJobs`), `Run` / `RunErr` with `TxScopedUnitOfWork`. |
 | `outbox` | The outbox rows (event, audit, dispatch job), the `INSERT`, `DispatchJob` and its validation. No I/O. |
-| `outboxpgx` | The use-case `Sink` writing to `outbox_messages` via pgx, plus `WriteDispatchJob`. |
+| `outboxpgx` | The use-case `Sink` (a `DispatchJobSink`) writing to `outbox_messages` via pgx, plus the lower-level `WriteDispatchJob`. |
 | `outboxsql` | `Writer` for `database/sql` (Postgres, MySQL) and the table DDL. |
 | `sync` | `DefinitionSet` + `Synchronizer`: declarative sync of every application category. |
 | `client` | Platform HTTP API client: event types, subscriptions, dispatch pools, applications, processes, principals, roles, permissions, audit logs, clients, connections, me, router, scheduled jobs, OpenAPI, docs. |
@@ -240,7 +282,8 @@ All of them build with `go build ./...` (CI does this).
 
 | Example | What |
 |---|---|
-| `examples/order-service` | A use case through `usecaseop.Run`, the pgx outbox, a dispatch job in the same transaction. |
+| `examples/order-service` | A use case through `usecaseop.Run`, the pgx outbox, a dispatch job on a plan. |
+| `examples/dispatch-jobs` | A plan that saves an aggregate and carries two dispatch jobs (`Save(...).Dispatch(...)`); validating command-derived job fields. |
 | `examples/outbox-sql` | The `database/sql` writer: event, audit row and dispatch job in one `*sql.Tx`. |
 | `examples/fc-sync` | Syncing every category of one application. |
 | `examples/list-event-types` | `client` with a static token or `ClientCredentialsProvider`. |
@@ -249,7 +292,9 @@ All of them build with `go build ./...` (CI does this).
 
 ## Developing the SDK
 
-From the repository root: `make test-go-sdk` (build, vet, race tests),
+From the repository root: `make test-go-sdk` (build, vet, race tests;
+`go test -race -tags=integration ./...` in `pkg/fcsdk` adds the tests that
+run on an embedded Postgres, `internal/pgtest`),
 `make lint-go-sdk`, `make go-sdk-smoke` (a scratch module consumes the SDK
 through a local `replace` and through `go get` of a git tag), and
 `RELEASE_DRY_RUN=1 make release-go-sdk BUMP=0.1.0`. The platform module uses

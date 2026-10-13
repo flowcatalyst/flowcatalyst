@@ -60,7 +60,7 @@ func TestOrderServiceWritesTheOutboxRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := requestExport(ctx, uow, sink, placed.OrderID, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, uow, RequestExport(), RequestExportCommand{OrderID: placed.OrderID}, ec); err != nil {
 		t.Fatal(err)
 	}
 

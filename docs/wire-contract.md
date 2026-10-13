@@ -279,7 +279,10 @@ are the event id, `clientCode` comes from the writer's configuration (or the
 event), `source` is left out when the event has none, `contextData` carries
 `principalId` and `executionId`, and `data`/`operationData` are the value
 itself (never encoded). It also writes `DISPATCH_JOB` rows (`clientCode`
-optional, F14). Rows the Go SDK wrote before then are snake_case
+optional, F14); a use case declares them on its plan
+(`usecaseop.Plan.Dispatch`), which writes them after the event and before the
+audit row in the same transaction, with the event's `correlationId` when the
+job has none (framework write-path 7a). Rows the Go SDK wrote before then are snake_case
 (`event_type`, `spec_version`, `correlation_id`, `deduplication_id` =
 `<type>-<id>`, `message_group`, `context_data`, ...) and may still be pending
 in applications' outbox tables: `POST /api/events/batch` keeps reading those

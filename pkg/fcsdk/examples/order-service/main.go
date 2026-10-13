@@ -1,8 +1,8 @@
 // Command order-service is the end-to-end example of a FlowCatalyst consumer
 // application: one business operation (PlaceOrder) through the use-case
 // envelope, its aggregate, domain event and audit row written to the outbox
-// in one transaction, and a dispatch job queued in the same transaction as
-// the event that asks for it.
+// in one transaction, and a second operation whose plan carries a dispatch
+// job, written in the same transaction as the event that asks for it.
 //
 // The platform's outbox processor (fcdev / fc-server with the outbox
 // subsystem pointed at this database) then sends each outbox row to the
@@ -30,7 +30,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outbox"
@@ -179,27 +178,40 @@ func (e OrderExportRequested) ToDataJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"orderId": e.OrderID})
 }
 
-// requestExport writes the event and a dispatch job in one transaction: the
-// platform delivers the job to the billing service once the outbox
-// processor has sent it.
-func requestExport(ctx context.Context, uow *usecasepgx.UnitOfWork, sink *outboxpgx.Sink, orderID string, ec usecase.ExecutionContext) error {
-	event := OrderExportRequested{Meta: newMeta(ec, "sales", "order", "export-requested", orderID), OrderID: orderID}
-	job, err := outbox.NewDispatchJob("orders:billing:export-order", "https://billing.example.com/exports").
-		WithCorrelationID(ec.CorrelationID).
-		WithEventID(event.EventID()).
-		WithMessageGroup(event.MessageGroup()).
-		WithJSONPayload(map[string]string{"orderId": orderID})
-	if err != nil {
-		return err
+// RequestExportCommand asks for an order's export to the billing service.
+type RequestExportCommand struct {
+	OrderID string `json:"orderId"`
+}
+
+func (RequestExportCommand) AuditOperation() string { return "request-export" }
+
+// RequestExport is a business operation whose plan carries a dispatch job:
+// usecaseop.Run writes the event, the job and the audit row in one
+// transaction (the job after the event, before the audit row). The platform
+// delivers the job to the billing service once the outbox processor has sent
+// it. The job takes the plan's correlation id.
+func RequestExport() usecaseop.Operation[RequestExportCommand, OrderExportRequested] {
+	return usecaseop.Operation[RequestExportCommand, OrderExportRequested]{
+		Name: "RequestExport",
+		Validate: func(_ context.Context, cmd RequestExportCommand) error {
+			if strings.TrimSpace(cmd.OrderID) == "" {
+				return usecase.Validation("ORDER_REQUIRED", "orderId is required")
+			}
+			return nil
+		},
+		Authorize: usecaseop.Public[RequestExportCommand],
+		Execute: func(_ context.Context, cmd RequestExportCommand, ec usecase.ExecutionContext) (usecaseop.Plan[OrderExportRequested], error) {
+			event := OrderExportRequested{Meta: newMeta(ec, "sales", "order", "export-requested", cmd.OrderID), OrderID: cmd.OrderID}
+			job, err := outbox.NewDispatchJob("orders:billing:export-order", "https://billing.example.com/exports").
+				WithEventID(event.EventID()).
+				WithMessageGroup(event.MessageGroup()).
+				WithJSONPayload(map[string]string{"orderId": cmd.OrderID})
+			if err != nil {
+				return nil, err
+			}
+			return usecaseop.Emit(event).Dispatch(job), nil
+		},
 	}
-	return usecasepgx.RunErr(ctx, uow, func(s *usecasepgx.TxScopedUnitOfWork) error {
-		if _, err := usecase.Into(usecasepgx.EmitEventScoped(ctx, s, event, struct {
-			OrderID string `json:"orderId"`
-		}{orderID})); err != nil {
-			return err
-		}
-		return s.WithTx(ctx, func(tx pgx.Tx) error { return sink.WriteDispatchJob(ctx, tx, job) })
-	})
 }
 
 // ─── HTTP ────────────────────────────────────────────────────────────
@@ -256,7 +268,8 @@ func main() {
 	})
 	mux.HandleFunc("POST /orders/{id}/export", func(w http.ResponseWriter, r *http.Request) {
 		ec := usecase.NewExecutionContext(r.Header.Get("X-Principal-ID"))
-		if err := requestExport(r.Context(), uow, sink, r.PathValue("id"), ec); err != nil {
+		cmd := RequestExportCommand{OrderID: r.PathValue("id")}
+		if _, err := usecaseop.Run(r.Context(), uow, RequestExport(), cmd, ec); err != nil {
 			writeError(w, err)
 			return
 		}
