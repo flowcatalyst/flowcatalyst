@@ -46,6 +46,8 @@ type SyncDispatchPoolItem struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	Concurrency uint32 `json:"concurrency,omitempty"`
+	// RateLimit is messages per minute; nil for concurrency-only.
+	RateLimit *uint32 `json:"rateLimit,omitempty"`
 }
 
 // SyncDispatchPoolsRequest — body for the per-app sync endpoint.

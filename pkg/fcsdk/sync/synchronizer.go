@@ -2,6 +2,8 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
 )
@@ -10,15 +12,21 @@ import (
 // FlowCatalystClient. Reuse one Synchronizer across calls — the client
 // is cheap to share.
 //
-// Categories are sync'd in a fixed order so referential FKs already
-// exist by the time later categories arrive:
+// Categories are sync'd in a fixed order so references already exist by the
+// time later categories arrive (the Rust and Java SDKs' order):
 //
 //  1. roles
 //  2. event types
-//  3. subscriptions
-//  4. dispatch pools
-//  5. principals
+//  3. dispatch pools (before subscriptions: the platform drops a
+//     subscription's unresolvable dispatchPoolCode)
+//  4. connections
+//  5. subscriptions (not sent, with an error, when connections failed:
+//     their connection codes would not resolve)
 //  6. processes
+//  7. scheduled jobs (one request per job ClientID)
+//  8. principals (after roles, which they name)
+//  9. OpenAPI document
+//  10. documentation pages
 //
 // A failure in one category does NOT abort the rest — the error lands
 // on the per-category Result.Error field.
@@ -37,24 +45,51 @@ func NewSynchronizer(c *client.FlowCatalystClient) *Synchronizer {
 func (s *Synchronizer) Sync(ctx context.Context, set *DefinitionSet, opts Options) *Result {
 	out := &Result{ApplicationCode: set.ApplicationCode}
 	app := set.ApplicationCode
+	remove := opts.RemoveUnlisted
 
 	if opts.SyncRoles && len(set.Roles) > 0 {
-		out.Roles = s.runRoles(ctx, app, set.Roles, opts.RemoveUnlisted)
+		out.Roles = s.runRoles(ctx, app, set.Roles, remove)
 	}
 	if opts.SyncEventTypes && len(set.EventTypes) > 0 {
-		out.EventTypes = s.runEventTypes(ctx, app, set.EventTypes, opts.RemoveUnlisted)
-	}
-	if opts.SyncSubscriptions && len(set.Subscriptions) > 0 {
-		out.Subscriptions = s.runSubscriptions(ctx, app, set.Subscriptions, opts.RemoveUnlisted)
+		out.EventTypes = s.runEventTypes(ctx, app, set.EventTypes, remove)
 	}
 	if opts.SyncDispatchPools && len(set.DispatchPools) > 0 {
-		out.DispatchPools = s.runDispatchPools(ctx, app, set.DispatchPools, opts.RemoveUnlisted)
+		out.DispatchPools = s.runDispatchPools(ctx, app, set.DispatchPools, remove)
 	}
-	if opts.SyncPrincipals && len(set.Principals) > 0 {
-		out.Principals = s.runPrincipals(ctx, app, set.Principals, opts.RemoveUnlisted)
+	if opts.SyncConnections && len(set.Connections) > 0 {
+		out.Connections = s.runConnections(ctx, app, set.ClientID, set.Connections, remove)
+	}
+	if opts.SyncSubscriptions && len(set.Subscriptions) > 0 {
+		if out.Connections != nil && out.Connections.IsError() {
+			out.Subscriptions = &CategoryResult{Error: "subscriptions not synced because the connections sync failed: " + out.Connections.Error}
+		} else {
+			out.Subscriptions = s.runSubscriptions(ctx, app, set.ClientID, set.Subscriptions, remove)
+		}
 	}
 	if opts.SyncProcesses && len(set.Processes) > 0 {
-		out.Processes = s.runProcesses(ctx, app, set.Processes, opts.RemoveUnlisted)
+		out.Processes = s.runProcesses(ctx, app, set.Processes, remove)
+	}
+	if opts.SyncScheduledJobs && len(set.ScheduledJobs) > 0 {
+		out.ScheduledJobs = s.runScheduledJobs(ctx, app, set.ScheduledJobs, remove)
+	}
+	if opts.SyncPrincipals && len(set.Principals) > 0 {
+		out.Principals = s.runPrincipals(ctx, app, set.Principals, remove)
+	}
+	if opts.SyncOpenAPI && len(set.OpenAPISpec) > 0 {
+		out.OpenAPI = s.runOpenAPI(ctx, app, set.OpenAPISpec)
+	}
+	if opts.SyncDocs && len(set.Docs) > 0 {
+		out.Docs = s.runDocs(ctx, app, set.Docs)
+	}
+	return out
+}
+
+// SyncAll syncs several sets in order; one set's failures do not stop the
+// next.
+func (s *Synchronizer) SyncAll(ctx context.Context, sets []*DefinitionSet, opts Options) []*Result {
+	out := make([]*Result, 0, len(sets))
+	for _, set := range sets {
+		out = append(out, s.Sync(ctx, set, opts))
 	}
 	return out
 }
@@ -89,7 +124,7 @@ func (s *Synchronizer) runEventTypes(ctx context.Context, app string, defs []Eve
 	return toCategoryResult(res, err)
 }
 
-func (s *Synchronizer) runSubscriptions(ctx context.Context, app string, defs []SubscriptionDefinition, removeUnlisted bool) *CategoryResult {
+func (s *Synchronizer) runSubscriptions(ctx context.Context, app, clientID string, defs []SubscriptionDefinition, removeUnlisted bool) *CategoryResult {
 	items := make([]client.SyncSubscriptionItem, 0, len(defs))
 	for _, d := range defs {
 		bindings := make([]client.EventTypeBinding, 0, len(d.EventTypes))
@@ -102,6 +137,8 @@ func (s *Synchronizer) runSubscriptions(ctx context.Context, app string, defs []
 			Description:      d.Description,
 			Target:           d.Target,
 			ConnectionID:     d.ConnectionID,
+			ConnectionCode:   d.ConnectionCode,
+			SharedConnection: d.SharedConnection,
 			DispatchPoolCode: d.DispatchPoolCode,
 			Mode:             d.Mode,
 			MaxRetries:       d.MaxRetries,
@@ -110,7 +147,7 @@ func (s *Synchronizer) runSubscriptions(ctx context.Context, app string, defs []
 			EventTypes:       bindings,
 		})
 	}
-	res, err := s.client.Subscriptions().Sync(ctx, app, &client.SyncSubscriptionsRequest{Subscriptions: items}, removeUnlisted)
+	res, err := s.client.Subscriptions().Sync(ctx, app, &client.SyncSubscriptionsRequest{ClientID: clientID, Subscriptions: items}, removeUnlisted)
 	return toCategoryResult(res, err)
 }
 
@@ -122,6 +159,7 @@ func (s *Synchronizer) runDispatchPools(ctx context.Context, app string, defs []
 			Name:        d.Name,
 			Description: d.Description,
 			Concurrency: d.Concurrency,
+			RateLimit:   d.RateLimit,
 		})
 	}
 	res, err := s.client.DispatchPools().Sync(ctx, app, &client.SyncDispatchPoolsRequest{Pools: items}, removeUnlisted)
@@ -164,10 +202,92 @@ func (s *Synchronizer) runProcesses(ctx context.Context, app string, defs []Proc
 			Code:        d.Code,
 			Name:        d.Name,
 			Description: d.Description,
-			Steps:       d.Steps,
+			Body:        d.Body,
+			DiagramType: d.DiagramType,
+			Tags:        d.Tags,
 		})
 	}
 	res, err := s.client.Processes().Sync(ctx, app, &client.SyncProcessesRequest{Processes: items}, removeUnlisted)
+	return toCategoryResult(res, err)
+}
+
+func (s *Synchronizer) runConnections(ctx context.Context, app, clientID string, defs []ConnectionDefinition, removeUnlisted bool) *CategoryResult {
+	items := make([]client.SyncConnectionItem, 0, len(defs))
+	for _, d := range defs {
+		items = append(items, client.SyncConnectionItem{
+			Code: d.Code, Name: d.Name, Description: d.Description, ExternalID: d.ExternalID,
+		})
+	}
+	res, err := s.client.Connections().Sync(ctx, app, &client.SyncConnectionsRequest{ClientID: clientID, Connections: items}, removeUnlisted)
+	return toCategoryResult(res, err)
+}
+
+// runScheduledJobs sends one request per job ClientID (first-seen order;
+// the empty ClientID is the platform scope). The endpoint answers per-code
+// lists; they are folded into counts, SyncedCodes being created + updated.
+func (s *Synchronizer) runScheduledJobs(ctx context.Context, app string, defs []ScheduledJobDefinition, archiveUnlisted bool) *CategoryResult {
+	var order []string
+	groups := map[string][]client.SyncScheduledJobItem{}
+	for _, d := range defs {
+		if _, seen := groups[d.ClientID]; !seen {
+			order = append(order, d.ClientID)
+		}
+		groups[d.ClientID] = append(groups[d.ClientID], client.SyncScheduledJobItem{
+			Code: d.Code, Name: d.Name, Description: d.Description, Crons: d.Crons,
+			Timezone: d.Timezone, Payload: d.Payload, Concurrent: d.Concurrent,
+			TracksCompletion: d.TracksCompletion, TimeoutSeconds: d.TimeoutSeconds,
+			DeliveryMaxAttempts: d.DeliveryMaxAttempts, TargetURL: d.TargetURL,
+		})
+	}
+	out := &CategoryResult{}
+	var errs []string
+	for _, clientID := range order {
+		res, err := s.client.ScheduledJobs().Sync(ctx, app, &client.SyncScheduledJobsRequest{
+			ClientID: clientID, Jobs: groups[clientID], ArchiveUnlisted: archiveUnlisted,
+		})
+		if err != nil {
+			if clientID != "" {
+				errs = append(errs, "client "+clientID+": "+err.Error())
+			} else {
+				errs = append(errs, err.Error())
+			}
+			continue
+		}
+		out.Created += uint32(len(res.Created))
+		out.Updated += uint32(len(res.Updated))
+		out.Deleted += uint32(len(res.Archived))
+		out.SyncedCodes = append(out.SyncedCodes, res.Created...)
+		out.SyncedCodes = append(out.SyncedCodes, res.Updated...)
+	}
+	out.Error = strings.Join(errs, "; ")
+	return out
+}
+
+// runOpenAPI publishes the document: one row created (first version),
+// updated (a new version archived the prior one) or neither (unchanged);
+// SyncedCodes holds the published version.
+func (s *Synchronizer) runOpenAPI(ctx context.Context, app string, spec json.RawMessage) *CategoryResult {
+	res, err := s.client.OpenAPI().Sync(ctx, app, spec)
+	if err != nil {
+		return &CategoryResult{Error: err.Error()}
+	}
+	out := &CategoryResult{SyncedCodes: []string{res.Version}}
+	switch {
+	case res.Unchanged:
+	case res.ArchivedPriorVersion != "":
+		out.Updated = 1
+	default:
+		out.Created = 1
+	}
+	return out
+}
+
+func (s *Synchronizer) runDocs(ctx context.Context, app string, defs []DocDefinition) *CategoryResult {
+	items := make([]client.SyncDocInput, 0, len(defs))
+	for _, d := range defs {
+		items = append(items, client.SyncDocInput{Slug: d.Slug, Title: d.Title, Content: d.Content})
+	}
+	res, err := s.client.Docs().Sync(ctx, app, &client.SyncDocsRequest{Docs: items})
 	return toCategoryResult(res, err)
 }
 
@@ -179,9 +299,11 @@ func toCategoryResult(res *client.SyncResult, err error) *CategoryResult {
 		return &CategoryResult{}
 	}
 	return &CategoryResult{
-		Created:     res.Created,
-		Updated:     res.Updated,
-		Deleted:     res.Deleted,
-		SyncedCodes: res.SyncedCodes,
+		Created:             res.Created,
+		Updated:             res.Updated,
+		Deleted:             res.Deleted,
+		SyncedCodes:         res.SyncedCodes,
+		PasswordHashIgnored: res.PasswordHashIgnored,
+		SkippedRoles:        res.SkippedRoles,
 	}
 }

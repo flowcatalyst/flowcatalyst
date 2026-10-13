@@ -8,9 +8,17 @@ package sync
 type CategoryResult struct {
 	Created     uint32
 	Updated     uint32
-	Deleted     uint32
+	Deleted     uint32 // archived, for scheduled jobs
 	SyncedCodes []string
-	// Error is non-empty if this category's HTTP call failed.
+	// PasswordHashIgnored (principals): emails whose passwordHash was not
+	// applied because the user already existed.
+	PasswordHashIgnored []string
+	// SkippedRoles (principals): role names that are not roles, so were
+	// assigned to no one; the rest of the sync applied. Usually a typo or a
+	// role not synced yet.
+	SkippedRoles []string
+	// Error is non-empty if this category's HTTP call (or local check)
+	// failed.
 	Error string
 }
 
@@ -27,16 +35,41 @@ type Result struct {
 	ApplicationCode string
 	Roles           *CategoryResult
 	EventTypes      *CategoryResult
-	Subscriptions   *CategoryResult
 	DispatchPools   *CategoryResult
-	Principals      *CategoryResult
+	Connections     *CategoryResult
+	Subscriptions   *CategoryResult
 	Processes       *CategoryResult
+	ScheduledJobs   *CategoryResult
+	Principals      *CategoryResult
+	OpenAPI         *CategoryResult
+	Docs            *CategoryResult
+}
+
+func (r *Result) categories() []struct {
+	name string
+	res  *CategoryResult
+} {
+	return []struct {
+		name string
+		res  *CategoryResult
+	}{
+		{"roles", r.Roles},
+		{"event_types", r.EventTypes},
+		{"dispatch_pools", r.DispatchPools},
+		{"connections", r.Connections},
+		{"subscriptions", r.Subscriptions},
+		{"processes", r.Processes},
+		{"scheduled_jobs", r.ScheduledJobs},
+		{"principals", r.Principals},
+		{"openapi", r.OpenAPI},
+		{"docs", r.Docs},
+	}
 }
 
 // HasErrors reports whether any category failed.
 func (r *Result) HasErrors() bool {
-	for _, c := range []*CategoryResult{r.Roles, r.EventTypes, r.Subscriptions, r.DispatchPools, r.Principals, r.Processes} {
-		if c != nil && c.IsError() {
+	for _, c := range r.categories() {
+		if c.res != nil && c.res.IsError() {
 			return true
 		}
 	}
@@ -46,20 +79,9 @@ func (r *Result) HasErrors() bool {
 // Errors returns a (category → message) list of failed categories.
 func (r *Result) Errors() map[string]string {
 	out := map[string]string{}
-	pairs := []struct {
-		name string
-		res  *CategoryResult
-	}{
-		{"roles", r.Roles},
-		{"event_types", r.EventTypes},
-		{"subscriptions", r.Subscriptions},
-		{"dispatch_pools", r.DispatchPools},
-		{"principals", r.Principals},
-		{"processes", r.Processes},
-	}
-	for _, p := range pairs {
-		if p.res != nil && p.res.IsError() {
-			out[p.name] = p.res.Error
+	for _, c := range r.categories() {
+		if c.res != nil && c.res.IsError() {
+			out[c.name] = c.res.Error
 		}
 	}
 	return out

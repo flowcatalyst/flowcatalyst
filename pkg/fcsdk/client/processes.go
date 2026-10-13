@@ -2,37 +2,47 @@ package client
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 )
 
-// CreateProcessRequest — POST /api/processes.
+// CreateProcessRequest — POST /api/processes. Code is
+// {application}:{subdomain}:{process-name}; Body is the diagram source
+// (typically Mermaid), DiagramType defaults to mermaid.
 type CreateProcessRequest struct {
-	Code        string          `json:"code"`
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Steps       json.RawMessage `json:"steps,omitempty"`
-	ClientID    string          `json:"clientId,omitempty"`
+	Code        string   `json:"code"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Body        string   `json:"body,omitempty"`
+	DiagramType string   `json:"diagramType,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
 }
 
-// UpdateProcessRequest — PUT /api/processes/{id}.
+// UpdateProcessRequest — PUT /api/processes/{id}. Nil leaves a field as is.
 type UpdateProcessRequest struct {
-	Name        *string         `json:"name,omitempty"`
-	Description *string         `json:"description,omitempty"`
-	Steps       json.RawMessage `json:"steps,omitempty"`
+	Name        *string  `json:"name,omitempty"`
+	Description *string  `json:"description,omitempty"`
+	Body        *string  `json:"body,omitempty"`
+	DiagramType *string  `json:"diagramType,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
 }
 
 // ProcessResponse is the platform's process documentation aggregate.
 type ProcessResponse struct {
-	ID          string          `json:"id"`
-	Code        string          `json:"code"`
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Status      string          `json:"status"`
-	Steps       json.RawMessage `json:"steps,omitempty"`
-	Application string          `json:"application,omitempty"`
-	CreatedAt   string          `json:"createdAt"`
-	UpdatedAt   string          `json:"updatedAt"`
+	ID          string   `json:"id"`
+	Code        string   `json:"code"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Status      string   `json:"status"`
+	Source      string   `json:"source"`
+	Application string   `json:"application"`
+	Subdomain   string   `json:"subdomain"`
+	ProcessName string   `json:"processName"`
+	Body        string   `json:"body"`
+	DiagramType string   `json:"diagramType"`
+	Tags        []string `json:"tags"`
+	CreatedBy   string   `json:"createdBy,omitempty"`
+	CreatedAt   string   `json:"createdAt"`
+	UpdatedAt   string   `json:"updatedAt"`
 }
 
 // ProcessListResponse — GET /api/processes.
@@ -42,10 +52,12 @@ type ProcessListResponse struct {
 
 // SyncProcessInput — one item in the sync payload.
 type SyncProcessInput struct {
-	Code        string          `json:"code"`
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Steps       json.RawMessage `json:"steps,omitempty"`
+	Code        string   `json:"code"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Body        string   `json:"body,omitempty"`
+	DiagramType string   `json:"diagramType,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
 }
 
 // SyncProcessesRequest — body for the per-app sync endpoint.

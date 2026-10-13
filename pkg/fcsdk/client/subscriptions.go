@@ -84,11 +84,18 @@ type SubscriptionResponse struct {
 
 // SyncSubscriptionItem matches the platform's SyncSubscriptionInput.
 type SyncSubscriptionItem struct {
-	Code             string             `json:"code"`
-	Name             string             `json:"name"`
-	Description      string             `json:"description,omitempty"`
-	Target           string             `json:"target"`
-	ConnectionID     string             `json:"connectionId,omitempty"`
+	Code         string `json:"code"`
+	Name         string `json:"name"`
+	Description  string `json:"description,omitempty"`
+	Target       string `json:"target"`
+	ConnectionID string `json:"connectionId,omitempty"`
+	// ConnectionCode names the delivering connection by code, stable across
+	// environments (prefer it to ConnectionID). It resolves among this
+	// application's connections, or among the shared (application-less)
+	// ones when SharedConnection is set; a client-scoped sync prefers its
+	// client's connection and falls back to a global one.
+	ConnectionCode   string             `json:"connectionCode,omitempty"`
+	SharedConnection bool               `json:"sharedConnection,omitempty"`
 	EventTypes       []EventTypeBinding `json:"eventTypes"`
 	DispatchPoolCode string             `json:"dispatchPoolCode,omitempty"`
 	Mode             string             `json:"mode,omitempty"`
@@ -97,8 +104,11 @@ type SyncSubscriptionItem struct {
 	DataOnly         bool               `json:"dataOnly,omitempty"`
 }
 
-// SyncSubscriptionsRequest — body for the per-app sync endpoint.
+// SyncSubscriptionsRequest — body for the per-app sync endpoint. ClientID
+// scopes the batch to one client: its id or its identifier slug (prefer the
+// slug: ids differ per environment). Empty syncs global subscriptions.
 type SyncSubscriptionsRequest struct {
+	ClientID      string                 `json:"clientId,omitempty"`
 	Subscriptions []SyncSubscriptionItem `json:"subscriptions"`
 }
 

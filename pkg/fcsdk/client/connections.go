@@ -45,6 +45,25 @@ type ConnectionsListResponse struct {
 	Total       uint64               `json:"total,omitempty"`
 }
 
+// SyncConnectionItem — one connection in the per-app sync payload. A
+// connection carries nothing environment-specific: the platform assigns the
+// application's own service account, so one definition serves every
+// environment. It exists so a subscription's ConnectionCode resolves.
+type SyncConnectionItem struct {
+	Code        string `json:"code"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	ExternalID  string `json:"externalId,omitempty"`
+}
+
+// SyncConnectionsRequest — body for the per-app sync endpoint. ClientID
+// scopes the batch to one client: its id or its identifier slug (prefer the
+// slug). Empty syncs global connections.
+type SyncConnectionsRequest struct {
+	ClientID    string               `json:"clientId,omitempty"`
+	Connections []SyncConnectionItem `json:"connections"`
+}
+
 // ─── Resource ────────────────────────────────────────────────────────
 
 // ConnectionsResource — /api/connections/*.
@@ -102,4 +121,14 @@ func (r *ConnectionsResource) Pause(ctx context.Context, id string) error {
 // Activate — POST /api/connections/{id}/activate.
 func (r *ConnectionsResource) Activate(ctx context.Context, id string) error {
 	return r.c.Post(ctx, "/api/connections/"+id+"/activate", nil, nil)
+}
+
+// Sync — POST /api/applications/{appCode}/connections/sync. Sync
+// connections before the subscriptions that name them by ConnectionCode.
+func (r *ConnectionsResource) Sync(ctx context.Context, appCode string, req *SyncConnectionsRequest, removeUnlisted bool) (*SyncResult, error) {
+	var out SyncResult
+	if err := r.c.Post(ctx, syncPath(appCode, "connections", removeUnlisted), req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
