@@ -22,6 +22,23 @@ jobs:
         # 1.26 is the module's `go` directive (the oldest it compiles at);
         # 1.27 is the platform's toolchain.
         go: ["1.26", "1.27"]
+    # examples/order-service's test runs the example against this database.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fcsdk
+          POSTGRES_PASSWORD: fcsdk
+          POSTGRES_DB: fcsdk_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      FC_TEST_DATABASE_URL: postgres://fcsdk:fcsdk@localhost:5432/fcsdk_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

@@ -47,14 +47,18 @@ Convenience methods on `*APIError`: `IsNotFound()`, `IsConflict()`,
 
 Domain operations return `*usecase.Error`. The `Kind` field drives
 HTTP status mapping via `(*Error).HTTPStatus()`. Use the constructor
-functions to build them in `Validate` / `Authorize` / `Execute`:
-`Validation`, `BusinessRule`, `Authorization`, `NotFound`, `Conflict`,
-`Internal`.
+functions to build them in an operation's `Validate` / `Authorize` /
+`Execute`: `Validation`, `BusinessRule`, `Authorization`, `NotFound`,
+`Conflict`, `Internal`. `usecaseop.Run` returns them unchanged, and wraps
+a failed commit (repository, event or audit write) as an `Internal` one.
 
 ```go
-import "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+import (
+    "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+    "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
+)
 
-event, err := usecase.Into(usecase.Run(ctx, useCase, cmd, ec))
+event, err := usecaseop.Run(ctx, uow, PlaceOrder(repo), cmd, ec)
 if err != nil {
     if e := usecase.AsError(err); e != nil {
         http.Error(w, e.Message, e.HTTPStatus())
@@ -64,6 +68,9 @@ if err != nil {
     return
 }
 ```
+
+The lower-level `usecasepgx.Commit*` functions return a sealed
+`usecase.Result[E]`; `usecase.Into(result)` turns it into `(E, error)`.
 
 ## `auth`
 
@@ -191,10 +198,30 @@ runner := scheduledjobs.NewBuilder(api, lp).
     Build()
 ```
 
+## `outbox`, `outboxpgx`, `outboxsql`
+
+No sentinels. The writers return:
+
+- a plain `error` from building the row, before anything is written: a
+  dispatch job that breaks the batch endpoint's rules
+  (`outbox.DispatchJob.Validate`; the messages are the framework's, e.g.
+  `dispatch job targetUrl must be an absolute http(s) URL with a host and no
+  user info`), an event with no id or type, an event whose `ToDataJSON` fails
+  or returns invalid JSON, a command that cannot be serialised for its audit
+  row, an invalid table name;
+- the driver's error from the `INSERT` (`pgx` / `database/sql`), unwrapped.
+
+Inside `usecaseop.Run` / `usecasepgx.Commit*` both surface as a
+`usecase.Internal` error (`EVENT_WRITE`, `AUDIT_WRITE`) wrapping the cause,
+and the transaction rolls back.
+
 ## `sync`
 
 `Synchronizer.Sync` never returns an error — per-category failures are
-captured on the returned `*Result`:
+captured on the returned `*Result`. Subscriptions are not sent when the
+connections sync failed (their `Error` says so). `SkippedRoles` and
+`PasswordHashIgnored` on the principals result are **not** errors: the
+sync applied, those names/hashes were left out.
 
 ```go
 r := sync.NewSynchronizer(c).Sync(ctx, set, sync.DefaultOptions())

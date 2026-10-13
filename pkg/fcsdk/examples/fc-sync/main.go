@@ -1,11 +1,13 @@
 // Command fc-sync is the declarative-reconciliation example. It builds
-// a DefinitionSet describing the roles, event types, dispatch pools,
-// subscriptions, and processes that one application "owns", then hands
-// it to a Synchronizer that calls the per-category sync endpoints.
+// a DefinitionSet describing what one application "owns" (roles, event
+// types, dispatch pools, connections, subscriptions, processes, scheduled
+// jobs, principals, documentation pages), then hands it to a Synchronizer
+// that calls the per-category sync endpoints in dependency order.
 //
-// One platform call per category. RemoveUnlisted=true asks the
-// platform to archive SDK-sourced rows that aren't in this set;
-// UI-sourced rows are never touched.
+// One platform call per category (per client for scheduled jobs).
+// RemoveUnlisted=true asks the platform to archive SDK-sourced rows that
+// aren't in this set; UI-sourced rows are never touched. Documentation is
+// always a full replace.
 //
 // # Run
 //
@@ -33,15 +35,16 @@ func main() {
 	)
 
 	set := sync.ForApplication(appCode).
-		// Roles — Name is the short form; the platform prefixes with
-		// the app code to form the full role code (orders:admin etc).
+		// Roles — Name is the short form; the platform prefixes it with
+		// the app code (orders:admin). Permissions are four-segment
+		// {app}:{context}:{aggregate}:{action}.
 		AddRole(sync.MakeRole("admin").
 			WithDisplayName("Orders Admin").
 			WithDescription("Full read/write access to orders.").
-			WithPermissions("orders:read", "orders:write")).
+			WithPermissions("orders:sales:order:view", "orders:sales:order:manage")).
 		AddRole(sync.MakeRole("viewer").
 			WithDisplayName("Orders Viewer").
-			WithPermissions("orders:read").
+			WithPermissions("orders:sales:order:view").
 			ClientManagedEnabled()).
 
 		// Event types — Code is the full four-segment identifier
@@ -52,24 +55,43 @@ func main() {
 		AddEventType(sync.MakeEventType(
 			"orders:sales:order:cancelled", "Order cancelled")).
 
-		// Dispatch pools — concurrency control for downstream webhook
-		// delivery.
-		AddDispatchPool(sync.MakeDispatchPool("default", "Default pool").
+		// Dispatch pools — concurrency (and optional rate) control for
+		// downstream delivery. Synced before subscriptions that name them.
+		AddDispatchPool(sync.MakeDispatchPool("orders-default", "Orders pool").
 			WithConcurrency(8).
+			WithRateLimit(600). // messages per minute
 			WithDescription("Catch-all for orders subscriptions.")).
 
-		// Subscriptions — bind event types to a webhook target.
+		// Connections — what delivers a subscription. Nothing
+		// environment-specific: the platform assigns the application's own
+		// service account. Synced before subscriptions.
+		AddConnection(sync.MakeConnection("orders-billing", "Billing webhooks")).
+
+		// Subscriptions — bind event types to a webhook target, delivered
+		// through a connection named by code (stable across environments).
 		AddSubscription(sync.MakeSubscription(
 			"order-billing", "Forward placed orders to billing",
 			"https://billing.example.com/webhooks/orders").
-			WithDispatchPool("default").
-			WithMode("Immediate").
+			WithConnectionCode("orders-billing").
+			WithDispatchPool("orders-default").
+			WithMode("IMMEDIATE").
 			WithMaxRetries(5).
 			Bind("orders:sales:order:placed", "")).
 
-		// Processes — documentation-style entries (no runtime effect).
-		AddProcess(sync.MakeProcess("place-order", "Place Order").
-			WithDescription("End-to-end flow for placing an order."))
+		// Processes — documentation (no runtime effect): a Mermaid diagram.
+		AddProcess(sync.MakeProcess("orders:sales:place-order", "Place Order").
+			WithDescription("End-to-end flow for placing an order.").
+			WithBody("graph LR; Cart-->Checkout-->Placed").
+			WithTags("sales")).
+
+		// Scheduled jobs — six-field, seconds-first crons; the platform
+		// fires them at TargetURL (or the application's default).
+		AddScheduledJob(sync.MakeScheduledJob("orders:nightly-reconcile", "Nightly reconcile", "0 0 2 * * *").
+			WithTimezone("Europe/London").
+			WithTargetURL("https://orders.example.com/jobs")).
+
+		// Documentation pages — shown to administrators; a full replace.
+		AddDoc(sync.MakeDoc("getting-started", "# Getting started\n\nHow the orders application uses FlowCatalyst.\n"))
 
 	r := sync.NewSynchronizer(c).Sync(
 		context.Background(),
@@ -91,10 +113,14 @@ func printSummary(r *sync.Result) {
 	}{
 		{"roles", r.Roles},
 		{"event_types", r.EventTypes},
-		{"subscriptions", r.Subscriptions},
 		{"dispatch_pools", r.DispatchPools},
-		{"principals", r.Principals},
+		{"connections", r.Connections},
+		{"subscriptions", r.Subscriptions},
 		{"processes", r.Processes},
+		{"scheduled_jobs", r.ScheduledJobs},
+		{"principals", r.Principals},
+		{"openapi", r.OpenAPI},
+		{"docs", r.Docs},
 	} {
 		if cat.res == nil {
 			fmt.Printf("  %-15s skipped\n", cat.name)
@@ -106,6 +132,9 @@ func printSummary(r *sync.Result) {
 		}
 		fmt.Printf("  %-15s created=%d updated=%d deleted=%d\n",
 			cat.name, cat.res.Created, cat.res.Updated, cat.res.Deleted)
+		if len(cat.res.SkippedRoles) > 0 {
+			fmt.Printf("  %-15s skipped unknown roles: %v\n", "", cat.res.SkippedRoles)
+		}
 	}
 }
 

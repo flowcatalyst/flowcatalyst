@@ -75,7 +75,7 @@ type SubscriptionDefinition struct {
 	SharedConnection bool
 	ConnectionID     string // environment-specific; prefer ConnectionCode
 	DispatchPoolCode string
-	Mode             string // "Immediate" | "BlockOnError" — see platform docs
+	Mode             string // IMMEDIATE, NEXT_ON_ERROR (platform default) or BLOCK_ON_ERROR
 	MaxRetries       *uint32
 	TimeoutSeconds   *uint32
 	DataOnly         bool

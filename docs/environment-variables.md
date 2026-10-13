@@ -398,4 +398,6 @@ listed for completeness only.
 | `FC_ISSUER` | — | — | `pkg/fcsdk/examples/list-event-types` | OAuth issuer when minting a token instead of `FC_TOKEN`. |
 | `FC_CLIENT_ID` | — | — | `pkg/fcsdk/examples/list-event-types` | OAuth client id for token minting. |
 | `FC_CLIENT_SECRET` | — | — | `pkg/fcsdk/examples/list-event-types` | OAuth client secret for token minting. |
-| `FC_DATABASE_URL` | — | — | `pkg/fcsdk/examples/order-service` | The example app's own outbox Postgres URL (same name, different process). |
+| `FC_DATABASE_URL` | — | — | `pkg/fcsdk/examples/order-service`, `pkg/fcsdk/examples/outbox-sql` | The example app's own outbox Postgres URL (same name, different process). |
+| `FC_CLIENT_CODE` | — | — | `pkg/fcsdk/examples/order-service` | Client identifier slug written as `clientCode` on the example's outbox rows. |
+| `FC_TEST_DATABASE_URL` | — (test skipped) | — | `pkg/fcsdk/examples/order-service` (its test) | Scratch Postgres the example's test runs against (CI's go-sdk workflow sets it). |

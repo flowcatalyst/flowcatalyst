@@ -1,30 +1,35 @@
-// Package fcsdk is the entry-point overview for the FlowCatalyst Go
-// SDK. There is no Go code in the root — this file exists so that
-// `go doc github.com/flowcatalyst/flowcatalyst/pkg/fcsdk` returns a
-// useful map of what's where.
+// Package fcsdk is the entry-point overview for the FlowCatalyst Go SDK,
+// module github.com/flowcatalyst/flowcatalyst/pkg/fcsdk. There is no Go code
+// in the root; this file exists so that `go doc` on the module path returns
+// a map of what's where. It is also the dependency of the FlowCatalyst
+// application framework's FlowCatalyst module.
 //
-// The SDK has byte-for-byte wire parity with the TypeScript and
-// Laravel SDKs: a token, event payload, or TSID minted by any one of
-// them is identical to the same value minted by another.
+// Wire parity: TSIDs, webhook signatures and audit redaction match the other
+// SDKs byte for byte (shared vectors). Outbox rows are the application
+// framework's conformance vector under its comparison rule; the one
+// deliberate difference is that an event's data and an audit row's
+// operationData are written as the JSON value itself, never as encoded JSON
+// in a string (see package outbox).
 //
 // # Mental model
 //
-// A FlowCatalyst consumer app emits domain events through a UnitOfWork.
-// The UoW writes the aggregate row, the event, and (if enabled) the
-// audit log inside one transaction; on commit, the event lands in
-// outbox_messages, and an outbox processor forwards it to the
-// platform's /api/events/batch. Use cases never call the platform
-// directly during a transaction.
+// A FlowCatalyst consumer app runs each business operation through the
+// use-case envelope. The operation's Plan is applied in one transaction: the
+// aggregate row, the domain event and (if enabled) the audit row; the event
+// and audit rows land in outbox_messages, and the platform's outbox processor
+// forwards them to /api/events/batch and /api/audit-logs/batch. Dispatch jobs
+// written in the same transaction go to /api/dispatch-jobs/batch. Operations
+// never call the platform directly during a transaction.
 //
 //	HTTP request → command DTO
 //	             → usecase.ExecutionContext (principal + correlation)
-//	             → usecaseop.Run(uow, op, cmd, ec)
+//	             → usecaseop.Run(ctx, uow, op, cmd, ec)
 //	                  ↓ Validate / Authorize / Execute → Plan
 //	             → the Plan is applied in a single transaction
 //	                  ↳ <Repo>.Persist
 //	                  ↳ Sink.WriteEvent → outbox_messages
 //	                  ↳ Sink.WriteAudit → outbox_messages (optional)
-//	             → committed event → (T, error)
+//	             → committed event → (E, error)
 //	             → HTTP 201 / 4xx / 500
 //
 // The Sink slot is what makes the SDK reusable. Consumer apps wire
@@ -35,19 +40,18 @@
 //
 // Domain primitives (no I/O):
 //
-//   - usecase    — Result + DomainEvent + ExecutionContext + typed Error.
-//     Result[E] is a sealed sum: Success requires a
-//     sealed.Token only pkg/fcsdk packages can mint, so the
-//     only path to Success outside the SDK is through the
-//     usecasepgx Commit* functions. Compile-time enforced.
+//   - usecase    — DomainEvent + EventMetadata + ExecutionContext + typed
+//     Error, audit redaction, and the sealed Result[E]: Success requires a
+//     sealed.Token only pkg/fcsdk packages can mint.
 //   - usecaseop  — the enforced use-case envelope: Operation[C,E]
-//     {Validate, Authorize, Execute→Plan} + Run, plus
-//     TxOperation / RunTx for multi-aggregate ops. The
-//     handler-facing entry point; an Execute can reach the DB
-//     only by returning a Plan that Run applies atomically.
-//   - tsid       — Time-Sorted IDs (Crockford Base32). 35 typed
-//     EntityType prefixes plus GenerateWithPrefix for
-//     app-specific IDs.
+//     {Validate, Authorize, Execute→Plan} + Run, plus TxOperation / RunTx
+//     for multi-aggregate ops. An Execute can reach the DB only by
+//     returning a Plan that Run applies atomically.
+//   - outbox     — the outbox rows (EVENT, AUDIT_LOG, DISPATCH_JOB), the
+//     INSERT statement and DispatchJob, held to the framework's
+//     conformance vector.
+//   - tsid       — Time-Sorted IDs (Crockford Base32), typed prefixes and
+//     GenerateWithPrefix for app-specific IDs.
 //
 // UnitOfWork driver:
 //
@@ -55,53 +59,50 @@
 //     CommitAll / EmitEvent / CommitSync / Run / RunErr. The usecaseop
 //     envelope (Operation/Plan/Run) is built on top of it.
 //
-// Sinks:
+// Outbox writers:
 //
-//   - outboxpgx  — writes to outbox_messages via pgx.
-//   - outboxsql  — outbox-table DDL (InitSchema) for database/sql consumer apps.
+//   - outboxpgx  — the usecasepgx Sink, writing to outbox_messages via pgx;
+//     WriteDispatchJob for dispatch jobs.
+//   - outboxsql  — Writer for database/sql (Postgres, MySQL) and the table
+//     DDL (InitSchema).
 //
 // HTTP I/O:
 //
-//   - client     — *FlowCatalystClient + resource families
-//     (event_types, subscriptions, dispatch_pools,
-//     applications, processes, principals, roles,
-//     permissions, audit_logs, clients, connections, me,
-//     router, scheduled_jobs, openapi). Retry on transient
-//     5xx, typed *APIError. Bearer token or TokenProvider
-//     auth.
-//   - auth       — AccessTokenClaims + AuthContext; TokenValidator
-//     (RS256 via JWKS auto-discovery through
-//     lestrrat-go/jwx/v2); HmacTokenValidator (HS256);
-//     OAuthClient (PKCE auth-code, refresh, revoke,
-//     introspect, userinfo, RP-initiated logout);
-//     ClientCredentialsProvider (satisfies
-//     client.TokenProvider).
-//   - webhook    — Two HMAC-SHA256 validators. Verifier matches this Go
-//     platform's router (uppercase headers, ISO8601
-//     timestamps); Validator matches the legacy webhook shape
-//     (mixed-case headers, Unix-second timestamps).
+//   - client     — *FlowCatalystClient + resource families (event types,
+//     subscriptions, dispatch pools, applications, processes, principals,
+//     roles, permissions, audit logs, clients, connections, me, router,
+//     scheduled jobs, openapi, docs). Retry on transient 5xx, typed
+//     *APIError. Bearer token or TokenProvider auth.
+//   - auth       — AccessTokenClaims + AuthContext; TokenValidator (RS256
+//     via JWKS auto-discovery through lestrrat-go/jwx/v2);
+//     HmacTokenValidator (HS256); OAuthClient (PKCE auth-code, refresh,
+//     revoke, introspect, userinfo, RP-initiated logout);
+//     ClientCredentialsProvider (satisfies client.TokenProvider).
+//   - webhook    — Two HMAC-SHA256 validators. Verifier matches the
+//     platform's router (uppercase headers, ISO8601 timestamps); Validator
+//     matches the SDK-peer shape (mixed-case headers, Unix-second
+//     timestamps).
 //   - sync       — DefinitionSet + Synchronizer for declarative
-//     reconciliation. One call per category.
-//   - scheduledjobs — consumer-side Runner. Register HandlerFuncs by
-//     job code; serialises via a lock.Provider, streams
-//     logs back, reports completion.
+//     reconciliation of roles, event types, dispatch pools, connections,
+//     subscriptions, processes, scheduled jobs, principals, the OpenAPI
+//     document and documentation pages. One call per category.
+//   - scheduledjobs — consumer-side Runner. Register HandlerFuncs by job
+//     code; serialises via a lock.Provider, streams logs back, reports
+//     completion.
 //
 // Infrastructure:
 //
-//   - cache      — pluggable byte-oriented Cache + Get/Set/GetOrSet
-//     JSON helpers. MemoryCache ships here;
-//     cache/postgrescache and cache/rediscache are opt-in
-//     sub-packages.
-//   - lock       — distributed-lock Provider + Handle. Memory ships
-//     here; lock/postgreslock and lock/redislock are
-//     opt-in sub-packages.
+//   - cache      — pluggable byte-oriented Cache + Get/Set/GetOrSet JSON
+//     helpers. MemoryCache ships here; cache/postgrescache and
+//     cache/rediscache are opt-in sub-packages.
+//   - lock       — distributed-lock Provider + Handle. Memory ships here;
+//     lock/postgreslock and lock/redislock are opt-in sub-packages.
 //
 // Internal:
 //
-//   - internal/sealed (under pkg/fcsdk/internal/) — Token type that
-//     gates usecase.Success. Constructable only by packages under
-//     github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/ (Go's internal
-//     rule), which scopes the seal to the SDK.
+//   - internal/sealed — Token type that gates usecase.Success.
+//     Constructable only by packages of this module (Go's internal rule),
+//     which scopes the seal to the SDK.
 //
 // # License
 //
