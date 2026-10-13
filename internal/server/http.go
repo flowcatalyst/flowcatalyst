@@ -29,6 +29,26 @@ const swaggerUIHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
+// mountFallback makes fallback the router's NotFound handler.
+//
+// SPA history-mode routes (e.g. GET /auth/login, which an /oauth/authorize
+// redirect lands on) can collide with an API path registered for another
+// method (POST /auth/login). chi answers the method mismatch with 405 instead
+// of falling through to NotFound, so the SPA would never render. A GET
+// method-mismatch is therefore served by the fallback, unless isAPIPath says
+// the path is an API's (a GET to a POST-only API route stays 405); every other
+// method keeps the 405.
+func mountFallback(r chi.Router, fallback http.Handler, isAPIPath func(string) bool) {
+	r.NotFound(fallback.ServeHTTP)
+	r.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodGet && (isAPIPath == nil || !isAPIPath(req.URL.Path)) {
+			fallback.ServeHTTP(w, req)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+}
+
 // Version is the build version reported by /health. Overridable at build
 // time via -ldflags "-X .../internal/server.Version=<v>".
 var Version = "dev"

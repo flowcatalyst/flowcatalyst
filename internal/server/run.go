@@ -34,6 +34,11 @@ import (
 type RunOptions struct {
 	ExtraAPIRoutes func(r chi.Router)
 	Fallback       http.Handler
+	// IsAPIPath reports whether a path belongs to an API surface rather than
+	// to the fallback's client routes (frontend.IsAPIPath for the SPA): a GET
+	// that matches an API route registered for another method then stays a
+	// 405 instead of reaching the fallback. Nil: no path is.
+	IsAPIPath func(path string) bool
 	// FunctionRunner overrides the function runner's configuration (fc-dev
 	// passes in-process credentials); nil reads FC_FUNCTIONS_* from the env.
 	FunctionRunner *FunctionRunnerConfig
@@ -142,20 +147,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 		opts.ExtraAPIRoutes(r)
 	}
 	if opts.Fallback != nil {
-		r.NotFound(opts.Fallback.ServeHTTP)
-		// SPA history-mode routes (e.g. GET /auth/login, which an /oauth/authorize
-		// redirect lands on) can collide with an API path registered for another
-		// method (POST /auth/login). chi answers the method mismatch with 405
-		// instead of falling through to NotFound, so the SPA never renders. Serve
-		// the SPA for a GET method-mismatch; keep 405 for genuine API method
-		// errors (non-GET).
-		r.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
-			if req.Method == http.MethodGet {
-				opts.Fallback.ServeHTTP(w, req)
-				return
-			}
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		})
+		mountFallback(r, opts.Fallback, opts.IsAPIPath)
 	}
 
 	// ── Listeners: BIND before any subsystem starts ───────────────────────

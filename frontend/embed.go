@@ -11,10 +11,12 @@
 //
 // # SPA fallback
 //
-// Vue Router's history mode means any path the server doesn't
+// Vue Router's history mode means a client route the server doesn't
 // recognise should serve `index.html` so the SPA can route client-side.
-// Handler() does this: exact-match asset under dist/ wins, otherwise
-// fall through to index.html.
+// Handler() does this for extension-less paths only: an exact-match file
+// under dist/ wins, a missing asset (/assets/*, or a static-asset
+// extension) and any path under the API prefixes (IsAPIPath) are 404s,
+// and everything else falls through to index.html. See Handler.
 //
 // # Mount order
 //

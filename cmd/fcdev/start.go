@@ -251,6 +251,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	runOpts := server.RunOptions{}
 	if frontend.IsAvailable() {
 		runOpts.Fallback = frontend.Handler()
+		runOpts.IsAPIPath = frontend.IsAPIPath
 		slog.Info("embedded Vue SPA available")
 	} else {
 		slog.Warn("frontend not embedded — run `make frontend` and rebuild to ship the SPA")

@@ -151,6 +151,7 @@ func main() {
 	runOpts := server.RunOptions{}
 	if cfg.PlatformEnabled && frontend.IsAvailable() {
 		runOpts.Fallback = frontend.Handler()
+		runOpts.IsAPIPath = frontend.IsAPIPath
 		slog.Info("embedded Vue SPA available")
 	}
 
