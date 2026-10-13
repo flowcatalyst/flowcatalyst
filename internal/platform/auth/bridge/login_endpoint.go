@@ -381,6 +381,9 @@ func (e *LoginEndpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 		httperror.Write(w, usecase.Internal("OIDC_STATE", "persist state failed", err))
 		return
 	}
+	// Bind the state to this browser: the callback requires this cookie
+	// (login_binding.go).
+	http.SetCookie(w, e.loginBindingCookie(state))
 
 	redirectURI := e.absoluteCallbackURL(r)
 	authURL := oidcClient.AuthCodeURL(state, redirectURI) +
@@ -414,6 +417,21 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		// Unknown, already-consumed (replay), or expired — indistinguishable by
 		// design, all rejected.
 		httperror.Write(w, httperror.BadRequest("INVALID_STATE", "unknown or expired login session"))
+		return
+	}
+
+	// The state must have been started in this browser (login_binding.go):
+	// otherwise this is someone else's callback link, and completing it would
+	// sign this browser in to their account (login CSRF). Checked after the
+	// consume, so a refused link is spent. No login-attempt row: nothing has
+	// named an identity yet.
+	bound := e.loginBoundToBrowser(r, state)
+	e.clearLoginBinding(w, state)
+	if !bound {
+		slog.Warn("OIDC callback refused: the login was not started in this browser",
+			"identityProviderId", loginState.IdentityProviderID)
+		httperror.Write(w, httperror.BadRequest("LOGIN_NOT_STARTED_HERE",
+			"This sign-in was not started in this browser. Start the sign-in again."))
 		return
 	}
 
@@ -1041,6 +1059,9 @@ func (e *LoginEndpoint) handlePortalOIDCLogin(w http.ResponseWriter, r *http.Req
 		httperror.Write(w, usecase.Internal("OIDC_STATE", "persist state failed", err))
 		return
 	}
+	// Bind the state to this browser: the callback requires this cookie
+	// (login_binding.go).
+	http.SetCookie(w, e.loginBindingCookie(state))
 
 	redirectURI := e.absoluteCallbackURL(r)
 	authURL := oidcClient.AuthCodeURL(state, redirectURI) +

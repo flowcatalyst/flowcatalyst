@@ -288,6 +288,8 @@ func (f *oidcTestFixture) login(t *testing.T, idTokenClaims map[string]any, acce
 	f.lastSessionPrincipalID = ""
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/oidc/callback?state="+state+"&code=fake-code-"+state, nil)
+	// The browser that started the login carries its binding cookie.
+	req.AddCookie(f.endpoint.loginBindingCookie(state))
 	// docs/spec/sso-login-attempts.md's T1-T5 harness contract: every
 	// callback in this file carries these so the login-attempt tests can
 	// assert on IP/UA without a bespoke request per case.
@@ -462,7 +464,7 @@ func TestOidcLogin_RolesReflectThisLoginsIdpSync(t *testing.T) {
 	for i, a := range appsAny {
 		apps[i] = a.(string)
 	}
-	prefix := strings.SplitN(f.platformRoleName, ":", 2)[0]
+	prefix, _, _ := strings.Cut(f.platformRoleName, ":")
 	assert.Contains(t, apps, prefix, "applications must contain the synced role's prefix")
 }
 
@@ -484,10 +486,12 @@ func TestOidcLogin_FailedLoginEmitsNoEvent(t *testing.T) {
 	f.idp.accessToken = "opaque-t5"
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/oidc/callback?state="+state+"&code=fake-code-t5", nil)
+	req.AddCookie(f.endpoint.loginBindingCookie(state))
 	rec := httptest.NewRecorder()
 	f.endpoint.handleCallback(rec, req)
 
 	require.NotEqual(t, http.StatusOK, rec.Code, "a nonce mismatch must not succeed")
+	require.Equal(t, "NONCE_MISMATCH", envelopeCode(t, rec), rec.Body.String())
 	assert.False(t, f.lastSessionCalled, "a failed login must never reach SessionWriter")
 	rows := loggedInEventData(t, f.pool, email)
 	assert.Empty(t, rows, "a failed login must emit no event")
@@ -673,11 +677,13 @@ func TestSSOLoginAttempt_PortalFlowRecordsNoRow(t *testing.T) {
 	f.idp.accessToken = "opaque-sso-t5"
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/oidc/callback?state="+state+"&code=fake-code-"+state, nil)
+	req.AddCookie(f.endpoint.loginBindingCookie(state))
 	setSSOTestHeaders(req)
 	rec := httptest.NewRecorder()
 	f.endpoint.handleCallback(rec, req)
 
 	require.NotEqual(t, http.StatusOK, rec.Code, "the email-domain mismatch must still be refused")
+	require.NotEqual(t, "LOGIN_NOT_STARTED_HERE", envelopeCode(t, rec), rec.Body.String())
 	assert.False(t, f.lastSessionCalled)
 
 	rows := recentSSOAttempts(t, f.pool, since)
