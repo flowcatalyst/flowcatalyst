@@ -1447,6 +1447,128 @@ through the SPA handler (`frontend/handler_test.go`, a fixture tree and the real
 - **Java/Rust mirror**: not checked in this pass; the same rule applies to any port that
   authenticates the SPA by cookie.
 
+#### F16 follow-up: login CSRF, SSO callback binding, debug endpoints (2026-10-13)
+
+Owner ruling: fix login CSRF (new finding 1) on every public route that signs a browser in or
+sets its credentials, decide each public unsafe route, fix the debug endpoints (finding 3), and
+fix `$schema` (finding 2) only if trivial and wire-neutral for the SDKs.
+
+- **Login CSRF, observed before the fix** (`internal/server/logincsrf_pg_test.go`, the whole
+  router on embedded Postgres, a seeded password user): `POST /auth/login` with the user's
+  credentials as a `text/plain` body (what `<form enctype="text/plain">` sends) and
+  `Sec-Fetch-Site: cross-site`, `Origin: https://attacker.test` answered **200 `{"status":"ok"}`
+  with an `fc_session` cookie**; the same from a same-site sibling, from a foreign `Origin`
+  without `Sec-Fetch-Site`, and same-origin `text/plain`, all 200 with the cookie. Every other
+  route in the list below accepted the same requests (the chi handlers decode JSON whatever the
+  `Content-Type`; the huma passkey routes assume JSON when it is absent, a Blob body).
+- **SSO login CSRF, found in the audit, observed before the fix**
+  (`internal/platform/auth/bridge/sso_binding_pg_test.go`, a real OIDC handshake against a test
+  IdP): the login state (`oauth_oidc_login_states`) lived only in the database, so
+  `GET /auth/oidc/callback?state=…&code=…` completed in **any** browser: **200, session
+  written**, for a browser that never started the login. An attacker with an account at any
+  identity provider mapped on the platform could start a login, sign in at the IdP, stop before
+  the callback and send the victim the link; the victim's browser was signed in to the
+  attacker's account. State, nonce and PKCE are held server-side and so protect the code
+  exchange, not the browser.
+- **Fix, sign-in routes** (`platformmw.CredentialCSRF`, `crossorigin.go`): for every unsafe
+  request on the guarded routes, authenticated or not:
+  1. provenance, `net/http.CrossOriginProtection` unchanged: `Sec-Fetch-Site` other than
+     `same-origin`/`none`, or without it an `Origin` naming neither the host nor the public base
+     URL (`Origin: null` included), is **403 `CROSS_ORIGIN_REQUEST`** (logged);
+  2. a request with **neither** header passes (not a browser: login CSRF needs the victim's
+     browser, and every browser sends `Origin` on a cross-origin POST). This is the deliberate
+     difference from `SessionCSRF`, where the request presents the browser's cookie;
+  3. JSON only, for every caller: a body that is not `application/json` or `application/*+json`
+     (a missing `Content-Type` included) is **415 `UNSUPPORTED_MEDIA_TYPE`**. A cross-origin page
+     cannot send JSON without a CORS preflight, and the platform answers none, so this alone
+     closes the attack; provenance is the second wall (a future CORS allow-list, a same-site
+     sibling).
+  Wiring: `login.Config.CredentialGuard` wraps `/auth/login` and the public `/auth/2fa/*`
+  routes; `passwordresetapi.RegisterRoutes` and `portalauth.RegisterRoutes` get `r.With(guard)`;
+  the huma passkey routes get it by exact path in the authenticated group (`forPaths`).
+- **Fix, SSO callback** (`bridge/login_binding.go`): `GET /auth/oidc/login` and
+  `GET /portal/auth/oidc/login` set a cookie in the browser that starts the sign-in, one per
+  login (`fc_sso_<16 hex of sha256(state)>`, value the state, HttpOnly, SameSite=Lax, Path=/,
+  10 minutes, the state's lifetime; `__Host-` prefix and Secure over HTTPS, so a sibling
+  subdomain cannot plant one). The callback, after consuming the state, requires the cookie and
+  its value (constant-time); otherwise **400 `LOGIN_NOT_STARTED_HERE`** "This sign-in was not
+  started in this browser", the state spent, no login-attempt row (no identity named yet), a
+  warn log. The callback clears the cookie. Lax is sent on the IdP's redirect back (a top-level
+  GET navigation).
+- **Every public unsafe route and its decision** (pinned by
+  `TestEveryPublicUnsafeRouteIsDecided`: it walks the router, and any unsafe route outside
+  `/api`, `/bff`, `/ui` with no decision fails it):
+
+  | Route | Decision |
+  |---|---|
+  | `POST /auth/login` | JSON-only + provenance (mints `fc_session`) |
+  | `POST /auth/2fa/verify`, `/auth/2fa/enroll/{totp,email}/confirm` | JSON-only + provenance (finish a login, mint `fc_session`) |
+  | `POST /auth/2fa/challenge/email`, `/auth/2fa/enroll/{totp,email}/begin` | JSON-only + provenance (steps of the same flow; mail, factor secrets) |
+  | `POST /auth/webauthn/authenticate/{begin,complete}` | JSON-only + provenance (passkey sign-in mints `fc_session`) |
+  | `POST /auth/password-reset/confirm` | JSON-only + provenance (sets a password; an INVITE confirm mints `fc_session`) |
+  | `POST /auth/password-reset/request`, `/auth/password-setup/request` | JSON-only + provenance (mint tokens, send mail) |
+  | `POST /portal/auth/login`, `/portal/auth/password-reset`, `/portal/auth/check-domain` | JSON-only + provenance (portal password login answers a code redirect in JSON, no cookie; guarded for consistency, the route group is one registration) |
+  | `GET /auth/oidc/callback` (and both SSO starts) | browser binding cookie (above) |
+  | `POST /auth/check-domain` | left: read-only |
+  | `POST /auth/logout` | left: issues nothing; a forced logout is possible anyway through `GET /auth/oidc/session/end` (RP-initiated logout, clears the cookie by design) |
+  | `POST /auth/refresh` | left: refresh token in the body, tokens in the JSON body, no cookie; a cross-origin page cannot read the answer |
+  | `POST /oauth/token`, `/oauth/introspect`, `/oauth/revoke` | left: form-encoded by the spec, client-authenticated; `authorization_code` needs the code and PKCE verifier, no password grant exists; no cookie is set |
+  | `POST /oauth/userinfo` | left: bearer access token |
+  | `GET /oauth/authorize` | left: reads the cookie, issues a code to a registered `redirect_uri` with the client's `state`/PKCE (the relying party's defence); there is no POST and no platform HTML login form (it redirects to the SPA's `/auth/login`, which posts JSON) |
+  | authenticated `/auth/*` writes (`change-password`, `client/switch`, `2fa/methods/*`, `recovery-codes/regenerate`, `trusted-devices`, `webauthn/register/*`, `webauthn/credentials/{id}`) | left: `SessionCSRF` covers the cookie (F16); bearer is exempt |
+  | `POST /control/functions/*` | left: function runner bearer |
+  | `POST /api/dispatch/process`, `/settled` | left: HMAC job token |
+  | `/ui/*` POSTs, `/ui/logout` | left: `guard.CSRF` |
+- **Debug endpoints** (finding 3, `internal/server/debug.go`): observed (unit test with the
+  gate) an anchor's cookie-authenticated `GET …/debug/dump` with `Sec-Fetch-Site: cross-site`,
+  `same-site` or none at all answered 200, and so did browser-cached Basic credentials with
+  `cross-site`. **Fix**, the smallest: after authentication, a request whose `Sec-Fetch-Site` is
+  present and neither `same-origin` nor `none` is 403 `CROSS_ORIGIN_REQUEST`, on both gate
+  branches (Basic credentials a browser cached are as ambient as the cookie), and a
+  cookie-authenticated request with no `Sec-Fetch-Site` is refused too (a GET navigation carries
+  no `Origin`, so nothing else can tell). Cookie auth was kept for the address bar
+  (`Sec-Fetch-Site: none`) and the platform's own pages.
+- **`$schema`** (finding 2): **left**. The fix is one line (`humaCfg.CreateHooks = nil`), but the
+  same hook adds the `$schema` property to every response schema in the spec: 217 in
+  `api/openapi.lock.json`, `readonly $schema?: string` in the generated TypeScript (and other)
+  SDK types. Removing it changes the lock and every generated SDK, so it is not wire-neutral.
+  The misleading comment in `wire_routes.go` (it claimed `SchemasPath = ""` dropped the field)
+  now says what it does; `docs/wire-contract.md` documents the field.
+- **Client-visible effects**:
+  - the SPA: none expected (it sends JSON with `Content-Type: application/json` and a same-origin
+    `fetch` to every guarded route; SSO starts and finishes in the same browser);
+  - a non-browser caller of `/auth/login` (curl, a script) sending JSON without `Origin`: works
+    as before; one sending a form or `text/plain` body: **415**; one sending a foreign `Origin`:
+    403. No first-party SDK calls these routes (the SDKs use `/oauth/*` and bearer tokens; the
+    Laravel and TypeScript SDKs' generated passkey wrappers exist but a passkey assertion needs a
+    browser on the platform's origin);
+  - SSO: a sign-in started on one host and finished on another (the callback is on the public
+    base URL's host) no longer completes; a sign-in in flight across the deploy fails once
+    (its state has no cookie) and must be started again; callback links cannot be shared or
+    replayed in another browser. Every SSO start now sets one short-lived cookie;
+  - debug endpoints: from a browser, only the address bar or a link on the platform's own pages;
+    over plain HTTP on a non-localhost host (no `Sec-Fetch-Site`), use a bearer token; tools with
+    a bearer or the router's Basic credentials are unaffected.
+- **Tests** (each failed before its fix, as observed above): `internal/server/logincsrf_pg_test.go`
+  (route pin; cross-origin refusals and JSON-only on all 15 guarded routes; same-origin, user
+  initiated, Origin-only, rewritten Host and no-header JSON allowed; check-domain and logout not
+  guarded; a real login refused cross-site/sibling/`text/plain` with no cookie set, and allowed
+  for the SPA, curl and Origin-only). `middleware/crossorigin_test.go` (`TestCredentialCSRF`
+  matrix). `bridge/sso_binding_pg_test.go` (callback without the cookie refused and the state
+  spent; another login's cookie and a forged value refused; the full start→callback round trip
+  over HTTP and HTTPS with the cookie's attributes and its clearing; the portal start sets it);
+  the existing SSO tests now carry the cookie, and the failure-path ones assert their own error
+  code so the binding cannot mask them. `internal/server/debug_test.go`
+  (`TestDebugGate_CrossSiteNavigationRefused`). Mutation-checked: unwiring the guard from login,
+  2FA, password reset, portal or passkeys (and `forPaths` passing everything), refusing
+  neither-header requests, dropping the JSON rule or the provenance check, guarding logout;
+  not checking, checking before the consume, not clearing, presence-only checking, no
+  `__Host-`, another TTL or SameSite, no cookie at either start; and for the debug gate,
+  dropping each clause or widening/narrowing the allowed values: each fails at least one test.
+- **Java/Rust mirror**: not checked; the same three findings apply to any port with a public
+  password login that decodes JSON regardless of `Content-Type`, an unbound SSO state, or a
+  cookie-authenticated debug surface.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -1523,6 +1645,13 @@ through the SPA handler (`frontend/handler_test.go`, a fixture tree and the real
     cookie-authenticated artifact upload is refused); the public base URL is the only trusted
     origin; the login routes are not guarded; no script or style CSP; `Referrer-Policy:
     same-origin`. Details in F16's decisions.
+24. Login CSRF (F16 follow-up): the sign-in guard accepts a request with neither
+    `Sec-Fetch-Site` nor `Origin` (non-browser callers keep working; JSON is still required);
+    the 2FA begin/challenge steps, the reset/setup request routes and portal check-domain are
+    guarded with the rest of their flow; logout, check-domain and refresh are not; the SSO
+    callback refuses a sign-in started in another browser and spends its state; the debug gate
+    refuses cross-site and same-site fetches for every credential and cookie requests without
+    `Sec-Fetch-Site`; `$schema` stays.
 
 ## New findings, not fixed
 
@@ -1577,20 +1706,12 @@ missing event source (F14), and unknown roles in the application principal sync 
   platform prefixes bare role names with the application; it never has. Their bare names were
   stored as assignments that matched no role; they are now skipped and listed in `skippedRoles`.
   The Rust SDK prefixes bare names itself.
-- **Login CSRF** (F16, not fixed): `POST /auth/login` (public, outside the authenticated group)
-  decodes JSON whatever the `Content-Type`, so a cross-site `<form enctype="text/plain">` can
-  sign a victim's browser in to the attacker's account (a response to a top-level navigation may
-  set a Lax cookie). Read, not run. The same provenance rule on the public routes that mint the
-  session (`/auth/login`, passkey sign-in, the INVITE password-reset confirm, 2FA verify) would
-  close it; owner decision, since it would refuse non-browser password logins without `Origin`.
-- **huma's `$schema` is still emitted** (F16, not fixed): responses carry `"$schema":
-  "<issuer>/<Type>.json"` (seen in the huma responses of the F16 tests, error envelopes included),
-  although `wire_routes.go` clears `SchemasPath` to drop it: huma's link transformer is added by a
-  create hook in `huma.DefaultConfig`, and clearing the path only changes the URL it points at.
-- **Debug endpoints by cookie** (F16, not fixed): the debug gate accepts the anchor's session
-  cookie, so a cross-site top-level navigation can start `GET .../debug/pprof/profile` (a CPU
-  profile, read by nobody but the browser). Low impact; the gate's only unsafe route,
-  `POST /debug/pprof/symbol`, is read-only.
+- ~~**Login CSRF**~~ (F16): fixed in the F16 follow-up, with the SSO callback's browser binding
+  found in its audit.
+- **huma's `$schema` is still emitted** (F16, left by ruling in the follow-up): responses carry
+  `"$schema": "<issuer>/<Type>.json"`; removing the create hook would also drop the property from
+  217 response schemas in the lock and from the generated SDK types, so it is not wire-neutral.
+- ~~**Debug endpoints by cookie**~~ (F16): fixed in the F16 follow-up.
 
 ## Not verified
 
@@ -1642,3 +1763,12 @@ missing event source (F14), and unknown roles in the application principal sync 
   pages under the new headers, Firefox and Safari, a deployed environment behind a proxy, Vite's
   dev proxy (it rewrites `Host`; browsers send `Sec-Fetch-Site: same-origin` to localhost, which
   passes). A Blob body without `Content-Type` was sent by hand in the tests, not by a browser.
+- F16 follow-up: integration tests on embedded Postgres only (the whole router for the sign-in
+  guard; a real OIDC handshake against a test IdP for the SSO binding; the debug gate through
+  its unit tests). No browser run: in particular not verified in a browser that a cross-site
+  `text/plain` form post's response sets a Lax cookie (the attack was shown at the handler, 200
+  with `Set-Cookie`), that Chrome, Firefox and Safari send the `__Host-` SSO cookie on the IdP's
+  redirect back, or SSO against a real IdP (Entra, Google) with the binding. No deployed
+  environment behind a proxy. `scripts/e2e_auth_controls.sh` logs in with curl and JSON (still
+  accepted) but replays the cookie on POST/PUT without `Origin`, which F16's cookie rule already
+  refuses; the script was not run or changed. The Java/Rust ports were not checked.

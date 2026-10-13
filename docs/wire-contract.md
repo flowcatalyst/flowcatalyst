@@ -105,8 +105,10 @@ Status-code mapping: Validation→400,
 Unauthorized/InvalidCredentials/TokenExpired/InvalidToken→401, Forbidden→403,
 NotFound→404, Duplicate/BusinessRule/Concurrency→409, TooManyRequests→429,
 catch-all→500. **There is no 422 in the mapping.** The session-cookie guard
-adds 403 `CROSS_ORIGIN_REQUEST` and 415 `UNSUPPORTED_MEDIA_TYPE` (see
-Authentication); an unknown path under `/api`, `/bff`, `/oauth`,
+and the sign-in (login-CSRF) guard add 403 `CROSS_ORIGIN_REQUEST` and 415
+`UNSUPPORTED_MEDIA_TYPE` (see Authentication); the debug endpoints add 403
+`CROSS_ORIGIN_REQUEST`; the SSO callback adds 400 `LOGIN_NOT_STARTED_HERE`; an
+unknown path under `/api`, `/bff`, `/oauth`,
 `/.well-known`, `/control` or `/q` is 404 `NOT_FOUND` (it used to be the SPA's
 `index.html` with 200).
 
@@ -163,7 +165,9 @@ so it does **not** appear in that lock — by design. The inventory:
 | GET | `/auth/check-domain` | resolve auth method for an email's domain |
 | GET | `/auth/me` | read the current session cookie's principal |
 | GET | `/auth/oidc/login`, `/auth/oidc/callback` | OIDC SSO (email-domain path) |
-| POST | `/auth/password-reset/request`, `/auth/password-reset/confirm` | unauthenticated password reset (hex SHA-256 tokens) |
+| POST | `/auth/password-reset/request`, `/auth/password-reset/confirm`, `/auth/password-setup/request` | unauthenticated password reset (hex SHA-256 tokens) |
+| POST | `/auth/2fa/verify`, `/auth/2fa/challenge/email`, `/auth/2fa/enroll/*` | second factor that finishes a password login |
+| POST | `/auth/logout`, `/auth/check-domain` | clear the session cookie; resolve auth method (SPA shape) |
 | GET | `/auth/password-reset/validate` | check a reset token |
 | GET | `/api/me`, `/api/me/applications` | caller identity + accessible applications |
 | GET/POST | `/oauth/authorize`, `/oauth/token` | OAuth/OIDC provider surface |
@@ -181,6 +185,49 @@ one, must be `application/json` (or `application/*+json`), else **415
 (SDKs, service accounts, the router), the OAuth/OIDC endpoints and the
 dispatch callbacks are not subject to either rule. A script that replays a
 browser's cookie must send a matching `Origin` (or use a bearer token).
+
+**Sign-in and credential requests (login CSRF, since 2026-10-13, F16
+follow-up).** The public routes that sign a browser in or set its credentials
+take only a JSON body, from any caller: `POST /auth/login`, the public
+`/auth/2fa/*` steps (`verify`, `challenge/email`, `enroll/{totp,email}/{begin,
+confirm}`), `POST /auth/webauthn/authenticate/{begin,complete}`,
+`POST /auth/password-reset/{request,confirm}`, `POST /auth/password-setup/request`,
+and `POST /portal/auth/{check-domain,login,password-reset}`. A body that is not
+`application/json` (or `application/*+json`), a body without `Content-Type`
+included, is **415 `UNSUPPORTED_MEDIA_TYPE`**. A request a browser marks as
+coming from elsewhere (`Sec-Fetch-Site` other than `same-origin`/`none`, or,
+without it, an `Origin` naming neither the request's host nor the public base
+URL, `Origin: null` included) is **403 `CROSS_ORIGIN_REQUEST`**. Unlike the
+session-cookie rule, a request with **neither** header is accepted: a
+non-browser caller (curl, a script) that sends JSON keeps working. Not guarded:
+`POST /auth/check-domain` (read-only), `POST /auth/logout` (issues nothing;
+`GET /auth/oidc/session/end` clears the cookie by design), `POST /auth/refresh`
+(tokens in the JSON body, no cookie), and the form-encoded OAuth endpoints
+(`/oauth/token`, `/oauth/introspect`, `/oauth/revoke`: form-encoded by the
+spec, client-authenticated, PKCE; no cookie).
+
+**SSO callback binding (since 2026-10-13, F16 follow-up).**
+`GET /auth/oidc/login` and `GET /portal/auth/oidc/login` set a per-login cookie
+(`__Host-fc_sso_<digest>` over HTTPS, `fc_sso_<digest>` over HTTP; HttpOnly,
+SameSite=Lax, Path=/, 10 minutes, the login state's lifetime) in the browser
+that starts the sign-in. `GET /auth/oidc/callback` requires it: a callback the
+browser did not start is **400 `LOGIN_NOT_STARTED_HERE`** (and its state is
+spent); the callback clears the cookie. A sign-in must therefore start and
+finish in the same browser, on the host of the public base URL (the callback's
+host).
+
+**Debug endpoints (`<router prefix>/debug/*`, `/debug/*`, since 2026-10-13).**
+A request whose `Sec-Fetch-Site` is present and neither `same-origin` nor
+`none`, and a request the `fc_session` cookie authenticates without
+`Sec-Fetch-Site`, are **403 `CROSS_ORIGIN_REQUEST`**. Tools with a bearer token
+or the router's Basic credentials (no `Sec-Fetch-Site`) are not affected.
+
+**`$schema` in huma responses.** Responses of the huma routes carry a
+`"$schema"` field (and a `Link: <…>; rel="describedBy"` header) pointing at
+`<scheme>://<host>/<Type>.json`, a path the platform does not serve; the spec
+declares the field (read-only) on every response schema and the generated SDK
+types carry it. Clients ignore it. It is not removed because that changes the
+lock and every generated SDK.
 
 **`/oauth/authorize?provider=<idp-id>` (direct-IdP entry, since 2026-07-22):**
 `?provider=` chains into the OIDC bridge (`/auth/oidc/login?provider_id=` +
