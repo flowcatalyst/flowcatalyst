@@ -1173,6 +1173,89 @@ anyone else).
   Already identical: the events guard's statuses, codes and messages, the single-client default,
   whole-batch refusal, the anchor's unknown-code-unscoped rule.
 
+### F15. SDK role sync ceiling, unknown roles in the application principal sync (owner rulings 2026-10-13)
+
+- **SDK role sync and the permission ceiling** (ruling 1: the same rule as the role-edit routes,
+  `platform:` permissions only, only the change). **Already in place since F10** (`c56a68c`,
+  `SyncRoles`, `internal/platform/role/operations/sync.go`): nothing to change. Its test reached
+  removals only, because on an ordinary application confinement (F12) refuses a platform
+  permission before the ceiling runs; the addition case is reachable on the `platform`
+  application (seeded in every deployment), whose SDK roles may hold platform permissions.
+  **Test added** (`2ba9763`, `sdksync/sync_roles_ceiling_pg_test.go`
+  `TestSyncRoles_PlatformApplicationAdditionsBoundedByCaller`; it and the F10 test fail with the
+  ceiling removed from `SyncRoles`). **The rule**, `POST /api/applications/{appCode}/roles/sync`:
+  - per synced role: an existing SDK-sourced role with a **non-empty** `permissions` is checked on
+    `role.ChangedPermissions(stored, sent)` (added and removed); an empty or omitted list keeps the
+    stored permissions and checks nothing; a new role is checked on all its permissions; a role
+    `removeUnlisted` deletes is checked on all its permissions; a same-named CODE or DATABASE role
+    is skipped untouched, so not checked;
+  - the check is `role.RequirePermissionsWithinCaller`: a `platform:`-prefixed permission the
+    caller does not hold by `auth.Grants` (segment wildcards; `platform:*:*:*` holds everything)
+    is above it; application permissions are never checked;
+  - the changes of every role are collected and checked once, after confinement
+    (`PERMISSION_OUTSIDE_APPLICATION`, 400, per role, first) and `ROLE_HAS_ASSIGNMENTS`;
+    refusal: 403 `PERMISSION_ABOVE_CALLER`, "You may only add or remove permissions you hold
+    yourself: `<p1>, <p2>`" (each once, in the order collected: per role in payload order its
+    added then its removed permissions, then the deleted roles' permissions);
+  - **reporting** (the ruling's choice): the sync is all-or-nothing today (confinement,
+    `ROLE_HAS_ASSIGNMENTS` and the response's counts are whole-request), so a refused role refuses
+    the whole sync and nothing is written, as F10 already did. No per-item result exists on this
+    route to report in.
+- **Unknown role names in the application principal sync** (ruling 2). **Found**:
+  `POST /api/applications/{appCode}/principals/sync` stored a role name that is not a role as an
+  `SDK_SYNC` assignment (`iam_principal_roles` has no FK on the name), which grants nothing until a
+  role of that name is created and then grants it with no sync having named a real role; a name
+  whose prefix named another application (`ghostapp:admin`, `platform:nope`) refused the whole sync
+  (F12 rule 3). **Fix** (`3aeb08c`): **the rule**, per entry, after target reach (F12 rule 2):
+  1. role names are lower-cased and matched exactly against role names (no `app:` prefix is
+     added; a bare `admin` is not the role `app:admin`);
+  2. a name that is a role of another application (`role.OwningApplicationCode` ≠ `appCode`):
+     403 `ROLE_APP_FORBIDDEN`, "role '`<name>`' does not belong to application '`<appCode>`'",
+     the whole sync refused, nothing written (unchanged, F12);
+  3. a name that is not a role, **whatever its prefix**: not assigned, no assignment and no role
+     created, not refused; the entry is synced with its other roles (an entry whose every name is
+     skipped is created or updated with none of this application's `SDK_SYNC` roles: the merge
+     replaces that set with the empty one);
+  4. the rest is unchanged: the F13 merge (`belongsToThisSync`), the `removeUnlisted` sweep, the F8
+     role ceiling over the change (skipped names are in neither side of it), `passwordHashIgnored`.
+  The skipped names are logged (warn, with the application) and returned in a new response field
+  **`skippedRoles`**: lower-cased, each name once across the request, in payload order, omitted
+  when empty, on the shared `SyncResultResponse` (so every other sync's response is unchanged).
+  Computed inside the sync (no pre-read race, unlike `passwordHashIgnored`); a skipped name is
+  not reported if the request is refused. Carried back on `PrincipalsSynced.SkippedRoles`, which
+  is not part of the event's data (`ToDataJSON`), so the catalogued schema is unchanged.
+  The platform route (`POST /api/principals/sync`) is unchanged: an anchor's unknown name is still
+  stored as an assignment, a non-anchor's is 400 `UNKNOWN_ROLE`, and it has no `skippedRoles`.
+- **Wire impact**: `SyncResultResponse.skippedRoles` (optional `string[]`); the
+  `SyncPrincipalInputRequest.roles` description corrected (it claimed the platform prefixes
+  names). Lock and SPA types regenerated (`make api-bump`, `pnpm api:generate`). A request naming
+  an unknown foreign-prefixed name now succeeds where it was 403 `ROLE_APP_FORBIDDEN`; an unknown
+  own-prefixed or bare name is no longer assigned. No status code added. `docs/wire-contract.md`
+  "SDK sync: roles". Rust SDK (`a1d6322`): `SyncResult.skipped_roles`,
+  `CategorySyncResult.skipped_roles`. The TypeScript, Laravel and Java SDKs do not model
+  `passwordHashIgnored` either and were not changed (`make sdk-spec` at their next release picks
+  the field up for the generated TS types); the Go SDK (`pkg/fcsdk`) does not call this route.
+- **Tests** (the new one failed before the fix, `ROLE_APP_FORBIDDEN` on `ghostapp:admin`):
+  `sdksync/sync_principals_unknown_roles_pg_test.go` `TestSyncPrincipals_AppRouteSkipsUnknownRoles`
+  (own-prefixed, bare, mixed-case and foreign-prefixed unknown names skipped, known role assigned,
+  an all-unknown entry still created, the list deduplicated across entries and lower-cased; the
+  role synced afterwards is then assigned and the field omitted; a known foreign role beside an
+  unknown name still refuses, nothing written). Updated: `sync_principals_role_app_pg_test.go`
+  (its unknown foreign-prefixed case moved to the new test; the legitimate flow now asserts only
+  the known role), and the tests that synced roles they never created now create them
+  (`principal/operations/ops_pg_test.go`, `sdksync/sync_principals_own_roles_pg_test.go`).
+- **Java/Rust mirror**:
+  1. SDK role sync ceiling (ruling 1): Java `SyncRoles` and Rust `role/operations/sync.rs` apply
+     no ceiling (F10; Java re-checked by grep 2026-10-13). Mirror the rule above: collect
+     `changed` across the request (non-empty list → changed set; new role → all; removeUnlisted
+     deletion → all), then `RoleCeiling.requirePermissions` / `ceiling::require_permissions`,
+     whole sync refused, after confinement.
+  2. Unknown names (ruling 2): Java refuses every unknown name, 400 `UNKNOWN_ROLE`
+     (`SyncPrincipals.requireSyncableRoles`); Rust refuses a `platform` or existing application's
+     prefix and stores the others. Both should skip every unknown name on the application route
+     and report `skippedRoles` with the shape above; keep `ROLE_APP_FORBIDDEN` for known foreign
+     roles and leave the platform route alone.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -1234,6 +1317,13 @@ anyone else).
     Rust name the id); blank `clientId`/`clientCode` count as absent; the dispatch-job routes did
     not gain the platform-scoped refusal. The missing event `source` defaults to the type's
     `{application}:{subdomain}`, not the caller's application.
+22. SDK role sync and unknown roles (F15): a ceiling refusal refuses the whole role sync (it is
+    all-or-nothing, as its other refusals). The application principal sync skips **every** name
+    that is not a role, a foreign-prefixed one included (the ruling's "must not fail the whole
+    sync"; this reverses F12's refusal of unknown foreign-prefixed names, and a caller can now
+    tell a foreign role that exists, 403, from one that does not, skipped); the platform does not
+    add the `app:` prefix to bare names; `skippedRoles` is a flat list of names, not per email
+    (the shape of `passwordHashIgnored`); the platform principal sync is not changed.
 
 ## New findings, not fixed
 
@@ -1242,8 +1332,8 @@ Fixed in the second batch (above): the scheduled-job runner reports (F1), event-
 SPA's sync and role controls (F6); after it, user role changes (F7), the role ceiling (F8) and
 the catalogue drift (F9, with its follow-up: unemitted codes pruned, older schemas fixed), the
 permission ceiling (F10), role confinement and principal-sync reach (F12), the principal
-syncs' password hashes and other applications' roles (F13), and the events client guard and the
-missing event source (F14).
+syncs' password hashes and other applications' roles (F13), the events client guard and the
+missing event source (F14), and unknown roles in the application principal sync (F15).
 
 - **`DELETE /api/event-types/{id}`** is documented "Archive an event type" and the TS SDK calls it
   `archive()`, but it hard-deletes (now only an archived or never-published type).
@@ -1283,6 +1373,11 @@ missing event source (F14).
   `clientId` on a dispatch job, so a multi-client credential's jobs would be refused.
 - ~~**An event without `source` is refused**~~ (F13): fixed in F14 (defaulted).
 - **Already-stored encoded event data and audit rows** (F13): not migrated; owner question in F13.
+- **Principal-sync role names in the SDKs** (F15): the Laravel SDK (`SyncPrincipalEntry`: "the
+  platform adds it") and, per the Rust SDK README, the Java and TypeScript SDK docs say the
+  platform prefixes bare role names with the application; it never has. Their bare names were
+  stored as assignments that matched no role; they are now skipped and listed in `skippedRoles`.
+  The Rust SDK prefixes bare names itself.
 
 ## Not verified
 
@@ -1316,3 +1411,6 @@ missing event source (F14).
 - F14: integration tests on embedded databases only; no run through a running outbox processor
   or a deployed platform; no browser run (the SPA only gained a generated type, `vue-tsc -b`
   passes). The Java and Rust code was read, not run.
+- F15: integration tests on embedded databases only, through the route handlers; no live
+  platform run (the binaries did not build at the time: another session's function-event work was
+  mid-edit) and no browser run (the SPA only gained a generated type).
