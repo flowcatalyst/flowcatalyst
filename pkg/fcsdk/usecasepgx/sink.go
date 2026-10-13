@@ -12,9 +12,13 @@ import (
 // (platform code via a platform-specific sink); it just calls into this
 // interface inside the transaction it has open.
 //
+// A Sink that also implements DispatchJobSink can write dispatch jobs
+// (WithDispatchJobs / usecaseop's Plan.Dispatch).
+//
 // Implementations:
 //   - outboxpgx.Sink — consumer apps; writes to outbox_messages
-//     so fc-outbox-processor forwards events to the platform API.
+//     so fc-outbox-processor forwards events to the platform API. Also a
+//     DispatchJobSink.
 //   - Platform's own sink (in flowcatalyst-go) — writes directly to
 //     msg_events and aud_logs. Not part of this SDK.
 type Sink interface {

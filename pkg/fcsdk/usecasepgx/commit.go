@@ -21,7 +21,12 @@ func Commit[A usecase.HasID, E usecase.DomainEvent, C any](
 	repo Persist[A],
 	event E,
 	command C,
+	opts ...CommitOption,
 ) usecase.Result[E] {
+	jobs, jerr := prepareJobs(uow.sink, event, opts)
+	if jerr != nil {
+		return usecase.Failure[E](jerr)
+	}
 	tx, err := uow.pool.Begin(ctx)
 	if err != nil {
 		return usecase.Failure[E](usecase.Internal("TX_BEGIN", "could not open transaction", err))
@@ -32,11 +37,8 @@ func Commit[A usecase.HasID, E usecase.DomainEvent, C any](
 	if err := repo.Persist(ctx, aggregate, dbTx); err != nil {
 		return usecase.Failure[E](storeFailure("PERSIST", "repository persist failed", err))
 	}
-	if err := uow.sink.WriteEvent(ctx, dbTx, event); err != nil {
-		return usecase.Failure[E](usecase.Internal("EVENT_WRITE", "could not write domain event", err))
-	}
-	if err := uow.sink.WriteAudit(ctx, dbTx, event, command); err != nil {
-		return usecase.Failure[E](usecase.Internal("AUDIT_WRITE", "could not write audit log", err))
+	if ue := writeOutbox(ctx, uow.sink, dbTx, event, jobs, command); ue != nil {
+		return usecase.Failure[E](ue)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return usecase.Failure[E](usecase.Internal("TX_COMMIT", "could not commit transaction", err))
@@ -54,7 +56,12 @@ func CommitDelete[A usecase.HasID, E usecase.DomainEvent, C any](
 	repo Persist[A],
 	event E,
 	command C,
+	opts ...CommitOption,
 ) usecase.Result[E] {
+	jobs, jerr := prepareJobs(uow.sink, event, opts)
+	if jerr != nil {
+		return usecase.Failure[E](jerr)
+	}
 	tx, err := uow.pool.Begin(ctx)
 	if err != nil {
 		return usecase.Failure[E](usecase.Internal("TX_BEGIN", "could not open transaction", err))
@@ -65,11 +72,8 @@ func CommitDelete[A usecase.HasID, E usecase.DomainEvent, C any](
 	if err := repo.Delete(ctx, aggregate, dbTx); err != nil {
 		return usecase.Failure[E](storeFailure("DELETE", "repository delete failed", err))
 	}
-	if err := uow.sink.WriteEvent(ctx, dbTx, event); err != nil {
-		return usecase.Failure[E](usecase.Internal("EVENT_WRITE", "could not write domain event", err))
-	}
-	if err := uow.sink.WriteAudit(ctx, dbTx, event, command); err != nil {
-		return usecase.Failure[E](usecase.Internal("AUDIT_WRITE", "could not write audit log", err))
+	if ue := writeOutbox(ctx, uow.sink, dbTx, event, jobs, command); ue != nil {
+		return usecase.Failure[E](ue)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return usecase.Failure[E](usecase.Internal("TX_COMMIT", "could not commit transaction", err))
@@ -86,7 +90,12 @@ func EmitEvent[E usecase.DomainEvent, C any](
 	uow *UnitOfWork,
 	event E,
 	command C,
+	opts ...CommitOption,
 ) usecase.Result[E] {
+	jobs, jerr := prepareJobs(uow.sink, event, opts)
+	if jerr != nil {
+		return usecase.Failure[E](jerr)
+	}
 	tx, err := uow.pool.Begin(ctx)
 	if err != nil {
 		return usecase.Failure[E](usecase.Internal("TX_BEGIN", "could not open transaction", err))
@@ -94,11 +103,8 @@ func EmitEvent[E usecase.DomainEvent, C any](
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	dbTx := newDbTx(tx)
-	if err := uow.sink.WriteEvent(ctx, dbTx, event); err != nil {
-		return usecase.Failure[E](usecase.Internal("EVENT_WRITE", "could not write domain event", err))
-	}
-	if err := uow.sink.WriteAudit(ctx, dbTx, event, command); err != nil {
-		return usecase.Failure[E](usecase.Internal("AUDIT_WRITE", "could not write audit log", err))
+	if ue := writeOutbox(ctx, uow.sink, dbTx, event, jobs, command); ue != nil {
+		return usecase.Failure[E](ue)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return usecase.Failure[E](usecase.Internal("TX_COMMIT", "could not commit transaction", err))
@@ -118,7 +124,12 @@ func CommitAll[A usecase.HasID, E usecase.DomainEvent, C any](
 	repo Persist[A],
 	event E,
 	command C,
+	opts ...CommitOption,
 ) usecase.Result[E] {
+	jobs, jerr := prepareJobs(uow.sink, event, opts)
+	if jerr != nil {
+		return usecase.Failure[E](jerr)
+	}
 	tx, err := uow.pool.Begin(ctx)
 	if err != nil {
 		return usecase.Failure[E](usecase.Internal("TX_BEGIN", "could not open transaction", err))
@@ -131,11 +142,8 @@ func CommitAll[A usecase.HasID, E usecase.DomainEvent, C any](
 			return usecase.Failure[E](storeFailure("PERSIST_BATCH", fmt.Sprintf("persist failed at index %d", i), err))
 		}
 	}
-	if err := uow.sink.WriteEvent(ctx, dbTx, event); err != nil {
-		return usecase.Failure[E](usecase.Internal("EVENT_WRITE", "could not write domain event", err))
-	}
-	if err := uow.sink.WriteAudit(ctx, dbTx, event, command); err != nil {
-		return usecase.Failure[E](usecase.Internal("AUDIT_WRITE", "could not write audit log", err))
+	if ue := writeOutbox(ctx, uow.sink, dbTx, event, jobs, command); ue != nil {
+		return usecase.Failure[E](ue)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return usecase.Failure[E](usecase.Internal("TX_COMMIT", "could not commit transaction", err))
@@ -183,7 +191,12 @@ func CommitSync[A usecase.HasID, RE usecase.DomainEvent, C any](
 	deletes []SyncDeleteItem[A],
 	rollup RE,
 	command C,
+	opts ...CommitOption,
 ) usecase.Result[RE] {
+	jobs, jerr := prepareJobs(uow.sink, rollup, opts)
+	if jerr != nil {
+		return usecase.Failure[RE](jerr)
+	}
 	tx, err := uow.pool.Begin(ctx)
 	if err != nil {
 		return usecase.Failure[RE](usecase.Internal("TX_BEGIN", "could not open transaction", err))
@@ -218,6 +231,9 @@ func CommitSync[A usecase.HasID, RE usecase.DomainEvent, C any](
 
 	if err := uow.sink.WriteEvent(ctx, dbTx, rollup); err != nil {
 		return usecase.Failure[RE](usecase.Internal("EVENT_WRITE", "rollup event write failed", err))
+	}
+	if ue := jobs.write(ctx, dbTx); ue != nil {
+		return usecase.Failure[RE](ue)
 	}
 	if err := uow.sink.WriteAudit(ctx, dbTx, rollup, command); err != nil {
 		return usecase.Failure[RE](usecase.Internal("AUDIT_WRITE", "rollup audit write failed", err))

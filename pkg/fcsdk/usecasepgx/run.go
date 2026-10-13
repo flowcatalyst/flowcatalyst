@@ -120,16 +120,18 @@ func CommitScoped[A usecase.HasID, E usecase.DomainEvent, C any](
 	repo Persist[A],
 	event E,
 	command C,
+	opts ...CommitOption,
 ) usecase.Result[E] {
+	jobs, jerr := prepareJobs(scoped.sink, event, opts)
+	if jerr != nil {
+		return usecase.Failure[E](jerr)
+	}
 	dbTx := newDbTx(scoped.tx)
 	if err := repo.Persist(ctx, aggregate, dbTx); err != nil {
 		return usecase.Failure[E](storeFailure("PERSIST", "repository persist failed", err))
 	}
-	if err := scoped.sink.WriteEvent(ctx, dbTx, event); err != nil {
-		return usecase.Failure[E](usecase.Internal("EVENT_WRITE", "could not write domain event", err))
-	}
-	if err := scoped.sink.WriteAudit(ctx, dbTx, event, command); err != nil {
-		return usecase.Failure[E](usecase.Internal("AUDIT_WRITE", "could not write audit log", err))
+	if ue := writeOutbox(ctx, scoped.sink, dbTx, event, jobs, command); ue != nil {
+		return usecase.Failure[E](ue)
 	}
 	return usecase.Success[E](sealed.New(), event)
 }
@@ -142,16 +144,18 @@ func CommitDeleteScoped[A usecase.HasID, E usecase.DomainEvent, C any](
 	repo Persist[A],
 	event E,
 	command C,
+	opts ...CommitOption,
 ) usecase.Result[E] {
+	jobs, jerr := prepareJobs(scoped.sink, event, opts)
+	if jerr != nil {
+		return usecase.Failure[E](jerr)
+	}
 	dbTx := newDbTx(scoped.tx)
 	if err := repo.Delete(ctx, aggregate, dbTx); err != nil {
 		return usecase.Failure[E](storeFailure("DELETE", "repository delete failed", err))
 	}
-	if err := scoped.sink.WriteEvent(ctx, dbTx, event); err != nil {
-		return usecase.Failure[E](usecase.Internal("EVENT_WRITE", "could not write domain event", err))
-	}
-	if err := scoped.sink.WriteAudit(ctx, dbTx, event, command); err != nil {
-		return usecase.Failure[E](usecase.Internal("AUDIT_WRITE", "could not write audit log", err))
+	if ue := writeOutbox(ctx, scoped.sink, dbTx, event, jobs, command); ue != nil {
+		return usecase.Failure[E](ue)
 	}
 	return usecase.Success[E](sealed.New(), event)
 }
@@ -162,13 +166,15 @@ func EmitEventScoped[E usecase.DomainEvent, C any](
 	scoped *TxScopedUnitOfWork,
 	event E,
 	command C,
+	opts ...CommitOption,
 ) usecase.Result[E] {
-	dbTx := newDbTx(scoped.tx)
-	if err := scoped.sink.WriteEvent(ctx, dbTx, event); err != nil {
-		return usecase.Failure[E](usecase.Internal("EVENT_WRITE", "could not write domain event", err))
+	jobs, jerr := prepareJobs(scoped.sink, event, opts)
+	if jerr != nil {
+		return usecase.Failure[E](jerr)
 	}
-	if err := scoped.sink.WriteAudit(ctx, dbTx, event, command); err != nil {
-		return usecase.Failure[E](usecase.Internal("AUDIT_WRITE", "could not write audit log", err))
+	dbTx := newDbTx(scoped.tx)
+	if ue := writeOutbox(ctx, scoped.sink, dbTx, event, jobs, command); ue != nil {
+		return usecase.Failure[E](ue)
 	}
 	return usecase.Success[E](sealed.New(), event)
 }

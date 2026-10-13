@@ -1,6 +1,6 @@
 // Package outboxpgx implements the consumer-facing Sink for use cases
-// running against pgx. It writes domain events and audit logs to the
-// outbox_messages table; the fc-outbox-processor polls that table and
+// running against pgx. It writes domain events, audit logs and dispatch jobs
+// to the outbox_messages table; the fc-outbox-processor polls that table and
 // forwards items to the FlowCatalyst platform API.
 //
 // The Sink satisfies usecasepgx.Sink, so any use case that uses

@@ -65,8 +65,9 @@ func NewSink(cfg Config) *Sink {
 	return &Sink{cfg: cfg}
 }
 
-// Compile-time check that *Sink satisfies usecasepgx.Sink.
-var _ usecasepgx.Sink = (*Sink)(nil)
+// Compile-time check that *Sink satisfies usecasepgx.Sink and writes
+// dispatch jobs.
+var _ usecasepgx.DispatchJobSink = (*Sink)(nil)
 
 func (s *Sink) rowConfig() outbox.Config {
 	return outbox.Config{
@@ -98,11 +99,29 @@ func (s *Sink) WriteAudit(ctx context.Context, tx *usecasepgx.DbTx, event usecas
 	return s.insert(ctx, tx.Inner(), row)
 }
 
+// WriteDispatchJobs inserts the DISPATCH_JOB rows of jobs, in order. It is
+// what usecaseop's Plan.Dispatch (and usecasepgx.WithDispatchJobs) write
+// through, after the event and before the audit row. Satisfies
+// usecasepgx.DispatchJobSink.
+func (s *Sink) WriteDispatchJobs(ctx context.Context, tx *usecasepgx.DbTx, jobs []outbox.DispatchJob) error {
+	for _, job := range jobs {
+		if err := s.WriteDispatchJob(ctx, tx.Inner(), job); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // WriteDispatchJob validates job and inserts its DISPATCH_JOB row (the
 // platform's outbox processor delivers it to POST /api/dispatch-jobs/batch).
-// Call it inside the transaction of the work that asks for the job, for
-// example from usecasepgx.Run through TxScopedUnitOfWork.WithTx. The row id
-// is the job id (generated when the job has none).
+// The row id is the job id (generated when the job has none).
+//
+// This is the lower-level path, for a transaction the application runs
+// itself. Inside a use case, prefer declaring the job on the plan
+// (usecaseop's Plan.Dispatch): the plan writes it in the use case's
+// transaction in the contract's order (after the event, before the audit
+// row), refuses an invalid job before anything is written, and gives a job
+// without a correlation id the event's.
 func (s *Sink) WriteDispatchJob(ctx context.Context, tx pgx.Tx, job outbox.DispatchJob) error {
 	row, err := outbox.DispatchJobRow(s.rowConfig(), job)
 	if err != nil {

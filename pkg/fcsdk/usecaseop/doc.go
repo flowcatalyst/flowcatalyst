@@ -9,8 +9,8 @@
 //	Authorize  resource-level access — REQUIRED, or [Public] to declare open
 //	Execute    invariant checks (loads, business rules) → returns a Plan
 //	────────── Run takes over ──────────
-//	apply      persist aggregate + write domain event + write audit log,
-//	           atomically in one transaction
+//	apply      persist aggregate + write domain event + write the plan's
+//	           dispatch jobs + write audit log, atomically in one transaction
 //
 // # What this guarantees, and how
 //
@@ -29,6 +29,18 @@
 //     [SaveAll] / [Sync], and the sole consumer is Run. There is no path to a
 //     persisted aggregate that does not also write the domain event and audit
 //     log in the same transaction.
+//
+// # Dispatch jobs
+//
+// A plan may also carry dispatch jobs, work the platform delivers to a URL
+// (framework write-path contract 7a):
+//
+//	return usecaseop.Save(inv, repo, event).Dispatch(exportJob, notifyJob), nil
+//
+// Run validates them before the transaction opens and writes them as
+// DISPATCH_JOB outbox rows after the event and before the audit row; see
+// [Plan] for the rules. The outbox processor sends them to
+// POST /api/dispatch-jobs/batch.
 //
 // The Plan seal is the Go-idiomatic replacement for the older
 // [usecase.Result] + internal/sealed token machinery: the unexported

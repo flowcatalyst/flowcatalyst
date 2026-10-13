@@ -26,6 +26,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outboxpgx"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/sync"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
 
@@ -219,6 +221,132 @@ func TestGoSDKOutboxRowsAgainstThePlatform(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx, `SELECT client_id FROM msg_dispatch_jobs WHERE correlation_id = 'corr-e2e'`).Scan(&jobClient))
 	assert.Equal(t, clientID, jobClient)
 }
+
+// A Go SDK use case whose plan carries dispatch jobs
+// (usecaseop.Emit(event).Dispatch(...)): its outbox rows, claimed in the
+// processor's order (message_group, created_at) and sent per type as one
+// {"items":[...]} batch, are accepted by the real routes. The jobs keep their
+// SDK ids, take the plan's correlation id, and a job naming its client by
+// identifier (clientCode, F14) lands on that client while one naming none is
+// unscoped.
+func TestGoSDKPlanDispatchJobsAgainstThePlatform(t *testing.T) {
+	srv, pool, bearer := goSDKPlatform(t)
+	ctx := context.Background()
+	const app = "gosdke2epl"
+	clientIdentifier := "gosdke2e-plan"
+	clientID := goSDKApp(t, pool, app, clientIdentifier)
+	require.NoError(t, outboxpgx.InitSchema(ctx, pool))
+	_, err := pool.Exec(ctx, `DELETE FROM outbox_messages`)
+	require.NoError(t, err)
+
+	corr := "corr-plan-" + strings.ToLower(tsid.GenerateUntyped())
+	ec := usecase.WithCorrelation("prn_e2e", corr)
+	ev := e2ePlanEvent{id: tsid.GenerateUntyped(), corr: corr}
+	scopedID := tsid.GenerateUntyped()
+	scoped := outbox.NewDispatchJob(app+":billing:export", "https://billing.example.com/export").
+		WithID(scopedID).WithClientCode(clientIdentifier).WithEventID(ev.id).WithMessageGroup("billing:inv_1")
+	unscoped, err := outbox.NewDispatchJob(app+":notify", "https://hooks.example.com/n").
+		WithJSONPayload(map[string]string{"orderId": "ord_1"})
+	require.NoError(t, err)
+
+	op := usecaseop.Operation[struct{}, e2ePlanEvent]{
+		Name:      "e2e-plan",
+		Authorize: usecaseop.Public[struct{}],
+		Execute: func(context.Context, struct{}, usecase.ExecutionContext) (usecaseop.Plan[e2ePlanEvent], error) {
+			return usecaseop.Emit(ev).Dispatch(scoped, unscoped), nil
+		},
+	}
+	sink := outboxpgx.NewSink(outboxpgx.Config{ClientCode: clientIdentifier, AuditEnabled: true, ApplicationCode: app})
+	_, err = usecaseop.Run(ctx, usecasepgx.New(pool, sink), op, struct{}{}, ec)
+	require.NoError(t, err)
+
+	rows, err := pool.Query(ctx, `SELECT id, type, payload FROM outbox_messages WHERE status = 0 ORDER BY message_group, created_at`)
+	require.NoError(t, err)
+	byType := map[string][]string{}
+	var jobIDs []string
+	for rows.Next() {
+		var id, typ, payload string
+		require.NoError(t, rows.Scan(&id, &typ, &payload))
+		byType[typ] = append(byType[typ], payload)
+		if typ == "DISPATCH_JOB" {
+			jobIDs = append(jobIDs, id)
+		}
+	}
+	rows.Close()
+	require.Len(t, byType["EVENT"], 1)
+	require.Len(t, byType["DISPATCH_JOB"], 2)
+	require.Len(t, byType["AUDIT_LOG"], 1)
+
+	endpoint := map[string]string{
+		"EVENT": "/api/events/batch", "AUDIT_LOG": "/api/audit-logs/batch", "DISPATCH_JOB": "/api/dispatch-jobs/batch",
+	}
+	for typ, payloads := range byType {
+		req, err := http.NewRequest(http.MethodPost, srv.URL+endpoint[typ], strings.NewReader(`{"items":[`+strings.Join(payloads, ",")+`]}`))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		require.Less(t, resp.StatusCode, 300, "%s: %d %s", typ, resp.StatusCode, body)
+		var res struct {
+			Results []struct{ ID, Status, Error string } `json:"results"`
+		}
+		require.NoError(t, json.Unmarshal(body, &res), string(body))
+		require.Len(t, res.Results, len(payloads), typ)
+		for i, r := range res.Results {
+			require.Equal(t, "SUCCESS", r.Status, "%s item %d: %s", typ, i, r.Error)
+			if typ == "DISPATCH_JOB" {
+				assert.Equal(t, jobIDs[i], r.ID, "the job keeps the id the SDK gave it")
+			}
+		}
+	}
+
+	type job struct {
+		id, kind, code    string
+		clientID, eventID *string
+	}
+	jr, err := pool.Query(ctx, `SELECT id, kind, code, client_id, event_id FROM msg_dispatch_jobs WHERE correlation_id = $1`, corr)
+	require.NoError(t, err)
+	got := map[string]job{}
+	for jr.Next() {
+		var j job
+		require.NoError(t, jr.Scan(&j.id, &j.kind, &j.code, &j.clientID, &j.eventID))
+		got[j.code] = j
+	}
+	jr.Close()
+	require.Len(t, got, 2, "both jobs carry the plan's correlation id")
+	s := got[app+":billing:export"]
+	assert.Equal(t, scopedID, s.id)
+	assert.Equal(t, "TASK", s.kind)
+	require.NotNil(t, s.clientID, "clientCode resolved (F14)")
+	assert.Equal(t, clientID, *s.clientID)
+	require.NotNil(t, s.eventID)
+	assert.Equal(t, ev.id, *s.eventID)
+	u := got[app+":notify"]
+	assert.Contains(t, jobIDs, u.id)
+	assert.Nil(t, u.clientID, "a job naming no client is unscoped; the sink's clientCode is not inherited")
+
+	var evClient string
+	require.NoError(t, pool.QueryRow(ctx, `SELECT client_id FROM msg_events WHERE deduplication_id = $1`, ev.id).Scan(&evClient))
+	assert.Equal(t, clientID, evClient)
+}
+
+type e2ePlanEvent struct{ id, corr string }
+
+func (e e2ePlanEvent) EventID() string           { return e.id }
+func (e2ePlanEvent) EventType() string           { return "gosdke2epl:sales:order:placed" }
+func (e2ePlanEvent) SpecVersion() string         { return "1.0" }
+func (e2ePlanEvent) Source() string              { return "gosdke2epl:sales" }
+func (e2ePlanEvent) Subject() string             { return "sales.order.ord_1" }
+func (e2ePlanEvent) Time() time.Time             { return time.Now() }
+func (e2ePlanEvent) PrincipalID() string         { return "prn_e2e" }
+func (e e2ePlanEvent) CorrelationID() string     { return e.corr }
+func (e2ePlanEvent) CausationID() string         { return "" }
+func (e2ePlanEvent) ExecutionID() string         { return "" }
+func (e2ePlanEvent) MessageGroup() string        { return "sales:order:ord_1" }
+func (e2ePlanEvent) ToDataJSON() ([]byte, error) { return []byte(`{"orderId":"ord_1"}`), nil }
 
 type e2eEvent struct{ id string }
 
