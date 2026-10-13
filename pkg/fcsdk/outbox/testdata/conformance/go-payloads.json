@@ -1,0 +1,72 @@
+[
+  {
+    "case": "one event and its audit row, every context field",
+    "row": 0,
+    "type": "EVENT",
+    "payloadSize": 556,
+    "payloadText": "{\"specVersion\":\"1.0\",\"type\":\"shop:sales:order:placed\",\"source\":\"shop:sales\",\"subject\":\"sales.order.ord_0ABCDEFGHJKMN\",\"data\":{\"orderId\":\"ord_0ABCDEFGHJKMN\",\"customer\":\"Acme \\\"Ltd\\\" / ünïcode\",\"lines\":[{\"sku\":\"A-1\",\"quantity\":2},{\"sku\":\"B-2\",\"quantity\":1}],\"totalCents\":4250,\"placedAt\":\"2026-10-08T10:15:30.123Z\"},\"correlationId\":\"corr-1\",\"causationId\":\"evt-0\",\"deduplicationId\":\"0ABCDEFGHJKMN\",\"messageGroup\":\"sales:order:ord_0ABCDEFGHJKMN\",\"clientCode\":\"acme\",\"contextData\":[{\"key\":\"principalId\",\"value\":\"user-1\"},{\"key\":\"executionId\",\"value\":\"run-7\"}]}"
+  },
+  {
+    "case": "one event and its audit row, every context field",
+    "row": 1,
+    "type": "AUDIT_LOG",
+    "payloadSize": 281,
+    "payloadText": "{\"entityType\":\"Order\",\"entityId\":\"ord_0ABCDEFGHJKMN\",\"operation\":\"place-order\",\"operationData\":{\"customer\":\"Acme\",\"lines\":2},\"principalId\":\"user-1\",\"performedAt\":\"2026-10-08T10:15:30.123Z\",\"source\":\"shop:sales\",\"correlationId\":\"corr-1\",\"applicationCode\":\"shop\",\"clientCode\":\"acme\"}"
+  },
+  {
+    "case": "the smallest context, two events in step order, a message group override, no audit data",
+    "row": 0,
+    "type": "EVENT",
+    "payloadSize": 360,
+    "payloadText": "{\"specVersion\":\"1.0\",\"type\":\"shop:sales:order:placed\",\"source\":\"shop:sales\",\"subject\":\"sales.order.ord_1\",\"data\":{\"orderId\":\"ord_1\",\"customer\":\"Beta\",\"lines\":[],\"totalCents\":0,\"note\":\"rush\",\"placedAt\":\"2026-10-08T10:15:30.000123Z\"},\"correlationId\":\"corr-2\",\"deduplicationId\":\"0ABCDEFGHJKMP\",\"messageGroup\":\"sales:order:ord_1\",\"clientCode\":\"client.with-dots_1\"}"
+  },
+  {
+    "case": "the smallest context, two events in step order, a message group override, no audit data",
+    "row": 1,
+    "type": "EVENT",
+    "payloadSize": 281,
+    "payloadText": "{\"specVersion\":\"1.0\",\"type\":\"shop:sales:order:cancelled\",\"source\":\"shop:sales\",\"subject\":\"sales.order.ord_1\",\"data\":{\"orderId\":\"ord_1\",\"reason\":\"changed mind\"},\"correlationId\":\"corr-2\",\"deduplicationId\":\"0ABCDEFGHJKMQ\",\"messageGroup\":\"orders:all\",\"clientCode\":\"client.with-dots_1\"}"
+  },
+  {
+    "case": "the smallest context, two events in step order, a message group override, no audit data",
+    "row": 2,
+    "type": "AUDIT_LOG",
+    "payloadSize": 186,
+    "payloadText": "{\"entityType\":\"Order\",\"entityId\":\"ord_1\",\"operation\":\"cancel-order\",\"performedAt\":\"2026-10-08T10:15:30Z\",\"source\":\"shop:sales\",\"correlationId\":\"corr-2\",\"clientCode\":\"client.with-dots_1\"}"
+  },
+  {
+    "case": "dispatch jobs: defaults, then every optional field",
+    "row": 0,
+    "type": "EVENT",
+    "payloadSize": 340,
+    "payloadText": "{\"specVersion\":\"1.0\",\"type\":\"shop:billing:invoice:cancelled\",\"source\":\"shop:billing\",\"subject\":\"billing.invoice.inv_9\",\"data\":{\"orderId\":\"ord_9\",\"reason\":\"duplicate\"},\"correlationId\":\"corr-3\",\"deduplicationId\":\"0ABCDEFGHJKMR\",\"messageGroup\":\"billing:invoice:inv_9\",\"clientCode\":\"acme\",\"contextData\":[{\"key\":\"principalId\",\"value\":\"user-1\"}]}"
+  },
+  {
+    "case": "dispatch jobs: defaults, then every optional field",
+    "row": 1,
+    "type": "DISPATCH_JOB",
+    "payloadSize": 234,
+    "payloadText": "{\"id\":\"job-defaults\",\"kind\":\"TASK\",\"code\":\"shop:billing:export-invoice\",\"source\":\"shop\",\"targetUrl\":\"https://billing.example.com/export\",\"payload\":\"{}\",\"payloadContentType\":\"application/json\",\"dataOnly\":false,\"correlationId\":\"corr-3\"}"
+  },
+  {
+    "case": "dispatch jobs: defaults, then every optional field",
+    "row": 2,
+    "type": "DISPATCH_JOB",
+    "payloadSize": 705,
+    "payloadText": "{\"id\":\"job-full\",\"kind\":\"EVENT\",\"code\":\"shop:billing:export-invoice\",\"source\":\"shop:billing\",\"subject\":\"billing.invoice.inv_9\",\"targetUrl\":\"https://billing.example.com/export?x=1\",\"payload\":\"{\\\"invoiceId\\\":\\\"inv_9\\\",\\\"amounts\\\":[1,2]}\",\"payloadContentType\":\"application/json\",\"dataOnly\":true,\"externalId\":\"ext-1\",\"eventId\":\"0ABCDEFGHJKMR\",\"correlationId\":\"corr-3\",\"clientId\":\"0CLIENT0000001\",\"subscriptionId\":\"sub_1\",\"serviceAccountId\":\"sa_1\",\"dispatchPoolId\":\"pool_1\",\"messageGroup\":\"invoice:inv_9\",\"mode\":\"BLOCK_ON_ERROR\",\"sequence\":2,\"timeoutSeconds\":15,\"maxRetries\":4,\"metadata\":[{\"key\":\"tenant\",\"value\":\"acme\"},{\"key\":\"attempt\",\"value\":\"1\"}],\"queue\":\"HIGH_PRIORITY\",\"descriptor\":\"export one invoice\"}"
+  },
+  {
+    "case": "dispatch jobs: defaults, then every optional field",
+    "row": 3,
+    "type": "DISPATCH_JOB",
+    "payloadSize": 208,
+    "payloadText": "{\"id\":\"job-text\",\"kind\":\"TASK\",\"code\":\"shop:notify\",\"source\":\"shop\",\"targetUrl\":\"http://hooks.example.com:8080/n\",\"payload\":\"hello\",\"payloadContentType\":\"text/plain\",\"dataOnly\":false,\"correlationId\":\"corr-3\"}"
+  },
+  {
+    "case": "dispatch jobs: defaults, then every optional field",
+    "row": 4,
+    "type": "AUDIT_LOG",
+    "payloadSize": 205,
+    "payloadText": "{\"entityType\":\"Invoice\",\"entityId\":\"inv_9\",\"operation\":\"cancel-invoice\",\"principalId\":\"user-1\",\"performedAt\":\"2026-10-08T10:15:31.500Z\",\"source\":\"shop:billing\",\"correlationId\":\"corr-3\",\"clientCode\":\"acme\"}"
+  }
+]

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outbox"
 )
 
 type webhookCmd struct {
@@ -14,14 +16,14 @@ type webhookCmd struct {
 // The outbox audit payload never carries a secret: the command is redacted
 // before it is serialised into the row an app's outbox relays to the platform.
 func TestAuditPayloadIsRedactedBeforeItReachesTheOutbox(t *testing.T) {
-	payload, err := buildAuditPayload(testEvent{}, webhookCmd{
+	row, err := outbox.AuditRow(NewSink(Config{AuditEnabled: true}).rowConfig(), testEvent{}, webhookCmd{
 		Code:               "sa-1",
 		WebhookCredentials: map[string]string{"token": "leaked-token", "signingSecret": "leaked-secret", "authType": "HMAC_SIGNATURE"},
-	}, "")
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := string(payload)
+	s := string(row.Payload)
 	for _, leak := range []string{"leaked-token", "leaked-secret"} {
 		if strings.Contains(s, leak) {
 			t.Fatalf("%s reached the outbox payload: %s", leak, s)
@@ -32,7 +34,7 @@ func TestAuditPayloadIsRedactedBeforeItReachesTheOutbox(t *testing.T) {
 	}
 }
 
-// testEvent is the smallest DomainEvent the audit payload builder reads.
+// testEvent is the smallest DomainEvent the payload builders read.
 type testEvent struct{}
 
 func (testEvent) EventID() string             { return "evt_test" }

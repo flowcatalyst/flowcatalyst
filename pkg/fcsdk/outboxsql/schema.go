@@ -1,9 +1,10 @@
-// Package outboxsql provides the outbox-table DDL for consumer apps
-// running against database/sql, for both Postgres (any driver: lib/pq,
-// pgx/stdlib, etc.) and MySQL (go-sql-driver/mysql). [InitSchema] (and
-// the [CreateOutboxTableSQLPostgres] / [CreateOutboxTableSQLMySQL]
-// constants it dispatches on) create the outbox_messages table an
-// outbox processor then drains.
+// Package outboxsql is the outbox for consumer apps running against
+// database/sql, for both Postgres (any driver: lib/pq, pgx/stdlib, etc.)
+// and MySQL (go-sql-driver/mysql). [InitSchema] (and the
+// [CreateOutboxTableSQLPostgres] / [CreateOutboxTableSQLMySQL] constants it
+// dispatches on) create the outbox_messages table an outbox processor then
+// drains; [Writer] writes event, audit-log and dispatch-job rows into it
+// inside the caller's transaction, the same rows outboxpgx writes.
 package outboxsql
 
 import (

@@ -2,10 +2,11 @@ package outboxpgx
 
 import (
 	"context"
-	"encoding/json"
-	"reflect"
+	"time"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outbox"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
@@ -14,8 +15,17 @@ import (
 type Config struct {
 	// TableName is the outbox table. Default: "outbox_messages".
 	TableName string
-	// ClientID scopes outbox rows to a tenant. May be empty.
+	// ClientID is stored in every row's client_id column. May be empty. The
+	// outbox processor does not read it.
 	ClientID string
+	// ClientCode is the client's identifier slug, sent as clientCode in
+	// event and audit payloads so the platform attributes them to that
+	// client. The platform refuses a code the credential cannot reach (403
+	// for the whole batch); empty leaves it out, and the platform then scopes
+	// by the credential (an anchor writes platform-scoped events, a
+	// single-client credential its own client). A domain event implementing
+	// outbox.ClientCoded overrides it.
+	ClientCode string
 	// AuditEnabled writes audit log rows alongside every event. The
 	// platform always audits its control plane writes; consumer apps
 	// should only enable this for admin / human-initiated operations,
@@ -27,18 +37,21 @@ type Config struct {
 	// application-scoped (an application's own service account), and
 	// refuses the row otherwise.
 	ApplicationCode string
+	// Now is the clock for created_at/updated_at. Default time.Now.
+	Now func() time.Time
 }
 
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() Config {
 	return Config{
-		TableName:    "outbox_messages",
+		TableName:    outbox.DefaultTable,
 		AuditEnabled: false,
 	}
 }
 
-// Sink writes domain events and audit logs to the outbox_messages
-// table. Satisfies usecasepgx.Sink.
+// Sink writes domain events, audit logs and dispatch jobs to the
+// outbox_messages table. Satisfies usecasepgx.Sink. The rows and their
+// payloads are built by package outbox (the shared outbox contract).
 type Sink struct {
 	cfg Config
 }
@@ -47,7 +60,7 @@ type Sink struct {
 // "outbox_messages".
 func NewSink(cfg Config) *Sink {
 	if cfg.TableName == "" {
-		cfg.TableName = "outbox_messages"
+		cfg.TableName = outbox.DefaultTable
 	}
 	return &Sink{cfg: cfg}
 }
@@ -55,22 +68,21 @@ func NewSink(cfg Config) *Sink {
 // Compile-time check that *Sink satisfies usecasepgx.Sink.
 var _ usecasepgx.Sink = (*Sink)(nil)
 
-// WriteEvent inserts an EVENT row into outbox_messages.
+func (s *Sink) rowConfig() outbox.Config {
+	return outbox.Config{
+		ClientID: s.cfg.ClientID, ClientCode: s.cfg.ClientCode,
+		ApplicationCode: s.cfg.ApplicationCode, Now: s.cfg.Now,
+	}
+}
+
+// WriteEvent inserts an EVENT row into outbox_messages. The row id is the
+// event id (also the payload's deduplicationId).
 func (s *Sink) WriteEvent(ctx context.Context, tx *usecasepgx.DbTx, event usecase.DomainEvent) error {
-	payload, err := buildEventPayload(event)
+	row, err := outbox.EventRow(s.rowConfig(), event)
 	if err != nil {
 		return err
 	}
-	payloadStr := string(payload)
-
-	id := newOutboxID()
-	mg := event.MessageGroup()
-
-	query := "INSERT INTO " + s.cfg.TableName + ` (id, type, message_group, payload, status, retry_count, created_at, updated_at, client_id, payload_size)
-VALUES ($1, 'EVENT', $2, $3, 0, 0, NOW(), NOW(), $4, $5)`
-
-	_, err = tx.Inner().Exec(ctx, query, id, nullableString(mg), payloadStr, nullableString(s.cfg.ClientID), len(payloadStr))
-	return err
+	return s.insert(ctx, tx.Inner(), row)
 }
 
 // WriteAudit inserts an AUDIT_LOG row into outbox_messages, if audit
@@ -79,102 +91,31 @@ func (s *Sink) WriteAudit(ctx context.Context, tx *usecasepgx.DbTx, event usecas
 	if !s.cfg.AuditEnabled {
 		return nil
 	}
-	payload, err := buildAuditPayload(event, command, s.cfg.ApplicationCode)
+	row, err := outbox.AuditRow(s.rowConfig(), event, command)
 	if err != nil {
 		return err
 	}
-	payloadStr := string(payload)
+	return s.insert(ctx, tx.Inner(), row)
+}
 
-	id := newOutboxID()
-	mg := event.MessageGroup()
+// WriteDispatchJob validates job and inserts its DISPATCH_JOB row (the
+// platform's outbox processor delivers it to POST /api/dispatch-jobs/batch).
+// Call it inside the transaction of the work that asks for the job, for
+// example from usecasepgx.Run through TxScopedUnitOfWork.WithTx. The row id
+// is the job id (generated when the job has none).
+func (s *Sink) WriteDispatchJob(ctx context.Context, tx pgx.Tx, job outbox.DispatchJob) error {
+	row, err := outbox.DispatchJobRow(s.rowConfig(), job)
+	if err != nil {
+		return err
+	}
+	return s.insert(ctx, tx, row)
+}
 
-	query := "INSERT INTO " + s.cfg.TableName + ` (id, type, message_group, payload, status, retry_count, created_at, updated_at, client_id, payload_size)
-VALUES ($1, 'AUDIT_LOG', $2, $3, 0, 0, NOW(), NOW(), $4, $5)`
-
-	_, err = tx.Inner().Exec(ctx, query, id, nullableString(mg), payloadStr, nullableString(s.cfg.ClientID), len(payloadStr))
+func (s *Sink) insert(ctx context.Context, tx pgx.Tx, row outbox.Row) error {
+	stmt, err := outbox.InsertStatement(s.cfg.TableName, outbox.PlaceholderDollar)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, stmt, row.Args()...)
 	return err
-}
-
-// buildEventPayload serializes a domain event into the JSON the outbox
-// processor sends to POST /api/events/batch. Its snake_case members are the
-// aliases that endpoint accepts beside the camelCase ones the other SDKs
-// write; data is the object itself (the other SDKs send it JSON-encoded as a
-// string, which the platform unwraps at ingest).
-func buildEventPayload(event usecase.DomainEvent) ([]byte, error) {
-	data, err := event.ToDataJSON()
-	if err != nil {
-		return nil, err
-	}
-	var dataAny any
-	if len(data) == 0 {
-		dataAny = map[string]any{}
-	} else if err := json.Unmarshal(data, &dataAny); err != nil {
-		// If the event's ToDataJSON returns non-object JSON, store it as-is.
-		dataAny = map[string]any{}
-	}
-
-	payload := map[string]any{
-		"event_type":       event.EventType(),
-		"spec_version":     event.SpecVersion(),
-		"source":           event.Source(),
-		"subject":          event.Subject(),
-		"data":             dataAny,
-		"correlation_id":   event.CorrelationID(),
-		"causation_id":     event.CausationID(),
-		"deduplication_id": event.EventType() + "-" + event.EventID(),
-		"message_group":    event.MessageGroup(),
-		"context_data": []map[string]string{
-			{"key": "principalId", "value": event.PrincipalID()},
-			{"key": "aggregateType", "value": usecase.ExtractAggregateType(event.Subject())},
-		},
-	}
-	return json.Marshal(payload)
-}
-
-// buildAuditPayload serializes an audit log row in the shape
-// POST /api/audit-logs/batch reads (its AuditBatchItem, camelCase only):
-// entityType, entityId, operation, operationData (the redacted command, as
-// an object), principalId, performedAt (RFC 3339) and, when configured,
-// applicationCode. The platform refuses a row without principalId.
-func buildAuditPayload(event usecase.DomainEvent, command any, applicationCode string) ([]byte, error) {
-	// Redacted before it reaches the outbox (usecase.RedactAuditJSON).
-	cmdJSON, err := usecase.RedactedAuditCommand(command)
-	if err != nil {
-		return nil, err
-	}
-
-	cmdName := "Unknown"
-	if command != nil {
-		t := reflect.TypeOf(command)
-		if t.Kind() == reflect.Pointer {
-			t = t.Elem()
-		}
-		if t.Name() != "" {
-			cmdName = t.Name()
-		}
-	}
-
-	payload := map[string]any{
-		"entityType":    usecase.ExtractAggregateType(event.Subject()),
-		"entityId":      usecase.ExtractEntityID(event.Subject()),
-		"operation":     cmdName,
-		"operationData": json.RawMessage(cmdJSON),
-		"principalId":   event.PrincipalID(),
-		"performedAt":   event.Time().UTC().Format("2006-01-02T15:04:05.000000000Z07:00"),
-	}
-	if applicationCode != "" {
-		payload["applicationCode"] = applicationCode
-	}
-	return json.Marshal(payload)
-}
-
-// newOutboxID returns a 13-char Crockford Base32 TSID, so all
-// SDKs produce identical wire IDs for outbox rows.
-func newOutboxID() string { return tsid.GenerateUntyped() }
-
-func nullableString(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
 }

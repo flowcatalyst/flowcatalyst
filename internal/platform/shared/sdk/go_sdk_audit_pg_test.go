@@ -113,3 +113,28 @@ func TestAuditBatchIngest_AcceptsTheGoSDKOutboxRow(t *testing.T) {
 		assert.NotContains(t, k, "_", "camelCase members only")
 	}
 }
+
+// Audit rows the Go SDK wrote before it followed the shared outbox vector
+// (69857fb..2026-10-13: no source/correlationId/clientCode, performedAt with
+// nine fraction digits) still sit in applications' outboxes; the endpoint
+// still accepts them. The current rows add source and correlationId (ignored
+// by the endpoint) and clientCode.
+func TestAuditBatchIngest_AcceptsLegacyGoSDKOutboxRows(t *testing.T) {
+	legacy := `{"entityType":"Order","entityId":"ord_1","operation":"placeOrderCommand",` +
+		`"operationData":{"orderId":"ord_1","password":"***"},"principalId":"prn_0HZXEQ5Y8JY5A",` +
+		`"performedAt":"2026-10-12T09:30:00.123456789Z"}`
+	current := goSDKOutboxPayload(t, outboxpgx.Config{AuditEnabled: true},
+		func(ctx context.Context, s *outboxpgx.Sink, tx *usecasepgx.DbTx) error {
+			return s.WriteAudit(ctx, tx, goSDKEvent{}, placeOrderCommand{OrderID: "ord_1", Password: "hunter2"})
+		})
+	assert.Contains(t, current, `"source":"gosdkaud:sales"`)
+	assert.Contains(t, current, `"performedAt":"2026-10-12T09:30:00.123456789Z"`)
+
+	srv, _ := newAuditBatchServer(t, &auth.AuthContext{
+		PrincipalID: "prn_gosdk_legacy", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:*:*:*"},
+	})
+	res := postAuditItems(t, srv.URL, legacy, current)
+	for i, r := range res {
+		require.Equal(t, "SUCCESS", r.Status, "item %d: %s", i, r.Error)
+	}
+}

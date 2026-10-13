@@ -271,6 +271,22 @@ Not changed: the singular `POST /api/events` (it receives the value itself),
 dispatch-job `payload` (a string by contract, with `payloadContentType`), and
 function-emitted events.
 
+**Go SDK outbox rows.** Since 2026-10-13 the Go SDK (`pkg/fcsdk/outbox`, used
+by `outboxpgx` and `outboxsql`) writes the batch endpoints' camelCase items,
+held to the framework's outbox conformance vector (copied in
+`pkg/fcsdk/outbox/testdata/conformance`): the row id and `deduplicationId`
+are the event id, `clientCode` comes from the writer's configuration (or the
+event), `source` is left out when the event has none, `contextData` carries
+`principalId` and `executionId`, and `data`/`operationData` are the value
+itself (never encoded). It also writes `DISPATCH_JOB` rows (`clientCode`
+optional, F14). Rows the Go SDK wrote before then are snake_case
+(`event_type`, `spec_version`, `correlation_id`, `deduplication_id` =
+`<type>-<id>`, `message_group`, `context_data`, ...) and may still be pending
+in applications' outbox tables: `POST /api/events/batch` keeps reading those
+aliases (`BatchEventItem.UnmarshalJSON`), pinned by
+`internal/platform/event/api/go_sdk_wire_shapes_pg_test.go`. Do not drop the
+aliases while such rows can exist.
+
 ## SDK ingest: client and source
 
 Owner rulings 2026-10-12 (`docs/platform-bug-fixes.md` F14;

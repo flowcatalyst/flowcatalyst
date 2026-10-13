@@ -14,13 +14,19 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outboxpgx"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
 
 type goSDKEvent struct{}
 
-func (goSDKEvent) EventID() string       { return "0HZXEQ5Y8JY5Z" }
+// goSDKEventID is fresh per run: the SDK's deduplicationId is the event id,
+// and the batch endpoint drops an event whose deduplicationId is stored
+// (the Rust fixtures in this package use 0HZXEQ5Y8JY5Z).
+var goSDKEventID = tsid.GenerateUntyped()
+
+func (goSDKEvent) EventID() string       { return goSDKEventID }
 func (goSDKEvent) EventType() string     { return "gosdk:sales:order:placed" }
 func (goSDKEvent) SpecVersion() string   { return "1.0" }
 func (goSDKEvent) Source() string        { return "gosdk:sales" }
@@ -35,9 +41,9 @@ func (goSDKEvent) ToDataJSON() ([]byte, error) {
 	return []byte(`{"orderId":"ord_1","lines":["a"]}`), nil
 }
 
-// F13: the Go SDK's outbox event (data sent as the object itself, snake_case
-// members) goes through POST /api/events/batch with its data stored as sent;
-// the unwrap at ingest leaves it alone.
+// F13: the Go SDK's outbox event (data sent as the object itself, the batch
+// item's camelCase members) goes through POST /api/events/batch with its data
+// stored as sent; the unwrap at ingest leaves it alone.
 func TestBatchIngest_GoSDKOutboxEventDataStoredAsSent(t *testing.T) {
 	ctx := anchorCtx()
 	pool := testpg.Pool(t)
