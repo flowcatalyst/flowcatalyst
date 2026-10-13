@@ -70,6 +70,12 @@ pub struct SyncResult {
     /// creates). Omitted by the platform when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub password_hash_ignored: Vec<String>,
+    /// Principal sync only: the role names that are not roles, so the
+    /// platform assigned them to no one (the rest of the sync applied).
+    /// Lower-cased, each once, in payload order. Omitted by the platform when
+    /// empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skipped_roles: Vec<String>,
 }
 
 // Re-export request/response DTOs at the module root.

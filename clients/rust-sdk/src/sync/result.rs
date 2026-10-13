@@ -28,6 +28,9 @@ pub struct CategorySyncResult {
     /// Principals only: the existing users (emails) whose `password_hash`
     /// the platform did not apply.
     pub password_hash_ignored: Vec<String>,
+    /// Principals only: the role names that are not roles, which the
+    /// platform did not assign.
+    pub skipped_roles: Vec<String>,
     pub error: Option<String>,
 }
 
@@ -194,6 +197,7 @@ mod tests {
             deleted,
             synced_codes: Vec::new(),
             password_hash_ignored: Vec::new(),
+            skipped_roles: Vec::new(),
             error: None,
         }
     }

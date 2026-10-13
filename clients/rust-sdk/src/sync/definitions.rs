@@ -675,13 +675,15 @@ mod tests {
 
         let result: SyncResult = serde_json::from_value(serde_json::json!({
             "applicationCode": "hr", "created": 0, "updated": 1, "deleted": 0,
-            "syncedCodes": ["a@example.com"], "passwordHashIgnored": ["a@example.com"]
+            "syncedCodes": ["a@example.com"], "passwordHashIgnored": ["a@example.com"],
+            "skippedRoles": ["hr:not-yet-synced"]
         }))
         .unwrap();
         assert_eq!(
             result.password_hash_ignored,
             vec!["a@example.com".to_string()]
         );
+        assert_eq!(result.skipped_roles, vec!["hr:not-yet-synced".to_string()]);
 
         let omitted: SyncResult = serde_json::from_value(serde_json::json!({
             "applicationCode": "hr", "created": 1, "updated": 0, "deleted": 0,
@@ -689,6 +691,7 @@ mod tests {
         }))
         .unwrap();
         assert!(omitted.password_hash_ignored.is_empty());
+        assert!(omitted.skipped_roles.is_empty());
     }
 
     #[test]

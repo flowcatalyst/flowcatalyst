@@ -186,7 +186,9 @@ and `synced_codes` no longer includes archived codes. Principal role names
 without `app:` are prefixed with the application (Go stores names verbatim,
 contrary to fc-sdk's and the Java SDK's docs). `passwordHashIgnored` is read:
 the platform stores a `passwordHash` only on a user the sync creates and
-reports the others there (Go F13, as Java and Rust).
+reports the others there (Go F13, as Java and Rust). `skippedRoles` is read:
+the Go platform assigns no role name that is not a role and reports it there,
+the rest of the sync applying (Go F15).
 `SyncResult::into_result()` turns any failed category into an error.
 
 ## Wire-contract ambiguities found

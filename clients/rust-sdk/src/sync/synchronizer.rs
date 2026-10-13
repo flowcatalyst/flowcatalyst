@@ -439,6 +439,7 @@ impl DefinitionSynchronizer {
                     deleted: 0,
                     synced_codes: vec![r.version],
                     password_hash_ignored: Vec::new(),
+                    skipped_roles: Vec::new(),
                     error: None,
                 }
             }
@@ -454,6 +455,7 @@ fn from_wire(r: WireSyncResult) -> CategorySyncResult {
         deleted: r.deleted,
         synced_codes: r.synced_codes,
         password_hash_ignored: r.password_hash_ignored,
+        skipped_roles: r.skipped_roles,
         error: None,
     }
 }
