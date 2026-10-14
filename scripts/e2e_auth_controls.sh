@@ -13,6 +13,9 @@
 set -uo pipefail
 BASE=${BASE:-http://localhost:8080}
 PASS=0 FAIL=0
+# Cookie-authenticated writes must carry provenance (Origin matching the host) or
+# the platform refuses them 403 CROSS_ORIGIN_REQUEST (F16). Browsers always send it.
+ORIGIN=${ORIGIN:-$BASE}
 
 check() { # desc, actual, expected
 	if [ "$2" = "$3" ]; then
@@ -27,9 +30,9 @@ code() {
 	local method=$1 path=$2 jar=$3 body=${4:-}
 	if [ -n "$body" ]; then
 		curl -s -o /dev/null -w '%{http_code}' -b "$jar" -X "$method" "$BASE$path" \
-			-H 'Content-Type: application/json' -d "$body"
+			-H "Origin: $ORIGIN" -H 'Content-Type: application/json' -d "$body"
 	else
-		curl -s -o /dev/null -w '%{http_code}' -b "$jar" -X "$method" "$BASE$path"
+		curl -s -o /dev/null -w '%{http_code}' -b "$jar" -X "$method" "$BASE$path" -H "Origin: $ORIGIN"
 	fi
 }
 
@@ -44,9 +47,9 @@ loginAs() {
 json() {
 	local method=$1 path=$2 jar=$3 body=${4:-}
 	if [ -n "$body" ]; then
-		curl -s -b "$jar" -X "$method" "$BASE$path" -H 'Content-Type: application/json' -d "$body"
+		curl -s -b "$jar" -X "$method" "$BASE$path" -H "Origin: $ORIGIN" -H 'Content-Type: application/json' -d "$body"
 	else
-		curl -s -b "$jar" -X "$method" "$BASE$path"
+		curl -s -b "$jar" -X "$method" "$BASE$path" -H "Origin: $ORIGIN"
 	fi
 }
 
