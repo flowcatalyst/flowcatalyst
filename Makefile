@@ -5,7 +5,7 @@
 	dump-spec api-bump api-diff release-dev sdk-spec sdk-generate \
 	release-ts-sdk release-laravel-sdk build-java-sdk release-java-sdk \
 	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk install-tools help \
-	test-go-sdk lint-go-sdk go-sdk-smoke release-go-sdk
+	test-go-sdk test-go-sdk-tests lint-go-sdk go-sdk-smoke release-go-sdk
 
 GO ?= go
 PNPM ?= pnpm
@@ -88,10 +88,17 @@ test-unit: ## Run unit tests (no DB required), the platform's and the Go SDK mod
 
 # The Go SDK (pkg/fcsdk) is its own module: `./...` at the root does not reach
 # it, so it has its own test/lint targets (also folded into test-unit / lint).
+# Its Postgres-backed tests live in a second nested module, pkg/fcsdk/tests
+# (embedded Postgres), so the SDK's own go.mod carries no test-only database
+# dependencies; test-go-sdk-tests runs it (part of test-integration).
 test-go-sdk: ## Build, vet and test the Go SDK module on its own (pkg/fcsdk)
 	$(GO) -C pkg/fcsdk build ./...
 	$(GO) -C pkg/fcsdk vet ./...
 	$(GO) -C pkg/fcsdk test -race ./...
+
+test-go-sdk-tests: ## Run the Go SDK's Postgres-backed tests (pkg/fcsdk/tests module, own embedded Postgres)
+	$(GO) -C pkg/fcsdk/tests vet ./...
+	$(GO) -C pkg/fcsdk/tests test -race -p 1 ./...
 
 go-sdk-smoke: ## Consume the Go SDK from a scratch module (local replace + `go get` via git tag)
 	@scripts/go-sdk-smoke.sh all
@@ -101,8 +108,7 @@ test-integration: ## Run integration tests (embedded Postgres via internal/testp
 	# embedded Postgres (internal/testpg.RunMain), and the first-ever run
 	# also downloads the postgres binaries — concurrent extraction races.
 	$(GO) test -race -p 1 -tags=integration ./...
-	# The Go SDK module's own (pkg/fcsdk/internal/pgtest, its own embedded Postgres).
-	$(GO) -C pkg/fcsdk test -race -p 1 -tags=integration ./...
+	$(MAKE) test-go-sdk-tests
 
 test-platform: ## Run platform package tests (no DB)
 	$(GO) test -race -short ./internal/platform/...
@@ -117,8 +123,9 @@ watch-test: ## Re-run unit tests on file changes (requires gotestsum)
 lint: lint-go-sdk ## Run golangci-lint (platform + Go SDK module)
 	golangci-lint run ./...
 
-lint-go-sdk: ## Run golangci-lint on the Go SDK module (pkg/fcsdk)
+lint-go-sdk: ## Run golangci-lint on the Go SDK module (pkg/fcsdk) and its tests module
 	cd pkg/fcsdk && golangci-lint run ./...
+	cd pkg/fcsdk/tests && golangci-lint run ./...
 
 lint-fix: ## Run golangci-lint with autofix
 	golangci-lint run --fix ./...
@@ -130,6 +137,7 @@ analyze: ## Run custom analyzers (UoW seal, id conversions)
 fmt: ## Format the codebase
 	$(GO) fmt ./...
 	$(GO) -C pkg/fcsdk fmt ./...
+	$(GO) -C pkg/fcsdk/tests fmt ./...
 	$(GO) tool goimports -w .
 
 fmt-check: ## Check formatting without writing (CI-style)

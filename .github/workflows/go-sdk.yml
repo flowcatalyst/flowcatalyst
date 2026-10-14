@@ -57,6 +57,30 @@ jobs:
       - name: Test
         run: go test -race ./...
 
+  # The Postgres-backed tests are their own nested module (pkg/fcsdk/tests) so
+  # the SDK's go.mod carries no embedded-postgres; it boots its own embedded
+  # Postgres, and requires the SDK through a local replace.
+  pg-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pkg/fcsdk/tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache: true
+          cache-dependency-path: pkg/fcsdk/tests/go.sum
+      - name: Verify go.mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+      - name: Vet
+        run: go vet ./...
+      - name: Test (embedded Postgres)
+        run: go test -race -p 1 ./...
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -74,6 +98,11 @@ jobs:
           version: latest
           install-mode: goinstall
           working-directory: pkg/fcsdk
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          install-mode: goinstall
+          working-directory: pkg/fcsdk/tests
 
   smoke:
     runs-on: ubuntu-latest

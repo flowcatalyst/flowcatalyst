@@ -1,6 +1,4 @@
-//go:build integration
-
-package usecaseop_test
+package tests
 
 import (
 	"context"
@@ -14,16 +12,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/internal/pgtest"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outbox"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outboxpgx"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tests/internal/pgtest"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
-
-func TestMain(m *testing.M) { pgtest.Main(m) }
 
 // ── fixtures ────────────────────────────────────────────────────────
 

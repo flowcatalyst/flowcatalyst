@@ -1,8 +1,7 @@
-//go:build integration
-
-// Package pgtest is the SDK module's embedded-Postgres fixture for
-// integration tests (build tag integration). Each test package that needs a
-// database boots one embedded Postgres in TestMain:
+// Package pgtest is the embedded-Postgres fixture of the SDK's tests module
+// (pkg/fcsdk/tests), which holds every test that needs a database so that the
+// SDK's own go.mod stays free of embedded-postgres. Each test package boots
+// one embedded Postgres in TestMain:
 //
 //	func TestMain(m *testing.M) { pgtest.Main(m) }
 //
@@ -33,6 +32,7 @@ import (
 var (
 	mu   sync.Mutex
 	base *pgxpool.Pool
+	dsn  string
 )
 
 // Main boots embedded Postgres, runs the package's tests and stops it.
@@ -68,7 +68,8 @@ func run(m *testing.M) int {
 	}
 	defer func() { _ = pg.Stop() }()
 
-	p, err := pgxpool.New(ctx, fmt.Sprintf("postgresql://postgres:postgres@localhost:%d/fcsdk?sslmode=disable", port))
+	url := fmt.Sprintf("postgresql://postgres:postgres@localhost:%d/fcsdk?sslmode=disable", port)
+	p, err := pgxpool.New(ctx, url)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "pgtest: connect: %v\n", err)
 		return 1
@@ -77,6 +78,7 @@ func run(m *testing.M) int {
 
 	mu.Lock()
 	base = p
+	dsn = url
 	mu.Unlock()
 	return m.Run()
 }
@@ -86,11 +88,19 @@ func run(m *testing.M) int {
 // ends.
 func Schema(t *testing.T) *pgxpool.Pool {
 	t.Helper()
+	p, _ := SchemaURL(t)
+	return p
+}
+
+// SchemaURL is Schema plus a connection URL whose search_path is the same
+// schema, for a program run as a child process.
+func SchemaURL(t *testing.T) (*pgxpool.Pool, string) {
+	t.Helper()
 	mu.Lock()
-	b := base
+	b, url := base, dsn
 	mu.Unlock()
 	if b == nil {
-		t.Fatal("pgtest: not started; add `func TestMain(m *testing.M) { pgtest.Main(m) }` to the package's integration test")
+		t.Fatal("pgtest: not started; add `func TestMain(m *testing.M) { pgtest.Main(m) }` to the package's tests")
 	}
 	ctx := context.Background()
 	name := "t_" + strings.ToLower(tsid.GenerateUntyped())
@@ -110,7 +120,7 @@ func Schema(t *testing.T) *pgxpool.Pool {
 	if err := outboxpgx.InitSchema(ctx, p); err != nil {
 		t.Fatalf("pgtest: outbox schema: %v", err)
 	}
-	return p
+	return p, url + "&options=-csearch_path%3D" + name
 }
 
 // Row is one outbox_messages row as stored.

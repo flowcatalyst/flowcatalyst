@@ -100,6 +100,9 @@ EOF
 		for f in go.mod LICENSE NOTICE README.md; do
 			test -f "$sdk_dir/$f" || { echo "✗ module zip lacks $f" >&2; exit 1; }
 		done
+		# The tests module (pkg/fcsdk/tests, embedded Postgres) is a nested
+		# module of its own, so it is not in the SDK's zip.
+		test ! -e "$sdk_dir/tests" || { echo "✗ module zip contains the nested tests module" >&2; exit 1; }
 		go vet ./...
 		go build -o smoke . && ./smoke
 	)

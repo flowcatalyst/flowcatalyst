@@ -293,8 +293,10 @@ All of them build with `go build ./...` (CI does this).
 ## Developing the SDK
 
 From the repository root: `make test-go-sdk` (build, vet, race tests;
-`go test -race -tags=integration ./...` in `pkg/fcsdk` adds the tests that
-run on an embedded Postgres, `internal/pgtest`),
+the tests that need a database live in the nested module `pkg/fcsdk/tests`,
+which boots its own embedded Postgres and keeps `embedded-postgres` out of
+the SDK's `go.mod`: `make test-go-sdk-tests`, or `go test ./...` in that
+directory),
 `make lint-go-sdk`, `make go-sdk-smoke` (a scratch module consumes the SDK
 through a local `replace` and through `go get` of a git tag), and
 `RELEASE_DRY_RUN=1 make release-go-sdk BUMP=0.1.0`. The platform module uses
