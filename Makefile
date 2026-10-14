@@ -5,7 +5,7 @@
 	dump-spec api-bump api-diff release-dev sdk-spec sdk-generate \
 	release-ts-sdk release-laravel-sdk build-java-sdk release-java-sdk \
 	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk install-tools help \
-	test-go-sdk test-go-sdk-tests lint-go-sdk go-sdk-smoke release-go-sdk
+	test-go-sdk test-go-sdk-tests lint-go-sdk go-sdk-smoke release-go-sdk e2e-platform
 
 GO ?= go
 PNPM ?= pnpm
@@ -102,6 +102,9 @@ test-go-sdk-tests: ## Run the Go SDK's Postgres-backed tests (pkg/fcsdk/tests mo
 
 go-sdk-smoke: ## Consume the Go SDK from a scratch module (local replace + `go get` via git tag)
 	@scripts/go-sdk-smoke.sh all
+
+e2e-platform: ## Isolated platform for app end-to-end checks; CMD=up|down|status|env|verify|drop (docs/e2e-platform.md)
+	@scripts/e2e-platform.sh $(or $(CMD),up)
 
 test-integration: ## Run integration tests (embedded Postgres via internal/testpg)
 	# -p 1 serializes test binaries: each integration package boots its own
