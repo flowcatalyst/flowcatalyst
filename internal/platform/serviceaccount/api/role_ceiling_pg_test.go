@@ -47,6 +47,7 @@ func TestServiceAccountRoles_BoundedByCallersPermissions(t *testing.T) {
 
 	mkRole := func(name string, perms ...string) string {
 		t.Helper()
+		testpg.EnsureApplication(t, "ceilsa")
 		ev, err := usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(roles),
 			roleops.CreateCommand{ApplicationCode: "ceilsa", RoleName: name, DisplayName: name, Permissions: perms},
 			testpg.TestEC())
@@ -93,7 +94,7 @@ func TestServiceAccountRoles_BoundedByCallersPermissions(t *testing.T) {
 		require.NoError(t, err)
 		out := []string{}
 		for _, ra := range p.Roles {
-			out = append(out, ra.Role)
+			out = append(out, ra.Role.String())
 		}
 		return out
 	}

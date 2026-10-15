@@ -50,6 +50,7 @@ func appAccessCtx() context.Context {
 // assert table-wide.
 func mustCreate(t *testing.T, repo *role.Repository, uow *usecasepgx.UnitOfWork, appCode, roleName, displayName string, perms ...string) operations.RoleCreated {
 	t.Helper()
+	testpg.EnsureApplication(t, appCode)
 	ev, err := runAuthorized(uow, operations.CreateRole(repo), operations.CreateCommand{
 		ApplicationCode: appCode,
 		RoleName:        roleName,
@@ -104,6 +105,7 @@ func TestCreateRole_HappyPath(t *testing.T) {
 	ctx := context.Background()
 	repo := role.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
+	testpg.EnsureApplication(t, "rolecrt")
 
 	ev, err := runAuthorized(uow, operations.CreateRole(repo), operations.CreateCommand{
 		ApplicationCode: "rolecrt",

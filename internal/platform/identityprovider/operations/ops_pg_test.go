@@ -4,6 +4,7 @@ package operations_test
 
 import (
 	"context"
+	fcrole "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"testing"
 	"time"
 
@@ -631,8 +632,8 @@ func TestUpdateIdentityProvider_DomainRemovalResetsOidcUsers(t *testing.T) {
 	adminSrc := "ADMIN_ASSIGNED"
 	now := time.Now().UTC()
 	user.Roles = []serviceaccount.RoleAssignment{
-		{Role: "idpmove:synced-role", AssignmentSource: &idpSync, AssignedAt: now},
-		{Role: "idpmove:admin-role", AssignmentSource: &adminSrc, AssignedAt: now},
+		{Role: fcrole.MustParseName("idpmove:synced-role"), AssignmentSource: &idpSync, AssignedAt: now},
+		{Role: fcrole.MustParseName("idpmove:admin-role"), AssignmentSource: &adminSrc, AssignedAt: now},
 	}
 	tx, err := pool.Begin(ctx)
 	require.NoError(t, err)
@@ -664,7 +665,7 @@ func TestUpdateIdentityProvider_DomainRemovalResetsOidcUsers(t *testing.T) {
 	assert.Nil(t, got.UserIdentity.ExternalID)
 	roleNames := make([]string, 0, len(got.Roles))
 	for _, ra := range got.Roles {
-		roleNames = append(roleNames, ra.Role)
+		roleNames = append(roleNames, ra.Role.String())
 	}
 	assert.ElementsMatch(t, []string{"idpmove:admin-role"}, roleNames, "IDP_SYNC roles dropped, admin roles kept")
 

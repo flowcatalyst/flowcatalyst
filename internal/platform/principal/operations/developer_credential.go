@@ -30,7 +30,7 @@ const developerRoleName = "platform:developer"
 // checking it here too means SetDeveloperCredential fails fast with a clear
 // error instead of silently minting a secret nothing can ever use.
 func hasRole(p *principal.Principal, roleName string) bool {
-	return slices.ContainsFunc(p.Roles, func(ra serviceaccount.RoleAssignment) bool { return ra.Role == roleName })
+	return slices.ContainsFunc(p.Roles, func(ra serviceaccount.RoleAssignment) bool { return ra.Role.String() == roleName })
 }
 
 // requireSelfOrUserAdmin allows a principal to manage its own developer

@@ -251,7 +251,7 @@ func fromEntity(p *principal.Principal) PrincipalResponse {
 	}
 	roles := make([]string, 0, len(p.Roles))
 	for _, r := range p.Roles {
-		roles = append(roles, r.Role)
+		roles = append(roles, r.Role.String())
 	}
 	granted := p.AssignedClients
 	if granted == nil {
@@ -383,7 +383,7 @@ func roleAssignmentDTOs(principalID ids.PrincipalID, roles []serviceaccount.Role
 		}
 		out = append(out, PrincipalRoleAssignmentDTO{
 			ID:               fmt.Sprintf("%s-role-%d", principalID, i),
-			RoleName:         r.Role,
+			RoleName:         r.Role.String(),
 			AssignmentSource: source,
 			AssignedAt:       jsontime.New(r.AssignedAt),
 		})

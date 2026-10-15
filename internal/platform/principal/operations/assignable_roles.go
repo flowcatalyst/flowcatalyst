@@ -45,7 +45,7 @@ func RequireAssignableRoles(ctx context.Context, roles *role.Repository, roleNam
 		if r == nil {
 			return usecase.Validation("UNKNOWN_ROLE", "role not found: "+name)
 		}
-		if r.ApplicationID == nil {
+		if r.ApplicationID == nil || r.IsPlatform() {
 			return usecase.Authorization("PLATFORM_ROLE_FORBIDDEN",
 				"client administrators cannot assign platform roles")
 		}
@@ -63,7 +63,7 @@ func RequireAssignableRoles(ctx context.Context, roles *role.Repository, roleNam
 // (role.OwningApplicationCode). A name that is not a role is not refused and
 // not assigned (F15, owner ruling 2026-10-13): it is returned in skipped,
 // whatever its prefix, and left out of assign. Both keep the order given.
-func applicationRoles(ctx context.Context, roles *role.Repository, applicationCode string, roleNames []string) (assign, skipped []string, err error) {
+func applicationRoles(ctx context.Context, roles *role.Repository, applicationCode string, roleNames []string) (assign []role.Name, skipped []string, err error) {
 	for _, name := range roleNames {
 		r, err := findRole(ctx, roles, name)
 		if err != nil {
@@ -77,7 +77,7 @@ func applicationRoles(ctx context.Context, roles *role.Repository, applicationCo
 			return nil, nil, usecase.Authorization("ROLE_APP_FORBIDDEN",
 				"role '"+name+"' does not belong to application '"+applicationCode+"'")
 		}
-		assign = append(assign, name)
+		assign = append(assign, r.CanonicalName())
 	}
 	return assign, skipped, nil
 }
@@ -87,6 +87,9 @@ func applicationRoles(ctx context.Context, roles *role.Repository, applicationCo
 func findRole(ctx context.Context, roles *role.Repository, name string) (*role.Role, error) {
 	if roles == nil {
 		return nil, usecase.Internal("REPO", "role repository not wired", nil)
+	}
+	if role.ValidateName(name) != nil {
+		return nil, nil // a malformed name is not a role (F18)
 	}
 	r, err := roles.FindByName(ctx, name)
 	if err != nil {

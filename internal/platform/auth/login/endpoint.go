@@ -607,7 +607,7 @@ func (e *Endpoint) completeLogin(w http.ResponseWriter, r *http.Request, p *prin
 	}
 	roles := make([]string, 0, len(p.Roles))
 	for _, ra := range p.Roles {
-		roles = append(roles, ra.Role)
+		roles = append(roles, ra.Role.String())
 	}
 	writeJSON(w, http.StatusOK, loginResponse{
 		Status:        "ok",
@@ -690,7 +690,7 @@ func (e *Endpoint) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 	roles := make([]string, 0, len(p.Roles))
 	for _, ra := range p.Roles {
-		roles = append(roles, ra.Role)
+		roles = append(roles, ra.Role.String())
 	}
 	email := ""
 	if p.UserIdentity != nil {

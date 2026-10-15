@@ -110,5 +110,7 @@ func TestUserSync_NonAnchorSyncsOnlyAssignableRoles(t *testing.T) {
 	require.NoError(t, sync(clientAdmin, "new@assignsync.test"))
 	anchor := anchorHolding("USER", "platform:iam:user:update")
 	require.NoError(t, sync(anchor, "new@assignsync.test", notEntitled, platformRole, "ghost:role"))
-	assert.ElementsMatch(t, []string{notEntitled, platformRole, "ghost:role"}, rolesOf("new@assignsync.test"))
+	// "ghost:role" is no role: skipped like on the application route (F15,
+	// F18); it used to be stored and then minted into the user's tokens.
+	assert.ElementsMatch(t, []string{notEntitled, platformRole}, rolesOf("new@assignsync.test"))
 }

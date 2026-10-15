@@ -60,6 +60,7 @@ func mustCreateUser(t *testing.T, repo *principal.Repository, uow *usecasepgx.Un
 // validate role existence (assign_roles, sync_idp_roles).
 func mustCreateRole(t *testing.T, uow *usecasepgx.UnitOfWork, appCode, roleName string) string {
 	t.Helper()
+	testpg.EnsureApplication(t, appCode)
 	ev, err := runAuthorized(uow, roleops.CreateRole(role.NewRepository(testpg.Pool(t))),
 		roleops.CreateCommand{ApplicationCode: appCode, RoleName: roleName, DisplayName: appCode + " " + roleName})
 	require.NoError(t, err)
@@ -124,7 +125,7 @@ func roleSources(p *principal.Principal) map[string]string {
 		if ra.AssignmentSource != nil {
 			src = *ra.AssignmentSource
 		}
-		out[ra.Role] = src
+		out[ra.Role.String()] = src
 	}
 	return out
 }
@@ -458,6 +459,7 @@ func TestAssignRoles_Errors(t *testing.T) {
 		{"unknown user", operations.AssignRolesCommand{UserID: "prn_doesnotexist1"}, usecase.KindNotFound, "User_NOT_FOUND"},
 		{"service principal", operations.AssignRolesCommand{UserID: svc.ID, Roles: []string{"x"}}, usecase.KindBusinessRule, "NOT_A_USER"},
 		{"unknown role", operations.AssignRolesCommand{UserID: user.UserID, Roles: []string{"prnasgn:doesnotexist"}}, usecase.KindValidation, "ROLE_NOT_FOUND"},
+		{"malformed role (F18)", operations.AssignRolesCommand{UserID: user.UserID, Roles: []string{"prnasgn: doesnotexist"}}, usecase.KindValidation, "INVALID_ROLE_NAME"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1357,6 +1359,7 @@ func TestSyncIdpRoles_Errors(t *testing.T) {
 		{"unknown user", operations.SyncIdpRolesCommand{UserID: "prn_doesnotexist1"}, usecase.KindNotFound, "User_NOT_FOUND"},
 		{"service principal", operations.SyncIdpRolesCommand{UserID: svc.ID}, usecase.KindBusinessRule, "NOT_A_USER"},
 		{"unknown role", operations.SyncIdpRolesCommand{UserID: user.UserID, PlatformRoles: []string{"prnidp:doesnotexist"}}, usecase.KindValidation, "ROLE_NOT_FOUND"},
+		{"malformed role (F18)", operations.SyncIdpRolesCommand{UserID: user.UserID, PlatformRoles: []string{"prnidp: doesnotexist"}}, usecase.KindValidation, "INVALID_ROLE_NAME"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

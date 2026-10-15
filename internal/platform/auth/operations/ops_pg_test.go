@@ -383,6 +383,20 @@ func TestCreateIdpRoleMapping_Duplicate_Conflict(t *testing.T) {
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "MAPPING_EXISTS")
 }
 
+// F18: the platform role of a mapping is a canonical role name; a malformed
+// one is refused, not trimmed.
+func TestCreateIdpRoleMapping_RejectsMalformedPlatformRole(t *testing.T) {
+	t.Parallel()
+	repo := auth.NewRepository(testpg.Pool(t)).IdpRoleMappings
+	uow := testpg.NewUoW(t)
+	for _, bad := range []string{"irmbad: admin", " irmbad:admin", "irmbad", "irmbad:ad min"} {
+		_, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo), operations.CreateIdpRoleMappingCommand{
+			IdpType: "keycloak", IdpRoleName: "irm-bad-upstream", PlatformRoleName: bad,
+		})
+		testpg.RequireUsecaseError(t, err, usecase.KindValidation, "INVALID_ROLE_NAME")
+	}
+}
+
 func TestCreateIdpRoleMapping_HappyPath(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

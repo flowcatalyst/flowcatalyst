@@ -75,6 +75,12 @@ func New(applicationCode, roleName, displayName string) *Role {
 	}
 }
 
+// IsPlatform reports whether the role belongs to the built-in "platform"
+// application. Platform roles carry that application's id like any other
+// application's roles (F18); this, not a missing id, is what makes one a
+// platform role.
+func (r Role) IsPlatform() bool { return r.OwningApplicationCode() == "platform" }
+
 // ShortName is the app-local role name with the "{applicationCode}:" prefix
 // removed — the inverse of New. It strips EXACTLY the application-code prefix
 // (i.e. only the first ":" that follows the app code is the delimiter), so a

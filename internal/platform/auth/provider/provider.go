@@ -95,7 +95,7 @@ func BuildClaims(ctx context.Context, cfg Config, principals *principal.Reposito
 	}
 	roleNames := make([]string, 0, len(p.Roles))
 	for _, ra := range p.Roles {
-		roleNames = append(roleNames, ra.Role)
+		roleNames = append(roleNames, ra.Role.String())
 	}
 	clients := append([]string(nil), ids.Strings(p.AssignedClients)...)
 	if p.ClientID != nil && *p.ClientID != "" {

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	fcrole "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
+
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
@@ -49,8 +51,8 @@ func decodeRoles(t *testing.T, token string) []string {
 func TestMintIDToken(t *testing.T) {
 	p := principal.NewUser("u@example.com", principal.ScopeClient)
 	p.Roles = []serviceaccount.RoleAssignment{
-		{Role: "za-logistics:orders-admin"},
-		{Role: "za-billing:viewer"},
+		{Role: fcrole.MustParseName("za-logistics:orders-admin")},
+		{Role: fcrole.MustParseName("za-billing:viewer")},
 	}
 
 	// fixedFilter mimics provider.FilterRolesForApplications: keeps only the
@@ -142,7 +144,7 @@ func TestMintIDToken(t *testing.T) {
 func TestMintIDTokenConfinesApplications(t *testing.T) {
 	newPrincipal := func() *principal.Principal {
 		p := principal.NewUser("u@example.com", principal.ScopeClient)
-		p.Roles = []serviceaccount.RoleAssignment{{Role: "za-logistics:orders-admin"}}
+		p.Roles = []serviceaccount.RoleAssignment{{Role: fcrole.MustParseName("za-logistics:orders-admin")}}
 		p.AllApplications = false
 		p.AccessibleApplicationIDs = []ids.ApplicationID{"app_own", "app_other1", "app_other2"}
 		return p

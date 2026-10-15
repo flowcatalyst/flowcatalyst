@@ -39,6 +39,7 @@ func TestAPIAccessInteractiveTokens(t *testing.T) {
 
 	// Two roles; the filter keeps only roleA (simulating "roleA belongs to
 	// the client's app, roleB doesn't").
+	testpg.EnsureApplication(t, "apiacc")
 	roleAEv, err := usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(roles),
 		roleops.CreateCommand{ApplicationCode: "apiacc", RoleName: "role-a", DisplayName: "Role A"}, testpg.TestEC())
 	require.NoError(t, err)

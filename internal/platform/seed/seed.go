@@ -87,6 +87,14 @@ func (s *Seeder) seedPlatformApplication(ctx context.Context) error {
 func (s *Seeder) seedRoles(ctx context.Context) error {
 	roles := PlatformRoles()
 	var inserted int
+	// F18: platform roles carry the platform application's id like any other
+	// application's roles. seedPlatformApplication has run; if the row is
+	// somehow absent the id stays null and the next role sync heals it.
+	var platformAppID *string
+	var appID string
+	if err := s.pool.QueryRow(ctx, `SELECT id FROM app_applications WHERE code = $1`, "platform").Scan(&appID); err == nil {
+		platformAppID = &appID
+	}
 	for _, r := range roles {
 		var existingID string
 		err := s.pool.QueryRow(ctx,
@@ -102,7 +110,7 @@ func (s *Seeder) seedRoles(ctx context.Context) error {
 			      source, client_managed, created_at, updated_at)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			 ON CONFLICT (name) DO NOTHING`,
-			id, nil, r.Name, r.DisplayName, r.Description, r.ApplicationCode,
+			id, platformAppID, r.Name, r.DisplayName, r.Description, r.ApplicationCode,
 			string(r.Source), false, now, now); err != nil {
 			return fmt.Errorf("insert role %s: %w", r.Name, err)
 		}

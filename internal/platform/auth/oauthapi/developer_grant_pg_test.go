@@ -75,6 +75,7 @@ func ensureSharedDeveloperRole(t *testing.T) string {
 	t.Helper()
 	uow := testpg.NewUoW(t)
 	roles := role.NewRepository(testpg.Pool(t))
+	testpg.EnsureApplication(t, "platform")
 	devRoleOnce.Do(func() {
 		ev, err := usecaseop.Run(testpg.AnchorCtx(), uow,
 			roleops.CreateRole(roles),

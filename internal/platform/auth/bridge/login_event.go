@@ -58,7 +58,7 @@ func (e *LoginEndpoint) emitUserLoggedIn(
 
 	roles := make([]string, 0, len(current.Roles))
 	for _, ra := range current.Roles {
-		roles = append(roles, ra.Role)
+		roles = append(roles, ra.Role.String())
 	}
 
 	var clients []string

@@ -2,11 +2,13 @@ package role
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
@@ -163,6 +165,21 @@ func (r *Repository) ApplicationCodes(ctx context.Context) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// ApplicationIDByCode resolves an application code to its id; "" when no such
+// application exists. The domain's way of keeping iam_roles.application_id
+// derivable from application_code (F18): a role is written with the id of the
+// application that owns it.
+func (r *Repository) ApplicationIDByCode(ctx context.Context, code string) (ids.ApplicationID, error) {
+	row, err := r.q.ApplicationFindByCode(ctx, code)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("role repo: application by code: %w", err)
+	}
+	return ids.ApplicationID(row.ID), nil
 }
 
 // Persist implements usecasepgx.Persist[Role]. Replaces the role

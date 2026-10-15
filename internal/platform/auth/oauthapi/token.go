@@ -605,7 +605,7 @@ func (s *State) handleDeveloperCredentialGrant(w http.ResponseWriter, r *http.Re
 	}
 	hasDeveloperRole := false
 	for _, ra := range p.Roles {
-		if ra.Role == developerRoleName {
+		if ra.Role.String() == developerRoleName {
 			hasDeveloperRole = true
 			break
 		}
@@ -1098,7 +1098,7 @@ func (s *State) confineToClient(ctx context.Context, p *principal.Principal, cli
 func roleNamesOf(p *principal.Principal) []string {
 	out := make([]string, 0, len(p.Roles))
 	for _, ra := range p.Roles {
-		out = append(out, ra.Role)
+		out = append(out, ra.Role.String())
 	}
 	return out
 }

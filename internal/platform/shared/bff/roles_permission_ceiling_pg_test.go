@@ -22,6 +22,7 @@ import (
 // update and delete through /bff/roles answer 403 PERMISSION_ABOVE_CALLER
 // for a platform permission the caller does not hold, added or removed.
 func TestBffRoles_PermissionsBoundedByCallersPermissions(t *testing.T) {
+	testpg.EnsureApplication(t, "platform")
 	pool := testpg.Pool(t)
 	repo := role.NewRepository(pool)
 	r := chi.NewRouter()

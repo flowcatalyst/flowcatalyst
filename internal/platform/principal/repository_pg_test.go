@@ -57,7 +57,7 @@ func TestFindAll_HydratesRolesAndClientGrants(t *testing.T) {
 
 	roleNames := make([]string, 0, len(got.Roles))
 	for _, ra := range got.Roles {
-		roleNames = append(roleNames, ra.Role)
+		roleNames = append(roleNames, ra.Role.String())
 	}
 	assert.ElementsMatch(t, []string{"hydrate:role-a", "hydrate:role-b"}, roleNames,
 		"FindAll must hydrate role assignments")
@@ -70,7 +70,7 @@ func TestFindAll_HydratesRolesAndClientGrants(t *testing.T) {
 	require.NotNil(t, one)
 	oneRoles := make([]string, 0, len(one.Roles))
 	for _, ra := range one.Roles {
-		oneRoles = append(oneRoles, ra.Role)
+		oneRoles = append(oneRoles, ra.Role.String())
 	}
 	assert.ElementsMatch(t, roleNames, oneRoles)
 	assert.ElementsMatch(t, got.AssignedClients, one.AssignedClients)

@@ -78,9 +78,19 @@ func AssignRolesToServiceAccount(
 					errors.New("no SERVICE principal for service account "+cmd.ServiceAccountID))
 			}
 
+			// The root of F18: this path stored whatever string it was sent
+			// ("example: dispatcher") and minted it into the token. Every name
+			// is shape-checked (400 INVALID_ROLE_NAME) and must name an existing
+			// role (400 ROLE_NOT_FOUND); the assignments are built from the
+			// resolved role.Name, so a raw string cannot be stored.
+			resolved, err := role.ResolveNames(ctx, roles, cmd.Roles)
+			if err != nil {
+				return nil, err
+			}
+
 			previous := make([]string, 0, len(p.Roles))
 			for _, ra := range p.Roles {
-				previous = append(previous, ra.Role)
+				previous = append(previous, ra.Role.String())
 			}
 			if err := role.RequireRolesWithinCaller(ctx, auth.FromContext(ctx),
 				role.ChangedRoles(previous, cmd.Roles), role.PermissionsFrom(roles)); err != nil {
@@ -90,7 +100,7 @@ func AssignRolesToServiceAccount(
 			// Set-difference for added/removed against the principal's current roles.
 			currentSet := make(map[string]struct{}, len(p.Roles))
 			for _, ra := range p.Roles {
-				currentSet[ra.Role] = struct{}{}
+				currentSet[ra.Role.String()] = struct{}{}
 			}
 			newSet := make(map[string]struct{}, len(cmd.Roles))
 			for _, r := range cmd.Roles {
@@ -113,7 +123,7 @@ func AssignRolesToServiceAccount(
 			now := time.Now().UTC()
 			src := serviceAccountRoleSource
 			newAssignments := make([]serviceaccount.RoleAssignment, 0, len(cmd.Roles))
-			for _, r := range cmd.Roles {
+			for _, r := range resolved {
 				newAssignments = append(newAssignments, serviceaccount.RoleAssignment{
 					Role:             r,
 					AssignmentSource: &src,

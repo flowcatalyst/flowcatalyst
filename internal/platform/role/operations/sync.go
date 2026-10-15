@@ -77,6 +77,14 @@ func SyncPlatformRoles(repo *role.Repository, codeRoles []role.Role) usecaseop.O
 					}
 					existing.DisplayName = def.DisplayName
 					existing.Description = def.Description
+					// F18: heal a row written without its application's id.
+					if existing.ApplicationID == nil {
+						appID, err := ownerApplicationID(ctx, repo, existing.OwningApplicationCode())
+						if err != nil {
+							return nil, err
+						}
+						existing.ApplicationID = appID
+					}
 					if err := role.RequirePermissionsInApplication(existing.OwningApplicationCode(),
 						role.AddedPermissions(existing.Permissions, def.Permissions), false); err != nil {
 						return nil, err
@@ -100,6 +108,11 @@ func SyncPlatformRoles(repo *role.Repository, codeRoles []role.Role) usecaseop.O
 				row.Description = def.Description
 				row.Permissions = append([]string(nil), def.Permissions...)
 				row.Source = role.SourceCode
+				appID, err := ownerApplicationID(ctx, repo, row.OwningApplicationCode())
+				if err != nil {
+					return nil, err
+				}
+				row.ApplicationID = appID
 				if err := role.RequirePermissionsInApplication(row.OwningApplicationCode(), row.Permissions, false); err != nil {
 					return nil, err
 				}
@@ -221,6 +234,17 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 			if len(cmd.Roles) == 0 {
 				return usecase.Validation("ROLES_REQUIRED", "At least one role must be provided")
 			}
+			// F18: every role name and permission is shape-checked up front, so
+			// one malformed entry refuses the whole sync before any write.
+			for _, in := range cmd.Roles {
+				short := splitRoleName(strings.ToLower(in.Name), cmd.ApplicationCode)
+				if err := role.ValidateName(cmd.ApplicationCode + ":" + short); err != nil {
+					return err
+				}
+				if err := role.ValidatePermissions(in.Permissions); err != nil {
+					return err
+				}
+			}
 			return nil
 		},
 		Authorize: func(ctx context.Context, cmd SyncRolesCommand) error {
@@ -249,6 +273,26 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 				deleted     uint32
 				changed     []string
 			)
+
+			// F18: a row of this application written without its id (the admin
+			// create used to leave it null) is invisible to the lookup above, so
+			// the sync would try to create it again and collide on the unique
+			// name. Adopt it: it is this application's role, give it its id.
+			for _, in := range cmd.Roles {
+				full := cmd.ApplicationCode + ":" + splitRoleName(strings.ToLower(in.Name), cmd.ApplicationCode)
+				if _, ok := existingByName[full]; ok {
+					continue
+				}
+				orphan, err := repo.FindByName(ctx, full)
+				if err != nil {
+					return nil, usecase.Internal("REPO", "find_by_name failed", err)
+				}
+				if orphan != nil && orphan.ApplicationID == nil && orphan.OwningApplicationCode() == cmd.ApplicationCode {
+					appID := ids.ApplicationID(cmd.ApplicationID)
+					orphan.ApplicationID = &appID
+					existingByName[full] = orphan
+				}
+			}
 
 			for _, in := range cmd.Roles {
 				// Accept both a bare name ("hr-manager") and an already-qualified
@@ -382,4 +426,20 @@ func splitRoleName(fullName, applicationCode string) string {
 		return fullName[len(prefix):]
 	}
 	return fullName
+}
+
+// ownerApplicationID resolves the id a role of application code carries (F18).
+// An application that does not exist yields nil with a warning rather than an
+// error: the built-in catalogue must still be installable on a database whose
+// platform application row has not been seeded yet.
+func ownerApplicationID(ctx context.Context, repo *role.Repository, code string) (*ids.ApplicationID, error) {
+	id, err := repo.ApplicationIDByCode(ctx, code)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "application_by_code failed", err)
+	}
+	if id == "" {
+		slog.Warn("role written without an application id: no such application", "applicationCode", code)
+		return nil, nil
+	}
+	return &id, nil
 }

@@ -172,7 +172,7 @@ func ProvisionServiceAccount(
 			saPrincipal.AllApplications = false
 			saPrincipal.AccessibleApplicationIDs = []ids.ApplicationID{app.ID}
 			saPrincipal.Roles = []serviceaccount.RoleAssignment{{
-				Role:             applicationServiceRoleName,
+				Role:             role.MustParseName(applicationServiceRoleName),
 				AssignmentSource: new("PROVISIONED"),
 				AssignedAt:       time.Now().UTC(),
 			}}

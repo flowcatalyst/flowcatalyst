@@ -34,6 +34,7 @@ func ensureApplicationServiceRole(t *testing.T, roles *role.Repository, uow *use
 	if existing != nil {
 		return
 	}
+	testpg.EnsureApplication(t, "platform")
 	for _, r := range seed.PlatformRoles() {
 		if r.Name != "platform:application-service" {
 			continue

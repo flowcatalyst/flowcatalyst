@@ -33,6 +33,9 @@ func UpdateRole(repo *role.Repository) usecaseop.Operation[UpdateCommand, RoleUp
 			if cmd.DisplayName != nil && strings.TrimSpace(*cmd.DisplayName) == "" {
 				return usecase.Validation("DISPLAY_NAME_REQUIRED", "displayName cannot be empty")
 			}
+			if err := role.ValidatePermissions(cmd.Permissions); err != nil {
+				return err
+			}
 			return nil
 		},
 		// Roles are global (no per-client resource dimension), so there is no

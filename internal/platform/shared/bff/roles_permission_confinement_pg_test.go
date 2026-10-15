@@ -22,6 +22,8 @@ import (
 // /bff/roles answer 400 PERMISSION_OUTSIDE_APPLICATION for a permission of
 // another application, whoever holds it; a super-admin may cross.
 func TestBffRoles_PermissionsConfinedToTheirApplication(t *testing.T) {
+	testpg.EnsureApplication(t, "platform")
+	testpg.EnsureApplication(t, "bffconf")
 	pool := testpg.Pool(t)
 	repo := role.NewRepository(pool)
 	r := chi.NewRouter()

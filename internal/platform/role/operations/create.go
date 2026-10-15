@@ -40,6 +40,14 @@ func CreateRole(repo *role.Repository) usecaseop.Operation[CreateCommand, RoleCr
 			if strings.TrimSpace(cmd.DisplayName) == "" {
 				return usecase.Validation("DISPLAY_NAME_REQUIRED", "displayName is required")
 			}
+			// F18: rejected as sent, never trimmed. The name is the canonical
+			// "{application}:{role}" the roles are assigned and minted by.
+			if err := role.ValidateName(cmd.ApplicationCode + ":" + cmd.RoleName); err != nil {
+				return err
+			}
+			if err := role.ValidatePermissions(cmd.Permissions); err != nil {
+				return err
+			}
 			return nil
 		},
 		// Roles are global (no per-client resource dimension), so there is no
@@ -59,7 +67,18 @@ func CreateRole(repo *role.Repository) usecaseop.Operation[CreateCommand, RoleCr
 			if existing != nil {
 				return nil, usecase.Conflict("ROLE_EXISTS", "Role '"+fullName+"' already exists")
 			}
+			// F18: the role is written with the id of the application that owns
+			// it, and a role for an application that does not exist is refused.
+			appID, err := repo.ApplicationIDByCode(ctx, cmd.ApplicationCode)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "application_by_code failed", err)
+			}
+			if appID == "" {
+				return nil, usecase.Validation("APPLICATION_NOT_FOUND",
+					"Application '"+cmd.ApplicationCode+"' does not exist")
+			}
 			r := role.New(cmd.ApplicationCode, cmd.RoleName, cmd.DisplayName)
+			r.ApplicationID = &appID
 			r.Description = cmd.Description
 			r.ClientManaged = cmd.ClientManaged
 			for _, p := range cmd.Permissions {

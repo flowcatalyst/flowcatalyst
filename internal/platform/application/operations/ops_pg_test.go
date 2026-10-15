@@ -754,7 +754,7 @@ func TestProvisionServiceAccount_AssignsRoleAndScopesClient(t *testing.T) {
 	assert.Equal(t, []string{app.ApplicationID}, ids.Strings(p.AccessibleApplicationIDs))
 	roleNames := make([]string, 0, len(p.Roles))
 	for _, ra := range p.Roles {
-		roleNames = append(roleNames, ra.Role)
+		roleNames = append(roleNames, ra.Role.String())
 	}
 	assert.Contains(t, roleNames, "platform:application-service",
 		"SA principal is granted the application-service role at provision")

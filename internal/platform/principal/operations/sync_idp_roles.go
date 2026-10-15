@@ -66,20 +66,16 @@ func SyncIdpRoles(principals *principal.Repository, roles *role.Repository) usec
 			}
 
 			// Validate every incoming role exists.
-			for _, name := range cmd.PlatformRoles {
-				r, err := roles.FindByName(ctx, name)
-				if err != nil {
-					return nil, usecase.Internal("REPO", "validate role failed", err)
-				}
-				if r == nil {
-					return nil, usecase.Validation("ROLE_NOT_FOUND", "Role not found: "+name)
-				}
+			// (shape first, 400 INVALID_ROLE_NAME; then existence, ROLE_NOT_FOUND)
+			resolved, err := role.ResolveNames(ctx, roles, cmd.PlatformRoles)
+			if err != nil {
+				return nil, err
 			}
 
 			// Snapshot the prior set for the event payload.
 			previous := make([]string, 0, len(p.Roles))
 			for _, ra := range p.Roles {
-				previous = append(previous, ra.Role)
+				previous = append(previous, ra.Role.String())
 			}
 
 			// Rebuild Roles: keep every non-IDP_SYNC assignment, then append the
@@ -93,10 +89,10 @@ func SyncIdpRoles(principals *principal.Repository, roles *role.Repository) usec
 					continue
 				}
 				preserved = append(preserved, ra)
-				keptByName[ra.Role] = struct{}{}
+				keptByName[ra.Role.String()] = struct{}{}
 			}
-			for _, name := range cmd.PlatformRoles {
-				if _, dup := keptByName[name]; dup {
+			for _, name := range resolved {
+				if _, dup := keptByName[name.String()]; dup {
 					continue
 				}
 				preserved = append(preserved, serviceaccount.RoleAssignment{
@@ -110,7 +106,7 @@ func SyncIdpRoles(principals *principal.Repository, roles *role.Repository) usec
 
 			current := make([]string, 0, len(p.Roles))
 			for _, ra := range p.Roles {
-				current = append(current, ra.Role)
+				current = append(current, ra.Role.String())
 			}
 			added := stringDifference(current, previous)
 			removed := stringDifference(previous, current)

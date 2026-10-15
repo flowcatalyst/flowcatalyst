@@ -59,19 +59,17 @@ func AssignRoles(repo *principal.Repository, roles *role.Repository) usecaseop.O
 					"Roles can only be assigned to USER type principals")
 			}
 
-			for _, name := range cmd.Roles {
-				r, err := roles.FindByName(ctx, name)
-				if err != nil {
-					return nil, usecase.Internal("REPO", "validate role failed", err)
-				}
-				if r == nil {
-					return nil, usecase.Validation("ROLE_NOT_FOUND", "Role not found: "+name)
-				}
+			// Every name is shape-checked (400 INVALID_ROLE_NAME) and resolved
+			// to an existing role (400 ROLE_NOT_FOUND); the assignments below
+			// are built from the resolved role.Name, never the raw string.
+			resolved, err := role.ResolveNames(ctx, roles, cmd.Roles)
+			if err != nil {
+				return nil, err
 			}
 
 			previous := make([]string, 0, len(p.Roles))
 			for _, ra := range p.Roles {
-				previous = append(previous, ra.Role)
+				previous = append(previous, ra.Role.String())
 			}
 			// The role ceiling (F8): only roles whose platform permissions the
 			// caller holds may be added or removed; kept roles are not checked.
@@ -85,7 +83,7 @@ func AssignRoles(repo *principal.Repository, roles *role.Repository) usecaseop.O
 			now := time.Now().UTC()
 			src := "ADMIN_ASSIGNED"
 			newAssignments := make([]serviceaccount.RoleAssignment, 0, len(cmd.Roles))
-			for _, name := range cmd.Roles {
+			for _, name := range resolved {
 				newAssignments = append(newAssignments, serviceaccount.RoleAssignment{
 					Role:             name,
 					AssignmentSource: &src,

@@ -35,6 +35,7 @@ var (
 
 func ensureDeveloperRole(t *testing.T, uow *usecasepgx.UnitOfWork) string {
 	t.Helper()
+	testpg.EnsureApplication(t, "platform")
 	devRoleOnce.Do(func() {
 		ev, err := usecaseop.Run(testpg.AnchorCtx(), uow,
 			roleops.CreateRole(role.NewRepository(testpg.Pool(t))),
@@ -200,7 +201,7 @@ func TestRevokeDeveloperCredential_HappyPath(t *testing.T) {
 	// The role itself is untouched — revoke only clears the secret.
 	hasRole := false
 	for _, ra := range got.Roles {
-		if ra.Role == devRole {
+		if ra.Role.String() == devRole {
 			hasRole = true
 		}
 	}

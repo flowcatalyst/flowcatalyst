@@ -159,12 +159,12 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 				if ra.AssignmentSource == nil || *ra.AssignmentSource != SdkSyncSource {
 					return false
 				}
-				return cmd.ApplicationCode == "" || strings.HasPrefix(ra.Role, appPrefix)
+				return cmd.ApplicationCode == "" || strings.HasPrefix(ra.Role.String(), appPrefix)
 			}
 			roleNames := func(ras []serviceaccount.RoleAssignment) []string {
 				out := make([]string, 0, len(ras))
 				for _, ra := range ras {
-					out = append(out, ra.Role)
+					out = append(out, ra.Role.String())
 				}
 				return out
 			}
@@ -187,7 +187,7 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 					return nil, usecase.Authorization("SYNC_TARGET_FORBIDDEN",
 						"Not authorised to manage principal '"+email+"'")
 				}
-				names, unknown, err := syncableRoles(ctx, roles, clientConfigs, ac, cmd.ApplicationCode, names, existing)
+				assignable, unknown, err := syncableRoles(ctx, roles, clientConfigs, ac, cmd.ApplicationCode, names, existing)
 				if err != nil {
 					return nil, err
 				}
@@ -196,8 +196,8 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 						skipped = append(skipped, name)
 					}
 				}
-				roleAssignments := make([]serviceaccount.RoleAssignment, 0, len(names))
-				for _, name := range names {
+				roleAssignments := make([]serviceaccount.RoleAssignment, 0, len(assignable))
+				for _, name := range assignable {
 					roleAssignments = append(roleAssignments, serviceaccount.RoleAssignment{
 						Role:             name,
 						AssignmentSource: &sdkSource,
@@ -218,13 +218,13 @@ func SyncPrincipals(principals *principal.Repository, roles *role.Repository, cl
 							continue
 						}
 						merged = append(merged, ra)
-						held[ra.Role] = struct{}{}
+						held[ra.Role.String()] = struct{}{}
 					}
 					for _, ra := range roleAssignments {
-						if _, ok := held[ra.Role]; ok {
+						if _, ok := held[ra.Role.String()]; ok {
 							continue
 						}
-						held[ra.Role] = struct{}{}
+						held[ra.Role.String()] = struct{}{}
 						merged = append(merged, ra)
 					}
 					changed = append(changed, role.ChangedRoles(roleNames(existing.Roles), roleNames(merged))...)
@@ -389,7 +389,7 @@ func PasswordHashesIgnored(ctx context.Context, principals *principal.Repository
 // principal the sync creates, which has no client, so no role at all).
 func syncableRoles(ctx context.Context, roles *role.Repository, clientConfigs *application.ClientConfigRepo,
 	ac *auth.AuthContext, applicationCode string, names []string, target *principal.Principal,
-) (assign, skipped []string, err error) {
+) (assign []role.Name, skipped []string, err error) {
 	if len(names) == 0 {
 		return nil, nil, nil
 	}
@@ -397,7 +397,21 @@ func syncableRoles(ctx context.Context, roles *role.Repository, clientConfigs *a
 		return applicationRoles(ctx, roles, applicationCode, names)
 	}
 	if ac.IsAnchor() {
-		return names, nil, nil
+		// Platform-level sync, anchor: the same F15 rule as the application
+		// route. A name that is not a role (malformed included, F18) is
+		// skipped and reported, never stored.
+		for _, name := range names {
+			r, err := findRole(ctx, roles, name)
+			if err != nil {
+				return nil, nil, err
+			}
+			if r == nil {
+				skipped = append(skipped, name)
+				continue
+			}
+			assign = append(assign, r.CanonicalName())
+		}
+		return assign, skipped, nil
 	}
 	clientID := ""
 	if target != nil && target.ClientID != nil {
@@ -410,5 +424,12 @@ func syncableRoles(ctx context.Context, roles *role.Repository, clientConfigs *a
 	if err := RequireAssignableRoles(ctx, roles, names, allowed); err != nil {
 		return nil, nil, err
 	}
-	return names, nil, nil
+	for _, name := range names {
+		r, err := findRole(ctx, roles, name)
+		if err != nil {
+			return nil, nil, err
+		}
+		assign = append(assign, r.CanonicalName())
+	}
+	return assign, nil, nil
 }

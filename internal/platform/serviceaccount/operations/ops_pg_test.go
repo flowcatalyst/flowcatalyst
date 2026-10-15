@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
+	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
@@ -554,6 +555,13 @@ func TestAssignRolesToServiceAccount_HappyPathAndReplace(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	res := mustProvision(t, saRepo, principals, oauthRepo, uow, "saroles-happy", "Roles Happy")
 	saID := res.ServiceAccount.ID
+	// Assignments must name existing roles (F18).
+	testpg.EnsureApplication(t, "saroles")
+	for _, r := range []string{"admin", "viewer", "auditor"} {
+		_, err := runOp(uow, roleops.CreateRole(role.NewRepository(pool)),
+			roleops.CreateCommand{ApplicationCode: "saroles", RoleName: r, DisplayName: r})
+		require.NoError(t, err)
+	}
 
 	first, err := runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals, role.NewRepository(pool)),
 		operations.AssignRolesCommand{ServiceAccountID: saID, Roles: []string{"saroles:admin", "saroles:viewer"}})
@@ -567,7 +575,7 @@ func TestAssignRolesToServiceAccount_HappyPathAndReplace(t *testing.T) {
 	require.NotNil(t, p)
 	gotRoles := make([]string, 0, len(p.Roles))
 	for _, ra := range p.Roles {
-		gotRoles = append(gotRoles, ra.Role)
+		gotRoles = append(gotRoles, ra.Role.String())
 		require.NotNil(t, ra.AssignmentSource)
 		assert.Equal(t, "ADMIN_ASSIGNED", *ra.AssignmentSource)
 	}
@@ -585,7 +593,7 @@ func TestAssignRolesToServiceAccount_HappyPathAndReplace(t *testing.T) {
 	require.NotNil(t, p)
 	gotRoles = gotRoles[:0]
 	for _, ra := range p.Roles {
-		gotRoles = append(gotRoles, ra.Role)
+		gotRoles = append(gotRoles, ra.Role.String())
 	}
 	assert.ElementsMatch(t, []string{"saroles:viewer", "saroles:auditor"}, gotRoles,
 		"assignment is wholesale replace, not append")
@@ -605,6 +613,46 @@ func TestAssignRolesToServiceAccount_Errors(t *testing.T) {
 	_, err = runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals, role.NewRepository(pool)),
 		operations.AssignRolesCommand{ServiceAccountID: "sa_doesnotexist1", Roles: []string{"x"}})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ServiceAccount_NOT_FOUND")
+}
+
+// F18: the service-account assignment path stored whatever string it was sent,
+// so "example: dispatcher" (a space after the colon) reached the token's roles
+// claim although no such role exists. A malformed name is now 400
+// INVALID_ROLE_NAME, a well-formed name that is not a role is 400
+// ROLE_NOT_FOUND, and neither changes what is stored.
+func TestAssignRolesToServiceAccount_RejectsMalformedAndUnknownRoles(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	saRepo := serviceaccount.NewRepository(pool)
+	principals := principal.NewRepository(pool)
+	oauthRepo := platformauth.NewRepository(pool).OAuthClients
+	roles := role.NewRepository(pool)
+	uow := testpg.NewUoW(t)
+	res := mustProvision(t, saRepo, principals, oauthRepo, uow, "saroles-f18", "Roles F18")
+	saID := res.ServiceAccount.ID
+	testpg.EnsureApplication(t, "examplef18")
+	_, err := runOp(uow, roleops.CreateRole(roles),
+		roleops.CreateCommand{ApplicationCode: "examplef18", RoleName: "dispatcher", DisplayName: "d"})
+	require.NoError(t, err)
+	assign := func(rs ...string) error {
+		_, err := runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals, roles),
+			operations.AssignRolesCommand{ServiceAccountID: saID, Roles: rs})
+		return err
+	}
+	require.NoError(t, assign("examplef18:dispatcher"))
+
+	for _, bad := range []string{"examplef18: dispatcher", "examplef18 :dispatcher", " examplef18:dispatcher",
+		"examplef18:dispatcher ", "examplef18:dis patcher", "dispatcher", ""} {
+		testpg.RequireUsecaseError(t, assign("examplef18:dispatcher", bad), usecase.KindValidation, role.InvalidNameCode)
+	}
+	testpg.RequireUsecaseError(t, assign("examplef18:nosuchrole"), usecase.KindValidation, "ROLE_NOT_FOUND")
+
+	p, err := principals.FindByServiceAccount(ctx, saID)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	require.Len(t, p.Roles, 1, "a refused assignment leaves the stored roles alone")
+	assert.Equal(t, "examplef18:dispatcher", p.Roles[0].Role.String())
 }
 
 // ── RegenerateAuthToken ───────────────────────────────────────────────────

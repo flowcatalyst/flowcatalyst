@@ -34,6 +34,9 @@ func GrantPermission(repo *role.Repository) usecaseop.Operation[GrantPermissionC
 			if strings.TrimSpace(cmd.Permission) == "" {
 				return usecase.Validation("PERMISSION_REQUIRED", "Permission is required")
 			}
+			if err := role.ValidatePermission(cmd.Permission); err != nil {
+				return err
+			}
 			return nil
 		},
 		// Roles are global (no per-client resource dimension), so there is no

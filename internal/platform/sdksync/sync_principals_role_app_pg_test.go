@@ -43,6 +43,7 @@ func TestSyncPrincipals_AppRouteOnlyTheApplicationsRoles(t *testing.T) {
 	require.NoError(t, err)
 	mkRole := func(app, name string, perms ...string) string {
 		t.Helper()
+		testpg.EnsureApplication(t, app)
 		ev, err := usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(roles),
 			roleops.CreateCommand{ApplicationCode: app, RoleName: name, DisplayName: name, Permissions: perms},
 			testpg.TestEC())

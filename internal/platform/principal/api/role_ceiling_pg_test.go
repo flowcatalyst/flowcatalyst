@@ -21,6 +21,7 @@ import (
 
 func mustRoleWith(t *testing.T, uow *usecasepgx.UnitOfWork, appCode, roleName string, perms ...string) string {
 	t.Helper()
+	testpg.EnsureApplication(t, appCode)
 	ev, err := usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(role.NewRepository(testpg.Pool(t))),
 		roleops.CreateCommand{ApplicationCode: appCode, RoleName: roleName, DisplayName: roleName, Permissions: perms},
 		testpg.TestEC())

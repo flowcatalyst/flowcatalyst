@@ -349,7 +349,7 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 	}
 	roles := make([]string, 0, len(p.Roles))
 	for _, r := range p.Roles {
-		roles = append(roles, r.Role)
+		roles = append(roles, r.Role.String())
 	}
 
 	// Establish the session: mint the fc_session JWT and serialize it as a

@@ -180,6 +180,7 @@ func TestServiceAccountRolesAgreeAcrossRoutes(t *testing.T) {
 		operations.CreateCommand{Code: "roles-agree-sa", Name: "Roles Agree SA"}, testpg.TestEC())
 	require.NoError(t, err)
 
+	testpg.EnsureApplication(t, "agree")
 	roleA, err := usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(roles),
 		roleops.CreateCommand{ApplicationCode: "agree", RoleName: "alpha", DisplayName: "Alpha"}, testpg.TestEC())
 	require.NoError(t, err)
@@ -198,7 +199,7 @@ func TestServiceAccountRolesAgreeAcrossRoutes(t *testing.T) {
 
 	fromAccount := make([]string, 0, len(sa.Roles))
 	for _, ra := range sa.Roles {
-		fromAccount = append(fromAccount, ra.Role)
+		fromAccount = append(fromAccount, ra.Role.String())
 	}
 	assert.ElementsMatch(t, []string{roleA.Name, roleB.Name}, fromAccount,
 		"the account object must report the roles its /roles sub-route returns")

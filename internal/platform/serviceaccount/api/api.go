@@ -412,7 +412,7 @@ func (s *State) mintToken(ctx context.Context, in *apicommon.IDInput) (*apicommo
 
 	names := make([]string, 0, len(p.Roles))
 	for _, ra := range p.Roles {
-		names = append(names, ra.Role)
+		names = append(names, ra.Role.String())
 	}
 	// The minted bearer carries the account's whole authority, so the caller
 	// must hold it: every platform permission of every role the account holds

@@ -748,7 +748,7 @@ func principalEmail(p *principal.Principal) *string {
 func roleNames(p *principal.Principal) []string {
 	out := make([]string, 0, len(p.Roles))
 	for _, ra := range p.Roles {
-		out = append(out, ra.Role)
+		out = append(out, ra.Role.String())
 	}
 	return out
 }

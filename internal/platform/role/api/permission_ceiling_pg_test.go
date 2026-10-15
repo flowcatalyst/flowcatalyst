@@ -65,6 +65,8 @@ func TestRolePermissions_BoundedByCallersPermissions(t *testing.T) {
 	repo := role.NewRepository(pool)
 	s := &State{Repo: repo, UoW: testpg.NewUoW(t)}
 	superAdmin := callerHolding(nil, superAdminPerm)
+	testpg.EnsureApplication(t, "platform")
+	testpg.EnsureApplication(t, "permceil")
 
 	// The caller's own role: what it holds is exactly this role's permissions.
 	// The roles holding platform permissions are platform roles: confinement

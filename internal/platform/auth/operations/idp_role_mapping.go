@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
@@ -33,7 +34,10 @@ func CreateIdpRoleMapping(repo *auth.IdpRoleMappingRepo) usecaseop.Operation[Cre
 					return usecase.Validation("FIELD_REQUIRED", k+" is required")
 				}
 			}
-			return nil
+			// F18: the platform role is a canonical role name; a malformed one
+			// is refused, never trimmed (existence is checked when the mapping
+			// is applied at login).
+			return role.ValidateName(cmd.PlatformRoleName)
 		},
 		Authorize: usecaseop.Public[CreateIdpRoleMappingCommand],
 		Execute: func(ctx context.Context, cmd CreateIdpRoleMappingCommand, ec usecase.ExecutionContext) (usecaseop.Plan[IdpRoleMappingCreated], error) {

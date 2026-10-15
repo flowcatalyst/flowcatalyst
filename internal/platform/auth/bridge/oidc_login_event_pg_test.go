@@ -200,6 +200,7 @@ func newOidcTestFixture(t *testing.T) *oidcTestFixture {
 	rawIdpRoleName := "raw-role-" + suffix
 	platformRoleName := appCode + ":engineer"
 
+	testpg.EnsureApplication(t, appCode)
 	roleEv, err := usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(roles),
 		roleops.CreateCommand{ApplicationCode: appCode, RoleName: "engineer", DisplayName: "Engineer"},
 		testpg.TestEC())

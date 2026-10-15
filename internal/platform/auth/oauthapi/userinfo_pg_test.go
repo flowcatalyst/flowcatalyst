@@ -33,6 +33,8 @@ func TestUserinfoAnswersFromThePrincipal(t *testing.T) {
 	roles := roledomain.NewRepository(pool)
 	uow := testpg.NewUoW(t)
 
+	testpg.EnsureApplication(t, "uinfo")
+	testpg.EnsureApplication(t, "elsewhere")
 	mine, err := usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(roles),
 		roleops.CreateCommand{ApplicationCode: "uinfo", RoleName: "insider", DisplayName: "Insider"}, testpg.TestEC())
 	require.NoError(t, err)

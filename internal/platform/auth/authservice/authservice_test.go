@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	fcrole "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
+
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -35,7 +37,7 @@ func genRSAPEMs(t *testing.T) (privPEM, pubPEM string) {
 
 func anchorUser() *principal.Principal {
 	p := principal.NewUser("admin@example.com", principal.ScopeAnchor)
-	p.Roles = []serviceaccount.RoleAssignment{{Role: "platform:admin"}, {Role: "operant:viewer"}}
+	p.Roles = []serviceaccount.RoleAssignment{{Role: fcrole.MustParseName("platform:admin")}, {Role: fcrole.MustParseName("operant:viewer")}}
 	// The `applications` claim is the principal's explicit application bindings
 	// (iam_principal_application_access), not derived from role-name prefixes.
 	p.AccessibleApplicationIDs = []ids.ApplicationID{"app_alpha", "app_beta"}

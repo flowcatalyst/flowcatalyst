@@ -56,9 +56,11 @@ func TestSyncPrincipals_AppRouteReplacesOnlyItsOwnSyncedRoles(t *testing.T) {
 	}
 	// The roles the application's sync names exist (a name that is not a role
 	// is skipped, F15).
-	for _, name := range []string{"new", "admin"} {
+	for _, rn := range [][2]string{{"ownra", "new"}, {"ownra", "admin"}, {"ownrb", "viewer"}} {
+		app, name := rn[0], rn[1]
+		testpg.EnsureApplication(t, app)
 		_, err := usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(role.NewRepository(pool)),
-			roleops.CreateCommand{ApplicationCode: "ownra", RoleName: name, DisplayName: name}, testpg.TestEC())
+			roleops.CreateCommand{ApplicationCode: app, RoleName: name, DisplayName: name}, testpg.TestEC())
 		require.NoError(t, err)
 	}
 	const id, email = "prn_ownroles0001", "shared@ownroles.test"

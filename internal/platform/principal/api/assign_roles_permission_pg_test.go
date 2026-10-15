@@ -32,6 +32,7 @@ const (
 
 func mustRole(t *testing.T, uow *usecasepgx.UnitOfWork, appCode, roleName string) string {
 	t.Helper()
+	testpg.EnsureApplication(t, appCode)
 	ev, err := usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(role.NewRepository(testpg.Pool(t))),
 		roleops.CreateCommand{ApplicationCode: appCode, RoleName: roleName, DisplayName: appCode + " " + roleName},
 		testpg.TestEC())

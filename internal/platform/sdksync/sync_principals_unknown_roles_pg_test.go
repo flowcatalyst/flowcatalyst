@@ -44,6 +44,7 @@ func TestSyncPrincipals_AppRouteSkipsUnknownRoles(t *testing.T) {
 	require.NoError(t, err)
 	mkRole := func(app, name string, perms ...string) string {
 		t.Helper()
+		testpg.EnsureApplication(t, app)
 		ev, err := usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(roles),
 			roleops.CreateCommand{ApplicationCode: app, RoleName: name, DisplayName: name, Permissions: perms},
 			testpg.TestEC())
@@ -128,4 +129,44 @@ func TestSyncPrincipals_AppRouteSkipsUnknownRoles(t *testing.T) {
 	p, err := principals.FindByEmail(ctx, "c@unkrolesdk.test")
 	require.NoError(t, err)
 	assert.Nil(t, p, "a refused sync writes nothing")
+}
+
+// F18: a role name with whitespace in it is not a role. The SDK principal sync
+// treats it as it treats any unknown name (F15): skipped and reported, never
+// stored, so it can never reach a token.
+func TestSyncPrincipals_MalformedRoleNameIsSkippedNotStored(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	uow := testpg.NewUoW(t)
+	roles := role.NewRepository(pool)
+	principals := principal.NewRepository(pool)
+	apps := application.NewRepository(pool)
+
+	const appCode = "f18malformed"
+	app, err := usecaseop.Run(testpg.AnchorCtx(), uow, appops.CreateApplication(apps),
+		appops.CreateCommand{Code: appCode, Name: "F18 malformed"}, testpg.TestEC())
+	require.NoError(t, err)
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(roles),
+		roleops.CreateCommand{ApplicationCode: appCode, RoleName: "dispatcher", DisplayName: "d"}, testpg.TestEC())
+	require.NoError(t, err)
+
+	s := &State{Apps: apps, Principals: principals, Roles: roles, UoW: uow}
+	caller := auth.WithContext(ctx, &auth.AuthContext{
+		PrincipalID: "prn_f18malform_c1", Scope: auth.ScopeAnchor,
+		Applications: []string{app.ApplicationID},
+		Permissions:  []string{"platform:iam:user:update"},
+	})
+	out, err := s.syncPrincipals(caller, &syncPrincipalsInput{
+		AppCode: appCode,
+		Body: syncPrincipalsRequest{Principals: []syncPrincipalInputRequest{{
+			Email: "a@f18malformed.test", Name: "A",
+			Roles: []string{appCode + ": dispatcher", appCode + ":dispatcher"},
+		}}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{appCode + ": dispatcher"}, out.Body.SkippedRoles)
+	p, err := principals.FindByEmail(ctx, "a@f18malformed.test")
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	assert.Equal(t, []string{appCode + ":dispatcher"}, roleNamesOfAssignments(p))
 }

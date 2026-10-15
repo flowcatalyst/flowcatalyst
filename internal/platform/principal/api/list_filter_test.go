@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	fcrole "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
+
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -13,7 +15,7 @@ import (
 func mkPrincipal(name, email string, clientID *string, active bool, roles []string, created time.Time) *principal.Principal {
 	ras := make([]serviceaccount.RoleAssignment, 0, len(roles))
 	for _, r := range roles {
-		ras = append(ras, serviceaccount.RoleAssignment{Role: r})
+		ras = append(ras, serviceaccount.RoleAssignment{Role: fcrole.MustParseName(r)})
 	}
 	return &principal.Principal{
 		Name:         name,

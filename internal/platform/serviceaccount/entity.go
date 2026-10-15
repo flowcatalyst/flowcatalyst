@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -61,7 +62,7 @@ func NoCredentials() WebhookCredentials {
 
 // RoleAssignment is a role granted to this account (optionally scoped to a client).
 type RoleAssignment struct {
-	Role             string        `json:"roleName"`
+	Role             role.Name     `json:"roleName"`
 	ClientID         *ids.ClientID `json:"clientId,omitempty"`
 	AssignmentSource *string       `json:"assignmentSource,omitempty"`
 	AssignedAt       time.Time     `json:"assignedAt"`

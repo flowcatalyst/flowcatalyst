@@ -59,7 +59,7 @@ func roleDTOs(roles []serviceaccount.RoleAssignment) []RoleAssignmentDTO {
 	out := make([]RoleAssignmentDTO, 0, len(roles))
 	for _, r := range roles {
 		out = append(out, RoleAssignmentDTO{
-			Role:             r.Role,
+			Role:             r.Role.String(),
 			ClientID:         ids.StringPtr(r.ClientID),
 			AssignmentSource: r.AssignmentSource,
 			AssignedAt:       jsontime.New(r.AssignedAt),
@@ -197,7 +197,7 @@ func fromEntity(sa *serviceaccount.ServiceAccount) ServiceAccountResponse {
 	}
 	roles := make([]string, 0, len(sa.Roles))
 	for _, r := range sa.Roles {
-		roles = append(roles, r.Role)
+		roles = append(roles, r.Role.String())
 	}
 	var lastUsed *httpcompat.Time
 	if sa.LastUsedAt != nil {

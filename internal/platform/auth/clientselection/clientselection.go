@@ -212,7 +212,7 @@ func (s *State) switchClient(w http.ResponseWriter, r *http.Request) {
 	}
 	roleCodes := make([]string, 0, len(p.Roles))
 	for _, ra := range p.Roles {
-		roleCodes = append(roleCodes, ra.Role)
+		roleCodes = append(roleCodes, ra.Role.String())
 	}
 	perms, err := s.resolvePermissions(r, roleCodes)
 	if err != nil {

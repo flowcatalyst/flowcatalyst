@@ -13,6 +13,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
@@ -28,7 +29,7 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 func TestSyncUsers_Endpoint_NoAppCode(t *testing.T) {
 	ctx := context.Background()
 	pool := testpg.Pool(t)
-	s := &State{Repo: principal.NewRepository(pool), UoW: testpg.NewUoW(t)}
+	s := &State{Repo: principal.NewRepository(pool), Roles: role.NewRepository(pool), UoW: testpg.NewUoW(t)}
 
 	authCtx := auth.WithContext(ctx, &auth.AuthContext{
 		PrincipalID: "p_syncusers_http",

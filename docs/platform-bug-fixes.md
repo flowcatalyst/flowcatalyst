@@ -1624,6 +1624,87 @@ UNSIGNED.
   the application's service-account (principal) id into the connection, it has the same defect and
   needs the principal-to-service-account resolution and the same data fix.
 
+### F18. A role assignment with a space in its name was stored and minted into the token (owner report, 2026-10-15)
+
+A service account's token carried the role string `"example: dispatcher"` (a space after the
+colon); the real role is `example:dispatcher`. No role has the first name.
+
+- **How it got in**: `PUT /api/service-accounts/{id}/roles`
+  (`AssignRolesToServiceAccount`) stored every string it was sent. It did not check the shape and,
+  unlike the user path (`ROLE_NOT_FOUND`) and the IdP role sync, did not check that the name is a
+  role at all. The role ceiling (F8) did not catch it either: a name that is no role "grants
+  nothing", so it is never above the caller (the ceiling's doc says callers must refuse unknown
+  names; this one did not). Token minting copies `iam_principal_roles.role_name` verbatim into the
+  `roles` claim, so the typo reached the JWT. The platform-level principal sync
+  (`/api/sdk/principals/sync` with no application, anchor caller) had the same hole: it stored the
+  names unchecked, where the application route skips unknown names (F15).
+- **Fix (domain level, no foreign key, per `docs/token-claims-followups.md` section 4)**:
+  - `role.ValidateName` / `ValidatePermission` (`internal/platform/role/name.go`): a role name is
+    two or more non-empty colon-separated segments of ASCII letters, digits, `_`, `.`, `-`; no
+    whitespace of any kind (including Unicode spaces and zero-width characters), no empty
+    segment. Multi-colon names stay valid (existing `app:dashboard:user` definitions); case is
+    not constrained (both lower-case SDK names and mixed-case admin-created names exist).
+    Permissions: the same, plus `*`, one or more segments. **Rejected, never trimmed**: 400
+    `INVALID_ROLE_NAME` / `INVALID_PERMISSION`, the message quoting the offending value.
+  - `role.Name`, the type a `RoleAssignment.Role` now has (it was `string`). Its constructors are
+    `role.ResolveName` (shape plus existence, the result being the stored role's own canonical
+    name), `ParseName` (shape only), `Role.CanonicalName()`, `MustParseName` (platform-owned
+    constants) and `StoredName` (persistence reads only, validates nothing). An assignment can no
+    longer be built from a raw string in code.
+  - Write entry points covered: service-account role assignment (shape, then existence: 400
+    `ROLE_NOT_FOUND`); user role assignment (`AssignRoles`, which also serves create-user, the bulk
+    import and the BFF); IdP role sync (`SyncIdpRoles`); SDK principal sync, both routes (a
+    malformed or unknown name is skipped and reported in `skippedRoles`, F15, never stored; the
+    platform-level anchor route now follows the same rule); role create, role update (permissions),
+    grant-permission; SDK role sync (`/api/applications/{appCode}/roles/sync`: a malformed name or
+    permission refuses the whole sync before any write); IdP role mapping create (`platformRoleName`
+    shape). Not covered by design: the platform seed/`sync-platform` catalogue (code constants),
+    OAuth-client and IdP/email-domain allow-lists (they hold role **ids**, not names), application
+    codes (already `^[a-z][a-z0-9_-]*$` after a trim/lower-case that is left as it is).
+- **Related defect found while here (same root: ids derivable but empty)**: `iam_roles.application_id`
+  was NULL for every role written by the admin create (`POST /api/roles`, `/bff/roles`) and for the
+  `platform` catalogue (seed and `sync-platform`), although `application_code` names an existing
+  application (the `platform` application row is seeded). Consequences: the SDK role sync looks an
+  application's roles up by `application_id`, so it could not see such a role and tried to create it
+  again (unique-name collision); tokens narrowed to an application drop a role without an
+  `application_id`; and a client administrator was treated as "platform role" for any such role.
+  Fixed at the domain: admin create resolves and sets the application id and refuses an unknown
+  application (400 `APPLICATION_NOT_FOUND`); the `platform` seed and sync set the platform
+  application's id (and heal an existing row); the SDK role sync adopts an idless role of its
+  application instead of colliding. "Platform role" is now `Role.IsPlatform()` (application code
+  `platform`), not a missing id, in the two client-administrator checks, so backfilling the platform
+  roles does not let a client administrator assign them.
+- **Existing data**: yes, both kinds can exist.
+  - `076_normalise_role_assignment_names.sql`: re-writes an assignment whose name has whitespace
+    only when stripping it gives the name of an existing role (keeps source and time; if the
+    principal already holds that role the bad row is dropped as a duplicate). Everything else is
+    left; list the leftovers with `SELECT * FROM iam_principal_roles WHERE role_name ~ '\s'`. Role
+    **definitions** with whitespace in `iam_roles.name` are not touched (reported by the same kind
+    of query).
+  - `077_backfill_role_application_id.sql`: sets `application_id` from `app_applications.code =
+    application_code` where it is NULL (codes are unique, so unambiguous); rows with no matching
+    application, or no `application_code`, are left (`SELECT id, name, application_code FROM
+    iam_roles WHERE application_id IS NULL`).
+  - The owner's service account keeps `"example: dispatcher"` in its token until 076 runs on that
+    database (the normalised role exists, so it is repaired) or the roles are re-assigned.
+    **Both migrations need the owner's database run**; they ran on embedded scratch databases only.
+- **Wire impact**: new 400 codes `INVALID_ROLE_NAME`, `INVALID_PERMISSION` (role endpoints, role
+  assignment, IdP mapping create), `APPLICATION_NOT_FOUND` (role create), and `ROLE_NOT_FOUND` on the
+  service-account assignment; no schema change, so `api/openapi.lock.json` is unchanged.
+- **Tests** (`-tags=integration` except the first): `role/name_test.go` (shape, Unicode and
+  zero-width spaces, offending value in the message), `serviceaccount/operations/ops_pg_test.go`
+  (`TestAssignRolesToServiceAccount_RejectsMalformedAndUnknownRoles`: the stored roles are
+  unchanged by a refusal), `principal/operations/ops_pg_test.go` (user assign, IdP sync),
+  `sdksync/sync_principals_unknown_roles_pg_test.go` (malformed name skipped, not stored),
+  `role/operations/f18_pg_test.go` (create, application id set and unknown application refused,
+  grant, SDK sync reject and idless-role adoption), `auth/operations/ops_pg_test.go` (IdP mapping),
+  `migrate/f18_data_fix_pg_test.go` (both migrations, run twice, ambiguous rows untouched).
+- **Java/Rust mirror**: not done. The Java port needs the same: validate the shape at every role
+  assignment write (service account, user, IdP sync, SDK sync) and require an existing role on the
+  service-account path, and set `application_id` when it creates a role (admin create, platform
+  catalogue); check whether its `iam_roles` and `iam_principal_roles` hold the same rows and run
+  the same two data fixes.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads

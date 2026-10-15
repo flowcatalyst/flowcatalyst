@@ -45,7 +45,7 @@ func (s *State) mintInteractiveAccessToken(ctx context.Context, p *principal.Pri
 		clone := *p
 		clone.Roles = nil
 		for _, ra := range p.Roles {
-			if _, ok := keep[ra.Role]; ok {
+			if _, ok := keep[ra.Role.String()]; ok {
 				clone.Roles = append(clone.Roles, ra)
 			}
 		}

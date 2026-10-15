@@ -39,6 +39,7 @@ func TestSyncPrincipals_AppRouteBoundedByCallersPermissions(t *testing.T) {
 	require.NoError(t, err)
 	mkRole := func(name string, perms ...string) string {
 		t.Helper()
+		testpg.EnsureApplication(t, appCode)
 		ev, err := usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(roles),
 			roleops.CreateCommand{ApplicationCode: appCode, RoleName: name, DisplayName: name, Permissions: perms},
 			testpg.TestEC())
@@ -83,7 +84,7 @@ func TestSyncPrincipals_AppRouteBoundedByCallersPermissions(t *testing.T) {
 func roleNamesOfAssignments(p *principal.Principal) []string {
 	out := []string{}
 	for _, ra := range p.Roles {
-		out = append(out, ra.Role)
+		out = append(out, ra.Role.String())
 	}
 	return out
 }

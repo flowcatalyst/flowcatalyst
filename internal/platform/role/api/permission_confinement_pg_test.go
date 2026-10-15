@@ -41,6 +41,7 @@ func TestRolePermissions_ConfinedToTheirApplication(t *testing.T) {
 	admin := callerHolding(nil, permRoleCreate, permRoleUpdate, permRoleDelete, "platform:iam:role:view", permUserView)
 
 	create := func(c context.Context, app, name string, perms ...string) error {
+		testpg.EnsureApplication(t, app)
 		_, err := s.create(c, &apicommon.In[CreateRoleRequest]{Body: CreateRoleRequest{
 			ApplicationCode: app, RoleName: name, DisplayName: name, Permissions: perms,
 		}})

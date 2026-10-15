@@ -230,7 +230,7 @@ func principalMatchesClient(p *principal.Principal, clientID string) bool {
 // requested role names (OR semantics, matching the multi-select filter UX).
 func principalHasAnyRole(p *principal.Principal, want []string) bool {
 	for _, r := range p.Roles {
-		if slices.Contains(want, r.Role) {
+		if slices.Contains(want, r.Role.String()) {
 			return true
 		}
 	}
@@ -970,7 +970,7 @@ func (s *State) protectedRoleNames(ctx context.Context, roleNames []string, allo
 		if err != nil {
 			return nil, usecase.Internal("REPO", "find_role failed", err)
 		}
-		if r == nil || r.ApplicationID == nil || !allowed[string(*r.ApplicationID)] {
+		if r == nil || r.ApplicationID == nil || r.IsPlatform() || !allowed[string(*r.ApplicationID)] {
 			out = append(out, name)
 		}
 	}
@@ -1817,13 +1817,13 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon
 }
 
 func roleNamesFrom(rs []serviceaccount.RoleAssignment) []string {
-	return apicommon.MapSlice(rs, func(r *serviceaccount.RoleAssignment) string { return r.Role })
+	return apicommon.MapSlice(rs, func(r *serviceaccount.RoleAssignment) string { return r.Role.String() })
 }
 
 func uniqueRoleNames(rs []serviceaccount.RoleAssignment) map[string]struct{} {
 	out := make(map[string]struct{}, len(rs))
 	for _, r := range rs {
-		out[r.Role] = struct{}{}
+		out[r.Role.String()] = struct{}{}
 	}
 	return out
 }
