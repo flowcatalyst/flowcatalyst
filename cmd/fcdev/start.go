@@ -99,6 +99,11 @@ func optsFromFlags(cmd *cobra.Command) startOpts {
 	}
 }
 
+// afterEmbeddedPGStart is a test seam: it runs right after the embedded
+// Postgres is up so a test can inject a failure (error or panic) and assert
+// the cluster is stopped on the way out.
+var afterEmbeddedPGStart = func() error { return nil }
+
 func runStart(cmd *cobra.Command, _ []string) error {
 	opts := optsFromFlags(cmd)
 	banner(opts)
@@ -115,6 +120,24 @@ func runStart(cmd *cobra.Command, _ []string) error {
 
 	rootCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// SIGTERM / SIGINT → cancel rootCtx. Installed BEFORE the embedded Postgres
+	// starts: with the default disposition a signal during boot (migrations,
+	// seeding) kills the process without running the deferred pg.Stop(), which
+	// orphans the postgres child on its port and data directory. With the
+	// handler in place the boot's context-aware steps fail fast, runStart
+	// returns, and the defers stop Postgres; once up, server.Run drains.
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stop)
+	go func() {
+		select {
+		case <-stop:
+			slog.Info("shutdown signal received")
+			cancel()
+		case <-rootCtx.Done():
+		}
+	}()
 
 	// ── Embedded Postgres ──────────────────────────────────────────────
 	databaseURL := opts.DatabaseURL
@@ -144,6 +167,12 @@ func runStart(cmd *cobra.Command, _ []string) error {
 			slog.Info("stopping embedded postgres")
 			_ = pg.Stop()
 		}()
+		if err := afterEmbeddedPGStart(); err != nil {
+			return err
+		}
+		if err := rootCtx.Err(); err != nil {
+			return fmt.Errorf("interrupted during boot: %w", err)
+		}
 		databaseURL = fmt.Sprintf("postgresql://postgres:postgres@localhost:%d/flowcatalyst?sslmode=disable", opts.EmbeddedDBPort)
 		slog.Info("embedded postgres started", "port", opts.EmbeddedDBPort, "path", opts.EmbeddedDBPath)
 	}
@@ -236,15 +265,6 @@ func runStart(cmd *cobra.Command, _ []string) error {
 			slog.Warn("could not write the fn CLI credential", "err", err)
 		}
 	}
-
-	// SIGTERM / SIGINT → cancel rootCtx so server.Run drains.
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-stop
-		slog.Info("shutdown signal received")
-		cancel()
-	}()
 
 	// ── Delegate to the shared run-loop ────────────────────────────────
 	cfg := devEnvCfg(opts, databaseURL, routerCreds)
