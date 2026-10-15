@@ -31,8 +31,16 @@ type fnCredentials struct {
 	ClientSecret string `json:"clientSecret"`
 }
 
+// fnCLICredentialsEnv overrides the credential file's location, for both
+// the writer (fcdev start) and the reader (fcdev fn ...). Isolated or test
+// instances set it so they never overwrite the developer's real file.
+const fnCLICredentialsEnv = "FC_FN_CLI_CREDENTIALS_PATH"
+
 // fnCLICredentialsPath is where fcdev start leaves the dev CLI credential.
 func fnCLICredentialsPath() (string, error) {
+	if p := os.Getenv(fnCLICredentialsEnv); p != "" {
+		return p, nil
+	}
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		return "", err

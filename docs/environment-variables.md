@@ -271,6 +271,7 @@ platform unauthenticated (local dev only — the standalone server fails fast).
 
 | Variable | Default | Aliases | Read in | Purpose |
 |---|---|---|---|---|
+| `FC_FN_CLI_CREDENTIALS_PATH` | `<user cache dir>/flowcatalyst-dev/fng-cli.json` | — | `cmd/fcdev/fn_platform.go` | Location of the dev CLI credential file `fcdev start` writes and `fcdev fn ...` reads. Isolated/test fcdevs MUST set it to a path under their own state dir, or they overwrite the developer's real file. The Java fcdev honours the same variable. |
 | `FC_MCP_PORT` | `8090` | — | `internal/server/envcfg.go` | MCP HTTP listener port. |
 | `FC_MCP_BIND` | `127.0.0.1` (localhost-only) | — | `internal/server/envcfg.go` | MCP bind host; set `0.0.0.0` to expose (e.g. in a container). |
 | `FLOWCATALYST_URL` | `http://localhost:8080` (after credentials-file fallback) | `FC_MCP_PLATFORM_URL` (in-process server only) | `internal/mcp`, `internal/server/envcfg.go` | Platform API root the MCP server proxies into. Also the last alias of `FC_OUTBOX_PLATFORM_URL`. |

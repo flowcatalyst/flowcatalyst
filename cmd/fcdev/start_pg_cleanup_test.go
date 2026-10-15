@@ -40,6 +40,7 @@ func isolatedPGHome(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
+	t.Setenv("FC_FN_CLI_CREDENTIALS_PATH", filepath.Join(home, "fng-cli.json"))
 }
 
 func freeTCPPort(t *testing.T) int {
