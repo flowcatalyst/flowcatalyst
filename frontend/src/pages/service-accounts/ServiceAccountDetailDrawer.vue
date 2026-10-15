@@ -3,6 +3,7 @@ import { toast } from "@/utils/errorBus";
 import { ref, computed, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useConfirm } from "primevue/useconfirm";
+import { credentialConfirmOptions, type CredentialAction } from "@/composables/credentialConfirm";
 import {
 	serviceAccountsApi,
 	type ServiceAccount,
@@ -28,6 +29,10 @@ const emit = defineEmits<{
 
 const route = useRoute();
 const confirm = useConfirm();
+
+function confirmCredential(action: CredentialAction, run: () => void) {
+	confirm.require(credentialConfirmOptions(action, run));
+}
 const authStore = useAuthStore();
 
 // Edit mode — doubles as the drawer's dirty flag.
@@ -770,7 +775,7 @@ async function deleteServiceAccount() {
                 icon="pi pi-refresh"
                 outlined
                 :loading="saving"
-                @click="regenerateToken"
+                @click="confirmCredential('regenerate-sa-token', regenerateToken)"
               />
             </div>
 
@@ -781,7 +786,7 @@ async function deleteServiceAccount() {
                 icon="pi pi-refresh"
                 outlined
                 :loading="saving"
-                @click="regenerateSecret"
+                @click="confirmCredential('regenerate-sa-secret', regenerateSecret)"
               />
             </div>
           </div>
@@ -805,7 +810,7 @@ async function deleteServiceAccount() {
                 outlined
                 :loading="mintingToken"
                 :disabled="!serviceAccount?.active"
-                @click="mintBearerToken"
+                @click="confirmCredential('mint-sa-token', mintBearerToken)"
               />
             </div>
           </div>
