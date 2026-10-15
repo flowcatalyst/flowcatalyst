@@ -5,12 +5,12 @@ import { handleRequest } from "../../../../../clients/fn-ts/src/dispatch";
 import { describeJSON } from "../../../../../clients/fn-ts/src/describe";
 import { installFakeHost } from "../../../../../clients/fn-ts/src/testing";
 import { OpLog } from "../../../../../clients/fn-ts/src/ops";
-import { DISPATCH_REQUESTED } from "./eventType";
 
-test("describe subscribes the webhook to the demo event, data only", () => {
-  const d = JSON.parse(describeJSON()) as { subscriptions: Record<string, unknown>[]; endpoints: { path: string; auth: string }[] };
-  assert.deepEqual(d.subscriptions, [{ eventType: DISPATCH_REQUESTED, path: "/deliver", mode: "IMMEDIATE", dataOnly: true }]);
-  assert.ok(d.endpoints.some((e) => e.path === "/deliver" && e.auth === "webhook"));
+test("describe is a signed webhook endpoint at /deliver and nothing else", () => {
+  const d = JSON.parse(describeJSON()) as Record<string, unknown> & { endpoints: { method: string; path: string; auth: string }[] };
+  assert.deepEqual(d.endpoints, [{ method: "POST", path: "/deliver", auth: "webhook" }]);
+  // No subscription: jobs are dispatched to it directly by dispatch-creator.
+  for (const key of ["subscriptions", "schedules", "emits", "dispatches"]) assert.equal(key in d, false, key);
 });
 
 test("a delivery is logged and acked", async () => {

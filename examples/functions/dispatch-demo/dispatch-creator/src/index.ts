@@ -1,17 +1,21 @@
 // dispatch-creator: POST /dispatch with a JSON body (platform-authenticated)
-// emits one event carrying that body. A subscription owned by the
-// payload-logger function turns the event into a dispatch job and delivers it.
+// creates one DISPATCH JOB that delivers that body to the payload-logger
+// function's /deliver webhook.
 //
-// Why emit rather than call the dispatch-job API: a function holds no
-// platform credential (plan 6.3). Its only write path into the platform is
-// the `event.emit` capability, which the runner performs on its behalf and
-// the platform checks against this version's declared `emits`. The dispatch
-// job is then created by the platform's normal subscription path, so
-// clientCode / source / metadata rules are the platform's, not ours.
+// A function holds no platform credential (plan 6.3), so it cannot call the
+// dispatch-job API. It uses the `dispatch` capability instead: it declares the
+// one (function, path) it may dispatch to, names that target in fn.dispatch,
+// and the runner asks the platform to create the job on its behalf. The
+// platform checks the target against this version's declared `dispatches`,
+// requires it to be a live function of the SAME application with a webhook
+// endpoint at the path, builds the delivery URL and signs the delivery as the
+// application's service account. clientCode, source and the metadata rules
+// are the platform's: the job is recorded as kind TASK, source
+// "function:<this address>", with fn.* provenance metadata.
 import { fn, FnError, isRetryable, type FnRequest } from "@flowcatalyst/fn";
-import { DISPATCH_REQUESTED, REQUIRED_PERMISSION } from "./eventType";
+import { DELIVER_PATH, LOGGER_ADDRESS, REQUIRED_PERMISSION } from "./names";
 
-fn.emits(DISPATCH_REQUESTED);
+fn.dispatches(LOGGER_ADDRESS, DELIVER_PATH);
 
 fn.open("GET /healthz", () => fn.json(200, { status: "ok" }));
 
@@ -34,24 +38,21 @@ fn.platform("POST /dispatch", async (req: FnRequest) => {
     return fn.json(400, { error: "PAYLOAD_MUST_BE_A_JSON_OBJECT_OR_ARRAY" });
   }
 
-  // A caller-supplied Idempotency-Key makes a retried request create one
-  // event; otherwise the invocation id keeps a runner-level retry of the
-  // same invocation from duplicating.
-  const key = req.headers.get("Idempotency-Key") || req.invocation.id;
-
   try {
-    const eventId = await fn.emit({
-      type: DISPATCH_REQUESTED,
-      dedupId: `dispatch-demo-${key}`,
+    const jobId = await fn.dispatch({
+      target: LOGGER_ADDRESS,
+      path: DELIVER_PATH,
+      payload: payload as Record<string, unknown>,
       messageGroup: "dispatch-demo",
-      contentType: "application/json",
-      data: payload as Record<string, unknown>,
+      descriptor: "dispatch-demo payload",
+      // An object is fine: it travels as the platform's [{key, value}] array.
+      metadata: { requestedBy: principal.id },
     });
-    fn.log.info("dispatch requested", { eventId });
-    return fn.json(202, { eventId });
+    fn.log.info("job dispatched", { jobId });
+    return fn.json(202, { jobId });
   } catch (err) {
     if (isRetryable(err)) return fn.json(503, { error: "PLATFORM_UNAVAILABLE" });
-    fn.log.error("emit refused", { error: err instanceof FnError ? `${err.code}: ${err.message}` : String(err) });
-    return fn.json(502, { error: "EMIT_REFUSED" });
+    fn.log.error("dispatch refused", { error: err instanceof FnError ? `${err.code}: ${err.message}` : String(err) });
+    return fn.json(502, { error: "DISPATCH_REFUSED" });
   }
 });
