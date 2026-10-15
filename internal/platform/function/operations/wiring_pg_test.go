@@ -265,6 +265,28 @@ func TestPublish_EmitNotOwned(t *testing.T) {
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "EMIT_NOT_OWNED")
 }
 
+func TestPublish_DispatchTargets(t *testing.T) {
+	t.Parallel()
+	f := newTestFunctionFixture(t, "app_optpubdisp001", "optpubdispapp", "disp-fn")
+	publish := func(dispatches string) error {
+		src := jsArtifact(`{"abi":1,"endpoints":[{"path":"/x","auth":"none"}],"dispatches":` + dispatches + `}`)
+		_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+			operations.PublishCommand{FunctionID: f.fn.ID, Digest: putArtifactBytes(t, f.artifacts, src), Runtime: runtimes.JS}, testpg.TestEC())
+		return err
+	}
+	// Another application's function: refused at publish, like an emit.
+	testpg.RequireUsecaseError(t, publish(`[{"target":"someoneelse.logger","path":"/deliver"}]`), usecase.KindValidation, "DISPATCH_NOT_OWNED")
+	// An address that merely starts with the application code is not the application.
+	testpg.RequireUsecaseError(t, publish(`[{"target":"optpubdispapp2.logger","path":"/deliver"}]`), usecase.KindValidation, "DISPATCH_NOT_OWNED")
+	// Shape problems are describe problems, listed.
+	ue := usecase.AsError(publish(`[{"target":"https://x.com/","path":"/deliver"}]`))
+	require.NotNil(t, ue)
+	assert.Equal(t, "DESCRIBE_INVALID", ue.Code)
+	assert.Contains(t, ue.Message, "not a function address")
+	// Its own application's function (which need not exist yet) publishes.
+	require.NoError(t, publish(`[{"target":"optpubdispapp.logger","path":"/deliver"}]`))
+}
+
 func TestPublish_BadCron(t *testing.T) {
 	t.Parallel()
 	f := newTestFunctionFixture(t, "app_optpubcron001", "optpubcronapp", "cron-fn")

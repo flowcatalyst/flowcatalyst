@@ -85,6 +85,10 @@ const (
 	OpDBBegin    Op = 8
 	OpDBCommit   Op = 9
 	OpDBRollback Op = 10
+	// OpDispatch creates a dispatch job for a declared target (additive: a
+	// runner that predates it answers UNKNOWN_OP, so ABI v1 modules keep
+	// working unchanged).
+	OpDispatch Op = 11
 )
 
 func (o Op) String() string {
@@ -109,6 +113,8 @@ func (o Op) String() string {
 		return "db.commit"
 	case OpDBRollback:
 		return "db.rollback"
+	case OpDispatch:
+		return "dispatch.create"
 	}
 	return "unknown"
 }
@@ -189,6 +195,45 @@ type Event struct {
 // Emitted is the result meta of OpEventEmit.
 type Emitted struct {
 	EventID string `json:"eventId"`
+}
+
+// KV is one dispatch-job metadata entry. The wire shape is always an array of
+// these (the platform's dispatch-job contract); SDKs accept a map and
+// normalise.
+type KV struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// Dispatch is the meta of an OpDispatch call; the job payload is the body.
+// Target and Path must equal one entry of the version's describe
+// `dispatches`. Everything else is optional.
+type Dispatch struct {
+	Target string `json:"target"`
+	Path   string `json:"path"`
+	// Code defaults to {application}:function:{name}:dispatch; its first
+	// segment must be the function's application.
+	Code         string `json:"code,omitempty"`
+	Subject      string `json:"subject,omitempty"`
+	MessageGroup string `json:"messageGroup,omitempty"`
+	// Mode is IMMEDIATE, NEXT_ON_ERROR or BLOCK_ON_ERROR; empty is the
+	// platform default.
+	Mode           string `json:"mode,omitempty"`
+	CorrelationID  string `json:"correlationId,omitempty"`
+	CausationID    string `json:"causationId,omitempty"`
+	ContentType    string `json:"contentType,omitempty"`
+	Descriptor     string `json:"descriptor,omitempty"`
+	MaxRetries     *int   `json:"maxRetries,omitempty"`
+	TimeoutSeconds *int   `json:"timeoutSeconds,omitempty"`
+	// DataOnly delivers the payload as the request body; absent means true
+	// (the target is a function, which wants the data, not an envelope).
+	DataOnly *bool `json:"dataOnly,omitempty"`
+	Metadata []KV  `json:"metadata,omitempty"`
+}
+
+// Dispatched is the result meta of OpDispatch.
+type Dispatched struct {
+	JobID string `json:"jobId"`
 }
 
 // DBStatement is the meta of OpDBQuery / OpDBExec.

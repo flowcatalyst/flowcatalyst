@@ -34,6 +34,9 @@ type fakeCP struct {
 	heartbeats []control.Heartbeat
 	emits      []control.EmitRequest
 	emitPanics bool // Emit panics (a host-side fault inside a call)
+	dispatches []control.DispatchRequest
+	// dispatchErr, when set, is what Dispatch answers instead of a job id.
+	dispatchErr *abi.Error
 }
 
 func newFakeCP() *fakeCP {
@@ -97,6 +100,16 @@ func (f *fakeCP) Emit(_ context.Context, r control.EmitRequest) (*control.EmitRe
 	return &control.EmitResponse{EventID: "evt_1"}, nil
 }
 
+func (f *fakeCP) Dispatch(_ context.Context, r control.DispatchRequest) (*control.DispatchResponse, *abi.Error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.dispatchErr != nil {
+		return nil, f.dispatchErr
+	}
+	f.dispatches = append(f.dispatches, r)
+	return &control.DispatchResponse{JobID: "djob_1"}, nil
+}
+
 func (f *fakeCP) lastHeartbeat() (control.Heartbeat, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -133,7 +146,7 @@ const describeDoc = `{"abi":1,"endpoints":[
  {"method":"POST","path":"/small","auth":"none","maxBodyBytes":4},
  {"method":"POST","path":"/huge","auth":"none","maxBodyBytes":9000000000000},
  {"method":"POST","path":"/secure-post","auth":"platform"}
-],"config":["GREETING"],"secrets":["KEY"],"emits":["app:dom:agg:done"],"httpAllow":["example.com"]}`
+],"config":["GREETING"],"secrets":["KEY"],"emits":["app:dom:agg:done"],"httpAllow":["example.com"],"dispatches":[{"target":"app.logger","path":"/deliver"}]}`
 
 // The fixture routes by path, so /hook and /secure need fixture paths too:
 // they fall through to its 404, which is still a guest answer (not a runner
@@ -441,6 +454,69 @@ func TestCapabilities(t *testing.T) {
 	defer h.cp.mu.Unlock()
 	if len(h.cp.emits) != 1 || h.cp.emits[0].FunctionID != "fnc_1" || h.cp.emits[0].Event.Source != "function:app.hello" || string(h.cp.emits[0].Data) != `{"x":1}` {
 		t.Fatalf("emits = %+v", h.cp.emits)
+	}
+}
+
+func TestDispatchCapability(t *testing.T) {
+	h := start(t, fnDoc(ver(1, control.RoleLive)))
+	ok := abi.Dispatch{Target: "app.logger", Path: "/deliver", Subject: "s", Metadata: []abi.KV{{Key: "k", Value: "v"}}}
+	if code, meta, _ := hostCall(t, h, abi.OpDispatch, ok, `{"x":1}`); code != "0" || meta != `{"jobId":"djob_1"}` {
+		t.Fatalf("dispatch: %s %s", code, meta)
+	}
+	// Anything the version did not declare is refused by the RUNNER, before
+	// the platform is asked: a different target, a different path, a path of
+	// the declared target that was not declared, an absolute URL smuggled in.
+	for name, d := range map[string]abi.Dispatch{
+		"other target": {Target: "app.other", Path: "/deliver"},
+		"other path":   {Target: "app.logger", Path: "/admin"},
+		"url target":   {Target: "https://evil.com", Path: "/deliver"},
+		"empty":        {},
+		"case":         {Target: "APP.logger", Path: "/deliver"},
+		"trailing":     {Target: "app.logger", Path: "/deliver/"},
+	} {
+		if code, meta, _ := hostCall(t, h, abi.OpDispatch, d, "{}"); code != "1" || !strings.Contains(meta, abi.CodeNotDeclared) {
+			t.Errorf("%s: %s %s", name, code, meta)
+		}
+	}
+	if code, meta, _ := hostCall(t, h, abi.OpDispatch, ok, strings.Repeat("x", maxDispatchPayloadBytes+1)); code != "1" || !strings.Contains(meta, abi.CodeTooLarge) {
+		t.Errorf("oversize payload: %s %s", code, meta)
+	}
+	// A platform refusal reaches the guest as the control client classified it.
+	h.cp.mu.Lock()
+	h.cp.dispatchErr = abi.Errorf(abi.CodeUnavailable, "down")
+	h.cp.mu.Unlock()
+	if code, meta, _ := hostCall(t, h, abi.OpDispatch, ok, "{}"); code != "1" || !strings.Contains(meta, abi.CodeUnavailable) {
+		t.Errorf("unavailable: %s %s", code, meta)
+	}
+	h.cp.mu.Lock()
+	h.cp.dispatchErr = nil
+	defer h.cp.mu.Unlock()
+	if len(h.cp.dispatches) != 1 {
+		t.Fatalf("the platform was asked %d times, want exactly the one declared call: %+v", len(h.cp.dispatches), h.cp.dispatches)
+	}
+	got := h.cp.dispatches[0]
+	if got.FunctionID != "fnc_1" || got.Version != 1 || got.Dispatch.Target != "app.logger" || string(got.Payload) != `{"x":1}` ||
+		got.InvocationID == "" || got.RequestCorrelationID != "" {
+		t.Fatalf("dispatch request = %+v", got)
+	}
+}
+
+// The calling request's X-Correlation-Id travels with the dispatch so the job
+// continues the caller's trace.
+func TestDispatchCarriesRequestCorrelation(t *testing.T) {
+	h := start(t, fnDoc(ver(1, control.RoleLive)))
+	frame, err := abi.MarshalFrame(abi.Dispatch{Target: "app.logger", Path: "/deliver"}, []byte("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, b := h.do("POST", "/fn/app.hello/call?op="+strconv.Itoa(int(abi.OpDispatch)), frame, map[string]string{"X-Correlation-Id": " corr-7 "})
+	if resp.StatusCode != 200 || resp.Header.Get("X-Code") != "0" {
+		t.Fatalf("%d %s %s", resp.StatusCode, resp.Header.Get("X-Meta"), b)
+	}
+	h.cp.mu.Lock()
+	defer h.cp.mu.Unlock()
+	if len(h.cp.dispatches) != 1 || h.cp.dispatches[0].RequestCorrelationID != "corr-7" {
+		t.Fatalf("dispatches = %+v", h.cp.dispatches)
 	}
 }
 

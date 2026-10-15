@@ -33,6 +33,7 @@ type ControlPlane interface {
 	Heartbeat(ctx context.Context, hb control.Heartbeat) error
 	Artifact(ctx context.Context, digest string) (io.ReadCloser, error)
 	Emit(ctx context.Context, r control.EmitRequest) (*control.EmitResponse, *abi.Error)
+	Dispatch(ctx context.Context, r control.DispatchRequest) (*control.DispatchResponse, *abi.Error)
 }
 
 // Config configures a Runner.

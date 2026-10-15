@@ -365,12 +365,14 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// GET /api/dispatch/router-config is (internal/platform/dispatch,
 		// dispatch/api.go's doc comment) — one auth story, one spec.
 		functioncontrol.Register(humaAPI, &functioncontrol.State{
-			Repo:      repos.functionRepo,
-			Events:    repos.eventRepo,
-			Artifacts: svcs.functionArtifacts,
-			Creds:     serviceaccount.NewCachedOutboundCredsResolver(repos.serviceAccountRepo, time.Minute),
-			Auth:      fncontrol.TokenAuth{Issuer: cfg.JWTIssuer, Audience: cfg.JWTIssuer},
-			Listener:  svcs.functionControlListener,
+			Repo:              repos.functionRepo,
+			Events:            repos.eventRepo,
+			Jobs:              repos.dispatchJobRepo,
+			RunnerURLTemplate: cfg.FunctionsRunnerURL,
+			Artifacts:         svcs.functionArtifacts,
+			Creds:             serviceaccount.NewCachedOutboundCredsResolver(repos.serviceAccountRepo, time.Minute),
+			Auth:              fncontrol.TokenAuth{Issuer: cfg.JWTIssuer, Audience: cfg.JWTIssuer},
+			Listener:          svcs.functionControlListener,
 		})
 
 		// SDK self-registration ("sync") endpoints, scoped under

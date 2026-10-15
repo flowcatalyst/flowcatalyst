@@ -130,6 +130,15 @@ func (f Function) DispatchPoolCode() string {
 	return "fn-" + strings.ReplaceAll(f.Address, ".", "-")
 }
 
+// TargetURL is the URL a delivery to the function's webhook path is sent to:
+// the runner URL template (FC_FUNCTIONS_RUNNER_URL) with {pool} substituted,
+// then /fn/{address}{path}. Promote wiring (subscriptions, schedules) and the
+// dispatch capability build it identically.
+func TargetURL(template, pool, address, path string) string {
+	base := strings.TrimSuffix(strings.ReplaceAll(template, "{pool}", pool), "/")
+	return base + "/fn/" + address + path
+}
+
 // New constructs a Function with default limits. applicationCode is used
 // only to compute Address and populate the read-side field — it is not
 // persisted.

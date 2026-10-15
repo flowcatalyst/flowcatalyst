@@ -20,6 +20,8 @@ const (
 	PathHeartbeat = "/control/functions/heartbeat" // POST Heartbeat
 	PathArtifacts = "/control/functions/artifacts" // GET /{digest}: 302 to storage, or the bytes
 	PathEvents    = "/control/functions/events"    // POST EmitRequest → EmitResponse
+	// PathDispatchJobs: POST DispatchRequest → DispatchResponse.
+	PathDispatchJobs = "/control/functions/dispatch-jobs"
 )
 
 // MaxWait caps the long-poll a runner may ask for.
@@ -150,4 +152,27 @@ type EmitRequest struct {
 // EmitResponse is the platform's answer to an EmitRequest.
 type EmitResponse struct {
 	EventID string `json:"eventId"`
+}
+
+// DispatchRequest asks the platform to create a dispatch job on a function's
+// behalf (the `dispatch` host call, ABI op 11). The platform checks the
+// (target, path) pair against the invoking version's describe `dispatches`,
+// the target's ownership and the rest of the dispatch-job rules; the guest
+// never supplies a URL or a credential.
+type DispatchRequest struct {
+	FunctionID string `json:"functionId"`
+	Version    int    `json:"version"`
+	// InvocationID is the calling invocation (recorded in the job's
+	// metadata). RequestCorrelationID is the inbound request's
+	// X-Correlation-Id when it carried one: the job's correlationId unless
+	// the guest set its own.
+	InvocationID         string       `json:"invocationId,omitempty"`
+	RequestCorrelationID string       `json:"requestCorrelationId,omitempty"`
+	Dispatch             abi.Dispatch `json:"dispatch"`
+	Payload              []byte       `json:"payload"` // base64 on the wire
+}
+
+// DispatchResponse is the platform's answer to a DispatchRequest.
+type DispatchResponse struct {
+	JobID string `json:"jobId"`
 }

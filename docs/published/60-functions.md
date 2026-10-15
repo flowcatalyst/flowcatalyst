@@ -122,6 +122,7 @@ past a failure (`NEXT_ON_ERROR`), like every other subscription; ask for
 | Config and secrets | Only declared keys. Values are set on the platform per function; secrets are write-only. Promotion is refused while a declared key has no value. |
 | Databases | `fn.DB("main")` gives a `database/sql` handle (Go) or `query`/`exec`/`transaction` (Rust, TS). The connection string is a platform setting; the pool belongs to the runner. Statements are bound with `?` placeholders, results come back at most 10 000 rows or 8 MiB, and a transaction still open when the call ends is rolled back. |
 | Outbound HTTP | Only to hosts in `HTTPAllow` (`api.example.com` or `*.example.com`), including on redirects. Responses over 16 MiB are refused. |
+| Dispatching work | Only `(function, path)` pairs declared with `Dispatches` (`fn.dispatches` in TypeScript), and only functions of your own application whose live version has a signed `webhook` endpoint at that path. The platform creates the dispatch job, builds the URL and signs the delivery as your application; you hold no credential. It is not de-duplicated: a retry after an ambiguous failure can create a second job. |
 | Emitting events | Only types declared with `Emits`, and only your application's own. Every event needs a dedup id — derive it from what you are handling (for example the delivered event's id) so a redelivery emits once. |
 | Logging | `fn.Log(ctx)` (Go), `ctx.log_*` (Rust), `fn.log` and `console` (TS). |
 

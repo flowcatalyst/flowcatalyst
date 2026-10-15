@@ -61,13 +61,17 @@ const validDescribe = `{
   "subscriptions": [{"eventType": "orders:order:order:created", "path": "/events/order-created", "mode": "IMMEDIATE", "maxRetries": 3}],
   "schedules": [{"cron": "0 */5 * * * *", "path": "/events/order-created"}],
   "config": ["GREETING"], "secrets": ["STRIPE_KEY"], "db": ["main"],
-  "httpAllow": ["api.stripe.com", "*.acme.com", "hooks.acme.com:8080"], "emits": ["orders:order:order:shipped"]
+  "httpAllow": ["api.stripe.com", "*.acme.com", "hooks.acme.com:8080"], "emits": ["orders:order:order:shipped"],
+  "dispatches": [{"target": "orders.invoice-logger", "path": "/deliver"}]
 }`
 
 func TestParseDescribeValid(t *testing.T) {
 	d, err := ParseDescribe([]byte(validDescribe))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(d.Dispatches) != 1 || d.Dispatches[0] != (DispatchTarget{Target: "orders.invoice-logger", Path: "/deliver"}) {
+		t.Fatalf("dispatches = %+v", d.Dispatches)
 	}
 	if len(d.Endpoints) != 4 || d.Endpoints[3].MaxBodyBytes == nil || *d.Endpoints[3].MaxBodyBytes != 0 {
 		t.Fatalf("endpoints = %+v", d.Endpoints)
@@ -109,6 +113,15 @@ func TestParseDescribeRejects(t *testing.T) {
 		"negative body limit":                       {`{"abi":1,"endpoints":[{"path":"/e","auth":"none","maxBodyBytes":-1}]}`, "maxBodyBytes"},
 		"cors wildcard with credentials":            {`{"abi":1,"endpoints":[{"path":"/e","auth":"none","cors":{"origins":["*"],"allowCredentials":true}}]}`, "allowCredentials"},
 		"cors listed with wildcard and credentials": {`{"abi":1,"endpoints":[{"path":"/e","auth":"none","cors":{"origins":["https://a.com","*"],"allowCredentials":true}}]}`, "allowCredentials"},
+		"dispatch bad target":                       {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"https://x.com","path":"/d"}]}`, "not a function address"},
+		"dispatch no dot":                           {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"logger","path":"/d"}]}`, "not a function address"},
+		"dispatch relative path":                    {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"d"}]}`, "must start with /"},
+		"dispatch pattern path":                     {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d/{x}"}]}`, "literal path"},
+		"dispatch query path":                       {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d?x=1"}]}`, "literal path"},
+		"dispatch dot segment":                      {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/x/../d"}]}`, "dot segments"},
+		"dispatch duplicate":                        {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d"},{"target":"a.b","path":"/d"}]}`, "declared twice"},
+		"dispatch unknown key":                      {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","url":"x"}]}`, "unknown field"},
+		"dispatch missing path":                     {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b"}]}`, "must start with /"},
 		"trailing data":                             {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}]} {}`, "trailing data"},
 	}
 	for name, c := range cases {

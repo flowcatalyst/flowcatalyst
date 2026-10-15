@@ -168,6 +168,9 @@ func printDescribe(path string, d *abi.Describe) {
 	list("db", d.DB)
 	list("httpAllow", d.HTTPAllow)
 	list("emits", d.Emits)
+	for _, t := range d.Dispatches {
+		fmt.Printf("  dispatches   %s%s\n", t.Target, t.Path)
+	}
 }
 
 func newFnBuildCmd() *cobra.Command {

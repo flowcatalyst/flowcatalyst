@@ -147,16 +147,27 @@ func (c *Client) Artifact(ctx context.Context, digest string) (io.ReadCloser, er
 // *abi.Error the guest sees: UNAVAILABLE when the platform could not be
 // reached or failed (retryable), NOT_ALLOWED / BAD_REQUEST otherwise.
 func (c *Client) Emit(ctx context.Context, r EmitRequest) (*EmitResponse, *abi.Error) {
-	resp, err := c.do(ctx, http.MethodPost, PathEvents, r, nil)
+	return post[EmitResponse](ctx, c, PathEvents, r, "emitting")
+}
+
+// Dispatch asks the platform to create a dispatch job for a function; errors
+// are classified exactly as Emit's.
+func (c *Client) Dispatch(ctx context.Context, r DispatchRequest) (*DispatchResponse, *abi.Error) {
+	return post[DispatchResponse](ctx, c, PathDispatchJobs, r, "dispatching")
+}
+
+// post makes a function-behalf write and classifies the answer for the guest.
+func post[T any](ctx context.Context, c *Client, path string, body any, doing string) (*T, *abi.Error) {
+	resp, err := c.do(ctx, http.MethodPost, path, body, nil)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, abi.Errorf(abi.CodeDeadline, "the invocation's deadline passed while emitting")
+			return nil, abi.Errorf(abi.CodeDeadline, "the invocation's deadline passed while "+doing)
 		}
 		return nil, abi.Errorf(abi.CodeUnavailable, "the platform could not be reached")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 == 2 {
-		var out EmitResponse
+		var out T
 		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 			return nil, abi.Errorf(abi.CodeUnavailable, "the platform's answer was unreadable")
 		}

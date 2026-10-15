@@ -170,6 +170,18 @@ func Publish(repo *function.Repository, artifacts artifact.Store, loader *runtim
 						fmt.Sprintf("emits %q is not owned by application %q", et, f.ApplicationCode))
 				}
 			}
+			// Every dispatch target must be a function of this function's own
+			// application: a job is delivered and signed inside one
+			// application. (Whether the target exists, is live and takes a
+			// signed POST at the path is checked per call, not here: the
+			// target may be deployed after its creator.)
+			for _, dt := range d.Dispatches {
+				app, _, _ := strings.Cut(dt.Target, ".")
+				if app != f.ApplicationCode {
+					return zero, usecase.Validation("DISPATCH_NOT_OWNED",
+						fmt.Sprintf("dispatches %q is not a function of application %q", dt.Target+dt.Path, f.ApplicationCode))
+				}
+			}
 			// Every schedule's cron must actually produce fire slots (not just
 			// have a valid field count — abi.Describe.Validate only checks
 			// shape) with the scheduled-job module's own firing parser, and its

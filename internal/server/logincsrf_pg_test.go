@@ -72,6 +72,7 @@ var notCredentialGuarded = map[string]string{
 	"POST /oauth/revoke":                         "OAuth: form-encoded by spec, client-authenticated",
 	"POST /oauth/userinfo":                       "OIDC: bearer access token",
 	"POST /control/functions/events":             "function runner bearer token",
+	"POST /control/functions/dispatch-jobs":      "function runner bearer token",
 	"POST /control/functions/heartbeat":          "function runner bearer token",
 }
 

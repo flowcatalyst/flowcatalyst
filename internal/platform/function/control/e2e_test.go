@@ -122,7 +122,7 @@ func TestE2E_ClientAgainstRealServer(t *testing.T) {
 	assert.False(t, changed2, "an unchanged ETag round trip must answer 304 / changed=false")
 
 	require.NoError(t, client.Heartbeat(ctx, fncontrol.Heartbeat{
-		RunnerID: "runner-e2e", Pool: poolName, StartedAt: time.Now().UTC(),
+		RunnerID: "runner-e2e", Pool: poolName, StartedAt: time.Now().UTC(), Versions: []fncontrol.VersionReport{},
 	}))
 
 	rc, err := client.Artifact(ctx, live.Digest)

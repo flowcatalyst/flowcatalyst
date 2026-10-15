@@ -161,8 +161,7 @@ func reconcileWiring(
 
 // targetURL builds the runner delivery URL for one describe entry's path.
 func targetURL(template, pool, address, path string) string {
-	base := strings.TrimSuffix(strings.ReplaceAll(template, "{pool}", pool), "/")
-	return base + "/fn/" + address + path
+	return function.TargetURL(template, pool, address, path)
 }
 
 // ensureDispatchPool creates fn's dispatch pool (fn.DispatchPoolCode) if

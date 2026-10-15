@@ -23,6 +23,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
@@ -52,9 +53,15 @@ const defaultArtifactPresignTTL = 15 * time.Minute
 
 // State bundles the control plane's dependencies.
 type State struct {
-	Repo      *function.Repository
-	Events    *event.Repository
-	Artifacts artifact.Store
+	Repo   *function.Repository
+	Events *event.Repository
+	// Jobs and RunnerURLTemplate back the dispatch capability: the job is
+	// inserted through Jobs, and its delivery URL is built from the template
+	// (FC_FUNCTIONS_RUNNER_URL, the one promote wiring uses) with the target's
+	// pool substituted.
+	Jobs              *dispatchjob.Repository
+	RunnerURLTemplate string
+	Artifacts         artifact.Store
 	// Creds resolves a function's webhook signing secret. Required; a nil
 	// Creds serves every function with an empty WebhookSecret (a runner then
 	// answers `webhook` endpoints as unverifiable), so wiring always sets it.
@@ -102,4 +109,6 @@ func Register(api huma.API, s *State) {
 		"Download a function artifact by digest (function-runner role only)", s.artifact)
 	apiroute.Post(g, "postFunctionRunnerEvent", fncontrol.PathEvents,
 		"Emit an event on a function's behalf (function-runner role only)", 201, s.emit)
+	apiroute.Post(g, "postFunctionRunnerDispatchJob", fncontrol.PathDispatchJobs,
+		"Create a dispatch job on a function's behalf (function-runner role only)", 201, s.dispatch)
 }

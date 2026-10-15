@@ -224,3 +224,11 @@ func (c *localCP) Emit(_ context.Context, r control.EmitRequest) (*control.EmitR
 	slog.Info("function emitted an event", "event", string(ev), "data", string(r.Data))
 	return &control.EmitResponse{EventID: "evt_local_" + strconv.FormatInt(time.Now().UnixNano(), 36)}, nil
 }
+
+// Dispatch logs the job a function would create; `fn run` has no platform to
+// create it on.
+func (c *localCP) Dispatch(_ context.Context, r control.DispatchRequest) (*control.DispatchResponse, *abi.Error) {
+	d, _ := json.Marshal(r.Dispatch)
+	slog.Info("function dispatched a job", "dispatch", string(d), "payload", string(r.Payload))
+	return &control.DispatchResponse{JobID: "djob_local_" + strconv.FormatInt(time.Now().UnixNano(), 36)}, nil
+}

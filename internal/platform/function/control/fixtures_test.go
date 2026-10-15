@@ -20,6 +20,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
@@ -36,6 +37,10 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	_ = os.Setenv("FLOWCATALYST_APP_KEY", key)
+	// The production error model: usecase errors become their real status
+	// (403, 400, ...) instead of huma's generic 500, which is what the
+	// runner's client classifies.
+	httpcompat.Init()
 	testpg.RunMain(m)
 }
 

@@ -26,19 +26,28 @@ const maxHTTPResponseBytes = 16 << 20
 // capabilities serves one invocation's host calls (engine.Host): only what the
 // version's describe declares and the function's settings bind.
 type capabilities struct {
-	fn       *function
-	ver      *version
-	invID    string
-	log      *slog.Logger
-	emitter  Emitter
-	http     *http.Client
-	database DBProvider
-	tx       txSet
+	fn      *function
+	ver     *version
+	invID   string
+	log     *slog.Logger
+	emitter Emitter
+	// dispatcher creates dispatch jobs for the dispatch capability; correlation
+	// is the calling request's X-Correlation-Id ("" when it had none).
+	dispatcher  Dispatcher
+	correlation string
+	http        *http.Client
+	database    DBProvider
+	tx          txSet
 }
 
 // Emitter sends an event on a function's behalf (the control plane).
 type Emitter interface {
 	Emit(ctx context.Context, r control.EmitRequest) (*control.EmitResponse, *abi.Error)
+}
+
+// Dispatcher creates a dispatch job on a function's behalf (the control plane).
+type Dispatcher interface {
+	Dispatch(ctx context.Context, r control.DispatchRequest) (*control.DispatchResponse, *abi.Error)
 }
 
 func (c *capabilities) Call(ctx context.Context, op abi.Op, meta, body []byte) ([]byte, []byte, *abi.Error) {
@@ -53,6 +62,8 @@ func (c *capabilities) Call(ctx context.Context, op abi.Op, meta, body []byte) (
 		return c.fetch(ctx, meta, body)
 	case abi.OpEventEmit:
 		return c.emit(ctx, meta, body)
+	case abi.OpDispatch:
+		return c.dispatch(ctx, meta, body)
 	case abi.OpDBQuery, abi.OpDBExec, abi.OpDBBegin, abi.OpDBCommit, abi.OpDBRollback:
 		return c.dbCall(ctx, op, meta)
 	}
@@ -262,4 +273,34 @@ func (c *capabilities) emit(ctx context.Context, meta, body []byte) ([]byte, []b
 		return nil, nil, aerr
 	}
 	return encode(abi.Emitted{EventID: out.EventID}), nil, nil
+}
+
+// maxDispatchPayloadBytes caps a dispatch job's payload; a job is a message,
+// not a transfer. The platform enforces the same bound.
+const maxDispatchPayloadBytes = 256 << 10
+
+// dispatch serves the dispatch capability: the (target, path) must be declared
+// by this version, as emit's type must. The platform repeats the check against
+// its own copy of the describe document and does everything else (ownership,
+// target resolution, URL, signing identity, the job rules): nothing the guest
+// sends decides where a job goes.
+func (c *capabilities) dispatch(ctx context.Context, meta, body []byte) ([]byte, []byte, *abi.Error) {
+	d, aerr := decode[abi.Dispatch](meta)
+	if aerr != nil {
+		return nil, nil, aerr
+	}
+	if !slices.Contains(c.ver.describe.Dispatches, abi.DispatchTarget{Target: d.Target, Path: d.Path}) {
+		return nil, nil, abi.Errorf(abi.CodeNotDeclared, fmt.Sprintf("dispatch target %s%s is not in this version's dispatches", d.Target, d.Path))
+	}
+	if len(body) > maxDispatchPayloadBytes {
+		return nil, nil, abi.Errorf(abi.CodeTooLarge, "the dispatch payload is over 256 KiB")
+	}
+	out, aerr := c.dispatcher.Dispatch(ctx, control.DispatchRequest{
+		FunctionID: c.fn.id, Version: c.ver.number, InvocationID: c.invID,
+		RequestCorrelationID: c.correlation, Dispatch: d, Payload: body,
+	})
+	if aerr != nil {
+		return nil, nil, aerr
+	}
+	return encode(abi.Dispatched{JobID: out.JobID}), nil, nil
 }

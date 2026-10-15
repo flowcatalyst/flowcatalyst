@@ -750,6 +750,14 @@ function formatDate(dateString: string | undefined | null) {
               <span v-if="!declared.emits.length" class="empty-hint">None declared.</span>
             </div>
           </div>
+
+          <div class="declare-block">
+            <h4>Dispatches</h4>
+            <div class="chip-row">
+              <Tag v-for="d in declared.dispatches" :key="d" :value="d" severity="secondary" />
+              <span v-if="!declared.dispatches.length" class="empty-hint">None declared.</span>
+            </div>
+          </div>
         </template>
       </FcFormSection>
 

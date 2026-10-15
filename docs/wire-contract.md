@@ -269,7 +269,9 @@ Edge case, accepted: a writer that means a string whose text is a JSON object
 or array gets the object; to send such text as text, wrap it in an object.
 Not changed: the singular `POST /api/events` (it receives the value itself),
 dispatch-job `payload` (a string by contract, with `payloadContentType`), and
-function-emitted events.
+function-emitted events and function-created dispatch jobs
+(`docs/function-runner-plan.md` §8.7: their metadata is always an array of
+`{key,value}`, with the platform's `fn.*` provenance entries appended).
 
 **Go SDK outbox rows.** Since 2026-10-13 the Go SDK (`pkg/fcsdk/outbox`, used
 by `outboxpgx` and `outboxsql`) writes the batch endpoints' camelCase items,

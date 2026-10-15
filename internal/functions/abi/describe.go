@@ -34,6 +34,19 @@ type Describe struct {
 	DB            []string       `json:"db,omitempty"`
 	HTTPAllow     []string       `json:"httpAllow,omitempty"`
 	Emits         []string       `json:"emits,omitempty"`
+	// Dispatches are the (function, path) webhook targets the function may
+	// create dispatch jobs for through the dispatch capability (plan §5.3
+	// op 11). Like Emits it is a declaration the platform checks per call.
+	Dispatches []DispatchTarget `json:"dispatches,omitempty"`
+}
+
+// DispatchTarget is one declared dispatch destination: the address of a
+// function of the SAME application, and a literal path on it that lands on
+// one of its webhook endpoints. The platform builds the delivery URL from
+// it; the guest never supplies a URL.
+type DispatchTarget struct {
+	Target string `json:"target"`
+	Path   string `json:"path"`
 }
 
 // Endpoint is one path the function answers, and how its callers authenticate.
@@ -90,6 +103,11 @@ var (
 	// segment is the function's application — is publish's check.
 	eventTypePattern = regexp.MustCompile(`^[^:\s]+(:[^:\s]+){3}$`)
 	methodPattern    = regexp.MustCompile(`^[A-Z]{3,10}$`)
+	// A function address is {application code}.{name} (owner decision
+	// §13.1). The application-code half is as loose as the platform's own
+	// (publish checks it against the function's application); the name half
+	// is function.NamePattern.
+	addressPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,99}\.[a-z][a-z0-9-]{0,62}$`)
 )
 
 // ParseDescribe decodes a describe document strictly (unknown keys are an
@@ -233,11 +251,41 @@ func (d *Describe) Validate() error {
 		}
 	}
 	checkList("emits", d.Emits, eventTypePattern)
+	seenDispatch := map[DispatchTarget]bool{}
+	for i, t := range d.Dispatches {
+		at := fmt.Sprintf("dispatches[%d]", i)
+		if !addressPattern.MatchString(t.Target) {
+			add("%s: target %q is not a function address (application.name)", at, t.Target)
+		}
+		if msg := DispatchPathProblem(t.Path); msg != "" {
+			add("%s: %s", at, msg)
+		}
+		if seenDispatch[t] {
+			add("%s: %s%s is declared twice", at, t.Target, t.Path)
+		}
+		seenDispatch[t] = true
+	}
 
 	if len(p) > 0 {
 		return &DescribeError{Problems: p}
 	}
 	return nil
+}
+
+// DispatchPathProblem reports why path cannot be a dispatch target path, or
+// "": it must be a literal absolute path — no pattern syntax, query,
+// fragment, whitespace or dot segments — so the URL the platform builds is
+// exactly the path that was declared.
+func DispatchPathProblem(path string) string {
+	switch {
+	case !strings.HasPrefix(path, "/"):
+		return fmt.Sprintf("path %q must start with /", path)
+	case strings.ContainsAny(path, "{}*?#\\ \t\r\n%") || strings.Contains(path, "//"):
+		return fmt.Sprintf("path %q must be a literal path (no pattern, query, fragment, escape or empty segment)", path)
+	case slices.Contains(strings.Split(path, "/"), ".") || slices.Contains(strings.Split(path, "/"), ".."):
+		return fmt.Sprintf("path %q must not contain dot segments", path)
+	}
+	return ""
 }
 
 // hostPatternProblem reports why a syntactically valid httpAllow entry is

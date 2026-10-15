@@ -115,6 +115,7 @@ func runExample(t *testing.T, path string) {
 	if len(d.Emits) > 0 && emits == 0 {
 		t.Errorf("the webhook handler emitted nothing")
 	}
+	checkDispatch(t, h, cp, d)
 	var lat []time.Duration
 	for range 200 {
 		s := time.Now()
@@ -123,6 +124,59 @@ func runExample(t *testing.T, path string) {
 	}
 	t.Logf("healthz over HTTP: first %v, median of 200 %v", lat[0], median(lat))
 	_ = json.Valid
+}
+
+// checkDispatch proves the SDK's dispatch capability through the runner: the
+// example declares dispatches (describe validated above), POST /dispatch calls
+// fn.dispatch, the platform is asked exactly once with the declared target and
+// path, the payload as the body and the metadata as an ARRAY of {key,value}
+// whatever shape the SDK took it in, and a platform refusal reaches the
+// handler as an error (not a trap).
+func checkDispatch(t *testing.T, h *harness, cp *fakeCP, d *abi.Describe) {
+	t.Helper()
+	if len(d.Dispatches) == 0 {
+		t.Errorf("the example declares no dispatches")
+		return
+	}
+	resp, body := h.do("POST", "/fn/hello.example/dispatch", nil, nil)
+	if resp.StatusCode != 202 || !strings.Contains(string(body), "djob_1") {
+		t.Errorf("dispatch: %d %s", resp.StatusCode, body)
+	}
+	cp.mu.Lock()
+	got := append([]control.DispatchRequest(nil), cp.dispatches...)
+	cp.mu.Unlock()
+	if len(got) != 1 {
+		t.Fatalf("the platform was asked to dispatch %d times, want 1: %+v", len(got), got)
+	}
+	g := got[0]
+	if g.FunctionID != "fnc_ex" || g.Version != 1 || g.InvocationID == "" ||
+		g.Dispatch.Target != "hello.logger" || g.Dispatch.Path != "/deliver" || g.Dispatch.MessageGroup != "hello" ||
+		string(g.Payload) != `{"hello":"world"}` {
+		t.Errorf("dispatch request = %+v payload %q", g, g.Payload)
+	}
+	if len(g.Dispatch.Metadata) != 1 || g.Dispatch.Metadata[0] != (abi.KV{Key: "from", Value: "hello"}) {
+		t.Errorf("metadata = %+v, want [{from hello}]", g.Dispatch.Metadata)
+	}
+
+	// A refusal is an error the handler maps to a reject (422) or a retry
+	// (429), never a trap (500).
+	for _, c := range []struct {
+		err  *abi.Error
+		want int
+	}{
+		{abi.Errorf(abi.CodeNotAllowed, "no"), 422},
+		{abi.Errorf(abi.CodeUnavailable, "down"), 429},
+	} {
+		cp.mu.Lock()
+		cp.dispatchErr = c.err
+		cp.mu.Unlock()
+		if resp, body := h.do("POST", "/fn/hello.example/dispatch", nil, nil); resp.StatusCode != c.want {
+			t.Errorf("dispatch refused with %s: %d %s, want %d", c.err.Code, resp.StatusCode, body, c.want)
+		}
+	}
+	cp.mu.Lock()
+	cp.dispatchErr = nil
+	cp.mu.Unlock()
 }
 
 func median(d []time.Duration) time.Duration {

@@ -57,6 +57,8 @@ export interface FunctionDescribe {
 	db: string[];
 	httpAllow: string[];
 	emits: string[];
+	/** Declared dispatch targets, as "address/path". */
+	dispatches: string[];
 }
 
 const EMPTY_DESCRIBE: FunctionDescribe = {
@@ -68,6 +70,7 @@ const EMPTY_DESCRIBE: FunctionDescribe = {
 	db: [],
 	httpAllow: [],
 	emits: [],
+	dispatches: [],
 };
 
 function asStringArray(value: unknown): string[] {
@@ -129,6 +132,11 @@ export function parseDescribe(raw: unknown): FunctionDescribe {
 		db: asStringArray(obj["db"]),
 		httpAllow: asStringArray(obj["httpAllow"]),
 		emits: asStringArray(obj["emits"]),
+		dispatches: Array.isArray(obj["dispatches"])
+			? (obj["dispatches"] as unknown[])
+					.filter((e): e is Record<string, unknown> => !!e && typeof e === "object")
+					.map((e) => `${typeof e["target"] === "string" ? e["target"] : ""}${typeof e["path"] === "string" ? e["path"] : ""}`)
+			: [],
 	};
 }
 

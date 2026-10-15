@@ -22,6 +22,7 @@ contract below (schema, guest ABI, manifest, API) is ours to choose. Written aga
 | End-to-end on fc-dev (deploy → event → signed delivery → function → emitted event) | verified 2026-09-28 | — |
 | Terminal reject outcome; scheduled jobs honour 429 (§13.2, §13.3) | built | dispatch-job processing, scheduled-job dispatcher, migration 060 |
 | Admin UI pages (functions list, detail: versions, aliases, declarations, settings) | built, live-verified in Chrome | `frontend/src/pages/functions` |
+| `dispatch` capability (ABI op 11, `fn.dispatch`): a function creates a dispatch job for a declared function target, no credential held | built 2026-10-15; TS, Go and Rust SDKs; e2e on an isolated platform | `internal/functions/{abi,control,runner}`, `internal/platform/function/control/dispatch.go`, §5.3/§5.4/§6.3/§8.3/§8.7 |
 | Public routes: domain claims and route materialisation (platform side) | built | `internal/platform/functiondomain`, `internal/platform/function` (route.go, repository_routes.go, operations/routes.go), `internal/platform/function/control/document.go` |
 
 Owner decisions §13.1–13.3 were taken as proposed (two-label addresses, the reject outcome,
@@ -249,9 +250,13 @@ independent of the guest's allocator.
 | 6 | `db.query` | `{"db","sql","params","tx"}` | `{"truncated"}` / rows JSON |
 | 7 | `db.exec` | same | `{"rowsAffected"}` |
 | 8–10 | `db.begin` / `db.commit` / `db.rollback` | `{"db"}` / `{"tx"}` | `{"tx"}` / — |
+| 11 | `dispatch.create` | `{"target","path","code","subject","metadata":[{"key","value"}],"messageGroup","mode","correlationId","causationId","contentType","descriptor","maxRetries","timeoutSeconds","dataOnly"}` / payload | `{"jobId"}` |
+
+Op 11 is additive: ABI v1 modules that never call it are unaffected, and a runner that predates it
+answers `UNKNOWN_OP` (a capability failure, not a trap). Only `target` and `path` are required.
 
 Error codes are shared across ops: `NOT_DECLARED`, `NOT_ALLOWED` (http allowlist, event type not
-owned), `DEADLINE`, `TOO_LARGE`, `UNAVAILABLE` (retryable), `BAD_REQUEST`, `CAPABILITY_UNAVAILABLE`
+owned, a dispatch the platform refuses), `DEADLINE`, `TOO_LARGE`, `UNAVAILABLE` (retryable), `BAD_REQUEST`, `CAPABILITY_UNAVAILABLE`
 (describe-time), plus `DB_*` classes from SQLSTATE (`DB_CONSTRAINT`, `DB_SYNTAX`, `DB_TIMEOUT`,
 `DB_UNAVAILABLE`, `DB_ERROR`, `DB_TX_UNKNOWN`). A capability failure is never a trap.
 
@@ -277,7 +282,8 @@ function's log at INFO/WARN.
   ],
   "schedules": [{"cron": "0 */5 * * * *", "timezone": "UTC", "path": "/events/tick"}],
   "config": ["GREETING"], "secrets": ["STRIPE_KEY"], "db": ["main"],
-  "httpAllow": ["api.stripe.com", "*.acme.com"], "emits": ["orders:order:order:shipped"]
+  "httpAllow": ["api.stripe.com", "*.acme.com"], "emits": ["orders:order:order:shipped"],
+  "dispatches": [{"target": "orders.invoice-logger", "path": "/deliver"}]
 }
 ```
 
@@ -290,6 +296,12 @@ Validation at publish (strict; unknown keys rejected):
   `common.DefaultDispatchMode`), the same as every other subscription. A default must not quietly
   weaken ordering; a function that wants `IMMEDIATE` says so.
 - Every type in `emits` must be owned by the function's application.
+- `dispatches` entries are `{target, path}` and nothing else (unknown keys rejected). `target` is a
+  function address (`application.name`); `path` is a literal absolute path (no pattern, query,
+  fragment, escape, empty or dot segment); a pair may not be declared twice. Publish refuses
+  (`DISPATCH_NOT_OWNED`) a target whose application is not the function's own, exactly as for
+  `emits`. Whether the target exists, is live and takes a signed POST at the path is checked per
+  call (§8.7), not at publish: the target may be deployed after its creator.
 - Keys match `^[A-Za-z][A-Za-z0-9_./-]{0,99}$`.
 - Paths use Go 1.22 `ServeMux` pattern syntax (`{id}`, `{rest...}`).
 
@@ -363,6 +375,11 @@ emit without per-call arithmetic.
 - **event.emit:** the runner posts to a control endpoint (§8.3) as itself, naming the function.
   The platform checks the type is in describe `emits` and owned by the application, then ingests.
   The function never holds an application credential.
+- **dispatch.create:** the runner checks `(target, path)` against the version's `dispatches`
+  (`NOT_DECLARED` otherwise; payload over 256 KiB is `TOO_LARGE`) and posts to a control endpoint
+  (§8.3) as itself, naming the function, the version, the invocation and the inbound request's
+  `X-Correlation-Id`. The platform repeats the check and does everything else (§8.7). The function
+  supplies no URL and holds no credential.
 - **db:** one `pgxpool.Pool` per distinct DSN, shared across functions, bounded per runner
   (`FC_FUNCTIONS_MAX_DB_POOLS`), closed when idle. A transaction is bound to the invocation and
   rolled back by `defer` if still open when the call ends. Rows are capped at 10,000 or 8 MiB
@@ -493,6 +510,7 @@ New routes go into the lockfile with `make api-bump`; `make api-diff` must pass.
 | `POST /heartbeat` | Runner report (§6.5, §7). Marks versions `READY`/`FAILED`. |
 | `GET /artifacts/{digest}` | `302` to a presigned S3 URL, or streamed from the file store. The runner holds no storage credentials. |
 | `POST /events` `{functionId, event}` | Emit on a function's behalf (§6.3). |
+| `POST /dispatch-jobs` `{functionId, version, invocationId, requestCorrelationId, dispatch, payload}` | Create a dispatch job on a function's behalf (§6.3, §8.7). `201 {jobId}`. |
 
 Desired document, per function: `address`, `id`, `limits`, `warm`, `webhookSecret`, `config`,
 `secrets`, `db` (name → DSN), and versions `[{number, digest, abi, describe, roles:
@@ -567,6 +585,63 @@ Two new aggregates, both `fng_`-prefixed (migration `062_function_routes.sql`):
   ETag is a hash of the whole rendered document, a route change is visible to a held long-poll the
   same way a promote is.
 
+### 8.7 The `dispatch` capability (as built)
+
+A function that needs to deliver work to another function creates a **dispatch job** directly,
+rather than emitting an event and relying on a subscription. It still holds no credential: the
+write path is the control-plane route above, authenticated as the runner.
+
+**Declaration.** `dispatches: [{target, path}]` in describe (§5.4). *Why function addresses and
+not URLs:* a dispatch job is signed and, where the application has one, carries a bearer token, by
+the **application's service account** (job code's first segment, see below). An arbitrary URL
+would hand that credential to wherever the function pointed; a function address means the platform
+knows what receives it, and the receiver (`webhook` auth on the same application's account)
+verifies it. Absolute webhook URLs (checked against `httpAllow`) are therefore not supported;
+external destinations remain the connection/subscription path.
+
+**What the platform checks, per call** (`POST /control/functions/dispatch-jobs`; the guest's word is
+never trusted; codes are `usecase` errors):
+
+1. Runner role and anchor scope, as every control route.
+2. `(target, path)` is an entry of the **invoking version's** describe (`DISPATCH_NOT_DECLARED`, 403);
+   describe is per version, so a declaration on v2 does not authorise a call made as v1.
+3. The target's address starts with the function's application code (`DISPATCH_TARGET_NOT_OWNED`,
+   403, even when no such function exists, so existence is not leaked), the target function belongs
+   to the same application id (same code, 403), and to the same client (`DISPATCH_TARGET_CLIENT_MISMATCH`,
+   403; a platform-owned function reaches platform-owned targets only).
+4. The target exists (`DISPATCH_TARGET_NOT_FOUND`, 404) and its **live** version has a `webhook`
+   endpoint taking POST at the path (`DISPATCH_TARGET_UNAVAILABLE`, 409): a job is never created for
+   a URL that cannot verify its signature.
+5. Field rules (400 `DISPATCH_*`): `code` must start with the function's application (default
+   `{application}:function:{name}:dispatch`), which is also what delivery-credential resolution keys
+   on for a job with no subscription (the application's signing account: the same secret the target's
+   `webhookSecret` carries); payload UTF-8, at most 256 KiB, valid JSON for a JSON content type;
+   `mode` one of the three; `maxRetries >= 0`, `timeoutSeconds > 0`; metadata at most 50 entries,
+   keys unique and non-empty, and **no key starting with `fn.`** (reserved for the platform's
+   provenance).
+
+**What it writes.** One `msg_dispatch_jobs` row through `sdk.NewJobFromItem`, the SDK ingest routes'
+own mapping (so defaults and validation are identical to `POST /api/dispatch-jobs`): `kind` `TASK`,
+`source` `function:{address}`, `clientId` = the function's client (F14's client guard does not apply:
+the platform derives the client; there is no `clientCode` on this route), `targetUrl` =
+`FC_FUNCTIONS_RUNNER_URL` with the **target's** pool substituted + `/fn/{target}{path}` (the same
+builder as promote wiring, `function.TargetURL`), `dataOnly` true unless asked otherwise (the target
+function wants the data, not an envelope), `serviceAccountId` unset, `dispatchPoolId` unset (the
+client's default pool). Metadata is the platform's **array of `{key,value}`**: the guest's entries
+(SDKs accept an object and sort it) followed by `fn.address`, `fn.version` and `fn.invocation`;
+`causationId`, which a job has no column for, is stored as a `causationId` entry. `correlationId` is
+the guest's, else the inbound request's `X-Correlation-Id`.
+
+**Not idempotent.** The platform does not de-duplicate dispatch jobs (`POST /api/dispatch-jobs` does
+not either), so there is no `dedupId`: a retry after an ambiguous failure can create a second job.
+`UNAVAILABLE` (5xx or unreachable) is the only retryable class; everything else is a refusal.
+
+**Client mapping** (`control.Client.Dispatch`, as `Emit`): 5xx or unreachable `UNAVAILABLE`, 403
+`NOT_ALLOWED`, other 4xx `BAD_REQUEST`, context ended `DEADLINE`.
+
+**Deferred.** Dispatching to the target's own dispatch pool (a pool exists only once it has a
+subscription or schedule), `clientCode` for platform-owned functions, and absolute-URL targets.
+
 ## 9. Guest SDKs
 
 **Go: `clients/fn-go`** (its own module, no dependencies; standard Go 1.24+ with `go:wasmexport`,
@@ -597,19 +672,27 @@ func getOrder(w http.ResponseWriter, r *http.Request) {
 - `fn.Retry(w, d)` writes `429` + `Retry-After`.
 - `fn.Emit(ctx, fn.Event{…})` returns `(eventID, error)`; `errors.Is(err, fn.ErrRetryable)`
   distinguishes platform trouble from a refusal.
+- `fn.Dispatches(target, path)` declares a dispatch target and `fn.Dispatch(ctx, fn.Job{Target, Path,
+  Payload, Metadata, …})` creates the job (§8.7), returning `(jobID, error)` with the same error
+  classes as `Emit`. Not idempotent.
 - `init()` declarations feed both `fc_describe` and the in-guest `ServeMux`.
 - TinyGo support is a phase-0 measurement, not a commitment.
 
 **Rust: `clients/fn-rust`** (crate `flowcatalyst-fn`, `wasm32-unknown-unknown`). Same declarations
-through a builder, with handlers returning `Result<Response, Error>`.
+through a builder, with handlers returning `Result<Response, Error>`. `App::dispatches(target, path)`
+declares, `Context::dispatch(Job { … })` creates a job (§8.7).
 
 **JavaScript: `clients/fn-ts`** (in progress) on the shared engine. A JS artifact is one bundled
 script defining `globalThis.__fc = {describe, handle}`; the engine protocol is documented in
-`clients/fn-js-engine/src/lib.rs`. Versions carry `runtime: "js"`.
+`clients/fn-js-engine/src/lib.rs`. Versions carry `runtime: "js"`. `fn.dispatches(target, path)` declares and
+`await fn.dispatch({target, path, payload, metadata, …})` creates a job (§8.7); `metadata` may be an object
+(sorted by key) or the platform's `[{key, value}]` array and always travels as the array.
 
 **Proof through the runner:** `TestSDKExamples` (`internal/functions/runner`) runs each SDK's
 example artifact through the real engine and runner — describe as publish reads it, then calls in
-every auth mode. It found three real mismatches the SDKs' own fakes could not. Run it for every SDK
+every auth mode, and the `dispatch` capability (the examples declare a target and `POST /dispatch`;
+the test checks the platform is asked once with the declared target, the payload and array metadata,
+and that a refusal reaches the handler as an error). It found three real mismatches the SDKs' own fakes could not. Run it for every SDK
 change.
 
 **Local testing (not built yet):** `fntest` would run a guest module in-process on the real engine, with fake

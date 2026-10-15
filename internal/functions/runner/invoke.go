@@ -327,7 +327,7 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 		return
 	}
 
-	caps := &capabilities{fn: fn, ver: ver, invID: invID, log: r.guestLogger(fn, ver), emitter: r.cp, http: r.httpClient, database: r.db}
+	caps := &capabilities{fn: fn, ver: ver, invID: invID, log: r.guestLogger(fn, ver), emitter: r.cp, dispatcher: r.cp, correlation: strings.TrimSpace(req.Header.Get("X-Correlation-Id")), http: r.httpClient, database: r.db}
 	out, herr := func() ([]byte, error) {
 		defer caps.tx.rollbackAll()
 		return inst.Handle(ctx, frame, caps)

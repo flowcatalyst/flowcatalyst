@@ -1336,6 +1336,23 @@ export type DeveloperUserListResponse = {
     total: number;
 };
 
+export type Dispatch = {
+    causationId?: string;
+    code?: string;
+    contentType?: string;
+    correlationId?: string;
+    dataOnly?: boolean;
+    descriptor?: string;
+    maxRetries?: number;
+    messageGroup?: string;
+    metadata?: Array<Kv>;
+    mode?: string;
+    path: string;
+    subject?: string;
+    target: string;
+    timeoutSeconds?: number;
+};
+
 export type DispatchJobFilterOptionsResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1449,6 +1466,28 @@ export type DispatchPoolResponse = {
     rateLimit?: number;
     status: string;
     updatedAt: string;
+};
+
+export type DispatchRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    dispatch: Dispatch;
+    functionId: string;
+    invocationId?: string;
+    payload: string;
+    requestCorrelationId?: string;
+    version: number;
+    [key: string]: unknown;
+};
+
+export type DispatchResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    jobId: string;
 };
 
 export type DocListResponse = {
@@ -1768,6 +1807,11 @@ export type IdpRoleMappingResponse = {
     idpType: string;
     platformRoleName: string;
     updatedAt: string;
+};
+
+export type Kv = {
+    key: string;
+    value: string;
 };
 
 export type Limits = {
@@ -3404,6 +3448,7 @@ export type UpdateConnectionRequest = {
     description?: string;
     externalId?: string;
     name: string;
+    serviceAccountId?: string;
     status?: string;
     [key: string]: unknown;
 };
@@ -4624,6 +4669,20 @@ export type DispatchPoolResponseWritable = {
     updatedAt: string;
 };
 
+export type DispatchRequestWritable = {
+    dispatch: Dispatch;
+    functionId: string;
+    invocationId?: string;
+    payload: string;
+    requestCorrelationId?: string;
+    version: number;
+    [key: string]: unknown;
+};
+
+export type DispatchResponseWritable = {
+    jobId: string;
+};
+
 export type DocListResponseWritable = {
     applications: Array<AppDocsGroup>;
     platform: Array<DocSummary>;
@@ -5678,6 +5737,7 @@ export type UpdateConnectionRequestWritable = {
     description?: string;
     externalId?: string;
     name: string;
+    serviceAccountId?: string;
     status?: string;
     [key: string]: unknown;
 };
@@ -14093,6 +14153,31 @@ export type GetFunctionRunnerDesiredResponses = {
 };
 
 export type GetFunctionRunnerDesiredResponse = GetFunctionRunnerDesiredResponses[keyof GetFunctionRunnerDesiredResponses];
+
+export type PostFunctionRunnerDispatchJobData = {
+    body: DispatchRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/control/functions/dispatch-jobs';
+};
+
+export type PostFunctionRunnerDispatchJobErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PostFunctionRunnerDispatchJobError = PostFunctionRunnerDispatchJobErrors[keyof PostFunctionRunnerDispatchJobErrors];
+
+export type PostFunctionRunnerDispatchJobResponses = {
+    /**
+     * Created
+     */
+    201: DispatchResponse;
+};
+
+export type PostFunctionRunnerDispatchJobResponse = PostFunctionRunnerDispatchJobResponses[keyof PostFunctionRunnerDispatchJobResponses];
 
 export type PostFunctionRunnerEventData = {
     body: EmitRequestWritable;

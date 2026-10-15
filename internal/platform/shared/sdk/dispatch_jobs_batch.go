@@ -239,6 +239,12 @@ func jobFromItem(it BatchItem) (dispatchjob.DispatchJob, error) {
 	return j, nil
 }
 
+// NewJobFromItem is jobFromItem for callers outside the package that create a
+// dispatch job on the platform's own behalf (the function runner's dispatch
+// capability): the same defaults and the same validation as the SDK ingest
+// routes, so a job persists identically whichever way it was created.
+func NewJobFromItem(it BatchItem) (dispatchjob.DispatchJob, error) { return jobFromItem(it) }
+
 func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	// Permission: ingest needs a write-dispatch-jobs permission. Service
