@@ -1705,6 +1705,81 @@ colon); the real role is `example:dispatcher`. No role has the first name.
   catalogue); check whether its `iam_roles` and `iam_principal_roles` hold the same rows and run
   the same two data fixes.
 
+### F19. Application service accounts sync their own dispatch pools (owner ruling 2026-10-15)
+
+**Ruling**: the built-in `platform:application-service` role holds
+`platform:messaging:dispatch-pool:sync`, so an application's CI deploy (pinpoint) can call
+`POST /api/applications/{appCode}/dispatch-pools/sync` with its application service account. The
+sync route has no application-service permission of its own; the messaging one is granted
+instead. Security condition: the grant must not let one application touch another's pools.
+
+- **The confinement gap was real, and larger than the handler.** Pools are global rows matched by
+  code, with no owner. With only the permission added (tests first, run against that state):
+  - an application service account could overwrite **any** pool by sending its code (another
+    application's, an admin-created platform pool): the use case matched on code alone;
+  - an **anchor-tier** application service account could `removeUnlisted` and archive **every**
+    pool on the platform, because the sweep gate was "anchor scope" and not "all applications";
+  - a client's pool sharing a code with a platform pool (`(code, client_id)` is the unique key)
+    could be picked as the match for the platform pool's code.
+  The handler not calling `requireAppAccess` was **not** exploitable by itself: the use case's
+  Authorize phase already refused a target application the caller is not bound to, with the same
+  403 `FORBIDDEN` "Not authorised for application '<code>'". The handler check is now added for
+  parity (defence in depth); no test can tell it apart from the use-case check (mutation 3 below).
+- **Fix**: ownership. Migration `078` adds `msg_dispatch_pools.application_id` (nullable, no FK,
+  indexed; `DispatchPool.ApplicationID`, not on the wire; sqlc regenerated). The sync
+  (`dispatchpool/operations/sync.go`):
+  - creates pools owned by the target application;
+  - a caller that is not all-applications may change only pools the target application owns;
+    any other code (another application's, an admin-created or pre-ownership pool with no owner)
+    is refused, all-or-nothing, 403 `DISPATCH_POOL_NOT_OWNED`;
+  - an all-applications caller (platform admin) may sync any pool; unowned pools it touches are
+    handed to the target application, owned pools are never re-assigned;
+  - `removeUnlisted`: a non-anchor caller is still refused (`ANCHOR_REQUIRED_FOR_PLATFORM_SWEEP`);
+    an anchor-tier application-scoped caller archives only the pools its application owns; an
+    all-applications anchor sweeps platform-wide as before;
+  - only client-less pools are matched by code.
+- **Existing pools have no owner.** Every pool in production today is unowned (migration cannot
+  guess). After deploy, an application service account is refused `DISPATCH_POOL_NOT_OWNED` for
+  the pools that already exist. One sync by an admin credential per application
+  (`POST /api/applications/{appCode}/dispatch-pools/sync`, no `removeUnlisted`, with the
+  application's pool list) hands them to the application; from then on the application's own
+  account syncs them. New pools it creates are owned from the start.
+- **Rollout of the permission**: the seeder only inserts a built-in role when missing and never
+  rewrites an existing one, so migration `079` grants the permission to the existing
+  `platform:application-service` role (fresh databases get it from the seed,
+  `permsApplicationService`). A service account's token carries its permissions from mint time:
+  **every existing application service account must mint a new token** (client_credentials, or
+  the admin token mint) to hold it; until then it gets 403 `PERMISSION_REQUIRED`.
+- **Role ceiling (F8)**: `platform:messaging:dispatch-pool:sync` is a `platform:` permission, so
+  assigning `application-service` to a principal now also needs the assigner to hold it (by
+  `auth.Grants`). `platform:*:*:*` and the messaging admin roles do; a narrow custom role that
+  could assign `application-service` before but lacks the permission can no longer. No change for
+  a super-admin or anchor admin assigning it.
+- **Mirrors of the permission list**: only `seed/permissions.go` and the Java seed. The SPA role
+  editor and the SDKs read permissions from the API (no catalogue copy); `docs/published` does
+  not list the role's permissions. Deploy checklist updated.
+- **Wire impact**: no schema or description change (`api/openapi.lock.json` untouched, no
+  `make sdk-generate`). Behaviour: 200 where it was 403 for an application service account; new
+  403 `DISPATCH_POOL_NOT_OWNED`.
+- **Tests** (`-tags=integration`): `sdksync/sync_dispatch_pools_pg_test.go` (own application; other
+  application, unbound and CLIENT-scoped refused like the other syncs; takeover of another
+  application's, a platform and a mixed list refused; sweep limited to own pools; admin syncs
+  anything and claims unowned pools), `migrate/f18_data_fix_pg_test.go`
+  `TestMigration079_GrantsApplicationServiceDispatchPoolSync`, `seed/roles_test.go`. Mutations
+  (each fails the named tests): ownership check off (`CannotTakeOverAPool`,
+  `AdminClaimsUnownedPool...`); sweep ownership filter off (`CannotArchiveOthers`); permission
+  removed from the seed (six tests); handler `requireAppAccess` off (no failure; the use case's
+  Authorize holds the line).
+- **Java mirror**: not done (report only). `SdkSyncApi.syncDispatchPools` checks
+  `DISPATCH_POOL_SYNC/MANAGE` only and the use case's authorize is
+  `Access.checkApplicationAccess`, so the handler is the same as Go's was. Needs: the permission
+  in `Permissions.APPLICATION_SERVICE` plus a data migration for existing deployments; an
+  `application_id` column on the pools table and the ownership rule above in `SyncDispatchPools`
+  (it matches by code over all pools today); the sweep narrowed to owned pools for
+  application-scoped callers. Java also protects a function's pool by id
+  (`protectedIds`, from `fn_trigger_objects`); Go has no such guard, so an all-applications
+  anchor sweep can archive a function's pool (not changed here).
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads

@@ -594,6 +594,9 @@ func (s *State) syncDispatchPools(ctx context.Context, in *syncDispatchPoolsInpu
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireAppAccess(ac, app); err != nil {
+		return nil, err
+	}
 
 	inputs := make([]dispatchpoolops.SyncDispatchPoolInput, 0, len(in.Body.Pools))
 	for _, p := range in.Body.Pools {

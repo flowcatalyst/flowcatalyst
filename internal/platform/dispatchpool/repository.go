@@ -71,7 +71,7 @@ func (r *Repository) FindWithFilters(ctx context.Context, status, clientID *stri
 	f.EqPtr("client_id", clientID)
 
 	q := `SELECT id, code, name, description, rate_limit, concurrency,
-		client_id, client_identifier, status, created_at, updated_at
+		client_id, client_identifier, status, created_at, updated_at, application_id
 	  FROM msg_dispatch_pools` + f.Where() + ` ORDER BY code`
 
 	rows, err := r.pool.Query(ctx, q, f.Args()...)
@@ -110,6 +110,7 @@ func (r *Repository) Persist(ctx context.Context, p *DispatchPool, tx *usecasepg
 		Status:           string(p.Status),
 		CreatedAt:        p.CreatedAt,
 		UpdatedAt:        time.Now().UTC(),
+		ApplicationID:    p.ApplicationID,
 	})
 }
 
@@ -141,6 +142,7 @@ func rowToDispatchPool(row dbq.MsgDispatchPool) (*DispatchPool, error) {
 		Concurrency:      row.Concurrency,
 		ClientID:         ids.PtrOf[ids.ClientID](ids.StringPtr(row.ClientID)),
 		ClientIdentifier: row.ClientIdentifier,
+		ApplicationID:    row.ApplicationID,
 		Status:           status,
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,

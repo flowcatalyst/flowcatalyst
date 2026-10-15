@@ -32,6 +32,8 @@ func TestApplicationServiceRoleCarriesBatchIngestPermissions(t *testing.T) {
 		"platform:messaging:batch:events-write",
 		"platform:messaging:batch:dispatch-jobs-write",
 		"platform:admin:batch:audit-logs-write",
+		// F19: an application syncs its own dispatch pools.
+		"platform:messaging:dispatch-pool:sync",
 	}
 	for _, r := range PlatformRoles() {
 		if r.Name != "platform:application-service" {

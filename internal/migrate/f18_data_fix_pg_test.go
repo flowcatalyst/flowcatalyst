@@ -114,3 +114,32 @@ func TestMigration077_BackfillsRoleApplicationID(t *testing.T) {
 	assert.Nil(t, id("mig077a:nocode"), "no application_code: nothing guessed from the name")
 	assert.Equal(t, "app_keepexisting1", *id("mig077a:keep"), "an existing id is never overwritten")
 }
+
+// Migration 079 (F19): the built-in application-service role gains the
+// dispatch-pool sync permission (the seeder never rewrites an existing role);
+// no other role gets it; running it twice is a no-op.
+func TestMigration079_GrantsApplicationServiceDispatchPoolSync(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.ScratchDB(t, "mig079")
+
+	_, err := pool.Exec(ctx, `INSERT INTO iam_roles (id, name, display_name) VALUES
+		('rol_mig079r00001', 'platform:application-service', 'App service'),
+		('rol_mig079r00002', 'platform:other', 'Other')
+		ON CONFLICT (name) DO NOTHING`)
+	require.NoError(t, err)
+
+	up := upSection(t, "079_application_service_dispatch_pool_sync.sql")
+	for range 2 {
+		_, err = pool.Exec(ctx, up)
+		require.NoError(t, err)
+	}
+	count := func(role string) int {
+		var n int
+		require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM iam_role_permissions p
+			JOIN iam_roles r ON r.id = p.role_id
+			WHERE r.name = $1 AND p.permission = 'platform:messaging:dispatch-pool:sync'`, role).Scan(&n))
+		return n
+	}
+	assert.Equal(t, 1, count("platform:application-service"))
+	assert.Equal(t, 0, count("platform:other"))
+}

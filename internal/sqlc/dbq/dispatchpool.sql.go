@@ -23,7 +23,7 @@ func (q *Queries) DispatchPoolDelete(ctx context.Context, id string) error {
 
 const dispatchPoolFindAll = `-- name: DispatchPoolFindAll :many
 SELECT id, code, name, description, rate_limit, concurrency, client_id,
-       client_identifier, status, created_at, updated_at
+       client_identifier, status, created_at, updated_at, application_id
 FROM msg_dispatch_pools
 ORDER BY code
 `
@@ -49,6 +49,7 @@ func (q *Queries) DispatchPoolFindAll(ctx context.Context) ([]MsgDispatchPool, e
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ApplicationID,
 		); err != nil {
 			return nil, err
 		}
@@ -62,7 +63,7 @@ func (q *Queries) DispatchPoolFindAll(ctx context.Context) ([]MsgDispatchPool, e
 
 const dispatchPoolFindByCodeAnchor = `-- name: DispatchPoolFindByCodeAnchor :one
 SELECT id, code, name, description, rate_limit, concurrency, client_id,
-       client_identifier, status, created_at, updated_at
+       client_identifier, status, created_at, updated_at, application_id
 FROM msg_dispatch_pools
 WHERE code = $1 AND client_id IS NULL
 `
@@ -82,13 +83,14 @@ func (q *Queries) DispatchPoolFindByCodeAnchor(ctx context.Context, code string)
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ApplicationID,
 	)
 	return i, err
 }
 
 const dispatchPoolFindByCodeClient = `-- name: DispatchPoolFindByCodeClient :one
 SELECT id, code, name, description, rate_limit, concurrency, client_id,
-       client_identifier, status, created_at, updated_at
+       client_identifier, status, created_at, updated_at, application_id
 FROM msg_dispatch_pools
 WHERE code = $1 AND client_id = $2
 `
@@ -113,6 +115,7 @@ func (q *Queries) DispatchPoolFindByCodeClient(ctx context.Context, arg Dispatch
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ApplicationID,
 	)
 	return i, err
 }
@@ -120,7 +123,7 @@ func (q *Queries) DispatchPoolFindByCodeClient(ctx context.Context, arg Dispatch
 const dispatchPoolFindByID = `-- name: DispatchPoolFindByID :one
 
 SELECT id, code, name, description, rate_limit, concurrency, client_id,
-       client_identifier, status, created_at, updated_at
+       client_identifier, status, created_at, updated_at, application_id
 FROM msg_dispatch_pools
 WHERE id = $1
 `
@@ -141,6 +144,7 @@ func (q *Queries) DispatchPoolFindByID(ctx context.Context, id string) (MsgDispa
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ApplicationID,
 	)
 	return i, err
 }
@@ -148,8 +152,8 @@ func (q *Queries) DispatchPoolFindByID(ctx context.Context, id string) (MsgDispa
 const dispatchPoolUpsert = `-- name: DispatchPoolUpsert :exec
 INSERT INTO msg_dispatch_pools
     (id, code, name, description, rate_limit, concurrency, client_id,
-     client_identifier, status, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     client_identifier, status, created_at, updated_at, application_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT (id) DO UPDATE SET
     code = EXCLUDED.code,
     name = EXCLUDED.name,
@@ -159,7 +163,8 @@ ON CONFLICT (id) DO UPDATE SET
     client_id = EXCLUDED.client_id,
     client_identifier = EXCLUDED.client_identifier,
     status = EXCLUDED.status,
-    updated_at = EXCLUDED.updated_at
+    updated_at = EXCLUDED.updated_at,
+    application_id = EXCLUDED.application_id
 `
 
 type DispatchPoolUpsertParams struct {
@@ -174,6 +179,7 @@ type DispatchPoolUpsertParams struct {
 	Status           string        `db:"status"`
 	CreatedAt        time.Time     `db:"created_at"`
 	UpdatedAt        time.Time     `db:"updated_at"`
+	ApplicationID    *string       `db:"application_id"`
 }
 
 func (q *Queries) DispatchPoolUpsert(ctx context.Context, arg DispatchPoolUpsertParams) error {
@@ -189,6 +195,7 @@ func (q *Queries) DispatchPoolUpsert(ctx context.Context, arg DispatchPoolUpsert
 		arg.Status,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.ApplicationID,
 	)
 	return err
 }

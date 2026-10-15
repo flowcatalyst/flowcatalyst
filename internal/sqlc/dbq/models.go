@@ -549,6 +549,7 @@ type MsgDispatchPool struct {
 	Status           string        `db:"status"`
 	CreatedAt        time.Time     `db:"created_at"`
 	UpdatedAt        time.Time     `db:"updated_at"`
+	ApplicationID    *string       `db:"application_id"`
 }
 
 type MsgEvent struct {

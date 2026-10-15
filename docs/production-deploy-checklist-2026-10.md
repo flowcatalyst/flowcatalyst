@@ -79,8 +79,10 @@ Record the results. Anything unexpected: stop and look before deploying.
 4. [ ] One login per app type; make one authenticated call in each app.
 5. [ ] Mint or use a service-account token; call an API with it; confirm each SDK/app that validates tokens still accepts it.
 6. [ ] A console write and a secret rotation (the confirmation modal appears).
-7. [ ] Run one app's definition sync (`--dry-run` first). Expect pinpoint's dispatch-pool step to still fail
-       (`platform:messaging:dispatch-pool:sync` is admin-tier by design); that is not new.
+7. [ ] Run one app's definition sync (`--dry-run` first). The application service accounts now hold
+       `platform:messaging:dispatch-pool:sync` (F19, migration 079): re-mint each application service account's token first, and
+       sync each application's existing pools once with an admin credential (pools predating migration 078 have no owner; the
+       application's own account is refused `DISPATCH_POOL_NOT_OWNED` for them until then).
 8. [ ] Watch dispatch jobs, the router and the logs for 15 to 30 minutes: 400s with `INVALID_ROLE_NAME`, `ROLE_NOT_FOUND`
        or `APPLICATION_SERVICE_ACCOUNT_REQUIRED` mean an app or SDK is sending something the platform now refuses.
 9. [ ] If you use functions: deploy/invoke one function and check a dispatch job is created and delivered.
@@ -107,5 +109,4 @@ Record the results. Anything unexpected: stop and look before deploying.
 
 - Update SDKs/apps one at a time, separately: rfp, integral, packages_root, then hr (see `docs/sdk-audit-and-python-sdk.md`,
   Part C). The Laravel mirror only has tags up to v0.10.26 (the split workflow is disabled).
-- Give the pinpoint deploy a way to sync dispatch pools (a narrow `platform:messaging:dispatch-pool:sync` role, or an
-  admin credential for that step). Not part of this window.
+- Dispatch pool sync by application service accounts is done (F19); see step 7 for the one-time admin sync and token re-mint.

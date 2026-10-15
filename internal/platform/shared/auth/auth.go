@@ -776,8 +776,12 @@ func CanSyncProcesses(a *AuthContext) error {
 }
 
 // CanSyncDispatchPools guards POST /api/applications/{appCode}/dispatch-pools/sync.
-// Admin-tier only (dispatch-pool
-// sync/manage) — pools are global, so there is no application-service grant.
+// Admits the messaging dispatch-pool sync/manage permission. The built-in
+// application-service role holds the sync permission (F19), so an application's
+// service account can sync its own pools. Pools are global rows matched by
+// code, so the permission alone is not the confinement: the handler
+// (requireAppAccess) limits the caller to its bound applications and the use
+// case (SyncDispatchPools) to pools that application owns.
 func CanSyncDispatchPools(a *AuthContext) error {
 	return requireAny(a, permDispatchPoolSync, permDispatchPoolManage)
 }

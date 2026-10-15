@@ -51,16 +51,20 @@ type SyncDispatchPoolsCommand struct {
 // per-resource rule — the caller must have access to the target application —
 // plus an anchor-only gate on RemoveUnlisted (X-02(d); see the Authorize func).
 //
-// X-02(b) note: the ruling asks for archiveUnlisted/removeUnlisted to be
-// narrowed to clientId+applicationId, same as scheduled jobs. msg_dispatch_pools
-// has neither an application_id column nor a sync-populated client_id (pools
-// are matched by code alone, globally) — see internal/migrate/sql/004 — so that
-// per-application narrowing isn't achievable without a schema change, which is
-// out of scope here. What IS implemented: RemoveUnlisted (inherently a
-// platform-wide sweep for this aggregate) is now anchor-only, closing the
-// "any app-scoped sync permission can wipe every other app's pools" hole the
-// pre-existing TestSyncDispatchPools_RemoveUnlisted_Archives HAZARD comment
-// documents.
+// Ownership (F19). Pools are global rows matched by code, and the built-in
+// application-service role holds the sync permission, so each pool records the
+// application that owns it (application_id; nil for admin-created and
+// pre-ownership pools). An all-applications caller (a platform admin) may sync
+// any pool: it creates new pools owned by the target application, hands
+// unowned pools it touches to that application, and never takes an owned pool
+// from its owner. Any other caller (an application service account, even at
+// anchor tier) may only create pools and change pools the target application
+// owns; a code that belongs to another application, to a client, or to nobody
+// is refused (DISPATCH_POOL_NOT_OWNED), all-or-nothing. RemoveUnlisted
+// archives pools absent from the payload: for an all-applications anchor that
+// is the platform-wide sweep it always was (X-02(d)); for an anchor-tier
+// application-scoped caller it is limited to the pools the target application
+// owns; any other caller is refused (ANCHOR_REQUIRED_FOR_PLATFORM_SWEEP).
 //
 // Emits per-row [DispatchPoolCreated]/[DispatchPoolUpdated]/[DispatchPoolArchived]
 // events plus one [DispatchPoolsSynced] rollup, atomic via [usecaseop.Sync].
@@ -93,15 +97,8 @@ func SyncDispatchPools(repo *dispatchpool.Repository) usecaseop.Operation[SyncDi
 			if !ac.CanAccessApplication(cmd.ApplicationID) {
 				return httperror.Forbidden("Not authorised for application '" + cmd.ApplicationCode + "'")
 			}
-			// X-02(d)/(b): dispatch pools are GLOBAL — matched by code across every
-			// client and application, with no application_id column to narrow a
-			// sweep by (docs/owner-rulings-todo.md #27 asks for the same
-			// clientId+applicationId narrowing scheduled jobs get; the schema
-			// doesn't carry either dimension for pools, so true per-application
-			// narrowing isn't achievable here — see the sync.go doc comment).
-			// Every RemoveUnlisted call is therefore inherently a platform-wide
-			// sweep, so it's gated the same way a clientId-less sweep is
-			// elsewhere: anchor-tier only.
+			// X-02(d): a RemoveUnlisted sweep is anchor-tier only. What it may
+			// archive is narrowed in Execute by pool ownership (F19).
 			if cmd.RemoveUnlisted && !ac.IsAnchor() && !ac.IsSuperAdmin() {
 				return usecase.Authorization("ANCHOR_REQUIRED_FOR_PLATFORM_SWEEP",
 					"Only anchor users may sweep (removeUnlisted) dispatch pools — they are platform-global")
@@ -113,9 +110,27 @@ func SyncDispatchPools(repo *dispatchpool.Repository) usecaseop.Operation[SyncDi
 			if err != nil {
 				return nil, usecase.Internal("REPO", "find_all failed", err)
 			}
+			// The sync's pools are the client-less ones: (code, client_id) is
+			// unique, so a client's pool may share a code with a platform one
+			// and must never be mistaken for it.
 			existingByCode := make(map[string]*dispatchpool.DispatchPool, len(existing))
 			for i := range existing {
-				existingByCode[existing[i].Code] = &existing[i]
+				if existing[i].ClientID == nil {
+					existingByCode[existing[i].Code] = &existing[i]
+				}
+			}
+			// An all-applications caller (a platform admin) may change any
+			// pool; every other caller only the pools the application owns.
+			allApps := auth.FromContext(ctx).AllApplications
+			owns := func(p *dispatchpool.DispatchPool) bool {
+				return p.ApplicationID != nil && *p.ApplicationID == cmd.ApplicationID
+			}
+			// A code held by a client's pool cannot be created or synced here.
+			clientCodes := map[string]struct{}{}
+			for i := range existing {
+				if existing[i].ClientID != nil {
+					clientCodes[existing[i].Code] = struct{}{}
+				}
 			}
 
 			var (
@@ -132,6 +147,15 @@ func SyncDispatchPools(repo *dispatchpool.Repository) usecaseop.Operation[SyncDi
 				syncedSet[in.Code] = struct{}{}
 
 				if cur, ok := existingByCode[in.Code]; ok {
+					if !allApps && !owns(cur) {
+						return nil, usecase.Authorization("DISPATCH_POOL_NOT_OWNED", fmt.Sprintf(
+							"Dispatch pool '%s' is not owned by application '%s' (it belongs to another application or the platform); only a platform administrator may sync it",
+							in.Code, cmd.ApplicationCode))
+					}
+					if cur.ApplicationID == nil {
+						appID := cmd.ApplicationID
+						cur.ApplicationID = &appID
+					}
 					cur.Name = in.Name
 					cur.Description = in.Description
 					cur.RateLimit = in.RateLimit
@@ -148,7 +172,13 @@ func SyncDispatchPools(repo *dispatchpool.Repository) usecaseop.Operation[SyncDi
 					continue
 				}
 
+				if _, taken := clientCodes[in.Code]; taken && !allApps {
+					return nil, usecase.Authorization("DISPATCH_POOL_NOT_OWNED", fmt.Sprintf(
+						"Dispatch pool code '%s' is not available to application '%s'", in.Code, cmd.ApplicationCode))
+				}
 				p := dispatchpool.New(in.Code, in.Name)
+				appID := cmd.ApplicationID
+				p.ApplicationID = &appID
 				p.Description = in.Description
 				p.RateLimit = in.RateLimit
 				p.Concurrency = in.Concurrency
@@ -172,6 +202,9 @@ func SyncDispatchPools(repo *dispatchpool.Repository) usecaseop.Operation[SyncDi
 					}
 					if cur.Status == dispatchpool.StatusArchived {
 						continue
+					}
+					if !allApps && !owns(cur) {
+						continue // an application sweeps only its own pools
 					}
 					cur.Archive()
 					saves = append(saves, usecasepgx.SyncSaveItem[dispatchpool.DispatchPool]{

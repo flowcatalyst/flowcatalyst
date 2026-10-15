@@ -43,9 +43,14 @@ type DispatchPool struct {
 	Concurrency      int32         `json:"concurrency"`
 	ClientID         *ids.ClientID `json:"clientId,omitempty"`
 	ClientIdentifier *string       `json:"clientIdentifier,omitempty"`
-	Status           Status        `json:"status"`
-	CreatedAt        time.Time     `json:"createdAt"`
-	UpdatedAt        time.Time     `json:"updatedAt"`
+	// ApplicationID is the application that owns the pool: set when an
+	// application's SDK sync creates it, nil for pools made in the admin
+	// UI/API and for pools that predate ownership. An application-scoped sync
+	// may change only pools it owns (F19). Never on the wire.
+	ApplicationID *string   `json:"-"`
+	Status        Status    `json:"status"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.
