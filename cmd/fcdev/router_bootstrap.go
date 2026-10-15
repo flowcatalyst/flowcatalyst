@@ -10,6 +10,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
@@ -49,8 +50,13 @@ func bootstrapRouterCredentials(ctx context.Context, pool *pgxpool.Pool) (router
 // client_credentials principal holding exactly one role, for an in-process
 // subsystem that authenticates to this fcdev's platform like any deployment
 // would (the router, the function runner). See bootstrapRouterCredentials.
-func bootstrapLocalCredentials(ctx context.Context, pool *pgxpool.Pool, clientID, principalName, clientName, role string) (routerCredentials, error) {
+func bootstrapLocalCredentials(ctx context.Context, pool *pgxpool.Pool, clientID, principalName, clientName, role_ string) (routerCredentials, error) {
 	var zero routerCredentials
+
+	roleName, err := role.ParseName(role_)
+	if err != nil {
+		return zero, fmt.Errorf("%s role: %w", clientID, err)
+	}
 
 	enc, err := encryption.FromEnv()
 	if err != nil {
@@ -77,11 +83,18 @@ func bootstrapLocalCredentials(ctx context.Context, pool *pgxpool.Pool, clientID
 	}
 
 	if existing != nil {
-		// Re-secret the existing client in place: the principal, its role and
-		// the client row are all still correct.
+		// Re-secret the existing client in place, and reconcile the principal's
+		// role: a DB created by an older fcdev may hold a different role, and
+		// these fixed dev principals are owned by fcdev, so it declares them.
 		existing.SecretRef = &secretRef
 		if err := infraPersist(ctx, pool, func(tx *usecasepgx.DbTx) error {
-			return authRepo.OAuthClients.Persist(ctx, existing, tx)
+			if err := authRepo.OAuthClients.Persist(ctx, existing, tx); err != nil {
+				return err
+			}
+			if existing.PrincipalID == nil {
+				return fmt.Errorf("%s client has no principal", clientID)
+			}
+			return reconcileBootstrapRole(ctx, tx, clientID, string(*existing.PrincipalID), roleName)
 		}); err != nil {
 			return zero, fmt.Errorf("re-secret %s client: %w", clientID, err)
 		}
@@ -112,12 +125,38 @@ func bootstrapLocalCredentials(ctx context.Context, pool *pgxpool.Pool, clientID
 			     (principal_id, role_name, assignment_source, assigned_at)
 			 VALUES ($1, $2, 'BOOTSTRAP', NOW())
 			 ON CONFLICT DO NOTHING`,
-			routerPrincipal.ID, role)
+			routerPrincipal.ID, roleName)
 		return err
 	}); err != nil {
 		return zero, err
 	}
 
-	slog.Info("bootstrapped a dev credential", "client_id", clientID, "role", role)
+	slog.Info("bootstrapped a dev credential", "client_id", clientID, "role", roleName.String())
 	return routerCredentials{ClientID: clientID, Secret: secret}, nil
+}
+
+// reconcileBootstrapRole makes roleName the ONLY role the dev-bootstrap
+// principal holds. Only ever called for the fixed principals fcdev creates
+// itself (router, function runner, fn CLI), never for a user-managed one.
+func reconcileBootstrapRole(ctx context.Context, tx *usecasepgx.DbTx, clientID, principalID string, roleName role.Name) error {
+	del, err := tx.Inner().Exec(ctx,
+		`DELETE FROM iam_principal_roles WHERE principal_id = $1 AND role_name <> $2`,
+		principalID, roleName)
+	if err != nil {
+		return fmt.Errorf("%s: remove stale roles: %w", clientID, err)
+	}
+	ins, err := tx.Inner().Exec(ctx,
+		`INSERT INTO iam_principal_roles
+		     (principal_id, role_name, assignment_source, assigned_at)
+		 VALUES ($1, $2, 'BOOTSTRAP', NOW())
+		 ON CONFLICT DO NOTHING`,
+		principalID, roleName)
+	if err != nil {
+		return fmt.Errorf("%s: assign role: %w", clientID, err)
+	}
+	if del.RowsAffected() > 0 || ins.RowsAffected() > 0 {
+		slog.Info("reconciled a dev credential's role", "client_id", clientID,
+			"role", roleName.String(), "removed", del.RowsAffected(), "added", ins.RowsAffected())
+	}
+	return nil
 }

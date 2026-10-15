@@ -52,7 +52,7 @@ func TestInitServiceAccount_IsAppConfined(t *testing.T) {
 	assert.False(t, p.AllApplications, "init SA must not be all-applications")
 	assert.Equal(t, []string{string(app.ID)}, ids.Strings(p.AccessibleApplicationIDs), "access to exactly the one application")
 	require.Len(t, p.Roles, 1, "exactly one role")
-	assert.Equal(t, "platform:application-service", p.Roles[0].Role)
+	assert.Equal(t, "platform:application-service", p.Roles[0].Role.String())
 	require.NotNil(t, p.Roles[0].AssignmentSource)
 	assert.Equal(t, "PROVISIONED", *p.Roles[0].AssignmentSource)
 
