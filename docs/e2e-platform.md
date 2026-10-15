@@ -31,7 +31,7 @@ and re-applies the seed.
 Everything is overridable: `E2E_API_PORT`, `E2E_METRICS_PORT`, `E2E_DB_NAME` (must match
 `e2e_*`), `E2E_DB_MODE` (`auto`, `shared`, `own`), `E2E_OWN_PG_PORT`, `E2E_STATE_DIR`,
 `E2E_CONTROL_PLANE_URL` (default `http://localhost:8090`; the login client's redirect URI is
-`<it>/auth/callback`), `E2E_SKIP_BUILD=1`.
+`<it>/auth/callback`), `E2E_SKIP_BUILD=1`, `E2E_FUNCTIONS=1` (runs the function runner on API port + 15; off by default).
 
 ## Seeded data
 
