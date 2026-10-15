@@ -6,7 +6,7 @@ AgentPlanner repo. Where a figure is a judgement (the class of an operation) it 
 everything else was counted.
 
 Contents: Part A (audit) · Part B (Python SDK) · AgentPlanner today and migration sketch ·
-milestones and risks · owner decisions.
+milestones and risks · owner decisions · Part C (Laravel SDK in the Inhance apps today; corrects Part A).
 
 ---
 
@@ -81,10 +81,10 @@ is the recommended application path.
 | event types | 8 | list, get, getByCode, sync (4) | 0 | create, update, addSchemaVersion, archive (4) |
 | me | 3 | 3 | 0 | 0 |
 | permissions | 2 | 2 | 0 | 0 |
-| principals | 17 | sync, syncUsers (2) plus optional "app-delegated user management": get, findByEmail, createUser, resetPassword, update (5, used by Integral) | list, activate, deactivate, getRoles, add/remove/setRoles, client-access x3 (10) | 0 |
+| principals | 17 | sync, syncUsers (2) plus "app-delegated user management": get, findByEmail, createUser, resetPassword, update (5; **used by all three Inhance apps**, see section C) | list, activate, deactivate, getRoles, add/remove/setRoles, client-access x3 (10) | 0 |
 | processes | 8 | list, get, getByCode, sync (4) | 0 | create, update, archive, delete (4) |
 | roles | 9 | list, get, getByCode, sync (4) | grantPermission, revokePermission (2) | create, update, delete (3) |
-| router | 2 | 0 | in-pipeline checks (2): router internals on another host | 0 |
+| router | 2 | 0 | in-pipeline checks (2): router internals on another host (**`areInPipeline` is called by Integral**, see section C) | 0 |
 | scheduled jobs | 16 | list, get, getByCode, getInstance, logForInstance, completeInstance, sync (7) | pause, resume, fire, listInstances, listInstanceLogs (5) | create, update, archive, delete (4) |
 | subscriptions | 8 | list, get, sync (3) | pause, resume (2) | create, update, delete (3) |
 | **Total (Laravel)** | **121** | **41 (34%)** plus 5 optional (4%) | **51 (42%)** | **24 (20%)** |
@@ -193,10 +193,10 @@ IdPs, OAuth clients, service accounts, passkeys, pools, router or functions belo
    code is `internal` (TS: not exported from `index.ts`; PHP: namespace marked `@internal`; Java:
    package-private or `internal` module export).
 5. **Admin client = separate package** (`@flowcatalyst/admin-sdk`, `flowcatalyst/admin-sdk`) generated
-   from `openapi.admin.json`, only if someone asks for it. Today the only callers are Integral's user
-   management (Laravel) and ops scripts. Principals user management that Integral uses goes into the
-   admin package under an explicit name; until then it stays in the app SDK as `principals()` with a
-   deprecation notice.
+   from `openapi.admin.json`, only if someone asks for it. Today the callers are the three Inhance Laravel apps' user
+   management (HR, RFP, Integral) and ops scripts (corrected: the first draft named Integral only; see
+   section C). Principals user management goes into the admin package under an explicit name; until then
+   it stays in the app SDK as `principals()` with a deprecation notice.
 
 ### Curated public surface per SDK
 
@@ -216,14 +216,14 @@ The trimmed PHP package drops roughly 4.7 MB of generated source.
 ### Deprecate vs remove, and breaking-change cost
 
 Rule: **deprecate in the next minor, remove at the next breaking line.** Pre-1.0 versions allow it, but
-two apps (Integral on Laravel, AgentPlanner in future on Python) depend on the surface; nothing else
-is known to. Deprecation first, with a runtime log once per process (`E_USER_DEPRECATED` / `console.warn`
+the Inhance Laravel apps (HR, RFP, Integral plus the shared `packages_root`; section C) and in future AgentPlanner on Python
+depend on the surface; nothing else is known to. (The first draft said two apps; the Laravel SDK has three direct app consumers plus a package monorepo.) Deprecation first, with a runtime log once per process (`E_USER_DEPRECATED` / `console.warn`
 / `@Deprecated(forRemoval=true)` / `// Deprecated:`).
 
 | SDK | Version line | Breaking cost of removing class 2 and 3 | Notes |
 |---|---|---|---|
 | TypeScript | 0.11.x (0.11.33) | **Low to medium.** Class 2 removal touches `clients()`, `principals()`, `applications()` CRUD, `dispatchPools()` CRUD, `auditLogs()`, `router()`. Any consumer using them breaks at 0.12.0. Hiding `sdk.gen` exports is a pure removal of an unadvertised path. Use a `/admin` sub-path export first (no break) and flip default later. | Pre-1.0: minor bump is allowed to break. |
-| Laravel | 0.10.x (0.10.31) | **Medium.** Integral uses `principals()` (`findByEmail`, `createUser`, `resetPassword`, `update`) and probably `clients()`. Removing `generated()` is safe unless an app calls it (grep needed). Keep those classes behind an `Admin` facade first. | Drop Jane in 0.11.0; removing `generated()` and `Generated\*` namespace is a hard break for anyone importing models. |
+| Laravel | 0.10.x (0.10.31) | **Medium to high (revised up from Medium; section C).** Verified by grep: nothing in HR, RFP, Integral or `packages_root` calls `generated()` or imports `Generated\*`, so dropping Jane is safe (zero break). But 12 `principals()` methods, `clients()->list/create`, `applications()->create/listClients`, `router()->areInPipeline` and the public `request()` escape hatch (5 distinct admin/uncovered routes) are in live use across all three apps and 13 shared-package files, three of them classed admin or remove here. Keep these behind an `Admin` facade first; do not remove `request()`. | Drop Jane in 0.11.0 (safe). HR is pinned `^0.8` (locked 0.8.19) and cannot receive 0.10.x or later without a composer constraint change. |
 | Java | 0.0.14 | **Low.** Very early line, no known production consumer other than the framework / Camel work. | Remove directly, document in `CHANGES-0.0.x.md`. |
 | Go | v0.0.3 | **Low to medium.** Consumers: the framework's FlowCatalyst module (uses sync, outbox, scheduled jobs, client credentials; not admin). Verify with the framework module before pruning `client.Clients()` / `Principals()`. | Go cannot deprecate-and-hide gracefully; use `// Deprecated:` then delete at v0.1.0. |
 
@@ -644,7 +644,7 @@ adopters; (5) security surface of sessions.
 | D2 | Sync vs async parity | Async is the implementation; ship a blocking `FlowCatalystSync` facade (thread-hosted loop) in 0.1.0 because AgentPlanner's boot, CLI and psycopg-sync code need it. No duplicated sync implementation. |
 | D3 | Pydantic version | pydantic v2 only (>=2.7); no v1 shim. |
 | D4 | Generated vs handwritten | Handwritten facade and models, contract test against the lock; revisit models-only generation if the surface exceeds about 100 ops. |
-| D5 | Where does the admin surface go | Separate `admin` packages generated from `openapi.admin.json`, only on demand; no Python admin client in v1. Integral's user-management calls stay available in Laravel behind an `Admin` facade. |
+| D5 | Where does the admin surface go | Separate `admin` packages generated from `openapi.admin.json`, only on demand; no Python admin client in v1. The user-management and tenant-provisioning calls that HR, RFP and Integral make (section C.5) stay available in Laravel behind an `Admin` facade; revised from "Integral's" after the app survey. |
 | D6 | Permission wildcard rule | Adopt the framework / platform rule (same segment count, `*` per segment) as default; offer `prefix_wildcards=True` for AgentPlanner's current prefix-covers-deeper behaviour during migration. |
 | D7 | Sessions/OIDC login in the FastAPI package | Yes, as optional extra in M5 (AgentPlanner proves demand). Postgres + in-memory stores only; no cookie / redis drivers in v1. |
 | D8 | Use-case envelope (`usecaseop`) for Python | Not in v1. Provide a minimal unit-of-work helper in M6; build the envelope only on a second adopter's request. |
@@ -655,3 +655,171 @@ adopters; (5) security surface of sessions.
 | D13 | Package names | `flowcatalyst` and `flowcatalyst-fastapi` on PyPI (check availability before publishing; the TS package is `@flowcatalyst/sdk`). |
 | D14 | Missing platform operations | Add `x-sdk` tagging and the missing batch routes to the spec (M0); define a stable "invoke function" operation if the brief's "invoke functions" belongs in app SDKs. |
 | D15 | AgentPlanner migration ownership | The Inhance team (or this repo's owner on request) migrates AgentPlanner in steps 1 to 5 after M4; AgentPlanner remains the acceptance test for 0.1.0. |
+
+---
+
+# Part C. Laravel SDK in the Inhance apps today
+
+Surveyed read-only on 2026-10-15 in `InhanceMono` (`apps/hr`, `apps/rfp`, `apps/integral`, `packages_root`).
+Counts are from grep over `*.php` excluding `vendor` and `node_modules`. No secrets were read; env var
+names only. `apps/rfp` exists. Other `apps/*` (client-portal, in-motion, infra-admin, shortener, ...) have no
+`flowcatalyst` entry in their `composer.json`; sibling repos under `inhance/` (AgentPlanner aside) were not
+found requiring `flowcatalyst/laravel-sdk` either (`laravel-flowcatalyst-example` has no root composer.json).
+
+## C.1 Version pins
+
+| Consumer | composer.json constraint | Locked | Behind HEAD (0.10.31) |
+|---|---|---|---|
+| apps/hr | `^0.8` (VCS repo `github.com/flowcatalyst/laravel-sdk`) | **v0.8.19** | two minor lines; the constraint blocks 0.10 |
+| apps/rfp | `^0.10` | v0.10.23 | 8 patches |
+| apps/integral | `^0.10.12` | v0.10.26 | 5 patches |
+| packages_root (monorepo root) | `^0.10.21` | v0.10.26 | 5 patches |
+| packages/logistics-portal | `^0.10`; packages/router-client `*` | via root | n/a |
+
+The SDK is a git/VCS dependency, not Packagist.
+
+## C.2 Findings in numbers
+
+| | HR | RFP | Integral (app) | packages_root/packages |
+|---|---|---|---|---|
+| PHP files referencing `FlowCatalyst\` | 113 (45 tests) | 89 (33 tests) | 12 (4 tests) | 37 (1 test) |
+| Non-test files that hold a `FlowCatalystClient` | 7 | 5 | 2 | 13 |
+| `generated()` / `Generated\*` / Jane | **0** | **0** | **0** | **0** |
+| `#[AsPermission]` imports | 27 | 24 | 0 | 0 |
+| `#[AsRole]` / `#[AsEventType]` / `#[AsScheduledJob]` / `#[AsSubscription]` | 14 / 10 / 1 / 0 | 9 / 0 / 2 / 0 | 0 / 0 / 2 / 0 | 0 / 0 / 0 / 1 |
+| `FlowCatalystAuthenticatable`, `PermissionResolver`, `RbacCatalogue`/`RbacBuilder` | 23, 4, 5+1 | 9, 5, 3+1 | 0, 2 (Spatie resolver), 0 | 0, 1, 1 |
+| OIDC (`OidcAuthController`, `OidcUserHandler`) | env-only (`FLOWCATALYST_OIDC_*`, `NATIVE_LOGIN`) | env-only | routes + handler + login controller | `OidcUserHandler` impl in integral-service-v2 |
+| UseCase envelope (`Runner`, `Plan`, `Operation`, `Aggregate`, `Result`) | yes (Grading, 5+ files) | no | `Runner`/`Result` in 1 test | project-spar, integral-service-v2 |
+| Outbox (`OutboxDriver`, migration `outbox_messages`) | yes (migration + `GradingEventService`) | no | no | via project-spar `SparUnitOfWork` |
+| Scheduled-job callback (`ScheduledJobRunner` + `CacheLockProvider`) | yes | yes (`RoundSweepJob`) | yes (2 jobs) | yes (integral-service-v2) |
+| Webhook validation | `ValidateWebhookSignature` via SDK wiring; `FLOWCATALYST_SIGNING_SECRET`, `FLOWCATALYST_WEBHOOK_AUTH_TOKEN` | same (1 import) | `FlowCatalystWebhookController` in package | same |
+| Sync `DefinitionSynchronizer` / `SyncDefinitionSet` | no (attribute scan via `flowcatalyst:sync`) | no (same) | no | 2 files each: roles, event types, dispatch pools |
+
+`flowcatalyst:sync` appears 75 times and `flowcatalyst:scan` 67 times in docs, deployment runbooks and
+scripts: attribute-based sync is how HR and RFP register roles, permissions, event types and scheduled jobs.
+Custom artisan commands in the apps: `hr:sync-test-principals`, `rfp:sync-test-principals`,
+`flowcatalyst:create-user`, `flowcatalyst:sync-users`, `flowcatalyst:sync-clients`,
+`flowcatalyst:sync-definitions`.
+
+Env var names in use: `FLOWCATALYST_BASE_URL`, `_CLIENT_ID`, `_CLIENT_SECRET`, `_APP_CODE`, `_SIGNING_SECRET`,
+`_WEBHOOK_AUTH_TOKEN`, `_OIDC_ENABLED`, `_NATIVE_LOGIN`, `_OIDC_CLIENT_ID`, `_OIDC_CLIENT_SECRET`,
+`_OIDC_HANDLER`, `_OIDC_PERMISSION_RESOLVER`, `_OIDC_SINGLE_LOGOUT`, `_REDIRECT_AFTER_LOGIN`,
+`_REDIRECT_AFTER_LOGOUT`, `_ERROR_REDIRECT`, `_SEED_SPATIE`, `_OUTBOX_ENABLED`, `_OUTBOX_AUDIT_ENABLED`,
+`_OUTBOX_CLIENT_ID`, `_CLIENT_CODE`, `_TOKEN_URL`, `_TOKEN_CACHE_DRIVER`, `_TIMEOUT`, `_RETRY_ATTEMPTS`,
+`_RETRY_DELAY`.
+
+## C.3 Client methods actually called (non-test code)
+
+| Resource call | Where | Plan class |
+|---|---|---|
+| `principals()->findByEmail` | HR (GoLiveAssignmentSeeder), RFP gateway, Integral (sync-users, 2), v2 (SetPasswordController, ResetUserPassword, UpdateUser) | optional keep |
+| `principals()->createUser` | RFP gateway, Integral create-user + sync-users, v2 CreateUserUseCase | optional keep |
+| `principals()->resetPassword` | v2 (3 sites) | optional keep |
+| `principals()->update` | Integral sync-users | optional keep |
+| `principals()->get` | RFP gateway | optional keep |
+| `principals()->list(active:, type:)` | HR PrincipalDirectory, HR ImportRolesRegister, RFP PlatformPrincipalDirectory | **admin (removed)** |
+| `principals()->addRole` / `removeRole` | RFP gateway (3 sites), Integral sync-users | **admin** |
+| `principals()->getRoles` | Integral sync-users | **admin** |
+| `principals()->grantClientAccess` | Integral sync-users | **admin** |
+| `principals()->sync(app, entries, removeUnlisted)` | HR + RFP `*:sync-test-principals` | class 1 keep |
+| `principals()->syncUsers` | Integral sync-users | class 1 keep |
+| `clients()->list` | Integral sync-users, v2 SyncFlowCatalystClients | keep (class 1 reads) |
+| `clients()->create` | v2 SyncFlowCatalystClients, RunTenantMigrationsJob (tenant provisioning) | **admin** |
+| `applications()->getByCode` | HR FeedbackNotifyRecipients, v2 sync-definitions, v1 sync service | keep |
+| `applications()->listClients` | HR FeedbackNotifyRecipients | **admin** |
+| `applications()->create` | v2 sync-definitions, v1 FlowCatalystSyncService | **admin** |
+| `roles()->list`, `roles()->sync` | Integral sync-users, v2 sync-definitions (own retry loop) | keep |
+| `eventTypes()->list` | v2 EventTypeSchemaSync | keep |
+| `scheduledJobs()` passed to `ScheduledJobRunner` | HR, RFP, Integral, v2 callbacks | keep |
+| `router()->areInPipeline` | v2 ProcessRecordInProgressResetterJob | **removed (RouterResource)** |
+| `DefinitionSynchronizer::sync` (event types, dispatch pools) | v1, v2 | keep |
+| `client->request(...)` (public escape hatch) | RFP, Integral, v2 (see C.4) | not in plan |
+| `new FlowCatalystClient(tokenProvider:, baseUrl:, timeout:, retryAttempts:, retryDelay:)` | RFP `PlatformWriteClientFactory` (single attempt on request paths) | constructor is public API |
+
+## C.4 Raw HTTP through `request()` and other workarounds
+
+All five routes below are in the current lock, so they are not "missing from the spec", they are missing
+from the SDK's resources.
+
+| Route | Consumer | Why raw |
+|---|---|---|
+| `GET/PUT/DELETE /api/config/{app}/{section}/{property}` and `GET /api/platform-config/{app}` | RFP `PlatformConfigStore` | no SDK resource for platform config |
+| `GET /api/email-domain-mappings/by-domain/{domain}` | RFP `PlatformPrincipalGateway` | no SDK resource (admin tag) |
+| `PUT /api/principals/{id}/client-association` | Integral `SyncUsersToFlowCatalystCommand` | comment: "SDK's Principals resource doesn't wrap this route ... request() escape hatch" |
+| `POST /api/event-types/{id}/versions` | v2 `EventTypeSchemaSync` | comment: SDK `AddSchemaVersionRequest` omits `version` which the platform requires (huma 400) |
+| (read of client by id or identifier) | RFP `PlatformWriteClientFactory` + resolveClient | SDK DTO defaults a missing `status` to ACTIVE, so raw answer is used |
+
+Other pain points recorded in the apps' own comments:
+
+* `DefinitionSynchronizer` reads `$row['code']` but `EventTypeDefinition::toArray()` omits it (every entry
+  synced as ""): v2 passes plain arrays.
+* Platform roles sync is atomic and returns only "sync save failed at index N": v2 wrote
+  `syncRolesWithRetry()` (drop the named index, retry) and bypasses `->withRoles()`.
+* The SDK client singleton uses 30 s x 3 retries: RFP builds its own one-attempt client for request paths.
+* `SyncPrincipalEntry` has no `clientId`, so Integral does a second raw call per user.
+* HR is held on 0.8.x (decisions doc: attribute / RBAC / Spatie-free design built on that line).
+* Tests: RFP defines `ScriptedFlowCatalystClient extends FlowCatalystClient` and a fake `TokenProviderInterface`;
+  the SDK's own `Testing/` helpers are not imported anywhere. `FlowCatalystClient`'s class shape and
+  constructor are therefore part of the de-facto public API.
+
+## C.5 What the trimming plan (A.8) would break
+
+| Plan action | Breaks in the Inhance apps? | Where |
+|---|---|---|
+| Delete Jane / `generated()` / `Generated\*` | **No** (0 uses in 4 trees) | none; safest cut |
+| Remove `principals()` list / addRole / removeRole / getRoles / grantClientAccess (class 2) | **Yes** | HR (2 files), RFP (2 files), Integral sync-users |
+| Remove `clients()` create | **Yes** | v2 sync-clients and tenant provisioning (`RunTenantMigrationsJob`) |
+| Remove `applications()` create / listClients | **Yes** | v1 + v2 sync-definitions (bootstrap app registration), HR FeedbackNotifyRecipients |
+| Remove `RouterResource` | **Yes** | v2 `ProcessRecordInProgressResetterJob` (`areInPipeline`) |
+| Remove event-type `addSchemaVersion` (class 3 dup of sync) | **No, but wrong rationale** | Integral already bypasses it because the SDK DTO is broken; sync does not carry JSON schemas, so removal is only correct once sync carries schema versions or a fixed method exists |
+| Remove or hide `request()` | **Yes** (5 routes) | RFP, Integral, v2 |
+| Remove CRUD that duplicates sync (create / update / delete on roles, subscriptions, ...) | No | no use found in code |
+| Keep the 5 "optional" principals methods + syncs | covered | note `findByEmail`, `createUser`, `resetPassword`, `update`, `get` are used by **all three** apps |
+
+## C.6 SDK methods in use that the plan classes as admin or removed
+
+`principals()->list`, `addRole`, `removeRole`, `getRoles`, `grantClientAccess`; `clients()->create`;
+`applications()->create`, `listClients`; `router()->areInPipeline`; public `request()` and the
+`FlowCatalystClient` constructor options; `DefinitionSynchronizer` dispatch-pool sync (class 1 by
+this audit, but pools are listed under admin in A.8's "Router / pools" row: the cut as written would
+remove v2's dispatch-pool definitions, so pool *sync* must stay). That is 8 resource methods plus 2
+structural features.
+
+## C.7 What the first draft got wrong or left open
+
+1. "Integral uses `principals()` ..., and probably `clients()`" and "two apps depend on it": there are three
+   direct consumers (HR, RFP, Integral) plus 13 shared-package files. HR and RFP use `principals()` more than
+   Integral does (directory listing, role assignment, invitations).
+2. "Removing `generated()` is safe unless an app calls it (grep needed)": grep done, no caller anywhere.
+   Closed, and in the apps' favour.
+3. The principals "optional keep" set missed `list`, `addRole`, `removeRole`, `getRoles`, `grantClientAccess`
+   (class 2 in the table but in live use); `clients()->create` and `applications()->create` / `listClients`
+   likewise.
+4. `RouterResource` was classed "needs the router host, not the platform host, remove": Integral calls it
+   through the platform client.
+5. `request()` was not considered; it is the apps' workaround for four SDK gaps and cannot be removed.
+6. Version skew was not recorded: HR is two minor lines behind and its constraint blocks upgrades, so any
+   Laravel breaking release is invisible to HR until it opts in.
+7. A.1 row "Test helpers `Testing/`": unused by the apps; they subclass `FlowCatalystClient` instead.
+8. Angles confirmed: hand layer uses `request()` literal paths, not Jane (consistent with row "about 0%").
+
+## C.8 Revised breaking-change cost and migration order
+
+Laravel cost: **Medium to high** if class 2 methods are removed from `FlowCatalystClient`; **Low** if the
+cut is (a) drop Jane and `generated()` and (b) move class 2 resources behind an `Admin` facade with the
+old accessors kept as deprecated aliases for one line. Recommended order for Laravel:
+
+1. 0.10.x patch: add resources/methods for the four workarounds (platform config get/put/delete, email
+   domain mapping by-domain, principal client-association, fixed `addSchemaVersion` with `version`, raw-answer
+   client lookup) so the apps can delete their `request()` calls. Additive, no break. Fix
+   `EventTypeDefinition::toArray()` code omission and the atomic role sync error message.
+2. 0.10.x: add `Admin` facade exposing principals / clients / applications admin / router; old accessors
+   emit a once-per-process deprecation.
+3. 0.11.0: drop Jane and `Generated\*` (zero app impact) and the 24 sync-duplicating CRUD methods (zero use).
+4. Apps move one at a time: Integral and `packages_root` (already on 0.10.26, owns most admin calls) first,
+   RFP second, HR last (needs its `^0.8` constraint lifted and a 0.8 to 0.10 jump review).
+5. 0.12.0 (or 1.0): remove the deprecated aliases only after all three apps and `packages_root` have
+   switched to `Admin`, verified by grep for the accessor names.
+
+Python SDK and the Java/Go/TS trims are unaffected by these findings; the Laravel step stays last in the
+A.8 sequence, and D1 stands.
