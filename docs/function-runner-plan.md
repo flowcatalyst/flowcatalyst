@@ -18,7 +18,7 @@ contract below (schema, guest ABI, manifest, API) is ours to choose. Written aga
 | Platform registry, publish, versions, aliases, settings, promote wiring | built | `internal/platform/function` |
 | Control-plane server | built | `internal/platform/function/control` |
 | fc-server subsystem, fc-dev wiring | built | `internal/server/functions.go`, `cmd/fcdev` |
-| `fcdev fn` init/build/describe/run/publish/promote/deploy/set/invoke/status | built | `cmd/fcdev/fn*.go` |
+| `fcdev fn` init/build/describe/run/publish/promote/deploy/set/invoke/status/delete | built | `cmd/fcdev/fn*.go` |
 | End-to-end on fc-dev (deploy → event → signed delivery → function → emitted event) | verified 2026-09-28 | — |
 | Terminal reject outcome; scheduled jobs honour 429 (§13.2, §13.3) | built | dispatch-job processing, scheduled-job dispatcher, migration 060 |
 | Admin UI pages (functions list, detail: versions, aliases, declarations, settings) | built, live-verified in Chrome | `frontend/src/pages/functions` |
@@ -710,6 +710,7 @@ capabilities, from a normal `go test`.
 | `fn watch` | `deploy` on every save (fc-dev). |
 | `fn invoke <address>[@alias\|@vN] [--path] [--data]` | Call the function; mints its own token from fc-dev's CLI credentials. |
 | `fn status <address>` / `fn logs <address>` | Status; logs are tailed from fc-dev's in-process log ring. |
+| `fn delete <address> [--yes]` | `DELETE /api/functions/{id}`: removes the function with every version, alias, wiring and artifact. Prints address, id, application, client, version count and live version first, then requires the address typed back; `--yes` skips that, and a non-terminal stdin without `--yes` is refused. |
 
 ## 11. Security model
 

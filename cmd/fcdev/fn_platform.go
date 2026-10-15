@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
 	fcauth "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
@@ -190,6 +192,7 @@ func (a *fnAPI) json(ctx context.Context, method, path string, in, out any) erro
 type fnFunction struct {
 	ID       string  `json:"id"`
 	Address  string  `json:"address"`
+	AppCode  string  `json:"applicationCode"`
 	ClientID *string `json:"clientId"`
 	Pool     *string `json:"pool"`
 	Warm     bool    `json:"warm"`
@@ -321,7 +324,7 @@ func (a *fnAPI) promote(ctx context.Context, fn *fnFunction, alias string, numbe
 // addFnPlatformCmds is the platform half of `fcdev fn`.
 func init() {
 	addFnPlatformCmds = func(cmd *cobra.Command) {
-		cmd.AddCommand(newFnPublishCmd(), newFnPromoteCmd(), newFnDeployCmd(), newFnSetCmd(), newFnInvokeCmd(), newFnStatusCmd())
+		cmd.AddCommand(newFnPublishCmd(), newFnPromoteCmd(), newFnDeployCmd(), newFnSetCmd(), newFnInvokeCmd(), newFnStatusCmd(), newFnDeleteCmd())
 	}
 }
 
@@ -650,4 +653,99 @@ func newFnStatusCmd() *cobra.Command {
 	}
 	pf.add(cmd)
 	return cmd
+}
+
+// fnStdinIsTerminal reports whether stdin is an interactive terminal. A var so
+// tests can stand in for both cases.
+var fnStdinIsTerminal = func() bool {
+	// Not ModeCharDevice: /dev/null is a character device but not a terminal.
+	return isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
+}
+
+func newFnDeleteCmd() *cobra.Command {
+	var pf fnPlatformFlags
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "delete <address>",
+		Short: "Permanently delete a function with all its versions, aliases, wiring and artifacts",
+		Long: `Deletes the function, every version and alias, its wiring (subscriptions and
+scheduled jobs) and its artifacts. This cannot be undone.
+
+Interactively you must type the function's address to confirm. In scripts pass
+--yes; without --yes a non-terminal stdin is refused.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			address := args[0]
+			if !yes && !fnStdinIsTerminal() {
+				return errors.New("refusing to delete without a terminal to confirm on; pass --yes to delete non-interactively")
+			}
+			api, err := newFnAPI(&pf)
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			fn, err := api.findFunction(ctx, address)
+			if err != nil {
+				return err
+			}
+			if fn == nil {
+				return fmt.Errorf("no function %s", address)
+			}
+			out := cmd.OutOrStdout()
+			client := "(platform-wide)"
+			if fn.ClientID != nil && *fn.ClientID != "" {
+				client = *fn.ClientID
+			}
+			app := firstNonEmpty(fn.AppCode, strings.SplitN(fn.Address, ".", 2)[0])
+			fmt.Fprintf(out, "About to PERMANENTLY delete %s\n  id          %s\n  application %s\n  client      %s\n", fn.Address, fn.ID, app, client)
+			if vs, err := api.listVersions(ctx, fn.ID); err == nil {
+				fmt.Fprintf(out, "  versions    %d version(s)", len(vs))
+				var aliases []fnAlias
+				if api.json(ctx, http.MethodGet, "/api/functions/"+fn.ID+"/aliases", nil, &aliases) == nil {
+					for _, a := range aliases {
+						if a.Name == "live" {
+							fmt.Fprintf(out, ", live = v%d", a.Version)
+						}
+					}
+				}
+				fmt.Fprintln(out)
+			}
+			fmt.Fprintln(out, "  This also removes every alias, wiring (subscriptions and scheduled jobs) and artifact.")
+			if !yes {
+				fmt.Fprintf(out, "Type the address (%s) to confirm: ", fn.Address)
+				line, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+				if strings.TrimSpace(line) != fn.Address {
+					return errors.New("confirmation did not match; nothing deleted")
+				}
+			}
+			if err := api.json(ctx, http.MethodDelete, "/api/functions/"+fn.ID, nil, nil); err != nil {
+				return fmt.Errorf("delete %s: %w", fn.Address, err)
+			}
+			fmt.Fprintf(out, "deleted %s\n", fn.Address)
+			return nil
+		},
+	}
+	pf.add(cmd)
+	cmd.Flags().BoolVar(&yes, "yes", false, "skip the typed confirmation (required when stdin is not a terminal)")
+	return cmd
+}
+
+// listVersions returns a function's versions (the platform answers either a
+// bare array or a {data: [...]} page).
+func (a *fnAPI) listVersions(ctx context.Context, id string) ([]fnVersion, error) {
+	var raw json.RawMessage
+	if err := a.json(ctx, http.MethodGet, "/api/functions/"+id+"/versions", nil, &raw); err != nil {
+		return nil, err
+	}
+	var vs []fnVersion
+	if json.Unmarshal(raw, &vs) == nil {
+		return vs, nil
+	}
+	var page struct {
+		Data []fnVersion `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &page); err != nil {
+		return nil, err
+	}
+	return page.Data, nil
 }

@@ -245,6 +245,16 @@ func (r *Runner) apply(ctx context.Context, d *control.Desired) {
 		df := d.Functions[i]
 		seen[df.Address] = true
 		fn, ok := r.functions[df.Address]
+		if ok && fn.id != df.ID {
+			// Deleted and recreated at the same address between two polls:
+			// a different function. Keeping the old one would keep its id, so
+			// heartbeats would name a function the platform no longer has.
+			for _, v := range fn.versions {
+				toClose = append(toClose, v)
+			}
+			delete(r.functions, df.Address)
+			ok = false
+		}
 		if !ok {
 			fn = &function{id: df.ID, address: df.Address, versions: map[int]*version{}, aliases: map[string]int{}}
 			r.functions[df.Address] = fn

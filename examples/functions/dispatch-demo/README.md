@@ -106,6 +106,18 @@ Publishing `dispatch-creator` is refused with `DISPATCH_NOT_OWNED` if `APP_CODE`
 (the target would be `dispatchdemo.payload-logger`, not a function of `example`). Dispatching before
 `payload-logger` is live is refused at call time (`DISPATCH_TARGET_UNAVAILABLE`), so deploy it first.
 
+## Delete a function
+
+```
+fcdev fn delete $APP.payload-logger          # prints what goes, asks you to type the address
+fcdev fn delete $APP.payload-logger --yes    # scripts: no prompt (required when stdin is not a terminal)
+```
+
+This permanently removes the function with every version, alias, wiring (subscriptions and scheduled jobs)
+and artifact. The runner stops serving the address within a few seconds. Both functions must be in the same
+client as well as the same application: if `payload-logger`'s client differs from the creator's, delete it and
+recreate it with `fcdev fn deploy $APP.payload-logger $D/payload-logger --create --client <client id>`.
+
 ## Permission, role, service account, token
 
 The permission `$APP:dispatch:job:create` is a normal four-segment code

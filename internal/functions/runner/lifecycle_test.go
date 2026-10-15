@@ -442,3 +442,33 @@ func TestNoInstanceClosedWhileCallInFlight(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// A function deleted and recreated at the same address (a new id) between two
+// desired-state polls must be a NEW function on the runner: its versions
+// heartbeat under the new id. Reusing the old function kept the old id, so the
+// platform never saw the new version loaded and it stayed PUBLISHED forever.
+func TestRecreatedFunctionAtSameAddressGetsNewIdentity(t *testing.T) {
+	l := newLifecycle(t, time.Second)
+	l.base.push(control.Desired{Pool: "default", Functions: []control.Function{fnDoc(ver(1, control.RoleLive))}})
+	l.run()
+	get := func() *version { return l.version("app.hello", 1) }
+	l.waitState(get, stateReady)
+	old := get()
+
+	again := fnDoc(ver(1, control.RoleLive)) // same address and bytes, new function
+	again.ID = "fnc_2"
+	l.base.push(control.Desired{Pool: "default", Functions: []control.Function{again}})
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if v := get(); v != nil && v != old {
+			l.waitState(get, stateReady)
+			if v.fnID != "fnc_2" || v.fn.id != "fnc_2" {
+				t.Fatalf("recreated function kept id %q/%q, want fnc_2", v.fnID, v.fn.id)
+			}
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("the recreated function's version was never replaced")
+}
