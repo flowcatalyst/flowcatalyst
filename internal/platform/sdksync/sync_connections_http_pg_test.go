@@ -40,6 +40,10 @@ func TestSyncConnections_Endpoint_ClientIdentifierAndUnknownClient(t *testing.T)
 		`INSERT INTO iam_principals (id, type, name, active) VALUES ($1, 'SERVICE', 'HTTP SA', TRUE)`,
 		"sva_syncconnhttp")
 	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO iam_service_accounts (id, code, name) VALUES ('sac_syncconnhttp', 'sac_syncconnhttp', 'HTTP SA')`)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `UPDATE iam_principals SET service_account_id = 'sac_syncconnhttp' WHERE id = 'sva_syncconnhttp'`)
+	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `UPDATE app_applications SET service_account_id = $1 WHERE id = $2`,
 		"sva_syncconnhttp", appEv.ApplicationID)
 	require.NoError(t, err)
@@ -82,6 +86,7 @@ func TestSyncConnections_Endpoint_ClientIdentifierAndUnknownClient(t *testing.T)
 	got, err := connection.NewRepository(pool).FindByCode(ctx, "syncconnhttp-a", &appCode, &clientEv.ClientID)
 	require.NoError(t, err)
 	require.NotNil(t, got, "the connection must be scoped to the client resolved from its identifier")
+	assert.Equal(t, "sac_syncconnhttp", got.ServiceAccountID, "the account behind the application's principal, not the principal id")
 
 	// An unknown client reference 404s rather than falling through.
 	unknown := "no-such-client-identifier"

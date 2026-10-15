@@ -1569,6 +1569,61 @@ fix `$schema` (finding 2) only if trivial and wire-neutral for the SDKs.
   password login that decodes JSON regardless of `Content-Type`, an unbound SSO state, or a
   cookie-authenticated debug surface.
 
+### F17. Code-first connections stored the application's principal id as their signing account (e2e run, 2026-10-15)
+
+Found by an end-to-end run on an isolated platform: a connection created by the SDK sync
+(`POST /api/sdk/{appCode}/connections/sync`, the `target`/`connectionCode` path) was delivered
+UNSIGNED.
+
+- **Root cause**: `SyncConnections` copied `app_applications.service_account_id` into
+  `msg_connections.service_account_id`. The application column holds the service account's
+  **principal** id (`prn_...`, `iam_principals.id`; foreign-keyed by migration 028, set by
+  provision/attach), while a connection's column is the service account's **own** id (`sac_...`,
+  `iam_service_accounts.id`), which is what the delivery signer
+  (`NewCachedOutboundCredsByIDResolver`, owner ruling 2026-09-22: the connection's service account
+  signs) looks up. Every sync-created connection therefore named a service account that does not
+  exist: the signer answered "service account prn_... does not exist" and the delivery went out
+  bare. Nothing validated the id on write (`CreateConnection` still carries its
+  `TODO(wave-3c)`), and the sync tests seeded a bare principal and asserted the principal id, so
+  they pinned the bug.
+- **`PUT /api/connections/{id}` returned 204 and kept the value**: the update body had no
+  `serviceAccountId` at all (unknown fields are tolerated), so there was nothing to change it with.
+- **Fix**: `SyncConnections` resolves the application's principal to the service account behind it
+  (`connection.Repository.ServiceAccountForPrincipal`) and stores that; a principal with no service
+  account behind it fails the whole sync with `APPLICATION_SERVICE_ACCOUNT_REQUIRED` (nothing
+  persisted) instead of being stored. Every sync re-points existing API/CODE rows, so a stale row
+  heals on the next sync. `PUT /api/connections/{id}` accepts an optional `serviceAccountId`
+  (set-if-provided, like `applicationCode`/`status`); it must name an existing service account
+  (`SERVICE_ACCOUNT_NOT_FOUND`, `SERVICE_ACCOUNT_REQUIRED` when blank).
+- **Signer unchanged (ruling kept)**: the existing behaviour is not silent. `named()` in
+  `internal/server/delivery_creds.go` never falls through past an explicitly configured account;
+  an unresolvable one yields a bare delivery whose `OutboundCreds.Reason` ("connection X: service
+  account Y does not exist") is recorded on the attempt, and a lookup error never aborts a delivery
+  (pinned by `delivery_creds_test.go`). The defect was the stored id, not the signer.
+- **Existing data**: yes, any database whose connections were created or synced by a build before
+  this fix holds `prn_` values in `msg_connections.service_account_id`. Migration
+  `075_connection_service_account_principal_ids.sql` re-points every row whose value equals a
+  principal id that has a service account behind it (idempotent; a `sac_` id never equals a
+  principal id; principals without an account are left for the next sync to refuse). **Needs the
+  owner's database run** (goose on the dev and deployed databases); it was run on embedded scratch
+  databases only. Alternatively the next sync of each application heals its own rows.
+- **Wire impact**: `PUT /api/connections/{id}` gains optional `serviceAccountId` (additive;
+  `api/openapi.lock.json` bumped; generated SDK types need `make sdk-generate` at the next SDK
+  cut). Create is unchanged; its service account id is still not validated for existence (the
+  UI/API tests seed fake ids).
+- **Tests** (`-tags=integration`): `connection/operations/sync_pg_test.go`
+  (`TestSyncConnections_CreateIdempotentUpdate` and `..._ServiceAccountAlwaysFollowsApplication`
+  now seed a real service account and assert the `sac_` id;
+  `TestSyncConnections_PrincipalWithoutServiceAccount_Refused`;
+  `TestSyncConnections_HealsPrincipalIDStoredByEarlierBuild`; `TestMigration075_RepointsPrincipalIDs`
+  runs the migration twice), `ops_pg_test.go` (`TestUpdateConnection_ServiceAccountID`),
+  `sdksync/sync_connections_http_pg_test.go` and `server/go_sdk_e2e_pg_test.go` (fixtures now put a
+  real service account behind the application's principal). Mutation-checked: storing the
+  principal id again fails four sync tests; dropping the PUT assignment fails the update test.
+- **Java/Rust mirror**: not done. The Java port needs checking: if its connection sync copies
+  the application's service-account (principal) id into the connection, it has the same defect and
+  needs the principal-to-service-account resolution and the same data fix.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -1772,3 +1827,7 @@ missing event source (F14), and unknown roles in the application principal sync 
   environment behind a proxy. `scripts/e2e_auth_controls.sh` logs in with curl and JSON (still
   accepted) but replays the cookie on POST/PUT without `Origin`, which F16's cookie rule already
   refuses; the script was not run or changed. The Java/Rust ports were not checked.
+- F17: integration tests on embedded databases only; migration 075 never ran on a dev or deployed
+  database; no run of the e2e platform that found it, and no run through a live outbound delivery.
+  `tools/analyzer/uowseal` could not run (its export-data loader rejects Go 1.27 objects, an
+  existing tool problem).

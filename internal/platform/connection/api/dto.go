@@ -41,16 +41,20 @@ type UpdateConnectionRequest struct {
 	Description     *string `json:"description,omitempty"`
 	ExternalID      *string `json:"externalId,omitempty"`
 	Status          *string `json:"status,omitempty"`
+	// ServiceAccountID is set-if-provided: omitted leaves the signing
+	// service account alone; it must name an existing service account.
+	ServiceAccountID *string `json:"serviceAccountId,omitempty"`
 }
 
 func (r UpdateConnectionRequest) toCommand(id string) operations.UpdateCommand {
 	return operations.UpdateCommand{
-		ID:              id,
-		Name:            r.Name,
-		ApplicationCode: r.ApplicationCode,
-		Description:     r.Description,
-		ExternalID:      r.ExternalID,
-		Status:          r.Status,
+		ID:               id,
+		Name:             r.Name,
+		ApplicationCode:  r.ApplicationCode,
+		Description:      r.Description,
+		ExternalID:       r.ExternalID,
+		Status:           r.Status,
+		ServiceAccountID: r.ServiceAccountID,
 	}
 }
 

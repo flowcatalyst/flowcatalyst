@@ -82,7 +82,12 @@ func goSDKApp(t *testing.T, pool *pgxpool.Pool, appCode, clientIdentifier string
 	t.Helper()
 	ctx := context.Background()
 	saID := "sva_" + strings.ToLower(tsid.GenerateUntyped())
-	_, err := pool.Exec(ctx, `INSERT INTO iam_principals (id, type, name, active) VALUES ($1, 'SERVICE', $2, TRUE)`, saID, appCode+" SA")
+	// A real service account behind the principal: the application holds the
+	// principal id, a connection must end up holding the account's own id.
+	realSA := "sac_" + saID[4:]
+	_, err := pool.Exec(ctx, `INSERT INTO iam_service_accounts (id, code, name) VALUES ($1, $1, $2)`, realSA, appCode+" SA")
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO iam_principals (id, type, name, active, service_account_id) VALUES ($1, 'SERVICE', $2, TRUE, $3)`, saID, appCode+" SA", realSA)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `INSERT INTO app_applications (id, code, name, service_account_id) VALUES ($1, $2, $2, $3)`,
 		tsid.Generate(tsid.Application), appCode, saID)

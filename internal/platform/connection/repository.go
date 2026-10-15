@@ -2,6 +2,7 @@ package connection
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -31,6 +32,39 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 // client, or an id that names no client); create stores it beside the id.
 func (r *Repository) ClientIdentifier(ctx context.Context, clientID *string) (*string, error) {
 	return repocommon.ClientIdentifier(ctx, r.pool, clientID)
+}
+
+// ServiceAccountForPrincipal returns the service account id (iam_service_accounts.id)
+// behind a SERVICE principal (iam_principals.id), or "" when the principal
+// does not exist or carries no service account. An application stores its
+// service account as the PRINCIPAL id (app_applications.service_account_id
+// is foreign-keyed to iam_principals, migration 028), while a connection's
+// service_account_id — the account that signs its deliveries — is the
+// service account's own id; this is the bridge between the two.
+func (r *Repository) ServiceAccountForPrincipal(ctx context.Context, principalID string) (string, error) {
+	var id *string
+	err := r.pool.QueryRow(ctx,
+		`SELECT service_account_id FROM iam_principals WHERE id = $1`, principalID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("connection repo: service account for principal: %w", err)
+	}
+	if id == nil {
+		return "", nil
+	}
+	return *id, nil
+}
+
+// ServiceAccountExists reports whether a service account with this id exists.
+func (r *Repository) ServiceAccountExists(ctx context.Context, id string) (bool, error) {
+	var ok bool
+	if err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM iam_service_accounts WHERE id = $1)`, id).Scan(&ok); err != nil {
+		return false, fmt.Errorf("connection repo: service account exists: %w", err)
+	}
+	return ok, nil
 }
 
 // FindByID loads by primary key.

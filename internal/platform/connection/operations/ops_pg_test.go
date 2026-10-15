@@ -336,6 +336,45 @@ func TestUpdateConnection_HappyPath(t *testing.T) {
 	assert.Equal(t, "connupd-happy", got.Code, "code is immutable on update")
 }
 
+// TestUpdateConnection_ServiceAccountID: PUT must actually change the signing
+// account, and only to a service account that exists (an application's
+// principal id is not one).
+func TestUpdateConnection_ServiceAccountID(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := connection.NewRepository(pool)
+	apps := application.NewRepository(pool)
+	uow := testpg.NewUoW(t)
+	seeded := mustCreate(t, pool, uow, "connupd-sa", "Before")
+	_, err := pool.Exec(ctx, `INSERT INTO iam_principals (id, type, name, active) VALUES ('sva_connupdsa01', 'SERVICE', 'P', TRUE)`)
+	require.NoError(t, err)
+	saID := seedServiceAccountBehind(t, pool, "sva_connupdsa01")
+
+	update := func(sa *string) error {
+		_, err := runAuthorized(uow, operations.UpdateConnection(repo, apps), operations.UpdateCommand{
+			ID: seeded.ConnectionID, Name: "Before", ServiceAccountID: sa,
+		})
+		return err
+	}
+
+	require.Error(t, update(new("sva_connupdsa01")), "a principal id is not a service account")
+	require.Error(t, update(new("  ")))
+	got, err := repo.FindByID(ctx, seeded.ConnectionID)
+	require.NoError(t, err)
+	assert.Equal(t, "sva_conntestseed1", got.ServiceAccountID, "refused writes change nothing")
+
+	require.NoError(t, update(new(saID)))
+	got, err = repo.FindByID(ctx, seeded.ConnectionID)
+	require.NoError(t, err)
+	assert.Equal(t, saID, got.ServiceAccountID)
+
+	require.NoError(t, update(nil))
+	got, err = repo.FindByID(ctx, seeded.ConnectionID)
+	require.NoError(t, err)
+	assert.Equal(t, saID, got.ServiceAccountID, "omitted leaves it alone")
+}
+
 // TestUpdateConnection_ApplicationCode proves the set-if-provided semantics
 // and the re-pointing collision check: a nil applicationCode leaves the
 // existing link untouched, a valid one can be set, an unknown one 404s, and

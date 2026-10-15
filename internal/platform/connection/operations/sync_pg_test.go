@@ -4,6 +4,8 @@ package operations_test
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,6 +24,25 @@ import (
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
+
+// serviceAccountIDFor derives the service account id (sac_...) seeded behind a
+// test principal id (sva_...): same length, so it fits VARCHAR(17).
+func serviceAccountIDFor(principalID string) string { return "sac" + principalID[3:] }
+
+// seedServiceAccountBehind creates a REAL iam_service_accounts row and links
+// the principal to it (iam_principals.service_account_id), as application
+// provisioning does. Returns the service account id.
+func seedServiceAccountBehind(t *testing.T, pool *pgxpool.Pool, principalID string) string {
+	t.Helper()
+	ctx := context.Background()
+	saID := serviceAccountIDFor(principalID)
+	_, err := pool.Exec(ctx,
+		`INSERT INTO iam_service_accounts (id, code, name) VALUES ($1, $1, $1) ON CONFLICT (id) DO NOTHING`, saID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `UPDATE iam_principals SET service_account_id = $1 WHERE id = $2`, saID, principalID)
+	require.NoError(t, err)
+	return saID
+}
 
 // mustCreateApplicationWithServiceAccount seeds an application through the
 // public operation, then attaches a service account to it. Unlike
@@ -43,6 +64,7 @@ func mustCreateApplicationWithServiceAccount(
 		 ON CONFLICT (id) DO NOTHING`,
 		serviceAccountID, name+" SA")
 	require.NoError(t, err)
+	seedServiceAccountBehind(t, pool, serviceAccountID)
 	_, err = pool.Exec(ctx,
 		`UPDATE app_applications SET service_account_id = $1 WHERE id = $2`, serviceAccountID, ev.ApplicationID)
 	require.NoError(t, err)
@@ -105,7 +127,7 @@ func TestSyncConnections_CreateIdempotentUpdate(t *testing.T) {
 	require.NotNil(t, got.Description)
 	assert.Equal(t, "first", *got.Description)
 	assert.Equal(t, connection.SourceAPI, got.Source, "synced rows are API-sourced")
-	assert.Equal(t, "sva_syncconn1", got.ServiceAccountID, "service account defaults from the application")
+	assert.Equal(t, "sac_syncconn1", got.ServiceAccountID, "service account defaults from the application's service account (sac_), never its principal id (prn_/sva_)")
 	assert.Equal(t, connection.StatusActive, got.Status)
 
 	// Re-syncing the exact same payload must not create a duplicate — it
@@ -163,7 +185,7 @@ func TestSyncConnections_ServiceAccountAlwaysFollowsApplication(t *testing.T) {
 	got, err := connRepo.FindByCode(ctx, "syncconnsa-x", &app.Code, nil)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.Equal(t, "sva_scfoll-old", got.ServiceAccountID)
+	assert.Equal(t, "sac_scfoll-old", got.ServiceAccountID)
 
 	// The application's service account is rotated between syncs; the next
 	// sync re-points the connection to the NEW one — there is no
@@ -172,6 +194,7 @@ func TestSyncConnections_ServiceAccountAlwaysFollowsApplication(t *testing.T) {
 		`INSERT INTO iam_principals (id, type, name, active) VALUES ($1, 'SERVICE', 'New SA', TRUE)`,
 		"sva_scfoll-new")
 	require.NoError(t, err)
+	seedServiceAccountBehind(t, pool, "sva_scfoll-new")
 	_, err = pool.Exec(ctx, `UPDATE app_applications SET service_account_id = $1 WHERE id = $2`,
 		"sva_scfoll-new", app.ApplicationID)
 	require.NoError(t, err)
@@ -184,7 +207,61 @@ func TestSyncConnections_ServiceAccountAlwaysFollowsApplication(t *testing.T) {
 	got, err = connRepo.FindByCode(ctx, "syncconnsa-x", &app.Code, nil)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.Equal(t, "sva_scfoll-new", got.ServiceAccountID, "service account must follow the application, not stick to the value at creation")
+	assert.Equal(t, "sac_scfoll-new", got.ServiceAccountID, "service account must follow the application, not stick to the value at creation")
+}
+
+// A principal with no service account behind it (or none that exists) must
+// fail the sync loudly, not be stored as the connection's signing account.
+func TestSyncConnections_PrincipalWithoutServiceAccount_Refused(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	connRepo := connection.NewRepository(pool)
+	apps := application.NewRepository(pool)
+	subRepo := subscription.NewRepository(pool)
+	uow := testpg.NewUoW(t)
+
+	app := mustCreateApplication(t, uow, "syncconnnosa", "Sync Conn NoSA")
+	_, err := pool.Exec(ctx,
+		`INSERT INTO iam_principals (id, type, name, active) VALUES ('sva_nosabehind', 'SERVICE', 'No SA', TRUE)`)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `UPDATE app_applications SET service_account_id = 'sva_nosabehind' WHERE id = $1`, app.ApplicationID)
+	require.NoError(t, err)
+
+	_, err = runConnSync(t, uow, connRepo, apps, subRepo, operations.SyncConnectionsCommand{
+		ApplicationID: app.ApplicationID, ApplicationCode: app.Code,
+		Connections: []operations.SyncConnectionEntry{{Code: "syncconnnosa-x", Name: "X"}},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "APPLICATION_SERVICE_ACCOUNT_REQUIRED")
+	got, err := connRepo.FindByCode(ctx, "syncconnnosa-x", &app.Code, nil)
+	require.NoError(t, err)
+	assert.Nil(t, got, "nothing is persisted")
+}
+
+// A row an earlier build stored with the application's principal id is
+// healed by the next sync (it re-points the account on every sync).
+func TestSyncConnections_HealsPrincipalIDStoredByEarlierBuild(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	connRepo := connection.NewRepository(pool)
+	apps := application.NewRepository(pool)
+	subRepo := subscription.NewRepository(pool)
+	uow := testpg.NewUoW(t)
+
+	app := mustCreateApplicationWithServiceAccount(t, pool, uow, "syncconnheal", "Sync Conn Heal", "sva_syncheal01")
+	insertRawConnection(t, pool, "cnn_synchealbad01", "syncheal-x", "X", "sva_syncheal01", &app.Code, nil, "API")
+
+	_, err := runConnSync(t, uow, connRepo, apps, subRepo, operations.SyncConnectionsCommand{
+		ApplicationID: app.ApplicationID, ApplicationCode: app.Code,
+		Connections: []operations.SyncConnectionEntry{{Code: "syncheal-x", Name: "X"}},
+	})
+	require.NoError(t, err)
+	got, err := connRepo.FindByCode(ctx, "syncheal-x", &app.Code, nil)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "sac_syncheal01", got.ServiceAccountID)
 }
 
 func TestSyncConnections_NoServiceAccount_ValidationError(t *testing.T) {
@@ -452,4 +529,37 @@ func TestSyncConnections_Validation(t *testing.T) {
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
+}
+
+// Migration 075 re-points connections that hold a principal id at the service
+// account behind it, and leaves correct rows and account-less principals alone.
+func TestMigration075_RepointsPrincipalIDs(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	for _, id := range []string{"sva_m075good01", "sva_m075nosa01"} {
+		_, err := pool.Exec(ctx, `INSERT INTO iam_principals (id, type, name, active) VALUES ($1, 'SERVICE', $1, TRUE)`, id)
+		require.NoError(t, err)
+	}
+	saID := seedServiceAccountBehind(t, pool, "sva_m075good01")
+	insertRawConnection(t, pool, "cnn_m075bad00001", "m075-bad", "Bad", "sva_m075good01", nil, nil, "API")
+	insertRawConnection(t, pool, "cnn_m075ok000001", "m075-ok", "Ok", saID, nil, nil, "API")
+	insertRawConnection(t, pool, "cnn_m075nosa0001", "m075-nosa", "NoSA", "sva_m075nosa01", nil, nil, "API")
+
+	sqlBytes, err := os.ReadFile("../../../migrate/sql/075_connection_service_account_principal_ids.sql")
+	require.NoError(t, err)
+	up := strings.SplitN(strings.SplitN(string(sqlBytes), "-- +goose Down", 2)[0], "-- +goose Up", 2)[1]
+	for range 2 { // idempotent
+		_, err = pool.Exec(ctx, up)
+		require.NoError(t, err)
+	}
+
+	sa := func(id string) string {
+		var v string
+		require.NoError(t, pool.QueryRow(ctx, `SELECT service_account_id FROM msg_connections WHERE id = $1`, id).Scan(&v))
+		return v
+	}
+	assert.Equal(t, saID, sa("cnn_m075bad00001"))
+	assert.Equal(t, saID, sa("cnn_m075ok000001"))
+	assert.Equal(t, "sva_m075nosa01", sa("cnn_m075nosa0001"))
 }

@@ -141,7 +141,20 @@ func SyncConnections(
 				return nil, usecase.Validation("APPLICATION_SERVICE_ACCOUNT_REQUIRED",
 					"Application '"+cmd.ApplicationCode+"' has no provisioned service account; connections cannot be synced without one")
 			}
-			appServiceAccountID := *app.ServiceAccountID
+			// The application holds its service account's PRINCIPAL id
+			// (prn_...); a connection's service_account_id is the account's
+			// own id (sac_...), which is what the delivery signer looks up.
+			// Storing the principal id here left every code-first connection
+			// unable to sign (platform-bug-fixes F17).
+			appServiceAccountID, err := connRepo.ServiceAccountForPrincipal(ctx, *app.ServiceAccountID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "service account for principal lookup failed", err)
+			}
+			if appServiceAccountID == "" {
+				return nil, usecase.Validation("APPLICATION_SERVICE_ACCOUNT_REQUIRED",
+					"Application '"+cmd.ApplicationCode+"' points at principal '"+*app.ServiceAccountID+
+						"', which has no service account; connections cannot be synced without one")
+			}
 
 			existing, err := connRepo.FindByApplicationAndClient(ctx, cmd.ApplicationCode, cmd.ClientID)
 			if err != nil {

@@ -24,6 +24,10 @@ type UpdateCommand struct {
 	Description     *string `json:"description,omitempty"`
 	ExternalID      *string `json:"externalId,omitempty"`
 	Status          *string `json:"status,omitempty"`
+	// ServiceAccountID is set-if-provided: the service account (sac_...)
+	// that signs this connection's deliveries. It must name an existing
+	// service account; omitted leaves it alone.
+	ServiceAccountID *string `json:"serviceAccountId,omitempty"`
 }
 
 // UpdateConnection mutates mutable fields and emits [ConnectionUpdated].
@@ -81,6 +85,21 @@ func UpdateConnection(repo *connection.Repository, apps *application.Repository)
 						"Connection with code '"+c.Code+"' already exists")
 				}
 				c.ApplicationCode = cmd.ApplicationCode
+			}
+			if cmd.ServiceAccountID != nil {
+				said := strings.TrimSpace(*cmd.ServiceAccountID)
+				if said == "" {
+					return nil, usecase.Validation("SERVICE_ACCOUNT_REQUIRED", "serviceAccountId cannot be empty")
+				}
+				ok, err := repo.ServiceAccountExists(ctx, said)
+				if err != nil {
+					return nil, usecase.Internal("REPO", "service account lookup failed", err)
+				}
+				if !ok {
+					return nil, usecase.Validation("SERVICE_ACCOUNT_NOT_FOUND",
+						"serviceAccountId '"+said+"' is not an existing service account (an application's principal id is not one)")
+				}
+				c.ServiceAccountID = said
 			}
 			if cmd.Status != nil {
 				status, ok := connection.ParseStatus(strings.TrimSpace(*cmd.Status))
