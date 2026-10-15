@@ -31,6 +31,18 @@ class SyncResultResponse
      */
     protected $deleted;
     /**
+     * Principal sync only: emails whose passwordHash was ignored because the user already exists (omitted when none)
+     *
+     * @var list<string>|null
+     */
+    protected $passwordHashIgnored;
+    /**
+     * Principal sync only: role names that are not roles and so were not assigned to anyone (lower-cased, each once, in payload order; omitted when none). The rest of the sync applied.
+     *
+     * @var list<string>|null
+     */
+    protected $skippedRoles;
+    /**
      * @var list<string>|null
      */
     protected $syncedCodes;
@@ -112,6 +124,50 @@ class SyncResultResponse
     {
         $this->initialized['deleted'] = true;
         $this->deleted = $deleted;
+        return $this;
+    }
+    /**
+     * Principal sync only: emails whose passwordHash was ignored because the user already exists (omitted when none)
+     *
+     * @return list<string>|null
+     */
+    public function getPasswordHashIgnored(): ?array
+    {
+        return $this->passwordHashIgnored;
+    }
+    /**
+     * Principal sync only: emails whose passwordHash was ignored because the user already exists (omitted when none)
+     *
+     * @param list<string>|null $passwordHashIgnored
+     *
+     * @return self
+     */
+    public function setPasswordHashIgnored(?array $passwordHashIgnored): self
+    {
+        $this->initialized['passwordHashIgnored'] = true;
+        $this->passwordHashIgnored = $passwordHashIgnored;
+        return $this;
+    }
+    /**
+     * Principal sync only: role names that are not roles and so were not assigned to anyone (lower-cased, each once, in payload order; omitted when none). The rest of the sync applied.
+     *
+     * @return list<string>|null
+     */
+    public function getSkippedRoles(): ?array
+    {
+        return $this->skippedRoles;
+    }
+    /**
+     * Principal sync only: role names that are not roles and so were not assigned to anyone (lower-cased, each once, in payload order; omitted when none). The rest of the sync applied.
+     *
+     * @param list<string>|null $skippedRoles
+     *
+     * @return self
+     */
+    public function setSkippedRoles(?array $skippedRoles): self
+    {
+        $this->initialized['skippedRoles'] = true;
+        $this->skippedRoles = $skippedRoles;
         return $this;
     }
     /**

@@ -29,13 +29,13 @@ class SyncPrincipalInputRequest
      */
     protected $name;
     /**
-     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login
+     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored).
      *
      * @var string|null
      */
     protected $passwordHash;
     /**
-     * Role short names (prefixed with applicationCode)
+     * Role names, the application's own (app:role, matched case-insensitively and not prefixed by the platform). A name that is not a role is not assigned and is reported in skippedRoles; another application's role refuses the sync (403 ROLE_APP_FORBIDDEN).
      *
      * @var list<string>|null
      */
@@ -103,7 +103,7 @@ class SyncPrincipalInputRequest
         return $this;
     }
     /**
-     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login
+     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored).
      *
      * @return string|null
      */
@@ -112,7 +112,7 @@ class SyncPrincipalInputRequest
         return $this->passwordHash;
     }
     /**
-     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login
+     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored).
      *
      * @param string|null $passwordHash
      *
@@ -125,7 +125,7 @@ class SyncPrincipalInputRequest
         return $this;
     }
     /**
-     * Role short names (prefixed with applicationCode)
+     * Role names, the application's own (app:role, matched case-insensitively and not prefixed by the platform). A name that is not a role is not assigned and is reported in skippedRoles; another application's role refuses the sync (403 ROLE_APP_FORBIDDEN).
      *
      * @return list<string>|null
      */
@@ -134,7 +134,7 @@ class SyncPrincipalInputRequest
         return $this->roles;
     }
     /**
-     * Role short names (prefixed with applicationCode)
+     * Role names, the application's own (app:role, matched case-insensitively and not prefixed by the platform). A name that is not a role is not assigned and is reported in skippedRoles; another application's role refuses the sync (403 ROLE_APP_FORBIDDEN).
      *
      * @param list<string>|null $roles
      *

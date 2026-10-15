@@ -19,6 +19,10 @@ class SyncSubscriptionsRequest extends \ArrayObject
      */
     protected $dollarSchema;
     /**
+     * @var string|null
+     */
+    protected $clientId;
+    /**
      * @var list<SyncSubscriptionInputRequest>|null
      */
     protected $subscriptions;
@@ -42,6 +46,24 @@ class SyncSubscriptionsRequest extends \ArrayObject
     {
         $this->initialized['dollarSchema'] = true;
         $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getClientId(): ?string
+    {
+        return $this->clientId;
+    }
+    /**
+     * @param string|null $clientId
+     *
+     * @return self
+     */
+    public function setClientId(?string $clientId): self
+    {
+        $this->initialized['clientId'] = true;
+        $this->clientId = $clientId;
         return $this;
     }
     /**

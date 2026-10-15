@@ -31,7 +31,7 @@ class SyncUserInput
      */
     protected $name;
     /**
-     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login. Omit to leave any existing password untouched.
+     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored).
      *
      * @var string|null
      */
@@ -109,7 +109,7 @@ class SyncUserInput
         return $this;
     }
     /**
-     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login. Omit to leave any existing password untouched.
+     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored).
      *
      * @return string|null
      */
@@ -118,7 +118,7 @@ class SyncUserInput
         return $this->passwordHash;
     }
     /**
-     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login. Omit to leave any existing password untouched.
+     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim on a user the sync creates; migrated on first login. Never applied to an existing user (reported in passwordHashIgnored).
      *
      * @param string|null $passwordHash
      *

@@ -23,6 +23,12 @@ class CreateSubscriptionRequest extends \ArrayObject
      */
     protected $clientId;
     /**
+     * Subscribes to client-scoped event types. Omitted means false.
+     *
+     * @var bool|null
+     */
+    protected $clientScoped;
+    /**
      * @var string|null
      */
     protected $code;
@@ -85,6 +91,12 @@ class CreateSubscriptionRequest extends \ArrayObject
      */
     protected $queue;
     /**
+     * Orders this subscription's dispatch jobs within a message group, lower first. Omitted means 99. Not negative.
+     *
+     * @var int|null
+     */
+    protected $sequence;
+    /**
      * @var string|null
      */
     protected $serviceAccountId;
@@ -130,6 +142,28 @@ class CreateSubscriptionRequest extends \ArrayObject
     {
         $this->initialized['clientId'] = true;
         $this->clientId = $clientId;
+        return $this;
+    }
+    /**
+     * Subscribes to client-scoped event types. Omitted means false.
+     *
+     * @return bool|null
+     */
+    public function getClientScoped(): ?bool
+    {
+        return $this->clientScoped;
+    }
+    /**
+     * Subscribes to client-scoped event types. Omitted means false.
+     *
+     * @param bool|null $clientScoped
+     *
+     * @return self
+     */
+    public function setClientScoped(?bool $clientScoped): self
+    {
+        $this->initialized['clientScoped'] = true;
+        $this->clientScoped = $clientScoped;
         return $this;
     }
     /**
@@ -394,6 +428,28 @@ class CreateSubscriptionRequest extends \ArrayObject
     {
         $this->initialized['queue'] = true;
         $this->queue = $queue;
+        return $this;
+    }
+    /**
+     * Orders this subscription's dispatch jobs within a message group, lower first. Omitted means 99. Not negative.
+     *
+     * @return int|null
+     */
+    public function getSequence(): ?int
+    {
+        return $this->sequence;
+    }
+    /**
+     * Orders this subscription's dispatch jobs within a message group, lower first. Omitted means 99. Not negative.
+     *
+     * @param int|null $sequence
+     *
+     * @return self
+     */
+    public function setSequence(?int $sequence): self
+    {
+        $this->initialized['sequence'] = true;
+        $this->sequence = $sequence;
         return $this;
     }
     /**

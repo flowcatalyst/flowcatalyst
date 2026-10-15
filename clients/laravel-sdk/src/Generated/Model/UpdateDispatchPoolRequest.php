@@ -23,6 +23,8 @@ class UpdateDispatchPoolRequest extends \ArrayObject
      */
     protected $concurrency;
     /**
+     * Omitted leaves it; blank clears it.
+     *
      * @var string|null
      */
     protected $description;
@@ -31,6 +33,8 @@ class UpdateDispatchPoolRequest extends \ArrayObject
      */
     protected $name;
     /**
+     * Messages per minute. Omitted leaves it; 0 clears it (no limit).
+     *
      * @var int|null
      */
     protected $rateLimit;
@@ -75,6 +79,8 @@ class UpdateDispatchPoolRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Omitted leaves it; blank clears it.
+     *
      * @return string|null
      */
     public function getDescription(): ?string
@@ -82,6 +88,8 @@ class UpdateDispatchPoolRequest extends \ArrayObject
         return $this->description;
     }
     /**
+     * Omitted leaves it; blank clears it.
+     *
      * @param string|null $description
      *
      * @return self
@@ -111,6 +119,8 @@ class UpdateDispatchPoolRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Messages per minute. Omitted leaves it; 0 clears it (no limit).
+     *
      * @return int|null
      */
     public function getRateLimit(): ?int
@@ -118,6 +128,8 @@ class UpdateDispatchPoolRequest extends \ArrayObject
         return $this->rateLimit;
     }
     /**
+     * Messages per minute. Omitted leaves it; 0 clears it (no limit).
+     *
      * @param int|null $rateLimit
      *
      * @return self

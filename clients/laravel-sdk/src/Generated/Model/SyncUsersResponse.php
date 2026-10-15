@@ -27,6 +27,12 @@ class SyncUsersResponse
      */
     protected $deleted;
     /**
+     * Emails whose passwordHash was ignored because the user already exists (omitted when none)
+     *
+     * @var list<string>|null
+     */
+    protected $passwordHashIgnored;
+    /**
      * @var list<string>|null
      */
     protected $syncedEmails;
@@ -90,6 +96,28 @@ class SyncUsersResponse
     {
         $this->initialized['deleted'] = true;
         $this->deleted = $deleted;
+        return $this;
+    }
+    /**
+     * Emails whose passwordHash was ignored because the user already exists (omitted when none)
+     *
+     * @return list<string>|null
+     */
+    public function getPasswordHashIgnored(): ?array
+    {
+        return $this->passwordHashIgnored;
+    }
+    /**
+     * Emails whose passwordHash was ignored because the user already exists (omitted when none)
+     *
+     * @param list<string>|null $passwordHashIgnored
+     *
+     * @return self
+     */
+    public function setPasswordHashIgnored(?array $passwordHashIgnored): self
+    {
+        $this->initialized['passwordHashIgnored'] = true;
+        $this->passwordHashIgnored = $passwordHashIgnored;
         return $this;
     }
     /**

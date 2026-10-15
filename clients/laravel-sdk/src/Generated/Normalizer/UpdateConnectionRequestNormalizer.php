@@ -44,6 +44,13 @@ class UpdateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
         }
+        if (\array_key_exists('applicationCode', $data) && $data['applicationCode'] !== null) {
+            $object->setApplicationCode($data['applicationCode']);
+            unset($data['applicationCode']);
+        }
+        elseif (\array_key_exists('applicationCode', $data) && $data['applicationCode'] === null) {
+            $object->setApplicationCode(null);
+        }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
             unset($data['description']);
@@ -65,6 +72,13 @@ class UpdateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
         }
+        if (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] !== null) {
+            $object->setServiceAccountId($data['serviceAccountId']);
+            unset($data['serviceAccountId']);
+        }
+        elseif (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] === null) {
+            $object->setServiceAccountId(null);
+        }
         if (\array_key_exists('status', $data) && $data['status'] !== null) {
             $object->setStatus($data['status']);
             unset($data['status']);
@@ -82,6 +96,9 @@ class UpdateConnectionRequestNormalizer implements DenormalizerInterface, Normal
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
+        if ($data->isInitialized('applicationCode') && null !== $data->getApplicationCode()) {
+            $dataArray['applicationCode'] = $data->getApplicationCode();
+        }
         if ($data->isInitialized('description') && null !== $data->getDescription()) {
             $dataArray['description'] = $data->getDescription();
         }
@@ -89,6 +106,9 @@ class UpdateConnectionRequestNormalizer implements DenormalizerInterface, Normal
             $dataArray['externalId'] = $data->getExternalId();
         }
         $dataArray['name'] = $data->getName();
+        if ($data->isInitialized('serviceAccountId') && null !== $data->getServiceAccountId()) {
+            $dataArray['serviceAccountId'] = $data->getServiceAccountId();
+        }
         if ($data->isInitialized('status') && null !== $data->getStatus()) {
             $dataArray['status'] = $data->getStatus();
         }

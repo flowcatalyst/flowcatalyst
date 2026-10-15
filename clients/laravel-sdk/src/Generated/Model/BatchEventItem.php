@@ -49,6 +49,8 @@ class BatchEventItem
      */
     protected $messageGroup;
     /**
+     * Event source. When absent or blank, the type's {application}:{subdomain} (its first two segments)
+     *
      * @var string|null
      */
     protected $source;
@@ -227,6 +229,8 @@ class BatchEventItem
         return $this;
     }
     /**
+     * Event source. When absent or blank, the type's {application}:{subdomain} (its first two segments)
+     *
      * @return string|null
      */
     public function getSource(): ?string
@@ -234,6 +238,8 @@ class BatchEventItem
         return $this->source;
     }
     /**
+     * Event source. When absent or blank, the type's {application}:{subdomain} (its first two segments)
+     *
      * @param string|null $source
      *
      * @return self

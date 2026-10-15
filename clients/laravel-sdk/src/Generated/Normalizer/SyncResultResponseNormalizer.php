@@ -61,12 +61,32 @@ class SyncResultResponseNormalizer implements DenormalizerInterface, NormalizerI
         elseif (\array_key_exists('deleted', $data) && $data['deleted'] === null) {
             $object->setDeleted(null);
         }
-        if (\array_key_exists('syncedCodes', $data) && $data['syncedCodes'] !== null) {
+        if (\array_key_exists('passwordHashIgnored', $data) && $data['passwordHashIgnored'] !== null) {
             $values = [];
-            foreach ($data['syncedCodes'] as $value) {
+            foreach ($data['passwordHashIgnored'] as $value) {
                 $values[] = $value;
             }
-            $object->setSyncedCodes($values);
+            $object->setPasswordHashIgnored($values);
+        }
+        elseif (\array_key_exists('passwordHashIgnored', $data) && $data['passwordHashIgnored'] === null) {
+            $object->setPasswordHashIgnored(null);
+        }
+        if (\array_key_exists('skippedRoles', $data) && $data['skippedRoles'] !== null) {
+            $values_1 = [];
+            foreach ($data['skippedRoles'] as $value_1) {
+                $values_1[] = $value_1;
+            }
+            $object->setSkippedRoles($values_1);
+        }
+        elseif (\array_key_exists('skippedRoles', $data) && $data['skippedRoles'] === null) {
+            $object->setSkippedRoles(null);
+        }
+        if (\array_key_exists('syncedCodes', $data) && $data['syncedCodes'] !== null) {
+            $values_2 = [];
+            foreach ($data['syncedCodes'] as $value_2) {
+                $values_2[] = $value_2;
+            }
+            $object->setSyncedCodes($values_2);
         }
         elseif (\array_key_exists('syncedCodes', $data) && $data['syncedCodes'] === null) {
             $object->setSyncedCodes(null);
@@ -85,11 +105,25 @@ class SyncResultResponseNormalizer implements DenormalizerInterface, NormalizerI
         $dataArray['applicationCode'] = $data->getApplicationCode();
         $dataArray['created'] = $data->getCreated();
         $dataArray['deleted'] = $data->getDeleted();
-        $values = [];
-        foreach ($data->getSyncedCodes() as $value) {
-            $values[] = $value;
+        if ($data->isInitialized('passwordHashIgnored') && null !== $data->getPasswordHashIgnored()) {
+            $values = [];
+            foreach ($data->getPasswordHashIgnored() as $value) {
+                $values[] = $value;
+            }
+            $dataArray['passwordHashIgnored'] = $values;
         }
-        $dataArray['syncedCodes'] = $values;
+        if ($data->isInitialized('skippedRoles') && null !== $data->getSkippedRoles()) {
+            $values_1 = [];
+            foreach ($data->getSkippedRoles() as $value_1) {
+                $values_1[] = $value_1;
+            }
+            $dataArray['skippedRoles'] = $values_1;
+        }
+        $values_2 = [];
+        foreach ($data->getSyncedCodes() as $value_2) {
+            $values_2[] = $value_2;
+        }
+        $dataArray['syncedCodes'] = $values_2;
         $dataArray['updated'] = $data->getUpdated();
         return $dataArray;
     }

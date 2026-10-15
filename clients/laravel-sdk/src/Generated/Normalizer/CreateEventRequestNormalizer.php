@@ -152,7 +152,9 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         if ($data->isInitialized('messageGroup') && null !== $data->getMessageGroup()) {
             $dataArray['messageGroup'] = $data->getMessageGroup();
         }
-        $dataArray['source'] = $data->getSource();
+        if ($data->isInitialized('source') && null !== $data->getSource()) {
+            $dataArray['source'] = $data->getSource();
+        }
         if ($data->isInitialized('subject') && null !== $data->getSubject()) {
             $dataArray['subject'] = $data->getSubject();
         }

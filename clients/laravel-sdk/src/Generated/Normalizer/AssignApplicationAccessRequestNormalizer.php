@@ -40,6 +40,9 @@ class AssignApplicationAccessRequestNormalizer implements DenormalizerInterface,
         if (\array_key_exists('allApplications', $data) && \is_int($data['allApplications'])) {
             $data['allApplications'] = (bool) $data['allApplications'];
         }
+        if (\array_key_exists('confirmSelfRestriction', $data) && \is_int($data['confirmSelfRestriction'])) {
+            $data['confirmSelfRestriction'] = (bool) $data['confirmSelfRestriction'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
             unset($data['$schema']);
@@ -65,6 +68,13 @@ class AssignApplicationAccessRequestNormalizer implements DenormalizerInterface,
         elseif (\array_key_exists('applicationIds', $data) && $data['applicationIds'] === null) {
             $object->setApplicationIds(null);
         }
+        if (\array_key_exists('confirmSelfRestriction', $data) && $data['confirmSelfRestriction'] !== null) {
+            $object->setConfirmSelfRestriction($data['confirmSelfRestriction']);
+            unset($data['confirmSelfRestriction']);
+        }
+        elseif (\array_key_exists('confirmSelfRestriction', $data) && $data['confirmSelfRestriction'] === null) {
+            $object->setConfirmSelfRestriction(null);
+        }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $object[$key] = $value_1;
@@ -83,6 +93,9 @@ class AssignApplicationAccessRequestNormalizer implements DenormalizerInterface,
             $values[] = $value;
         }
         $dataArray['applicationIds'] = $values;
+        if ($data->isInitialized('confirmSelfRestriction') && null !== $data->getConfirmSelfRestriction()) {
+            $dataArray['confirmSelfRestriction'] = $data->getConfirmSelfRestriction();
+        }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;

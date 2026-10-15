@@ -89,6 +89,20 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $appCode Application code
+     * @param null|\FlowCatalyst\Generated\Model\SyncConnectionsRequest $requestBody
+     * @param array{
+     *    "removeUnlisted"?: bool, //Remove API/CODE connections not in the list
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\SyncResultResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function syncConnections(string $appCode, ?\FlowCatalyst\Generated\Model\SyncConnectionsRequest $requestBody = null, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SyncConnections($appCode, $requestBody, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $appCode Application code
      * @param null|\FlowCatalyst\Generated\Model\SyncDispatchPoolsRequest $requestBody
      * @param array{
      *    "removeUnlisted"?: bool, //Archive pools not in the list
@@ -772,9 +786,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "code"?: string,
      *    "since"?: string, //RFC3339 timestamp
      *    "until"?: string, //RFC3339 timestamp
-     *    "limit"?: int,
-     *    "offset"?: int,
-     *    "size"?: int, //Max rows (default 50, max 1000)
+     *    "messageGroup"?: string, //Exact message group
      *    "clientIds"?: string, //CSV of client ids
      *    "statuses"?: string, //CSV of statuses
      *    "applications"?: string, //CSV of application codes
@@ -782,6 +794,9 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "aggregates"?: string, //CSV of aggregates
      *    "codes"?: string, //CSV of codes
      *    "source"?: string, //Free-text source filter
+     *    "limit"?: int,
+     *    "offset"?: int,
+     *    "size"?: int, //Max rows (default 50, max 1000)
      *    "sort"?: string, //createdAt.asc | createdAt.desc (default)
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
@@ -830,9 +845,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "code"?: string,
      *    "since"?: string, //RFC3339 timestamp
      *    "until"?: string, //RFC3339 timestamp
-     *    "limit"?: int,
-     *    "offset"?: int,
-     *    "size"?: int, //Max rows (default 50, max 1000)
+     *    "messageGroup"?: string, //Exact message group
      *    "clientIds"?: string, //CSV of client ids
      *    "statuses"?: string, //CSV of statuses
      *    "applications"?: string, //CSV of application codes
@@ -840,6 +853,9 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "aggregates"?: string, //CSV of aggregates
      *    "codes"?: string, //CSV of codes
      *    "source"?: string, //Free-text source filter
+     *    "limit"?: int,
+     *    "offset"?: int,
+     *    "size"?: int, //Max rows (default 50, max 1000)
      *    "sort"?: string, //createdAt.asc | createdAt.desc (default)
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
@@ -859,9 +875,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "code"?: string,
      *    "since"?: string, //RFC3339 timestamp
      *    "until"?: string, //RFC3339 timestamp
-     *    "limit"?: int,
-     *    "offset"?: int,
-     *    "size"?: int, //Max rows (default 50, max 1000)
+     *    "messageGroup"?: string, //Exact message group
      *    "clientIds"?: string, //CSV of client ids
      *    "statuses"?: string, //CSV of statuses
      *    "applications"?: string, //CSV of application codes
@@ -869,6 +883,9 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "aggregates"?: string, //CSV of aggregates
      *    "codes"?: string, //CSV of codes
      *    "source"?: string, //Free-text source filter
+     *    "limit"?: int,
+     *    "offset"?: int,
+     *    "size"?: int, //Max rows (default 50, max 1000)
      *    "sort"?: string, //createdAt.asc | createdAt.desc (default)
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
@@ -888,6 +905,26 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function requeueDispatchJobs(?\FlowCatalyst\Generated\Model\RequeueRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RequeueDispatchJobs($requestBody), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\RequeueByFilterRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\RequeueByFilterResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function requeueDispatchJobsByFilter(?\FlowCatalyst\Generated\Model\RequeueByFilterRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RequeueDispatchJobsByFilter($requestBody), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\RequeueByFilterPreviewRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\RequeueByFilterPreviewResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function previewRequeueDispatchJobsByFilter(?\FlowCatalyst\Generated\Model\RequeueByFilterPreviewRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PreviewRequeueDispatchJobsByFilter($requestBody), $fetch);
     }
     /**
      * @param string $id
@@ -938,6 +975,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function getDispatchJobRaw(string $id, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetDispatchJobRaw($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\DeliveryPlan|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function signDispatchJob(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SignDispatchJob($id), $fetch);
     }
     /**
      * @param array{
@@ -1353,6 +1400,297 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function getEvent(string $id, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetEvent($id), $fetch);
+    }
+    /**
+     * @param array{
+     *    "clientId"?: string, //Filter by owning client id
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\DomainResponse[]|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listFunctionDomains(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFunctionDomains($queryParameters), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\CreateDomainRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\CreatedResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function createFunctionDomain(?\FlowCatalyst\Generated\Model\CreateDomainRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\CreateFunctionDomain($requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deleteFunctionDomain(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteFunctionDomain($id), $fetch);
+    }
+    /**
+     * @param array{
+     *    "applicationId"?: string, //Filter by owning application id
+     *    "clientId"?: string, //Filter by client id
+     *    "addressPrefix"?: string, //Filter by address prefix (e.g. an application code)
+     *    "page"?: int,
+     *    "size"?: int,
+     *    "limit"?: int,
+     *    "pageSize"?: int,
+     *    "page_size"?: int,
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\OffsetPageFunctionResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listFunctions(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFunctions($queryParameters), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\CreateFunctionRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\CreatedResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function createFunction(?\FlowCatalyst\Generated\Model\CreateFunctionRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\CreateFunction($requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deleteFunction(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteFunction($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FunctionResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getFunction(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetFunction($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\UpdateFunctionRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function updateFunction(string $id, ?\FlowCatalyst\Generated\Model\UpdateFunctionRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\UpdateFunction($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\AliasResponse[]|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listFunctionAliases(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFunctionAliases($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $name
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\WiringResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deleteFunctionAlias(string $id, string $name, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteFunctionAlias($id, $name), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $name
+     * @param null|\FlowCatalyst\Generated\Model\PutAliasRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PutAliasResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function putFunctionAlias(string $id, string $name, ?\FlowCatalyst\Generated\Model\PutAliasRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PutFunctionAlias($id, $name, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $digest Lowercase hex sha256 of the artifact (64 characters)
+     * @param null|string|resource|\Psr\Http\Message\StreamInterface $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function putFunctionArtifact(string $id, string $digest, $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PutFunctionArtifact($id, $digest, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $key
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deleteFunctionConfig(string $id, string $key, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteFunctionConfig($id, $key), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $key
+     * @param null|\FlowCatalyst\Generated\Model\PutSettingRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\SettingResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function putFunctionConfig(string $id, string $key, ?\FlowCatalyst\Generated\Model\PutSettingRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PutFunctionConfig($id, $key, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $name
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deleteFunctionDB(string $id, string $name, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteFunctionDB($id, $name), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $name
+     * @param null|\FlowCatalyst\Generated\Model\PutSettingRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\SettingResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function putFunctionDB(string $id, string $name, ?\FlowCatalyst\Generated\Model\PutSettingRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PutFunctionDB($id, $name, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\RouteResponse[]|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listFunctionRoutes(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFunctionRoutes($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\PutRouteRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\RouteResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function putFunctionRoute(string $id, ?\FlowCatalyst\Generated\Model\PutRouteRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PutFunctionRoute($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $routeId
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deleteFunctionRoute(string $id, string $routeId, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteFunctionRoute($id, $routeId), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $key
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deleteFunctionSecret(string $id, string $key, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteFunctionSecret($id, $key), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $key
+     * @param null|\FlowCatalyst\Generated\Model\PutSettingRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\SettingResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function putFunctionSecret(string $id, string $key, ?\FlowCatalyst\Generated\Model\PutSettingRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PutFunctionSecret($id, $key, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\SettingResponse[]|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listFunctionSettings(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFunctionSettings($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\VersionResponse[]|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listFunctionVersions(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFunctionVersions($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\PublishVersionRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\VersionResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function publishFunctionVersion(string $id, ?\FlowCatalyst\Generated\Model\PublishVersionRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PublishFunctionVersion($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param int $number
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\VersionResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getFunctionVersion(string $id, int $number, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetFunctionVersion($id, $number), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param int $number
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\VersionResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function retireFunctionVersion(string $id, int $number, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RetireFunctionVersion($id, $number), $fetch);
     }
     /**
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
@@ -2833,6 +3171,62 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function webauthnRegisterComplete(?\FlowCatalyst\Generated\Model\RegisterCompleteRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\WebauthnRegisterComplete($requestBody), $fetch);
+    }
+    /**
+     * @param string $digest Lowercase hex sha256 of the artifact (64 characters)
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getFunctionRunnerArtifact(string $digest, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetFunctionRunnerArtifact($digest), $fetch);
+    }
+    /**
+     * @param array{
+     *    "pool": string, //The runner pool to fetch desired state for
+     *    "wait"?: int, //Seconds to hold the request open for a change, capped at control.MaxWait
+     * } $queryParameters
+     * @param array{
+     *    "If-None-Match"?: string,
+     * } $headerParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\Desired|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getFunctionRunnerDesired(array $queryParameters = [], array $headerParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetFunctionRunnerDesired($queryParameters, $headerParameters), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\DispatchRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\DispatchResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postFunctionRunnerDispatchJob(?\FlowCatalyst\Generated\Model\DispatchRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostFunctionRunnerDispatchJob($requestBody), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\EmitRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\EmitResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postFunctionRunnerEvent(?\FlowCatalyst\Generated\Model\EmitRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostFunctionRunnerEvent($requestBody), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\Heartbeat $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postFunctionRunnerHeartbeat(?\FlowCatalyst\Generated\Model\Heartbeat $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostFunctionRunnerHeartbeat($requestBody), $fetch);
     }
     public static function create($httpClient = null, array $additionalPlugins = [], array $additionalNormalizers = [])
     {

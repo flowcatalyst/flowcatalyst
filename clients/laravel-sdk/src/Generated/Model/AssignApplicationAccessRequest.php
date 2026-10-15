@@ -27,6 +27,10 @@ class AssignApplicationAccessRequest extends \ArrayObject
      */
     protected $applicationIds;
     /**
+     * @var bool|null
+     */
+    protected $confirmSelfRestriction;
+    /**
      * A URL to the JSON Schema for this object.
      *
      * @return string|null
@@ -82,6 +86,24 @@ class AssignApplicationAccessRequest extends \ArrayObject
     {
         $this->initialized['applicationIds'] = true;
         $this->applicationIds = $applicationIds;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getConfirmSelfRestriction(): ?bool
+    {
+        return $this->confirmSelfRestriction;
+    }
+    /**
+     * @param bool|null $confirmSelfRestriction
+     *
+     * @return self
+     */
+    public function setConfirmSelfRestriction(?bool $confirmSelfRestriction): self
+    {
+        $this->initialized['confirmSelfRestriction'] = true;
+        $this->confirmSelfRestriction = $confirmSelfRestriction;
         return $this;
     }
 }

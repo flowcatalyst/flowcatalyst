@@ -21,6 +21,10 @@ class UpdateConnectionRequest extends \ArrayObject
     /**
      * @var string|null
      */
+    protected $applicationCode;
+    /**
+     * @var string|null
+     */
     protected $description;
     /**
      * @var string|null
@@ -30,6 +34,10 @@ class UpdateConnectionRequest extends \ArrayObject
      * @var string|null
      */
     protected $name;
+    /**
+     * @var string|null
+     */
+    protected $serviceAccountId;
     /**
      * @var string|null
      */
@@ -54,6 +62,24 @@ class UpdateConnectionRequest extends \ArrayObject
     {
         $this->initialized['dollarSchema'] = true;
         $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getApplicationCode(): ?string
+    {
+        return $this->applicationCode;
+    }
+    /**
+     * @param string|null $applicationCode
+     *
+     * @return self
+     */
+    public function setApplicationCode(?string $applicationCode): self
+    {
+        $this->initialized['applicationCode'] = true;
+        $this->applicationCode = $applicationCode;
         return $this;
     }
     /**
@@ -108,6 +134,24 @@ class UpdateConnectionRequest extends \ArrayObject
     {
         $this->initialized['name'] = true;
         $this->name = $name;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getServiceAccountId(): ?string
+    {
+        return $this->serviceAccountId;
+    }
+    /**
+     * @param string|null $serviceAccountId
+     *
+     * @return self
+     */
+    public function setServiceAccountId(?string $serviceAccountId): self
+    {
+        $this->initialized['serviceAccountId'] = true;
+        $this->serviceAccountId = $serviceAccountId;
         return $this;
     }
     /**

@@ -37,6 +37,9 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('clientScoped', $data) && \is_int($data['clientScoped'])) {
+            $data['clientScoped'] = (bool) $data['clientScoped'];
+        }
         if (\array_key_exists('dataOnly', $data) && \is_int($data['dataOnly'])) {
             $data['dataOnly'] = (bool) $data['dataOnly'];
         }
@@ -53,6 +56,13 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+        }
+        if (\array_key_exists('clientScoped', $data) && $data['clientScoped'] !== null) {
+            $object->setClientScoped($data['clientScoped']);
+            unset($data['clientScoped']);
+        }
+        elseif (\array_key_exists('clientScoped', $data) && $data['clientScoped'] === null) {
+            $object->setClientScoped(null);
         }
         if (\array_key_exists('code', $data) && $data['code'] !== null) {
             $object->setCode($data['code']);
@@ -160,6 +170,13 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         elseif (\array_key_exists('queue', $data) && $data['queue'] === null) {
             $object->setQueue(null);
         }
+        if (\array_key_exists('sequence', $data) && $data['sequence'] !== null) {
+            $object->setSequence($data['sequence']);
+            unset($data['sequence']);
+        }
+        elseif (\array_key_exists('sequence', $data) && $data['sequence'] === null) {
+            $object->setSequence(null);
+        }
         if (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] !== null) {
             $object->setServiceAccountId($data['serviceAccountId']);
             unset($data['serviceAccountId']);
@@ -186,6 +203,9 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         $dataArray = [];
         if ($data->isInitialized('clientId') && null !== $data->getClientId()) {
             $dataArray['clientId'] = $data->getClientId();
+        }
+        if ($data->isInitialized('clientScoped') && null !== $data->getClientScoped()) {
+            $dataArray['clientScoped'] = $data->getClientScoped();
         }
         $dataArray['code'] = $data->getCode();
         if ($data->isInitialized('connectionId') && null !== $data->getConnectionId()) {
@@ -230,6 +250,9 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         $dataArray['name'] = $data->getName();
         if ($data->isInitialized('queue') && null !== $data->getQueue()) {
             $dataArray['queue'] = $data->getQueue();
+        }
+        if ($data->isInitialized('sequence') && null !== $data->getSequence()) {
+            $dataArray['sequence'] = $data->getSequence();
         }
         if ($data->isInitialized('serviceAccountId') && null !== $data->getServiceAccountId()) {
             $dataArray['serviceAccountId'] = $data->getServiceAccountId();

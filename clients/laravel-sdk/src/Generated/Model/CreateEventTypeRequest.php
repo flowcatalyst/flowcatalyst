@@ -19,7 +19,7 @@ class CreateEventTypeRequest extends \ArrayObject
      */
     protected $dollarSchema;
     /**
-     * Optional client scope; absent means anchor-level
+     * Ignored. Event types are platform-wide and have no client; a value is accepted for compatibility and not stored (creating an event type needs anchor scope). Use clientScoped to mark events of this type as carried per client.
      *
      * @var string|null
      */
@@ -75,7 +75,7 @@ class CreateEventTypeRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Optional client scope; absent means anchor-level
+     * Ignored. Event types are platform-wide and have no client; a value is accepted for compatibility and not stored (creating an event type needs anchor scope). Use clientScoped to mark events of this type as carried per client.
      *
      * @return string|null
      */
@@ -84,7 +84,7 @@ class CreateEventTypeRequest extends \ArrayObject
         return $this->clientId;
     }
     /**
-     * Optional client scope; absent means anchor-level
+     * Ignored. Event types are platform-wide and have no client; a value is accepted for compatibility and not stored (creating an event type needs anchor scope). Use clientScoped to mark events of this type as carried per client.
      *
      * @param string|null $clientId
      *

@@ -67,7 +67,7 @@ class CreateEventRequest extends \ArrayObject
      */
     protected $messageGroup;
     /**
-     * Event source URI
+     * Event source URI. When absent or blank, the type's {application}:{subdomain} (its first two segments)
      *
      * @var string|null
      */
@@ -277,7 +277,7 @@ class CreateEventRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Event source URI
+     * Event source URI. When absent or blank, the type's {application}:{subdomain} (its first two segments)
      *
      * @return string|null
      */
@@ -286,7 +286,7 @@ class CreateEventRequest extends \ArrayObject
         return $this->source;
     }
     /**
-     * Event source URI
+     * Event source URI. When absent or blank, the type's {application}:{subdomain} (its first two segments)
      *
      * @param string|null $source
      *
