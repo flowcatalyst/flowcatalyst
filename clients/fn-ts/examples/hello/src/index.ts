@@ -56,4 +56,26 @@ fn.webhook("POST /events/greeting", async (req: FnRequest) => {
   }
 });
 
+// POST /dispatch creates a dispatch job for the hello.logger function's
+// /deliver webhook. The target and path are declared below; the platform
+// builds the URL and signs the delivery, the function holds no credential.
+fn.open("POST /dispatch", async (req: FnRequest) => {
+  try {
+    const jobId = await fn.dispatch({
+      target: "hello.logger",
+      path: "/deliver",
+      payload: { hello: "world" },
+      metadata: { from: "hello" }, // an object is fine; it travels as [{key,value}]
+      messageGroup: "hello",
+    });
+    fn.log.info("job dispatched", { jobId, invocation: req.invocation.id });
+    return fn.json(202, { jobId });
+  } catch (err) {
+    if (isRetryable(err)) return fn.retry(5);
+    fn.log.error("dispatch failed", { error: err instanceof FnError ? err.message : String(err) });
+    return fn.reject("dispatch refused");
+  }
+});
+
 fn.emits("hello:greeting:greeting:sent");
+fn.dispatches("hello.logger", "/deliver");

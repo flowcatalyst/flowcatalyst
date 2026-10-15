@@ -50,6 +50,7 @@ pub(crate) mod op {
     pub const SECRET_GET: i32 = 3;
     pub const HTTP_FETCH: i32 = 4;
     pub const EVENT_EMIT: i32 = 5;
+    pub const DISPATCH: i32 = 11;
     pub const DB_QUERY: i32 = 6;
     pub const DB_EXEC: i32 = 7;
     pub const DB_BEGIN: i32 = 8;

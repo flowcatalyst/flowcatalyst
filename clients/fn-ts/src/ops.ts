@@ -10,3 +10,4 @@ export const OpDBExec = 7;
 export const OpDBBegin = 8;
 export const OpDBCommit = 9;
 export const OpDBRollback = 10;
+export const OpDispatch = 11;

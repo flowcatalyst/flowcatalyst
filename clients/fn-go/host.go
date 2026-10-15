@@ -16,6 +16,7 @@ const (
 	opDBBegin    opCode = 8
 	opDBCommit   opCode = 9
 	opDBRollback opCode = 10
+	opDispatch   opCode = 11
 )
 
 // Error codes shared across host ops (plan §5.3).

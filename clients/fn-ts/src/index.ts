@@ -17,6 +17,7 @@ import { config, secret, ConfigValue, SecretValue } from "./config";
 import { db, DBBinding, DBTx } from "./db";
 import { httpAllow, fetchFn, FnResponse } from "./http";
 import { emit, emits } from "./event";
+import { dispatch, dispatches } from "./job";
 import { json, text, status, retry, reject } from "./respond";
 import { log, installConsole } from "./log";
 import { describeJSON } from "./describe";
@@ -29,6 +30,7 @@ export { ConfigValue, SecretValue, DBBinding, DBTx, FnResponse };
 export type { FnRequest, FnResponseLike, ResponseBody, Invocation } from "./types";
 export type { Caller } from "./caller";
 export type { EventInput } from "./event";
+export type { DispatchInput, MetadataEntry } from "./job";
 export type { FetchOptions } from "./http";
 export type { CORSConfig, EndpointOptions, SubOptions, SchedOptions, Auth } from "./registry";
 export type { Row, DBParam } from "./db";
@@ -66,9 +68,11 @@ export const fn = {
   db,
   httpAllow,
   emits,
+  dispatches,
 
   // Capabilities.
   emit,
+  dispatch,
   fetch: fetchFn,
   log,
 

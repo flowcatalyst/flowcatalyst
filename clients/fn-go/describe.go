@@ -16,6 +16,12 @@ type describeDoc struct {
 	DB            []string       `json:"db,omitempty"`
 	HTTPAllow     []string       `json:"httpAllow,omitempty"`
 	Emits         []string       `json:"emits,omitempty"`
+	Dispatches    []dispatchJSON `json:"dispatches,omitempty"`
+}
+
+type dispatchJSON struct {
+	Target string `json:"target"`
+	Path   string `json:"path"`
 }
 
 type corsJSON struct {
@@ -87,6 +93,7 @@ func buildDescribeDoc() describeDoc {
 	doc.DB = append(doc.DB, reg.db...)
 	doc.HTTPAllow = append(doc.HTTPAllow, reg.httpAllow...)
 	doc.Emits = append(doc.Emits, reg.emits...)
+	doc.Dispatches = append(doc.Dispatches, reg.dispatches...)
 	return doc
 }
 

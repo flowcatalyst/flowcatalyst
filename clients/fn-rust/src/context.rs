@@ -97,6 +97,39 @@ pub struct Event {
     pub data: Vec<u8>,
 }
 
+/// A dispatch job to create via `Context::dispatch` (host op 11,
+/// dispatch.create). `target` and `path` name a function of this function's own
+/// application and a literal webhook path on it, both declared with
+/// `App::dispatches`; the platform builds the delivery URL and signs it as the
+/// application, so the function supplies no URL and holds no credential.
+#[derive(Debug, Clone, Default)]
+pub struct Job {
+    pub target: String,
+    pub path: String,
+    /// Delivered as the request body (see `data_only`).
+    pub payload: Vec<u8>,
+    /// Defaults to `<application>:function:<name>:dispatch`; must start with
+    /// the function's application.
+    pub code: String,
+    pub subject: String,
+    /// Sent as the platform's array of `{key, value}`, sorted by key. Keys
+    /// starting with `fn.` belong to the platform and are refused.
+    pub metadata: BTreeMap<String, String>,
+    pub message_group: String,
+    /// IMMEDIATE, NEXT_ON_ERROR or BLOCK_ON_ERROR; empty is the platform default.
+    pub mode: String,
+    /// Defaults to the calling request's X-Correlation-Id.
+    pub correlation_id: String,
+    pub causation_id: String,
+    /// Defaults to application/json.
+    pub content_type: String,
+    pub descriptor: String,
+    pub max_retries: Option<i64>,
+    pub timeout_seconds: Option<i64>,
+    /// Payload alone as the body (the default, `None`) or in the platform's envelope.
+    pub data_only: Option<bool>,
+}
+
 /// A request-scoped handle to the host and to the caller/invocation
 /// identity. Handlers receive `&Context` alongside `&Request`.
 pub struct Context {
@@ -255,6 +288,82 @@ impl Context {
             serde_json::from_slice(&rm).map_err(|e| CapabilityError::Transport(e.to_string()))?
         };
         Ok(result.event_id)
+    }
+
+    // --- op 11: dispatch.create --------------------------------------------
+
+    /// Creates the job and returns its id. `Err(e)` with `e.is_retryable()`
+    /// is platform trouble; NOT_DECLARED / NOT_ALLOWED / BAD_REQUEST are
+    /// permanent refusals. NOT idempotent: the platform does not de-duplicate
+    /// jobs, so retrying after an ambiguous failure can create a second one.
+    pub fn dispatch(&self, job: Job) -> Result<String, CapabilityError> {
+        #[derive(serde::Serialize)]
+        struct Entry<'a> {
+            key: &'a str,
+            value: &'a str,
+        }
+        #[derive(serde::Serialize)]
+        struct DispatchMeta<'a> {
+            target: &'a str,
+            path: &'a str,
+            #[serde(skip_serializing_if = "str::is_empty")]
+            code: &'a str,
+            #[serde(skip_serializing_if = "str::is_empty")]
+            subject: &'a str,
+            #[serde(skip_serializing_if = "str::is_empty", rename = "messageGroup")]
+            message_group: &'a str,
+            #[serde(skip_serializing_if = "str::is_empty")]
+            mode: &'a str,
+            #[serde(skip_serializing_if = "str::is_empty", rename = "correlationId")]
+            correlation_id: &'a str,
+            #[serde(skip_serializing_if = "str::is_empty", rename = "causationId")]
+            causation_id: &'a str,
+            #[serde(skip_serializing_if = "str::is_empty", rename = "contentType")]
+            content_type: &'a str,
+            #[serde(skip_serializing_if = "str::is_empty")]
+            descriptor: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none", rename = "maxRetries")]
+            max_retries: Option<i64>,
+            #[serde(skip_serializing_if = "Option::is_none", rename = "timeoutSeconds")]
+            timeout_seconds: Option<i64>,
+            #[serde(skip_serializing_if = "Option::is_none", rename = "dataOnly")]
+            data_only: Option<bool>,
+            #[serde(skip_serializing_if = "Vec::is_empty")]
+            metadata: Vec<Entry<'a>>,
+        }
+        #[derive(serde::Deserialize, Default)]
+        struct DispatchResult {
+            #[serde(default, rename = "jobId")]
+            job_id: String,
+        }
+        let mb = serde_json::to_vec(&DispatchMeta {
+            target: &job.target,
+            path: &job.path,
+            code: &job.code,
+            subject: &job.subject,
+            message_group: &job.message_group,
+            mode: &job.mode,
+            correlation_id: &job.correlation_id,
+            causation_id: &job.causation_id,
+            content_type: &job.content_type,
+            descriptor: &job.descriptor,
+            max_retries: job.max_retries,
+            timeout_seconds: job.timeout_seconds,
+            data_only: job.data_only,
+            metadata: job
+                .metadata
+                .iter()
+                .map(|(key, value)| Entry { key, value })
+                .collect(),
+        })
+        .map_err(|e| CapabilityError::Transport(e.to_string()))?;
+        let (rm, _rb) = host_call(op::DISPATCH, &mb, &job.payload)?;
+        let result: DispatchResult = if rm.is_empty() {
+            DispatchResult::default()
+        } else {
+            serde_json::from_slice(&rm).map_err(|e| CapabilityError::Transport(e.to_string()))?
+        };
+        Ok(result.job_id)
     }
 
     // --- ops 6-10: db -----------------------------------------------------
@@ -463,6 +572,63 @@ mod tests {
             })
             .unwrap_err();
         assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn dispatch_returns_job_id_and_sends_metadata_as_an_array() {
+        set_fake_host(|o, meta, body| {
+            assert_eq!(o, op::DISPATCH);
+            let m: serde_json::Value = serde_json::from_slice(meta).unwrap();
+            assert_eq!(m["target"], "orders.logger");
+            assert_eq!(m["path"], "/deliver");
+            assert_eq!(m["maxRetries"], 0, "an explicit zero must be sent");
+            assert_eq!(m["dataOnly"], false);
+            assert_eq!(m["metadata"], serde_json::json!([{"key":"a","value":"1"},{"key":"b","value":"2"}]));
+            assert!(m.get("code").is_none(), "unset fields are omitted");
+            assert_eq!(body, br#"{"order":42}"#);
+            Ok((br#"{"jobId":"djob_1"}"#.to_vec(), Vec::new()))
+        });
+        let mut metadata = BTreeMap::new();
+        metadata.insert("b".to_string(), "2".to_string());
+        metadata.insert("a".to_string(), "1".to_string());
+        let id = ctx()
+            .dispatch(Job {
+                target: "orders.logger".to_string(),
+                path: "/deliver".to_string(),
+                payload: br#"{"order":42}"#.to_vec(),
+                metadata,
+                max_retries: Some(0),
+                data_only: Some(false),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(id, "djob_1");
+    }
+
+    #[test]
+    fn dispatch_error_classes() {
+        for (code, retryable) in [
+            (crate::host::error_code::UNAVAILABLE, true),
+            (crate::host::error_code::NOT_DECLARED, false),
+            (crate::host::error_code::NOT_ALLOWED, false),
+            (crate::host::error_code::BAD_REQUEST, false),
+        ] {
+            set_fake_host(move |_o, _m, _b| {
+                Err(HostOutcome::Host(HostError {
+                    code: code.to_string(),
+                    message: "x".to_string(),
+                }))
+            });
+            let err = ctx()
+                .dispatch(Job {
+                    target: "a.b".to_string(),
+                    path: "/d".to_string(),
+                    ..Default::default()
+                })
+                .unwrap_err();
+            assert_eq!(err.code(), Some(code));
+            assert_eq!(err.is_retryable(), retryable, "{code}");
+        }
     }
 
     #[test]

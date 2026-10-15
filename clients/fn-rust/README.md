@@ -145,3 +145,11 @@ whether or not a given build uses all of it.
   &Context) -> Result<Response, Error> { ... }` used directly as a value)
   and keeps `export!`'s per-call `App` rebuild cheap and alloc-free for the
   registration step itself.
+
+## Dispatching a job
+
+`App::dispatches("app.logger", "/deliver")` declares a target function and webhook path;
+`Context::dispatch(Job { target, path, payload, metadata, .. })` (host op 11) creates the job and
+returns its id. `metadata` is a `BTreeMap` and travels as the platform's `[{key, value}]` array.
+`CapabilityError::is_retryable()` is true only for platform trouble. Not idempotent. See
+`docs/function-runner-plan.md` §8.7.

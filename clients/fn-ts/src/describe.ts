@@ -13,6 +13,7 @@ export interface DescribeDoc {
   db?: string[];
   httpAllow?: string[];
   emits?: string[];
+  dispatches?: { target: string; path: string }[];
 }
 
 export function buildDescribeDoc(): DescribeDoc {
@@ -56,6 +57,7 @@ export function buildDescribeDoc(): DescribeDoc {
   if (registry.db.length > 0) doc.db = registry.db.slice();
   if (registry.httpAllow.length > 0) doc.httpAllow = registry.httpAllow.slice();
   if (registry.emits.length > 0) doc.emits = registry.emits.slice();
+  if (registry.dispatches.length > 0) doc.dispatches = registry.dispatches.map((d) => ({ target: d.target, path: d.path }));
   return doc;
 }
 

@@ -64,6 +64,7 @@ export interface Registry {
   db: string[];
   httpAllow: string[];
   emits: string[];
+  dispatches: { target: string; path: string }[];
 }
 
 export const registry: Registry = {
@@ -75,6 +76,7 @@ export const registry: Registry = {
   db: [],
   httpAllow: [],
   emits: [],
+  dispatches: [],
 };
 
 /** Clears every declaration. Test-only (see testing.ts): production code
@@ -89,6 +91,7 @@ export function resetRegistry(): void {
   registry.db = [];
   registry.httpAllow = [];
   registry.emits = [];
+  registry.dispatches = [];
 }
 
 function registerEndpoint(auth: Auth, pattern: string, handler: Handler, options: EndpointOptions = {}): void {

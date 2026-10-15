@@ -21,8 +21,10 @@ func init() {
 	fn.Open("GET /healthz", health)
 	fn.Platform("GET /hello/{name}", hello)
 	fn.Webhook("POST /events/greeting", onGreetingEvent)
+	fn.Open("POST /dispatch", onDispatch)
 
 	fn.Emits("hello:greeting:greeting:sent")
+	fn.Dispatches("hello.logger", "/deliver")
 }
 
 func main() {}
@@ -83,4 +85,30 @@ func onGreetingEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	fn.Log(r.Context()).Info("greeting event emitted", "eventId", eventID)
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// onDispatch creates a dispatch job for the hello.logger function's /deliver
+// webhook. The target and path are declared in init; the platform builds the
+// URL and signs the delivery, the function holds no credential.
+func onDispatch(w http.ResponseWriter, r *http.Request) {
+	jobID, err := fn.Dispatch(r.Context(), fn.Job{
+		Target:       "hello.logger",
+		Path:         "/deliver",
+		Payload:      []byte(`{"hello":"world"}`),
+		Metadata:     map[string]string{"from": "hello"},
+		MessageGroup: "hello",
+	})
+	if err != nil {
+		if errors.Is(err, fn.ErrRetryable) {
+			fn.Retry(w, 5*time.Second)
+			return
+		}
+		fn.Log(r.Context()).Error("dispatch failed", "error", err)
+		fn.Reject(w, "dispatch refused")
+		return
+	}
+	fn.Log(r.Context()).Info("job dispatched", "jobId", jobID)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_ = json.NewEncoder(w).Encode(map[string]string{"jobId": jobID})
 }

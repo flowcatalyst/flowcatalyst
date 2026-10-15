@@ -5,14 +5,16 @@
 //!
 //!   cargo build --release --target wasm32-unknown-unknown
 
-use flowcatalyst_fn::{App, Context, Error, Event, Request, Response};
+use flowcatalyst_fn::{App, Context, Error, Event, Job, Request, Response};
 
 flowcatalyst_fn::export!(|app: &mut App| {
     app.open("GET /healthz", health)
         .platform("GET /hello/{name}", hello)
         .webhook("POST /events/greeting", on_greeting_event)
+        .open("POST /dispatch", on_dispatch)
         .config("GREETING")
-        .emits("hello:greeting:greeting:sent");
+        .emits("hello:greeting:greeting:sent")
+        .dispatches("hello.logger", "/deliver");
 });
 
 fn health(_req: &Request, _ctx: &Context) -> Result<Response, Error> {
@@ -64,6 +66,34 @@ fn on_greeting_event(req: &Request, ctx: &Context) -> Result<Response, Error> {
             Ok(Response::new(422)
                 .with_header("FlowCatalyst-Outcome", "reject")
                 .with_body(b"emit refused".to_vec()))
+        }
+    }
+}
+
+/// Creates a dispatch job for the hello.logger function's /deliver webhook.
+/// The target and path are declared above; the platform builds the URL and
+/// signs the delivery, the function holds no credential.
+fn on_dispatch(_req: &Request, ctx: &Context) -> Result<Response, Error> {
+    let mut metadata = std::collections::BTreeMap::new();
+    metadata.insert("from".to_string(), "hello".to_string());
+    match ctx.dispatch(Job {
+        target: "hello.logger".to_string(),
+        path: "/deliver".to_string(),
+        payload: br#"{"hello":"world"}"#.to_vec(),
+        metadata,
+        message_group: "hello".to_string(),
+        ..Default::default()
+    }) {
+        Ok(job_id) => {
+            ctx.log_info(&format!("job dispatched: {job_id}"));
+            Response::json(202, &serde_json::json!({ "jobId": job_id }))
+        }
+        Err(e) if e.is_retryable() => Ok(Response::new(429).with_header("Retry-After", "5")),
+        Err(e) => {
+            ctx.log_error(&format!("dispatch failed: {e}"));
+            Ok(Response::new(422)
+                .with_header("FlowCatalyst-Outcome", "reject")
+                .with_body(b"dispatch refused".to_vec()))
         }
     }
 }

@@ -26,6 +26,7 @@ func TestDescribeGolden(t *testing.T) {
 	DB("main")
 	HTTPAllow("api.stripe.com", "*.acme.com")
 	Emits("orders:order:order:shipped")
+	Dispatches("orders.invoice-logger", "/deliver")
 
 	got := describeJSON()
 
@@ -43,7 +44,8 @@ func TestDescribeGolden(t *testing.T) {
 	  ],
 	  "schedules": [{"cron": "0 */5 * * * *", "timezone": "UTC", "path": "/events/tick"}],
 	  "config": ["GREETING"], "secrets": ["STRIPE_KEY"], "db": ["main"],
-	  "httpAllow": ["api.stripe.com", "*.acme.com"], "emits": ["orders:order:order:shipped"]
+	  "httpAllow": ["api.stripe.com", "*.acme.com"], "emits": ["orders:order:order:shipped"],
+	  "dispatches": [{"target": "orders.invoice-logger", "path": "/deliver"}]
 	}`
 
 	assertJSONEqual(t, got, []byte(want))
@@ -62,7 +64,7 @@ func TestDescribeOmitsEmptyOptionalArrays(t *testing.T) {
 	if err := json.Unmarshal(describeJSON(), &doc); err != nil {
 		t.Fatalf("unmarshal describe: %v", err)
 	}
-	for _, key := range []string{"subscriptions", "schedules", "config", "secrets", "db", "httpAllow", "emits"} {
+	for _, key := range []string{"subscriptions", "schedules", "config", "secrets", "db", "httpAllow", "emits", "dispatches"} {
 		if _, ok := doc[key]; ok {
 			t.Errorf("describe: field %q present but should be omitted when empty", key)
 		}

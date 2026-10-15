@@ -59,6 +59,7 @@ pub struct App {
     pub(crate) db: Vec<String>,
     pub(crate) http_allow: Vec<String>,
     pub(crate) emits: Vec<String>,
+    pub(crate) dispatches: Vec<(String, String)>,
 }
 
 impl App {
@@ -143,6 +144,14 @@ impl App {
         self
     }
 
+    /// Declares a (function, path) this function may dispatch jobs to with
+    /// `Context::dispatch`. The target must be a function of the same
+    /// application and `path` a literal webhook path on it.
+    pub fn dispatches(&mut self, target: &str, path: &str) -> &mut Self {
+        self.dispatches.push((target.to_string(), path.to_string()));
+        self
+    }
+
     /// Matches `method`/`path` against every registered endpoint. Returns
     /// `RouteMatch::Found` on a full match, `MethodMismatch` if some
     /// endpoint's path matches but not its method (-> 405), or `NoMatch`
@@ -205,6 +214,14 @@ impl App {
         insert_if_nonempty(&mut doc, "db", &self.db);
         insert_if_nonempty(&mut doc, "httpAllow", &self.http_allow);
         insert_if_nonempty(&mut doc, "emits", &self.emits);
+        if !self.dispatches.is_empty() {
+            let ds: Vec<_> = self
+                .dispatches
+                .iter()
+                .map(|(t, p)| serde_json::json!({"target": t, "path": p}))
+                .collect();
+            doc.insert("dispatches".into(), serde_json::Value::Array(ds));
+        }
 
         serde_json::to_vec(&serde_json::Value::Object(doc)).expect("fn: describe: serialization is infallible for this shape")
     }
@@ -274,7 +291,7 @@ mod tests {
         app.open("GET /healthz", ok);
         let doc: serde_json::Value = serde_json::from_slice(&app.describe_json()).unwrap();
         let obj = doc.as_object().unwrap();
-        for key in ["subscriptions", "schedules", "config", "secrets", "db", "httpAllow", "emits"] {
+        for key in ["subscriptions", "schedules", "config", "secrets", "db", "httpAllow", "emits", "dispatches"] {
             assert!(!obj.contains_key(key), "expected {key} to be omitted when empty");
         }
         assert!(obj.contains_key("endpoints"));
@@ -292,7 +309,8 @@ mod tests {
             .secret("STRIPE_KEY")
             .db("main")
             .http_allow("api.stripe.com")
-            .emits("orders:order:order:shipped");
+            .emits("orders:order:order:shipped")
+            .dispatches("orders.invoice-logger", "/deliver");
 
         let doc: serde_json::Value = serde_json::from_slice(&app.describe_json()).unwrap();
         assert_eq!(doc["abi"], 1);
@@ -304,5 +322,7 @@ mod tests {
         assert_eq!(doc["db"][0], "main");
         assert_eq!(doc["httpAllow"][0], "api.stripe.com");
         assert_eq!(doc["emits"][0], "orders:order:order:shipped");
+        assert_eq!(doc["dispatches"][0]["target"], "orders.invoice-logger");
+        assert_eq!(doc["dispatches"][0]["path"], "/deliver");
     }
 }

@@ -6,6 +6,7 @@ import { secret } from "./config";
 import { db } from "./db";
 import { httpAllow } from "./http";
 import { emits } from "./event";
+import { dispatches } from "./job";
 import { buildDescribeDoc, describeJSON } from "./describe";
 import { resetRegistry } from "./testing";
 
@@ -20,7 +21,7 @@ test("describe omits every empty optional field", () => {
   const doc = buildDescribeDoc();
   assert.equal(doc.abi, 1);
   assert.equal(doc.endpoints.length, 1);
-  for (const key of ["subscriptions", "schedules", "config", "secrets", "db", "httpAllow", "emits"] as const) {
+  for (const key of ["subscriptions", "schedules", "config", "secrets", "db", "httpAllow", "emits", "dispatches"] as const) {
     assert.equal(key in doc, false, `expected ${key} to be omitted when empty`);
   }
 });
@@ -36,6 +37,7 @@ test("describe: full shape, matching plan §5.4's field names exactly", () => {
   db("main");
   httpAllow("api.stripe.com");
   emits("orders:order:order:shipped");
+  dispatches("orders.invoice-logger", "/deliver");
 
   const doc = JSON.parse(describeJSON());
   assert.equal(doc.abi, 1);
@@ -55,6 +57,7 @@ test("describe: full shape, matching plan §5.4's field names exactly", () => {
   assert.deepEqual(doc.db, ["main"]);
   assert.deepEqual(doc.httpAllow, ["api.stripe.com"]);
   assert.deepEqual(doc.emits, ["orders:order:order:shipped"]);
+  assert.deepEqual(doc.dispatches, [{ target: "orders.invoice-logger", path: "/deliver" }]);
 });
 
 test("describe: endpoint options (maxBodyBytes, timeoutMs, cors)", () => {
