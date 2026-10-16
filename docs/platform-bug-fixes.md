@@ -1780,6 +1780,106 @@ instead. Security condition: the grant must not let one application touch anothe
   (`protectedIds`, from `fn_trigger_objects`); Go has no such guard, so an all-applications
   anchor sweep can archive a function's pool (not changed here).
 
+### F20. Application admin pages: scoped reads, users and invitations (framework M4e, 2026-10-16)
+
+**Why.** The framework's application admin pages (`flowcatalyst-framework`
+`docs/contracts/admin.md`, `flowcatalyst.md` section 5 "Platform work") call the platform as the
+application's own service account, after the application has enforced the signed-in user's admin
+permission (owner ruling). Two things were missing: the `application-service` role had no
+event/dispatch-job/user/invitation permission, and nothing confined an application-scoped caller to
+its own data on those routes; and there was no way to list, resend or revoke pending invitations.
+
+**The confinement rule** (one rule, `sdk.AppScope.ConfinedCodes`, `shared/sdk/app_scope.go`):
+a caller admitted only by an application-service permission is confined to the applications in its
+`applications` claim; a caller holding the console permission for the same read
+(`platform:messaging:event:view`, `...:dispatch-job:view`) is unchanged; a caller that reaches every
+application (`*`) is not narrowed. An application-scoped caller bound to none (or to ids that
+resolve to none) is `403 FORBIDDEN`, not an empty page: a mis-provisioned credential must be loud.
+Client reach (`scopeFilters`) stays on top. Ownership predicates:
+
+| Data | Owned by application A when | Where |
+|---|---|---|
+| event | first segment of its type is A's code (`msg_events_read.application`; the ingest confinement's rule) | SQL `application = ANY($codes)` |
+| dispatch job | first segment of its `code` is A's code (`msg_dispatch_jobs_read.application`; the batch-create rule) | SQL, and `ownedBy` on by-id / attempts / by-event |
+| user | CLIENT-scope, homed at a client A is **enabled** for (`app_client_configs.enabled`), holds >= 1 role named `A:...` | `appusers.Scope.where`, one predicate for list/get/invitations/resend/revoke |
+| invitation | an owned user who is active, INTERNAL, has no password and no external identity (the platform's `passwordSetupEligible`); PENDING while an invite token is unexpired, else EXPIRED | same |
+
+By id, a record outside the application answers the same `404` a missing id would (the PR-3(b)
+posture). `{appCode}` routes answer a foreign code, an unbound credential and (scoped callers) an
+unknown code with the SDK syncs' `403 "Not authorised for application '<code>'"`.
+
+**New permissions** (built-in `platform:application-service` role; seed + migration `080`, idempotent,
+Down removes exactly these): `platform:application-service:event:view`, `:dispatch-job:view`,
+`:user:view`, `:user:create`, `:invitation:view`, `:invitation:manage`. Tokens carry permissions from
+mint time: **every application service account must mint a new token**. The IAM equivalents
+(`platform:iam:user:view`/`create`) are also admitted on the user routes, confined the same way.
+
+**Endpoints.** Existing, new admission: `GET /api/events`, `/api/events/{id}`, `GET
+/api/dispatch-jobs`, `/{id}`, `/{id}/attempts`, `/event/{eventId}`. New (`internal/platform/appusers`,
+tag `application-users`, `x-sdk: app`): `GET/POST /api/applications/{appCode}/users`, `GET
+.../users/{id}`, `GET .../invitations`, `POST .../invitations/{id}/resend`, `DELETE
+.../invitations/{id}`. Shapes and codes: `docs/wire-contract.md` "Application admin".
+
+**Decisions taken conservatively (owner to confirm)**
+1. *Whose users.* Only CLIENT users at clients the application is enabled for, holding one of its
+   roles. Anchor, partner and clientless users, users of clients it is not enabled for, and users
+   holding none of its roles are invisible. Only the application's own roles are shown on a user.
+   Widening to "all clients" or "any client the application's users touch" is a one-line change in
+   `Scope.where`.
+2. *Cross-application deliveries.* Jobs are the application's by the job code, so application A sees
+   the delivery of its own events to **application B's** subscriber, including `targetUrl` and
+   the attempts' response bodies. Narrowest alternative (own events AND own subscriptions) needs a
+   subscription-owner join; not done.
+3. *Revoke deactivates.* A revoked invitee is deactivated (a passwordless active user can request a
+   fresh set-password link at the login page, so deleting the link alone revokes nothing). The
+   record is kept; reactivating is a console action. Resend of a deactivated user is `404`.
+4. *Invite requires a role.* Roles are what make a user the application's, so `POST .../users`
+   requires at least one of its roles and gives CLIENT scope only. `409 EMAIL_EXISTS` reveals that an
+   email exists on the platform (as create-user already does).
+5. *Expired invitations stay listed* (no token or an expired one, still passwordless): they are what
+   a resend is for.
+
+**Tests** (`-tags=integration`): `event/api/app_read_pg_test.go`, `dispatchjob/api/app_read_pg_test.go`
+(own application ok; other application and a filter that tries to reach it return nothing; unbound
+and dangling-id callers refused; permission required; all-applications sees all; console permission
+unconfined; client-scoped keeps its reach; by-id other = missing; pagination),
+`appusers/api_pg_test.go` (the visible set with ten negative users, filters, pagination tiling and
+clamps, binding on all six routes, admin, client-scoped, permissions per route, no sensitive fields
+(banned substrings and the exact key set), invite, invitations, resend, revoke), `server/app_admin_pages_pg_test.go`
+(the whole HTTP stack with a scoped bearer), `migrate/application_service_admin_pages_pg_test.go`
+(080 twice, other role untouched, Down), `shared/auth/app_admin_perms_test.go`, `seed/roles_test.go`.
+**Mutation check** (each mutant fails tests): event list filter dropped; event by-id ownership off;
+event SQL clause off; job list filter dropped; job SQL clause off; `ownedBy` always true;
+`ConfinedCodes` never confining; unbound callers let through; `CanReadAllEvents` admitting the
+application-service permission; users: role predicate, enabled-client predicate, `enabled` flag,
+CLIENT-scope predicate, caller client reach, application binding, unknown-app indistinguishability;
+invite: client-enablement check, caller client reach, foreign roles; revoke without deactivation;
+invitations without the invitee predicate; invite admitted by `user:view`.
+
+**Wire impact.** `api/openapi.lock.json` regenerated (`make api-bump`): six new operations, six
+existing read operations reclassified `x-sdk: app`; `clients/{typescript,laravel,java}-sdk/openapi/*`
+refreshed by `make sdk-spec`. **SDK regeneration needed later (not run):** TypeScript and Laravel
+(`make sdk-generate`); the Java SDK regenerates its models in `mvn verify`.
+
+**Java hand-off (the Java platform, `flowcatalyst-javalin`; not implemented).**
+1. Permissions: add the six to `Permissions.APPLICATION_SERVICE` and a data migration for existing
+   deployments (what `080` does).
+2. Events and dispatch jobs: admit the application-service view next to the messaging view on the
+   six read routes; when admitted only by it, confine to the caller's applications' codes (resolve
+   `applications` ids to codes; empty => 403 `FORBIDDEN`), as a SQL predicate on the read
+   projection's `application` column, and 404 (same as missing) on a by-id of another application's
+   row. Leave the messaging-view path unconfined.
+3. `GET/POST /api/applications/{appCode}/users`, `GET .../users/{id}`, `GET .../invitations`,
+   `POST .../invitations/{id}/resend`, `DELETE .../invitations/{id}`: shapes and codes in
+   `docs/wire-contract.md`. The visible-set predicate is in `appusers.Scope.where`; the invite
+   operation is `InviteApplicationUser` (`principal/operations/invite_application_user.go`):
+   CLIENT scope, roles from `applicationRoles` (403 `ROLE_APP_FORBIDDEN`, unknown 400
+   `UNKNOWN_ROLE`, none 400 `ROLES_REQUIRED`), F8 ceiling, source `ADMIN_ASSIGNED`, client must be
+   enabled for the application and reachable by the caller (one 403 answer), then the existing
+   invite mint (replaces earlier tokens) after commit.
+4. Revoke = deactivate the user (existing use case) then delete `iam_password_reset_tokens` with
+   `purpose = 'invite'` for it.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads

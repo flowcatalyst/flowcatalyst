@@ -179,6 +179,12 @@ type FilterParams struct {
 	// principal's tenants, never reach across them.
 	AccessibleClientIDs *[]string
 
+	// AccessibleApplications: a non-nil pointer scopes results to events whose
+	// application (the first segment of the type) is one of the codes; nil
+	// means no application scoping. Set for a caller confined to its own
+	// applications (F20). Applied in SQL, so no caller filter can widen it.
+	AccessibleApplications *[]string
+
 	// Cursor keeps only events after it in the list's order (created_at,
 	// then id, newest first) — the keyset cursor of a paged list (the /ui
 	// events page's "Older").
@@ -204,6 +210,9 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Eve
 	f.Any("client_id", p.ClientIDs)
 	if p.AccessibleClientIDs != nil {
 		f.Clause("(client_id IS NULL OR client_id = ANY($%d))", *p.AccessibleClientIDs)
+	}
+	if p.AccessibleApplications != nil {
+		f.Clause("application = ANY($%d)", *p.AccessibleApplications)
 	}
 	f.Any("application", p.Applications)
 	f.Any("subdomain", p.Subdomains)

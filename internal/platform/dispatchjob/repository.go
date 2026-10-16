@@ -82,6 +82,12 @@ type FilterParams struct {
 	// tenants, never reach across them.
 	AccessibleClientIDs *[]string
 
+	// AccessibleApplications: a non-nil pointer scopes results to jobs whose
+	// application (the first segment of the code) is one of the codes; nil
+	// means no application scoping. Set for a caller confined to its own
+	// applications (F20). Applied in SQL, so no caller filter can widen it.
+	AccessibleApplications *[]string
+
 	// ExcludePlatformScoped drops platform-scoped jobs (client_id IS NULL):
 	// the requeue-by-filter id walk sets it for a caller that may see those
 	// jobs but may not requeue them.
@@ -141,6 +147,9 @@ func (p FilterParams) where() repocommon.Filter {
 	f.Any("code", p.Codes)
 	f.EqPtr("source", p.Source)
 	f.EqPtr("message_group", p.MessageGroup)
+	if p.AccessibleApplications != nil {
+		f.Clause("application = ANY($%d)", *p.AccessibleApplications)
+	}
 	// Facets filter the projection's real columns (split_part of code), backed
 	// by their own indexes — replacing the old leading-wildcard code LIKEs.
 	f.Any("application", p.Applications)

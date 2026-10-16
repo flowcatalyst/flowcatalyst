@@ -4,12 +4,14 @@ package api
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
 	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
@@ -17,6 +19,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/sdk"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
@@ -38,6 +41,11 @@ type State struct {
 	// action (owner, 2026-09-22). nil disables the route's body (501).
 	// Wired to processing.Handler.Plan.
 	Plan func(ctx context.Context, job *dispatchjob.DispatchJob) (*dispatchprocessing.DeliveryPlan, error)
+	// Apps resolves a caller's bound application ids to codes, to confine a
+	// caller admitted only by the application-service dispatch-job:view to its
+	// own applications' jobs (F20). Optional only in tests: nil refuses such a
+	// caller.
+	Apps *application.Repository
 }
 
 // withClientIdentifier fills each list row's clientIdentifier through the
@@ -259,12 +267,41 @@ func scopeFilters(ac *auth.AuthContext, f dispatchjob.FilterParams) dispatchjob.
 // list's Body is a bare JSON array — the SPA's DispatchJobListPage binds
 // the returned array directly to its DataTable, so {items:[...]} would
 // render zero rows. (Shared by listRaw + byEvent.)
-func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[[]DispatchJobRead], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+// readConfinement answers the application codes a dispatch-job read is
+// confined to for ac (F20): none for a caller holding the messaging view
+// permission (as before) or reaching every application; for a caller admitted
+// only by the application-service dispatch-job:view, the codes of the
+// applications it is bound to (403 for a caller bound to none).
+func (s *State) readConfinement(ctx context.Context, ac *auth.AuthContext) (*[]string, error) {
+	if auth.CanReadAllDispatchJobs(ac) {
+		return nil, nil
+	}
+	codes, confined, err := sdk.NewAppScope(s.Apps).ConfinedCodes(ctx, ac)
+	if err != nil || !confined {
 		return nil, err
 	}
-	rows, err := s.Repo.FindWithFilters(ctx, scopeFilters(ac, in.toFilters()))
+	return &codes, nil
+}
+
+// ownedBy reports whether a job's application (the first segment of its code,
+// the projection's application column) is one of apps; always true when the
+// read is not confined (apps nil).
+func ownedBy(apps *[]string, code string) bool {
+	return apps == nil || slices.Contains(*apps, sdk.FirstSegment(code))
+}
+
+func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[[]DispatchJobRead], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReadDispatchJobs(ac); err != nil {
+		return nil, err
+	}
+	apps, err := s.readConfinement(ctx, ac)
+	if err != nil {
+		return nil, err
+	}
+	f := scopeFilters(ac, in.toFilters())
+	f.AccessibleApplications = apps
+	rows, err := s.Repo.FindWithFilters(ctx, f)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
@@ -316,14 +353,20 @@ func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*apicommon.
 
 func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[DispatchJobResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+	if err := auth.CanReadDispatchJobs(ac); err != nil {
+		return nil, err
+	}
+	apps, err := s.readConfinement(ctx, ac)
+	if err != nil {
 		return nil, err
 	}
 	j, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
-	if j == nil {
+	// A job of another application answers the same not-found a missing id
+	// would (F20).
+	if j == nil || !ownedBy(apps, j.Code) {
 		return nil, httperror.NotFound("DispatchJob", in.ID)
 	}
 	if err := auth.CheckScopeAccess(ac, ids.StringPtr(j.ClientID)); err != nil { // A2: per-resource client scope
@@ -354,16 +397,21 @@ func (s *State) getRaw(ctx context.Context, in *apicommon.IDInput) (*apicommon.O
 // GET /api/dispatch-jobs/{id}/attempts.
 func (s *State) attempts(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[[]AttemptDTO], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+	if err := auth.CanReadDispatchJobs(ac); err != nil {
+		return nil, err
+	}
+	apps, err := s.readConfinement(ctx, ac)
+	if err != nil {
 		return nil, err
 	}
 	// A2: load the job to enforce per-resource client scope before exposing
-	// its attempts (the attempts query itself isn't client-scoped).
+	// its attempts (the attempts query itself isn't client-scoped); F20: and
+	// the application confinement.
 	j, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
-	if j == nil {
+	if j == nil || !ownedBy(apps, j.Code) {
 		return nil, httperror.NotFound("DispatchJob", in.ID)
 	}
 	if err := auth.CheckScopeAccess(ac, ids.StringPtr(j.ClientID)); err != nil {
@@ -383,7 +431,11 @@ type byEventInput struct {
 
 func (s *State) byEvent(ctx context.Context, in *byEventInput) (*apicommon.Out[[]DispatchJobRead], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+	if err := auth.CanReadDispatchJobs(ac); err != nil {
+		return nil, err
+	}
+	apps, err := s.readConfinement(ctx, ac)
+	if err != nil {
 		return nil, err
 	}
 	rows, err := s.Repo.FindByEventID(ctx, in.EventID)
@@ -396,6 +448,10 @@ func (s *State) byEvent(ctx context.Context, in *byEventInput) (*apicommon.Out[[
 		// NOTE: CanAccessScope (not FilterClientScoped) — platform-scoped
 		// jobs (nil client) are visible to anchors/super-admins only here.
 		if !auth.CanAccessScope(ac, ids.StringPtr(rows[i].ClientID)) {
+			continue
+		}
+		// F20: only the caller's own applications' jobs.
+		if !ownedBy(apps, rows[i].Code) {
 			continue
 		}
 		out = append(out, readFromEntity(&rows[i]))

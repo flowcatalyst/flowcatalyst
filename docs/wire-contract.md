@@ -363,6 +363,94 @@ none). Another application's role still refuses the whole sync,
 `403 ROLE_APP_FORBIDDEN`. The platform route `POST /api/principals/sync` is
 unchanged and has no `skippedRoles`.
 
+## Application admin: scoped reads, users and invitations
+
+F20 (`docs/platform-bug-fixes.md`). An application's own admin pages call the
+platform as the application's service account. Everything below is confined to
+the applications the credential is bound to (the `applications` claim); a
+credential reaching every application (`*`) is not narrowed. Permissions are in
+the built-in `platform:application-service` role (migration 080).
+
+**Confinement, all routes.**
+`{appCode}` routes: a bound application passes. Another application's code,
+an unbound credential, and (for any application-scoped credential) a code that
+names no application, all answer
+`403 {"error":"FORBIDDEN","message":"Not authorised for application '<code>'"}`,
+the SDK syncs' shape, so the answer does not say which applications exist. A
+credential reaching every application gets `404` for an unknown code.
+Records outside the application answer the same `404` a missing id would
+(`Event_NOT_FOUND`, `DispatchJob_NOT_FOUND`, `User_NOT_FOUND`,
+`Invitation_NOT_FOUND`).
+
+**Events and dispatch jobs** (existing routes, new admission).
+`GET /api/events`, `GET /api/events/{id}`, `GET /api/dispatch-jobs`,
+`GET /api/dispatch-jobs/{id}`, `GET /api/dispatch-jobs/{id}/attempts`,
+`GET /api/dispatch-jobs/event/{eventId}` additionally admit
+`platform:application-service:event:view` / `...:dispatch-job:view`. Shapes,
+filters and paging (`size`/`limit` up to 1000, `offset`) are unchanged. A caller
+admitted only by the application-service permission sees only rows whose
+application (the first segment of the event type or job code, the read
+projection's `application` column) is one it is bound to; its own `applications`,
+`types`, `code`, `codes` filters can only narrow within that, never widen. A
+credential bound to no application (or to ids that resolve to none) is
+`403 FORBIDDEN` "this credential is not bound to an application", not an empty
+page. Callers holding the console's `platform:messaging:event:view` /
+`dispatch-job:view` are unchanged and unconfined by application; the client
+scoping of the console stays on top for both.
+
+**Users** (`platform:application-service:user:view`, or `platform:iam:user:view`).
+An application's users are the CLIENT-scope users homed at a client the
+application is enabled for (`app_client_configs.enabled`) who hold at least one
+of its roles. A client-scoped caller also keeps its own client reach.
+
+- `GET /api/applications/{appCode}/users`: query `q`, `active`, `clientId`,
+  `roles` (the application's roles; a foreign role matches nothing), `page`
+  (0-based), `pageSize` (default 50, max 200), `sortField`
+  (`name`|`email`|`createdAt`), `sortOrder`. Response
+  `{users:[ApplicationUser], total, page, pageSize}`.
+- `GET /api/applications/{appCode}/users/{id}`: one `ApplicationUser`.
+- `ApplicationUser`: `id`, `email`, `name`, `active`, `clientId`, `idpType`
+  (`INTERNAL`|`OIDC`), `roles` (only the application's own), `invitation`
+  (`PENDING`|`EXPIRED`, absent unless awaiting an invitation), `lastLoginAt?`,
+  `createdAt`. Never a password hash, token, link or second-factor state.
+- `POST /api/applications/{appCode}/users` (`...:user:create` or
+  `platform:iam:user:create`), `201`: body `{email, name, clientId, roles[1..],
+  sendInvitation?, returnInviteLink?, inviteRedirectUri?}`. `clientId` is a `clt_`
+  id or the identifier; the application must be enabled for it and the caller
+  must reach it, otherwise `403` "client is not available to this application"
+  (unknown, not enabled and out-of-reach are one answer). `roles` are the
+  application's (`app:role` or the short name): another application's is
+  `403 ROLE_APP_FORBIDDEN`, a name that is not a role is `400 UNKNOWN_ROLE`
+  (never silently dropped), none is `400 ROLES_REQUIRED`; the F8 ceiling
+  applies. The user is CLIENT scope, roles tagged `ADMIN_ASSIGNED`.
+  `409 EMAIL_EXISTS` as for create-user. Response `{id, inviteLink?,
+  invitationSent}`: the same `sendInvitation` / `returnInviteLink` /
+  `inviteRedirectUri` rules as create-user; `invitationSent` is true only when
+  the platform emailed it (false for a federated user, a returned link, or a
+  failed delivery, which is logged; resend it).
+
+**Invitations.** An invitation is an active, internal-password user, visible
+to the application, who has not set a password. `PENDING` while an unexpired
+invite token exists, `EXPIRED` otherwise (the token lapsed or was purged).
+
+- `GET /api/applications/{appCode}/invitations`
+  (`...:invitation:view`, `...:invitation:manage` or `platform:iam:user:view`):
+  query `status` (`PENDING`|`EXPIRED`), `page`, `pageSize`. Response
+  `{invitations:[{userId, email, name, clientId, roles, status, createdAt,
+  expiresAt?}], total, page, pageSize}`. Never the link or token.
+- `POST /api/applications/{appCode}/invitations/{id}/resend`
+  (`...:invitation:manage` or `platform:iam:user:create`), `200`: optional body
+  as above; mints a fresh invite (the earlier link stops working) and emails it
+  or, with `returnInviteLink`, returns it. Response `{inviteLink?, expiresAt?}`.
+  Nothing to deliver (`sendInvitation:false` without the link) is
+  `400 INVITATION_DELIVERY_REQUIRED`; a failed delivery is `500
+  INVITE_DELIVERY_FAILED`, never a silent success.
+- `DELETE /api/applications/{appCode}/invitations/{id}`, `204`: revokes. The
+  user is deactivated (a passwordless active user can ask for a fresh link at
+  the login page, so deleting the link alone would revoke nothing) and the
+  invite tokens are deleted. The user record stays; reactivating it is a console
+  action. Not an invitee in the application: `404`.
+
 ## Webhook signatures
 
 Webhook delivery (router → subscriber) signs

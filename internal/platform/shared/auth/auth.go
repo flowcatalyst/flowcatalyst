@@ -148,6 +148,19 @@ const (
 	permAppSvcDocsSync                  = "platform:application-service:docs:sync"
 	permAppSvcApplicationView           = "platform:application-service:application:view"
 	permAppSvcAppOpenApiSync            = "platform:application-service:application-openapi:sync"
+	// Scoped reads and user/invitation administration for an application's
+	// own admin pages (F20). Each is a narrow grant: a caller admitted only by
+	// it is confined to the applications it is bound to by the handler.
+	permAppSvcEventView        = "platform:application-service:event:view"
+	permAppSvcDispatchJobView  = "platform:application-service:dispatch-job:view"
+	permAppSvcUserView         = "platform:application-service:user:view"
+	permAppSvcUserCreate       = "platform:application-service:user:create"
+	permAppSvcInvitationView   = "platform:application-service:invitation:view"
+	permAppSvcInvitationManage = "platform:application-service:invitation:manage"
+	// The messaging view permissions the event and dispatch-job reads were
+	// always gated on (unconfined by application).
+	permMessagingEventView       = "platform:messaging:event:view"
+	permMessagingDispatchJobView = "platform:messaging:dispatch-job:view"
 	// Developer (application OpenAPI documents)
 	permAppOpenApiSync   = "platform:developer:application-openapi:sync"
 	permAppOpenApiManage = "platform:developer:application-openapi:manage"
@@ -517,6 +530,60 @@ func joinPerms(p []string) string {
 		out.WriteString(s)
 	}
 	return out.String()
+}
+
+// ── Event and dispatch-job reads (F20) ────────────────────────────────────
+
+// CanReadEvents is the coarse guard on the event read endpoints. Admits the
+// messaging view permission (as always) and the application-service view an
+// application's service account holds. A caller admitted only by the second is
+// confined by the handler to the events of the applications it is bound to
+// (CanReadAllEvents false).
+func CanReadEvents(a *AuthContext) error {
+	return requireAny(a, permMessagingEventView, permAppSvcEventView)
+}
+
+// CanReadAllEvents reports whether the principal reads events without the
+// per-application confinement: it holds the messaging view permission.
+func CanReadAllEvents(a *AuthContext) bool {
+	return a != nil && a.HasPermission(permMessagingEventView)
+}
+
+// CanReadDispatchJobs is CanReadEvents for dispatch jobs.
+func CanReadDispatchJobs(a *AuthContext) error {
+	return requireAny(a, permMessagingDispatchJobView, permAppSvcDispatchJobView)
+}
+
+// CanReadAllDispatchJobs reports whether the principal reads dispatch jobs
+// without the per-application confinement: it holds the messaging view
+// permission.
+func CanReadAllDispatchJobs(a *AuthContext) bool {
+	return a != nil && a.HasPermission(permMessagingDispatchJobView)
+}
+
+// ── Application user and invitation administration (F20) ──────────────────
+
+// CanReadApplicationUsers guards the application-scoped user reads: the
+// application-service user:view an application's service account holds, or the
+// IAM user view. The route confines either to the application in its path.
+func CanReadApplicationUsers(a *AuthContext) error {
+	return requireAny(a, permAppSvcUserView, permUserView)
+}
+
+// CanInviteApplicationUsers guards creating (inviting) a user for an
+// application: the application-service user:create or the IAM user create.
+func CanInviteApplicationUsers(a *AuthContext) error {
+	return requireAny(a, permAppSvcUserCreate, permUserCreate)
+}
+
+// CanReadApplicationInvitations guards listing pending invitations.
+func CanReadApplicationInvitations(a *AuthContext) error {
+	return requireAny(a, permAppSvcInvitationView, permAppSvcInvitationManage, permUserView)
+}
+
+// CanManageApplicationInvitations guards resending and revoking an invitation.
+func CanManageApplicationInvitations(a *AuthContext) error {
+	return requireAny(a, permAppSvcInvitationManage, permUserCreate)
 }
 
 // ── EventType permission checks ───────────────────────────────────────────

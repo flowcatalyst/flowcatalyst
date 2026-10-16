@@ -3,6 +3,7 @@ package io.flowcatalyst.sdk;
 import io.flowcatalyst.sdk.auth.ClientCredentialsTokenManager;
 import io.flowcatalyst.sdk.auth.TokenProvider;
 import io.flowcatalyst.sdk.http.Transport;
+import io.flowcatalyst.sdk.resources.ApplicationUsersResource;
 import io.flowcatalyst.sdk.resources.ApplicationsResource;
 import io.flowcatalyst.sdk.resources.AuditLogsResource;
 import io.flowcatalyst.sdk.resources.ClientsResource;
@@ -10,6 +11,7 @@ import io.flowcatalyst.sdk.resources.ConnectionsResource;
 import io.flowcatalyst.sdk.resources.DispatchJobsResource;
 import io.flowcatalyst.sdk.resources.DispatchPoolsResource;
 import io.flowcatalyst.sdk.resources.EventTypesResource;
+import io.flowcatalyst.sdk.resources.EventsResource;
 import io.flowcatalyst.sdk.resources.MeResource;
 import io.flowcatalyst.sdk.resources.PermissionsResource;
 import io.flowcatalyst.sdk.resources.PrincipalsResource;
@@ -59,6 +61,8 @@ public final class FlowCatalystClient {
     private ScheduledJobsResource scheduledJobs;
     private AuditLogsResource auditLogs;
     private DispatchJobsResource dispatchJobs;
+    private EventsResource events;
+    private ApplicationUsersResource applicationUsers;
     private io.flowcatalyst.sdk.sync.DefinitionSynchronizer definitions;
 
     private FlowCatalystClient(Builder builder) {
@@ -169,6 +173,20 @@ public final class FlowCatalystClient {
      */
     public synchronized DispatchJobsResource dispatchJobs() {
         return dispatchJobs != null ? dispatchJobs : (dispatchJobs = new DispatchJobsResource(transport));
+    }
+
+    /** Reads of events: {@code GET /api/events}. An application service account sees its own. */
+    public synchronized EventsResource events() {
+        return events != null ? events : (events = new EventsResource(transport));
+    }
+
+    /**
+     * An application's own users and invitations (list, get, invite, list/resend/revoke
+     * invitations), for its admin pages.
+     */
+    public synchronized ApplicationUsersResource applicationUsers() {
+        return applicationUsers != null
+                ? applicationUsers : (applicationUsers = new ApplicationUsersResource(transport));
     }
 
     /**

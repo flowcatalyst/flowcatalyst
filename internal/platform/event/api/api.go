@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -371,12 +372,34 @@ func scopeFilters(ac *auth.AuthContext, f event.FilterParams) event.FilterParams
 	return f
 }
 
-func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[[]EventRead], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, "platform:messaging:event:view"); err != nil {
+// readConfinement answers the application codes a read endpoint is confined to
+// for ac (F20): none for a caller holding the messaging view permission (as
+// before) or reaching every application; for a caller admitted only by the
+// application-service event:view, the codes of the applications it is bound to
+// (403 for a caller bound to none).
+func (s *State) readConfinement(ctx context.Context, ac *auth.AuthContext) (*[]string, error) {
+	if auth.CanReadAllEvents(ac) {
+		return nil, nil
+	}
+	codes, confined, err := sdk.NewAppScope(s.Apps).ConfinedCodes(ctx, ac)
+	if err != nil || !confined {
 		return nil, err
 	}
-	rows, err := s.Repo.FindWithFilters(ctx, scopeFilters(ac, in.toFilters()))
+	return &codes, nil
+}
+
+func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[[]EventRead], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReadEvents(ac); err != nil {
+		return nil, err
+	}
+	apps, err := s.readConfinement(ctx, ac)
+	if err != nil {
+		return nil, err
+	}
+	f := scopeFilters(ac, in.toFilters())
+	f.AccessibleApplications = apps
+	rows, err := s.Repo.FindWithFilters(ctx, f)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
@@ -449,7 +472,11 @@ func (s *State) getDebugRaw(ctx context.Context, in *apicommon.IDInput) (*apicom
 
 func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[EventResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, "platform:messaging:event:view"); err != nil {
+	if err := auth.CanReadEvents(ac); err != nil {
+		return nil, err
+	}
+	apps, err := s.readConfinement(ctx, ac)
+	if err != nil {
 		return nil, err
 	}
 	ev, err := s.Repo.FindByID(ctx, in.ID)
@@ -457,6 +484,12 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if ev == nil {
+		return nil, httperror.NotFound("Event", in.ID)
+	}
+	// An event of another application answers the same not-found a missing id
+	// would, so the response cannot be used to learn whether an id is real
+	// (F20).
+	if apps != nil && (ev.Application == nil || !slices.Contains(*apps, *ev.Application)) {
 		return nil, httperror.NotFound("Event", in.ID)
 	}
 	// Per-resource tenant scoping, matching the list semantics: a

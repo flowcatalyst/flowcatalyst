@@ -748,6 +748,10 @@ func (s *State) notifyNewUser(ctx context.Context, p *principal.Principal, passw
 	return nil
 }
 
+// ResolveInviteRedirect exports resolveInviteRedirect for the application
+// invitation routes (F20), which take the same inviteRedirectUri.
+func ResolveInviteRedirect(raw *string) (*string, error) { return resolveInviteRedirect(raw) }
+
 // resolveInviteRedirect validates create-user's inviteRedirectUri: where the
 // calling application wants the invitee sent after set-password — usually its
 // own home page, which then starts its own sign-in. Absent or blank is no

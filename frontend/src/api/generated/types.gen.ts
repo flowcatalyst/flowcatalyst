@@ -135,6 +135,28 @@ export type ApplicationFilterListResponse = {
     applicationCodes: Array<string>;
 };
 
+export type ApplicationInvitation = {
+    clientId: string;
+    createdAt: string;
+    email: string;
+    expiresAt?: string;
+    name: string;
+    roles: Array<string>;
+    status: string;
+    userId: string;
+};
+
+export type ApplicationInvitationList = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    invitations: Array<ApplicationInvitation>;
+    page: number;
+    pageSize: number;
+    total: number;
+};
+
 export type ApplicationListResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -208,6 +230,34 @@ export type ApplicationServiceAccountCredentials = {
     name: string;
     oauthClient: ApplicationOAuthClientCredentials;
     principalId: string;
+};
+
+export type ApplicationUser = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    active: boolean;
+    clientId: string;
+    createdAt: string;
+    email: string;
+    id: string;
+    idpType: string;
+    invitation?: string;
+    lastLoginAt?: string;
+    name: string;
+    roles: Array<string>;
+};
+
+export type ApplicationUserList = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    page: number;
+    pageSize: number;
+    total: number;
+    users: Array<ApplicationUser>;
 };
 
 export type AssignApplicationAccessRequest = {
@@ -1957,6 +2007,31 @@ export type IntrospectResponse = {
     type?: string;
 };
 
+export type InviteApplicationUserRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    clientId: string;
+    email: string;
+    inviteRedirectUri?: string;
+    name: string;
+    returnInviteLink?: boolean;
+    roles: Array<string>;
+    sendInvitation?: boolean;
+    [key: string]: unknown;
+};
+
+export type InviteApplicationUserResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    id: string;
+    invitationSent: boolean;
+    inviteLink?: string;
+};
+
 export type Jwk = {
     alg: string;
     e?: string;
@@ -2891,6 +2966,26 @@ export type RequeueResponse = {
      */
     readonly $schema?: string;
     requeued: number;
+};
+
+export type ResendInvitationRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    inviteRedirectUri?: string;
+    returnInviteLink?: boolean;
+    sendInvitation?: boolean;
+    [key: string]: unknown;
+};
+
+export type ResendInvitationResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    expiresAt?: string;
+    inviteLink?: string;
 };
 
 export type ResetPasswordRequest = {
@@ -4167,6 +4262,13 @@ export type ApplicationFilterListResponseWritable = {
     applicationCodes: Array<string>;
 };
 
+export type ApplicationInvitationListWritable = {
+    invitations: Array<ApplicationInvitation>;
+    page: number;
+    pageSize: number;
+    total: number;
+};
+
 export type ApplicationListResponseWritable = {
     applications: Array<ApplicationResponseWritable>;
     total: number;
@@ -4202,6 +4304,26 @@ export type ApplicationResponseWritable = {
 
 export type ApplicationRolesResponseWritable = {
     roles: Array<string>;
+};
+
+export type ApplicationUserWritable = {
+    active: boolean;
+    clientId: string;
+    createdAt: string;
+    email: string;
+    id: string;
+    idpType: string;
+    invitation?: string;
+    lastLoginAt?: string;
+    name: string;
+    roles: Array<string>;
+};
+
+export type ApplicationUserListWritable = {
+    page: number;
+    pageSize: number;
+    total: number;
+    users: Array<ApplicationUserWritable>;
 };
 
 export type AssignApplicationAccessRequestWritable = {
@@ -5257,6 +5379,23 @@ export type IntrospectResponseWritable = {
     type?: string;
 };
 
+export type InviteApplicationUserRequestWritable = {
+    clientId: string;
+    email: string;
+    inviteRedirectUri?: string;
+    name: string;
+    returnInviteLink?: boolean;
+    roles: Array<string>;
+    sendInvitation?: boolean;
+    [key: string]: unknown;
+};
+
+export type InviteApplicationUserResponseWritable = {
+    id: string;
+    invitationSent: boolean;
+    inviteLink?: string;
+};
+
 export type JwksResponseWritable = {
     keys: Array<Jwk>;
 };
@@ -5796,6 +5935,18 @@ export type RequeueRequestWritable = {
 
 export type RequeueResponseWritable = {
     requeued: number;
+};
+
+export type ResendInvitationRequestWritable = {
+    inviteRedirectUri?: string;
+    returnInviteLink?: boolean;
+    sendInvitation?: boolean;
+    [key: string]: unknown;
+};
+
+export type ResendInvitationResponseWritable = {
+    expiresAt?: string;
+    inviteLink?: string;
 };
 
 export type ResetPasswordRequestWritable = {
@@ -6886,6 +7037,114 @@ export type SyncEventTypesResponses = {
 
 export type SyncEventTypesResponse = SyncEventTypesResponses[keyof SyncEventTypesResponses];
 
+export type ListApplicationInvitationsData = {
+    body?: never;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+    };
+    query?: {
+        /**
+         * PENDING | EXPIRED; absent = both
+         */
+        status?: string;
+        /**
+         * 0-based page (default 0)
+         */
+        page?: number;
+        /**
+         * Page size (default 50, max 200)
+         */
+        pageSize?: number;
+    };
+    url: '/api/applications/{appCode}/invitations';
+};
+
+export type ListApplicationInvitationsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListApplicationInvitationsError = ListApplicationInvitationsErrors[keyof ListApplicationInvitationsErrors];
+
+export type ListApplicationInvitationsResponses = {
+    /**
+     * OK
+     */
+    200: ApplicationInvitationList;
+};
+
+export type ListApplicationInvitationsResponse = ListApplicationInvitationsResponses[keyof ListApplicationInvitationsResponses];
+
+export type RevokeApplicationInvitationData = {
+    body?: never;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+        id: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/invitations/{id}';
+};
+
+export type RevokeApplicationInvitationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RevokeApplicationInvitationError = RevokeApplicationInvitationErrors[keyof RevokeApplicationInvitationErrors];
+
+export type RevokeApplicationInvitationResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RevokeApplicationInvitationResponse = RevokeApplicationInvitationResponses[keyof RevokeApplicationInvitationResponses];
+
+export type ResendApplicationInvitationData = {
+    body: ResendInvitationRequestWritable;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+        /**
+         * The invited user's id
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/invitations/{id}/resend';
+};
+
+export type ResendApplicationInvitationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ResendApplicationInvitationError = ResendApplicationInvitationErrors[keyof ResendApplicationInvitationErrors];
+
+export type ResendApplicationInvitationResponses = {
+    /**
+     * OK
+     */
+    200: ResendInvitationResponse;
+};
+
+export type ResendApplicationInvitationResponse = ResendApplicationInvitationResponses[keyof ResendApplicationInvitationResponses];
+
 export type SyncOpenapiData = {
     body: SyncOpenapiRequestWritable;
     path: {
@@ -7085,6 +7344,130 @@ export type SyncSubscriptionsResponses = {
 };
 
 export type SyncSubscriptionsResponse = SyncSubscriptionsResponses[keyof SyncSubscriptionsResponses];
+
+export type ListApplicationUsersData = {
+    body?: never;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+    };
+    query?: {
+        /**
+         * Case-insensitive substring of name or email
+         */
+        q?: string;
+        /**
+         * true | false; absent = both
+         */
+        active?: string;
+        /**
+         * Only users homed at this client
+         */
+        clientId?: string;
+        /**
+         * CSV of the application's roles; users holding any
+         */
+        roles?: string;
+        /**
+         * 0-based page (default 0)
+         */
+        page?: number;
+        /**
+         * Page size (default 50, max 200)
+         */
+        pageSize?: number;
+        /**
+         * name | email | createdAt (default createdAt)
+         */
+        sortField?: string;
+        /**
+         * asc | desc (default asc)
+         */
+        sortOrder?: string;
+    };
+    url: '/api/applications/{appCode}/users';
+};
+
+export type ListApplicationUsersErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListApplicationUsersError = ListApplicationUsersErrors[keyof ListApplicationUsersErrors];
+
+export type ListApplicationUsersResponses = {
+    /**
+     * OK
+     */
+    200: ApplicationUserList;
+};
+
+export type ListApplicationUsersResponse = ListApplicationUsersResponses[keyof ListApplicationUsersResponses];
+
+export type InviteApplicationUserData = {
+    body: InviteApplicationUserRequestWritable;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/users';
+};
+
+export type InviteApplicationUserErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type InviteApplicationUserError = InviteApplicationUserErrors[keyof InviteApplicationUserErrors];
+
+export type InviteApplicationUserResponses = {
+    /**
+     * Created
+     */
+    201: InviteApplicationUserResponse;
+};
+
+export type InviteApplicationUserResponse2 = InviteApplicationUserResponses[keyof InviteApplicationUserResponses];
+
+export type GetApplicationUserData = {
+    body?: never;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+        id: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/users/{id}';
+};
+
+export type GetApplicationUserErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetApplicationUserError = GetApplicationUserErrors[keyof GetApplicationUserErrors];
+
+export type GetApplicationUserResponses = {
+    /**
+     * OK
+     */
+    200: ApplicationUser;
+};
+
+export type GetApplicationUserResponse = GetApplicationUserResponses[keyof GetApplicationUserResponses];
 
 export type DeleteApplicationData = {
     body?: never;

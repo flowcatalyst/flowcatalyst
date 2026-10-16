@@ -13,6 +13,7 @@ import (
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
 	applicationapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appusers"
 	auditapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit/api"
 	authapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
@@ -173,6 +174,20 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			MFA:               svcs.mfaSvc,
 			Audit:             repos.auditRepo,
 			UoW:               uow,
+		})
+
+		// An application's own users and invitations, as its service account (F20).
+		appusers.Register(humaAPI, &appusers.State{
+			Repo:              repos.appUsersRepo,
+			Principals:        repos.principalRepo,
+			Roles:             repos.roleRepo,
+			Apps:              repos.applicationRepo,
+			ClientConfigs:     repos.applicationClientConfigRepo,
+			Clients:           repos.clientRepo,
+			Mappings:          repos.edmRepo,
+			IdentityProviders: repos.idpRepo,
+			UoW:               uow,
+			Invites:           principalResetEmailer,
 		})
 
 		portalusersapi.Register(humaAPI, &portalusersapi.State{
@@ -407,7 +422,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// cancel/complete a FAILED job and resend a group, all of which run
 		// through the use-case envelope rather than a bare UPDATE.
 		dispatchjobapi.Register(humaAPI, &dispatchjobapi.State{
-			Repo: repos.dispatchJobRepo, UoW: uow,
+			Repo: repos.dispatchJobRepo, UoW: uow, Apps: repos.applicationRepo,
 			ClientIdentifier: client.NewCachedIdentifierResolver(repos.clientRepo, time.Minute),
 			// The sign action builds a delivery exactly as /api/dispatch/process
 			// would (same resolvers), minus the send — no verifier needed.

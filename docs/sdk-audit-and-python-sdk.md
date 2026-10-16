@@ -245,7 +245,7 @@ always classified by a decision. `api/openapi.lock.json` carries `x-sdk`, so a c
 reviewed lockfile diff, and `tools/dump-spec/testdata/sdk-classification.golden` lists every
 operation with its class (`go test ./tools/dump-spec -update` rewrites it).
 
-**Counts (303 operations).** app 71, admin 209, internal 23. Of the 289 operations the lock already had, 57
+**Counts (309 operations, after F20).** app 83, admin 203, internal 23 (F20 added six `application-users` operations as app and moved six console read operations, events and dispatch jobs list/get/attempts/by-event, from admin to app: an application's own admin pages read them as its service account, `docs/platform-bug-fixes.md` F20). Before F20: app 71, admin 209, internal 23, of 303. Of the 289 operations the lock already had, 57
 are app, 209 admin and 23 internal (the audit estimated 45 / 233 / 11); the other 14 app operations were added to the spec (below).
 
 **Operations added to the dumped spec.** The server serves these as plain chi handlers, so the

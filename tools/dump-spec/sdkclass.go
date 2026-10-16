@@ -71,6 +71,17 @@ var appOps = idSet(
 	// App-delegated user management (A.3: used by all three Inhance apps).
 	"getPrincipal", "listPrincipals", "createUser", "updatePrincipal", "resetPrincipalPassword",
 
+	// Scoped reads of an application's own events and dispatch jobs, and the
+	// administration of its own users and invitations: what the application's
+	// admin pages call as its service account (F20). The reads share the
+	// console's operations; an application service account holding only the
+	// application-service view is confined to its own applications by the
+	// handler.
+	"listEvents", "getEvent",
+	"listDispatchJobs", "getDispatchJob", "listDispatchJobAttempts", "dispatchJobsByEvent",
+	"listApplicationUsers", "getApplicationUser", "inviteApplicationUser",
+	"listApplicationInvitations", "resendApplicationInvitation", "revokeApplicationInvitation",
+
 	// Who am I (served by plain chi handlers; described by me.RegisterSpec).
 	"getMe", "listMyApplications", "listMyClients", "getMyClient", "listMyClientApplications",
 

@@ -110,3 +110,6 @@ Record the results. Anything unexpected: stop and look before deploying.
 - Update SDKs/apps one at a time, separately: rfp, integral, packages_root, then hr (see `docs/sdk-audit-and-python-sdk.md`,
   Part C). The Laravel mirror only has tags up to v0.10.26 (the split workflow is disabled).
 - Dispatch pool sync by application service accounts is done (F19); see step 7 for the one-time admin sync and token re-mint.
+- Application admin pages (F20, migration 080): the `application-service` role gains `event:view`, `dispatch-job:view`,
+  `user:view`, `user:create`, `invitation:view` and `invitation:manage`. An application whose admin pages use them must
+  re-mint its service account's token first; nothing else changes for existing callers.

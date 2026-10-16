@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	applicationapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appusers"
 	auditapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit/api"
 	authapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/oauthapi"
@@ -72,6 +73,7 @@ func buildSpec(withSDK bool) (*huma.OpenAPI, error) {
 	// here, so a missing line means the route is missing from the
 	// committed openapi.lock.json.
 	applicationapi.Register(api, &applicationapi.State{})
+	appusers.Register(api, &appusers.State{})
 	auditapi.Register(api, &auditapi.State{})
 	docsapi.Register(api, &docsapi.State{})
 	authapi.Register(api, &authapi.State{})

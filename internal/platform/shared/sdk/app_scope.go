@@ -6,6 +6,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
 
@@ -71,4 +72,36 @@ func (s *AppScope) CanAccessCode(ctx context.Context, ac *auth.AuthContext, code
 		return false, err
 	}
 	return id != nil && ac.CanAccessApplication(*id), nil
+}
+
+// ReadScopeRefused is the message of the refusal an application-scoped read
+// gives a caller bound to no (resolvable) application.
+const ReadScopeRefused = "this credential is not bound to an application"
+
+// ConfinedCodes answers which application codes a read is confined to for ac.
+// confined is false for a caller that reaches every application (all
+// applications), whose reads are not narrowed. For an application-scoped
+// caller it returns the codes of the applications it is bound to. A caller
+// bound to none (or to ids that no longer resolve) is refused with 403
+// APPLICATION_ACCESS_REQUIRED rather than answered an empty page, so a
+// mis-provisioned credential is loud, never silently blind (F20).
+func (s *AppScope) ConfinedCodes(ctx context.Context, ac *auth.AuthContext) (codes []string, confined bool, err error) {
+	if !ac.IsApplicationScoped() {
+		return nil, false, nil
+	}
+	if s.apps != nil {
+		for _, id := range ac.Applications {
+			app, ferr := s.apps.FindByID(ctx, id)
+			if ferr != nil {
+				return nil, true, usecase.Internal("REPO", "application find_by_id failed", ferr)
+			}
+			if app != nil && app.Code != "" {
+				codes = append(codes, app.Code)
+			}
+		}
+	}
+	if len(codes) == 0 {
+		return nil, true, httperror.Forbidden(ReadScopeRefused)
+	}
+	return codes, true, nil
 }

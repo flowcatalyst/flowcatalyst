@@ -161,6 +161,35 @@ String inviteLink = user.getInviteLink();
 // it is a live 72-hour bearer credential, exactly like a password.
 ```
 
+## Application admin pages: your own events, jobs and users
+
+An application's admin pages call the platform as the application's own service account
+(after your application has checked the signed-in user's admin permission). The service
+account is confined to its own application: it sees only events and dispatch jobs whose
+code starts with its application code, and only the users it owns (CLIENT users at clients
+the application is enabled for who hold one of its roles).
+
+```java
+var events = client.events().list(EventsResource.Filters.page(50, 0));        // newest first
+var jobs = client.dispatchJobs().list(DispatchJobsResource.Filters.page(50, 0));
+var attempts = client.dispatchJobs().attempts(jobs.getFirst().getId());
+
+var users = client.applicationUsers();
+var page = users.list("orders", ApplicationUsersResource.Filters.page(0, 50));
+users.invite("orders", new InviteApplicationUserRequest()
+        .email("ann@acme.test").name("Ann").clientId("acme").roles(List.of("orders:clerk")));
+var pending = users.invitations("orders", "PENDING", 0, 50);   // never carries a link
+users.resend("orders", userId, null);                          // fresh link, earlier one dies
+users.revoke("orders", userId);                                // deletes the link, deactivates the user
+```
+
+The credential needs the built-in `platform:application-service` role's
+`event:view`, `dispatch-job:view`, `user:view`, `user:create`, `invitation:view` and
+`invitation:manage` (mint a new token after the role gains them). Another application's
+data answers `403` (a code) or `404` (an id), and a credential bound to no application is
+refused with `403`. `returnInviteLink` gives the live link back instead of emailing it: treat
+it like a password.
+
 ## Declaring definitions
 
 Programmatically:

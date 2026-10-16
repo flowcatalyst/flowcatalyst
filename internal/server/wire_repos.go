@@ -4,6 +4,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appusers"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
@@ -54,6 +55,7 @@ type repoSet struct {
 	functionRepo                *function.Repository
 	functionDomainRepo          *functiondomain.Repository
 	eventRepo                   *event.Repository
+	appUsersRepo                *appusers.Repository
 	auditRepo                   *audit.Repository
 	idpRepo                     *identityprovider.Repository
 	edmRepo                     *emaildomainmapping.Repository
@@ -88,6 +90,7 @@ func buildRepos(pool *pgxpool.Pool) *repoSet {
 		functionRepo:                function.NewRepository(pool),
 		functionDomainRepo:          functiondomain.NewRepository(pool),
 		eventRepo:                   event.NewRepository(pool),
+		appUsersRepo:                appusers.NewRepository(pool),
 		auditRepo:                   audit.NewRepository(pool),
 		idpRepo:                     identityprovider.NewRepository(pool),
 		edmRepo:                     emaildomainmapping.NewRepository(pool),

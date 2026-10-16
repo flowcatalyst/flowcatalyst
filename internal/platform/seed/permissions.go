@@ -262,6 +262,16 @@ var permsApplicationService = []string{
 	permAdminBatchEventsWrite,
 	permAdminBatchDispatchJobsWrite,
 	permAdminBatchAuditLogsWrite,
+	// An application's own admin pages call the platform as its service
+	// account (F20). Reads of its own events and dispatch jobs, and the users
+	// and invitations of its own enabled clients: each confined by the
+	// handler to the applications the account is bound to.
+	"platform:application-service:event:view",
+	"platform:application-service:dispatch-job:view",
+	"platform:application-service:user:view",
+	"platform:application-service:user:create",
+	"platform:application-service:invitation:view",
+	"platform:application-service:invitation:manage",
 }
 
 // Wildcard.
