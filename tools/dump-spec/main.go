@@ -10,15 +10,18 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 
 	applicationapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/api"
 	auditapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit/api"
 	authapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/oauthapi"
 	clientapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/api"
 	connectionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/api"
 	corsapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors/api"
@@ -45,11 +48,20 @@ import (
 	serviceaccountapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/me"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/sdk"
 	subscriptionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/api"
 	webauthnapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn/api"
 )
 
-func main() {
+// buildSpec registers every route on a fresh huma API and returns it.
+//
+// withSDK adds the SDK-facing stubs for routes that are plain chi handlers in
+// the server (ingest, /api/me, OAuth/OIDC; see the RegisterSpec functions) and
+// stamps each operation with its x-sdk class (see sdkclass.go). The "generator"
+// profile (withSDK=false) is the spec the existing SDK code generators were
+// built against: no stubs, no x-sdk.
+func buildSpec(withSDK bool) (*huma.OpenAPI, error) {
 	httpcompat.Init()
 
 	r := chi.NewMux()
@@ -91,6 +103,14 @@ func main() {
 	// omitted here, so they were missing from the committed lockfile.
 	loginattemptapi.Register(api, &loginattemptapi.State{})
 	sdksync.Register(api, &sdksync.State{})
+	if withSDK {
+		// Spec-only descriptions of plain chi routes that SDKs call. NOT
+		// registered by WirePlatform (the real handlers are mounted there);
+		// TestRegisterSpecNotWired guards that.
+		sdk.RegisterSpec(api)
+		me.RegisterSpec(api)
+		oauthapi.RegisterSpec(api)
+	}
 
 	// Accept-and-ignore unknown request-body fields (serde-style leniency).
 	// Keep in sync with WirePlatform so the lockfile matches the live spec.
@@ -101,7 +121,34 @@ func main() {
 	httpcompat.StripBFFPaths(api)
 
 	spec := api.OpenAPI()
-	out, err := json.MarshalIndent(spec, "", "  ")
+	if withSDK {
+		if err := classifySpec(spec); err != nil {
+			return nil, fmt.Errorf("classify spec: %w", err)
+		}
+	}
+	return spec, nil
+}
+
+func main() {
+	generator := flag.Bool("generator", false, "emit the spec the SDK code generators consume (no SDK stubs, no x-sdk)")
+	split := flag.String("split", "", "emit only the operations classed app|admin (x-sdk), plus the schemas they reference")
+	flag.Parse()
+
+	if *split != "" && *generator {
+		fmt.Fprintln(os.Stderr, "-split and -generator are mutually exclusive")
+		os.Exit(2)
+	}
+	spec, err := buildSpec(*split != "" || !*generator)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	var out []byte
+	if *split != "" {
+		out, err = splitSpec(spec, *split)
+	} else {
+		out, err = json.MarshalIndent(spec, "", "  ")
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "marshal spec:", err)
 		os.Exit(1)

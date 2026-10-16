@@ -100,14 +100,14 @@ func (s *DispatchJobsBatchState) checkJobApplication(ctx context.Context, ac *au
 type BatchItem struct {
 	ID                 *string `json:"id,omitempty"` // SDK may supply for idempotency; otherwise minted server-side
 	ExternalID         *string `json:"externalId,omitempty"`
-	Kind               string  `json:"kind"`
+	Kind               string  `json:"kind" required:"false"`
 	Code               string  `json:"code"`
 	Source             *string `json:"source,omitempty"`
 	Subject            *string `json:"subject,omitempty"`
 	TargetURL          string  `json:"targetUrl"`
 	Payload            *string `json:"payload,omitempty"`
 	PayloadContentType string  `json:"payloadContentType,omitempty"`
-	DataOnly           bool    `json:"dataOnly"`
+	DataOnly           bool    `json:"dataOnly" required:"false"`
 	EventID            *string `json:"eventId,omitempty"`
 	CorrelationID      *string `json:"correlationId,omitempty"`
 	ClientID           *string `json:"clientId,omitempty"`

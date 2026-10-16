@@ -87,7 +87,7 @@ func (s *State) redeemPortalCode(w http.ResponseWriter, r *http.Request, code *g
 		idToken = &t
 	}
 
-	writeToken(w, tokenResponse{
+	writeToken(w, TokenResponse{
 		AccessToken: accessToken,
 		TokenType:   "Bearer",
 		ExpiresIn:   s.Auth.AccessTokenTTLSecs(),

@@ -30,7 +30,13 @@ These changes look harmless and are **not** allowed:
 
 - **`api/openapi.lock.json`** — the committed spec baseline, generated from the
   huma-registered routes. `make api-diff` (part of `make ci`) fails on any
-  drift; `make api-bump` records an intentional change.
+  drift; `make api-bump` records an intentional change. Every operation also
+  carries its SDK class as `x-sdk: app | admin` (absent = internal), and the
+  routes the server mounts as plain handlers (`POST /api/dispatch-jobs`,
+  `/api/dispatch-jobs/batch`, `/api/audit-logs/batch`, `/api/me*`, the OAuth/OIDC
+  endpoints) are described by spec-only `RegisterSpec` stubs; see
+  `docs/sdk-audit-and-python-sdk.md` ("Spec tagging as built"). The
+  application-facing surface is exactly the `x-sdk: app` operations.
 - **`tests/parity/`** + `tools/parityharness/` — replay-based contract tests
   that assert status, headers, and body shape for representative requests.
 - **Frontend codegen** — the frontend's TypeScript client is generated from

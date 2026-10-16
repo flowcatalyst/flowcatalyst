@@ -32,10 +32,10 @@ type CreateDispatchJobRequest struct {
 	EventID            *string `json:"eventId,omitempty"`
 	CorrelationID      *string `json:"correlationId,omitempty"`
 	TargetURL          string  `json:"targetUrl"`
-	Payload            *string `json:"payload,omitempty"`
+	Payload            *string `json:"payload,omitempty" required:"true"`
 	PayloadContentType string  `json:"payloadContentType,omitempty"`
 	DataOnly           bool    `json:"dataOnly,omitempty"`
-	ServiceAccountID   *string `json:"serviceAccountId,omitempty"`
+	ServiceAccountID   *string `json:"serviceAccountId,omitempty" required:"true"`
 	ClientID           *string `json:"clientId,omitempty"`
 	// ClientCode is the client's identifier slug, resolved as on the batch
 	// (ResolveJobClient).

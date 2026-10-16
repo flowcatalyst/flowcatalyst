@@ -40,9 +40,9 @@ func (s *State) authenticateClientOrBearer(r *http.Request, clientIDBody, client
 	return nil
 }
 
-// introspectResponse is the RFC 7662 result. Every field except `active`
+// IntrospectResponse is the RFC 7662 result. Every field except `active`
 // is omitted when absent.
-type introspectResponse struct {
+type IntrospectResponse struct {
 	Active        bool    `json:"active"`
 	Sub           *string `json:"sub,omitempty"`
 	Scope         *string `json:"scope,omitempty"`
@@ -73,11 +73,11 @@ func (s *State) Introspect(w http.ResponseWriter, r *http.Request) {
 	claims, err := s.Auth.ValidateToken(r.PostFormValue("token"))
 	if err != nil {
 		// RFC 7662: an inactive/unknown token is reported, not errored.
-		writeJSON(w, http.StatusOK, introspectResponse{Active: false})
+		writeJSON(w, http.StatusOK, IntrospectResponse{Active: false})
 		return
 	}
 
-	resp := introspectResponse{
+	resp := IntrospectResponse{
 		Active:        true,
 		Sub:           new(claims.Subject),
 		Tier:          new(claims.Tier),

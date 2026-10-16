@@ -222,11 +222,13 @@ release-dev: ## Cut an fcdev release: BUMP=patch|minor|major|X.Y.Z (tags fcdev/v
 # repo. VERSION files are seeded from the Rust monorepo (0.6.15) so the
 # numbering continues — first release is 0.6.16.
 
-sdk-spec: ## Refresh each SDK's OpenAPI input from the current huma spec
-	@$(GO) run ./tools/dump-spec > clients/typescript-sdk/openapi/openapi.json
-	@$(GO) run ./tools/dump-spec > clients/laravel-sdk/openapi/openapi.json
-	@$(GO) run ./tools/dump-spec > clients/java-sdk/openapi/openapi.json
-	@echo ">> refreshed clients/{typescript,laravel,java}-sdk/openapi/openapi.json"
+sdk-spec: ## Refresh each SDK's OpenAPI inputs: openapi.json (generator input) plus the app/admin split
+	@for sdk in typescript laravel java; do \
+		$(GO) run ./tools/dump-spec -generator > clients/$$sdk-sdk/openapi/openapi.json && \
+		$(GO) run ./tools/dump-spec -split app > clients/$$sdk-sdk/openapi/openapi.app.json && \
+		$(GO) run ./tools/dump-spec -split admin > clients/$$sdk-sdk/openapi/openapi.admin.json || exit 1; \
+	done
+	@echo ">> refreshed clients/{typescript,laravel,java}-sdk/openapi/{openapi,openapi.app,openapi.admin}.json"
 
 sdk-generate: sdk-spec ## Regenerate the TS + Laravel SDK clients from the spec
 	@echo ">> TypeScript SDK"

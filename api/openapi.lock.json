@@ -811,6 +811,107 @@
         ],
         "type": "object"
       },
+      "AuditBatchItem": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationCode": {
+            "type": "string"
+          },
+          "clientCode": {
+            "type": "string"
+          },
+          "entityId": {
+            "type": "string"
+          },
+          "entityType": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "operationData": {},
+          "performedAt": {
+            "type": "string"
+          },
+          "principalId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entityType",
+          "entityId",
+          "operation",
+          "principalId"
+        ],
+        "type": "object"
+      },
+      "AuditBatchRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AuditBatchRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditBatchItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "AuditBatchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AuditBatchResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/AuditBatchResult"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "type": "object"
+      },
+      "AuditBatchResult": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "type": "object"
+      },
       "AuditLogApplicationIDsResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1194,6 +1295,100 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "BatchItem": {
+        "additionalProperties": false,
+        "properties": {
+          "clientCode": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "dataOnly": {
+            "type": "boolean"
+          },
+          "descriptor": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "dispatchPoolId": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "maxRetries": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "messageGroup": {
+            "type": "string"
+          },
+          "metadata": {
+            "items": {
+              "$ref": "#/components/schemas/Metadata"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "string"
+          },
+          "payloadContentType": {
+            "type": "string"
+          },
+          "queue": {
+            "type": "string"
+          },
+          "sequence": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "serviceAccountId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "targetUrl": {
+            "type": "string"
+          },
+          "timeoutSeconds": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "targetUrl"
+        ],
         "type": "object"
       },
       "BatchRequest": {
@@ -2273,6 +2468,114 @@
         "required": [
           "code",
           "name",
+          "serviceAccountId"
+        ],
+        "type": "object"
+      },
+      "CreateDispatchJobRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateDispatchJobRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clientCode": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "dataOnly": {
+            "type": "boolean"
+          },
+          "descriptor": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "dispatchPoolId": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "maxRetries": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "messageGroup": {
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "string"
+          },
+          "payloadContentType": {
+            "type": "string"
+          },
+          "queue": {
+            "type": "string"
+          },
+          "retryStrategy": {
+            "type": "string"
+          },
+          "sequence": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "serviceAccountId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "targetUrl": {
+            "type": "string"
+          },
+          "timeoutSeconds": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "targetUrl",
+          "payload",
           "serviceAccountId"
         ],
         "type": "object"
@@ -3566,6 +3869,94 @@
         "required": [
           "target",
           "path"
+        ],
+        "type": "object"
+      },
+      "DispatchJobBatchRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/DispatchJobBatchRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BatchItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "DispatchJobBatchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/DispatchJobBatchResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/DispatchJobBatchResult"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "type": "object"
+      },
+      "DispatchJobBatchResult": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "DispatchJobCreatedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/DispatchJobCreatedResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
         ],
         "type": "object"
       },
@@ -5045,6 +5436,115 @@
         ],
         "type": "object"
       },
+      "IntrospectResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IntrospectResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "exp": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "iat": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "iss": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "sub": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "active"
+        ],
+        "type": "object"
+      },
+      "JWK": {
+        "additionalProperties": false,
+        "properties": {
+          "alg": {
+            "type": "string"
+          },
+          "e": {
+            "type": "string"
+          },
+          "kid": {
+            "type": "string"
+          },
+          "kty": {
+            "type": "string"
+          },
+          "n": {
+            "type": "string"
+          },
+          "use": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kty",
+          "use",
+          "alg"
+        ],
+        "type": "object"
+      },
+      "JWKSResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/JWKSResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "keys": {
+            "items": {
+              "$ref": "#/components/schemas/JWK"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "keys"
+        ],
+        "type": "object"
+      },
       "KV": {
         "additionalProperties": false,
         "properties": {
@@ -5358,6 +5858,22 @@
         ],
         "type": "object"
       },
+      "Metadata": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "type": "object"
+      },
       "MetadataDTO": {
         "additionalProperties": false,
         "properties": {
@@ -5432,6 +5948,143 @@
           "fromIdentityProviderId",
           "toIdentityProviderId",
           "usersReset"
+        ],
+        "type": "object"
+      },
+      "MyApplicationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "baseUrl": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "iconUrl": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "logoMimeType": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "website": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "MyApplicationsListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MyApplicationsListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applications": {
+            "items": {
+              "$ref": "#/components/schemas/MyApplicationResponse"
+            },
+            "type": "array"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "applications",
+          "total",
+          "clientId"
+        ],
+        "type": "object"
+      },
+      "MyClientResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MyClientResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "identifier": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "identifier",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "MyClientsListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MyClientsListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clients": {
+            "items": {
+              "$ref": "#/components/schemas/MyClientResponse"
+            },
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "clients",
+          "total"
         ],
         "type": "object"
       },
@@ -5617,6 +6270,139 @@
           "apiAccess",
           "createdAt",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "OAuthErrorBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/OAuthErrorBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "error_description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "OIDCDiscoveryDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/OIDCDiscoveryDocument.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "authorization_endpoint": {
+            "type": "string"
+          },
+          "claims_supported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "code_challenge_methods_supported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "end_session_endpoint": {
+            "type": "string"
+          },
+          "grant_types_supported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id_token_signing_alg_values_supported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "introspection_endpoint": {
+            "type": "string"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "jwks_uri": {
+            "type": "string"
+          },
+          "request_parameter_supported": {
+            "type": "boolean"
+          },
+          "request_uri_parameter_supported": {
+            "type": "boolean"
+          },
+          "response_types_supported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "revocation_endpoint": {
+            "type": "string"
+          },
+          "scopes_supported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "subject_types_supported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "token_endpoint": {
+            "type": "string"
+          },
+          "token_endpoint_auth_methods_supported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "userinfo_endpoint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issuer",
+          "authorization_endpoint",
+          "token_endpoint",
+          "jwks_uri",
+          "response_types_supported",
+          "subject_types_supported",
+          "id_token_signing_alg_values_supported",
+          "scopes_supported",
+          "token_endpoint_auth_methods_supported",
+          "grant_types_supported",
+          "claims_supported",
+          "code_challenge_methods_supported",
+          "request_parameter_supported",
+          "request_uri_parameter_supported"
         ],
         "type": "object"
       },
@@ -9540,6 +10326,126 @@
         ],
         "type": "object"
       },
+      "TokenForm": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/TokenForm.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "client_id": {
+            "description": "Client id (omit when using HTTP Basic)",
+            "type": "string"
+          },
+          "client_secret": {
+            "description": "Client secret (omit when using HTTP Basic)",
+            "type": "string"
+          },
+          "code": {
+            "description": "authorization_code grant: the authorization code",
+            "type": "string"
+          },
+          "code_verifier": {
+            "description": "authorization_code grant: PKCE verifier",
+            "type": "string"
+          },
+          "grant_type": {
+            "description": "OAuth grant type",
+            "enum": [
+              "authorization_code",
+              "refresh_token",
+              "client_credentials"
+            ],
+            "type": "string"
+          },
+          "redirect_uri": {
+            "description": "authorization_code grant: the redirect URI used at /oauth/authorize",
+            "type": "string"
+          },
+          "refresh_token": {
+            "description": "refresh_token grant: the refresh token",
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "grant_type"
+        ],
+        "type": "object"
+      },
+      "TokenIntrospectForm": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/TokenIntrospectForm.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "client_secret": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "type": "object"
+      },
+      "TokenResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/TokenResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "access_token": {
+            "type": "string"
+          },
+          "expires_in": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id_token": {
+            "type": "string"
+          },
+          "refresh_token": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in"
+        ],
+        "type": "object"
+      },
       "UpdateAnchorDomainRequest": {
         "additionalProperties": true,
         "properties": {
@@ -10259,6 +11165,70 @@
         },
         "type": "object"
       },
+      "UserInfoResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/UserInfoResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applications": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "clients": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "sub": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sub",
+          "name",
+          "tier",
+          "scope",
+          "type",
+          "clients",
+          "roles",
+          "applications"
+        ],
+        "type": "object"
+      },
       "Version": {
         "additionalProperties": false,
         "properties": {
@@ -10480,6 +11450,78 @@
         ],
         "type": "object"
       },
+      "WhoamiResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/WhoamiResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "accessibleApplicationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "accessibleClientIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "allApplications": {
+            "type": "boolean"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "principalId": {
+            "type": "string"
+          },
+          "principalType": {
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "principalId",
+          "principalType",
+          "scope",
+          "name",
+          "active",
+          "roles",
+          "permissions",
+          "accessibleClientIds",
+          "accessibleApplicationIds",
+          "allApplications"
+        ],
+        "type": "object"
+      },
       "WiringResponse": {
         "additionalProperties": false,
         "properties": {
@@ -10565,6 +11607,70 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/.well-known/jwks.json": {
+      "get": {
+        "operationId": "jwks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JWKSResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "JSON Web Key Set for verifying access and id tokens",
+        "tags": [
+          "oauth"
+        ],
+        "x-sdk": "app"
+      }
+    },
+    "/.well-known/openid-configuration": {
+      "get": {
+        "operationId": "openidConfiguration",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OIDCDiscoveryDocument"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "OIDC discovery document",
+        "tags": [
+          "oauth"
+        ],
+        "x-sdk": "app"
+      }
+    },
     "/api/anchor-domains": {
       "get": {
         "operationId": "listAnchorDomains",
@@ -10593,7 +11699,8 @@
         "summary": "List anchor domains",
         "tags": [
           "anchor-domains"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "createAnchorDomain",
@@ -10632,7 +11739,8 @@
         "summary": "Create an anchor domain",
         "tags": [
           "anchor-domains"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/anchor-domains/{id}": {
@@ -10666,7 +11774,8 @@
         "summary": "Delete an anchor domain",
         "tags": [
           "anchor-domains"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "updateAnchorDomain",
@@ -10708,7 +11817,8 @@
         "summary": "Update an anchor domain",
         "tags": [
           "anchor-domains"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/applications": {
@@ -10757,7 +11867,8 @@
         "summary": "List applications",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "createApplication",
@@ -10796,7 +11907,8 @@
         "summary": "Create an application",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/applications/by-code/{code}": {
@@ -10837,7 +11949,8 @@
         "summary": "Get an application by code",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/applications/by-id/{id}/roles": {
@@ -10878,7 +11991,8 @@
         "summary": "List roles registered against an application",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/applications/{appCode}/connections/sync": {
@@ -10941,7 +12055,8 @@
         "summary": "Sync an application's connections (SDK self-registration)",
         "tags": [
           "sdk-sync"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/applications/{appCode}/dispatch-pools/sync": {
@@ -11004,7 +12119,8 @@
         "summary": "Sync dispatch pools (SDK self-registration)",
         "tags": [
           "sdk-sync"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/applications/{appCode}/docs/sync": {
@@ -11057,7 +12173,8 @@
         "summary": "Sync an application's documentation pages (SDK self-registration; declarative full replace)",
         "tags": [
           "sdk-sync"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/applications/{appCode}/event-types/sync": {
@@ -11120,7 +12237,8 @@
         "summary": "Sync an application's event types (SDK self-registration)",
         "tags": [
           "sdk-sync"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/applications/{appCode}/openapi/sync": {
@@ -11173,7 +12291,8 @@
         "summary": "Sync an application's OpenAPI document (SDK self-registration)",
         "tags": [
           "sdk-sync"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/applications/{appCode}/principals/sync": {
@@ -11236,7 +12355,8 @@
         "summary": "Sync an application's principals (SDK self-registration)",
         "tags": [
           "sdk-sync"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/applications/{appCode}/processes/sync": {
@@ -11299,7 +12419,8 @@
         "summary": "Sync an application's processes (SDK self-registration)",
         "tags": [
           "sdk-sync"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/applications/{appCode}/roles/sync": {
@@ -11362,7 +12483,8 @@
         "summary": "Sync an application's roles (SDK self-registration)",
         "tags": [
           "sdk-sync"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/applications/{appCode}/scheduled-jobs/sync": {
@@ -11415,7 +12537,8 @@
         "summary": "Sync scheduled jobs (SDK self-registration)",
         "tags": [
           "sdk-sync"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/applications/{appCode}/subscriptions/sync": {
@@ -11478,7 +12601,8 @@
         "summary": "Sync an application's subscriptions (SDK self-registration)",
         "tags": [
           "sdk-sync"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/applications/{id}": {
@@ -11512,7 +12636,8 @@
         "summary": "Delete an application",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getApplication",
@@ -11551,7 +12676,8 @@
         "summary": "Get an application by id",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "put": {
         "operationId": "updateApplication",
@@ -11593,7 +12719,8 @@
         "summary": "Update an application",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/applications/{id}/activate": {
@@ -11634,7 +12761,8 @@
         "summary": "Activate an application",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/applications/{id}/clients": {
@@ -11675,7 +12803,8 @@
         "summary": "List per-client configurations for an application",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/applications/{id}/clients/{clientId}": {
@@ -11724,7 +12853,8 @@
         "summary": "Get a single application-client config",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/applications/{id}/clients/{clientId}/disable": {
@@ -11766,7 +12896,8 @@
         "summary": "Disable an application for a client",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/applications/{id}/clients/{clientId}/enable": {
@@ -11808,7 +12939,8 @@
         "summary": "Enable an application for a client",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/applications/{id}/deactivate": {
@@ -11849,7 +12981,8 @@
         "summary": "Deactivate an application",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/applications/{id}/provision-login-client": {
@@ -11900,7 +13033,8 @@
         "summary": "Create a public OAuth login client for the application",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/applications/{id}/provision-service-account": {
@@ -11941,7 +13075,8 @@
         "summary": "Create + attach a dedicated service account for the application",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/applications/{id}/service-account": {
@@ -11985,7 +13120,8 @@
         "summary": "Attach a service account to an application",
         "tags": [
           "applications"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/audit-logs": {
@@ -12091,7 +13227,8 @@
         "summary": "List audit logs with filters",
         "tags": [
           "audit-logs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/audit-logs/application-ids": {
@@ -12122,7 +13259,51 @@
         "summary": "Distinct application ids",
         "tags": [
           "audit-logs"
-        ]
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/audit-logs/batch": {
+      "post": {
+        "description": "Requires platform:admin:batch:audit-logs-write. At most 100 items. Partial success: each item reports SUCCESS (with the new id), SKIPPED (unknown applicationCode or clientCode, or no access to the client) or BAD_REQUEST (principalId missing, or application not permitted for an application-scoped credential) in its own results slot, in order.",
+        "operationId": "batchIngestAuditLogs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditBatchResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Ingest a batch of audit log entries (SDK)",
+        "tags": [
+          "audit-logs"
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/audit-logs/client-ids": {
@@ -12153,7 +13334,8 @@
         "summary": "Distinct client ids",
         "tags": [
           "audit-logs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/audit-logs/entity-types": {
@@ -12184,7 +13366,8 @@
         "summary": "Distinct entity types",
         "tags": [
           "audit-logs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/audit-logs/entity/{entityType}/{entityId}": {
@@ -12233,7 +13416,8 @@
         "summary": "Audit logs for a specific entity",
         "tags": [
           "audit-logs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/audit-logs/operations": {
@@ -12264,7 +13448,8 @@
         "summary": "Distinct operations",
         "tags": [
           "audit-logs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/audit-logs/principal/{principalId}": {
@@ -12305,7 +13490,8 @@
         "summary": "Audit logs for a specific principal",
         "tags": [
           "audit-logs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/audit-logs/recent": {
@@ -12452,7 +13638,8 @@
         "summary": "Get an audit log by id",
         "tags": [
           "audit-logs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/auth-configs": {
@@ -12483,7 +13670,8 @@
         "summary": "List client auth configs",
         "tags": [
           "auth-configs"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "createAuthConfig",
@@ -12522,7 +13710,8 @@
         "summary": "Create a client auth config",
         "tags": [
           "auth-configs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/auth-configs/{id}": {
@@ -12556,7 +13745,8 @@
         "summary": "Delete a client auth config",
         "tags": [
           "auth-configs"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "updateAuthConfig",
@@ -12598,7 +13788,8 @@
         "summary": "Update a client auth config",
         "tags": [
           "auth-configs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/clients": {
@@ -12629,7 +13820,8 @@
         "summary": "List clients",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "post": {
         "operationId": "createClient",
@@ -12668,7 +13860,8 @@
         "summary": "Create a client",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/clients/by-identifier/{identifier}": {
@@ -12709,7 +13902,8 @@
         "summary": "Get a client by identifier",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/clients/search": {
@@ -12789,7 +13983,8 @@
         "summary": "Search clients",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/clients/{id}": {
@@ -12823,7 +14018,8 @@
         "summary": "Delete a client",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getClient",
@@ -12862,7 +14058,8 @@
         "summary": "Get a client by id",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "put": {
         "operationId": "updateClient",
@@ -12904,7 +14101,8 @@
         "summary": "Update a client",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/clients/{id}/activate": {
@@ -12945,7 +14143,8 @@
         "summary": "Activate a client",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/clients/{id}/applications": {
@@ -12986,7 +14185,8 @@
         "summary": "List applications and their enabled state for the client",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "updateClientApplications",
@@ -13028,7 +14228,8 @@
         "summary": "Replace the client's enabled applications (bulk)",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/clients/{id}/applications/{applicationId}/disable": {
@@ -13070,7 +14271,8 @@
         "summary": "Disable an application for the client",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/clients/{id}/applications/{applicationId}/enable": {
@@ -13112,7 +14314,8 @@
         "summary": "Enable an application for the client",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/clients/{id}/deactivate": {
@@ -13163,7 +14366,8 @@
         "summary": "Deactivate a client (soft delete)",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/clients/{id}/notes": {
@@ -13214,7 +14418,8 @@
         "summary": "Add a note to a client",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/clients/{id}/suspend": {
@@ -13265,7 +14470,8 @@
         "summary": "Suspend a client",
         "tags": [
           "clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/config/{app}/{section}/{property}": {
@@ -13323,7 +14529,8 @@
         "summary": "Delete a platform-config property",
         "tags": [
           "platform-config"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "get": {
         "operationId": "getPlatformConfigProperty",
@@ -13386,7 +14593,8 @@
         "summary": "Get a single platform-config property",
         "tags": [
           "platform-config"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "put": {
         "operationId": "setPlatformConfigProperty",
@@ -13459,7 +14667,8 @@
         "summary": "Set a platform-config property",
         "tags": [
           "platform-config"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/connections": {
@@ -13508,7 +14717,8 @@
         "summary": "List connections",
         "tags": [
           "connections"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "post": {
         "operationId": "createConnection",
@@ -13547,7 +14757,8 @@
         "summary": "Create a connection",
         "tags": [
           "connections"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/connections/{id}": {
@@ -13581,7 +14792,8 @@
         "summary": "Delete a connection",
         "tags": [
           "connections"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getConnection",
@@ -13620,7 +14832,8 @@
         "summary": "Get a connection by id",
         "tags": [
           "connections"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "put": {
         "operationId": "updateConnection",
@@ -13662,7 +14875,8 @@
         "summary": "Update a connection",
         "tags": [
           "connections"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/connections/{id}/activate": {
@@ -13703,7 +14917,8 @@
         "summary": "Activate a connection",
         "tags": [
           "connections"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/connections/{id}/pause": {
@@ -13744,7 +14959,8 @@
         "summary": "Pause a connection",
         "tags": [
           "connections"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-jobs": {
@@ -13959,7 +15175,92 @@
         "summary": "List dispatch jobs with filters",
         "tags": [
           "dispatch-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
+      },
+      "post": {
+        "description": "Requires platform:messaging:batch:dispatch-jobs-write. code, targetUrl, payload and serviceAccountId are required. Responds 201 with the new job id.",
+        "operationId": "createDispatchJob",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDispatchJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchJobCreatedResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a single dispatch job (SDK)",
+        "tags": [
+          "dispatch-jobs"
+        ],
+        "x-sdk": "app"
+      }
+    },
+    "/api/dispatch-jobs/batch": {
+      "post": {
+        "description": "Requires platform:messaging:batch:dispatch-jobs-write. At most 1000 items; any refused item (unknown kind, bad targetUrl, client or application the credential cannot ingest for) rejects the whole batch, and the insert is all-or-nothing. Responds 201 with one result per item, in order, status SUCCESS; an empty batch responds 200 with an empty results list.",
+        "operationId": "batchCreateDispatchJobs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchJobBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchJobBatchResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Ingest a batch of dispatch jobs (SDK)",
+        "tags": [
+          "dispatch-jobs"
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/dispatch-jobs/by-event/{eventId}": {
@@ -14047,7 +15348,8 @@
         "summary": "Dispatch jobs spawned by a specific event",
         "tags": [
           "dispatch-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-jobs/filter-options": {
@@ -14078,7 +15380,8 @@
         "summary": "Distinct facet values for dispatch jobs",
         "tags": [
           "dispatch-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-jobs/list-raw": {
@@ -14549,7 +15852,8 @@
         "summary": "Reset dispatch jobs to PENDING for re-dispatch",
         "tags": [
           "dispatch-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-jobs/requeue-by-filter": {
@@ -14590,7 +15894,8 @@
         "summary": "Reset every dispatch job a filter matches to PENDING (confirmed count, capped)",
         "tags": [
           "dispatch-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-jobs/requeue-by-filter/preview": {
@@ -14631,7 +15936,8 @@
         "summary": "Count the dispatch jobs a filter matches and how many a requeue would reset",
         "tags": [
           "dispatch-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-jobs/{id}": {
@@ -14672,7 +15978,8 @@
         "summary": "Get a dispatch job by id",
         "tags": [
           "dispatch-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-jobs/{id}/attempts": {
@@ -14716,7 +16023,8 @@
         "summary": "List a dispatch job's attempt history",
         "tags": [
           "dispatch-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-jobs/{id}/cancel": {
@@ -14757,7 +16065,8 @@
         "summary": "Cancel a FAILED dispatch job",
         "tags": [
           "dispatch-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-jobs/{id}/complete": {
@@ -14798,7 +16107,8 @@
         "summary": "Mark a FAILED dispatch job COMPLETED (delivered out of band)",
         "tags": [
           "dispatch-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-jobs/{id}/raw": {
@@ -14880,7 +16190,8 @@
         "summary": "Build the job's delivery (signing account, headers, signature) without sending it",
         "tags": [
           "dispatch-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-pools": {
@@ -14933,7 +16244,8 @@
         "summary": "List dispatch pools",
         "tags": [
           "dispatch-pools"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "post": {
         "operationId": "createDispatchPool",
@@ -14972,7 +16284,8 @@
         "summary": "Create a dispatch pool",
         "tags": [
           "dispatch-pools"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-pools/{id}": {
@@ -15006,7 +16319,8 @@
         "summary": "Delete a dispatch pool",
         "tags": [
           "dispatch-pools"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getDispatchPool",
@@ -15045,7 +16359,8 @@
         "summary": "Get a dispatch pool by id",
         "tags": [
           "dispatch-pools"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "put": {
         "operationId": "updateDispatchPool",
@@ -15087,7 +16402,8 @@
         "summary": "Update a dispatch pool",
         "tags": [
           "dispatch-pools"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-pools/{id}/activate": {
@@ -15121,7 +16437,8 @@
         "summary": "Resume a suspended dispatch pool",
         "tags": [
           "dispatch-pools"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-pools/{id}/archive": {
@@ -15155,7 +16472,8 @@
         "summary": "Archive a dispatch pool",
         "tags": [
           "dispatch-pools"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch-pools/{id}/suspend": {
@@ -15189,7 +16507,8 @@
         "summary": "Suspend dispatch into a pool",
         "tags": [
           "dispatch-pools"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/dispatch/router-config": {
@@ -15251,7 +16570,8 @@
         "summary": "List documentation: the platform's published pages plus each application's synced pages",
         "tags": [
           "docs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/docs/applications/{appCode}/{slug}": {
@@ -15300,7 +16620,8 @@
         "summary": "Fetch one application-synced page as Markdown",
         "tags": [
           "docs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/docs/platform/{slug}": {
@@ -15341,7 +16662,8 @@
         "summary": "Fetch one published platform page as Markdown",
         "tags": [
           "docs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/email-domain-mappings": {
@@ -15372,7 +16694,8 @@
         "summary": "List email-domain mappings",
         "tags": [
           "email-domain-mappings"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "createEmailDomainMapping",
@@ -15411,7 +16734,8 @@
         "summary": "Create an email-domain mapping",
         "tags": [
           "email-domain-mappings"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/email-domain-mappings/by-domain/{domain}": {
@@ -15454,7 +16778,8 @@
         "summary": "Resolve an email domain to its mapping (path param)",
         "tags": [
           "email-domain-mappings"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/email-domain-mappings/lookup": {
@@ -15495,7 +16820,8 @@
         "summary": "Resolve an email domain to its mapping",
         "tags": [
           "email-domain-mappings"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/email-domain-mappings/{id}": {
@@ -15529,7 +16855,8 @@
         "summary": "Delete an email-domain mapping",
         "tags": [
           "email-domain-mappings"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getEmailDomainMapping",
@@ -15568,7 +16895,8 @@
         "summary": "Get an email-domain mapping by id",
         "tags": [
           "email-domain-mappings"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "updateEmailDomainMapping",
@@ -15610,7 +16938,8 @@
         "summary": "Update an email-domain mapping",
         "tags": [
           "email-domain-mappings"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/email-domain-mappings/{id}/move-provider": {
@@ -15661,7 +16990,8 @@
         "summary": "Re-point an email domain to a different identity provider",
         "tags": [
           "email-domain-mappings"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/event-types": {
@@ -15744,7 +17074,8 @@
         "summary": "List event types",
         "tags": [
           "event-types"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "post": {
         "operationId": "createEventType",
@@ -15783,7 +17114,8 @@
         "summary": "Create an event type",
         "tags": [
           "event-types"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/event-types/by-code/{code}": {
@@ -15826,7 +17158,8 @@
         "summary": "Get an event type by code",
         "tags": [
           "event-types"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/event-types/{id}": {
@@ -15860,7 +17193,8 @@
         "summary": "Archive an event type",
         "tags": [
           "event-types"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getEventType",
@@ -15901,7 +17235,8 @@
         "summary": "Get an event type by id",
         "tags": [
           "event-types"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "put": {
         "operationId": "updateEventType",
@@ -15943,7 +17278,8 @@
         "summary": "Update an event type",
         "tags": [
           "event-types"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/event-types/{id}/schemas": {
@@ -16045,7 +17381,8 @@
         "summary": "Add a schema version to an event type",
         "tags": [
           "event-types"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/events": {
@@ -16228,7 +17565,8 @@
         "summary": "List events with filters",
         "tags": [
           "events"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "createEvent",
@@ -16267,7 +17605,8 @@
         "summary": "Create a single event (SDK)",
         "tags": [
           "events"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/events/batch": {
@@ -16308,7 +17647,8 @@
         "summary": "Ingest a batch of events (SDK)",
         "tags": [
           "events"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/events/filter-options": {
@@ -16339,7 +17679,8 @@
         "summary": "Distinct event types/sources/clients for filter UI",
         "tags": [
           "events"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/events/list-raw": {
@@ -16746,7 +18087,8 @@
         "summary": "Get an event by id",
         "tags": [
           "events"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/function-domains": {
@@ -16792,7 +18134,8 @@
         "summary": "List claimed hostname zones",
         "tags": [
           "function-domains"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "createFunctionDomain",
@@ -16831,7 +18174,8 @@
         "summary": "Claim a hostname zone for a client (or the platform)",
         "tags": [
           "function-domains"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/function-domains/{id}": {
@@ -16865,7 +18209,8 @@
         "summary": "Release a claimed zone",
         "tags": [
           "function-domains"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions": {
@@ -16973,7 +18318,8 @@
         "summary": "List functions",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "createFunction",
@@ -17012,7 +18358,8 @@
         "summary": "Create a function",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions/{id}": {
@@ -17046,7 +18393,8 @@
         "summary": "Delete a function",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getFunction",
@@ -17085,7 +18433,8 @@
         "summary": "Get a function by id",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "patch": {
         "operationId": "updateFunction",
@@ -17127,7 +18476,8 @@
         "summary": "Update a function's settings",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions/{id}/aliases": {
@@ -17171,7 +18521,8 @@
         "summary": "List a function's aliases",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions/{id}/aliases/{name}": {
@@ -17220,7 +18571,8 @@
         "summary": "Remove an alias",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "putFunctionAlias",
@@ -17277,7 +18629,8 @@
         "summary": "Point an alias at a version",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions/{id}/artifacts/{digest}": {
@@ -17333,7 +18686,8 @@
         "summary": "Upload a function artifact by its sha256 digest",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions/{id}/config/{key}": {
@@ -17375,7 +18729,8 @@
         "summary": "Remove a config value",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "putFunctionConfig",
@@ -17432,7 +18787,8 @@
         "summary": "Set a config value",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions/{id}/db/{name}": {
@@ -17474,7 +18830,8 @@
         "summary": "Remove a database DSN",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "putFunctionDB",
@@ -17531,7 +18888,8 @@
         "summary": "Set a database DSN",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions/{id}/routes": {
@@ -17575,7 +18933,8 @@
         "summary": "List a function's public routes",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "putFunctionRoute",
@@ -17624,7 +18983,8 @@
         "summary": "Create or update a public route",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions/{id}/routes/{routeId}": {
@@ -17666,7 +19026,8 @@
         "summary": "Remove a public route",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions/{id}/secrets/{key}": {
@@ -17708,7 +19069,8 @@
         "summary": "Remove a secret value",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "putFunctionSecret",
@@ -17765,7 +19127,8 @@
         "summary": "Set a secret value",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions/{id}/settings": {
@@ -17809,7 +19172,8 @@
         "summary": "List a function's settings keys",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions/{id}/versions": {
@@ -17853,7 +19217,8 @@
         "summary": "List a function's versions",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "publishFunctionVersion",
@@ -17902,7 +19267,8 @@
         "summary": "Publish a new function version from a stored artifact",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions/{id}/versions/{number}": {
@@ -17952,7 +19318,8 @@
         "summary": "Get one function version",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/functions/{id}/versions/{number}/retire": {
@@ -18002,7 +19369,8 @@
         "summary": "Retire a function version",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/identity-providers": {
@@ -18033,7 +19401,8 @@
         "summary": "List identity providers",
         "tags": [
           "identity-providers"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "createIdentityProvider",
@@ -18072,7 +19441,8 @@
         "summary": "Create an identity provider",
         "tags": [
           "identity-providers"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/identity-providers/{id}": {
@@ -18106,7 +19476,8 @@
         "summary": "Delete an identity provider",
         "tags": [
           "identity-providers"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getIdentityProvider",
@@ -18145,7 +19516,8 @@
         "summary": "Get an identity provider by id",
         "tags": [
           "identity-providers"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "updateIdentityProvider",
@@ -18194,7 +19566,8 @@
         "summary": "Update an identity provider",
         "tags": [
           "identity-providers"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/idp-role-mappings": {
@@ -18225,7 +19598,8 @@
         "summary": "List IDP role mappings",
         "tags": [
           "idp-role-mappings"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "createIdpRoleMapping",
@@ -18264,7 +19638,8 @@
         "summary": "Create an IDP role mapping",
         "tags": [
           "idp-role-mappings"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/idp-role-mappings/{id}": {
@@ -18298,7 +19673,8 @@
         "summary": "Delete an IDP role mapping",
         "tags": [
           "idp-role-mappings"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/login-attempts": {
@@ -18396,7 +19772,188 @@
         "summary": "List login attempts (cursor-paginated)",
         "tags": [
           "login-attempts"
-        ]
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/me": {
+      "get": {
+        "operationId": "getMe",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhoamiResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Who am I: the calling principal, its roles, permissions and accessible clients/applications",
+        "tags": [
+          "me"
+        ],
+        "x-sdk": "app"
+      }
+    },
+    "/api/me/applications": {
+      "get": {
+        "operationId": "listMyApplications",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyApplicationsListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Applications the calling principal can access",
+        "tags": [
+          "me"
+        ],
+        "x-sdk": "app"
+      }
+    },
+    "/api/me/clients": {
+      "get": {
+        "operationId": "listMyClients",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyClientsListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Clients the calling principal can access (anchors see all)",
+        "tags": [
+          "me"
+        ],
+        "x-sdk": "app"
+      }
+    },
+    "/api/me/clients/{clientId}": {
+      "get": {
+        "operationId": "getMyClient",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyClientResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "One client the calling principal can access",
+        "tags": [
+          "me"
+        ],
+        "x-sdk": "app"
+      }
+    },
+    "/api/me/clients/{clientId}/applications": {
+      "get": {
+        "operationId": "listMyClientApplications",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyApplicationsListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Applications enabled for a client the calling principal can access",
+        "tags": [
+          "me"
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/oauth-clients": {
@@ -18427,7 +19984,8 @@
         "summary": "List OAuth clients",
         "tags": [
           "oauth-clients"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "createOAuthClient",
@@ -18466,7 +20024,8 @@
         "summary": "Create an OAuth client",
         "tags": [
           "oauth-clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/oauth-clients/by-client-id/{clientId}": {
@@ -18507,7 +20066,8 @@
         "summary": "Get an OAuth client by its client_id (SDK lookup)",
         "tags": [
           "oauth-clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/oauth-clients/{id}": {
@@ -18541,7 +20101,8 @@
         "summary": "Delete an OAuth client",
         "tags": [
           "oauth-clients"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getOAuthClient",
@@ -18580,7 +20141,8 @@
         "summary": "Get an OAuth client by id",
         "tags": [
           "oauth-clients"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "updateOAuthClient",
@@ -18622,7 +20184,8 @@
         "summary": "Update an OAuth client",
         "tags": [
           "oauth-clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/oauth-clients/{id}/activate": {
@@ -18663,7 +20226,8 @@
         "summary": "Activate an OAuth client",
         "tags": [
           "oauth-clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/oauth-clients/{id}/deactivate": {
@@ -18704,7 +20268,8 @@
         "summary": "Deactivate an OAuth client",
         "tags": [
           "oauth-clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/oauth-clients/{id}/regenerate-secret": {
@@ -18795,7 +20360,8 @@
         "summary": "End a secret-rotation overlap immediately",
         "tags": [
           "oauth-clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/oauth-clients/{id}/rotate-secret": {
@@ -18845,7 +20411,8 @@
         "summary": "Rotate an OAuth client's secret",
         "tags": [
           "oauth-clients"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/platform-config/access/{id}": {
@@ -18879,7 +20446,8 @@
         "summary": "Revoke a platform-config access grant",
         "tags": [
           "platform-config"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/platform-config/{app}": {
@@ -18920,7 +20488,8 @@
         "summary": "List platform-config properties for an application",
         "tags": [
           "platform-config"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/platform-config/{app}/access": {
@@ -18961,7 +20530,8 @@
         "summary": "List access grants for an application",
         "tags": [
           "platform-config"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "grantPlatformConfigAccess",
@@ -19010,7 +20580,8 @@
         "summary": "Grant access to platform-config for a role",
         "tags": [
           "platform-config"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/platform/cors": {
@@ -19041,7 +20612,8 @@
         "summary": "List CORS origins (anchor)",
         "tags": [
           "cors-origins"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "addCorsOrigin",
@@ -19080,7 +20652,8 @@
         "summary": "Add a CORS origin",
         "tags": [
           "cors-origins"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/platform/cors/allowed": {
@@ -19145,7 +20718,8 @@
         "summary": "Remove a CORS origin",
         "tags": [
           "cors-origins"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getCorsOrigin",
@@ -19184,7 +20758,8 @@
         "summary": "Get a CORS origin by id (anchor)",
         "tags": [
           "cors-origins"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/portal-apps": {
@@ -19227,7 +20802,8 @@
         "summary": "List portal apps (a client's, or every client's for anchors)",
         "tags": [
           "portal-apps"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "createPortalApp",
@@ -19266,7 +20842,8 @@
         "summary": "Register a portal app for a client and provision its portal OAuth client",
         "tags": [
           "portal-apps"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/portal-apps/{id}": {
@@ -19317,7 +20894,8 @@
         "summary": "Delete a portal app together with its portal OAuth clients",
         "tags": [
           "portal-apps"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "updatePortalApp",
@@ -19366,7 +20944,8 @@
         "summary": "Update a portal app's name, description, or active flag",
         "tags": [
           "portal-apps"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/portal-apps/{id}/assign-unassigned": {
@@ -19417,7 +20996,8 @@
         "summary": "Grant a portal app to every one of the client's portal users that has no portal app",
         "tags": [
           "portal-apps"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/portal-users": {
@@ -19512,7 +21092,8 @@
         "summary": "Search a client's portal identities (prefix match on email and name)",
         "tags": [
           "portal-users"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "ensurePortalUser",
@@ -19551,7 +21132,8 @@
         "summary": "Ensure a portal identity exists for (client, email), grant a portal app, and deliver a set-password invite",
         "tags": [
           "portal-users"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/portal-users/{id}": {
@@ -19602,7 +21184,8 @@
         "summary": "Delete a portal identity (offboarding from every portal of the client)",
         "tags": [
           "portal-users"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/portal-users/{id}/activate": {
@@ -19653,7 +21236,8 @@
         "summary": "Reactivate a suspended portal identity",
         "tags": [
           "portal-users"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/portal-users/{id}/apps": {
@@ -19704,7 +21288,8 @@
         "summary": "Grant a portal identity access to one of the client's portal apps",
         "tags": [
           "portal-users"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/portal-users/{id}/apps/{portalAppCode}": {
@@ -19763,7 +21348,8 @@
         "summary": "Revoke a portal identity's access to one portal app (the identity stays)",
         "tags": [
           "portal-users"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/portal-users/{id}/deactivate": {
@@ -19814,7 +21400,8 @@
         "summary": "Suspend a portal identity (blocks portal login, keeps the row)",
         "tags": [
           "portal-users"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals": {
@@ -19939,7 +21526,8 @@
         "summary": "List principals",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "post": {
         "operationId": "createPrincipal",
@@ -19978,7 +21566,8 @@
         "summary": "Create a principal",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/bulk-import": {
@@ -20019,7 +21608,8 @@
         "summary": "Bulk-import CLIENT users for a client (CSV onboarding)",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/check-email-domain": {
@@ -20060,7 +21650,8 @@
         "summary": "Resolve auth-method for an email's domain",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/developer-users": {
@@ -20091,7 +21682,8 @@
         "summary": "List USER principals holding the developer role",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/sync": {
@@ -20132,7 +21724,8 @@
         "summary": "Sync users (declarative upsert by email; no application scope)",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/principals/users": {
@@ -20173,7 +21766,8 @@
         "summary": "Create a user principal (scope optional, default CLIENT; ANCHOR/PARTNER must be backed by the email domain's setup)",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/principals/{id}": {
@@ -20207,7 +21801,8 @@
         "summary": "Delete a principal",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getPrincipal",
@@ -20246,7 +21841,8 @@
         "summary": "Get a principal by id",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "put": {
         "operationId": "updatePrincipal",
@@ -20295,7 +21891,8 @@
         "summary": "Update a principal",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/principals/{id}/activate": {
@@ -20336,7 +21933,8 @@
         "summary": "Activate a principal",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/{id}/application-access": {
@@ -20377,7 +21975,8 @@
         "summary": "List application IDs the principal can access",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "assignPrincipalApplicationAccess",
@@ -20426,7 +22025,8 @@
         "summary": "Assign application access to a principal",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/{id}/available-applications": {
@@ -20467,7 +22067,8 @@
         "summary": "List applications a principal can be granted access to",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/{id}/client-access": {
@@ -20508,7 +22109,8 @@
         "summary": "List client-access grants for a principal",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "grantPrincipalClientAccess",
@@ -20557,7 +22159,8 @@
         "summary": "Grant a client-access for a principal",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/{id}/client-access/{clientId}": {
@@ -20599,7 +22202,8 @@
         "summary": "Revoke a client-access grant",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/{id}/client-association": {
@@ -20650,7 +22254,8 @@
         "summary": "Change a principal's scope/client association (anchor-gated)",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/principals/{id}/deactivate": {
@@ -20691,7 +22296,8 @@
         "summary": "Deactivate a principal",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/{id}/developer-credential": {
@@ -20725,7 +22331,8 @@
         "summary": "Revoke a principal's self-service developer API credential",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "setPrincipalDeveloperCredential",
@@ -20764,7 +22371,8 @@
         "summary": "Create or rotate a principal's self-service developer API credential",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/{id}/reset-2fa": {
@@ -20805,7 +22413,8 @@
         "summary": "Clear a user's two-factor methods (forces re-enrollment)",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/{id}/reset-password": {
@@ -20856,7 +22465,8 @@
         "summary": "Reset a user's password",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/principals/{id}/roles": {
@@ -20897,7 +22507,8 @@
         "summary": "List a principal's assigned roles",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "addPrincipalRole",
@@ -20946,7 +22557,8 @@
         "summary": "Add a single role to a principal",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "assignPrincipalRoles",
@@ -20995,7 +22607,8 @@
         "summary": "Assign roles to a principal (replaces full set)",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/{id}/roles/{role}": {
@@ -21044,7 +22657,8 @@
         "summary": "Remove a single role from a principal",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/{id}/send-password-reset": {
@@ -21094,7 +22708,8 @@
         "summary": "Send a password-reset email to a user",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/principals/{id}/version": {
@@ -21135,7 +22750,8 @@
         "summary": "Get when a principal (or a role it holds) last changed — used by SDKs to detect a revoked/changed session",
         "tags": [
           "principals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/processes": {
@@ -21192,7 +22808,8 @@
         "summary": "List processes",
         "tags": [
           "processes"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "post": {
         "operationId": "createProcess",
@@ -21231,7 +22848,8 @@
         "summary": "Create a process",
         "tags": [
           "processes"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/processes/by-code/{code}": {
@@ -21272,7 +22890,8 @@
         "summary": "Get a process by code",
         "tags": [
           "processes"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/processes/sync": {
@@ -21325,7 +22944,8 @@
         "summary": "Sync processes (SDK alias; applicationCode in the body)",
         "tags": [
           "sdk-sync"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/processes/{id}": {
@@ -21359,7 +22979,8 @@
         "summary": "Delete a process",
         "tags": [
           "processes"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getProcess",
@@ -21398,7 +23019,8 @@
         "summary": "Get a process by id",
         "tags": [
           "processes"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "put": {
         "operationId": "updateProcess",
@@ -21440,7 +23062,8 @@
         "summary": "Update a process",
         "tags": [
           "processes"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/processes/{id}/archive": {
@@ -21474,7 +23097,8 @@
         "summary": "Archive a process",
         "tags": [
           "processes"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/reset-approvals": {
@@ -21505,7 +23129,8 @@
         "summary": "List pending lost-device reset requests for your client(s)",
         "tags": [
           "reset-approvals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/reset-approvals/{id}/approve": {
@@ -21546,7 +23171,8 @@
         "summary": "Approve a lost-device reset (emails the user a reset link)",
         "tags": [
           "reset-approvals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/reset-approvals/{id}/deny": {
@@ -21587,7 +23213,8 @@
         "summary": "Deny a lost-device reset request",
         "tags": [
           "reset-approvals"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/roles": {
@@ -21618,7 +23245,8 @@
         "summary": "List roles",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "post": {
         "operationId": "createRole",
@@ -21657,7 +23285,8 @@
         "summary": "Create a role",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/roles/by-application/{applicationId}": {
@@ -21701,7 +23330,8 @@
         "summary": "List roles for an application",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/roles/by-code/{code}": {
@@ -21742,7 +23372,8 @@
         "summary": "Get a role by name (code)",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/roles/by-source/{source}": {
@@ -21786,7 +23417,8 @@
         "summary": "List roles by source (CODE | DATABASE | SDK)",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/roles/filters/applications": {
@@ -21817,7 +23449,8 @@
         "summary": "List distinct application codes used by roles",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/roles/permissions": {
@@ -21848,7 +23481,8 @@
         "summary": "List the platform permission catalog",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/roles/permissions/{permission}": {
@@ -21882,7 +23516,8 @@
         "summary": "Delete a permission from the catalog",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getPermission",
@@ -21921,7 +23556,8 @@
         "summary": "Get a single permission catalog entry",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/roles/{id}": {
@@ -21955,7 +23591,8 @@
         "summary": "Delete a role",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getRole",
@@ -21996,7 +23633,8 @@
         "summary": "Get a role by id",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "put": {
         "operationId": "updateRole",
@@ -22038,7 +23676,8 @@
         "summary": "Update a role",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/roles/{roleName}/permissions": {
@@ -22079,7 +23718,8 @@
         "summary": "List permissions granted to a role",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "grantRolePermissionByBody",
@@ -22128,7 +23768,8 @@
         "summary": "Grant a permission to a role (SDK; permission in body)",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/roles/{roleName}/permissions/{permission}": {
@@ -22177,7 +23818,8 @@
         "summary": "Revoke a permission from a role",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "grantRolePermission",
@@ -22224,7 +23866,8 @@
         "summary": "Grant a permission to a role",
         "tags": [
           "roles"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/scheduled-jobs": {
@@ -22326,7 +23969,8 @@
         "summary": "List scheduled jobs",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "post": {
         "operationId": "createScheduledJob",
@@ -22365,7 +24009,8 @@
         "summary": "Create a scheduled job",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/scheduled-jobs/by-code/{code}": {
@@ -22416,7 +24061,8 @@
         "summary": "Get a scheduled job by code",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/scheduled-jobs/instances/{instanceId}": {
@@ -22457,7 +24103,8 @@
         "summary": "Get a single scheduled-job instance",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/scheduled-jobs/instances/{instanceId}/complete": {
@@ -22501,7 +24148,8 @@
         "summary": "Mark a scheduled-job instance as completed",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/scheduled-jobs/instances/{instanceId}/log": {
@@ -22545,7 +24193,8 @@
         "summary": "Append a log entry to an instance",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/scheduled-jobs/instances/{instanceId}/logs": {
@@ -22589,7 +24238,8 @@
         "summary": "List log entries for an instance",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "app"
       }
     },
     "/api/scheduled-jobs/{id}": {
@@ -22623,7 +24273,8 @@
         "summary": "Delete a scheduled job",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getScheduledJob",
@@ -22662,7 +24313,8 @@
         "summary": "Get a scheduled job by id",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "put": {
         "operationId": "updateScheduledJob",
@@ -22704,7 +24356,8 @@
         "summary": "Update a scheduled job",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/scheduled-jobs/{id}/archive": {
@@ -22738,7 +24391,8 @@
         "summary": "Archive a scheduled job",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/scheduled-jobs/{id}/fire": {
@@ -22788,7 +24442,8 @@
         "summary": "Fire a scheduled job immediately",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/scheduled-jobs/{id}/instances": {
@@ -22882,7 +24537,8 @@
         "summary": "List firings for a scheduled job",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/scheduled-jobs/{id}/pause": {
@@ -22916,7 +24572,8 @@
         "summary": "Pause a scheduled job",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/scheduled-jobs/{id}/resume": {
@@ -22950,7 +24607,8 @@
         "summary": "Resume a scheduled job",
         "tags": [
           "scheduled-jobs"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/service-accounts": {
@@ -22981,7 +24639,8 @@
         "summary": "List service accounts",
         "tags": [
           "service-accounts"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "post": {
         "operationId": "createServiceAccount",
@@ -23020,7 +24679,8 @@
         "summary": "Create a service account",
         "tags": [
           "service-accounts"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/service-accounts/code/{code}": {
@@ -23061,7 +24721,8 @@
         "summary": "Get a service account by code",
         "tags": [
           "service-accounts"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/service-accounts/{id}": {
@@ -23095,7 +24756,8 @@
         "summary": "Delete a service account",
         "tags": [
           "service-accounts"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getServiceAccount",
@@ -23134,7 +24796,8 @@
         "summary": "Get a service account by id",
         "tags": [
           "service-accounts"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "updateServiceAccount",
@@ -23176,7 +24839,8 @@
         "summary": "Update a service account",
         "tags": [
           "service-accounts"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/service-accounts/{id}/deactivate": {
@@ -23210,7 +24874,8 @@
         "summary": "Deactivate a service account",
         "tags": [
           "service-accounts"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/service-accounts/{id}/regenerate-auth-token": {
@@ -23251,7 +24916,8 @@
         "summary": "Regenerate a service account's auth token",
         "tags": [
           "service-accounts"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/service-accounts/{id}/regenerate-secret": {
@@ -23333,7 +24999,8 @@
         "summary": "Regenerate a service account's signing secret",
         "tags": [
           "service-accounts"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/service-accounts/{id}/regenerate-token": {
@@ -23415,7 +25082,8 @@
         "summary": "List a service account's roles",
         "tags": [
           "service-accounts"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "put": {
         "operationId": "assignServiceAccountRoles",
@@ -23464,7 +25132,8 @@
         "summary": "Assign roles to a service account",
         "tags": [
           "service-accounts"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/service-accounts/{id}/token": {
@@ -23505,7 +25174,8 @@
         "summary": "Mint a short-lived bearer token for the service account (anchor-only, audited)",
         "tags": [
           "service-accounts"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/subscriptions": {
@@ -23554,7 +25224,8 @@
         "summary": "List subscriptions",
         "tags": [
           "subscriptions"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "post": {
         "operationId": "createSubscription",
@@ -23593,7 +25264,8 @@
         "summary": "Create a subscription",
         "tags": [
           "subscriptions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/subscriptions/{id}": {
@@ -23627,7 +25299,8 @@
         "summary": "Delete a subscription",
         "tags": [
           "subscriptions"
-        ]
+        ],
+        "x-sdk": "admin"
       },
       "get": {
         "operationId": "getSubscription",
@@ -23666,7 +25339,8 @@
         "summary": "Get a subscription by id",
         "tags": [
           "subscriptions"
-        ]
+        ],
+        "x-sdk": "app"
       },
       "put": {
         "operationId": "updateSubscription",
@@ -23708,7 +25382,8 @@
         "summary": "Update a subscription",
         "tags": [
           "subscriptions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/subscriptions/{id}/pause": {
@@ -23742,7 +25417,8 @@
         "summary": "Pause a subscription",
         "tags": [
           "subscriptions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/api/subscriptions/{id}/resume": {
@@ -23776,7 +25452,8 @@
         "summary": "Resume a subscription",
         "tags": [
           "subscriptions"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/auth/webauthn/authenticate/begin": {
@@ -23899,7 +25576,8 @@
         "summary": "List the current user's WebAuthn credentials",
         "tags": [
           "webauthn"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/auth/webauthn/credentials/{id}": {
@@ -23933,7 +25611,8 @@
         "summary": "Revoke a WebAuthn credential",
         "tags": [
           "webauthn"
-        ]
+        ],
+        "x-sdk": "admin"
       }
     },
     "/auth/webauthn/register/begin": {
@@ -24242,6 +25921,197 @@
         "tags": [
           "function-control"
         ]
+      }
+    },
+    "/oauth/introspect": {
+      "post": {
+        "operationId": "oauthIntrospect",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenIntrospectForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntrospectResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request, invalid_grant, unsupported_grant_type or unauthorized_client"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthErrorBody"
+                }
+              }
+            },
+            "description": "invalid_client or invalid_token"
+          }
+        },
+        "summary": "RFC 7662 token introspection (always 200; {active:false} for an invalid token)",
+        "tags": [
+          "oauth"
+        ],
+        "x-sdk": "app"
+      }
+    },
+    "/oauth/revoke": {
+      "post": {
+        "operationId": "oauthRevoke",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenIntrospectForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request, invalid_grant, unsupported_grant_type or unauthorized_client"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthErrorBody"
+                }
+              }
+            },
+            "description": "invalid_client or invalid_token"
+          }
+        },
+        "summary": "RFC 7009 token revocation (always 200, even for an unknown token)",
+        "tags": [
+          "oauth"
+        ],
+        "x-sdk": "app"
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "operationId": "oauthToken",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request, invalid_grant, unsupported_grant_type or unauthorized_client"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthErrorBody"
+                }
+              }
+            },
+            "description": "invalid_client or invalid_token"
+          }
+        },
+        "summary": "OAuth 2.0 token endpoint (client_credentials, authorization_code, refresh_token)",
+        "tags": [
+          "oauth"
+        ],
+        "x-sdk": "app"
+      }
+    },
+    "/oauth/userinfo": {
+      "get": {
+        "operationId": "oauthUserinfo",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInfoResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthErrorBody"
+                }
+              }
+            },
+            "description": "invalid_request, invalid_grant, unsupported_grant_type or unauthorized_client"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthErrorBody"
+                }
+              }
+            },
+            "description": "invalid_client or invalid_token"
+          }
+        },
+        "summary": "OIDC UserInfo for the Bearer access token (POST is accepted too)",
+        "tags": [
+          "oauth"
+        ],
+        "x-sdk": "app"
       }
     }
   }

@@ -38,7 +38,7 @@ func TestUserinfoAcceptsIdentityToken(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
 	}
-	var resp userInfoResponse
+	var resp UserInfoResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}

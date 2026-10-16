@@ -38,8 +38,8 @@ func RegisterRoutes(r chi.Router, s *State) {
 	r.Get("/api/me/clients/{clientId}/applications", s.listMyClientApplications)
 }
 
-// whoamiResponse is the wire shape for GET /api/me.
-type whoamiResponse struct {
+// WhoamiResponse is the wire shape for GET /api/me.
+type WhoamiResponse struct {
 	PrincipalID              string   `json:"principalId"`
 	PrincipalType            string   `json:"principalType"`
 	Scope                    string   `json:"scope"`
@@ -63,7 +63,7 @@ func (s *State) whoami(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := whoamiResponse{
+	out := WhoamiResponse{
 		PrincipalID:         ac.PrincipalID,
 		Scope:               string(ac.Scope),
 		Active:              true,
@@ -110,8 +110,8 @@ func (s *State) whoami(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-// myApplicationResponse is one application row (camelCase).
-type myApplicationResponse struct {
+// MyApplicationResponse is one application row (camelCase).
+type MyApplicationResponse struct {
 	ID           string  `json:"id"`
 	Code         string  `json:"code"`
 	Name         string  `json:"name"`
@@ -122,9 +122,9 @@ type myApplicationResponse struct {
 	LogoMimeType *string `json:"logoMimeType,omitempty"`
 }
 
-// myApplicationsListResponse is the list envelope for /api/me/applications.
-type myApplicationsListResponse struct {
-	Applications []myApplicationResponse `json:"applications"`
+// MyApplicationsListResponse is the list envelope for /api/me/applications.
+type MyApplicationsListResponse struct {
+	Applications []MyApplicationResponse `json:"applications"`
 	Total        int                     `json:"total"`
 	// ClientID is empty for this principal-scoped variant (kept for
 	// response-shape compatibility with the per-client endpoint).
@@ -167,7 +167,7 @@ func (s *State) listMyApplications(w http.ResponseWriter, r *http.Request) {
 	apps := filterMyApplications(all, ac.AllApplications, accessible)
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(myApplicationsListResponse{
+	_ = json.NewEncoder(w).Encode(MyApplicationsListResponse{
 		Applications: apps,
 		Total:        len(apps),
 		ClientID:     "",
@@ -178,12 +178,12 @@ func (s *State) listMyApplications(w http.ResponseWriter, r *http.Request) {
 // principals see all, others only those in accessible) and maps each to the wire
 // shape (DefaultBaseURL → baseUrl). Pure, so the access filter + field mapping
 // are unit-testable without a DB.
-func filterMyApplications(all []application.Application, allApplications bool, accessible map[string]bool) []myApplicationResponse {
-	apps := make([]myApplicationResponse, 0, len(all))
+func filterMyApplications(all []application.Application, allApplications bool, accessible map[string]bool) []MyApplicationResponse {
+	apps := make([]MyApplicationResponse, 0, len(all))
 	for i := range all {
 		a := &all[i]
 		if allApplications || accessible[string(a.ID)] {
-			apps = append(apps, myApplicationResponse{
+			apps = append(apps, MyApplicationResponse{
 				ID:           string(a.ID),
 				Code:         a.Code,
 				Name:         a.Name,
@@ -220,8 +220,8 @@ func stringSliceOrEmpty(s []string) []string {
 	return s
 }
 
-// myClientResponse is one client row (camelCase).
-type myClientResponse struct {
+// MyClientResponse is one client row (camelCase).
+type MyClientResponse struct {
 	ID         string  `json:"id"`
 	Name       string  `json:"name"`
 	Identifier string  `json:"identifier"`
@@ -230,15 +230,15 @@ type myClientResponse struct {
 	UpdatedAt  string  `json:"updatedAt"`
 }
 
-// myClientsListResponse is the list envelope for /api/me/clients.
-type myClientsListResponse struct {
-	Clients []myClientResponse `json:"clients"`
+// MyClientsListResponse is the list envelope for /api/me/clients.
+type MyClientsListResponse struct {
+	Clients []MyClientResponse `json:"clients"`
 	Total   int                `json:"total"`
 }
 
-func clientToMyResponse(c *client.Client) myClientResponse {
+func clientToMyResponse(c *client.Client) MyClientResponse {
 	status := string(c.Status)
-	return myClientResponse{
+	return MyClientResponse{
 		ID:         string(c.ID),
 		Name:       c.Name,
 		Identifier: c.Identifier,
@@ -261,7 +261,7 @@ func (s *State) listMyClients(w http.ResponseWriter, r *http.Request) {
 		httperror.Write(w, usecase.Internal("REPO", "client find_all failed", err))
 		return
 	}
-	out := make([]myClientResponse, 0, len(all))
+	out := make([]MyClientResponse, 0, len(all))
 	for i := range all {
 		c := &all[i]
 		if ac.IsAnchor() || ac.CanAccessClient(string(c.ID)) {
@@ -269,7 +269,7 @@ func (s *State) listMyClients(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(myClientsListResponse{Clients: out, Total: len(out)})
+	_ = json.NewEncoder(w).Encode(MyClientsListResponse{Clients: out, Total: len(out)})
 }
 
 // getMyClient serves GET /api/me/clients/{clientId}.
@@ -337,7 +337,7 @@ func (s *State) listMyClientApplications(w http.ResponseWriter, r *http.Request)
 	}
 	apps := filterMyApplications(all, false, enabled) // enabled-only (not an anchor short-circuit)
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(myApplicationsListResponse{
+	_ = json.NewEncoder(w).Encode(MyApplicationsListResponse{
 		Applications: apps,
 		Total:        len(apps),
 		ClientID:     clientID,

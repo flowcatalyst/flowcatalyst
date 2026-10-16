@@ -201,8 +201,8 @@ func parseTokenRequest(r *http.Request) (tokenRequest, error) {
 	}, nil
 }
 
-// tokenResponse is the RFC-6749 token success body.
-type tokenResponse struct {
+// TokenResponse is the RFC-6749 token success body.
+type TokenResponse struct {
 	AccessToken  string  `json:"access_token"`
 	TokenType    string  `json:"token_type"`
 	ExpiresIn    int64   `json:"expires_in"`
@@ -671,7 +671,7 @@ func (s *State) mintClientCredentialsToken(
 	if s.TouchServiceAccountUsed != nil && p.ServiceAccountID != nil {
 		s.TouchServiceAccountUsed(r.Context(), *p.ServiceAccountID)
 	}
-	writeToken(w, tokenResponse{
+	writeToken(w, TokenResponse{
 		AccessToken: accessToken,
 		TokenType:   "Bearer",
 		ExpiresIn:   s.Auth.AccessTokenTTLSecs(),
@@ -796,7 +796,7 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 		refreshToken = &raw
 	}
 
-	writeToken(w, tokenResponse{
+	writeToken(w, TokenResponse{
 		AccessToken:  accessToken,
 		TokenType:    "Bearer",
 		ExpiresIn:    s.Auth.AccessTokenTTLSecs(),
@@ -898,7 +898,7 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 		scope = &j
 	}
 
-	writeToken(w, tokenResponse{
+	writeToken(w, TokenResponse{
 		AccessToken:  accessToken,
 		TokenType:    "Bearer",
 		ExpiresIn:    s.Auth.AccessTokenTTLSecs(),
@@ -1162,7 +1162,7 @@ func writeOAuthError(w http.ResponseWriter, status int, code, description string
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-func writeToken(w http.ResponseWriter, resp tokenResponse) {
+func writeToken(w http.ResponseWriter, resp TokenResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Pragma", "no-cache")

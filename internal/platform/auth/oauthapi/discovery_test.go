@@ -117,7 +117,7 @@ func TestJWKS(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	var resp jwksResponse
+	var resp JWKSResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}

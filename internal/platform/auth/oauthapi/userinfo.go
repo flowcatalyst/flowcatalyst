@@ -19,11 +19,11 @@ func (s *State) RegisterUserinfoRoutes(r chi.Router) {
 	r.Post("/oauth/userinfo", s.Userinfo)
 }
 
-// userInfoResponse is the OIDC UserInfo body. sub/name/tier/type and the
+// UserInfoResponse is the OIDC UserInfo body. sub/name/tier/type and the
 // array claims are always present; scope carries the token's granted
 // permissions (empty for tokens without a scope claim); email and client_id
 // are omitted when absent.
-type userInfoResponse struct {
+type UserInfoResponse struct {
 	Sub           string   `json:"sub"`
 	Email         *string  `json:"email,omitempty"`
 	Name          string   `json:"name"`
@@ -79,7 +79,7 @@ func (s *State) Userinfo(w http.ResponseWriter, r *http.Request) {
 		// recomputed here — an identity token legitimately has none.
 	}
 
-	writeJSON(w, http.StatusOK, userInfoResponse{
+	writeJSON(w, http.StatusOK, UserInfoResponse{
 		Sub:           claims.Subject,
 		Email:         claims.Email,
 		Name:          claims.Name,

@@ -71,7 +71,7 @@ func TestUserinfoAnswersFromThePrincipal(t *testing.T) {
 	p, err := principals.FindByID(ctx, userEv.UserID)
 	require.NoError(t, err)
 
-	call := func(t *testing.T, token string) userInfoResponse {
+	call := func(t *testing.T, token string) UserInfoResponse {
 		t.Helper()
 		r := chi.NewRouter()
 		s.RegisterUserinfoRoutes(r)
@@ -80,7 +80,7 @@ func TestUserinfoAnswersFromThePrincipal(t *testing.T) {
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
 		require.Equal(t, 200, rec.Code, rec.Body.String())
-		var resp userInfoResponse
+		var resp UserInfoResponse
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 		return resp
 	}

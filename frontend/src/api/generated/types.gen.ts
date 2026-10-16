@@ -280,6 +280,40 @@ export type AttemptDto = {
     success: boolean;
 };
 
+export type AuditBatchItem = {
+    applicationCode?: string;
+    clientCode?: string;
+    entityId: string;
+    entityType: string;
+    operation: string;
+    operationData?: unknown;
+    performedAt?: string;
+    principalId: string;
+};
+
+export type AuditBatchRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items: Array<AuditBatchItem>;
+    [key: string]: unknown;
+};
+
+export type AuditBatchResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    results: Array<AuditBatchResult>;
+};
+
+export type AuditBatchResult = {
+    error?: string;
+    id: string;
+    status: string;
+};
+
 export type AuditLogApplicationIdsResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -409,6 +443,34 @@ export type BatchEventItem = {
     specVersion?: string;
     subject?: string;
     type?: string;
+};
+
+export type BatchItem = {
+    clientCode?: string;
+    clientId?: string;
+    code: string;
+    correlationId?: string;
+    dataOnly?: boolean;
+    descriptor?: string;
+    dispatchPoolId?: string;
+    eventId?: string;
+    externalId?: string;
+    id?: string;
+    kind?: string;
+    maxRetries?: number;
+    messageGroup?: string;
+    metadata?: Array<Metadata>;
+    mode?: string;
+    payload?: string;
+    payloadContentType?: string;
+    queue?: string;
+    sequence?: number;
+    serviceAccountId?: string;
+    source?: string;
+    subject?: string;
+    subscriptionId?: string;
+    targetUrl: string;
+    timeoutSeconds?: number;
 };
 
 export type BatchRequest = {
@@ -788,6 +850,42 @@ export type CreateConnectionRequest = {
     externalId?: string;
     name: string;
     serviceAccountId: string;
+    [key: string]: unknown;
+};
+
+export type CreateDispatchJobRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    clientCode?: string;
+    clientId?: string;
+    code: string;
+    correlationId?: string;
+    dataOnly?: boolean;
+    descriptor?: string;
+    dispatchPoolId?: string;
+    eventId?: string;
+    externalId?: string;
+    idempotencyKey?: string;
+    kind?: string;
+    maxRetries?: number;
+    messageGroup?: string;
+    metadata?: {
+        [key: string]: string;
+    };
+    mode?: string;
+    payload: string;
+    payloadContentType?: string;
+    queue?: string;
+    retryStrategy?: string;
+    sequence?: number;
+    serviceAccountId: string;
+    source?: string;
+    subject?: string;
+    subscriptionId?: string;
+    targetUrl: string;
+    timeoutSeconds?: number;
     [key: string]: unknown;
 };
 
@@ -1353,6 +1451,37 @@ export type Dispatch = {
     timeoutSeconds?: number;
 };
 
+export type DispatchJobBatchRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items: Array<BatchItem>;
+    [key: string]: unknown;
+};
+
+export type DispatchJobBatchResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    results: Array<DispatchJobBatchResult>;
+};
+
+export type DispatchJobBatchResult = {
+    error?: string;
+    id: string;
+    status: string;
+};
+
+export type DispatchJobCreatedResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    id: string;
+};
+
 export type DispatchJobFilterOptionsResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1809,6 +1938,42 @@ export type IdpRoleMappingResponse = {
     updatedAt: string;
 };
 
+export type IntrospectResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    active: boolean;
+    client_id?: string;
+    email?: string;
+    exp?: number;
+    iat?: number;
+    iss?: string;
+    name?: string;
+    scope?: string;
+    sub?: string;
+    tier?: string;
+    token_type?: string;
+    type?: string;
+};
+
+export type Jwk = {
+    alg: string;
+    e?: string;
+    kid?: string;
+    kty: string;
+    n?: string;
+    use: string;
+};
+
+export type JwksResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    keys: Array<Jwk>;
+};
+
 export type Kv = {
     key: string;
     value: string;
@@ -1895,6 +2060,11 @@ export type MappingResponse = {
     updatedAt: string;
 };
 
+export type Metadata = {
+    key: string;
+    value: string;
+};
+
 export type MetadataDto = {
     key: string;
     value: string;
@@ -1925,6 +2095,49 @@ export type MoveProviderResponse = {
      * OIDC-provisioned users converted back to internal auth (0 when moving to an OIDC provider)
      */
     usersReset: number;
+};
+
+export type MyApplicationResponse = {
+    baseUrl?: string;
+    code: string;
+    description?: string;
+    iconUrl?: string;
+    id: string;
+    logoMimeType?: string;
+    name: string;
+    website?: string;
+};
+
+export type MyApplicationsListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    applications: Array<MyApplicationResponse>;
+    clientId: string;
+    total: number;
+};
+
+export type MyClientResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    createdAt: string;
+    id: string;
+    identifier: string;
+    name: string;
+    status?: string;
+    updatedAt: string;
+};
+
+export type MyClientsListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    clients: Array<MyClientResponse>;
+    total: number;
 };
 
 export type NoteResponse = {
@@ -1973,6 +2186,40 @@ export type OAuthClientResponse = {
     redirectUris: Array<string>;
     serviceAccountPrincipalId?: string;
     updatedAt: string;
+};
+
+export type OAuthErrorBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    error: string;
+    error_description?: string;
+};
+
+export type OidcDiscoveryDocument = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    authorization_endpoint: string;
+    claims_supported: Array<string>;
+    code_challenge_methods_supported: Array<string>;
+    end_session_endpoint?: string;
+    grant_types_supported: Array<string>;
+    id_token_signing_alg_values_supported: Array<string>;
+    introspection_endpoint?: string;
+    issuer: string;
+    jwks_uri: string;
+    request_parameter_supported: boolean;
+    request_uri_parameter_supported: boolean;
+    response_types_supported: Array<string>;
+    revocation_endpoint?: string;
+    scopes_supported: Array<string>;
+    subject_types_supported: Array<string>;
+    token_endpoint: string;
+    token_endpoint_auth_methods_supported: Array<string>;
+    userinfo_endpoint?: string;
 };
 
 export type OffsetPageFunctionResponse = {
@@ -3380,6 +3627,67 @@ export type TokenAuth = {
     issuer: string;
 };
 
+export type TokenForm = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Client id (omit when using HTTP Basic)
+     */
+    client_id?: string;
+    /**
+     * Client secret (omit when using HTTP Basic)
+     */
+    client_secret?: string;
+    /**
+     * authorization_code grant: the authorization code
+     */
+    code?: string;
+    /**
+     * authorization_code grant: PKCE verifier
+     */
+    code_verifier?: string;
+    /**
+     * OAuth grant type
+     */
+    grant_type: 'authorization_code' | 'refresh_token' | 'client_credentials';
+    /**
+     * authorization_code grant: the redirect URI used at /oauth/authorize
+     */
+    redirect_uri?: string;
+    /**
+     * refresh_token grant: the refresh token
+     */
+    refresh_token?: string;
+    scope?: string;
+    [key: string]: unknown;
+};
+
+export type TokenIntrospectForm = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    client_id?: string;
+    client_secret?: string;
+    token: string;
+    [key: string]: unknown;
+};
+
+export type TokenResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    access_token: string;
+    expires_in: number;
+    id_token?: string;
+    refresh_token?: string;
+    scope?: string;
+    token_type: string;
+};
+
 export type UpdateAnchorDomainRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3672,6 +3980,23 @@ export type UpdateSubscriptionRequest = {
     [key: string]: unknown;
 };
 
+export type UserInfoResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    applications: Array<string>;
+    client_id?: string;
+    clients: Array<string>;
+    email?: string;
+    name: string;
+    roles: Array<string>;
+    scope: string;
+    sub: string;
+    tier: string;
+    type: string;
+};
+
 export type Version = {
     abi: number;
     describe: unknown;
@@ -3735,6 +4060,24 @@ export type WebhookCredentialsDto = {
     signingSecret?: string;
     token?: string;
     username?: string;
+};
+
+export type WhoamiResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    accessibleApplicationIds: Array<string>;
+    accessibleClientIds: Array<string>;
+    active: boolean;
+    allApplications: boolean;
+    email?: string;
+    name: string;
+    permissions: Array<string>;
+    principalId: string;
+    principalType: string;
+    roles: Array<string>;
+    scope: string;
 };
 
 export type WiringResponse = {
@@ -3892,6 +4235,15 @@ export type AttachServiceAccountRequestWritable = {
     serviceAccountCode: string;
     serviceAccountId: string;
     [key: string]: unknown;
+};
+
+export type AuditBatchRequestWritable = {
+    items: Array<AuditBatchItem>;
+    [key: string]: unknown;
+};
+
+export type AuditBatchResponseWritable = {
+    results: Array<AuditBatchResult>;
 };
 
 export type AuditLogApplicationIdsResponseWritable = {
@@ -4173,6 +4525,38 @@ export type CreateConnectionRequestWritable = {
     externalId?: string;
     name: string;
     serviceAccountId: string;
+    [key: string]: unknown;
+};
+
+export type CreateDispatchJobRequestWritable = {
+    clientCode?: string;
+    clientId?: string;
+    code: string;
+    correlationId?: string;
+    dataOnly?: boolean;
+    descriptor?: string;
+    dispatchPoolId?: string;
+    eventId?: string;
+    externalId?: string;
+    idempotencyKey?: string;
+    kind?: string;
+    maxRetries?: number;
+    messageGroup?: string;
+    metadata?: {
+        [key: string]: string;
+    };
+    mode?: string;
+    payload: string;
+    payloadContentType?: string;
+    queue?: string;
+    retryStrategy?: string;
+    sequence?: number;
+    serviceAccountId: string;
+    source?: string;
+    subject?: string;
+    subscriptionId?: string;
+    targetUrl: string;
+    timeoutSeconds?: number;
     [key: string]: unknown;
 };
 
@@ -4600,6 +4984,19 @@ export type DeveloperUserListResponseWritable = {
     total: number;
 };
 
+export type DispatchJobBatchRequestWritable = {
+    items: Array<BatchItem>;
+    [key: string]: unknown;
+};
+
+export type DispatchJobBatchResponseWritable = {
+    results: Array<DispatchJobBatchResult>;
+};
+
+export type DispatchJobCreatedResponseWritable = {
+    id: string;
+};
+
 export type DispatchJobFilterOptionsResponseWritable = {
     clientIds: Array<string>;
     codes: Array<string>;
@@ -4845,6 +5242,25 @@ export type IdpRoleMappingListResponseWritable = {
     items: Array<IdpRoleMappingResponse>;
 };
 
+export type IntrospectResponseWritable = {
+    active: boolean;
+    client_id?: string;
+    email?: string;
+    exp?: number;
+    iat?: number;
+    iss?: string;
+    name?: string;
+    scope?: string;
+    sub?: string;
+    tier?: string;
+    token_type?: string;
+    type?: string;
+};
+
+export type JwksResponseWritable = {
+    keys: Array<Jwk>;
+};
+
 export type ListOutputBodyWritable = {
     requests: Array<RequestDto>;
 };
@@ -4897,6 +5313,26 @@ export type MoveProviderResponseWritable = {
     usersReset: number;
 };
 
+export type MyApplicationsListResponseWritable = {
+    applications: Array<MyApplicationResponse>;
+    clientId: string;
+    total: number;
+};
+
+export type MyClientResponseWritable = {
+    createdAt: string;
+    id: string;
+    identifier: string;
+    name: string;
+    status?: string;
+    updatedAt: string;
+};
+
+export type MyClientsListResponseWritable = {
+    clients: Array<MyClientResponseWritable>;
+    total: number;
+};
+
 export type OAuthClientListResponseWritable = {
     clients: Array<OAuthClientResponseWritable>;
 };
@@ -4923,6 +5359,32 @@ export type OAuthClientResponseWritable = {
     redirectUris: Array<string>;
     serviceAccountPrincipalId?: string;
     updatedAt: string;
+};
+
+export type OAuthErrorBodyWritable = {
+    error: string;
+    error_description?: string;
+};
+
+export type OidcDiscoveryDocumentWritable = {
+    authorization_endpoint: string;
+    claims_supported: Array<string>;
+    code_challenge_methods_supported: Array<string>;
+    end_session_endpoint?: string;
+    grant_types_supported: Array<string>;
+    id_token_signing_alg_values_supported: Array<string>;
+    introspection_endpoint?: string;
+    issuer: string;
+    jwks_uri: string;
+    request_parameter_supported: boolean;
+    request_uri_parameter_supported: boolean;
+    response_types_supported: Array<string>;
+    revocation_endpoint?: string;
+    scopes_supported: Array<string>;
+    subject_types_supported: Array<string>;
+    token_endpoint: string;
+    token_endpoint_auth_methods_supported: Array<string>;
+    userinfo_endpoint?: string;
 };
 
 export type OffsetPageFunctionResponseWritable = {
@@ -5693,6 +6155,55 @@ export type SyncUsersResponseWritable = {
     updated: number;
 };
 
+export type TokenFormWritable = {
+    /**
+     * Client id (omit when using HTTP Basic)
+     */
+    client_id?: string;
+    /**
+     * Client secret (omit when using HTTP Basic)
+     */
+    client_secret?: string;
+    /**
+     * authorization_code grant: the authorization code
+     */
+    code?: string;
+    /**
+     * authorization_code grant: PKCE verifier
+     */
+    code_verifier?: string;
+    /**
+     * OAuth grant type
+     */
+    grant_type: 'authorization_code' | 'refresh_token' | 'client_credentials';
+    /**
+     * authorization_code grant: the redirect URI used at /oauth/authorize
+     */
+    redirect_uri?: string;
+    /**
+     * refresh_token grant: the refresh token
+     */
+    refresh_token?: string;
+    scope?: string;
+    [key: string]: unknown;
+};
+
+export type TokenIntrospectFormWritable = {
+    client_id?: string;
+    client_secret?: string;
+    token: string;
+    [key: string]: unknown;
+};
+
+export type TokenResponseWritable = {
+    access_token: string;
+    expires_in: number;
+    id_token?: string;
+    refresh_token?: string;
+    scope?: string;
+    token_type: string;
+};
+
 export type UpdateAnchorDomainRequestWritable = {
     domain: string;
     [key: string]: unknown;
@@ -5909,6 +6420,19 @@ export type UpdateSubscriptionRequestWritable = {
     [key: string]: unknown;
 };
 
+export type UserInfoResponseWritable = {
+    applications: Array<string>;
+    client_id?: string;
+    clients: Array<string>;
+    email?: string;
+    name: string;
+    roles: Array<string>;
+    scope: string;
+    sub: string;
+    tier: string;
+    type: string;
+};
+
 export type VersionResponseWritable = {
     abi: number;
     createdAt: string;
@@ -5932,6 +6456,20 @@ export type WebauthnAuthenticateCompleteResponseWritable = {
     roles: Array<string>;
 };
 
+export type WhoamiResponseWritable = {
+    accessibleApplicationIds: Array<string>;
+    accessibleClientIds: Array<string>;
+    active: boolean;
+    allApplications: boolean;
+    email?: string;
+    name: string;
+    permissions: Array<string>;
+    principalId: string;
+    principalType: string;
+    roles: Array<string>;
+    scope: string;
+};
+
 export type WiringResponseWritable = {
     dispatchPoolCode?: string;
     schedulesCreated?: number;
@@ -5951,6 +6489,56 @@ export type WriteInstanceLogRequestWritable = {
     metadata?: unknown;
     [key: string]: unknown;
 };
+
+export type JwksData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/.well-known/jwks.json';
+};
+
+export type JwksErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type JwksError = JwksErrors[keyof JwksErrors];
+
+export type JwksResponses = {
+    /**
+     * OK
+     */
+    200: JwksResponse;
+};
+
+export type JwksResponse2 = JwksResponses[keyof JwksResponses];
+
+export type OpenidConfigurationData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/.well-known/openid-configuration';
+};
+
+export type OpenidConfigurationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type OpenidConfigurationError = OpenidConfigurationErrors[keyof OpenidConfigurationErrors];
+
+export type OpenidConfigurationResponses = {
+    /**
+     * OK
+     */
+    200: OidcDiscoveryDocument;
+};
+
+export type OpenidConfigurationResponse = OpenidConfigurationResponses[keyof OpenidConfigurationResponses];
 
 export type ListAnchorDomainsData = {
     body?: never;
@@ -6895,6 +7483,31 @@ export type AuditLogApplicationIdsResponses = {
 };
 
 export type AuditLogApplicationIdsResponse2 = AuditLogApplicationIdsResponses[keyof AuditLogApplicationIdsResponses];
+
+export type BatchIngestAuditLogsData = {
+    body: AuditBatchRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/audit-logs/batch';
+};
+
+export type BatchIngestAuditLogsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type BatchIngestAuditLogsError = BatchIngestAuditLogsErrors[keyof BatchIngestAuditLogsErrors];
+
+export type BatchIngestAuditLogsResponses = {
+    /**
+     * OK
+     */
+    200: AuditBatchResponse;
+};
+
+export type BatchIngestAuditLogsResponse = BatchIngestAuditLogsResponses[keyof BatchIngestAuditLogsResponses];
 
 export type AuditLogClientIdsData = {
     body?: never;
@@ -7992,6 +8605,56 @@ export type ListDispatchJobsResponses = {
 };
 
 export type ListDispatchJobsResponse = ListDispatchJobsResponses[keyof ListDispatchJobsResponses];
+
+export type CreateDispatchJobData = {
+    body: CreateDispatchJobRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/dispatch-jobs';
+};
+
+export type CreateDispatchJobErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateDispatchJobError = CreateDispatchJobErrors[keyof CreateDispatchJobErrors];
+
+export type CreateDispatchJobResponses = {
+    /**
+     * Created
+     */
+    201: DispatchJobCreatedResponse;
+};
+
+export type CreateDispatchJobResponse = CreateDispatchJobResponses[keyof CreateDispatchJobResponses];
+
+export type BatchCreateDispatchJobsData = {
+    body: DispatchJobBatchRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/dispatch-jobs/batch';
+};
+
+export type BatchCreateDispatchJobsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type BatchCreateDispatchJobsError = BatchCreateDispatchJobsErrors[keyof BatchCreateDispatchJobsErrors];
+
+export type BatchCreateDispatchJobsResponses = {
+    /**
+     * Created
+     */
+    201: DispatchJobBatchResponse;
+};
+
+export type BatchCreateDispatchJobsResponse = BatchCreateDispatchJobsResponses[keyof BatchCreateDispatchJobsResponses];
 
 export type DispatchJobsByEventAliasData = {
     body?: never;
@@ -10523,6 +11186,135 @@ export type ListLoginAttemptsResponses = {
 };
 
 export type ListLoginAttemptsResponse = ListLoginAttemptsResponses[keyof ListLoginAttemptsResponses];
+
+export type GetMeData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/me';
+};
+
+export type GetMeErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetMeError = GetMeErrors[keyof GetMeErrors];
+
+export type GetMeResponses = {
+    /**
+     * OK
+     */
+    200: WhoamiResponse;
+};
+
+export type GetMeResponse = GetMeResponses[keyof GetMeResponses];
+
+export type ListMyApplicationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/me/applications';
+};
+
+export type ListMyApplicationsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListMyApplicationsError = ListMyApplicationsErrors[keyof ListMyApplicationsErrors];
+
+export type ListMyApplicationsResponses = {
+    /**
+     * OK
+     */
+    200: MyApplicationsListResponse;
+};
+
+export type ListMyApplicationsResponse = ListMyApplicationsResponses[keyof ListMyApplicationsResponses];
+
+export type ListMyClientsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/me/clients';
+};
+
+export type ListMyClientsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListMyClientsError = ListMyClientsErrors[keyof ListMyClientsErrors];
+
+export type ListMyClientsResponses = {
+    /**
+     * OK
+     */
+    200: MyClientsListResponse;
+};
+
+export type ListMyClientsResponse = ListMyClientsResponses[keyof ListMyClientsResponses];
+
+export type GetMyClientData = {
+    body?: never;
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/me/clients/{clientId}';
+};
+
+export type GetMyClientErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetMyClientError = GetMyClientErrors[keyof GetMyClientErrors];
+
+export type GetMyClientResponses = {
+    /**
+     * OK
+     */
+    200: MyClientResponse;
+};
+
+export type GetMyClientResponse = GetMyClientResponses[keyof GetMyClientResponses];
+
+export type ListMyClientApplicationsData = {
+    body?: never;
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/me/clients/{clientId}/applications';
+};
+
+export type ListMyClientApplicationsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListMyClientApplicationsError = ListMyClientApplicationsErrors[keyof ListMyClientApplicationsErrors];
+
+export type ListMyClientApplicationsResponses = {
+    /**
+     * OK
+     */
+    200: MyApplicationsListResponse;
+};
+
+export type ListMyClientApplicationsResponse = ListMyClientApplicationsResponses[keyof ListMyClientApplicationsResponses];
 
 export type ListOAuthClientsData = {
     body?: never;
@@ -14228,3 +15020,117 @@ export type PostFunctionRunnerHeartbeatResponses = {
 };
 
 export type PostFunctionRunnerHeartbeatResponse = PostFunctionRunnerHeartbeatResponses[keyof PostFunctionRunnerHeartbeatResponses];
+
+export type OauthIntrospectData = {
+    body: TokenIntrospectFormWritable;
+    path?: never;
+    query?: never;
+    url: '/oauth/introspect';
+};
+
+export type OauthIntrospectErrors = {
+    /**
+     * invalid_request, invalid_grant, unsupported_grant_type or unauthorized_client
+     */
+    400: OAuthErrorBody;
+    /**
+     * invalid_client or invalid_token
+     */
+    401: OAuthErrorBody;
+};
+
+export type OauthIntrospectError = OauthIntrospectErrors[keyof OauthIntrospectErrors];
+
+export type OauthIntrospectResponses = {
+    /**
+     * OK
+     */
+    200: IntrospectResponse;
+};
+
+export type OauthIntrospectResponse = OauthIntrospectResponses[keyof OauthIntrospectResponses];
+
+export type OauthRevokeData = {
+    body: TokenIntrospectFormWritable;
+    path?: never;
+    query?: never;
+    url: '/oauth/revoke';
+};
+
+export type OauthRevokeErrors = {
+    /**
+     * invalid_request, invalid_grant, unsupported_grant_type or unauthorized_client
+     */
+    400: OAuthErrorBody;
+    /**
+     * invalid_client or invalid_token
+     */
+    401: OAuthErrorBody;
+};
+
+export type OauthRevokeError = OauthRevokeErrors[keyof OauthRevokeErrors];
+
+export type OauthRevokeResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type OauthTokenData = {
+    body: TokenFormWritable;
+    path?: never;
+    query?: never;
+    url: '/oauth/token';
+};
+
+export type OauthTokenErrors = {
+    /**
+     * invalid_request, invalid_grant, unsupported_grant_type or unauthorized_client
+     */
+    400: OAuthErrorBody;
+    /**
+     * invalid_client or invalid_token
+     */
+    401: OAuthErrorBody;
+};
+
+export type OauthTokenError = OauthTokenErrors[keyof OauthTokenErrors];
+
+export type OauthTokenResponses = {
+    /**
+     * OK
+     */
+    200: TokenResponse;
+};
+
+export type OauthTokenResponse = OauthTokenResponses[keyof OauthTokenResponses];
+
+export type OauthUserinfoData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/oauth/userinfo';
+};
+
+export type OauthUserinfoErrors = {
+    /**
+     * invalid_request, invalid_grant, unsupported_grant_type or unauthorized_client
+     */
+    400: OAuthErrorBody;
+    /**
+     * invalid_client or invalid_token
+     */
+    401: OAuthErrorBody;
+};
+
+export type OauthUserinfoError = OauthUserinfoErrors[keyof OauthUserinfoErrors];
+
+export type OauthUserinfoResponses = {
+    /**
+     * OK
+     */
+    200: UserInfoResponse;
+};
+
+export type OauthUserinfoResponse = OauthUserinfoResponses[keyof OauthUserinfoResponses];

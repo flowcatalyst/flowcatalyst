@@ -231,6 +231,83 @@ Sequencing: (1) platform: `x-sdk` tagging + app spec; (2) Java and Go (cheapest)
 (3) TS; (4) Laravel last (largest consumer and largest generated tree); (5) a shared cross-SDK
 behaviour contract (A.9), which is a prerequisite for Python.
 
+## Spec tagging as built
+
+Steps 1 and 2 of the A.8 mechanism are in the platform. What exists, and where it differs from the
+plan above:
+
+**`x-sdk` on every operation.** `tools/dump-spec` stamps `x-sdk: app` or `x-sdk: admin`; an
+operation with no `x-sdk` is *internal* (recorded, not defaulted). The classification lives in
+`tools/dump-spec/sdkclass.go`: `appOps` (explicit allow-list by operationId), `internalOps`
+(explicit list by operationId) and `adminTags` (whole console areas). `internalOps` wins over the
+admin tag; a new operation whose tag is in none of the lists fails the dump, so a new route is
+always classified by a decision. `api/openapi.lock.json` carries `x-sdk`, so a change of class is a
+reviewed lockfile diff, and `tools/dump-spec/testdata/sdk-classification.golden` lists every
+operation with its class (`go test ./tools/dump-spec -update` rewrites it).
+
+**Counts (303 operations).** app 71, admin 209, internal 23. Of the 289 operations the lock already had, 57
+are app, 209 admin and 23 internal (the audit estimated 45 / 233 / 11); the other 14 app operations were added to the spec (below).
+
+**Operations added to the dumped spec.** The server serves these as plain chi handlers, so the
+dumped spec lacked them. Each package now has a spec-only `RegisterSpec(api)` that describes the
+route using the handler's own wire types; dump-spec calls it, the server never does
+(`TestRegisterSpecNotWired`). The shapes are proven against the real handlers by
+`internal/platform/shared/sdk/spec_pg_test.go` (integration tag).
+
+| Operation | Route | Status | Request | Response |
+|---|---|---|---|---|
+| `createDispatchJob` | `POST /api/dispatch-jobs` | 201 | `CreateDispatchJobRequest`; required `code`, `targetUrl`, `payload`, `serviceAccountId` | `{id}` |
+| `batchCreateDispatchJobs` | `POST /api/dispatch-jobs/batch` | 201 (200 for an empty batch) | `{items: BatchItem[]}`, at most 1000; `code`, `targetUrl` required (`kind` defaults EVENT, `dataOnly` false) | `{results: [{id, status, error?}]}`, status SUCCESS; any refused item rejects the whole batch |
+| `batchIngestAuditLogs` | `POST /api/audit-logs/batch` | 200 | `{items: AuditBatchItem[]}`, at most 100; `entityType`, `entityId`, `operation`, `principalId` required | `{results}` with SUCCESS, SKIPPED (unknown application/client code, no client access) or BAD_REQUEST per item |
+| `getMe`, `listMyApplications`, `listMyClients`, `getMyClient`, `listMyClientApplications` | `GET /api/me`, `/api/me/applications`, `/api/me/clients`, `/api/me/clients/{clientId}`, `/api/me/clients/{clientId}/applications` | 200 | none | the handlers' own response types |
+| `oauthToken`, `oauthIntrospect`, `oauthRevoke`, `oauthUserinfo`, `openidConfiguration`, `jwks` | `POST /oauth/token`, `/oauth/introspect`, `/oauth/revoke`, `GET /oauth/userinfo`, `/.well-known/openid-configuration`, `/.well-known/jwks.json` | 200 | token, introspect and revoke are `application/x-www-form-urlencoded` | RFC 6749 / 7662 / OIDC shapes; errors as `OAuthErrorBody` |
+
+`POST /api/events` (single) was already in the spec (`createEvent`); it is tagged app.
+`/oauth/authorize` and `/auth/oidc/session/end` are browser redirects and are not described.
+
+**Reclassifications against A.2 / A.3 / A.8** (the audit's "everything not class 1 is admin"):
+
+- *To internal:* the five `function-control` runner operations (machine-to-machine from the function
+  runner), the four passkey browser ceremonies (`webauthn` authenticate/register begin/complete; the
+  credential list and delete stay admin), `GET /api/dispatch/router-config` (served to the router
+  host) and `GET /api/platform/cors/allowed` (browser preflight helper).
+- *Docs read to admin:* A.2 listed "docs read" as class 1. `listDocs`, `getPlatformDoc` and
+  `getApplicationDoc` are gated by `CanReadPlatformDocs` and no SDK calls them; `syncAppDocs` stays app.
+- *`POST /api/event-types/{id}/schemas`* (`addEventTypeSchema`) is the Go-historical alias of
+  `/versions`; `addEventTypeVersion` is app (the Inhance apps use it through `request()`), the alias is internal.
+- *`scheduled-job fire`* stays admin as in the A.8 table (A.2's list put it in class 1); the Go SDK's
+  `Fire` and the Laravel `fire` will need the admin package.
+- *Added to app beyond A.2's 45:* `getRolesByApplication` (Java calls it), the principals operations the
+  Inhance apps use (`getPrincipal`, `listPrincipals`, `createUser`, `updatePrincipal`,
+  `resetPrincipalPassword`, `setPrincipalClientAssociation`; A.3 "app-delegated user management"),
+  the platform-config get/set/delete/list four, `getEmailDomainMappingByDomain`, and the `me`, token and OIDC
+  operations above.
+- *Used by SDKs but kept admin (A.3):* `listApplications`, application CRUD/clients/provisioning, client
+  create/update/search, principals roles/activate/client-access, `dispatch-pools` writes, service-account
+  operations, audit-log reads, the `/raw` variants. An app moved to the trimmed SDKs needs the admin
+  document for these.
+- *Internal legacy aliases (12):* dispatch-jobs `/raw`, `/list-raw`, `/{id}/raw`, `by-event`; events `/raw`,
+  `/list-raw`; `oauth-clients regenerate-secret`; service-accounts `regenerate-secret` and `regenerate-token`;
+  `GET /clients/search`; `audit-logs/recent`; `event-types/{id}/schemas`.
+
+Permission review of the app set: an application service account's built-in role
+(`permsApplicationService`) grants view on event types, subscriptions, connections, roles,
+permissions, processes and its own application, `scheduled-job-instance:write`, the sync permissions and
+the three batch-write permissions. It does **not** grant dispatch-pool read, client read, platform-config,
+principals or email-domain-mapping reads; those app operations need a role that holds them.
+
+**`make sdk-spec`.** Per SDK (`clients/{typescript,laravel,java}-sdk/openapi/`) it writes
+`openapi.json` (unchanged: `dump-spec -generator`, the spec without stubs and without `x-sdk`, byte
+identical to before), plus `openapi.app.json` and `openapi.admin.json` (`dump-spec -split app|admin`:
+the operations of that class and, transitively, only the schemas they reference; no dangling `$ref`,
+tested). The existing generators still read `openapi.json` only, so nothing is regenerated by this change.
+
+**Next cut.** No SDK needs `make sdk-generate` for this change. The SDKs that move to the trimmed
+surface (A.8 steps 3 and 4) regenerate from `openapi.app.json` instead: TypeScript (hey-api input),
+Java (model generation input) and Laravel (only if Jane is kept). The new spec-only operations
+(`createDispatchJob`, `batchCreateDispatchJobs`, `batchIngestAuditLogs`, `me`, OAuth) are only in the app
+and lock documents, not in `openapi.json`.
+
 ## A.9 Behaviour contract all SDKs should converge on (and Python starts with)
 
 | Topic | Rule |

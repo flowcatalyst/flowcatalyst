@@ -12,12 +12,12 @@ func (s *State) RegisterDiscoveryRoutes(r chi.Router) {
 	r.Get("/.well-known/jwks.json", s.JWKS)
 }
 
-// openIDConfiguration is the OIDC discovery document. The advertised
+// OIDCDiscoveryDocument is the OIDC discovery document. The advertised
 // capabilities are trimmed to what /oauth/authorize actually implements:
 // response_types is ["code"] only (no implicit/hybrid) and
 // code_challenge_methods is ["S256"] only (no "plain") — earlier documents
 // over-advertised both.
-type openIDConfiguration struct {
+type OIDCDiscoveryDocument struct {
 	Issuer                            string   `json:"issuer"`
 	AuthorizationEndpoint             string   `json:"authorization_endpoint"`
 	TokenEndpoint                     string   `json:"token_endpoint"`
@@ -41,7 +41,7 @@ type openIDConfiguration struct {
 // OpenIDConfiguration serves GET /.well-known/openid-configuration.
 func (s *State) OpenIDConfiguration(w http.ResponseWriter, _ *http.Request) {
 	base := s.BaseURL
-	writeJSON(w, http.StatusOK, openIDConfiguration{
+	writeJSON(w, http.StatusOK, OIDCDiscoveryDocument{
 		Issuer:                 base,
 		AuthorizationEndpoint:  base + "/oauth/authorize",
 		TokenEndpoint:          base + "/oauth/token",
@@ -75,8 +75,8 @@ func (s *State) OpenIDConfiguration(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// jwkKey is one JSON Web Key.
-type jwkKey struct {
+// JWK is one JSON Web Key.
+type JWK struct {
 	Kty string `json:"kty"`
 	Use string `json:"use"`
 	Kid string `json:"kid,omitempty"`
@@ -85,17 +85,17 @@ type jwkKey struct {
 	E   string `json:"e,omitempty"`
 }
 
-type jwksResponse struct {
-	Keys []jwkKey `json:"keys"`
+type JWKSResponse struct {
+	Keys []JWK `json:"keys"`
 }
 
 // JWKS serves GET /.well-known/jwks.json, exposing the current key plus
 // any previous keys (rotation) from authservice.
 func (s *State) JWKS(w http.ResponseWriter, _ *http.Request) {
 	all := s.Auth.AllJWKSKeys()
-	keys := make([]jwkKey, 0, len(all))
+	keys := make([]JWK, 0, len(all))
 	for _, k := range all {
-		keys = append(keys, jwkKey{
+		keys = append(keys, JWK{
 			Kty: "RSA",
 			Use: "sig",
 			Kid: k.KeyID,
@@ -104,5 +104,5 @@ func (s *State) JWKS(w http.ResponseWriter, _ *http.Request) {
 			E:   k.Components.E,
 		})
 	}
-	writeJSON(w, http.StatusOK, jwksResponse{Keys: keys})
+	writeJSON(w, http.StatusOK, JWKSResponse{Keys: keys})
 }
