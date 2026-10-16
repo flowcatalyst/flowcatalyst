@@ -374,10 +374,17 @@ written and no confirmation is asked:
 
   new: <address> vN (<runtime>, <digest12>)
   unchanged: <address> vN already has digest <digest12>
+  requeued: <address> vN was FAILED (<reason>), retrying
+
+A version a runner marked FAILED is never "unchanged": the failure is often
+transient (an artifact-store blip), so publishing the same digest again
+re-queues that version (same number, back to PUBLISHED) for a runner to retry.
 
 --json prints ONE JSON object on stdout (everything else goes to stderr):
-  {"address","functionId","version","digest","created","runtime","client"?}
-created is true when this run created the version; digest is the full sha256.
+  {"address","functionId","version","digest","created","requeued"?,"runtime","client"?}
+created is true when this run created the version; requeued (only when true)
+means the digest's version was FAILED and this run re-queued it; digest is the
+full sha256.
 
 --create --client <client> sets the owning client of a new function. <client>
 is the client's code (e.g. bevco) or its clt_... id; --client is ignored for a
@@ -406,12 +413,16 @@ function that already exists.`,
 			if fn == nil && !create {
 				return fmt.Errorf("no function %s; pass --create to create it", address)
 			}
+			var failed *fnVersion // the digest's version, when the platform latched it FAILED
 			if fn != nil {
 				existing, err := api.findDigest(ctx, fn, digest)
 				if err != nil {
 					return err
 				}
-				if existing != nil {
+				if versionFailed(existing) {
+					failed = existing
+				}
+				if existing != nil && !versionFailed(existing) {
 					rep.say("unchanged: %s v%d already has digest %s", fn.Address, existing.Number, short(digest))
 					return rep.emit(fnPublishJSON{Address: fn.Address, FunctionID: fn.ID, Version: existing.Number, Digest: digest, Created: false, Runtime: firstNonEmpty(existing.Runtime, runtime), Client: ownerClient(fn, fnClient{})})
 				}
@@ -435,6 +446,15 @@ function that already exists.`,
 			v, err := api.publishBytes(ctx, fn, data, digest, runtime)
 			if err != nil {
 				return err
+			}
+			if failed != nil {
+				// The digest's version was FAILED: publishing it again
+				// re-queued it (no new version).
+				if err := checkRequeued(fn.Address, failed, v); err != nil {
+					return err
+				}
+				rep.say("%s", requeuedLine(fn.Address, failed))
+				return rep.emit(fnPublishJSON{Address: fn.Address, FunctionID: fn.ID, Version: v.Number, Digest: digest, Created: false, Requeued: true, Runtime: firstNonEmpty(v.Runtime, runtime), Client: ownerClient(fn, owner)})
 			}
 			rep.say("new: %s v%d (%s, %s)", fn.Address, v.Number, runtime, short(digest))
 			return rep.emit(fnPublishJSON{Address: fn.Address, FunctionID: fn.ID, Version: v.Number, Digest: digest, Created: true, Runtime: runtime, Client: ownerClient(fn, owner)})
@@ -520,13 +540,20 @@ For pipelines (the artifact's sha256 digest is the identity of a version):
                     (no publish, no wait, no promote, no confirmation, no
                     remote write). When the digest exists as a version that is
                     not live, the upload is skipped but it is still promoted.
+                    A version that is FAILED is never "unchanged": the digest is
+                    published again, which re-queues that version (same number)
+                    for a runner to retry, and the run waits and promotes as for
+                    a new version, printing
+                      requeued: <address> vN was FAILED (<reason>), retrying
   --no-promote      publish and wait until a runner has loaded the version
                     (READY), but leave live where it is; subscriptions and
                     schedules are only wired at promote.
   --json            print ONE JSON object on stdout, human output on stderr:
                     {"address","functionId","version","digest","created",
-                     "promoted","skipped","runtime","client"?}
-                    created: this run created the version; promoted: live was
+                     "requeued"?,"promoted","skipped","runtime","client"?}
+                    created: this run created the version; requeued: the
+                    digest's version was FAILED and this run re-queued it;
+                    promoted: live was
                     moved by this run; skipped: --skip-unchanged did nothing.
 
 A run that makes no remote write (skipped, or --no-promote of an existing
@@ -625,13 +652,26 @@ digest) needs no prod confirmation; any other write to a prod profile does.`,
 				result.FunctionID, result.Client = fn.ID, ownerClient(fn, plan.owner)
 			}
 			v := plan.existing
-			if v == nil {
+			switch {
+			case v == nil:
 				if v, err = api.publishBytes(ctx, fn, data, plan.digest, runtime); err != nil {
 					return err
 				}
 				result.Created = true
 				rep.say("new: %s v%d (%s, %s)", fn.Address, v.Number, runtime, short(plan.digest))
-			} else {
+			case versionFailed(v):
+				// FAILED is not "unchanged": publish the digest again to
+				// re-queue it, then wait for a runner as for a new version.
+				was := v
+				if v, err = api.publishBytes(ctx, fn, data, plan.digest, runtime); err != nil {
+					return err
+				}
+				if err := checkRequeued(fn.Address, was, v); err != nil {
+					return err
+				}
+				result.Requeued = true
+				rep.say("%s", requeuedLine(fn.Address, was))
+			default:
 				rep.say("unchanged: %s v%d already has digest %s", fn.Address, v.Number, short(plan.digest))
 			}
 			result.Version = v.Number

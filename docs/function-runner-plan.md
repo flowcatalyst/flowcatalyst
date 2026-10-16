@@ -182,7 +182,7 @@ host crossings coarse in any future capability (§5.3).
 | Concept | Definition |
 |---|---|
 | **Function** | Owned by an application (and optionally a client). Identity is the **address** `{applicationCode}.{name}`: two DNS labels, immutable, unique. `name` matches `^[a-z][a-z0-9-]{0,62}$`. |
-| **Version** | An immutable artifact (sha256 digest) plus its describe document, numbered 1, 2, 3… per function. Status: `PUBLISHED` → `READY` (a runner loaded it) or `FAILED`; later `RETIRED`. Publishing the same digest twice returns the existing version. |
+| **Version** | An immutable artifact (sha256 digest) plus its describe document, numbered 1, 2, 3… per function. Status: `PUBLISHED` → `READY` (a runner loaded it) or `FAILED`; later `RETIRED`. Publishing the same digest twice returns the existing version, except that re-publishing the digest of a `FAILED` version **re-queues** it: status back to `PUBLISHED`, failure cleared, pool revision bumped (same transaction), same number, no event. `READY`/`RETIRED`/`PUBLISHED` versions are untouched. |
 | **Alias** | A named pointer to a version. `live` drives wiring (subscriptions, schedules). Other names (`canary`, `qa`) are HTTP-only. |
 | **Describe** | The function's declared needs, read from the artifact (§5.1). |
 | **Settings** | Platform-held, per function: pool, warm, limits, config values, secret values, DB bindings (declared DB name → secret holding a DSN). Changing settings needs no new version. |
@@ -405,14 +405,29 @@ Each loaded version keeps an idle stack of instances (never shared by concurrent
   milliseconds. On error, back off and keep serving what is loaded; a platform outage never
   unloads anything.
 - **Prepare** each version not yet held: download the artifact by digest (§8.4), verify sha256,
-  compile (disk cache), run the module check.
+  compile (disk cache), run the module check. Load failures are classified, because the platform
+  latches the first `FAILED` report for a version (§8.3):
+  - *transient* (retried in the runner with exponential backoff and jitter, 1 s doubling to 30 s,
+    for at most 5 min in total; `FC_FUNCTIONS_LOAD_RETRY_*`): control-plane 5xx, 429, 408/425,
+    401/403 (token expiry, lapsed presign), network errors and timeouts, truncated bodies, storage
+    download errors (an S3 5xx surfaces as the redirect target's status). The version stays
+    `PREPARING`, is not reported `FAILED`, and its heartbeat entry reads `RETRYING` with the last
+    error (informational; the platform ignores it, an older platform ignores the unknown state).
+  - *permanent* (`FAILED` at once): artifact missing (404/410) or otherwise rejected (other 4xx),
+    digest mismatch, oversized artifact, malformed digest, and everything after the fetch: module
+    validation, ABI/describe failures, compile and instantiate errors.
+  Only when the budget is spent is `FAILED` reported, with the last error and the attempt count
+  (`... (gave up after N attempts over Ts)`). A version that failed is retried when desired state
+  is re-rendered (at most once per 5 s) and, for an exhausted transient failure, on the 15 s
+  maintenance tick with doubling backoff to 5 min.
 - **Swap new before old:** route to the new live version as soon as it is ready, drain the old
   one's in-flight calls, then close it.
 - Warm versions load eagerly. Lazy versions compile on first call and are evicted after
   `FC_FUNCTIONS_IDLE_EVICT` (default 30 min) of no calls.
 - **Heartbeat** every 15 s and after every change: per version `LOADED | COMPILED | FAILED(reason)`,
   plus the budget report (§7). The platform marks a version `READY` the first time any runner
-  reports it `LOADED`.
+  reports it `LOADED`. (`RETRYING(detail)` is also sent while a transient failure is being
+  retried; see Prepare.)
 - Candidates (`PUBLISHED`, not yet on an alias) are in desired state so a runner proves them
   loadable before anyone promotes.
 
@@ -507,7 +522,7 @@ New routes go into the lockfile with `make api-bump`; `make api-diff` must pass.
 | Route | Purpose |
 |---|---|
 | `GET /desired?pool=P&wait=30s` | The pool's document; `ETag` = revision. Waits on `LISTEN fng_desired` with a 5 s re-check fallback. |
-| `POST /heartbeat` | Runner report (§6.5, §7). Marks versions `READY`/`FAILED`. |
+| `POST /heartbeat` | Runner report (§6.5, §7). Marks versions `READY`/`FAILED`: only a `PUBLISHED` version transitions (the write is conditional on it in SQL), and a `FAILED` report counts only from a runner whose applied `revision` is at least the revision at which the version was last re-queued (`fng_versions.requeued_at_revision`, migration 081): an older runner is reporting the attempt that predates the reset. |
 | `GET /artifacts/{digest}` | `302` to a presigned S3 URL, or streamed from the file store. The runner holds no storage credentials. |
 | `POST /events` `{functionId, event}` | Emit on a function's behalf (§6.3). |
 | `POST /dispatch-jobs` `{functionId, version, invocationId, requestCorrelationId, dispatch, payload}` | Create a dispatch job on a function's behalf (§6.3, §8.7). `201 {jobId}`. |

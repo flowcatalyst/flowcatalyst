@@ -30,6 +30,12 @@ type ciPlatform struct {
 	created  bool
 	writes   []string
 	reads    []string
+	// requeue: a publish of a FAILED version's digest resets it to PUBLISHED
+	// (as the real platform does); the next GET of that version then reads
+	// READY, as if a runner had loaded it. Off = an older platform that
+	// replays the FAILED row unchanged.
+	requeue  bool
+	requeued int
 }
 
 const ciAddress = "demo.logger"
@@ -74,8 +80,12 @@ func (p *ciPlatform) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(key, "GET "+base+"/versions/"):
 		var n int32
 		_, _ = fmt.Sscan(strings.TrimPrefix(r.URL.Path, base+"/versions/"), &n)
-		for _, v := range p.versions {
+		for i, v := range p.versions {
 			if v.Number == n {
+				if v.Status == "PUBLISHED" && p.requeued > 0 {
+					p.versions[i].Status = "READY" // a runner loaded the re-queued version
+					v = p.versions[i]
+				}
 				_ = json.NewEncoder(w).Encode(v)
 				return
 			}
@@ -93,8 +103,13 @@ func (p *ciPlatform) serve(w http.ResponseWriter, r *http.Request) {
 	case key == "POST "+base+"/versions":
 		var body struct{ Digest, Runtime string }
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		for _, v := range p.versions { // idempotent per digest
+		for i, v := range p.versions { // idempotent per digest
 			if v.Digest == body.Digest {
+				if v.Status == "FAILED" && p.requeue {
+					p.versions[i].Status, p.versions[i].Failure = "PUBLISHED", nil
+					p.requeued++
+					v = p.versions[i]
+				}
 				_ = json.NewEncoder(w).Encode(v)
 				return
 			}
@@ -537,4 +552,117 @@ func TestCIProfileAddWithoutSecretRefNeedsTerminal(t *testing.T) {
 	newFnTestEnv(t) // tty=false
 	_, _, err := runCobra(t, newProfileCmd(), "", "add", "ci", "--platform", "https://fc.example.com", "--env", "np", "--client-id", "x")
 	require.ErrorContains(t, err, "--secret-ref env:NAME")
+}
+
+// --- FAILED versions are "needs retry", never "unchanged" -----------------------
+
+const ciFailedReason = `{"reason":"ARTIFACT: control plane: HTTP 500 ARTIFACT_STORE: presign failed"}`
+
+func (c *ciEnv) withFailedVersion(digest string) {
+	c.p.versions = append(c.p.versions, fnVersion{Number: int32(len(c.p.versions) + 1), Digest: digest, Runtime: "js", Status: "FAILED", Failure: json.RawMessage(ciFailedReason)})
+}
+
+func TestPublishFailedVersionIsRequeued(t *testing.T) {
+	c := newCIEnv(t, "np")
+	c.p.requeue = true
+	c.withFailedVersion(c.digest)
+	out, errOut, err := c.publish(t, "--json")
+	require.NoError(t, err, errOut)
+	require.Contains(t, errOut, fmt.Sprintf("requeued: %s v1 was FAILED (ARTIFACT: control plane: HTTP 500 ARTIFACT_STORE: presign failed), retrying", ciAddress))
+	require.NotContains(t, errOut, "unchanged")
+	m := singleJSON(t, out)
+	require.Equal(t, true, m["requeued"])
+	require.Equal(t, false, m["created"])
+	require.Equal(t, float64(1), m["version"])
+	require.Equal(t, 1, c.p.requeued)
+	require.Equal(t, 1, c.p.versionCount(), "no new version is minted")
+	log := strings.Join(c.p.writeLog(), "\n")
+	require.Contains(t, log, "POST /api/functions/fn_1/versions")
+	require.NotContains(t, log, "aliases", "publish never promotes")
+}
+
+func TestPublishFailedVersionHumanLine(t *testing.T) {
+	c := newCIEnv(t, "np")
+	c.p.requeue = true
+	c.withFailedVersion(c.digest)
+	out, _, err := c.publish(t)
+	require.NoError(t, err)
+	require.Equal(t, fmt.Sprintf("requeued: %s v1 was FAILED (ARTIFACT: control plane: HTTP 500 ARTIFACT_STORE: presign failed), retrying\n", ciAddress), out)
+}
+
+// An older platform replays the FAILED row unchanged: the CLI must say so
+// rather than wait for a version that will never load, or claim success.
+func TestPublishFailedVersionOnPlatformWithoutRequeueErrors(t *testing.T) {
+	c := newCIEnv(t, "np")
+	c.withFailedVersion(c.digest) // requeue off
+	_, _, err := c.publish(t)
+	require.ErrorContains(t, err, "still FAILED")
+}
+
+func TestDeploySkipUnchangedDoesNotSkipAFailedLiveVersion(t *testing.T) {
+	c := newCIEnv(t, "np")
+	c.p.requeue = true
+	c.withFailedVersion(c.digest)
+	c.p.live = 1
+	out, errOut, err := c.deploy(t, "--skip-unchanged", "--json")
+	require.NoError(t, err, errOut)
+	require.NotContains(t, errOut, "unchanged:")
+	require.Contains(t, errOut, "requeued: "+ciAddress+" v1 was FAILED (ARTIFACT: control plane: HTTP 500")
+	m := singleJSON(t, out)
+	require.Equal(t, false, m["skipped"])
+	require.Equal(t, true, m["requeued"])
+	require.Equal(t, false, m["created"])
+	require.Equal(t, true, m["promoted"])
+	require.Equal(t, 1, c.p.requeued)
+	require.EqualValues(t, 1, c.p.liveNow())
+}
+
+func TestDeployFailedVersionRequeuesWaitsAndPromotes(t *testing.T) {
+	c := newCIEnv(t, "np")
+	c.p.requeue = true
+	c.withVersion("0000000000000000000000000000000000000000000000000000000000000001")
+	c.withFailedVersion(c.digest)
+	c.p.live = 1
+	out, _, err := c.deploy(t)
+	require.NoError(t, err)
+	require.Contains(t, out, "requeued: "+ciAddress+" v2 was FAILED")
+	require.Contains(t, out, "waiting for a runner to load v2")
+	require.Contains(t, out, ciAddress+"@live → v2")
+	require.EqualValues(t, 2, c.p.liveNow())
+	require.Equal(t, 2, c.p.versionCount())
+}
+
+func TestDeployFailedVersionOnPlatformWithoutRequeueErrors(t *testing.T) {
+	c := newCIEnv(t, "np")
+	c.withFailedVersion(c.digest)
+	_, _, err := c.deploy(t)
+	require.ErrorContains(t, err, "still FAILED")
+	require.Zero(t, c.p.liveNow())
+}
+
+func TestDeployDryRunFailedVersionSaysRequeue(t *testing.T) {
+	c := newCIEnv(t, "np")
+	c.withFailedVersion(c.digest)
+	c.p.live = 1
+	out, _, err := c.deploy(t, "--dry-run", "--skip-unchanged")
+	require.NoError(t, err)
+	require.Contains(t, out, "requeued: "+ciAddress+" v1 was FAILED")
+	require.NotContains(t, out, "do nothing")
+	require.Empty(t, c.p.writeLog())
+}
+
+func TestDeployNoPromoteFailedVersionOnProdNeedsConfirmation(t *testing.T) {
+	c := newCIEnv(t, "prod")
+	c.p.requeue = true
+	c.withFailedVersion(c.digest)
+	_, _, err := c.deploy(t, "--no-promote")
+	require.Error(t, err, "re-queuing is a remote write: prod needs confirmation")
+	require.Empty(t, c.p.writeLog())
+}
+
+func TestFailureReason(t *testing.T) {
+	require.Equal(t, "boom", failureReason(json.RawMessage(`{"reason":"boom"}`)))
+	require.Equal(t, `{"other":1}`, failureReason(json.RawMessage(`{"other":1}`)))
+	require.Equal(t, "no reason recorded", failureReason(nil))
+	require.Equal(t, "no reason recorded", failureReason(json.RawMessage(`null`)))
 }

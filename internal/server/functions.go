@@ -39,6 +39,9 @@ type FunctionRunnerConfig struct {
 	CacheDir                 string
 	IdleEvict                time.Duration
 	TrustedProxies           []netip.Prefix
+	// LoadRetry bounds the retries of a transient artifact-fetch failure
+	// before a version is reported FAILED (zero fields = runner defaults).
+	LoadRetry runner.LoadRetry
 	// SetMemoryLimit sets GOMEMLIMIT to the reserve: only when the runner is
 	// the process's only subsystem (guest memory lives outside the Go heap).
 	SetMemoryLimit bool
@@ -64,6 +67,11 @@ func LoadFunctionRunnerEnv(cfg EnvCfg) FunctionRunnerConfig {
 		ReserveMB:     envInt("FC_FUNCTIONS_MEMORY_RESERVE_MB", 0),
 		CacheDir:      os.Getenv("FC_FUNCTIONS_CACHE_DIR"),
 		IdleEvict:     time.Duration(envInt("FC_FUNCTIONS_IDLE_EVICT_SECONDS", 1800)) * time.Second,
+		LoadRetry: runner.LoadRetry{
+			Initial: time.Duration(envInt("FC_FUNCTIONS_LOAD_RETRY_INITIAL_MS", int(runner.DefaultLoadRetryInitial/time.Millisecond))) * time.Millisecond,
+			Max:     time.Duration(envInt("FC_FUNCTIONS_LOAD_RETRY_MAX_MS", int(runner.DefaultLoadRetryMax/time.Millisecond))) * time.Millisecond,
+			Budget:  time.Duration(envInt("FC_FUNCTIONS_LOAD_RETRY_BUDGET_SECONDS", int(runner.DefaultLoadRetryBudget/time.Second))) * time.Second,
+		},
 	}
 	if c.PlatformURL == "" && cfg.PlatformEnabled {
 		c.PlatformURL = fmt.Sprintf("http://127.0.0.1:%d", cfg.APIPort)
@@ -144,6 +152,7 @@ func StartFunctionRunner(ctx context.Context, c FunctionRunnerConfig) {
 		Budget:         b,
 		CacheDir:       c.CacheDir,
 		IdleEvict:      c.IdleEvict,
+		LoadRetry:      c.LoadRetry,
 		IssuerFallback: c.PlatformURL,
 		TrustedProxies: c.TrustedProxies,
 		Logger:         slog.Default(),

@@ -37,6 +37,10 @@ type pendingVersionUpdate struct {
 // runner is recorded only in that runner's own report (hb persisted via
 // UpsertRunnerHeartbeat, unconditionally, below) — it is never demoted.
 //
+// A FAILED report is fenced by the version's requeued_at_revision: it counts
+// only from a runner whose applied Revision is at least the revision at which
+// the version was last re-queued by a publish (see ResetFailedVersionTx).
+//
 // Every version transition in this heartbeat is applied in one transaction
 // together with a single pool-revision bump, so the candidate→READY change
 // (or a failure) reaches other runners as soon as this call returns.
@@ -74,16 +78,29 @@ func (s *State) heartbeat(ctx context.Context, in *heartbeatInput) (*apicommon.E
 
 	now := time.Now().UTC()
 	err = s.Repo.WithPoolTx(ctx, func(tx pgx.Tx) error {
+		applied := 0
 		for _, p := range pending {
+			// The writes are conditional on the row still being PUBLISHED
+			// (and, for FAILED, on the runner having applied the version's
+			// last re-queue revision): pendingVersionUpdates read the status
+			// outside this transaction, and a publish-time reset can land in
+			// between. A stale report must never resurrect a FAILED status.
+			var ok bool
 			var err error
 			if p.ready {
-				err = s.Repo.SetVersionReadyTx(ctx, tx, p.versionID, now)
+				ok, err = s.Repo.SetVersionReadyIfPublishedTx(ctx, tx, p.versionID, now)
 			} else {
-				err = s.Repo.SetVersionFailureTx(ctx, tx, p.versionID, p.failure)
+				ok, err = s.Repo.SetVersionFailureIfPublishedTx(ctx, tx, p.versionID, p.failure, hb.Revision)
 			}
 			if err != nil {
 				return err
 			}
+			if ok {
+				applied++
+			}
+		}
+		if applied == 0 {
+			return nil
 		}
 		_, err := s.Repo.BumpPoolRevisionTx(ctx, tx, hb.Pool)
 		return err

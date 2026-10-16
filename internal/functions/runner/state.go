@@ -91,7 +91,11 @@ type version struct {
 
 	// Retry bookkeeping for a failed version (see Runner.retryFailed).
 	attempts atomic.Int32
-	retryAt  atomic.Int64 // unix nanos; 0 = never retry (the failure is permanent)
+	retryAt  atomic.Int64 // unix nanos; 0 = the maintenance tick never retries (permanent failure)
+	failedAt atomic.Int64 // unix nanos of the last failure
+	// retrying is the in-progress detail while a transient failure is being
+	// retried inside prepare; nil otherwise. Reported as StateRetrying.
+	retrying atomic.Pointer[string]
 
 	lastUsed atomic.Int64 // unix nanos
 	inflight sync.WaitGroup

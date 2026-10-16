@@ -163,19 +163,20 @@ type FngSetting struct {
 }
 
 type FngVersion struct {
-	ID          string          `db:"id"`
-	FunctionID  string          `db:"function_id"`
-	Number      int32           `db:"number"`
-	Digest      string          `db:"digest"`
-	SizeBytes   int64           `db:"size_bytes"`
-	Abi         int32           `db:"abi"`
-	Describe    json.RawMessage `db:"describe"`
-	Status      string          `db:"status"`
-	Failure     json.RawMessage `db:"failure"`
-	ReadyAt     *time.Time      `db:"ready_at"`
-	PublishedBy *string         `db:"published_by"`
-	CreatedAt   time.Time       `db:"created_at"`
-	Runtime     string          `db:"runtime"`
+	ID                 string          `db:"id"`
+	FunctionID         string          `db:"function_id"`
+	Number             int32           `db:"number"`
+	Digest             string          `db:"digest"`
+	SizeBytes          int64           `db:"size_bytes"`
+	Abi                int32           `db:"abi"`
+	Describe           json.RawMessage `db:"describe"`
+	Status             string          `db:"status"`
+	Failure            json.RawMessage `db:"failure"`
+	ReadyAt            *time.Time      `db:"ready_at"`
+	PublishedBy        *string         `db:"published_by"`
+	CreatedAt          time.Time       `db:"created_at"`
+	Runtime            string          `db:"runtime"`
+	RequeuedAtRevision int64           `db:"requeued_at_revision"`
 }
 
 type IamAuthorizationCode struct {

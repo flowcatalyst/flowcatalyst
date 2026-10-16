@@ -67,6 +67,10 @@ func newLifecycle(t *testing.T, grace time.Duration) *lifecycle {
 		t.Fatal(err)
 	}
 	r.retryBase = 10 * time.Millisecond
+	// These tests exercise the failed-version retry (after the in-prepare
+	// budget is spent); a one-shot budget keeps them fast. retry_test.go
+	// covers the in-prepare retries themselves.
+	r.loadRetry = LoadRetry{Initial: time.Millisecond, Max: time.Millisecond, Budget: time.Nanosecond}
 	return &lifecycle{t: t, base: base, cp: cp, r: r, budget: b, done: make(chan struct{})}
 }
 

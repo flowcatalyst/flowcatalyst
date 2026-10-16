@@ -177,7 +177,16 @@ idempotent per digest, so this only decides what to say and avoids the write:
 ```
 new: myapp.myfn v7 (js, 3f2a9c01b7de)                       # a version was created
 unchanged: myapp.myfn v6 already has digest 3f2a9c01b7de   # nothing uploaded or written, no confirmation
+requeued: myapp.myfn v6 was FAILED (<reason>), retrying    # the digest's version was FAILED: published again to retry
 ```
+
+A version a runner marked `FAILED` is never "unchanged". The failure is latched by the first runner
+report and is often transient (an artifact-store blip), so the CLI treats `FAILED` as "needs retry":
+it uploads and publishes the same digest again, and the platform re-queues that version (same number,
+back to `PUBLISHED`, runners re-fetch desired state and retry). Re-running a pipeline whose deploy
+failed that way therefore retries instead of re-reading the stored failure. Against a platform that
+predates re-queue support the CLI stops with `... is still FAILED after re-publishing its digest`
+rather than wait for a version that will never load.
 
 `publish` never promotes: no alias moves, no subscription or schedule is wired (that happens at promote).
 
@@ -190,6 +199,7 @@ unchanged: myapp.myfn v6 already has digest 3f2a9c01b7de   # nothing uploaded or
 | `--no-promote`, digest already a version | no write at all (only waits if it is not READY yet); no confirmation |
 | `--skip-unchanged`, `live` already has this digest | prints `unchanged: myapp.myfn live v6 already has digest 3f2a9c01b7de`, exits 0: no publish, no wait, no promote, no remote write, no confirmation |
 | `--skip-unchanged`, digest is a version but not `live` | no upload, but it is promoted (unless `--no-promote`) |
+| digest's version is `FAILED` (with or without `--skip-unchanged`) | never skipped: prints `requeued: ... was FAILED (<reason>), retrying`, re-publishes the digest (re-queues the same version), waits for READY, then promotes (unless `--no-promote`). It is a remote write, so a prod profile asks for confirmation |
 | neither flag, digest already a version | no upload; promoted again (as before) |
 
 `--json` prints exactly one JSON object on stdout; the banner and all progress go to stderr.
@@ -198,7 +208,9 @@ unchanged: myapp.myfn v6 already has digest 3f2a9c01b7de   # nothing uploaded or
 {"address":"myapp.myfn","functionId":"fn_0HZ...","version":7,"digest":"<full sha256>","created":true,"promoted":true,"skipped":false,"runtime":"js","client":"clt_0HZ..."}
 ```
 
-`publish --json` has `address, functionId, version, digest, created, runtime, client`. `created` means
+`publish --json` has `address, functionId, version, digest, created, runtime, client`, plus `requeued`
+(only when true) when the digest's version was `FAILED` and this run re-queued it (`created` is false;
+`deploy --json` has `requeued` the same way). `created` means
 this run created the version (false: the digest already existed); `promoted` means this run moved
 `live`; `skipped` means `--skip-unchanged` found `live` already at this digest; `client` is the owning
 client's `clt_` id and is omitted for a platform-owned function. A `--dry-run --json` adds

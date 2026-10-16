@@ -45,25 +45,25 @@ func verifyDigest(b []byte, digest string) bool {
 
 func (c *artifactCache) get(ctx context.Context, digest string) ([]byte, error) {
 	if !digestPattern.MatchString(digest) {
-		return nil, fmt.Errorf("digest %q is not a sha256 hex digest", digest)
+		return nil, &fetchError{permanentError{fmt.Errorf("digest %q is not a sha256 hex digest", digest)}}
 	}
 	if b, ok := c.cached(digest); ok {
 		return b, nil
 	}
 	rc, err := c.cp.Artifact(ctx, digest)
 	if err != nil {
-		return nil, err
+		return nil, &fetchError{err}
 	}
 	defer rc.Close()
 	b, err := io.ReadAll(io.LimitReader(rc, maxArtifactBytes+1))
 	if err != nil {
-		return nil, err
+		return nil, &fetchError{err}
 	}
 	if len(b) > maxArtifactBytes {
-		return nil, errors.New("artifact is over 64 MiB")
+		return nil, &fetchError{permanentError{errors.New("artifact is over 64 MiB")}}
 	}
 	if !verifyDigest(b, digest) {
-		return nil, errors.New("artifact does not match its digest")
+		return nil, &fetchError{permanentError{errors.New("artifact does not match its digest")}}
 	}
 	c.store(digest, b)
 	return b, nil

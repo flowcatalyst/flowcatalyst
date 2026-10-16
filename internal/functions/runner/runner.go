@@ -47,6 +47,9 @@ type Config struct {
 	IdleEvict time.Duration
 	// HeartbeatEvery is the heartbeat period.
 	HeartbeatEvery time.Duration
+	// LoadRetry bounds the in-runner retries of a transient artifact-fetch
+	// failure before a version is reported FAILED (zero fields = defaults).
+	LoadRetry LoadRetry
 	// DrainGrace bounds how long an unloading version waits for in-flight calls.
 	DrainGrace time.Duration
 	// MaxDBPools bounds the database pools shared across functions.
@@ -85,6 +88,7 @@ type Runner struct {
 	prepareSem chan struct{}
 	prepares   sync.WaitGroup // running prepare goroutines; awaited before the engine closes
 	retryBase  time.Duration  // first retry delay for a failed version; doubles per attempt
+	loadRetry  LoadRetry      // in-prepare retries of transient fetch failures
 	ready      atomic.Bool
 	draining   atomic.Bool // shutdown has begun: not ready, new calls are refused
 	evictions  atomic.Int64
@@ -142,6 +146,7 @@ func New(ctx context.Context, cfg Config) (*Runner, error) {
 		functions:  map[string]*function{},
 		prepareSem: make(chan struct{}, 4),
 		retryBase:  defaultRetryBase,
+		loadRetry:  cfg.LoadRetry.withDefaults(),
 		wake:       make(chan struct{}, 1),
 	}
 	r.jwks = &jwksVerifier{fallback: cfg.IssuerFallback}
@@ -278,9 +283,10 @@ func (r *Runner) apply(ctx context.Context, d *control.Desired) {
 			v, have := fn.versions[dv.Number]
 			if have && v.digest == dv.Digest {
 				v.roles = dv.Roles
-				// A failed version is never pinned: this apply retries it
-				// once its backoff has passed.
-				if v.tryRetry(time.Now()) {
+				// A failed version is never pinned: a re-rendered desired
+				// state (for instance after the platform re-queued the
+				// version) retries it, at most once per retryBase.
+				if v.tryRetry(time.Now(), r.retryBase) {
 					toPrepare = append(toPrepare, v)
 				}
 				continue
@@ -367,11 +373,23 @@ func (r *Runner) spawnPrepare(ctx context.Context, v *version) {
 
 // tryRetry moves a failed version back to preparing when its backoff has
 // passed, and reports whether the caller must now spawn its prepare.
-func (v *version) tryRetry(now time.Time) bool {
+//
+// minGap > 0 is the desired-state path: any failed version, transient or not,
+// is retried once minGap has passed since it failed (a re-render of desired
+// state may mean the platform reset it). minGap == 0 is the maintenance tick:
+// only a version whose scheduled backoff (retryAt) has passed; a permanent
+// failure (retryAt 0) is never retried by the tick.
+func (v *version) tryRetry(now time.Time, minGap time.Duration) bool {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	at := v.retryAt.Load()
-	if v.closing || versionState(v.state.Load()) != stateFailed || at == 0 || now.UnixNano() < at {
+	if v.closing || versionState(v.state.Load()) != stateFailed {
+		return false
+	}
+	if minGap > 0 {
+		if now.UnixNano() < v.failedAt.Load()+int64(minGap) {
+			return false
+		}
+	} else if at := v.retryAt.Load(); at == 0 || now.UnixNano() < at {
 		return false
 	}
 	v.setStateLocked(statePreparing, "")
@@ -385,7 +403,7 @@ func (r *Runner) retryFailed(ctx context.Context) {
 	now := time.Now()
 	var retry []*version
 	for _, v := range r.allVersions() {
-		if v.tryRetry(now) {
+		if v.tryRetry(now, 0) {
 			retry = append(retry, v)
 		}
 	}
@@ -456,30 +474,57 @@ func (r *Runner) prepare(ctx context.Context, v *version) {
 	v.cancelPrep = cancel
 	v.mu.Unlock()
 
-	select {
-	case r.prepareSem <- struct{}{}:
-		defer func() { <-r.prepareSem }()
-	case <-pctx.Done():
-		return
+	start := time.Now()
+	attempt := 0
+	var err error
+	for {
+		attempt++
+		err = r.loadOnce(pctx, v)
+		if err == nil || errors.Is(err, errVersionClosed) || pctx.Err() != nil || !isTransientLoadError(err) {
+			break
+		}
+		// Transient: stay PREPARING (nothing is reported FAILED) and retry
+		// until the budget is spent.
+		delay := r.loadRetry.delay(attempt)
+		if time.Since(start)+delay > r.loadRetry.Budget {
+			break
+		}
+		detail := retryDetail(attempt, err, delay)
+		v.retrying.Store(&detail)
+		r.log.Warn("function version load failed transiently; retrying", "fn.address", v.fn.address, "fn.version", v.number, "attempt", attempt, "retry_in", delay, "err", reasonOf(err))
+		r.poke()
+		if !sleepCtx(pctx, delay) {
+			break
+		}
 	}
-	r.mu.RLock()
-	warm := v.fn.snapshot().Warm && slices.Contains(v.roles, control.RoleLive)
-	r.mu.RUnlock()
-
-	err := r.load(pctx, v, warm)
+	v.retrying.Store(nil)
 	if err != nil && (errors.Is(err, errVersionClosed) || pctx.Err() != nil) {
 		// Closed or interrupted (shutdown): not a load failure.
 		return
 	}
 	if err != nil {
+		transient := isTransientLoadError(err)
+		reason := reasonOf(err)
+		if transient || attempt > 1 {
+			reason = exhaustedReason(err, attempt, time.Since(start))
+		}
 		v.mu.Lock()
 		if !v.closing {
 			v.evictIfLoadedLocked(pctx)
 			n := v.attempts.Add(1)
-			delay := min(r.retryBase<<min(n-1, 20), maxRetryDelay)
-			v.retryAt.Store(time.Now().Add(delay).UnixNano())
-			v.setStateLocked(stateFailed, reasonOf(err))
-			r.log.Warn("function version failed to load", "fn.address", v.fn.address, "fn.version", v.number, "reason", reasonOf(err), "attempt", n, "retry_in", delay)
+			now := time.Now()
+			v.failedAt.Store(now.UnixNano())
+			delay := time.Duration(0)
+			if transient {
+				// Budget spent on a transient cause: keep trying on the
+				// maintenance tick, backing off between rounds.
+				delay = min(r.retryBase<<min(n-1, 20), maxRetryDelay)
+				v.retryAt.Store(now.Add(delay).UnixNano())
+			} else {
+				v.retryAt.Store(0) // permanent: only a re-rendered desired state retries
+			}
+			v.setStateLocked(stateFailed, reason)
+			r.log.Warn("function version failed to load", "fn.address", v.fn.address, "fn.version", v.number, "reason", reason, "transient", transient, "round", n, "retry_in", delay)
 		}
 		v.mu.Unlock()
 	}
@@ -488,6 +533,21 @@ func (r *Runner) prepare(ctx context.Context, v *version) {
 	r.promoteLocked(v.fn)
 	r.mu.Unlock()
 	r.poke()
+}
+
+// loadOnce is one attempt: it takes a prepare slot (released while a retry
+// sleeps, so a flapping control plane cannot starve other versions) and loads.
+func (r *Runner) loadOnce(ctx context.Context, v *version) error {
+	select {
+	case r.prepareSem <- struct{}{}:
+		defer func() { <-r.prepareSem }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	r.mu.RLock()
+	warm := v.fn.snapshot().Warm && slices.Contains(v.roles, control.RoleLive)
+	r.mu.RUnlock()
+	return r.load(ctx, v, warm)
 }
 
 // errVersionClosed marks a prepare that stopped because its version was closed.
@@ -541,7 +601,7 @@ func (v *version) evictIfLoadedLocked(ctx context.Context) {
 func (r *Runner) compile(ctx context.Context, v *version, warm bool) (*runtimes.Prepared, *pool, error) {
 	artifact, err := r.artifacts.get(ctx, v.digest)
 	if err != nil {
-		return nil, nil, fmt.Errorf("ARTIFACT: %w", err)
+		return nil, nil, err // a *fetchError: "ARTIFACT: …", classified for retry
 	}
 	p, err := r.loader.Prepare(ctx, v.runtime, artifact)
 	if err != nil {
@@ -677,10 +737,19 @@ func (r *Runner) heartbeat() control.Heartbeat {
 				loaded++
 			case stateFailed:
 				rep.State, rep.Reason = control.StateFailed, reason
-			case statePreparing, stateClosed:
+			case statePreparing:
+				// Not reported to the platform's version status (still
+				// pending there) — but a version retrying a transient failure
+				// says so, so the runner's report shows why it is slow.
+				rp := v.retrying.Load()
+				if rp == nil {
+					continue
+				}
+				rep.State, rep.Reason = control.StateRetrying, *rp
+			case stateClosed:
 				fallthrough
 			default:
-				continue // preparing or closed: nothing to report yet
+				continue // closed: nothing to report
 			}
 			hb.Versions = append(hb.Versions, rep)
 		}

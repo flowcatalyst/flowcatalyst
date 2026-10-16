@@ -85,6 +85,43 @@ func (a *fnAPI) liveVersion(ctx context.Context, fn *fnFunction) (int32, error) 
 	return 0, nil
 }
 
+// versionFailed reports a version the platform latched as FAILED. The digest
+// is the version's identity but FAILED is not an outcome to preserve: a runner
+// sometimes fails a load for a transient reason, and re-publishing the digest
+// re-queues it. So a FAILED version is "needs retry", never "unchanged".
+func versionFailed(v *fnVersion) bool { return v != nil && v.Status == "FAILED" }
+
+// failureReason is the human text of a version's failure detail
+// ({"reason": "..."} on the wire).
+func failureReason(raw json.RawMessage) string {
+	var f struct {
+		Reason string `json:"reason"`
+	}
+	if json.Unmarshal(raw, &f) == nil && f.Reason != "" {
+		return f.Reason
+	}
+	if r := strings.TrimSpace(string(raw)); r != "" && r != "null" {
+		return r
+	}
+	return "no reason recorded"
+}
+
+// requeuedLine is printed when a re-publish re-queued a FAILED version.
+func requeuedLine(address string, was *fnVersion) string {
+	return fmt.Sprintf("requeued: %s v%d was FAILED (%s), retrying", address, was.Number, failureReason(was.Failure))
+}
+
+// checkRequeued verifies the platform really re-queued a FAILED version: an
+// older platform replays the FAILED row unchanged, and carrying on would wait
+// for a version that will never load.
+func checkRequeued(address string, was, now *fnVersion) error {
+	if versionFailed(now) {
+		return fmt.Errorf("%s v%d is still FAILED after re-publishing its digest (%s); this platform predates re-queue support: publish a changed artifact, or upgrade the platform",
+			address, was.Number, failureReason(now.Failure))
+	}
+	return nil
+}
+
 // publishBytes uploads the artifact and publishes it as a version.
 func (a *fnAPI) publishBytes(ctx context.Context, fn *fnFunction, data []byte, digest, runtime string) (*fnVersion, error) {
 	ctype := "application/wasm"
@@ -136,8 +173,11 @@ type fnPublishJSON struct {
 	Version    int32  `json:"version"`
 	Digest     string `json:"digest"`
 	Created    bool   `json:"created"`
-	Runtime    string `json:"runtime"`
-	Client     string `json:"client,omitempty"`
+	// Requeued: the digest's version was FAILED and this run re-queued it
+	// (no new version was created).
+	Requeued bool   `json:"requeued,omitempty"`
+	Runtime  string `json:"runtime"`
+	Client   string `json:"client,omitempty"`
 }
 
 // fnDeployJSON is `deploy --json`. dryRun appears only on a dry run.
@@ -147,6 +187,7 @@ type fnDeployJSON struct {
 	Version    int32  `json:"version"`
 	Digest     string `json:"digest"`
 	Created    bool   `json:"created"`
+	Requeued   bool   `json:"requeued,omitempty"`
 	Promoted   bool   `json:"promoted"`
 	Skipped    bool   `json:"skipped"`
 	Runtime    string `json:"runtime"`
@@ -182,12 +223,12 @@ type deployPlan struct {
 
 // skip reports that nothing needs doing: live already has this digest.
 func (p *deployPlan) skip() bool {
-	return p.skipUnchanged && p.existing != nil && p.live == p.existing.Number
+	return p.skipUnchanged && p.existing != nil && !versionFailed(p.existing) && p.live == p.existing.Number
 }
 
 // needsWrite reports whether the run would write to the platform.
 func (p *deployPlan) needsWrite() bool {
-	return p.fn == nil || p.existing == nil || !p.noPromote
+	return p.fn == nil || p.existing == nil || versionFailed(p.existing) || !p.noPromote
 }
 
 func (p *deployPlan) unchangedLive() string {
@@ -211,6 +252,8 @@ func (p *deployPlan) dryRunReport(out io.Writer, platformURL string) {
 	case p.skip():
 		fmt.Fprintf(out, "%s\nwould do nothing (--skip-unchanged)\n", p.unchangedLive())
 		return
+	case versionFailed(p.existing):
+		fmt.Fprintf(out, "requeued: %s v%d was FAILED (%s); would upload and re-publish it to retry\n", p.address, p.existing.Number, failureReason(p.existing.Failure))
 	case p.existing != nil:
 		fmt.Fprintf(out, "unchanged: %s v%d already has digest %s; would not upload\n", p.address, p.existing.Number, short(p.digest))
 	default:

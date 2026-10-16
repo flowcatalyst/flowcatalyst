@@ -5,7 +5,9 @@ package control
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -135,4 +137,73 @@ func TestHeartbeat_RequiresRunnerIDAndPool(t *testing.T) {
 
 	_, err = s.heartbeat(ctx, &heartbeatInput{Body: fncontrol.Heartbeat{RunnerID: "r"}})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "POOL_REQUIRED")
+}
+
+// F22 race: a FAILED report from a runner that has not yet applied the
+// revision at which the version was re-queued describes the attempt that
+// predates the reset and must NOT resurrect FAILED; a runner that has applied
+// the reset revision (or later) reports the new attempt and is honoured.
+func TestHeartbeat_StaleFailedReportCannotResurrectRequeuedVersion(t *testing.T) {
+	t.Parallel()
+	s := newTestState(t)
+	poolName := "pool-" + t.Name()
+	appID := "app_" + shortID(t)
+	appCode := "hbstale" + shortID(t)
+	seedApplication(t, testpg.Pool(t), appID, appCode)
+	fn := seedFunction(t, testpg.Pool(t), s.Repo, appID, appCode, "fn", func(f *function.Function) { f.Pool = &poolName })
+	v := seedVersion(t, s.Repo, fn.ID, 1, function.VersionFailed, "wasm", describeJSON(t))
+
+	var resetRev int64
+	require.NoError(t, s.Repo.WithPoolTx(context.Background(), func(tx pgx.Tx) error {
+		var err error
+		resetRev, err = s.Repo.ResetFailedVersionTx(context.Background(), tx, v.ID, poolName)
+		return err
+	}))
+	status := func() function.VersionStatus {
+		got, err := s.Repo.GetVersionByNumber(context.Background(), fn.ID, 1)
+		require.NoError(t, err)
+		return got.Status
+	}
+	require.Equal(t, function.VersionPublished, status())
+
+	failed := []fncontrol.VersionReport{{FunctionID: fn.ID, Number: 1, State: fncontrol.StateFailed, Reason: "old attempt"}}
+	ctx := anchorCtx()
+
+	// Runner still on the pre-reset revision.
+	_, err := s.heartbeat(ctx, &heartbeatInput{Body: fncontrol.Heartbeat{RunnerID: "r-old", Pool: poolName, Revision: resetRev - 1, Versions: failed}})
+	require.NoError(t, err)
+	assert.Equal(t, function.VersionPublished, status(), "a stale FAILED report must not re-fail a re-queued version")
+
+	// Runner that applied the reset revision and failed again.
+	_, err = s.heartbeat(ctx, &heartbeatInput{Body: fncontrol.Heartbeat{RunnerID: "r-new", Pool: poolName, Revision: resetRev, Versions: failed}})
+	require.NoError(t, err)
+	assert.Equal(t, function.VersionFailed, status(), "a post-reset FAILED report is a real outcome")
+}
+
+// The status check is repeated inside the write: a report whose pre-read saw
+// PUBLISHED but whose write finds the row no longer PUBLISHED changes nothing.
+func TestRepo_ConditionalHeartbeatWritesOnlyApplyToPublished(t *testing.T) {
+	t.Parallel()
+	s := newTestState(t)
+	poolName := "pool-" + t.Name()
+	appID := "app_" + shortID(t)
+	appCode := "hbcond" + shortID(t)
+	seedApplication(t, testpg.Pool(t), appID, appCode)
+	fn := seedFunction(t, testpg.Pool(t), s.Repo, appID, appCode, "fn", func(f *function.Function) { f.Pool = &poolName })
+	ready := seedVersion(t, s.Repo, fn.ID, 1, function.VersionReady, "wasm", describeJSON(t))
+	failed := seedVersion(t, s.Repo, fn.ID, 2, function.VersionFailed, "wasm", describeJSON(t))
+	ctx := context.Background()
+
+	require.NoError(t, s.Repo.WithPoolTx(ctx, func(tx pgx.Tx) error {
+		ok, err := s.Repo.SetVersionFailureIfPublishedTx(ctx, tx, ready.ID, []byte(`{"reason":"x"}`), 1<<40)
+		require.NoError(t, err)
+		assert.False(t, ok, "READY is never demoted")
+		ok, err = s.Repo.SetVersionReadyIfPublishedTx(ctx, tx, failed.ID, time.Now())
+		require.NoError(t, err)
+		assert.False(t, ok, "FAILED is never promoted to READY by a heartbeat")
+		return nil
+	}))
+	got, err := s.Repo.GetVersionByNumber(ctx, fn.ID, 2)
+	require.NoError(t, err)
+	assert.Equal(t, function.VersionFailed, got.Status)
 }

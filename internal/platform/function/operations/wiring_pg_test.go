@@ -229,6 +229,81 @@ func TestPublish_Fixture_HappyPath_And_Idempotent(t *testing.T) {
 	assert.Len(t, versions, 1, "a same-digest replay must not create a second row")
 }
 
+// failVersion marks version number FAILED the way a heartbeat would.
+func (f *testFunctionFixture) failVersion(number int32, reason string) {
+	f.t.Helper()
+	v, err := f.repo.GetVersionByNumber(context.Background(), f.fn.ID, number)
+	require.NoError(f.t, err)
+	require.NoError(f.t, f.repo.SetVersionFailure(context.Background(), v.ID, json.RawMessage(`{"reason":"`+reason+`"}`)))
+}
+
+func (f *testFunctionFixture) poolRevision() int64 {
+	f.t.Helper()
+	rev, _, err := f.repo.GetPoolRevision(context.Background(), f.fn.RunnerPool())
+	require.NoError(f.t, err)
+	return rev
+}
+
+// F22: re-publishing the digest of a FAILED version resets it to PUBLISHED
+// (failure cleared, revision bumped, no new version number) so runners retry.
+func TestPublish_FailedVersionIsRequeued(t *testing.T) {
+	t.Parallel()
+	f := newTestFunctionFixture(t, "app_optpubreq001", "optpubreqapp", "req-fn")
+	digest := putArtifactBytes(t, f.artifacts, fnfixture.Wasm)
+	first := f.publish(digest, "")
+	f.failVersion(first.Version.Number, "ARTIFACT: control plane: HTTP 500 ARTIFACT_STORE: presign failed")
+	revBefore := f.poolRevision()
+
+	res := f.publish(digest, "")
+	assert.False(t, res.Created, "a re-queue mints no new version")
+	assert.Equal(t, first.Version.ID, res.Version.ID)
+	assert.Equal(t, int32(1), res.Version.Number)
+	assert.Equal(t, function.VersionPublished, res.Version.Status)
+	assert.Empty(t, res.Version.Failure)
+
+	got, err := f.repo.GetVersionByNumber(context.Background(), f.fn.ID, 1)
+	require.NoError(t, err)
+	assert.Equal(t, function.VersionPublished, got.Status)
+	assert.Empty(t, got.Failure)
+	assert.Nil(t, got.ReadyAt)
+	assert.Greater(t, f.poolRevision(), revBefore, "runners must be told to re-fetch desired state")
+
+	versions, err := f.repo.ListVersionsByFunction(context.Background(), f.fn.ID)
+	require.NoError(t, err)
+	assert.Len(t, versions, 1)
+}
+
+// A version that is not FAILED is left exactly as it is, revision included.
+func TestPublish_NonFailedReplayDoesNotTouchVersion(t *testing.T) {
+	// Deliberately not parallel: it asserts the shared "default" pool's
+	// revision is unchanged, which parallel tests would bump.
+	f := newTestFunctionFixture(t, "app_optpubreq002", "optpubreqapp2", "req-fn2")
+	digest := putArtifactBytes(t, f.artifacts, fnfixture.Wasm)
+	f.publish(digest, "")
+
+	// PUBLISHED stays PUBLISHED without a bump.
+	rev := f.poolRevision()
+	res := f.publish(digest, "")
+	assert.Equal(t, function.VersionPublished, res.Version.Status)
+	assert.Equal(t, rev, f.poolRevision())
+
+	// READY stays READY, ready_at intact.
+	f.markReady(1)
+	rev = f.poolRevision()
+	res = f.publish(digest, "")
+	assert.Equal(t, function.VersionReady, res.Version.Status)
+	assert.NotNil(t, res.Version.ReadyAt)
+	assert.Equal(t, rev, f.poolRevision())
+
+	// RETIRED stays RETIRED.
+	v, err := f.repo.GetVersionByNumber(context.Background(), f.fn.ID, 1)
+	require.NoError(t, err)
+	require.NoError(t, f.repo.SetVersionStatus(context.Background(), v.ID, function.VersionRetired))
+	res = f.publish(digest, "")
+	assert.Equal(t, function.VersionRetired, res.Version.Status)
+	assert.Equal(t, rev, f.poolRevision())
+}
+
 func TestPublish_ArtifactNotFound(t *testing.T) {
 	t.Parallel()
 	f := newTestFunctionFixture(t, "app_optpubnf00001", "optpubnfapp", "nf-fn")

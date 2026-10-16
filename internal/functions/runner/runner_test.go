@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -85,7 +84,7 @@ func (f *fakeCP) Artifact(_ context.Context, digest string) (io.ReadCloser, erro
 	b, ok := f.artifacts[digest]
 	f.mu.Unlock()
 	if !ok {
-		return nil, errors.New("no such artifact")
+		return nil, &control.ErrStatus{Status: 404, Code: "ARTIFACT_NOT_FOUND", Message: "no such artifact"}
 	}
 	return io.NopCloser(bytes.NewReader(b)), nil
 }

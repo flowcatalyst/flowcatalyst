@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -113,13 +114,17 @@ func Publish(repo *function.Repository, artifacts artifact.Store, loader *runtim
 			digest := strings.ToLower(strings.TrimSpace(cmd.Digest))
 
 			// Idempotent replay: publishing the same digest again returns the
-			// existing version untouched — no writes, no event.
+			// existing version untouched — no writes, no event — except a
+			// FAILED version, which is re-queued (resetFailedVersion).
 			existing, err := repo.GetVersionByDigest(ctx, f.ID, digest)
 			if err != nil {
 				return zero, usecase.Internal("REPO", "get_version_by_digest failed", err)
 			}
 			if existing != nil {
-				return PublishResult{Version: *existing, Created: false}, nil
+				if existing.Status != function.VersionFailed {
+					return PublishResult{Version: *existing, Created: false}, nil
+				}
+				return resetFailedVersion(ctx, s, repo, f, existing)
 			}
 
 			exists, err := artifacts.Exists(ctx, digest)
@@ -243,6 +248,48 @@ func Publish(repo *function.Repository, artifacts artifact.Store, loader *runtim
 
 			return PublishResult{Version: *v, Created: true}, nil
 		},
+	}
+}
+
+// resetFailedVersion re-queues a FAILED version on an explicit re-publish of
+// its digest: status back to PUBLISHED, failure cleared, pool revision bumped
+// in the same transaction so runners re-fetch desired state and retry (the
+// same pattern as a new version's insert, minus the number assignment — no
+// new version number is minted). A single runner's report decides FAILED
+// (heartbeat.go), and the cause is often transient (an artifact-store blip),
+// so an explicit publish by a caller holding the publish permission is the
+// retry button. No event: a replay is not a new version, and there is no
+// "version failed" event to pair it with.
+//
+// A concurrent reset that wins the row makes ours a no-op: the current row is
+// returned.
+func resetFailedVersion(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, repo *function.Repository, f *function.Function, v *function.Version) (PublishResult, error) {
+	var zero PublishResult
+	err := s.WithTx(ctx, func(tx pgx.Tx) error {
+		_, e := repo.ResetFailedVersionTx(ctx, tx, v.ID, f.RunnerPool())
+		return e
+	})
+	switch {
+	case err == nil:
+		slog.Info("function version re-queued by re-publish", "fn.address", f.Address, "fn.version", v.Number, "digest", v.Digest)
+		// The reset is uncommitted: describe it from what we know rather than
+		// re-reading through another connection.
+		out := *v
+		out.Status, out.Failure, out.ReadyAt = function.VersionPublished, nil, nil
+		return PublishResult{Version: out, Created: false}, nil
+	case errors.Is(err, function.ErrVersionNotFailed):
+		// Lost the race to a concurrent reset (or a later outcome): report
+		// whatever the row is now.
+		cur, gerr := repo.GetVersionByID(ctx, v.ID)
+		if gerr != nil {
+			return zero, usecase.Internal("REPO", "get_version_by_id failed", gerr)
+		}
+		if cur == nil {
+			return zero, usecase.NotFound("VERSION_NOT_FOUND", fmt.Sprintf("function %s has no version %d", f.ID, v.Number))
+		}
+		return PublishResult{Version: *cur, Created: false}, nil
+	default:
+		return zero, usecase.Internal("REPO", "re-queue write failed", err)
 	}
 }
 

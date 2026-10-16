@@ -110,6 +110,11 @@ const (
 	StateLoaded   = "LOADED"   // instantiated and answering
 	StateCompiled = "COMPILED" // compiled and checked, no instance yet (lazy)
 	StateFailed   = "FAILED"   // could not be prepared or loaded; Reason says why
+	// StateRetrying: still PREPARING, retrying a transient failure (control
+	// plane 5xx, network, storage). Informational: the platform ignores it
+	// (the version stays PUBLISHED); an older platform ignores unknown states
+	// the same way. Reason says what is being retried.
+	StateRetrying = "RETRYING"
 )
 
 // Heartbeat is a runner's report to the platform.

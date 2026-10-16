@@ -1936,6 +1936,61 @@ id, `application_code` equal to a bound code), 403 `APPLICATION_ACCESS_REQUIRED`
 and limit the catalog to permissions whose first segment is a bound code. Leave IAM-view callers unchanged. Confirm the
 Java application reads (`application:view`) are confined as `CanReadApplication` is.
 
+### F22. A transient control-plane error latched a function version FAILED for good (nonprod incident, 2026-10-16)
+
+**Symptom.** A deploy's version went `FAILED` with `ARTIFACT: control plane: HTTP 500
+ARTIFACT_STORE: presign failed` after one blip. Re-running the pipeline printed `unchanged: v1
+already has digest ...` and re-read the stored `FAILED`.
+
+**Cause (two parts).** (1) The runner reported `FAILED` on the first load error of any kind, and the
+platform applies `PUBLISHED -> FAILED` once, from one runner's report. (2) Publishing a digest that
+already exists returned the existing version unchanged, `FAILED` included, and the CLI treated any
+existing digest as "unchanged".
+
+**Fix.**
+
+- *Runner.* Load failures are classified (docs/function-runner-plan.md §6.5). Transient: control-plane
+  5xx/429/408/425/401/403, network errors, timeouts, truncated bodies, storage download errors.
+  Permanent: 404/410 and other 4xx, digest mismatch, oversize, malformed digest, module validation,
+  ABI/describe, compile and instantiate errors. A transient failure is retried inside the runner
+  (exponential backoff with jitter; `FC_FUNCTIONS_LOAD_RETRY_INITIAL_MS=1000`,
+  `..._MAX_MS=30000`, `..._BUDGET_SECONDS=300`), keeping the version `PREPARING`; the heartbeat shows
+  state `RETRYING` with the detail. `FAILED` is reported only after the budget, with the last error
+  and `(gave up after N attempts over Ts)`. Permanent failures are reported at once. A failed version
+  is retried on a re-rendered desired state.
+- *Platform.* `Publish` of a digest whose version is `FAILED` resets it: `PUBLISHED`, failure and
+  ready_at cleared, pool revision bumped (+NOTIFY) in the publish transaction, same version number,
+  no event (a replay mints nothing; there is no "version failed" event to pair with; an info log
+  line records it). `PUBLISHED`, `READY` and `RETIRED` replays stay untouched (no write, no bump).
+  The response is the existing version with status `PUBLISHED` (200, `created` false), so a caller
+  polling for `READY`/`FAILED` works unchanged.
+- *Race.* The heartbeat reads a version's status outside its write transaction, and a stale report
+  could re-fail a version right after the reset. Now both heartbeat writes are conditional in SQL
+  (`... WHERE status = 'PUBLISHED'`), and the `FAILED` write is additionally fenced by a new column
+  `fng_versions.requeued_at_revision` (migration 081, set by the reset to the pool revision it
+  published): a `FAILED` report applies only when the runner's reported `revision` is at least that.
+  A runner still on the pre-reset revision is reporting the old attempt; one at or past it has
+  applied the reset and its `FAILED` is a real outcome. The reset takes the row lock, so heartbeat
+  and reset serialise; losing the race makes the reset a no-op that returns the row as it is.
+- *CLI.* `fcdev fn publish|deploy` treat a `FAILED` digest as "needs retry": they publish again, print
+  `requeued: <addr> vN was FAILED (<reason>), retrying`, never `unchanged`, and `--skip-unchanged`
+  does not skip it; `--json` gains `requeued` (only when true). Against a platform without the reset
+  they stop with `... is still FAILED after re-publishing its digest`.
+
+**Wire / lock impact.** No request or response schema change, so `api/openapi.lock.json` is
+unchanged. `VersionReport.state` is a free string; the runner now also sends `RETRYING` (an older
+platform ignores unknown states). New DB column (migration 081, additive, default 0).
+
+**Java hand-off.** Mirror in the Java platform: (1) migration: add
+`fn_versions.requeued_at_revision BIGINT NOT NULL DEFAULT 0` (Java prefix `fn_`); (2) publish: when
+the digest exists and the version is `FAILED`, in one transaction set `status='PUBLISHED'`,
+`failure=NULL`, `ready_at=NULL`, `requeued_at_revision=<new pool revision>` after bumping the pool
+revision (+ the desired-state notification), guarded by `WHERE status='FAILED'` (a lost race returns
+the row as it is); return 200 with the version; no event, no new number; (3) heartbeat: make both
+transitions conditional in SQL on `status='PUBLISHED'`, and the `FAILED` one also on
+`requeued_at_revision <= heartbeat.revision`; bump the pool revision only if a row changed; (4) any
+Java runner must classify load failures as above and not report `FAILED` for a transient one.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -2143,3 +2198,8 @@ missing event source (F14), and unknown roles in the application principal sync 
   database; no run of the e2e platform that found it, and no run through a live outbound delivery.
   `tools/analyzer/uowseal` could not run (its export-data loader rejects Go 1.27 objects, an
   existing tool problem).
+- F22: integration tests on embedded databases only (migration 081 ran there, never on a deployed
+  database); no run against a real S3/presign failure or a live runner talking to a flaky control
+  plane (the runner tests use a fake control plane); the full `make pre-push` was not clean at the
+  end because of another session's uncommitted `dispatch_pool_test.go` lint findings, so its
+  remaining steps were run one by one. The Java platform and runner were not changed (hand-off above).

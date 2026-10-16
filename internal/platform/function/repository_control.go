@@ -190,3 +190,69 @@ func (r *Repository) SetVersionReadyTx(ctx context.Context, tx pgx.Tx, id string
 func (r *Repository) SetVersionFailureTx(ctx context.Context, tx pgx.Tx, id string, failure []byte) error {
 	return r.q.WithTx(tx).FunctionVersionSetFailure(ctx, dbq.FunctionVersionSetFailureParams{ID: id, Failure: failure})
 }
+
+// ErrVersionNotFailed is returned by ResetFailedVersionTx when the version is
+// no longer FAILED (a concurrent reset won, or it was never FAILED).
+var ErrVersionNotFailed = errors.New("function repo: version is not FAILED")
+
+// SetVersionReadyIfPublishedTx is the heartbeat's PUBLISHED→READY write: it
+// applies only while the row is still PUBLISHED (the status was read earlier,
+// outside the transaction) and reports whether it changed anything.
+func (r *Repository) SetVersionReadyIfPublishedTx(ctx context.Context, tx pgx.Tx, id string, readyAt time.Time) (bool, error) {
+	tag, err := tx.Exec(ctx,
+		`UPDATE fng_versions SET status = 'READY', ready_at = $2 WHERE id = $1 AND status = 'PUBLISHED'`,
+		id, readyAt)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// SetVersionFailureIfPublishedTx is the heartbeat's PUBLISHED→FAILED write.
+// It applies only while the row is PUBLISHED and only when the reporting
+// runner had applied at least the revision at which the version was last
+// re-queued (requeued_at_revision): an older runner is reporting the outcome
+// of an attempt that predates the reset. Both checks run in the UPDATE
+// itself, so they are atomic with a concurrent ResetFailedVersionTx (which
+// takes the same row lock).
+func (r *Repository) SetVersionFailureIfPublishedTx(ctx context.Context, tx pgx.Tx, id string, failure []byte, runnerRevision int64) (bool, error) {
+	tag, err := tx.Exec(ctx,
+		`UPDATE fng_versions SET status = 'FAILED', failure = $2
+		  WHERE id = $1 AND status = 'PUBLISHED' AND requeued_at_revision <= $3`,
+		id, failure, runnerRevision)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// ResetFailedVersionTx re-queues a FAILED version: status back to PUBLISHED,
+// failure and ready_at cleared, and pool's revision bumped (with NOTIFY) in
+// the same transaction so runners re-fetch desired state and retry. The new
+// revision is recorded on the row (requeued_at_revision) to fence off stale
+// FAILED reports. It returns ErrVersionNotFailed (rolling back its own
+// savepoint, revision bump included) when the row is not FAILED.
+func (r *Repository) ResetFailedVersionTx(ctx context.Context, tx pgx.Tx, id, pool string) (int64, error) {
+	// A savepoint: losing the race must not leave a pointless revision bump in
+	// the caller's transaction (nor poison it).
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = sp.Rollback(ctx) }()
+	rev, err := r.bumpPoolRevisionTx(ctx, sp, pool)
+	if err != nil {
+		return 0, err
+	}
+	tag, err := sp.Exec(ctx,
+		`UPDATE fng_versions
+		    SET status = 'PUBLISHED', failure = NULL, ready_at = NULL, requeued_at_revision = $2
+		  WHERE id = $1 AND status = 'FAILED'`, id, rev)
+	if err != nil {
+		return 0, err
+	}
+	if tag.RowsAffected() != 1 {
+		return 0, ErrVersionNotFailed
+	}
+	return rev, sp.Commit(ctx)
+}
