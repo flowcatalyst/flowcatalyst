@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FlowCatalyst\Client\Resources;
 
 use FlowCatalyst\Client\FlowCatalystClient;
+use FlowCatalyst\Client\Resources\Concerns\DeprecatedAdminAccess;
 use FlowCatalyst\DTOs\Application;
 use FlowCatalyst\DTOs\ApplicationRole;
 use FlowCatalyst\DTOs\ClientConfig;
@@ -17,15 +18,22 @@ use FlowCatalyst\DTOs\ServiceAccount;
 
 class Applications
 {
+    use DeprecatedAdminAccess;
+
+    private const ADMIN_ACCESSOR = 'applications';
+
     public function __construct(
         private readonly FlowCatalystClient $client
     ) {}
 
     /**
      * List applications.
+     *
+     * @deprecated Use `$client->admin()->applications()->list()`; the notice fires once per process.
      */
     public function list(?bool $active = null): ApplicationList
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $query = $active !== null
             ? '?' . http_build_query(['active' => $active ? 'true' : 'false'])
             : '';
@@ -57,9 +65,12 @@ class Applications
 
     /**
      * Create a new application.
+     *
+     * @deprecated Use `$client->admin()->applications()->create()`; the notice fires once per process.
      */
     public function create(CreateApplicationRequest $request): Application
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('POST', '/api/applications', [
             'json' => $request->toArray(),
         ]);
@@ -69,9 +80,12 @@ class Applications
 
     /**
      * Update an application.
+     *
+     * @deprecated Use `$client->admin()->applications()->update()`; the notice fires once per process.
      */
     public function update(string $id, UpdateApplicationRequest $request): Application
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('PUT', "/api/applications/{$id}", [
             'json' => $request->toArray(),
         ]);
@@ -81,17 +95,23 @@ class Applications
 
     /**
      * Delete (deactivate) an application.
+     *
+     * @deprecated Use `$client->admin()->applications()->delete()`; the notice fires once per process.
      */
     public function delete(string $id): void
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $this->client->request('DELETE', "/api/applications/{$id}");
     }
 
     /**
      * Activate an application.
+     *
+     * @deprecated Use `$client->admin()->applications()->activate()`; the notice fires once per process.
      */
     public function activate(string $id): Application
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('POST', "/api/applications/{$id}/activate");
 
         return Application::fromArray($response);
@@ -99,9 +119,12 @@ class Applications
 
     /**
      * Deactivate an application.
+     *
+     * @deprecated Use `$client->admin()->applications()->deactivate()`; the notice fires once per process.
      */
     public function deactivate(string $id): Application
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('POST', "/api/applications/{$id}/deactivate");
 
         return Application::fromArray($response);
@@ -109,9 +132,12 @@ class Applications
 
     /**
      * Provision a service account for an application.
+     *
+     * @deprecated Use `$client->admin()->applications()->provisionServiceAccount()`; the notice fires once per process.
      */
     public function provisionServiceAccount(string $id): ServiceAccount
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request(
             'POST',
             "/api/applications/{$id}/provision-service-account",
@@ -122,9 +148,12 @@ class Applications
 
     /**
      * Get the service account attached to an application.
+     *
+     * @deprecated Use `$client->admin()->applications()->getServiceAccount()`; the notice fires once per process.
      */
     public function getServiceAccount(string $id): ServiceAccount
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('GET', "/api/applications/{$id}/service-account");
 
         return ServiceAccount::fromArray($response);
@@ -149,9 +178,12 @@ class Applications
 
     /**
      * List per-client configurations for an application.
+     *
+     * @deprecated Use `$client->admin()->applications()->listClients()`; the notice fires once per process.
      */
     public function listClients(string $id): ClientConfigList
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('GET', "/api/applications/{$id}/clients");
 
         return ClientConfigList::fromArray($response);
@@ -159,12 +191,15 @@ class Applications
 
     /**
      * Update per-client config for an application.
+     *
+     * @deprecated Use `$client->admin()->applications()->updateClientConfig()`; the notice fires once per process.
      */
     public function updateClientConfig(
         string $id,
         string $clientId,
         ClientConfigRequest $request,
     ): ClientConfig {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request(
             'PUT',
             "/api/applications/{$id}/clients/{$clientId}",
@@ -178,9 +213,12 @@ class Applications
 
     /**
      * Enable an application for a specific client.
+     *
+     * @deprecated Use `$client->admin()->applications()->enableForClient()`; the notice fires once per process.
      */
     public function enableForClient(string $id, string $clientId): ClientConfig
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request(
             'POST',
             "/api/applications/{$id}/clients/{$clientId}/enable",
@@ -191,9 +229,12 @@ class Applications
 
     /**
      * Disable an application for a specific client.
+     *
+     * @deprecated Use `$client->admin()->applications()->disableForClient()`; the notice fires once per process.
      */
     public function disableForClient(string $id, string $clientId): ClientConfig
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request(
             'POST',
             "/api/applications/{$id}/clients/{$clientId}/disable",

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FlowCatalyst\Client\Resources;
 
 use FlowCatalyst\Client\FlowCatalystClient;
+use FlowCatalyst\Client\Resources\Concerns\DeprecatedAdminAccess;
 use FlowCatalyst\DTOs\ClientAccessGrant;
 use FlowCatalyst\DTOs\Principal;
 use FlowCatalyst\DTOs\Requests\CreateUserRequest;
@@ -17,6 +18,10 @@ use FlowCatalyst\DTOs\RoleAssignment;
 
 class Principals
 {
+    use DeprecatedAdminAccess;
+
+    private const ADMIN_ACCESSOR = 'principals';
+
     public function __construct(
         private readonly FlowCatalystClient $client
     ) {}
@@ -26,6 +31,8 @@ class Principals
      *
      * `email` is an exact (case-insensitive) match. `q` is a name/email
      * substring search — use `email` when you know the address.
+     *
+     * @deprecated Use `$client->admin()->principals()->list()`; the notice fires once per process.
      */
     public function list(
         ?string $clientId = null,
@@ -33,6 +40,7 @@ class Principals
         ?bool $active = null,
         ?string $email = null,
     ): PrincipalList {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $queryParams = [];
 
         if ($clientId !== null) {
@@ -56,9 +64,12 @@ class Principals
 
     /**
      * Get a principal by ID.
+     *
+     * @deprecated Use `$client->admin()->principals()->get()`; the notice fires once per process.
      */
     public function get(string $id): Principal
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('GET', "/api/principals/{$id}");
 
         return Principal::fromArray($response);
@@ -71,10 +82,14 @@ class Principals
      * defensively verify the row we return actually matches the requested
      * email — older platform builds silently ignored unknown query params
      * and returned an unfiltered list.
+     *
+     * @deprecated Use `$client->admin()->principals()->findByEmail()`; the notice fires once per process.
      */
     public function findByEmail(string $email): ?Principal
     {
-        $result = $this->list(email: $email);
+        $this->deprecatedAdminMethod(__FUNCTION__);
+        // Internal lookup: must not raise the separate list() notice.
+        $result = $this->viaAdmin()->list(email: $email);
 
         $needle = strtolower($email);
         foreach ($result->principals as $principal) {
@@ -103,9 +118,12 @@ class Principals
      * bearer credential — never log it. Set `inviteRedirectUri` to send the
      * invitee to your application (any absolute http(s) URL) after they
      * set their password.
+     *
+     * @deprecated Use `$client->admin()->principals()->createUser()`; the notice fires once per process.
      */
     public function createUser(CreateUserRequest $request): Principal
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('POST', '/api/principals/users', [
             'json' => $request->toArray(),
         ]);
@@ -119,12 +137,15 @@ class Principals
      * Only valid for internal-auth users. Pass
      * `enforcePasswordComplexity: false` when the caller enforces its own
      * password policy.
+     *
+     * @deprecated Use `$client->admin()->principals()->resetPassword()`; the notice fires once per process.
      */
     public function resetPassword(
         string $id,
         string $newPassword,
         bool $enforcePasswordComplexity = true,
     ): void {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $this->client->request('POST', "/api/principals/{$id}/reset-password", [
             'json' => [
                 'newPassword' => $newPassword,
@@ -135,9 +156,12 @@ class Principals
 
     /**
      * Update a principal's mutable fields.
+     *
+     * @deprecated Use `$client->admin()->principals()->update()`; the notice fires once per process.
      */
     public function update(string $id, UpdatePrincipalRequest $request): Principal
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('PUT', "/api/principals/{$id}", [
             'json' => $request->toArray(),
         ]);
@@ -147,17 +171,23 @@ class Principals
 
     /**
      * Activate a principal.
+     *
+     * @deprecated Use `$client->admin()->principals()->activate()`; the notice fires once per process.
      */
     public function activate(string $id): void
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $this->client->request('POST', "/api/principals/{$id}/activate");
     }
 
     /**
      * Deactivate a principal.
+     *
+     * @deprecated Use `$client->admin()->principals()->deactivate()`; the notice fires once per process.
      */
     public function deactivate(string $id): void
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $this->client->request('POST', "/api/principals/{$id}/deactivate");
     }
 
@@ -165,9 +195,12 @@ class Principals
      * Get roles assigned to a principal.
      *
      * @return RoleAssignment[]
+     *
+     * @deprecated Use `$client->admin()->principals()->getRoles()`; the notice fires once per process.
      */
     public function getRoles(string $id): array
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('GET', "/api/principals/{$id}/roles");
 
         /** @var array<int, array<string, mixed>> $rows */
@@ -184,9 +217,12 @@ class Principals
      * Renamed from `assignRole` to make the additive-vs-replace distinction
      * visible at the call site (paired with `setRoles` for replace-all).
      * Returns the principal after the assignment.
+     *
+     * @deprecated Use `$client->admin()->principals()->addRole()`; the notice fires once per process.
      */
     public function addRole(string $id, string $roleName): Principal
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('POST', "/api/principals/{$id}/roles", [
             'json' => ['role' => $roleName],
         ]);
@@ -197,9 +233,12 @@ class Principals
     /**
      * Remove a single role from a principal. Returns the principal after
      * the removal.
+     *
+     * @deprecated Use `$client->admin()->principals()->removeRole()`; the notice fires once per process.
      */
     public function removeRole(string $id, string $roleName): Principal
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('DELETE', "/api/principals/{$id}/roles/{$roleName}");
 
         return Principal::fromArray($response);
@@ -213,9 +252,12 @@ class Principals
      * removed. Returns the full role state plus the diff that was applied.
      *
      * @param string[] $roles Role names to assign
+     *
+     * @deprecated Use `$client->admin()->principals()->setRoles()`; the notice fires once per process.
      */
     public function setRoles(string $id, array $roles): BatchAssignRolesResult
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('PUT', "/api/principals/{$id}/roles", [
             'json' => ['roles' => $roles],
         ]);
@@ -227,9 +269,12 @@ class Principals
      * List client-access grants for a principal.
      *
      * @return ClientAccessGrant[]
+     *
+     * @deprecated Use `$client->admin()->principals()->getClientAccessGrants()`; the notice fires once per process.
      */
     public function getClientAccessGrants(string $id): array
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('GET', "/api/principals/{$id}/client-access");
 
         /** @var array<int, array<string, mixed>> $rows */
@@ -242,9 +287,12 @@ class Principals
 
     /**
      * Grant a principal access to a client.
+     *
+     * @deprecated Use `$client->admin()->principals()->grantClientAccess()`; the notice fires once per process.
      */
     public function grantClientAccess(string $id, string $clientId): ClientAccessGrant
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request('POST', "/api/principals/{$id}/client-access", [
             'json' => ['clientId' => $clientId],
         ]);
@@ -280,9 +328,12 @@ class Principals
 
     /**
      * Revoke a principal's access to a client.
+     *
+     * @deprecated Use `$client->admin()->principals()->revokeClientAccess()`; the notice fires once per process.
      */
     public function revokeClientAccess(string $id, string $clientId): void
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
         $this->client->request('DELETE', "/api/principals/{$id}/client-access/{$clientId}");
     }
 

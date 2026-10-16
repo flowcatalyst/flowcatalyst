@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace FlowCatalyst\Facades;
 
+use FlowCatalyst\Client\Admin;
 use FlowCatalyst\Client\FlowCatalystClient;
 use FlowCatalyst\Client\Resources\Applications;
 use FlowCatalyst\Client\Resources\DispatchPools;
@@ -14,6 +15,7 @@ use FlowCatalyst\Client\Resources\Subscriptions;
 use Illuminate\Support\Facades\Facade;
 
 /**
+ * @method static Admin admin()
  * @method static EventTypes eventTypes()
  * @method static Subscriptions subscriptions()
  * @method static DispatchPools dispatchPools()

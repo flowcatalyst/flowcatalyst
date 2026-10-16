@@ -56,6 +56,7 @@ class FlowCatalystClient
     private ?PlatformConfig $platformConfig = null;
     private ?EmailDomainMappings $emailDomainMappings = null;
     private ?DefinitionSynchronizer $definitions = null;
+    private ?Admin $admin = null;
 
     /**
      * Create a new FlowCatalyst client.
@@ -127,6 +128,17 @@ class FlowCatalystClient
             $retryAttempts,
             $retryDelay
         );
+    }
+
+    /**
+     * Administrative surface: principals, clients, applications and router
+     * checks. The old accessors (`principals()`, `clients()`, `applications()`,
+     * `router()`) still work and raise a once-per-process deprecation notice
+     * for the methods that live here.
+     */
+    public function admin(): Admin
+    {
+        return $this->admin ??= new Admin($this);
     }
 
     /**

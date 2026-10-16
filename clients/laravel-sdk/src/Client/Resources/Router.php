@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FlowCatalyst\Client\Resources;
 
 use FlowCatalyst\Client\FlowCatalystClient;
+use FlowCatalyst\Client\Resources\Concerns\DeprecatedAdminAccess;
 use FlowCatalyst\Exceptions\FlowCatalystException;
 use GuzzleHttp\Client as HttpClient;
 use GuzzleHttp\Exception\GuzzleException;
@@ -25,6 +26,10 @@ use GuzzleHttp\Exception\GuzzleException;
  */
 class Router
 {
+    use DeprecatedAdminAccess;
+
+    private const ADMIN_ACCESSOR = 'router';
+
     /** Server-side cap on batch size. Mirrored client-side. */
     public const CHECK_BATCH_LIMIT = 5000;
 
@@ -52,9 +57,13 @@ class Router
      * @return array{messageId: string, inPipeline: bool, detail?: array<string, mixed>}
      *
      * @throws FlowCatalystException
+     *
+     * @deprecated Use `$client->admin()->router()->inPipeline()`; the notice fires once per process.
      */
     public function inPipeline(string $messageId): array
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
+
         try {
             $response = $this->http()->get('/monitoring/in-flight-messages/check', [
                 'query' => ['messageId' => $messageId],
@@ -91,9 +100,13 @@ class Router
      * @return array<string, bool>
      *
      * @throws FlowCatalystException
+     *
+     * @deprecated Use `$client->admin()->router()->inPipelineBatch()`; the notice fires once per process.
      */
     public function inPipelineBatch(array $messageIds): array
     {
+        $this->deprecatedAdminMethod(__FUNCTION__);
+
         try {
             $response = $this->http()->post(
                 '/monitoring/in-flight-messages/check-batch',

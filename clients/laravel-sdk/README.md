@@ -454,6 +454,28 @@ FlowCatalyst::eventTypes()->addSchemaVersion($eventTypeId, new AddSchemaVersionR
 ));
 ```
 
+### Admin facade (`admin()`)
+
+User, client and application management and router checks live under `admin()`. They call the
+same resource classes and behave identically; only the deprecation notice differs.
+
+```php
+use FlowCatalyst\Facades\FlowCatalyst;
+
+FlowCatalyst::admin()->principals()->findByEmail($email);
+FlowCatalyst::admin()->principals()->addRole($principalId, 'myapp:editor');
+FlowCatalyst::admin()->clients()->create(new CreateClientRequest(identifier: 'acme', name: 'Acme'));
+FlowCatalyst::admin()->applications()->listClients($applicationId);
+FlowCatalyst::admin()->router()->inPipelineBatch($messageIds);
+```
+
+Calling the same admin methods through the old accessors (`principals()`, `clients()`,
+`applications()`, `router()`) still works, but raises one `E_USER_DEPRECATED` per method per process.
+Silence it with `error_reporting()` or an error handler. Not deprecated: every `sync*` method,
+`clients()->list/get/getByIdentifier/getRaw/getByIdentifierRaw`, `applications()->get/getByCode/listRoles`,
+`principals()->setClientAssociation`, outbox, dispatch-job creation, auth, `request()` and the
+constructor options. See `CHANGES.md` ("Migrating to admin()") for the exact method list.
+
 ### Platform config, email-domain mappings, client association, raw lookups
 
 ```php
@@ -470,7 +492,7 @@ $mapping = FlowCatalyst::emailDomainMappings()->getByDomain('example.com');
 
 // Change a USER's scope/client association (anchor-only). '*' = ANCHOR;
 // a client id needs mode CHANGE_CLIENT or TO_PARTNER.
-FlowCatalyst::principals()->setClientAssociation($principalId, $clientId, 'TO_PARTNER');
+FlowCatalyst::admin()->principals()->setClientAssociation($principalId, $clientId, 'TO_PARTNER');
 
 // The platform's own answer, with no DTO defaults (get() fills a missing status with ACTIVE)
 $raw = FlowCatalyst::clients()->getRaw($clientId);
@@ -542,13 +564,13 @@ use FlowCatalyst\Facades\FlowCatalyst;
 use FlowCatalyst\DTOs\Requests\CreateApplicationRequest;
 
 // List applications
-$result = FlowCatalyst::applications()->list();
+$result = FlowCatalyst::admin()->applications()->list();
 
 // Get by code
 $app = FlowCatalyst::applications()->getByCode('myapp');
 
 // Create an application
-$app = FlowCatalyst::applications()->create(new CreateApplicationRequest(
+$app = FlowCatalyst::admin()->applications()->create(new CreateApplicationRequest(
     code: 'myapp',
     name: 'My Application',
     description: 'My awesome application',
