@@ -900,3 +900,52 @@ old accessors kept as deprecated aliases for one line. Recommended order for Lar
 
 Python SDK and the Java/Go/TS trims are unaffected by these findings; the Laravel step stays last in the
 A.8 sequence, and D1 stands.
+
+---
+
+# M0 as built (Python SDK, 2026-10-16)
+
+Code: `clients/python-sdk` (uv workspace; `flowcatalyst` implemented, `flowcatalyst-fastapi` a
+placeholder). Not published, not tagged, no workflow.
+
+**Naming.** The milestone table's M0 is "platform prerequisites" (`x-sdk` tagging, the three missing
+routes, vectors into `tests/golden`); that work belongs to the platform side and was done by another
+agent against `api/openapi.lock.json`. The Python-side first milestone that the owner approved ("M0")
+is the **M1 content** of the table: core transport, error tree, client-credentials provider, the
+blocking facade and settings. That is what was built. The conformance vectors copy was not needed
+and was not done.
+
+What exists: `FlowCatalyst` / `FlowCatalystSync`, `RetryPolicy` / `Timeouts`, the A.9 error
+taxonomy, `ClientCredentialsTokenProvider`, `metadata_to_wire`, `Settings.from_env`, and one
+operation, `fc.sync.roles` (`POST /api/applications/{appCode}/roles/sync`), which exercises the
+stack and is pinned by `tests/test_contract_lock.py` (reads the lock at test time, tolerates
+additive changes). Results: 155 tests (respx only), ruff, mypy strict and pyright strict clean,
+60/60 hand-made mutants of the retry policy, transport and token cache killed
+(`tools/mutate.py`).
+
+Decisions the document left open:
+
+* `Timeout` error is named `RequestTimeoutError` (not to shadow the builtin `TimeoutError`).
+* Status retries (408/425/429/502/503/504) apply to every method; transport errors after the request
+  was sent retry only for GET/HEAD/OPTIONS/PUT/DELETE or a call marked `idempotent=True`; failures
+  where nothing was sent (connect error, connect/pool timeout) retry for any method. Sync endpoints
+  and the token POST are marked idempotent.
+* `Retry-After` wait = `max(jittered backoff, min(Retry-After, 30 s))`; the 401 refresh retry is
+  immediate and does not spend the retry budget; the 60 s overall deadline covers retries and waits.
+* Token provider: margin 60 s, halved when the token lives less than 120 s (otherwise a short token
+  would be re-minted on every call); 4xx from the token endpoint is `AuthError`, but network and 5xx
+  failures keep their own type (an outage is not "bad credentials", cf. B.4); a missing or
+  non-positive `expires_in` means 300 s; refresh after a 401 is single-flight per rejected token.
+* `removeUnlisted` is sent only when true (the platform default is false; same as AgentPlanner).
+* `Settings.from_env` has no fallback between id variables, so AgentPlanner's
+  `CENTRAL_AGENT_FC_SERVICE_CLIENT_ID` is selected explicitly and the login client id is never picked
+  up by mistake.
+* The blocking facade refuses to run inside a running event loop.
+
+AgentPlanner replacement path: `ServiceTokens` and `sync_roles` map directly onto
+`FlowCatalystSync(...).tokens` / `.sync.roles(...)`, gaining retries. Scheduled-job sync, webhook
+verification and JWKS/Principal are M3 / M2.
+
+**M1 should be** the plan's M2 (verification, principal, permissions: `JwksCache`, `Principal`,
+`matches`, webhook `verify_signature` + `signed_delivery`, `testing.FakePlatform`), then M3 (sync
+categories incl. scheduled jobs), which together cover AgentPlanner migration steps 1 to 3.

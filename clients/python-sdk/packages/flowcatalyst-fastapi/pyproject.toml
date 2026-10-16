@@ -1,0 +1,17 @@
+# Scaffold only (M4 fills this in). Nothing is implemented in this distribution yet.
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flowcatalyst-fastapi"
+version = "0.0.1"
+description = "FastAPI integration for the FlowCatalyst Python SDK (placeholder)."
+requires-python = ">=3.11"
+dependencies = ["flowcatalyst", "fastapi>=0.115"]
+
+[tool.uv.sources]
+flowcatalyst = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flowcatalyst_fastapi"]
