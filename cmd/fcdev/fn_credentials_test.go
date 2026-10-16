@@ -15,7 +15,7 @@ func TestFnCLICredentialsPathOverride(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, want, got)
 
-	require.NoError(t, writeFnCLICredentials(fnCredentials{PlatformURL: "http://x", RunnerURL: "http://r", ClientID: "id", ClientSecret: "s"}))
+	require.NoError(t, writeFnCLICredentials(fnCredentials{PlatformURL: "http://127.0.0.1:1", RunnerURL: "http://127.0.0.1:2", ClientID: "id", ClientSecret: "s"}))
 	_, err = os.Stat(want)
 	require.NoError(t, err)
 
@@ -26,7 +26,7 @@ func TestFnCLICredentialsPathOverride(t *testing.T) {
 	c, err := (&fnPlatformFlags{}).resolve()
 	require.NoError(t, err)
 	require.Equal(t, "id", c.ClientID)
-	require.Equal(t, "http://x", c.PlatformURL)
+	require.Equal(t, "http://127.0.0.1:1", c.PlatformURL)
 }
 
 func TestFnCLICredentialsPathDefault(t *testing.T) {

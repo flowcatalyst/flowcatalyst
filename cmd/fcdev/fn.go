@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -147,20 +148,22 @@ func describeArtifact(ctx context.Context, path, runtime string) (*abi.Describe,
 	return d, doc, nil
 }
 
-func printDescribe(path string, d *abi.Describe) {
-	fmt.Printf("%s\n", path)
+func printDescribe(path string, d *abi.Describe) { printDescribeTo(os.Stdout, path, d) }
+
+func printDescribeTo(w io.Writer, path string, d *abi.Describe) {
+	fmt.Fprintf(w, "%s\n", path)
 	for _, e := range d.Endpoints {
-		fmt.Printf("  endpoint     %-28s auth=%s\n", e.Pattern(), e.Auth)
+		fmt.Fprintf(w, "  endpoint     %-28s auth=%s\n", e.Pattern(), e.Auth)
 	}
 	for _, s := range d.Subscriptions {
-		fmt.Printf("  subscription %-28s → %s\n", s.EventType, s.Path)
+		fmt.Fprintf(w, "  subscription %-28s → %s\n", s.EventType, s.Path)
 	}
 	for _, s := range d.Schedules {
-		fmt.Printf("  schedule     %-28s → %s\n", s.Cron, s.Path)
+		fmt.Fprintf(w, "  schedule     %-28s → %s\n", s.Cron, s.Path)
 	}
 	list := func(label string, v []string) {
 		if len(v) > 0 {
-			fmt.Printf("  %-12s %s\n", label, strings.Join(v, ", "))
+			fmt.Fprintf(w, "  %-12s %s\n", label, strings.Join(v, ", "))
 		}
 	}
 	list("config", d.Config)
@@ -169,7 +172,7 @@ func printDescribe(path string, d *abi.Describe) {
 	list("httpAllow", d.HTTPAllow)
 	list("emits", d.Emits)
 	for _, t := range d.Dispatches {
-		fmt.Printf("  dispatches   %s%s\n", t.Target, t.Path)
+		fmt.Fprintf(w, "  dispatches   %s%s\n", t.Target, t.Path)
 	}
 }
 

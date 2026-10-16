@@ -54,6 +54,7 @@ Invoking ` + "`fcdev`" + ` with no subcommand is identical to ` + "`fcdev start`
 	root.AddCommand(newFreshCmd())
 	root.AddCommand(newMCPCmd())
 	root.AddCommand(newFnCmd())
+	root.AddCommand(newProfileCmd())
 	root.AddCommand(newOutboxCmd())
 	root.AddCommand(newDBCmd())
 	root.AddCommand(newUpgradeCmd())

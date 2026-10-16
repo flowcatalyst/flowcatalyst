@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -21,6 +20,8 @@ import (
 	"github.com/spf13/cobra"
 
 	fcauth "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 )
 
 // fnCredentials is what `fcdev fn` authenticates with. In CI, flags or
@@ -66,13 +67,14 @@ func writeFnCLICredentials(c fnCredentials) error {
 }
 
 // fnPlatformFlags are the connection flags every platform command takes.
-type fnPlatformFlags struct{ platform, runner, clientID, clientSecret string }
+type fnPlatformFlags struct{ platform, runner, clientID, clientSecret, profile string }
 
 func (f *fnPlatformFlags) add(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&f.platform, "platform", "", "platform URL (env FC_PLATFORM_URL; default: the local fcdev)")
-	cmd.Flags().StringVar(&f.runner, "runner", "", "function runner URL for invoke (env FC_RUNNER_URL; default: the local fcdev's)")
-	cmd.Flags().StringVar(&f.clientID, "client-id", "", "OAuth client id (env FC_CLIENT_ID)")
-	cmd.Flags().StringVar(&f.clientSecret, "client-secret", "", "OAuth client secret (env FC_CLIENT_SECRET)")
+	cmd.Flags().StringVar(&f.profile, "profile", "", "connection profile (env FC_PROFILE; see `fcdev profile add`); required for any non-loopback platform")
+	cmd.Flags().StringVar(&f.platform, "platform", "", "loopback platform URL (env FC_PLATFORM_URL; default: the local fcdev); remote platforms need --profile")
+	cmd.Flags().StringVar(&f.runner, "runner", "", "function runner URL for invoke (env FC_RUNNER_URL; default: the profile's, else the local fcdev's)")
+	cmd.Flags().StringVar(&f.clientID, "client-id", "", "OAuth client id for a loopback platform (env FC_CLIENT_ID)")
+	cmd.Flags().StringVar(&f.clientSecret, "client-secret", "", "OAuth client secret for a loopback platform (env FC_CLIENT_SECRET)")
 }
 
 func firstNonEmpty(v ...string) string {
@@ -84,55 +86,58 @@ func firstNonEmpty(v ...string) string {
 	return ""
 }
 
-// resolve settles the credential: flags, then env, then the dev file.
+// readDevCredentials reads the dev CLI credential file.
+func readDevCredentials(path string) (fnCredentials, bool) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return fnCredentials{}, false
+	}
+	var dev fnCredentials
+	if json.Unmarshal(b, &dev) != nil {
+		return fnCredentials{}, false
+	}
+	return dev, true
+}
+
+// resolve settles the credential (see resolveTarget for the rules), with
+// warnings discarded. Kept for callers that only need the credential.
 func (f *fnPlatformFlags) resolve() (fnCredentials, error) {
-	c := fnCredentials{
-		PlatformURL:  firstNonEmpty(f.platform, os.Getenv("FC_PLATFORM_URL")),
-		RunnerURL:    firstNonEmpty(f.runner, os.Getenv("FC_RUNNER_URL")),
-		ClientID:     firstNonEmpty(f.clientID, os.Getenv("FC_CLIENT_ID")),
-		ClientSecret: firstNonEmpty(f.clientSecret, os.Getenv("FC_CLIENT_SECRET")),
+	t, err := f.resolveTarget(context.Background(), io.Discard, true)
+	if err != nil {
+		return fnCredentials{}, err
 	}
-	if c.ClientID == "" || c.PlatformURL == "" || c.RunnerURL == "" {
-		if path, err := fnCLICredentialsPath(); err == nil {
-			if b, err := os.ReadFile(path); err == nil {
-				var dev fnCredentials
-				if json.Unmarshal(b, &dev) == nil {
-					c.PlatformURL = firstNonEmpty(c.PlatformURL, dev.PlatformURL)
-					c.RunnerURL = firstNonEmpty(c.RunnerURL, dev.RunnerURL)
-					if c.ClientID == "" {
-						c.ClientID, c.ClientSecret = dev.ClientID, dev.ClientSecret
-					}
-				}
-			}
-		}
-	}
-	if c.PlatformURL == "" || c.ClientID == "" || c.ClientSecret == "" {
-		return c, errors.New("no platform credential: start fcdev (it writes one), or pass --platform, --client-id and --client-secret")
-	}
-	c.PlatformURL = strings.TrimRight(c.PlatformURL, "/")
-	c.RunnerURL = strings.TrimRight(c.RunnerURL, "/")
-	return c, nil
+	return t.creds, nil
 }
 
 // fnAPI is a minimal authenticated client for the /api/functions routes.
 type fnAPI struct {
 	c      fnCredentials
+	target *fnTarget
+	prompt *fnPrompter
 	tokens *fcauth.ClientCredentialsProvider
 	http   *http.Client
 }
 
-func newFnAPI(f *fnPlatformFlags) (*fnAPI, error) {
-	c, err := f.resolve()
+// newFnAPI resolves the target, prints the safety banner and returns a client.
+func newFnAPI(cmd *cobra.Command, f *fnPlatformFlags) (*fnAPI, error) {
+	t, err := fnConnect(cmd, f, true)
 	if err != nil {
 		return nil, err
 	}
+	c := t.creds
 	return &fnAPI{
-		c: c,
+		c: c, target: t, prompt: newFnPrompter(cmd),
 		tokens: fcauth.NewClientCredentialsProvider(fcauth.ClientCredentialsConfig{
 			IssuerURL: c.PlatformURL, ClientID: c.ClientID, ClientSecret: c.ClientSecret,
+			HTTPClient: noRedirectClient(30 * time.Second),
 		}),
 		http: &http.Client{Timeout: 2 * time.Minute},
 	}, nil
+}
+
+// confirm gates a state-changing step; see fnTarget.confirmMutation.
+func (a *fnAPI) confirm(action string, yes bool) error {
+	return a.target.confirmMutation(a.prompt, action, yes)
 }
 
 // apiError is the platform's error body.
@@ -155,7 +160,7 @@ func (a *fnAPI) do(ctx context.Context, method, path string, body io.Reader, con
 	}
 	tok, err := a.tokens.Token(ctx)
 	if err != nil {
-		return fmt.Errorf("sign in to %s: %w", a.c.PlatformURL, err)
+		return fmt.Errorf("sign in to %s: %w", redactURL(a.c.PlatformURL), scrubErr(err, a.c.ClientSecret))
 	}
 	req.Header.Set("Authorization", "Bearer "+tok)
 	if contentType != "" {
@@ -331,13 +336,13 @@ func init() {
 func newFnPublishCmd() *cobra.Command {
 	var pf fnPlatformFlags
 	var runtime, clientID, pool string
-	var create bool
+	var create, yes bool
 	cmd := &cobra.Command{
 		Use:   "publish <address> <artifact>",
 		Short: "Upload an artifact and publish it as a new version (changes nothing that is running)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			api, err := newFnAPI(&pf)
+			api, err := newFnAPI(cmd, &pf)
 			if err != nil {
 				return err
 			}
@@ -346,10 +351,13 @@ func newFnPublishCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if fn == nil && !create {
+				return fmt.Errorf("no function %s; pass --create to create it", args[0])
+			}
+			if err := api.confirm("publish "+args[0], yes); err != nil {
+				return err
+			}
 			if fn == nil {
-				if !create {
-					return fmt.Errorf("no function %s; pass --create to create it", args[0])
-				}
 				if fn, err = api.createFunction(ctx, args[0], clientID, pool); err != nil {
 					return err
 				}
@@ -371,12 +379,14 @@ func newFnPublishCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&create, "create", false, "create the function if it does not exist")
 	cmd.Flags().StringVar(&clientID, "client", "", "with --create: the owning client id (default: platform-owned)")
 	cmd.Flags().StringVar(&pool, "pool", "", "with --create: the runner pool (default: default)")
+	addYesFlag(cmd, &yes)
 	return cmd
 }
 
 func newFnPromoteCmd() *cobra.Command {
 	var pf fnPlatformFlags
 	var alias string
+	var yes bool
 	cmd := &cobra.Command{
 		Use:   "promote <address> <version>",
 		Short: "Point an alias (live by default) at a READY version",
@@ -386,12 +396,15 @@ func newFnPromoteCmd() *cobra.Command {
 			if _, err := fmt.Sscan(strings.TrimPrefix(args[1], "v"), &n); err != nil {
 				return fmt.Errorf("version %q is not a number", args[1])
 			}
-			api, err := newFnAPI(&pf)
+			api, err := newFnAPI(cmd, &pf)
 			if err != nil {
 				return err
 			}
 			fn, err := api.mustFunction(cmd.Context(), args[0])
 			if err != nil {
+				return err
+			}
+			if err := api.confirm(fmt.Sprintf("promote %s@%s to v%d", fn.Address, alias, n), yes); err != nil {
 				return err
 			}
 			wiring, err := api.promote(cmd.Context(), fn, alias, n)
@@ -407,20 +420,31 @@ func newFnPromoteCmd() *cobra.Command {
 	}
 	pf.add(cmd)
 	cmd.Flags().StringVar(&alias, "alias", "live", "the alias to move")
+	addYesFlag(cmd, &yes)
 	return cmd
 }
 
 func newFnDeployCmd() *cobra.Command {
 	var pf fnPlatformFlags
 	var runtime, clientID, pool string
-	var create bool
+	var create, yes, dryRun bool
 	var wait time.Duration
 	cmd := &cobra.Command{
 		Use:   "deploy <address> [dir|artifact]",
 		Short: "Build (for a directory), publish, wait until a runner has loaded it, and promote to live",
-		Args:  cobra.RangeArgs(1, 2),
+		Long: `Builds (for a directory), publishes, waits until a runner has loaded the
+version, and promotes it to live.
+
+--dry-run builds and validates the describe document, looks the function up
+(read-only) and prints what would be published and promoted, without writing
+anything to the platform.`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			api, err := newFnAPI(cmd, &pf)
+			if err != nil {
+				return err
+			}
 			target := "."
 			if len(args) == 2 {
 				target = args[1]
@@ -436,21 +460,24 @@ func newFnDeployCmd() *cobra.Command {
 			if runtime == "" {
 				runtime = runtimeFor(artifact)
 			}
-			if _, _, err := describeArtifact(ctx, artifact, runtime); err != nil {
-				return fmt.Errorf("%s is not publishable: %w", artifact, err)
-			}
-			api, err := newFnAPI(&pf)
+			d, _, err := describeArtifact(ctx, artifact, runtime)
 			if err != nil {
-				return err
+				return fmt.Errorf("%s is not publishable: %w", artifact, err)
 			}
 			fn, err := api.findFunction(ctx, args[0])
 			if err != nil {
 				return err
 			}
+			if fn == nil && !create {
+				return fmt.Errorf("no function %s; pass --create to create it", args[0])
+			}
+			if dryRun {
+				return deployDryRun(cmd.OutOrStdout(), api, fn, args[0], artifact, runtime, d, wait)
+			}
+			if err := api.confirm("deploy "+args[0], yes); err != nil {
+				return err
+			}
 			if fn == nil {
-				if !create {
-					return fmt.Errorf("no function %s; pass --create to create it", args[0])
-				}
 				if fn, err = api.createFunction(ctx, args[0], clientID, pool); err != nil {
 					return err
 				}
@@ -481,24 +508,56 @@ func newFnDeployCmd() *cobra.Command {
 	cmd.Flags().StringVar(&clientID, "client", "", "with --create: the owning client id")
 	cmd.Flags().StringVar(&pool, "pool", "", "with --create: the runner pool")
 	cmd.Flags().DurationVar(&wait, "wait", time.Minute, "how long to wait for a runner to load the version")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "build and validate, then print what would be published and promoted; writes nothing remotely")
+	addYesFlag(cmd, &yes)
 	return cmd
+}
+
+// addYesFlag registers --yes for a state-changing command.
+func addYesFlag(cmd *cobra.Command, yes *bool) {
+	cmd.Flags().BoolVar(yes, "yes", false, "non-interactive: with a prod profile that sets allow_noninteractive = true, skip the typed confirmation")
+}
+
+// deployDryRun reports what deploy would do. It performs no remote write.
+func deployDryRun(out io.Writer, api *fnAPI, fn *fnFunction, address, artifact, runtime string, d *abi.Describe, wait time.Duration) error {
+	data, err := os.ReadFile(artifact)
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(data)
+	fmt.Fprintf(out, "dry run: nothing is written to %s\n", redactURL(api.c.PlatformURL))
+	printDescribeTo(out, artifact, d)
+	fmt.Fprintf(out, "artifact: %s (%d bytes, sha256 %s, runtime %s)\n", artifact, len(data), hex.EncodeToString(sum[:])[:12], runtime)
+	if fn == nil {
+		fmt.Fprintf(out, "would create function %s\n", address)
+	} else {
+		fmt.Fprintf(out, "function %s exists (%s)\n", fn.Address, fn.ID)
+	}
+	fmt.Fprintf(out, "would upload the artifact and publish a new version, wait up to %s for a runner to load it, then promote it to live\n", wait)
+	return nil
 }
 
 func newFnSetCmd() *cobra.Command {
 	var pf fnPlatformFlags
 	var configs, secrets, dbs []string
+	var yes bool
 	cmd := &cobra.Command{
 		Use:   "set <address>",
 		Short: "Set config values, secrets and database DSNs on a function",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			api, err := newFnAPI(&pf)
+			api, err := newFnAPI(cmd, &pf)
 			if err != nil {
 				return err
 			}
 			fn, err := api.mustFunction(cmd.Context(), args[0])
 			if err != nil {
 				return err
+			}
+			if len(configs)+len(secrets)+len(dbs) > 0 {
+				if err := api.confirm("change settings of "+fn.Address, yes); err != nil {
+					return err
+				}
 			}
 			for kind, list := range map[string][]string{"config": configs, "secrets": secrets, "db": dbs} {
 				kv, err := keyValues(list)
@@ -519,6 +578,7 @@ func newFnSetCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&configs, "config", nil, "KEY=VALUE (repeatable)")
 	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "KEY=VALUE (repeatable; write-only)")
 	cmd.Flags().StringArrayVar(&dbs, "db", nil, "NAME=DSN (repeatable; write-only)")
+	addYesFlag(cmd, &yes)
 	return cmd
 }
 
@@ -526,17 +586,21 @@ func newFnInvokeCmd() *cobra.Command {
 	var pf fnPlatformFlags
 	var method, data string
 	var headers []string
-	var anonymous bool
+	var anonymous, yes bool
 	cmd := &cobra.Command{
 		Use:   "invoke <address>[@alias|@vN] [path]",
 		Short: "Call a function through a runner (with a platform token unless --anonymous)",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := pf.resolve()
-			if err != nil && !anonymous {
+			t, err := fnConnect(cmd, &pf, !anonymous)
+			if err != nil {
 				return err
 			}
+			c := t.creds
 			if c.RunnerURL == "" {
+				if t.profile != nil {
+					return fmt.Errorf("profile %s has no runner URL: pass --runner, or add one to the profile", t.profile.Name)
+				}
 				c.RunnerURL = "http://127.0.0.1:8095"
 			}
 			path := "/"
@@ -559,6 +623,13 @@ func newFnInvokeCmd() *cobra.Command {
 					method = http.MethodPost
 				}
 			}
+			// A call can run arbitrary function code, so anything but a plain
+			// read counts as a change for the prod guard.
+			if method != http.MethodGet && method != http.MethodHead {
+				if err := t.confirmMutation(newFnPrompter(cmd), "invoke "+args[0]+" ("+method+")", yes); err != nil {
+					return err
+				}
+			}
 			req, err := http.NewRequestWithContext(cmd.Context(), method, c.RunnerURL+"/fn/"+args[0]+path, body)
 			if err != nil {
 				return err
@@ -573,9 +644,10 @@ func newFnInvokeCmd() *cobra.Command {
 			if !anonymous {
 				tok, err := fcauth.NewClientCredentialsProvider(fcauth.ClientCredentialsConfig{
 					IssuerURL: c.PlatformURL, ClientID: c.ClientID, ClientSecret: c.ClientSecret,
+					HTTPClient: noRedirectClient(30 * time.Second),
 				}).Token(cmd.Context())
 				if err != nil {
-					return fmt.Errorf("sign in: %w", err)
+					return fmt.Errorf("sign in: %w", scrubErr(err, c.ClientSecret))
 				}
 				req.Header.Set("Authorization", "Bearer "+tok)
 			}
@@ -601,6 +673,7 @@ func newFnInvokeCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&data, "data", "d", "", "request body, or @file")
 	cmd.Flags().StringArrayVarP(&headers, "header", "H", nil, "request header Name: value (repeatable)")
 	cmd.Flags().BoolVar(&anonymous, "anonymous", false, "send no platform token")
+	addYesFlag(cmd, &yes)
 	return cmd
 }
 
@@ -611,7 +684,7 @@ func newFnStatusCmd() *cobra.Command {
 		Short: "Show a function's versions and aliases",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			api, err := newFnAPI(&pf)
+			api, err := newFnAPI(cmd, &pf)
 			if err != nil {
 				return err
 			}
@@ -679,7 +752,7 @@ Interactively you must type the function's address to confirm. In scripts pass
 			if !yes && !fnStdinIsTerminal() {
 				return errors.New("refusing to delete without a terminal to confirm on; pass --yes to delete non-interactively")
 			}
-			api, err := newFnAPI(&pf)
+			api, err := newFnAPI(cmd, &pf)
 			if err != nil {
 				return err
 			}
@@ -711,9 +784,12 @@ Interactively you must type the function's address to confirm. In scripts pass
 				fmt.Fprintln(out)
 			}
 			fmt.Fprintln(out, "  This also removes every alias, wiring (subscriptions and scheduled jobs) and artifact.")
+			if err := api.confirm("PERMANENTLY delete "+fn.Address, yes); err != nil {
+				return err
+			}
 			if !yes {
 				fmt.Fprintf(out, "Type the address (%s) to confirm: ", fn.Address)
-				line, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+				line, _ := api.prompt.in.ReadString('\n')
 				if strings.TrimSpace(line) != fn.Address {
 					return errors.New("confirmation did not match; nothing deleted")
 				}

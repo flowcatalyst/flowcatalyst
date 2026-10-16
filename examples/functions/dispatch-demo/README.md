@@ -69,6 +69,15 @@ cd ../payload-logger                                 && npm install && npm test 
 `APP_CODE` (default `dispatchdemo`) is baked in at build time and becomes the first segment of the
 dispatch target address and of the required permission. **Set it to `example` for both functions.**
 
+## Other platforms (nonprod / prod)
+
+The steps below target your local fcdev. For a remote platform `fcdev fn` needs a **profile**
+(`fcdev profile add np --platform https://... --env np --client-id ... `, then `--profile np` on each
+`fcdev fn` command): `--platform`/`FC_PLATFORM_URL` with a non-loopback URL is refused without one.
+Prod profiles ask you to type `prod` before any publish, promote, deploy, set or delete; use
+`fcdev fn deploy ... --dry-run` first. Setup, CI references and least-privilege roles:
+[docs/fcdev-profiles.md](../../../docs/fcdev-profiles.md). The `curl` bootstrap in step 0 is local-only.
+
 ## Deploy to your fcdev (you run these; nothing here touches anything but your fcdev)
 
 Run from the repository root. Credentials: `fcdev fn` reads the dev credential `fcdev start` wrote, so no

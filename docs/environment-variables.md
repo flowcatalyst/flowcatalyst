@@ -381,6 +381,9 @@ flow just works (existing env values win).
 | `FC_EMBEDDED_DB_PORT` | `15432` | — | `cmd/fcdev` | Embedded Postgres port. |
 | `FC_EMBEDDED_DB_PATH` | `<user-data-dir>/flowcatalyst/embedded-pg` | — | `cmd/fcdev` | Embedded Postgres data directory (never /tmp). |
 | `FC_DEV_UPGRADE_REPO` | `flowcatalyst/flowcatalyst` | — | `cmd/fcdev` | GitHub repo `fcdev upgrade` pulls releases from (point at a fork). |
+| `FC_PROFILES_PATH` | `<user config dir>/flowcatalyst/profiles.toml` | — | `cmd/fcdev/profile_store.go` | Location of the `fcdev profile` file (named remote platforms and secret *references*, never secret values). See [fcdev-profiles.md](fcdev-profiles.md). |
+| `FC_PROFILE` | — | — | `cmd/fcdev/fn_target.go` | Profile `fcdev fn ...` uses when `--profile` is not given. A profile makes `FC_PLATFORM_URL`, `FC_RUNNER_URL`, `FC_CLIENT_ID` and `FC_CLIENT_SECRET` ignored (with a warning). |
+| `FC_PLATFORM_URL`, `FC_RUNNER_URL`, `FC_CLIENT_ID`, `FC_CLIENT_SECRET` | — | — | `cmd/fcdev/fn_target.go` | Connection settings for `fcdev fn ...` **against a loopback platform only**. A non-loopback `FC_PLATFORM_URL` without a profile is refused; use `fcdev profile add` (profile `secret_ref` may be `env:NAME`/`file:`/`command:` for CI). See [fcdev-profiles.md](fcdev-profiles.md). |
 
 The installer scripts (`install.sh` / `install.ps1`) additionally honour
 `FC_DEV_VERSION`, `FC_DEV_INSTALL_DIR` and `FC_DEV_FORCE` — shell-side only,

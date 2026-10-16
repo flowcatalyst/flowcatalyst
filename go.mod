@@ -40,11 +40,13 @@ require (
 	github.com/starfederation/datastar-go v1.2.2
 	github.com/stretchr/testify v1.11.1
 	github.com/tetratelabs/wazero v1.12.0
+	github.com/zalando/go-keyring v0.2.8
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/crypto v0.52.0
 	golang.org/x/net v0.54.0
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sys v0.45.0
+	golang.org/x/sys v0.48.0
+	golang.org/x/term v0.46.0
 	golang.org/x/time v0.15.0
 	golang.org/x/tools v0.45.0
 )
@@ -72,6 +74,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cli/browser v1.3.0 // indirect
+	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/fatih/color v1.16.0 // indirect
@@ -81,6 +84,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/go-webauthn/x v0.2.6 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
