@@ -253,6 +253,32 @@ class Principals
     }
 
     /**
+     * Change a USER principal's scope and client association with explicit
+     * intent. Anchor-only on the platform (others get 403).
+     *
+     * - `$clientId = '*'`: promote to ANCHOR (all-client access); `$mode` is ignored.
+     * - a specific client id with `$mode = 'CHANGE_CLIENT'`: make it the home client.
+     * - a specific client id with `$mode = 'TO_PARTNER'`: promote to PARTNER
+     *   (previous home client plus this one).
+     *
+     * `$mode` is required by the platform for a specific client id (400
+     * MODE_REQUIRED otherwise). Returns the updated principal.
+     */
+    public function setClientAssociation(string $id, string $clientId, ?string $mode = null): Principal
+    {
+        $body = ['clientId' => $clientId];
+        if ($mode !== null) {
+            $body['mode'] = $mode;
+        }
+
+        $response = $this->client->request('PUT', "/api/principals/{$id}/client-association", [
+            'json' => $body,
+        ]);
+
+        return Principal::fromArray($response);
+    }
+
+    /**
      * Revoke a principal's access to a client.
      */
     public function revokeClientAccess(string $id, string $clientId): void

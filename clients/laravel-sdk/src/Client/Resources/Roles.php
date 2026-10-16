@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FlowCatalyst\Client\Resources;
 
 use FlowCatalyst\Client\FlowCatalystClient;
+use FlowCatalyst\Exceptions\FlowCatalystException;
 use FlowCatalyst\DTOs\Requests\CreateRoleRequest;
 use FlowCatalyst\DTOs\Requests\SyncRoleEntry;
 use FlowCatalyst\DTOs\Requests\UpdateRoleRequest;
@@ -131,19 +132,76 @@ class Roles
     ): SyncResult {
         $query = $removeUnlisted ? '?removeUnlisted=true' : '';
 
-        $response = $this->client->request(
-            'POST',
-            "/api/applications/{$applicationCode}/roles/sync{$query}",
-            [
-                'json' => [
-                    'roles' => array_map(
-                        fn(SyncRoleEntry $entry) => $entry->toArray(),
-                        $roles,
-                    ),
+        try {
+            $response = $this->client->request(
+                'POST',
+                "/api/applications/{$applicationCode}/roles/sync{$query}",
+                [
+                    'json' => [
+                        'roles' => array_map(
+                            fn(SyncRoleEntry $entry) => $entry->toArray(),
+                            $roles,
+                        ),
+                    ],
                 ],
-            ],
-        );
+            );
+        } catch (FlowCatalystException $e) {
+            throw self::explainSyncFailure($e, array_values($roles));
+        }
 
         return SyncResult::fromArray($response);
+    }
+
+    /**
+     * The platform applies a roles sync atomically and reports only
+     * "... failed at index N" (plus its machine code and any details). Name
+     * the role at that index and carry the platform's code and details, so a
+     * caller can tell which role failed and why. The original message is kept
+     * verbatim as the prefix; the exception code stays the HTTP status, and
+     * the original is chained as `previous`. Only a plain
+     * FlowCatalystException is re-wrapped; subclasses (validation,
+     * authentication) pass through untouched.
+     *
+     * @param SyncRoleEntry[] $roles
+     */
+    private static function explainSyncFailure(FlowCatalystException $e, array $roles): \Throwable
+    {
+        if (get_class($e) !== FlowCatalystException::class) {
+            return $e;
+        }
+
+        $context = $e->getContext() ?? [];
+        $message = $e->getMessage();
+        $extra = [];
+
+        if (preg_match('/at index (\d+)/', $message, $m) === 1) {
+            $index = (int) $m[1];
+            $context['failedIndex'] = $index;
+            if (isset($roles[$index])) {
+                $context['failedRole'] = $roles[$index]->name;
+                $extra[] = sprintf("role '%s' (index %d)", $roles[$index]->name, $index);
+            } else {
+                $extra[] = sprintf('index %d', $index);
+            }
+        }
+
+        $reason = $context['error'] ?? null;
+        if (is_string($reason) && $reason !== '') {
+            $extra[] = 'code ' . $reason;
+        }
+        if (isset($context['details']) && $context['details'] !== []) {
+            $extra[] = 'details ' . json_encode($context['details']);
+        }
+
+        if ($extra === []) {
+            return $e;
+        }
+
+        return new FlowCatalystException(
+            $message . ' [' . implode('; ', $extra) . ']',
+            $e->getCode(),
+            $e,
+            $context,
+        );
     }
 }

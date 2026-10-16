@@ -11,9 +11,11 @@ use FlowCatalyst\Client\Resources\Applications;
 use FlowCatalyst\Client\Resources\AuditLogs;
 use FlowCatalyst\Client\Resources\Clients;
 use FlowCatalyst\Client\Resources\DispatchPools;
+use FlowCatalyst\Client\Resources\EmailDomainMappings;
 use FlowCatalyst\Client\Resources\EventTypes;
 use FlowCatalyst\Client\Resources\Me;
 use FlowCatalyst\Client\Resources\Permissions;
+use FlowCatalyst\Client\Resources\PlatformConfig;
 use FlowCatalyst\Client\Resources\Principals;
 use FlowCatalyst\Client\Resources\Processes;
 use FlowCatalyst\Client\Resources\Roles;
@@ -51,6 +53,8 @@ class FlowCatalystClient
     private ?Router $router = null;
     private ?ScheduledJobs $scheduledJobs = null;
     private ?AuditLogs $auditLogs = null;
+    private ?PlatformConfig $platformConfig = null;
+    private ?EmailDomainMappings $emailDomainMappings = null;
     private ?DefinitionSynchronizer $definitions = null;
 
     /**
@@ -244,6 +248,22 @@ class FlowCatalystClient
     public function auditLogs(): AuditLogs
     {
         return $this->auditLogs ??= new AuditLogs($this);
+    }
+
+    /**
+     * Platform configuration properties (get / set / delete / list).
+     */
+    public function platformConfig(): PlatformConfig
+    {
+        return $this->platformConfig ??= new PlatformConfig($this);
+    }
+
+    /**
+     * Email-domain mapping lookup (by domain).
+     */
+    public function emailDomainMappings(): EmailDomainMappings
+    {
+        return $this->emailDomainMappings ??= new EmailDomainMappings($this);
     }
 
     /**

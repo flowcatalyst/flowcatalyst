@@ -454,6 +454,29 @@ FlowCatalyst::eventTypes()->addSchemaVersion($eventTypeId, new AddSchemaVersionR
 ));
 ```
 
+### Platform config, email-domain mappings, client association, raw lookups
+
+```php
+use FlowCatalyst\Facades\FlowCatalyst;
+
+// Platform config (anchors, or roles with a platform-config access grant)
+$row  = FlowCatalyst::platformConfig()->get('rfp', 'mail', 'from');          // ?clientId= via 4th arg
+$row  = FlowCatalyst::platformConfig()->set('rfp', 'mail', 'from', 'a@b.c'); // PLAIN by default
+FlowCatalyst::platformConfig()->delete('rfp', 'mail', 'from');              // idempotent
+$rows = FlowCatalyst::platformConfig()->list('rfp');                         // listRaw() for the body as-is
+
+// Email-domain mapping by domain (404 FlowCatalystException when unmapped)
+$mapping = FlowCatalyst::emailDomainMappings()->getByDomain('example.com');
+
+// Change a USER's scope/client association (anchor-only). '*' = ANCHOR;
+// a client id needs mode CHANGE_CLIENT or TO_PARTNER.
+FlowCatalyst::principals()->setClientAssociation($principalId, $clientId, 'TO_PARTNER');
+
+// The platform's own answer, with no DTO defaults (get() fills a missing status with ACTIVE)
+$raw = FlowCatalyst::clients()->getRaw($clientId);
+$raw = FlowCatalyst::clients()->getByIdentifierRaw('acme');
+```
+
 ### Subscriptions
 
 ```php

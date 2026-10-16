@@ -63,6 +63,31 @@ class Clients
     }
 
     /**
+     * Get a client by ID, returning the platform's decoded body unchanged.
+     *
+     * Unlike {@see get()}, nothing is defaulted: the {@see Client} DTO fills a
+     * missing `status` with 'ACTIVE', which hides a malformed or partial
+     * answer. Use this when you must see exactly what the platform said.
+     *
+     * @return array<string, mixed>
+     */
+    public function getRaw(string $id): array
+    {
+        return $this->client->request('GET', '/api/clients/' . rawurlencode($id));
+    }
+
+    /**
+     * Get a client by identifier (slug), returning the platform's decoded
+     * body unchanged. See {@see getRaw()} for why.
+     *
+     * @return array<string, mixed>
+     */
+    public function getByIdentifierRaw(string $identifier): array
+    {
+        return $this->client->request('GET', '/api/clients/by-identifier/' . rawurlencode($identifier));
+    }
+
+    /**
      * Create a new client.
      *
      * Returns the created client's ID. The platform's create endpoint
