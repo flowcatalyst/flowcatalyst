@@ -350,16 +350,21 @@ func TestPublish_DispatchTargets(t *testing.T) {
 		return err
 	}
 	// Another application's function: refused at publish, like an emit.
-	testpg.RequireUsecaseError(t, publish(`[{"target":"someoneelse.logger","path":"/deliver"}]`), usecase.KindValidation, "DISPATCH_NOT_OWNED")
+	testpg.RequireUsecaseError(t, publish(`[{"target":"someoneelse.logger","path":"/deliver","connection":"c"}]`), usecase.KindValidation, "DISPATCH_NOT_OWNED")
 	// An address that merely starts with the application code is not the application.
-	testpg.RequireUsecaseError(t, publish(`[{"target":"optpubdispapp2.logger","path":"/deliver"}]`), usecase.KindValidation, "DISPATCH_NOT_OWNED")
+	testpg.RequireUsecaseError(t, publish(`[{"target":"optpubdispapp2.logger","path":"/deliver","connection":"c"}]`), usecase.KindValidation, "DISPATCH_NOT_OWNED")
 	// Shape problems are describe problems, listed.
-	ue := usecase.AsError(publish(`[{"target":"https://x.com/","path":"/deliver"}]`))
+	ue := usecase.AsError(publish(`[{"target":"https://x.com/","path":"/deliver","connection":"c"}]`))
 	require.NotNil(t, ue)
 	assert.Equal(t, "DESCRIBE_INVALID", ue.Code)
 	assert.Contains(t, ue.Message, "not a function address")
+	// A dispatch that names no connection is refused, naming the entry.
+	ue = usecase.AsError(publish(`[{"target":"optpubdispapp.logger","path":"/deliver"}]`))
+	require.NotNil(t, ue)
+	assert.Equal(t, "DESCRIBE_INVALID", ue.Code)
+	assert.Contains(t, ue.Message, "dispatches[0]: optpubdispapp.logger/deliver declares no connection")
 	// Its own application's function (which need not exist yet) publishes.
-	require.NoError(t, publish(`[{"target":"optpubdispapp.logger","path":"/deliver"}]`))
+	require.NoError(t, publish(`[{"target":"optpubdispapp.logger","path":"/deliver","connection":"c"}]`))
 }
 
 func TestPublish_BadCron(t *testing.T) {

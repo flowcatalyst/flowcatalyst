@@ -4,6 +4,7 @@ package fn
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -26,9 +27,8 @@ func TestDescribeGolden(t *testing.T) {
 	DB("main")
 	HTTPAllow("api.stripe.com", "*.acme.com")
 	Emits("orders:order:order:shipped")
-	Dispatches("orders.invoice-logger", "/deliver")
+	Dispatches("orders.invoice-logger", "/deliver", DispatchConnection("yard-conn"))
 	Dispatches("orders.invoice-logger", "/pooled", DispatchPool("yard-process-pool"), DispatchConnection("yard-conn"))
-	Dispatches("orders.invoice-logger", "/pool-only", DispatchPool("tower-pool"))
 
 	got := describeJSON()
 
@@ -47,9 +47,8 @@ func TestDescribeGolden(t *testing.T) {
 	  "schedules": [{"cron": "0 */5 * * * *", "timezone": "UTC", "path": "/events/tick"}],
 	  "config": ["GREETING"], "secrets": ["STRIPE_KEY"], "db": ["main"],
 	  "httpAllow": ["api.stripe.com", "*.acme.com"], "emits": ["orders:order:order:shipped"],
-	  "dispatches": [{"target": "orders.invoice-logger", "path": "/deliver"},
-	    {"target": "orders.invoice-logger", "path": "/pooled", "pool": "yard-process-pool", "connection": "yard-conn"},
-	    {"target": "orders.invoice-logger", "path": "/pool-only", "pool": "tower-pool"}]
+	  "dispatches": [{"target": "orders.invoice-logger", "path": "/deliver", "connection": "yard-conn"},
+	    {"target": "orders.invoice-logger", "path": "/pooled", "pool": "yard-process-pool", "connection": "yard-conn"}]
 	}`
 
 	assertJSONEqual(t, got, []byte(want))
@@ -146,5 +145,30 @@ func assertJSONEqual(t *testing.T, got, want []byte) {
 	wb, _ := json.Marshal(wv)
 	if string(gb) != string(wb) {
 		t.Errorf("describe JSON mismatch:\n got: %s\nwant: %s", got, want)
+	}
+}
+
+// A dispatch declaration without a connection fails at registration (so
+// build, describe and deploy all fail) with a message naming the entry.
+func TestDispatchesRequiresAConnection(t *testing.T) {
+	resetRegistry()
+	for name, opts := range map[string][]DispatchOption{
+		"none":       nil,
+		"pool only":  {DispatchPool("tower-pool")},
+		"empty code": {DispatchConnection("")},
+	} {
+		func() {
+			defer func() {
+				r := recover()
+				msg, _ := r.(string)
+				if !strings.Contains(msg, `Dispatches("orders.logger", "/deliver") declares no connection`) {
+					t.Errorf("%s: panic = %v, want the missing-connection message", name, r)
+				}
+			}()
+			Dispatches("orders.logger", "/deliver", opts...)
+		}()
+	}
+	if len(reg.dispatches) != 0 {
+		t.Errorf("a refused declaration was registered: %+v", reg.dispatches)
 	}
 }

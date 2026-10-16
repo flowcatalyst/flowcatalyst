@@ -57,11 +57,14 @@ const (
 //  6. the dispatch pool, if the declaration names one, is resolved here by
 //     code (resolvePool) and set on the job. The call carries no pool: it is
 //     the declaration's, so a guest cannot pick or change it;
-//  7. the connection, if the declaration names one, is resolved the same way
-//     (resolveConnection): its service account is set on the job, which is
-//     the account the delivery is signed with (a job has no connection column;
-//     delivery credentials read the job's account when it has no
-//     subscription), and fn.connection records which connection.
+//  7. the connection, which every declaration names (describe refuses one
+//     that does not), is resolved the same way (resolveConnection) and its id
+//     is set on the job (connection_id). That is what lets an operator hold
+//     the job by pausing the connection (the scheduler's claim excludes a
+//     paused connection's jobs; they sit PENDING and are released on
+//     reactivation), and it is the connection whose service account signs the
+//     delivery. A PAUSED connection does not refuse the call: the job is
+//     created and waits.
 //
 // The job is built through sdk.NewJobFromItem, the SDK ingest routes' own
 // mapping, so defaults and validation are the platform's (dataOnly aside,
@@ -188,7 +191,7 @@ func (s *State) dispatch(ctx context.Context, in *apicommon.In[fncontrol.Dispatc
 	if d.TimeoutSeconds != nil && *d.TimeoutSeconds <= 0 {
 		return nil, usecase.Validation("DISPATCH_TIMEOUT_INVALID", "timeoutSeconds must be positive")
 	}
-	meta, err := jobMetadata(d.Metadata, fn, req, conn)
+	meta, err := jobMetadata(d.Metadata, fn, req)
 	if err != nil {
 		return nil, err
 	}
@@ -219,10 +222,6 @@ func (s *State) dispatch(ctx context.Context, in *apicommon.In[fncontrol.Dispatc
 		Descriptor:         nonEmpty(d.Descriptor),
 		Metadata:           meta,
 	}
-	if conn != nil {
-		sa := conn.ServiceAccountID
-		item.ServiceAccountID = &sa
-	}
 	if d.TimeoutSeconds != nil {
 		item.TimeoutSeconds = uint32(*d.TimeoutSeconds)
 	}
@@ -234,6 +233,8 @@ func (s *State) dispatch(ctx context.Context, in *apicommon.In[fncontrol.Dispatc
 		return nil, err // httperror: INVALID_TARGET_URL and friends
 	}
 	job.DispatchPoolID = poolID
+	connID := conn.ID
+	job.ConnectionID = &connID
 	if d.MaxRetries != nil && *d.MaxRetries == 0 {
 		job.MaxRetries = 0 // jobFromItem reads 0 as "default"; an explicit 0 means no retries
 	}
@@ -297,7 +298,8 @@ func (s *State) resolvePool(ctx context.Context, fn *function.Function, code str
 }
 
 // resolveConnection maps a declared connection code to the connection for a
-// job of fn, or nil for no declaration (today's signing behaviour). Rules:
+// job of fn. A declaration always names one, so an empty code is refused here
+// as well (defence in depth: describe validation already does). Rules:
 //
 //   - visibility, most specific first: the function's application's
 //     connection of the function's client, then of no client, then the shared
@@ -305,10 +307,13 @@ func (s *State) resolvePool(ctx context.Context, fn *function.Function, code str
 //     one. A connection of another application or another client is never
 //     matched, so it is "not found" and codes are not enumerable across
 //     tenants; the first match decides (no fall-through past a refusal);
-//   - it must be ACTIVE (a PAUSED connection is refused, not skipped).
+//   - its status is NOT checked: a PAUSED connection is the owner's way to hold
+//     work for a system down for maintenance, so the job is created and sits
+//     PENDING until the connection is reactivated. Only an unknown or
+//     other-tenant connection is refused.
 func (s *State) resolveConnection(ctx context.Context, fn *function.Function, code string) (*connection.Connection, error) {
 	if code == "" {
-		return nil, nil
+		return nil, usecase.Validation("CONNECTION_REQUIRED", "the dispatch declaration names no connection")
 	}
 	if s.Connections == nil {
 		return nil, usecase.Internal("DISPATCH_UNWIRED", "the connection repository is not configured", nil)
@@ -326,10 +331,6 @@ func (s *State) resolveConnection(ctx context.Context, fn *function.Function, co
 			}
 			if c == nil {
 				continue
-			}
-			if c.Status != connection.StatusActive {
-				return nil, usecase.Authorization("CONNECTION_NOT_ALLOWED",
-					"connection "+code+" is "+string(c.Status)+" and takes no new deliveries")
 			}
 			return c, nil
 		}
@@ -380,7 +381,7 @@ func (s *State) targetProblem(ctx context.Context, target *function.Function, pa
 
 // jobMetadata validates the guest's entries and appends the platform's fn.*
 // provenance, which the guest cannot supply.
-func jobMetadata(in []abi.KV, fn *function.Function, req fncontrol.DispatchRequest, conn *connection.Connection) ([]dispatchjob.Metadata, error) {
+func jobMetadata(in []abi.KV, fn *function.Function, req fncontrol.DispatchRequest) ([]dispatchjob.Metadata, error) {
 	if len(in) > maxDispatchMetadata {
 		return nil, usecase.Validation("DISPATCH_METADATA_TOO_MANY", "metadata is over 50 entries")
 	}
@@ -405,9 +406,6 @@ func jobMetadata(in []abi.KV, fn *function.Function, req fncontrol.DispatchReque
 		dispatchjob.Metadata{Key: reservedMetadataPrefix + "address", Value: fn.Address},
 		dispatchjob.Metadata{Key: reservedMetadataPrefix + "version", Value: strconv.Itoa(req.Version)},
 	)
-	if conn != nil {
-		out = append(out, dispatchjob.Metadata{Key: reservedMetadataPrefix + "connection", Value: conn.Code})
-	}
 	if req.InvocationID != "" {
 		out = append(out, dispatchjob.Metadata{Key: reservedMetadataPrefix + "invocation", Value: req.InvocationID})
 	}

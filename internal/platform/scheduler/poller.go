@@ -28,15 +28,20 @@ var claimTimeout = 30 * time.Second
 // runs detached from the lane's context (see lane.process).
 var finishTimeout = 10 * time.Second
 
-// PausedConnectionCache caches the set of subscription IDs whose target
-// connections are PAUSED. The poller filters jobs whose subscription
-// matches; those jobs sit in PENDING until the connection is reactivated.
+// PausedConnectionCache caches what the claim holds back for PAUSED
+// connections: the ids of the subscriptions whose connection is paused, and the
+// ids of the paused connections themselves (a job that names its own
+// connection, as a function's fn.dispatch does, has no subscription). The
+// poller filters jobs matching either; those jobs sit in PENDING until the
+// connection is reactivated. Both sets come from one refresh, so a claim never
+// sees one new and the other stale.
 type PausedConnectionCache struct {
 	pool *pgxpool.Pool
 	ttl  time.Duration
 
 	mu          sync.RWMutex
-	paused      map[string]struct{}
+	paused      map[string]struct{} // subscription ids
+	pausedConns map[string]struct{} // connection ids
 	lastRefresh time.Time
 }
 
@@ -46,60 +51,77 @@ func NewPausedConnectionCache(pool *pgxpool.Pool, ttl time.Duration) *PausedConn
 		pool:        pool,
 		ttl:         ttl,
 		paused:      make(map[string]struct{}),
+		pausedConns: make(map[string]struct{}),
 		lastRefresh: time.Now().Add(-2 * ttl), // force initial refresh
 	}
 }
 
 // PausedSubscriptionIDs returns the cached set, refreshing if stale.
 func (c *PausedConnectionCache) PausedSubscriptionIDs(ctx context.Context) (map[string]struct{}, error) {
+	return c.snapshot(ctx, func() map[string]struct{} { return c.paused })
+}
+
+// PausedConnectionIDs returns the ids of the PAUSED connections, refreshing if
+// stale.
+func (c *PausedConnectionCache) PausedConnectionIDs(ctx context.Context) (map[string]struct{}, error) {
+	return c.snapshot(ctx, func() map[string]struct{} { return c.pausedConns })
+}
+
+func (c *PausedConnectionCache) snapshot(ctx context.Context, pick func() map[string]struct{}) (map[string]struct{}, error) {
 	c.mu.RLock()
-	if time.Since(c.lastRefresh) < c.ttl {
-		out := make(map[string]struct{}, len(c.paused))
-		for k := range c.paused {
-			out[k] = struct{}{}
-		}
-		c.mu.RUnlock()
-		return out, nil
-	}
+	stale := time.Since(c.lastRefresh) >= c.ttl
 	c.mu.RUnlock()
-	if err := c.refresh(ctx); err != nil {
-		return nil, err
+	if stale {
+		if err := c.refresh(ctx); err != nil {
+			return nil, err
+		}
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	out := make(map[string]struct{}, len(c.paused))
-	for k := range c.paused {
+	src := pick()
+	out := make(map[string]struct{}, len(src))
+	for k := range src {
 		out[k] = struct{}{}
 	}
 	return out, nil
 }
 
 func (c *PausedConnectionCache) refresh(ctx context.Context) error {
-	rows, err := c.pool.Query(ctx,
+	paused, err := scanIDSet(ctx, c.pool,
 		`SELECT s.id FROM msg_subscriptions s
 		   JOIN msg_connections c ON c.id = s.connection_id
 		  WHERE c.status = 'PAUSED'`)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	paused := make(map[string]struct{})
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return err
-		}
-		paused[id] = struct{}{}
-	}
-	if err := rows.Err(); err != nil {
+	pausedConns, err := scanIDSet(ctx, c.pool, `SELECT id FROM msg_connections WHERE status = 'PAUSED'`)
+	if err != nil {
 		return err
 	}
 	c.mu.Lock()
 	c.paused = paused
+	c.pausedConns = pausedConns
 	c.lastRefresh = time.Now()
 	c.mu.Unlock()
-	slog.Debug("paused connection cache refreshed", "paused_subscriptions", len(paused))
+	slog.Debug("paused connection cache refreshed", "paused_subscriptions", len(paused), "paused_connections", len(pausedConns))
 	return nil
+}
+
+func scanIDSet(ctx context.Context, pool *pgxpool.Pool, sql string) (map[string]struct{}, error) {
+	rows, err := pool.Query(ctx, sql)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]struct{})
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = struct{}{}
+	}
+	return out, rows.Err()
 }
 
 // PendingJobPoller is the claiming half of the dispatch scheduler: it claims
@@ -154,15 +176,18 @@ type PendingJobPoller struct {
 	lanes      []*lane
 
 	// Seams. The defaults talk to Postgres and the dispatcher; tests replace them.
-	claimRows func(ctx context.Context, limit int, paused, heldGroups, inFlight []string) ([]dispatchClaim, error)
+	claimRows func(ctx context.Context, limit int, paused, heldGroups, inFlight, pausedConns []string) ([]dispatchClaim, error)
 	// holdBack returns each candidate group's earliest holder; last is each
 	// candidate group's LAST candidate in the claim (only a holder positioned before
 	// a candidate matters, which bounds the lookup).
-	holdBack   func(ctx context.Context, last map[string]jobKey) (map[string]jobKey, error)
-	pausedIDs  func(ctx context.Context) (map[string]struct{}, error)
-	poolCode   func(ctx context.Context, poolID, clientID string) string
-	publish    func(ctx context.Context, toks []DispatchJobToken) (unpublished []string)
-	markQueued func(ctx context.Context, ids []string, createdAts, updatedAts []time.Time) (int64, error)
+	holdBack  func(ctx context.Context, last map[string]jobKey) (map[string]jobKey, error)
+	pausedIDs func(ctx context.Context) (map[string]struct{}, error)
+	// pausedConnIDs: the PAUSED connections' ids, for jobs naming their own
+	// connection. nil is "none" (test engines that do not model it).
+	pausedConnIDs func(ctx context.Context) (map[string]struct{}, error)
+	poolCode      func(ctx context.Context, poolID, clientID string) string
+	publish       func(ctx context.Context, toks []DispatchJobToken) (unpublished []string)
+	markQueued    func(ctx context.Context, ids []string, createdAts, updatedAts []time.Time) (int64, error)
 	// held remembers the groups a claim recently found held back.
 	held *heldGroups
 
@@ -188,13 +213,14 @@ func NewPendingJobPoller(cfg Config, pool *pgxpool.Pool, dispatcher *MessageGrou
 	p.pausedCache = pausedCache
 	p.poolCodes = NewPoolCodeResolver(pool, cfg.PausedCacheTTL)
 	lc := dispatchjob.NewLifecycle(pool)
-	p.claimRows = func(ctx context.Context, limit int, paused, held, inFlight []string) ([]dispatchClaim, error) {
-		return queryClaim(ctx, lc, limit, paused, held, inFlight)
+	p.claimRows = func(ctx context.Context, limit int, paused, held, inFlight, pausedConns []string) ([]dispatchClaim, error) {
+		return queryClaim(ctx, lc, limit, paused, held, inFlight, pausedConns)
 	}
 	p.holdBack = func(ctx context.Context, last map[string]jobKey) (map[string]jobKey, error) {
 		return blockedGroups(ctx, pool, last)
 	}
 	p.pausedIDs = pausedCache.PausedSubscriptionIDs
+	p.pausedConnIDs = pausedCache.PausedConnectionIDs
 	p.poolCode = p.poolCodes.Resolve
 	p.publish = dispatcher.PublishClaim
 	p.markQueued = p.updateQueued
@@ -348,6 +374,18 @@ func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult 
 		pausedIDs = append(pausedIDs, id)
 	}
 	schedMetrics.pausedSubscriptions.Set(float64(len(pausedIDs)))
+	// Likewise the paused connections, for jobs that name their own.
+	pausedConns := []string{}
+	if p.pausedConnIDs != nil {
+		pc, err := p.pausedConnIDs(ctx)
+		if err != nil {
+			return claimResult{err: err}
+		}
+		for id := range pc {
+			pausedConns = append(pausedConns, id)
+		}
+	}
+	schedMetrics.pausedConnections.Set(float64(len(pausedConns)))
 
 	// The generation is incremented BEFORE the in-flight set is snapshotted, and the
 	// snapshot BEFORE the claim statement runs. That order is what the ordering
@@ -363,7 +401,7 @@ func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult 
 	snap := p.inflight.snapshot()
 
 	claimStart := time.Now()
-	claims, err := p.claimRows(ctx, want, pausedIDs, p.held.active(time.Now()), snap.ids)
+	claims, err := p.claimRows(ctx, want, pausedIDs, p.held.active(time.Now()), snap.ids, pausedConns)
 	schedMetrics.claimDuration.Observe(time.Since(claimStart).Seconds())
 	if err != nil {
 		return claimResult{err: err}
@@ -498,8 +536,8 @@ func (p *PendingJobPoller) laneFor(group string) int {
 
 // queryClaim is the default claimRows: the lifecycle's claim of the job table
 // (one plain SELECT), in delivery order.
-func queryClaim(ctx context.Context, lc *dispatchjob.Lifecycle, limit int, paused, held, inFlight []string) ([]dispatchClaim, error) {
-	rows, err := lc.ClaimPending(ctx, limit, paused, held, inFlight)
+func queryClaim(ctx context.Context, lc *dispatchjob.Lifecycle, limit int, paused, held, inFlight, pausedConns []string) ([]dispatchClaim, error) {
+	rows, err := lc.ClaimPending(ctx, limit, paused, held, inFlight, pausedConns)
 	if err != nil {
 		return nil, err
 	}

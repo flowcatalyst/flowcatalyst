@@ -545,7 +545,7 @@ func (l *Lifecycle) CreateBatch(ctx context.Context, jobs []DispatchJob) ([]JobR
 			j.Sequence, j.TimeoutSeconds, j.SchemaID, j.MaxRetries,
 			string(j.RetryStrategy), j.ScheduledFor, j.ExpiresAt, j.AttemptCount,
 			j.LastAttemptAt, j.CompletedAt, j.DurationMillis, j.LastError,
-			j.IdempotencyKey, j.Queue, j.Descriptor, j.CreatedAt, now,
+			j.IdempotencyKey, j.Queue, j.Descriptor, j.ConnectionID, j.CreatedAt, now,
 		})
 	}
 	return l.insertPending(ctx, TCreate, createBatchCols, rows)
@@ -588,6 +588,7 @@ var createBatchCols = []insCol{
 	{"idempotency_key", ""},
 	{"queue", ""},
 	{"descriptor", ""},
+	{"connection_id", ""},
 	{"created_at", ""},
 	{"updated_at", ""},
 }

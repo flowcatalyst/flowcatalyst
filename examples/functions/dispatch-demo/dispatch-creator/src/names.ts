@@ -12,6 +12,13 @@ const app = typeof __APP_CODE__ === "string" ? __APP_CODE__ : "dispatchdemo";
 export const LOGGER_ADDRESS = `${app}.payload-logger`;
 export const DELIVER_PATH = "/deliver";
 
+// The connection the jobs are delivered through (required by every
+// dispatches declaration). Create it once (README step 0) with the
+// application's own service account, so the signature it puts on a delivery
+// is the one payload-logger's webhook endpoint verifies. Pausing it holds the
+// jobs PENDING until it is reactivated.
+export const CONNECTION_CODE = "dispatch-demo-conn";
+
 // The permission a caller must hold to use dispatch-creator, a 4-segment
 // <application>:<context>:<resource>:<action> code like every platform
 // permission. It travels in a role of the application (README), so it

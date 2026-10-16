@@ -284,7 +284,7 @@ function's log at INFO/WARN.
   "config": ["GREETING"], "secrets": ["STRIPE_KEY"], "db": ["main"],
   "httpAllow": ["api.stripe.com", "*.acme.com"], "emits": ["orders:order:order:shipped"],
   "dispatches": [{"target": "orders.invoice-logger", "path": "/deliver",
-                  "pool": "yard-process-pool", "connection": "yard-conn"}]
+                  "connection": "yard-conn", "pool": "yard-process-pool"}]
 }
 ```
 
@@ -297,8 +297,10 @@ Validation at publish (strict; unknown keys rejected):
   `common.DefaultDispatchMode`), the same as every other subscription. A default must not quietly
   weaken ordering; a function that wants `IMMEDIATE` says so.
 - Every type in `emits` must be owned by the function's application.
-- `dispatches` entries are `{target, path, pool?, connection?}` and nothing else (unknown keys
-  rejected). `pool` is a dispatch pool **code** (the rate/concurrency pool for dispatch jobs, not a
+- `dispatches` entries are `{target, path, connection, pool?}` and nothing else (unknown keys
+  rejected). **`connection` is required** (F24): an entry without one is refused at publish, naming the
+  entry (`dispatches[1]: a.b/e declares no connection; ...`), because the job carries the connection so
+  that pausing it holds the job. `pool` is a dispatch pool **code** (the rate/concurrency pool for dispatch jobs, not a
   function-runner pool; `^[a-z][a-z0-9_-]{0,99}$`, the platform's pool-code rule) and `connection` a
   connection **code** (`^[a-z][a-z0-9-]{0,99}$`); both are format-checked here only, since a pool or
   connection may be created after the function is published (existence, status, client and
@@ -616,9 +618,10 @@ A function that needs to deliver work to another function creates a **dispatch j
 rather than emitting an event and relying on a subscription. It still holds no credential: the
 write path is the control-plane route above, authenticated as the runner.
 
-**Declaration.** `dispatches: [{target, path, pool?, connection?}]` in describe (§5.4). *Why function addresses and
+**Declaration.** `dispatches: [{target, path, connection, pool?}]` in describe (§5.4). *Why function addresses and
 not URLs:* a dispatch job is signed and, where the application has one, carries a bearer token, by
-the **application's service account** (job code's first segment, see below). An arbitrary URL
+the **declared connection's service account** (F24; before F23 it was the application's, via the job
+code's first segment). An arbitrary URL
 would hand that credential to wherever the function pointed; a function address means the platform
 knows what receives it, and the receiver (`webhook` auth on the same application's account)
 verifies it. Absolute webhook URLs (checked against `httpAllow`) are therefore not supported;
@@ -638,9 +641,8 @@ never trusted; codes are `usecase` errors):
    endpoint taking POST at the path (`DISPATCH_TARGET_UNAVAILABLE`, 409): a job is never created for
    a URL that cannot verify its signature.
 5. Field rules (400 `DISPATCH_*`): `code` must start with the function's application (default
-   `{application}:function:{name}:dispatch`), which is also what delivery-credential resolution keys
-   on for a job with no subscription (the application's signing account: the same secret the target's
-   `webhookSecret` carries); payload UTF-8, at most 256 KiB, valid JSON for a JSON content type;
+   `{application}:function:{name}:dispatch`); delivery credentials key on the job's `connection_id`,
+   not on the code (item 7); payload UTF-8, at most 256 KiB, valid JSON for a JSON content type;
    `mode` one of the three; `maxRetries >= 0`, `timeoutSeconds > 0`; metadata at most 50 entries,
    keys unique and non-empty, and **no key starting with `fn.`** (reserved for the platform's
    provenance).
@@ -651,19 +653,27 @@ never trusted; codes are `usecase` errors):
    enumerable across tenants), `ACTIVE` (a suspended or archived pool is `DISPATCH_POOL_NOT_ALLOWED`,
    403), and unowned or owned by the function's application (F19; another application's pool is
    `DISPATCH_POOL_NOT_ALLOWED`, 403).
-7. **The declared connection**, if named: resolved per call, most specific first (the function's
+7. **The declared connection** (required, F24): resolved per call, most specific first (the function's
    application's connection of the function's client, of no client, then the shared, application-less
-   connection of the client, of no client); the first match decides. It must be `ACTIVE` (`PAUSED` is
-   `CONNECTION_NOT_ALLOWED`, 403); a connection of another application or client is never matched
-   (`CONNECTION_NOT_FOUND`, 404). A job has no connection column, so the connection takes effect
-   through its service account: the job carries the connection's `serviceAccountId` and metadata
-   `fn.connection` = the code, and delivery credentials sign a subscription-less job with the account
-   it names (`internal/server/delivery_creds.go`), declining with a reason rather than falling back to
-   the application's account when that account cannot sign.
+   connection of the client, of no client); the first match decides; a connection of another
+   application or client is never matched (`CONNECTION_NOT_FOUND`, 404). **Its status is not checked:**
+   a `PAUSED` connection still takes the job (owner-intent inference: pausing is how an operator holds
+   work for a system down for maintenance, so the job is created and waits rather than being refused).
+   The job carries the connection's id (`msg_dispatch_jobs.connection_id`, migration 082; internal, not
+   on the SDK request or the job API). Two consequences: (a) **pause holds the job**: the scheduler's
+   claim excludes jobs whose `connection_id` is a PAUSED connection (the same cached set that holds a
+   paused connection's subscriptions), so the job sits PENDING and is released on reactivation; a job
+   already QUEUED or in flight when the connection is paused is not recalled and finishes (exactly
+   what pausing a connection does to its subscriptions' jobs today); (b) **the connection's service
+   account signs the delivery** (`internal/server/delivery_creds.go`, keyed by `connection_id`),
+   declining with a reason rather than falling back to the application's account when it cannot sign.
+   A job's own `serviceAccountId` never chooses its signer.
 
-A declared pool and connection are independent: whichever is not declared keeps today's behaviour
-(the client's default pool; the application's own account signs). There is **no per-call override** in
-v1: `fn.dispatch` takes both from the matching declaration, and a call that names one is refused.
+The pool stays optional. Undeclared, the job has no `dispatch_pool_id` and the scheduler gives it the
+client's default pool exactly as any other job without a pool (`{clientIdentifier}-DEFAULT-POOL`, or
+`platform-DEFAULT-POOL` for a client-less job; `scheduler/poolcode.go`), which the router
+self-synthesises. There is **no per-call override** in v1: `fn.dispatch` takes both from the matching
+declaration, and a call that names one is refused.
 
 **What it writes.** One `msg_dispatch_jobs` row through `sdk.NewJobFromItem`, the SDK ingest routes'
 own mapping (so defaults and validation are identical to `POST /api/dispatch-jobs`): `kind` `TASK`,
@@ -725,13 +735,12 @@ func getOrder(w http.ResponseWriter, r *http.Request) {
 - TinyGo support is a phase-0 measurement, not a commitment.
 
 **Rust: `clients/fn-rust`** (crate `flowcatalyst-fn`, `wasm32-unknown-unknown`). Same declarations
-through a builder, with handlers returning `Result<Response, Error>`. `App::dispatches(target, path)`
-(or `App::dispatches_with(target, path, DispatchOpts::new().pool("p").connection("c"))`)
-declares, `Context::dispatch(Job { … })` creates a job (§8.7).
+through a builder, with handlers returning `Result<Response, Error>`. `App::dispatches_with(target, path, DispatchOpts::new("c").pool("p"))`
+declares (the connection is the constructor's argument, the pool optional; there is no connection-less form), `Context::dispatch(Job { … })` creates a job (§8.7).
 
 **JavaScript: `clients/fn-ts`** (in progress) on the shared engine. A JS artifact is one bundled
 script defining `globalThis.__fc = {describe, handle}`; the engine protocol is documented in
-`clients/fn-js-engine/src/lib.rs`. Versions carry `runtime: "js"`. `fn.dispatches(target, path, { pool, connection })` declares and
+`clients/fn-js-engine/src/lib.rs`. Versions carry `runtime: "js"`. `fn.dispatches(target, path, { connection, pool? })` declares (a missing `connection` throws at registration; Go's `fn.Dispatches` panics the same way) and
 `await fn.dispatch({target, path, payload, metadata, …})` creates a job (§8.7); `metadata` may be an object
 (sorted by key) or the platform's `[{key, value}]` array and always travels as the array.
 

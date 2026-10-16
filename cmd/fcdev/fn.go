@@ -176,10 +176,10 @@ func printDescribeTo(w io.Writer, path string, d *abi.Describe) {
 	}
 }
 
-// dispatchPlacement renders a dispatches entry's declared pool and
-// connection, e.g. " (pool yard-process-pool, connection yard-conn)"; empty
-// when neither is declared (the client's default pool, the application's own
-// signing account).
+// dispatchPlacement renders a dispatches entry's declared connection (always
+// present in a valid describe) and optional pool, e.g.
+// " (pool yard-process-pool, connection yard-conn)"; a missing pool means the
+// client's default pool.
 func dispatchPlacement(t abi.DispatchTarget) string {
 	var parts []string
 	if t.Pool != "" {

@@ -122,7 +122,7 @@ SELECT id, external_id, source, kind, code, subject, event_id,
        timeout_seconds, schema_id, status, max_retries, retry_strategy,
        scheduled_for, expires_at, attempt_count, last_attempt_at,
        completed_at, duration_millis, last_error, idempotency_key,
-       queue, descriptor, created_at, updated_at
+       queue, descriptor, connection_id, created_at, updated_at
 FROM msg_dispatch_jobs
 WHERE id = $1
 `
@@ -164,6 +164,7 @@ type DispatchJobFindByIDRow struct {
 	IdempotencyKey     *string         `db:"idempotency_key"`
 	Queue              *string         `db:"queue"`
 	Descriptor         *string         `db:"descriptor"`
+	ConnectionID       *string         `db:"connection_id"`
 	CreatedAt          time.Time       `db:"created_at"`
 	UpdatedAt          time.Time       `db:"updated_at"`
 }
@@ -219,6 +220,7 @@ func (q *Queries) DispatchJobFindByID(ctx context.Context, id string) (DispatchJ
 		&i.IdempotencyKey,
 		&i.Queue,
 		&i.Descriptor,
+		&i.ConnectionID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -233,7 +235,7 @@ SELECT id, external_id, source, kind, code, subject, event_id,
        timeout_seconds, schema_id, status, max_retries, retry_strategy,
        scheduled_for, expires_at, attempt_count, last_attempt_at,
        completed_at, duration_millis, last_error, idempotency_key,
-       queue, descriptor, created_at, updated_at
+       queue, descriptor, connection_id, created_at, updated_at
 FROM msg_dispatch_jobs
 WHERE id = ANY($1::text[])
 `
@@ -275,6 +277,7 @@ type DispatchJobFindByIDsRow struct {
 	IdempotencyKey     *string         `db:"idempotency_key"`
 	Queue              *string         `db:"queue"`
 	Descriptor         *string         `db:"descriptor"`
+	ConnectionID       *string         `db:"connection_id"`
 	CreatedAt          time.Time       `db:"created_at"`
 	UpdatedAt          time.Time       `db:"updated_at"`
 }
@@ -327,6 +330,7 @@ func (q *Queries) DispatchJobFindByIDs(ctx context.Context, ids []string) ([]Dis
 			&i.IdempotencyKey,
 			&i.Queue,
 			&i.Descriptor,
+			&i.ConnectionID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

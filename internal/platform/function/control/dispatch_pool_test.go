@@ -17,13 +17,16 @@ import (
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
+
+// noConnection makes poolDescribe omit the connection, which describe
+// validation refuses at publish: used to prove the runtime refuses it too.
+const noConnection = "-"
 
 // poolDescribe is the creator's describe declaring <app>.logger/deliver with
 // the given dispatch pool and connection codes ("" declares none).
@@ -33,7 +36,12 @@ func poolDescribe(t *testing.T, app, pool, conn string) json.RawMessage {
 	if pool != "" {
 		entry["pool"] = pool
 	}
-	if conn != "" {
+	switch conn {
+	case "":
+		entry["connection"] = fixtureConnCode // the fixture's ACTIVE connection
+	case noConnection:
+		// a (hand-seeded, pre-validation) declaration with none
+	default:
 		entry["connection"] = conn
 	}
 	b, err := json.Marshal(map[string]any{
@@ -62,8 +70,6 @@ func newDeclFixture(t *testing.T, pool, conn string, mutateCreator func(*functio
 	t.Helper()
 	f := newDispatchFixture(t, mutateCreator, mutateTarget)
 	seedVersion(t, f.s.Repo, f.creator.ID, 2, function.VersionPublished, "js", poolDescribe(t, f.app, pool, conn))
-	f.s.Pools = dispatchpool.NewRepository(testpg.Pool(t))
-	f.s.Connections = connection.NewRepository(testpg.Pool(t))
 	return &poolFixture{dispatchFixture: f, appID: f.creator.ApplicationID}
 }
 
@@ -281,7 +287,7 @@ func TestDispatchPool_TheMatchingDeclarationDecides(t *testing.T) {
 	seedVersion(t, f.s.Repo, f.creator.ID, 3, function.VersionPublished, "js", b)
 	p := seedPool(t, f, right, nil)
 	seedPool(t, f, wrong, nil)
-	seedConn(t, f, rc, "sa_right_"+shortID(t), nil)
+	rightConn := seedConn(t, f, rc, "sa_right_"+shortID(t), nil)
 	seedConn(t, f, wc, "sa_wrong_"+shortID(t), nil)
 
 	r := f.req(abi.Dispatch{})
@@ -290,8 +296,8 @@ func TestDispatchPool_TheMatchingDeclarationDecides(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, f.jobPool(t, out.Body.JobID))
 	assert.Equal(t, p.ID, *f.jobPool(t, out.Body.JobID))
-	require.NotNil(t, f.jobSA(t, out.Body.JobID))
-	assert.Equal(t, "sa_right_"+shortID(t), *f.jobSA(t, out.Body.JobID))
+	require.NotNil(t, f.jobConn(t, out.Body.JobID))
+	assert.Equal(t, rightConn.ID, *f.jobConn(t, out.Body.JobID))
 }
 
 // Through the real route a guest-supplied `pool` in the dispatch body can
@@ -393,40 +399,50 @@ func connCode(t *testing.T, name string) string {
 	return strings.ToLower("cn-" + name + "-" + shortID(t))
 }
 
-func (f *poolFixture) jobSA(t *testing.T, jobID string) *string {
+func (f *poolFixture) jobConn(t *testing.T, jobID string) *string {
 	t.Helper()
 	job, err := f.s.Jobs.FindByID(context.Background(), jobID)
 	require.NoError(t, err)
 	require.NotNil(t, job)
-	return job.ServiceAccountID
+	return job.ConnectionID
 }
 
-// The connection is what names the signing account for a job with no
-// subscription: the job carries the connection's service account (the
-// delivery resolver honours it), and fn.connection records which connection.
-func TestDispatchConnection_DeclaredConnectionSignsTheJob(t *testing.T) {
+// The job carries the connection (its id): pausing the connection holds the
+// job, and the connection's account signs the delivery. No account and no
+// fn.connection metadata travel on the job any more.
+func TestDispatchConnection_DeclaredConnectionIsSetOnTheJob(t *testing.T) {
 	t.Parallel()
 	code := connCode(t, "ok")
 	f := newDeclFixture(t, "", code, nil, nil)
-	seedConn(t, f, code, "sa_conn_ok_"+shortID(t), nil)
+	c := seedConn(t, f, code, "sa_conn_ok_"+shortID(t), nil)
 
 	out, err := f.call(anchorCtx(), f.req(abi.Dispatch{}))
 	require.NoError(t, err)
-	sa := f.jobSA(t, out.Body.JobID)
-	require.NotNil(t, sa)
-	assert.Equal(t, "sa_conn_ok_"+shortID(t), *sa)
+	got := f.jobConn(t, out.Body.JobID)
+	require.NotNil(t, got, "the job must carry the declared connection")
+	assert.Equal(t, c.ID, *got)
 	job, _ := f.s.Jobs.FindByID(context.Background(), out.Body.JobID)
-	assert.Contains(t, job.Metadata, dispatchjob.Metadata{Key: "fn.connection", Value: code})
+	assert.Nil(t, job.ServiceAccountID, "the connection signs; the job names no account")
+	for _, m := range job.Metadata {
+		assert.NotEqual(t, "fn.connection", m.Key, "the column is the record; no duplicate in metadata")
+	}
 	assert.Nil(t, f.jobPool(t, out.Body.JobID), "no pool declared: client default, independent of the connection")
 }
 
-func TestDispatchConnection_NoneDeclaredIsUnchanged(t *testing.T) {
+// describe validation refuses a declaration with no connection at publish. A
+// version that got past it anyway (seeded here, as one published before the
+// rule would be) does not parse at call time either, so it creates nothing;
+// resolveConnection also refuses an empty code (defence in depth).
+func TestDispatchConnection_NoneDeclaredIsRefusedAtRuntime(t *testing.T) {
 	t.Parallel()
-	f := newDeclFixture(t, "", "", nil, nil)
-	seedConn(t, f, connCode(t, "unused"), "sa_unused_"+shortID(t), nil)
-	out, err := f.call(anchorCtx(), f.req(abi.Dispatch{}))
-	require.NoError(t, err)
-	assert.Nil(t, f.jobSA(t, out.Body.JobID), "today's behaviour: the application's account signs")
+	f := newDeclFixture(t, "", noConnection, nil, nil)
+	_, err := f.call(anchorCtx(), f.req(abi.Dispatch{}))
+	testpg.RequireUsecaseError(t, err, usecase.KindInternal, "CORRUPT_DESCRIBE")
+	require.Contains(t, err.Error(), "declares no connection")
+	assert.Zero(t, f.jobsFrom(t))
+
+	_, err = f.s.resolveConnection(context.Background(), f.creator, "")
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "CONNECTION_REQUIRED")
 }
 
 func TestDispatchConnection_PoolAndConnectionAreIndependent(t *testing.T) {
@@ -434,12 +450,13 @@ func TestDispatchConnection_PoolAndConnectionAreIndependent(t *testing.T) {
 	pc, cc := poolCode(t, "both"), connCode(t, "both")
 	f := newDeclFixture(t, pc, cc, nil, nil)
 	p := seedPool(t, f, pc, nil)
-	seedConn(t, f, cc, "sa_both_"+shortID(t), nil)
+	c := seedConn(t, f, cc, "sa_both_"+shortID(t), nil)
 	out, err := f.call(anchorCtx(), f.req(abi.Dispatch{}))
 	require.NoError(t, err)
 	require.NotNil(t, f.jobPool(t, out.Body.JobID))
 	assert.Equal(t, p.ID, *f.jobPool(t, out.Body.JobID))
-	require.NotNil(t, f.jobSA(t, out.Body.JobID))
+	require.NotNil(t, f.jobConn(t, out.Body.JobID))
+	assert.Equal(t, c.ID, *f.jobConn(t, out.Body.JobID))
 }
 
 func TestDispatchConnection_Unknown(t *testing.T) {
@@ -450,14 +467,24 @@ func TestDispatchConnection_Unknown(t *testing.T) {
 	assert.Zero(t, f.jobsFrom(t))
 }
 
-func TestDispatchConnection_PausedIsRefused(t *testing.T) {
+// OWNER-INTENT INFERENCE (2026-10-16): pausing a connection is how an operator
+// holds work for a system down for maintenance. So a call against a PAUSED
+// connection is NOT refused: the job is created, carries the connection, and
+// sits PENDING (the scheduler's claim excludes it) until reactivation.
+func TestDispatchConnection_PausedStillCreatesThePendingJob(t *testing.T) {
 	t.Parallel()
 	code := connCode(t, "paused")
 	f := newDeclFixture(t, "", code, nil, nil)
-	seedConn(t, f, code, "sa_paused_"+shortID(t), func(c *connection.Connection) { c.Status = connection.StatusPaused })
-	_, err := f.call(anchorCtx(), f.req(abi.Dispatch{}))
-	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "CONNECTION_NOT_ALLOWED")
-	assert.Zero(t, f.jobsFrom(t))
+	c := seedConn(t, f, code, "sa_paused_"+shortID(t), func(c *connection.Connection) { c.Status = connection.StatusPaused })
+	out, err := f.call(anchorCtx(), f.req(abi.Dispatch{}))
+	require.NoError(t, err)
+	got := f.jobConn(t, out.Body.JobID)
+	require.NotNil(t, got)
+	assert.Equal(t, c.ID, *got)
+	job, err := f.s.Jobs.FindByID(context.Background(), out.Body.JobID)
+	require.NoError(t, err)
+	assert.Equal(t, "PENDING", string(job.Status))
+	assert.Equal(t, 1, f.jobsFrom(t))
 }
 
 func TestDispatchConnection_ClientRules(t *testing.T) {
@@ -476,11 +503,11 @@ func TestDispatchConnection_ClientRules(t *testing.T) {
 		code := connCode(t, "own")
 		f := newDeclFixture(t, "", code, inA, inA)
 		seedConn(t, f, code, "sa_less_"+shortID(t), nil)
-		seedConn(t, f, code, "sa_own_"+shortID(t), func(c *connection.Connection) { c.ClientID = ids.PtrOf[ids.ClientID](&a) })
+		own := seedConn(t, f, code, "sa_own_"+shortID(t), func(c *connection.Connection) { c.ClientID = ids.PtrOf[ids.ClientID](&a) })
 		out, err := f.call(anchorCtx(), f.req(abi.Dispatch{}))
 		require.NoError(t, err)
-		require.NotNil(t, f.jobSA(t, out.Body.JobID))
-		assert.Equal(t, "sa_own_"+shortID(t), *f.jobSA(t, out.Body.JobID))
+		require.NotNil(t, f.jobConn(t, out.Body.JobID))
+		assert.Equal(t, own.ID, *f.jobConn(t, out.Body.JobID))
 	})
 	t.Run("another client's connection is refused", func(t *testing.T) {
 		code := connCode(t, "other")
@@ -497,16 +524,18 @@ func TestDispatchConnection_ClientRules(t *testing.T) {
 		_, err := f.call(anchorCtx(), f.req(abi.Dispatch{}))
 		testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "CONNECTION_NOT_FOUND")
 	})
-	t.Run("a paused own-client connection is refused, not skipped for the shared one", func(t *testing.T) {
+	t.Run("a paused own-client connection decides: the job holds on it, it is not swapped for the shared one", func(t *testing.T) {
 		code := connCode(t, "ownpaused")
 		f := newDeclFixture(t, "", code, inA, inA)
 		seedConn(t, f, code, "sa_shared2_"+shortID(t), nil)
-		seedConn(t, f, code, "sa_ownp_"+shortID(t), func(c *connection.Connection) {
+		own := seedConn(t, f, code, "sa_ownp_"+shortID(t), func(c *connection.Connection) {
 			c.ClientID = ids.PtrOf[ids.ClientID](&a)
 			c.Status = connection.StatusPaused
 		})
-		_, err := f.call(anchorCtx(), f.req(abi.Dispatch{}))
-		testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "CONNECTION_NOT_ALLOWED")
+		out, err := f.call(anchorCtx(), f.req(abi.Dispatch{}))
+		require.NoError(t, err)
+		require.NotNil(t, f.jobConn(t, out.Body.JobID))
+		assert.Equal(t, own.ID, *f.jobConn(t, out.Body.JobID))
 	})
 }
 
@@ -516,11 +545,11 @@ func TestDispatchConnection_ApplicationNamespace(t *testing.T) {
 		code := connCode(t, "mine")
 		f := newDeclFixture(t, "", code, nil, nil)
 		seedConn(t, f, code, "sa_shr_"+shortID(t), nil)
-		seedConn(t, f, code, "sa_app_"+shortID(t), func(c *connection.Connection) { c.ApplicationCode = new(f.creator.ApplicationCode) })
+		mine := seedConn(t, f, code, "sa_app_"+shortID(t), func(c *connection.Connection) { c.ApplicationCode = new(f.creator.ApplicationCode) })
 		out, err := f.call(anchorCtx(), f.req(abi.Dispatch{}))
 		require.NoError(t, err)
-		require.NotNil(t, f.jobSA(t, out.Body.JobID))
-		assert.Equal(t, "sa_app_"+shortID(t), *f.jobSA(t, out.Body.JobID))
+		require.NotNil(t, f.jobConn(t, out.Body.JobID))
+		assert.Equal(t, mine.ID, *f.jobConn(t, out.Body.JobID))
 	})
 	t.Run("a connection owned by another application is refused", func(t *testing.T) {
 		code := connCode(t, "theirs")
@@ -537,7 +566,7 @@ func TestDispatchConnection_RequestCannotOverrideTheDeclaration(t *testing.T) {
 	t.Parallel()
 	declared, other := connCode(t, "declared"), connCode(t, "wanted")
 	f := newDeclFixture(t, "", declared, nil, nil)
-	seedConn(t, f, declared, "sa_decl_"+shortID(t), nil)
+	decl := seedConn(t, f, declared, "sa_decl_"+shortID(t), nil)
 	seedConn(t, f, other, "sa_want_"+shortID(t), nil)
 
 	ti := newTestTokenIssuer(t)
@@ -554,8 +583,8 @@ func TestDispatchConnection_RequestCannotOverrideTheDeclaration(t *testing.T) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		var out fncontrol.DispatchResponse
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
-		require.NotNil(t, f.jobSA(t, out.JobID))
-		assert.Equal(t, "sa_decl_"+shortID(t), *f.jobSA(t, out.JobID))
+		require.NotNil(t, f.jobConn(t, out.JobID))
+		assert.Equal(t, decl.ID, *f.jobConn(t, out.JobID))
 	} else {
 		assert.Zero(t, f.jobsFrom(t))
 	}

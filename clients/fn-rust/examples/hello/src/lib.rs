@@ -14,7 +14,7 @@ flowcatalyst_fn::export!(|app: &mut App| {
         .open("POST /dispatch", on_dispatch)
         .config("GREETING")
         .emits("hello:greeting:greeting:sent")
-        .dispatches_with("hello.logger", "/deliver", DispatchOpts::new().pool("hello-pool").connection("hello-conn"));
+        .dispatches_with("hello.logger", "/deliver", DispatchOpts::new("hello-conn").pool("hello-pool"));
 });
 
 fn health(_req: &Request, _ctx: &Context) -> Result<Response, Error> {

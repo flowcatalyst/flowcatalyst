@@ -54,10 +54,12 @@ type DispatchTarget struct {
 	Target string `json:"target"`
 	Path   string `json:"path"`
 	Pool   string `json:"pool,omitempty"`
-	// Connection is the CODE of the connection whose service account signs
-	// the job's delivery. Like Pool it is the declaration's, never the
-	// call's, and resolved by the platform per call. Absent means today's
-	// behaviour: the application's own account.
+	// Connection is the CODE of the connection the entry's jobs are delivered
+	// through. REQUIRED (Validate refuses an entry without one): the job
+	// carries it, so pausing the connection (a system down for maintenance)
+	// holds the job PENDING, and the connection's service account signs the
+	// delivery. Like Pool it is the declaration's, never the call's, and
+	// resolved by the platform per call.
 	Connection string `json:"connection,omitempty"`
 }
 
@@ -295,7 +297,9 @@ func (d *Describe) Validate() error {
 		if t.Pool != "" && !poolCodePattern.MatchString(t.Pool) {
 			add("%s: pool %q is not a dispatch pool code (lowercase letter first, then lowercase letters, digits, - or _; at most 100 characters)", at, t.Pool)
 		}
-		if t.Connection != "" && !connectionCodePattern.MatchString(t.Connection) {
+		if t.Connection == "" {
+			add("%s: %s%s declares no connection; a dispatch must name the connection its jobs go through (so pausing it holds them)", at, t.Target, t.Path)
+		} else if !connectionCodePattern.MatchString(t.Connection) {
 			add("%s: connection %q is not a connection code (lowercase letter first, then lowercase letters, digits or -; at most 100 characters)", at, t.Connection)
 		}
 		key := [2]string{t.Target, t.Path}

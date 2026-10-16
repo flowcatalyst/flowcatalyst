@@ -18,7 +18,7 @@ SELECT id, external_id, source, kind, code, subject, event_id,
        timeout_seconds, schema_id, status, max_retries, retry_strategy,
        scheduled_for, expires_at, attempt_count, last_attempt_at,
        completed_at, duration_millis, last_error, idempotency_key,
-       queue, descriptor, created_at, updated_at
+       queue, descriptor, connection_id, created_at, updated_at
 FROM msg_dispatch_jobs
 WHERE id = $1;
 
@@ -53,7 +53,7 @@ SELECT id, external_id, source, kind, code, subject, event_id,
        timeout_seconds, schema_id, status, max_retries, retry_strategy,
        scheduled_for, expires_at, attempt_count, last_attempt_at,
        completed_at, duration_millis, last_error, idempotency_key,
-       queue, descriptor, created_at, updated_at
+       queue, descriptor, connection_id, created_at, updated_at
 FROM msg_dispatch_jobs
 WHERE id = ANY(sqlc.arg('ids')::text[]);
 

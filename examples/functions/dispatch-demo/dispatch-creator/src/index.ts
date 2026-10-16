@@ -9,13 +9,14 @@
 // platform checks the target against this version's declared `dispatches`,
 // requires it to be a live function of the SAME application with a webhook
 // endpoint at the path, builds the delivery URL and signs the delivery as the
-// application's service account. clientCode, source and the metadata rules
+// declared connection's service account (the job carries the connection, so
+// pausing it holds the jobs). clientCode, source and the metadata rules
 // are the platform's: the job is recorded as kind TASK, source
 // "function:<this address>", with fn.* provenance metadata.
 import { fn, FnError, isRetryable, type FnRequest } from "@flowcatalyst/fn";
-import { DELIVER_PATH, LOGGER_ADDRESS, REQUIRED_PERMISSION } from "./names";
+import { CONNECTION_CODE, DELIVER_PATH, LOGGER_ADDRESS, REQUIRED_PERMISSION } from "./names";
 
-fn.dispatches(LOGGER_ADDRESS, DELIVER_PATH);
+fn.dispatches(LOGGER_ADDRESS, DELIVER_PATH, { connection: CONNECTION_CODE });
 
 fn.open("GET /healthz", () => fn.json(200, { status: "ok" }));
 

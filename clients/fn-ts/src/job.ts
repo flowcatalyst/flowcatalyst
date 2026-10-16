@@ -99,28 +99,37 @@ export async function dispatch(d: DispatchInput): Promise<string> {
  * here, never per call: dispatch() takes the pool and connection from the
  * matching declaration, and a call cannot override them. */
 export interface DispatchesOptions {
+  /** CODE of the connection the jobs are delivered through. REQUIRED. The job
+   * carries it, so pausing the connection (a system down for maintenance)
+   * holds the jobs PENDING until it is reactivated, and the connection's
+   * service account signs their delivery. The platform resolves it on every
+   * call: it must exist and be visible to this function's client and
+   * application; a PAUSED connection does not refuse the call, the job is
+   * created and waits. */
+  connection: string;
   /** CODE of the dispatch pool (the rate/concurrency pool for dispatch jobs,
    * e.g. "yard-process-pool"; not a function-runner pool) the jobs run in.
-   * The platform resolves it on every call: the pool must exist, be ACTIVE,
-   * belong to this function's client (or to none) and to this function's
-   * application (or to none); otherwise dispatch() throws NOT_ALLOWED /
-   * BAD_REQUEST. Omitted: the client's default pool. */
+   * Optional (omitted: the client's default pool). The platform resolves it
+   * on every call: the pool must exist, be ACTIVE, belong to this function's
+   * client (or to none) and to this function's application (or to none);
+   * otherwise dispatch() throws NOT_ALLOWED / BAD_REQUEST. */
   pool?: string;
-  /** CODE of the connection whose service account signs the jobs' delivery.
-   * Resolved on every call like the pool (must exist, be ACTIVE, and be
-   * visible to this function's client and application). Omitted: the
-   * application's own account signs, as before. */
-  connection?: string;
 }
 
 /** Declares a (function, path) this function may dispatch jobs to with
  * dispatch(). The target must be a function of the same application. A
- * `pool` and/or `connection` code may be declared for its jobs. Publishing
- * to a platform that predates them fails (unknown key), it does not fall
- * back to the default pool. */
-export function dispatches(target: string, path: string, options: DispatchesOptions = {}): void {
-  const e: { target: string; path: string; pool?: string; connection?: string } = { target, path };
+ * `connection` is required (this throws at registration without one, so
+ * build, describe and deploy fail with the message); a `pool` is optional.
+ * Publishing to a platform that predates them fails (unknown key), it does
+ * not fall back. */
+export function dispatches(target: string, path: string, options: DispatchesOptions): void {
+  const connection = (options as Partial<DispatchesOptions> | undefined)?.connection;
+  if (typeof connection !== "string" || connection === "") {
+    throw new Error(
+      `fn: dispatches(${JSON.stringify(target)}, ${JSON.stringify(path)}) declares no connection; pass { connection: "<connection code>" } so the jobs go through a connection that can be paused`,
+    );
+  }
+  const e: { target: string; path: string; pool?: string; connection: string } = { target, path, connection };
   if (options.pool !== undefined) e.pool = options.pool;
-  if (options.connection !== undefined) e.connection = options.connection;
   registry.dispatches.push(e);
 }

@@ -57,22 +57,22 @@ func TestClaimPending_OrderAndExclusions(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 9)
 
-	got, err := lc.ClaimPending(ctx, 100, []string{pausedSub}, []string{"b"}, nil)
+	got, err := lc.ClaimPending(ctx, 100, []string{pausedSub}, []string{"b"}, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{a1early.ID, a1late.ID, a2.ID, u1.ID, u2.ID}, ids(got),
 		"group, sequence, created_at order; ungrouped last; the future, paused and held rows are left")
 
-	again, err := lc.ClaimPending(ctx, 100, []string{pausedSub}, []string{"b"}, nil)
+	again, err := lc.ClaimPending(ctx, 100, []string{pausedSub}, []string{"b"}, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, ids(got), ids(again), "the claim writes nothing: claiming again returns the same rows")
 
 	// the in-flight exclusion keeps a process's own claimed jobs out of its next claim
-	next, err := lc.ClaimPending(ctx, 100, []string{pausedSub}, []string{"b"}, []string{a1early.ID, a2.ID})
+	next, err := lc.ClaimPending(ctx, 100, []string{pausedSub}, []string{"b"}, []string{a1early.ID, a2.ID}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{a1late.ID, u1.ID, u2.ID}, ids(next))
 
 	// the limit bounds the claim to the first rows in order; nil arrays are empty
-	two, err := lc.ClaimPending(ctx, 2, nil, nil, nil)
+	two, err := lc.ClaimPending(ctx, 2, nil, nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{a1early.ID, a1late.ID}, ids(two))
 
@@ -112,4 +112,42 @@ func TestPendingBacklog(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, n, "both are PENDING")
 	assert.InDelta(t, 90, oldest.Seconds(), 5, "the first DUE job in claim order")
+}
+
+// A job's own connection_id round-trips through the write path (CreateBatch
+// persists it, FindByID reads it back), and the claim leaves out the jobs of
+// the PAUSED connections it is given, only those: a job with no connection,
+// and a job of an unpaused connection, are claimed.
+func TestClaimPending_ExcludesPausedConnectionsOwnJobs(t *testing.T) {
+	pool := testpg.Pool(t)
+	ctx := context.Background()
+	lc := dispatchjob.NewLifecycle(pool)
+	_, err := pool.Exec(ctx, `DELETE FROM msg_dispatch_jobs`)
+	require.NoError(t, err)
+
+	pausedConn, liveConn := "conn-paused-"+tsid.GenerateUntyped()[:5], "conn-live-"+tsid.GenerateUntyped()[:5]
+	held, free, plain := newJob("", common.DispatchImmediate, 1), newJob("", common.DispatchImmediate, 1), newJob("", common.DispatchImmediate, 1)
+	for _, j := range []*dispatchjob.DispatchJob{&held, &free, &plain} {
+		j.MessageGroup = nil
+	}
+	held.ConnectionID, free.ConnectionID = &pausedConn, &liveConn
+	_, err = lc.CreateBatch(ctx, []dispatchjob.DispatchJob{held, free, plain})
+	require.NoError(t, err)
+
+	got, err := dispatchjob.NewRepository(pool).FindByID(ctx, held.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.NotNil(t, got.ConnectionID, "connection_id must be persisted and read back")
+	assert.Equal(t, pausedConn, *got.ConnectionID)
+	nofc, err := dispatchjob.NewRepository(pool).FindByID(ctx, plain.ID)
+	require.NoError(t, err)
+	assert.Nil(t, nofc.ConnectionID)
+
+	claimed, err := lc.ClaimPending(ctx, 100, nil, nil, nil, []string{pausedConn})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{free.ID, plain.ID}, ids(claimed), "the paused connection's own job is held")
+
+	all, err := lc.ClaimPending(ctx, 100, nil, nil, nil, nil)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{held.ID, free.ID, plain.ID}, ids(all), "released once the connection is no longer paused")
 }

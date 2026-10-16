@@ -3,6 +3,7 @@ package fn
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 )
 
@@ -144,22 +145,30 @@ func DispatchPool(code string) DispatchOption {
 	return func(d *dispatchJSON) { d.Pool = code }
 }
 
-// DispatchConnection makes the connection with this code (its service
-// account) sign the declaration's jobs. Resolved on every Dispatch like the
-// pool. Without it the application's own account signs, as before.
+// DispatchConnection names the connection (by code) the declaration's jobs
+// go through. REQUIRED: Dispatches panics without it. The job carries the
+// connection, so pausing it (a system down for maintenance) holds the jobs
+// PENDING until it is reactivated, and the connection's service account signs
+// their delivery. The platform resolves it on every Dispatch: it must exist
+// and be visible to this function's client and application; a PAUSED
+// connection does not refuse the call, the job is created and waits.
 func DispatchConnection(code string) DispatchOption {
 	return func(d *dispatchJSON) { d.Connection = code }
 }
 
 // Dispatches declares a (function, path) this function may dispatch jobs to
 // with Dispatch. The target must be a function of the same application and
-// path a literal webhook path on it. DispatchPool / DispatchConnection
-// options set where those jobs go; a platform that predates them refuses the
-// publish rather than ignoring them.
+// path a literal webhook path on it. DispatchConnection is required (it
+// panics at registration, so build, describe and deploy all fail with the
+// message); DispatchPool is optional (default: the client's default pool). A
+// platform that predates them refuses the publish rather than ignoring them.
 func Dispatches(target, path string, opts ...DispatchOption) {
 	d := dispatchJSON{Target: target, Path: path}
 	for _, o := range opts {
 		o(&d)
+	}
+	if d.Connection == "" {
+		panic(fmt.Sprintf("fn: Dispatches(%q, %q) declares no connection; add fn.DispatchConnection(\"<connection code>\") so the jobs go through a connection that can be paused", target, path))
 	}
 	reg.mu.Lock()
 	reg.dispatches = append(reg.dispatches, d)

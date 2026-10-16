@@ -64,7 +64,7 @@ export interface Registry {
   db: string[];
   httpAllow: string[];
   emits: string[];
-  dispatches: { target: string; path: string; pool?: string; connection?: string }[];
+  dispatches: { target: string; path: string; pool?: string; connection: string }[];
 }
 
 export const registry: Registry = {

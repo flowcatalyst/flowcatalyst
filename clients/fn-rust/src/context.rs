@@ -100,8 +100,9 @@ pub struct Event {
 /// A dispatch job to create via `Context::dispatch` (host op 11,
 /// dispatch.create). `target` and `path` name a function of this function's own
 /// application and a literal webhook path on it, both declared with
-/// `App::dispatches`; the platform builds the delivery URL and signs it as the
-/// application, so the function supplies no URL and holds no credential.
+/// `App::dispatches_with`; the platform builds the delivery URL and signs it as
+/// the declared connection's service account, so the function supplies no URL
+/// and holds no credential.
 #[derive(Debug, Clone, Default)]
 pub struct Job {
     pub target: String,

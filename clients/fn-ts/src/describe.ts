@@ -13,7 +13,7 @@ export interface DescribeDoc {
   db?: string[];
   httpAllow?: string[];
   emits?: string[];
-  dispatches?: { target: string; path: string; pool?: string; connection?: string }[];
+  dispatches?: { target: string; path: string; pool?: string; connection: string }[];
 }
 
 export function buildDescribeDoc(): DescribeDoc {
@@ -58,9 +58,8 @@ export function buildDescribeDoc(): DescribeDoc {
   if (registry.httpAllow.length > 0) doc.httpAllow = registry.httpAllow.slice();
   if (registry.emits.length > 0) doc.emits = registry.emits.slice();
   if (registry.dispatches.length > 0) doc.dispatches = registry.dispatches.map((d) => {
-      const dj: { target: string; path: string; pool?: string; connection?: string } = { target: d.target, path: d.path };
+      const dj: { target: string; path: string; pool?: string; connection: string } = { target: d.target, path: d.path, connection: d.connection };
       if (d.pool) dj.pool = d.pool;
-      if (d.connection) dj.connection = d.connection;
       return dj;
     });
   return doc;

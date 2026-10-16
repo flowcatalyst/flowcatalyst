@@ -8,20 +8,28 @@ use crate::route::{compile_pattern, match_segments, split_path, Seg};
 use crate::types::{Error, Request, Response};
 use std::collections::BTreeMap;
 
-/// Where a declared dispatch's jobs go besides the target. Both are declared
-/// here, never per call: `Context::dispatch` takes them from the matching
-/// declaration and a call cannot override them. `None` keeps today's
-/// behaviour for that one (the client's default pool; the application's own
-/// signing account), independently of the other.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Where a declared dispatch's jobs go besides the target. Declared here,
+/// never per call: `Context::dispatch` takes them from the matching
+/// declaration and a call cannot override them.
+///
+/// The connection is REQUIRED (it is the only constructor argument, so a
+/// declaration without one does not compile): the job carries it, so pausing
+/// the connection (a system down for maintenance) holds the jobs PENDING until
+/// it is reactivated, and the connection's service account signs their
+/// delivery. The pool is optional (default: the client's default pool).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DispatchOpts {
     pub(crate) pool: Option<String>,
-    pub(crate) connection: Option<String>,
+    pub(crate) connection: String,
 }
 
 impl DispatchOpts {
-    pub fn new() -> Self {
-        Self::default()
+    /// CODE of the connection the jobs are delivered through. The platform
+    /// resolves it on every call: it must exist and be visible to this
+    /// function's client and application. A PAUSED connection does not refuse
+    /// the call: the job is created and waits.
+    pub fn new(connection: &str) -> Self {
+        Self { pool: None, connection: connection.to_string() }
     }
 
     /// CODE of the dispatch pool (the rate/concurrency pool for dispatch
@@ -30,12 +38,6 @@ impl DispatchOpts {
     /// belong to this function's client and application (or to none).
     pub fn pool(mut self, code: &str) -> Self {
         self.pool = Some(code.to_string());
-        self
-    }
-
-    /// CODE of the connection whose service account signs the jobs.
-    pub fn connection(mut self, code: &str) -> Self {
-        self.connection = Some(code.to_string());
         self
     }
 }
@@ -177,14 +179,10 @@ impl App {
     }
 
     /// Declares a (function, path) this function may dispatch jobs to with
-    /// `Context::dispatch`. The target must be a function of the same
-    /// application and `path` a literal webhook path on it.
-    pub fn dispatches(&mut self, target: &str, path: &str) -> &mut Self {
-        self.dispatches_with(target, path, DispatchOpts::default())
-    }
-
-    /// Like [`App::dispatches`], placing the jobs in a dispatch pool and/or
-    /// signing them with a connection's account: see [`DispatchOpts`].
+    /// `Context::dispatch`, and the connection (required) and optional pool
+    /// its jobs go through: see [`DispatchOpts`]. The target must be a
+    /// function of the same application and `path` a literal webhook path on
+    /// it.
     pub fn dispatches_with(&mut self, target: &str, path: &str, opts: DispatchOpts) -> &mut Self {
         self.dispatches.push((target.to_string(), path.to_string(), opts));
         self
@@ -257,12 +255,9 @@ impl App {
                 .dispatches
                 .iter()
                 .map(|(t, p, o)| {
-                    let mut e = serde_json::json!({"target": t, "path": p});
+                    let mut e = serde_json::json!({"target": t, "path": p, "connection": o.connection});
                     if let Some(pool) = &o.pool {
                         e["pool"] = serde_json::json!(pool);
-                    }
-                    if let Some(conn) = &o.connection {
-                        e["connection"] = serde_json::json!(conn);
                     }
                     e
                 })
@@ -357,7 +352,7 @@ mod tests {
             .db("main")
             .http_allow("api.stripe.com")
             .emits("orders:order:order:shipped")
-            .dispatches("orders.invoice-logger", "/deliver");
+            .dispatches_with("orders.invoice-logger", "/deliver", DispatchOpts::new("yard-conn"));
 
         let doc: serde_json::Value = serde_json::from_slice(&app.describe_json()).unwrap();
         assert_eq!(doc["abi"], 1);
@@ -371,26 +366,26 @@ mod tests {
         assert_eq!(doc["emits"][0], "orders:order:order:shipped");
         assert_eq!(doc["dispatches"][0]["target"], "orders.invoice-logger");
         assert_eq!(doc["dispatches"][0]["path"], "/deliver");
+        assert_eq!(doc["dispatches"][0]["connection"], "yard-conn");
         assert!(doc["dispatches"][0].get("pool").is_none());
-        assert!(doc["dispatches"][0].get("connection").is_none());
     }
 
     #[test]
-    fn describe_declares_dispatch_pool_and_connection() {
+    fn describe_declares_dispatch_connection_and_optional_pool() {
         let mut app = App::new();
         app.open("GET /healthz", ok)
             .dispatches_with(
                 "orders.logger",
                 "/deliver",
-                DispatchOpts::new().pool("yard-process-pool").connection("yard-conn"),
+                DispatchOpts::new("yard-conn").pool("yard-process-pool"),
             )
-            .dispatches_with("orders.logger", "/pool-only", DispatchOpts::new().pool("tower-pool"));
+            .dispatches_with("orders.logger", "/plain", DispatchOpts::new("other-conn"));
         let doc: serde_json::Value = serde_json::from_slice(&app.describe_json()).unwrap();
         assert_eq!(
             doc["dispatches"],
             serde_json::json!([
                 {"target": "orders.logger", "path": "/deliver", "pool": "yard-process-pool", "connection": "yard-conn"},
-                {"target": "orders.logger", "path": "/pool-only", "pool": "tower-pool"},
+                {"target": "orders.logger", "path": "/plain", "connection": "other-conn"},
             ])
         );
     }

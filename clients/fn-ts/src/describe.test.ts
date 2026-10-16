@@ -37,7 +37,7 @@ test("describe: full shape, matching plan §5.4's field names exactly", () => {
   db("main");
   httpAllow("api.stripe.com");
   emits("orders:order:order:shipped");
-  dispatches("orders.invoice-logger", "/deliver");
+  dispatches("orders.invoice-logger", "/deliver", { connection: "yard-conn" });
 
   const doc = JSON.parse(describeJSON());
   assert.equal(doc.abi, 1);
@@ -57,7 +57,7 @@ test("describe: full shape, matching plan §5.4's field names exactly", () => {
   assert.deepEqual(doc.db, ["main"]);
   assert.deepEqual(doc.httpAllow, ["api.stripe.com"]);
   assert.deepEqual(doc.emits, ["orders:order:order:shipped"]);
-  assert.deepEqual(doc.dispatches, [{ target: "orders.invoice-logger", path: "/deliver" }]);
+  assert.deepEqual(doc.dispatches, [{ target: "orders.invoice-logger", path: "/deliver", connection: "yard-conn" }]);
 });
 
 test("describe: endpoint options (maxBodyBytes, timeoutMs, cors)", () => {

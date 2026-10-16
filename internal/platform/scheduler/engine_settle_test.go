@@ -85,8 +85,8 @@ func TestOrdering_AClaimJustBeforeTheSettleCannotOvertake(t *testing.T) {
 func TestClaim_ARowAlreadyInFlightIsDroppedAndCounted(t *testing.T) {
 	s := newFakeStore(ungroupedJobs("u", 3)...)
 	p := newTestEngine(Config{PollInterval: time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 10}, s)
-	p.claimRows = func(ctx context.Context, limit int, paused, held, _ []string) ([]dispatchClaim, error) {
-		return s.claimRows(ctx, limit, paused, held, []string{}) // a claim that ignores the exclusion
+	p.claimRows = func(ctx context.Context, limit int, paused, held, _, _ []string) ([]dispatchClaim, error) {
+		return s.claimRows(ctx, limit, paused, held, []string{}, []string{}) // a claim that ignores the exclusion
 	}
 	p.inflight.add([]laneJob{lj("u00", "", 1)})
 	before := value(t, MetricsRegistry, "fc_scheduler_claims_already_inflight_total")

@@ -61,9 +61,10 @@ func hello(w http.ResponseWriter, r *http.Request) {
 - `log.go` — an `slog.Handler` over host op 1.
 - `http.go` — `HTTPClient()`, an `*http.Client` whose `RoundTripper` runs
   over host op 4, forwarding the request context's deadline as `timeoutMs`.
-- `job.go` — `Dispatches` (declare a target function and webhook path; optional
-  `DispatchPool("yard-process-pool")` / `DispatchConnection("yard-conn")` name the dispatch pool and
-  connection codes for its jobs: declared only, resolved by the platform on every call) and `Dispatch`
+- `job.go` — `Dispatches` (declare a target function and webhook path; `DispatchConnection("yard-conn")`
+  is REQUIRED, `Dispatches` panics at registration without it, and names the connection the jobs go through:
+  pausing it holds them PENDING, its service account signs them; optional `DispatchPool("yard-process-pool")`
+  names the dispatch pool; declared only, resolved by the platform on every call) and `Dispatch`
   (`fn.Job{Target, Path, Payload, Metadata, …}` → job id), wrapping host op 11; same error classes
   as `Emit`; not idempotent (see `docs/function-runner-plan.md` §8.7).
 - `event.go` — `Emit`, wrapping host op 5; `errors.Is(err, ErrRetryable)`

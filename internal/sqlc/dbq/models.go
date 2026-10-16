@@ -466,6 +466,7 @@ type MsgDispatchJob struct {
 	QueuedAt           *time.Time      `db:"queued_at"`
 	Queue              *string         `db:"queue"`
 	Descriptor         *string         `db:"descriptor"`
+	ConnectionID       *string         `db:"connection_id"`
 }
 
 type MsgDispatchJobAttempt struct {

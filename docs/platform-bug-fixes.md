@@ -1993,6 +1993,12 @@ Java runner must classify load failures as above and not report `FAILED` for a t
 
 ### F23. `fn.dispatch` can name a dispatch pool and a connection (owner request, 2026-10-16)
 
+> **Superseded in part by F24 (same day).** The connection is now REQUIRED, the job carries
+> `connection_id` (not the connection's service account and `fn.connection` metadata), a PAUSED
+> connection no longer refuses the call (it holds the job), and the "no subscription + `serviceAccountId`
+> signs" resolver rule below was removed. The pool half of F23 stands unchanged. Read F24 for the
+> current rules; the connection bullets below are the history.
+
 **Need.** A function creating dispatch jobs with `fn.dispatch` must be able to put them in a named
 **dispatch pool** (the rate/concurrency pool for dispatch jobs, e.g. `yard-process-pool`; not a
 function-runner pool) and have a named **connection**'s service account sign them. Before, every job
@@ -2059,6 +2065,94 @@ resolver gains "a job with no subscription naming a `serviceAccountId` is signed
 runner's dispatch capability refuses unknown meta keys; (5) describe output prints the placement.
 Existing pools and connections need no migration; pools created before F19 are unowned and so usable
 by any application.
+
+### F24. `fn.dispatch` jobs carry their connection: required, pausable, signed by it (owner rulings, 2026-10-16)
+
+**Rulings.** (1) A dispatch job created by `fn.dispatch` MUST use a connection, so processing can be
+PAUSED for a system down for maintenance by pausing the connection. Before, pausing worked only through
+subscriptions (the scheduler's claim excluded jobs whose `subscription_id` was in the paused set); an
+`fn.dispatch` job has no subscription, so pausing its connection held nothing, and F23's "carry the
+connection's service account" was not enough. (2) The job always goes through a dispatch pool when the
+router processes it; the pool stays optional in the declaration.
+
+**What changed.**
+
+- **Job column.** Migration `082_dispatch_job_connection.sql`: nullable `msg_dispatch_jobs.connection_id
+  VARCHAR(17)`, added on the partitioned parent (every partition gets it; no index, the claim reads it
+  as a filter on rows the status index already yields; `msg_dispatch_jobs_read` is not changed, the grid
+  does not show it). `DispatchJob.ConnectionID`, the `CreateBatch` insert, `FindByID`/`FindByIDs`/
+  `FindRecentRaw` (sqlc regenerated). **Internal only:** it is not on the SDK batch item, the create
+  request or the job's API representation, so `api/openapi.lock.json` and `docs/wire-contract.md` are
+  unchanged; only the control route sets it, from the declaration, so a caller cannot choose a job's
+  connection. (Public acceptance would let any SDK client attach a connection to bypass the
+  subscription path; no reason found.)
+- **Pause.** The claim (`dispatchjob.ClaimPendingSQL`) gains `$5` and `AND (connection_id IS NULL OR
+  connection_id <> ALL($5::text[]))`; still one plain single-table SELECT, no join, never-nil array
+  (`nn`). `scheduler.PausedConnectionCache` now refreshes both sets in one pass (paused subscription ids,
+  as before, and `PausedConnectionIDs`, `SELECT id FROM msg_connections WHERE status='PAUSED'`); the
+  poller passes both; new gauge `fc_scheduler_paused_connections`. Jobs sit PENDING and are released
+  when the connection is reactivated (within the cache TTL, 60s default, as for subscriptions).
+  Audit of other paths: the claim is the only place pause is honoured today (grep of paused/PausedConnection
+  across `internal/`: the stream fan-out, the process callback, requeue/settle/stale-recovery paths and
+  the metrics do not consult it; every path that returns a job to PENDING lands it back in front of
+  the claim, so the claim is sufficient for held jobs).
+- **In-flight rule.** A job already QUEUED (published to the router) or PROCESSING when its connection
+  is paused is NOT recalled and finishes, exactly as a paused subscription's already-queued jobs do
+  today. Pause stops new claims; it does not drain the queue. (If the owner wants pause to also stop
+  queued deliveries, the process callback would need a pause check for both the subscription and the
+  connection paths: a separate decision, not taken here.)
+- **Signing.** `delivery_creds.go` signs a subscription-less job by `job.ConnectionID` (the connection's
+  service account; a connection that is gone or names no account is declined with a reason, never
+  replaced by the application's). F23's rule "no subscription + `serviceAccountId` => that account signs"
+  is REMOVED: SDK-created direct jobs that set `serviceAccountId` are signed by the application's account
+  again, as before F23. A job's own `serviceAccountId` never chooses its signer.
+- **Required declaration.** `connection` is required on every `dispatches` entry. `abi.Describe.Validate`
+  refuses one without it: `dispatches[1]: a.b/e declares no connection; a dispatch must name the
+  connection its jobs go through (so pausing it holds them)`. Because the runner parses describe with the
+  same validation, a version published before this rule that declares `dispatches` without a connection
+  no longer loads (CORRUPT_DESCRIBE) until it is republished with one; fn.dispatch is unreleased, so
+  this is accepted. SDKs: TS `fn.dispatches(target, path, { connection, pool? })` (type-required, throws
+  at registration otherwise), Go `fn.Dispatches(..., fn.DispatchConnection("c"), ...)` (panics at
+  registration, so build/describe/deploy fail), Rust `App::dispatches_with(target, path,
+  DispatchOpts::new("c").pool("p"))` (the constructor requires it; `App::dispatches` removed). Examples,
+  dispatch-demo (new `dispatch-demo-conn`, created with the application's own service account so the
+  signature verifies at the target), READMEs and `function-runner-plan.md` §5.4/§6.3/§8.7 updated.
+- **Runtime (owner-intent inference, decision to confirm).** Per-call resolution is unchanged (visibility:
+  the function's application, then shared; client then client-less; first match decides; unknown or
+  other-tenant = `CONNECTION_NOT_FOUND` 404) EXCEPT status: a PAUSED connection no longer yields
+  `CONNECTION_NOT_ALLOWED`. The owner wants work held during maintenance, so the job is CREATED (PENDING,
+  carrying the connection) and waits. Inferred from the stated purpose of pausing; if the owner would
+  rather refuse the call, restore the status check in `resolveConnection` (the held-job tests then
+  change to refusals). `fn.connection` metadata is DROPPED: the column is the record, and a second copy
+  could drift (cost: the dispatch-jobs grid reads the read projection, which does not carry
+  `connection_id`, so the connection is not shown there; projecting it is a small follow-up).
+- **Default pool (ruling 2).** `scheduler/poolcode.go` `Resolve`: pool id set and known => its composed
+  code; else the job's client => `{clientIdentifier}-DEFAULT-POOL`; else `platform-DEFAULT-POOL`. `fn.dispatch`
+  jobs go through `sdk.NewJobFromItem` like every SDK job, so an undeclared pool leaves `dispatch_pool_id`
+  nil and the job gets the same client default as any other job (the router synthesises
+  `*-DEFAULT-POOL` codes). Nothing needed changing for ruling 2.
+
+**Tests.** Integration (`-tags=integration`): `function/control` (job row has `connection_id`; no account
+and no `fn.connection` on the job; paused connection still creates a PENDING job; first-match rules now
+asserted by connection id; connection-less declaration refused at runtime; unwired), `function/operations`
+(publish refuses a connection-less entry, naming it), `dispatchjob/lifecycletest` (persist round trip;
+the claim excludes only the given paused connections' own jobs and releases them when not given),
+`scheduler/poller_paused_connection_pg_test.go` (a paused connection holds its fn job and a paused
+subscription's job; a connection-less job is unaffected; reactivation releases both), existing
+`poller_paused_pg_test.go` (subscription pause unchanged). Unit: `server/delivery_creds_test.go`
+(signed by the connection; declined, no fallback, when it cannot sign or is gone; `serviceAccountId`
+does not sign), `abi_test.go`, SDK tests (TS, Go, Rust), `TestSDKExamples`, `fcdev` describe output.
+Mutations (each fails a test): claim without the connection exclusion; `connection_id` not persisted;
+F23's `serviceAccountId` signing rule restored.
+
+**Java hand-off (not implemented).** Mirror: (1) `msg_dispatch_jobs.connection_id` (nullable, migration
+082) on the job entity/insert/read; (2) the claim excludes `connection_id` in the paused-connection set
+(and the paused cache returns connection ids as well as subscription ids); (3) the delivery-credentials
+resolver signs a subscription-less job by its connection's account, declining with a reason, and does NOT
+sign by a job's own `serviceAccountId`; (4) describe: `connection` required on each `dispatches` entry with
+the error above; (5) the dispatch control route sets `connection_id`, does not refuse a PAUSED connection,
+no longer sets the job's `serviceAccountId` or `fn.connection`; (6) SDK/describe-print changes as above.
+Supersedes the F23 Java hand-off items about the connection (2: status check and account/metadata; 3).
 
 ## Decisions taken conservatively (owner to confirm)
 
@@ -2275,3 +2369,7 @@ missing event source (F14), and unknown roles in the application principal sync 
 - F23: integration tests on embedded databases only; no live runner or deployed platform, no run of a
   delivery signed through a function-declared connection's account against a real subscriber, and
   the Java/Rust ports were not changed (hand-off above).
+- F24: integration tests on embedded databases only; migration 082 ran there, never on a deployed
+  database; no live runner or scheduler against a real router, so "pause holds, reactivate releases" is
+  proven at the claim and poller level (the poller test publishes to a capturing publisher), not
+  through a real queue; the Java/Rust platform ports were not changed (hand-off above).

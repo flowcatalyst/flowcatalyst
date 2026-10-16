@@ -24,18 +24,21 @@ It uses the `dispatch` capability instead, which mirrors `emit`:
 
 - `dispatch-creator` **declares** the one target it may dispatch to: `fn.dispatches("<app>.payload-logger", "/deliver")`
   (it shows in the describe document as `dispatches`; `fcdev fn build` prints it).
-- To put the jobs in a **dispatch pool** (the rate/concurrency pool for dispatch jobs, not a function-runner pool)
-  or sign them with a **connection**'s account, declare it: `fn.dispatches(target, "/deliver", { pool: "my-pool",
-  connection: "my-conn" })`. `fcdev fn build` prints `(pool my-pool, connection my-conn)`. The platform resolves
-  both on every call (the pool must exist, be ACTIVE and visible to the function's client and application; the
-  connection likewise) and `fn.dispatch` cannot override them. Undeclared: the client's default pool, signed as
-  the application, as before.
+- Every declaration **must name a connection**: `fn.dispatches(target, "/deliver", { connection: "my-conn" })`
+  (the demo's is `dispatch-demo-conn`; omitting it fails the build and the publish). The job carries the
+  connection, so **pausing the connection holds the jobs PENDING** (a system down for maintenance) until it is
+  reactivated, and the connection's service account signs the delivery. A pool is optional: `{ connection,
+  pool: "my-pool" }` puts the jobs in that **dispatch pool** (the rate/concurrency pool for dispatch jobs, not a
+  function-runner pool); without it they use the client's default pool. `fcdev fn build` prints
+  `(pool my-pool, connection my-conn)`. The platform resolves both on every call (the pool must exist, be ACTIVE
+  and visible to the function's client and application; the connection must exist and be visible, a PAUSED one
+  still takes the job) and `fn.dispatch` cannot override them.
 - `fn.dispatch({ target, path, payload, ... })` makes the runner ask the platform to create the job on its behalf.
   The function supplies no URL and no credential.
 - The platform checks the pair against this **version's** declaration; requires the target to be a function of
   **the same application** (and client) whose **live** version has a `webhook` endpoint at the path; builds the
-  delivery URL itself; and signs the delivery as the application's service account (the same secret
-  `payload-logger`'s `webhook` endpoint verifies). A refusal reaches the handler as a `FnError` (`isRetryable`
+  delivery URL itself; and signs the delivery as the connection's service account (here the application's own,
+  the same secret `payload-logger`'s `webhook` endpoint verifies). A refusal reaches the handler as a `FnError` (`isRetryable`
   is true only for platform trouble); the creator maps it to 502, or 503 when retryable.
 - The job is recorded as kind `TASK`, source `function:<creator address>`, code
   `<app>:function:<creator name>:dispatch`, `dataOnly` (so `payload-logger` receives exactly the posted JSON),
@@ -46,8 +49,8 @@ It uses the `dispatch` capability instead, which mirrors `emit`:
 
 `payload-logger` used to subscribe to an event type so the platform would turn the creator's event into a job.
 Nothing raises that event any more, so the subscription was removed (re-deploying `payload-logger` deletes the
-old one at promote). Both functions must belong to the **same application**, which is also what makes the
-signing work: the job's code starts with the application, and the application's service account signs it.
+old one at promote). Both functions must belong to the **same application**. For the signature to verify at
+`payload-logger`, the connection's service account must be the application's own (step 0 creates it that way).
 
 ## Names
 
@@ -103,6 +106,11 @@ curl -s -c jar -X POST http://localhost:8080/auth/login -H 'Content-Type: applic
 APPID=$(curl -s -b jar http://localhost:8080/api/applications/by-code/$APP | jq -r .id)
 curl -s -b jar -X POST -H 'Origin: http://localhost:8080' \
   http://localhost:8080/api/applications/$APPID/provision-service-account   # refused if it already has one: fine
+# the connection every dispatch must name, signed by the application's own account
+SAID=$(curl -s -b jar http://localhost:8080/api/applications/by-code/$APP | jq -r .serviceAccountId)
+curl -s -b jar -X POST -H 'Origin: http://localhost:8080' -H 'Content-Type: application/json' \
+  http://localhost:8080/api/connections \
+  -d '{"code":"dispatch-demo-conn","name":"dispatch-demo","applicationCode":"'$APP'","serviceAccountId":"'$SAID'"}'
 
 # 1. payload-logger first, as a NEW function (the creator's dispatch needs its live version)
 APP_CODE=$APP fcdev fn deploy $APP.payload-logger $D/payload-logger --create

@@ -32,7 +32,9 @@ type ClaimedJob struct {
 }
 
 // ClaimPendingSQL is the claim ($1 = limit, $2 = paused subscription ids, $3 =
-// groups remembered as held, $4 = the caller's in-flight ids). One plain SELECT: no
+// groups remembered as held, $4 = the caller's in-flight ids, $5 = paused
+// connection ids: a job that names its own connection, as a function's
+// fn.dispatch does, is held while that connection is PAUSED). One plain SELECT: no
 // lock, no transaction, no write. It walks idx_dispatch_jobs_status_group in order
 // (the status equality prefix, then the index's own order — a Merge Append across
 // the partitions) and stops at the limit: no sort, whatever the statistics say. The
@@ -46,12 +48,13 @@ const ClaimPendingSQL = `SELECT id, created_at, message_group, sequence, schedul
    AND (subscription_id IS NULL OR subscription_id <> ALL($2::text[]))
    AND (message_group IS NULL OR message_group <> ALL($3::text[]))
    AND id <> ALL($4::text[])
+   AND (connection_id IS NULL OR connection_id <> ALL($5::text[]))
  ORDER BY message_group NULLS LAST, sequence, created_at, id
  LIMIT $1`
 
 // ClaimPendingStatement is the claim's SQL and arguments, for plan tests.
-func ClaimPendingStatement(limit int, paused, held, inFlight []string) Statement {
-	return Statement{"claim", ClaimPendingSQL, []any{limit, nn(paused), nn(held), nn(inFlight)}}
+func ClaimPendingStatement(limit int, paused, held, inFlight, pausedConns []string) Statement {
+	return Statement{"claim", ClaimPendingSQL, []any{limit, nn(paused), nn(held), nn(inFlight), nn(pausedConns)}}
 }
 
 func nn(a []string) []string {
@@ -63,9 +66,10 @@ func nn(a []string) []string {
 
 // ClaimPending returns up to limit due PENDING jobs in delivery order — message_group
 // (NULLs last), sequence, created_at, id — outside the paused subscriptions, the held
-// groups and the in-flight ids. RETURNING-free: nothing is written.
-func (l *Lifecycle) ClaimPending(ctx context.Context, limit int, paused, held, inFlight []string) ([]ClaimedJob, error) {
-	rows, err := l.ex.Query(ctx, ClaimPendingSQL, limit, nn(paused), nn(held), nn(inFlight))
+// groups and the in-flight ids, and outside the paused connections (pausedConns)
+// for jobs that name their own. RETURNING-free: nothing is written.
+func (l *Lifecycle) ClaimPending(ctx context.Context, limit int, paused, held, inFlight, pausedConns []string) ([]ClaimedJob, error) {
+	rows, err := l.ex.Query(ctx, ClaimPendingSQL, limit, nn(paused), nn(held), nn(inFlight), nn(pausedConns))
 	if err != nil {
 		return nil, err
 	}

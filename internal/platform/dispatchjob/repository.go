@@ -332,7 +332,7 @@ func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]DispatchJo
 		        timeout_seconds, schema_id, status, max_retries, retry_strategy,
 		        scheduled_for, expires_at, attempt_count, last_attempt_at,
 		        completed_at, duration_millis, last_error, idempotency_key,
-		        queue, descriptor, created_at, updated_at
+		        queue, descriptor, connection_id, created_at, updated_at
 		   FROM msg_dispatch_jobs
 		  ORDER BY created_at DESC
 		  LIMIT $1`, limit)
@@ -637,7 +637,8 @@ func findByIDRowToJob(r dbq.DispatchJobFindByIDRow) (*DispatchJob, error) {
 		LastAttemptAt: r.LastAttemptAt, CompletedAt: r.CompletedAt,
 		DurationMillis: r.DurationMillis, LastError: r.LastError,
 		IdempotencyKey: r.IdempotencyKey, Queue: r.Queue, Descriptor: r.Descriptor,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		ConnectionID: r.ConnectionID,
+		CreatedAt:    r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	})
 }
 
@@ -751,6 +752,7 @@ type rawRow struct {
 	IdempotencyKey     *string
 	Queue              *string
 	Descriptor         *string
+	ConnectionID       *string
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 }
@@ -806,6 +808,7 @@ func rowToJob(r rawRow) (*DispatchJob, error) {
 		IdempotencyKey:   r.IdempotencyKey,
 		Queue:            r.Queue,
 		Descriptor:       r.Descriptor,
+		ConnectionID:     r.ConnectionID,
 		CreatedAt:        r.CreatedAt,
 		UpdatedAt:        r.UpdatedAt,
 		ScheduledFor:     r.ScheduledFor,

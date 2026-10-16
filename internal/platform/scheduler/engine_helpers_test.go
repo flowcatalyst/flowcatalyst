@@ -59,7 +59,7 @@ func newFakeStore(jobs ...*fakeJob) *fakeStore {
 	return &fakeStore{jobs: jobs}
 }
 
-func (s *fakeStore) claimRows(_ context.Context, limit int, paused, held, inflight []string) ([]dispatchClaim, error) {
+func (s *fakeStore) claimRows(_ context.Context, limit int, paused, held, inflight, _ []string) ([]dispatchClaim, error) {
 	if paused == nil || held == nil || inflight == nil {
 		return nil, errors.New("nil exclusion array passed to the claim")
 	}

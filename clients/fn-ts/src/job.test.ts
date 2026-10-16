@@ -12,24 +12,33 @@ beforeEach(() => {
   resetRegistry();
 });
 
-test("dispatches() declares the (target, path) pair into describe", () => {
-  dispatches("orders.logger", "/deliver");
-  dispatches("orders.logger", "/other");
+test("dispatches() declares the (target, path, connection) triple into describe", () => {
+  dispatches("orders.logger", "/deliver", { connection: "yard-conn" });
+  dispatches("orders.logger", "/other", { connection: "yard-conn" });
   assert.deepEqual(buildDescribeDoc().dispatches, [
-    { target: "orders.logger", path: "/deliver" },
-    { target: "orders.logger", path: "/other" },
+    { target: "orders.logger", path: "/deliver", connection: "yard-conn" },
+    { target: "orders.logger", path: "/other", connection: "yard-conn" },
   ]);
 });
 
-test("dispatches() declares an optional pool and connection into describe, and only those", () => {
+test("dispatches() declares an optional pool next to the connection", () => {
   dispatches("orders.logger", "/deliver", { pool: "yard-process-pool", connection: "yard-conn" });
-  dispatches("orders.logger", "/pool-only", { pool: "tower-pool" });
-  dispatches("orders.logger", "/plain", {});
+  dispatches("orders.logger", "/plain", { connection: "other-conn" });
   assert.deepEqual(buildDescribeDoc().dispatches, [
     { target: "orders.logger", path: "/deliver", pool: "yard-process-pool", connection: "yard-conn" },
-    { target: "orders.logger", path: "/pool-only", pool: "tower-pool" },
-    { target: "orders.logger", path: "/plain" },
+    { target: "orders.logger", path: "/plain", connection: "other-conn" },
   ]);
+});
+
+test("dispatches() without a connection throws at registration and registers nothing", () => {
+  const bad: unknown[] = [undefined, {}, { pool: "tower-pool" }, { connection: "" }];
+  for (const o of bad) {
+    assert.throws(
+      () => dispatches("orders.logger", "/deliver", o as never),
+      /dispatches\("orders.logger", "\/deliver"\) declares no connection/,
+    );
+  }
+  assert.deepEqual(buildDescribeDoc().dispatches, undefined);
 });
 
 test("dispatch() never sends a pool or connection: they are the declaration's", async () => {

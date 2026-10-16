@@ -63,7 +63,7 @@ const validDescribe = `{
   "schedules": [{"cron": "0 */5 * * * *", "path": "/events/order-created"}],
   "config": ["GREETING"], "secrets": ["STRIPE_KEY"], "db": ["main"],
   "httpAllow": ["api.stripe.com", "*.acme.com", "hooks.acme.com:8080"], "emits": ["orders:order:order:shipped"],
-  "dispatches": [{"target": "orders.invoice-logger", "path": "/deliver"}]
+  "dispatches": [{"target": "orders.invoice-logger", "path": "/deliver", "connection": "yard-conn"}]
 }`
 
 func TestParseDescribeValid(t *testing.T) {
@@ -71,7 +71,7 @@ func TestParseDescribeValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Dispatches) != 1 || d.Dispatches[0] != (DispatchTarget{Target: "orders.invoice-logger", Path: "/deliver"}) {
+	if len(d.Dispatches) != 1 || d.Dispatches[0] != (DispatchTarget{Target: "orders.invoice-logger", Path: "/deliver", Connection: "yard-conn"}) {
 		t.Fatalf("dispatches = %+v", d.Dispatches)
 	}
 	if len(d.Endpoints) != 4 || d.Endpoints[3].MaxBodyBytes == nil || *d.Endpoints[3].MaxBodyBytes != 0 {
@@ -126,6 +126,9 @@ func TestParseDescribeRejects(t *testing.T) {
 		"dispatch bad pool":                         {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","pool":"Yard Pool"}]}`, "not a dispatch pool code"},
 		"dispatch pool upper":                       {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","pool":"Yard"}]}`, "not a dispatch pool code"},
 		"dispatch pool digit first":                 {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","pool":"1pool"}]}`, "not a dispatch pool code"},
+		"dispatch no connection":                    {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d"}]}`, "dispatches[0]: a.b/d declares no connection"},
+		"dispatch pool but no connection":           {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","pool":"p1"}]}`, "declares no connection"},
+		"dispatch second entry no connection":       {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","connection":"c"},{"target":"a.b","path":"/e"}]}`, "dispatches[1]: a.b/e declares no connection"},
 		"dispatch bad connection":                   {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","connection":"my_conn"}]}`, "not a connection code"},
 		"dispatch same target and path, two pools":  {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","pool":"p1"},{"target":"a.b","path":"/d","pool":"p2"}]}`, "declared twice"},
 		"trailing data":                             {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}]} {}`, "trailing data"},
@@ -187,7 +190,7 @@ func TestRouterMatch(t *testing.T) {
 func TestParseDescribeDispatchPoolAndConnection(t *testing.T) {
 	d, err := ParseDescribe([]byte(`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[` +
 		`{"target":"a.b","path":"/d","pool":"yard-process-pool","connection":"yard-conn"},` +
-		`{"target":"a.b","path":"/e"},{"target":"a.c","path":"/d","pool":"tower_pool"}]}`))
+		`{"target":"a.b","path":"/e","connection":"yard-conn"},{"target":"a.c","path":"/d","pool":"tower_pool","connection":"c2"}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,8 +198,8 @@ func TestParseDescribeDispatchPoolAndConnection(t *testing.T) {
 	if !ok || got.Pool != "yard-process-pool" || got.Connection != "yard-conn" {
 		t.Fatalf("DispatchFor = %+v, %v", got, ok)
 	}
-	if got, _ := d.DispatchFor("a.b", "/e"); got.Pool != "" || got.Connection != "" {
-		t.Fatalf("undeclared pool/connection must stay empty: %+v", got)
+	if got, _ := d.DispatchFor("a.b", "/e"); got.Pool != "" || got.Connection != "yard-conn" {
+		t.Fatalf("an undeclared pool must stay empty, the connection must be kept: %+v", got)
 	}
 	if _, ok := d.DispatchFor("a.b", "/nope"); ok {
 		t.Fatal("DispatchFor matched an undeclared path")
@@ -218,7 +221,11 @@ func TestOldPlatformRefusesPoolAndConnectionDeclarations(t *testing.T) {
 		Dispatches []oldTarget `json:"dispatches"`
 	}
 	for _, key := range []string{"pool", "connection"} {
-		doc := `{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","` + key + `":"x"}]}`
+		extra := ""
+		if key == "pool" {
+			extra = `,"connection":"c"` // required by the current platform
+		}
+		doc := `{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","` + key + `":"x"` + extra + `}]}`
 		dec := json.NewDecoder(strings.NewReader(doc))
 		dec.DisallowUnknownFields()
 		var old oldDescribe

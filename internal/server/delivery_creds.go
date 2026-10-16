@@ -42,11 +42,11 @@ type deliveryCredsDeps struct {
 // is how a rotated or deactivated credential keeps working by accident:
 //
 //  1. the subscription's own serviceAccountId (an explicit override);
-//  2. the subscription's connection's serviceAccountId — the normal case;
-//     A job with NO subscription that carries its own serviceAccountId is
-//     signed by that account (a function's declared connection sets it; an
-//     SDK-created direct job may set it): the same "named account decides"
-//     rule, in place of step 3;
+//  2. the subscription's connection's serviceAccountId — the normal case.
+//     A job with NO subscription that names a connection itself (job
+//     connection_id: a function's fn.dispatch always does) is signed by that
+//     connection's account, the same rule keyed on the job. A job's own
+//     serviceAccountId does not choose the signer; only a connection does;
 //  3. the application's oldest active service account, found through the
 //     subscription's applicationCode or, for a direct job with no
 //     subscription, the job code's first segment (`billing:invoice:created`
@@ -85,12 +85,23 @@ func newDeliveryCredsResolver(d deliveryCredsDeps) dispatchprocessing.DeliveryCr
 			}
 		}
 
-		// A direct job (no subscription) that names an account: the account
-		// a function's declared connection put on it, or one an SDK caller
-		// set. Named, so final, like 1 and 2.
+		// 2b. A direct job that names its own connection (a function's
+		// fn.dispatch). Named, so final: a connection that is gone, or has no
+		// account, is declined with a reason, never replaced by the
+		// application's account.
 		if sub == nil {
-			if id := deref(job.ServiceAccountID); id != "" {
-				return named(ctx, d, "job", id)
+			if connID := deref(job.ConnectionID); connID != "" {
+				conn, err := d.connection(ctx, connID)
+				if err != nil {
+					return serviceaccount.OutboundCreds{}, err
+				}
+				if conn == nil {
+					return serviceaccount.OutboundCreds{Reason: "connection " + connID + " does not exist"}, nil
+				}
+				if strings.TrimSpace(conn.ServiceAccountID) == "" {
+					return serviceaccount.OutboundCreds{Reason: "connection " + conn.Code + " names no service account"}, nil
+				}
+				return named(ctx, d, "connection "+conn.Code, conn.ServiceAccountID)
 			}
 		}
 

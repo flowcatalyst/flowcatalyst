@@ -145,7 +145,7 @@ const describeDoc = `{"abi":1,"endpoints":[
  {"method":"POST","path":"/small","auth":"none","maxBodyBytes":4},
  {"method":"POST","path":"/huge","auth":"none","maxBodyBytes":9000000000000},
  {"method":"POST","path":"/secure-post","auth":"platform"}
-],"config":["GREETING"],"secrets":["KEY"],"emits":["app:dom:agg:done"],"httpAllow":["example.com"],"dispatches":[{"target":"app.logger","path":"/deliver"}]}`
+],"config":["GREETING"],"secrets":["KEY"],"emits":["app:dom:agg:done"],"httpAllow":["example.com"],"dispatches":[{"target":"app.logger","path":"/deliver","connection":"logger-conn"}]}`
 
 // The fixture routes by path, so /hook and /secure need fixture paths too:
 // they fall through to its 404, which is still a guest answer (not a runner

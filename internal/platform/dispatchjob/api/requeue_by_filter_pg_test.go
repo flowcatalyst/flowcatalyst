@@ -384,7 +384,7 @@ func TestRequeueByFilter_ConcurrentSchedulerClaim(t *testing.T) {
 	var claimErr error
 	wg.Go(func() {
 		for ctx.Err() == nil {
-			claimed, err := lc.ClaimPending(ctx, 200, nil, nil, nil)
+			claimed, err := lc.ClaimPending(ctx, 200, nil, nil, nil, nil)
 			if err != nil {
 				if ctx.Err() == nil {
 					claimErr = err

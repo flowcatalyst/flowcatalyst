@@ -13,13 +13,21 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
+
+// fixtureConnCode is the connection every fixture's creator declares (a
+// declaration must name one): application-scoped, so parallel fixtures never
+// share it. newDispatchFixture seeds it ACTIVE.
+const fixtureConnCode = "fixture-conn"
 
 // dispatchDescribe is a describe document with a webhook endpoint and the
 // given dispatch targets ("app.fn/path" strings).
@@ -32,7 +40,7 @@ func dispatchDescribe(t *testing.T, endpointAuth string, dispatches ...string) j
 	var ts []map[string]string
 	for _, x := range dispatches {
 		i := strings.Index(x, "/")
-		ts = append(ts, map[string]string{"target": x[:i], "path": x[i:]})
+		ts = append(ts, map[string]string{"target": x[:i], "path": x[i:], "connection": fixtureConnCode})
 	}
 	if len(ts) > 0 {
 		d["dispatches"] = ts
@@ -47,6 +55,8 @@ type dispatchFixture struct {
 	creator *function.Function
 	target  *function.Function
 	app     string
+	// conn is the ACTIVE connection the creator's declarations name.
+	conn *connection.Connection
 }
 
 // newDispatchFixture seeds an application with a creator (v1 declaring
@@ -62,10 +72,23 @@ func newDispatchFixture(t *testing.T, mutateCreator func(*function.Function), mu
 	seedApplication(t, testpg.Pool(t), appID, app)
 	creator := seedFunction(t, testpg.Pool(t), s.Repo, appID, app, "creator", mutateCreator)
 	seedVersion(t, s.Repo, creator.ID, 1, function.VersionPublished, "js", dispatchDescribe(t, "platform", app+".logger/deliver"))
+	connRepo := connection.NewRepository(testpg.Pool(t))
+	s.Connections = connRepo
+	s.Pools = dispatchpool.NewRepository(testpg.Pool(t))
+	fixtureConn := connection.New(fixtureConnCode, fixtureConnCode, "sa_fixture_"+shortID(t))
+	fixtureConn.ApplicationCode = &app
+	withTx(t, testpg.Pool(t), func(tx *usecasepgx.DbTx) error {
+		return connRepo.Persist(context.Background(), fixtureConn, tx)
+	})
+	t.Cleanup(func() {
+		withTx(t, testpg.Pool(t), func(tx *usecasepgx.DbTx) error {
+			return connRepo.Delete(context.Background(), fixtureConn, tx)
+		})
+	})
 	target := seedFunction(t, testpg.Pool(t), s.Repo, appID, app, "logger", mutateTarget)
 	tv := seedVersion(t, s.Repo, target.ID, 1, function.VersionPublished, "js", dispatchDescribe(t, "webhook"))
 	seedAlias(t, s.Repo, target.ID, function.LiveAlias, tv.ID)
-	return &dispatchFixture{s: s, creator: creator, target: target, app: app}
+	return &dispatchFixture{s: s, creator: creator, target: target, app: app, conn: fixtureConn}
 }
 
 func (f *dispatchFixture) req(d abi.Dispatch, payload string) fncontrol.DispatchRequest {
@@ -127,7 +150,9 @@ func TestDispatch_Success(t *testing.T) {
 	assert.Equal(t, "g1", *job.MessageGroup)
 	assert.Equal(t, "IMMEDIATE", string(job.Mode))
 	assert.Equal(t, "PENDING", string(job.Status))
-	assert.Nil(t, job.ServiceAccountID, "no credential travels with the job; the application's account signs")
+	assert.Nil(t, job.ServiceAccountID, "no credential travels with the job; the connection's account signs")
+	require.NotNil(t, job.ConnectionID, "the job carries its connection")
+	assert.Equal(t, f.conn.ID, *job.ConnectionID)
 	assert.Equal(t, []dispatchjob.Metadata{
 		{Key: "tenant", Value: "acme"},
 		{Key: "fn.address", Value: f.creator.Address},

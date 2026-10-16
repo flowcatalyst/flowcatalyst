@@ -127,7 +127,7 @@ func burst(t *testing.T, p *pgxpool.Pool, n int, ties bool) {
 // firstClaimed runs the claim for the first limit rows of the walk, as the poller would.
 func firstClaimed(t *testing.T, p *pgxpool.Pool, limit int, inFlight []string) []dispatchjob.ClaimedJob {
 	t.Helper()
-	rows, err := dispatchjob.NewLifecycle(p).ClaimPending(context.Background(), limit, nil, nil, inFlight)
+	rows, err := dispatchjob.NewLifecycle(p).ClaimPending(context.Background(), limit, nil, nil, inFlight, nil)
 	require.NoError(t, err)
 	return rows
 }
@@ -151,7 +151,7 @@ func plansFor(t *testing.T, p *pgxpool.Pool, inFlight []string) planSet {
 	for i := range held {
 		held[i] = fmt.Sprintf("g%04d", 400+i)
 	}
-	cl := dispatchjob.ClaimPendingStatement(500, []string{}, held, inFlight)
+	cl := dispatchjob.ClaimPendingStatement(500, []string{}, held, inFlight, []string{})
 	s.claim = planOf(t, p, cl.SQL, literals(cl.Args))
 
 	claimed := firstClaimed(t, p, 500, inFlight)
@@ -345,7 +345,7 @@ func plansCached(t *testing.T, env planEnv) {
 			_, err = conn.Exec(ctx, `PREPARE c1 AS `+strings.ReplaceAll(dispatchjob.ClaimPendingSQL, "\n", " "))
 			require.NoError(t, err)
 			for range 8 { // no PENDING jobs: the claim returns nothing, Postgres may now cache a generic plan
-				_, err = conn.Exec(ctx, fmt.Sprintf(`EXECUTE c1(500, '{}'::text[], %s, '{}'::text[])`, held), pgx.QueryExecModeSimpleProtocol)
+				_, err = conn.Exec(ctx, fmt.Sprintf(`EXECUTE c1(500, '{}'::text[], %s, '{}'::text[], '{}'::text[])`, held), pgx.QueryExecModeSimpleProtocol)
 				require.NoError(t, err)
 			}
 			_, err = conn.Exec(ctx, fmt.Sprintf(`
@@ -369,7 +369,7 @@ func plansCached(t *testing.T, env planEnv) {
 				rs.Close()
 				return decodePlan(t, raw)
 			}
-			claim = explain(fmt.Sprintf(`EXECUTE c1(500, '{}'::text[], %s, '{}'::text[])`, held))
+			claim = explain(fmt.Sprintf(`EXECUTE c1(500, '{}'::text[], %s, '{}'::text[], '{}'::text[])`, held))
 			// mark-QUEUED, prepared and exercised the same way
 			rows, err := conn.Query(ctx, `SELECT id, created_at, updated_at FROM msg_dispatch_jobs WHERE status = 'PENDING' ORDER BY message_group, sequence, created_at, id LIMIT 500`)
 			require.NoError(t, err)

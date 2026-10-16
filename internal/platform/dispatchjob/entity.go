@@ -258,7 +258,15 @@ type DispatchJob struct {
 	// logins"); a directly created job may supply its own. The grid shows
 	// it where a code and a target URL say nothing to an operator. Nil is
 	// the legacy state (2026-09-22).
-	Descriptor     *string    `json:"descriptor,omitempty"`
+	Descriptor *string `json:"descriptor,omitempty"`
+	// ConnectionID is the connection the job is delivered through, when the
+	// job names one itself: a function's fn.dispatch always does (its
+	// subscription-less job has no other route to a connection). Pausing the
+	// connection holds the job PENDING, and the connection's service account
+	// signs its delivery. Nil for every other job, whose connection (if any)
+	// is its subscription's. Internal: not on the SDK request or the job's
+	// API representation.
+	ConnectionID   *string    `json:"connectionId,omitempty"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	UpdatedAt      time.Time  `json:"updatedAt"`
 	ScheduledFor   *time.Time `json:"scheduledFor,omitempty"`

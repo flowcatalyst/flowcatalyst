@@ -27,6 +27,7 @@ import (
 //	fc_scheduler_mark_queued_not_updated_total         published jobs the QUEUED update skipped: already past PENDING
 //	fc_scheduler_last_successful_poll_timestamp_seconds
 //	fc_scheduler_paused_subscriptions                  subscriptions excluded from the claim as paused
+//	fc_scheduler_paused_connections                    PAUSED connections whose own jobs the claim excludes
 //	fc_scheduler_claims_already_inflight_total         claimed rows dropped because the job was already in flight (never expected)
 //	fc_scheduler_held_groups                           message groups remembered as held (skipped by the claim for 5s)
 //	fc_scheduler_stale_jobs_recovered_total{status}    stale QUEUED / PROCESSING jobs returned to PENDING
@@ -41,14 +42,14 @@ var MetricsRegistry = prometheus.NewRegistry()
 var schedMetrics = newSchedulerMetrics(MetricsRegistry)
 
 type schedulerMetrics struct {
-	claimed, published, unpublished, skippedHeld, fullBatches, pollErrors prometheus.Counter
-	pollDuration, claimDuration                                           prometheus.Histogram
-	lanePublish                                                           *prometheus.HistogramVec
-	droppedPoisoned, markNotUpdated, withheldDoomed                       prometheus.Counter
-	lastSuccess, pausedSubscriptions, bufferInUse, inflight               prometheus.Gauge
-	alreadyInFlight                                                       prometheus.Counter
-	staleJobsRecovered                                                    *prometheus.CounterVec
-	queueBacklogRows, queueOldestAge, heldGroups                          prometheus.Gauge
+	claimed, published, unpublished, skippedHeld, fullBatches, pollErrors      prometheus.Counter
+	pollDuration, claimDuration                                                prometheus.Histogram
+	lanePublish                                                                *prometheus.HistogramVec
+	droppedPoisoned, markNotUpdated, withheldDoomed                            prometheus.Counter
+	lastSuccess, pausedSubscriptions, pausedConnections, bufferInUse, inflight prometheus.Gauge
+	alreadyInFlight                                                            prometheus.Counter
+	staleJobsRecovered                                                         *prometheus.CounterVec
+	queueBacklogRows, queueOldestAge, heldGroups                               prometheus.Gauge
 }
 
 func newSchedulerMetrics(reg prometheus.Registerer) *schedulerMetrics {
@@ -96,6 +97,10 @@ func newSchedulerMetrics(reg prometheus.Registerer) *schedulerMetrics {
 			Name: "fc_scheduler_paused_subscriptions",
 			Help: "Subscriptions whose connection is PAUSED, excluded from the claim.",
 		}),
+		pausedConnections: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "fc_scheduler_paused_connections",
+			Help: "PAUSED connections whose own jobs (a function's fn.dispatch) are excluded from the claim.",
+		}),
 		alreadyInFlight: counter("fc_scheduler_claims_already_inflight_total", "Claimed rows dropped because the job was already in this process's in-flight set (the claim excludes them, so this is never expected)."),
 		staleJobsRecovered: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "fc_scheduler_stale_jobs_recovered_total",
@@ -118,7 +123,7 @@ func newSchedulerMetrics(reg prometheus.Registerer) *schedulerMetrics {
 		m.staleJobsRecovered.WithLabelValues(st)
 	}
 	reg.MustRegister(m.claimed, m.published, m.unpublished, m.skippedHeld, m.fullBatches,
-		m.pollErrors, m.pollDuration, m.lastSuccess, m.pausedSubscriptions,
+		m.pollErrors, m.pollDuration, m.lastSuccess, m.pausedSubscriptions, m.pausedConnections,
 		m.claimDuration, m.lanePublish, m.droppedPoisoned, m.markNotUpdated, m.withheldDoomed, m.bufferInUse, m.inflight,
 		m.alreadyInFlight, m.staleJobsRecovered, m.heldGroups, m.queueBacklogRows, m.queueOldestAge)
 	return m

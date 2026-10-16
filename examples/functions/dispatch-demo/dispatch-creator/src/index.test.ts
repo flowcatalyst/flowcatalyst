@@ -5,7 +5,7 @@ import { handleRequest } from "../../../../../clients/fn-ts/src/dispatch";
 import { describeJSON } from "../../../../../clients/fn-ts/src/describe";
 import { installFakeHost } from "../../../../../clients/fn-ts/src/testing";
 import { OpDispatch, OpEventEmit } from "../../../../../clients/fn-ts/src/ops";
-import { DELIVER_PATH, LOGGER_ADDRESS, REQUIRED_PERMISSION } from "./names";
+import { CONNECTION_CODE, DELIVER_PATH, LOGGER_ADDRESS, REQUIRED_PERMISSION } from "./names";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const dec = (b: Uint8Array) => new TextDecoder().decode(b);
@@ -19,8 +19,8 @@ function meta(overrides: Record<string, unknown> = {}): string {
 }
 
 test("describe declares the dispatch target and a platform endpoint, and emits nothing", () => {
-  const d = JSON.parse(describeJSON()) as { endpoints: { path: string; auth: string }[]; dispatches: { target: string; path: string }[]; emits?: string[] };
-  assert.deepEqual(d.dispatches, [{ target: LOGGER_ADDRESS, path: DELIVER_PATH }]);
+  const d = JSON.parse(describeJSON()) as { endpoints: { path: string; auth: string }[]; dispatches: { target: string; path: string; connection: string }[]; emits?: string[] };
+  assert.deepEqual(d.dispatches, [{ target: LOGGER_ADDRESS, path: DELIVER_PATH, connection: CONNECTION_CODE }]);
   assert.equal(d.emits, undefined);
   assert.ok(d.endpoints.some((e) => e.path === "/dispatch" && e.auth === "platform"));
 });
