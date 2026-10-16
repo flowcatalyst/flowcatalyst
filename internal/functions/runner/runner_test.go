@@ -212,6 +212,29 @@ func startCfg(t *testing.T, adjust func(*Config), fns ...control.Function) *harn
 	return h
 }
 
+// waitVersionReady waits until version n of address is loaded, whether or not
+// it is the one being served (start only waits for the live version).
+func (h *harness) waitVersionReady(address string, n int) {
+	h.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		h.r.mu.RLock()
+		ok := false
+		if fn := h.r.functions[address]; fn != nil {
+			if v := fn.versions[n]; v != nil {
+				st, _ := v.currentState()
+				ok = st == stateReady || st == stateEvicted
+			}
+		}
+		h.r.mu.RUnlock()
+		if ok {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	h.t.Fatalf("%s version %d never became ready", address, n)
+}
+
 // waitServing waits until address serves version n (or fails the test).
 func (h *harness) waitServing(address string, n int) {
 	h.t.Helper()
@@ -336,6 +359,7 @@ func TestPlatformAuthStripsToken(t *testing.T) {
 
 func TestExplicitVersionNeedsPermission(t *testing.T) {
 	h := start(t, fnDoc(ver(1, control.RoleLive), ver(2, control.RoleCandidate)))
+	h.waitVersionReady("app.hello", 2)
 	if resp, _ := h.do("GET", "/fn/app.hello@v2/meta", nil, nil); resp.StatusCode != 401 {
 		t.Fatalf("anonymous versioned call: %d", resp.StatusCode)
 	}
