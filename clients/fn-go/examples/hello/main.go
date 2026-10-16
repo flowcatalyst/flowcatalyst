@@ -24,7 +24,7 @@ func init() {
 	fn.Open("POST /dispatch", onDispatch)
 
 	fn.Emits("hello:greeting:greeting:sent")
-	fn.Dispatches("hello.logger", "/deliver")
+	fn.Dispatches("hello.logger", "/deliver", fn.DispatchPool("hello-pool"), fn.DispatchConnection("hello-conn"))
 }
 
 func main() {}

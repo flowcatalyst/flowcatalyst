@@ -20,8 +20,10 @@ type describeDoc struct {
 }
 
 type dispatchJSON struct {
-	Target string `json:"target"`
-	Path   string `json:"path"`
+	Target     string `json:"target"`
+	Path       string `json:"path"`
+	Pool       string `json:"pool,omitempty"`
+	Connection string `json:"connection,omitempty"`
 }
 
 type corsJSON struct {

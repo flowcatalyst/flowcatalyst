@@ -3,7 +3,6 @@ package control
 import (
 	"context"
 	"encoding/json"
-	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -11,7 +10,9 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -52,7 +53,15 @@ const (
 //  5. the job code's first segment is the function's application, which is
 //     what delivery-credential resolution keys on for a job with no
 //     subscription: the application's signing account, the same one the
-//     target's `webhook` endpoints verify.
+//     target's `webhook` endpoints verify;
+//  6. the dispatch pool, if the declaration names one, is resolved here by
+//     code (resolvePool) and set on the job. The call carries no pool: it is
+//     the declaration's, so a guest cannot pick or change it;
+//  7. the connection, if the declaration names one, is resolved the same way
+//     (resolveConnection): its service account is set on the job, which is
+//     the account the delivery is signed with (a job has no connection column;
+//     delivery credentials read the job's account when it has no
+//     subscription), and fn.connection records which connection.
 //
 // The job is built through sdk.NewJobFromItem, the SDK ingest routes' own
 // mapping, so defaults and validation are the platform's (dataOnly aside,
@@ -96,7 +105,8 @@ func (s *State) dispatch(ctx context.Context, in *apicommon.In[fncontrol.Dispatc
 	}
 
 	// 1. Declared by THIS version.
-	if !slices.Contains(desc.Dispatches, abi.DispatchTarget{Target: d.Target, Path: d.Path}) {
+	declared, ok := desc.DispatchFor(d.Target, d.Path)
+	if !ok {
 		return nil, usecase.Authorization("DISPATCH_NOT_DECLARED",
 			"dispatch target "+d.Target+d.Path+" is not declared in this version's dispatches")
 	}
@@ -128,6 +138,18 @@ func (s *State) dispatch(ctx context.Context, in *apicommon.In[fncontrol.Dispatc
 		return nil, err
 	} else if msg != "" {
 		return nil, usecase.BusinessRule("DISPATCH_TARGET_UNAVAILABLE", msg)
+	}
+
+	// 3b. The declared dispatch pool, if any (checked per call: a pool may be
+	// created, suspended or re-owned after the function was published).
+	poolID, err := s.resolvePool(ctx, fn, declared.Pool)
+	if err != nil {
+		return nil, err
+	}
+
+	conn, err := s.resolveConnection(ctx, fn, declared.Connection)
+	if err != nil {
+		return nil, err
 	}
 
 	// The job's own fields. Everything below is validated here or by
@@ -166,7 +188,7 @@ func (s *State) dispatch(ctx context.Context, in *apicommon.In[fncontrol.Dispatc
 	if d.TimeoutSeconds != nil && *d.TimeoutSeconds <= 0 {
 		return nil, usecase.Validation("DISPATCH_TIMEOUT_INVALID", "timeoutSeconds must be positive")
 	}
-	meta, err := jobMetadata(d.Metadata, fn, req)
+	meta, err := jobMetadata(d.Metadata, fn, req, conn)
 	if err != nil {
 		return nil, err
 	}
@@ -197,6 +219,10 @@ func (s *State) dispatch(ctx context.Context, in *apicommon.In[fncontrol.Dispatc
 		Descriptor:         nonEmpty(d.Descriptor),
 		Metadata:           meta,
 	}
+	if conn != nil {
+		sa := conn.ServiceAccountID
+		item.ServiceAccountID = &sa
+	}
 	if d.TimeoutSeconds != nil {
 		item.TimeoutSeconds = uint32(*d.TimeoutSeconds)
 	}
@@ -207,6 +233,7 @@ func (s *State) dispatch(ctx context.Context, in *apicommon.In[fncontrol.Dispatc
 	if err != nil {
 		return nil, err // httperror: INVALID_TARGET_URL and friends
 	}
+	job.DispatchPoolID = poolID
 	if d.MaxRetries != nil && *d.MaxRetries == 0 {
 		job.MaxRetries = 0 // jobFromItem reads 0 as "default"; an explicit 0 means no retries
 	}
@@ -222,6 +249,92 @@ func (s *State) dispatch(ctx context.Context, in *apicommon.In[fncontrol.Dispatc
 		return nil, usecase.Internal("REPO", "insert failed", err)
 	}
 	return &apicommon.Out[fncontrol.DispatchResponse]{Body: fncontrol.DispatchResponse{JobID: job.ID}}, nil
+}
+
+// resolvePool maps a declared dispatch pool code to the pool's id for a job
+// of fn, or nil for no declaration (the client's default pool, as before).
+// The rules, none of which the guest can influence:
+//
+//   - the pool must be visible to the function's client: the function's own
+//     client's pool with that code, else the client-less one; a client-less
+//     function sees client-less pools only. Another client's pool is "not
+//     found", so pool codes are not enumerable across tenants;
+//   - it must be ACTIVE (a suspended or archived pool takes no new work);
+//   - it must be unowned or owned by the function's application (F19): a
+//     pool another application owns is refused.
+func (s *State) resolvePool(ctx context.Context, fn *function.Function, code string) (*string, error) {
+	if code == "" {
+		return nil, nil
+	}
+	if s.Pools == nil {
+		return nil, usecase.Internal("DISPATCH_UNWIRED", "the dispatch-pool repository is not configured", nil)
+	}
+	var p *dispatchpool.DispatchPool
+	var err error
+	if fn.ClientID != nil {
+		if p, err = s.Pools.FindByCode(ctx, code, fn.ClientID); err != nil {
+			return nil, usecase.Internal("REPO", "find dispatch pool failed", err)
+		}
+	}
+	if p == nil {
+		if p, err = s.Pools.FindByCode(ctx, code, nil); err != nil {
+			return nil, usecase.Internal("REPO", "find dispatch pool failed", err)
+		}
+	}
+	if p == nil {
+		return nil, usecase.NotFound("DISPATCH_POOL_NOT_FOUND", "no dispatch pool "+code+" is available to "+fn.Address)
+	}
+	if p.Status != dispatchpool.StatusActive {
+		return nil, usecase.Authorization("DISPATCH_POOL_NOT_ALLOWED",
+			"dispatch pool "+code+" is "+string(p.Status)+" and takes no new jobs")
+	}
+	if p.ApplicationID != nil && *p.ApplicationID != fn.ApplicationID {
+		return nil, usecase.Authorization("DISPATCH_POOL_NOT_ALLOWED",
+			"dispatch pool "+code+" is owned by another application than "+fn.ApplicationCode)
+	}
+	id := p.ID
+	return &id, nil
+}
+
+// resolveConnection maps a declared connection code to the connection for a
+// job of fn, or nil for no declaration (today's signing behaviour). Rules:
+//
+//   - visibility, most specific first: the function's application's
+//     connection of the function's client, then of no client, then the shared
+//     (application-less) connection of the client, then the shared client-less
+//     one. A connection of another application or another client is never
+//     matched, so it is "not found" and codes are not enumerable across
+//     tenants; the first match decides (no fall-through past a refusal);
+//   - it must be ACTIVE (a PAUSED connection is refused, not skipped).
+func (s *State) resolveConnection(ctx context.Context, fn *function.Function, code string) (*connection.Connection, error) {
+	if code == "" {
+		return nil, nil
+	}
+	if s.Connections == nil {
+		return nil, usecase.Internal("DISPATCH_UNWIRED", "the connection repository is not configured", nil)
+	}
+	apps := []*string{&fn.ApplicationCode, nil}
+	clients := []*string{nil}
+	if fn.ClientID != nil {
+		clients = []*string{fn.ClientID, nil}
+	}
+	for _, app := range apps {
+		for _, client := range clients {
+			c, err := s.Connections.FindByCode(ctx, code, app, client)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find connection failed", err)
+			}
+			if c == nil {
+				continue
+			}
+			if c.Status != connection.StatusActive {
+				return nil, usecase.Authorization("CONNECTION_NOT_ALLOWED",
+					"connection "+code+" is "+string(c.Status)+" and takes no new deliveries")
+			}
+			return c, nil
+		}
+	}
+	return nil, usecase.NotFound("CONNECTION_NOT_FOUND", "no connection "+code+" is available to "+fn.Address)
 }
 
 // targetProblem reports why target cannot take a signed delivery at path, or
@@ -267,7 +380,7 @@ func (s *State) targetProblem(ctx context.Context, target *function.Function, pa
 
 // jobMetadata validates the guest's entries and appends the platform's fn.*
 // provenance, which the guest cannot supply.
-func jobMetadata(in []abi.KV, fn *function.Function, req fncontrol.DispatchRequest) ([]dispatchjob.Metadata, error) {
+func jobMetadata(in []abi.KV, fn *function.Function, req fncontrol.DispatchRequest, conn *connection.Connection) ([]dispatchjob.Metadata, error) {
 	if len(in) > maxDispatchMetadata {
 		return nil, usecase.Validation("DISPATCH_METADATA_TOO_MANY", "metadata is over 50 entries")
 	}
@@ -292,6 +405,9 @@ func jobMetadata(in []abi.KV, fn *function.Function, req fncontrol.DispatchReque
 		dispatchjob.Metadata{Key: reservedMetadataPrefix + "address", Value: fn.Address},
 		dispatchjob.Metadata{Key: reservedMetadataPrefix + "version", Value: strconv.Itoa(req.Version)},
 	)
+	if conn != nil {
+		out = append(out, dispatchjob.Metadata{Key: reservedMetadataPrefix + "connection", Value: conn.Code})
+	}
 	if req.InvocationID != "" {
 		out = append(out, dispatchjob.Metadata{Key: reservedMetadataPrefix + "invocation", Value: req.InvocationID})
 	}

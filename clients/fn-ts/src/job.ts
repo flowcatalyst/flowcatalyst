@@ -95,8 +95,32 @@ export async function dispatch(d: DispatchInput): Promise<string> {
   return typeof rm.jobId === "string" ? rm.jobId : "";
 }
 
+/** Where a declared dispatch's jobs go besides the target. Both are declared
+ * here, never per call: dispatch() takes the pool and connection from the
+ * matching declaration, and a call cannot override them. */
+export interface DispatchesOptions {
+  /** CODE of the dispatch pool (the rate/concurrency pool for dispatch jobs,
+   * e.g. "yard-process-pool"; not a function-runner pool) the jobs run in.
+   * The platform resolves it on every call: the pool must exist, be ACTIVE,
+   * belong to this function's client (or to none) and to this function's
+   * application (or to none); otherwise dispatch() throws NOT_ALLOWED /
+   * BAD_REQUEST. Omitted: the client's default pool. */
+  pool?: string;
+  /** CODE of the connection whose service account signs the jobs' delivery.
+   * Resolved on every call like the pool (must exist, be ACTIVE, and be
+   * visible to this function's client and application). Omitted: the
+   * application's own account signs, as before. */
+  connection?: string;
+}
+
 /** Declares a (function, path) this function may dispatch jobs to with
- * dispatch(). The target must be a function of the same application. */
-export function dispatches(target: string, path: string): void {
-  registry.dispatches.push({ target, path });
+ * dispatch(). The target must be a function of the same application. A
+ * `pool` and/or `connection` code may be declared for its jobs. Publishing
+ * to a platform that predates them fails (unknown key), it does not fall
+ * back to the default pool. */
+export function dispatches(target: string, path: string, options: DispatchesOptions = {}): void {
+  const e: { target: string; path: string; pool?: string; connection?: string } = { target, path };
+  if (options.pool !== undefined) e.pool = options.pool;
+  if (options.connection !== undefined) e.connection = options.connection;
+  registry.dispatches.push(e);
 }

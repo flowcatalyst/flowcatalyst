@@ -78,4 +78,4 @@ fn.open("POST /dispatch", async (req: FnRequest) => {
 });
 
 fn.emits("hello:greeting:greeting:sent");
-fn.dispatches("hello.logger", "/deliver");
+fn.dispatches("hello.logger", "/deliver", { pool: "hello-pool", connection: "hello-conn" });

@@ -1991,6 +1991,75 @@ transitions conditional in SQL on `status='PUBLISHED'`, and the `FAILED` one als
 `requeued_at_revision <= heartbeat.revision`; bump the pool revision only if a row changed; (4) any
 Java runner must classify load failures as above and not report `FAILED` for a transient one.
 
+### F23. `fn.dispatch` can name a dispatch pool and a connection (owner request, 2026-10-16)
+
+**Need.** A function creating dispatch jobs with `fn.dispatch` must be able to put them in a named
+**dispatch pool** (the rate/concurrency pool for dispatch jobs, e.g. `yard-process-pool`; not a
+function-runner pool) and have a named **connection**'s service account sign them. Before, every job
+went to the client's default pool and was signed as the application.
+
+**Design (owner-approved).**
+
+- **Declared, never per call.** `describe.dispatches[]` entries become `{target, path, pool?,
+  connection?}` (dispatch pool code, connection code). The guest cannot choose: `fn.dispatch({target,
+  path, ...})` takes both from the matching declaration. No per-call override in v1: the runner's
+  dispatch meta is decoded strictly, so a `pool` or `connection` key from a guest is `BAD_REQUEST`
+  (never silently dropped), and the control route's body has no such field. A (target, path) pair may
+  be declared once (a second entry with another pool would be ambiguous).
+- **Publish checks format only** (strict describe: unknown keys rejected, `pool` =
+  `^[a-z][a-z0-9_-]{0,99}$`, `connection` = `^[a-z][a-z0-9-]{0,99}$`, the platform's own code rules). A
+  pool or connection may be created after the function is published, like targets. Because describe
+  is strict, a new SDK declaring either against a platform that predates this fails at publish
+  (`unknown field`), it does not fall back to the default pool (`TestOldPlatformRefusesPoolAndConnectionDeclarations`).
+  ABI v1 is unchanged; no migration; no HTTP API change (no `api/openapi.lock.json` change).
+- **Pool, resolved per call on the control plane** (`internal/platform/function/control/dispatch.go`
+  `resolvePool`): the function's own client's pool with the code, else the client-less one (a
+  client-less function sees client-less pools only); not found or another client's =
+  `DISPATCH_POOL_NOT_FOUND` (404, so another tenant's codes are not enumerable); not `ACTIVE`
+  (suspended, archived; the first match is not skipped for a better one) = `DISPATCH_POOL_NOT_ALLOWED`
+  (403); owned (F19 `application_id`) by another application = `DISPATCH_POOL_NOT_ALLOWED`; unowned
+  or owned by the function's application is allowed. Sets `dispatchPoolId` on the job. To the guest:
+  403 is `NOT_ALLOWED`, 404 `BAD_REQUEST`, as every dispatch refusal.
+- **Connection, same rules** (`resolveConnection`): lookup order is the function's application then
+  the shared (application-less) namespace, each for the function's client then client-less; first
+  match decides; `PAUSED` = `CONNECTION_NOT_ALLOWED` (403); another application's or client's
+  connection is never matched = `CONNECTION_NOT_FOUND` (404).
+- **How a connection takes effect.** A dispatch job has no connection column or field (only
+  `serviceAccountId`), and delivery credentials resolved only through a subscription's connection. So
+  the job carries the connection's `serviceAccountId` plus metadata `fn.connection=<code>`, and
+  `newDeliveryCredsResolver` gained one rule: a job with **no subscription** that names a
+  `serviceAccountId` is signed by that account (declined with a reason, never replaced by the
+  application's, if it cannot sign). Behaviour change to flag: SDK-created direct jobs that set
+  `serviceAccountId` were signed by the application's account before and are now signed by the named
+  one. Undeclared pool/connection: unchanged (independent of each other).
+- **SDKs / tooling.** TypeScript `fn.dispatches(target, path, { pool, connection })`; Go
+  `fn.Dispatches(target, path, fn.DispatchPool("..."), fn.DispatchConnection("..."))`; Rust
+  `App::dispatches_with(target, path, DispatchOpts::new().pool("...").connection("..."))`
+  (`App::dispatches` unchanged). `fcdev fn build/describe/deploy --dry-run` print
+  `target/path (pool X, connection Y)`.
+
+**Tests.** `function/control/dispatch_pool_test.go` (integration; pool set on the job, none declared
+unchanged, unknown, suspended, archived, client rules both ways, own-client pool wins, application
+ownership, matching declaration decides, request cannot override, wire classes, unwired; the same
+for connections including the job's signing account and `fn.connection`); `abi_test.go` (format
+rules, duplicate, old-platform refusal); `runner/dispatch_pool_test.go` (guest `pool`/`connection`
+refused); `TestSDKExamples` over the Go, Rust and TS examples (each declares pool and connection and
+the parsed describe carries them); SDK unit tests; `server/delivery_creds_test.go`; `fcdev` describe
+output. Mutations (each fails a test): pool ownership check removed, pool status check removed, own
+client lookup removed, other client's pool visible, first declaration instead of the matching one,
+the call choosing the pool (a `pool` field on the call), connection status check removed, connection
+application namespace removed, other client's connection visible, connection account not set on the
+job.
+
+**Java hand-off (not implemented).** Mirror: (1) describe `dispatches[]` gains optional `pool` and
+`connection` (strict, code shapes above, one declaration per (target, path)); (2) the dispatch
+control route resolves them per call with the rules above, codes and statuses included, and sets the
+job's pool id and service account and `fn.connection` metadata; (3) the delivery-credentials
+resolver gains "a job with no subscription naming a `serviceAccountId` is signed by it"; (4) the Java
+runner's dispatch capability refuses unknown meta keys; (5) describe output prints the placement.
+Existing pools and connections need no migration; pools created before F19 are unowned and so usable
+by any application.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -2203,3 +2272,6 @@ missing event source (F14), and unknown roles in the application principal sync 
   plane (the runner tests use a fake control plane); the full `make pre-push` was not clean at the
   end because of another session's uncommitted `dispatch_pool_test.go` lint findings, so its
   remaining steps were run one by one. The Java platform and runner were not changed (hand-off above).
+- F23: integration tests on embedded databases only; no live runner or deployed platform, no run of a
+  delivery signed through a function-declared connection's account against a real subscriber, and
+  the Java/Rust ports were not changed (hand-off above).

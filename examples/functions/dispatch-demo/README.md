@@ -24,6 +24,12 @@ It uses the `dispatch` capability instead, which mirrors `emit`:
 
 - `dispatch-creator` **declares** the one target it may dispatch to: `fn.dispatches("<app>.payload-logger", "/deliver")`
   (it shows in the describe document as `dispatches`; `fcdev fn build` prints it).
+- To put the jobs in a **dispatch pool** (the rate/concurrency pool for dispatch jobs, not a function-runner pool)
+  or sign them with a **connection**'s account, declare it: `fn.dispatches(target, "/deliver", { pool: "my-pool",
+  connection: "my-conn" })`. `fcdev fn build` prints `(pool my-pool, connection my-conn)`. The platform resolves
+  both on every call (the pool must exist, be ACTIVE and visible to the function's client and application; the
+  connection likewise) and `fn.dispatch` cannot override them. Undeclared: the client's default pool, signed as
+  the application, as before.
 - `fn.dispatch({ target, path, payload, ... })` makes the runner ask the platform to create the job on its behalf.
   The function supplies no URL and no credential.
 - The platform checks the pair against this **version's** declaration; requires the target to be a function of

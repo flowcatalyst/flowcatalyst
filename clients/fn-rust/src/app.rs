@@ -8,6 +8,38 @@ use crate::route::{compile_pattern, match_segments, split_path, Seg};
 use crate::types::{Error, Request, Response};
 use std::collections::BTreeMap;
 
+/// Where a declared dispatch's jobs go besides the target. Both are declared
+/// here, never per call: `Context::dispatch` takes them from the matching
+/// declaration and a call cannot override them. `None` keeps today's
+/// behaviour for that one (the client's default pool; the application's own
+/// signing account), independently of the other.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DispatchOpts {
+    pub(crate) pool: Option<String>,
+    pub(crate) connection: Option<String>,
+}
+
+impl DispatchOpts {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// CODE of the dispatch pool (the rate/concurrency pool for dispatch
+    /// jobs, e.g. `yard-process-pool`; not a function-runner pool). The
+    /// platform resolves it on every call: it must exist, be ACTIVE, and
+    /// belong to this function's client and application (or to none).
+    pub fn pool(mut self, code: &str) -> Self {
+        self.pool = Some(code.to_string());
+        self
+    }
+
+    /// CODE of the connection whose service account signs the jobs.
+    pub fn connection(mut self, code: &str) -> Self {
+        self.connection = Some(code.to_string());
+        self
+    }
+}
+
 /// A registered handler function. Guest handlers are plain `fn` items (no
 /// captured state), matching the macro-generated, per-call `App` rebuild.
 pub type Handler = fn(&Request, &Context) -> Result<Response, Error>;
@@ -59,7 +91,7 @@ pub struct App {
     pub(crate) db: Vec<String>,
     pub(crate) http_allow: Vec<String>,
     pub(crate) emits: Vec<String>,
-    pub(crate) dispatches: Vec<(String, String)>,
+    pub(crate) dispatches: Vec<(String, String, DispatchOpts)>,
 }
 
 impl App {
@@ -148,7 +180,13 @@ impl App {
     /// `Context::dispatch`. The target must be a function of the same
     /// application and `path` a literal webhook path on it.
     pub fn dispatches(&mut self, target: &str, path: &str) -> &mut Self {
-        self.dispatches.push((target.to_string(), path.to_string()));
+        self.dispatches_with(target, path, DispatchOpts::default())
+    }
+
+    /// Like [`App::dispatches`], placing the jobs in a dispatch pool and/or
+    /// signing them with a connection's account: see [`DispatchOpts`].
+    pub fn dispatches_with(&mut self, target: &str, path: &str, opts: DispatchOpts) -> &mut Self {
+        self.dispatches.push((target.to_string(), path.to_string(), opts));
         self
     }
 
@@ -218,7 +256,16 @@ impl App {
             let ds: Vec<_> = self
                 .dispatches
                 .iter()
-                .map(|(t, p)| serde_json::json!({"target": t, "path": p}))
+                .map(|(t, p, o)| {
+                    let mut e = serde_json::json!({"target": t, "path": p});
+                    if let Some(pool) = &o.pool {
+                        e["pool"] = serde_json::json!(pool);
+                    }
+                    if let Some(conn) = &o.connection {
+                        e["connection"] = serde_json::json!(conn);
+                    }
+                    e
+                })
                 .collect();
             doc.insert("dispatches".into(), serde_json::Value::Array(ds));
         }
@@ -324,5 +371,27 @@ mod tests {
         assert_eq!(doc["emits"][0], "orders:order:order:shipped");
         assert_eq!(doc["dispatches"][0]["target"], "orders.invoice-logger");
         assert_eq!(doc["dispatches"][0]["path"], "/deliver");
+        assert!(doc["dispatches"][0].get("pool").is_none());
+        assert!(doc["dispatches"][0].get("connection").is_none());
+    }
+
+    #[test]
+    fn describe_declares_dispatch_pool_and_connection() {
+        let mut app = App::new();
+        app.open("GET /healthz", ok)
+            .dispatches_with(
+                "orders.logger",
+                "/deliver",
+                DispatchOpts::new().pool("yard-process-pool").connection("yard-conn"),
+            )
+            .dispatches_with("orders.logger", "/pool-only", DispatchOpts::new().pool("tower-pool"));
+        let doc: serde_json::Value = serde_json::from_slice(&app.describe_json()).unwrap();
+        assert_eq!(
+            doc["dispatches"],
+            serde_json::json!([
+                {"target": "orders.logger", "path": "/deliver", "pool": "yard-process-pool", "connection": "yard-conn"},
+                {"target": "orders.logger", "path": "/pool-only", "pool": "tower-pool"},
+            ])
+        );
     }
 }

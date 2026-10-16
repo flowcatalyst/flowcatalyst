@@ -130,11 +130,38 @@ func Dispatch(ctx context.Context, j Job) (jobID string, err error) {
 	return out.JobID, nil
 }
 
+// DispatchOption configures a Dispatches declaration.
+type DispatchOption func(*dispatchJSON)
+
+// DispatchPool places every job for the declaration in the dispatch pool with
+// this code (the rate/concurrency pool for dispatch jobs, e.g.
+// "yard-process-pool"; not a function-runner pool). The platform resolves it
+// on every Dispatch: the pool must exist, be ACTIVE, belong to this
+// function's client (or none) and application (or none); otherwise Dispatch
+// returns NOT_ALLOWED / BAD_REQUEST. Without it the client's default pool
+// is used. The pool is the declaration's: a Job cannot name one.
+func DispatchPool(code string) DispatchOption {
+	return func(d *dispatchJSON) { d.Pool = code }
+}
+
+// DispatchConnection makes the connection with this code (its service
+// account) sign the declaration's jobs. Resolved on every Dispatch like the
+// pool. Without it the application's own account signs, as before.
+func DispatchConnection(code string) DispatchOption {
+	return func(d *dispatchJSON) { d.Connection = code }
+}
+
 // Dispatches declares a (function, path) this function may dispatch jobs to
 // with Dispatch. The target must be a function of the same application and
-// path a literal webhook path on it.
-func Dispatches(target, path string) {
+// path a literal webhook path on it. DispatchPool / DispatchConnection
+// options set where those jobs go; a platform that predates them refuses the
+// publish rather than ignoring them.
+func Dispatches(target, path string, opts ...DispatchOption) {
+	d := dispatchJSON{Target: target, Path: path}
+	for _, o := range opts {
+		o(&d)
+	}
 	reg.mu.Lock()
-	reg.dispatches = append(reg.dispatches, dispatchJSON{Target: target, Path: path})
+	reg.dispatches = append(reg.dispatches, d)
 	reg.mu.Unlock()
 }

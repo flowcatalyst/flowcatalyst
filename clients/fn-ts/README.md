@@ -188,7 +188,7 @@ FN_EXAMPLE_WASM=$PWD/clients/fn-ts/examples/hello/dist/function.js \
   an explicit target object, so tests can verify its routing without
   touching `globalThis`.
 - **`dispatch()`** creates a dispatch job for a function of the same application:
-  `fn.dispatches("app.logger", "/deliver")` at module top level declares the target and
+  `fn.dispatches("app.logger", "/deliver", { pool: "yard-process-pool", connection: "yard-conn" })` at module top level declares the target (and, optionally, the dispatch pool code its jobs run in and the connection code whose service account signs them; both are the declaration's, `dispatch()` cannot override them, and the platform resolves them on every call: unknown pool is `BAD_REQUEST`, suspended or foreign pool is `NOT_ALLOWED`) and
   `await fn.dispatch({ target, path, payload, metadata, … })` creates the job and returns its id.
   `metadata` may be an object (sorted by key) or `[{key, value}]` and always travels as the array.
   No URL, no credential; `isRetryable(err)` is true only for platform trouble. Not idempotent (no

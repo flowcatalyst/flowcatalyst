@@ -21,6 +21,32 @@ test("dispatches() declares the (target, path) pair into describe", () => {
   ]);
 });
 
+test("dispatches() declares an optional pool and connection into describe, and only those", () => {
+  dispatches("orders.logger", "/deliver", { pool: "yard-process-pool", connection: "yard-conn" });
+  dispatches("orders.logger", "/pool-only", { pool: "tower-pool" });
+  dispatches("orders.logger", "/plain", {});
+  assert.deepEqual(buildDescribeDoc().dispatches, [
+    { target: "orders.logger", path: "/deliver", pool: "yard-process-pool", connection: "yard-conn" },
+    { target: "orders.logger", path: "/pool-only", pool: "tower-pool" },
+    { target: "orders.logger", path: "/plain" },
+  ]);
+});
+
+test("dispatch() never sends a pool or connection: they are the declaration's", async () => {
+  dispatches("orders.logger", "/deliver", { pool: "yard-process-pool", connection: "yard-conn" });
+  const fake = installFakeHost((_op, meta) => {
+    assert.equal("pool" in meta, false);
+    assert.equal("connection" in meta, false);
+    return { code: 0, meta: { jobId: "djob_1" } };
+  });
+  try {
+    await dispatch({ target: "orders.logger", path: "/deliver", payload: {} });
+    assert.equal(fake.calls.length, 1);
+  } finally {
+    fake.restore();
+  }
+});
+
 test("dispatch() sends target/path, JSON-encodes an object payload and returns the job id", async () => {
   const fake = installFakeHost((op, meta, body) => {
     assert.equal(op, OpDispatch);

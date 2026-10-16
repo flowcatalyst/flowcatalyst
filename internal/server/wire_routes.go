@@ -384,6 +384,8 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Repo:              repos.functionRepo,
 			Events:            repos.eventRepo,
 			Jobs:              repos.dispatchJobRepo,
+			Pools:             repos.dispatchPoolRepo,
+			Connections:       repos.connectionRepo,
 			RunnerURLTemplate: cfg.FunctionsRunnerURL,
 			Artifacts:         svcs.functionArtifacts,
 			Creds:             serviceaccount.NewCachedOutboundCredsResolver(repos.serviceAccountRepo, time.Minute),

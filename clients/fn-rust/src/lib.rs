@@ -34,7 +34,7 @@ mod host;
 mod route;
 mod types;
 
-pub use app::{App, Handler};
+pub use app::{App, DispatchOpts, Handler};
 pub use context::{CapabilityError, Context, Event, HttpRequest, HttpResponse, Job, Row};
 pub use host::{error_code, HostError};
 pub use types::{Caller, Error, Invocation, Principal, Request, Response};

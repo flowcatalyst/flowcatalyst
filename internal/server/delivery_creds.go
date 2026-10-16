@@ -43,6 +43,10 @@ type deliveryCredsDeps struct {
 //
 //  1. the subscription's own serviceAccountId (an explicit override);
 //  2. the subscription's connection's serviceAccountId — the normal case;
+//     A job with NO subscription that carries its own serviceAccountId is
+//     signed by that account (a function's declared connection sets it; an
+//     SDK-created direct job may set it): the same "named account decides"
+//     rule, in place of step 3;
 //  3. the application's oldest active service account, found through the
 //     subscription's applicationCode or, for a direct job with no
 //     subscription, the job code's first segment (`billing:invoice:created`
@@ -78,6 +82,15 @@ func newDeliveryCredsResolver(d deliveryCredsDeps) dispatchprocessing.DeliveryCr
 				if conn != nil && strings.TrimSpace(conn.ServiceAccountID) != "" {
 					return named(ctx, d, "connection "+conn.Code, conn.ServiceAccountID)
 				}
+			}
+		}
+
+		// A direct job (no subscription) that names an account: the account
+		// a function's declared connection put on it, or one an SDK caller
+		// set. Named, so final, like 1 and 2.
+		if sub == nil {
+			if id := deref(job.ServiceAccountID); id != "" {
+				return named(ctx, d, "job", id)
 			}
 		}
 

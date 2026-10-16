@@ -173,6 +173,28 @@ func TestDeliveryCredsDirectJobResolvesThroughItsQualifiedCode(t *testing.T) {
 	assert.Equal(t, "application nosuchapp does not exist", creds.Reason)
 }
 
+// A direct job (no subscription) that names a service account is signed by
+// that account: this is how a function's declared connection takes effect
+// (the job carries the connection's account). A named account that cannot
+// sign is declined with a reason, never swapped for the application's.
+func TestDeliveryCredsDirectJobNamingAnAccountIsSignedByIt(t *testing.T) {
+	w := newCredsWorld()
+	j := jobFor("", "value:function:f:dispatch")
+	j.ServiceAccountID = new("sa-conn")
+	creds, err := newDeliveryCredsResolver(w.deps())(context.Background(), j)
+	require.NoError(t, err)
+	assert.Equal(t, "secret-from-connection", creds.SigningSecret)
+	assert.NotContains(t, w.calls, "app:app-value")
+
+	j.ServiceAccountID = new("sa-missing")
+	w.calls = nil
+	creds, err = newDeliveryCredsResolver(w.deps())(context.Background(), j)
+	require.NoError(t, err)
+	assert.True(t, creds.Empty())
+	assert.Contains(t, creds.Reason, "job: service account sa-missing does not exist")
+	assert.NotContains(t, w.calls, "app:app-value", "no silent fallback")
+}
+
 // A lookup error propagates so the caller can WARN and deliver bare; the
 // resolver itself never swallows it into "no credentials".
 func TestDeliveryCredsLookupErrorPropagates(t *testing.T) {

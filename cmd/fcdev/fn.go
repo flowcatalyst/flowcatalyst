@@ -172,8 +172,26 @@ func printDescribeTo(w io.Writer, path string, d *abi.Describe) {
 	list("httpAllow", d.HTTPAllow)
 	list("emits", d.Emits)
 	for _, t := range d.Dispatches {
-		fmt.Fprintf(w, "  dispatches   %s%s\n", t.Target, t.Path)
+		fmt.Fprintf(w, "  dispatches   %s%s%s\n", t.Target, t.Path, dispatchPlacement(t))
 	}
+}
+
+// dispatchPlacement renders a dispatches entry's declared pool and
+// connection, e.g. " (pool yard-process-pool, connection yard-conn)"; empty
+// when neither is declared (the client's default pool, the application's own
+// signing account).
+func dispatchPlacement(t abi.DispatchTarget) string {
+	var parts []string
+	if t.Pool != "" {
+		parts = append(parts, "pool "+t.Pool)
+	}
+	if t.Connection != "" {
+		parts = append(parts, "connection "+t.Connection)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(parts, ", ") + ")"
 }
 
 func newFnBuildCmd() *cobra.Command {

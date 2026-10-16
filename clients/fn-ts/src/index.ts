@@ -30,7 +30,7 @@ export { ConfigValue, SecretValue, DBBinding, DBTx, FnResponse };
 export type { FnRequest, FnResponseLike, ResponseBody, Invocation } from "./types";
 export type { Caller } from "./caller";
 export type { EventInput } from "./event";
-export type { DispatchInput, MetadataEntry } from "./job";
+export type { DispatchInput, DispatchesOptions, MetadataEntry } from "./job";
 export type { FetchOptions } from "./http";
 export type { CORSConfig, EndpointOptions, SubOptions, SchedOptions, Auth } from "./registry";
 export type { Row, DBParam } from "./db";

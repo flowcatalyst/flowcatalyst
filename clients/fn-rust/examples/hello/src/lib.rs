@@ -5,7 +5,7 @@
 //!
 //!   cargo build --release --target wasm32-unknown-unknown
 
-use flowcatalyst_fn::{App, Context, Error, Event, Job, Request, Response};
+use flowcatalyst_fn::{App, Context, DispatchOpts, Error, Event, Job, Request, Response};
 
 flowcatalyst_fn::export!(|app: &mut App| {
     app.open("GET /healthz", health)
@@ -14,7 +14,7 @@ flowcatalyst_fn::export!(|app: &mut App| {
         .open("POST /dispatch", on_dispatch)
         .config("GREETING")
         .emits("hello:greeting:greeting:sent")
-        .dispatches("hello.logger", "/deliver");
+        .dispatches_with("hello.logger", "/deliver", DispatchOpts::new().pool("hello-pool").connection("hello-conn"));
 });
 
 fn health(_req: &Request, _ctx: &Context) -> Result<Response, Error> {

@@ -3,6 +3,7 @@ package abi
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -122,6 +123,11 @@ func TestParseDescribeRejects(t *testing.T) {
 		"dispatch duplicate":                        {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d"},{"target":"a.b","path":"/d"}]}`, "declared twice"},
 		"dispatch unknown key":                      {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","url":"x"}]}`, "unknown field"},
 		"dispatch missing path":                     {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b"}]}`, "must start with /"},
+		"dispatch bad pool":                         {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","pool":"Yard Pool"}]}`, "not a dispatch pool code"},
+		"dispatch pool upper":                       {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","pool":"Yard"}]}`, "not a dispatch pool code"},
+		"dispatch pool digit first":                 {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","pool":"1pool"}]}`, "not a dispatch pool code"},
+		"dispatch bad connection":                   {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","connection":"my_conn"}]}`, "not a connection code"},
+		"dispatch same target and path, two pools":  {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","pool":"p1"},{"target":"a.b","path":"/d","pool":"p2"}]}`, "declared twice"},
 		"trailing data":                             {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}]} {}`, "trailing data"},
 	}
 	for name, c := range cases {
@@ -175,5 +181,52 @@ func TestRouterMatch(t *testing.T) {
 	// GET patterns also match HEAD, as in net/http.
 	if m, err := r.Match("HEAD", "/api/orders/7"); err != nil || m.Index != 1 {
 		t.Fatalf("HEAD = %+v, %v", m, err)
+	}
+}
+
+func TestParseDescribeDispatchPoolAndConnection(t *testing.T) {
+	d, err := ParseDescribe([]byte(`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[` +
+		`{"target":"a.b","path":"/d","pool":"yard-process-pool","connection":"yard-conn"},` +
+		`{"target":"a.b","path":"/e"},{"target":"a.c","path":"/d","pool":"tower_pool"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := d.DispatchFor("a.b", "/d")
+	if !ok || got.Pool != "yard-process-pool" || got.Connection != "yard-conn" {
+		t.Fatalf("DispatchFor = %+v, %v", got, ok)
+	}
+	if got, _ := d.DispatchFor("a.b", "/e"); got.Pool != "" || got.Connection != "" {
+		t.Fatalf("undeclared pool/connection must stay empty: %+v", got)
+	}
+	if _, ok := d.DispatchFor("a.b", "/nope"); ok {
+		t.Fatal("DispatchFor matched an undeclared path")
+	}
+}
+
+// A describe document that declares a pool or connection, handed to a
+// platform that predates them, must fail at publish (unknown key) rather than
+// be accepted and dispatch to the default pool. oldDescribe stands for that
+// platform: today's strict decode with the previous DispatchTarget shape.
+func TestOldPlatformRefusesPoolAndConnectionDeclarations(t *testing.T) {
+	type oldTarget struct {
+		Target string `json:"target"`
+		Path   string `json:"path"`
+	}
+	type oldDescribe struct {
+		ABI        int         `json:"abi"`
+		Endpoints  []Endpoint  `json:"endpoints"`
+		Dispatches []oldTarget `json:"dispatches"`
+	}
+	for _, key := range []string{"pool", "connection"} {
+		doc := `{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"dispatches":[{"target":"a.b","path":"/d","` + key + `":"x"}]}`
+		dec := json.NewDecoder(strings.NewReader(doc))
+		dec.DisallowUnknownFields()
+		var old oldDescribe
+		if err := dec.Decode(&old); err == nil || !strings.Contains(err.Error(), "unknown field") {
+			t.Errorf("%s: an old strict decoder must refuse the key, got %v", key, err)
+		}
+		if _, err := ParseDescribe([]byte(doc)); err != nil {
+			t.Errorf("%s: the current platform must accept the declaration: %v", key, err)
+		}
 	}
 }

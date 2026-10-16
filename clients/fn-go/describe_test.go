@@ -27,6 +27,8 @@ func TestDescribeGolden(t *testing.T) {
 	HTTPAllow("api.stripe.com", "*.acme.com")
 	Emits("orders:order:order:shipped")
 	Dispatches("orders.invoice-logger", "/deliver")
+	Dispatches("orders.invoice-logger", "/pooled", DispatchPool("yard-process-pool"), DispatchConnection("yard-conn"))
+	Dispatches("orders.invoice-logger", "/pool-only", DispatchPool("tower-pool"))
 
 	got := describeJSON()
 
@@ -45,7 +47,9 @@ func TestDescribeGolden(t *testing.T) {
 	  "schedules": [{"cron": "0 */5 * * * *", "timezone": "UTC", "path": "/events/tick"}],
 	  "config": ["GREETING"], "secrets": ["STRIPE_KEY"], "db": ["main"],
 	  "httpAllow": ["api.stripe.com", "*.acme.com"], "emits": ["orders:order:order:shipped"],
-	  "dispatches": [{"target": "orders.invoice-logger", "path": "/deliver"}]
+	  "dispatches": [{"target": "orders.invoice-logger", "path": "/deliver"},
+	    {"target": "orders.invoice-logger", "path": "/pooled", "pool": "yard-process-pool", "connection": "yard-conn"},
+	    {"target": "orders.invoice-logger", "path": "/pool-only", "pool": "tower-pool"}]
 	}`
 
 	assertJSONEqual(t, got, []byte(want))

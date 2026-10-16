@@ -23,7 +23,9 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
@@ -59,7 +61,13 @@ type State struct {
 	// inserted through Jobs, and its delivery URL is built from the template
 	// (FC_FUNCTIONS_RUNNER_URL, the one promote wiring uses) with the target's
 	// pool substituted.
-	Jobs              *dispatchjob.Repository
+	Jobs *dispatchjob.Repository
+	// Pools resolves a declared dispatch pool code for the dispatch
+	// capability (dispatch.go resolvePool). Required only when some function
+	// declares a pool; a call that needs it and finds it nil is a 500.
+	Pools *dispatchpool.Repository
+	// Connections resolves a declared connection code, the same way.
+	Connections       *connection.Repository
 	RunnerURLTemplate string
 	Artifacts         artifact.Store
 	// Creds resolves a function's webhook signing secret. Required; a nil

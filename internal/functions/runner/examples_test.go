@@ -136,6 +136,10 @@ func checkDispatch(t *testing.T, h *harness, cp *fakeCP, d *abi.Describe) {
 	t.Helper()
 	if len(d.Dispatches) == 0 {
 		t.Errorf("the example declares no dispatches")
+	} else if g := d.Dispatches[0]; g.Pool != "hello-pool" || g.Connection != "hello-conn" {
+		// Every SDK's example declares the same pool and connection; the
+		// describe the SDK emitted must carry them through ParseDescribe.
+		t.Errorf("declared dispatch = %+v, want pool hello-pool and connection hello-conn", g)
 		return
 	}
 	resp, body := h.do("POST", "/fn/hello.example/dispatch", nil, nil)

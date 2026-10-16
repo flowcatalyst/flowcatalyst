@@ -44,9 +44,33 @@ type Describe struct {
 // function of the SAME application, and a literal path on it that lands on
 // one of its webhook endpoints. The platform builds the delivery URL from
 // it; the guest never supplies a URL.
+//
+// Pool, when set, is the CODE of the dispatch pool (the rate/concurrency pool
+// jobs run through; not a function-runner pool) every job for this entry is
+// placed in. It is the declaration's, never the call's: the guest cannot name
+// a pool at call time. The platform resolves it per call (existence, status,
+// client, application ownership). Absent means the client's default pool.
 type DispatchTarget struct {
 	Target string `json:"target"`
 	Path   string `json:"path"`
+	Pool   string `json:"pool,omitempty"`
+	// Connection is the CODE of the connection whose service account signs
+	// the job's delivery. Like Pool it is the declaration's, never the
+	// call's, and resolved by the platform per call. Absent means today's
+	// behaviour: the application's own account.
+	Connection string `json:"connection,omitempty"`
+}
+
+// DispatchFor returns the dispatches entry for (target, path), whatever its
+// pool. A pool is part of the declaration, not of its identity: two entries
+// for one (target, path) are refused by Validate.
+func (d *Describe) DispatchFor(target, path string) (DispatchTarget, bool) {
+	for _, t := range d.Dispatches {
+		if t.Target == target && t.Path == path {
+			return t, true
+		}
+	}
+	return DispatchTarget{}, false
 }
 
 // Endpoint is one path the function answers, and how its callers authenticate.
@@ -102,7 +126,15 @@ var (
 	// colon-separated segments (eventtype.New). Ownership — the first
 	// segment is the function's application — is publish's check.
 	eventTypePattern = regexp.MustCompile(`^[^:\s]+(:[^:\s]+){3}$`)
-	methodPattern    = regexp.MustCompile(`^[A-Z]{3,10}$`)
+	// A dispatch pool code, as the platform stores it: the pool create/sync
+	// rule (lowercase, underscore-tolerant) plus a sanity length. Existence
+	// is the runtime's check; pools may be created after the publish.
+	poolCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,99}$`)
+	// A connection code, as the platform stores it (connection create/sync:
+	// validate.CodePattern) plus a sanity length. Existence, status, client
+	// and application scope are the runtime's checks.
+	connectionCodePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,99}$`)
+	methodPattern         = regexp.MustCompile(`^[A-Z]{3,10}$`)
 	// A function address is {application code}.{name} (owner decision
 	// §13.1). The application-code half is as loose as the platform's own
 	// (publish checks it against the function's application); the name half
@@ -251,7 +283,7 @@ func (d *Describe) Validate() error {
 		}
 	}
 	checkList("emits", d.Emits, eventTypePattern)
-	seenDispatch := map[DispatchTarget]bool{}
+	seenDispatch := map[[2]string]bool{}
 	for i, t := range d.Dispatches {
 		at := fmt.Sprintf("dispatches[%d]", i)
 		if !addressPattern.MatchString(t.Target) {
@@ -260,10 +292,17 @@ func (d *Describe) Validate() error {
 		if msg := DispatchPathProblem(t.Path); msg != "" {
 			add("%s: %s", at, msg)
 		}
-		if seenDispatch[t] {
+		if t.Pool != "" && !poolCodePattern.MatchString(t.Pool) {
+			add("%s: pool %q is not a dispatch pool code (lowercase letter first, then lowercase letters, digits, - or _; at most 100 characters)", at, t.Pool)
+		}
+		if t.Connection != "" && !connectionCodePattern.MatchString(t.Connection) {
+			add("%s: connection %q is not a connection code (lowercase letter first, then lowercase letters, digits or -; at most 100 characters)", at, t.Connection)
+		}
+		key := [2]string{t.Target, t.Path}
+		if seenDispatch[key] {
 			add("%s: %s%s is declared twice", at, t.Target, t.Path)
 		}
-		seenDispatch[t] = true
+		seenDispatch[key] = true
 	}
 
 	if len(p) > 0 {

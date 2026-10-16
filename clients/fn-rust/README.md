@@ -148,7 +148,10 @@ whether or not a given build uses all of it.
 
 ## Dispatching a job
 
-`App::dispatches("app.logger", "/deliver")` declares a target function and webhook path;
+`App::dispatches("app.logger", "/deliver")` declares a target function and webhook path
+(`App::dispatches_with("app.logger", "/deliver", DispatchOpts::new().pool("yard-process-pool").connection("yard-conn"))`
+also names the dispatch pool code and connection code for its jobs: declared only, resolved by the
+platform on every call, never overridable per call);
 `Context::dispatch(Job { target, path, payload, metadata, .. })` (host op 11) creates the job and
 returns its id. `metadata` is a `BTreeMap` and travels as the platform's `[{key, value}]` array.
 `CapabilityError::is_retryable()` is true only for platform trouble. Not idempotent. See

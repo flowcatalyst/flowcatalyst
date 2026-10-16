@@ -285,11 +285,16 @@ const maxDispatchPayloadBytes = 256 << 10
 // target resolution, URL, signing identity, the job rules): nothing the guest
 // sends decides where a job goes.
 func (c *capabilities) dispatch(ctx context.Context, meta, body []byte) ([]byte, []byte, *abi.Error) {
-	d, aerr := decode[abi.Dispatch](meta)
-	if aerr != nil {
-		return nil, nil, aerr
+	// Strict: a dispatch meta key the runner does not know (a `pool`, say)
+	// is a refusal, never silently dropped: the pool is the describe's, and a
+	// guest that tries to pick one must hear that it cannot.
+	dec := json.NewDecoder(bytes.NewReader(meta))
+	dec.DisallowUnknownFields()
+	var d abi.Dispatch
+	if err := dec.Decode(&d); err != nil {
+		return nil, nil, abi.Errorf(abi.CodeBadRequest, "dispatch meta is not the expected JSON: "+err.Error())
 	}
-	if !slices.Contains(c.ver.describe.Dispatches, abi.DispatchTarget{Target: d.Target, Path: d.Path}) {
+	if _, ok := c.ver.describe.DispatchFor(d.Target, d.Path); !ok {
 		return nil, nil, abi.Errorf(abi.CodeNotDeclared, fmt.Sprintf("dispatch target %s%s is not in this version's dispatches", d.Target, d.Path))
 	}
 	if len(body) > maxDispatchPayloadBytes {
