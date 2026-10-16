@@ -153,6 +153,12 @@ and grant it:
   `deploy` of an existing function, `status`).
 * For `deploy --create` / `publish --create`: also function manage (`platform:function:function:manage`)
   and application view, to create the function resource under its application.
+* For `--client <code>` (with `--create`): client view (`CanReadClients`). The owning client is given by its
+  code (the client's identifier, e.g. `bevco`, stable across environments) or by its `clt_...` id. A code is
+  resolved with a read-only `GET /api/clients/by-identifier/{code}` using the same credential; an id is used
+  as-is with no lookup. If the credential cannot read clients, the lookup fails with the platform's 403 reason
+  and a hint to pass the `clt_` id instead. An unknown code errors with `no client with code "x" on <URL>`.
+  `--client` is only consulted when the function is being created; for an existing function it is ignored.
 * For `set`/`delete`: function manage and (for `--secret`/`--db`) `platform:function:secret:manage`.
 * For `invoke` with a token: `platform:function:version:invoke`.
 

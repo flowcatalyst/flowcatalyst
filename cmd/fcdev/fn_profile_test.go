@@ -852,7 +852,7 @@ func TestDeployDryRunReport(t *testing.T) {
 	pl := newProfilePlatform(t, "s")
 	var out bytes.Buffer
 	api := &fnAPI{c: fnCredentials{PlatformURL: pl.srv.URL}}
-	require.NoError(t, deployDryRun(&out, api, nil, "demo.new", art, "wasm", &abi.Describe{}, 0))
+	require.NoError(t, deployDryRun(&out, api, nil, "demo.new", art, "wasm", &abi.Describe{}, 0, fnClient{}))
 	require.Contains(t, out.String(), "dry run")
 	require.Contains(t, out.String(), "would create function demo.new")
 	require.Contains(t, out.String(), "10 bytes")

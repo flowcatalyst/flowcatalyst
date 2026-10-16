@@ -704,7 +704,7 @@ capabilities, from a normal `go test`.
 |---|---|
 | `fn init --lang go\|rust <dir>` | Scaffold a project. |
 | `fn build [dir]` | Go: `GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared`. Rust: `cargo build --release --target wasm32-unknown-unknown`. Then runs `fc_describe` locally and validates. |
-| `fn publish <address> <module.wasm>` | Upload + publish. Creates the function on first publish if `--create`. |
+| `fn publish <address> <module.wasm>` | Upload + publish. Creates the function on first publish if `--create`; `--client <code or clt_ id>` sets the owning client at creation (a code is resolved via `GET /api/clients/by-identifier/{code}`; an id is used as-is). |
 | `fn promote <address> <n> [--alias name]` | Point an alias at a version. |
 | `fn deploy` | build → publish → wait for `READY` → promote. |
 | `fn watch` | `deploy` on every save (fc-dev). |

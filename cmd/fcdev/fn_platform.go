@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 
 	fcauth "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 )
@@ -233,6 +234,56 @@ func (a *fnAPI) findFunction(ctx context.Context, address string) (*fnFunction, 
 	return nil, nil
 }
 
+// fnClient is a resolved owning client. Code is empty when the value was
+// an id passed through without a lookup.
+type fnClient struct{ ID, Code string }
+
+func (c fnClient) String() string {
+	if c.Code == "" {
+		return c.ID
+	}
+	return c.Code + " (" + c.ID + ")"
+}
+
+// looksLikeClientID reports whether v has the shape of a client id: the
+// clt_ prefix followed by a 13-character Crockford base32 TSID. Anything
+// else is treated as a client code (identifier).
+func looksLikeClientID(v string) bool {
+	rest, ok := strings.CutPrefix(v, "clt_")
+	if !ok {
+		return false
+	}
+	_, ok = tsid.DecodeCrockford(rest)
+	return ok
+}
+
+// resolveClient turns a --client value into a client id. A client id passes
+// through untouched (no lookup); anything else is a client code, looked up
+// with GET /api/clients/by-identifier/{code} (read-only).
+func (a *fnAPI) resolveClient(ctx context.Context, value string) (fnClient, error) {
+	if looksLikeClientID(value) {
+		return fnClient{ID: value}, nil
+	}
+	var c struct {
+		ID         string `json:"id"`
+		Identifier string `json:"identifier"`
+	}
+	err := a.json(ctx, http.MethodGet, "/api/clients/by-identifier/"+url.PathEscape(value), nil, &c)
+	var ae *apiError
+	switch {
+	case err == nil:
+		if c.ID == "" {
+			return fnClient{}, fmt.Errorf("client %q: the platform returned no id", value)
+		}
+		return fnClient{ID: c.ID, Code: firstNonEmpty(c.Identifier, value)}, nil
+	case errors.As(err, &ae) && ae.Status == http.StatusNotFound:
+		return fnClient{}, fmt.Errorf("no client with code %q on %s (pass the client's clt_ id instead if it is not a code)", value, a.target.banner())
+	case errors.As(err, &ae) && ae.Status == http.StatusForbidden:
+		return fnClient{}, fmt.Errorf("cannot look up client code %q: this credential may not read clients (%s); pass the client's clt_ id instead", value, firstNonEmpty(ae.Message, ae.Detail, ae.Code))
+	}
+	return fnClient{}, fmt.Errorf("look up client code %q: %w", value, err)
+}
+
 // createFunction creates the function an address names.
 func (a *fnAPI) createFunction(ctx context.Context, address, clientID, pool string) (*fnFunction, error) {
 	app, name, ok := strings.Cut(address, ".")
@@ -354,11 +405,18 @@ func newFnPublishCmd() *cobra.Command {
 			if fn == nil && !create {
 				return fmt.Errorf("no function %s; pass --create to create it", args[0])
 			}
+			var owner fnClient
+			if fn == nil && clientID != "" {
+				if owner, err = api.resolveClient(ctx, clientID); err != nil {
+					return err
+				}
+				fmt.Printf("owning client: %s\n", owner)
+			}
 			if err := api.confirm("publish "+args[0], yes); err != nil {
 				return err
 			}
 			if fn == nil {
-				if fn, err = api.createFunction(ctx, args[0], clientID, pool); err != nil {
+				if fn, err = api.createFunction(ctx, args[0], owner.ID, pool); err != nil {
 					return err
 				}
 				fmt.Printf("created %s\n", fn.Address)
@@ -377,7 +435,7 @@ func newFnPublishCmd() *cobra.Command {
 	pf.add(cmd)
 	cmd.Flags().StringVar(&runtime, "runtime", "", "wasm or js (default: from the file extension)")
 	cmd.Flags().BoolVar(&create, "create", false, "create the function if it does not exist")
-	cmd.Flags().StringVar(&clientID, "client", "", "with --create: the owning client id (default: platform-owned)")
+	cmd.Flags().StringVar(&clientID, "client", "", "with --create: the owning client, by code (e.g. bevco) or id (clt_...) (default: platform-owned)")
 	cmd.Flags().StringVar(&pool, "pool", "", "with --create: the runner pool (default: default)")
 	addYesFlag(cmd, &yes)
 	return cmd
@@ -437,7 +495,13 @@ version, and promotes it to live.
 
 --dry-run builds and validates the describe document, looks the function up
 (read-only) and prints what would be published and promoted, without writing
-anything to the platform.`,
+anything to the platform.
+
+--create --client <client> sets the owning client of a new function. <client>
+is the client's code (identifier, e.g. bevco, the same in every environment)
+or its clt_... id. A code is resolved with a read-only lookup of the client
+(needs permission to read clients; otherwise pass the id); an id is used as-is.
+--client is ignored for a function that already exists.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -471,14 +535,23 @@ anything to the platform.`,
 			if fn == nil && !create {
 				return fmt.Errorf("no function %s; pass --create to create it", args[0])
 			}
+			var owner fnClient
+			if fn == nil && clientID != "" {
+				if owner, err = api.resolveClient(ctx, clientID); err != nil {
+					return err
+				}
+			}
 			if dryRun {
-				return deployDryRun(cmd.OutOrStdout(), api, fn, args[0], artifact, runtime, d, wait)
+				return deployDryRun(cmd.OutOrStdout(), api, fn, args[0], artifact, runtime, d, wait, owner)
 			}
 			if err := api.confirm("deploy "+args[0], yes); err != nil {
 				return err
 			}
 			if fn == nil {
-				if fn, err = api.createFunction(ctx, args[0], clientID, pool); err != nil {
+				if owner.ID != "" {
+					fmt.Printf("owning client: %s\n", owner)
+				}
+				if fn, err = api.createFunction(ctx, args[0], owner.ID, pool); err != nil {
 					return err
 				}
 				fmt.Printf("created %s\n", fn.Address)
@@ -505,7 +578,7 @@ anything to the platform.`,
 	pf.add(cmd)
 	cmd.Flags().StringVar(&runtime, "runtime", "", "wasm or js (default: from the artifact)")
 	cmd.Flags().BoolVar(&create, "create", false, "create the function if it does not exist")
-	cmd.Flags().StringVar(&clientID, "client", "", "with --create: the owning client id")
+	cmd.Flags().StringVar(&clientID, "client", "", "with --create: the owning client, by code (e.g. bevco, stable across environments) or id (clt_...)")
 	cmd.Flags().StringVar(&pool, "pool", "", "with --create: the runner pool")
 	cmd.Flags().DurationVar(&wait, "wait", time.Minute, "how long to wait for a runner to load the version")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "build and validate, then print what would be published and promoted; writes nothing remotely")
@@ -519,7 +592,7 @@ func addYesFlag(cmd *cobra.Command, yes *bool) {
 }
 
 // deployDryRun reports what deploy would do. It performs no remote write.
-func deployDryRun(out io.Writer, api *fnAPI, fn *fnFunction, address, artifact, runtime string, d *abi.Describe, wait time.Duration) error {
+func deployDryRun(out io.Writer, api *fnAPI, fn *fnFunction, address, artifact, runtime string, d *abi.Describe, wait time.Duration, owner fnClient) error {
 	data, err := os.ReadFile(artifact)
 	if err != nil {
 		return err
@@ -530,6 +603,9 @@ func deployDryRun(out io.Writer, api *fnAPI, fn *fnFunction, address, artifact, 
 	fmt.Fprintf(out, "artifact: %s (%d bytes, sha256 %s, runtime %s)\n", artifact, len(data), hex.EncodeToString(sum[:])[:12], runtime)
 	if fn == nil {
 		fmt.Fprintf(out, "would create function %s\n", address)
+		if owner.ID != "" {
+			fmt.Fprintf(out, "owning client: %s\n", owner)
+		}
 	} else {
 		fmt.Fprintf(out, "function %s exists (%s)\n", fn.Address, fn.ID)
 	}

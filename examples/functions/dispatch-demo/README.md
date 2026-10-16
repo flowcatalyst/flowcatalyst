@@ -125,7 +125,8 @@ fcdev fn delete $APP.payload-logger --yes    # scripts: no prompt (required when
 This permanently removes the function with every version, alias, wiring (subscriptions and scheduled jobs)
 and artifact. The runner stops serving the address within a few seconds. Both functions must be in the same
 client as well as the same application: if `payload-logger`'s client differs from the creator's, delete it and
-recreate it with `fcdev fn deploy $APP.payload-logger $D/payload-logger --create --client <client id>`.
+recreate it with `fcdev fn deploy $APP.payload-logger $D/payload-logger --create --client <client code or id>`
+(the client code, e.g. `bevco`, is the same in every environment; a `clt_...` id also works).
 
 ## Permission, role, service account, token
 
