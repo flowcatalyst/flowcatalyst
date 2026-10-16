@@ -46,6 +46,9 @@ func (s *Seeder) Run(ctx context.Context) error {
 	if err := s.seedDefaultProcesses(ctx); err != nil {
 		return fmt.Errorf("seed default processes: %w", err)
 	}
+	if err := s.SeedFcdevCLIClient(ctx); err != nil {
+		return fmt.Errorf("seed fcdev-cli client: %w", err)
+	}
 	if err := s.seedBootstrapAdmin(ctx); err != nil {
 		return fmt.Errorf("seed bootstrap admin: %w", err)
 	}

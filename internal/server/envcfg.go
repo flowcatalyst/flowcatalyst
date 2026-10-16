@@ -62,6 +62,10 @@ type EnvCfg struct {
 	SessionTTLSecs      int
 	AccessTokenTTLSecs  int
 	RefreshTokenTTLSecs int
+	// FcdevLoginRefreshTTLSecs is the absolute lifetime of an `fcdev login`
+	// session (FC_FCDEV_LOGIN_REFRESH_TTL_SECS, default 7d); independent of
+	// RefreshTokenTTLSecs.
+	FcdevLoginRefreshTTLSecs int
 
 	// Dispatch queue naming + addressing. The platform composes one queue per
 	// (tenant, priority) and advertises them in the router-config document it
@@ -372,6 +376,8 @@ func LoadEnv() EnvCfg {
 		SessionTTLSecs:      positiveOr(envInt("OIDC_SESSION_TTL", 0), 24*60*60),
 		AccessTokenTTLSecs:  positiveOr(envIntAlias("FC_JWT_ACCESS_TOKEN_TTL_SECS", "OIDC_ACCESS_TOKEN_TTL", 0), 60*60),
 		RefreshTokenTTLSecs: positiveOr(envInt("OIDC_REFRESH_TOKEN_TTL", 0), 7*24*60*60),
+
+		FcdevLoginRefreshTTLSecs: positiveOr(envInt("FC_FCDEV_LOGIN_REFRESH_TTL_SECS", 0), 7*24*60*60),
 
 		FunctionsArtifactStore: envOr("FC_FUNCTIONS_ARTIFACT_STORE", ""),
 		FunctionsRunnerURL:     envOr("FC_FUNCTIONS_RUNNER_URL", "http://127.0.0.1:8095"),

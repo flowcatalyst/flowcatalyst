@@ -17,7 +17,6 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
-	fcauth "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
 )
 
@@ -111,7 +110,7 @@ type fnAPI struct {
 	c      fnCredentials
 	target *fnTarget
 	prompt *fnPrompter
-	tokens *fcauth.ClientCredentialsProvider
+	tokens tokenSource
 	http   *http.Client
 }
 
@@ -124,11 +123,8 @@ func newFnAPI(cmd *cobra.Command, f *fnPlatformFlags) (*fnAPI, error) {
 	c := t.creds
 	return &fnAPI{
 		c: c, target: t, prompt: newFnPrompter(cmd),
-		tokens: fcauth.NewClientCredentialsProvider(fcauth.ClientCredentialsConfig{
-			IssuerURL: c.PlatformURL, ClientID: c.ClientID, ClientSecret: c.ClientSecret,
-			HTTPClient: noRedirectClient(30 * time.Second),
-		}),
-		http: &http.Client{Timeout: 2 * time.Minute},
+		tokens: t.tokenSource(),
+		http:   &http.Client{Timeout: 2 * time.Minute},
 	}, nil
 }
 
@@ -157,7 +153,7 @@ func (a *fnAPI) do(ctx context.Context, method, path string, body io.Reader, con
 	}
 	tok, err := a.tokens.Token(ctx)
 	if err != nil {
-		return fmt.Errorf("sign in to %s: %w", redactURL(a.c.PlatformURL), scrubErr(err, a.c.ClientSecret))
+		return a.target.wrapAuthErr("sign in to "+redactURL(a.c.PlatformURL), err)
 	}
 	req.Header.Set("Authorization", "Bearer "+tok)
 	if contentType != "" {
@@ -821,12 +817,9 @@ func newFnInvokeCmd() *cobra.Command {
 				req.Header.Add(strings.TrimSpace(k), strings.TrimSpace(v))
 			}
 			if !anonymous {
-				tok, err := fcauth.NewClientCredentialsProvider(fcauth.ClientCredentialsConfig{
-					IssuerURL: c.PlatformURL, ClientID: c.ClientID, ClientSecret: c.ClientSecret,
-					HTTPClient: noRedirectClient(30 * time.Second),
-				}).Token(cmd.Context())
+				tok, err := t.tokenSource().Token(cmd.Context())
 				if err != nil {
-					return fmt.Errorf("sign in: %w", scrubErr(err, c.ClientSecret))
+					return t.wrapAuthErr("sign in", err)
 				}
 				req.Header.Set("Authorization", "Bearer "+tok)
 			}

@@ -9,8 +9,11 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
+
+	fcauth "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
 )
 
 // fnTarget is the resolved connection: credentials plus, when a profile
@@ -18,6 +21,27 @@ import (
 type fnTarget struct {
 	creds   fnCredentials
 	profile *Profile // nil: loopback, unprofiled
+	user    string   // login profiles: who is signed in (from non-secret metadata), "" if unknown
+}
+
+// tokenSource is how this target obtains bearer tokens: the stored login
+// session for a login profile, a client_credentials grant otherwise.
+func (t *fnTarget) tokenSource() tokenSource {
+	if t.profile != nil && t.profile.IsLogin() {
+		return newLoginTokenSource(t.profile)
+	}
+	return fcauth.NewClientCredentialsProvider(fcauth.ClientCredentialsConfig{
+		IssuerURL: t.creds.PlatformURL, ClientID: t.creds.ClientID, ClientSecret: t.creds.ClientSecret,
+		HTTPClient: noRedirectClient(30 * time.Second),
+	})
+}
+
+// wrapAuthErr frames a token failure; session errors already say what to do.
+func (t *fnTarget) wrapAuthErr(prefix string, err error) error {
+	if _, ok := errors.AsType[*sessionError](err); ok {
+		return err
+	}
+	return fmt.Errorf("%s: %w", prefix, scrubErr(err, t.creds.ClientSecret))
 }
 
 func (t *fnTarget) envTag() string {
@@ -36,7 +60,11 @@ func (t *fnTarget) banner() string {
 		name = t.profile.Name
 	}
 	u := firstNonEmpty(t.creds.PlatformURL, t.creds.RunnerURL, "(no URL)")
-	return fmt.Sprintf("profile %s (%s) %s", name, t.envTag(), redactURL(u))
+	line := fmt.Sprintf("profile %s (%s) %s", name, t.envTag(), redactURL(u))
+	if t.profile != nil && t.profile.IsLogin() {
+		line += " user " + firstNonEmpty(t.user, "(not signed in)")
+	}
+	return line
 }
 
 // fnConnEnvVars are the legacy connection variables a profile supersedes.
@@ -95,6 +123,15 @@ func (f *fnPlatformFlags) resolveProfile(ctx context.Context, stderr io.Writer, 
 		runner = f.runner
 	}
 	c := fnCredentials{PlatformURL: strings.TrimRight(p.Platform, "/"), RunnerURL: strings.TrimRight(runner, "/"), ClientID: p.ClientID}
+	if p.IsLogin() {
+		// The session is fetched lazily by the token source; nothing secret is
+		// read here. Only the non-secret metadata, for the banner.
+		t := &fnTarget{creds: c, profile: p}
+		if meta, err := readLoginMeta(p.Name); err == nil && meta.Platform == c.PlatformURL {
+			t.user = meta.who()
+		}
+		return t, nil
+	}
 	if needSecret {
 		if c.ClientSecret, err = resolveSecret(ctx, p); err != nil {
 			return nil, err

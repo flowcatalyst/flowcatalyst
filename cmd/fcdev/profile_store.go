@@ -29,16 +29,31 @@ const (
 	envProd  = "prod"
 )
 
+// How a profile authenticates.
+const (
+	// authClientCredentials is the default: an OAuth client id plus a secret
+	// held by reference (CI, service accounts).
+	authClientCredentials = "client_credentials"
+	// authLogin is a person: `fcdev login` runs the browser sign-in and the
+	// resulting session lives in the OS keychain. The profile holds no client
+	// id and no secret reference.
+	authLogin = "login"
+)
+
 // Profile is one named connection target.
 type Profile struct {
 	Name                string
 	Platform            string // platform base URL
 	Runner              string // optional; how functions are invoked
 	Env                 string // local | np | prod
-	ClientID            string
-	SecretRef           string // keychain | env:NAME | file:/path | command:argv...
+	Auth                string // "" / client_credentials | login
+	ClientID            string // client_credentials only
+	SecretRef           string // client_credentials only: keychain | env:NAME | file:/path | command:argv...
 	AllowNoninteractive bool   // prod: allow --yes without a terminal (CI)
 }
+
+// IsLogin reports a person-login profile.
+func (p *Profile) IsLogin() bool { return p.Auth == authLogin }
 
 var profileNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
@@ -72,6 +87,16 @@ func validateProfile(p *Profile) error {
 	case envLocal, envNP, envProd:
 	default:
 		return fmt.Errorf("profile %s: env must be local, np or prod", p.Name)
+	}
+	switch p.Auth {
+	case "", authClientCredentials:
+	case authLogin:
+		if p.ClientID != "" || p.SecretRef != "" {
+			return fmt.Errorf("profile %s: a login profile (auth = \"login\") takes no client_id or secret_ref: the session comes from `fcdev login --profile %s`", p.Name, p.Name)
+		}
+		return nil
+	default:
+		return fmt.Errorf("profile %s: auth must be %q or %q", p.Name, authClientCredentials, authLogin)
 	}
 	if p.ClientID == "" {
 		return fmt.Errorf("profile %s: client_id is required", p.Name)
@@ -242,7 +267,7 @@ var secretishKeyRE = regexp.MustCompile(`(?i)(secret|passw|token|credential|apik
 
 // allowed keys and whether they hold a boolean.
 var profileKeys = map[string]bool{
-	"platform": false, "runner": false, "env": false, "client_id": false,
+	"platform": false, "runner": false, "env": false, "auth": false, "client_id": false,
 	"secret_ref": false, "allow_noninteractive": true,
 }
 
@@ -321,6 +346,8 @@ func parseProfiles(src string) (profileSet, error) {
 			cur.Runner = s
 		case "env":
 			cur.Env = s
+		case "auth":
+			cur.Auth = s
 		case "client_id":
 			cur.ClientID = s
 		case "secret_ref":
@@ -332,7 +359,7 @@ func parseProfiles(src string) (profileSet, error) {
 	}
 	for _, name := range set.names() {
 		p := set[name]
-		if p.SecretRef == "" {
+		if p.SecretRef == "" && !p.IsLogin() {
 			p.SecretRef = refKeychain
 		}
 		if err := validateProfile(p); err != nil {
@@ -441,7 +468,7 @@ func formatProfiles(set profileSet) (string, error) {
 	for _, name := range set.names() {
 		p := set[name]
 		fmt.Fprintf(&b, "\n[%s%s]\n", profileHeaderPrefix, name)
-		for _, kv := range [][2]string{{"platform", p.Platform}, {"runner", p.Runner}, {"env", p.Env}, {"client_id", p.ClientID}, {"secret_ref", p.SecretRef}} {
+		for _, kv := range [][2]string{{"platform", p.Platform}, {"runner", p.Runner}, {"env", p.Env}, {"auth", p.Auth}, {"client_id", p.ClientID}, {"secret_ref", p.SecretRef}} {
 			if kv[1] == "" {
 				continue
 			}

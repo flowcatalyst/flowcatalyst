@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -65,10 +64,16 @@ See docs/fcdev-profiles.md.`,
 
 func newProfileAddCmd() *cobra.Command {
 	var p Profile
+	var login bool
 	cmd := &cobra.Command{
-		Use:   "add <name> --platform URL --env np|prod|local --client-id ID [--runner URL] [--secret-ref REF]",
-		Short: "Add a profile (prompts for the secret and stores it in the OS keychain unless --secret-ref is given)",
+		Use:   "add <name> --platform URL --env np|prod|local (--login | --client-id ID [--secret-ref REF]) [--runner URL]",
+		Short: "Add a profile: --login for a person (browser sign-in), else a client id + secret reference",
 		Long: `Adds a profile.
+
+--login makes a PERSON profile: no client id, no secret. Run
+"fcdev login --profile NAME" to sign in with your browser; you then act as
+yourself. Otherwise the profile authenticates as an OAuth client
+(client_credentials), for CI and service accounts, and takes:
 
 --secret-ref is one of:
   keychain               the OS secret store (default; you are prompted, no echo)
@@ -84,8 +89,18 @@ Without a terminal, --secret-ref env:/file:/command: is required.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			p.Name = args[0]
-			if p.SecretRef == "" {
-				p.SecretRef = refKeychain
+			if login {
+				if p.ClientID != "" || p.SecretRef != "" {
+					return errors.New("--login takes no --client-id or --secret-ref: a login profile has no client credential")
+				}
+				p.Auth = authLogin
+			} else {
+				if p.ClientID == "" {
+					return errors.New("--client-id is required (or pass --login for a browser-login profile)")
+				}
+				if p.SecretRef == "" {
+					p.SecretRef = refKeychain
+				}
 			}
 			if err := validateProfile(&p); err != nil {
 				return err
@@ -100,6 +115,14 @@ Without a terminal, --secret-ref env:/file:/command: is required.`,
 			}
 			errOut := cmd.ErrOrStderr()
 			stored := false
+			if login {
+				set[p.Name] = &p
+				if err := saveProfiles(path, set); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "added login profile %s (%s) → %s; sign in with: fcdev login --profile %s\n", p.Name, p.Env, p.Platform, p.Name)
+				return nil
+			}
 			if ref.Kind == refKeychain {
 				if !fnStdinIsTerminal() {
 					return errors.New("no terminal to prompt for the secret on: pass --secret-ref env:NAME, file:/path or command:<argv...> (keychain needs an interactive `fcdev profile add` or `set-secret`)")
@@ -128,12 +151,12 @@ Without a terminal, --secret-ref env:/file:/command: is required.`,
 	f.StringVar(&p.Platform, "platform", "", "platform URL (https unless loopback)")
 	f.StringVar(&p.Runner, "runner", "", "runner URL used by `fcdev fn invoke` (private entry or public URL)")
 	f.StringVar(&p.Env, "env", "", "environment tag: local, np or prod")
-	f.StringVar(&p.ClientID, "client-id", "", "OAuth client id")
+	f.BoolVar(&login, "login", false, "a person profile: sign in with `fcdev login` (no client id or secret)")
+	f.StringVar(&p.ClientID, "client-id", "", "OAuth client id (client-credentials profiles)")
 	f.StringVar(&p.SecretRef, "secret-ref", "", "keychain (default), env:NAME, file:/path or command:<argv...>")
 	f.BoolVar(&p.AllowNoninteractive, "allow-noninteractive", false, "prod: allow --yes without a terminal (CI profiles)")
 	_ = cmd.MarkFlagRequired("platform")
 	_ = cmd.MarkFlagRequired("env")
-	_ = cmd.MarkFlagRequired("client-id")
 	return cmd
 }
 
@@ -152,11 +175,15 @@ func newProfileListCmd() *cobra.Command {
 				return nil
 			}
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tENV\tPLATFORM\tSECRET")
+			fmt.Fprintln(w, "NAME\tENV\tPLATFORM\tAUTH\tCREDENTIAL")
 			for _, n := range set.names() {
 				p := set[n]
+				if p.IsLogin() {
+					fmt.Fprintf(w, "%s\t%s\t%s\tlogin\t%s\n", p.Name, p.Env, p.Platform, loginStatus(p, time.Now()))
+					continue
+				}
 				ref, _ := parseSecretRef(p.SecretRef)
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.Name, p.Env, p.Platform, ref.Kind)
+				fmt.Fprintf(w, "%s\t%s\t%s\tclient\t%s\n", p.Name, p.Env, p.Platform, ref.Kind)
 			}
 			return w.Flush()
 		},
@@ -180,7 +207,11 @@ func newProfileShowCmd() *cobra.Command {
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "name                  %s\nplatform              %s\n", p.Name, p.Platform)
 			fmt.Fprintf(out, "runner                %s\nenv                   %s\n", firstNonEmpty(p.Runner, "(none)"), p.Env)
-			fmt.Fprintf(out, "client_id             %s\nsecret_ref            %s\n", p.ClientID, p.SecretRef)
+			if p.IsLogin() {
+				fmt.Fprintf(out, "auth                  login\nsession               %s\n", loginStatus(p, time.Now()))
+			} else {
+				fmt.Fprintf(out, "auth                  client_credentials\nclient_id             %s\nsecret_ref            %s\n", p.ClientID, p.SecretRef)
+			}
 			fmt.Fprintf(out, "allow_noninteractive  %v\nfile                  %s\n", p.AllowNoninteractive, path)
 			return nil
 		},
@@ -216,6 +247,14 @@ func newProfileRemoveCmd() *cobra.Command {
 			if err := saveProfiles(path, set); err != nil {
 				return err
 			}
+			if p.IsLogin() {
+				// Local removal only: use `fcdev logout` first to also revoke at the platform.
+				if err := deleteLoginSession(p.Name, false); err != nil {
+					return fmt.Errorf("profile %s removed, but its stored login session could not be deleted: %w", p.Name, err)
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "removed profile %s\n", p.Name)
+				return nil
+			}
 			ref, _ := parseSecretRef(p.SecretRef)
 			if ref.Kind == refKeychain {
 				if err := fnKeychain.Delete(p.Name); err != nil && !errors.Is(err, ErrKeychainNotFound) {
@@ -243,6 +282,9 @@ func newProfileSetSecretCmd() *cobra.Command {
 			p := set[args[0]]
 			if p == nil {
 				return fmt.Errorf("no profile %q in %s", args[0], path)
+			}
+			if p.IsLogin() {
+				return fmt.Errorf("profile %s is a login profile: it has no secret; run fcdev login --profile %s", p.Name, p.Name)
 			}
 			if ref, _ := parseSecretRef(p.SecretRef); ref.Kind != refKeychain {
 				return fmt.Errorf("profile %s keeps its secret outside fcdev (%s); rotate it there", p.Name, ref)
@@ -277,12 +319,21 @@ The token and the secret are never printed.`,
 			if err != nil {
 				return err
 			}
-			res, err := mintTokenReport(cmd.Context(), t.creds)
-			if err != nil {
-				return err
-			}
+			var res *tokenReport
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "ok: token minted for client %s\n", t.creds.ClientID)
+			if t.profile.IsLogin() {
+				tok, err := t.tokenSource().Token(cmd.Context())
+				if err != nil {
+					return t.wrapAuthErr("sign in", err)
+				}
+				res = reportFromJWT(tok, "")
+				fmt.Fprintf(out, "ok: signed in as %s\n", firstNonEmpty(t.user, "(unknown)"))
+			} else {
+				if res, err = mintTokenReport(cmd.Context(), t.creds); err != nil {
+					return err
+				}
+				fmt.Fprintf(out, "ok: token minted for client %s\n", t.creds.ClientID)
+			}
 			fmt.Fprintf(out, "principal  %s\n", firstNonEmpty(res.Principal, "(unknown)"))
 			if res.Type != "" {
 				fmt.Fprintf(out, "type       %s\n", res.Type)
@@ -342,22 +393,42 @@ func mintTokenReport(ctx context.Context, c fnCredentials) (*tokenReport, error)
 	if err := json.Unmarshal(raw, &tr); err != nil || tr.AccessToken == "" {
 		return nil, errors.New("token response had no access_token")
 	}
-	rep := &tokenReport{Scope: strings.Fields(tr.Scope)}
-	if parts := strings.Split(tr.AccessToken, "."); len(parts) == 3 {
-		if payload, err := base64.RawURLEncoding.DecodeString(parts[1]); err == nil {
-			var claims map[string]json.RawMessage
-			if json.Unmarshal(payload, &claims) == nil {
-				rep.Principal = claimString(claims["sub"])
-				rep.Type = claimString(claims["type"])
-				rep.Tier = claimString(claims["tier"])
-				rep.Roles = claimList(claims["roles"])
-				if len(rep.Scope) == 0 {
-					rep.Scope = claimList(claims["scope"])
-				}
-			}
+	return reportFromJWT(tr.AccessToken, tr.Scope), nil
+}
+
+// reportFromJWT summarises an access token for `profile test` (display only:
+// the token is not verified here).
+func reportFromJWT(accessToken, scope string) *tokenReport {
+	rep := &tokenReport{Scope: strings.Fields(scope)}
+	if claims := jwtClaims(accessToken); claims != nil {
+		rep.Principal = claimString(claims["sub"])
+		rep.Type = claimString(claims["type"])
+		rep.Tier = claimString(claims["tier"])
+		rep.Roles = claimList(claims["roles"])
+		if len(rep.Scope) == 0 {
+			rep.Scope = claimList(claims["scope"])
 		}
 	}
-	return rep, nil
+	return rep
+}
+
+// loginStatus describes a login profile's session from its non-secret
+// metadata alone; no token is read.
+func loginStatus(p *Profile, now time.Time) string {
+	meta, err := readLoginMeta(p.Name)
+	switch {
+	case errors.Is(err, ErrKeychainNotFound):
+		return "not logged in"
+	case err != nil:
+		return "unknown (" + err.Error() + ")"
+	case meta.Platform != strings.TrimRight(p.Platform, "/"):
+		return "stale: made for another platform URL; run fcdev login"
+	case meta.RefreshExpiresAt.IsZero():
+		return "logged in as " + meta.who() + " (end time unknown)"
+	case !now.Before(meta.RefreshExpiresAt):
+		return "expired (was " + meta.who() + ")"
+	}
+	return fmt.Sprintf("%s, until %s (%s)", meta.who(), meta.RefreshExpiresAt.Local().Format("2006-01-02 15:04"), humanDuration(meta.RefreshExpiresAt.Sub(now)))
 }
 
 func claimString(raw json.RawMessage) string {

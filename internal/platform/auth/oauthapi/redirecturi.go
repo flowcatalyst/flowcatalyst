@@ -3,6 +3,7 @@ package oauthapi
 import (
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -131,4 +132,54 @@ func pathMatchesPattern(uriPath, patternPath string) bool {
 		return strings.HasPrefix(uriPath, prefix)
 	}
 	return uriPath == patternPath
+}
+
+// MatchLoopbackRedirectURI implements the RFC 8252 section 7.3 loopback
+// exception for ONE registered pattern shape: a port-less
+// "http://127.0.0.1/path" or "http://[::1]/path". The incoming uri matches
+// when it is that same URI with an explicit port added and nothing else.
+//
+// It is deliberately narrower than the general matcher and is only ever
+// consulted for the built-in fcdev client (see redirectAllowed):
+//
+//   - host must be literally 127.0.0.1 or [::1], identical to the registered
+//     one: never "localhost", never a wildcard, never any other host;
+//   - scheme must be http (loopback has no certificate to protect);
+//   - port is required, canonical decimal, 1-65535;
+//   - the path must equal the registered path exactly;
+//   - no userinfo, query, fragment or any other component.
+//
+// The check is closed by re-building the URI from its parsed parts and
+// demanding byte equality with the input, which rejects every parser-
+// differential trick (case, percent-encoding, backslashes, userinfo, a
+// trailing dot, "127.0.0.1.evil.com", leading-zero ports, ...).
+func MatchLoopbackRedirectURI(uri string, registered []string) bool {
+	u, err := url.Parse(uri)
+	if err != nil || u.Scheme != "http" || u.User != nil || u.Opaque != "" ||
+		u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawFragment != "" {
+		return false
+	}
+	host := u.Hostname()
+	if host != "127.0.0.1" && host != "::1" {
+		return false
+	}
+	port := u.Port()
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 || strconv.Itoa(n) != port {
+		return false
+	}
+	bracketed := host
+	if host == "::1" {
+		bracketed = "[::1]"
+	}
+	if canonical := "http://" + bracketed + ":" + port + u.EscapedPath(); canonical != uri {
+		return false
+	}
+	for _, reg := range registered {
+		// The registered form is the same URI without a port.
+		if reg == "http://"+bracketed+u.EscapedPath() {
+			return true
+		}
+	}
+	return false
 }

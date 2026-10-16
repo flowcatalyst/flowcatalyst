@@ -2154,6 +2154,86 @@ the error above; (5) the dispatch control route sets `connection_id`, does not r
 no longer sets the job's `serviceAccountId` or `fn.connection`; (6) SDK/describe-print changes as above.
 Supersedes the F23 Java hand-off items about the connection (2: status check and account/metadata; 3).
 
+### F25. `fcdev login`: a person signs in to a remote platform from the CLI (owner rulings, 2026-10-16)
+
+**Rulings.** Browser login on a loopback listener (authorization code + PKCE, not device code); the person
+acts as themselves, so their own roles and permissions apply; sign in again about once a week: the
+refresh token has an ABSOLUTE 7-day lifetime (a refresh never extends it) kept in one constant and one
+env var so the owner can change it. CI keeps `client_credentials` profiles.
+
+**Platform.**
+
+- **Built-in public client `fcdev-cli`**, seeded and re-asserted at every start
+  (`seed.SeedFcdevCLIClient`): PUBLIC (no secret), PKCE required, `apiAccess` (so the access token is
+  `token_use=api` and carries the user's own roles/`scope` permissions; no `ApplicationIDs`, so no
+  narrowing and no widening), grants `authorization_code` + `refresh_token` only, redirect URIs
+  `http://127.0.0.1/callback` and `http://[::1]/callback` (port-less on purpose). Seeding overwrites every
+  security-relevant column and junction (type, secret, PKCE, apiAccess, grants, redirects, application
+  scoping, portal link) so a console edit cannot widen the client; only `active` is left alone, so
+  deactivating the client switches fcdev logins off and a restart does not undo it. `S256` only is the
+  platform's existing rule; PKCE-less and `plain` requests are refused (tested for this client).
+- **Loopback redirect rule (RFC 8252 7.3), `oauthapi.MatchLoopbackRedirectURI`**, used only when the
+  client_id is `fcdev-cli` (`redirectAllowed`): the incoming redirect_uri must equal, byte for byte, the
+  canonical form `http://<host>:<port><path>` rebuilt from its parsed parts, with host literally
+  `127.0.0.1` or `[::1]`, a canonical decimal port 1-65535, the registered path exactly, and no
+  userinfo, query or fragment; and the registered port-less URI for that same host must exist. Never
+  `localhost`, never another host, never https, never a wildcard. Every other client is unchanged
+  (exact/wildcard matcher). The token endpoint still demands the redirect_uri equal the one the code was
+  issued for.
+- **Lifetime.** `FC_FCDEV_LOGIN_REFRESH_TTL_SECS` (default 604800), independent of `OIDC_REFRESH_TOKEN_TTL`
+  (deployments set that to 30 days). Applied when the code is redeemed (`State.FcdevRefreshTTL`);
+  `grantstore.Rotate` already copies the presented token's `expires_at` forward, which is what makes it
+  absolute (and `/auth/refresh` already refuses client-bound tokens). Reuse detection, rotation, client
+  binding (another client cannot redeem fcdev's refresh token, fcdev cannot redeem another's) are the
+  platform's existing behaviour, now tested for this client.
+- **Account cut-off.** Refresh already checked `Active` and re-derived roles from the current principal
+  (removed roles narrow the next access token; tested). Found while testing: the authorization-code
+  grant did NOT check `Active`, so a code issued before a deactivation could still be redeemed. Fixed
+  for every client (`invalid_grant`, "Account is not active"), same message as refresh.
+- **Wire.** One additive optional field, `refresh_expires_in` (seconds until the refresh family's
+  absolute deadline), on the `/oauth/token` success body when a refresh token is issued, so the CLI can
+  say when the login ends (the server's TTL is configurable, the client cannot know it). `api/openapi.lock.json`
+  and the SPA generated types regenerated (`make api-bump`, `pnpm api:generate`); the SDKs' own spec
+  snapshots (`make sdk-spec`) were not refreshed (they refresh at SDK release). Existing clients ignore it.
+  Revocation needed nothing new: `POST /oauth/revoke` takes `client_id` alone for a public client.
+
+**fcdev.** Profile `auth = "login"` (`profile add NAME --platform URL --env np|prod --login`; no
+client_id/secret_ref; the strict parser rejects those keys on a login profile and still rejects any
+secret-looking key). `fcdev login --profile NAME` / `fcdev logout --profile NAME`. Session in the OS
+keychain: `login:NAME` (refresh token + platform URL), `login-access:NAME` (cached access token, best
+effort: a JWT with many permissions can exceed a backend's size limit, then every command refreshes),
+`login-meta:NAME` (non-secret: who, expiries), so `profile list`/the banner never read a token. Refresh
+within 60s of expiry under a per-profile lock file (two commands starting together must not present one
+refresh token twice: the platform treats a replay as theft and revokes the family). The token is never
+sent to a platform other than the one it was issued by (profile edited to another URL: refused). An unusable
+session fails with `session expired: run fcdev login --profile NAME` (`not logged in: ...` when there is
+none); no prompt, no browser, no fallback, bounded timeouts. `fcdev login` itself needs a terminal. Prod
+confirmation and the banner (`... user <email>`) unchanged.
+
+**Tests.** Platform (`-tags=integration`, real handlers and repositories): `fcdev_login_pg_test.go`
+(seed shape and re-assertion, happy path with claims, login required, PKCE missing/plain/wrong/missing
+verifier/secret on a public client, redirect matrix and "other clients get no port variance", rotation +
+reuse detection + absolute expiry + countdown, configurable TTL, client binding both ways, removed roles,
+deactivated user for code and refresh, revoke, deactivated client), `loopback_redirect_test.go` (about 50
+redirect shapes incl. `127.0.0.1.evil.com`, userinfo tricks, `localhost`, https, paths, ports 0/65536),
+`envcfg_test.go`. fcdev (`login_test.go`, fake platform + fake browser): whole login, bad state,
+platform error, timeout, cancel, opener failure, scrubbing, caching/refresh/skew, all expired-session
+messages, concurrent refresh, platform mismatch, banner/bearer, prod guards, logout (revoke, outage),
+profile parsing/list/show/test/remove, secret guard. Mutations, each failing a test: platform PKCE not
+verified; redirect host check relaxed (both layers); loopback rule available to any client; refresh
+expiry sliding; fcdev state not verified; challenge not derived from the verifier; verifier not sent;
+callback Host check removed; platform match removed; refresh lock removed; listener on 0.0.0.0.
+
+**Owner steps.** Deploy the platform (the client is seeded on start), set `FC_FCDEV_LOGIN_REFRESH_TTL_SECS` only
+to change the 7 days, then `fcdev profile add NAME --platform URL --env np|prod --login` and
+`fcdev login --profile NAME`. See docs/fcdev-profiles.md.
+
+**Java hand-off (not implemented).** Mirror: (1) seed the `fcdev-cli` client as above (re-assert on boot,
+leave `active`); (2) the loopback redirect rule for that client_id only, with the byte-equality
+canonicalisation; (3) per-client absolute refresh lifetime from an env var, copied forward on rotation;
+(4) the `Active` check on authorization-code redemption; (5) `refresh_expires_in` on the token response
+(lock, SDK specs). The fcdev CLI is Go-only.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -2373,3 +2453,9 @@ missing event source (F14), and unknown roles in the application principal sync 
   database; no live runner or scheduler against a real router, so "pause holds, reactivate releases" is
   proven at the claim and poller level (the poller test publishes to a capturing publisher), not
   through a real queue; the Java/Rust platform ports were not changed (hand-off above).
+- F25: integration tests on embedded Postgres and the fcdev unit tests against a fake platform and a
+  fake browser; the real browser sign-in (login UI, SSO, passkey, 2FA, then the redirect to the
+  loopback port) and a real OS keychain were NOT exercised, and no deployed platform was involved. The
+  authorize endpoint's bounce to `/auth/login` and back is the existing SPA contract, asserted only up
+  to the redirect. The macOS Keychain size limit for the cached access token is untested (it is
+  best-effort by design). The Java/Rust platform ports were not changed (hand-off above).

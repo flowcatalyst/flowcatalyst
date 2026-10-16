@@ -2,13 +2,76 @@
 
 `fcdev fn` talks to the platform as an OAuth client (client_credentials). Against a local fcdev it
 uses the dev credential `fcdev start` writes. Against a **remote** platform it uses a **profile**:
-a named target whose client secret is held by reference (OS keychain, environment variable, file or
-command), never in the profile file.
+a named target with one of two ways to authenticate.
+
+* **A person** (`--login`): you sign in with your browser, `fcdev login`, and act as yourself, with
+  your own roles and permissions. No client id or secret exists anywhere. See "Signing in as a person".
+* **A client** (`--client-id`, the original form, for CI and service accounts): the client secret is
+  held by reference (OS keychain, environment variable, file or command), never in the profile file.
 
 ```
-fcdev profile add np --platform https://np.example.com --env np --client-id fc_client_abc
+fcdev profile add np --platform https://np.example.com --env np --login
+fcdev login --profile np
 fcdev fn status example.test --profile np
+
+# CI / service account
+fcdev profile add np-ci --platform https://np.example.com --env np --client-id fc_client_abc
 ```
+
+## Signing in as a person
+
+```
+fcdev profile add NAME --platform URL --env np|prod --login
+fcdev login  --profile NAME      # opens your browser; needs a terminal
+fcdev logout --profile NAME      # deletes the stored session and revokes it at the platform
+fcdev profile list               # shows who is signed in and until when (never a token)
+```
+
+`fcdev login` starts a listener on `127.0.0.1` (a random port), opens
+`<platform>/oauth/authorize` in your browser (macOS `open`, Linux `xdg-open`, Windows `rundll32`; if that
+fails it prints the URL) and waits up to 5 minutes. You sign in the normal way (password, SSO, passkey,
+two-factor); the platform redirects to `http://127.0.0.1:<port>/callback`, fcdev checks `state`, trades the
+code for tokens (authorization code with PKCE `S256`; no client secret exists) and stores the session in the
+OS keychain. It prints who you are and when the login ends.
+
+* **You act as yourself.** The access token carries the roles and permissions you hold in the console, no
+  more. If a role is removed or your account is deactivated, the next refresh (within the hour) reflects it.
+* **The login lasts 7 days from sign-in, then you sign in again.** The limit is absolute: refreshing does
+  not extend it. The platform decides the length (`FC_FCDEV_LOGIN_REFRESH_TTL_SECS`, default 604800), and
+  fcdev shows the real end time. Access tokens are short (the platform's normal user TTL, 1 hour by
+  default); fcdev refreshes them silently, serialised between concurrent fcdev processes.
+* **When the session is unusable** (ended, revoked, the account deactivated) any command that needs it
+  fails with `session expired: run fcdev login --profile NAME` (`not logged in: ...` if you never did).
+  It never prompts, never opens a browser by itself, never falls back to another credential, and never
+  hangs. Without a terminal that is the whole behaviour: CI must use a client profile.
+* **Prod rules are unchanged.** `env = "prod"` still asks you to type `prod` before a change, and refuses
+  non-interactive changes unless `--yes` and `allow_noninteractive = true`. The banner shows
+  `profile NAME (prod) https://... user you@example.com`.
+* **The platform needs the `fcdev-cli` client**, which a platform release that includes `fcdev login`
+  creates on start (a public client: no secret, PKCE required, authorization code and refresh grants only,
+  loopback redirects only). If sign-in fails with "no fcdev-cli client", the platform is too old or has
+  not been restarted. To switch fcdev logins off for everyone, deactivate that client in the console.
+* **Signing in again** replaces the stored session. `fcdev logout` revokes the refresh token at the
+  platform (`POST /oauth/revoke`) and deletes the local copy; if the platform cannot be reached the local
+  copy is still deleted and a note says the server-side session lapses on its own.
+
+### Security notes
+
+* PKCE (`S256`, 256-bit verifier), a 256-bit `state` checked in constant time, and a listener bound to
+  `127.0.0.1` only. The listener serves exactly one valid callback and then shuts down; a callback with
+  the wrong `state`, the wrong `Host` (DNS rebinding) or the wrong method is answered 400 and ignored. The
+  page it shows says "signed in" or "failed" and contains no code or token.
+* The platform accepts a variable port only for this client and only for `http://127.0.0.1:<port>/callback`
+  or `http://[::1]:<port>/callback` (RFC 8252): never `localhost`, another host, https, another path, or any
+  userinfo/query/fragment. A refresh token issued to `fcdev-cli` cannot be used by another client and vice
+  versa; replaying an already-used refresh token revokes the whole session.
+* The keychain holds three entries per profile: `login:NAME` (the refresh token and the platform URL),
+  `login-access:NAME` (the cached access token; best effort) and `login-meta:NAME` (who and when, not
+  secret; this is all `profile list` reads). The session is only ever sent to the platform URL it was
+  issued by: if the profile's `platform` changes, fcdev refuses and asks you to log in again.
+* Tokens and codes are never printed or logged; errors are scrubbed of them. A profile file holding a key
+  like `refresh_token`, `access_token` or `client_secret` is rejected on a login profile as on any other.
+* Not covered by the automated tests: a real browser and a real OS keychain (see the keychain caveats below).
 
 ## The rules
 
@@ -72,7 +135,14 @@ env = "prod"
 client_id = "fc_client_ci"
 secret_ref = "env:FC_PROD_SECRET"
 allow_noninteractive = true
+
+[profiles.me-np]            # a person: `fcdev login --profile me-np`
+platform = "https://np.example.com"
+env = "np"
+auth = "login"              # no client_id, no secret_ref (both are rejected here)
 ```
+
+`auth` is `client_credentials` (the default when absent, so existing files keep working) or `login`.
 
 The format is a strict subset of TOML (tables `[profiles.NAME]`, strings, booleans, `#` comments; the
 parser is about 100 lines in `cmd/fcdev/profile_store.go`, chosen over a new dependency because no TOML
@@ -83,7 +153,7 @@ Guards:
 
 * The file must not be group- or other-writable (it can name a command that fcdev will run), or fcdev
   refuses to load it. `chmod 600` it. fcdev writes it 0600 in a 0700 directory. (No mode check on Windows.)
-* It never holds a secret value. Any key that looks like one (`client_secret`, `password`, `token`, ...)
+* It never holds a secret value. Any key that looks like one (`client_secret`, `password`, `token`, `refresh_token`, ...)
   is rejected, as is any unknown key. A `secret_ref` that is not a recognised reference (for example a
   pasted plaintext secret) is rejected, and the error never echoes the value.
 
@@ -243,12 +313,14 @@ When a digest changes without a source change, diff the two bundles.
 ## Commands
 
 ```
-fcdev profile add <name> --platform URL --env np|prod|local --client-id ID [--runner URL] [--secret-ref REF] [--allow-noninteractive]
-fcdev profile list                 # names, env, URL, secret-ref kind; never secrets
+fcdev profile add <name> --platform URL --env np|prod|local (--login | --client-id ID [--secret-ref REF]) [--runner URL] [--allow-noninteractive]
+fcdev login  --profile <name>      # login profiles: browser sign-in (needs a terminal)
+fcdev logout --profile <name>      # login profiles: revoke at the platform and delete the stored session
+fcdev profile list                 # names, env, URL, auth mode, secret-ref kind or session status; never secrets
 fcdev profile show <name>
 fcdev profile set-secret <name>    # prompt (no echo, twice) and store in the keychain
 fcdev profile remove <name> [--yes]   # type the name to confirm; also deletes the keychain entry
-fcdev profile test <name>          # mint a token; reports principal id, tier and granted scope names
+fcdev profile test <name>          # mint a token (login profile: use the session); reports principal id, tier and granted scope names
 ```
 
 `add` without `--secret-ref` prompts for the secret (no echo) and stores it in the keychain. Without a

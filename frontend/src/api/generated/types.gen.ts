@@ -3778,6 +3778,10 @@ export type TokenResponse = {
     access_token: string;
     expires_in: number;
     id_token?: string;
+    /**
+     * Seconds until the refresh token family's absolute deadline (present with refresh_token)
+     */
+    refresh_expires_in?: number;
     refresh_token?: string;
     scope?: string;
     token_type: string;
@@ -6350,6 +6354,10 @@ export type TokenResponseWritable = {
     access_token: string;
     expires_in: number;
     id_token?: string;
+    /**
+     * Seconds until the refresh token family's absolute deadline (present with refresh_token)
+     */
+    refresh_expires_in?: number;
     refresh_token?: string;
     scope?: string;
     token_type: string;

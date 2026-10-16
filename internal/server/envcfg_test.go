@@ -73,6 +73,26 @@ func TestLoadEnv_DeployedAliases(t *testing.T) {
 	})
 }
 
+// The fcdev login lifetime is its own knob, independent of
+// OIDC_REFRESH_TOKEN_TTL (deployments set that one to 30 days).
+func TestLoadEnv_FcdevLoginRefreshTTL(t *testing.T) {
+	t.Setenv("OIDC_REFRESH_TOKEN_TTL", "2592000")
+	t.Setenv("FC_FCDEV_LOGIN_REFRESH_TTL_SECS", "")
+	if c := LoadEnv(); c.FcdevLoginRefreshTTLSecs != 604800 || c.RefreshTokenTTLSecs != 2592000 {
+		t.Errorf("default = %d (global %d), want 604800 independent of the global TTL", c.FcdevLoginRefreshTTLSecs, c.RefreshTokenTTLSecs)
+	}
+	t.Setenv("FC_FCDEV_LOGIN_REFRESH_TTL_SECS", "86400")
+	if c := LoadEnv(); c.FcdevLoginRefreshTTLSecs != 86400 {
+		t.Errorf("set = %d, want 86400", c.FcdevLoginRefreshTTLSecs)
+	}
+	for _, bad := range []string{"0", "-3", "soon"} {
+		t.Setenv("FC_FCDEV_LOGIN_REFRESH_TTL_SECS", bad)
+		if c := LoadEnv(); c.FcdevLoginRefreshTTLSecs != 604800 {
+			t.Errorf("%q = %d, want the 7d default", bad, c.FcdevLoginRefreshTTLSecs)
+		}
+	}
+}
+
 // The deployed router task sets NOTIFICATION_BATCH_INTERVAL and
 // FLOWCATALYST_CONFIG_INTERVAL (in seconds); LoadEnv must honour both, with
 // the FC_* name winning where set, and leave 0 (router default) when unset.

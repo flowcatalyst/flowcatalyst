@@ -159,6 +159,12 @@ JWKS is served at `/.well-known/jwks.json`. The `client_credentials` grant at
 `/oauth/token` returns `Cache-Control: no-store` and
 `Content-Type: application/json`.
 
+A token response that carries a `refresh_token` also carries `refresh_expires_in` (seconds until that
+refresh family's ABSOLUTE deadline; rotation never extends it). Additive and optional. The built-in public
+client `fcdev-cli` (`authorization_code` + `refresh_token`, PKCE `S256` required) may use any port on its
+registered `http://127.0.0.1/callback` and `http://[::1]/callback` redirects (RFC 8252); no other client
+may.
+
 **Chi-mounted auth/session endpoints (intentionally absent from
 `api/openapi.lock.json`).** The lock is generated from the huma-registered
 platform routes; the auth/session surface is served by plain `chi` handlers,

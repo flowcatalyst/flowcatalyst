@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
@@ -80,7 +81,7 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 		writeOAuthError(w, http.StatusBadRequest, "unauthorized_client", "Client is not active")
 		return
 	}
-	if !MatchRedirectURI(redirectURI, client.RedirectURIs) {
+	if !redirectAllowed(client, redirectURI) {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "Invalid redirect_uri")
 		return
 	}
@@ -253,6 +254,18 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 		loginURL += "&client=" + pctEncode(clientHint)
 	}
 	http.Redirect(w, r, loginURL, http.StatusTemporaryRedirect)
+}
+
+// redirectAllowed is the redirect_uri check for /oauth/authorize: the general
+// matcher for every client, plus the RFC 8252 loopback-port exception for the
+// built-in fcdev client ONLY (keyed on its fixed client_id, so no other
+// client, however it is registered in the console, can use it).
+func redirectAllowed(client *auth.OAuthClient, redirectURI string) bool {
+	if MatchRedirectURI(redirectURI, client.RedirectURIs) {
+		return true
+	}
+	return client.ClientID == auth.FcdevCLIClientID &&
+		MatchLoopbackRedirectURI(redirectURI, client.RedirectURIs)
 }
 
 // clientHintPattern mirrors the client identifier slug rule enforced at

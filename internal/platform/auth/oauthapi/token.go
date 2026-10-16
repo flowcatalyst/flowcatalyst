@@ -86,11 +86,16 @@ type State struct {
 	// redemption re-checks the identity's app grant and the id_token reports
 	// the app's code. Optional — nil treats every portal client as legacy
 	// client-wide.
-	PortalApps    *portalidentity.AppRepository
-	Auth          *authservice.AuthService
-	AuthCodes     *grantstore.AuthorizationCodeRepository
-	RefreshTokens *grantstore.RefreshTokenRepository
-	PendingAuth   *grantstore.PendingAuthRepository
+	PortalApps *portalidentity.AppRepository
+	Auth       *authservice.AuthService
+	// FcdevRefreshTTL is the ABSOLUTE refresh-token lifetime for the built-in
+	// fcdev CLI client (auth.FcdevCLIClientID), counted from the original
+	// sign-in; rotation never extends it. Zero or negative selects
+	// auth.DefaultFcdevCLIRefreshTTL. Other clients use grantstore.RefreshTokenTTL.
+	FcdevRefreshTTL time.Duration
+	AuthCodes       *grantstore.AuthorizationCodeRepository
+	RefreshTokens   *grantstore.RefreshTokenRepository
+	PendingAuth     *grantstore.PendingAuthRepository
 	// ValidateSession resolves the principal id + token issue time from a
 	// session-cookie / bearer token on /oauth/authorize, returning ok=false
 	// when the token is absent, invalid, or expired (authorize then
@@ -207,8 +212,14 @@ type TokenResponse struct {
 	TokenType    string  `json:"token_type"`
 	ExpiresIn    int64   `json:"expires_in"`
 	RefreshToken *string `json:"refresh_token,omitempty"`
-	IDToken      *string `json:"id_token,omitempty"`
-	Scope        *string `json:"scope,omitempty"`
+	// RefreshExpiresIn is the seconds left until the refresh token's family
+	// reaches its ABSOLUTE deadline (rotation never extends it). Present
+	// whenever a refresh token is. Not part of RFC 6749; same name and meaning
+	// as the extension other providers use. Lets a CLI say when the person
+	// must sign in again.
+	RefreshExpiresIn *int64  `json:"refresh_expires_in,omitempty" doc:"Seconds until the refresh token family's absolute deadline (present with refresh_token)"`
+	IDToken          *string `json:"id_token,omitempty"`
+	Scope            *string `json:"scope,omitempty"`
 }
 
 // Token is POST /oauth/token. It normalises client_secret_basic credentials
@@ -742,6 +753,13 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "Principal not found")
 		return
 	}
+	// A code outlives the sign-in that earned it by minutes; an account
+	// deactivated in between must not turn it into tokens (the refresh grant
+	// below makes the same check).
+	if !p.Active {
+		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "Account is not active")
+		return
+	}
 
 	scope := ""
 	if code.Scope != nil {
@@ -772,6 +790,7 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 	}
 
 	var refreshToken *string
+	var refreshExpiresIn *int64
 	if scopeHas(scope, "offline_access") {
 		raw, entity, err := grantstore.GenerateTokenPair(string(p.ID))
 		if err != nil {
@@ -786,6 +805,12 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 		// token is ever replayed (reuse detection in handleRefreshTokenGrant).
 		fam := entity.ID
 		entity.TokenFamily = &fam
+		// The fcdev CLI client has its own absolute lifetime. Rotate copies
+		// ExpiresAt forward unchanged, so setting it here fixes the family's
+		// deadline for good.
+		if client.ClientID == auth.FcdevCLIClientID {
+			entity.ExpiresAt = entity.CreatedAt.Add(s.fcdevRefreshTTL())
+		}
 		// Carry the sign-in time onto the family so a refreshed id_token's
 		// auth_time still points at the original authentication.
 		entity.AuthTime = code.AuthTime
@@ -794,16 +819,33 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		refreshToken = &raw
+		refreshExpiresIn = secsUntil(entity.ExpiresAt)
 	}
 
 	writeToken(w, TokenResponse{
-		AccessToken:  accessToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    s.Auth.AccessTokenTTLSecs(),
-		RefreshToken: refreshToken,
-		IDToken:      idToken,
-		Scope:        code.Scope,
+		AccessToken:      accessToken,
+		TokenType:        "Bearer",
+		ExpiresIn:        s.Auth.AccessTokenTTLSecs(),
+		RefreshToken:     refreshToken,
+		RefreshExpiresIn: refreshExpiresIn,
+		IDToken:          idToken,
+		Scope:            code.Scope,
 	})
+}
+
+// secsUntil is the whole seconds from now until t, floored at zero.
+func secsUntil(t time.Time) *int64 {
+	n := max(int64(time.Until(t).Seconds()), 0)
+	return &n
+}
+
+// fcdevRefreshTTL is the configured absolute refresh lifetime of the fcdev
+// CLI client, defaulting when unset.
+func (s *State) fcdevRefreshTTL() time.Duration {
+	if s.FcdevRefreshTTL > 0 {
+		return s.FcdevRefreshTTL
+	}
+	return auth.DefaultFcdevCLIRefreshTTL
 }
 
 // ─── refresh_token grant ────────────────────────────────────────────────
@@ -899,12 +941,13 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 	}
 
 	writeToken(w, TokenResponse{
-		AccessToken:  accessToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    s.Auth.AccessTokenTTLSecs(),
-		RefreshToken: &res.NewRaw,
-		IDToken:      idToken,
-		Scope:        scope,
+		AccessToken:      accessToken,
+		TokenType:        "Bearer",
+		ExpiresIn:        s.Auth.AccessTokenTTLSecs(),
+		RefreshToken:     &res.NewRaw,
+		RefreshExpiresIn: secsUntil(res.New.ExpiresAt),
+		IDToken:          idToken,
+		Scope:            scope,
 	})
 }
 
