@@ -60,7 +60,8 @@ func DeprecateEventTypeSchema(repo *eventtype.Repository) usecaseop.Operation[De
 			if targetIdx == -1 {
 				return nil, httperror.NotFound("SpecVersion", cmd.Version)
 			}
-			//exhaustive:ignore only FINALISING and DEPRECATED block deprecation; CURRENT is deprecated normally
+			// only FINALISING and DEPRECATED block deprecation; CURRENT is deprecated normally
+			//exhaustive:ignore
 			switch et.SpecVersions[targetIdx].Status {
 			case eventtype.SpecFinalising:
 				return nil, usecase.Conflict("STILL_FINALISING",

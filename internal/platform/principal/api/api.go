@@ -1632,7 +1632,8 @@ func allowedClientIDsForDomain(mapping *emaildomainmapping.EmailDomainMapping) [
 	if mapping == nil {
 		return out
 	}
-	//exhaustive:ignore ANCHOR mappings restrict nothing: no client ids
+	// ANCHOR mappings restrict nothing: no client ids
+	//exhaustive:ignore
 	switch mapping.ScopeType {
 	case emaildomainmapping.ScopePartner:
 		seen := map[string]struct{}{}

@@ -120,7 +120,8 @@ func (v *version) setStateLocked(st versionState, reason string) {
 func (v *version) acquirePool(ctx context.Context, r *Runner) (*pool, error) {
 	for {
 		v.mu.Lock()
-		//exhaustive:ignore closed falls through to the shared error below
+		// closed falls through to the shared error below
+		//exhaustive:ignore
 		switch versionState(v.state.Load()) {
 		case stateReady:
 			p := v.pool

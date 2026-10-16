@@ -171,8 +171,8 @@ func isRequestShape(qualified string) bool {
 }
 
 func shortName(q string) string {
-	if i := strings.LastIndex(q, "/"); i >= 0 {
-		return q[i+1:]
+	if _, after, ok := strings.CutLast(q, "/"); ok {
+		return after
 	}
 	return q
 }

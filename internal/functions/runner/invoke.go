@@ -460,7 +460,8 @@ func (r *Runner) resolve(t target) (*function, *version, *resolveError) {
 		}
 		return nil, nil, &resolveError{http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", "the function has no loaded version", 5 * time.Second}
 	}
-	//exhaustive:ignore ready and evicted versions are servable; only the unusable states need a reply
+	// ready and evicted versions are servable; only the unusable states need a reply
+	//exhaustive:ignore
 	switch st, _ := ver.currentState(); st {
 	case statePreparing:
 		return nil, nil, &resolveError{http.StatusServiceUnavailable, "FUNCTION_PREPARING", "the version is still being prepared", 2 * time.Second}

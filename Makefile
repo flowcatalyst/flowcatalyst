@@ -271,7 +271,7 @@ release-fn-go-sdk: ## Cut a function Go SDK release: BUMP=… (tags clients/fn-g
 install-tools: ## Install dev tools (air, gotestsum, golangci-lint, sqlc)
 	$(GO) install github.com/air-verse/air@latest
 	$(GO) install gotest.tools/gotestsum@latest
-	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 	$(GO) install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 	@echo ">> tools installed to $$($(GO) env GOPATH)/bin — ensure it's on your PATH"
 

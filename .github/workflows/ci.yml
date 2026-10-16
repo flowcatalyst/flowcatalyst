@@ -89,7 +89,10 @@ jobs:
       # binary mode once upstream ships a go1.27-built release.
       - uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          # Pinned: `latest` let new linter releases break CI on their own
+          # (v2.15.0 tightened exhaustive directives and added stringscut).
+          # Bump deliberately, fixing findings in the same change.
+          version: v2.15.0
           install-mode: goinstall
 
   parity-spec:

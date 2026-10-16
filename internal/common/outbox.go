@@ -30,7 +30,8 @@ func FromOutboxCode(c int) OutboxStatus {
 
 // IsRetryable reports whether this status will be retried by the outbox processor.
 func (s OutboxStatus) IsRetryable() bool {
-	//exhaustive:ignore membership test: only the retryable members matter
+	// membership test: only the retryable members matter
+	//exhaustive:ignore
 	switch s {
 	case OutboxInternalError, OutboxUnauthorized, OutboxGatewayError, OutboxInProgress:
 		return true
@@ -40,7 +41,8 @@ func (s OutboxStatus) IsRetryable() bool {
 
 // IsTerminal reports whether this status will not be retried.
 func (s OutboxStatus) IsTerminal() bool {
-	//exhaustive:ignore membership test: only the terminal members matter
+	// membership test: only the terminal members matter
+	//exhaustive:ignore
 	switch s {
 	case OutboxSuccess, OutboxBadRequest, OutboxForbidden:
 		return true

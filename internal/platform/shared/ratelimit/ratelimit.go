@@ -147,8 +147,8 @@ func Build(ctx context.Context, pool *pgxpool.Pool) Store {
 func redactURL(url string) string {
 	if i := strings.Index(url, "://"); i >= 0 {
 		scheme, rest := url[:i+3], url[i+3:]
-		if at := strings.LastIndexByte(rest, '@'); at >= 0 {
-			return scheme + "***@" + rest[at+1:]
+		if _, after, ok := strings.CutLast(rest, "@"); ok {
+			return scheme + "***@" + after
 		}
 	}
 	return url

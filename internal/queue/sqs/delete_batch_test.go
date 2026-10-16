@@ -369,7 +369,8 @@ func TestStopWithHelpersRunningLeavesNoDrainers(t *testing.T) {
 	close(release)
 	for range n {
 		select {
-		case <-errs:
+		case err := <-errs:
+			_ = err // post-Stop acks may legitimately fail; this loop only checks none hangs
 		case <-time.After(5 * time.Second):
 			t.Fatal("an ack hung after Stop")
 		}

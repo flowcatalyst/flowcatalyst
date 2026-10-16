@@ -254,8 +254,8 @@ func TestFullQueueBlocksDeferUntilDrainedAndHonoursCtx(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- q.Defer(context.Background(), "blocked2", new(uint32(1))) }()
 	select {
-	case <-done:
-		t.Fatal("Defer returned while the queue was full")
+	case err := <-done:
+		t.Fatalf("Defer returned while the queue was full (err=%v)", err)
 	case <-time.After(150 * time.Millisecond):
 	}
 	open()
