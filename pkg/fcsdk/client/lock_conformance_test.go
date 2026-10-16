@@ -430,16 +430,18 @@ func lockCases() []lockCase {
 			return c.OpenAPI().Sync(ctx, "orders", raw)
 		}},
 
-		// ── Outside the lock ──
-		{name: "Me.Clients", outsideLock: "GET /api/me/* are plain chi routes (internal/platform/shared/me), not huma operations", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+		// ── /api/me/*: spec-only stubs in the lock since the x-sdk tagging (21f9734) ──
+		{name: "Me.Clients", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.Me().Clients(ctx)
 		}},
-		{name: "Me.Client", outsideLock: "plain chi route, see Me.Clients", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+		{name: "Me.Client", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.Me().Client(ctx, "clt_1")
 		}},
-		{name: "Me.ClientApplications", outsideLock: "plain chi route, see Me.Clients", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+		{name: "Me.ClientApplications", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.Me().ClientApplications(ctx, "clt_1")
 		}},
+
+		// ── Outside the lock ──
 		{name: "Router.InPipeline", outsideLock: "served by the message router (internal/router/api), a separate OpenAPI document", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.Router().InPipeline(ctx, "m1")
 		}},
