@@ -121,3 +121,6 @@ func (s *FileStore) Delete(_ context.Context, digest string) error {
 func (s *FileStore) PresignGet(_ context.Context, _ string, _ time.Duration) (string, bool, error) {
 	return "", false, nil
 }
+
+// Describe implements Describer.
+func (s *FileStore) Describe() (kind, bucket, prefix string) { return "file", "", s.dir }

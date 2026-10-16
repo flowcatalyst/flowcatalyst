@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -37,11 +39,51 @@ func NewS3Store(ctx context.Context, bucket, prefix string) (*S3Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("artifact: load AWS config: %w", err)
 	}
+	prefix = strings.Trim(prefix, "/")
+	logS3SelfCheck(ctx, cfg.Region, bucket, prefix, cfg.Credentials)
 	return &S3Store{
 		client: s3.NewFromConfig(cfg),
 		bucket: bucket,
-		prefix: strings.Trim(prefix, "/"),
+		prefix: prefix,
 	}, nil
+}
+
+// Describe implements Describer.
+func (s *S3Store) Describe() (kind, bucket, prefix string) { return "s3", s.bucket, s.prefix }
+
+// logS3SelfCheck logs the effective S3 configuration at startup and whether
+// the credential chain resolves. Values are never logged — only the provider
+// source name. It never fails startup: a bad credential chain is reported
+// here and again, with full detail, on the first request that needs S3.
+func logS3SelfCheck(ctx context.Context, region, bucket, prefix string, creds aws.CredentialsProvider) {
+	attrs := []any{"store_kind", "s3", "bucket", bucket, "prefix", prefix, "region", region}
+	if creds == nil {
+		slog.Warn("artifact store: s3 configured but no credentials provider", attrs...)
+		return
+	}
+	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	c, err := creds.Retrieve(cctx)
+	if err != nil {
+		slog.Error("artifact store: s3 credentials did NOT resolve", append(attrs, "credentials_resolved", false, "err", err)...)
+		return
+	}
+	slog.Info("artifact store: s3 configured", append(attrs, "credentials_resolved", true,
+		"credentials_source", c.Source, "credentials_expire", c.CanExpire)...)
+}
+
+// s3Err wraps an SDK error with the operation, keeping the SDK's text (which
+// names AccessDenied / failed to retrieve credentials / the HTTP status) and
+// adding a short hint for the two classes that are configuration problems.
+func s3Err(op string, err error) error {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "failed to retrieve credentials"), strings.Contains(msg, "NoCredentialProviders"):
+		return fmt.Errorf("artifact: s3 %s (credentials not resolvable by the AWS default chain): %w", op, err)
+	case strings.Contains(msg, "AccessDenied"), strings.Contains(msg, "StatusCode: 403"):
+		return fmt.Errorf("artifact: s3 %s (access denied: check the task role's s3 permissions on the bucket/prefix): %w", op, err)
+	}
+	return fmt.Errorf("artifact: s3 %s: %w", op, err)
 }
 
 func (s *S3Store) key(digest string) string {
@@ -81,7 +123,7 @@ func (s *S3Store) Put(ctx context.Context, digest string, r io.Reader) error {
 		ContentLength: &size,
 	})
 	if err != nil {
-		return fmt.Errorf("artifact: s3 put_object: %w", err)
+		return s3Err("put_object", err)
 	}
 	return nil
 }
@@ -94,7 +136,7 @@ func (s *S3Store) Open(ctx context.Context, digest string) (io.ReadCloser, error
 		if isNotFound(err) {
 			return nil, ErrNotFound
 		}
-		return nil, fmt.Errorf("artifact: s3 get_object: %w", err)
+		return nil, s3Err("get_object", err)
 	}
 	return out.Body, nil
 }
@@ -107,7 +149,7 @@ func (s *S3Store) Exists(ctx context.Context, digest string) (bool, error) {
 		if isNotFound(err) {
 			return false, nil
 		}
-		return false, fmt.Errorf("artifact: s3 head_object: %w", err)
+		return false, s3Err("head_object", err)
 	}
 	return true, nil
 }
@@ -118,7 +160,7 @@ func (s *S3Store) Delete(ctx context.Context, digest string) error {
 	key := s.key(digest)
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: &s.bucket, Key: &key})
 	if err != nil {
-		return fmt.Errorf("artifact: s3 delete_object: %w", err)
+		return s3Err("delete_object", err)
 	}
 	return nil
 }
@@ -131,7 +173,7 @@ func (s *S3Store) PresignGet(ctx context.Context, digest string, ttl time.Durati
 	req, err := presigner.PresignGetObject(ctx, &s3.GetObjectInput{Bucket: &s.bucket, Key: &key},
 		s3.WithPresignExpires(ttl))
 	if err != nil {
-		return "", false, fmt.Errorf("artifact: presign get_object: %w", err)
+		return "", false, s3Err("presign get_object", err)
 	}
 	return req.URL, true, nil
 }

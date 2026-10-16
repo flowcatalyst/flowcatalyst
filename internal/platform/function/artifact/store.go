@@ -82,17 +82,26 @@ func keyFor(digest string) string {
 func FromURL(ctx context.Context, rawURL, dataDir string) (Store, error) {
 	switch {
 	case rawURL == "":
-		return NewFileStore(dataDir)
+		return diagnose(NewFileStore(dataDir))
 	case strings.HasPrefix(rawURL, "file://"):
-		return NewFileStore(strings.TrimPrefix(rawURL, "file://"))
+		return diagnose(NewFileStore(strings.TrimPrefix(rawURL, "file://")))
 	case strings.HasPrefix(rawURL, "s3://"):
 		rest := strings.TrimPrefix(rawURL, "s3://")
 		bucket, prefix, _ := strings.Cut(rest, "/")
 		if bucket == "" {
 			return nil, fmt.Errorf("artifact: s3:// URL missing bucket: %q", rawURL)
 		}
-		return NewS3Store(ctx, bucket, prefix)
+		return diagnose(NewS3Store(ctx, bucket, prefix))
 	default:
 		return nil, fmt.Errorf("artifact: unsupported store URL scheme: %q", rawURL)
 	}
+}
+
+// diagnose adapts a concrete constructor result to a diagnostics-wrapped
+// Store, preserving the (nil, err) shape on failure (no typed-nil interface).
+func diagnose[T Store](s T, err error) (Store, error) {
+	if err != nil {
+		return nil, err
+	}
+	return WithDiagnostics(s), nil
 }

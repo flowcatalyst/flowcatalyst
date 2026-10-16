@@ -21,10 +21,15 @@ package httpcompat
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
+	chimw "github.com/go-chi/chi/v5/middleware"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/logging"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
@@ -71,6 +76,7 @@ func (e *ErrorModel) GetStatus() int {
 // code/message/details; other errors fall back to a generic 500.
 func Init() {
 	huma.NewError = newError
+	huma.NewErrorWithContext = newErrorWithContext
 	// The wire contract serializes arrays as non-nullable (`{"type":"array"}`).
 	// huma defaults arrays to nullable (`{"type":["array","null"]}`), which would
 	// diverge both the OpenAPI spec and the generated frontend client. All
@@ -251,4 +257,66 @@ func statusFor(code string) int {
 		return http.StatusConflict
 	}
 	return http.StatusInternalServerError
+}
+
+// newErrorWithContext is huma's context-aware error constructor. It builds the
+// response exactly as [newError] does, and additionally logs every 5xx ONCE at
+// Error level: the wire envelope deliberately hides the cause, so without this
+// line a handler's `usecase.Internal(code, msg, cause)` leaves no trace at all
+// (huma's handler-error path does not go through httperror.Write).
+func newErrorWithContext(ctx huma.Context, status int, message string, errs ...error) huma.StatusError {
+	se := newError(status, message, errs...)
+	if se.GetStatus() >= http.StatusInternalServerError {
+		logInternal(ctx, se, errs)
+	}
+	return se
+}
+
+// logAttrser is implemented by errors that carry structured diagnostic fields
+// (e.g. artifact.StoreError). Only non-secret fields may be exposed.
+type logAttrser interface{ LogAttrs() []slog.Attr }
+
+// urlQuery matches a URL's query string; presigned URLs carry their
+// credentials/signature there, so anything after '?' in a URL is dropped.
+var urlQuery = regexp.MustCompile(`(https?://[^\s"'?]+)\?[^\s"']*`)
+
+func redact(s string) string { return urlQuery.ReplaceAllString(s, "$1?REDACTED") }
+
+func logInternal(ctx huma.Context, se huma.StatusError, errs []error) {
+	var code, msg string
+	if em, ok := se.(*ErrorModel); ok {
+		code, msg = em.Code, em.Message
+	}
+	attrs := []any{
+		"code", code,
+		"message", msg,
+		"status", se.GetStatus(),
+	}
+	var cause error
+	for _, e := range errs {
+		if e == nil {
+			continue
+		}
+		if cause == nil {
+			cause = e
+		}
+		var la logAttrser
+		if errors.As(e, &la) {
+			for _, a := range la.LogAttrs() {
+				attrs = append(attrs, a)
+			}
+		}
+	}
+	if cause != nil {
+		attrs = append(attrs, "err", redact(cause.Error()))
+	}
+	l := slog.Default()
+	if ctx != nil {
+		attrs = append(attrs, "method", ctx.Method(), "path", ctx.URL().Path)
+		l = logging.FromContext(ctx.Context())
+		if id := chimw.GetReqID(ctx.Context()); id != "" {
+			attrs = append(attrs, "request_id", id)
+		}
+	}
+	l.Error("internal error response", attrs...)
 }
