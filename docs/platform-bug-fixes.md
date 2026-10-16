@@ -1,5 +1,7 @@
 # Platform bug fixes (2026-10-10)
 
+**Java mirror paused 2026-10-16: see flowcatalyst-javalin/docs/go-mirror/PENDING.md**
+
 The platform bugs found while porting the SPA to `/ui` (`docs/ui/README.md`, "Platform bugs
 found", 1 to 25), the dispatch pool/connection items recorded earlier, and the same flaws found
 next to them while fixing. One entry per bug: what was wrong, the fix, the commit, the wire impact,
