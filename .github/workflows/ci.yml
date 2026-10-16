@@ -6,6 +6,16 @@ on:
   pull_request:
     branches: [main]
 
+# A newer push to the same ref supersedes an in-flight run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Everything below is reproducible locally with `make ci` (same pinned tools,
+# same order); the fast subset without Docker/Postgres is `make pre-push`.
+# Tool versions are pinned in the Makefile (GOLANGCI_LINT_VERSION, SQLC_VERSION)
+# and must be bumped together with `version:` in the lint job below.
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -28,7 +38,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.27"
+          go-version: "1.27.2"
           cache: true
 
       # `make build` builds the embedded Vue SPA, which needs pnpm + node.
@@ -41,10 +51,8 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Verify go.mod tidy
-        run: |
-          go mod tidy
-          git diff --exit-code go.mod go.sum
+      - name: Verify go.mod tidy (all modules)
+        run: make tidy-verify
 
       - name: Verify templ output (internal/ui)
         run: make ui-verify
@@ -63,13 +71,22 @@ jobs:
       - name: Custom UoW seal analyzer
         run: make analyze
 
+      # Conformance checks `make ci` also runs: the committed OpenAPI lock and
+      # sqlc output match the code, and the SPA's generated types match the lock.
+      - name: sqlc output current (pinned sqlc)
+        run: make sqlc-verify
+      - name: OpenAPI lock matches the live spec
+        run: make api-diff
+      - name: SPA generated API types match the lock
+        run: make frontend-types-verify
+
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.27"
+          go-version: "1.27.2"
           cache: true
       # frontend/embed.go has `//go:embed all:dist`. We don't build the SPA
       # for linting, but the embed needs >=1 file under frontend/dist or the
@@ -94,6 +111,9 @@ jobs:
           # Bump deliberately, fixing findings in the same change.
           version: v2.15.0
           install-mode: goinstall
+          # Same build tags as `make lint`: the *_pg_test.go helpers compile
+          # only under `integration` and used to escape the linter.
+          args: --build-tags integration
 
   parity-spec:
     runs-on: ubuntu-latest

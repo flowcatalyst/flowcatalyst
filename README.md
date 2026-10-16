@@ -272,11 +272,14 @@ application role does not carry.
 Quality gates:
 
 ```sh
-make test             # unit + integration (testcontainers Postgres)
-make lint             # golangci-lint
-make sqlc-verify      # ensure generated sqlc code is up to date
-make ci               # everything CI runs
+make install-hooks    # once: git pre-push hook that runs `make pre-push`
+make pre-push         # fast gate (~1 min, no Docker): build, vet, pinned lint, conformance, changed-package tests
+make test             # unit + integration (embedded Postgres)
+make lint             # pinned golangci-lint (built into ./.tools with your Go)
+make ci               # everything CI runs, same order, same pinned tools
 ```
+
+See [`docs/contributing.md`](docs/contributing.md) ("Before you push").
 
 ---
 
@@ -343,6 +346,7 @@ The complete environment-variable reference (every variable the server, subsyste
 ## Documentation
 
 - [`docs/architecture.md`](docs/architecture.md) — package layout and library choices
+- [`docs/contributing.md`](docs/contributing.md) — before you push: `make pre-push`, `make ci`, pinned tools
 - [`CONVENTIONS.md`](CONVENTIONS.md) — engineering conventions (read before writing code)
 - [`docs/usecase-pattern.md`](docs/usecase-pattern.md) — the sealed UseCase + UnitOfWork pattern, worked example
 - [`docs/wire-contract.md`](docs/wire-contract.md) — the HTTP wire contract and how it's enforced

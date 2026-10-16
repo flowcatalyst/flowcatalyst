@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# git pre-push hook (installed by `make install-hooks`). Runs the fast gate.
+# It only runs checks: it never pushes and never edits files by itself.
+# Bypass: SKIP_PREPUSH=1 git push   or   git push --no-verify
+root="$(git rev-parse --show-toplevel)" || exit 0
+if [ "${SKIP_PREPUSH:-}" = "1" ]; then
+	echo "pre-push: SKIP_PREPUSH=1, skipped"
+	exit 0
+fi
+# Deleting a remote branch / tag-only pushes need no gate.
+only_deletes=1
+while read -r _lref lsha _rref _rsha; do
+	[ "$lsha" != "0000000000000000000000000000000000000000" ] && only_deletes=0
+done
+[ "$only_deletes" = 1 ] && exit 0
+cd "$root" || exit 0
+if ! make pre-push; then
+	echo
+	echo "Push aborted by the pre-push gate. Fix, then rerun: make pre-push"
+	echo "(emergency bypass: SKIP_PREPUSH=1 git push  or  git push --no-verify)"
+	exit 1
+fi

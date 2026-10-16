@@ -65,3 +65,6 @@ frontend/*.tsbuildinfo
 # until Go's OpenAPI emitter lands we treat the generated dir as the
 # source of truth (matches what the Rust repo does today).
 /fcdev
+
+# Pinned dev tools built by `make tools`
+/.tools/
