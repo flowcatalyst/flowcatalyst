@@ -73,6 +73,7 @@ describe("parseDescribe", () => {
 			db: ["main"],
 			httpAllow: ["api.stripe.com"],
 			emits: ["orders:order:order:shipped"],
+			dispatches: [{ target: "billing.charge", path: "/events/charge" }],
 		};
 		const d = parseDescribe(raw);
 		expect(d.abi).toBe(1);
@@ -90,6 +91,7 @@ describe("parseDescribe", () => {
 		expect(d.db).toEqual(["main"]);
 		expect(d.httpAllow).toEqual(["api.stripe.com"]);
 		expect(d.emits).toEqual(["orders:order:order:shipped"]);
+		expect(d.dispatches).toEqual(["billing.charge/events/charge"]);
 	});
 
 	it("never throws on malformed or absent input — a FAILED version may carry none", () => {
@@ -102,11 +104,13 @@ describe("parseDescribe", () => {
 			db: [],
 			httpAllow: [],
 			emits: [],
+			dispatches: [],
 		});
 		expect(parseDescribe(undefined).endpoints).toEqual([]);
 		expect(parseDescribe("not an object").config).toEqual([]);
 		expect(parseDescribe({ endpoints: "not an array" }).endpoints).toEqual([]);
 		expect(parseDescribe({ config: [1, 2, "GREETING"] }).config).toEqual(["GREETING"]);
+		expect(parseDescribe({ dispatches: [1, { target: "a.b", path: "/p" }] }).dispatches).toEqual(["a.b/p"]);
 	});
 });
 
