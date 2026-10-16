@@ -704,9 +704,9 @@ capabilities, from a normal `go test`.
 |---|---|
 | `fn init --lang go\|rust <dir>` | Scaffold a project. |
 | `fn build [dir]` | Go: `GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared`. Rust: `cargo build --release --target wasm32-unknown-unknown`. Then runs `fc_describe` locally and validates. |
-| `fn publish <address> <module.wasm>` | Upload + publish. Creates the function on first publish if `--create`; `--client <code or clt_ id>` sets the owning client at creation (a code is resolved via `GET /api/clients/by-identifier/{code}`; an id is used as-is). |
+| `fn publish <address> <module.wasm> [--json]` | Upload + publish; never promotes. Creates the function on first publish if `--create`; `--client <code or clt_ id>` sets the owning client at creation (a code is resolved via `GET /api/clients/by-identifier/{code}`; an id is used as-is). Reads the versions first and compares digests: prints `new: <address> vN (<runtime>, <digest12>)` or `unchanged: <address> vN already has digest <digest12>` (no upload, no write, no prod confirmation). `--json`: one object on stdout `{address, functionId, version, digest, created, runtime, client?}`. |
 | `fn promote <address> <n> [--alias name]` | Point an alias at a version. |
-| `fn deploy` | build → publish → wait for `READY` → promote. |
+| `fn deploy [--no-promote] [--skip-unchanged] [--json] [--dry-run]` | build → publish → wait for `READY` → promote. `--no-promote` stops after READY (live untouched). `--skip-unchanged`: when `live` already has the artifact's digest, do nothing and exit 0 (`unchanged: <address> live vN already has digest <digest12>`); a known-but-not-live digest skips the upload and is promoted. `--json`: `{address, functionId, version, digest, created, promoted, skipped, runtime, client?}`. CI usage: docs/fcdev-profiles.md "Using fcdev in CI". |
 | `fn watch` | `deploy` on every save (fc-dev). |
 | `fn invoke <address>[@alias\|@vN] [--path] [--data]` | Call the function; mints its own token from fc-dev's CLI credentials. |
 | `fn status <address>` / `fn logs <address>` | Status; logs are tailed from fc-dev's in-process log ring. |

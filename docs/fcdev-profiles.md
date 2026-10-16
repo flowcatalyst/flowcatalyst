@@ -49,7 +49,8 @@ registered with `--env np` is not protected.)
 
 `fcdev fn deploy --dry-run` builds, validates the describe document, looks the function up (reads
 only) and prints what would be created, published and promoted. Nothing is written remotely and no
-confirmation is needed.
+confirmation is needed. It also reports the CI flags below: `new:` / `unchanged:` for the digest, and
+whether it would promote.
 
 ## Profile file
 
@@ -116,6 +117,116 @@ fcdev profile add prod-ci --platform https://fc.example.com --env prod --client-
   --secret-ref 'command:aws ssm get-parameter --name /flowcatalyst/prod/fn-cli-secret --with-decryption --query Parameter.Value --output text'
 fcdev fn deploy example.test ./fn --profile prod-ci --yes
 ```
+
+## Using fcdev in CI
+
+A pipeline deploys a function only when it changed, decided by the artifact's **digest** (the sha256 of
+the built bundle, which is the identity of a version on the platform). Nothing in this flow needs a
+terminal, a keychain or a prompt.
+
+### Authentication
+
+`fcdev profile add` is non-interactive when `--secret-ref env:NAME` (or `file:` / `command:`) is given:
+it never touches the keychain and never prompts. The profile file holds only the reference; the secret
+stays in the CI secret store and is read from the environment variable at run time. The profile file
+goes to the user config directory (`$XDG_CONFIG_HOME` or `$HOME/.config`; set `FC_PROFILES_PATH` to put
+it elsewhere, e.g. the runner's temp dir). The OAuth client needs the `platform:function-publisher`
+role (see "Least privilege"; `--create --client <code>` also needs permission to read clients, or pass
+the `clt_` id).
+
+For a prod profile add `--allow-noninteractive` when creating it, and pass `--yes` on the write
+commands: without both, a prod write is refused with no terminal. Runs that make no remote write
+(`--skip-unchanged` with an unchanged digest, `--dry-run`) need neither.
+
+```yaml
+# GitHub Actions: secrets FC_CLIENT_ID / FC_CLIENT_SECRET, variable FC_PLATFORM_URL
+- name: Install fcdev
+  run: |
+    VERSION=0.5.0   # pin a released fcdev
+    TARGET=linux-amd64
+    base="https://github.com/flowcatalyst/flowcatalyst/releases/download/fcdev/v${VERSION}"
+    curl -fsSLO "${base}/fcdev-v${VERSION}-${TARGET}.tar.gz"
+    curl -fsSLO "${base}/fcdev-v${VERSION}-${TARGET}.tar.gz.sha256"
+    shasum -a 256 -c "fcdev-v${VERSION}-${TARGET}.tar.gz.sha256"
+    tar -xzf "fcdev-v${VERSION}-${TARGET}.tar.gz"
+    sudo install -m 0755 "fcdev-v${VERSION}-${TARGET}/fcdev" /usr/local/bin/
+
+- name: Deploy changed functions
+  env:
+    FC_CLIENT_SECRET: ${{ secrets.FC_CLIENT_SECRET }}   # read via secret_ref env:FC_CLIENT_SECRET
+  run: |
+    fcdev profile add ci --platform "${{ vars.FC_PLATFORM_URL }}" --env prod --allow-noninteractive \
+      --client-id "${{ secrets.FC_CLIENT_ID }}" --secret-ref env:FC_CLIENT_SECRET
+    fcdev profile test ci
+    fcdev fn deploy myapp.myfn ./fn --profile ci --yes --skip-unchanged --json > deploy.json
+    cat deploy.json
+```
+
+(`--env np` for a nonprod platform; then `--yes` and `--allow-noninteractive` are not needed.)
+
+### Flags for pipelines
+
+```
+fcdev fn publish <address> <artifact> [--create --client <code|clt_id>] [--json]
+fcdev fn deploy  <address> [dir|artifact] [--no-promote] [--skip-unchanged] [--dry-run] [--json]
+```
+
+`publish` reads the function's versions first (read-only) and compares digests. Publishing is
+idempotent per digest, so this only decides what to say and avoids the write:
+
+```
+new: myapp.myfn v7 (js, 3f2a9c01b7de)                       # a version was created
+unchanged: myapp.myfn v6 already has digest 3f2a9c01b7de   # nothing uploaded or written, no confirmation
+```
+
+`publish` never promotes: no alias moves, no subscription or schedule is wired (that happens at promote).
+
+`deploy`:
+
+| Situation | What happens |
+|---|---|
+| new digest | publish, wait until a runner has proved it loadable (READY), promote `live` |
+| `--no-promote`, new digest | publish and wait for READY; `live` is **not** moved (`not promoted: ...`) |
+| `--no-promote`, digest already a version | no write at all (only waits if it is not READY yet); no confirmation |
+| `--skip-unchanged`, `live` already has this digest | prints `unchanged: myapp.myfn live v6 already has digest 3f2a9c01b7de`, exits 0: no publish, no wait, no promote, no remote write, no confirmation |
+| `--skip-unchanged`, digest is a version but not `live` | no upload, but it is promoted (unless `--no-promote`) |
+| neither flag, digest already a version | no upload; promoted again (as before) |
+
+`--json` prints exactly one JSON object on stdout; the banner and all progress go to stderr.
+
+```json
+{"address":"myapp.myfn","functionId":"fn_0HZ...","version":7,"digest":"<full sha256>","created":true,"promoted":true,"skipped":false,"runtime":"js","client":"clt_0HZ..."}
+```
+
+`publish --json` has `address, functionId, version, digest, created, runtime, client`. `created` means
+this run created the version (false: the digest already existed); `promoted` means this run moved
+`live`; `skipped` means `--skip-unchanged` found `live` already at this digest; `client` is the owning
+client's `clt_` id and is omitted for a platform-owned function. A `--dry-run --json` adds
+`"dryRun":true`, writes nothing and reports the same fields for what would happen.
+
+### What changes the digest
+
+The digest is the sha256 of the bundle bytes, so anything that changes the bytes makes a "new" version.
+Two builds of the same source with the same inputs give identical bytes (checked by
+`TestFnBuildIsReproducible` against `examples/functions/dispatch-demo/payload-logger`: no timestamps,
+no absolute paths, no randomness in the bundle). What does change it:
+
+* **Source** changes, including values baked in with `define` (such as the demo's `APP_CODE`).
+* **Dependency versions**: commit the lockfile and install with `npm ci`, never `npm install`; a
+  floating `^` range with no lockfile makes the digest drift between runs.
+* **The bundler version**: pin `esbuild` exactly (the examples use `0.24.2`); a new esbuild can change
+  its output.
+* **Node/TypeScript toolchain** only through the above (they are not embedded).
+* **Relative paths of linked dependencies**: esbuild writes a `// path/to/file.ts` comment per bundled
+  file, relative to the project. Registry packages appear as `node_modules/...` and are the same in
+  every checkout. A `file:` or `link:` dependency outside the project (as in this repo's examples) is
+  written as `../../../clients/...`, so the same source built at a different directory depth gives a
+  different digest. In CI build from a fixed layout, or depend on a published package.
+* Go and Rust artifacts: the same toolchain version in CI, `go.sum` / a committed `Cargo.lock`. The CLI
+  builds Go with `-trimpath`, so the checkout's path is not embedded. (Reproducibility of the Go and
+  Rust builds is not tested here, only the JS one.)
+
+When a digest changes without a source change, diff the two bundles.
 
 ## Commands
 

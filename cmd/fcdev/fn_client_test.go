@@ -180,12 +180,13 @@ func TestDeployDryRunShowsResolvedClient(t *testing.T) {
 	art := filepath.Join(e.dir, "function.wasm")
 	require.NoError(t, os.WriteFile(art, []byte("0123456789"), 0o600))
 	var out bytes.Buffer
-	api := &fnAPI{c: fnCredentials{PlatformURL: "http://x.invalid"}}
 	owner := fnClient{ID: testClientID, Code: "bevco"}
-	require.NoError(t, deployDryRun(&out, api, nil, "demo.new", art, "wasm", &abi.Describe{}, 0, owner))
+	plan := &deployPlan{address: "demo.new", artifact: art, runtime: "wasm", describe: &abi.Describe{}, digest: digestHex([]byte("0123456789")), size: 10, owner: owner}
+	plan.dryRunReport(&out, "http://x.invalid")
 	require.Contains(t, out.String(), "owning client: bevco ("+testClientID+")")
 	// A function that already exists is not re-owned.
 	out.Reset()
-	require.NoError(t, deployDryRun(&out, api, &fnFunction{ID: "fn_1", Address: "demo.new"}, "demo.new", art, "wasm", &abi.Describe{}, 0, owner))
+	plan.fn = &fnFunction{ID: "fn_1", Address: "demo.new"}
+	plan.dryRunReport(&out, "http://x.invalid")
 	require.NotContains(t, out.String(), "owning client")
 }

@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,8 +19,6 @@ import (
 
 	fcauth "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
-
-	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 )
 
 // fnCredentials is what `fcdev fn` authenticates with. In CI, flags or
@@ -322,28 +318,6 @@ func (a *fnAPI) mustFunction(ctx context.Context, address string) (*fnFunction, 
 	return fn, err
 }
 
-// publish uploads an artifact and publishes it as a version.
-func (a *fnAPI) publish(ctx context.Context, fn *fnFunction, path, runtime string) (*fnVersion, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	sum := sha256.Sum256(data)
-	digest := hex.EncodeToString(sum[:])
-	ctype := "application/wasm"
-	if runtime == "js" {
-		ctype = "text/javascript"
-	}
-	if err := a.do(ctx, http.MethodPut, "/api/functions/"+fn.ID+"/artifacts/"+digest, bytes.NewReader(data), ctype, nil); err != nil {
-		return nil, fmt.Errorf("upload: %w", err)
-	}
-	var v fnVersion
-	if err := a.json(ctx, http.MethodPost, "/api/functions/"+fn.ID+"/versions", map[string]any{"digest": digest, "runtime": runtime}, &v); err != nil {
-		return nil, fmt.Errorf("publish: %w", err)
-	}
-	return &v, nil
-}
-
 // waitReady polls until a runner has proved the version loadable.
 func (a *fnAPI) waitReady(ctx context.Context, fn *fnFunction, number int32, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
@@ -387,49 +361,83 @@ func init() {
 func newFnPublishCmd() *cobra.Command {
 	var pf fnPlatformFlags
 	var runtime, clientID, pool string
-	var create, yes bool
+	var create, yes, asJSON bool
 	cmd := &cobra.Command{
 		Use:   "publish <address> <artifact>",
 		Short: "Upload an artifact and publish it as a new version (changes nothing that is running)",
-		Args:  cobra.ExactArgs(2),
+		Long: `Uploads an artifact and publishes it as a version. It never promotes: no alias
+moves and no subscription or schedule is wired.
+
+Publishing is idempotent per digest (sha256 of the artifact). The function's
+versions are read first; when one already has the digest nothing is uploaded or
+written and no confirmation is asked:
+
+  new: <address> vN (<runtime>, <digest12>)
+  unchanged: <address> vN already has digest <digest12>
+
+--json prints ONE JSON object on stdout (everything else goes to stderr):
+  {"address","functionId","version","digest","created","runtime","client"?}
+created is true when this run created the version; digest is the full sha256.
+
+--create --client <client> sets the owning client of a new function. <client>
+is the client's code (e.g. bevco) or its clt_... id; --client is ignored for a
+function that already exists.`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			api, err := newFnAPI(cmd, &pf)
 			if err != nil {
 				return err
 			}
+			rep := newFnReport(cmd, asJSON)
 			ctx := cmd.Context()
-			fn, err := api.findFunction(ctx, args[0])
+			address, artifact := args[0], args[1]
+			data, err := os.ReadFile(artifact)
+			if err != nil {
+				return err
+			}
+			digest := digestHex(data)
+			if runtime == "" {
+				runtime = runtimeFor(artifact)
+			}
+			fn, err := api.findFunction(ctx, address)
 			if err != nil {
 				return err
 			}
 			if fn == nil && !create {
-				return fmt.Errorf("no function %s; pass --create to create it", args[0])
+				return fmt.Errorf("no function %s; pass --create to create it", address)
+			}
+			if fn != nil {
+				existing, err := api.findDigest(ctx, fn, digest)
+				if err != nil {
+					return err
+				}
+				if existing != nil {
+					rep.say("unchanged: %s v%d already has digest %s", fn.Address, existing.Number, short(digest))
+					return rep.emit(fnPublishJSON{Address: fn.Address, FunctionID: fn.ID, Version: existing.Number, Digest: digest, Created: false, Runtime: firstNonEmpty(existing.Runtime, runtime), Client: ownerClient(fn, fnClient{})})
+				}
 			}
 			var owner fnClient
 			if fn == nil && clientID != "" {
 				if owner, err = api.resolveClient(ctx, clientID); err != nil {
 					return err
 				}
-				fmt.Printf("owning client: %s\n", owner)
+				rep.say("owning client: %s", owner)
 			}
-			if err := api.confirm("publish "+args[0], yes); err != nil {
+			if err := api.confirm("publish "+address, yes); err != nil {
 				return err
 			}
 			if fn == nil {
-				if fn, err = api.createFunction(ctx, args[0], owner.ID, pool); err != nil {
+				if fn, err = api.createFunction(ctx, address, owner.ID, pool); err != nil {
 					return err
 				}
-				fmt.Printf("created %s\n", fn.Address)
+				rep.say("created %s", fn.Address)
 			}
-			if runtime == "" {
-				runtime = runtimeFor(args[1])
-			}
-			v, err := api.publish(ctx, fn, args[1], runtime)
+			v, err := api.publishBytes(ctx, fn, data, digest, runtime)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("published %s v%d (%s, %s)\n", fn.Address, v.Number, runtime, v.Digest[:12])
-			return nil
+			rep.say("new: %s v%d (%s, %s)", fn.Address, v.Number, runtime, short(digest))
+			return rep.emit(fnPublishJSON{Address: fn.Address, FunctionID: fn.ID, Version: v.Number, Digest: digest, Created: true, Runtime: runtime, Client: ownerClient(fn, owner)})
 		},
 	}
 	pf.add(cmd)
@@ -437,6 +445,7 @@ func newFnPublishCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&create, "create", false, "create the function if it does not exist")
 	cmd.Flags().StringVar(&clientID, "client", "", "with --create: the owning client, by code (e.g. bevco) or id (clt_...) (default: platform-owned)")
 	cmd.Flags().StringVar(&pool, "pool", "", "with --create: the runner pool (default: default)")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print one JSON object on stdout; human output goes to stderr")
 	addYesFlag(cmd, &yes)
 	return cmd
 }
@@ -485,7 +494,7 @@ func newFnPromoteCmd() *cobra.Command {
 func newFnDeployCmd() *cobra.Command {
 	var pf fnPlatformFlags
 	var runtime, clientID, pool string
-	var create, yes, dryRun bool
+	var create, yes, dryRun, noPromote, skipUnchanged, asJSON bool
 	var wait time.Duration
 	cmd := &cobra.Command{
 		Use:   "deploy <address> [dir|artifact]",
@@ -501,7 +510,27 @@ anything to the platform.
 is the client's code (identifier, e.g. bevco, the same in every environment)
 or its clt_... id. A code is resolved with a read-only lookup of the client
 (needs permission to read clients; otherwise pass the id); an id is used as-is.
---client is ignored for a function that already exists.`,
+--client is ignored for a function that already exists.
+
+For pipelines (the artifact's sha256 digest is the identity of a version):
+
+  --skip-unchanged  when the version the live alias points at already has this
+                    digest, do nothing and exit 0, printing
+                      unchanged: <address> live vN already has digest <digest12>
+                    (no publish, no wait, no promote, no confirmation, no
+                    remote write). When the digest exists as a version that is
+                    not live, the upload is skipped but it is still promoted.
+  --no-promote      publish and wait until a runner has loaded the version
+                    (READY), but leave live where it is; subscriptions and
+                    schedules are only wired at promote.
+  --json            print ONE JSON object on stdout, human output on stderr:
+                    {"address","functionId","version","digest","created",
+                     "promoted","skipped","runtime","client"?}
+                    created: this run created the version; promoted: live was
+                    moved by this run; skipped: --skip-unchanged did nothing.
+
+A run that makes no remote write (skipped, or --no-promote of an existing
+digest) needs no prod confirmation; any other write to a prod profile does.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -509,6 +538,8 @@ or its clt_... id. A code is resolved with a read-only lookup of the client
 			if err != nil {
 				return err
 			}
+			rep := newFnReport(cmd, asJSON)
+			address := args[0]
 			target := "."
 			if len(args) == 2 {
 				target = args[1]
@@ -524,55 +555,106 @@ or its clt_... id. A code is resolved with a read-only lookup of the client
 			if runtime == "" {
 				runtime = runtimeFor(artifact)
 			}
-			d, _, err := describeArtifact(ctx, artifact, runtime)
+			d, _, err := fnDescribeArtifact(ctx, artifact, runtime)
 			if err != nil {
 				return fmt.Errorf("%s is not publishable: %w", artifact, err)
 			}
-			fn, err := api.findFunction(ctx, args[0])
+			data, err := os.ReadFile(artifact)
 			if err != nil {
 				return err
 			}
-			if fn == nil && !create {
-				return fmt.Errorf("no function %s; pass --create to create it", args[0])
+			plan := &deployPlan{
+				address: address, artifact: artifact, runtime: runtime, describe: d, digest: digestHex(data),
+				size: len(data), wait: wait, noPromote: noPromote, skipUnchanged: skipUnchanged,
 			}
-			var owner fnClient
-			if fn == nil && clientID != "" {
-				if owner, err = api.resolveClient(ctx, clientID); err != nil {
+			if plan.fn, err = api.findFunction(ctx, address); err != nil {
+				return err
+			}
+			if plan.fn == nil && !create {
+				return fmt.Errorf("no function %s; pass --create to create it", address)
+			}
+			if plan.fn != nil {
+				if plan.existing, err = api.findDigest(ctx, plan.fn, plan.digest); err != nil {
 					return err
 				}
+				if plan.existing != nil {
+					if plan.live, err = api.liveVersion(ctx, plan.fn); err != nil {
+						return err
+					}
+				}
+			} else if clientID != "" {
+				if plan.owner, err = api.resolveClient(ctx, clientID); err != nil {
+					return err
+				}
+			}
+			result := fnDeployJSON{Address: address, Digest: plan.digest, Runtime: runtime, Client: ownerClient(plan.fn, plan.owner)}
+			if plan.fn != nil {
+				result.FunctionID = plan.fn.ID
+			}
+			if plan.existing != nil {
+				result.Version = plan.existing.Number
 			}
 			if dryRun {
-				return deployDryRun(cmd.OutOrStdout(), api, fn, args[0], artifact, runtime, d, wait, owner)
+				plan.dryRunReport(rep.human, api.c.PlatformURL)
+				result.Skipped, result.DryRun = plan.skip(), true
+				return rep.emit(result)
 			}
-			if err := api.confirm("deploy "+args[0], yes); err != nil {
-				return err
+			if plan.skip() {
+				rep.say("%s", plan.unchangedLive())
+				result.Skipped = true
+				return rep.emit(result)
 			}
-			if fn == nil {
-				if owner.ID != "" {
-					fmt.Printf("owning client: %s\n", owner)
+			if plan.needsWrite() {
+				action := "deploy " + address
+				if noPromote {
+					action = "publish " + address + " (without promoting)"
 				}
-				if fn, err = api.createFunction(ctx, args[0], owner.ID, pool); err != nil {
+				if err := api.confirm(action, yes); err != nil {
 					return err
 				}
-				fmt.Printf("created %s\n", fn.Address)
 			}
-			v, err := api.publish(ctx, fn, artifact, runtime)
-			if err != nil {
-				return err
+			fn := plan.fn
+			if fn == nil {
+				if plan.owner.ID != "" {
+					rep.say("owning client: %s", plan.owner)
+				}
+				if fn, err = api.createFunction(ctx, address, plan.owner.ID, pool); err != nil {
+					return err
+				}
+				rep.say("created %s", fn.Address)
+				result.FunctionID, result.Client = fn.ID, ownerClient(fn, plan.owner)
 			}
-			fmt.Printf("published v%d; waiting for a runner to load it…\n", v.Number)
-			if err := api.waitReady(ctx, fn, v.Number, wait); err != nil {
-				return err
+			v := plan.existing
+			if v == nil {
+				if v, err = api.publishBytes(ctx, fn, data, plan.digest, runtime); err != nil {
+					return err
+				}
+				result.Created = true
+				rep.say("new: %s v%d (%s, %s)", fn.Address, v.Number, runtime, short(plan.digest))
+			} else {
+				rep.say("unchanged: %s v%d already has digest %s", fn.Address, v.Number, short(plan.digest))
+			}
+			result.Version = v.Number
+			if plan.existing == nil || plan.existing.Status != "READY" {
+				rep.say("waiting for a runner to load v%d…", v.Number)
+				if err := api.waitReady(ctx, fn, v.Number, wait); err != nil {
+					return err
+				}
+			}
+			if noPromote {
+				rep.say("not promoted: %s v%d is READY; live was not moved (--no-promote)", fn.Address, v.Number)
+				return rep.emit(result)
 			}
 			wiring, err := api.promote(ctx, fn, "live", v.Number)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("%s@live → v%d\n", fn.Address, v.Number)
+			result.Promoted = true
+			rep.say("%s@live → v%d", fn.Address, v.Number)
 			if len(wiring) > 0 && string(wiring) != "{}" {
-				fmt.Printf("wiring: %s\n", wiring)
+				rep.say("wiring: %s", wiring)
 			}
-			return nil
+			return rep.emit(result)
 		},
 	}
 	pf.add(cmd)
@@ -582,6 +664,9 @@ or its clt_... id. A code is resolved with a read-only lookup of the client
 	cmd.Flags().StringVar(&pool, "pool", "", "with --create: the runner pool")
 	cmd.Flags().DurationVar(&wait, "wait", time.Minute, "how long to wait for a runner to load the version")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "build and validate, then print what would be published and promoted; writes nothing remotely")
+	cmd.Flags().BoolVar(&noPromote, "no-promote", false, "publish and wait until READY, but do not move live")
+	cmd.Flags().BoolVar(&skipUnchanged, "skip-unchanged", false, "do nothing (exit 0) when the live version already has this artifact's digest")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print one JSON object on stdout; human output goes to stderr")
 	addYesFlag(cmd, &yes)
 	return cmd
 }
@@ -589,28 +674,6 @@ or its clt_... id. A code is resolved with a read-only lookup of the client
 // addYesFlag registers --yes for a state-changing command.
 func addYesFlag(cmd *cobra.Command, yes *bool) {
 	cmd.Flags().BoolVar(yes, "yes", false, "non-interactive: with a prod profile that sets allow_noninteractive = true, skip the typed confirmation")
-}
-
-// deployDryRun reports what deploy would do. It performs no remote write.
-func deployDryRun(out io.Writer, api *fnAPI, fn *fnFunction, address, artifact, runtime string, d *abi.Describe, wait time.Duration, owner fnClient) error {
-	data, err := os.ReadFile(artifact)
-	if err != nil {
-		return err
-	}
-	sum := sha256.Sum256(data)
-	fmt.Fprintf(out, "dry run: nothing is written to %s\n", redactURL(api.c.PlatformURL))
-	printDescribeTo(out, artifact, d)
-	fmt.Fprintf(out, "artifact: %s (%d bytes, sha256 %s, runtime %s)\n", artifact, len(data), hex.EncodeToString(sum[:])[:12], runtime)
-	if fn == nil {
-		fmt.Fprintf(out, "would create function %s\n", address)
-		if owner.ID != "" {
-			fmt.Fprintf(out, "owning client: %s\n", owner)
-		}
-	} else {
-		fmt.Fprintf(out, "function %s exists (%s)\n", fn.Address, fn.ID)
-	}
-	fmt.Fprintf(out, "would upload the artifact and publish a new version, wait up to %s for a runner to load it, then promote it to live\n", wait)
-	return nil
 }
 
 func newFnSetCmd() *cobra.Command {

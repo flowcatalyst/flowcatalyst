@@ -851,8 +851,8 @@ func TestDeployDryRunReport(t *testing.T) {
 	require.NoError(t, os.WriteFile(art, []byte("0123456789"), 0o600))
 	pl := newProfilePlatform(t, "s")
 	var out bytes.Buffer
-	api := &fnAPI{c: fnCredentials{PlatformURL: pl.srv.URL}}
-	require.NoError(t, deployDryRun(&out, api, nil, "demo.new", art, "wasm", &abi.Describe{}, 0, fnClient{}))
+	plan := &deployPlan{address: "demo.new", artifact: art, runtime: "wasm", describe: &abi.Describe{}, digest: digestHex([]byte("0123456789")), size: 10}
+	plan.dryRunReport(&out, pl.srv.URL)
 	require.Contains(t, out.String(), "dry run")
 	require.Contains(t, out.String(), "would create function demo.new")
 	require.Contains(t, out.String(), "10 bytes")

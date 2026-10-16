@@ -105,7 +105,11 @@ APP_CODE=$APP fcdev fn deploy $APP.payload-logger $D/payload-logger --create
 APP_CODE=$APP fcdev fn deploy $APP.$NAME $D/dispatch-creator
 ```
 
-`deploy` = build + publish + wait READY + promote `live`. The separate steps are
+`deploy` = build + publish + wait READY + promote `live`. For a pipeline, `--skip-unchanged` does nothing when
+`live` already has the bundle's digest, `--no-promote` publishes and waits for READY without moving `live`, and
+`--json` prints one result object (see "Using fcdev in CI" in docs/fcdev-profiles.md; the bundle is reproducible
+as long as the lockfile and the pinned esbuild are, but this demo's `file:` dependency embeds a relative path, so
+build from the same directory layout). The separate steps are
 `fcdev fn build <dir>`, `fcdev fn publish $APP.$NAME <dir>/dist/function.js`,
 `fcdev fn promote $APP.$NAME <version>`, and `fcdev fn status $APP.$NAME`. If you ran the earlier
 (event-based) version of this demo, re-deploying `payload-logger` removes its old subscription at

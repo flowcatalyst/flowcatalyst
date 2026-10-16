@@ -85,7 +85,7 @@ func buildProject(ctx context.Context, dir string) (string, error) {
 	case langGo:
 		out = filepath.Join(abs, "function.wasm")
 		// #nosec G204 -- a fixed go build; out is a path this command chose.
-		cmd = exec.CommandContext(ctx, "go", "build", "-buildmode=c-shared", "-ldflags=-s -w", "-o", out, ".")
+		cmd = exec.CommandContext(ctx, "go", "build", "-trimpath", "-buildmode=c-shared", "-ldflags=-s -w", "-o", out, ".")
 		cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
 	case langRust:
 		cmd = exec.CommandContext(ctx, "cargo", "build", "--release", "--target", "wasm32-unknown-unknown")
