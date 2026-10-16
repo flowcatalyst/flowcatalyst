@@ -31,8 +31,10 @@ func TestEventFilterOptions_ScopedToTheCallersClients(t *testing.T) {
 		require.NoError(t, err)
 	}
 	s := &State{Repo: event.NewRepository(pool)}
-	caller := auth.WithContext(ctx, &auth.AuthContext{PrincipalID: "prn_efo", Scope: auth.ScopeClient, Clients: []string{mine},
-		Permissions: []string{"platform:messaging:event:view"}})
+	caller := auth.WithContext(ctx, &auth.AuthContext{
+		PrincipalID: "prn_efo", Scope: auth.ScopeClient, Clients: []string{mine},
+		Permissions: []string{"platform:messaging:event:view"},
+	})
 
 	out, err := s.filterOptions(caller, &apicommon.Empty{})
 	require.NoError(t, err)

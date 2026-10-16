@@ -65,83 +65,113 @@ func to(status string, from ...string) map[string]string {
 }
 
 var cases = []tcase{
-	{name: "retry", counted: true, allowed: to("PENDING", live...),
+	{
+		name: "retry", counted: true, allowed: to("PENDING", live...),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			msg := "boom"
 			_, err := lc.Retry(ctx, j.id, j.createdAt, time.Now().Add(time.Minute), &msg)
 			return err
-		}},
-	{name: "defer", counted: true, allowed: to("PENDING", live...),
+		},
+	},
+	{
+		name: "defer", counted: true, allowed: to("PENDING", live...),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.Defer(ctx, j.id, j.createdAt, time.Now().Add(time.Minute))
 			return err
-		}},
-	{name: "hold", counted: true, allowed: to("PENDING", live...),
+		},
+	},
+	{
+		name: "hold", counted: true, allowed: to("PENDING", live...),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.Hold(ctx, j.id, j.createdAt, time.Now().Add(time.Minute))
 			return err
-		}},
-	{name: "settle_acked", counted: true, allowed: to("PENDING", queuedOrPro...),
+		},
+	},
+	{
+		name: "settle_acked", counted: true, allowed: to("PENDING", queuedOrPro...),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.SettleAcked(ctx, []string{j.id}, "test")
 			return err
-		}},
-	{name: "sweep_stranded", needsHead: true, allowed: to("PENDING", queuedOrPro...),
+		},
+	},
+	{
+		name: "sweep_stranded", needsHead: true, allowed: to("PENDING", queuedOrPro...),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.SweepStranded(ctx, time.Now().Add(time.Hour), "test")
 			return err
-		}},
-	{name: "stale_queued", allowed: to("PENDING", "QUEUED"),
+		},
+	},
+	{
+		name: "stale_queued", allowed: to("PENDING", "QUEUED"),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.RecoverStaleQueued(ctx, time.Now().Add(-30*time.Minute))
 			return err
-		}},
-	{name: "stale_processing", allowed: to("PENDING", "PROCESSING"),
+		},
+	},
+	{
+		name: "stale_processing", allowed: to("PENDING", "PROCESSING"),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.RecoverStaleProcessing(ctx, time.Now().Add(-30*time.Minute))
 			return err
-		}},
-	{name: "requeue", counted: true, allowed: to("PENDING", allStatuses...),
+		},
+	},
+	{
+		name: "requeue", counted: true, allowed: to("PENDING", allStatuses...),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.Requeue(ctx, j.id, j.createdAt)
 			return err
-		}},
-	{name: "mark_queued", counted: true, allowed: to("QUEUED", "PENDING"),
+		},
+	},
+	{
+		name: "mark_queued", counted: true, allowed: to("QUEUED", "PENDING"),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.MarkQueued(ctx, []string{j.id}, []time.Time{j.createdAt}, []time.Time{j.updatedAt})
 			return err
-		}},
-	{name: "claim_for_delivery", counted: true, allowed: to("PROCESSING", "PENDING", "QUEUED"),
+		},
+	},
+	{
+		name: "claim_for_delivery", counted: true, allowed: to("PROCESSING", "PENDING", "QUEUED"),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.ClaimForDelivery(ctx, j.id, j.createdAt)
 			return err
-		}},
-	{name: "reclaim_stale_delivery", counted: true, allowed: to("PROCESSING", "PROCESSING"),
+		},
+	},
+	{
+		name: "reclaim_stale_delivery", counted: true, allowed: to("PROCESSING", "PROCESSING"),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.ReclaimStaleDelivery(ctx, j.id, j.createdAt, time.Now().Add(time.Hour))
 			return err
-		}},
-	{name: "complete", counted: true, allowed: to("COMPLETED", live...),
+		},
+	},
+	{
+		name: "complete", counted: true, allowed: to("COMPLETED", live...),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.Complete(ctx, j.id, j.createdAt, 12)
 			return err
-		}},
-	{name: "fail", counted: true, allowed: to("FAILED", live...),
+		},
+	},
+	{
+		name: "fail", counted: true, allowed: to("FAILED", live...),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			msg := "dead"
 			_, err := lc.Fail(ctx, j.id, j.createdAt, &msg, 12)
 			return err
-		}},
-	{name: "operator_cancel", counted: true, allowed: to("CANCELLED", "FAILED"),
+		},
+	},
+	{
+		name: "operator_cancel", counted: true, allowed: to("CANCELLED", "FAILED"),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.OperatorCancel(ctx, j.id, j.createdAt)
 			return err
-		}},
-	{name: "operator_complete", counted: true, allowed: to("COMPLETED", "FAILED"),
+		},
+	},
+	{
+		name: "operator_complete", counted: true, allowed: to("COMPLETED", "FAILED"),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.OperatorComplete(ctx, j.id, j.createdAt)
 			return err
-		}},
+		},
+	},
 }
 
 func newJob(group string, mode common.DispatchMode, seq int32) dispatchjob.DispatchJob {

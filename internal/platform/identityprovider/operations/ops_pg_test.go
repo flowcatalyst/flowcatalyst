@@ -4,9 +4,10 @@ package operations_test
 
 import (
 	"context"
-	fcrole "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"testing"
 	"time"
+
+	fcrole "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

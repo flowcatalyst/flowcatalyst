@@ -73,7 +73,7 @@ func TestDocument_PoolsAreNamespacedAndPrioritiesDriveQueues(t *testing.T) {
 	// DEFAULT queue, because it has dispatch work.
 	seedSubscription(t, pool, "sub_doc_globex", "doc-globex", &globex, "ACTIVE", nil)
 	// acme asks for the expedited lane.
-	seedSubscription(t, pool, "sub_doc_acme_hi", "doc-acme-hi", &acme, "ACTIVE", strPtr("HIGH_PRIORITY"))
+	seedSubscription(t, pool, "sub_doc_acme_hi", "doc-acme-hi", &acme, "ACTIVE", new("HIGH_PRIORITY"))
 
 	settings, err := dispatch.ResolveSettings("SQS", sqsURL, "", "FC-test", "")
 	require.NoError(t, err)
@@ -137,7 +137,7 @@ func TestDocument_OnlyActiveSubscriptionsCountAsWork(t *testing.T) {
 	pool := testpg.Pool(t)
 
 	tenant := "docpaused"
-	seedSubscription(t, pool, "sub_doc_paused", "doc-paused", &tenant, "PAUSED", strPtr("HIGH_PRIORITY"))
+	seedSubscription(t, pool, "sub_doc_paused", "doc-paused", &tenant, "PAUSED", new("HIGH_PRIORITY"))
 
 	settings, err := dispatch.ResolveSettings("SQS", sqsURL, "", "FC-test", "")
 	require.NoError(t, err)
@@ -164,5 +164,3 @@ func TestDocument_PostgresFlavour(t *testing.T) {
 	require.NotNil(t, q, "an unprefixed Postgres name, no .fifo suffix")
 	assert.Equal(t, "postgres://u@localhost:5432/fc", q.URI)
 }
-
-func strPtr(s string) *string { return &s }

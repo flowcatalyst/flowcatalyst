@@ -281,6 +281,7 @@ func newClientBuilder(cfg MediatorConfig) ClientBuilder {
 			// opens extra connections as needed to keep each one under the
 			// server's limit, which is what a stream limit asks for. See
 			// TestMediatorDoesNotWedgeWhenInFlightExceedsServerStreamLimit.
+			//nolint:staticcheck // SA1019: x/net http2 is deprecated for http.Transport.HTTP2; migration deferred, it changes stream-limit behaviour (see comment above).
 			if h2, err := http2.ConfigureTransports(transport); err == nil && h2 != nil {
 				h2.StrictMaxConcurrentStreams = false
 				h2.ReadIdleTimeout = cfg.HTTP2ReadIdleTimeout
@@ -290,6 +291,7 @@ func newClientBuilder(cfg MediatorConfig) ClientBuilder {
 			// ever negotiates h2 via TLS ALPN, so a plain "http://" target
 			// needs its own transport that skips negotiation entirely and
 			// speaks the HTTP/2 preface straight over a raw TCP conn.
+			//nolint:staticcheck // SA1019: as above; h2c prior-knowledge needs the http2.Transport until http.Transport.Protocols covers it.
 			h2cTransport := &http2.Transport{
 				AllowHTTP:                  true,
 				StrictMaxConcurrentStreams: false, // see the TLS transport above

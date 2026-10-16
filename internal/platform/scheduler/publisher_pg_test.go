@@ -46,11 +46,11 @@ func TestPostgresDispatchPublisher_RoutesPerTenantAndPriority(t *testing.T) {
 
 	insertClient(t, pool, "clt_pub_acme", "pubacme")
 	hi := "HIGH_PRIORITY"
-	insertSubscriptionWithQueue(t, pool, "sub_pub_hi", "pub-hi", strPtrPub("pubacme"), &hi)
-	insertSubscriptionWithQueue(t, pool, "sub_pub_lo", "pub-lo", strPtrPub("pubacme"), nil)
+	insertSubscriptionWithQueue(t, pool, "sub_pub_hi", "pub-hi", new("pubacme"), &hi)
+	insertSubscriptionWithQueue(t, pool, "sub_pub_lo", "pub-lo", new("pubacme"), nil)
 	// A legacy value nothing can write any more still has to route.
 	legacy := "workers-high"
-	insertSubscriptionWithQueue(t, pool, "sub_pub_legacy", "pub-legacy", strPtrPub("pubacme"), &legacy)
+	insertSubscriptionWithQueue(t, pool, "sub_pub_legacy", "pub-legacy", new("pubacme"), &legacy)
 
 	settings, err := dispatch.ResolveSettings("postgres", "", "", "FC-dev", "postgresql://x@localhost/fc")
 	require.NoError(t, err)
@@ -63,12 +63,18 @@ func TestPostgresDispatchPublisher_RoutesPerTenantAndPriority(t *testing.T) {
 	require.NoError(t, err)
 
 	items := []PublishItem{
-		{JobID: "djpub001", ClientID: "clt_pub_acme", SubscriptionID: "sub_pub_hi",
-			Message: common.Message{ID: "djpub001"}},
-		{JobID: "djpub002", ClientID: "clt_pub_acme", SubscriptionID: "sub_pub_lo",
-			Message: common.Message{ID: "djpub002"}},
-		{JobID: "djpub003", ClientID: "clt_pub_acme", SubscriptionID: "sub_pub_legacy",
-			Message: common.Message{ID: "djpub003"}},
+		{
+			JobID: "djpub001", ClientID: "clt_pub_acme", SubscriptionID: "sub_pub_hi",
+			Message: common.Message{ID: "djpub001"},
+		},
+		{
+			JobID: "djpub002", ClientID: "clt_pub_acme", SubscriptionID: "sub_pub_lo",
+			Message: common.Message{ID: "djpub002"},
+		},
+		{
+			JobID: "djpub003", ClientID: "clt_pub_acme", SubscriptionID: "sub_pub_legacy",
+			Message: common.Message{ID: "djpub003"},
+		},
 		// Client-less: the platform tenant's lane.
 		{JobID: "djpub004", Message: common.Message{ID: "djpub004"}},
 		// A client that does not resolve falls back the same way.
@@ -144,7 +150,7 @@ func TestDestinationResolver_JobOwnQueueWinsOverSubscription(t *testing.T) {
 
 	insertClient(t, pool, "clt_pri_acme", "priacme")
 	lo := "DEFAULT"
-	insertSubscriptionWithQueue(t, pool, "sub_pri_lo", "pri-lo", strPtrPub("priacme"), &lo)
+	insertSubscriptionWithQueue(t, pool, "sub_pri_lo", "pri-lo", new("priacme"), &lo)
 
 	settings, err := dispatch.ResolveSettings("postgres", "", "", "FC-dev", "postgresql://x@localhost/fc")
 	require.NoError(t, err)
@@ -174,7 +180,7 @@ func TestDestinationResolver_LegacyJobFallsBackToSubscription(t *testing.T) {
 
 	insertClient(t, pool, "clt_pri_globex", "priglobex")
 	hi := "HIGH_PRIORITY"
-	insertSubscriptionWithQueue(t, pool, "sub_pri_hi2", "pri-hi2", strPtrPub("priglobex"), &hi)
+	insertSubscriptionWithQueue(t, pool, "sub_pri_hi2", "pri-hi2", new("priglobex"), &hi)
 
 	settings, err := dispatch.ResolveSettings("postgres", "", "", "FC-dev", "postgresql://x@localhost/fc")
 	require.NoError(t, err)
@@ -204,7 +210,7 @@ func TestDestinationResolver_JobWithLegacyTextFallsBackToSubscription(t *testing
 
 	insertClient(t, pool, "clt_pri_legacy", "prilegacy")
 	hi := "HIGH_PRIORITY"
-	insertSubscriptionWithQueue(t, pool, "sub_pri_legacy", "pri-legacy", strPtrPub("prilegacy"), &hi)
+	insertSubscriptionWithQueue(t, pool, "sub_pri_legacy", "pri-legacy", new("prilegacy"), &hi)
 
 	settings, err := dispatch.ResolveSettings("postgres", "", "", "FC-dev", "postgresql://x@localhost/fc")
 	require.NoError(t, err)
@@ -232,7 +238,7 @@ func TestDestinationResolver_UnrecognisedEverywhereReadsAsDefault(t *testing.T) 
 
 	insertClient(t, pool, "clt_pri_legacy", "prilegacy")
 	legacy := "workers-high"
-	insertSubscriptionWithQueue(t, pool, "sub_pri_legacy2", "pri-legacy2", strPtrPub("prilegacy"), &legacy)
+	insertSubscriptionWithQueue(t, pool, "sub_pri_legacy2", "pri-legacy2", new("prilegacy"), &legacy)
 
 	settings, err := dispatch.ResolveSettings("postgres", "", "", "FC-dev", "postgresql://x@localhost/fc")
 	require.NoError(t, err)
@@ -278,5 +284,3 @@ func TestDestinationResolver_DirectJobWithNoSubscriptionUsesOwnQueue(t *testing.
 	require.NoError(t, err)
 	assert.Equal(t, "FC-dev-pridirect-DEFAULT", name)
 }
-
-func strPtrPub(s string) *string { return &s }

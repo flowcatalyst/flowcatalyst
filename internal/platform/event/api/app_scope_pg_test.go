@@ -75,7 +75,8 @@ func TestEventIngest_ApplicationConfinement(t *testing.T) {
 	// Singular create: own ok, other / unknown 403, admin ok.
 	create := func(ctx context.Context, typ string) error {
 		_, err := s.create(ctx, &apicommon.In[CreateEventRequest]{Body: CreateEventRequest{
-			EventType: typ, Source: "test://scope", Data: json.RawMessage(`{"n":1}`)}})
+			EventType: typ, Source: "test://scope", Data: json.RawMessage(`{"n":1}`),
+		}})
 		return err
 	}
 	require.NoError(t, create(scoped, own+":a:b:c"))

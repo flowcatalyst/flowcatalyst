@@ -144,7 +144,7 @@ func TestDesired_ETagChangesOnSecretRotationWithoutRevisionBump(t *testing.T) {
 	// Wait out the resolver's cache TTL, then rotate the secret directly —
 	// no BumpPoolRevision call anywhere in this test.
 	time.Sleep(5 * time.Millisecond)
-	sa.WebhookCredentials.SigningSecret = ptr("secret-v2")
+	sa.WebhookCredentials.SigningSecret = new("secret-v2")
 	withTx(t, testpg.Pool(t), func(tx *usecasepgx.DbTx) error {
 		return saRepo.Persist(context.Background(), sa, tx)
 	})
@@ -258,5 +258,3 @@ func shortID(t *testing.T) string {
 	}
 	return itoaSeq(h % 100000)
 }
-
-func ptr[T any](v T) *T { return &v }

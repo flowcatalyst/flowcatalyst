@@ -40,8 +40,10 @@ func ensureApplicationServiceRole(t *testing.T, roles *role.Repository, uow *use
 			continue
 		}
 		_, err := usecaseop.Run(testpg.AnchorCtx(), uow, roleops.CreateRole(roles),
-			roleops.CreateCommand{ApplicationCode: "platform", RoleName: "application-service",
-				DisplayName: r.DisplayName, Permissions: r.Permissions}, testpg.TestEC())
+			roleops.CreateCommand{
+				ApplicationCode: "platform", RoleName: "application-service",
+				DisplayName: r.DisplayName, Permissions: r.Permissions,
+			}, testpg.TestEC())
 		require.NoError(t, err)
 		return
 	}

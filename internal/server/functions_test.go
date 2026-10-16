@@ -56,6 +56,7 @@ func TestCleartextHTTP2Protocols(t *testing.T) {
 	t.Cleanup(func() { _ = srv.Close() })
 	url := "http://" + ln.Addr().String() + "/"
 
+	//nolint:staticcheck // SA1019: h2c prior-knowledge client; see internal/router/mediator.go.
 	h2c := &http.Client{Transport: &http2.Transport{
 		AllowHTTP: true,
 		DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {

@@ -179,7 +179,7 @@ func (r *Repository) ApplicationIDByCode(ctx context.Context, code string) (ids.
 	if err != nil {
 		return "", fmt.Errorf("role repo: application by code: %w", err)
 	}
-	return ids.ApplicationID(row.ID), nil
+	return row.ID, nil
 }
 
 // Persist implements usecasepgx.Persist[Role]. Replaces the role

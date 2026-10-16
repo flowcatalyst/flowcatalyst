@@ -92,11 +92,15 @@ func TestBffEventTypeReads_AuthorizedScopedAndMultiValued(t *testing.T) {
 	RegisterEventTypes(r, &EventTypesState{Repo: repo, UoW: uow, Apps: apps})
 	RegisterFilterOptions(r, &FilterOptionsState{Clients: clients, EventTypes: repo, Apps: apps})
 
-	viewer := &auth.AuthContext{PrincipalID: "prn_bffviewer", Scope: auth.ScopeClient, Clients: []string{"clt_bffmine"}, AllApplications: true,
-		Permissions: []string{"platform:messaging:event-type:view"}}
+	viewer := &auth.AuthContext{
+		PrincipalID: "prn_bffviewer", Scope: auth.ScopeClient, Clients: []string{"clt_bffmine"}, AllApplications: true,
+		Permissions: []string{"platform:messaging:event-type:view"},
+	}
 	nobody := &auth.AuthContext{PrincipalID: "prn_bffnobody", Scope: auth.ScopeAnchor, Permissions: []string{"platform:messaging:event:view"}}
-	appSA := &auth.AuthContext{PrincipalID: "prn_bffsa", Scope: auth.ScopeAnchor, Applications: []string{appA.ApplicationID},
-		Permissions: []string{"platform:application-service:event-type:view"}}
+	appSA := &auth.AuthContext{
+		PrincipalID: "prn_bffsa", Scope: auth.ScopeAnchor, Applications: []string{appA.ApplicationID},
+		Permissions: []string{"platform:application-service:event-type:view"},
+	}
 
 	t.Run("no read permission: every read refused", func(t *testing.T) {
 		for _, u := range []string{
@@ -133,7 +137,6 @@ func TestBffEventTypeReads_AuthorizedScopedAndMultiValued(t *testing.T) {
 		require.Equal(t, http.StatusOK, code)
 		assert.Equal(t, []string{"order"}, toStrings(body["options"]))
 	})
-
 }
 
 // The SPA's add-schema body (the textarea's text as a JSON string, with its

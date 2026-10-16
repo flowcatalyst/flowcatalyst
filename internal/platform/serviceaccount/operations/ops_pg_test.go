@@ -642,8 +642,10 @@ func TestAssignRolesToServiceAccount_RejectsMalformedAndUnknownRoles(t *testing.
 	}
 	require.NoError(t, assign("examplef18:dispatcher"))
 
-	for _, bad := range []string{"examplef18: dispatcher", "examplef18 :dispatcher", " examplef18:dispatcher",
-		"examplef18:dispatcher ", "examplef18:dis patcher", "dispatcher", ""} {
+	for _, bad := range []string{
+		"examplef18: dispatcher", "examplef18 :dispatcher", " examplef18:dispatcher",
+		"examplef18:dispatcher ", "examplef18:dis patcher", "dispatcher", "",
+	} {
 		testpg.RequireUsecaseError(t, assign("examplef18:dispatcher", bad), usecase.KindValidation, role.InvalidNameCode)
 	}
 	testpg.RequireUsecaseError(t, assign("examplef18:nosuchrole"), usecase.KindValidation, "ROLE_NOT_FOUND")

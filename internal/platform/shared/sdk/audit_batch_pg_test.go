@@ -124,17 +124,23 @@ func TestAuditBatchIngest_RequiresPermission(t *testing.T) {
 	}
 	valid := `{"items":[{"entityType":"widget","entityId":"w_perm_1","operation":"CREATE","principalId":"prn_x"}]}`
 
-	none := &auth.AuthContext{PrincipalID: "prn_perm_none", Scope: auth.ScopeAnchor, AllApplications: true,
-		Permissions: []string{"platform:messaging:batch:events-write"}}
+	none := &auth.AuthContext{
+		PrincipalID: "prn_perm_none", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{"platform:messaging:batch:events-write"},
+	}
 	assert.Equal(t, http.StatusForbidden, post(none, valid))
 	// Gate runs before body decoding: malformed JSON is still 403, not 400.
 	assert.Equal(t, http.StatusForbidden, post(none, `{not json`))
 
-	exact := &auth.AuthContext{PrincipalID: "prn_perm_exact", Scope: auth.ScopeAnchor, AllApplications: true,
-		Permissions: []string{"platform:admin:batch:audit-logs-write"}}
+	exact := &auth.AuthContext{
+		PrincipalID: "prn_perm_exact", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{"platform:admin:batch:audit-logs-write"},
+	}
 	assert.Equal(t, http.StatusOK, post(exact, valid))
 
-	wild := &auth.AuthContext{PrincipalID: "prn_perm_wild", Scope: auth.ScopeAnchor, AllApplications: true,
-		Permissions: []string{"platform:*:*:*"}}
+	wild := &auth.AuthContext{
+		PrincipalID: "prn_perm_wild", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{"platform:*:*:*"},
+	}
 	assert.Equal(t, http.StatusOK, post(wild, valid))
 }

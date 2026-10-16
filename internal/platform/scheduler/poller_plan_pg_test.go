@@ -219,8 +219,10 @@ func assertShapes(t *testing.T, s planSet) {
 	assert.False(t, hasNode(s.mark, usesStatusIndex), "mark-QUEUED must not walk the status index")
 
 	assertBacklog(t, s)
-	for name, pl := range map[string]planNode{"holders": s.holders, "held-before": s.heldBefore, "stale QUEUED": s.staleQ,
-		"stale PROCESSING": s.staleP, "oldest": s.oldest} {
+	for name, pl := range map[string]planNode{
+		"holders": s.holders, "held-before": s.heldBefore, "stale QUEUED": s.staleQ,
+		"stale PROCESSING": s.staleP, "oldest": s.oldest,
+	} {
 		assert.Empty(t, seqScansWithData(pl, "msg_dispatch_jobs"), "%s must not scan a partition", name)
 		assert.True(t, hasNode(pl, usesStatusIndex), "%s must use the plain index", name)
 	}
@@ -286,6 +288,8 @@ func prepareState(t *testing.T, env planEnv, st planStateName, name string, para
 		p := testpg.CloneDB(t, env.tpl(true), name, params)
 		burst(t, p, pending, true)
 		return p
+	case stCachedPlan:
+		// Driven by plansCached, which builds its own sessions; not a prepareState state.
 	}
 	t.Fatalf("unknown state %s", st)
 	return nil

@@ -34,7 +34,8 @@ func TestCreateRole_RejectsMalformedNamesAndPermissions(t *testing.T) {
 		testpg.RequireUsecaseError(t, err, usecase.KindValidation, role.InvalidNameCode)
 	}
 	_, err := runAuthorized(uow, operations.CreateRole(repo), operations.CreateCommand{
-		ApplicationCode: "f18create", RoleName: "ok", DisplayName: "d", Permissions: []string{"f18create: thing:view"}})
+		ApplicationCode: "f18create", RoleName: "ok", DisplayName: "d", Permissions: []string{"f18create: thing:view"},
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, role.InvalidPermissionCode)
 
 	// Nothing was stored under any of those spellings.
@@ -60,7 +61,8 @@ func TestCreateRole_SetsApplicationIDAndRefusesUnknownApplication(t *testing.T) 
 	assert.Equal(t, appID, string(*got.ApplicationID))
 
 	_, err = runAuthorized(uow, operations.CreateRole(repo), operations.CreateCommand{
-		ApplicationCode: "f18nosuchapp", RoleName: "x", DisplayName: "x"})
+		ApplicationCode: "f18nosuchapp", RoleName: "x", DisplayName: "x",
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "APPLICATION_NOT_FOUND")
 }
 
@@ -86,8 +88,10 @@ func TestSyncRoles_RejectsMalformedAndAdoptsIdlessRole(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	appID := testpg.EnsureApplication(t, "f18sync")
 
-	cmd := operations.SyncRolesCommand{ApplicationCode: "f18sync", ApplicationID: appID,
-		Roles: []operations.SyncRoleInput{{Name: "good"}, {Name: "bad name"}}}
+	cmd := operations.SyncRolesCommand{
+		ApplicationCode: "f18sync", ApplicationID: appID,
+		Roles: []operations.SyncRoleInput{{Name: "good"}, {Name: "bad name"}},
+	}
 	_, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncRoles(repo), cmd, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, role.InvalidNameCode)
 	g, err := repo.FindByName(ctx, "f18sync:good")
@@ -96,7 +100,8 @@ func TestSyncRoles_RejectsMalformedAndAdoptsIdlessRole(t *testing.T) {
 
 	_, err = usecaseop.Run(appAccessCtx(), uow, operations.SyncRoles(repo), operations.SyncRolesCommand{
 		ApplicationCode: "f18sync", ApplicationID: appID,
-		Roles: []operations.SyncRoleInput{{Name: "good", Permissions: []string{"f18sync: x"}}}}, testpg.TestEC())
+		Roles: []operations.SyncRoleInput{{Name: "good", Permissions: []string{"f18sync: x"}}},
+	}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, role.InvalidPermissionCode)
 
 	// A legacy row of the application with a null application_id.
@@ -105,7 +110,8 @@ func TestSyncRoles_RejectsMalformedAndAdoptsIdlessRole(t *testing.T) {
 	require.NoError(t, err)
 	_, err = usecaseop.Run(appAccessCtx(), uow, operations.SyncRoles(repo), operations.SyncRolesCommand{
 		ApplicationCode: "f18sync", ApplicationID: appID,
-		Roles: []operations.SyncRoleInput{{Name: "legacy"}}}, testpg.TestEC())
+		Roles: []operations.SyncRoleInput{{Name: "legacy"}},
+	}, testpg.TestEC())
 	require.NoError(t, err)
 	l, err := repo.FindByName(ctx, "f18sync:legacy")
 	require.NoError(t, err)

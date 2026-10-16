@@ -26,7 +26,7 @@ func TestMigration063_ScrubsSecretAndDBAuditValues(t *testing.T) {
 	}
 	b, err := os.ReadFile("../../../migrate/sql/063_scrub_function_setting_audit.sql")
 	require.NoError(t, err)
-	up := strings.Split(strings.Split(string(b), "-- +goose Up")[1], "-- +goose Down")[0]
+	up, _, _ := strings.Cut(strings.Split(string(b), "-- +goose Up")[1], "-- +goose Down")
 	_, err = pool.Exec(ctx, up)
 	require.NoError(t, err)
 	var v []string

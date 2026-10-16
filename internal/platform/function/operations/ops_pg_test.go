@@ -146,11 +146,11 @@ func TestCreateFunction_Validation(t *testing.T) {
 		{"name with underscore", operations.CreateCommand{ApplicationID: "app_opcreatefnval", Name: "bad_name"}, "INVALID_NAME_FORMAT"},
 		{"memory too large", operations.CreateCommand{
 			ApplicationID: "app_opcreatefnval", Name: "big-mem",
-			Limits: &operations.LimitsInput{MemoryMB: int32Ptr(function.MaxMemoryMB + 1)},
+			Limits: &operations.LimitsInput{MemoryMB: new(function.MaxMemoryMB + 1)},
 		}, "MEMORY_MB_TOO_LARGE"},
 		{"zero timeout", operations.CreateCommand{
 			ApplicationID: "app_opcreatefnval", Name: "zero-timeout",
-			Limits: &operations.LimitsInput{TimeoutMs: int32Ptr(0)},
+			Limits: &operations.LimitsInput{TimeoutMs: new(int32(0))},
 		}, "TIMEOUT_MS_REQUIRED"},
 	}
 	for _, tc := range cases {
@@ -248,7 +248,7 @@ func TestUpdateFunction_HappyPath(t *testing.T) {
 		ID:          seeded.FunctionID,
 		Description: &newDesc,
 		Warm:        &warm,
-		Limits:      &operations.LimitsInput{MemoryMB: int32Ptr(256)},
+		Limits:      &operations.LimitsInput{MemoryMB: new(int32(256))},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, seeded.FunctionID, ev.FunctionID)
@@ -297,7 +297,7 @@ func TestUpdateFunction_Errors(t *testing.T) {
 		{"missing id", operations.UpdateCommand{}, usecase.KindValidation, "ID_REQUIRED"},
 		{"unknown id", operations.UpdateCommand{ID: "fnc_doesnotexist1"}, usecase.KindNotFound, "Function_NOT_FOUND"},
 		{"memory too large", operations.UpdateCommand{
-			ID: "fnc_doesnotexist1", Limits: &operations.LimitsInput{MemoryMB: int32Ptr(function.MaxMemoryMB + 1)},
+			ID: "fnc_doesnotexist1", Limits: &operations.LimitsInput{MemoryMB: new(function.MaxMemoryMB + 1)},
 		}, usecase.KindNotFound, "Function_NOT_FOUND"}, // not-found is checked before limits validation (post-load)
 	}
 	for _, tc := range cases {
@@ -322,7 +322,7 @@ func TestUpdateFunction_LimitsCeiling_OnExistingRow(t *testing.T) {
 
 	_, err := runAuthorized(uow, operations.UpdateFunction(repo), operations.UpdateCommand{
 		ID:     seeded.FunctionID,
-		Limits: &operations.LimitsInput{MaxConcurrency: int32Ptr(function.MaxMaxConcurrency + 1)},
+		Limits: &operations.LimitsInput{MaxConcurrency: new(function.MaxMaxConcurrency + 1)},
 	})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "MAX_CONCURRENCY_TOO_LARGE")
 }
@@ -453,5 +453,3 @@ func TestDeleteFunction_ResourceScope_AnchorOnlyForPlatformOwned(t *testing.T) {
 		operations.DeleteCommand{ID: ownEv.FunctionID}, testpg.TestEC())
 	require.NoError(t, err)
 }
-
-func int32Ptr(v int32) *int32 { return &v }

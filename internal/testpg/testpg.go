@@ -32,6 +32,7 @@ package testpg
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -219,9 +220,7 @@ func ScratchDBWith(t *testing.T, name string, runtimeParams map[string]string) *
 	if cfg.ConnConfig.RuntimeParams == nil {
 		cfg.ConnConfig.RuntimeParams = map[string]string{}
 	}
-	for k, v := range runtimeParams {
-		cfg.ConnConfig.RuntimeParams[k] = v
-	}
+	maps.Copy(cfg.ConnConfig.RuntimeParams, runtimeParams)
 	p, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		t.Fatalf("testpg: connect to scratch database: %v", err)
@@ -253,9 +252,7 @@ func CloneDB(t *testing.T, template, name string, runtimeParams map[string]strin
 	if cfg.ConnConfig.RuntimeParams == nil {
 		cfg.ConnConfig.RuntimeParams = map[string]string{}
 	}
-	for k, v := range runtimeParams {
-		cfg.ConnConfig.RuntimeParams[k] = v
-	}
+	maps.Copy(cfg.ConnConfig.RuntimeParams, runtimeParams)
 	p, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		t.Fatalf("testpg: connect to clone: %v", err)

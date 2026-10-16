@@ -40,8 +40,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 )
 
-func secs(n uint32) *uint32 { return &n }
-
 // nackTestQueueDefaultVisibility is comfortably longer than any window these
 // tests poll within, so "it reappeared" can only mean Nack's own requested
 // delay governed, not the receive-time default lapsing on its own.
@@ -65,7 +63,7 @@ func TestNackChangesVisibilityToTheRequestedDelay(t *testing.T) {
 	require.Len(t, msgs, 1)
 	qm := msgs[0]
 
-	require.NoError(t, q.Nack(ctx, qm.ReceiptHandle, secs(2)))
+	require.NoError(t, q.Nack(ctx, qm.ReceiptHandle, new(uint32(2))))
 
 	reappeared := pollUntil(t, q, 1, 4*time.Second)
 	require.Len(t, reappeared, 1,
@@ -100,7 +98,7 @@ func TestNackClampsToTheSQSCeilingMeasuredFromTheOriginalPoll(t *testing.T) {
 	q.receiptPolledAt[qm.ReceiptHandle] = time.Now().Add(-(MaxVisibility - 2*time.Second))
 	q.mu.Unlock()
 
-	require.NoError(t, q.Nack(ctx, qm.ReceiptHandle, secs(50_000)))
+	require.NoError(t, q.Nack(ctx, qm.ReceiptHandle, new(uint32(50_000))))
 
 	reappeared := pollUntil(t, q, 1, 4*time.Second)
 	require.Len(t, reappeared, 1,
@@ -133,7 +131,7 @@ func TestNackWithNoRecordedPollTimeGetsTheFullCeilingNotZero(t *testing.T) {
 	delete(q.receiptPolledAt, qm.ReceiptHandle)
 	q.mu.Unlock()
 
-	require.NoError(t, q.Nack(ctx, qm.ReceiptHandle, secs(2)))
+	require.NoError(t, q.Nack(ctx, qm.ReceiptHandle, new(uint32(2))))
 
 	time.Sleep(300 * time.Millisecond)
 	stillHidden, err := q.Poll(ctx, 10)
@@ -156,7 +154,7 @@ func TestNackNeverErrorsWhenChangeMessageVisibilityFails(t *testing.T) {
 
 	before := q.Counters().TotalNacked
 
-	err := q.Nack(ctx, "garbage-receipt-handle-does-not-exist", secs(30))
+	err := q.Nack(ctx, "garbage-receipt-handle-does-not-exist", new(uint32(30)))
 	require.NoError(t, err, "Nack must swallow a ChangeMessageVisibility failure, not return it")
 
 	require.Eventually(t, func() bool { return q.Counters().TotalNacked == before+1 }, 5*time.Second, 10*time.Millisecond,
@@ -181,7 +179,7 @@ func TestDeferChangesVisibilityToTheRequestedDelay(t *testing.T) {
 	require.Len(t, msgs, 1)
 	qm := msgs[0]
 
-	require.NoError(t, q.Defer(ctx, qm.ReceiptHandle, secs(2)))
+	require.NoError(t, q.Defer(ctx, qm.ReceiptHandle, new(uint32(2))))
 
 	reappeared := pollUntil(t, q, 1, 4*time.Second)
 	require.Len(t, reappeared, 1,

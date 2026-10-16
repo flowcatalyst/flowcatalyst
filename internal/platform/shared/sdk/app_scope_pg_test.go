@@ -73,10 +73,14 @@ func newScopeFixture(t *testing.T) *scopeFixture {
 		"platform:messaging:batch:events-write",
 		"platform:admin:batch:audit-logs-write",
 	}
-	f.scoped = &auth.AuthContext{PrincipalID: "p_scoped", Scope: auth.ScopeAnchor,
-		Permissions: perms, Applications: []string{f.ownID}}
-	f.allAppsAdmin = &auth.AuthContext{PrincipalID: "p_admin", Scope: auth.ScopeAnchor,
-		Permissions: perms, AllApplications: true}
+	f.scoped = &auth.AuthContext{
+		PrincipalID: "p_scoped", Scope: auth.ScopeAnchor,
+		Permissions: perms, Applications: []string{f.ownID},
+	}
+	f.allAppsAdmin = &auth.AuthContext{
+		PrincipalID: "p_admin", Scope: auth.ScopeAnchor,
+		Permissions: perms, AllApplications: true,
+	}
 
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {

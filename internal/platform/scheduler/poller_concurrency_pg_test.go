@@ -23,11 +23,10 @@ import (
 
 // statementTracer records the duration of every statement a pool runs.
 type statementTracer struct {
-	mu      sync.Mutex
-	max     time.Duration
-	maxSQL  string
-	count   int
-	started sync.Map // ctx -> start (via context key)
+	mu     sync.Mutex
+	max    time.Duration
+	maxSQL string
+	count  int
 }
 
 type traceKey struct{}
@@ -142,9 +141,7 @@ func TestConcurrency_LanesPollerAndCallbacksAgainstABurst(t *testing.T) {
 	var cbWG sync.WaitGroup
 	lc := dispatchjob.NewLifecycle(cbPool)
 	for range 2 {
-		cbWG.Add(1)
-		go func() {
-			defer cbWG.Done()
+		cbWG.Go(func() {
 			for {
 				select {
 				case <-cbCtx.Done():
@@ -159,7 +156,7 @@ func TestConcurrency_LanesPollerAndCallbacksAgainstABurst(t *testing.T) {
 					}
 				}
 			}
-		}()
+		})
 	}
 
 	runCtx, runCancel := context.WithCancel(ctx)

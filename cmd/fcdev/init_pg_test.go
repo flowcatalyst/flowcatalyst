@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,7 +19,15 @@ import (
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
 
-func TestMain(m *testing.M) { testpg.RunMain(m) }
+func TestMain(m *testing.M) {
+	// TestSecretCommandRunsWithoutShell re-executes this binary as a "secret
+	// program". That child needs no database; booting embedded Postgres for it
+	// outlasts the secret command's 30s timeout and the test gets killed.
+	if os.Getenv("FC_TEST_HELPER_SECRET") == "1" {
+		os.Exit(m.Run())
+	}
+	testpg.RunMain(m)
+}
 
 // TestInitServiceAccount_IsAppConfined locks in that `fcdev init` provisions
 // the same shape as the normal ProvisionServiceAccount path: exactly the

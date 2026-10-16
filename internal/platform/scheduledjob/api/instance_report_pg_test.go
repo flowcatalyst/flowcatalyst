@@ -56,10 +56,14 @@ func TestInstanceReports_ApplicationServiceAccountConfinedToItsJobs(t *testing.T
 		PrincipalType: "SERVICE",
 	})
 	report := func(ctx context.Context, instID string) (logErr, completeErr error) {
-		_, logErr = s.writeInstanceLog(ctx, &writeLogInput{InstanceID: instID,
-			Body: WriteInstanceLogRequest{Level: "INFO", Message: "ran"}})
-		_, completeErr = s.completeInstance(ctx, &completeInstanceInput{InstanceID: instID,
-			Body: CompleteInstanceRequest{Status: "SUCCESS"}})
+		_, logErr = s.writeInstanceLog(ctx, &writeLogInput{
+			InstanceID: instID,
+			Body:       WriteInstanceLogRequest{Level: "INFO", Message: "ran"},
+		})
+		_, completeErr = s.completeInstance(ctx, &completeInstanceInput{
+			InstanceID: instID,
+			Body:       CompleteInstanceRequest{Status: "SUCCESS"},
+		})
 		return
 	}
 	refusedWith := func(t *testing.T, err error, code string) {

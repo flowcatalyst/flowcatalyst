@@ -207,12 +207,10 @@ func TestConcurrentMutualDemotion_OnlyOneSucceeds(t *testing.T) {
 		start := make(chan struct{})
 		errs := make([]error, 2)
 		for n, id := range []ids.PrincipalID{a, b} {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				<-start
 				errs[n] = f.assign(false, id)
-			}()
+			})
 		}
 		close(start)
 		wg.Wait()

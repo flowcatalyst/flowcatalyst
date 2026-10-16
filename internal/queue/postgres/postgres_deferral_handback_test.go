@@ -19,8 +19,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 )
 
-func secs(n uint32) *uint32 { return &n }
-
 func groupPtr(g string) *string {
 	if g == "" {
 		return nil
@@ -85,7 +83,7 @@ func TestDelayedHeadBlocksOnlyItsOwnGroupsSuccessor(t *testing.T) {
 	require.Len(t, first, 1)
 	require.Equal(t, "m1", first[0].BrokerMessageID)
 
-	require.NoError(t, q.Nack(ctx, first[0].ReceiptHandle, secs(600)))
+	require.NoError(t, q.Nack(ctx, first[0].ReceiptHandle, new(uint32(600))))
 
 	// Published only now — after the block was established.
 	insertQueued(t, q, "m2", group, now, now)
@@ -138,7 +136,7 @@ func TestDelayedHeadComesBackBeforeItsGroup(t *testing.T) {
 	require.Len(t, first, 1)
 	require.Equal(t, "m1", first[0].BrokerMessageID)
 
-	require.NoError(t, q.Nack(ctx, first[0].ReceiptHandle, secs(600)))
+	require.NoError(t, q.Nack(ctx, first[0].ReceiptHandle, new(uint32(600))))
 	insertQueued(t, q, "m2", group, now, now)
 
 	// The delay has not elapsed: m2 stays blocked (T9's rule).
