@@ -151,6 +151,8 @@ const (
 	// Scoped reads and user/invitation administration for an application's
 	// own admin pages (F20). Each is a narrow grant: a caller admitted only by
 	// it is confined to the applications it is bound to by the handler.
+	permAppSvcRoleView         = "platform:application-service:role:view"
+	permAppSvcPermissionView   = "platform:application-service:permission:view"
 	permAppSvcEventView        = "platform:application-service:event:view"
 	permAppSvcDispatchJobView  = "platform:application-service:dispatch-job:view"
 	permAppSvcUserView         = "platform:application-service:user:view"
@@ -748,10 +750,33 @@ func CanWriteApplications(a *AuthContext) error {
 }
 
 // ── Role permissions ─────────────────────────────────────────────────────
-func CanReadRoles(a *AuthContext) error   { return requirePermission(a, permRoleView) }
-func CanCreateRoles(a *AuthContext) error { return requirePermission(a, permRoleCreate) }
-func CanUpdateRoles(a *AuthContext) error { return requirePermission(a, permRoleUpdate) }
-func CanDeleteRoles(a *AuthContext) error { return requirePermission(a, permRoleDelete) }
+func CanReadRoles(a *AuthContext) error { return requirePermission(a, permRoleView) }
+
+// CanReadRolesConfined guards the /api/roles read routes (F21): the IAM role
+// view, and the application-service role:view an application's service account
+// holds. A caller admitted only by the second is confined by the handler to the
+// roles of the applications it is bound to (CanReadAllRoles false).
+func CanReadRolesConfined(a *AuthContext) error {
+	return requireAny(a, permRoleView, permAppSvcRoleView)
+}
+
+// CanReadAllRoles reports whether the principal reads roles without the
+// per-application confinement: it holds the IAM role view permission.
+func CanReadAllRoles(a *AuthContext) bool { return a != nil && a.HasPermission(permRoleView) }
+
+// CanReadPermissionCatalog guards the permission catalog reads: the IAM role
+// view, and the application-service permission:view. The second is confined to
+// the permissions of the caller's own applications (CanReadAllPermissions false).
+func CanReadPermissionCatalog(a *AuthContext) error {
+	return requireAny(a, permRoleView, permAppSvcPermissionView)
+}
+
+// CanReadAllPermissions reports whether the principal reads the whole permission
+// catalog: it holds the IAM role view permission.
+func CanReadAllPermissions(a *AuthContext) bool { return a != nil && a.HasPermission(permRoleView) }
+func CanCreateRoles(a *AuthContext) error       { return requirePermission(a, permRoleCreate) }
+func CanUpdateRoles(a *AuthContext) error       { return requirePermission(a, permRoleUpdate) }
+func CanDeleteRoles(a *AuthContext) error       { return requirePermission(a, permRoleDelete) }
 func CanWriteRoles(a *AuthContext) error {
 	return requireAny(a, permRoleCreate, permRoleUpdate, permRoleDelete)
 }

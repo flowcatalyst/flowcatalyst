@@ -1880,6 +1880,60 @@ refreshed by `make sdk-spec`. **SDK regeneration needed later (not run):** TypeS
 4. Revoke = deactivate the user (existing use case) then delete `iam_password_reset_tokens` with
    `purpose = 'invite'` for it.
 
+### F21. Role and permission reads confined to the caller's application (framework M4e, 2026-10-16)
+
+**Finding.** The framework reported that `GET /api/roles` returns every application's roles to an
+application service account holding `role:view`. **What the code actually did before this fix:** the
+role routes required only `platform:iam:role:view`; the seeded `platform:application-service:role:view` and
+`:permission:view` were admitted by no route (an application-service-only caller got `403
+PERMISSION_REQUIRED` on every one). The all-applications read was therefore reachable only by a caller that held
+the IAM view (for example a service account given a custom role carrying it), because that permission was never
+confined. The fix delivers what the framework needs (an application's own roles) and keeps it from becoming the
+reported hole.
+
+**The rule** (the F20 rule, `sdk.AppScope.ConfinedCodes`): a caller admitted only by the application-service
+permission is confined to the applications in its `applications` claim; a caller holding the console permission
+(`platform:iam:role:view`) is unchanged, even when application-bound; an all-applications caller is not narrowed;
+an application-scoped caller bound to none (or to ids that resolve to none) is `403 FORBIDDEN`, not an empty
+page. A role is the application's when its `application_id` is one the caller is bound to; a legacy row with a
+NULL `application_id` is matched by `application_code` equality; a row linked to another application's id is
+never matched by its code. By name or id, another application's role answers the same `404` as a missing role.
+
+| Route | Before | After |
+|---|---|---|
+| `GET /api/roles` | iam view only; unconfined | iam view (unchanged) or app-service `role:view` confined to bound applications |
+| `GET /api/roles/{id}` (id or name), `/by-code/{code}` | same | same rule; foreign role = 404 as missing |
+| `GET /api/roles/by-source/{source}` | same | filtered to bound applications |
+| `GET /api/roles/by-application/{applicationId}` | same | confined caller: bound id ok, any other or unknown id = one 403 `APPLICATION_ACCESS_REQUIRED` |
+| `GET /api/roles/filters/applications` | same | only the bound codes |
+| `GET /api/roles/{roleName}/permissions` | same | foreign role = 404 |
+| `GET /api/roles/permissions`, `/permissions/{permission}` (catalog) | iam view only | iam view (whole catalog) or app-service `permission:view` limited to permissions whose first segment is a bound application code; others = 404 |
+| `GET /api/applications/by-id/{id}/roles`, `/{id}`, `/by-code/{code}`, `/{id}/clients`, `/{id}/clients/{clientId}`, `GET /api/applications` | already confined by `CanReadApplication` (app-service `application:view`) | unchanged; tests added (`application/api/app_read_pg_test.go`) |
+| `/bff/roles/*` (SPA) | iam view only | unchanged: the application-service permissions are not admitted |
+
+No new permission and no migration: `role:view` and `permission:view` are already in the seeded
+`application-service` role (seed), so tokens minted from it already carry them.
+`api/openapi.lock.json` is unchanged (no documentation text changed); no SDK regeneration.
+
+**Tests** (`-tags=integration`): `role/api/app_read_pg_test.go` (own application ok incl. legacy NULL-id rows;
+another application filtered or 404 identical to missing; mislinked row; unbound and dangling-id callers 403 on all
+nine routes; dangling id beside a real one; bound to other / both; client-scoped caller; all-applications caller;
+console permission unchanged; the permissions are not interchangeable; unchanged wire key set),
+`application/api/app_read_pg_test.go`. The tests failed before the fix (every app-service read: `PERMISSION_REQUIRED`).
+**Mutation check** (each mutant fails tests): list filter dropped; `owns` always true; legacy code match dropped;
+legacy code match always true; application id ignored (code only); catalog unconfined; by-application guard removed;
+unbound callers let through; filters/applications not narrowed; application-service treated as the console
+permission.
+
+**Java hand-off (`flowcatalyst-javalin`; not implemented).** `role/api/RoleApi.java` checks `ROLE_VIEW` only on every
+read (same pre-fix state as Go: app-service `role:view` admits nothing). To mirror: admit the application-service
+`role:view` on the role reads and `permission:view` on the permission catalog reads next to the IAM view; when admitted
+only by them, resolve the caller's `applications` ids to codes (none => 403 `FORBIDDEN`), filter list / by-source /
+filters, answer 404 (same as missing) for a role not owned (owned = `application_id` in the bound ids, else, for a NULL
+id, `application_code` equal to a bound code), 403 `APPLICATION_ACCESS_REQUIRED` on by-application for an unbound id,
+and limit the catalog to permissions whose first segment is a bound code. Leave IAM-view callers unchanged. Confirm the
+Java application reads (`application:view`) are confined as `CanReadApplication` is.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads

@@ -143,6 +143,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		roleapi.Register(humaAPI, &roleapi.State{
 			Repo:        repos.roleRepo,
 			Permissions: role.NewPermissionRepo(pool),
+			Apps:        repos.applicationRepo,
 			UoW:         uow,
 		})
 

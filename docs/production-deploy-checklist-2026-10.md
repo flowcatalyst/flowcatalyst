@@ -113,3 +113,5 @@ Record the results. Anything unexpected: stop and look before deploying.
 - Application admin pages (F20, migration 080): the `application-service` role gains `event:view`, `dispatch-job:view`,
   `user:view`, `user:create`, `invitation:view` and `invitation:manage`. An application whose admin pages use them must
   re-mint its service account's token first; nothing else changes for existing callers.
+- Role and permission reads (F21): an application service account holding `role:view` / `permission:view` now reads only its own
+  application's roles and permissions (the IAM view is unchanged); no migration, no re-mint.

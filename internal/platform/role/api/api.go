@@ -5,15 +5,18 @@ package api
 import (
 	"context"
 	"net/http"
+	"slices"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/sdk"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
@@ -24,7 +27,10 @@ import (
 type State struct {
 	Repo        *role.Repository
 	Permissions *role.PermissionRepo
-	UoW         *usecasepgx.UnitOfWork
+	// Apps resolves an application-scoped caller's bound application ids to
+	// codes for the read confinement (F21).
+	Apps *application.Repository
+	UoW  *usecasepgx.UnitOfWork
 }
 
 const tag = "roles"
@@ -56,17 +62,89 @@ func Register(api huma.API, s *State) {
 	apiroute.Delete(g, "deletePermission", "/api/roles/permissions/{permission}", "Delete a permission from the catalog", http.StatusNoContent, s.deletePermission)
 }
 
+// ── Read confinement (F21) ─────────────────────────────────────────────
+
+// readScope is the set of applications a role or permission-catalog read is
+// confined to. A nil *readScope means no confinement (every method then
+// admits everything).
+type readScope struct {
+	ac    *auth.AuthContext
+	codes []string
+}
+
+// confinement answers the scope of a role read for ac: nil for a caller
+// holding the IAM role view or reaching every application; for a caller
+// admitted only by the application-service role:view, the applications it is
+// bound to (403 for a caller bound to none).
+func (s *State) confinement(ctx context.Context, ac *auth.AuthContext) (*readScope, error) {
+	if auth.CanReadAllRoles(ac) {
+		return nil, nil
+	}
+	return s.boundScope(ctx, ac)
+}
+
+// permissionConfinement is confinement for the permission catalog.
+func (s *State) permissionConfinement(ctx context.Context, ac *auth.AuthContext) (*readScope, error) {
+	if auth.CanReadAllPermissions(ac) {
+		return nil, nil
+	}
+	return s.boundScope(ctx, ac)
+}
+
+func (s *State) boundScope(ctx context.Context, ac *auth.AuthContext) (*readScope, error) {
+	codes, confined, err := sdk.NewAppScope(s.Apps).ConfinedCodes(ctx, ac)
+	if err != nil || !confined {
+		return nil, err
+	}
+	return &readScope{ac: ac, codes: codes}, nil
+}
+
+// owns reports whether the role belongs to a bound application: by its
+// application id when it has one, else (a legacy row) by its application code.
+// A role with an id of another application is never matched by code.
+func (c *readScope) owns(r *role.Role) bool {
+	if c == nil {
+		return true
+	}
+	if r.ApplicationID != nil {
+		return c.ac.CanAccessApplication(string(*r.ApplicationID))
+	}
+	return slices.Contains(c.codes, r.ApplicationCode)
+}
+
+// filter keeps the roles owns admits.
+func (c *readScope) filter(rows []role.Role) []role.Role {
+	if c == nil {
+		return rows
+	}
+	return slices.DeleteFunc(rows, func(r role.Role) bool { return !c.owns(&r) })
+}
+
+// ownsPermission reports whether a permission code (application:context:
+// aggregate:action) belongs to a bound application.
+func (c *readScope) ownsPermission(code string) bool {
+	if c == nil {
+		return true
+	}
+	return slices.Contains(c.codes, sdk.FirstSegment(code))
+}
+
 // ── Handlers ──────────────────────────────────────────────────────────
 
 func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[RoleListResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadRoles(ac); err != nil {
+	if err := auth.CanReadRolesConfined(ac); err != nil {
+		return nil, err
+	}
+	scope, err := s.confinement(ctx, ac)
+	if err != nil {
 		return nil, err
 	}
 	rows, err := s.Repo.FindAll(ctx)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
+	rows = scope.filter(rows)
 	out := apicommon.MapSlice(rows, fromEntity)
 	return &apicommon.Out[RoleListResponse]{Body: RoleListResponse{Roles: out, Total: len(out)}}, nil
 }
@@ -77,12 +155,19 @@ type getInput struct {
 
 func (s *State) getByID(ctx context.Context, in *getInput) (*apicommon.Out[RoleResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadRoles(ac); err != nil {
+	if err := auth.CanReadRolesConfined(ac); err != nil {
+		return nil, err
+	}
+	scope, err := s.confinement(ctx, ac)
+	if err != nil {
 		return nil, err
 	}
 	r, err := s.resolveRole(ctx, in.ID)
 	if err != nil {
 		return nil, err
+	}
+	if !scope.owns(r) {
+		return nil, httperror.NotFound("Role", in.ID)
 	}
 	return &apicommon.Out[RoleResponse]{Body: fromEntity(r)}, nil
 }
@@ -169,14 +254,18 @@ type byCodeInput struct {
 
 func (s *State) byCode(ctx context.Context, in *byCodeInput) (*apicommon.Out[RoleResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadRoles(ac); err != nil {
+	if err := auth.CanReadRolesConfined(ac); err != nil {
+		return nil, err
+	}
+	scope, err := s.confinement(ctx, ac)
+	if err != nil {
 		return nil, err
 	}
 	r, err := s.Repo.FindByName(ctx, in.Code)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_name failed", err)
 	}
-	if r == nil {
+	if r == nil || !scope.owns(r) {
 		return nil, httperror.NotFound("Role", in.Code)
 	}
 	return &apicommon.Out[RoleResponse]{Body: fromEntity(r)}, nil
@@ -190,7 +279,11 @@ type bySourceInput struct {
 // for /api/roles/by-application/{id} and /api/roles/by-source/{source}.
 func (s *State) bySource(ctx context.Context, in *bySourceInput) (*apicommon.Out[[]RoleResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadRoles(ac); err != nil {
+	if err := auth.CanReadRolesConfined(ac); err != nil {
+		return nil, err
+	}
+	scope, err := s.confinement(ctx, ac)
+	if err != nil {
 		return nil, err
 	}
 	source, ok := role.ParseSource(in.Source)
@@ -201,6 +294,7 @@ func (s *State) bySource(ctx context.Context, in *bySourceInput) (*apicommon.Out
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_source failed", err)
 	}
+	rows = scope.filter(rows)
 	out := apicommon.MapSlice(rows, fromEntity)
 	return &apicommon.Out[[]RoleResponse]{Body: out}, nil
 }
@@ -211,8 +305,17 @@ type byApplicationInput struct {
 
 func (s *State) byApplication(ctx context.Context, in *byApplicationInput) (*apicommon.Out[[]RoleResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadRoles(ac); err != nil {
+	if err := auth.CanReadRolesConfined(ac); err != nil {
 		return nil, err
+	}
+	scope, err := s.confinement(ctx, ac)
+	if err != nil {
+		return nil, err
+	}
+	// A confined caller names only an application it is bound to; a foreign or
+	// unknown id is one 403 (as the application routes answer), never a list.
+	if scope != nil && !ac.CanAccessApplication(in.ApplicationID) {
+		return nil, usecase.Authorization("APPLICATION_ACCESS_REQUIRED", "not authorised for this application")
 	}
 	rows, err := s.Repo.FindByApplicationID(ctx, in.ApplicationID)
 	if err != nil {
@@ -224,12 +327,19 @@ func (s *State) byApplication(ctx context.Context, in *byApplicationInput) (*api
 
 func (s *State) applicationFilters(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[ApplicationFilterListResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadRoles(ac); err != nil {
+	if err := auth.CanReadRolesConfined(ac); err != nil {
+		return nil, err
+	}
+	scope, err := s.confinement(ctx, ac)
+	if err != nil {
 		return nil, err
 	}
 	codes, err := s.Repo.ApplicationCodes(ctx)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "application_codes failed", err)
+	}
+	if scope != nil {
+		codes = slices.DeleteFunc(codes, func(c string) bool { return !slices.Contains(scope.codes, c) })
 	}
 	return &apicommon.Out[ApplicationFilterListResponse]{Body: ApplicationFilterListResponse{ApplicationCodes: codes}}, nil
 }
@@ -242,14 +352,18 @@ type roleNameInput struct {
 
 func (s *State) listRolePermissions(ctx context.Context, in *roleNameInput) (*apicommon.Out[RolePermissionListResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadRoles(ac); err != nil {
+	if err := auth.CanReadRolesConfined(ac); err != nil {
+		return nil, err
+	}
+	scope, err := s.confinement(ctx, ac)
+	if err != nil {
 		return nil, err
 	}
 	r, err := s.Repo.FindByName(ctx, in.RoleName)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_name failed", err)
 	}
-	if r == nil {
+	if r == nil || !scope.owns(r) {
 		return nil, httperror.NotFound("Role", in.RoleName)
 	}
 	perms := append([]string(nil), r.Permissions...)
@@ -332,7 +446,11 @@ func (s *State) revokePermission(ctx context.Context, in *rolePermissionGrantInp
 
 func (s *State) listPermissions(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[PermissionListResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadRoles(ac); err != nil {
+	if err := auth.CanReadPermissionCatalog(ac); err != nil {
+		return nil, err
+	}
+	scope, err := s.permissionConfinement(ctx, ac)
+	if err != nil {
 		return nil, err
 	}
 	if s.Permissions == nil {
@@ -341,6 +459,9 @@ func (s *State) listPermissions(ctx context.Context, _ *apicommon.Empty) (*apico
 	rows, err := s.Permissions.FindAll(ctx)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "permission_find_all failed", err)
+	}
+	if scope != nil {
+		rows = slices.DeleteFunc(rows, func(p role.Permission) bool { return !scope.ownsPermission(p.Permission) })
 	}
 	out := apicommon.MapSlice(rows, permissionToResponse)
 	return &apicommon.Out[PermissionListResponse]{Body: PermissionListResponse{Permissions: out, Total: len(out)}}, nil
@@ -352,7 +473,11 @@ type permissionPathInput struct {
 
 func (s *State) getPermission(ctx context.Context, in *permissionPathInput) (*apicommon.Out[PermissionResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadRoles(ac); err != nil {
+	if err := auth.CanReadPermissionCatalog(ac); err != nil {
+		return nil, err
+	}
+	scope, err := s.permissionConfinement(ctx, ac)
+	if err != nil {
 		return nil, err
 	}
 	if s.Permissions == nil {
@@ -362,7 +487,7 @@ func (s *State) getPermission(ctx context.Context, in *permissionPathInput) (*ap
 	if err != nil {
 		return nil, usecase.Internal("REPO", "permission_find_by_code failed", err)
 	}
-	if p == nil {
+	if p == nil || !scope.ownsPermission(p.Permission) {
 		return nil, httperror.NotFound("Permission", in.Permission)
 	}
 	return &apicommon.Out[PermissionResponse]{Body: permissionToResponse(p)}, nil
