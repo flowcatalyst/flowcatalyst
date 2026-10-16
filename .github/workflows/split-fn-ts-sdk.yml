@@ -6,8 +6,9 @@ name: Split function TypeScript SDK
 # Variables). Until the owner sets it, a tag push runs nothing.
 #
 # When on: typecheck + test clients/fn-ts, split it out with splitsh-lite,
-# force-push it to the standalone flowcatalyst/fn-ts-sdk repo (secret
-# FN_TS_SDK_TOKEN) and re-tag plain vX.Y.Z there. The package ships TypeScript
+# force-push it to the standalone flowcatalyst/fn-ts-sdk repo (token: secret
+# FN_TS_SDK_TOKEN, or the existing TYPESCRIPT_SDK_TOKEN if it can write to that
+# repo) and re-tag plain vX.Y.Z there. The package ships TypeScript
 # source (main/types point at src/index.ts, bundled by fc-fn-build), so there
 # is no dist to build.
 #
@@ -87,7 +88,7 @@ jobs:
 
       - name: Split and push
         env:
-          TARGET_REPO: https://x-access-token:${{ secrets.FN_TS_SDK_TOKEN }}@github.com/flowcatalyst/fn-ts-sdk.git
+          TARGET_REPO: https://x-access-token:${{ secrets.FN_TS_SDK_TOKEN || secrets.TYPESCRIPT_SDK_TOKEN }}@github.com/flowcatalyst/fn-ts-sdk.git
         run: |
           # Split the subtree (preserves per-file commit history)
           SHA=$(splitsh-lite --prefix=clients/fn-ts)
