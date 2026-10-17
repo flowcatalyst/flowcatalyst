@@ -1,6 +1,6 @@
 # Java function runner — plan
 
-*Status: design, written 2026-10-17 for owner review. Nothing here is built. Direction (owner,
+*Status: **ON HOLD** (owner, 2026-10-17: documented, not started; the sixteen decisions in section 9 are unanswered). Design written 2026-10-17 for owner review. Nothing here is built. Direction (owner,
 2026-10-17): the Go platform and the wazero runner stay. A Java runner is added next to them so
 JVM functions (jars) run beside Wasm/JS ones, installable like a plugin
 (`fcdev runner install java`), and the same artifact is the production service.*
