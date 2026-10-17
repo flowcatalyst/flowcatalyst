@@ -46,49 +46,25 @@ func newFnRunCmd() *cobra.Command {
 			if runtime == "" {
 				runtime = runtimeFor(path)
 			}
-			fn := control.Function{
-				ID: "fnc_local", Address: address, ApplicationID: "app_local",
-				Limits:        control.Limits{MemoryMB: 64, MaxConcurrency: 64, TimeoutMs: 30_000},
-				WebhookSecret: whSecret,
-			}
-			var err error
-			if fn.Config, err = keyValues(configs); err != nil {
-				return err
-			}
-			if fn.Secrets, err = keyValues(secrets); err != nil {
-				return err
-			}
-			if fn.DB, err = keyValues(dbs); err != nil {
+			fn, err := newLocalFunction(address, whSecret, configs, secrets, dbs)
+			if err != nil {
 				return err
 			}
 			cp := &localCP{fn: fn, path: path, runtime: runtime, changed: make(chan struct{}, 1)}
 			if err := cp.load(cmd.Context()); err != nil {
 				return err
 			}
-			b, err := budget.New(int64(memoryMB)<<20, 0)
+			ls, err := startLocalServer(cmd.Context(), cp, perms, memoryMB, port)
 			if err != nil {
 				return err
 			}
-			r, err := runner.New(cmd.Context(), runner.Config{
-				Pool: "local", ControlPlane: cp, Budget: b,
-				Tokens: devTokens{permissions: perms}, HeartbeatEvery: time.Hour,
-			})
-			if err != nil {
-				return err
-			}
-			ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
-			if err != nil {
-				return err
-			}
-			srv := &http.Server{Handler: r.Handler(), ReadHeaderTimeout: 10 * time.Second}
-			go func() { _ = srv.Serve(ln) }()
-			defer func() { _ = srv.Close() }()
-			fmt.Printf("serving %s (%s) at http://%s/fn/%s/…\n", path, runtime, ln.Addr(), address)
+			defer ls.Close()
+			fmt.Printf("serving %s (%s) at http://%s/fn/%s/…\n", path, runtime, ls.ln.Addr(), address)
 			fmt.Printf("webhook endpoints verify signatures made with secret %q; platform endpoints accept any bearer token\n", whSecret)
 			if watch {
 				go cp.watch(cmd.Context())
 			}
-			return r.Run(cmd.Context())
+			return ls.r.Run(cmd.Context())
 		},
 	}
 	f := cmd.Flags()
@@ -104,6 +80,60 @@ func newFnRunCmd() *cobra.Command {
 	f.BoolVar(&watch, "watch", false, "redeploy whenever the artifact changes")
 	return cmd
 }
+
+// newLocalFunction is the one function a local runner serves: dev limits and
+// the settings given as KEY=VALUE flags.
+func newLocalFunction(address, whSecret string, configs, secrets, dbs []string) (control.Function, error) {
+	fn := control.Function{
+		ID: "fnc_local", Address: address, ApplicationID: "app_local",
+		Limits:        control.Limits{MemoryMB: 64, MaxConcurrency: 64, TimeoutMs: 30_000},
+		WebhookSecret: whSecret,
+	}
+	var err error
+	if fn.Config, err = keyValues(configs); err != nil {
+		return fn, err
+	}
+	if fn.Secrets, err = keyValues(secrets); err != nil {
+		return fn, err
+	}
+	if fn.DB, err = keyValues(dbs); err != nil {
+		return fn, err
+	}
+	return fn, nil
+}
+
+// localServer is a runner plus its 127.0.0.1 listener.
+type localServer struct {
+	r   *runner.Runner
+	ln  net.Listener
+	srv *http.Server
+}
+
+// startLocalServer builds the runner over cp and starts serving it on
+// 127.0.0.1:port (0 = any free port). The caller runs r.Run.
+func startLocalServer(ctx context.Context, cp runner.ControlPlane, perms []string, memoryMB, port int) (*localServer, error) {
+	b, err := budget.New(int64(memoryMB)<<20, 0)
+	if err != nil {
+		return nil, err
+	}
+	r, err := runner.New(ctx, runner.Config{
+		Pool: "local", ControlPlane: cp, Budget: b,
+		Tokens: devTokens{permissions: perms}, HeartbeatEvery: time.Hour,
+	})
+	if err != nil {
+		return nil, err
+	}
+	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	if err != nil {
+		return nil, err
+	}
+	srv := &http.Server{Handler: r.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	go func() { _ = srv.Serve(ln) }()
+	return &localServer{r: r, ln: ln, srv: srv}, nil
+}
+
+// Close stops the listener.
+func (s *localServer) Close() { _ = s.srv.Close() }
 
 func keyValues(in []string) (map[string]string, error) {
 	out := map[string]string{}
@@ -142,29 +172,51 @@ type localCP struct {
 	changed chan struct{}
 }
 
-// load (re)reads the artifact and makes it the live version.
-func (c *localCP) load(ctx context.Context) error {
+// loadInfo describes a version just made live.
+type loadInfo struct {
+	Version  int
+	Size     int
+	Digest   string
+	Describe *abi.Describe
+}
+
+// reload (re)reads the artifact and makes it the live version, without
+// printing. A failure leaves the previous version in place.
+func (c *localCP) reload(ctx context.Context) (*loadInfo, error) {
 	data, err := os.ReadFile(c.path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	info, _ := os.Stat(c.path)
 	d, doc, err := describeArtifact(ctx, c.path, c.runtime)
 	if err != nil {
-		return fmt.Errorf("%s: %w", c.path, err)
+		return nil, fmt.Errorf("%s: %w", c.path, err)
 	}
 	sum := sha256.Sum256(data)
+	digest := hex.EncodeToString(sum[:])
 	c.mu.Lock()
 	c.version++
 	c.data = data
-	c.mtime = info.ModTime()
-	c.fn.Versions = []control.Version{{Number: c.version, Digest: hex.EncodeToString(sum[:]), Runtime: c.runtime, ABI: abi.Version, Describe: doc, Roles: []string{control.RoleLive}}}
+	if info != nil {
+		c.mtime = info.ModTime()
+	}
+	c.fn.Versions = []control.Version{{Number: c.version, Digest: digest, Runtime: c.runtime, ABI: abi.Version, Describe: doc, Roles: []string{control.RoleLive}}}
+	n := c.version
 	c.mu.Unlock()
-	printDescribe(fmt.Sprintf("v%d %s", c.version, c.path), d)
 	select {
 	case c.changed <- struct{}{}:
 	default:
 	}
+	return &loadInfo{Version: n, Size: len(data), Digest: digest, Describe: d}, nil
+}
+
+// load is reload plus the describe printout `fn run` shows.
+func (c *localCP) load(ctx context.Context) error {
+	li, err := c.reload(ctx)
+	if err != nil {
+		return err
+	}
+	printDescribe(fmt.Sprintf("v%d %s", li.Version, c.path), li.Describe)
 	return nil
 }
 

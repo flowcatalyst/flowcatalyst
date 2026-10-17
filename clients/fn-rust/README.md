@@ -80,6 +80,17 @@ segfaults — confirmed while writing the first version of those tests, which
 is why they now assert on the packing arithmetic and the underlying
 thread-local buffer's contents instead.
 
+## Local development loop
+
+1. **Unit tests** (`cargo test`) run your handlers against a fake host in milliseconds.
+2. **`fcdev fn dev [dir]`** builds the project, serves it on the *real* function
+   runner at `127.0.0.1:8099` (no platform needed), and rebuilds and hot-reloads on
+   every save. A failed rebuild keeps the last good build serving. Add
+   `--send sample.xml --path /events/x` to replay a request after every reload and see
+   the response, emitted events and would-be dispatch jobs. See `docs/fcdev-fn-dev.md`.
+3. **`fcdev fn deploy`** to a non-production platform for what a local run cannot
+   check: signing, pool and connection existence, real delivery.
+
 ## Building the example to wasm
 
 ```
