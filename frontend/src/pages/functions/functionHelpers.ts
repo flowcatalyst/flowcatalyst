@@ -245,3 +245,23 @@ export function describeWiring(wiring: FunctionWiring | null | undefined): strin
 	}
 	return parts.length > 0 ? parts.join(" · ") : null;
 }
+
+/** What the delete confirmation shows: version count and the version `live` points at. */
+export interface DeleteSummary {
+	versionCount: number;
+	/** Version number the `live` alias points at, or null when unpromoted. */
+	liveVersion: number | null;
+}
+
+export function deleteSummary(versions: FunctionVersion[], aliases: FunctionAlias[]): DeleteSummary {
+	const live = aliases.find((a) => a.name === "live");
+	return { versionCount: versions.length, liveVersion: live ? live.version : null };
+}
+
+/**
+ * Deleting a function is irreversible: the user must type its address exactly
+ * (same safety as `fcdev fn delete`). Surrounding whitespace is forgiven; case is not.
+ */
+export function deleteAddressMatches(typed: string, address: string): boolean {
+	return address !== "" && typed.trim() === address;
+}

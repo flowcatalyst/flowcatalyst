@@ -21,6 +21,8 @@ import {
 	aliasesForVersion,
 	computeMissingSettings,
 	describeFailure,
+	deleteAddressMatches,
+	deleteSummary,
 	describeWiring,
 	hasMissingSettings,
 	liveOrNewestVersion,
@@ -192,28 +194,31 @@ async function saveChanges() {
 	}
 }
 
+const deleteDialogVisible = ref(false);
+const deleteTyped = ref("");
+const deleting = ref(false);
+const deleteInfo = computed(() => deleteSummary(versions.value, aliases.value));
+const deleteConfirmed = computed(() => deleteAddressMatches(deleteTyped.value, fn.value?.address ?? ""));
+
 function confirmDelete() {
-	confirm.require({
-		message:
-			"Delete this function? This permanently removes it, along with every version, alias, wiring (subscriptions and scheduled jobs) and artifact. Cannot be undone.",
-		header: "Delete Function",
-		icon: "pi pi-exclamation-triangle",
-		acceptLabel: "Delete",
-		acceptClass: "p-button-danger",
-		accept: deleteFunction,
-	});
+	deleteTyped.value = "";
+	deleteDialogVisible.value = true;
 }
 
 async function deleteFunction() {
-	if (!fn.value) return;
+	if (!fn.value || !deleteConfirmed.value) return;
+	deleting.value = true;
 	try {
 		await functionsApi.delete(fn.value.id);
-		toast.success("Success", "Function deleted");
+		toast.success("Success", `Function ${fn.value.address} deleted`);
+		deleteDialogVisible.value = false;
 		emit("changed");
 		editing.value = false;
 		void drawer.value?.close(true);
 	} catch {
-		// errors surface via the global error toast
+		// the platform's message surfaces via the global error toast; the dialog stays open
+	} finally {
+		deleting.value = false;
 	}
 }
 
@@ -916,6 +921,62 @@ function formatDate(dateString: string | undefined | null) {
         </div>
       </FcFormSection>
     </template>
+
+    <!-- Delete Function Dialog: typed-address confirmation (same safety as `fcdev fn delete`) -->
+    <Dialog
+      v-model:visible="deleteDialogVisible"
+      header="Delete Function"
+      :style="{ width: '32rem', maxWidth: 'calc(100vw - 2rem)' }"
+      :modal="true"
+    >
+      <div v-if="fn" class="dialog-form" data-testid="function-delete-dialog">
+        <p>
+          Permanently delete <code>{{ fn.address }}</code>?
+        </p>
+        <ul>
+          <li>
+            {{ deleteInfo.versionCount }} version{{ deleteInfo.versionCount === 1 ? "" : "s" }}
+          </li>
+          <li>
+            Live version:
+            <strong>{{ deleteInfo.liveVersion != null ? `v${deleteInfo.liveVersion}` : "none (never promoted)" }}</strong>
+          </li>
+        </ul>
+        <p>
+          Every version, alias and artifact is removed, along with the subscriptions, scheduled jobs and routes
+          owned by this function and its dispatch pool. This cannot be undone.
+        </p>
+        <div class="form-field">
+          <label>Type <code>{{ fn.address }}</code> to confirm</label>
+          <InputText
+            v-model="deleteTyped"
+            :placeholder="fn.address"
+            autocomplete="off"
+            class="full-width"
+            data-testid="function-delete-confirm-input"
+            @keyup.enter="deleteFunction"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <Button
+          label="Cancel"
+          severity="secondary"
+          outlined
+          :disabled="deleting"
+          @click="deleteDialogVisible = false"
+        />
+        <Button
+          label="Delete"
+          icon="pi pi-trash"
+          severity="danger"
+          :loading="deleting"
+          :disabled="!deleteConfirmed"
+          data-testid="function-delete-confirm"
+          @click="deleteFunction"
+        />
+      </template>
+    </Dialog>
 
     <!-- Point Alias Dialog -->
     <Dialog

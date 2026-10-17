@@ -11,6 +11,8 @@ import {
 	aliasesForVersion,
 	buildFunctionAddress,
 	computeMissingSettings,
+	deleteAddressMatches,
+	deleteSummary,
 	describeFailure,
 	describeWiring,
 	hasMissingSettings,
@@ -226,5 +228,30 @@ describe("describeWiring", () => {
 		expect(describeWiring(null)).toBeNull();
 		expect(describeWiring(undefined)).toBeNull();
 		expect(describeWiring({})).toBeNull();
+	});
+});
+
+describe("delete confirmation helpers", () => {
+	const v = (number: number) => ({ number }) as never;
+	const a = (name: string, version: number) => ({ name, version }) as never;
+
+	it("summarises versions and the live version", () => {
+		expect(deleteSummary([v(1), v(2), v(3)], [a("qa", 1), a("live", 2)])).toEqual({
+			versionCount: 3,
+			liveVersion: 2,
+		});
+	});
+
+	it("reports no live version when never promoted", () => {
+		expect(deleteSummary([], [])).toEqual({ versionCount: 0, liveVersion: null });
+		expect(deleteSummary([v(1)], [a("qa", 1)]).liveVersion).toBeNull();
+	});
+
+	it("requires the exact address (trim only, case sensitive, never empty)", () => {
+		expect(deleteAddressMatches("billing:invoice-sync", "billing:invoice-sync")).toBe(true);
+		expect(deleteAddressMatches("  billing:invoice-sync ", "billing:invoice-sync")).toBe(true);
+		expect(deleteAddressMatches("Billing:invoice-sync", "billing:invoice-sync")).toBe(false);
+		expect(deleteAddressMatches("billing:invoice", "billing:invoice-sync")).toBe(false);
+		expect(deleteAddressMatches("", "")).toBe(false);
 	});
 });
