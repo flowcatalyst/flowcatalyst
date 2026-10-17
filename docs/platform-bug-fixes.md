@@ -2234,6 +2234,21 @@ canonicalisation; (3) per-client absolute refresh lifetime from an env var, copi
 (4) the `Active` check on authorization-code redemption; (5) `refresh_expires_in` on the token response
 (lock, SDK specs). The fcdev CLI is Go-only.
 
+### F26. Built-in role `platform:function-deployer` for CI deploys (owner-approved, 2026-10-17)
+
+A CI account running `fcdev fn deploy <addr> . --create --client <code>` previously needed
+`function-publisher` plus hand-picked extra permissions. New built-in role `platform:function-deployer`
+holds exactly: `platform:function:function:view`, `platform:function:function:manage`,
+`platform:function:version:publish`, `platform:function:alias:promote`, `platform:admin:client:view`,
+`platform:admin:application:view`. Function manage also permits deleting functions; the role description and
+docs say so and point to `function-publisher` for deploy-without-create. A NEW built-in role needs no migration:
+`seedRoles` inserts missing roles at platform start (existing roles are never rewritten). Tests:
+`TestFunctionDeployerRole`, and the integration `TestSeedFunctionDeployerRole` (fresh, idempotent, pre-existing DB).
+The console function detail page also gained a Delete action (see the console commit).
+
+Java hand-off: add built-in role `platform:function-deployer` ("Function Deployer") with the six permissions
+above to the Java role catalogue; no migration, the seeder creates missing roles.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads

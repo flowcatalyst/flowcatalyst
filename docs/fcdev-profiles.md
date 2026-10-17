@@ -200,9 +200,9 @@ terminal, a keychain or a prompt.
 it never touches the keychain and never prompts. The profile file holds only the reference; the secret
 stays in the CI secret store and is read from the environment variable at run time. The profile file
 goes to the user config directory (`$XDG_CONFIG_HOME` or `$HOME/.config`; set `FC_PROFILES_PATH` to put
-it elsewhere, e.g. the runner's temp dir). The OAuth client needs the `platform:function-publisher`
-role (see "Least privilege"; `--create --client <code>` also needs permission to read clients, or pass
-the `clt_` id).
+it elsewhere, e.g. the runner's temp dir). The OAuth client needs the `platform:function-deployer`
+role for `fn deploy --create --client <code>` (see "Least privilege"), or `platform:function-publisher`
+when the functions already exist.
 
 For a prod profile add `--allow-noninteractive` when creating it, and pass `--yes` on the write
 commands: without both, a prod write is refused with no terminal. Runs that make no remote write
@@ -344,8 +344,12 @@ Not verified by the automated tests, which use an in-memory fake and never touch
 Do not give a nonprod/prod CLI credential super-admin. Create a dedicated service-account OAuth client
 and grant it:
 
-* `platform:function-publisher`: view, publish and promote versions (enough for `publish`, `promote`,
-  `deploy` of an existing function, `status`).
+* `platform:function-deployer`: the one role for a CI account running
+  `fcdev fn deploy <addr> . --create --client <client code>`. It holds exactly function view, function
+  manage, version publish, alias promote, client view and application view. Function manage also permits
+  deleting functions (`fn delete`, console Delete), so give it only to accounts you trust with that.
+* `platform:function-publisher`: view, publish and promote versions only (enough for `publish`, `promote`,
+  `deploy` of an existing function, `status`). Use this for deploy-without-create.
 * For `deploy --create` / `publish --create`: also function manage (`platform:function:function:manage`)
   and application view, to create the function resource under its application.
 * For `--client <code>` (with `--create`): client view (`CanReadClients`). The owning client is given by its

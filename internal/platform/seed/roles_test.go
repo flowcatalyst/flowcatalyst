@@ -85,3 +85,34 @@ func TestApplicationServiceRoleCarriesAdminPagePermissions(t *testing.T) {
 	}
 	t.Fatal("platform:application-service role not found")
 }
+
+// TestFunctionDeployerRole pins F26: the CI deploy role holds exactly what
+// `fcdev fn deploy --create --client <code>` needs, and nothing that widens it
+// (no secret manage, no invoke, no domain/route manage, no wildcard).
+func TestFunctionDeployerRole(t *testing.T) {
+	want := []string{
+		"platform:function:function:view",
+		"platform:function:function:manage",
+		"platform:function:version:publish",
+		"platform:function:alias:promote",
+		"platform:admin:client:view",
+		"platform:admin:application:view",
+	}
+	for _, r := range PlatformRoles() {
+		if r.Name != "platform:function-deployer" {
+			continue
+		}
+		got := slices.Clone(r.Permissions)
+		slices.Sort(got)
+		slices.Sort(want)
+		if !slices.Equal(got, want) {
+			t.Errorf("function-deployer permissions = %v, want %v", got, want)
+		}
+		if r.Description == nil || !strings.Contains(*r.Description, "DELETING") ||
+			!strings.Contains(*r.Description, "function-publisher") {
+			t.Errorf("description must state the delete caveat and point to function-publisher: %v", r.Description)
+		}
+		return
+	}
+	t.Fatal("platform:function-deployer role not found")
+}

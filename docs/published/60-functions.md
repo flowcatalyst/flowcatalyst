@@ -57,8 +57,9 @@ A version must be loaded by a runner before it can be promoted (`deploy` waits f
 Promotion is refused while a config key, secret or database the version declares has no value.
 Against a local `fcdev` the commands sign in by themselves; in CI pass `--platform`,
 `--client-id` and `--client-secret` (or `FC_PLATFORM_URL`, `FC_CLIENT_ID`, `FC_CLIENT_SECRET`)
-for a service account holding `platform:function-publisher` (plus `platform:function:function:manage`
-to create functions).
+for a service account holding `platform:function-deployer` (view, create, publish, promote, plus client and
+application view; function manage also permits deleting functions), or `platform:function-publisher` to deploy
+functions that already exist.
 
 ## Declaring what the function needs
 

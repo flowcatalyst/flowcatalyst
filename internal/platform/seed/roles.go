@@ -223,6 +223,21 @@ func PlatformRoles() []role.Role {
 			"Publish and promote function versions",
 			[]string{permFunctionView, permFunctionPublish, permFunctionPromote}),
 
+		// platform:function-deployer — a CI account running `fcdev fn deploy
+		// <addr> . --create --client <code>` (F26): resolve a client code
+		// (client view), create the function under its application when absent
+		// (function manage + application view), publish, wait READY, promote
+		// `live`. Nothing else. Function manage also permits deleting a
+		// function; the description says so.
+		mk("function-deployer", "Function Deployer",
+			"Deploy functions from CI: create a function if absent, publish a version and promote it. "+
+				"Includes function manage, which also permits DELETING functions; "+
+				"use function-publisher to deploy functions that already exist.",
+			[]string{
+				permFunctionView, permFunctionManage, permFunctionPublish, permFunctionPromote,
+				permAdminClientRead, permAdminApplicationRead,
+			}),
+
 		// platform:function-runner — the deployed function runner's own
 		// role (docs/function-runner-plan.md §3, §6.5). One permission,
 		// same posture as platform:router: it polls its own control plane
