@@ -106,6 +106,22 @@ impl TestResponse {
     }
 }
 
+/// What a fake host closure returns (see `set_fake_host`).
+pub use crate::host::HostResult;
+
+/// A successful host reply: the result frame's meta (JSON text) and body.
+pub fn host_ok(meta: &str, body: &[u8]) -> HostResult {
+    Ok((meta.as_bytes().to_vec(), body.to_vec()))
+}
+
+/// A host refusal with `code` (see `error_code`) and `message`.
+pub fn host_error(code: &str, message: &str) -> HostResult {
+    Err(crate::host::HostOutcome::Host(crate::host::HostError {
+        code: code.to_string(),
+        message: message.to_string(),
+    }))
+}
+
 fn build<F: FnOnce(&mut App)>(f: F) -> App {
     let mut app = App::new();
     f(&mut app);
@@ -142,8 +158,14 @@ mod tests {
     use crate::{Context, Error, Request, Response};
 
     fn who(_: &Request, ctx: &Context) -> Result<Response, Error> {
-        let id = ctx.caller().principal().map(|p| p.id.clone()).unwrap_or_default();
-        Ok(Response::new(202).with_header("X-Id", id).with_body(b"ok".to_vec()))
+        let id = ctx
+            .caller()
+            .principal()
+            .map(|p| p.id.clone())
+            .unwrap_or_default();
+        Ok(Response::new(202)
+            .with_header("X-Id", id)
+            .with_body(b"ok".to_vec()))
     }
 
     fn register(app: &mut App) {
@@ -154,11 +176,39 @@ mod tests {
     fn invoke_routes_with_a_principal() {
         let r = invoke(
             register,
-            TestRequest::new("POST", "/who").principal("prn_1", &["a:b:c:d"]).body("x"),
+            TestRequest::new("POST", "/who")
+                .principal("prn_1", &["a:b:c:d"])
+                .body("x"),
         );
-        assert_eq!((r.status, r.header("x-id"), r.text().as_str()), (202, Some("prn_1"), "ok"));
-        assert_eq!(invoke(register, TestRequest::new("GET", "/nope")).status, 404);
-        assert_eq!(invoke(register, TestRequest::new("PUT", "/who")).status, 405);
+        assert_eq!(
+            (r.status, r.header("x-id"), r.text().as_str()),
+            (202, Some("prn_1"), "ok")
+        );
+        assert_eq!(
+            invoke(register, TestRequest::new("GET", "/nope")).status,
+            404
+        );
+        assert_eq!(
+            invoke(register, TestRequest::new("PUT", "/who")).status,
+            405
+        );
+    }
+
+    #[test]
+    fn host_helpers_round_trip() {
+        crate::set_fake_host(|op, _, _| {
+            if op == 3 {
+                host_ok(r#"{"found":true}"#, b"v")
+            } else {
+                host_error("UNAVAILABLE", "down")
+            }
+        });
+        let ctx = crate::Context {
+            caller: Default::default(),
+            invocation: Default::default(),
+        };
+        assert_eq!(ctx.secret_get("K").unwrap().as_deref(), Some("v"));
+        assert!(ctx.config_get("K").unwrap_err().is_retryable());
     }
 
     #[test]
