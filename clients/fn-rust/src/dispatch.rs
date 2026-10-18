@@ -73,7 +73,7 @@ fn pack(bytes: Vec<u8>) -> u64 {
     })
 }
 
-fn handle_frame(app: &App, frame: &[u8]) -> Vec<u8> {
+pub(crate) fn handle_frame(app: &App, frame: &[u8]) -> Vec<u8> {
     let (meta, body) =
         decode_frame(frame).unwrap_or_else(|e| panic!("fn: malformed request frame: {e}"));
     let rm: RequestMeta = serde_json::from_slice(meta)

@@ -32,6 +32,8 @@ mod dispatch;
 mod frame;
 mod host;
 mod route;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod testing;
 mod types;
 
 pub use app::{App, DispatchOpts, Handler};
