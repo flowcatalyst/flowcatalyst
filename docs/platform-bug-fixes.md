@@ -2249,6 +2249,33 @@ The console function detail page also gained a Delete action (see the console co
 Java hand-off: add built-in role `platform:function-deployer` ("Function Deployer") with the six permissions
 above to the Java role catalogue; no migration, the seeder creates missing roles.
 
+### F27. Go's migration bootstrap copied the other implementation's migration numbers (parity plan hazard A, 2026-10-18)
+
+**Bug.** On a database the other implementation (Rust) migrated first, `bootstrap()` step 2 seeded goose from
+`_schema_migrations` by numeric prefix. The numbering matches through 030 and diverges after (Rust 034 is its
+function registry; Go 059 is ours). Go marked 059 applied and never created `fng_*`; 040, 045, 048 and 049 were
+reported as "missing migrations" and goose refused to start. Reproduced against the real Rust migration files
+before the fix (`found 5 missing migrations before current version 70: 36, 40, 45, 48, 49`). The same hole
+existed in step 3 (a populated, untracked schema was baselined to the whole shipped set, 082 included).
+
+**Fix.** The foreign tracker's numbers are never used. Bootstrap seeds goose only with migrations whose schema
+effect it can see (`internal/migrate/probes.go`; 009 and 012-018 are implied by 010 and 019), and goose applies
+the rest, with `WithAllowMissing`. A ledger already poisoned by the old behaviour is repaired on the next boot
+(entries whose probe fails are un-marked). Migrations 035, 038 and 039 were made re-runnable (`ADD COLUMN IF NOT
+EXISTS`), as the real Rust schema needed. See docs/migration-bootstrap.md.
+
+**Tests** (integration, scratch databases only): fresh; Go database with lost ledger (data survives, 019/022 do
+not re-run); foreign database at 070; foreign database at 015; overclaiming tracker; poisoned ledger; Go ledger at
+071 with a complete foreign tracker (Rust 067-070, Go older than 072); probes true on a fully migrated database;
+and, when `FC_FOREIGN_MIGRATIONS_DIR` is set, the real Rust files replayed through 30, 45, 62 and all.
+
+**Rust hand-off.** Nothing is required of Rust for hazard A. Remaining on Rust's side of the parity plan:
+(B) Rust 067-070 have no probes and are assumed applied on a Go database older than Go 072; add probes. (C) Rust
+070 fixes four event schemas Go 072 does not, and on a Go database they never land; reconcile the payloads first.
+Note for Rust when it starts on a database Go migrated: Go's `iam_login_attempts` is partitioned and its enum
+CHECK constraints exist; Go 071 prunes `platform:iam:user:password-reset-requested`, which Rust re-seeds. Go now
+tolerates `_schema_migrations` being present and leaves it untouched.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads

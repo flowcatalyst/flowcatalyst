@@ -6,5 +6,5 @@
 -- password_hash sitting directly on this table for other user-identity
 -- material (1:1 per principal, no side table needed).
 
-ALTER TABLE iam_principals ADD COLUMN dev_client_secret_ref TEXT;
-ALTER TABLE iam_principals ADD COLUMN dev_client_secret_updated_at TIMESTAMPTZ;
+ALTER TABLE iam_principals ADD COLUMN IF NOT EXISTS dev_client_secret_ref TEXT;
+ALTER TABLE iam_principals ADD COLUMN IF NOT EXISTS dev_client_secret_updated_at TIMESTAMPTZ;

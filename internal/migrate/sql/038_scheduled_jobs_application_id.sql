@@ -7,6 +7,6 @@
 -- iam_service_accounts.application_id (migration 002), which also has no FK
 -- back to app_applications.
 
-ALTER TABLE msg_scheduled_jobs ADD COLUMN application_id VARCHAR(17);
+ALTER TABLE msg_scheduled_jobs ADD COLUMN IF NOT EXISTS application_id VARCHAR(17);
 CREATE INDEX IF NOT EXISTS idx_msg_scheduled_jobs_application_id
     ON msg_scheduled_jobs (application_id);

@@ -10,7 +10,7 @@
 // ledger is seeded so nothing re-runs (which matters because migrations
 // 019/022 DROP and recreate the messaging tables). Go's own legacy
 // `_fc_migrations` tracker, the previous platform's `_schema_migrations`
-// tracker, and — as a final safety net — a populated-but-untracked schema are
+// tracker (never trusted by number), and a populated-but-untracked schema are
 // all recognised. See bootstrap for the precedence.
 package migrate
 
@@ -45,39 +45,39 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
 
-	return goose.UpContext(ctx, db, "sql")
+	// AllowMissing: a foreign database is seeded by evidence, so a lower
+	// migration may be pending beneath a higher one that is already visible.
+	return goose.UpContext(ctx, db, "sql", goose.WithAllowMissing())
 }
 
-// bootstrap seeds goose_db_version so an existing, already-migrated database
-// is never re-migrated on the cutover — which matters because migrations
-// 019/022 DROP and recreate the messaging tables. It does nothing once goose
-// has recorded any migration of its own (see step 0 in the body). It
-// recognises, in priority order:
+// bootstrap makes goose_db_version agree with the schema actually present, so
+// an existing database is never re-migrated (migrations 019/022 DROP and
+// recreate the messaging tables) and a migration is never recorded as applied
+// without its effect existing. In order:
 //
-//  1. `_fc_migrations` — Go's own pre-goose tracker (a `name` column). Seed
-//     goose from it, then drop it: it's ours and goose supersedes it.
-//  2. `_schema_migrations` — the previous platform's tracker (a
-//     `migration_id` column). Seed goose from it but leave it in place; the
-//     previous system may still own it during a side-by-side cutover or a
-//     rollback.
-//  3. No recognised tracker and goose has never run here, but the schema is
-//     already populated (the canonical `tnt_clients` table exists). Baseline
-//     goose to the full shipped migration set so none re-run against live
-//     data. Mirrors tools/baseline-goose-ledger.sql.
+//  0. goose already tracks this database: its ledger is the truth. A foreign
+//     tracker must never add to it. Entries whose effect probe fails are
+//     removed (repairLedger) so goose re-applies them; that undoes an earlier
+//     boot that seeded by number from another implementation's tracker.
+//  1. `_fc_migrations` — Go's own pre-goose tracker (a `name` column), same
+//     numbering as goose. Seed from it (probed versions only if their effect
+//     is visible), then drop it.
+//  2. `_schema_migrations` (another implementation's tracker, `migration_id`)
+//     or a populated schema with no tracker (`tnt_clients` exists). The
+//     tracker's NUMBERS are not used: the implementations number identically
+//     only through maxSharedVersion and differently after, so seeding by
+//     number marked our 059 (functions) applied because their 034 was. Seed
+//     only versions whose effect is visible (effectProbes); everything else is
+//     left for goose, which runs it (every migration from 031 is re-runnable).
+//     The foreign tracker is left in place: its owner may still use it.
 //
-// A genuinely fresh database matches none of these and is left untouched, so
-// goose applies every migration normally. Safe + idempotent on every boot.
+// A genuinely fresh database matches none of these and is left untouched.
+// Safe + idempotent on every boot.
 func bootstrap(ctx context.Context, db *sql.DB) error {
-	// (0) Goose already tracks this database: its ledger is the only truth.
-	// A legacy tracker must never add to it. Other implementations of the
-	// platform number their migrations differently (the numbering diverges
-	// from 031), and one of them may have advanced its own tracker past
-	// goose's; seeding by number would then mark migrations goose never ran
-	// as applied, and a later migration fails on a table that does not exist.
 	if hasGoose, err := gooseHasMigrations(ctx, db); err != nil {
 		return err
 	} else if hasGoose {
-		return nil
+		return repairLedger(ctx, db)
 	}
 
 	// (1) Go's own pre-goose tracker.
@@ -88,49 +88,124 @@ func bootstrap(ctx context.Context, db *sql.DB) error {
 		if err != nil {
 			return err
 		}
+		versions, err = withEvidence(ctx, db, versions, true)
+		if err != nil {
+			return err
+		}
 		slog.Info("migrate: seeding goose ledger from legacy _fc_migrations",
 			"migrations", len(versions))
 		return seedGoose(ctx, db, versions, "_fc_migrations")
 	}
 
-	// (2) The previous platform's tracker — seed but never drop it.
-	if ok, err := tableExists(ctx, db, "_schema_migrations"); err != nil {
+	// (2) Another implementation's tracker, or a populated untracked schema.
+	foreign, err := tableExists(ctx, db, "_schema_migrations")
+	if err != nil {
 		return err
-	} else if ok {
-		versions, err := trackerVersions(ctx, db, "_schema_migrations", "migration_id")
+	}
+	populated, err := tableExists(ctx, db, "tnt_clients")
+	if err != nil {
+		return err
+	}
+	if !foreign && !populated {
+		return nil // (3) fresh database
+	}
+	if !populated {
+		// A tracker with none of our tables behind it: nothing to seed.
+		return nil
+	}
+	shipped, err := shippedVersions()
+	if err != nil {
+		return err
+	}
+	versions, err := withEvidence(ctx, db, shipped, false)
+	if err != nil {
+		return err
+	}
+	slog.Warn("migrate: existing schema not tracked by goose; seeding only the migrations whose "+
+		"effect is present, goose applies the rest",
+		"foreignTracker", foreign, "seeded", len(versions), "shipped", len(shipped))
+	return seedGoose(ctx, db, versions, "")
+}
+
+// maxSharedVersion is the last migration number the platform implementations
+// number identically; from the next one on, numbers mean different things.
+const maxSharedVersion = 30
+
+// withEvidence keeps the versions whose effect is visible in the database. A
+// version with no probe and no implication is kept only when trustUnprobed
+// (Go's own tracker); a foreign or untracked database never gets one seeded.
+func withEvidence(ctx context.Context, db *sql.DB, versions []int64, trustUnprobed bool) ([]int64, error) {
+	var out []int64
+	for _, v := range versions {
+		ok, known, err := effectVisible(ctx, db, v)
+		if err != nil {
+			return nil, err
+		}
+		if ok || (!known && trustUnprobed) {
+			out = append(out, v)
+		}
+	}
+	return out, nil
+}
+
+// effectVisible reports whether migration v's effect is present. known is
+// false when v has no probe of its own and no implication.
+func effectVisible(ctx context.Context, db *sql.DB, v int64) (visible, known bool, err error) {
+	probe, ok := effectProbes[v]
+	if !ok {
+		w, implied := impliedBy[v]
+		if !implied {
+			return false, false, nil
+		}
+		probe, ok = effectProbes[w]
+		if !ok {
+			return false, false, nil
+		}
+	}
+	if err := db.QueryRowContext(ctx, "SELECT "+probe).Scan(&visible); err != nil { //nolint:gosec // G202: probes are in-package constants
+		return false, true, fmt.Errorf("probe migration %d: %w", v, err)
+	}
+	return visible, true, nil
+}
+
+// repairLedger removes goose entries whose effect probe fails, so goose
+// re-applies them. It only ever un-marks; it never marks.
+func repairLedger(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx,
+		`SELECT DISTINCT version_id FROM goose_db_version WHERE version_id > 0 AND is_applied`)
+	if err != nil {
+		return fmt.Errorf("read goose ledger: %w", err)
+	}
+	var applied []int64
+	for rows.Next() {
+		var v int64
+		if err := rows.Scan(&v); err != nil {
+			rows.Close()
+			return err
+		}
+		applied = append(applied, v)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, v := range applied {
+		if _, probed := effectProbes[v]; !probed {
+			continue // implications and unprobed versions are never repaired
+		}
+		ok, _, err := effectVisible(ctx, db, v)
 		if err != nil {
 			return err
 		}
-		if len(versions) > 0 {
-			slog.Info("migrate: seeding goose ledger from legacy platform _schema_migrations",
-				"migrations", len(versions))
-			return seedGoose(ctx, db, versions, "")
+		if ok {
+			continue
 		}
-		// Exists but empty — fall through to the populated-schema baseline.
-	}
-
-	// (3) Populated schema, no tracker goose recognises, and goose itself has
-	// never run here → baseline to the shipped set so destructive migrations
-	// don't re-run. Gated on an empty goose ledger so a normal restart (or a
-	// freshly-added local migration) is never marked applied behind our back.
-	if hasGoose, err := gooseHasMigrations(ctx, db); err != nil {
-		return err
-	} else if !hasGoose {
-		if ok, err := tableExists(ctx, db, "tnt_clients"); err != nil {
-			return err
-		} else if ok {
-			versions, err := shippedVersions()
-			if err != nil {
-				return err
-			}
-			slog.Warn("migrate: populated schema with no recognised migration tracker; "+
-				"baselining goose ledger to the shipped set (no migrations will re-run)",
-				"migrations", len(versions))
-			return seedGoose(ctx, db, versions, "")
+		slog.Warn("migrate: goose ledger records a migration whose effect is missing; "+
+			"un-marking it so it is applied", "version", v)
+		if _, err := db.ExecContext(ctx, `DELETE FROM goose_db_version WHERE version_id = $1`, v); err != nil {
+			return fmt.Errorf("un-mark migration %d: %w", v, err)
 		}
 	}
-
-	// (4) Fresh database (or already goose-tracked) — nothing to seed.
 	return nil
 }
 
