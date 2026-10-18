@@ -20,6 +20,23 @@ tag)`, commits the bump, tags `<prefix>/vX.Y.Z` and pushes `HEAD` plus the tag.
 `RELEASE_DRY_RUN=1` to run every check and print the would-be diff without
 committing, tagging or pushing (`RELEASE_DRY_RUN=1 make release-fn-ts-sdk BUMP=0.1.0`).
 
+## Releasing every SDK at once
+
+`make release-all-sdks BUMP=patch|minor|major` (default `patch`) runs
+`scripts/release-all-sdks.sh`. It prints a plan, asks once, then calls
+`scripts/release.sh` for each line whose directory changed since its last tag:
+ts, laravel, java, go-sdk, fn-ts, fn-rust, fn-go (and fcdev with `WITH_DEV=1`).
+
+- `RELEASE_ALL_PLAN=1` prints the plan only. `RELEASE_DRY_RUN=1` runs every
+  check per line and changes and pushes nothing.
+- `ONLY="fn-ts fn-go"` and `SKIP="java"` choose lines.
+- A line never released (VERSION 0.0.0, no tag) is skipped unless named in
+  `ONLY`; it then gets `0.1.0`.
+- The generated SDKs (ts, laravel, java) are refused if `make sdk-spec` would
+  change files (stale spec): run `make sdk-generate`, review and commit first.
+- `release.sh` pushes `HEAD`, so every unpushed commit goes up with the first
+  release. A failed line stops the run; rerun with `ONLY` set to the rest.
+
 ## Go SDK (`pkg/fcsdk`)
 
 The Go SDK is its own Go module, `github.com/flowcatalyst/flowcatalyst/pkg/fcsdk`

@@ -236,7 +236,9 @@ if [ "${RELEASE_DRY_RUN:-}" = "1" ]; then
 	echo "Dry run: would commit '$label v$new', tag $prefix/v$new, and push. Reverted."
 	exit 0
 fi
-read -r -p "Commit '$label v$new', tag $prefix/v$new, and push? [y/N] " confirm || confirm="n"
+if [ "${RELEASE_ASSUME_YES:-}" = "1" ]; then confirm=y; else
+	read -r -p "Commit '$label v$new', tag $prefix/v$new, and push? [y/N] " confirm || confirm="n"
+fi
 case "$confirm" in
 	y|Y|yes|YES) ;;
 	*) echo "Aborted. Reverting."; git checkout -- "$version_file" $touched; exit 1 ;;

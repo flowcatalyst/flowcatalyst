@@ -4,7 +4,7 @@
 	lint lint-fix analyze fmt fmt-check sqlc sqlc-verify ui-generate ui-fmt ui-verify ui-kit-sync ci clean \
 	dump-spec api-bump api-diff release-dev sdk-spec sdk-generate \
 	release-ts-sdk release-laravel-sdk build-java-sdk release-java-sdk \
-	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk install-tools help \
+	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk release-all-sdks install-tools help \
 	test-go-sdk test-go-sdk-tests lint-go-sdk go-sdk-smoke release-go-sdk e2e-platform \
 	tools tidy-verify vet ci-fast pre-push install-hooks
 
@@ -339,6 +339,9 @@ release-fn-ts-sdk: ## Cut a function TS SDK release: BUMP=… (bumps package.jso
 
 release-fn-rust-sdk: ## Cut a function Rust SDK release: BUMP=… (bumps Cargo.toml, tags fn-rust-sdk/vX.Y.Z)
 	@scripts/release.sh fn-rust "$(BUMP)"
+
+release-all-sdks: ## Release every SDK line changed since its last tag: BUMP=patch|minor|major (ONLY=, SKIP=, WITH_DEV=1, RELEASE_DRY_RUN=1, RELEASE_ALL_PLAN=1)
+	@scripts/release-all-sdks.sh "$(or $(BUMP),patch)"
 
 release-fn-go-sdk: ## Cut a function Go SDK release: BUMP=… (tags clients/fn-go/vX.Y.Z)
 	@scripts/release.sh fn-go "$(BUMP)"
