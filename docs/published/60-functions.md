@@ -197,6 +197,13 @@ A function past its concurrency limit answers `429` (deliveries wait and try
 again without spending an attempt). One that needs more memory than it may
 have fails only its own call — never its neighbours.
 
+## Stability
+
+Source written against an SDK keeps building and behaving the same until that SDK's next
+major version, and a change of runner never requires changing function source. What is promised,
+what is frozen, the JavaScript environment a TypeScript function can rely on, and how changes are
+deprecated are in the [function stability contract](../function-stability-contract.md).
+
 ## Running the runner
 
 The runner is part of `fc-server`: `FC_FUNCTIONS_ENABLED=true` starts it, and

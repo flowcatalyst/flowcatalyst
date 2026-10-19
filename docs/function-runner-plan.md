@@ -198,6 +198,8 @@ wiring. Promote refuses when a declared config/secret key or DB binding has no v
 
 ## 5. Guest ABI v1
 
+*What of this section is frozen, how it may change and how other runners must conform: [function-stability-contract.md](function-stability-contract.md).*
+
 ### 5.1 Guest exports
 
 | Export | Signature | Contract |
