@@ -25,6 +25,9 @@ type Client struct {
 	base  string
 	token TokenSource
 	http  *http.Client
+	// Runtimes, when set, is sent as the desired-state `runtimes` filter. Nil
+	// sends nothing, which the platform reads as DefaultRuntimes.
+	Runtimes []string
 }
 
 // NewClient builds a client for the platform at baseURL. httpClient may be
@@ -91,6 +94,9 @@ func (c *Client) Desired(ctx context.Context, pool, etag string, wait time.Durat
 	q := url.Values{"pool": {pool}}
 	if wait > 0 {
 		q.Set("wait", strconv.Itoa(int(min(wait, MaxWait).Seconds())))
+	}
+	if len(c.Runtimes) > 0 {
+		q.Set(QueryRuntimes, strings.Join(c.Runtimes, ","))
 	}
 	h := http.Header{}
 	if etag != "" {

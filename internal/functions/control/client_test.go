@@ -91,3 +91,18 @@ func TestClientDispatchUnreadableAnswerIsRetryable(t *testing.T) {
 		t.Fatalf("err = %+v", aerr)
 	}
 }
+
+func TestClientDesiredSendsRuntimesFilterOnlyWhenSet(t *testing.T) {
+	var q string
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		q = r.URL.Query().Get(QueryRuntimes)
+		w.WriteHeader(http.StatusNotModified)
+	})
+	if _, _, _, err := c.Desired(t.Context(), "p", `"x"`, 0); err != nil || q != "" {
+		t.Fatalf("unset: err=%v runtimes=%q", err, q)
+	}
+	c.Runtimes = []string{"wasm", "js"}
+	if _, _, _, err := c.Desired(t.Context(), "p", `"x"`, 0); err != nil || q != "wasm,js" {
+		t.Fatalf("set: err=%v runtimes=%q", err, q)
+	}
+}

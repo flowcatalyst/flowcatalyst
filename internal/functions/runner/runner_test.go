@@ -762,3 +762,32 @@ func TestHeartbeatVersionsIsAListWhenEmpty(t *testing.T) {
 		t.Fatalf("heartbeat = %s", raw)
 	}
 }
+
+// A version of a runtime this runner does not have (a platform that ignored
+// the `runtimes` filter) is skipped silently: never held and never reported
+// FAILED, which the platform would latch against a runner that can run it.
+// The heartbeat advertises the runner's capabilities.
+func TestForeignRuntimeVersionIsSkippedNotFailed(t *testing.T) {
+	foreign := ver(2, control.RoleCandidate)
+	foreign.Runtime = "jvm"
+	h := start(t, fnDoc(ver(1, control.RoleLive), foreign))
+	h.waitVersionReady("app.hello", 1)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		hb, _ := h.cp.lastHeartbeat()
+		if hb.Capabilities != nil && len(hb.Versions) > 0 {
+			if hb.Capabilities.Protocol != control.ProtocolV1 || hb.Capabilities.RunnerKind != "go" ||
+				strings.Join(hb.Capabilities.Runtimes, ",") != "wasm,js" {
+				t.Fatalf("capabilities = %+v", hb.Capabilities)
+			}
+			for _, v := range hb.Versions {
+				if v.Number == 2 {
+					t.Fatalf("the foreign-runtime version was reported: %+v", v)
+				}
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("no heartbeat with capabilities")
+}

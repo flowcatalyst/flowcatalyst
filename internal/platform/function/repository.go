@@ -599,6 +599,37 @@ func (r *Repository) UpsertRunnerHeartbeat(ctx context.Context, id, pool string,
 	})
 }
 
+// PoolRunnerRuntimes summarises pool's live runners: how many have heartbeated
+// since `since`, and the union of the runtimes they advertise. A runner whose
+// report has no capabilities (one that predates them) is a wasm/js runner.
+func (r *Repository) PoolRunnerRuntimes(ctx context.Context, pool string, since time.Time) (live int, runtimes map[string]bool, err error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT report->'capabilities'->'runtimes' FROM fng_runners WHERE pool = $1 AND heartbeat_at >= $2`, pool, since)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer rows.Close()
+	runtimes = map[string]bool{}
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return 0, nil, err
+		}
+		live++
+		var list []string
+		if len(raw) > 0 {
+			_ = json.Unmarshal(raw, &list)
+		}
+		if len(list) == 0 {
+			list = []string{DefaultRuntime, RuntimeJS}
+		}
+		for _, rt := range list {
+			runtimes[rt] = true
+		}
+	}
+	return live, runtimes, rows.Err()
+}
+
 // ── Pool revisions ──────────────────────────────────────────────────────
 
 // BumpPoolRevision increments (creating if absent) pool's desired-state

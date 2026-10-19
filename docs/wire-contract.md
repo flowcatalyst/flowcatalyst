@@ -554,6 +554,33 @@ message probes the target, which either flushes again or resumes. `ack:false`
 takes precedence — a target that wants the message back cannot also discard
 its group.
 
+## Function-runner control plane: runtimes and capabilities
+
+The runner-facing routes under `/control/functions/` (`desired`, `heartbeat`,
+`artifacts/{digest}`, `events`, `dispatch-jobs`) are the Go v1 control
+protocol. Additions for runners of runtimes beyond the built-in `wasm` and
+`js` (all additive; a runner that predates them keeps working unchanged):
+
+- `GET /control/functions/desired?pool=&runtimes=a,b` — `runtimes` lists the
+  runtimes the runner can run (tags: lower-case, a letter first, 2-16
+  characters). Only versions of those runtimes are returned, and a function
+  whose versions are all filtered out (with its routes) is omitted. Absent or
+  empty means `wasm,js`, so a runner that never sends it never receives a
+  version it cannot run. A malformed list is `400 RUNTIMES_INVALID`. Each
+  runtime set has its own `ETag`.
+- `POST /control/functions/heartbeat` — optional `capabilities`
+  (`{protocol, runtimes[], runnerKind, version, extra{}}`), stored with the
+  heartbeat report. A report without it counts as a `wasm,js` runner.
+  `capabilities.runtimes` must be non-empty valid tags (`400
+  CAPABILITIES_INVALID`).
+- Promoting (`PUT .../aliases/{name}`) a version whose runtime no live runner
+  of the function's pool advertises (heartbeat within 60s) is refused
+  `409 POOL_LACKS_RUNTIME`. For the built-in runtimes the guard applies only
+  once the pool has at least one live runner.
+- Delivery URLs for subscriptions, scheduled jobs and function dispatch use
+  `FC_FUNCTIONS_RUNNER_URL_<RT>` when set for the version's runtime (see
+  `docs/environment-variables.md`).
+
 ## Non-contractual surface
 
 These may vary freely between builds/deployments:

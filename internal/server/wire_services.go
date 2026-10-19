@@ -322,11 +322,12 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	// Promote wiring deps (WP8, plan §8.5): the repositories + runner URL
 	// template SetAlias/DeleteAlias/DeleteFunction reconcile against.
 	svcs.functionWiring = functionops.WiringDeps{
-		Subscriptions:     repos.subscriptionRepo,
-		ScheduledJobs:     repos.scheduledJobRepo,
-		DispatchPools:     repos.dispatchPoolRepo,
-		ServiceAccounts:   repos.serviceAccountRepo,
-		RunnerURLTemplate: cfg.FunctionsRunnerURL,
+		Subscriptions:      repos.subscriptionRepo,
+		ScheduledJobs:      repos.scheduledJobRepo,
+		DispatchPools:      repos.dispatchPoolRepo,
+		ServiceAccounts:    repos.serviceAccountRepo,
+		RunnerURLTemplate:  cfg.FunctionsRunnerURL,
+		RunnerURLByRuntime: cfg.FunctionsRunnerURLByRuntime,
 	}
 
 	// Function control-plane NOTIFY listener (docs/function-runner-plan.md

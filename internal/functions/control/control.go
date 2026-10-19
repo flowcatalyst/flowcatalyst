@@ -27,6 +27,20 @@ const (
 // MaxWait caps the long-poll a runner may ask for.
 const MaxWait = 60 * time.Second
 
+// ProtocolV1 is the control protocol version this package speaks (the Go v1
+// protocol: long-poll desired state with an ETag and revision fence, state
+// heartbeats). Advertised in Capabilities.Protocol.
+const ProtocolV1 = 1
+
+// QueryRuntimes is the desired-state query parameter naming the runtimes a
+// runner can run, comma separated ("wasm,js"). The platform returns only
+// versions of those runtimes. Absent or empty means DefaultRuntimes: a runner
+// that predates the parameter is a wasm/js runner.
+const QueryRuntimes = "runtimes"
+
+// DefaultRuntimes are the runtimes assumed for a runner that does not say.
+var DefaultRuntimes = []string{"wasm", "js"}
+
 // Desired is everything a pool's runners should hold. It contains secrets:
 // it is served only to runners and never logged.
 type Desired struct {
@@ -125,6 +139,27 @@ type Heartbeat struct {
 	Revision  int64           `json:"revision"` // of the Desired it has applied
 	Budget    BudgetReport    `json:"budget"`
 	Versions  []VersionReport `json:"versions"`
+	// Capabilities says what this runner can run. Absent from a runner that
+	// predates it, which the platform treats as a DefaultRuntimes runner.
+	Capabilities *RunnerCapabilities `json:"capabilities,omitempty"`
+}
+
+// RunnerCapabilities is what a runner advertises in every heartbeat. The platform
+// uses Runtimes to refuse promoting a version no live runner of the pool can
+// run (POOL_LACKS_RUNTIME); the rest is informational and stored with the
+// heartbeat report.
+type RunnerCapabilities struct {
+	// Protocol is the control protocol version the runner speaks (ProtocolV1).
+	Protocol int `json:"protocol"`
+	// Runtimes are the runtime tags the runner can run, and the same set it
+	// sends as the desired-state `runtimes` filter.
+	Runtimes []string `json:"runtimes"`
+	// RunnerKind names the implementation ("go", "java", "echo"...).
+	RunnerKind string `json:"runnerKind,omitempty"`
+	// Version is the runner's own release version.
+	Version string `json:"version,omitempty"`
+	// Extra carries runner-specific details (for instance a JVM's version).
+	Extra map[string]any `json:"extra,omitempty"`
 }
 
 // BudgetReport is the runner's memory picture (plan §7).

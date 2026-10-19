@@ -90,3 +90,18 @@ func repeat(s string, n int) string {
 	}
 	return string(out)
 }
+
+func TestRunnerURLsFor(t *testing.T) {
+	u := RunnerURLs{Default: "http://wasm-{pool}", ByRuntime: map[string]string{"jvm": "http://jvm-{pool}"}}
+	if got := u.For("jvm"); got != "http://jvm-{pool}" {
+		t.Fatalf("jvm = %q", got)
+	}
+	for _, rt := range []string{"", "wasm", "js", "echo"} {
+		if got := u.For(rt); got != "http://wasm-{pool}" {
+			t.Fatalf("%q = %q", rt, got)
+		}
+	}
+	if got := TargetURL(u.For("jvm"), "gpu", "a.b", "/p"); got != "http://jvm-gpu/fn/a.b/p" {
+		t.Fatalf("url = %q", got)
+	}
+}

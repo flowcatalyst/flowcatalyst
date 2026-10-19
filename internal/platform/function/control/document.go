@@ -10,8 +10,10 @@ import (
 
 // buildDesired renders pool's desired document (docs/function-runner-plan.md
 // §8.3): every function assigned to pool, with its settings decrypted, its
-// webhook signing secret, and the versions a runner should hold.
-func (s *State) buildDesired(ctx context.Context, pool string) (*fncontrol.Desired, error) {
+// webhook signing secret, and the versions a runner should hold. Only versions
+// whose runtime is in runtimes are included (the runner's declared set); a
+// function whose versions were ALL filtered out is left out, with its routes.
+func (s *State) buildDesired(ctx context.Context, pool string, runtimes map[string]bool) (*fncontrol.Desired, error) {
 	revision, _, err := s.Repo.GetPoolRevision(ctx, pool)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "get_pool_revision failed", err)
@@ -48,31 +50,51 @@ func (s *State) buildDesired(ctx context.Context, pool string) (*fncontrol.Desir
 			AliasPrefixes: rt.AliasPrefixes,
 		})
 	}
+	dropped := map[string]bool{} // addresses with nothing this runner can run
 	for i := range functions {
-		fdoc, err := s.buildFunction(ctx, &functions[i])
+		fdoc, hadVersions, err := s.buildFunction(ctx, &functions[i], runtimes)
 		if err != nil {
 			return nil, err
 		}
+		if hadVersions && len(fdoc.Versions) == 0 {
+			dropped[fdoc.Address] = true
+			continue
+		}
 		doc.Functions = append(doc.Functions, fdoc)
+	}
+	if len(dropped) > 0 {
+		kept := doc.Routes[:0]
+		for _, rt := range doc.Routes {
+			if !dropped[rt.Address] {
+				kept = append(kept, rt)
+			}
+		}
+		doc.Routes = kept
 	}
 	return doc, nil
 }
 
-func (s *State) buildFunction(ctx context.Context, fn *function.Function) (fncontrol.Function, error) {
+func (s *State) buildFunction(ctx context.Context, fn *function.Function, runtimes map[string]bool) (fdoc fncontrol.Function, hadVersions bool, err error) {
 	settings, err := s.Repo.ResolveSettingsForControl(ctx, fn.ID)
 	if err != nil {
-		return fncontrol.Function{}, usecase.Internal("REPO", "resolve_settings_for_control failed", err)
+		return fncontrol.Function{}, false, usecase.Internal("REPO", "resolve_settings_for_control failed", err)
 	}
-	versions, err := s.buildVersions(ctx, fn)
+	all, err := s.buildVersions(ctx, fn)
 	if err != nil {
-		return fncontrol.Function{}, err
+		return fncontrol.Function{}, false, err
+	}
+	versions := make([]fncontrol.Version, 0, len(all))
+	for _, v := range all {
+		if runtimes[runtimeOf(v.Runtime)] {
+			versions = append(versions, v)
+		}
 	}
 
 	var webhookSecret string
 	if s.Creds != nil {
 		creds, err := s.Creds(ctx, fn.ApplicationID)
 		if err != nil {
-			return fncontrol.Function{}, usecase.Internal("SERVICE_ACCOUNT_CREDS", "outbound creds lookup failed", err)
+			return fncontrol.Function{}, false, usecase.Internal("SERVICE_ACCOUNT_CREDS", "outbound creds lookup failed", err)
 		}
 		webhookSecret = creds.SigningSecret
 	}
@@ -89,7 +111,15 @@ func (s *State) buildFunction(ctx context.Context, fn *function.Function) (fncon
 		Secrets:       settings.Secrets,
 		DB:            settings.DB,
 		Versions:      versions,
-	}, nil
+	}, len(all) > 0, nil
+}
+
+// runtimeOf resolves a stored version runtime ("" means the default).
+func runtimeOf(r string) string {
+	if r == "" {
+		return function.DefaultRuntime
+	}
+	return r
 }
 
 func limitsOf(l function.Limits) fncontrol.Limits {

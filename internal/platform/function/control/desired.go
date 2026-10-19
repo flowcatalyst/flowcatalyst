@@ -9,6 +9,7 @@ import (
 	"time"
 
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
@@ -16,6 +17,7 @@ import (
 type desiredInput struct {
 	Pool        string `query:"pool" required:"true" doc:"The runner pool to fetch desired state for"`
 	Wait        int    `query:"wait" doc:"Seconds to hold the request open for a change, capped at control.MaxWait"`
+	Runtimes    string `query:"runtimes" doc:"Comma-separated runtimes the runner can run (for example wasm,js). Only versions of these runtimes are returned. Absent means wasm,js."`
 	IfNoneMatch string `header:"If-None-Match"`
 }
 
@@ -52,12 +54,17 @@ func (s *State) desired(ctx context.Context, in *desiredInput) (*desiredOutput, 
 		return nil, usecase.Validation("POOL_REQUIRED", "pool is required")
 	}
 
+	rts, err := parseRuntimes(in.Runtimes)
+	if err != nil {
+		return nil, err
+	}
+
 	wait := min(time.Duration(in.Wait)*time.Second, fncontrol.MaxWait)
 	deadline := time.Now().Add(wait)
 	reRender := s.reRenderInterval()
 
 	for {
-		doc, err := s.buildDesired(ctx, in.Pool)
+		doc, err := s.buildDesired(ctx, in.Pool, rts)
 		if err != nil {
 			return nil, err
 		}
@@ -88,6 +95,25 @@ func (s *State) desired(ctx context.Context, in *desiredInput) (*desiredOutput, 
 			timer.Stop()
 		}
 	}
+}
+
+// parseRuntimes turns the `runtimes` query value into the set a runner can
+// run: absent or empty means fncontrol.DefaultRuntimes, so a runner that
+// predates the parameter (or one that never sends it) never receives a version
+// of a runtime it cannot run.
+func parseRuntimes(csv string) (map[string]bool, error) {
+	list, err := runtimes.ParseList(csv)
+	if err != nil {
+		return nil, usecase.Validation("RUNTIMES_INVALID", "runtimes: "+err.Error())
+	}
+	if len(list) == 0 {
+		list = fncontrol.DefaultRuntimes
+	}
+	set := make(map[string]bool, len(list))
+	for _, r := range list {
+		set[r] = true
+	}
+	return set, nil
 }
 
 // etagOf hashes the rendered document.

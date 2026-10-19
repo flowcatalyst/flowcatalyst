@@ -3,6 +3,7 @@ package runtimes
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -77,5 +78,28 @@ func TestSharedJSEngineCancellationIsNotCached(t *testing.T) {
 	}
 	if p, err := l.Prepare(t.Context(), JS, script); err != nil || p.Module != mod {
 		t.Fatalf("after a cancelled compile: %v", err)
+	}
+}
+
+func TestValidTagAndParseList(t *testing.T) {
+	for _, ok := range []string{"wasm", "js", "jvm", "component", "echo", "a1", "abcdefghijklmnop"} {
+		if !ValidTag(ok) {
+			t.Errorf("%q should be a valid tag", ok)
+		}
+	}
+	for _, bad := range []string{"", "a", "Echo", "1ab", "a-b", "a b", "abcdefghijklmnopq", "wasm,js"} {
+		if ValidTag(bad) {
+			t.Errorf("%q should not be a valid tag", bad)
+		}
+	}
+	got, err := ParseList(" wasm, js ,wasm,,echo")
+	if err != nil || strings.Join(got, "|") != "wasm|js|echo" {
+		t.Fatalf("ParseList = %v, %v", got, err)
+	}
+	if got, err := ParseList(""); err != nil || got != nil {
+		t.Fatalf("empty = %v, %v", got, err)
+	}
+	if _, err := ParseList("wasm,Bad!"); err == nil {
+		t.Fatal("a bad tag must be an error")
 	}
 }

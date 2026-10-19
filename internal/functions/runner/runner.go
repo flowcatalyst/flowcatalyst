@@ -271,6 +271,15 @@ func (r *Runner) apply(ctx context.Context, d *control.Desired) {
 		fn.live = 0
 		fn.aliases = map[string]int{}
 		for _, dv := range d.Functions[i].Versions {
+			if !runtimes.Valid(dv.Runtime) {
+				// Not ours: the platform filters by the `runtimes` we asked for,
+				// so this is a platform that ignored the filter. Hold nothing
+				// and report nothing: a FAILED report would be latched on a
+				// version another runner can run.
+				r.log.Warn("skipping a version of a runtime this runner does not have",
+					"fn.address", df.Address, "fn.version", dv.Number, "runtime", dv.Runtime)
+				continue
+			}
 			want[dv.Number] = true
 			for _, role := range dv.Roles {
 				switch {
@@ -344,6 +353,11 @@ func (r *Runner) apply(ctx context.Context, d *control.Desired) {
 	}
 	r.poke()
 }
+
+// SupportedRuntimes are the runtimes this runner can run: what it asks the
+// platform for (the desired-state `runtimes` filter) and advertises in its
+// heartbeat capabilities.
+func SupportedRuntimes() []string { return []string{runtimes.Wasm, runtimes.JS} }
 
 func newVersion(fn *function, dv control.Version) (*version, error) {
 	d, err := abi.ParseDescribe(dv.Describe)
@@ -723,7 +737,10 @@ func (r *Runner) heartbeatLoop(ctx context.Context) {
 
 func (r *Runner) heartbeat() control.Heartbeat {
 	// Versions is always a list, never null: the platform validates the body.
-	hb := control.Heartbeat{RunnerID: r.id, Pool: r.cfg.Pool, StartedAt: r.started, Versions: []control.VersionReport{}}
+	hb := control.Heartbeat{
+		RunnerID: r.id, Pool: r.cfg.Pool, StartedAt: r.started, Versions: []control.VersionReport{},
+		Capabilities: &control.RunnerCapabilities{Protocol: control.ProtocolV1, Runtimes: SupportedRuntimes(), RunnerKind: "go"},
+	}
 	loaded := 0
 	r.mu.RLock()
 	hb.Revision = r.revision

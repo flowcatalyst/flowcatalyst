@@ -137,7 +137,8 @@ func (s *State) dispatch(ctx context.Context, in *apicommon.In[fncontrol.Dispatc
 	}
 
 	// 3. A live version that takes a signed POST at the path.
-	if msg, err := s.targetProblem(ctx, target, d.Path); err != nil {
+	targetRuntime, msg, err := s.targetProblem(ctx, target, d.Path)
+	if err != nil {
 		return nil, err
 	} else if msg != "" {
 		return nil, usecase.BusinessRule("DISPATCH_TARGET_UNAVAILABLE", msg)
@@ -211,7 +212,7 @@ func (s *State) dispatch(ctx context.Context, in *apicommon.In[fncontrol.Dispatc
 		Code:               code,
 		Source:             &source,
 		Subject:            nonEmpty(d.Subject),
-		TargetURL:          function.TargetURL(s.RunnerURLTemplate, target.RunnerPool(), target.Address, d.Path),
+		TargetURL:          function.TargetURL(function.RunnerURLs{Default: s.RunnerURLTemplate, ByRuntime: s.RunnerURLByRuntime}.For(targetRuntime), target.RunnerPool(), target.Address, d.Path),
 		Payload:            &payload,
 		PayloadContentType: contentType,
 		DataOnly:           dataOnly,
@@ -341,10 +342,10 @@ func (s *State) resolveConnection(ctx context.Context, fn *function.Function, co
 // targetProblem reports why target cannot take a signed delivery at path, or
 // "": it needs a live alias onto a version whose describe has a webhook
 // endpoint accepting POST at the literal path.
-func (s *State) targetProblem(ctx context.Context, target *function.Function, path string) (string, error) {
+func (s *State) targetProblem(ctx context.Context, target *function.Function, path string) (runtime, problem string, err error) {
 	aliases, err := s.Repo.ListAliases(ctx, target.ID)
 	if err != nil {
-		return "", usecase.Internal("REPO", "list_aliases failed", err)
+		return "", "", usecase.Internal("REPO", "list_aliases failed", err)
 	}
 	var liveVersionID string
 	for _, a := range aliases {
@@ -355,28 +356,28 @@ func (s *State) targetProblem(ctx context.Context, target *function.Function, pa
 	var tv *function.Version
 	if liveVersionID != "" {
 		if tv, err = s.Repo.GetVersionByID(ctx, liveVersionID); err != nil {
-			return "", usecase.Internal("REPO", "get_version_by_id failed", err)
+			return "", "", usecase.Internal("REPO", "get_version_by_id failed", err)
 		}
 	}
 	if tv == nil {
-		return "function " + target.Address + " has no live version to deliver to", nil
+		return "", "function " + target.Address + " has no live version to deliver to", nil
 	}
 	td, err := abi.ParseDescribe(tv.Describe)
 	if err != nil {
-		return "", usecase.Internal("CORRUPT_DESCRIBE", "function "+target.Address+"'s live version has an unparseable describe document", err)
+		return "", "", usecase.Internal("CORRUPT_DESCRIBE", "function "+target.Address+"'s live version has an unparseable describe document", err)
 	}
 	router, err := abi.NewRouter(td.Endpoints)
 	if err != nil {
-		return "", usecase.Internal("CORRUPT_DESCRIBE", "function "+target.Address+"'s live version has conflicting endpoints", err)
+		return "", "", usecase.Internal("CORRUPT_DESCRIBE", "function "+target.Address+"'s live version has conflicting endpoints", err)
 	}
 	m, err := router.Match("POST", path)
 	if err != nil {
-		return "function " + target.Address + "'s live version has no endpoint accepting POST " + path, nil
+		return "", "function " + target.Address + "'s live version has no endpoint accepting POST " + path, nil
 	}
 	if m.Endpoint.Auth != abi.AuthWebhook {
-		return "function " + target.Address + "'s endpoint " + m.Endpoint.Pattern() + " is not a webhook endpoint, so it cannot verify the delivery's signature", nil
+		return "", "function " + target.Address + "'s endpoint " + m.Endpoint.Pattern() + " is not a webhook endpoint, so it cannot verify the delivery's signature", nil
 	}
-	return "", nil
+	return tv.Runtime, "", nil
 }
 
 // jobMetadata validates the guest's entries and appends the platform's fn.*

@@ -3320,6 +3320,7 @@
             "type": "string"
           },
           "scope": {
+            "description": "Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.",
             "type": "string"
           },
           "webhookCredentials": {
@@ -3820,6 +3821,7 @@
             "type": "string"
           },
           "attemptCount": {
+            "description": "Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts",
             "format": "int32",
             "type": "integer"
           },
@@ -3931,6 +3933,7 @@
             "type": "string"
           },
           "attemptCount": {
+            "description": "Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts",
             "format": "int32",
             "type": "integer"
           },
@@ -5029,6 +5032,9 @@
           },
           "budget": {
             "$ref": "#/components/schemas/BudgetReport"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/RunnerCapabilities"
           },
           "pool": {
             "type": "string"
@@ -7018,6 +7024,7 @@
         "additionalProperties": false,
         "properties": {
           "attemptCount": {
+            "description": "Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts",
             "format": "int32",
             "type": "integer"
           },
@@ -8100,6 +8107,36 @@
         "required": [
           "processingPools",
           "queues"
+        ],
+        "type": "object"
+      },
+      "RunnerCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "extra": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "protocol": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "runnerKind": {
+            "type": "string"
+          },
+          "runtimes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol",
+          "runtimes"
         ],
         "type": "object"
       },
@@ -10470,6 +10507,7 @@
             "type": "string"
           },
           "clientIds": {
+            "description": "Client links; replaces the set when present (an empty array clears it). Their count decides the token tier.",
             "items": {
               "type": "string"
             },
@@ -10482,6 +10520,7 @@
             "type": "string"
           },
           "scope": {
+            "description": "Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.",
             "type": "string"
           },
           "webhookCredentials": {
@@ -15906,6 +15945,17 @@
     "/api/dispatch/router-config": {
       "get": {
         "operationId": "getRouterConfig",
+        "parameters": [
+          {
+            "description": "An ETag from an earlier answer; 304 when the document is unchanged",
+            "in": "header",
+            "name": "If-None-Match",
+            "schema": {
+              "description": "An ETag from an earlier answer; 304 when the document is unchanged",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -15915,7 +15965,14 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "default": {
             "content": {
@@ -24789,6 +24846,16 @@
               "description": "Seconds to hold the request open for a change, capped at control.MaxWait",
               "format": "int64",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Comma-separated runtimes the runner can run (for example wasm,js). Only versions of these runtimes are returned. Absent means wasm,js.",
+            "explode": false,
+            "in": "query",
+            "name": "runtimes",
+            "schema": {
+              "description": "Comma-separated runtimes the runner can run (for example wasm,js). Only versions of these runtimes are returned. Absent means wasm,js.",
+              "type": "string"
             }
           },
           {

@@ -5424,6 +5424,9 @@
           "budget": {
             "$ref": "#/components/schemas/BudgetReport"
           },
+          "capabilities": {
+            "$ref": "#/components/schemas/RunnerCapabilities"
+          },
           "pool": {
             "type": "string"
           },
@@ -8890,6 +8893,36 @@
         "required": [
           "processingPools",
           "queues"
+        ],
+        "type": "object"
+      },
+      "RunnerCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "extra": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "protocol": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "runnerKind": {
+            "type": "string"
+          },
+          "runtimes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol",
+          "runtimes"
         ],
         "type": "object"
       },
@@ -26503,6 +26536,16 @@
               "description": "Seconds to hold the request open for a change, capped at control.MaxWait",
               "format": "int64",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Comma-separated runtimes the runner can run (for example wasm,js). Only versions of these runtimes are returned. Absent means wasm,js.",
+            "explode": false,
+            "in": "query",
+            "name": "runtimes",
+            "schema": {
+              "description": "Comma-separated runtimes the runner can run (for example wasm,js). Only versions of these runtimes are returned. Absent means wasm,js.",
+              "type": "string"
             }
           },
           {

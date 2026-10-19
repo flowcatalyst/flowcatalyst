@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/engine"
@@ -25,8 +26,48 @@ const (
 	JS   = "js"
 )
 
-// Valid reports whether r names a runtime ("" means Wasm).
+// Valid reports whether r names a runtime THIS package can prepare ("" means
+// Wasm). It is the in-process runner's set; other runners (the generic runner
+// plumbing) advertise their own runtimes, which only need to be a ValidTag.
 func Valid(r string) bool { return r == "" || r == Wasm || r == JS }
+
+// ValidTag reports whether s is well-formed as a runtime tag: lower-case, a
+// letter first, 2-16 characters. The same pattern is the CHECK on
+// fng_versions.runtime (migration 083), so a new runtime needs no migration.
+func ValidTag(s string) bool {
+	if len(s) < 2 || len(s) > 16 || s[0] < 'a' || s[0] > 'z' {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
+			return false
+		}
+	}
+	return true
+}
+
+// ParseList parses a comma-separated runtime list (the desired-state
+// `runtimes` query value) into a de-duplicated, order-preserving slice. Empty
+// input yields nil; any entry that is not a ValidTag is an error.
+func ParseList(csv string) ([]string, error) {
+	var out []string
+	seen := map[string]bool{}
+	for part := range strings.SplitSeq(csv, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if !ValidTag(part) {
+			return nil, fmt.Errorf("%q is not a valid runtime tag", part)
+		}
+		if !seen[part] {
+			seen[part] = true
+			out = append(out, part)
+		}
+	}
+	return out, nil
+}
 
 // Prepared is an artifact ready to instantiate.
 type Prepared struct {

@@ -146,6 +146,7 @@ func StartFunctionRunner(ctx context.Context, c FunctionRunnerConfig) {
 		ClientSecret: c.ClientSecret,
 	})
 	client := control.NewClient(c.PlatformURL, tokens.Token, nil)
+	client.Runtimes = runner.SupportedRuntimes()
 	r, err := runner.New(ctx, runner.Config{
 		Pool:           c.Pool,
 		ControlPlane:   client,

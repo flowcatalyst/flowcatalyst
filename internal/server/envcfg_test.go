@@ -226,3 +226,21 @@ func TestSchedulerPool_OwnPoolOnlyWhenEnabled(t *testing.T) {
 		t.Error("no shared pool (no database) means no scheduler pool")
 	}
 }
+
+func TestLoadRunnerURLsByRuntime(t *testing.T) {
+	got := loadRunnerURLsByRuntime([]string{
+		"PATH=/bin",
+		"FC_FUNCTIONS_RUNNER_URL=http://default",
+		"FC_FUNCTIONS_RUNNER_URL_JVM=http://jvm-{pool}:8097",
+		"FC_FUNCTIONS_RUNNER_URL_ECHO= http://echo ",
+		"FC_FUNCTIONS_RUNNER_URL_X=http://too-short-tag",
+		"FC_FUNCTIONS_RUNNER_URL_COMPONENT=",
+	})
+	want := map[string]string{"jvm": "http://jvm-{pool}:8097", "echo": "http://echo"}
+	if len(got) != len(want) || got["jvm"] != want["jvm"] || got["echo"] != want["echo"] {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	if loadRunnerURLsByRuntime([]string{"PATH=/bin"}) != nil {
+		t.Fatal("no overrides must be nil")
+	}
+}

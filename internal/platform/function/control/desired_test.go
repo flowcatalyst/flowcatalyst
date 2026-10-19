@@ -89,7 +89,7 @@ func TestDesired_RendersFullDocument(t *testing.T) {
 		f.Pool = &otherPool
 	})
 
-	doc, err := s.buildDesired(context.Background(), pool)
+	doc, err := s.buildDesired(context.Background(), pool, wasmJS)
 	require.NoError(t, err)
 
 	assert.Equal(t, pool, doc.Pool)
@@ -136,7 +136,7 @@ func TestDesired_ETagChangesOnSecretRotationWithoutRevisionBump(t *testing.T) {
 	revBefore, _, err := s.Repo.GetPoolRevision(context.Background(), pool)
 	require.NoError(t, err)
 
-	doc1, err := s.buildDesired(context.Background(), pool)
+	doc1, err := s.buildDesired(context.Background(), pool, wasmJS)
 	require.NoError(t, err)
 	etag1, err := etagOf(doc1)
 	require.NoError(t, err)
@@ -149,7 +149,7 @@ func TestDesired_ETagChangesOnSecretRotationWithoutRevisionBump(t *testing.T) {
 		return saRepo.Persist(context.Background(), sa, tx)
 	})
 
-	doc2, err := s.buildDesired(context.Background(), pool)
+	doc2, err := s.buildDesired(context.Background(), pool, wasmJS)
 	require.NoError(t, err)
 	etag2, err := etagOf(doc2)
 	require.NoError(t, err)
@@ -258,3 +258,6 @@ func shortID(t *testing.T) string {
 	}
 	return itoaSeq(h % 100000)
 }
+
+// wasmJS is the default runtime set (a runner that sends no `runtimes`).
+var wasmJS = map[string]bool{"wasm": true, "js": true}

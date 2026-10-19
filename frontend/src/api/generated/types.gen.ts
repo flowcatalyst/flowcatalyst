@@ -1939,6 +1939,7 @@ export type Heartbeat = {
      */
     readonly $schema?: string;
     budget: BudgetReport;
+    capabilities?: RunnerCapabilities;
     pool: string;
     revision: number;
     runnerId: string;
@@ -3113,6 +3114,16 @@ export type RouterConfig = {
     readonly $schema?: string;
     processingPools: Array<PoolConfig>;
     queues: Array<QueueConfig>;
+};
+
+export type RunnerCapabilities = {
+    extra?: {
+        [key: string]: unknown;
+    };
+    protocol: number;
+    runnerKind?: string;
+    runtimes: Array<string>;
+    version?: string;
 };
 
 export type ScheduledJobInstanceLogResponse = {
@@ -5355,6 +5366,7 @@ export type GrantPermissionRequestWritable = {
 
 export type HeartbeatWritable = {
     budget: BudgetReport;
+    capabilities?: RunnerCapabilities;
     pool: string;
     revision: number;
     runnerId: string;
@@ -15351,6 +15363,10 @@ export type GetFunctionRunnerDesiredData = {
          * Seconds to hold the request open for a change, capped at control.MaxWait
          */
         wait?: number;
+        /**
+         * Comma-separated runtimes the runner can run (for example wasm,js). Only versions of these runtimes are returned. Absent means wasm,js.
+         */
+        runtimes?: string;
     };
     url: '/control/functions/desired';
 };

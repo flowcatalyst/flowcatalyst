@@ -69,7 +69,10 @@ type State struct {
 	// Connections resolves a declared connection code, the same way.
 	Connections       *connection.Repository
 	RunnerURLTemplate string
-	Artifacts         artifact.Store
+	// RunnerURLByRuntime holds the per-runtime overrides
+	// (FC_FUNCTIONS_RUNNER_URL_<RT>); see function.RunnerURLs.
+	RunnerURLByRuntime map[string]string
+	Artifacts          artifact.Store
 	// Creds resolves a function's webhook signing secret. Required; a nil
 	// Creds serves every function with an empty WebhookSecret (a runner then
 	// answers `webhook` endpoints as unverifiable), so wiring always sets it.

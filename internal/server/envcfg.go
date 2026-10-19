@@ -2,11 +2,13 @@ package server
 
 import (
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 )
 
@@ -263,6 +265,38 @@ type EnvCfg struct {
 	// "/fn/<address><path>" to build a subscription/scheduled-job delivery
 	// target. Defaults to the fc-dev/single-runner loopback address.
 	FunctionsRunnerURL string
+	// FunctionsRunnerURLByRuntime holds the per-runtime overrides
+	// FC_FUNCTIONS_RUNNER_URL_<RT> (RT = the runtime tag upper-cased, e.g.
+	// FC_FUNCTIONS_RUNNER_URL_JVM), keyed by lower-case tag, same "{pool}"
+	// templating. A runtime without one is addressed at FunctionsRunnerURL.
+	FunctionsRunnerURLByRuntime map[string]string
+}
+
+// runnerURLByRuntimePrefix prefixes the per-runtime runner URL variables.
+const runnerURLByRuntimePrefix = "FC_FUNCTIONS_RUNNER_URL_"
+
+// loadRunnerURLsByRuntime reads every FC_FUNCTIONS_RUNNER_URL_<RT> from the
+// environment. A suffix that is not a valid runtime tag, or an empty value, is
+// logged and ignored rather than silently routing nowhere.
+func loadRunnerURLsByRuntime(environ []string) map[string]string {
+	var out map[string]string
+	for _, kv := range environ {
+		name, val, ok := strings.Cut(kv, "=")
+		if !ok || !strings.HasPrefix(name, runnerURLByRuntimePrefix) {
+			continue
+		}
+		tag := strings.ToLower(strings.TrimPrefix(name, runnerURLByRuntimePrefix))
+		val = strings.TrimSpace(val)
+		if !runtimes.ValidTag(tag) || val == "" {
+			slog.Warn("ignoring runner URL override: needs a valid runtime tag suffix and a non-empty value", "env", name)
+			continue
+		}
+		if out == nil {
+			out = map[string]string{}
+		}
+		out[tag] = val
+	}
+	return out
 }
 
 func LoadEnv() EnvCfg {
@@ -381,6 +415,8 @@ func LoadEnv() EnvCfg {
 
 		FunctionsArtifactStore: envOr("FC_FUNCTIONS_ARTIFACT_STORE", ""),
 		FunctionsRunnerURL:     envOr("FC_FUNCTIONS_RUNNER_URL", "http://127.0.0.1:8095"),
+
+		FunctionsRunnerURLByRuntime: loadRunnerURLsByRuntime(os.Environ()),
 	}
 	// Default the dispatch callback to the local API listener: the router
 	// consumes a queued job and POSTs {messageId} here for delivery.
@@ -528,4 +564,7 @@ func envBoolAlias(key, alias string, def bool) bool {
 func (c EnvCfg) ApplyDeliveryPolicy(p *netguard.Policy) {
 	p.AllowURL(c.DispatchProcessingEndpoint)
 	p.AllowURL(c.FunctionsRunnerURL)
+	for _, u := range c.FunctionsRunnerURLByRuntime {
+		p.AllowURL(u)
+	}
 }

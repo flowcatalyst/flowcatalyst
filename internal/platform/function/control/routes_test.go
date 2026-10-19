@@ -44,7 +44,7 @@ func TestDesired_IncludesRoutesForRightPoolOnly(t *testing.T) {
 	otherFn := seedFunction(t, testpg.Pool(t), s.Repo, appID, appCode, "other-fn", func(f *function.Function) { f.Pool = &otherPool })
 	seedRoute(t, s.Repo, otherFn.ID, "other.routes-"+shortID(t)+".test", "/", "")
 
-	doc, err := s.buildDesired(context.Background(), pool)
+	doc, err := s.buildDesired(context.Background(), pool, wasmJS)
 	require.NoError(t, err)
 
 	require.Len(t, doc.Routes, 2, "only this pool's routes")

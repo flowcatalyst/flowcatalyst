@@ -91,6 +91,10 @@ func PutAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOperatio
 					fmt.Sprintf("version %d is %s, not READY", cmd.Number, v.Status))
 			}
 
+			if err := guardPoolRuntime(ctx, repo, f, v); err != nil {
+				return zero, err
+			}
+
 			previous, err := findAlias(ctx, repo, f.ID, cmd.Name)
 			if err != nil {
 				return zero, err
@@ -112,7 +116,9 @@ func PutAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOperatio
 						Message: "version " + fmt.Sprint(cmd.Number) + " declares config/secret/db keys with no value set: " + strings.Join(missing, ", "),
 					}).WithDetails(map[string]any{"missingKeys": missing})
 				}
-				summary, err = reconcileWiring(ctx, s, wiring, f, d, ec)
+				deps := wiring
+				deps.runtime = v.Runtime
+				summary, err = reconcileWiring(ctx, s, deps, f, d, ec)
 				if err != nil {
 					return zero, err
 				}
@@ -174,6 +180,40 @@ func PutAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOperatio
 			return PutAliasResult{Alias: *alias, Version: *v, Wiring: summary}, nil
 		},
 	}
+}
+
+// runnerLiveWindow is how recent a runner's heartbeat must be for it to count
+// as live (runners beat every 15s by default).
+const runnerLiveWindow = 60 * time.Second
+
+// guardPoolRuntime refuses POOL_LACKS_RUNTIME: pointing an alias at a version
+// whose runtime no live runner of the function's pool advertises would leave
+// the version served by nobody. A pool with no live runner at all is let
+// through for the built-in runtimes (a platform whose runner has not
+// heartbeated yet, or has been down, keeps its pre-existing behaviour); a
+// non-built-in runtime always needs an advertising runner.
+func guardPoolRuntime(ctx context.Context, repo *function.Repository, f *function.Function, v *function.Version) error {
+	rt := v.Runtime
+	if rt == "" {
+		rt = function.DefaultRuntime
+	}
+	live, advertised, err := repo.PoolRunnerRuntimes(ctx, f.RunnerPool(), time.Now().Add(-runnerLiveWindow))
+	if err != nil {
+		return usecase.Internal("REPO", "pool_runner_runtimes failed", err)
+	}
+	if advertised[rt] {
+		return nil
+	}
+	builtin := rt == function.DefaultRuntime || rt == function.RuntimeJS
+	if builtin && live == 0 {
+		return nil
+	}
+	return (&usecase.Error{
+		Kind: usecase.KindBusinessRule,
+		Code: "POOL_LACKS_RUNTIME",
+		Message: fmt.Sprintf("no live runner in pool %q runs the %q runtime (version %d); start a runner that advertises it, then retry",
+			f.RunnerPool(), rt, v.Number),
+	}).WithDetails(map[string]any{"pool": f.RunnerPool(), "runtime": rt, "liveRunners": live})
 }
 
 // findAlias returns functionID's alias name, or nil when there is none.

@@ -3,12 +3,14 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -58,6 +60,17 @@ func (s *State) heartbeat(ctx context.Context, in *heartbeatInput) (*apicommon.E
 	}
 	if strings.TrimSpace(hb.Pool) == "" {
 		return nil, usecase.Validation("POOL_REQUIRED", "pool is required")
+	}
+
+	if c := hb.Capabilities; c != nil {
+		if len(c.Runtimes) == 0 {
+			return nil, usecase.Validation("CAPABILITIES_INVALID", "capabilities.runtimes must name at least one runtime")
+		}
+		for _, r := range c.Runtimes {
+			if !runtimes.ValidTag(r) {
+				return nil, usecase.Validation("CAPABILITIES_INVALID", "capabilities.runtimes: "+strconv.Quote(r)+" is not a valid runtime tag")
+			}
+		}
 	}
 
 	report, err := json.Marshal(hb)

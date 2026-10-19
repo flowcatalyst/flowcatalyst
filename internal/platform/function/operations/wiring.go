@@ -61,6 +61,20 @@ type WiringDeps struct {
 	// "{pool}", e.g. "http://127.0.0.1:8095". Plan §8.5: the full delivery
 	// target is "<runner URL with {pool} substituted>/fn/<address><path>".
 	RunnerURLTemplate string
+	// RunnerURLByRuntime holds the per-runtime overrides
+	// (FC_FUNCTIONS_RUNNER_URL_<RT>, keyed by lower-case runtime tag); a
+	// runtime without one uses RunnerURLTemplate.
+	RunnerURLByRuntime map[string]string
+
+	// runtime is the runtime of the version being wired; set per call by
+	// PutAlias on a copy of the deps, "" when nothing is being wired to a
+	// target (delete paths).
+	runtime string
+}
+
+// template is the runner URL template for the version being wired.
+func (d WiringDeps) template() string {
+	return function.RunnerURLs{Default: d.RunnerURLTemplate, ByRuntime: d.RunnerURLByRuntime}.For(d.runtime)
 }
 
 // wiringSummary is folded into [FunctionPromoted]'s payload.
@@ -233,7 +247,7 @@ func reconcileSubscriptions(
 	for _, sub := range d.Subscriptions {
 		code := subscriptionCode(f.Address, sub.EventType, sub.Path)
 		want[code] = struct{}{}
-		endpoint := targetURL(deps.RunnerURLTemplate, f.RunnerPool(), f.Address, sub.Path)
+		endpoint := targetURL(deps.template(), f.RunnerPool(), f.Address, sub.Path)
 
 		if cur, ok := currentByCode[code]; ok {
 			if !applyDesiredSubscription(cur, sub, pool, endpoint, signingAccountID) {
@@ -394,7 +408,7 @@ func reconcileSchedules(
 	for _, sc := range d.Schedules {
 		code := scheduledJobCode(f.Address, sc.Path, sc.Cron)
 		want[code] = struct{}{}
-		tURL := targetURL(deps.RunnerURLTemplate, f.RunnerPool(), f.Address, sc.Path)
+		tURL := targetURL(deps.template(), f.RunnerPool(), f.Address, sc.Path)
 		timezone := sc.Timezone
 		if timezone == "" {
 			timezone = "UTC"

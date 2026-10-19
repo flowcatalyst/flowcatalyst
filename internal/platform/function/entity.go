@@ -130,6 +130,24 @@ func (f Function) DispatchPoolCode() string {
 	return "fn-" + strings.ReplaceAll(f.Address, ".", "-")
 }
 
+// RunnerURLs is the runner base-URL configuration: Default is
+// FC_FUNCTIONS_RUNNER_URL and ByRuntime holds the per-runtime overrides
+// FC_FUNCTIONS_RUNNER_URL_<RT> (keys are lower-case runtime tags). Each value
+// is a template with "{pool}".
+type RunnerURLs struct {
+	Default   string
+	ByRuntime map[string]string
+}
+
+// For returns the template for runtime: its override if one is configured,
+// else Default. An empty runtime means the default runtime.
+func (u RunnerURLs) For(runtime string) string {
+	if t := u.ByRuntime[runtime]; t != "" {
+		return t
+	}
+	return u.Default
+}
+
 // TargetURL is the URL a delivery to the function's webhook path is sent to:
 // the runner URL template (FC_FUNCTIONS_RUNNER_URL) with {pool} substituted,
 // then /fn/{address}{path}. Promote wiring (subscriptions, schedules) and the
