@@ -176,15 +176,7 @@ func (e *LoginEndpoint) handleSessionEnd(w http.ResponseWriter, r *http.Request)
 	// Always clear the session cookie — with the same attributes the
 	// SessionWriter set it with (notably Secure), or the clear may not
 	// match the original cookie.
-	http.SetCookie(w, &http.Cookie{
-		Name:     platformmw.SessionCookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   e.CookieSecure,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   -1,
-	})
+	http.SetCookie(w, platformmw.ClearSessionCookie(e.CookieSecure))
 
 	q := r.URL.Query()
 	redirectURI := q.Get("post_logout_redirect_uri")

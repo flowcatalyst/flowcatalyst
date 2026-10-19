@@ -368,16 +368,7 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 	// Session established — record the successful sign-in (the password
 	// path records at the same point, after the mint).
 	s.recordPasskeyAttempt(ctx, p, in, loginattempt.OutcomeSuccess, "")
-	cookie := http.Cookie{
-		Name:     platformmw.SessionCookieName,
-		Value:    token,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   s.CookieSecure,
-		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Now().Add(ttl),
-		MaxAge:   int(ttl.Seconds()),
-	}
+	cookie := platformmw.SessionCookie(token, s.CookieSecure, ttl, true)
 
 	return &authenticateCompleteOutput{
 		SetCookie: cookie.String(),

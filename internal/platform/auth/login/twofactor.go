@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -440,16 +441,10 @@ func (e *Endpoint) rememberDevice(w http.ResponseWriter, r *http.Request, p *pri
 		slog.Error("issue trusted device failed", "principal", p.ID, "err", err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     e.trustedDeviceCookieName(),
-		Value:    raw,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   e.cfg.CookieSecure,
-		SameSite: http.SameSiteStrictMode,
-		Expires:  time.Now().Add(ttl),
-		MaxAge:   int(ttl.Seconds()),
-	})
+	http.SetCookie(w, platformmw.NewCookie(platformmw.CookieSpec{
+		Name: e.trustedDeviceCookieName(), Value: raw, Secure: e.cfg.CookieSecure,
+		SameSite: http.SameSiteStrictMode, TTL: ttl, SetExpires: true,
+	}))
 	labelStr := ""
 	if label != nil {
 		labelStr = *label
@@ -462,15 +457,10 @@ func (e *Endpoint) rememberDevice(w http.ResponseWriter, r *http.Request, p *pri
 // stops the client presenting a dead token on every login until it expires.
 // Attributes match rememberDevice's so the browser treats it as the same cookie.
 func (e *Endpoint) clearTrustedDeviceCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     e.trustedDeviceCookieName(),
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   e.cfg.CookieSecure,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   -1,
-	})
+	http.SetCookie(w, platformmw.NewCookie(platformmw.CookieSpec{
+		Name: e.trustedDeviceCookieName(), Secure: e.cfg.CookieSecure,
+		SameSite: http.SameSiteStrictMode, TTL: -1,
+	}))
 }
 
 func (e *Endpoint) trustedDeviceCookieName() string {

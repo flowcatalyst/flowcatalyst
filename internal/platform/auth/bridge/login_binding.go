@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"net/http"
 	"time"
 )
@@ -39,15 +40,12 @@ func (e *LoginEndpoint) loginBindingCookieName(state string) string {
 
 // loginBindingCookie is the cookie the login start sets for state.
 func (e *LoginEndpoint) loginBindingCookie(state string) *http.Cookie {
-	return &http.Cookie{
-		Name:     e.loginBindingCookieName(state),
-		Value:    state,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   e.CookieSecure,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(loginBindingTTL.Seconds()),
-	}
+	return platformmw.NewCookie(platformmw.CookieSpec{
+		Name:   e.loginBindingCookieName(state),
+		Value:  state,
+		Secure: e.CookieSecure,
+		TTL:    loginBindingTTL,
+	})
 }
 
 // loginBoundToBrowser reports whether r carries the binding cookie for state.

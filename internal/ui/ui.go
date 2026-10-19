@@ -143,15 +143,7 @@ func withSprite(next http.Handler) http.Handler {
 // a Datastar redirect after an action.
 func signOut(secure bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		http.SetCookie(w, &http.Cookie{
-			Name:     platformmw.SessionCookieName,
-			Value:    "",
-			Path:     "/",
-			HttpOnly: true,
-			Secure:   secure,
-			SameSite: http.SameSiteLaxMode,
-			MaxAge:   -1,
-		})
+		http.SetCookie(w, platformmw.ClearSessionCookie(secure))
 		if ds.IsDatastar(r) {
 			_ = ds.NewSSE(w, r).Redirect(guard.LoginPath)
 			return

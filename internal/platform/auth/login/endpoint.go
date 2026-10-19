@@ -587,16 +587,7 @@ func (e *Endpoint) completeLogin(w http.ResponseWriter, r *http.Request, p *prin
 		httperror.Write(w, usecase.Internal("MINT_FAILED", "failed to mint session token", err))
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     platformmw.SessionCookieName,
-		Value:    token,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   e.cfg.CookieSecure,
-		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Now().Add(SessionTTL),
-		MaxAge:   int(SessionTTL.Seconds()),
-	})
+	http.SetCookie(w, platformmw.SessionCookie(token, e.cfg.CookieSecure, SessionTTL, true))
 	e.recordAttempt(r.Context(), loginattempt.OutcomeSuccess, email, ids.StringPtr(&p.ID), clientIP(r), "")
 	claims, err := e.cfg.Provider.ResolveClaims(r.Context(), string(p.ID))
 	if err != nil {
@@ -650,15 +641,7 @@ func (e *Endpoint) ssoManaged(ctx context.Context, p *principal.Principal) bool 
 // ── /auth/logout ─────────────────────────────────────────────────────────
 
 func (e *Endpoint) handleLogout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     platformmw.SessionCookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   e.cfg.CookieSecure,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   -1,
-	})
+	http.SetCookie(w, platformmw.ClearSessionCookie(e.cfg.CookieSecure))
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -244,6 +244,10 @@ type EnvCfg struct {
 	// production. fcdev flips it on for the local embedded-PG flow.
 	AuthAllowTestHeaders bool
 
+	// SessionCookieSameSite is the SameSite mode of the fc_session cookie
+	// (FC_SESSION_COOKIE_SAME_SITE: lax (default) | strict | none).
+	SessionCookieSameSite string
+
 	// DebugEndpointsEnabled mounts the debug surface (net/http/pprof, expvar,
 	// the router dump) under <RouterHTTPPrefix>/debug, or /debug when the
 	// router is off (FC_DEBUG_ENDPOINTS_ENABLED). Off by default; fcdev
@@ -399,6 +403,8 @@ func LoadEnv() EnvCfg {
 		JWTSigningKeyPath:    os.Getenv("FC_JWT_SIGNING_KEY_PATH"),
 		JWTPreviousPublicKey: normalizedPreviousPublicKey(),
 		AuthAllowTestHeaders: envBool("FC_AUTH_ALLOW_TEST_HEADERS", false),
+
+		SessionCookieSameSite: envOr("FC_SESSION_COOKIE_SAME_SITE", "lax"),
 
 		DebugEndpointsEnabled: envBool("FC_DEBUG_ENDPOINTS_ENABLED", false),
 

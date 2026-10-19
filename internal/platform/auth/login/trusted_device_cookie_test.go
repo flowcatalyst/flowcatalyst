@@ -29,3 +29,22 @@ func TestClearTrustedDeviceCookie(t *testing.T) {
 		require.Less(t, c.MaxAge, 0, "must be an expiry, not a set")
 	}
 }
+
+// TestLogoutCookieAttributes pins the fc_session clear written by /auth/logout.
+func TestLogoutCookieAttributes(t *testing.T) {
+	for _, secure := range []bool{true, false} {
+		e := New(Config{CookieSecure: secure})
+		rec := httptest.NewRecorder()
+		e.handleLogout(rec, httptest.NewRequest(http.MethodPost, "/auth/logout", nil))
+		cs := rec.Result().Cookies()
+		require.Len(t, cs, 1)
+		c := cs[0]
+		require.Equal(t, "fc_session", c.Name)
+		require.Empty(t, c.Value)
+		require.Equal(t, "/", c.Path)
+		require.True(t, c.HttpOnly)
+		require.Equal(t, secure, c.Secure)
+		require.Equal(t, http.SameSiteLaxMode, c.SameSite)
+		require.Less(t, c.MaxAge, 0)
+	}
+}

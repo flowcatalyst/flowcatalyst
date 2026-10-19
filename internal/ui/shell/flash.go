@@ -1,6 +1,9 @@
 package shell
 
 import (
+	"time"
+
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"net/http"
 	"regexp"
 
@@ -49,13 +52,8 @@ func (s *Shell) takeFlash(w http.ResponseWriter, r *http.Request) []kit.FlashMes
 }
 
 func (s *Shell) flashCookie(value string, maxAge int) *http.Cookie {
-	return &http.Cookie{
-		Name:     FlashCookie,
-		Value:    value,
-		Path:     "/ui",
-		MaxAge:   maxAge,
-		HttpOnly: true,
-		Secure:   s.CookieSecure,
-		SameSite: http.SameSiteLaxMode,
-	}
+	return platformmw.NewCookie(platformmw.CookieSpec{
+		Name: FlashCookie, Value: value, Path: "/ui", Secure: s.CookieSecure,
+		TTL: time.Duration(maxAge) * time.Second,
+	})
 }

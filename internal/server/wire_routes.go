@@ -273,15 +273,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 				http.Error(w, "session mint failed: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
-			http.SetCookie(w, &http.Cookie{
-				Name:     platformmw.SessionCookieName,
-				Value:    token,
-				Path:     "/",
-				HttpOnly: true,
-				Secure:   !cfg.AuthAllowTestHeaders,
-				SameSite: http.SameSiteLaxMode,
-				MaxAge:   int(login.SessionTTL.Seconds()),
-			})
+			http.SetCookie(w, platformmw.SessionCookie(token, !cfg.AuthAllowTestHeaders, login.SessionTTL, false))
 			if returnURL != "" {
 				http.Redirect(w, r, returnURL, http.StatusFound)
 				return

@@ -898,16 +898,7 @@ func (s *State) maybeEstablishSession(w http.ResponseWriter, ctx context.Context
 		slog.Warn("post-invite session mint failed", "principal", p.ID, "err", err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     platformmw.SessionCookieName,
-		Value:    token,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   s.CookieSecure,
-		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Now().Add(login.SessionTTL),
-		MaxAge:   int(login.SessionTTL.Seconds()),
-	})
+	http.SetCookie(w, platformmw.SessionCookie(token, s.CookieSecure, login.SessionTTL, true))
 	resp.SessionEstablished = true
 }
 

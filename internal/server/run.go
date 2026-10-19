@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"io"
 	"log/slog"
 	"net"
@@ -66,6 +67,10 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	// "closed pool" errors during shutdown.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	if err := platformmw.SetSessionSameSite(cfg.SessionCookieSameSite); err != nil {
+		return err
+	}
 
 	// Always build a stream HealthService — empty when stream is off so
 	// the router's StreamHealthProvider reports zero streams gracefully.

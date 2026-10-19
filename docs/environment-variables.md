@@ -87,6 +87,7 @@ Resolution precedence: full URL
 | `FC_ROUTER_AUTH_USER` | `""` (auth disabled) | `AUTH_BASIC_USERNAME` | `internal/server/run.go` | Router HTTP BasicAuth username; empty disables auth on the router surface. |
 | `FC_ROUTER_AUTH_PASS` | `""` | `AUTH_BASIC_PASSWORD` | `internal/server/run.go` | Router HTTP BasicAuth password. |
 | `FC_AUTH_ALLOW_TEST_HEADERS` | `false` | — | `internal/server/envcfg.go` | Enables the `X-FC-Test-Principal` dev fallback in the platform Authenticator (fcdev turns it on in code; never in production). **fc-server refuses to start when this is `true` unless `APP_ENV` is `local` or `test`.** |
+| `FC_SESSION_COOKIE_SAME_SITE` | `lax` | — | `internal/server/envcfg.go` | SameSite mode of the `fc_session` cookie: `lax` (default, required for the OIDC redirect-back flows), `strict`, `none` (needs HTTPS). Other values refuse startup. The trusted-device cookie stays `Strict` regardless. |
 
 ## 4. Encryption & secrets
 
