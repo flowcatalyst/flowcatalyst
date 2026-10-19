@@ -86,7 +86,7 @@ Resolution precedence: full URL
 | `AUTH_MODE` | — | — | `internal/server/run.go` | `NONE` (case-insensitive) forces router HTTP BasicAuth off regardless of creds; any other value (incl. `BASIC` or unset) uses the resolved creds. |
 | `FC_ROUTER_AUTH_USER` | `""` (auth disabled) | `AUTH_BASIC_USERNAME` | `internal/server/run.go` | Router HTTP BasicAuth username; empty disables auth on the router surface. |
 | `FC_ROUTER_AUTH_PASS` | `""` | `AUTH_BASIC_PASSWORD` | `internal/server/run.go` | Router HTTP BasicAuth password. |
-| `FC_AUTH_ALLOW_TEST_HEADERS` | `false` | — | `internal/server/envcfg.go` | Enables the `X-FC-Test-Principal` dev fallback in the platform Authenticator (fcdev turns it on; never in production). |
+| `FC_AUTH_ALLOW_TEST_HEADERS` | `false` | — | `internal/server/envcfg.go` | Enables the `X-FC-Test-Principal` dev fallback in the platform Authenticator (fcdev turns it on in code; never in production). **fc-server refuses to start when this is `true` unless `APP_ENV` is `local` or `test`.** |
 
 ## 4. Encryption & secrets
 

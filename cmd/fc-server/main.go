@@ -50,6 +50,10 @@ func main() {
 	}()
 
 	cfg := server.LoadEnv()
+	if err := cfg.CheckTestHeadersAllowed(os.Getenv("APP_ENV")); err != nil {
+		slog.Error("fc-server: refusing to start", "err", err)
+		os.Exit(1)
+	}
 	// Customer webhook targets may not reach loopback, cloud metadata or (by
 	// default) private networks; the platform's own endpoints are exempt.
 	cfg.ApplyDeliveryPolicy(netguard.Default)

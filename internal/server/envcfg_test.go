@@ -283,3 +283,21 @@ func TestLoadEnv_DispatchJobMaxWindowDays(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckTestHeadersAllowed(t *testing.T) {
+	off := EnvCfg{}
+	on := EnvCfg{AuthAllowTestHeaders: true}
+	for _, env := range []string{"", "production", "staging", "prod"} {
+		if err := off.CheckTestHeadersAllowed(env); err != nil {
+			t.Errorf("flag off must always pass (APP_ENV=%q): %v", env, err)
+		}
+		if err := on.CheckTestHeadersAllowed(env); err == nil {
+			t.Errorf("flag on must be refused for APP_ENV=%q", env)
+		}
+	}
+	for _, env := range []string{"local", "test", " Local ", "TEST"} {
+		if err := on.CheckTestHeadersAllowed(env); err != nil {
+			t.Errorf("flag on must pass for APP_ENV=%q: %v", env, err)
+		}
+	}
+}

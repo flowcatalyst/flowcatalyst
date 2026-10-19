@@ -586,3 +586,19 @@ func (c EnvCfg) ApplyDeliveryPolicy(p *netguard.Policy) {
 		p.AllowURL(u)
 	}
 }
+
+// CheckTestHeadersAllowed refuses the X-FC-Test-Principal identity-spoof
+// fallback outside local/test environments. fc-server calls it at startup so
+// a stray FC_AUTH_ALLOW_TEST_HEADERS=true in a production environment fails
+// loudly instead of silently disabling authentication. appEnv is the APP_ENV
+// value. (fcdev sets the flag in code and does not go through fc-server.)
+func (c EnvCfg) CheckTestHeadersAllowed(appEnv string) error {
+	if !c.AuthAllowTestHeaders {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(appEnv)) {
+	case "local", "test":
+		return nil
+	}
+	return fmt.Errorf("FC_AUTH_ALLOW_TEST_HEADERS=true bypasses authentication and is only permitted when APP_ENV is local or test (APP_ENV=%q)", appEnv)
+}
