@@ -263,3 +263,23 @@ func TestLoadEnv_FunctionsKeepVersions(t *testing.T) {
 		}
 	}
 }
+
+// FC_DISPATCH_JOB_MAX_WINDOW_DAYS bounds the created_at window a dispatch-job
+// list-shaped read may cover; non-positive or unparseable values fall back to
+// the default (31).
+func TestLoadEnv_DispatchJobMaxWindowDays(t *testing.T) {
+	t.Setenv("FC_DISPATCH_JOB_MAX_WINDOW_DAYS", "")
+	if c := LoadEnv(); c.DispatchJobMaxWindowDays != 31 {
+		t.Errorf("default = %d, want 31", c.DispatchJobMaxWindowDays)
+	}
+	t.Setenv("FC_DISPATCH_JOB_MAX_WINDOW_DAYS", "7")
+	if c := LoadEnv(); c.DispatchJobMaxWindowDays != 7 {
+		t.Errorf("set = %d, want 7", c.DispatchJobMaxWindowDays)
+	}
+	for _, bad := range []string{"0", "-3", "many"} {
+		t.Setenv("FC_DISPATCH_JOB_MAX_WINDOW_DAYS", bad)
+		if c := LoadEnv(); c.DispatchJobMaxWindowDays != 31 {
+			t.Errorf("%q = %d, want the default 31", bad, c.DispatchJobMaxWindowDays)
+		}
+	}
+}

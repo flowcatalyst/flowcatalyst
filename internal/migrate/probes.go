@@ -130,6 +130,6 @@ var impliedBy = map[int64]int64{
 }
 
 // 043 drops a column an earlier migration added and 063, 069, 070, 072-077,
-// 079, 080 are data migrations; none has a schema effect to probe, so
+// 079, 080, 085 are data migrations; none has a schema effect to probe, so
 // foreign-database bootstrap never seeds them (goose runs them, and they are
 // idempotent). 055 likewise.

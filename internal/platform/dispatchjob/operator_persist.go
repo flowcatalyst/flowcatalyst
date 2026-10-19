@@ -55,9 +55,15 @@ func (r *Repository) CompletePersister() usecasepgx.Persist[DispatchJob] {
 	}}
 }
 
-// RequeuePersister commits an operator requeue: any status -> PENDING.
-func (r *Repository) RequeuePersister() usecasepgx.Persist[DispatchJob] {
+// RequeuePersister commits an operator requeue: PENDING, FAILED, CANCELLED or
+// EXPIRED (the status guard is in SQL) -> PENDING. A job whose id is in
+// redrive is COMPLETED and is re-delivered through the lifecycle's separate
+// Redrive transition instead; every other COMPLETED job is refused by SQL.
+func (r *Repository) RequeuePersister(redrive map[string]bool) usecasepgx.Persist[DispatchJob] {
 	return operatorPersist{lc: r.lc, do: func(ctx context.Context, lc *Lifecycle, j *DispatchJob) (bool, error) {
+		if redrive[j.ID] {
+			return lc.Redrive(ctx, j.ID, j.CreatedAt)
+		}
 		return lc.Requeue(ctx, j.ID, j.CreatedAt)
 	}}
 }

@@ -36,7 +36,7 @@ type DispatchJobStore interface {
 	FindWithFilters(ctx context.Context, p dispatchjob.FilterParams) ([]dispatchjob.DispatchJob, error)
 	FindByID(ctx context.Context, id string) (*dispatchjob.DispatchJob, error)
 	AttemptsByJob(ctx context.Context, jobID string) ([]dispatchjob.Attempt, error)
-	DistinctValues(ctx context.Context, column string, limit int, accessibleClientIDs *[]string) ([]string, error)
+	DistinctValues(ctx context.Context, column string, limit int, accessibleClientIDs *[]string, since, until *time.Time) ([]string, error)
 }
 
 // DispatchJobs is the dispatch jobs page (/ui/dispatch-jobs), mirroring the
@@ -52,11 +52,28 @@ type DispatchJobs struct {
 	// identifier for the grid (the API's cached resolver); nil shows ids.
 	ClientIdentifier func(ctx context.Context, clientID string) (string, bool)
 	Shell            *shell.Shell
+	// MaxWindowDays is the widest created_at window a list or a requeue may
+	// cover (FC_DISPATCH_JOB_MAX_WINDOW_DAYS; < 1: the default, 31). A view with
+	// no dates is held to the last 24 hours, as the API's list is.
+	MaxWindowDays int
+	// Now is the clock the time window is cut from (nil: time.Now).
+	Now func() time.Time
 
 	// facetCache holds the distinct statuses and codes (firehose.go): the
 	// SPA reads them once per visit, the live list on every request, and a
 	// DISTINCT over the projection is the costliest query of a request.
 	facetCache distinctCache
+}
+
+// window holds p to the created_at window every list-shaped read carries (the
+// API's rule: the last 24 hours when the view names no dates, at most
+// MaxWindowDays).
+func (h *DispatchJobs) window(p dispatchjob.FilterParams) (dispatchjob.FilterParams, dispatchjob.Window, error) {
+	now := time.Now
+	if h.Now != nil {
+		now = h.Now
+	}
+	return dispatchjob.EnforceWindow(p, now(), h.MaxWindowDays)
 }
 
 const (
@@ -71,8 +88,10 @@ const (
 	// djSelSig counts the ticked rows (the "Requeue selected" label).
 	djSelSig = "djSel"
 
-	djViewPerm = "platform:messaging:dispatch-job:view"
-	djRawPerm  = "platform:messaging:dispatch-job:view-raw"
+	djViewPerm        = "platform:messaging:dispatch-job:view"
+	djRawPerm         = "platform:messaging:dispatch-job:view-raw"
+	djRequeuePerm     = auth.DispatchJobRequeuePerm
+	djEditPayloadPerm = auth.DispatchJobEditPayloadPerm
 
 	djLiveGet = "@get('/ui/dispatch-jobs', {contentType: 'form'})"
 	// djNavLink is a link that changes the filters (the group link, the
@@ -295,6 +314,7 @@ type djRow struct {
 	Client           string
 	ClientIsID       bool
 	Platform         bool
+	CanRequeue       bool
 	Group, GroupHref string
 	Status           string
 	Severity         kit.TagSeverity
@@ -313,8 +333,10 @@ type djView struct {
 	// OlderHref is the next page (empty on the last).
 	OlderHref string
 	CanSign   bool
-	Dialog    templ.Component
-	Drawer    *djDetail
+	// CanRequeue shows the requeue actions (dispatch-job:requeue).
+	CanRequeue bool
+	Dialog     templ.Component
+	Drawer     *djDetail
 }
 
 func (h *DispatchJobs) list(w http.ResponseWriter, r *http.Request) {
@@ -369,20 +391,28 @@ func (v djView) patchList(sse *ds.SSE, full bool) error {
 }
 
 func (h *DispatchJobs) listView(ctx context.Context, ac *auth.AuthContext, q djQuery) (djView, error) {
-	v := djView{Query: q, CanSign: auth.CanWritePermission(ac, djRawPerm) == nil}
+	v := djView{
+		Query: q, CanSign: auth.CanWritePermission(ac, djRawPerm) == nil,
+		CanRequeue: auth.CanWritePermission(ac, djRequeuePerm) == nil,
+	}
 	facets, names, err := h.filterOptions(ctx, ac, q)
 	if err != nil {
 		return djView{}, err
 	}
 	v.Facets, v.ClientNames = facets, names
-	p := djops.VisibleTo(ac, q.filterParams())
+	p, _, err := h.window(djops.VisibleTo(ac, q.filterParams()))
+	if err != nil {
+		return djView{}, err
+	}
 	p.Limit, p.SortAscending, p.Cursor = q.Size, q.Dir == kit.SortAsc, q.After
 	jobs, err := h.Jobs.FindWithFilters(ctx, p)
 	if err != nil {
 		return djView{}, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
 	for i := range jobs {
-		v.Rows = append(v.Rows, h.toRow(ctx, q, &jobs[i]))
+		row := h.toRow(ctx, q, &jobs[i])
+		row.CanRequeue = v.CanRequeue
+		v.Rows = append(v.Rows, row)
 	}
 	// A full page may have an older one; a short page is the last.
 	if len(jobs) == q.Size {
@@ -408,7 +438,14 @@ func (h *DispatchJobs) filterOptions(ctx context.Context, ac *auth.AuthContext, 
 	}
 	names := clientNames(cs)
 	out[djFacetClients] = clientFilterOptions(cs, ac)
-	distinct, err := h.facetCache.get(ctx, h.Jobs.DistinctValues, distinctScope(ac), "status", "code")
+	// The values are read from the widest window a view may ask for, so every
+	// date range the page allows finds its options; the cache keeps the read to
+	// one per scope per TTL.
+	since := time.Now().Add(-dispatchjob.MaxWindow(h.MaxWindowDays))
+	recent := func(ctx context.Context, column string, limit int, scope *[]string) ([]string, error) {
+		return h.Jobs.DistinctValues(ctx, column, limit, scope, &since, nil)
+	}
+	distinct, err := h.facetCache.get(ctx, recent, distinctScope(ac), "status", "code")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -515,6 +552,8 @@ type djDetail struct {
 	History                    []djAttempt
 	ActionBase                 string
 	CanSign                    bool
+	// CanRequeue shows the drawer's Requeue (dispatch-job:requeue).
+	CanRequeue bool
 	// CanEditPayload is true while the job's payload may be edited (PENDING or
 	// FAILED: the API's rule); EditText and ContentType fill the editor.
 	CanEditPayload bool
@@ -668,9 +707,10 @@ func (h *DispatchJobs) detailOf(ctx context.Context, ac *auth.AuthContext, j *di
 		ScheduledFor: timeOr(j.ScheduledFor), Created: j.CreatedAt, Completed: timeOr(j.CompletedAt),
 		LastError: deref(j.LastError), Payload: prettyText(j.Payload),
 		History: toAttempts(attempts), ActionBase: djURL(j.ID),
-		CanSign: auth.CanWritePermission(ac, djRawPerm) == nil,
+		CanSign:    auth.CanWritePermission(ac, djRawPerm) == nil,
+		CanRequeue: auth.CanWritePermission(ac, djRequeuePerm) == nil,
 		// The editor opens on the stored text, pretty-printed for a JSON job.
-		CanEditPayload: slices.Contains(dispatchjob.EditableStatuses, j.Status) && auth.CanWritePermission(ac, djViewPerm) == nil,
+		CanEditPayload: slices.Contains(dispatchjob.EditableStatuses, j.Status) && auth.CanWritePermission(ac, djEditPayloadPerm) == nil,
 		ContentType:    j.PayloadContentType,
 	}
 	if j.Payload != nil {
@@ -849,7 +889,7 @@ func (h *DispatchJobs) requeueSelected(w http.ResponseWriter, r *http.Request) {
 func (h *DispatchJobs) requeue(w http.ResponseWriter, r *http.Request, picked []string) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, djViewPerm); err != nil {
+	if err := auth.CanWritePermission(ac, djRequeuePerm); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
@@ -884,14 +924,14 @@ func (h *DispatchJobs) requeue(w http.ResponseWriter, r *http.Request, picked []
 // ── edit payload ───────────────────────────────────────────────────────
 
 // editPayload is the drawer's "Edit payload": the API's PUT
-// /dispatch-jobs/{id}/payload. Same gate (the dispatch-job permission) and the
+// /dispatch-jobs/{id}/payload. Same gate (dispatch-job:edit-payload) and the
 // same use case, which enforces the status rule (PENDING / FAILED), the client
 // scope and the payload validation. Status and attempts are not touched:
 // Requeue stays a separate action.
 func (h *DispatchJobs) editPayload(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, djViewPerm); err != nil {
+	if err := auth.CanWritePermission(ac, djEditPayloadPerm); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
@@ -965,13 +1005,19 @@ type djStatusCount struct {
 // matches, what this caller may requeue, and the form that acts on exactly
 // that filter (its URL carries it).
 type djPreview struct {
-	Summary          []djKV
-	Count, Eligible  int64
-	OutOfScope       int64
-	ToRequeue        int64
-	OverCap, Changed bool
-	ByStatus         []djStatusCount
-	Action           string
+	Summary []djKV
+	// Window is the created_at range the counts cover, in words.
+	Window          string
+	Count, Eligible int64
+	OutOfScope      int64
+	// Completed and InFlight are matches a requeue leaves alone: COMPLETED
+	// ones (redriven only with the API's two redrive fields) and QUEUED or
+	// PROCESSING ones (never).
+	Completed, InFlight int64
+	ToRequeue           int64
+	OverCap, Changed    bool
+	ByStatus            []djStatusCount
+	Action              string
 }
 
 // summary is summarizeFilters: the active filters as label/value lines.
@@ -1002,13 +1048,22 @@ func (q djQuery) summary(clientNames map[string]string) []djKV {
 }
 
 func (h *DispatchJobs) preview(ctx context.Context, q djQuery, names map[string]string, changed bool) (djPreview, error) {
-	sum, err := h.Ops.Preview(ctx, q.filterParams())
+	f, win, err := h.window(q.filterParams())
 	if err != nil {
 		return djPreview{}, err
 	}
+	sum, err := h.Ops.Preview(ctx, f)
+	if err != nil {
+		return djPreview{}, err
+	}
+	window := win.From.Format("2006-01-02 15:04") + " – " + win.To.Format("2006-01-02 15:04") + " UTC"
+	if win.Defaulted {
+		window += " (the last 24 hours: no dates chosen)"
+	}
 	p := djPreview{
-		Summary: q.summary(names), Count: sum.Count, Eligible: sum.Eligible, OutOfScope: sum.Count - sum.Eligible,
-		ToRequeue: min(sum.Eligible, int64(djMaxRequeue)), OverCap: sum.Eligible > int64(djMaxRequeue), Changed: changed,
+		Summary: q.summary(names), Window: window, Count: sum.Count, Eligible: sum.Eligible, Completed: sum.Completed, InFlight: sum.InFlight,
+		OutOfScope: sum.Count - sum.Eligible - sum.Completed - sum.InFlight,
+		ToRequeue:  min(sum.Eligible, int64(djMaxRequeue)), OverCap: sum.Eligible > int64(djMaxRequeue), Changed: changed,
 		Action: encodeURL(djPath+"/requeue-by-filter", q.filterValues()),
 	}
 	for status, n := range sum.ByStatus {
@@ -1037,7 +1092,7 @@ func (h *DispatchJobs) requeueErrors(w http.ResponseWriter, r *http.Request) {
 func (h *DispatchJobs) openRequeueByFilter(w http.ResponseWriter, r *http.Request, q djQuery, switchList bool) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, djViewPerm); err != nil {
+	if err := auth.CanWritePermission(ac, djRequeuePerm); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
@@ -1098,7 +1153,7 @@ func (h *DispatchJobs) showRequeueDialog(w http.ResponseWriter, r *http.Request,
 func (h *DispatchJobs) requeueByFilter(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, djViewPerm); err != nil {
+	if err := auth.CanWritePermission(ac, djRequeuePerm); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
@@ -1108,7 +1163,12 @@ func (h *DispatchJobs) requeueByFilter(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, usecase.Validation("INVALID_CONFIRM_COUNT", "confirmCount must be a whole number, not negative"))
 		return
 	}
-	res, err := h.Ops.RequeueByFilter(ctx, q.filterParams(), confirm)
+	f, _, err := h.window(q.filterParams())
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	res, err := h.Ops.RequeueByFilter(ctx, f, confirm)
 	if ue := usecase.AsError(err); ue != nil && ue.Code == "FILTER_MATCH_CHANGED" {
 		h.showRequeueDialog(w, r, ac, q, false, true)
 		return

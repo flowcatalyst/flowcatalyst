@@ -43,6 +43,7 @@ func TestDispatchJobsPageAgainstPostgres(t *testing.T) {
 	seed("djbuipg000001", "uipg:sales:order:created", "FAILED")
 	seed("djbuipg000002", "uipg:sales:order:paid", "FAILED")
 	seed("djbuipg000003", "uipg:sales:order:paid", "COMPLETED")
+	seed("djbuipg000004", "uipgx:sales:order:paid", "FAILED")
 	status := func(id string) common.DispatchStatus {
 		t.Helper()
 		j, err := repo.FindByID(ctx, id)
@@ -72,8 +73,11 @@ func TestDispatchJobsPageAgainstPostgres(t *testing.T) {
 	assert.Contains(t, drawer, "HTTP 500")
 	assert.Contains(t, drawer, "&#34;a&#34;: &#34;&lt;x&gt;&#34;")
 
-	do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/requeue", datastar: true, form: url.Values{"ids": {"djbuipg000003"}}})
-	assert.Equal(t, common.DispatchPending, status("djbuipg000003"))
+	// Ticked rows: the FAILED one is reset; the COMPLETED one is left alone (a
+	// completed job is redriven only through the API's redrive fields).
+	do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/requeue", datastar: true, form: url.Values{"ids": {"djbuipg000003", "djbuipg000004"}}})
+	assert.Equal(t, common.DispatchCompleted, status("djbuipg000003"))
+	assert.Equal(t, common.DispatchPending, status("djbuipg000004"))
 
 	preview := do(req{target: "/ui/dispatch-jobs/requeue-by-filter?applications=uipg&statuses=FAILED", datastar: true})
 	assert.Contains(t, preview, "2 jobs</strong> match")

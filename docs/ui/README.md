@@ -414,7 +414,7 @@ POST: the run; the filter is the URL's query), `/requeue-errors` (the error pres
 - Every route makes the API's checks (`internal/platform/dispatchjob/api`): `dispatch-job:view`, SQL
   tenant scoping (`operations.VisibleTo`), per-job client scope on the drawer; **Sign needs
   `dispatch-job:view-raw`** and is omitted without it (as the SPA now does, bug 20). Requeue (row, drawer, selection, by filter) runs `ResendDispatchJobs` / `ResendByFilter` as the
-  API does, with the API's gate (`dispatch-job:view`).
+  API does, with the API's gate (`dispatch-job:requeue`; Edit payload needs `dispatch-job:edit-payload`; the buttons are hidden without them). The list, the filter dialog and its run carry the API's time window: no dates means the last 24 hours, at most `FC_DISPATCH_JOB_MAX_WINDOW_DAYS` (31); QUEUED, PROCESSING and COMPLETED jobs are left alone by a requeue (redrive is API-only for now).
 - **The filtered view's URL is what "Requeue all matching" acts on**: its link carries the view's
   filter (not size, sort or position) to `/requeue-by-filter?…`; the confirm step previews that filter
   (`SummarizeMatches`: count, by status, eligible, out of scope, the 10,000 cap) and its form posts to

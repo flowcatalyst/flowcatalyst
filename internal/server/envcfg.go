@@ -10,6 +10,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 )
 
@@ -264,6 +265,13 @@ type EnvCfg struct {
 	// or unparseable = function.DefaultKeepVersions, 20).
 	FunctionsKeepVersions int
 
+	// DispatchJobMaxWindowDays is the widest created_at window a dispatch-job
+	// list-shaped read (list, list-raw, filter-options, the requeue-by-filter
+	// preview and run) may cover (FC_DISPATCH_JOB_MAX_WINDOW_DAYS; non-positive
+	// or unparseable = dispatchjob.DefaultMaxWindowDays, 31). A read that names
+	// no time bound is held to the last 24 hours.
+	DispatchJobMaxWindowDays int
+
 	// FunctionsRunnerURL is the function runner's base URL
 	// (FC_FUNCTIONS_RUNNER_URL), templated with "{pool}" so one platform can
 	// address several runner deployments (one per pool in production; fc-dev
@@ -425,6 +433,8 @@ func LoadEnv() EnvCfg {
 		FunctionsKeepVersions:  positiveOr(envInt("FC_FUNCTIONS_KEEP_VERSIONS", 0), function.DefaultKeepVersions),
 
 		FunctionsRunnerURLByRuntime: loadRunnerURLsByRuntime(os.Environ()),
+
+		DispatchJobMaxWindowDays: positiveOr(envInt("FC_DISPATCH_JOB_MAX_WINDOW_DAYS", 0), dispatchjob.DefaultMaxWindowDays),
 	}
 	// Default the dispatch callback to the local API listener: the router
 	// consumes a queued job and POSTs {messageId} here for delivery.

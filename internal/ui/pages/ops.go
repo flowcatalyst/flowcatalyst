@@ -491,7 +491,7 @@ type DispatchJobCommands interface {
 	// Preview counts what a requeue-by-filter would touch (SummarizeMatches).
 	Preview(ctx context.Context, f dispatchjob.FilterParams) (djops.MatchSummary, error)
 	// RequeueByFilter runs ResendByFilter with the confirmed eligible count
-	// and the default (maximum) limit.
+	// and the default (maximum) limit. f already carries its time window.
 	RequeueByFilter(ctx context.Context, f dispatchjob.FilterParams, confirmCount int64) (djops.ResendByFilterResult, error)
 	// Plan builds the job's delivery without sending it (the "sign" action);
 	// ErrPlanUnavailable when the server has no planner wired.
@@ -535,9 +535,10 @@ func (o DispatchJobOps) Preview(ctx context.Context, f dispatchjob.FilterParams)
 	return djops.SummarizeMatches(ctx, o.Repo, f)
 }
 
-// RequeueByFilter runs ResendByFilter (limit 0: the default, which is the cap).
+// RequeueByFilter runs ResendByFilter (limit 0: the default, which is the cap;
+// no redrive: COMPLETED jobs and jobs in flight are left alone).
 func (o DispatchJobOps) RequeueByFilter(ctx context.Context, f dispatchjob.FilterParams, confirmCount int64) (djops.ResendByFilterResult, error) {
-	return djops.ResendByFilter(ctx, o.UoW, o.Repo, f, confirmCount, 0, auth.NewExecutionContext(ctx))
+	return djops.ResendByFilter(ctx, o.UoW, o.Repo, f, confirmCount, 0, djops.ResendByFilterOptions{}, auth.NewExecutionContext(ctx))
 }
 
 // Plan runs the planner.

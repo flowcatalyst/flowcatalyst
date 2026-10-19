@@ -63,9 +63,21 @@ watch(visible, (open) => {
 const statusEntries = computed(() =>
 	Object.entries(preview.value?.byStatus ?? {}).sort((a, b) => b[1] - a[1]),
 );
+// Matches a requeue leaves alone for reasons other than the two below: other
+// tenants' and platform-scoped jobs.
 const outOfScope = computed(() =>
-	preview.value ? preview.value.count - preview.value.eligibleCount : 0,
+	preview.value
+		? preview.value.count - preview.value.eligibleCount - preview.value.completedCount - preview.value.inFlightCount
+		: 0,
 );
+// The time window the counts cover; with no dates chosen the server holds the
+// request to the last 24 hours.
+const windowText = computed(() => {
+	const w = preview.value?.window;
+	if (!w) return "";
+	const fmt = (d: string) => new Date(d).toLocaleString();
+	return `${fmt(w.from)} – ${fmt(w.to)}${w.defaulted ? " (the last 24 hours: no dates chosen)" : ""}`;
+});
 const toRequeue = computed(() =>
 	preview.value ? Math.min(preview.value.eligibleCount, REQUEUE_BY_FILTER_MAX) : 0,
 );
@@ -127,6 +139,7 @@ async function confirm() {
           Counting matching jobs…
         </div>
         <template v-else-if="preview">
+          <p v-if="windowText" class="rbf-line text-muted">Created {{ windowText }}.</p>
           <p class="rbf-line">
             <strong>{{ plural(preview.count, "job") }}</strong> match.
           </p>
@@ -144,6 +157,13 @@ async function confirm() {
               {{ outOfScope.toLocaleString() }} platform-scoped or outside your client access will be left alone.
             </span>
           </p>
+          <p v-if="preview.inFlightCount > 0" class="rbf-line text-muted">
+            {{ plural(preview.inFlightCount, "job") }} QUEUED or PROCESSING will be left alone — a job in flight is never requeued.
+          </p>
+          <p v-if="preview.completedCount > 0" class="rbf-line text-muted">
+            {{ plural(preview.completedCount, "COMPLETED job") }} will be left alone — completed jobs are redriven only through the API
+            (redriveCompleted and confirmRedriveCompleted, with the redrive-completed permission).
+          </p>
           <p v-if="preview.eligibleCount > REQUEUE_BY_FILTER_MAX" class="rbf-line text-muted">
             At most {{ REQUEUE_BY_FILTER_MAX.toLocaleString() }} are requeued per run; run it again for the rest.
           </p>
@@ -156,7 +176,7 @@ async function confirm() {
       </Message>
       <Message severity="warn" :closable="false">
         Requeue resets each job to <strong>PENDING</strong> — clearing its attempt count, schedule and last error — and the
-        scheduler delivers it again. Jobs that already completed are delivered again too if they match.
+        scheduler delivers it again. Jobs in flight and jobs that already completed are left alone.
       </Message>
     </div>
 

@@ -2,6 +2,8 @@ package operations
 
 import (
 	"context"
+	"maps"
+	"slices"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
@@ -10,12 +12,26 @@ import (
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 )
 
+// SkippedJob is a job a requeue found and did not reset, with the reason.
+type SkippedJob struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Reason string `json:"reason"`
+}
+
 // ResendCommand is the bulk id-list command for POST /api/dispatch-jobs/requeue
 // (the wire route/shape predates the envelope migration and is preserved
 // unchanged — see operations/resend.go's doc and api/api.go's requeue
 // handler).
+//
+// RedriveCompleted and ConfirmRedriveCompleted together authorise re-delivering
+// COMPLETED jobs (dispatchjob.RedriveConfirmed); without both, COMPLETED jobs
+// are skipped and reported. The command is the audit row's operation JSON, so
+// the flags a caller sent are on the record.
 type ResendCommand struct {
-	IDs []string `json:"ids"`
+	IDs                     []string `json:"ids"`
+	RedriveCompleted        bool     `json:"redriveCompleted,omitempty"`
+	ConfirmRedriveCompleted string   `json:"confirmRedriveCompleted,omitempty"`
 }
 
 // ResendDispatchJobs resets a batch of jobs to PENDING for a fresh delivery
@@ -25,6 +41,13 @@ type ResendCommand struct {
 // through use cases. Migrated onto usecaseop.SaveAll: one Plan, one
 // transaction, one rollup DispatchJobsResent event/audit row covering
 // however many jobs were actually reset.
+//
+// Status guard (dispatchjob/requeue_rules.go): QUEUED and PROCESSING jobs are
+// never reset (skipped, reason IN_FLIGHT); COMPLETED jobs are reset only when
+// the command carries both redrive fields (a redrive; the event says so),
+// otherwise skipped (reason COMPLETED_REDRIVE_NOT_CONFIRMED). A skipped job is
+// reported on the event, never an error for the batch. The lifecycle checks the
+// status again in SQL, so a job that moved after it was read is refused too.
 //
 // Authorization deliberately does NOT use CheckScopeAccess-and-fail like the
 // single-resource ops (Cancel/Complete): this is a preserved bulk endpoint
@@ -54,11 +77,27 @@ func ResendDispatchJobs(repo *dispatchjob.Repository) usecaseop.Operation[Resend
 				return nil, usecase.Internal("REPO", "find_by_ids failed", err)
 			}
 
+			redrive := dispatchjob.RedriveConfirmed(cmd.RedriveCompleted, cmd.ConfirmRedriveCompleted)
 			accessible := make([]dispatchjob.DispatchJob, 0, len(jobs))
+			redriven := map[string]bool{}
+			var skipped []SkippedJob
 			for _, j := range jobs {
-				if auth.CanAccessScope(ac, ids.StringPtr(j.ClientID)) {
-					accessible = append(accessible, j)
+				if !auth.CanAccessScope(ac, ids.StringPtr(j.ClientID)) {
+					continue
 				}
+				switch dispatchjob.ClassifyForRequeue(j.Status) {
+				case dispatchjob.VerdictInFlight:
+					skipped = append(skipped, SkippedJob{ID: j.ID, Status: string(j.Status), Reason: dispatchjob.SkipInFlight})
+					continue
+				case dispatchjob.VerdictCompleted:
+					if !redrive {
+						skipped = append(skipped, SkippedJob{ID: j.ID, Status: string(j.Status), Reason: dispatchjob.SkipCompletedNotConfirmed})
+						continue
+					}
+					redriven[j.ID] = true
+				case dispatchjob.VerdictRequeue:
+				}
+				accessible = append(accessible, j)
 			}
 			ids := make([]string, 0, len(accessible))
 			for i := range accessible {
@@ -69,8 +108,11 @@ func ResendDispatchJobs(repo *dispatchjob.Repository) usecaseop.Operation[Resend
 			event := DispatchJobsResent{
 				Metadata: usecase.NewEventMetadata(ec, DispatchJobsResentType, Source, "platform.dispatchjobs.resent"),
 				IDs:      ids,
+				Redrive:  len(redriven) > 0,
+				Redriven: slices.Sorted(maps.Keys(redriven)),
+				Skipped:  skipped,
 			}
-			return usecaseop.SaveAll(accessible, repo.RequeuePersister(), event), nil
+			return usecaseop.SaveAll(accessible, repo.RequeuePersister(redriven), event), nil
 		},
 	}
 }

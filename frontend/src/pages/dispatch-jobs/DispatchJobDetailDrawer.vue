@@ -12,9 +12,14 @@ import {
 import { toast } from "@/utils/errorBus";
 import { useAuthStore } from "@/stores/auth";
 import { userHasPermission } from "@/stores/permissions";
-import { DISPATCH_JOB_VIEW_RAW } from "@/utils/dispatch-job-permissions";
+import {
+	DISPATCH_JOB_EDIT_PAYLOAD,
+	DISPATCH_JOB_REQUEUE,
+	DISPATCH_JOB_VIEW_RAW,
+} from "@/utils/dispatch-job-permissions";
 import PayloadEditDialog from "./PayloadEditDialog.vue";
 import { canEditPayload } from "./payloadEdit";
+import { requeueSkipNote } from "./requeueByFilter";
 
 // Read-only working panel: the job, its payload, and every attempt with
 // what was SENT (signing account, headers) beside what came BACK (status,
@@ -28,6 +33,10 @@ const { id, goToList } = useDrawerRoute({ listPath: "/dispatch-jobs" });
 // without it the API answers 403, so the button is not shown.
 const authStore = useAuthStore();
 const canSign = computed(() => userHasPermission(authStore.user, DISPATCH_JOB_VIEW_RAW));
+// Requeue and Edit payload each have their own permission (the API refuses
+// without it), so the buttons are offered only to holders.
+const canRequeue = computed(() => userHasPermission(authStore.user, DISPATCH_JOB_REQUEUE));
+const canEdit = computed(() => userHasPermission(authStore.user, DISPATCH_JOB_EDIT_PAYLOAD));
 
 const job = ref<DispatchJobDetail | null>(null);
 const attempts = ref<DispatchJobAttempt[]>([]);
@@ -41,7 +50,7 @@ const editingPayload = ref(false);
 
 // Only a PENDING or FAILED job's payload can be changed; the server refuses the
 // rest (409), so the button is offered only where it can work.
-const editable = computed(() => canEditPayload(job.value?.status));
+const editable = computed(() => canEdit.value && canEditPayload(job.value?.status));
 
 async function payloadEdited(updated: DispatchJobDetail | null) {
 	// null: the job moved on (409) — reload to show where it is now.
@@ -92,8 +101,13 @@ async function requeue() {
 	if (!id.value || requeuing.value) return;
 	requeuing.value = true;
 	try {
-		const { requeued } = await dispatchJobsApi.requeue([id.value]);
-		toast.success("Requeued", `${requeued} dispatch job reset to PENDING`);
+		const res = await dispatchJobsApi.requeue([id.value]);
+		if (res.requeued === 0) {
+			// Skipped by the server's status guard (in flight, or completed).
+			toast.error("Not requeued", requeueSkipNote(res).replace(/^ — /, "") || "The job was not reset.");
+		} else {
+			toast.success("Requeued", `${res.requeued} dispatch job reset to PENDING`);
+		}
 		await load();
 	} catch (error) {
 		toast.error("Requeue failed", error instanceof Error ? error.message : undefined);
@@ -190,6 +204,7 @@ function statusSeverity(status: string | undefined) {
           @click="sign"
         />
         <Button
+          v-if="canRequeue"
           label="Requeue"
           icon="pi pi-replay"
           size="small"

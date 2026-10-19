@@ -64,7 +64,7 @@ func (f *fakeDJStore) AttemptsByJob(_ context.Context, id string) ([]dispatchjob
 	return f.attempts[id], nil
 }
 
-func (f *fakeDJStore) DistinctValues(_ context.Context, column string, _ int, scope *[]string) ([]string, error) {
+func (f *fakeDJStore) DistinctValues(_ context.Context, column string, _ int, scope *[]string, _, _ *time.Time) ([]string, error) {
 	f.scopes = append(f.scopes, distinctScopeKey(scope))
 	switch column {
 	case "status":
@@ -421,5 +421,99 @@ func TestDispatchJobsEditPayload(t *testing.T) {
 	h.ops.err = usecase.Conflict("NOT_EDITABLE", "dispatch job is COMPLETED")
 	if rec := h.rec(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_2/payload", form: url.Values{"payload": {"{}"}}}); rec.Code != http.StatusConflict {
 		t.Errorf("refused edit: %d", rec.Code)
+	}
+}
+
+// A view with no dates is held to the last 24 hours, as the API's list is; dates
+// the user chose are honoured; a range beyond the maximum is refused.
+func TestDispatchJobsListIsWindowed(t *testing.T) {
+	h := newDJHarness()
+	h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs"})
+	p := h.store.params[len(h.store.params)-1]
+	if p.Since == nil || time.Since(*p.Since) < 23*time.Hour || time.Since(*p.Since) > 25*time.Hour || p.Until != nil {
+		t.Errorf("default window: since %v until %v", p.Since, p.Until)
+	}
+
+	h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs?from=2026-10-01&to=2026-10-03"})
+	p = h.store.params[len(h.store.params)-1]
+	if p.Since == nil || *p.Since != time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) || *p.Until != time.Date(2026, 10, 4, 0, 0, 0, 0, time.UTC) {
+		t.Errorf("chosen window: since %v until %v", p.Since, p.Until)
+	}
+
+	n := len(h.store.params)
+	rec := h.rec(t, anchorAdmin(), req{target: "/ui/dispatch-jobs?from=2020-01-01"})
+	if rec.Code != http.StatusBadRequest || len(h.store.params) != n {
+		t.Errorf("a window beyond the maximum: %d (%d reads)", rec.Code, len(h.store.params)-n)
+	}
+
+	// The requeue-by-filter preview and run carry the same window.
+	h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/requeue-by-filter?statuses=FAILED", datastar: true})
+	if p := h.ops.previews[len(h.ops.previews)-1]; p.Since == nil || time.Since(*p.Since) > 25*time.Hour {
+		t.Errorf("preview window: %v", p.Since)
+	}
+	h.ops.result = djops.ResendByFilterResult{Requeued: 1}
+	h.do(t, anchorAdmin(), req{
+		method: http.MethodPost, target: "/ui/dispatch-jobs/requeue-by-filter?statuses=FAILED", datastar: true, form: url.Values{"confirmCount": {"1"}},
+	})
+	if p := h.ops.byFilter[len(h.ops.byFilter)-1]; p.Since == nil || time.Since(*p.Since) > 25*time.Hour {
+		t.Errorf("run window: %v", p.Since)
+	}
+	dlg := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/requeue-by-filter?statuses=FAILED", datastar: true})
+	mustContain(t, dlg, "the last 24 hours: no dates chosen")
+}
+
+// Each write action has its own permission; view alone reads and shows no
+// write button.
+func TestDispatchJobsWritePermissions(t *testing.T) {
+	h := newDJHarness()
+	const (
+		view    = "platform:messaging:dispatch-job:view"
+		requeue = "platform:messaging:dispatch-job:requeue"
+		edit    = "platform:messaging:dispatch-job:edit-payload"
+	)
+	viewer := connUser(view)
+	list := h.do(t, viewer, req{target: "/ui/dispatch-jobs"})
+	mustNotContain(t, list, "Requeue selected", "Requeue all matching", "Requeue — reset to PENDING")
+	mustNotContain(t, h.do(t, viewer, req{target: "/ui/dispatch-jobs/djb_1", datastar: true}), "Edit payload", "/requeue")
+	if rec := h.rec(t, viewer, req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/requeue", datastar: true, form: url.Values{}}); len(h.ops.requeued) != 0 {
+		t.Errorf("view alone requeued (%d)", rec.Code)
+	}
+	h.rec(t, viewer, req{target: "/ui/dispatch-jobs/requeue-by-filter", datastar: true})
+	h.rec(t, viewer, req{method: http.MethodPost, target: "/ui/dispatch-jobs/requeue-by-filter", datastar: true, form: url.Values{"confirmCount": {"1"}}})
+	if len(h.ops.previews) != 0 || len(h.ops.byFilter) != 0 {
+		t.Error("view alone reached requeue-by-filter")
+	}
+	h.rec(t, viewer, req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/payload", datastar: true, form: url.Values{"payload": {"{}"}}})
+	if len(h.ops.edits) != 0 {
+		t.Error("view alone edited a payload")
+	}
+
+	// requeue allows requeueing (and, being a write, needs no view to do it) but not editing.
+	requeuer := connUser(view, requeue)
+	mustContain(t, h.do(t, requeuer, req{target: "/ui/dispatch-jobs"}), "Requeue selected", "Requeue all matching")
+	d := h.do(t, requeuer, req{target: "/ui/dispatch-jobs/djb_1", datastar: true})
+	mustContain(t, d, `action="/ui/dispatch-jobs/djb_1/requeue"`)
+	mustNotContain(t, d, "Edit payload")
+	h.do(t, requeuer, req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/requeue", datastar: true, form: url.Values{}})
+	if len(h.ops.requeued) != 1 {
+		t.Errorf("requeue permission did not requeue: %v", h.ops.requeued)
+	}
+	h.rec(t, requeuer, req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/payload", datastar: true, form: url.Values{"payload": {"{}"}}})
+	if len(h.ops.edits) != 0 {
+		t.Error("requeue permission edited a payload")
+	}
+
+	// edit-payload allows editing but not requeueing.
+	editor := connUser(view, edit)
+	d = h.do(t, editor, req{target: "/ui/dispatch-jobs/djb_1", datastar: true})
+	mustContain(t, d, "Edit payload")
+	mustNotContain(t, d, `action="/ui/dispatch-jobs/djb_1/requeue"`)
+	h.do(t, editor, req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/payload", datastar: true, form: url.Values{"payload": {"{}"}}})
+	if len(h.ops.edits) != 1 {
+		t.Errorf("edit-payload permission did not edit: %v", h.ops.edits)
+	}
+	h.rec(t, editor, req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/requeue", datastar: true, form: url.Values{}})
+	if len(h.ops.requeued) != 1 {
+		t.Error("edit-payload permission requeued")
 	}
 }

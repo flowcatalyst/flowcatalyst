@@ -87,6 +87,15 @@ const (
 	// Dispatch job
 	permAdminDispatchJobRead    = "platform:messaging:dispatch-job:view"
 	permAdminDispatchJobViewRaw = "platform:messaging:dispatch-job:view-raw"
+	// The write actions on a dispatch job, each its own permission (they were
+	// all dispatch-job:view before the split). redrive-completed re-delivers
+	// jobs that already succeeded: no built-in role holds it (super-admin's
+	// wildcard does); grant it deliberately.
+	permAdminDispatchJobRequeue         = "platform:messaging:dispatch-job:requeue"
+	permAdminDispatchJobRedriveComplete = "platform:messaging:dispatch-job:redrive-completed"
+	permAdminDispatchJobCancel          = "platform:messaging:dispatch-job:cancel"
+	permAdminDispatchJobComplete        = "platform:messaging:dispatch-job:complete"
+	permAdminDispatchJobEditPayload     = "platform:messaging:dispatch-job:edit-payload"
 
 	// Scheduled job
 	permAdminScheduledJobRead         = "platform:messaging:scheduled-job:view"

@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
@@ -24,7 +23,7 @@ func TestFilterOptions_ScopedToTheCallersClients(t *testing.T) {
 	seedJobs(t, pool, "footh", "foother:orders:order:created", "FAILED", &other, 1)
 	seedJobs(t, pool, "fopla", "foplatform:orders:order:created", "PENDING", nil, 1)
 
-	out, err := s.filterOptions(clientCaller(mine), &apicommon.Empty{})
+	out, err := s.filterOptions(clientCaller(mine), &filterOptionsInput{})
 	require.NoError(t, err)
 	assert.Contains(t, out.Body.Codes, "fomine:orders:order:created")
 	assert.Contains(t, out.Body.Codes, "foplatform:orders:order:created", "platform jobs stay visible, as in the list")
@@ -32,7 +31,7 @@ func TestFilterOptions_ScopedToTheCallersClients(t *testing.T) {
 	assert.Contains(t, out.Body.ClientIDs, mine)
 	assert.NotContains(t, out.Body.ClientIDs, other)
 
-	all, err := s.filterOptions(anchor(), &apicommon.Empty{})
+	all, err := s.filterOptions(anchor(), &filterOptionsInput{})
 	require.NoError(t, err)
 	assert.Contains(t, all.Body.Codes, "foother:orders:order:created", "an anchor sees every tenant")
 	assert.Contains(t, all.Body.ClientIDs, other)

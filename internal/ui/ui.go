@@ -69,6 +69,9 @@ type Config struct {
 	DispatchJobs     pages.DispatchJobStore
 	DispatchJobOps   pages.DispatchJobCommands
 	ClientIdentifier func(ctx context.Context, clientID string) (string, bool)
+	// DispatchJobMaxWindow is FC_DISPATCH_JOB_MAX_WINDOW_DAYS: the widest
+	// created_at window the dispatch jobs page may cover (< 1: the default).
+	DispatchJobMaxWindow int
 
 	Events pages.EventStore
 
@@ -112,7 +115,7 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.Applications{Apps: cfg.ApplicationStore, Ops: cfg.ApplicationOps, Logins: cfg.LoginClients, Docs: cfg.AppDocs, Shell: sh}).Mount(r)
 			(&pages.ClientsPage{Clients: cfg.ClientStore, Ops: cfg.ClientOps, Apps: cfg.ApplicationStore, Configs: cfg.ClientConfigs, Shell: sh}).Mount(r)
 			(&pages.ScheduledJobs{Jobs: cfg.ScheduledJobs, Instances: cfg.ScheduledJobInstances, Ops: cfg.ScheduledJobOps, Clients: cfg.ClientStore, Apps: cfg.ApplicationStore, Shell: sh}).Mount(r)
-			(&pages.DispatchJobs{Jobs: cfg.DispatchJobs, Ops: cfg.DispatchJobOps, Clients: cfg.ClientStore, ClientIdentifier: cfg.ClientIdentifier, Shell: sh}).Mount(r)
+			(&pages.DispatchJobs{Jobs: cfg.DispatchJobs, Ops: cfg.DispatchJobOps, Clients: cfg.ClientStore, ClientIdentifier: cfg.ClientIdentifier, MaxWindowDays: cfg.DispatchJobMaxWindow, Shell: sh}).Mount(r)
 			(&pages.Events{Events: cfg.Events, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.Processes{Store: cfg.Processes, Ops: cfg.ProcessOps, Shell: sh}).Mount(r)
 			(&pages.ClientOptions{Clients: cfg.Clients, Shell: sh}).Mount(r)

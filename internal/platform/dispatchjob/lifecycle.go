@@ -140,7 +140,8 @@ var (
 	TSweepStranded     = Transition{"sweep_stranded", []common.DispatchStatus{common.DispatchQueued, common.DispatchProcessing}, common.DispatchPending}
 	TStaleQueued       = Transition{"stale_queued", []common.DispatchStatus{common.DispatchQueued}, common.DispatchPending}
 	TStaleProcessing   = Transition{"stale_processing", []common.DispatchStatus{common.DispatchProcessing}, common.DispatchPending}
-	TRequeue           = Transition{"requeue", nil, common.DispatchPending}
+	TRequeue           = Transition{"requeue", RequeueableStatuses, common.DispatchPending}
+	TRedrive           = Transition{"redrive_completed", []common.DispatchStatus{common.DispatchCompleted}, common.DispatchPending}
 	TMarkQueued        = Transition{"mark_queued", []common.DispatchStatus{common.DispatchPending}, common.DispatchQueued}
 	TClaimForDelivery  = Transition{"claim_for_delivery", []common.DispatchStatus{common.DispatchPending, common.DispatchQueued}, common.DispatchProcessing}
 	TReclaimStale      = Transition{"reclaim_stale_delivery", []common.DispatchStatus{common.DispatchProcessing}, common.DispatchProcessing}
@@ -150,7 +151,7 @@ var (
 	TOperatorComplete  = Transition{"operator_complete", []common.DispatchStatus{common.DispatchFailed}, common.DispatchCompleted}
 	allTransitionNames = []Transition{
 		TCreate, TRetry, TDefer, THold, TSettleAcked, TSweepStranded, TStaleQueued,
-		TStaleProcessing, TRequeue, TMarkQueued, TClaimForDelivery, TReclaimStale, TComplete, TFail,
+		TStaleProcessing, TRequeue, TRedrive, TMarkQueued, TClaimForDelivery, TReclaimStale, TComplete, TFail,
 		TOperatorCancel, TOperatorComplete,
 	}
 )
@@ -828,15 +829,29 @@ func jobIDs(rows []JobRow) []string {
 
 // ── operator actions ────────────────────────────────────────────────────
 
-// Requeue is the operator's reset: from ANY status back to PENDING for a fresh
-// delivery cycle — clears scheduled_for (immediate eligibility), zeroes
-// attempt_count (a full retry budget again), clears the terminal stamps and
-// last_error. Reports whether a row was reset.
+// Requeue is the operator's reset: a job that is not in flight and not
+// delivered back to PENDING for a fresh delivery cycle (RequeueableStatuses:
+// PENDING, FAILED, CANCELLED, EXPIRED) — clears scheduled_for (immediate
+// eligibility), zeroes attempt_count (a full retry budget again), clears the
+// terminal stamps and last_error. QUEUED and PROCESSING are refused in SQL (a
+// delivery is under way: resetting it would deliver twice), and so is COMPLETED
+// (see Redrive). Reports whether a row was reset.
 func (l *Lifecycle) Requeue(ctx context.Context, id string, createdAt time.Time) (bool, error) {
-	rows, err := l.enterPending(ctx, TRequeue, byKey(id, createdAt),
-		new(changes).raw("scheduled_for", "NULL").raw("attempt_count", "0").
-			raw("completed_at", "NULL").raw("duration_millis", "NULL").raw("last_error", "NULL"))
+	rows, err := l.enterPending(ctx, TRequeue, byKey(id, createdAt), resetForRetry())
 	return len(rows) == 1, err
+}
+
+// Redrive is the operator's re-delivery of a job that already COMPLETED: back
+// to PENDING with the same reset as Requeue. A separate transition so that the
+// COMPLETED guard sits in SQL and an ordinary requeue can never reach it.
+func (l *Lifecycle) Redrive(ctx context.Context, id string, createdAt time.Time) (bool, error) {
+	rows, err := l.enterPending(ctx, TRedrive, byKey(id, createdAt), resetForRetry())
+	return len(rows) == 1, err
+}
+
+func resetForRetry() *changes {
+	return new(changes).raw("scheduled_for", "NULL").raw("attempt_count", "0").
+		raw("completed_at", "NULL").raw("duration_millis", "NULL").raw("last_error", "NULL")
 }
 
 // OperatorCancel moves a FAILED job to CANCELLED. The FAILED check is in the

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
@@ -42,14 +43,27 @@ type MatchSummary struct {
 	Count int64
 	// ByStatus breaks Count down by status.
 	ByStatus map[string]int64
-	// Eligible is how many of them ResendDispatchJobs would reset for this
-	// caller — its tenant rule (auth.CanAccessScope) applied to each job's
-	// client. ResendDispatchJobs resets a job in any status, so status does
-	// not make a job ineligible.
+	// Eligible is how many of them a requeue would reset for this caller: its
+	// tenant rule (auth.CanAccessScope) applied to each job's client, and the
+	// status guard (dispatchjob.RequeueableStatuses) — jobs in flight and
+	// COMPLETED jobs are not eligible. Send it back as confirmCount.
 	Eligible int64
+	// Completed is how many COMPLETED jobs the caller can see in the match.
+	// They are redriven only with the two redrive fields; a redrive's
+	// confirmCount is Eligible + Completed.
+	Completed int64
+	// InFlight is how many QUEUED or PROCESSING jobs the caller can see in the
+	// match. A requeue never resets them.
+	InFlight int64
 }
 
-// SummarizeMatches counts the jobs f matches for the caller in ctx.
+// RedriveEligible is the count a confirmed redrive must confirm: the eligible
+// jobs plus the COMPLETED ones.
+func (s MatchSummary) RedriveEligible() int64 { return s.Eligible + s.Completed }
+
+// SummarizeMatches counts the jobs f matches for the caller in ctx. f must
+// already carry its time window (dispatchjob.EnforceWindow): the count scans
+// the window's partitions and nothing more.
 func SummarizeMatches(ctx context.Context, repo *dispatchjob.Repository, f dispatchjob.FilterParams) (MatchSummary, error) {
 	ac := auth.FromContext(ctx)
 	buckets, err := repo.CountMatches(ctx, VisibleTo(ac, f))
@@ -60,8 +74,17 @@ func SummarizeMatches(ctx context.Context, repo *dispatchjob.Repository, f dispa
 	for _, b := range buckets {
 		s.Count += b.Count
 		s.ByStatus[b.Status] += b.Count
-		if auth.CanAccessScope(ac, b.ClientID) {
+		if !auth.CanAccessScope(ac, b.ClientID) {
+			continue
+		}
+		st, _ := common.ParseDispatchStatus(b.Status)
+		switch dispatchjob.ClassifyForRequeue(st) {
+		case dispatchjob.VerdictRequeue:
 			s.Eligible += b.Count
+		case dispatchjob.VerdictCompleted:
+			s.Completed += b.Count
+		case dispatchjob.VerdictInFlight:
+			s.InFlight += b.Count
 		}
 	}
 	return s, nil
@@ -69,19 +92,40 @@ func SummarizeMatches(ctx context.Context, repo *dispatchjob.Repository, f dispa
 
 // ResendByFilterResult is what a requeue-by-filter run did.
 type ResendByFilterResult struct {
-	// Requeued is how many jobs ResendDispatchJobs actually reset.
+	// Requeued is how many jobs were actually reset (Redriven included).
 	Requeued int64
+	// Redriven is how many of them were COMPLETED jobs re-delivered.
+	Redriven int64
 	// Remaining is how many eligible jobs still match after the run stopped
 	// at its cap; 0 when the walk ran out of matches.
 	Remaining int64
+	// SkippedInFlight and SkippedCompleted are the matching jobs the status
+	// guard left alone: the QUEUED/PROCESSING matches (and, for a run that was
+	// not a confirmed redrive, the COMPLETED ones) counted when the run
+	// started, plus any job the walk handed over that had changed status by
+	// the time its batch ran.
+	SkippedInFlight  int64
+	SkippedCompleted int64
+}
+
+// ResendByFilterOptions are the redrive fields of a requeue-by-filter request.
+type ResendByFilterOptions struct {
+	RedriveCompleted        bool
+	ConfirmRedriveCompleted string
 }
 
 // ResendByFilter resets the jobs f matches, at most min(limit, confirmCount)
-// of them. confirmCount is the eligible count the caller was shown: if more
-// eligible jobs match now, nothing is reset and the error is a 409
-// FILTER_MATCH_CHANGED carrying the new counts, so the caller can ask again.
-// It never resets more jobs than the caller confirmed, even when jobs start
-// matching while it runs.
+// of them. f must already carry its time window (dispatchjob.EnforceWindow).
+//
+// Status guard: jobs QUEUED or PROCESSING are never reset; COMPLETED jobs are
+// reset only when opts confirm a redrive (both fields), in which case
+// confirmCount covers Eligible + Completed. Without a confirmed redrive the
+// COMPLETED matches are skipped and counted in the result.
+//
+// confirmCount is the count the caller was shown: if more jobs would be reset
+// now, nothing is reset and the error is a 409 FILTER_MATCH_CHANGED carrying
+// the new counts, so the caller can ask again. It never resets more jobs than
+// the caller confirmed, even when jobs start matching while it runs.
 //
 // The walk pages the matching ids in id order (keyset, ResendBatchSize at a
 // time) and runs ResendDispatchJobs on each page in its own transaction.
@@ -93,6 +137,7 @@ func ResendByFilter(
 	f dispatchjob.FilterParams,
 	confirmCount int64,
 	limit int,
+	opts ResendByFilterOptions,
 	ec usecase.ExecutionContext,
 ) (ResendByFilterResult, error) {
 	if confirmCount < 0 {
@@ -105,16 +150,24 @@ func ResendByFilter(
 	if limit == 0 {
 		limit = ResendByFilterMaxLimit
 	}
+	redrive := dispatchjob.RedriveConfirmed(opts.RedriveCompleted, opts.ConfirmRedriveCompleted)
 
 	now, err := SummarizeMatches(ctx, repo, f)
 	if err != nil {
 		return ResendByFilterResult{}, err
 	}
-	if now.Eligible > confirmCount {
+	toReset := now.Eligible
+	if redrive {
+		toReset = now.RedriveEligible()
+	}
+	if toReset > confirmCount {
 		return ResendByFilterResult{}, usecase.Conflict("FILTER_MATCH_CHANGED",
 			fmt.Sprintf("%d jobs now match this filter and can be requeued, not the %d confirmed; review the new count and confirm again",
-				now.Eligible, confirmCount)).
-			WithDetails(map[string]any{"count": now.Count, "eligibleCount": now.Eligible, "byStatus": now.ByStatus})
+				toReset, confirmCount)).
+			WithDetails(map[string]any{
+				"count": now.Count, "eligibleCount": now.Eligible, "completedCount": now.Completed,
+				"inFlightCount": now.InFlight, "redriveEligibleCount": now.RedriveEligible(), "byStatus": now.ByStatus,
+			})
 	}
 
 	ac := auth.FromContext(ctx)
@@ -122,9 +175,13 @@ func ResendByFilter(
 	// Only walk jobs the use case would reset, so every id in a batch counts
 	// towards the cap. Its tenant rule is still applied to each batch.
 	walk.ExcludePlatformScoped = !auth.CanAccessScope(ac, nil)
+	walk.StatusIn = resettableStatuses(redrive)
 
+	res := ResendByFilterResult{SkippedInFlight: now.InFlight}
+	if !redrive {
+		res.SkippedCompleted = now.Completed
+	}
 	budget := min(int64(limit), confirmCount)
-	var res ResendByFilterResult
 	var handed int64
 	exhausted := false
 	for handed < budget {
@@ -137,11 +194,23 @@ func ResendByFilter(
 			exhausted = true
 			break
 		}
-		ev, err := usecaseop.Run(ctx, uow, ResendDispatchJobs(repo), ResendCommand{IDs: ids}, ec)
+		cmd := ResendCommand{IDs: ids}
+		if redrive {
+			cmd.RedriveCompleted, cmd.ConfirmRedriveCompleted = true, opts.ConfirmRedriveCompleted
+		}
+		ev, err := usecaseop.Run(ctx, uow, ResendDispatchJobs(repo), cmd, ec)
 		if err != nil {
 			return res, interrupted(res, err)
 		}
 		res.Requeued += int64(len(ev.IDs))
+		res.Redriven += int64(len(ev.Redriven))
+		for _, sk := range ev.Skipped {
+			if sk.Reason == dispatchjob.SkipInFlight {
+				res.SkippedInFlight++
+			} else {
+				res.SkippedCompleted++
+			}
+		}
 		handed += int64(len(ids))
 		last := ids[len(ids)-1]
 		walk.AfterID = &last
@@ -161,7 +230,23 @@ func ResendByFilter(
 		return res, err
 	}
 	res.Remaining = left.Eligible
+	if redrive {
+		res.Remaining = left.RedriveEligible()
+	}
 	return res, nil
+}
+
+// resettableStatuses are the statuses the id walk hands to ResendDispatchJobs:
+// what a requeue may reset, plus COMPLETED for a confirmed redrive.
+func resettableStatuses(redrive bool) []string {
+	out := make([]string, 0, len(dispatchjob.RequeueableStatuses)+1)
+	for _, s := range dispatchjob.RequeueableStatuses {
+		out = append(out, string(s))
+	}
+	if redrive {
+		out = append(out, string(common.DispatchCompleted))
+	}
+	return out
 }
 
 // interrupted reports a failure part-way through: the batches before it are

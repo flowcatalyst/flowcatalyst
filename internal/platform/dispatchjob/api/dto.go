@@ -368,4 +368,6 @@ type DispatchJobFilterOptionsResponse struct {
 	DispatchPoolIDs []string `json:"dispatchPoolIds"`
 	SubscriptionIDs []string `json:"subscriptionIds"`
 	Kinds           []string `json:"kinds"`
+	// Window is the created_at window the values were read from.
+	Window WindowResponse `json:"window"`
 }

@@ -88,6 +88,12 @@ type FilterParams struct {
 	// applications (F20). Applied in SQL, so no caller filter can widen it.
 	AccessibleApplications *[]string
 
+	// StatusIn keeps only jobs in one of these statuses, on top of Status /
+	// Statuses (both must hold). The requeue-by-filter id walk sets it to the
+	// statuses a requeue may reset, so the walk never hands over a job the
+	// status guard would skip.
+	StatusIn []string
+
 	// ExcludePlatformScoped drops platform-scoped jobs (client_id IS NULL):
 	// the requeue-by-filter id walk sets it for a caller that may see those
 	// jobs but may not requeue them.
@@ -130,6 +136,7 @@ func (p FilterParams) where() repocommon.Filter {
 	var f repocommon.Filter
 	f.EqPtr("status", p.Status)
 	f.Any("status", p.Statuses)
+	f.Any("status", p.StatusIn)
 	f.EqPtr("client_id", p.ClientID)
 	f.Any("client_id", p.ClientIDs)
 	if p.AccessibleClientIDs != nil {
@@ -359,9 +366,11 @@ func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]DispatchJo
 
 // DistinctValues lists distinct non-null values for a whitelisted column, of
 // the jobs a caller with accessibleClientIDs can see (nil: every job, for an
-// anchor). Powers GET /api/dispatch-jobs/filter-options. Dynamic column name —
-// stays hand-rolled (sqlc can't parameterise identifiers).
-func (r *Repository) DistinctValues(ctx context.Context, column string, limit int, accessibleClientIDs *[]string) ([]string, error) {
+// anchor) created within [since, until] (either may be nil for an open end;
+// the callers always pass a since, so the read prunes to the window's
+// partitions). Powers GET /api/dispatch-jobs/filter-options. Dynamic column
+// name — stays hand-rolled (sqlc can't parameterise identifiers).
+func (r *Repository) DistinctValues(ctx context.Context, column string, limit int, accessibleClientIDs *[]string, since, until *time.Time) ([]string, error) {
 	allowed := map[string]bool{
 		"status": true, "code": true, "client_id": true,
 		"dispatch_pool_id": true, "subscription_id": true, "kind": true,
@@ -378,8 +387,16 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 	// so a client user never sees another tenant's values.
 	scope, args := "", []any{limit}
 	if accessibleClientIDs != nil {
-		scope = " AND (client_id IS NULL OR client_id = ANY($2))"
 		args = append(args, *accessibleClientIDs)
+		scope += fmt.Sprintf(" AND (client_id IS NULL OR client_id = ANY($%d))", len(args))
+	}
+	if since != nil {
+		args = append(args, *since)
+		scope += fmt.Sprintf(" AND created_at >= $%d", len(args))
+	}
+	if until != nil {
+		args = append(args, *until)
+		scope += fmt.Sprintf(" AND created_at <= $%d", len(args))
 	}
 	rows, err := r.pool.Query(ctx,
 		fmt.Sprintf(`SELECT DISTINCT %s FROM msg_dispatch_jobs_read

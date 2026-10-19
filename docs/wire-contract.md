@@ -457,6 +457,57 @@ invite token exists, `EXPIRED` otherwise (the token lapsed or was purged).
   invite tokens are deleted. The user record stays; reactivating it is a console
   action. Not an invitee in the application: `404`.
 
+## Dispatch jobs: time window, requeue guard, write permissions
+
+**Time window.** The list-shaped reads are held to a `created_at` window:
+`GET /api/dispatch-jobs` (and `/bff/dispatch-jobs`), `GET /api/dispatch-jobs/list-raw`
+(alias `/raw`), `GET /api/dispatch-jobs/filter-options`,
+`POST /api/dispatch-jobs/requeue-by-filter/preview` and
+`POST /api/dispatch-jobs/requeue-by-filter`. The bounds are the existing RFC 3339
+`since` / `until` (query on the GETs, body fields on the POSTs). Rules:
+
+- neither given: `since` = now minus 24 hours (`defaulted: true`);
+- `since` only: `since` .. now; `until` only: `until` minus 24 hours .. `until`
+  (`defaulted: true`); both: as given, `until` before `since` is
+  `400 INVALID_WINDOW`;
+- a window wider than `FC_DISPATCH_JOB_MAX_WINDOW_DAYS` (default 31) is
+  `400 WINDOW_TOO_LARGE` (`kind` validation);
+- an unparseable `since` / `until` on the list is ignored as before (the default
+  then applies); on filter-options and the POSTs it is `400 INVALID_TIMESTAMP`.
+
+The applied window is echoed. The two list endpoints keep their bare-array body and
+answer headers `X-Window-From`, `X-Window-To` (RFC 3339 UTC; "to" is now when no
+`until` was given) and `X-Window-Defaulted` (`true`/`false`). `filter-options`,
+the preview and the run carry `window: {from, to, defaulted}` in the body. Not
+windowed (a single job or event already bounds them): `GET /api/dispatch-jobs/{id}`,
+`/{id}/raw`, `/{id}/attempts`, `/event/{eventId}` (`/by-event/{eventId}`),
+`POST /{id}/sign`, and the write actions on one job.
+
+**Requeue guard.** `POST /api/dispatch-jobs/requeue` and
+`POST /api/dispatch-jobs/requeue-by-filter` reset `PENDING`, `FAILED` (`ERROR`),
+`CANCELLED`, `EXPIRED` jobs. `QUEUED`, `PROCESSING` (`IN_PROGRESS`) are never
+reset. `COMPLETED` is reset only when the body has `redriveCompleted: true` and
+`confirmRedriveCompleted: "REDRIVE"`. Skipped jobs are reported, never a batch
+error. New request fields (both endpoints): `redriveCompleted` (bool),
+`confirmRedriveCompleted` (string). New response fields: `redriven`,
+`skippedInFlight`, `skippedCompleted` on both; `skipped: [{id, status, reason}]`
+(`IN_FLIGHT` | `COMPLETED_REDRIVE_NOT_CONFIRMED`) on the by-ids response;
+`window` on the by-filter response. The preview adds `completedCount`,
+`inFlightCount`, `redriveEligibleCount` and `window`; `eligibleCount` now excludes
+COMPLETED and in-flight jobs (send it as `confirmCount`; a redrive confirms
+`redriveEligibleCount`). A run that would reset more than `confirmCount` is
+`409 FILTER_MATCH_CHANGED`, whose `details` also carry `completedCount`,
+`inFlightCount`, `redriveEligibleCount`.
+
+**Permissions.** `view` is read-only. `platform:messaging:dispatch-job:requeue`
+gates both requeue endpoints (the preview also admits `view`);
+`...:redrive-completed` is additionally required when `redriveCompleted` is true
+(`403 PERMISSION_REQUIRED` otherwise); `...:cancel`, `...:complete`,
+`...:edit-payload` gate `POST /{id}/cancel`, `POST /{id}/complete` and
+`PUT /{id}/payload`. `/sign` and the raw reads stay `...:view-raw`. Migration 085
+grants requeue, cancel, complete and edit-payload to every role holding `view`
+except `platform:viewer`.
+
 ## Webhook signatures
 
 Webhook delivery (router → subscriber) signs

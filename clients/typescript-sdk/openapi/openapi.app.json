@@ -6664,7 +6664,27 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-Window-Defaulted": {
+                "schema": {
+                  "description": "true when the server supplied a bound the request did not (no since/until: the last 24 hours)",
+                  "type": "string"
+                }
+              },
+              "X-Window-From": {
+                "schema": {
+                  "description": "Start of the created_at window the list was held to (RFC3339, UTC)",
+                  "type": "string"
+                }
+              },
+              "X-Window-To": {
+                "schema": {
+                  "description": "End of the window (RFC3339, UTC); now when the request gave no until",
+                  "type": "string"
+                }
+              }
+            }
           },
           "default": {
             "content": {

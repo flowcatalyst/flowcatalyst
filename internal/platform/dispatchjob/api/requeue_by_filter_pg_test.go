@@ -36,15 +36,22 @@ func newState(pool *pgxpool.Pool) *State {
 	return &State{Repo: dispatchjob.NewRepository(pool), UoW: usecasepgx.New(pool, platformsink.New())}
 }
 
+// writerPerms is what an operator holds: the reads and the ordinary writes
+// (not redrive-completed).
+var writerPerms = []string{
+	viewPerm, auth.DispatchJobRequeuePerm, auth.DispatchJobCancelPerm,
+	auth.DispatchJobCompletePerm, auth.DispatchJobEditPayloadPerm,
+}
+
 func anchor() context.Context {
 	return auth.WithContext(context.Background(), &auth.AuthContext{
-		PrincipalID: "prn_rbftestanchor", Scope: auth.ScopeAnchor, Permissions: []string{viewPerm},
+		PrincipalID: "prn_rbftestanchor", Scope: auth.ScopeAnchor, Permissions: writerPerms,
 	})
 }
 
 func clientCaller(clients ...string) context.Context {
 	return auth.WithContext(context.Background(), &auth.AuthContext{
-		PrincipalID: "prn_rbftestclient", Scope: auth.ScopeClient, Clients: clients, Permissions: []string{viewPerm},
+		PrincipalID: "prn_rbftestclient", Scope: auth.ScopeClient, Clients: clients, Permissions: writerPerms,
 	})
 }
 
@@ -54,9 +61,14 @@ func clientCaller(clients ...string) context.Context {
 // counter, so their id order is their seeding order. Returns the ids.
 func seedJobs(t *testing.T, pool *pgxpool.Pool, prefix, code, status string, clientID *string, n int) []string {
 	t.Helper()
+	return seedJobsAt(t, pool, prefix, code, status, clientID, n, time.Now().UTC().Add(-time.Hour))
+}
+
+// seedJobsAt is seedJobs with the jobs' created_at chosen.
+func seedJobsAt(t *testing.T, pool *pgxpool.Pool, prefix, code, status string, clientID *string, n int, created time.Time) []string {
+	t.Helper()
 	require.Len(t, prefix, 5, "ids are VARCHAR(13): 5-char prefix + 8 digits")
 	ctx := context.Background()
-	created := time.Now().UTC().Add(-time.Hour)
 	_, err := pool.Exec(ctx, `
 		INSERT INTO msg_dispatch_jobs (id, code, target_url, status, client_id, attempt_count, last_error, created_at, updated_at)
 		SELECT $1 || lpad(n::text, 8, '0'), $2, 'http://example.invalid/hook', $3, $4, 3, 'boom', $6, $6
@@ -106,6 +118,14 @@ func preview(t *testing.T, s *State, ctx context.Context, f DispatchJobFilter) R
 	return out.Body
 }
 
+// previewBare is preview without the window echo (tested on its own).
+func previewBare(t *testing.T, s *State, ctx context.Context, f DispatchJobFilter) RequeueByFilterPreviewResponse {
+	t.Helper()
+	b := preview(t, s, ctx, f)
+	b.Window = WindowResponse{}
+	return b
+}
+
 func run(s *State, ctx context.Context, f DispatchJobFilter, confirm int64, limit int) (RequeueByFilterResponse, error) {
 	out, err := s.requeueByFilter(ctx, &apicommon.In[RequeueByFilterRequest]{Body: RequeueByFilterRequest{
 		DispatchJobFilter: f, ConfirmCount: confirm, Limit: limit,
@@ -113,6 +133,7 @@ func run(s *State, ctx context.Context, f DispatchJobFilter, confirm int64, limi
 	if err != nil {
 		return RequeueByFilterResponse{}, err
 	}
+	out.Body.Window = WindowResponse{}
 	return out.Body, nil
 }
 
@@ -128,24 +149,27 @@ func TestRequeueByFilterPreview_CountsAndBreakdown(t *testing.T) {
 	seedJobs(t, pool, "rbppf", code, "FAILED", nil, 2)
 	seedJobs(t, pool, "rbpbf", code, "FAILED", &b, 1)
 
-	got := preview(t, s, anchor(), DispatchJobFilter{Codes: code})
+	got := previewBare(t, s, anchor(), DispatchJobFilter{Codes: code})
 	assert.Equal(t, RequeueByFilterPreviewResponse{
-		Count: 9, ByStatus: map[string]int64{"FAILED": 6, "COMPLETED": 2, "PENDING": 1}, EligibleCount: 9,
-	}, got)
+		Count: 9, ByStatus: map[string]int64{"FAILED": 6, "COMPLETED": 2, "PENDING": 1},
+		EligibleCount: 7, CompletedCount: 2, RedriveEligibleCount: 9,
+	}, got, "COMPLETED jobs are counted apart: a requeue does not reset them")
 
-	got = preview(t, s, anchor(), DispatchJobFilter{Codes: code, Statuses: "FAILED"})
+	got = previewBare(t, s, anchor(), DispatchJobFilter{Codes: code, Statuses: "FAILED"})
 	assert.Equal(t, int64(6), got.Count)
 	assert.Equal(t, int64(6), got.EligibleCount)
 
 	// A tenant's caller sees its own jobs plus platform-scoped ones (the list's
 	// rule) but may requeue only its own (the use case's rule).
-	got = preview(t, s, clientCaller(a), DispatchJobFilter{Codes: code})
+	got = previewBare(t, s, clientCaller(a), DispatchJobFilter{Codes: code})
 	assert.Equal(t, int64(8), got.Count)
 	assert.Equal(t, map[string]int64{"FAILED": 5, "COMPLETED": 2, "PENDING": 1}, got.ByStatus)
-	assert.Equal(t, int64(6), got.EligibleCount)
+	assert.Equal(t, int64(4), got.EligibleCount, "own FAILED 3 + own PENDING 1; platform jobs are not requeueable by a tenant")
+	assert.Equal(t, int64(2), got.CompletedCount)
+	assert.Equal(t, int64(6), got.RedriveEligibleCount)
 
 	// Asking for another tenant's jobs finds none.
-	got = preview(t, s, clientCaller(a), DispatchJobFilter{Codes: code, ClientIDs: b})
+	got = previewBare(t, s, clientCaller(a), DispatchJobFilter{Codes: code, ClientIDs: b})
 	assert.Equal(t, RequeueByFilterPreviewResponse{ByStatus: map[string]int64{}}, got)
 }
 
@@ -178,7 +202,7 @@ func TestRequeueByFilter_BatchesAndTruncates(t *testing.T) {
 	ids := seedJobs(t, pool, "rbbat", code, "FAILED", nil, 1250)
 	f := DispatchJobFilter{Codes: code, Statuses: "FAILED"}
 
-	pv := preview(t, s, anchor(), f)
+	pv := previewBare(t, s, anchor(), f)
 	require.Equal(t, int64(1250), pv.EligibleCount)
 	res, err := run(s, anchor(), f, pv.EligibleCount, 1000)
 	require.NoError(t, err)
@@ -209,7 +233,7 @@ func TestRequeueByFilter_BatchesAndTruncates(t *testing.T) {
 
 	// Once the projection has caught up, running again finishes the rest.
 	syncProjection(t, pool, code)
-	pv = preview(t, s, anchor(), f)
+	pv = previewBare(t, s, anchor(), f)
 	require.Equal(t, int64(250), pv.EligibleCount)
 	res, err = run(s, anchor(), f, pv.EligibleCount, 1000)
 	require.NoError(t, err)
@@ -227,7 +251,7 @@ func TestRequeueByFilter_OnlyMatchingRowsReset(t *testing.T) {
 	otherCode := seedJobs(t, pool, "rbof3", other, "FAILED", nil, 2)
 
 	f := DispatchJobFilter{Codes: code, Statuses: "FAILED"}
-	pv := preview(t, s, anchor(), f)
+	pv := previewBare(t, s, anchor(), f)
 	res, err := run(s, anchor(), f, pv.EligibleCount, 0)
 	require.NoError(t, err)
 	assert.Equal(t, RequeueByFilterResponse{Requeued: 4}, res)
@@ -254,7 +278,7 @@ func TestRequeueByFilter_TenantScoping(t *testing.T) {
 
 	ctx := clientCaller(a)
 	f := DispatchJobFilter{Codes: code}
-	pv := preview(t, s, ctx, f)
+	pv := previewBare(t, s, ctx, f)
 	require.Equal(t, int64(6), pv.Count)
 	require.Equal(t, int64(3), pv.EligibleCount)
 	res, err := run(s, ctx, f, pv.EligibleCount, 0)
@@ -325,7 +349,15 @@ func TestRequeueByFilter_Wire(t *testing.T) {
 
 	r := api.Post("/bff/dispatch-jobs/requeue-by-filter/preview", map[string]any{"codes": code, "statuses": "FAILED"})
 	require.Equal(t, http.StatusOK, r.Code, r.Body.String())
-	assert.Equal(t, map[string]any{"count": 3.0, "byStatus": map[string]any{"FAILED": 3.0}, "eligibleCount": 3.0}, decode(r))
+	pvBody := decode(r)
+	win, _ := pvBody["window"].(map[string]any)
+	require.NotNil(t, win, "the preview echoes its window: %s", r.Body.String())
+	assert.Equal(t, true, win["defaulted"])
+	delete(pvBody, "window")
+	assert.Equal(t, map[string]any{
+		"count": 3.0, "byStatus": map[string]any{"FAILED": 3.0}, "eligibleCount": 3.0,
+		"completedCount": 0.0, "inFlightCount": 0.0, "redriveEligibleCount": 3.0,
+	}, pvBody)
 
 	r = api.Post("/api/dispatch-jobs/requeue-by-filter", map[string]any{"codes": code})
 	assert.Equal(t, http.StatusBadRequest, r.Code, "confirmCount is required: %s", r.Body.String())
@@ -336,11 +368,19 @@ func TestRequeueByFilter_Wire(t *testing.T) {
 	require.Equal(t, http.StatusConflict, r.Code, r.Body.String())
 	body := decode(r)
 	assert.Equal(t, "FILTER_MATCH_CHANGED", body["error"])
-	assert.Equal(t, map[string]any{"count": 3.0, "eligibleCount": 3.0, "byStatus": map[string]any{"FAILED": 3.0}}, body["details"])
+	assert.Equal(t, map[string]any{
+		"count": 3.0, "eligibleCount": 3.0, "completedCount": 0.0, "inFlightCount": 0.0,
+		"redriveEligibleCount": 3.0, "byStatus": map[string]any{"FAILED": 3.0},
+	}, body["details"])
 
 	r = api.Post("/bff/dispatch-jobs/requeue-by-filter", map[string]any{"codes": code, "confirmCount": 3})
 	require.Equal(t, http.StatusOK, r.Code, r.Body.String())
-	assert.Equal(t, map[string]any{"requeued": 3.0, "truncated": false, "remaining": 0.0}, decode(r))
+	runBody := decode(r)
+	assert.NotNil(t, runBody["window"], "the run echoes its window")
+	delete(runBody, "window")
+	assert.Equal(t, map[string]any{
+		"requeued": 3.0, "redriven": 0.0, "skippedInFlight": 0.0, "skippedCompleted": 0.0, "truncated": false, "remaining": 0.0,
+	}, runBody)
 	assert.Equal(t, map[string]int{"PENDING": 3}, statusesOf(t, pool, ids))
 }
 
@@ -352,17 +392,19 @@ func TestRequeueByFilter_NoFilter(t *testing.T) {
 	failed := seedJobs(t, pool, "rbnf1", "rbftest:nofilter:job:a", "FAILED", nil, 20)
 	done := seedJobs(t, pool, "rbnf2", "rbftest:nofilter:job:b", "COMPLETED", nil, 10)
 
-	pv := preview(t, s, anchor(), DispatchJobFilter{})
+	pv := previewBare(t, s, anchor(), DispatchJobFilter{})
 	assert.Equal(t, RequeueByFilterPreviewResponse{
-		Count: 30, ByStatus: map[string]int64{"FAILED": 20, "COMPLETED": 10}, EligibleCount: 30,
+		Count: 30, ByStatus: map[string]int64{"FAILED": 20, "COMPLETED": 10},
+		EligibleCount: 20, CompletedCount: 10, RedriveEligibleCount: 30,
 	}, pv)
-	_, err := run(s, anchor(), DispatchJobFilter{}, 29, 0)
+	_, err := run(s, anchor(), DispatchJobFilter{}, 19, 0)
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "FILTER_MATCH_CHANGED")
 
 	res, err := run(s, anchor(), DispatchJobFilter{}, pv.EligibleCount, 0)
 	require.NoError(t, err)
-	assert.Equal(t, RequeueByFilterResponse{Requeued: 30}, res)
-	assert.Equal(t, map[string]int{"PENDING": 30}, statusesOf(t, pool, append(failed, done...)))
+	assert.Equal(t, RequeueByFilterResponse{Requeued: 20, SkippedCompleted: 10}, res)
+	assert.Equal(t, map[string]int{"PENDING": 20}, statusesOf(t, pool, failed))
+	assert.Equal(t, map[string]int{"COMPLETED": 10}, statusesOf(t, pool, done), "a filter with no status never touches COMPLETED jobs")
 }
 
 // The scheduler keeps claiming PENDING jobs and marking them QUEUED while a run
@@ -412,20 +454,22 @@ func TestRequeueByFilter_ConcurrentSchedulerClaim(t *testing.T) {
 	})
 
 	f := DispatchJobFilter{Codes: code}
-	pv := preview(t, s, anchor(), f)
+	pv := previewBare(t, s, anchor(), f)
 	require.Equal(t, int64(1500), pv.EligibleCount)
 	res, err := run(s, anchor(), f, pv.EligibleCount, 0)
 	cancel()
 	wg.Wait()
 	require.NoError(t, err)
 	require.NoError(t, claimErr)
-	assert.Equal(t, RequeueByFilterResponse{Requeued: 1500}, res)
 	assert.Positive(t, marked.Load(), "the scheduler must actually have raced the run")
+	// A job the scheduler queued before the walk reached it is in flight: it is
+	// skipped, never reset. Everything else is reset. Nothing is lost.
+	assert.Equal(t, int64(1500), res.Requeued+res.SkippedInFlight, "every eligible job is reset or reported skipped: %+v", res)
 
 	got := statusesOf(t, pool, ids)
 	assert.Equal(t, 1500, got["PENDING"]+got["QUEUED"], "every job is PENDING or QUEUED: %v", got)
 	var fresh int
 	require.NoError(t, pool.QueryRow(context.Background(),
 		`SELECT count(*) FROM msg_dispatch_jobs WHERE id = ANY($1) AND attempt_count = 0`, ids).Scan(&fresh))
-	assert.Equal(t, 1500, fresh)
+	assert.GreaterOrEqual(t, int64(fresh), res.Requeued, "a reset job has a fresh attempt budget")
 }

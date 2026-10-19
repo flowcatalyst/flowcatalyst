@@ -431,6 +431,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// through the use-case envelope rather than a bare UPDATE.
 		dispatchjobapi.Register(humaAPI, &dispatchjobapi.State{
 			Repo: repos.dispatchJobRepo, UoW: uow, Apps: repos.applicationRepo,
+			MaxWindowDays:    cfg.DispatchJobMaxWindowDays,
 			ClientIdentifier: client.NewCachedIdentifierResolver(repos.clientRepo, time.Minute),
 			// The sign action builds a delivery exactly as /api/dispatch/process
 			// would (same resolvers), minus the send — no verifier needed.

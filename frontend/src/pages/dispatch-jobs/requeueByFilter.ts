@@ -103,25 +103,42 @@ export function plural(n: number, word: string): string {
 	return `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
 }
 
+/**
+ * What a requeue left alone, in words ("" when nothing was skipped): jobs in
+ * flight (QUEUED, PROCESSING) are never reset; COMPLETED ones are redriven only
+ * with the API's redriveCompleted + confirmRedriveCompleted, which this console
+ * does not send.
+ */
+export function requeueSkipNote(res: {
+	skippedInFlight?: number;
+	skippedCompleted?: number;
+}): string {
+	const parts: string[] = [];
+	if (res.skippedInFlight) parts.push(`${plural(res.skippedInFlight, "job")} in flight (QUEUED or PROCESSING) left alone`);
+	if (res.skippedCompleted) parts.push(`${plural(res.skippedCompleted, "COMPLETED job")} left alone`);
+	return parts.length ? ` — ${parts.join("; ")}` : "";
+}
+
 /** The toast for a finished run. */
 export function requeueOutcome(res: RequeueByFilterResponse): {
 	severity: "success" | "warn" | "info";
 	summary: string;
 	detail: string;
 } {
+	const skipped = requeueSkipNote(res);
 	if (res.truncated) {
 		return {
 			severity: "warn",
 			summary: `Requeued ${plural(res.requeued, "job")}`,
-			detail: `${res.remaining.toLocaleString()} remain — run it again to continue.`,
+			detail: `${res.remaining.toLocaleString()} remain — run it again to continue.${skipped}`,
 		};
 	}
 	if (res.requeued === 0) {
-		return { severity: "info", summary: "Nothing requeued", detail: "No matching job could be requeued." };
+		return { severity: "info", summary: "Nothing requeued", detail: `No matching job could be requeued.${skipped}` };
 	}
 	return {
 		severity: "success",
 		summary: `Requeued ${plural(res.requeued, "job")}`,
-		detail: `${plural(res.requeued, "dispatch job")} reset to PENDING.`,
+		detail: `${plural(res.requeued, "dispatch job")} reset to PENDING.${skipped}`,
 	};
 }

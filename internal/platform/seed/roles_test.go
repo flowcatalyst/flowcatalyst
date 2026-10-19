@@ -116,3 +116,42 @@ func TestFunctionDeployerRole(t *testing.T) {
 	}
 	t.Fatal("platform:function-deployer role not found")
 }
+
+// The dispatch-job write actions are their own permissions (they were all
+// dispatch-job:view). The built-in messaging-admin role holds the four ordinary
+// ones; redrive-completed (re-delivering jobs that already succeeded) is held
+// by no built-in role but super-admin's wildcard; the read-only viewer role
+// holds none. Existing deployments get the grants from migration 085.
+func TestDispatchJobWritePermissionsInBuiltInRoles(t *testing.T) {
+	writes := []string{
+		"platform:messaging:dispatch-job:requeue",
+		"platform:messaging:dispatch-job:cancel",
+		"platform:messaging:dispatch-job:complete",
+		"platform:messaging:dispatch-job:edit-payload",
+	}
+	const redrive = "platform:messaging:dispatch-job:redrive-completed"
+	seen := map[string]bool{}
+	for _, r := range PlatformRoles() {
+		seen[r.Name] = true
+		if slices.Contains(r.Permissions, redrive) {
+			t.Errorf("role %s holds %s; no built-in role should", r.Name, redrive)
+		}
+		switch r.Name {
+		case "platform:messaging-admin":
+			for _, p := range append([]string{"platform:messaging:dispatch-job:view"}, writes...) {
+				if !slices.Contains(r.Permissions, p) {
+					t.Errorf("messaging-admin missing %q", p)
+				}
+			}
+		case "platform:viewer", "platform:admin-readonly", "platform:application-service":
+			for _, p := range writes {
+				if slices.Contains(r.Permissions, p) {
+					t.Errorf("role %s must not hold %q", r.Name, p)
+				}
+			}
+		}
+	}
+	if !seen["platform:messaging-admin"] {
+		t.Fatal("messaging-admin role not found")
+	}
+}

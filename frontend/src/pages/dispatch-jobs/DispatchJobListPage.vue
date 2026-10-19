@@ -15,11 +15,15 @@ import {
 	type RequeueByFilterResponse,
 } from "@/api/dispatch-jobs";
 import { notify, toast } from "@/utils/errorBus";
+import { useAuthStore } from "@/stores/auth";
+import { userHasPermission } from "@/stores/permissions";
+import { DISPATCH_JOB_REQUEUE } from "@/utils/dispatch-job-permissions";
 import RequeueByFilterDialog from "./RequeueByFilterDialog.vue";
 import { codeLevels } from "@/utils/code-facets";
 import {
 	ERROR_STATUSES,
 	requeueOutcome,
+	requeueSkipNote,
 	selectAllBannerState,
 	statusSeverity,
 	summarizeFilters,
@@ -32,6 +36,10 @@ interface FilterOption {
 }
 
 const sizeOptions = [50, 100, 200, 500, 1000];
+// Requeue has its own permission (the API refuses without it): the requeue
+// actions are offered only to holders.
+const authStore = useAuthStore();
+const canRequeue = computed(() => userHasPermission(authStore.user, DISPATCH_JOB_REQUEUE));
 const route = useRoute();
 const router = useRouter();
 
@@ -306,10 +314,12 @@ async function requeueIds(ids: string[]) {
 	if (!ids.length || requeuing.value) return;
 	requeuing.value = true;
 	try {
-		const { requeued } = await dispatchJobsApi.requeue(ids);
+		const res = await dispatchJobsApi.requeue(ids);
+		const { requeued } = res;
+		const skipped = requeueSkipNote(res);
 		toast.success(
 			"Requeued",
-			`${requeued} dispatch job${requeued === 1 ? "" : "s"} reset to PENDING`,
+			`${requeued} dispatch job${requeued === 1 ? "" : "s"} reset to PENDING${skipped}`,
 		);
 		selectedJobs.value = [];
 		await load();
@@ -513,6 +523,7 @@ function formatCode(code: string | undefined): {
           >
             <template #actions>
               <Button
+                v-if="canRequeue"
                 :label="requeueSelectedLabel"
                 icon="pi pi-replay"
                 size="small"
@@ -523,6 +534,7 @@ function formatCode(code: string | undefined): {
                 v-tooltip="'Reset the selected jobs to PENDING for re-dispatch'"
               />
               <SplitButton
+                v-if="canRequeue"
                 :label="requeueAllLabel"
                 icon="pi pi-replay"
                 size="small"
@@ -751,6 +763,7 @@ function formatCode(code: string | undefined): {
                 @click="viewJob(data)"
               />
               <Button
+                v-if="canRequeue"
                 icon="pi pi-replay"
                 text
                 rounded

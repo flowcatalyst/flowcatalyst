@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,6 +47,16 @@ type State struct {
 	// own applications' jobs (F20). Optional only in tests: nil refuses such a
 	// caller.
 	Apps *application.Repository
+	// MaxWindowDays is the widest created_at window a list-shaped read may ask
+	// for (FC_DISPATCH_JOB_MAX_WINDOW_DAYS); < 1 means
+	// dispatchjob.DefaultMaxWindowDays.
+	MaxWindowDays int
+}
+
+// window holds f to the time window every list-shaped read carries and reports
+// it (see dispatchjob.EnforceWindow).
+func (s *State) window(f dispatchjob.FilterParams) (dispatchjob.FilterParams, dispatchjob.Window, error) {
+	return dispatchjob.EnforceWindow(f, time.Now(), s.MaxWindowDays)
 }
 
 // withClientIdentifier fills each list row's clientIdentifier through the
@@ -70,6 +81,19 @@ const (
 	viewPerm    = "platform:messaging:dispatch-job:view"
 	viewRawPerm = "platform:messaging:dispatch-job:view-raw"
 )
+
+// requireRequeue gates requeue by ids and by filter. A request that asks to
+// redrive COMPLETED jobs (redriveCompleted) additionally needs
+// dispatch-job:redrive-completed; asking without it is a 403, not a quiet skip.
+func requireRequeue(ac *auth.AuthContext, redriveCompleted bool) error {
+	if err := auth.CanWritePermission(ac, auth.DispatchJobRequeuePerm); err != nil {
+		return err
+	}
+	if redriveCompleted {
+		return auth.CanWritePermission(ac, auth.DispatchJobRedriveCompletedPerm)
+	}
+	return nil
+}
 
 // Register mounts the dispatch-job endpoints.
 func Register(api huma.API, s *State) {
@@ -292,7 +316,25 @@ func ownedBy(apps *[]string, code string) bool {
 	return apps == nil || slices.Contains(*apps, sdk.FirstSegment(code))
 }
 
-func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[[]DispatchJobRead], error) {
+// DispatchJobListOut is a list answer: a bare JSON array (the SPA and the SDKs
+// bind it directly) with the applied time window in response headers.
+type DispatchJobListOut struct {
+	WindowFrom      string `header:"X-Window-From" doc:"Start of the created_at window the list was held to (RFC3339, UTC)"`
+	WindowTo        string `header:"X-Window-To" doc:"End of the window (RFC3339, UTC); now when the request gave no until"`
+	WindowDefaulted string `header:"X-Window-Defaulted" doc:"true when the server supplied a bound the request did not (no since/until: the last 24 hours)"`
+	Body            []DispatchJobRead
+}
+
+func windowedList(w dispatchjob.Window, rows []DispatchJobRead) *DispatchJobListOut {
+	return &DispatchJobListOut{
+		WindowFrom:      w.From.Format(time.RFC3339),
+		WindowTo:        w.To.Format(time.RFC3339),
+		WindowDefaulted: strconv.FormatBool(w.Defaulted),
+		Body:            rows,
+	}
+}
+
+func (s *State) list(ctx context.Context, in *listInput) (*DispatchJobListOut, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadDispatchJobs(ac); err != nil {
 		return nil, err
@@ -301,27 +343,34 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[[]Dispa
 	if err != nil {
 		return nil, err
 	}
-	f := scopeFilters(ac, in.toFilters())
+	f, win, err := s.window(scopeFilters(ac, in.toFilters()))
+	if err != nil {
+		return nil, err
+	}
 	f.AccessibleApplications = apps
 	rows, err := s.Repo.FindWithFilters(ctx, f)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
 	out := s.withClientIdentifier(ctx, apicommon.MapSlice(rows, readFromEntity))
-	return &apicommon.Out[[]DispatchJobRead]{Body: out}, nil
+	return windowedList(win, out), nil
 }
 
-func (s *State) listRaw(ctx context.Context, in *listInput) (*apicommon.Out[[]DispatchJobRead], error) {
+func (s *State) listRaw(ctx context.Context, in *listInput) (*DispatchJobListOut, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewRawPerm); err != nil {
 		return nil, err
 	}
-	rows, err := s.Repo.FindWithFilters(ctx, scopeFilters(ac, in.toFilters()))
+	f, win, err := s.window(scopeFilters(ac, in.toFilters()))
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.Repo.FindWithFilters(ctx, f)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_raw failed", err)
 	}
 	out := s.withClientIdentifier(ctx, apicommon.MapSlice(rows, readFromEntity))
-	return &apicommon.Out[[]DispatchJobRead]{Body: out}, nil
+	return windowedList(win, out), nil
 }
 
 // ── debug raw dispatch jobs ──────────────────────────────────────────────
@@ -463,78 +512,136 @@ func (s *State) byEvent(ctx context.Context, in *byEventInput) (*apicommon.Out[[
 
 // RequeueRequest is the body of POST /dispatch-jobs/requeue.
 type RequeueRequest struct {
-	IDs []string `json:"ids" doc:"Dispatch job ids to reset to PENDING for re-dispatch"`
+	IDs                     []string `json:"ids" doc:"Dispatch job ids to reset to PENDING for re-dispatch. QUEUED and PROCESSING jobs are never reset; COMPLETED jobs only with redriveCompleted and confirmRedriveCompleted. Skipped jobs are reported, not an error."`
+	RedriveCompleted        bool     `json:"redriveCompleted,omitempty" doc:"Also re-deliver COMPLETED jobs. Needs confirmRedriveCompleted=REDRIVE and the dispatch-job:redrive-completed permission (403 without it)."`
+	ConfirmRedriveCompleted string   `json:"confirmRedriveCompleted,omitempty" doc:"The literal REDRIVE, confirming redriveCompleted. Without both fields, COMPLETED jobs are skipped."`
+}
+
+// SkippedJobResponse is a job a requeue found and left alone.
+type SkippedJobResponse struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Reason string `json:"reason" enum:"IN_FLIGHT,COMPLETED_REDRIVE_NOT_CONFIRMED" doc:"IN_FLIGHT: QUEUED or PROCESSING, never reset. COMPLETED_REDRIVE_NOT_CONFIRMED: completed jobs are redriven only with redriveCompleted and confirmRedriveCompleted."`
 }
 
 // RequeueResponse reports how many jobs were reset.
 type RequeueResponse struct {
-	Requeued int64 `json:"requeued"`
+	Requeued         int64                `json:"requeued" doc:"Jobs reset to PENDING (redriven COMPLETED jobs included)"`
+	Redriven         int64                `json:"redriven" doc:"How many of them were COMPLETED jobs re-delivered (0 unless the request redrove)"`
+	SkippedInFlight  int64                `json:"skippedInFlight" doc:"QUEUED or PROCESSING jobs left alone"`
+	SkippedCompleted int64                `json:"skippedCompleted" doc:"COMPLETED jobs left alone because the redrive was not requested and confirmed"`
+	Skipped          []SkippedJobResponse `json:"skipped" doc:"The skipped jobs, with the reason"`
 }
 
 // requeue resets the given jobs to PENDING so the scheduler re-dispatches
 // them (clears scheduled_for + attempt_count + terminal stamps). An
 // operator recovery action. Runs through the ResendDispatchJobs use case
-// (T3/A-01) — the route, request/response shape, and permission gate are
-// unchanged from before that migration; only the implementation moved off a
-// bare UPDATE and onto the envelope (see operations/resend.go's doc
-// comment).
+// (T3/A-01). A job in flight (QUEUED, PROCESSING) is never reset and a
+// COMPLETED job only by a confirmed redrive; the rest are skipped and reported.
 //
-// Gated on the same dispatch-job:view permission as the list: a caller who
-// can see a job may re-drive it. Per-tenant scoping (a view grant can't be
-// used to requeue another tenant's jobs) is now enforced inside the use
-// case's Execute, not in SQL here — see ResendDispatchJobs.
+// Gated on dispatch-job:requeue (and dispatch-job:redrive-completed for a
+// redrive request). Per-tenant scoping (a requeue grant can't be used to
+// requeue another tenant's jobs) is enforced inside the use case's Execute,
+// not in SQL here — see ResendDispatchJobs.
 func (s *State) requeue(ctx context.Context, in *apicommon.In[RequeueRequest]) (*apicommon.Out[RequeueResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+	if err := requireRequeue(ac, in.Body.RedriveCompleted); err != nil {
 		return nil, err
 	}
 	if len(in.Body.IDs) == 0 {
-		return &apicommon.Out[RequeueResponse]{Body: RequeueResponse{Requeued: 0}}, nil
+		return &apicommon.Out[RequeueResponse]{Body: RequeueResponse{Skipped: []SkippedJobResponse{}}}, nil
 	}
 	ec := auth.NewExecutionContext(ctx)
-	event, err := usecaseop.Run(ctx, s.UoW, operations.ResendDispatchJobs(s.Repo), operations.ResendCommand{IDs: in.Body.IDs}, ec)
+	cmd := operations.ResendCommand{
+		IDs: in.Body.IDs, RedriveCompleted: in.Body.RedriveCompleted, ConfirmRedriveCompleted: in.Body.ConfirmRedriveCompleted,
+	}
+	event, err := usecaseop.Run(ctx, s.UoW, operations.ResendDispatchJobs(s.Repo), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[RequeueResponse]{Body: RequeueResponse{Requeued: int64(len(event.IDs))}}, nil
+	out := RequeueResponse{
+		Requeued: int64(len(event.IDs)), Redriven: int64(len(event.Redriven)),
+		Skipped: make([]SkippedJobResponse, 0, len(event.Skipped)),
+	}
+	for _, sk := range event.Skipped {
+		out.Skipped = append(out.Skipped, SkippedJobResponse{ID: sk.ID, Status: sk.Status, Reason: sk.Reason})
+		if sk.Reason == dispatchjob.SkipInFlight {
+			out.SkippedInFlight++
+		} else {
+			out.SkippedCompleted++
+		}
+	}
+	return &apicommon.Out[RequeueResponse]{Body: out}, nil
+}
+
+// WindowResponse is the created_at window a bulk read was held to.
+type WindowResponse struct {
+	From      time.Time `json:"from" doc:"Start of the window (inclusive)"`
+	To        time.Time `json:"to" doc:"End of the window; now when the request gave no until"`
+	Defaulted bool      `json:"defaulted" doc:"true when the server supplied a bound the request did not (no since/until: the last 24 hours)"`
+}
+
+func windowResponse(w dispatchjob.Window) WindowResponse {
+	return WindowResponse{From: w.From, To: w.To, Defaulted: w.Defaulted}
 }
 
 // RequeueByFilterPreviewRequest is the body of POST
-// /dispatch-jobs/requeue-by-filter/preview: the list's filter.
+// /dispatch-jobs/requeue-by-filter/preview: the list's filter. With no
+// since/until the last 24 hours are counted; a window beyond
+// FC_DISPATCH_JOB_MAX_WINDOW_DAYS (default 31) is 400 WINDOW_TOO_LARGE.
 type RequeueByFilterPreviewRequest struct {
 	DispatchJobFilter
 }
 
 // RequeueByFilterPreviewResponse describes the jobs a filter matches.
 type RequeueByFilterPreviewResponse struct {
-	Count         int64            `json:"count" doc:"Jobs the filter matches that the caller can see"`
-	ByStatus      map[string]int64 `json:"byStatus" doc:"count broken down by status"`
-	EligibleCount int64            `json:"eligibleCount" doc:"How many of them a requeue would reset for this caller; send it back as confirmCount"`
+	Count                int64            `json:"count" doc:"Jobs the filter matches in the window that the caller can see"`
+	ByStatus             map[string]int64 `json:"byStatus" doc:"count broken down by status"`
+	EligibleCount        int64            `json:"eligibleCount" doc:"How many of them a requeue would reset for this caller (not COMPLETED, not in flight); send it back as confirmCount"`
+	CompletedCount       int64            `json:"completedCount" doc:"COMPLETED jobs the filter matches that the caller can see. A requeue skips them; they are redriven only with redriveCompleted and confirmRedriveCompleted"`
+	InFlightCount        int64            `json:"inFlightCount" doc:"QUEUED or PROCESSING jobs the filter matches; a requeue never resets them"`
+	RedriveEligibleCount int64            `json:"redriveEligibleCount" doc:"eligibleCount + completedCount: the confirmCount of a request that also redrives COMPLETED jobs"`
+	Window               WindowResponse   `json:"window" doc:"The created_at window the counts cover"`
 }
 
 // RequeueByFilterRequest is the body of POST /dispatch-jobs/requeue-by-filter:
-// the list's filter, the eligible count the caller confirmed, and a cap.
+// the list's filter, the count the caller confirmed, and a cap. The same window
+// rules as the preview apply (default last 24 hours, maximum
+// FC_DISPATCH_JOB_MAX_WINDOW_DAYS).
 type RequeueByFilterRequest struct {
 	DispatchJobFilter
-	ConfirmCount int64 `json:"confirmCount" minimum:"0" doc:"The eligibleCount the caller was shown. If more jobs are eligible now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED."`
-	Limit        int   `json:"limit,omitempty" minimum:"0" maximum:"10000" doc:"Most jobs to reset in this request (default and maximum 10000)"`
+	ConfirmCount            int64  `json:"confirmCount" minimum:"0" doc:"The eligibleCount the caller was shown (redriveEligibleCount when redriveCompleted). If more jobs would be reset now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED."`
+	Limit                   int    `json:"limit,omitempty" minimum:"0" maximum:"10000" doc:"Most jobs to reset in this request (default and maximum 10000)"`
+	RedriveCompleted        bool   `json:"redriveCompleted,omitempty" doc:"Also re-deliver the COMPLETED jobs the filter matches. Needs confirmRedriveCompleted=REDRIVE and the dispatch-job:redrive-completed permission (403 without it). Without both fields COMPLETED jobs are skipped and counted in skippedCompleted."`
+	ConfirmRedriveCompleted string `json:"confirmRedriveCompleted,omitempty" doc:"The literal REDRIVE, confirming redriveCompleted."`
 }
 
 // RequeueByFilterResponse reports a requeue-by-filter run.
 type RequeueByFilterResponse struct {
-	Requeued  int64 `json:"requeued" doc:"Jobs reset to PENDING"`
-	Truncated bool  `json:"truncated" doc:"The run stopped at its limit (or at confirmCount) with eligible jobs left"`
-	Remaining int64 `json:"remaining" doc:"Eligible jobs still matching after the run; run again to continue"`
+	Requeued         int64          `json:"requeued" doc:"Jobs reset to PENDING (redriven COMPLETED jobs included)"`
+	Redriven         int64          `json:"redriven" doc:"How many of them were COMPLETED jobs re-delivered"`
+	SkippedInFlight  int64          `json:"skippedInFlight" doc:"QUEUED or PROCESSING matches left alone (never reset)"`
+	SkippedCompleted int64          `json:"skippedCompleted" doc:"COMPLETED matches left alone because the redrive was not requested and confirmed"`
+	Truncated        bool           `json:"truncated" doc:"The run stopped at its limit (or at confirmCount) with eligible jobs left"`
+	Remaining        int64          `json:"remaining" doc:"Eligible jobs still matching after the run; run again to continue"`
+	Window           WindowResponse `json:"window" doc:"The created_at window the run was held to"`
 }
 
-// requeueByFilterPreview counts what a requeue-by-filter would touch. Same
-// gate and visibility as the list.
+// requeueByFilterPreview counts what a requeue-by-filter would touch, within
+// the request's window. Callable with dispatch-job:requeue or dispatch-job:view
+// (the counts are no more than the list shows).
 func (s *State) requeueByFilterPreview(ctx context.Context, in *apicommon.In[RequeueByFilterPreviewRequest]) (*apicommon.Out[RequeueByFilterPreviewResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
-		return nil, err
+	if auth.CanWritePermission(ac, auth.DispatchJobRequeuePerm) != nil {
+		if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+			return nil, err
+		}
 	}
 	f, err := in.Body.toParams(true)
+	if err != nil {
+		return nil, err
+	}
+	f, win, err := s.window(f)
 	if err != nil {
 		return nil, err
 	}
@@ -544,39 +651,50 @@ func (s *State) requeueByFilterPreview(ctx context.Context, in *apicommon.In[Req
 	}
 	return &apicommon.Out[RequeueByFilterPreviewResponse]{Body: RequeueByFilterPreviewResponse{
 		Count: sum.Count, ByStatus: sum.ByStatus, EligibleCount: sum.Eligible,
+		CompletedCount: sum.Completed, InFlightCount: sum.InFlight, RedriveEligibleCount: sum.RedriveEligible(),
+		Window: windowResponse(win),
 	}}, nil
 }
 
-// requeueByFilter resets every job the filter matches — up to limit and never
-// more than confirmCount — through ResendDispatchJobs, ResendBatchSize ids per
-// transaction. Same gate as requeue; tenant scoping stays in the use case.
+// requeueByFilter resets every job the filter matches in its window — up to
+// limit and never more than confirmCount — through ResendDispatchJobs,
+// ResendBatchSize ids per transaction. Gated like requeue; tenant scoping
+// stays in the use case.
 func (s *State) requeueByFilter(ctx context.Context, in *apicommon.In[RequeueByFilterRequest]) (*apicommon.Out[RequeueByFilterResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+	if err := requireRequeue(ac, in.Body.RedriveCompleted); err != nil {
 		return nil, err
 	}
 	f, err := in.Body.toParams(true)
 	if err != nil {
 		return nil, err
 	}
+	f, win, err := s.window(f)
+	if err != nil {
+		return nil, err
+	}
 	ec := auth.NewExecutionContext(ctx)
-	res, err := operations.ResendByFilter(ctx, s.UoW, s.Repo, f, in.Body.ConfirmCount, in.Body.Limit, ec)
+	opts := operations.ResendByFilterOptions{
+		RedriveCompleted: in.Body.RedriveCompleted, ConfirmRedriveCompleted: in.Body.ConfirmRedriveCompleted,
+	}
+	res, err := operations.ResendByFilter(ctx, s.UoW, s.Repo, f, in.Body.ConfirmCount, in.Body.Limit, opts, ec)
 	if err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[RequeueByFilterResponse]{Body: RequeueByFilterResponse{
-		Requeued: res.Requeued, Truncated: res.Remaining > 0, Remaining: res.Remaining,
+		Requeued: res.Requeued, Redriven: res.Redriven,
+		SkippedInFlight: res.SkippedInFlight, SkippedCompleted: res.SkippedCompleted,
+		Truncated: res.Remaining > 0, Remaining: res.Remaining, Window: windowResponse(win),
 	}}, nil
 }
 
-// cancel overrides a FAILED job to CANCELLED. Gated on the same
-// dispatch-job:view permission as requeue (a caller who can see a job may
-// resolve it); per-resource client scope is enforced inside the use case.
+// cancel overrides a FAILED job to CANCELLED. Gated on dispatch-job:cancel;
+// per-resource client scope is enforced inside the use case.
 // Returns the updated job so the SPA can refresh its row without a second
 // GET.
 func (s *State) cancel(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[DispatchJobResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+	if err := auth.CanWritePermission(ac, auth.DispatchJobCancelPerm); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -590,7 +708,7 @@ func (s *State) cancel(ctx context.Context, in *apicommon.IDInput) (*apicommon.O
 // Same gating and reload shape as cancel.
 func (s *State) complete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[DispatchJobResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+	if err := auth.CanWritePermission(ac, auth.DispatchJobCompletePerm); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -612,12 +730,12 @@ type editPayloadInput struct {
 }
 
 // editPayload rewrites the payload of a PENDING or FAILED job so an operator
-// can fix it and then requeue. Same coarse gate as requeue/cancel/complete;
+// can fix it and then requeue. Gated on dispatch-job:edit-payload;
 // per-resource client scope and the status rule are in the operation. Status
 // and attempts are not touched.
 func (s *State) editPayload(ctx context.Context, in *editPayloadInput) (*apicommon.Out[DispatchJobResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+	if err := auth.CanWritePermission(ac, auth.DispatchJobEditPayloadPerm); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -641,16 +759,29 @@ func (s *State) reload(ctx context.Context, id string) (*apicommon.Out[DispatchJ
 	return &apicommon.Out[DispatchJobResponse]{Body: fromEntity(j)}, nil
 }
 
-func (s *State) filterOptions(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[DispatchJobFilterOptionsResponse], error) {
+type filterOptionsInput struct {
+	Since string `query:"since" doc:"RFC3339; start of the created_at window the values are read from (default: 24 hours before until/now)"`
+	Until string `query:"until" doc:"RFC3339; end of the window (default: now)"`
+}
+
+func (s *State) filterOptions(ctx context.Context, in *filterOptionsInput) (*apicommon.Out[DispatchJobFilterOptionsResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+		return nil, err
+	}
+	f, err := (&DispatchJobFilter{Since: in.Since, Until: in.Until}).toParams(true)
+	if err != nil {
+		return nil, err
+	}
+	f, win, err := s.window(f)
+	if err != nil {
 		return nil, err
 	}
 	// Scoped as the list is: a client user sees the values of platform jobs
 	// and its own tenants' jobs only.
 	scope := operations.VisibleTo(ac, dispatchjob.FilterParams{}).AccessibleClientIDs
 	q := func(col string) []string {
-		out, _ := s.Repo.DistinctValues(ctx, col, 200, scope)
+		out, _ := s.Repo.DistinctValues(ctx, col, 200, scope, f.Since, f.Until)
 		return out
 	}
 	return &apicommon.Out[DispatchJobFilterOptionsResponse]{Body: DispatchJobFilterOptionsResponse{
@@ -660,5 +791,6 @@ func (s *State) filterOptions(ctx context.Context, _ *apicommon.Empty) (*apicomm
 		DispatchPoolIDs: q("dispatch_pool_id"),
 		SubscriptionIDs: q("subscription_id"),
 		Kinds:           q("kind"),
+		Window:          windowResponse(win),
 	}}, nil
 }

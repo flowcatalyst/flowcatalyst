@@ -1550,6 +1550,7 @@ export type DispatchJobFilterOptionsResponse = {
     kinds: Array<string>;
     statuses: Array<string>;
     subscriptionIds: Array<string>;
+    window: WindowResponse;
 };
 
 export type DispatchJobRead = {
@@ -2936,13 +2937,29 @@ export type RequeueByFilterPreviewResponse = {
         [key: string]: number;
     };
     /**
-     * Jobs the filter matches that the caller can see
+     * COMPLETED jobs the filter matches that the caller can see. A requeue skips them; they are redriven only with redriveCompleted and confirmRedriveCompleted
+     */
+    completedCount: number;
+    /**
+     * Jobs the filter matches in the window that the caller can see
      */
     count: number;
     /**
-     * How many of them a requeue would reset for this caller; send it back as confirmCount
+     * How many of them a requeue would reset for this caller (not COMPLETED, not in flight); send it back as confirmCount
      */
     eligibleCount: number;
+    /**
+     * QUEUED or PROCESSING jobs the filter matches; a requeue never resets them
+     */
+    inFlightCount: number;
+    /**
+     * eligibleCount + completedCount: the confirmCount of a request that also redrives COMPLETED jobs
+     */
+    redriveEligibleCount: number;
+    /**
+     * The created_at window the counts cover
+     */
+    window: WindowResponse;
 };
 
 export type RequeueByFilterRequest = {
@@ -2969,9 +2986,13 @@ export type RequeueByFilterRequest = {
      */
     codes?: string;
     /**
-     * The eligibleCount the caller was shown. If more jobs are eligible now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
+     * The eligibleCount the caller was shown (redriveEligibleCount when redriveCompleted). If more jobs would be reset now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
      */
     confirmCount: number;
+    /**
+     * The literal REDRIVE, confirming redriveCompleted.
+     */
+    confirmRedriveCompleted?: string;
     dispatchPoolId?: string;
     /**
      * Most jobs to reset in this request (default and maximum 10000)
@@ -2981,6 +3002,10 @@ export type RequeueByFilterRequest = {
      * Exact message group
      */
     messageGroup?: string;
+    /**
+     * Also re-deliver the COMPLETED jobs the filter matches. Needs confirmRedriveCompleted=REDRIVE and the dispatch-job:redrive-completed permission (403 without it). Without both fields COMPLETED jobs are skipped and counted in skippedCompleted.
+     */
+    redriveCompleted?: boolean;
     /**
      * RFC3339 timestamp
      */
@@ -3012,17 +3037,33 @@ export type RequeueByFilterResponse = {
      */
     readonly $schema?: string;
     /**
+     * How many of them were COMPLETED jobs re-delivered
+     */
+    redriven: number;
+    /**
      * Eligible jobs still matching after the run; run again to continue
      */
     remaining: number;
     /**
-     * Jobs reset to PENDING
+     * Jobs reset to PENDING (redriven COMPLETED jobs included)
      */
     requeued: number;
+    /**
+     * COMPLETED matches left alone because the redrive was not requested and confirmed
+     */
+    skippedCompleted: number;
+    /**
+     * QUEUED or PROCESSING matches left alone (never reset)
+     */
+    skippedInFlight: number;
     /**
      * The run stopped at its limit (or at confirmCount) with eligible jobs left
      */
     truncated: boolean;
+    /**
+     * The created_at window the run was held to
+     */
+    window: WindowResponse;
 };
 
 export type RequeueRequest = {
@@ -3031,9 +3072,17 @@ export type RequeueRequest = {
      */
     readonly $schema?: string;
     /**
-     * Dispatch job ids to reset to PENDING for re-dispatch
+     * The literal REDRIVE, confirming redriveCompleted. Without both fields, COMPLETED jobs are skipped.
+     */
+    confirmRedriveCompleted?: string;
+    /**
+     * Dispatch job ids to reset to PENDING for re-dispatch. QUEUED and PROCESSING jobs are never reset; COMPLETED jobs only with redriveCompleted and confirmRedriveCompleted. Skipped jobs are reported, not an error.
      */
     ids: Array<string>;
+    /**
+     * Also re-deliver COMPLETED jobs. Needs confirmRedriveCompleted=REDRIVE and the dispatch-job:redrive-completed permission (403 without it).
+     */
+    redriveCompleted?: boolean;
     [key: string]: unknown;
 };
 
@@ -3042,7 +3091,26 @@ export type RequeueResponse = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * How many of them were COMPLETED jobs re-delivered (0 unless the request redrove)
+     */
+    redriven: number;
+    /**
+     * Jobs reset to PENDING (redriven COMPLETED jobs included)
+     */
     requeued: number;
+    /**
+     * The skipped jobs, with the reason
+     */
+    skipped: Array<SkippedJobResponse>;
+    /**
+     * COMPLETED jobs left alone because the redrive was not requested and confirmed
+     */
+    skippedCompleted: number;
+    /**
+     * QUEUED or PROCESSING jobs left alone
+     */
+    skippedInFlight: number;
 };
 
 export type ResendInvitationRequest = {
@@ -3385,6 +3453,15 @@ export type SettingResponse = {
     kind: string;
     updatedAt: string;
     value?: string;
+};
+
+export type SkippedJobResponse = {
+    id: string;
+    /**
+     * IN_FLIGHT: QUEUED or PROCESSING, never reset. COMPLETED_REDRIVE_NOT_CONFIRMED: completed jobs are redriven only with redriveCompleted and confirmRedriveCompleted.
+     */
+    reason: 'IN_FLIGHT' | 'COMPLETED_REDRIVE_NOT_CONFIRMED';
+    status: string;
 };
 
 export type SpecVersionResponse = {
@@ -4278,6 +4355,21 @@ export type WhoamiResponse = {
     principalType: string;
     roles: Array<string>;
     scope: string;
+};
+
+export type WindowResponse = {
+    /**
+     * true when the server supplied a bound the request did not (no since/until: the last 24 hours)
+     */
+    defaulted: boolean;
+    /**
+     * Start of the window (inclusive)
+     */
+    from: string;
+    /**
+     * End of the window; now when the request gave no until
+     */
+    to: string;
 };
 
 export type WiringResponse = {
@@ -5238,6 +5330,7 @@ export type DispatchJobFilterOptionsResponseWritable = {
     kinds: Array<string>;
     statuses: Array<string>;
     subscriptionIds: Array<string>;
+    window: WindowResponse;
 };
 
 export type DispatchJobResponseWritable = {
@@ -6003,13 +6096,29 @@ export type RequeueByFilterPreviewResponseWritable = {
         [key: string]: number;
     };
     /**
-     * Jobs the filter matches that the caller can see
+     * COMPLETED jobs the filter matches that the caller can see. A requeue skips them; they are redriven only with redriveCompleted and confirmRedriveCompleted
+     */
+    completedCount: number;
+    /**
+     * Jobs the filter matches in the window that the caller can see
      */
     count: number;
     /**
-     * How many of them a requeue would reset for this caller; send it back as confirmCount
+     * How many of them a requeue would reset for this caller (not COMPLETED, not in flight); send it back as confirmCount
      */
     eligibleCount: number;
+    /**
+     * QUEUED or PROCESSING jobs the filter matches; a requeue never resets them
+     */
+    inFlightCount: number;
+    /**
+     * eligibleCount + completedCount: the confirmCount of a request that also redrives COMPLETED jobs
+     */
+    redriveEligibleCount: number;
+    /**
+     * The created_at window the counts cover
+     */
+    window: WindowResponse;
 };
 
 export type RequeueByFilterRequestWritable = {
@@ -6032,9 +6141,13 @@ export type RequeueByFilterRequestWritable = {
      */
     codes?: string;
     /**
-     * The eligibleCount the caller was shown. If more jobs are eligible now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
+     * The eligibleCount the caller was shown (redriveEligibleCount when redriveCompleted). If more jobs would be reset now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
      */
     confirmCount: number;
+    /**
+     * The literal REDRIVE, confirming redriveCompleted.
+     */
+    confirmRedriveCompleted?: string;
     dispatchPoolId?: string;
     /**
      * Most jobs to reset in this request (default and maximum 10000)
@@ -6044,6 +6157,10 @@ export type RequeueByFilterRequestWritable = {
      * Exact message group
      */
     messageGroup?: string;
+    /**
+     * Also re-deliver the COMPLETED jobs the filter matches. Needs confirmRedriveCompleted=REDRIVE and the dispatch-job:redrive-completed permission (403 without it). Without both fields COMPLETED jobs are skipped and counted in skippedCompleted.
+     */
+    redriveCompleted?: boolean;
     /**
      * RFC3339 timestamp
      */
@@ -6071,29 +6188,72 @@ export type RequeueByFilterRequestWritable = {
 
 export type RequeueByFilterResponseWritable = {
     /**
+     * How many of them were COMPLETED jobs re-delivered
+     */
+    redriven: number;
+    /**
      * Eligible jobs still matching after the run; run again to continue
      */
     remaining: number;
     /**
-     * Jobs reset to PENDING
+     * Jobs reset to PENDING (redriven COMPLETED jobs included)
      */
     requeued: number;
+    /**
+     * COMPLETED matches left alone because the redrive was not requested and confirmed
+     */
+    skippedCompleted: number;
+    /**
+     * QUEUED or PROCESSING matches left alone (never reset)
+     */
+    skippedInFlight: number;
     /**
      * The run stopped at its limit (or at confirmCount) with eligible jobs left
      */
     truncated: boolean;
+    /**
+     * The created_at window the run was held to
+     */
+    window: WindowResponse;
 };
 
 export type RequeueRequestWritable = {
     /**
-     * Dispatch job ids to reset to PENDING for re-dispatch
+     * The literal REDRIVE, confirming redriveCompleted. Without both fields, COMPLETED jobs are skipped.
+     */
+    confirmRedriveCompleted?: string;
+    /**
+     * Dispatch job ids to reset to PENDING for re-dispatch. QUEUED and PROCESSING jobs are never reset; COMPLETED jobs only with redriveCompleted and confirmRedriveCompleted. Skipped jobs are reported, not an error.
      */
     ids: Array<string>;
+    /**
+     * Also re-deliver COMPLETED jobs. Needs confirmRedriveCompleted=REDRIVE and the dispatch-job:redrive-completed permission (403 without it).
+     */
+    redriveCompleted?: boolean;
     [key: string]: unknown;
 };
 
 export type RequeueResponseWritable = {
+    /**
+     * How many of them were COMPLETED jobs re-delivered (0 unless the request redrove)
+     */
+    redriven: number;
+    /**
+     * Jobs reset to PENDING (redriven COMPLETED jobs included)
+     */
     requeued: number;
+    /**
+     * The skipped jobs, with the reason
+     */
+    skipped: Array<SkippedJobResponse>;
+    /**
+     * COMPLETED jobs left alone because the redrive was not requested and confirmed
+     */
+    skippedCompleted: number;
+    /**
+     * QUEUED or PROCESSING jobs left alone
+     */
+    skippedInFlight: number;
 };
 
 export type ResendInvitationRequestWritable = {
@@ -9273,7 +9433,16 @@ export type DispatchJobsByEventResponse = DispatchJobsByEventResponses[keyof Dis
 export type DispatchJobFilterOptionsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * RFC3339; start of the created_at window the values are read from (default: 24 hours before until/now)
+         */
+        since?: string;
+        /**
+         * RFC3339; end of the window (default: now)
+         */
+        until?: string;
+    };
     url: '/api/dispatch-jobs/filter-options';
 };
 

@@ -379,7 +379,10 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqU32("size"), reqStr("sha256"),
 		reqStr("contentType"), reqStr("previousContentType"),
 	)
-	m["platform:messaging:dispatch-jobs:resent"] = obj(reqStrArray("ids"))
+	m["platform:messaging:dispatch-jobs:resent"] = obj(
+		reqStrArray("ids"), reqBool("redrive"), reqU32("redrivenCount"), optStrArray("redrivenIds"),
+		reqU32("skippedInFlight"), reqU32("skippedCompleted"),
+	)
 
 	// ── platform:developer:application-openapi ──────────────────────────
 	m["platform:developer:application-openapi:synced"] = obj(

@@ -19,7 +19,7 @@ import type {
 	RequeueResponse,
 } from "./generated";
 
-export type { EditPayloadRequest, RequeueByFilterPreviewResponse, RequeueByFilterResponse };
+export type { EditPayloadRequest, RequeueByFilterPreviewResponse, RequeueByFilterResponse, RequeueResponse };
 
 // Response types alias the generated contract (api/openapi.lock.json) so
 // `vue-tsc` fails on backend drift. Aliased under the historical names so

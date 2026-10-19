@@ -158,24 +158,26 @@ templ djFilters(v djView) {
 // and the select-all banner.
 templ djBulkBar(v djView) {
 	<div id="dj-bulk" class="flex flex-col gap-2 border-b border-border px-3 py-2">
-		<div class="flex flex-wrap items-center gap-2">
-			<form id="dj-selection" method="post" action={ djPath + "/requeue" } data-on:submit={ kit.SubmitForm }>
-				<input type="hidden" name="drawer" data-attr:value={ "$" + djDrawerSig }/>
-				<button type="submit" class="fc-btn fc-btn-secondary fc-btn-sm" disabled data-attr:disabled={ "$" + djSelSig + " === 0" } title="Reset the selected jobs to PENDING for re-dispatch">
+		if v.CanRequeue {
+			<div class="flex flex-wrap items-center gap-2">
+				<form id="dj-selection" method="post" action={ djPath + "/requeue" } data-on:submit={ kit.SubmitForm }>
+					<input type="hidden" name="drawer" data-attr:value={ "$" + djDrawerSig }/>
+					<button type="submit" class="fc-btn fc-btn-secondary fc-btn-sm" disabled data-attr:disabled={ "$" + djSelSig + " === 0" } title="Reset the selected jobs to PENDING for re-dispatch">
+						@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
+						<span data-text={ "$" + djSelSig + " > 0 ? 'Requeue selected (' + $" + djSelSig + " + ')' : 'Requeue selected'" }>Requeue selected</span>
+					</button>
+				</form>
+				<a href={ v.rbfHref() } class="fc-btn fc-btn-outline fc-btn-sm" aria-haspopup="dialog" title="Reset every job matching the current filters to PENDING — preview and confirm first" data-on:click__prevent={ liveLink }>
 					@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
-					<span data-text={ "$" + djSelSig + " > 0 ? 'Requeue selected (' + $" + djSelSig + " + ')' : 'Requeue selected'" }>Requeue selected</span>
-				</button>
-			</form>
-			<a href={ v.rbfHref() } class="fc-btn fc-btn-outline fc-btn-sm" aria-haspopup="dialog" title="Reset every job matching the current filters to PENDING — preview and confirm first" data-on:click__prevent={ liveLink }>
-				@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
-				Requeue all matching
-			</a>
-			<a href={ v.errorsHref() } class="fc-btn fc-btn-text fc-btn-sm" aria-haspopup="dialog" title="Every job in an error status, whatever else the view is filtered by — preview and confirm first" data-on:click__prevent={ djNavLink }>
-				@kit.Icon(kit.IconProps{Name: "circle-alert", Class: "size-[1rem]"})
-				Requeue everything in error
-			</a>
-		</div>
-		if v.fullPage() {
+					Requeue all matching
+				</a>
+				<a href={ v.errorsHref() } class="fc-btn fc-btn-text fc-btn-sm" aria-haspopup="dialog" title="Every job in an error status, whatever else the view is filtered by — preview and confirm first" data-on:click__prevent={ djNavLink }>
+					@kit.Icon(kit.IconProps{Name: "circle-alert", Class: "size-[1rem]"})
+					Requeue everything in error
+				</a>
+			</div>
+		}
+		if v.CanRequeue && v.fullPage() {
 			<div class="text-sm" role="status" data-show={ "$" + djSelSig + " === " + strconv.Itoa(len(v.Rows)) } style="display: none">
 				All { thousands(int64(len(v.Rows))) } jobs on this page are selected.
 				<a href={ v.rbfHref() } class="font-medium text-primary" aria-haspopup="dialog" data-on:click__prevent={ liveLink }>Requeue all matching jobs…</a>
@@ -290,7 +292,9 @@ func djRowActions(row djRow) kit.RowActionsProps {
 		p.ID = "dj-" + row.ID + "-actions"
 		p.Actions = append(p.Actions, kit.RowAction{Icon: "eye", Label: "View payload and attempts", Href: row.Href, Attrs: templ.Attributes{"data-on:click__prevent": liveLink}})
 	}
-	p.Actions = append(p.Actions, kit.RowAction{Icon: "rotate-ccw", Label: "Requeue — reset to PENDING for re-dispatch", Attrs: templ.Attributes{"data-on:click": djRowRequeue, "data-action": row.RequeueAction}})
+	if row.CanRequeue {
+		p.Actions = append(p.Actions, kit.RowAction{Icon: "rotate-ccw", Label: "Requeue — reset to PENDING for re-dispatch", Attrs: templ.Attributes{"data-on:click": djRowRequeue, "data-action": row.RequeueAction}})
+	}
 	return p
 }
 
@@ -325,12 +329,14 @@ templ djDrawerBody(d djDetail) {
 					}
 				</form>
 			}
-			<form method="post" action={ d.ActionBase + "/requeue" } data-on:submit={ kit.SubmitForm }>
-				<input type="hidden" name="drawer" data-attr:value={ "$" + djDrawerSig }/>
-				@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: kit.LegacySecondary, Icon: "rotate-ccw", Attrs: templ.Attributes{"title": "Reset to PENDING for re-dispatch"}}) {
-					Requeue
-				}
-			</form>
+			if d.CanRequeue {
+				<form method="post" action={ d.ActionBase + "/requeue" } data-on:submit={ kit.SubmitForm }>
+					<input type="hidden" name="drawer" data-attr:value={ "$" + djDrawerSig }/>
+					@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: kit.LegacySecondary, Icon: "rotate-ccw", Attrs: templ.Attributes{"title": "Reset to PENDING for re-dispatch"}}) {
+						Requeue
+					}
+				</form>
+			}
 		</div>
 		<div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
 			<section class="flex min-w-0 flex-col gap-3">
@@ -546,6 +552,7 @@ templ djRequeueDialog(p djPreview) {
 			</section>
 			<section class="flex flex-col gap-2 text-sm">
 				<h4 class="fc-field-label uppercase">Matching jobs</h4>
+				<p class="text-muted-foreground">Created { p.Window }.</p>
 				<p><strong>{ counted(p.Count, "job") }</strong> match.</p>
 				if len(p.ByStatus) > 0 {
 					<div class="flex flex-wrap gap-1.5">
@@ -560,6 +567,12 @@ templ djRequeueDialog(p djPreview) {
 						<span class="text-muted-foreground">{ thousands(p.OutOfScope) } platform-scoped or outside your client access will be left alone.</span>
 					}
 				</p>
+				if p.InFlight > 0 {
+					<p class="text-muted-foreground">{ counted(p.InFlight, "job") } QUEUED or PROCESSING will be left alone — a job in flight is never requeued.</p>
+				}
+				if p.Completed > 0 {
+					<p class="text-muted-foreground">{ counted(p.Completed, "COMPLETED job") } will be left alone — completed jobs are redriven only with redriveCompleted and confirmRedriveCompleted (API).</p>
+				}
 				if p.OverCap {
 					<p class="text-muted-foreground">At most { thousands(djMaxRequeue) } are requeued per run; run it again for the rest.</p>
 				}
@@ -567,7 +580,7 @@ templ djRequeueDialog(p djPreview) {
 			if p.Changed {
 				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "More jobs match than when you looked, so nothing was requeued. The counts above are current — review them and confirm again."})
 			}
-			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "Requeue resets each job to PENDING — clearing its attempt count, schedule and last error — and the scheduler delivers it again. Jobs that already completed are delivered again too if they match."})
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "Requeue resets each job to PENDING — clearing its attempt count, schedule and last error — and the scheduler delivers it again. Jobs in flight and jobs that already completed are left alone."})
 		</form>
 	}
 }

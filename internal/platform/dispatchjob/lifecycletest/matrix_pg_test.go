@@ -116,9 +116,18 @@ var cases = []tcase{
 		},
 	},
 	{
-		name: "requeue", counted: true, allowed: to("PENDING", allStatuses...),
+		// Not QUEUED/PROCESSING/IN_PROGRESS (a delivery is under way) and not
+		// COMPLETED (that is redrive_completed).
+		name: "requeue", counted: true, allowed: to("PENDING", "PENDING", "FAILED", "ERROR", "CANCELLED", "EXPIRED"),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.Requeue(ctx, j.id, j.createdAt)
+			return err
+		},
+	},
+	{
+		name: "redrive_completed", counted: true, allowed: to("PENDING", "COMPLETED"),
+		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
+			_, err := lc.Redrive(ctx, j.id, j.createdAt)
 			return err
 		},
 	},

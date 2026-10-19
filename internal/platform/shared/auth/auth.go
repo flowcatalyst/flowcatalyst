@@ -556,6 +556,24 @@ func CanReadDispatchJobs(a *AuthContext) error {
 	return requireAny(a, permMessagingDispatchJobView, permAppSvcDispatchJobView)
 }
 
+// The dispatch-job write actions each have their own permission (they were all
+// gated on dispatch-job:view until the split). redrive-completed is the
+// dangerous one — it re-delivers jobs that already succeeded — and is never
+// implied by the others.
+const (
+	// DispatchJobRequeuePerm: requeue by ids, requeue by filter and its preview.
+	DispatchJobRequeuePerm = "platform:messaging:dispatch-job:requeue"
+	// DispatchJobRedriveCompletedPerm: additionally required by a requeue that
+	// sets redriveCompleted (re-delivering COMPLETED jobs).
+	DispatchJobRedriveCompletedPerm = "platform:messaging:dispatch-job:redrive-completed"
+	// DispatchJobCancelPerm: POST /dispatch-jobs/{id}/cancel.
+	DispatchJobCancelPerm = "platform:messaging:dispatch-job:cancel"
+	// DispatchJobCompletePerm: POST /dispatch-jobs/{id}/complete.
+	DispatchJobCompletePerm = "platform:messaging:dispatch-job:complete"
+	// DispatchJobEditPayloadPerm: PUT /dispatch-jobs/{id}/payload.
+	DispatchJobEditPayloadPerm = "platform:messaging:dispatch-job:edit-payload"
+)
+
 // CanReadAllDispatchJobs reports whether the principal reads dispatch jobs
 // without the per-application confinement: it holds the messaging view
 // permission.
