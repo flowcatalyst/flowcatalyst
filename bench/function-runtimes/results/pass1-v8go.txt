@@ -1,0 +1,119 @@
+RESULT rt=v8go metric=cold new_isolate_eval_first_call_ms=1.64 (median of 15)
+RESULT rt=v8go w=1 metric=lat p50_us=5.29 p50_min=5.25 p50_max=5.46 p99_us=9.83 runs=5
+RESULT rt=v8go w=1 metric=tput c=1 rps=119490 rps_min=114576 rps_max=159394
+RESULT rt=v8go w=1 metric=tput c=4 rps=42995 rps_min=34674 rps_max=44362
+RESULT rt=v8go w=1 metric=tput c=14 rps=13218 rps_min=12836 rps_max=14423
+RESULT rt=v8go w=2 metric=lat p50_us=12.25 p50_min=11.25 p50_max=22.29 p99_us=57.38 runs=5
+RESULT rt=v8go w=2 metric=tput c=1 rps=69671 rps_min=51107 rps_max=75163
+RESULT rt=v8go w=2 metric=tput c=4 rps=45757 rps_min=40360 rps_max=46397
+
+<--- Last few GCs --->
+
+
+
+#
+# Fatal JavaScript out of memory: Scavenger: semi-space copy
+#
+<--- Last few GCs --->
+
+
+
+#
+# Fatal JavaScript out of memory: Scavenger: semi-space copy
+#
+==== C stack trace ===============================
+
+
+
+<--- Last few GCs --->
+
+
+
+#
+# Fatal JavaScript out of memory: Scavenger: semi-space copy
+#
+
+<--- Last few GCs --->
+
+==== C stack trace ===============================
+
+
+
+#
+# Fatal JavaScript out of memory: Scavenger: semi-space copy
+#
+==== C stack trace ===============================
+
+==== C stack trace ===============================
+
+
+<--- Last few GCs --->
+
+
+
+#
+# Fatal JavaScript out of memory: Scavenger: semi-space copy
+#
+==== C stack trace ===============================
+
+
+<--- Last few GCs --->
+
+
+
+#
+# Fatal JavaScript out of memory: Scavenger: semi-space copy
+#
+==== C stack trace ===============================
+
+
+<--- Last few GCs --->
+
+
+
+#
+# Fatal JavaScript out of memory: Scavenger: semi-space copy
+#
+==== C stack trace ===============================
+
+
+<--- Last few GCs --->
+
+
+
+#
+# Fatal JavaScript out of memory: Scavenger: semi-space copy
+#
+==== C stack trace ===============================
+
+
+<--- Last few GCs --->
+
+
+
+#
+# Fatal JavaScript out of memory: Scavenger: semi-space copy
+#
+==== C stack trace ===============================
+
+    0   v8gobench                           0x0000000106fea96c v8::base::debug::StackTrace::StackTrace() + 28
+    1   v8gobench                           0x0000000106e7092c v8::platform::(anonymous namespace)::PrintStackTrace() + 24
+    2   v8gobench                           0x0000000105053980 v8::base::FatalOOM(v8::base::OOMType, char const*) + 68
+    3   v8gobench                           0x0000000106f92be0 v8::internal::V8::FatalProcessOutOfMemory(v8::internal::Isolate*, char const*, v8::OOMDetails const&) + 352
+    4   v8gobench                           0x00000001050fd828 v8::internal::Heap::stack() + 0
+    5   v8gobench                           0x00000001063f1178 heap::base::SlotCallbackResult v8::internal::Scavenger::EvacuateInPlaceInternalizableString<v8::internal::CompressedHeapObjectSlot>(v8::internal::Tagged<v8::internal::Map>, v8::internal::CompressedHeapObjectSlot, v8::internal::Tagged<v8::internal::String>, v8::base::StrongAlias<v8::internal::HeapObjectSizeTag, unsigned int>, v8::internal::ObjectFields) + 3064
+    6   v8gobench                           0x00000001063e4a18 v8::internal::Scavenger::ScavengePage(v8::internal::MutablePage*) + 472
+    7   v8gobench                           0x00000001063dfa60 v8::internal::ScavengerJobTask::ProcessItems(v8::JobDelegate*, v8::internal::Scavenger*) + 152
+    8   v8gobench                           0x00000001063df94c v8::internal::ScavengerJobTask::Run(v8::JobDelegate*) + 180
+    9   v8gobench                           0x0000000106e276ac v8::platform::DefaultJobWorker::Run() + 240
+    10  v8gobench                           0x0000000106edbd5c v8::platform::DefaultWorkerThreadsTaskRunner::WorkerThread::Run() + 336
+    11  v8gobench                           0x0000000106ac16f4 v8::base::ThreadEntry(void*) + 156
+    12  libsystem_pthread.dylib             0x00000001805e3c0c _pthread_start + 136
+    13  libsystem_pthread.dylib             0x00000001805deb80 thread_start + 8
+    # W3-W5 were run afterwards, one process per workload (-w N -conc 1), because the c>1 W2 cells crashed the process (V8 OOM):
+RESULT rt=v8go w=3 metric=lat p50_us=372.17 p50_min=369.21 p50_max=376.17 p99_us=683.21 runs=5
+RESULT rt=v8go w=3 metric=tput c=1 rps=2633 rps_min=2611 rps_max=2638
+RESULT rt=v8go w=4 metric=lat p50_us=23852.33 p50_min=23107.54 p50_max=24112.67 p99_us=24621.17 runs=5
+RESULT rt=v8go w=4 metric=tput c=1 rps=47 rps_min=46 rps_max=47
+RESULT rt=v8go w=5 metric=lat p50_us=29.50 p50_min=28.96 p50_max=30.00 p99_us=38.71 runs=5
+RESULT rt=v8go w=5 metric=tput c=1 rps=32389 rps_min=31997 rps_max=32399

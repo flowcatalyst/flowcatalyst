@@ -1,0 +1,21 @@
+RESULT rt=goja metric=cold size_bytes=154058 new_runtime_and_eval_ms=8.1
+RESULT rt=goja w=1 metric=lat p50_us=1.21 p50_min=0.96 p50_max=1.42 p99_us=4.29 runs=5
+RESULT rt=goja w=1 metric=tput c=1 rps=602644 rps_min=171426 rps_max=602896
+RESULT rt=goja w=1 metric=tput c=4 rps=1027548 rps_min=837125 rps_max=1040588
+RESULT rt=goja w=1 metric=tput c=14 rps=970333 rps_min=957136 rps_max=994022
+RESULT rt=goja w=2 metric=lat p50_us=29.88 p50_min=28.25 p50_max=34.96 p99_us=145.54 runs=5
+RESULT rt=goja w=2 metric=tput c=1 rps=27814 rps_min=27602 rps_max=28826
+RESULT rt=goja w=2 metric=tput c=4 rps=47945 rps_min=46351 rps_max=50423
+RESULT rt=goja w=2 metric=tput c=14 rps=55089 rps_min=52659 rps_max=56303
+RESULT rt=goja w=3 metric=lat p50_us=15636.29 p50_min=15239.67 p50_max=18267.79 p99_us=17617.71 runs=5
+RESULT rt=goja w=3 metric=tput c=1 rps=62 rps_min=42 rps_max=62
+RESULT rt=goja w=3 metric=tput c=4 rps=96 rps_min=84 rps_max=98
+RESULT rt=goja w=3 metric=tput c=14 rps=127 rps_min=118 rps_max=160
+RESULT rt=goja w=4 metric=lat p50_us=1353843.71 p50_min=1349765.00 p50_max=2130342.83 p99_us=1343190.92 runs=5
+RESULT rt=goja w=4 metric=tput c=1 rps=1 rps_min=1 rps_max=1
+RESULT rt=goja w=4 metric=tput c=4 rps=2 rps_min=2 rps_max=2
+RESULT rt=goja w=4 metric=tput c=14 rps=1 rps_min=1 rps_max=2
+RESULT rt=goja w=5 metric=lat p50_us=14.33 p50_min=13.96 p50_max=17.83 p99_us=91.96 runs=5
+RESULT rt=goja w=5 metric=tput c=1 rps=50475 rps_min=39702 rps_max=56139
+RESULT rt=goja w=5 metric=tput c=4 rps=91981 rps_min=69721 rps_max=92756
+RESULT rt=goja w=5 metric=tput c=14 rps=57884 rps_min=51973 rps_max=58307

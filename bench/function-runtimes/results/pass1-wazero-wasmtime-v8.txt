@@ -1,0 +1,183 @@
+# machine: Apple M4 Pro ncpu=14 Darwin 24.6.0 go version go1.27.2 darwin/arm64
+## cold
+RESULT rt=qjs metric=cold size_bytes=154058 compile_cold_ms=163.3 compile_cached_ms=6.0 inst_ms=41.95 inst_cached_ms=41.69 first_call_ms=0.07 total_cold_ms=204.0 total_cached_ms=47.8 js_per_fn_after_engine_ms=41.30 (medians of 7)
+RESULT rt=rust metric=cold size_bytes=137277 compile_cold_ms=26.8 compile_cached_ms=1.1 inst_ms=0.02 inst_cached_ms=0.01 first_call_ms=0.06 total_cold_ms=26.9 total_cached_ms=1.2 js_per_fn_after_engine_ms=0.00 (medians of 7)
+RESULT rt=rust-o3 metric=cold size_bytes=169641 compile_cold_ms=32.6 compile_cached_ms=1.2 inst_ms=0.03 inst_cached_ms=0.01 first_call_ms=0.05 total_cold_ms=32.7 total_cached_ms=1.3 js_per_fn_after_engine_ms=0.00 (medians of 7)
+RESULT rt=go metric=cold size_bytes=4636111 compile_cold_ms=825.5 compile_cached_ms=27.8 inst_ms=3.22 inst_cached_ms=2.81 first_call_ms=0.03 total_cold_ms=829.0 total_cached_ms=30.6 js_per_fn_after_engine_ms=0.00 (medians of 7)
+RESULT rt=tinygo metric=cold size_bytes=758924 compile_cold_ms=153.6 compile_cached_ms=5.3 inst_ms=0.11 inst_cached_ms=0.07 first_call_ms=0.01 total_cold_ms=153.7 total_cached_ms=5.4 js_per_fn_after_engine_ms=0.00 (medians of 7)
+RESULT rt=v8 metric=cold size_bytes=154058 no_snapshot: create_and_eval_ms=4.66 first_call_ms=0.019 total_ms=4.68 | snapshot (15.1 ms to build, 1117 KB): create_ms=0.77 first_call_ms=0.012 total_ms=0.79 (medians of 15)
+RESULT rt=wasmtime metric=cold size_bytes=137277 compile_cold_ms=12.8 compile_cached_ms(deserialize)=0.07 inst_ms=0.029 first_call_ms=0.029 serialized_kb=407 (medians of 9)
+## mem
+RESULT rt=qjs metric=mem process_base_mb=10.4 engine_mb=1.3 compiled_function_mb=33.2 first_instance_warm_mb=1.2 per_extra_warm_instance_mb=1.14 charged_min_mb=2.12
+RESULT rt=rust metric=mem process_base_mb=10.2 engine_mb=1.2 compiled_function_mb=9.3 first_instance_warm_mb=0.3 per_extra_warm_instance_mb=0.21 charged_min_mb=1.25
+RESULT rt=rust-o3 metric=mem process_base_mb=10.4 engine_mb=1.2 compiled_function_mb=12.8 first_instance_warm_mb=0.3 per_extra_warm_instance_mb=0.23 charged_min_mb=1.25
+RESULT rt=go metric=mem process_base_mb=10.3 engine_mb=1.2 compiled_function_mb=75.1 first_instance_warm_mb=3.8 per_extra_warm_instance_mb=3.85 charged_min_mb=5.00
+RESULT rt=tinygo metric=mem process_base_mb=10.3 engine_mb=1.1 compiled_function_mb=30.0 first_instance_warm_mb=0.5 per_extra_warm_instance_mb=0.41 charged_min_mb=0.75
+RESULT rt=v8 metric=mem process_base_mb=4.9 first_isolate_loaded_mb=15.3 per_extra_warm_isolate_mb=6.51 (n=40, each ran W1-W3)
+RESULT rt=wasmtime metric=mem process_base_mb=3.0 compiled_function_mb=38.7 first_instance_warm_mb=0.3 per_extra_warm_instance_mb=0.20
+## lat
+RESULT rt=qjs w=1 metric=lat p50_us=9.67 p50_min=9.42 p50_max=9.75 p99_us=16.54 p99_min=16.25 p99_max=16.88 mean_us=9.65 calls=771513 runs=5
+RESULT rt=qjs w=1 metric=tput c=1 rps=104535 rps_min=102112 rps_max=105269
+RESULT rt=qjs w=1 metric=tput c=4 rps=360424 rps_min=355827 rps_max=363133
+RESULT rt=qjs w=1 metric=tput c=14 rps=688110 rps_min=677647 rps_max=690874
+RESULT rt=qjs w=2 metric=lat p50_us=337.79 p50_min=336.33 p50_max=339.25 p99_us=398.88 p99_min=389.67 p99_max=412.12 mean_us=340.12 calls=22048 runs=5
+RESULT rt=qjs w=2 metric=tput c=1 rps=2934 rps_min=2922 rps_max=2965
+RESULT rt=qjs w=2 metric=tput c=4 rps=11121 rps_min=11104 rps_max=11155
+RESULT rt=qjs w=2 metric=tput c=14 rps=29832 rps_min=29703 rps_max=30194
+RESULT rt=qjs w=3 metric=lat p50_us=66722.42 p50_min=66609.21 p50_max=66938.96 p99_us=67620.88 p99_min=67432.50 p99_max=69526.00 mean_us=66767.61 calls=115 runs=5
+RESULT rt=qjs w=3 metric=tput c=1 rps=15 rps_min=15 rps_max=15
+RESULT rt=qjs w=3 metric=tput c=4 rps=56 rps_min=56 rps_max=57
+RESULT rt=qjs w=3 metric=tput c=14 rps=140 rps_min=125 rps_max=147
+RESULT rt=qjs w=4 metric=lat p50_us=5332286.67 p50_min=5267802.58 p50_max=5458507.83 p99_us=5332286.67 p99_min=5267802.58 p99_max=5458507.83 mean_us=5332286.67 calls=5 runs=5
+RESULT rt=qjs w=4 metric=tput c=1 rps=0 rps_min=0 rps_max=0
+RESULT rt=qjs w=4 metric=tput c=4 rps=1 rps_min=1 rps_max=1
+RESULT rt=qjs w=4 metric=tput c=14 rps=2 rps_min=1 rps_max=2
+RESULT rt=qjs w=5 metric=lat p50_us=98.08 p50_min=97.71 p50_max=98.54 p99_us=121.17 p99_min=118.62 p99_max=137.92 mean_us=99.77 calls=74841 runs=5
+RESULT rt=qjs w=5 metric=tput c=1 rps=10026 rps_min=9899 rps_max=10167
+RESULT rt=qjs w=5 metric=tput c=4 rps=32855 rps_min=25860 rps_max=36943
+RESULT rt=qjs w=5 metric=tput c=14 rps=100245 rps_min=92493 rps_max=101552
+RESULT rt=rust w=1 metric=lat p50_us=0.88 p50_min=0.79 p50_max=1.04 p99_us=3.79 p99_min=2.33 p99_max=4.50 mean_us=1.10 calls=6389716 runs=5
+RESULT rt=rust w=1 metric=tput c=1 rps=758583 rps_min=692672 rps_max=780991
+RESULT rt=rust w=1 metric=tput c=4 rps=1073683 rps_min=1039836 rps_max=1122225
+RESULT rt=rust w=1 metric=tput c=14 rps=1121404 rps_min=1041619 rps_max=1170016
+RESULT rt=rust w=2 metric=lat p50_us=63.67 p50_min=62.62 p50_max=64.46 p99_us=81.96 p99_min=77.25 p99_max=115.38 mean_us=64.58 calls=115621 runs=5
+RESULT rt=rust w=2 metric=tput c=1 rps=15552 rps_min=15362 rps_max=15689
+RESULT rt=rust w=2 metric=tput c=4 rps=52055 rps_min=49386 rps_max=61862
+RESULT rt=rust w=2 metric=tput c=14 rps=139288 rps_min=108347 rps_max=152192
+RESULT rt=rust w=3 metric=lat p50_us=1509.62 p50_min=1496.88 p50_max=1515.67 p99_us=1689.12 p99_min=1679.12 p99_max=1846.96 mean_us=1518.21 calls=4944 runs=5
+RESULT rt=rust w=3 metric=tput c=1 rps=661 rps_min=659 rps_max=662
+RESULT rt=rust w=3 metric=tput c=4 rps=2577 rps_min=2560 rps_max=2578
+RESULT rt=rust w=3 metric=tput c=14 rps=6504 rps_min=6360 rps_max=6665
+RESULT rt=rust w=4 metric=lat p50_us=69155.79 p50_min=69011.71 p50_max=70215.00 p99_us=70501.71 p99_min=70169.88 p99_max=71515.96 mean_us=69188.73 calls=110 runs=5
+RESULT rt=rust w=4 metric=tput c=1 rps=14 rps_min=14 rps_max=14
+RESULT rt=rust w=4 metric=tput c=4 rps=57 rps_min=55 rps_max=57
+RESULT rt=rust w=4 metric=tput c=14 rps=103 rps_min=93 rps_max=150
+RESULT rt=rust w=5 metric=lat p50_us=8.00 p50_min=7.83 p50_max=8.38 p99_us=16.12 p99_min=13.04 p99_max=18.96 mean_us=8.62 calls=851991 runs=5
+RESULT rt=rust w=5 metric=tput c=1 rps=118326 rps_min=112972 rps_max=118359
+RESULT rt=rust w=5 metric=tput c=4 rps=397984 rps_min=383541 rps_max=399238
+RESULT rt=rust w=5 metric=tput c=14 rps=719717 rps_min=677805 rps_max=730438
+RESULT rt=rust-o3 w=1 metric=lat p50_us=0.88 p50_min=0.83 p50_max=0.92 p99_us=3.83 p99_min=3.50 p99_max=4.08 mean_us=1.14 calls=6369845 runs=5
+RESULT rt=rust-o3 w=1 metric=tput c=1 rps=734005 rps_min=684442 rps_max=757864
+RESULT rt=rust-o3 w=1 metric=tput c=4 rps=680641 rps_min=628024 rps_max=690732
+RESULT rt=rust-o3 w=1 metric=tput c=14 rps=631975 rps_min=628126 rps_max=668035
+RESULT rt=rust-o3 w=2 metric=lat p50_us=66.42 p50_min=66.08 p50_max=67.83 p99_us=146.21 p99_min=137.58 p99_max=191.62 mean_us=117.38 calls=62489 runs=5
+RESULT rt=rust-o3 w=2 metric=tput c=1 rps=9030 rps_min=8389 rps_max=15073
+RESULT rt=rust-o3 w=2 metric=tput c=4 rps=31924 rps_min=26485 rps_max=33535
+RESULT rt=rust-o3 w=2 metric=tput c=14 rps=30668 rps_min=30515 rps_max=36569
+RESULT rt=rust-o3 w=3 metric=lat p50_us=1209.46 p50_min=1201.00 p50_max=1244.21 p99_us=11231.58 p99_min=7808.42 p99_max=52326.58 mean_us=1987.07 calls=3467 runs=5
+RESULT rt=rust-o3 w=3 metric=tput c=1 rps=459 rps_min=413 rps_max=481
+RESULT rt=rust-o3 w=3 metric=tput c=4 rps=3106 rps_min=2019 rps_max=3206
+RESULT rt=rust-o3 w=3 metric=tput c=14 rps=2663 rps_min=2649 rps_max=3223
+RESULT rt=rust-o3 w=4 metric=lat p50_us=35896.08 p50_min=35465.83 p50_max=51506.88 p99_us=160958.21 p99_min=39571.21 p99_max=195599.21 mean_us=68059.69 calls=131 runs=5
+RESULT rt=rust-o3 w=4 metric=tput c=1 rps=13 rps_min=12 rps_max=16
+RESULT rt=rust-o3 w=4 metric=tput c=4 rps=50 rps_min=45 rps_max=76
+RESULT rt=rust-o3 w=4 metric=tput c=14 rps=273 rps_min=117 rps_max=316
+RESULT rt=rust-o3 w=5 metric=lat p50_us=6.83 p50_min=6.54 p50_max=7.04 p99_us=11.75 p99_min=10.75 p99_max=19.75 mean_us=7.18 calls=1003635 runs=5
+RESULT rt=rust-o3 w=5 metric=tput c=1 rps=131686 rps_min=74756 rps_max=138855
+RESULT rt=rust-o3 w=5 metric=tput c=4 rps=277757 rps_min=121265 rps_max=356823
+RESULT rt=rust-o3 w=5 metric=tput c=14 rps=720540 rps_min=617488 rps_max=783709
+RESULT rt=go w=1 metric=lat p50_us=6.71 p50_min=6.54 p50_max=6.92 p99_us=28.54 p99_min=23.46 p99_max=33.33 mean_us=10.35 calls=710497 runs=5
+RESULT rt=go w=1 metric=tput c=1 rps=87028 rps_min=50288 rps_max=88456
+RESULT rt=go w=1 metric=tput c=4 rps=55484 rps_min=40387 rps_max=65524
+RESULT rt=go w=1 metric=tput c=14 rps=429523 rps_min=113629 rps_max=505480
+RESULT rt=go w=2 metric=lat p50_us=483.96 p50_min=483.79 p50_max=493.58 p99_us=684.12 p99_min=660.67 p99_max=690.50 mean_us=498.34 calls=14977 runs=5
+RESULT rt=go w=2 metric=tput c=1 rps=1989 rps_min=1979 rps_max=1993
+RESULT rt=go w=2 metric=tput c=4 rps=8037 rps_min=7177 rps_max=8077
+RESULT rt=go w=2 metric=tput c=14 rps=17579 rps_min=15537 rps_max=22100
+RESULT rt=go w=3 metric=lat p50_us=14202.96 p50_min=14157.83 p50_max=14705.21 p99_us=21041.04 p99_min=20528.38 p99_max=21900.29 mean_us=15732.34 calls=480 runs=5
+RESULT rt=go w=3 metric=tput c=1 rps=66 rps_min=64 rps_max=67
+RESULT rt=go w=3 metric=tput c=4 rps=259 rps_min=257 rps_max=261
+RESULT rt=go w=3 metric=tput c=14 rps=717 rps_min=399 rps_max=733
+RESULT rt=go w=4 metric=lat p50_us=70005.67 p50_min=69167.08 p50_max=70621.04 p99_us=78589.67 p99_min=72008.33 p99_max=81940.67 mean_us=71449.61 calls=107 runs=5
+RESULT rt=go w=4 metric=tput c=1 rps=14 rps_min=14 rps_max=14
+RESULT rt=go w=4 metric=tput c=4 rps=56 rps_min=26 rps_max=56
+RESULT rt=go w=4 metric=tput c=14 rps=87 rps_min=17 rps_max=127
+RESULT rt=go w=5 metric=lat p50_us=18.50 p50_min=17.25 p50_max=19.04 p99_us=42.29 p99_min=36.58 p99_max=77.54 mean_us=21.14 calls=348297 runs=5
+RESULT rt=go w=5 metric=tput c=1 rps=46959 rps_min=45186 rps_max=48059
+RESULT rt=go w=5 metric=tput c=4 rps=184102 rps_min=24237 rps_max=184847
+RESULT rt=go w=5 metric=tput c=14 rps=230986 rps_min=179815 rps_max=260013
+RESULT rt=tinygo w=1 metric=lat p50_us=5.58 p50_min=4.83 p50_max=7.00 p99_us=102.62 p99_min=91.08 p99_max=136.00 mean_us=18.50 calls=388661 runs=5
+RESULT rt=tinygo w=1 metric=tput c=1 rps=57382 rps_min=44075 rps_max=58794
+RESULT rt=tinygo w=1 metric=tput c=4 rps=149480 rps_min=144634 rps_max=149724
+RESULT rt=tinygo w=1 metric=tput c=14 rps=164942 rps_min=130244 rps_max=266968
+RESULT rt=tinygo w=2 metric=lat p50_us=282.67 p50_min=271.42 p50_max=319.17 p99_us=1013.42 p99_min=814.71 p99_max=1170.04 mean_us=354.01 calls=21260 runs=5
+RESULT rt=tinygo w=2 metric=tput c=1 rps=3414 rps_min=2815 rps_max=3580
+RESULT rt=tinygo w=2 metric=tput c=4 rps=11487 rps_min=10783 rps_max=11945
+RESULT rt=tinygo w=2 metric=tput c=14 rps=10922 rps_min=9686 rps_max=15328
+RESULT rt=tinygo w=3 metric=lat p50_us=4139.12 p50_min=3876.79 p50_max=5007.62 p99_us=5921.04 p99_min=5860.04 p99_max=8165.46 mean_us=4592.16 calls=1618 runs=5
+RESULT rt=tinygo w=3 metric=tput c=1 rps=177 rps_min=133 rps_max=186
+RESULT rt=tinygo w=3 metric=tput c=4 rps=321 rps_min=255 rps_max=429
+RESULT rt=tinygo w=3 metric=tput c=14 rps=1093 rps_min=1041 rps_max=1096
+RESULT rt=tinygo w=4 metric=lat p50_us=40121.42 p50_min=34614.79 p50_max=40217.71 p99_us=45013.96 p99_min=39830.75 p99_max=54864.67 mean_us=40428.64 calls=194 runs=5
+RESULT rt=tinygo w=4 metric=tput c=1 rps=27 rps_min=26 rps_max=29
+RESULT rt=tinygo w=4 metric=tput c=4 rps=75 rps_min=65 rps_max=87
+RESULT rt=tinygo w=4 metric=tput c=14 rps=126 rps_min=115 rps_max=131
+RESULT rt=tinygo w=5 metric=lat p50_us=10.75 p50_min=9.29 p50_max=12.00 p99_us=119.04 p99_min=103.21 p99_max=133.46 mean_us=14.65 calls=514868 runs=5
+RESULT rt=tinygo w=5 metric=tput c=1 rps=70506 rps_min=68184 rps_max=84145
+RESULT rt=tinygo w=5 metric=tput c=4 rps=181395 rps_min=162367 rps_max=186597
+RESULT rt=tinygo w=5 metric=tput c=14 rps=354009 rps_min=331860 rps_max=436122
+RESULT rt=v8 w=1 metric=lat p50_us=0.38 p50_min=0.38 p50_max=0.42 p99_us=1.33 p99_min=1.21 p99_max=2.33 mean_us=0.45 calls=14448348 runs=5
+RESULT rt=v8 w=1 metric=tput c=1 rps=2350739 rps_min=2290115 rps_max=2351639
+RESULT rt=v8 w=1 metric=tput c=4 rps=4181427 rps_min=4142079 rps_max=4995037
+RESULT rt=v8 w=1 metric=tput c=14 rps=4746037 rps_min=4617973 rps_max=5081812
+RESULT rt=v8 w=2 metric=lat p50_us=4.38 p50_min=4.29 p50_max=6.21 p99_us=7.12 p99_min=6.00 p99_max=11.96 mean_us=4.47 calls=1494568 runs=5
+RESULT rt=v8 w=2 metric=tput c=1 rps=164467 rps_min=141120 rps_max=221606
+RESULT rt=v8 w=2 metric=tput c=4 rps=560258 rps_min=479717 rps_max=586301
+RESULT rt=v8 w=2 metric=tput c=14 rps=886841 rps_min=877347 rps_max=893353
+RESULT rt=v8 w=3 metric=lat p50_us=538.83 p50_min=394.54 p50_max=751.71 p99_us=753.75 p99_min=516.75 p99_max=1036.33 mean_us=558.33 calls=13881 runs=5
+RESULT rt=v8 w=3 metric=tput c=1 rps=2607 rps_min=2457 rps_max=2685
+RESULT rt=v8 w=3 metric=tput c=4 rps=4990 rps_min=4178 rps_max=5059
+RESULT rt=v8 w=3 metric=tput c=14 rps=7622 rps_min=7201 rps_max=9185
+RESULT rt=v8 w=4 metric=lat p50_us=6915.46 p50_min=6806.67 p50_max=38719.21 p99_us=39300.21 p99_min=7870.75 p99_max=41741.83 mean_us=14865.91 calls=579 runs=5
+RESULT rt=v8 w=4 metric=tput c=1 rps=143 rps_min=142 rps_max=143
+RESULT rt=v8 w=4 metric=tput c=4 rps=513 rps_min=512 rps_max=514
+RESULT rt=v8 w=4 metric=tput c=14 rps=1497 rps_min=1496 rps_max=1518
+RESULT rt=v8 w=5 metric=lat p50_us=7.75 p50_min=7.71 p50_max=7.79 p99_us=11.71 p99_min=11.21 p99_max=11.83 mean_us=8.01 calls=934398 runs=5
+RESULT rt=v8 w=5 metric=tput c=1 rps=124146 rps_min=121555 rps_max=126300
+RESULT rt=v8 w=5 metric=tput c=4 rps=225421 rps_min=166993 rps_max=246643
+RESULT rt=v8 w=5 metric=tput c=14 rps=182623 rps_min=178872 rps_max=200761
+RESULT rt=wasmtime w=1 metric=lat p50_us=0.33 p50_min=0.33 p50_max=0.42 p99_us=0.42 p99_min=0.42 p99_max=0.54 mean_us=0.34 calls=19066708 runs=5
+RESULT rt=wasmtime w=1 metric=tput c=1 rps=2442639 rps_min=2241214 rps_max=3279055
+RESULT rt=wasmtime w=1 metric=tput c=4 rps=9233388 rps_min=9215308 rps_max=10607884
+RESULT rt=wasmtime w=1 metric=tput c=14 rps=16995054 rps_min=15062347 rps_max=17185848
+RESULT rt=wasmtime w=2 metric=lat p50_us=6.54 p50_min=6.54 p50_max=6.67 p99_us=7.92 p99_min=7.88 p99_max=9.29 mean_us=6.57 calls=1117794 runs=5
+RESULT rt=wasmtime w=2 metric=tput c=1 rps=153731 rps_min=153260 rps_max=153817
+RESULT rt=wasmtime w=2 metric=tput c=4 rps=548490 rps_min=189512 rps_max=595854
+RESULT rt=wasmtime w=2 metric=tput c=14 rps=308959 rps_min=288270 rps_max=313976
+RESULT rt=wasmtime w=3 metric=lat p50_us=315.58 p50_min=315.25 p50_max=316.00 p99_us=6058.04 p99_min=2790.62 p99_max=6622.79 mean_us=539.77 calls=14272 runs=5
+RESULT rt=wasmtime w=3 metric=tput c=1 rps=1883 rps_min=1853 rps_max=2108
+RESULT rt=wasmtime w=3 metric=tput c=4 rps=7056 rps_min=7001 rps_max=7880
+RESULT rt=wasmtime w=3 metric=tput c=14 rps=14966 rps_min=13775 rps_max=16107
+RESULT rt=wasmtime w=4 metric=lat p50_us=7543.46 p50_min=7407.42 p50_max=16855.75 p99_us=7790.21 p99_min=7753.62 p99_max=40273.00 mean_us=7515.64 calls=857 runs=5
+RESULT rt=wasmtime w=4 metric=tput c=1 rps=132 rps_min=100 rps_max=142
+RESULT rt=wasmtime w=4 metric=tput c=4 rps=463 rps_min=416 rps_max=464
+RESULT rt=wasmtime w=4 metric=tput c=14 rps=1136 rps_min=1117 rps_max=1175
+RESULT rt=wasmtime w=5 metric=lat p50_us=3.54 p50_min=3.54 p50_max=3.62 p99_us=4.50 p99_min=4.42 p99_max=4.58 mean_us=3.57 calls=2060034 runs=5
+RESULT rt=wasmtime w=5 metric=tput c=1 rps=284007 rps_min=282678 rps_max=284477
+RESULT rt=wasmtime w=5 metric=tput c=4 rps=795156 rps_min=636307 rps_max=947091
+RESULT rt=wasmtime w=5 metric=tput c=14 rps=578032 rps_min=528703 rps_max=796846
+## deadline hook (CloseOnContextDone) on/off
+RESULT rt=qjs w=1 closeOnContextDone=true p50_us=18.04 calls=49722
+RESULT rt=qjs w=2 closeOnContextDone=true p50_us=765.42 calls=1837
+RESULT rt=qjs w=3 closeOnContextDone=true p50_us=207840.21 calls=8
+RESULT rt=qjs w=4 closeOnContextDone=true p50_us=15370466.50 calls=3
+RESULT rt=qjs w=1 closeOnContextDone=false p50_us=8.54 calls=92045
+RESULT rt=qjs w=2 closeOnContextDone=false p50_us=200.25 calls=6013
+RESULT rt=qjs w=3 closeOnContextDone=false p50_us=44205.08 calls=29
+RESULT rt=qjs w=4 closeOnContextDone=false p50_us=2783945.50 calls=3
+RESULT rt=rust w=1 closeOnContextDone=true p50_us=1.54 calls=149275
+RESULT rt=rust w=2 closeOnContextDone=true p50_us=129.79 calls=10109
+RESULT rt=rust w=3 closeOnContextDone=true p50_us=3413.75 calls=374
+RESULT rt=rust w=4 closeOnContextDone=true p50_us=171252.58 calls=9
+RESULT rt=rust w=1 closeOnContextDone=false p50_us=0.92 calls=166128
+RESULT rt=rust w=2 closeOnContextDone=false p50_us=20.04 calls=43166
+RESULT rt=rust w=3 closeOnContextDone=false p50_us=374.67 calls=3544
+RESULT rt=rust w=4 closeOnContextDone=false p50_us=16855.38 calls=73
+RESULT rt=rust-o3 w=1 closeOnContextDone=true p50_us=1.54 calls=152929
+RESULT rt=rust-o3 w=2 closeOnContextDone=true p50_us=122.42 calls=10556
+RESULT rt=rust-o3 w=3 closeOnContextDone=true p50_us=2673.17 calls=525
+RESULT rt=rust-o3 w=4 closeOnContextDone=true p50_us=102850.04 calls=16
+RESULT rt=rust-o3 w=1 closeOnContextDone=false p50_us=0.83 calls=175225
+RESULT rt=rust-o3 w=2 closeOnContextDone=false p50_us=16.79 calls=52194
+RESULT rt=rust-o3 w=3 closeOnContextDone=false p50_us=329.33 calls=3905
+RESULT rt=rust-o3 w=4 closeOnContextDone=false p50_us=17763.79 calls=77

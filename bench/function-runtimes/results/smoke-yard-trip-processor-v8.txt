@@ -1,0 +1,6 @@
+describe err=<nil>
+{"abi":1,"endpoints":[{"method":"GET","path":"/healthz","auth":"none"},{"method":"POST","path":"/deliver","auth":"webhook"}]}
+host op=1 meta={"level":"INFO","msg":"yard trip received","attrs":{"invocation":"inv_1","bytes":15354,"xml":"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<YardTrip xmlns=\"urn:bevco:yard:trip:1\" id=\"YT-20261016-0042\">\n  <TripNumber>YT-20261016-0042</TripNumber>\n  <Status>IN_PROGRESS</Status>\n  <Vehicle>\n    <Registration>CA 123-456</Registration>\n    <FleetNumber>TRK-017</FleetNumber>\n  </Vehicle>\n  <Driver>\n    <Code>D0099</Code>\n    <Name>Sipho Dlamini</Name>\n  </Driver>\n  <Origin>\n    <Code>YARD-A</Code>\n    <Name>Epping Yard A</Name>\n  </Origin>\n  <Destination>\n    <Code>
+handle err=<nil>
+meta={"status":200,"headers":{"Content-Type":["application/json"]}}
+body={"ack":true}

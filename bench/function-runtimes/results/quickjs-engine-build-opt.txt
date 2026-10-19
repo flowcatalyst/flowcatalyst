@@ -1,0 +1,20 @@
+# QuickJS engine rebuilt from clients/fn-js-engine with wasi-sdk 25 (scratch build, repo's engine.wasm untouched),
+# measured with wazerobench/loopcfg (JSENGINE=<wasm>), single thread, deadline hook on/off. 2026-10-20.
+# opt-level=s + wasm-opt -Oz (build.sh's recipe; 714 KB vs the embedded 708 KB):
+RESULT rt=qjs-s w=1 closeOnContextDone=true p50_us=10.25
+RESULT rt=qjs-s w=2 closeOnContextDone=true p50_us=338.58
+RESULT rt=qjs-s w=3 closeOnContextDone=true p50_us=65832.04
+RESULT rt=qjs-s w=4 closeOnContextDone=true p50_us=5377004.08
+RESULT rt=qjs-s w=1 closeOnContextDone=false p50_us=2.50
+RESULT rt=qjs-s w=2 closeOnContextDone=false p50_us=83.46
+RESULT rt=qjs-s w=3 closeOnContextDone=false p50_us=18260.67
+RESULT rt=qjs-s w=4 closeOnContextDone=false p50_us=956394.58
+# opt-level=3 + wasm-opt -O3 (945 KB):
+RESULT rt=qjs-o3 w=1 closeOnContextDone=true p50_us=9.08
+RESULT rt=qjs-o3 w=2 closeOnContextDone=true p50_us=271.79
+RESULT rt=qjs-o3 w=3 closeOnContextDone=true p50_us=66694.00
+RESULT rt=qjs-o3 w=4 closeOnContextDone=true p50_us=5313943.50
+RESULT rt=qjs-o3 w=1 closeOnContextDone=false p50_us=2.92
+RESULT rt=qjs-o3 w=2 closeOnContextDone=false p50_us=74.62
+RESULT rt=qjs-o3 w=3 closeOnContextDone=false p50_us=17872.46
+RESULT rt=qjs-o3 w=4 closeOnContextDone=false p50_us=1060873.88

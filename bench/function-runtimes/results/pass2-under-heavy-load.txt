@@ -1,0 +1,112 @@
+# pass 2 (started Mon Oct 19 23:50:04 BST 2026, load: 23:50  up 11 days,  4:45, 19 users, load averages: 30.98 75.48 91.55)
+## deadline hook on/off
+RESULT rt=qjs w=1 closeOnContextDone=true p50_us=9.54 min_us=6.67 max_us=183.25 calls=138684
+RESULT rt=qjs w=2 closeOnContextDone=true p50_us=332.21 min_us=301.79 max_us=661.21 calls=4447
+RESULT rt=qjs w=3 closeOnContextDone=true p50_us=66774.38 min_us=66005.83 max_us=68257.25 calls=23
+RESULT rt=qjs w=4 closeOnContextDone=true p50_us=5764200.96 min_us=5450835.62 max_us=6876850.50 calls=3
+RESULT rt=qjs w=1 closeOnContextDone=false p50_us=3.08 min_us=2.62 max_us=151.08 calls=369601
+RESULT rt=qjs w=2 closeOnContextDone=false p50_us=86.00 min_us=84.46 max_us=247.17 calls=16978
+RESULT rt=qjs w=3 closeOnContextDone=false p50_us=18125.88 min_us=17312.08 max_us=19619.88 calls=84
+RESULT rt=qjs w=4 closeOnContextDone=false p50_us=1199889.92 min_us=987593.79 max_us=1619043.38 calls=3
+RESULT rt=rust w=1 closeOnContextDone=true p50_us=0.71 min_us=0.38 max_us=200.04 calls=722934
+RESULT rt=rust w=2 closeOnContextDone=true p50_us=75.38 min_us=58.50 max_us=415.29 calls=19530
+RESULT rt=rust w=3 closeOnContextDone=true p50_us=1504.54 min_us=1349.21 max_us=1644.67 calls=999
+RESULT rt=rust w=4 closeOnContextDone=true p50_us=67569.75 min_us=65736.12 max_us=70843.25 calls=23
+RESULT rt=rust w=1 closeOnContextDone=false p50_us=0.38 min_us=0.17 max_us=159.00 calls=1256066
+RESULT rt=rust w=2 closeOnContextDone=false p50_us=7.38 min_us=6.79 max_us=185.46 calls=167181
+RESULT rt=rust w=3 closeOnContextDone=false p50_us=164.04 min_us=144.71 max_us=384.46 calls=9094
+RESULT rt=rust w=4 closeOnContextDone=false p50_us=7158.08 min_us=6744.00 max_us=8250.38 calls=210
+RESULT rt=rust-o3 w=1 closeOnContextDone=true p50_us=0.62 min_us=0.33 max_us=163.92 calls=858467
+RESULT rt=rust-o3 w=2 closeOnContextDone=true p50_us=61.79 min_us=52.71 max_us=400.42 calls=22819
+RESULT rt=rust-o3 w=3 closeOnContextDone=true p50_us=1211.88 min_us=1067.33 max_us=1426.58 calls=1237
+RESULT rt=rust-o3 w=4 closeOnContextDone=true p50_us=34996.12 min_us=34390.50 max_us=43770.00 calls=43
+RESULT rt=rust-o3 w=1 closeOnContextDone=false p50_us=0.38 min_us=0.21 max_us=120.08 calls=1238457
+RESULT rt=rust-o3 w=2 closeOnContextDone=false p50_us=6.83 min_us=5.71 max_us=171.75 calls=189938
+RESULT rt=rust-o3 w=3 closeOnContextDone=false p50_us=149.54 min_us=128.92 max_us=390.50 calls=9889
+RESULT rt=rust-o3 w=4 closeOnContextDone=false p50_us=7711.04 min_us=7052.12 max_us=8049.42 calls=197
+RESULT rt=go w=1 closeOnContextDone=true p50_us=4.92 min_us=1.67 max_us=88288.33 calls=132511
+RESULT rt=go w=2 closeOnContextDone=true p50_us=614.21 min_us=478.12 max_us=3107.46 calls=2497
+RESULT rt=go w=3 closeOnContextDone=true p50_us=20838.75 min_us=20172.75 max_us=23653.17 calls=72
+RESULT rt=go w=4 closeOnContextDone=true p50_us=70634.46 min_us=69143.38 max_us=84050.92 calls=21
+RESULT rt=go w=1 closeOnContextDone=false p50_us=2.75 min_us=0.75 max_us=197542.29 calls=183793
+RESULT rt=go w=2 closeOnContextDone=false p50_us=133.96 min_us=105.58 max_us=85645.54 calls=10235
+RESULT rt=go w=3 closeOnContextDone=false p50_us=4906.46 min_us=4745.04 max_us=6498.96 calls=303
+RESULT rt=go w=4 closeOnContextDone=false p50_us=8930.92 min_us=8221.71 max_us=9518.25 calls=170
+RESULT rt=tinygo w=1 closeOnContextDone=true p50_us=3.46 min_us=2.42 max_us=3164.62 calls=82403
+RESULT rt=tinygo w=2 closeOnContextDone=true p50_us=479.92 min_us=258.42 max_us=1142.17 calls=2892
+RESULT rt=tinygo w=3 closeOnContextDone=true p50_us=5832.46 min_us=4723.42 max_us=8795.50 calls=234
+RESULT rt=tinygo w=4 closeOnContextDone=true p50_us=44525.38 min_us=40542.38 max_us=53651.42 calls=33
+RESULT rt=tinygo w=1 closeOnContextDone=false p50_us=1.00 min_us=0.71 max_us=191.96 calls=340576
+RESULT rt=tinygo w=2 closeOnContextDone=false p50_us=90.17 min_us=79.29 max_us=2443.71 calls=13299
+RESULT rt=tinygo w=3 closeOnContextDone=false p50_us=3164.00 min_us=1965.33 max_us=15259.29 calls=445
+RESULT rt=tinygo w=4 closeOnContextDone=false p50_us=13302.08 min_us=9974.67 max_us=24659.38 calls=111
+## lat pass 2
+RESULT rt=qjs w=1 metric=lat p50_us=14.71 p50_min=11.25 p50_max=16.42 p99_us=86.17 p99_min=67.38 p99_max=106.79 mean_us=20.04 calls=249566 runs=3
+RESULT rt=qjs w=1 metric=tput c=1 rps=91560 rps_min=73363 rps_max=94726
+RESULT rt=qjs w=1 metric=tput c=4 rps=255318 rps_min=244660 rps_max=261277
+RESULT rt=qjs w=1 metric=tput c=14 rps=344704 rps_min=305302 rps_max=375890
+RESULT rt=qjs w=2 metric=lat p50_us=445.08 p50_min=349.00 p50_max=595.21 p99_us=956.92 p99_min=407.04 p99_max=1234.88 mean_us=555.48 calls=9424 runs=3
+RESULT rt=qjs w=2 metric=tput c=1 rps=2811 rps_min=2522 rps_max=2814
+RESULT rt=qjs w=2 metric=tput c=4 rps=8831 rps_min=8538 rps_max=10138
+RESULT rt=qjs w=2 metric=tput c=14 rps=12661 rps_min=11447 rps_max=13691
+RESULT rt=qjs w=3 metric=lat p50_us=69165.00 p50_min=69036.42 p50_max=70075.50 p99_us=71220.33 p99_min=70490.46 p99_max=91838.46 mean_us=69283.27 calls=64 runs=3
+RESULT rt=qjs w=3 metric=tput c=1 rps=14 rps_min=12 rps_max=15
+RESULT rt=qjs w=3 metric=tput c=4 rps=41 rps_min=37 rps_max=49
+RESULT rt=qjs w=3 metric=tput c=14 rps=101 rps_min=97 rps_max=104
+RESULT rt=qjs w=5 metric=lat p50_us=101.38 p50_min=100.75 p50_max=102.92 p99_us=117.21 p99_min=116.54 p99_max=131.71 mean_us=102.38 calls=43397 runs=3
+RESULT rt=qjs w=5 metric=tput c=1 rps=9915 rps_min=9902 rps_max=9977
+RESULT rt=qjs w=5 metric=tput c=4 rps=36203 rps_min=28739 rps_max=38129
+RESULT rt=qjs w=5 metric=tput c=14 rps=64935 rps_min=63281 rps_max=65443
+RESULT rt=rust w=1 metric=lat p50_us=0.79 p50_min=0.79 p50_max=0.96 p99_us=2.25 p99_min=1.96 p99_max=2.62 mean_us=0.94 calls=4337248 runs=3
+RESULT rt=rust w=1 metric=tput c=1 rps=891196 rps_min=875218 rps_max=898670
+RESULT rt=rust w=1 metric=tput c=4 rps=788808 rps_min=579213 rps_max=798673
+RESULT rt=rust w=1 metric=tput c=14 rps=561346 rps_min=546573 rps_max=575383
+RESULT rt=rust w=2 metric=lat p50_us=134.79 p50_min=133.88 p50_max=134.79 p99_us=299.62 p99_min=221.62 p99_max=580.92 mean_us=158.52 calls=28088 runs=3
+RESULT rt=rust w=2 metric=tput c=1 rps=6386 rps_min=6372 rps_max=6414
+RESULT rt=rust w=2 metric=tput c=4 rps=26098 rps_min=24768 rps_max=43274
+RESULT rt=rust w=2 metric=tput c=14 rps=90905 rps_min=53120 rps_max=105332
+RESULT rt=rust w=3 metric=lat p50_us=2734.79 p50_min=2496.58 p50_max=3025.58 p99_us=3752.29 p99_min=3609.92 p99_max=4213.83 mean_us=2757.73 calls=1618 runs=3
+RESULT rt=rust w=3 metric=tput c=1 rps=391 rps_min=335 rps_max=455
+RESULT rt=rust w=3 metric=tput c=4 rps=1006 rps_min=897 rps_max=1241
+RESULT rt=rust w=3 metric=tput c=14 rps=2489 rps_min=1320 rps_max=2701
+RESULT rt=rust w=5 metric=lat p50_us=10.08 p50_min=10.00 p50_max=13.04 p99_us=16.67 p99_min=15.71 p99_max=22.88 mean_us=10.45 calls=392878 runs=3
+RESULT rt=rust w=5 metric=tput c=1 rps=75558 rps_min=73226 rps_max=86191
+RESULT rt=rust w=5 metric=tput c=4 rps=201709 rps_min=191598 rps_max=217647
+RESULT rt=rust w=5 metric=tput c=14 rps=455513 rps_min=440305 rps_max=457478
+RESULT rt=v8 w=1 metric=lat p50_us=0.38 p50_min=0.38 p50_max=0.46 p99_us=1.17 p99_min=1.12 p99_max=1.54 mean_us=0.45 calls=8630863 runs=3
+RESULT rt=v8 w=1 metric=tput c=1 rps=2269054 rps_min=2250904 rps_max=2273327
+RESULT rt=v8 w=1 metric=tput c=4 rps=4025987 rps_min=3625739 rps_max=4932714
+RESULT rt=v8 w=1 metric=tput c=14 rps=3489243 rps_min=3344531 rps_max=3670665
+RESULT rt=v8 w=2 metric=lat p50_us=7.38 p50_min=6.33 p50_max=9.58 p99_us=13.00 p99_min=12.08 p99_max=19.54 mean_us=7.55 calls=566020 runs=3
+RESULT rt=v8 w=2 metric=tput c=1 rps=160654 rps_min=131796 rps_max=169940
+RESULT rt=v8 w=2 metric=tput c=4 rps=499651 rps_min=399629 rps_max=528934
+RESULT rt=v8 w=2 metric=tput c=14 rps=757191 rps_min=746095 rps_max=763154
+RESULT rt=v8 w=3 metric=lat p50_us=661.12 p50_min=595.92 p50_max=667.54 p99_us=1022.92 p99_min=793.12 p99_max=1024.00 mean_us=682.70 calls=6794 runs=3
+RESULT rt=v8 w=3 metric=tput c=1 rps=2254 rps_min=2011 rps_max=2569
+RESULT rt=v8 w=3 metric=tput c=4 rps=3821 rps_min=3598 rps_max=4375
+RESULT rt=v8 w=3 metric=tput c=14 rps=7460 rps_min=4729 rps_max=7745
+RESULT rt=v8 w=5 metric=lat p50_us=9.42 p50_min=9.00 p50_max=11.67 p99_us=15.58 p99_min=13.71 p99_max=22.33 mean_us=9.99 calls=428541 runs=3
+RESULT rt=v8 w=5 metric=tput c=1 rps=96389 rps_min=92337 rps_max=102529
+RESULT rt=v8 w=5 metric=tput c=4 rps=132804 rps_min=123438 rps_max=134502
+RESULT rt=v8 w=5 metric=tput c=14 rps=96501 rps_min=95925 rps_max=98775
+RESULT rt=wasmtime w=1 metric=lat p50_us=0.33 p50_min=0.29 p50_max=0.38 p99_us=0.42 p99_min=0.42 p99_max=0.46 mean_us=0.32 calls=11984522 runs=3
+RESULT rt=wasmtime w=1 metric=tput c=1 rps=3260260 rps_min=2719694 rps_max=3269542
+RESULT rt=wasmtime w=1 metric=tput c=4 rps=3226973 rps_min=2070163 rps_max=3981057
+RESULT rt=wasmtime w=1 metric=tput c=14 rps=5962060 rps_min=5272285 rps_max=8338265
+RESULT rt=wasmtime w=2 metric=lat p50_us=14.83 p50_min=14.83 p50_max=14.92 p99_us=28.54 p99_min=26.62 p99_max=51.21 mean_us=28.19 calls=158910 runs=3
+RESULT rt=wasmtime w=2 metric=tput c=1 rps=33809 rps_min=32868 rps_max=40460
+RESULT rt=wasmtime w=2 metric=tput c=4 rps=122997 rps_min=115566 rps_max=125342
+RESULT rt=wasmtime w=2 metric=tput c=14 rps=286932 rps_min=278881 rps_max=288706
+RESULT rt=wasmtime w=3 metric=lat p50_us=316.17 p50_min=315.96 p50_max=316.92 p99_us=9712.38 p99_min=8970.25 p99_max=11663.71 mean_us=577.93 calls=7489 runs=3
+RESULT rt=wasmtime w=3 metric=tput c=1 rps=4803 rps_min=1739 rps_max=6467
+RESULT rt=wasmtime w=3 metric=tput c=4 rps=13705 rps_min=11719 rps_max=14944
+RESULT rt=wasmtime w=3 metric=tput c=14 rps=27649 rps_min=25166 rps_max=27870
+RESULT rt=wasmtime w=4 metric=lat p50_us=7157.54 p50_min=7137.54 p50_max=8116.38 p99_us=7818.75 p99_min=7787.50 p99_max=13368.33 mean_us=7171.58 calls=592 runs=3
+RESULT rt=wasmtime w=4 metric=tput c=1 rps=130 rps_min=130 rps_max=132
+RESULT rt=wasmtime w=4 metric=tput c=4 rps=356 rps_min=352 rps_max=494
+RESULT rt=wasmtime w=4 metric=tput c=14 rps=831 rps_min=767 rps_max=908
+RESULT rt=wasmtime w=5 metric=lat p50_us=4.25 p50_min=3.83 p50_max=6.42 p99_us=5.62 p99_min=4.75 p99_max=7.62 mean_us=4.29 calls=966573 runs=3
+RESULT rt=wasmtime w=5 metric=tput c=1 rps=234912 rps_min=123541 rps_max=243931
+RESULT rt=wasmtime w=5 metric=tput c=4 rps=536821 rps_min=473649 rps_max=600391
+RESULT rt=wasmtime w=5 metric=tput c=14 rps=981568 rps_min=947863 rps_max=989962
+## done

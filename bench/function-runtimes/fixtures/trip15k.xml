@@ -1,0 +1,476 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<YardTrip xmlns="urn:bevco:yard:trip:1" id="YT-20261016-0042">
+  <TripNumber>YT-20261016-0042</TripNumber>
+  <Status>IN_PROGRESS</Status>
+  <Vehicle>
+    <Registration>CA 123-456</Registration>
+    <FleetNumber>TRK-017</FleetNumber>
+  </Vehicle>
+  <Driver>
+    <Code>D0099</Code>
+    <Name>Sipho Dlamini</Name>
+  </Driver>
+  <Origin>
+    <Code>YARD-A</Code>
+    <Name>Epping Yard A</Name>
+  </Origin>
+  <Destination>
+    <Code>DEP-12</Code>
+    <Name>Montague Gardens Depot</Name>
+  </Destination>
+  <PlannedStart>2026-10-16T05:30:00+02:00</PlannedStart>
+  <PlannedEnd>2026-10-16T08:00:00+02:00</PlannedEnd>
+  <ActualStart>2026-10-16T05:42:00+02:00</ActualStart>
+  <Lines>
+    <Line number="1">
+      <Sku>BEV-001-CAN</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">2</Quantity>
+    </Line>
+    <Line number="2">
+      <Sku>BEV-002-BTL</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">3</Quantity>
+    </Line>
+    <Line number="3">
+      <Sku>BEV-003-CAN</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">4</Quantity>
+    </Line>
+    <Line number="4">
+      <Sku>BEV-004-BTL</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">5</Quantity>
+    </Line>
+    <Line number="5">
+      <Sku>BEV-005-CAN</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">6</Quantity>
+    </Line>
+    <Line number="6">
+      <Sku>BEV-006-BTL</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">7</Quantity>
+    </Line>
+    <Line number="7">
+      <Sku>BEV-007-CAN</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">8</Quantity>
+    </Line>
+    <Line number="8">
+      <Sku>BEV-008-BTL</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">9</Quantity>
+    </Line>
+    <Line number="9">
+      <Sku>BEV-009-CAN</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">10</Quantity>
+    </Line>
+    <Line number="10">
+      <Sku>BEV-010-BTL</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">11</Quantity>
+    </Line>
+    <Line number="11">
+      <Sku>BEV-011-CAN</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">12</Quantity>
+    </Line>
+    <Line number="12">
+      <Sku>BEV-012-BTL</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">13</Quantity>
+    </Line>
+    <Line number="13">
+      <Sku>BEV-013-CAN</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">14</Quantity>
+    </Line>
+    <Line number="14">
+      <Sku>BEV-014-BTL</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">1</Quantity>
+    </Line>
+    <Line number="15">
+      <Sku>BEV-015-CAN</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">2</Quantity>
+    </Line>
+    <Line number="16">
+      <Sku>BEV-016-BTL</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">3</Quantity>
+    </Line>
+    <Line number="17">
+      <Sku>BEV-017-CAN</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">4</Quantity>
+    </Line>
+    <Line number="18">
+      <Sku>BEV-018-BTL</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">5</Quantity>
+    </Line>
+    <Line number="19">
+      <Sku>BEV-019-CAN</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">6</Quantity>
+    </Line>
+    <Line number="20">
+      <Sku>BEV-020-BTL</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">7</Quantity>
+    </Line>
+    <Line number="21">
+      <Sku>BEV-021-CAN</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">8</Quantity>
+    </Line>
+    <Line number="22">
+      <Sku>BEV-022-BTL</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">9</Quantity>
+    </Line>
+    <Line number="23">
+      <Sku>BEV-023-CAN</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">10</Quantity>
+    </Line>
+    <Line number="24">
+      <Sku>BEV-024-BTL</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">11</Quantity>
+    </Line>
+    <Line number="25">
+      <Sku>BEV-025-CAN</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">12</Quantity>
+    </Line>
+    <Line number="26">
+      <Sku>BEV-026-BTL</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">13</Quantity>
+    </Line>
+    <Line number="27">
+      <Sku>BEV-027-CAN</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">14</Quantity>
+    </Line>
+    <Line number="28">
+      <Sku>BEV-028-BTL</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">1</Quantity>
+    </Line>
+    <Line number="29">
+      <Sku>BEV-029-CAN</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">2</Quantity>
+    </Line>
+    <Line number="30">
+      <Sku>BEV-030-BTL</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">3</Quantity>
+    </Line>
+    <Line number="31">
+      <Sku>BEV-031-CAN</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">4</Quantity>
+    </Line>
+    <Line number="32">
+      <Sku>BEV-032-BTL</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">5</Quantity>
+    </Line>
+    <Line number="33">
+      <Sku>BEV-033-CAN</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">6</Quantity>
+    </Line>
+    <Line number="34">
+      <Sku>BEV-034-BTL</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">7</Quantity>
+    </Line>
+    <Line number="35">
+      <Sku>BEV-035-CAN</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">8</Quantity>
+    </Line>
+    <Line number="36">
+      <Sku>BEV-036-BTL</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">9</Quantity>
+    </Line>
+    <Line number="37">
+      <Sku>BEV-037-CAN</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">10</Quantity>
+    </Line>
+    <Line number="38">
+      <Sku>BEV-038-BTL</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">11</Quantity>
+    </Line>
+    <Line number="39">
+      <Sku>BEV-039-CAN</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">12</Quantity>
+    </Line>
+    <Line number="40">
+      <Sku>BEV-040-BTL</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">13</Quantity>
+    </Line>
+    <Line number="41">
+      <Sku>BEV-041-CAN</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">14</Quantity>
+    </Line>
+    <Line number="42">
+      <Sku>BEV-042-BTL</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">1</Quantity>
+    </Line>
+    <Line number="43">
+      <Sku>BEV-043-CAN</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">2</Quantity>
+    </Line>
+    <Line number="44">
+      <Sku>BEV-044-BTL</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">3</Quantity>
+    </Line>
+    <Line number="45">
+      <Sku>BEV-045-CAN</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">4</Quantity>
+    </Line>
+    <Line number="46">
+      <Sku>BEV-046-BTL</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">5</Quantity>
+    </Line>
+    <Line number="47">
+      <Sku>BEV-047-CAN</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">6</Quantity>
+    </Line>
+    <Line number="48">
+      <Sku>BEV-048-BTL</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">7</Quantity>
+    </Line>
+    <Line number="49">
+      <Sku>BEV-049-CAN</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">8</Quantity>
+    </Line>
+    <Line number="50">
+      <Sku>BEV-050-BTL</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">9</Quantity>
+    </Line>
+    <Line number="51">
+      <Sku>BEV-051-CAN</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">10</Quantity>
+    </Line>
+    <Line number="52">
+      <Sku>BEV-052-BTL</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">11</Quantity>
+    </Line>
+    <Line number="53">
+      <Sku>BEV-053-CAN</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">12</Quantity>
+    </Line>
+    <Line number="54">
+      <Sku>BEV-054-BTL</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">13</Quantity>
+    </Line>
+    <Line number="55">
+      <Sku>BEV-055-CAN</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">14</Quantity>
+    </Line>
+    <Line number="56">
+      <Sku>BEV-056-BTL</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">1</Quantity>
+    </Line>
+    <Line number="57">
+      <Sku>BEV-057-CAN</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">2</Quantity>
+    </Line>
+    <Line number="58">
+      <Sku>BEV-058-BTL</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">3</Quantity>
+    </Line>
+    <Line number="59">
+      <Sku>BEV-059-CAN</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">4</Quantity>
+    </Line>
+    <Line number="60">
+      <Sku>BEV-060-BTL</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">5</Quantity>
+    </Line>
+    <Line number="61">
+      <Sku>BEV-061-CAN</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">6</Quantity>
+    </Line>
+    <Line number="62">
+      <Sku>BEV-062-BTL</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">7</Quantity>
+    </Line>
+    <Line number="63">
+      <Sku>BEV-063-CAN</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">8</Quantity>
+    </Line>
+    <Line number="64">
+      <Sku>BEV-064-BTL</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">9</Quantity>
+    </Line>
+    <Line number="65">
+      <Sku>BEV-065-CAN</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">10</Quantity>
+    </Line>
+    <Line number="66">
+      <Sku>BEV-066-BTL</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">11</Quantity>
+    </Line>
+    <Line number="67">
+      <Sku>BEV-067-CAN</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">12</Quantity>
+    </Line>
+    <Line number="68">
+      <Sku>BEV-068-BTL</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">13</Quantity>
+    </Line>
+    <Line number="69">
+      <Sku>BEV-069-CAN</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">14</Quantity>
+    </Line>
+    <Line number="70">
+      <Sku>BEV-070-BTL</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">1</Quantity>
+    </Line>
+    <Line number="71">
+      <Sku>BEV-071-CAN</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">2</Quantity>
+    </Line>
+    <Line number="72">
+      <Sku>BEV-072-BTL</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">3</Quantity>
+    </Line>
+    <Line number="73">
+      <Sku>BEV-073-CAN</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">4</Quantity>
+    </Line>
+    <Line number="74">
+      <Sku>BEV-074-BTL</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">5</Quantity>
+    </Line>
+    <Line number="75">
+      <Sku>BEV-075-CAN</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">6</Quantity>
+    </Line>
+    <Line number="76">
+      <Sku>BEV-076-BTL</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">7</Quantity>
+    </Line>
+    <Line number="77">
+      <Sku>BEV-077-CAN</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">8</Quantity>
+    </Line>
+    <Line number="78">
+      <Sku>BEV-078-BTL</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">9</Quantity>
+    </Line>
+    <Line number="79">
+      <Sku>BEV-079-CAN</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">10</Quantity>
+    </Line>
+    <Line number="80">
+      <Sku>BEV-080-BTL</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">11</Quantity>
+    </Line>
+    <Line number="81">
+      <Sku>BEV-081-CAN</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">12</Quantity>
+    </Line>
+    <Line number="82">
+      <Sku>BEV-082-BTL</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">13</Quantity>
+    </Line>
+    <Line number="83">
+      <Sku>BEV-083-CAN</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">14</Quantity>
+    </Line>
+    <Line number="84">
+      <Sku>BEV-084-BTL</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">1</Quantity>
+    </Line>
+    <Line number="85">
+      <Sku>BEV-085-CAN</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">2</Quantity>
+    </Line>
+    <Line number="86">
+      <Sku>BEV-086-BTL</Sku>
+      <Description>Cider 750ml bottle, 12 pack</Description>
+      <Quantity uom="PAL">3</Quantity>
+    </Line>
+    <Line number="87">
+      <Sku>BEV-087-CAN</Sku>
+      <Description>Gin &amp; Tonic 250ml, 24 pack</Description>
+      <Quantity uom="PAL">4</Quantity>
+    </Line>
+    <Line number="88">
+      <Sku>BEV-088-BTL</Sku>
+      <Description>Still water 500ml, 24 pack</Description>
+      <Quantity uom="PAL">5</Quantity>
+    </Line>
+    <Line number="89">
+      <Sku>BEV-089-CAN</Sku>
+      <Description>Cola 2l PET, 6 pack</Description>
+      <Quantity uom="PAL">6</Quantity>
+    </Line>
+    <Line number="90">
+      <Sku>BEV-090-BTL</Sku>
+      <Description>Lager 330ml can, 24 pack</Description>
+      <Quantity uom="PAL">7</Quantity>
+    </Line>
+  </Lines>
+</YardTrip>
