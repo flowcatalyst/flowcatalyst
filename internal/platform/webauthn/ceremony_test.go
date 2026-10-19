@@ -2,6 +2,7 @@ package webauthn
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"testing"
 	"time"
@@ -229,5 +230,25 @@ func TestAuthentication_ExpiredSessionRefused(t *testing.T) {
 	sess.Expires = time.Now().Add(-time.Minute)
 	if _, err := s.WebAuthn().ValidateLogin(u, *sess, parseGet(t, a.Assert(sess.Challenge, testOrigin, testRPID, []byte("prn_a")))); err == nil {
 		t.Fatal("an expired ceremony session must be refused")
+	}
+}
+
+// A client that volunteers an extension output nobody requested must not fail
+// the ceremony (go-webauthn v0.18 rejects by default; we pin the v0.17
+// behaviour so real browsers and password managers keep working).
+func TestRegistration_UnsolicitedExtensionOutputTolerated(t *testing.T) {
+	s := newSvc(t)
+	a := webauthntest.New(t)
+	u := user("prn_a")
+	opts, sess, _ := s.WebAuthn().BeginRegistration(u)
+	body := a.Register(opts.Response.Challenge.String(), testOrigin, testRPID)
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatal(err)
+	}
+	m["clientExtensionResults"] = map[string]any{"credProps": map[string]any{"rk": true}}
+	body, _ = json.Marshal(m)
+	if _, err := s.WebAuthn().CreateCredential(u, *sess, parseCreate(t, body)); err != nil {
+		t.Fatalf("unsolicited extension output must be tolerated: %v", err)
 	}
 }

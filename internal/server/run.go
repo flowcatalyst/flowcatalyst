@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
-	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"io"
 	"log/slog"
 	"net"
@@ -14,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 
 	platformsink "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
 
@@ -93,7 +94,14 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	if cfg.HTTPRealIP {
+		// chi RealIP rewrites RemoteAddr from X-Real-IP / the LEFTMOST
+		// X-Forwarded-For hop, both client-controlled (GO-2026-5774/5775/5777).
+		// Kept on by default for compatibility; the platform's own rate limits
+		// key on the rightmost XFF hop (ratelimit.ClientIP) and fall back to
+		// RemoteAddr only when XFF is absent.
+		r.Use(middleware.RealIP)
+	}
 	r.Use(middleware.Recoverer)
 	r.Get("/health", healthHandler)
 

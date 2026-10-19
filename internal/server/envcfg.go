@@ -258,6 +258,11 @@ type EnvCfg struct {
 	// multi-tenant issuer patterns must match the whole issuer.
 	OIDCIssuerPatternStrict bool
 
+	// HTTPRealIP (FC_HTTP_REAL_IP_MIDDLEWARE, default true) mounts chi's
+	// RealIP middleware, which trusts X-Real-IP / the leftmost
+	// X-Forwarded-For. Set false when no proxy rewrites those headers.
+	HTTPRealIP bool
+
 	// SessionCookieSameSite is the SameSite mode of the fc_session cookie
 	// (FC_SESSION_COOKIE_SAME_SITE: lax (default) | strict | none).
 	SessionCookieSameSite string
@@ -423,6 +428,8 @@ func LoadEnv() EnvCfg {
 
 		OIDCRejectUnverifiedEmail: envBool("FC_OIDC_REJECT_UNVERIFIED_EMAIL", false),
 		OIDCIssuerPatternStrict:   envBool("FC_OIDC_ISSUER_PATTERN_STRICT", false),
+
+		HTTPRealIP: envBool("FC_HTTP_REAL_IP_MIDDLEWARE", true),
 
 		SessionCookieSameSite: envOr("FC_SESSION_COOKIE_SAME_SITE", "lax"),
 

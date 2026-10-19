@@ -1,6 +1,7 @@
 package webauthn
 
 import (
+	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 )
 
@@ -28,6 +29,11 @@ func NewService(cfg Config, creds *Repository, ceremonies *CeremonyRepository) (
 		RPDisplayName: cfg.RPDisplayName,
 		RPID:          cfg.RPID,
 		RPOrigins:     cfg.RPOrigins,
+		// v0.18 fails a ceremony whose client returns an extension output the
+		// session did not request. Browsers and password managers differ in
+		// what they volunteer, and a ceremony in flight across an upgrade
+		// carries no requested list, so keep the v0.17 behaviour: ignore.
+		ExtensionsUnsolicitedOutputPolicy: protocol.UnsolicitedOutputPolicyIgnore,
 	})
 	if err != nil {
 		return nil, err
