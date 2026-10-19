@@ -83,6 +83,8 @@ func TestSharedFunctionEventSchemasMatchJava(t *testing.T) {
 			reqStr("digest"), reqStr("pool"), optStr("signerIssuer"), optStr("signerSubject")),
 		"platform:function:version:retired": obj(
 			reqStr("functionId"), reqStr("address"), reqStr("versionId"), reqU32("version")),
+		"platform:function:version:pruned": obj(
+			reqStr("functionId"), reqStr("address"), reqStr("versionId"), reqU32("version"), reqStr("digest")),
 		"platform:function:alias:changed": obj(
 			reqStr("functionId"), reqStr("address"), reqStr("alias"), reqStr("versionId"),
 			reqU32("version"), optStr("previousVersionId")),

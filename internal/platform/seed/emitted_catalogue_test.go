@@ -126,7 +126,7 @@ func TestEveryCataloguedEventTypeIsEmitted(t *testing.T) {
 	}
 }
 
-// javaRustFunctionEventTypes are the 14 function event types Java
+// javaRustFunctionEventTypes are the 15 function event types Java
 // (FunctionEvents) and Rust (fc-platform-functions events.rs) emit. The owner
 // ruled (2026-10-12) that the function events use this family.
 var javaRustFunctionEventTypes = map[string]bool{
@@ -136,6 +136,7 @@ var javaRustFunctionEventTypes = map[string]bool{
 	"platform:function:version:published": true,
 	"platform:function:version:ready":     true,
 	"platform:function:version:retired":   true,
+	"platform:function:version:pruned":    true,
 	"platform:function:alias:changed":     true,
 	"platform:function:alias:removed":     true,
 	"platform:function:policy:updated":    true,
@@ -156,8 +157,6 @@ var javaRustFunctionEventTypes = map[string]bool{
 //     emits only alias:changed, which Go now emits too.
 //   - function-schedule:wired: one per scheduled job that reconciliation
 //     creates, updates or deletes.
-//   - function-version:pruned: one per version the retention limit deletes
-//     (FC_FUNCTIONS_KEEP_VERSIONS); Java and Rust do not prune.
 //   - function-route:{set,deleted}: Go's public routes are their own records;
 //     Java's and Rust's routes live in the version manifest and emit nothing.
 //   - function-setting:{set,deleted}: now only for DB settings. Java and Rust
@@ -169,7 +168,6 @@ var javaRustFunctionEventTypes = map[string]bool{
 var goOnlyFunctionEventTypes = map[string]bool{
 	"platform:admin:function:promoted":        true,
 	"platform:admin:function-schedule:wired":  true,
-	"platform:admin:function-version:pruned":  true,
 	"platform:admin:function-route:set":       true,
 	"platform:admin:function-route:deleted":   true,
 	"platform:admin:function-setting:set":     true,

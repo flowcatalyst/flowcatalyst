@@ -126,14 +126,13 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	// events, which Java and Rust have no counterpart for, keep their
 	// platform:admin:function* codes (docs/platform-bug-fixes.md F11).
 	groupAs("platform:function:function", "Function", "created", "updated", "deleted")
-	groupAs("platform:function:version", "Function Version", "published", "retired")
+	groupAs("platform:function:version", "Function Version", "published", "retired", "pruned")
 	groupAs("platform:function:alias", "Function Alias", "changed", "removed")
 	groupAs("platform:function:config", "Function Config", "updated")
 	groupAs("platform:function:secret", "Function Secret", "set", "deleted")
 	groupAs("platform:function:domain", "Function Domain", "claimed", "released")
 	group("platform:admin:function", "promoted")
 	group("platform:admin:function-setting", "set", "deleted")
-	group("platform:admin:function-version", "pruned")
 	group("platform:admin:function-route", "set", "deleted")
 	group("platform:admin:function-schedule", "wired")
 

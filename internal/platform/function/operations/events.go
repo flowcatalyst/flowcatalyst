@@ -22,6 +22,7 @@ const (
 	FunctionDeletedType  = "platform:function:function:deleted"
 	VersionPublishedType = "platform:function:version:published"
 	VersionRetiredType   = "platform:function:version:retired"
+	VersionPrunedType    = "platform:function:version:pruned"
 	AliasChangedType     = "platform:function:alias:changed"
 	AliasRemovedType     = "platform:function:alias:removed"
 	ConfigUpdatedType    = "platform:function:config:updated"
@@ -34,7 +35,6 @@ const (
 	// public routes, and DB settings (Java and Rust have no DB kind).
 	FunctionPromotedType      = "platform:admin:function:promoted"
 	FunctionScheduleWiredType = "platform:admin:function-schedule:wired"
-	VersionPrunedType         = "platform:admin:function-version:pruned"
 	RouteSetType              = "platform:admin:function-route:set"
 	RouteDeletedType          = "platform:admin:function-route:deleted"
 	DBSettingSetType          = "platform:admin:function-setting:set"
@@ -230,7 +230,7 @@ func (e VersionRetired) ToDataJSON() ([]byte, error) {
 }
 
 // VersionPruned is emitted once per version the retention limit deleted
-// (Go-only: Java and Rust do not prune): {functionId, address, versionId,
+// (Java and Rust are to emit the same event): {functionId, address, versionId,
 // version, digest}. The version row is gone when the event is read; the
 // event is the record of it.
 type VersionPruned struct {
@@ -245,7 +245,7 @@ type VersionPruned struct {
 func (e VersionPruned) EventID() string       { return e.Metadata.EventID }
 func (e VersionPruned) EventType() string     { return VersionPrunedType }
 func (e VersionPruned) SpecVersion() string   { return "1.0" }
-func (e VersionPruned) Source() string        { return AdminSource }
+func (e VersionPruned) Source() string        { return Source }
 func (e VersionPruned) Subject() string       { return subjectFor(e.FunctionID) }
 func (e VersionPruned) Time() time.Time       { return e.Metadata.OccurredAt }
 func (e VersionPruned) PrincipalID() string   { return e.Metadata.PrincipalID }

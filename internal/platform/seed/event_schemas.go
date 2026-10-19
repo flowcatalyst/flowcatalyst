@@ -332,6 +332,9 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:function:version:retired"] = obj(
 		reqStr("functionId"), reqStr("address"), reqStr("versionId"), reqU32("version"),
 	)
+	m["platform:function:version:pruned"] = obj(
+		reqStr("functionId"), reqStr("address"), reqStr("versionId"), reqU32("version"), reqStr("digest"),
+	)
 	// previousVersionId is absent when the alias is new.
 	m["platform:function:alias:changed"] = obj(
 		reqStr("functionId"), reqStr("address"), reqStr("alias"), reqStr("versionId"),
@@ -356,10 +359,6 @@ func platformEventSchemas() map[string]json.RawMessage {
 	// DB settings only (kind is "DB"); CONFIG and SECRET emit the shared codes.
 	m["platform:admin:function-setting:set"] = obj(reqStr("functionId"), reqStr("kind"), reqStr("key"))
 	m["platform:admin:function-setting:deleted"] = obj(reqStr("functionId"), reqStr("kind"), reqStr("key"))
-	// Go-only: version pruning (Java and Rust do not prune).
-	m["platform:admin:function-version:pruned"] = obj(
-		reqStr("functionId"), reqStr("address"), reqStr("versionId"), reqU32("version"), reqStr("digest"),
-	)
 	m["platform:admin:function-route:set"] = obj(
 		reqStr("functionId"), reqStr("routeId"), reqStr("hostname"), reqStr("pathPrefix"),
 	)

@@ -82,6 +82,12 @@ func TestFunctionEvents_SharedWithJavaAndRust(t *testing.T) {
 			`{"functionId":"fng_0000000000001","address":"billing.invoices","versionId":"fnv_0000000000002","version":2}`,
 		},
 		{
+			"version pruned",
+			operations.VersionPruned{FunctionID: "fng_0000000000001", Address: "acme.tick", VersionID: "fnv_0000000000001", Version: 3, Digest: "ab"},
+			"platform:function:version:pruned",
+			`{"functionId":"fng_0000000000001","address":"acme.tick","versionId":"fnv_0000000000001","version":3,"digest":"ab"}`,
+		},
+		{
 			"alias changed, first",
 			operations.AliasChanged{
 				FunctionID: "fng_0000000000001", Address: "billing.invoices", Alias: "live", VersionID: "fnv_0000000000002", Version: 2,
@@ -175,12 +181,6 @@ func TestFunctionEvents_GoOnly(t *testing.T) {
 			},
 			"platform:admin:function-schedule:wired",
 			`{"functionId":"fng_0000000000001","scheduledJobId":"sjb_0000000000001","code":"fn-tick","action":"created"}`,
-		},
-		{
-			"version pruned",
-			operations.VersionPruned{FunctionID: "fng_0000000000001", Address: "acme.tick", VersionID: "fnv_0000000000001", Version: 3, Digest: "ab"},
-			"platform:admin:function-version:pruned",
-			`{"functionId":"fng_0000000000001","address":"acme.tick","versionId":"fnv_0000000000001","version":3,"digest":"ab"}`,
 		},
 		{
 			"route set",

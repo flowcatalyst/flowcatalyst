@@ -102,9 +102,9 @@ func TestPrune_OldestUntaggedFirst_TaggedNeverPrunedNorCounted(t *testing.T) {
 	// One pruned event per version, Go-only family.
 	var n int
 	for _, e := range f.functionEvents() {
-		if e.Type == "platform:admin:function-version:pruned" {
+		if e.Type == "platform:function:version:pruned" {
 			n++
-			assert.Equal(t, "platform:admin", e.Source)
+			assert.Equal(t, "platform:function", e.Source)
 		}
 	}
 	assert.Equal(t, 5, n)
