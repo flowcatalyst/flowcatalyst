@@ -11,6 +11,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/syncdiff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
@@ -288,19 +289,27 @@ func SyncSubscriptions(
 					if cur.Source != subscription.SourceAPI && cur.Source != subscription.SourceCode {
 						continue // never touch UI-authored rows
 					}
-					cur.Name = in.Name
-					cur.Description = in.Description
-					cur.Endpoint = in.Target
-					cur.ConnectionID = in.ConnectionID
-					cur.EventTypes = bindings
-					cur.DataOnly = in.DataOnly
+					// F30: apply the definition to a copy, and leave the stored row
+					// alone (not saved, not counted, no event) when nothing the sync
+					// manages differs.
+					next := *cur
+					next.Name = in.Name
+					next.Description = in.Description
+					next.Endpoint = in.Target
+					next.ConnectionID = in.ConnectionID
+					next.EventTypes = bindings
+					next.DataOnly = in.DataOnly
 					if in.MaxRetries != nil {
-						cur.MaxRetries = *in.MaxRetries
+						next.MaxRetries = *in.MaxRetries
 					}
 					if in.TimeoutSeconds != nil {
-						cur.TimeoutSeconds = *in.TimeoutSeconds
+						next.TimeoutSeconds = *in.TimeoutSeconds
 					}
-					resolveDispatchPool(ctx, poolRepo, in.DispatchPoolCode, &cur.DispatchPoolID, &cur.DispatchPoolCode)
+					resolveDispatchPool(ctx, poolRepo, in.DispatchPoolCode, &next.DispatchPoolID, &next.DispatchPoolCode)
+					if !subscriptionChanged(cur, &next) {
+						continue
+					}
+					*cur = next
 					saves = append(saves, usecasepgx.SyncSaveItem[subscription.Subscription]{
 						Aggregate: cur,
 						Event: SubscriptionUpdated{
@@ -395,4 +404,35 @@ func resolveDispatchPool(ctx context.Context, poolRepo *dispatchpool.Repository,
 	c := pool.Code
 	*idOut = &id
 	*codeOut = &c
+}
+
+// subscriptionChanged reports whether applying a definition changed anything
+// the sync manages: the stored row and its updated copy differ in a name,
+// description, endpoint, connection, event-type binding code (as a set: the
+// stored order is not the sent order), data-only flag, retry or timeout
+// limit, or dispatch pool link.
+//
+// A binding's filter is NOT compared: msg_subscription_event_types has no
+// filter column, so a stored binding never carries one and comparing it would
+// call every subscription with a filter changed on every sync (the bug this
+// removes). The filter is therefore neither persisted nor detectable here;
+// see the F30 ledger entry.
+func subscriptionChanged(cur, next *subscription.Subscription) bool {
+	if cur.Name != next.Name || cur.Endpoint != next.Endpoint || cur.DataOnly != next.DataOnly ||
+		cur.MaxRetries != next.MaxRetries || cur.TimeoutSeconds != next.TimeoutSeconds ||
+		!syncdiff.SameText(cur.Description, next.Description) ||
+		!syncdiff.SameText(cur.ConnectionID, next.ConnectionID) ||
+		!syncdiff.SameText(cur.DispatchPoolID, next.DispatchPoolID) ||
+		!syncdiff.SameText(cur.DispatchPoolCode, next.DispatchPoolCode) {
+		return true
+	}
+	return !syncdiff.SameSet(bindingCodes(cur.EventTypes), bindingCodes(next.EventTypes))
+}
+
+func bindingCodes(bs []subscription.EventTypeBinding) []string {
+	out := make([]string, 0, len(bs))
+	for _, b := range bs {
+		out = append(out, b.EventTypeCode)
+	}
+	return out
 }

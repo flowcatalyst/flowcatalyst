@@ -10,6 +10,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/syncdiff"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
@@ -75,6 +76,11 @@ func SyncPlatformRoles(repo *role.Repository, codeRoles []role.Role) usecaseop.O
 							"role", def.Name, "source", string(existing.Source))
 						continue
 					}
+					// F30: a catalogue role that already matches is left alone: not
+					// saved, not counted, no event.
+					changedRow := existing.DisplayName != def.DisplayName ||
+						!syncdiff.SameText(existing.Description, def.Description) ||
+						!syncdiff.SameSet(existing.Permissions, def.Permissions)
 					existing.DisplayName = def.DisplayName
 					existing.Description = def.Description
 					// F18: heal a row written without its application's id.
@@ -83,7 +89,13 @@ func SyncPlatformRoles(repo *role.Repository, codeRoles []role.Role) usecaseop.O
 						if err != nil {
 							return nil, err
 						}
+						if appID != nil {
+							changedRow = true
+						}
 						existing.ApplicationID = appID
+					}
+					if !changedRow {
+						continue
 					}
 					if err := role.RequirePermissionsInApplication(existing.OwningApplicationCode(),
 						role.AddedPermissions(existing.Permissions, def.Permissions), false); err != nil {
@@ -278,6 +290,7 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 			// create used to leave it null) is invisible to the lookup above, so
 			// the sync would try to create it again and collide on the unique
 			// name. Adopt it: it is this application's role, give it its id.
+			adopted := map[string]bool{}
 			for _, in := range cmd.Roles {
 				full := cmd.ApplicationCode + ":" + splitRoleName(strings.ToLower(in.Name), cmd.ApplicationCode)
 				if _, ok := existingByName[full]; ok {
@@ -291,6 +304,7 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 					appID := ids.ApplicationID(cmd.ApplicationID)
 					orphan.ApplicationID = &appID
 					existingByName[full] = orphan
+					adopted[full] = true
 				}
 			}
 
@@ -308,7 +322,17 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 					if cur.Source != role.SourceSDK {
 						continue // never touch CODE/DATABASE-managed rows
 					}
-					cur.DisplayName = displayNameOr(in.DisplayName, in.Name)
+					// F30: a role that already matches the definition is left alone:
+					// not saved, not counted, no event. An adopted id-less role
+					// always needs its application id written.
+					wantName := displayNameOr(in.DisplayName, in.Name)
+					if !adopted[fullName] && cur.DisplayName == wantName &&
+						syncdiff.SameText(cur.Description, in.Description) &&
+						cur.ClientManaged == in.ClientManaged &&
+						(len(in.Permissions) == 0 || syncdiff.SameSet(cur.Permissions, in.Permissions)) {
+						continue
+					}
+					cur.DisplayName = wantName
 					cur.Description = in.Description
 					// Preserve existing permissions when the payload supplies none.
 					// Apps typically declare role NAMES while permissions are curated

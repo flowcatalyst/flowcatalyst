@@ -9,6 +9,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/syncdiff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
@@ -187,6 +188,14 @@ func SyncConnections(
 				if cur, ok := existingByCode[code]; ok {
 					if cur.Source != connection.SourceAPI && cur.Source != connection.SourceCode {
 						continue // never touch UI-authored rows
+					}
+					// F30: a connection that already matches is left alone: not
+					// saved, not counted, no event.
+					if cur.Name == strings.TrimSpace(in.Name) &&
+						syncdiff.SameText(cur.Description, in.Description) &&
+						syncdiff.SameText(cur.ExternalID, in.ExternalID) &&
+						cur.ServiceAccountID == appServiceAccountID {
+						continue
 					}
 					cur.Name = strings.TrimSpace(in.Name)
 					cur.Description = in.Description

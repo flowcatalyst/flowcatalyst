@@ -130,9 +130,8 @@ func TestSyncConnections_CreateIdempotentUpdate(t *testing.T) {
 	assert.Equal(t, "sac_syncconn1", got.ServiceAccountID, "service account defaults from the application's service account (sac_), never its principal id (prn_/sva_)")
 	assert.Equal(t, connection.StatusActive, got.Status)
 
-	// Re-syncing the exact same payload must not create a duplicate — it
-	// upserts the same row (counted as an update, matching SyncSubscriptions'
-	// unconditional-update behaviour for matched API rows).
+	// Re-syncing the exact same payload must not create a duplicate, and
+	// changes nothing: the row matches, so it is not counted as updated (F30).
 	second, err := runConnSync(t, uow, connRepo, apps, subRepo, operations.SyncConnectionsCommand{
 		ApplicationID:   app.ApplicationID,
 		ApplicationCode: app.Code,
@@ -142,7 +141,7 @@ func TestSyncConnections_CreateIdempotentUpdate(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, uint32(0), second.Created)
-	assert.Equal(t, uint32(1), second.Updated)
+	assert.Equal(t, uint32(0), second.Updated)
 
 	// A changed name/description on a later sync actually persists.
 	newDesc := "second"

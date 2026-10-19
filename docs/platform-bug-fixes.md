@@ -2318,6 +2318,54 @@ PARTNER that disagrees with the tier the client links give (0 = ANCHOR, 1 = CLIE
 `SCOPE_REACH_MISMATCH`; on update compare the merged result and only when `scope` or `clientIds` is in the
 request. Do not make the token follow the stored scope.
 
+### F30. Definition sync reported unchanged roles, connections and subscriptions as updated (framework G77-5, 2026-10-19)
+
+**Bug.** `SyncRoles`, `SyncPlatformRoles`, `SyncConnections` and `SyncSubscriptions` overwrote every listed row
+that already existed and counted it `updated`, so an SDK sync of an unchanged definition set reported
+`updated=N` on every run (event types, fixed in item 6, and scheduled jobs reported 0). Each such row was also
+rewritten (its `updated_at` bumped) and audited with a `*Updated` event.
+
+**Fix.** Each sync now compares the definition with the stored row before writing, as `SyncEventTypes` does; an
+equal row is not saved, not counted and gets no event. What is compared, per sync:
+
+| Sync | Compared |
+|---|---|
+| `SyncRoles` (SDK) | display name, description, `clientManaged`, permissions as a set (only when the definition lists some: omitted still means "keep the stored ones"); an adopted id-less role (F18) always counts, its application id needs writing |
+| `SyncPlatformRoles` | display name, description, permissions as a set; a healed missing application id counts |
+| `SyncConnections` | name, description, external id, service account |
+| `SyncSubscriptions` | name, description, target, connection, data-only, max retries and timeout (only when sent), dispatch pool link, event-type binding codes as a set |
+
+A row whose definition differs in any of those still updates and counts, as before. The comparisons live in
+`shared/syncdiff` (`SameText`, `SameSet`). The response shape is unchanged: `created`, `updated`, `deleted`,
+`syncedCodes`; the counts now mean "rows written", which the TypeScript SDK's `CategorySyncResult` and the other
+SDKs only pass through. Role and permission ceilings (F10, F12) look at changed permissions only, so an unchanged
+role contributes nothing to them, as before.
+
+**Finding, not fixed: subscription event-type filters are not persisted.** `msg_subscription_event_types` has no
+filter column, so a binding's `filter` sent by a sync (or the API) is dropped on write and a stored binding never
+has one. The subscription comparison therefore ignores filters (comparing them would report every subscription with
+a filter changed on every sync, the bug itself). Whether filters should be stored is an owner/design decision (it
+needs a migration and the dispatch path to evaluate them).
+
+**Not touched.** Dispatch pools, processes and principals syncs were not examined for the same pattern (the
+framework run named roles, connections and subscriptions).
+
+**Tests** (`-tags=integration`, all four failed before the change): `role/operations/sync_unchanged_pg_test.go`
+(`TestSyncRoles_UnchangedRolesAreNotUpdated`: same, reordered permissions, omitted permissions are unchanged; each
+of display name, description, permissions, managed updates; `updated_at` untouched;
+`TestSyncPlatformRoles_UnchangedRolesAreNotUpdated`: the real catalogue, then one drifted role), 
+`connection/operations/sync_unchanged_pg_test.go`, `subscription/operations/sync_unchanged_pg_test.go` (each
+managed field changes exactly one row). Three existing tests asserted the old behaviour and were changed:
+`TestSyncConnections_CreateIdempotentUpdate`, `TestSyncRoles_UpsertPreserveAndRemoveUnlisted`,
+`TestSyncPlatformRoles_CatalogueLifecycle` (`n+1` updated became `1`).
+
+**Wire impact.** None in `api/openapi.lock.json` (same shapes). The SDK clients need no change.
+
+**Rust hand-off.** In the roles (SDK and platform-catalogue), connections and subscriptions syncs, compare the
+definition with the stored row before saving and skip an equal one: no write, no `updated_at` bump, no `*Updated`
+event, not counted in `updated`. Compare the fields in the table above (permissions as a set; binding codes as a
+set; a binding filter only if Rust stores it). Keep "omitted permissions keep the stored ones" for roles.
+
 ### F32. Application admin routes answer 404 for every application that is not the caller's (owner ruling 2026-10-19)
 
 **Bug.** The F20 routes under `/api/applications/{appCode}/` (users, invitations) answered another

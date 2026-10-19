@@ -493,7 +493,7 @@ func TestSyncRoles_UpsertPreserveAndRemoveUnlisted(t *testing.T) {
 	}, ec)
 	require.NoError(t, err)
 	assert.Equal(t, uint32(0), third.Created, "existing non-SDK row must not be re-created")
-	assert.Equal(t, uint32(1), third.Updated, "only the SDK row counts as updated")
+	assert.Equal(t, uint32(0), third.Updated, "the SDK row already matches: unchanged rows are not counted (F30)")
 	assert.Equal(t, uint32(1), third.Removed)
 
 	gone, err := repo.FindByName(ctx, appCode+":viewer")
@@ -593,9 +593,9 @@ func TestSyncPlatformRoles_CatalogueLifecycle(t *testing.T) {
 	assert.ElementsMatch(t, []string{"roleplat:thing:read:*"}, a.Permissions)
 
 	// 2. sync-b gains a live assignment; sync-a drifts in the catalogue.
-	//    Re-sync without sync-b: existing catalogue roles are re-upserted
-	//    (updated = n+1), the drifted display name is restored from the
-	//    catalogue, and the stale-but-assigned sync-b is SKIPPED (warn,
+	//    Re-sync without sync-b: the drifted display name is restored from the
+	//    catalogue (updated = 1; the n unchanged catalogue roles are left
+	//    alone, F30), and the stale-but-assigned sync-b is SKIPPED (warn,
 	//    not an error) — removed stays 0.
 	seedPrincipalWithRole(t, "prn_roleplatsync1", "roleplat-sync@example.com", "roleplat:sync-b")
 
@@ -603,7 +603,7 @@ func TestSyncPlatformRoles_CatalogueLifecycle(t *testing.T) {
 		withTest(mkTest("sync-a", "Sync A v2"))), operations.SyncPlatformRolesCommand{}, ec)
 	require.NoError(t, err)
 	assert.Equal(t, uint32(0), second.Created)
-	assert.Equal(t, uint32(n+1), second.Updated, "every existing catalogue role is re-upserted")
+	assert.Equal(t, uint32(1), second.Updated, "only the drifted role; unchanged catalogue roles are not rewritten")
 	assert.Equal(t, uint32(0), second.Removed, "assigned stale CODE role is skipped, not deleted")
 
 	a, err = repo.FindByName(ctx, "roleplat:sync-a")
