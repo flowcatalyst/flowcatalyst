@@ -16,12 +16,14 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-webauthn/webauthn/protocol"
+	gowebauthn "github.com/go-webauthn/webauthn/webauthn"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
@@ -337,10 +339,15 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 		return nil, invalidCredentialsErr()
 	}
 
-	ec := usecase.NewExecutionContext(string(p.ID))
-	// Counter persistence failure is non-fatal; session still issued.
-	_, _ = usecaseop.Run(ctx, s.UoW, operations.Authenticate(s.Creds),
-		operations.AuthenticateCommand{StateID: in.Body.StateID, UpdatedCredential: *cred}, ec)
+	// A signature counter that did not advance means the authenticator (or a
+	// clone of it) replayed an old state. The library reports it as a flag,
+	// not an error, so it has to be checked here (WebAuthn L3 §7.2 step 22).
+	if cred.Authenticator.CloneWarning {
+		slog.Warn("webauthn: signature counter regression; assertion refused", "principal", p.ID)
+		s.recordPasskeyAttempt(ctx, p, in, loginattempt.OutcomeFailure, "Passkey signature counter regression")
+		return nil, invalidCredentialsErr()
+	}
+	s.persistAssertion(ctx, p, in.Body.StateID, cred)
 
 	var email *string
 	if p.UserIdentity != nil && p.UserIdentity.Email != "" {
@@ -379,6 +386,23 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 			Roles:       roles,
 		},
 	}, nil
+}
+
+// persistAssertion stores the post-assertion credential state (signature
+// counter, backup flags, last_used_at) on the persisted credential the
+// assertion was made with. Persistence failure is non-fatal: the session is
+// still issued. The credential must belong to p; anything else is skipped.
+func (s *State) persistAssertion(ctx context.Context, p *principal.Principal, stateID string, cred *gowebauthn.Credential) {
+	stored, err := s.Service.Credentials().FindByCredentialID(ctx, cred.ID)
+	if err != nil || stored == nil || stored.PrincipalID != string(p.ID) {
+		slog.Warn("webauthn: could not locate the asserted credential to record its counter", "principal", p.ID, "err", err)
+		return
+	}
+	ec := usecase.NewExecutionContext(string(p.ID))
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.Authenticate(s.Creds),
+		operations.AuthenticateCommand{StateID: stateID, UpdatedCredential: *cred, PersistedCredentialID: stored.ID}, ec); err != nil {
+		slog.Warn("webauthn: persisting the signature counter failed", "principal", p.ID, "err", err)
+	}
 }
 
 // ── credentials list / delete ────────────────────────────────────────────
