@@ -52,6 +52,17 @@ flowchart LR
 - Failures retry with backoff under the poller's control; jobs that keep
   failing are parked for operator attention rather than retried forever.
   The admin UI supports inspection, single and **bulk requeue**.
+- **Edit payload.** An operator can correct a bad payload on a job that is
+  `PENDING` or `FAILED` (`PUT /api/dispatch-jobs/{id}/payload`, body
+  `{payload, payloadContentType?}`; the job drawer's pencil in the console, "Edit
+  payload…" in the server-rendered UI), then requeue it. The edit changes the
+  payload (UTF-8, at most 256 KiB, valid JSON when the content type is JSON) and
+  optionally the content type — never the status or attempts. A `QUEUED` or
+  `PROCESSING` job is being delivered and a `COMPLETED` / `CANCELLED` / `EXPIRED`
+  one is history: both answer `409 NOT_EDITABLE`. It needs the same dispatch-job
+  permission as requeue and honours the job's client scope. The audit event
+  (`platform:messaging:dispatch-job:payload-edited`) records sizes and SHA-256
+  digests of the old and new payload, not the payload.
 - Job lifecycle is visible end to end: QUEUED → PROCESSING → COMPLETED /
   DELIVERY_FAILED, with raw payload debugging for administrators holding
   the view-raw permission.

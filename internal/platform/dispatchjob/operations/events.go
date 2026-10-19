@@ -21,10 +21,11 @@ import (
 )
 
 const (
-	DispatchJobCancelledType = "platform:messaging:dispatch-job:cancelled"
-	DispatchJobCompletedType = "platform:messaging:dispatch-job:completed"
-	DispatchJobsResentType   = "platform:messaging:dispatch-jobs:resent"
-	Source                   = "platform:messaging"
+	DispatchJobCancelledType     = "platform:messaging:dispatch-job:cancelled"
+	DispatchJobCompletedType     = "platform:messaging:dispatch-job:completed"
+	DispatchJobPayloadEditedType = "platform:messaging:dispatch-job:payload-edited"
+	DispatchJobsResentType       = "platform:messaging:dispatch-jobs:resent"
+	Source                       = "platform:messaging"
 )
 
 func subjectFor(id string) string { return "platform.dispatchjob." + id }
@@ -90,4 +91,33 @@ func (e DispatchJobsResent) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		IDs []string `json:"ids"`
 	}{e.IDs})
+}
+
+// DispatchJobPayloadEdited is emitted when an operator rewrites a job's
+// payload. The event (and so the audit row) carries sizes and SHA-256 digests
+// of the old and new payload, never the payload text: a payload can hold
+// personal data, and an audit log is read more widely than the job.
+type DispatchJobPayloadEdited struct {
+	commonEvent
+	Status              string
+	PreviousSize        int
+	PreviousSHA256      string
+	Size                int
+	SHA256              string
+	PreviousContentType string
+	ContentType         string
+}
+
+func (DispatchJobPayloadEdited) EventType() string { return DispatchJobPayloadEditedType }
+func (e DispatchJobPayloadEdited) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		ID                  string `json:"dispatchJobId"`
+		Status              string `json:"status"`
+		PreviousSize        int    `json:"previousSize"`
+		PreviousSHA256      string `json:"previousSha256"`
+		Size                int    `json:"size"`
+		SHA256              string `json:"sha256"`
+		PreviousContentType string `json:"previousContentType"`
+		ContentType         string `json:"contentType"`
+	}{e.DispatchJobID, e.Status, e.PreviousSize, e.PreviousSHA256, e.Size, e.SHA256, e.PreviousContentType, e.ContentType})
 }

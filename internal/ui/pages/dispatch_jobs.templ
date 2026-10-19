@@ -384,6 +384,23 @@ templ djDrawerBody(d djDetail) {
 						@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy payload", Attrs: templ.Attributes{"title": "Copy payload", "data-on:click": djCopyPayload}})
 					</div>
 					<pre id="dj-payload" class="fc-json whitespace-pre-wrap break-all" tabindex="0" aria-label="Payload">{ d.Payload }</pre>
+					if d.CanEditPayload {
+						<details class="mt-2">
+							<summary class="cursor-pointer text-sm font-medium text-primary">Edit payload…</summary>
+							<form method="post" action={ d.ActionBase + "/payload" } class="mt-2 flex flex-col gap-2" data-on:submit={ kit.SubmitForm }>
+								<label class="fc-field-label" for="dj-edit-ct">Content type</label>
+								@kit.Input(kit.InputProps{ID: "dj-edit-ct", Name: "contentType", Value: d.ContentType, Class: "font-mono", Attrs: templ.Attributes{"maxlength": "100", "autocomplete": "off"}})
+								<label class="fc-field-label" for="dj-edit-payload">Payload</label>
+								@kit.Textarea(kit.TextareaProps{ID: "dj-edit-payload", Name: "payload", Value: d.EditText, Rows: 14, Required: true, Class: "font-mono", Attrs: templ.Attributes{"spellcheck": "false"}})
+								<p class="text-sm text-muted-foreground">Saving does not retry the job — its status and attempts stay as they are. Use Requeue afterwards to deliver it with the new payload. Up to 256 KiB; JSON content types must be valid JSON.</p>
+								<div>
+									@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: kit.LegacySecondary, Icon: "save"}) {
+										Save payload
+									}
+								</div>
+							</form>
+						</details>
+					}
 				</div>
 			</section>
 			<section class="flex min-w-0 flex-col gap-3">

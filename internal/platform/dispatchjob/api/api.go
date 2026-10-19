@@ -86,6 +86,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "requeueDispatchJobsByFilter", "/api/dispatch-jobs/requeue-by-filter", "Reset every dispatch job a filter matches to PENDING (confirmed count, capped)", http.StatusOK, s.requeueByFilter)
 	apiroute.Post(g, "cancelDispatchJob", "/api/dispatch-jobs/{id}/cancel", "Cancel a FAILED dispatch job", http.StatusOK, s.cancel)
 	apiroute.Post(g, "completeDispatchJob", "/api/dispatch-jobs/{id}/complete", "Mark a FAILED dispatch job COMPLETED (delivered out of band)", http.StatusOK, s.complete)
+	apiroute.Put(g, "editDispatchJobPayload", "/api/dispatch-jobs/{id}/payload", "Replace the payload of a PENDING or FAILED dispatch job (status and attempts are unchanged)", http.StatusOK, s.editPayload)
 	apiroute.Post(g, "signDispatchJob", "/api/dispatch-jobs/{id}/sign", "Build the job's delivery (signing account, headers, signature) without sending it", http.StatusOK, s.sign)
 
 	// SDK-compatibility aliases. The Laravel SDK client addresses these as
@@ -122,6 +123,7 @@ func registerBFF(api huma.API, s *State, base, opPrefix, tag string) {
 	apiroute.Post(g, "requeueDispatchJobsByFilter"+opPrefix, base+"/requeue-by-filter", "Reset every dispatch job a filter matches to PENDING (confirmed count, capped)", http.StatusOK, s.requeueByFilter)
 	apiroute.Post(g, "cancelDispatchJob"+opPrefix, base+"/{id}/cancel", "Cancel a FAILED dispatch job", http.StatusOK, s.cancel)
 	apiroute.Post(g, "completeDispatchJob"+opPrefix, base+"/{id}/complete", "Mark a FAILED dispatch job COMPLETED (delivered out of band)", http.StatusOK, s.complete)
+	apiroute.Put(g, "editDispatchJobPayload"+opPrefix, base+"/{id}/payload", "Replace the payload of a PENDING or FAILED dispatch job (status and attempts are unchanged)", http.StatusOK, s.editPayload)
 	apiroute.Post(g, "signDispatchJob"+opPrefix, base+"/{id}/sign", "Build the job's delivery (signing account, headers, signature) without sending it", http.StatusOK, s.sign)
 }
 
@@ -593,6 +595,34 @@ func (s *State) complete(ctx context.Context, in *apicommon.IDInput) (*apicommon
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.CompleteDispatchJob(s.Repo), operations.CompleteCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	return s.reload(ctx, in.ID)
+}
+
+// EditPayloadRequest is the body of PUT /dispatch-jobs/{id}/payload.
+type EditPayloadRequest struct {
+	Payload            string  `json:"payload" minLength:"1" doc:"The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)"`
+	PayloadContentType *string `json:"payloadContentType,omitempty" doc:"New media type; omit to keep the job's"`
+}
+
+type editPayloadInput struct {
+	ID   string `path:"id"`
+	Body EditPayloadRequest
+}
+
+// editPayload rewrites the payload of a PENDING or FAILED job so an operator
+// can fix it and then requeue. Same coarse gate as requeue/cancel/complete;
+// per-resource client scope and the status rule are in the operation. Status
+// and attempts are not touched.
+func (s *State) editPayload(ctx context.Context, in *editPayloadInput) (*apicommon.Out[DispatchJobResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+		return nil, err
+	}
+	ec := auth.NewExecutionContext(ctx)
+	cmd := operations.EditPayloadCommand{ID: in.ID, Payload: in.Body.Payload, PayloadContentType: in.Body.PayloadContentType}
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.EditDispatchJobPayload(s.Repo), cmd, ec); err != nil {
 		return nil, err
 	}
 	return s.reload(ctx, in.ID)

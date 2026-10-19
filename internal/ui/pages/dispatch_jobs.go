@@ -120,6 +120,7 @@ func (h *DispatchJobs) Mount(r chi.Router) {
 	post.Post("/dispatch-jobs/requeue-by-filter", h.requeueByFilter)
 	post.Post("/dispatch-jobs/{id}/requeue", h.requeueOne)
 	post.Post("/dispatch-jobs/{id}/sign", h.sign)
+	post.Post("/dispatch-jobs/{id}/payload", h.editPayload)
 }
 
 // ── URL state ──────────────────────────────────────────────────────────
@@ -514,6 +515,11 @@ type djDetail struct {
 	History                    []djAttempt
 	ActionBase                 string
 	CanSign                    bool
+	// CanEditPayload is true while the job's payload may be edited (PENDING or
+	// FAILED: the API's rule); EditText and ContentType fill the editor.
+	CanEditPayload bool
+	EditText       string
+	ContentType    string
 	// Plan is the sign action's answer, when the page renders it (without
 	// Datastar); a live drawer patches it into its slot instead.
 	Plan *djPlan
@@ -663,6 +669,15 @@ func (h *DispatchJobs) detailOf(ctx context.Context, ac *auth.AuthContext, j *di
 		LastError: deref(j.LastError), Payload: prettyText(j.Payload),
 		History: toAttempts(attempts), ActionBase: djURL(j.ID),
 		CanSign: auth.CanWritePermission(ac, djRawPerm) == nil,
+		// The editor opens on the stored text, pretty-printed for a JSON job.
+		CanEditPayload: slices.Contains(dispatchjob.EditableStatuses, j.Status) && auth.CanWritePermission(ac, djViewPerm) == nil,
+		ContentType:    j.PayloadContentType,
+	}
+	if j.Payload != nil {
+		d.EditText = *j.Payload
+		if pretty, ok := schemacodegen.PrettyJSON(*j.Payload); ok && strings.Contains(strings.ToLower(j.PayloadContentType), "json") {
+			d.EditText = pretty
+		}
 	}
 	for _, m := range j.Metadata {
 		d.Metadata = append(d.Metadata, djKV{Key: m.Key, Value: m.Value})
@@ -863,6 +878,45 @@ func (h *DispatchJobs) requeue(w http.ResponseWriter, r *http.Request, picked []
 	msg := kit.FlashMessageProps{Kind: kit.FlashSuccess, Summary: "Requeued", Detail: strconv.Itoa(n) + " " + noun + " reset to PENDING"}
 	if err := shell.Flash(sse, msg); err != nil {
 		slog.DebugContext(ctx, "ui: requeue flash not delivered", "err", err)
+	}
+}
+
+// ── edit payload ───────────────────────────────────────────────────────
+
+// editPayload is the drawer's "Edit payload": the API's PUT
+// /dispatch-jobs/{id}/payload. Same gate (the dispatch-job permission) and the
+// same use case, which enforces the status rule (PENDING / FAILED), the client
+// scope and the payload validation. Status and attempts are not touched:
+// Requeue stays a separate action.
+func (h *DispatchJobs) editPayload(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, djViewPerm); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	id, err := djID(r)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	var contentType *string
+	if ct := strings.TrimSpace(r.PostFormValue("contentType")); ct != "" {
+		contentType = &ct
+	}
+	if err := h.Ops.EditPayload(ctx, id, r.PostFormValue("payload"), contentType); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if !ds.IsDatastar(r) {
+		h.Shell.SetFlash(w, flashDjPayloadSaved)
+		http.Redirect(w, r, djURL(id), http.StatusSeeOther) //nolint:gosec // G710: djPath plus an id kit.ValidID accepted
+		return
+	}
+	sse := ds.NewSSE(w, r)
+	h.refreshDrawer(sse, r, ac, id)
+	if err := shell.Flash(sse, FlashMessages[flashDjPayloadSaved]); err != nil {
+		slog.DebugContext(ctx, "ui: payload flash not delivered", "err", err)
 	}
 }
 

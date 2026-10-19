@@ -1715,6 +1715,22 @@ export type DomainResponse = {
     zone: string;
 };
 
+export type EditPayloadRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)
+     */
+    payload: string;
+    /**
+     * New media type; omit to keep the job's
+     */
+    payloadContentType?: string;
+    [key: string]: unknown;
+};
+
 export type EmitRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -5268,6 +5284,18 @@ export type DocResponseWritable = {
     content: string;
     slug: string;
     title: string;
+};
+
+export type EditPayloadRequestWritable = {
+    /**
+     * The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)
+     */
+    payload: string;
+    /**
+     * New media type; omit to keep the job's
+     */
+    payloadContentType?: string;
+    [key: string]: unknown;
 };
 
 export type EmitRequestWritable = {
@@ -9540,6 +9568,33 @@ export type CompleteDispatchJobResponses = {
 };
 
 export type CompleteDispatchJobResponse = CompleteDispatchJobResponses[keyof CompleteDispatchJobResponses];
+
+export type EditDispatchJobPayloadData = {
+    body: EditPayloadRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/dispatch-jobs/{id}/payload';
+};
+
+export type EditDispatchJobPayloadErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type EditDispatchJobPayloadError = EditDispatchJobPayloadErrors[keyof EditDispatchJobPayloadErrors];
+
+export type EditDispatchJobPayloadResponses = {
+    /**
+     * OK
+     */
+    200: DispatchJobResponse;
+};
+
+export type EditDispatchJobPayloadResponse = EditDispatchJobPayloadResponses[keyof EditDispatchJobPayloadResponses];
 
 export type GetDispatchJobRawData = {
     body?: never;

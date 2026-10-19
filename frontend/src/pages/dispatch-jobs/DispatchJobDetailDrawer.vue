@@ -13,6 +13,8 @@ import { toast } from "@/utils/errorBus";
 import { useAuthStore } from "@/stores/auth";
 import { userHasPermission } from "@/stores/permissions";
 import { DISPATCH_JOB_VIEW_RAW } from "@/utils/dispatch-job-permissions";
+import PayloadEditDialog from "./PayloadEditDialog.vue";
+import { canEditPayload } from "./payloadEdit";
 
 // Read-only working panel: the job, its payload, and every attempt with
 // what was SENT (signing account, headers) beside what came BACK (status,
@@ -35,6 +37,17 @@ const loadError = ref<string | null>(null);
 const plan = ref<DeliveryPlan | null>(null);
 const signing = ref(false);
 const requeuing = ref(false);
+const editingPayload = ref(false);
+
+// Only a PENDING or FAILED job's payload can be changed; the server refuses the
+// rest (409), so the button is offered only where it can work.
+const editable = computed(() => canEditPayload(job.value?.status));
+
+async function payloadEdited(updated: DispatchJobDetail | null) {
+	// null: the job moved on (409) — reload to show where it is now.
+	if (updated) job.value = updated;
+	else await load();
+}
 
 watch(id, load, { immediate: true });
 
@@ -216,7 +229,16 @@ function statusSeverity(status: string | undefined) {
 
           <div class="detail-section">
             <div class="section-head">
-              <label>Payload</label>
+              <label>Payload <span v-if="job.payloadContentType" class="font-mono small">({{ job.payloadContentType }})</span></label>
+              <span class="spacer" />
+              <Button
+                v-if="editable"
+                icon="pi pi-pencil"
+                text
+                size="small"
+                v-tooltip="'Edit the payload (then Requeue to deliver it)'"
+                @click="editingPayload = true"
+              />
               <Button icon="pi pi-copy" text size="small" v-tooltip="'Copy payload'" @click="copy('Payload', job.payload ?? undefined)" />
             </div>
             <pre class="data-block">{{ formatJson(job.payload) }}</pre>
@@ -280,6 +302,7 @@ function statusSeverity(status: string | undefined) {
         </section>
       </div>
     </div>
+    <PayloadEditDialog v-if="job" v-model:visible="editingPayload" :job="job" @done="payloadEdited" />
   </EntityDrawer>
 </template>
 

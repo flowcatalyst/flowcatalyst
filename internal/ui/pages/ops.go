@@ -496,6 +496,11 @@ type DispatchJobCommands interface {
 	// Plan builds the job's delivery without sending it (the "sign" action);
 	// ErrPlanUnavailable when the server has no planner wired.
 	Plan(ctx context.Context, j *dispatchjob.DispatchJob) (*dispatchprocessing.DeliveryPlan, error)
+	// EditPayload runs EditDispatchJobPayload: the job's payload (and, when
+	// contentType is non-nil, its content type) is replaced; status and
+	// attempts are untouched. The use case enforces the status rule, the
+	// client scope and the payload validation.
+	EditPayload(ctx context.Context, id, payload string, contentType *string) error
 }
 
 // ErrPlanUnavailable is DispatchJobOps.Plan without a planner (the API's 501).
@@ -516,6 +521,13 @@ func (o DispatchJobOps) Requeue(ctx context.Context, ids []string) (int, error) 
 		return 0, err
 	}
 	return len(ev.IDs), nil
+}
+
+// EditPayload runs EditDispatchJobPayload.
+func (o DispatchJobOps) EditPayload(ctx context.Context, id, payload string, contentType *string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, djops.EditDispatchJobPayload(o.Repo),
+		djops.EditPayloadCommand{ID: id, Payload: payload, PayloadContentType: contentType}, auth.NewExecutionContext(ctx))
+	return err
 }
 
 // Preview runs SummarizeMatches.

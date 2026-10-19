@@ -848,6 +848,32 @@ func (l *Lifecycle) OperatorCancel(ctx context.Context, id string, createdAt tim
 	return len(rows) == 1, err
 }
 
+// EditableStatuses are the statuses an operator may rewrite a job's payload in:
+// the job is not being delivered (PENDING, not yet claimed) or has settled
+// failed (FAILED, and its legacy alias ERROR) and is waiting for an operator's
+// retry. QUEUED and PROCESSING are refused: the delivery handler reads the job
+// once, before it claims it, so an edit made while a delivery is under way
+// could neither take effect nor be told apart from one that did.
+var EditableStatuses = []common.DispatchStatus{common.DispatchPending, common.DispatchFailed, "ERROR"}
+
+// EditPayload replaces a job's payload (and, when contentType is non-nil, its
+// content type) WITHOUT changing its status or attempt count: the operator
+// retries it afterwards with the ordinary requeue. The status guard is in the
+// SQL; reports false (and changes nothing) when the job is in any other
+// status. updated_at moves, so the scheduler's optimistic mark-QUEUED of a
+// claim that read the old payload is refused and the job is claimed again, and
+// the stream projector re-projects the row.
+func (l *Lifecycle) EditPayload(ctx context.Context, id string, createdAt time.Time, payload string, contentType *string) (bool, error) {
+	tag, err := l.ex.Exec(ctx,
+		`UPDATE msg_dispatch_jobs SET payload = $3, payload_content_type = COALESCE($4, payload_content_type), updated_at = NOW()
+		  WHERE id = $1 AND created_at = $2 AND status || '' IN (`+statusList(EditableStatuses)+`)`,
+		id, createdAt, payload, contentType)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 // OperatorComplete moves a FAILED job to COMPLETED (handled out of band). Same
 // guard as OperatorCancel.
 func (l *Lifecycle) OperatorComplete(ctx context.Context, id string, createdAt time.Time) (bool, error) {

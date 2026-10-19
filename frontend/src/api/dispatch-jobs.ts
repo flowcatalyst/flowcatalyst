@@ -11,6 +11,7 @@ import type {
 	DispatchJobFilterOptionsResponse,
 	DispatchJobRead as GenDispatchJobRead,
 	DispatchJobResponse as GenDispatchJobResponse,
+	EditPayloadRequest,
 	RequestSummary as GenRequestSummary,
 	RequeueByFilterPreviewRequest,
 	RequeueByFilterPreviewResponse,
@@ -18,7 +19,7 @@ import type {
 	RequeueResponse,
 } from "./generated";
 
-export type { RequeueByFilterPreviewResponse, RequeueByFilterResponse };
+export type { EditPayloadRequest, RequeueByFilterPreviewResponse, RequeueByFilterResponse };
 
 // Response types alias the generated contract (api/openapi.lock.json) so
 // `vue-tsc` fails on backend drift. Aliased under the historical names so
@@ -129,6 +130,17 @@ export const dispatchJobsApi = {
 		return apiFetch(`/dispatch-jobs/requeue-by-filter`, {
 			method: "POST",
 			body: JSON.stringify({ ...filter, confirmCount }),
+			suppressGlobalErrorToast: true,
+		});
+	},
+	// Replace the payload (and optionally the content type) of a PENDING or
+	// FAILED job; status and attempts are unchanged — requeue it afterwards.
+	// 409 NOT_EDITABLE means the job moved on (queued, delivered...); the
+	// caller handles it, so the global error toast is suppressed.
+	editPayload(id: string, body: EditPayloadRequest): Promise<DispatchJobDetail> {
+		return apiFetch(`/dispatch-jobs/${encodeURIComponent(id)}/payload`, {
+			method: "PUT",
+			body: JSON.stringify(body),
 			suppressGlobalErrorToast: true,
 		});
 	},

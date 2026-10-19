@@ -84,6 +84,16 @@ type fakeDJOps struct {
 	result   djops.ResendByFilterResult
 	err      error
 	planned  []string
+	edits    []string // "id|payload|contentType"
+}
+
+func (o *fakeDJOps) EditPayload(_ context.Context, id, payload string, contentType *string) error {
+	ct := "<kept>"
+	if contentType != nil {
+		ct = *contentType
+	}
+	o.edits = append(o.edits, id+"|"+payload+"|"+ct)
+	return o.err
 }
 
 func (o *fakeDJOps) Requeue(_ context.Context, ids []string) (int, error) {
@@ -374,5 +384,42 @@ func BenchmarkDispatchJobsTable(b *testing.B) {
 			}
 			b.ReportMetric(float64(buf.Len()), "bytes")
 		})
+	}
+}
+
+func TestDispatchJobsEditPayload(t *testing.T) {
+	h := newDJHarness()
+	// The editor is offered on a FAILED job (and PENDING), not on a COMPLETED one.
+	failed := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/djb_1", datastar: true})
+	mustContain(t, failed, `action="/ui/dispatch-jobs/djb_1/payload"`, "Edit payload", `name="payload"`, `name="contentType"`)
+	mustContain(t, h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/djb_3", datastar: true}), `action="/ui/dispatch-jobs/djb_3/payload"`)
+	mustNotContain(t, h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/djb_2", datastar: true}), "/payload")
+
+	save := h.do(t, anchorAdmin(), req{
+		method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/payload", datastar: true,
+		form: url.Values{"payload": {`{"fixed":true}`}, "contentType": {" application/json "}},
+	})
+	mustContain(t, save, "Payload saved", "data: selector #dj-drawer\n")
+	if len(h.ops.edits) != 1 || h.ops.edits[0] != `djb_1|{"fixed":true}|application/json` {
+		t.Errorf("edits %v", h.ops.edits)
+	}
+	// An empty content type keeps the job's.
+	h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/payload", datastar: true, form: url.Values{"payload": {"<a/>"}}})
+	if h.ops.edits[1] != "djb_1|<a/>|<kept>" {
+		t.Errorf("edits %v", h.ops.edits)
+	}
+	native := h.rec(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/payload", form: url.Values{"payload": {"{}"}}})
+	if native.Code != http.StatusSeeOther || native.Header().Get("Location") != "/ui/dispatch-jobs/djb_1" {
+		t.Errorf("native edit: %d %s", native.Code, native.Header().Get("Location"))
+	}
+	// Without the dispatch-job permission nothing is edited.
+	before := len(h.ops.edits)
+	if rec := h.rec(t, connUser("platform:messaging:event:view"), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/payload", datastar: true, form: url.Values{"payload": {"{}"}}}); len(h.ops.edits) != before {
+		t.Errorf("edited without permission (%d)", rec.Code)
+	}
+	// A refusal from the use case (not editable, invalid) is reported, not swallowed.
+	h.ops.err = usecase.Conflict("NOT_EDITABLE", "dispatch job is COMPLETED")
+	if rec := h.rec(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_2/payload", form: url.Values{"payload": {"{}"}}}); rec.Code != http.StatusConflict {
+		t.Errorf("refused edit: %d", rec.Code)
 	}
 }

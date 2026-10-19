@@ -137,7 +137,7 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	group("platform:admin:function-schedule", "wired")
 
 	// ── platform:messaging ──────────────────────────────────────────────
-	group("platform:messaging:dispatch-job", "cancelled", "completed")
+	group("platform:messaging:dispatch-job", "cancelled", "completed", "payload-edited")
 	push("platform:messaging:dispatch-jobs:resent", "Dispatch Jobs Resent")
 
 	// ── platform:developer ──────────────────────────────────────────────

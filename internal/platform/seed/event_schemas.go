@@ -370,6 +370,12 @@ func platformEventSchemas() map[string]json.RawMessage {
 	// ── platform:messaging:dispatch-job ─────────────────────────────────
 	m["platform:messaging:dispatch-job:cancelled"] = obj(reqStr("dispatchJobId"))
 	m["platform:messaging:dispatch-job:completed"] = obj(reqStr("dispatchJobId"))
+	m["platform:messaging:dispatch-job:payload-edited"] = obj(
+		reqStr("dispatchJobId"), reqStr("status"),
+		reqU32("previousSize"), reqStr("previousSha256"),
+		reqU32("size"), reqStr("sha256"),
+		reqStr("contentType"), reqStr("previousContentType"),
+	)
 	m["platform:messaging:dispatch-jobs:resent"] = obj(reqStrArray("ids"))
 
 	// ── platform:developer:application-openapi ──────────────────────────
