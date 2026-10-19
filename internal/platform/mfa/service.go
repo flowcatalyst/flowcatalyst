@@ -278,10 +278,13 @@ func (s *Service) VerifyTOTP(ctx context.Context, principalID, code string) (boo
 	if m.LastUsedAt != nil && step <= stepFromTime(*m.LastUsedAt) {
 		return false, nil
 	}
-	if err := s.repo.TouchMethodUsed(ctx, m.ID, timeForStep(step)); err != nil {
+	// The check above is a fast path; this guarded UPDATE is the real claim, so
+	// two concurrent submissions of the same code cannot both pass.
+	claimed, err := s.repo.ClaimTOTPStep(ctx, m.ID, timeForStep(step))
+	if err != nil {
 		return false, err
 	}
-	return true, nil
+	return claimed, nil
 }
 
 // VerifyRecoveryCode consumes a single-use recovery code. Returns true once,

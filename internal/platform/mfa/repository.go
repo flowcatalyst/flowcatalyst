@@ -45,6 +45,20 @@ func (r *Repository) TouchMethodUsed(ctx context.Context, id string, at time.Tim
 	return err
 }
 
+// ClaimTOTPStep atomically records `at` (the representative time of a TOTP
+// step) as last_used_at, but only if no step at or after it has been claimed.
+// It is the replay guard: of N concurrent verifications of the same code
+// exactly one UPDATE matches. Returns whether this call claimed the step.
+func (r *Repository) ClaimTOTPStep(ctx context.Context, id string, at time.Time) (bool, error) {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE iam_user_mfa_methods SET last_used_at = $2
+		  WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < $2)`, id, at)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 // FindMethod returns the user's factor of the given type, or (nil, nil).
 func (r *Repository) FindMethod(ctx context.Context, principalID string, t MethodType) (*Method, error) {
 	row := r.pool.QueryRow(ctx,
