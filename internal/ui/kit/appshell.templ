@@ -15,7 +15,10 @@ type NavItem struct {
 
 // NavGroup is a labelled group of sidebar entries.
 type NavGroup struct {
-	Label string    `json:"label"`
+	Label string `json:"label"`
+	// Key, when non-empty, makes the group collapsible (a short slug, unique
+	// among the groups); empty renders the plain static label.
+	Key   string    `json:"key"`
 	Items []NavItem `json:"items"`
 }
 
@@ -130,46 +133,51 @@ templ AppSidebar(p AppShellProps) {
 				@Icon(IconProps{Name: "chevron-left", Class: "size-[1rem]"})
 			</button>
 		</div>
-		<nav class="fc-sidebar-nav" aria-label="Main">
+		<nav
+			class="fc-sidebar-nav"
+			aria-label="Main"
+			if len(collapsibleGroups(p.Nav)) > 0 {
+				data-signals={ NavSignalsJSON(p.Nav) }
+			}
+			if NavInitExpr(p.Nav) != "" {
+				data-init={ NavInitExpr(p.Nav) }
+			}
+		>
 			for _, g := range p.Nav {
 				<div class="fc-nav-group">
-					<span class="fc-nav-group-label">{ g.Label }</span>
-					for _, it := range g.Items {
-						if len(it.Children) > 0 {
-							<details open?={ it.Open }>
-								<summary class="fc-nav-item" title={ it.Label }>
-									@Icon(IconProps{Name: it.Icon})
-									<span class="fc-nav-label">{ it.Label }</span>
-									@Icon(IconProps{Name: "chevron-right", Class: "fc-nav-chevron"})
-								</summary>
-								<div class="fc-nav-children">
-									for _, c := range it.Children {
-										<a
-											href={ c.Href }
-											class="fc-nav-child"
-											if c.Current {
-												aria-current="page"
-											}
-										>
-											@Icon(IconProps{Name: c.Icon})
-											<span class="fc-nav-label">{ c.Label }</span>
-										</a>
-									}
-								</div>
-							</details>
-						} else {
-							<a
-								href={ it.Href }
-								class="fc-nav-item"
-								title={ it.Label }
-								if it.Current {
-									aria-current="page"
-								}
-							>
-								@Icon(IconProps{Name: it.Icon})
-								<span class="fc-nav-label">{ it.Label }</span>
-							</a>
-						}
+					if g.Key != "" {
+						<button
+							type="button"
+							class="fc-nav-group-label"
+							style="width:100%;text-align:left;cursor:pointer"
+							aria-controls={ NavSectionID(g.Key) }
+							if NavGroupHasCurrent(g) {
+								aria-expanded="true"
+								aria-disabled="true"
+								title="Contains the current page"
+							} else {
+								aria-expanded="true"
+								data-attr:aria-expanded={ "$" + NavSignal(g.Key) + " ? 'false' : 'true'" }
+								data-on:click={ NavToggleExpr(g.Key) }
+							}
+						>
+							{ g.Label }
+							<span style="float:right" data-show={ "!$" + NavSignal(g.Key) }>
+								@Icon(IconProps{Name: "chevron-down", Class: "size-[11px]"})
+							</span>
+							<span style="float:right;display:none" data-show={ NavClosedExpr(g.Key) }>
+								@Icon(IconProps{Name: "chevron-right", Class: "size-[11px]"})
+							</span>
+						</button>
+					} else {
+						<span class="fc-nav-group-label">{ g.Label }</span>
+					}
+					if g.Key != "" {
+						<div id={ NavSectionID(g.Key) } data-show={ NavOpenExpr(g.Key) }>
+							@navItems(g.Items)
+						</div>
+					} else {
+						@navItems(g.Items)
 					}
 				</div>
 			}
@@ -218,4 +226,45 @@ templ UserMenu(p AppShellProps) {
 		</div>
 		<div class="flex justify-between border-t border-border px-4 py-2.5 text-xs text-muted-foreground"><span>Version</span><span>{ p.Version }</span></div>
 	</div>
+}
+
+// navItems is a group's entries: plain links and expandable <details> groups.
+templ navItems(items []NavItem) {
+	for _, it := range items {
+		if len(it.Children) > 0 {
+			<details open?={ it.Open }>
+				<summary class="fc-nav-item" title={ it.Label }>
+					@Icon(IconProps{Name: it.Icon})
+					<span class="fc-nav-label">{ it.Label }</span>
+					@Icon(IconProps{Name: "chevron-right", Class: "fc-nav-chevron"})
+				</summary>
+				<div class="fc-nav-children">
+					for _, c := range it.Children {
+						<a
+							href={ c.Href }
+							class="fc-nav-child"
+							if c.Current {
+								aria-current="page"
+							}
+						>
+							@Icon(IconProps{Name: c.Icon})
+							<span class="fc-nav-label">{ c.Label }</span>
+						</a>
+					}
+				</div>
+			</details>
+		} else {
+			<a
+				href={ it.Href }
+				class="fc-nav-item"
+				title={ it.Label }
+				if it.Current {
+					aria-current="page"
+				}
+			>
+				@Icon(IconProps{Name: it.Icon})
+				<span class="fc-nav-label">{ it.Label }</span>
+			</a>
+		}
+	}
 }

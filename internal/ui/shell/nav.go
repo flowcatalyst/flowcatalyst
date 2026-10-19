@@ -152,8 +152,27 @@ func Navigation(ac *auth.AuthContext, currentPath string) []kit.NavGroup {
 			}
 		}
 		if len(items) > 0 {
-			out = append(out, kit.NavGroup{Label: sec.label, Items: items})
+			out = append(out, kit.NavGroup{Label: sec.label, Key: sectionKey(sec.label), Items: items})
 		}
 	}
 	return out
+}
+
+// sectionKey is the stable slug that identifies a section in the viewer's
+// stored collapsed-section list ("Identity & Access" -> "identity-access").
+func sectionKey(label string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(label) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			if dash && b.Len() > 0 {
+				b.WriteByte('-')
+			}
+			dash = false
+			b.WriteRune(r)
+		} else {
+			dash = true
+		}
+	}
+	return b.String()
 }

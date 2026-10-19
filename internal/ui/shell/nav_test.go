@@ -80,3 +80,19 @@ func TestInitials(t *testing.T) {
 		}
 	}
 }
+
+func TestSectionKeys(t *testing.T) {
+	for in, want := range map[string]string{"Identity & Access": "identity-access", "Client Administration": "client-administration", "Overview": "overview"} {
+		if got := sectionKey(in); got != want {
+			t.Errorf("sectionKey(%q) = %q, want %q", in, got, want)
+		}
+	}
+	admin := &auth.AuthContext{Scope: auth.ScopeAnchor, Permissions: []string{"platform:*:*:*"}, Roles: []string{"r"}}
+	seen := map[string]bool{}
+	for _, g := range Navigation(admin, "") {
+		if g.Key == "" || seen[g.Key] {
+			t.Errorf("section %q has empty or duplicate key %q", g.Label, g.Key)
+		}
+		seen[g.Key] = true
+	}
+}

@@ -6,8 +6,15 @@ import { usePlatformConfigStore } from "@/stores/platformConfig";
 import { useAppThemeStore } from "@/stores/appTheme";
 import { useAuthStore } from "@/stores/auth";
 import { canAccessPath, canSeeScope } from "@/stores/permissions";
+import {
+	isSectionOpen,
+	loadClosedSections,
+	saveClosedSections,
+	sectionHasActive,
+	toggleSection,
+} from "@/utils/nav-sections";
 
-defineProps<{
+const props = defineProps<{
 	collapsed: boolean;
 	mobileOpen?: boolean;
 }>();
@@ -21,6 +28,25 @@ const platformConfigStore = usePlatformConfigStore();
 const appThemeStore = useAppThemeStore();
 const authStore = useAuthStore();
 const expandedItems = ref<Record<string, boolean>>({});
+
+// Collapsed section labels, persisted per viewer. The section holding the
+// current page is always shown open (see utils/nav-sections), so navigating
+// into a collapsed section reveals it without touching the stored choice.
+const closedSections = ref<Set<string>>(loadClosedSections());
+
+// The icon-only sidebar hides the section headers, so it shows every entry.
+function sectionOpen(group: { label: string; items: NavItem[] }): boolean {
+	return props.collapsed || isSectionOpen(group, closedSections.value, route.path);
+}
+
+function onToggleSection(group: { label: string; items: NavItem[] }) {
+	closedSections.value = toggleSection(group, closedSections.value, route.path);
+	saveClosedSections(closedSections.value);
+}
+
+function sectionId(label: string): string {
+	return "nav-sec-" + label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
 
 // Keep only the nav entries the current user can actually reach: filter a
 // parent's children (dropping the parent if none remain) and leaf items by the
@@ -128,8 +154,25 @@ function isActive(item: NavItem): boolean {
     <!-- Navigation -->
     <nav class="sidebar-nav">
       <div v-for="group in filteredNavigation" :key="group.label" class="nav-group">
-        <span v-if="!collapsed" class="nav-group-label">{{ group.label }}</span>
+        <button
+          v-if="!collapsed"
+          type="button"
+          class="nav-group-label"
+          :aria-expanded="sectionOpen(group)"
+          :aria-controls="sectionId(group.label)"
+          :aria-disabled="sectionHasActive(group, route.path) || undefined"
+          :title="sectionHasActive(group, route.path) ? 'Contains the current page' : undefined"
+          @click="onToggleSection(group)"
+        >
+          <span>{{ group.label }}</span>
+          <i
+            class="pi section-chevron"
+            :class="sectionOpen(group) ? 'pi-chevron-down' : 'pi-chevron-right'"
+            aria-hidden="true"
+          ></i>
+        </button>
 
+        <div v-show="sectionOpen(group)" :id="sectionId(group.label)">
         <template v-for="item in group.items" :key="item.label">
           <!-- Parent with children -->
           <div v-if="item.children && item.children.length > 0" class="nav-item-wrapper">
@@ -174,6 +217,7 @@ function isActive(item: NavItem): boolean {
             <span v-if="!collapsed" class="nav-label">{{ item.label }}</span>
           </RouterLink>
         </template>
+        </div>
       </div>
     </nav>
 
@@ -280,7 +324,14 @@ function isActive(item: NavItem): boolean {
 }
 
 .nav-group-label {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
   padding: 0 20px;
   margin-bottom: 8px;
   font-size: 11px;
@@ -288,6 +339,23 @@ function isActive(item: NavItem): boolean {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: rgba(255, 255, 255, 0.4);
+}
+
+.nav-group-label:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.nav-group-label:focus-visible {
+  outline: 2px solid #47a3f3;
+  outline-offset: -2px;
+}
+
+.nav-group-label[aria-disabled="true"] {
+  cursor: default;
+}
+
+.section-chevron {
+  font-size: 10px;
 }
 
 .nav-item-wrapper {
