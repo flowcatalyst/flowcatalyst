@@ -74,6 +74,19 @@ type Claims struct {
 // Kept in sync with authservice.TokenUseIdentity (the mint side).
 const TokenUseIdentity = "identity"
 
+// TokenUseAPI is the "token_use" value marking an authority-bearing access
+// token. Kept in sync with authservice.TokenUseAPI.
+const TokenUseAPI = "api"
+
+// IsAPICredential reports whether a token's "token_use" marker admits it as a
+// platform API credential. It is an ALLOWLIST: the "api" marker, or no marker
+// at all (session cookies and legacy tokens minted before the field existed).
+// Every other value (identity, a future class such as "field", anything
+// unknown) is refused, so a new token class is closed to the API by default.
+func IsAPICredential(tokenUse string) bool {
+	return tokenUse == "" || tokenUse == TokenUseAPI
+}
+
 // Mint signs a JWT with the supplied claims using key. ttl == 0 mints a
 // token with no expiry (use only in tests). Negative ttl mints an
 // already-expired token (also test-only). Session-cookie callers must

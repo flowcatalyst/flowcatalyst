@@ -14,6 +14,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/sessiontoken"
 )
 
 // Webhook signature headers (the platform's delivery signing).
@@ -97,8 +98,16 @@ func (j *jwksVerifier) Verify(ctx context.Context, bearer string) (*abi.Caller, 
 	if err := json.Unmarshal(payload, &c); err != nil {
 		return nil, errUnauthenticated
 	}
-	if c.TokenUse == "identity" {
-		// An identity-only token carries no authority (see authservice.TokenUseIdentity).
+	return callerFromClaims(c)
+}
+
+// callerFromClaims projects verified claims onto an invoke caller, refusing any
+// token that is not an API credential.
+func callerFromClaims(c platformClaims) (*abi.Caller, error) {
+	// Allowlist: only an API credential ("api", or no marker on a legacy
+	// token). Identity tokens carry no authority and any other class is not
+	// an API credential.
+	if !sessiontoken.IsAPICredential(c.TokenUse) {
 		return nil, errUnauthenticated
 	}
 	return &abi.Caller{

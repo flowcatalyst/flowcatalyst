@@ -9,6 +9,9 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
@@ -169,5 +172,70 @@ func TestStringSliceFromJWTExtra(t *testing.T) {
 	}
 	if got := stringSlice(nil); got != nil {
 		t.Errorf("stringSlice(nil): %v", got)
+	}
+}
+
+// TestAuthenticatorTokenUseIsAnAllowlist: the API middleware admits only
+// token_use "api" or no marker (legacy). Identity, a future class ("field") and
+// any unknown value are refused with 401 and never yield an AuthContext, on the
+// bearer and the cookie transport alike.
+func TestAuthenticatorTokenUseIsAnAllowlist(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("gen key: %v", err)
+	}
+	privPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	prov, err := provider.NewProvider(provider.Config{
+		Issuer: "flowcatalyst", Audience: "flowcatalyst", SigningKey: privPEM,
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("provider: %v", err)
+	}
+
+	mint := func(tokenUse string) string {
+		mc := jwt.MapClaims{
+			"iss": "flowcatalyst", "aud": "flowcatalyst", "sub": "prn_x",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Hour).Unix(),
+			"scope": "platform:iam:role:view", "type": "SERVICE", "tier": "ANCHOR",
+		}
+		if tokenUse != "" {
+			mc["token_use"] = tokenUse
+		}
+		out, err := jwt.NewWithClaims(jwt.SigningMethodRS256, mc).SignedString(key)
+		if err != nil {
+			t.Fatalf("sign: %v", err)
+		}
+		return out
+	}
+	run := func(tok string, cookie bool) (int, bool) {
+		var seen bool
+		h := Authenticator(AuthConfig{Provider: prov})(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				seen = auth.FromContext(r.Context()) != nil
+			}))
+		rec := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/api/thing", nil)
+		if cookie {
+			r.AddCookie(&http.Cookie{Name: SessionCookieName, Value: tok})
+		} else {
+			r.Header.Set("Authorization", "Bearer "+tok)
+		}
+		h.ServeHTTP(rec, r)
+		return rec.Code, seen
+	}
+
+	for _, use := range []string{"field", "foo", "identity", "API", "id_token"} {
+		if code, seen := run(mint(use), false); code != http.StatusUnauthorized || seen {
+			t.Errorf("bearer token_use=%q: status=%d seen=%v; want 401 and no AuthContext", use, code, seen)
+		}
+		if code, seen := run(mint(use), true); seen {
+			// A refused cookie is a graceful anonymous pass-through, never an AuthContext.
+			t.Errorf("cookie token_use=%q: status=%d seen=%v; want no AuthContext", use, code, seen)
+		}
+	}
+	for _, use := range []string{"api", ""} {
+		if code, seen := run(mint(use), false); code != http.StatusOK || !seen {
+			t.Errorf("bearer token_use=%q: status=%d seen=%v; want 200 with AuthContext", use, code, seen)
+		}
 	}
 }

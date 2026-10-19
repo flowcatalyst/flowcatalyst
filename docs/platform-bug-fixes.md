@@ -2531,6 +2531,44 @@ now answers `400 ROLE_NOT_FOUND` for an unknown role, where it used to answer 20
 (`400 ROLE_NOT_FOUND`), and make the login-time sync skip a mapping whose role is missing with a warning, applying
 the rest, instead of failing the sync (or the login).
 
+### F34. The API middleware refused only `token_use=identity`; any other marker was accepted (design review, 2026-10-19)
+
+**Bug (latent).** `middleware.introspect` rejected a bearer only when `token_use == "identity"` and let every
+other value through, so a token class added later (the field-worker design's `token_use: "field"`) would have
+been accepted as a platform API credential. Same shape in the function runner's invoke verifier
+(`runner/auth.go`: `== "identity"`). The cookie transport skipped the marker check altogether.
+
+**Token classes the platform issues today (verified in `authservice`, `sessiontoken`, `oauthapi`).**
+- `token_use=api`: client_credentials (service accounts, developer users), the dashboard client-switch and refresh
+  paths, API-access OAuth clients (`token_apiaccess.go`), `GenerateSessionToken`, SA admin mint.
+- `token_use=identity`: interactive authorization_code and its refresh, portal identity (`ptu_`) tokens.
+- no marker: the `fc_session` cookie (`sessiontoken.Mint`) and legacy access tokens predating the field.
+- not access tokens: id_tokens (rejected by the platform-audience check, they carry the RP's `aud`) and MFA
+  step-up tokens (`mfatoken`, own purpose-checked verifier, never reach the middleware).
+
+**Fix.** `sessiontoken.IsAPICredential(use)` is the one allowlist: `"api"` or no marker. Applied in
+`middleware.introspect` before the cookie/bearer split (so it covers both transports; same 401
+`errIdentityTokenNotAPICredential` shape), in the function runner's invoke verifier (`callerFromClaims`), and in
+the `/oauth/authorize` session check (`wire_services.go` `ValidateSession`), which previously accepted any
+platform-signed token placed in `fc_session`.
+
+**Audited, not changed.** `/oauth/userinfo` accepts identity tokens by design (that is its purpose). The SDK
+validator `pkg/fcsdk/auth` (`TokenValidator.Validate`) checks signature, issuer and audience only and ignores
+`token_use`, so it admits every class; it is a relying-party library, not a deny-list, and the field design already
+schedules its allowlist plus the `fc-field+jwt` `typ` check with P1. No router, portal, BFF or function-control
+route has its own token_use check (they all sit behind the middleware).
+
+**Tests** (each failed before the change, or pins the new function):
+`middleware.TestAuthenticatorTokenUseIsAnAllowlist` ("field", "foo", "identity", "API", "id_token" refused on
+bearer and cookie; "api" and no marker pass), `middleware.TestAuthenticatorRejectsIdentityBearer` (unchanged),
+`sessiontoken.TestIsAPICredential_Allowlist`, `runner.TestCallerFromClaims_TokenUseAllowlist`.
+
+**Wire impact.** None for any token the platform issues today.
+
+**Rust hand-off.** Make the platform API middleware (bearer and cookie) and any other "is this an API credential"
+check an allowlist: admit only `token_use == "api"` or an absent marker, refuse every other value with the existing
+401. Do this before introducing any new token class. Keep identity and portal tokens refused as before.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads

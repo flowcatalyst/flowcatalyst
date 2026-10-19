@@ -164,6 +164,7 @@ and treats an absent marker permissively (`shared/middleware/middleware.go:195`)
 value would be **accepted as an API bearer** unless that check becomes an allowlist
 (`api` | absent). This change ships in P1 with a test. The SDK validators get the same allowlist,
 and the field verifier accepts *only* `fc-field+jwt`.
+*Open item:* the platform allowlist is done (F34, 2026-10-19); the `pkg/fcsdk/auth` validator allowlist and the `fc-field+jwt` typ check remain for P1.
 
 ### 3.4 Unlock on a PERSONAL device (no PIN)
 

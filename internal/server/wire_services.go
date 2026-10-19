@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/sessiontoken"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
@@ -205,7 +207,7 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 		// (it's mounted outside the rejecting auth middleware).
 		ValidateSession: func(token string) (string, time.Time, bool) {
 			c, err := authProvider.ValidateSessionToken(context.Background(), token)
-			if err != nil || c == nil {
+			if err != nil || c == nil || !sessiontoken.IsAPICredential(c.TokenUse) {
 				return "", time.Time{}, false
 			}
 			return c.Subject, c.IssuedAt, true

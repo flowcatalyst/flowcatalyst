@@ -173,3 +173,14 @@ func TestMint_RejectsNilKey(t *testing.T) {
 		t.Fatalf("mint should reject nil key")
 	}
 }
+
+func TestIsAPICredential_Allowlist(t *testing.T) {
+	for use, want := range map[string]bool{
+		"": true, "api": true,
+		"identity": false, "field": false, "foo": false, "API": false,
+	} {
+		if got := sessiontoken.IsAPICredential(use); got != want {
+			t.Errorf("IsAPICredential(%q) = %v; want %v", use, got, want)
+		}
+	}
+}

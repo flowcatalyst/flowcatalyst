@@ -17,7 +17,7 @@ import (
 )
 
 // errIdentityTokenNotAPICredential rejects an interactive-login (identity)
-// access token presented as an API bearer. Such tokens carry no authority and
+// access token (or any other non-API class) presented as an API bearer. Such tokens carry no authority and
 // exist only to satisfy OAuth2/OIDC (the id_token is the app's authentication
 // artifact); accepting one here — even as an empty-authority context — would
 // let an authentication-only handler treat a login token as an API credential.
@@ -157,6 +157,18 @@ func introspect(ctx context.Context, p *provider.Provider, token string, fromCoo
 		return nil, nil
 	}
 
+	// Only an API credential may authorize an API call: an ALLOWLIST
+	// (token_use "api", or no marker for session cookies and legacy tokens).
+	// Interactive-login (identity) access tokens carry no authority, and any
+	// other or future class (e.g. "field") is not an API credential either.
+	// Reject them outright rather than building an empty-authority context,
+	// which an authentication-only handler would still accept. Only
+	// client_credentials (service accounts + developer users) and the
+	// first-party dashboard paths mint API-usable bearers, marked TokenUseAPI.
+	if !sessiontoken.IsAPICredential(c.TokenUse) {
+		return nil, errIdentityTokenNotAPICredential
+	}
+
 	// Session cookies (the SPA) carry only identity (subject). Resolve the
 	// mutable authorization data — scope, roles, clients, applications,
 	// permissions — FRESH from the DB on every request, so a role/permission/
@@ -183,17 +195,6 @@ func introspect(ctx context.Context, p *provider.Provider, token string, fromCoo
 			// Session cookies are minted only by interactive logins.
 			PrincipalType: auth.PrincipalTypeUser,
 		}, nil
-	}
-
-	// Interactive-login (identity) access tokens carry no authority and must
-	// never authorize an API call. Reject them outright rather than building an
-	// empty-authority context, which an authentication-only handler would still
-	// accept. Only client_credentials (service accounts + developer users) and
-	// the first-party dashboard paths mint API-usable bearers; those are marked
-	// TokenUseAPI. A missing marker (legacy token predating the field) is
-	// treated permissively — those expire within the access-token TTL.
-	if c.TokenUse == sessiontoken.TokenUseIdentity {
-		return nil, errIdentityTokenNotAPICredential
 	}
 
 	// Bearer transport (OAuth access tokens minted by authservice) is
