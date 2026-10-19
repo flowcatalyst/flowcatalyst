@@ -69,7 +69,9 @@ response means; the pool decides what that means for the broker.**
    (`GET /api/dispatch/router-config`), listing its dispatch pools and its per-(tenant,
    priority) queues. It is an ordinary authenticated API route: the router presents an OAuth
    client-credentials bearer (`FC_ROUTER_CLIENT_ID`/`SECRET`), and the built-in
-   `platform:router` role carries the one permission it needs. The credential goes only to
+   `platform:router` role carries the one permission it needs. The document carries an `ETag`
+   and answers `304` to `If-None-Match`, which the router sends, so the short poll interval
+   (30 s, F29) is cheap. The credential goes only to
    URLs whose origin matches `FC_ROUTER_PLATFORM_URL` — `FLOWCATALYST_CONFIG_URL` is
    comma-separated and may list third-party config services beside the platform's own
    document. Documents merge by code, first definition winning, which is exactly why

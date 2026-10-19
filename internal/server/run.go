@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	platformsink "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
+
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
@@ -409,6 +411,10 @@ func newRouterServer(cfg EnvCfg, pool *pgxpool.Pool) (*router.Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	// F29: a client, dispatch pool or subscription written by this process
+	// nudges the router's config watcher, so a new client's dispatch queue is
+	// consumed within about a second rather than at the next poll.
+	platformsink.SetRouterConfigHook(srv.NudgeConfig)
 
 	// A-01: report the untried siblings ackBuffered ACKs off the broker when a
 	// BLOCK_ON_ERROR head fails terminally, so the platform can mark the group

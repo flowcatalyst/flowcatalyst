@@ -207,6 +207,12 @@ type leaderElection interface {
 	Stop(ctx context.Context) error
 }
 
+// defaultConfigPollInterval is how often the config document is re-fetched
+// when ServerConfig.ConfigPollInterval is zero. It was 5 minutes, which was
+// also how long a new client's dispatch jobs sat QUEUED (F29). The fetch is
+// conditional (If-None-Match), so an unchanged document costs a 304.
+const defaultConfigPollInterval = 30 * time.Second
+
 // NewServer assembles the long-lived components. Nothing starts running
 // until Run is called. Returns an error only when standby is enabled
 // but the Redis client cannot be constructed.
@@ -215,7 +221,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		cfg.DrainTimeout = 60 * time.Second
 	}
 	if cfg.ConfigPollInterval == 0 {
-		cfg.ConfigPollInterval = 300 * time.Second // 5m default
+		cfg.ConfigPollInterval = defaultConfigPollInterval
 	}
 	if cfg.InFlightReapMaxAge == 0 {
 		cfg.InFlightReapMaxAge = 15 * time.Minute
@@ -314,6 +320,16 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 	s.Traffic = ts
 	return s, nil
+}
+
+// NudgeConfig asks the running config watcher to re-fetch soon, ahead of its
+// next poll (F29). It never blocks, does nothing without a config source, and
+// is safe to call from any goroutine; a standby that is not leader has no
+// watcher running and the nudge is dropped with the next apply.
+func (s *Server) NudgeConfig() {
+	if s.ConfigSource != nil {
+		s.ConfigSource.Nudge()
+	}
 }
 
 // Reload triggers an immediate config refetch + reconfigure. Returns

@@ -2318,6 +2318,62 @@ PARTNER that disagrees with the tier the client links give (0 = ANCHOR, 1 = CLIE
 `SCOPE_REACH_MISMATCH`; on update compare the merged result and only when `scope` or `clientIds` is in the
 request. Do not make the token follow the stored scope.
 
+### F29. A new client's first dispatch jobs sat QUEUED until the router's five-minute config poll (framework G77-4, 2026-10-19)
+
+**Bug.** The router learns its queues from the platform's router-config document, which lists a DEFAULT and a
+HIGH_PRIORITY queue for every client. The router fetched it every 300 s and, on an unchanged document, rechecked the
+queues it had found missing (a dispatch queue is created on its first publish) on the same 300 s tick. A client
+created at any moment therefore had its jobs published to a queue no router consumed for up to 5 minutes, then up to
+5 more before the router noticed the queue now existed.
+
+**Fix, three parts; nothing polls aggressively.**
+1. *Conditional document.* `GET /api/dispatch/router-config` carries an `ETag` (hash of the rendered document) and
+   answers `304` to `If-None-Match` (a list, weak validators and `*` understood). `ConfigSource` keeps each URL's
+   validator beside its cached document and sends it back; a 304 reuses the cached document (so change detection,
+   last-known-good and the stale-config warnings are untouched). A source that sends no ETag (a third-party config
+   service) is fetched in full as before.
+2. *Poll interval 300 s -> 30 s* (`router.defaultConfigPollInterval`; `FC_ROUTER_CONFIG_INTERVAL_SECONDS` still
+   overrides, and a deployment that sets it explicitly keeps its value, see the IaC). The paced missing-queue
+   recheck rides the same tick: a queue that has been missing under 10 minutes (the new client's) is probed every
+   tick, every missing queue once per 5 minutes (the old cadence for all), so the many never-used tenant queues are
+   not probed 10 times as often. `Manager.RecheckMissingQueuesPaced`; `RecheckMissingQueues` (all) is kept.
+3. *Nudge for a router in the platform's process* (the unified server, fcdev). A client, dispatch pool or
+   subscription event written by the platform calls a hook (`platformsink.SetRouterConfigHook`, set in
+   `newRouterServer`) that `Nudge`s the config watcher; the watcher waits `NudgeDelay` (1 s, so the writing
+   transaction has committed and a burst is one fetch), fetches, and repeats once to confirm (a 304 when nothing is
+   new). Nudges coalesce. A separately-run router has no hook and relies on 1 and 2.
+
+**Measured pick-up delay** (time from a queue being added to the document to its consumer running;
+`TestWatch_NewQueuePickupDelay`, a real `Watch` against a fake document server, three runs):
+
+| | before | after |
+|---|---|---|
+| in-process router, test scale (interval 600 ms) | ~600 ms (one interval) | **22 ms** with a 20 ms nudge delay, whatever the interval (tested at 1 h) |
+| in production terms | up to 300 s, mean 150 s, then up to 300 s more for the lazily created queue | **~1 s + one confirming fetch** in the platform's process; **<= 30 s** (mean 15 s) for a separate router, a young queue's recheck on the same tick |
+
+The production numbers follow from the constants (`NudgeDelay` 1 s, interval 30 s); the test exercises the same code
+at a smaller scale. No run against a real SQS queue or a deployed router.
+
+**Tests.** `router/config_refresh_test.go` (304 treated as unchanged and a change picked up; no-ETag source; the
+pick-up delay with and without a nudge; coalescing; young vs old missing queues), `dispatch/api_pg_test.go`
+`TestRouterConfigEndpoint_ConditionalGet` (200 + ETag, 304, list/weak validators, a new client changes the ETag),
+`client/operations/ops_pg_test.go` `TestCreateClient_NudgesTheRouterConfig`, `platformsink/hook_test.go` (which
+event types nudge). `TestNewServerAppliesNotifyBatchIntervalFromConfig` pinned the old 300 s default and now pins the
+constant.
+
+**Wire impact.** `api/openapi.lock.json`: the router-config operation gains an `If-None-Match` header parameter and
+an `ETag` response header (and the SPA's generated types); the body is unchanged.
+
+**Owner decision needed.** The deployed router's interval, if the IaC sets `FLOWCATALYST_CONFIG_INTERVAL` (or
+`FC_ROUTER_CONFIG_INTERVAL_SECONDS`) explicitly, still decides a separate router's worst case; this change only
+moves the default. A router in a different process from the platform is not nudged (no cross-process signal exists;
+a Postgres LISTEN/NOTIFY long-poll as `/control/functions/desired` does would give that, not built).
+
+**Rust hand-off.** Serve the router-config document with a strong `ETag` and `304` on `If-None-Match`; have the
+router send the validator and reuse its cached document on 304; default the poll to 30 s; probe newly missing
+queues on every tick and the rest on the slow cadence; and, if Rust runs the router in the platform's process,
+nudge the config watcher (after a short delay) when a client, dispatch pool or subscription is written.
+
 ### F30. Definition sync reported unchanged roles, connections and subscriptions as updated (framework G77-5, 2026-10-19)
 
 **Bug.** `SyncRoles`, `SyncPlatformRoles`, `SyncConnections` and `SyncSubscriptions` overwrote every listed row

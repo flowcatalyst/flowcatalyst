@@ -4,6 +4,7 @@ package dispatch_test
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -72,4 +73,46 @@ func TestRouterConfigEndpoint_RequiresAnchorAndTheDispatchPoolViewPermission(t *
 		// empty — proving a real build, not an early return.
 		require.NotEmpty(t, doc.Queues)
 	})
+}
+
+// F29: the router polls the document every few seconds, so an unchanged one
+// answers 304 to its validator, and any change to what the document lists
+// (a new client's queue) is a 200 with a new validator.
+func TestRouterConfigEndpoint_ConditionalGet(t *testing.T) {
+	s := routerConfigState(t)
+	pool := testpg.Pool(t)
+	ctx := auth.WithContext(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_rc_etag", Scope: auth.ScopeAnchor, PrincipalType: "SERVICE",
+		Permissions: []string{"platform:messaging:dispatch-pool:view"},
+	})
+
+	status, etag, doc, err := s.RouterConfigConditionalForTest(ctx, "")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, status)
+	require.NotEmpty(t, etag)
+	require.NotNil(t, doc)
+
+	status, again, doc, err := s.RouterConfigConditionalForTest(ctx, etag)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNotModified, status, "an unchanged document is a 304")
+	require.Equal(t, etag, again)
+	require.Nil(t, doc)
+
+	status, _, _, err = s.RouterConfigConditionalForTest(ctx, `"stale", W/`+etag)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNotModified, status, "a list and weak validators are understood")
+	status, _, _, err = s.RouterConfigConditionalForTest(ctx, `"somethingelse"`)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, status)
+
+	// A new client adds its two lanes to the document.
+	_, err = pool.Exec(context.Background(),
+		`INSERT INTO tnt_clients (id, name, identifier) VALUES ('clt_f29etag01', 'F29 etag', 'f29-etag-client')
+		 ON CONFLICT (id) DO NOTHING`)
+	require.NoError(t, err)
+	status, changed, doc, err := s.RouterConfigConditionalForTest(ctx, etag)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, status, "the document changed")
+	require.NotEqual(t, etag, changed)
+	require.NotNil(t, doc)
 }

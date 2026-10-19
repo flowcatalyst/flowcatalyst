@@ -17,12 +17,50 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
+
+// routerConfigHook is called, if set, when a domain event is written that can
+// change the router's configuration document: a client, dispatch pool or
+// subscription was created, changed or removed (F29). The in-process router
+// (the unified server, fcdev) sets it to Nudge its config source so a new
+// client's dispatch queue is consumed in about a second instead of at the next
+// poll. It runs inside the writing transaction, so it must only signal; the
+// router waits a moment before it fetches. A deployment whose router is a
+// separate process polls the (conditional) document instead.
+var routerConfigHook atomic.Pointer[func()]
+
+// SetRouterConfigHook registers fn (nil removes it).
+func SetRouterConfigHook(fn func()) {
+	if fn == nil {
+		routerConfigHook.Store(nil)
+		return
+	}
+	routerConfigHook.Store(&fn)
+}
+
+// affectsRouterConfig reports whether an event of this type can change the
+// router-config document (dispatch.DocumentBuilder reads clients, dispatch
+// pools and subscriptions).
+func affectsRouterConfig(eventType string) bool {
+	for _, family := range []string{
+		"platform:admin:client:",
+		"platform:admin:dispatch-pool:",
+		"platform:admin:dispatch-pools:",
+		"platform:admin:subscription:",
+	} {
+		if strings.HasPrefix(eventType, family) {
+			return true
+		}
+	}
+	return false
+}
 
 // Sink writes events and audit rows to the platform's own tables.
 // Satisfies usecasepgx.Sink.
@@ -75,6 +113,11 @@ func (*Sink) WriteEvent(ctx context.Context, tx *usecasepgx.DbTx, event usecase.
 	if err != nil {
 		slog.Error("msg_events insert failed", "event_type", event.EventType(), "err", err)
 		return fmt.Errorf("insert msg_events: %w", err)
+	}
+	if affectsRouterConfig(event.EventType()) {
+		if fn := routerConfigHook.Load(); fn != nil {
+			(*fn)()
+		}
 	}
 	return nil
 }

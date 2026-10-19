@@ -4,6 +4,7 @@ package operations_test
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
@@ -322,4 +324,18 @@ func TestAddNote_Errors(t *testing.T) {
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
+}
+
+// F29: writing a client tells the in-process router's config watcher, so the
+// new client's dispatch queue is consumed in about a second instead of at the
+// next config poll. SERIAL (no t.Parallel): it owns the process-wide hook.
+func TestCreateClient_NudgesTheRouterConfig(t *testing.T) {
+	var nudges atomic.Int32
+	platformsink.SetRouterConfigHook(func() { nudges.Add(1) })
+	t.Cleanup(func() { platformsink.SetRouterConfigHook(nil) })
+
+	repo := client.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	mustCreate(t, repo, uow, "Nudge Client", "f29-nudge-client")
+	assert.EqualValues(t, 1, nudges.Load(), "creating a client announces a router-config change")
 }

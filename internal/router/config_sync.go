@@ -31,6 +31,11 @@ type ConfigSource struct {
 	// MaxAttempts/RetryDelay govern per-URL retry (defaults: 12 / 5s).
 	MaxAttempts int
 	RetryDelay  time.Duration
+	// NudgeDelay is how long Watch waits after a Nudge before it fetches (and
+	// again before its confirming repeat), so a change announced from inside
+	// the transaction that makes it is committed and visible by then, and a
+	// burst of changes is one fetch. Default 1s.
+	NudgeDelay time.Duration
 
 	// Credentials is how this router authenticates to ITS OWN platform's
 	// config document. It is consulted only for a URL whose origin matches
@@ -54,6 +59,10 @@ type ConfigSource struct {
 	// "already warned for this streak" and "record the new warning id"
 	// as one atomic step, so a plain mutex (not RWMutex) keeps that simple.
 	cacheMu sync.Mutex
+	// etags holds the validator each URL last answered with, sent back as
+	// If-None-Match so an unchanged document costs a 304, not a rebuild and a
+	// re-parse (the platform's router-config endpoint does the comparison).
+	etags map[string]string
 	// cache holds each URL's last successfully fetched RouterConfig
 	// (last-known-good). Populated on every successful fetch; a source with
 	// no entry has never succeeded.
@@ -62,6 +71,26 @@ type ConfigSource struct {
 	// "serving stale config" warning per URL, so a failure streak emits
 	// exactly one warning (not one per tick) and recovery can resolve it.
 	staleWarnIDs map[string]string
+
+	nudgeOnce sync.Once
+	nudgeCh   chan struct{}
+}
+
+// Nudge asks a running Watch to re-fetch soon, ahead of its next tick: the
+// platform calls it when something that changes the router's document was
+// created (a client, a dispatch pool, a subscription), so a new client's queue
+// is consumed in about NudgeDelay rather than at the next poll. It never
+// blocks, and nudges that arrive while one is pending are one.
+func (cs *ConfigSource) Nudge() {
+	select {
+	case cs.nudges() <- struct{}{}:
+	default:
+	}
+}
+
+func (cs *ConfigSource) nudges() chan struct{} {
+	cs.nudgeOnce.Do(func() { cs.nudgeCh = make(chan struct{}, 1) })
+	return cs.nudgeCh
 }
 
 // TokenSource mints bearer tokens for the platform, and is told when one was
@@ -232,6 +261,15 @@ func (cs *ConfigSource) fetchOnce(ctx context.Context, url string) (*common.Rout
 	if err != nil {
 		return nil, err
 	}
+	// Validate against the document this source last gave us, if it gave a
+	// validator and we still hold the document.
+	cs.cacheMu.Lock()
+	etag := cs.etags[url]
+	cached, haveCached := cs.cache[url]
+	cs.cacheMu.Unlock()
+	if etag != "" && haveCached {
+		req.Header.Set("If-None-Match", etag)
+	}
 	// The credential goes to this router's own platform and nowhere else.
 	authenticated := cs.Credentials != nil && cs.CredentialOrigin != "" &&
 		originOf(url) == cs.CredentialOrigin
@@ -250,6 +288,9 @@ func (cs *ConfigSource) fetchOnce(ctx context.Context, url string) (*common.Rout
 		return nil, fmt.Errorf("config fetch: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotModified && etag != "" && haveCached {
+		return &cached, nil
+	}
 	if resp.StatusCode >= 300 {
 		// A rejected token is the one failure re-minting can fix, so drop the
 		// cached one and let the next attempt mint. Otherwise every attempt
@@ -275,6 +316,16 @@ func (cs *ConfigSource) fetchOnce(ctx context.Context, url string) (*common.Rout
 	if err := json.Unmarshal(body, &cfg); err != nil {
 		return nil, fmt.Errorf("config decode: %w", err)
 	}
+	cs.cacheMu.Lock()
+	if cs.etags == nil {
+		cs.etags = make(map[string]string)
+	}
+	if v := resp.Header.Get("ETag"); v != "" {
+		cs.etags[url] = v
+	} else {
+		delete(cs.etags, url)
+	}
+	cs.cacheMu.Unlock()
 	return &cfg, nil
 }
 
@@ -475,7 +526,7 @@ func Watch(ctx context.Context, cs *ConfigSource, manager *Manager, interval tim
 			// An unchanged config is not re-applied, but a queue it names may
 			// have been created since (the platform makes each on its first
 			// publish). Start consumers for any that have appeared.
-			manager.RecheckMissingQueues(ctx)
+			manager.RecheckMissingQueuesPaced(ctx)
 			clearWatchWarning(warnings, &watchWarnID)
 			return true
 		}
@@ -541,6 +592,27 @@ func Watch(ctx context.Context, cs *ConfigSource, manager *Manager, interval tim
 			return
 		case <-tick.C:
 			apply()
+		case <-cs.nudges():
+			// Something that changes the document was just created. Give the
+			// writer's transaction a moment to commit and further changes a
+			// moment to arrive, fetch, and once more to confirm (a conditional
+			// fetch is a 304 when nothing is new).
+			delay := cs.NudgeDelay
+			if delay <= 0 {
+				delay = time.Second
+			}
+			for range 2 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(delay):
+				}
+				select {
+				case <-cs.nudges():
+				default:
+				}
+				apply()
+			}
 		}
 	}
 }

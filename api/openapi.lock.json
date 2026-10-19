@@ -17242,6 +17242,17 @@
     "/api/dispatch/router-config": {
       "get": {
         "operationId": "getRouterConfig",
+        "parameters": [
+          {
+            "description": "An ETag from an earlier answer; 304 when the document is unchanged",
+            "in": "header",
+            "name": "If-None-Match",
+            "schema": {
+              "description": "An ETag from an earlier answer; 304 when the document is unchanged",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -17251,7 +17262,14 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "default": {
             "content": {

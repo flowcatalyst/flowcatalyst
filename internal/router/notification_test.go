@@ -154,7 +154,7 @@ func TestNewServerAppliesNotifyBatchIntervalFromConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
-	if s2.Notifier.interval != defaultNotifyBatchInterval || s2.Cfg.ConfigPollInterval != 300*time.Second {
+	if s2.Notifier.interval != defaultNotifyBatchInterval || s2.Cfg.ConfigPollInterval != defaultConfigPollInterval {
 		t.Fatalf("defaults: notify=%v config=%v", s2.Notifier.interval, s2.Cfg.ConfigPollInterval)
 	}
 }

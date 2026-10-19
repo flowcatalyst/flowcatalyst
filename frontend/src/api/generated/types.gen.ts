@@ -9778,6 +9778,12 @@ export type SuspendDispatchPoolResponse = SuspendDispatchPoolResponses[keyof Sus
 
 export type GetRouterConfigData = {
     body?: never;
+    headers?: {
+        /**
+         * An ETag from an earlier answer; 304 when the document is unchanged
+         */
+        'If-None-Match'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/dispatch/router-config';

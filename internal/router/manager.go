@@ -109,6 +109,13 @@ type Manager struct {
 	// consumerMu. An entry is how the INFO line is logged once per streak
 	// rather than on every recheck, and what RecheckMissingQueues walks.
 	missingQueues map[string]common.QueueConfig
+	// missingSince is when each missingQueues entry was first found missing, and
+	// lastFullRecheck when RecheckMissingQueuesPaced last probed all of them.
+	// Both guarded by consumerMu. They pace the recheck: a queue that only just
+	// went missing (a new client's, created on its first publish) is probed on
+	// every config tick, the rest on a slow cadence.
+	missingSince    map[string]time.Time
+	lastFullRecheck time.Time
 
 	// drainingMu guards drainingPools: pools this Manager removed from
 	// routing (m.pools, via Reconfigure) but which are still finishing their
@@ -1533,6 +1540,7 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 	for name, qc := range m.missingQueues {
 		if wq, ok := wantQueues[name]; !ok || wq != qc {
 			delete(m.missingQueues, name)
+			delete(m.missingSince, name)
 		}
 	}
 	missing := make([]common.QueueConfig, 0, len(wantQueues))
@@ -1630,6 +1638,7 @@ func (m *Manager) startConsumers(ctx context.Context, qcs []common.QueueConfig) 
 		if _, ok := m.missingQueues[qc.Name]; ok {
 			wasMissing = true
 			delete(m.missingQueues, qc.Name)
+			delete(m.missingSince, qc.Name)
 		}
 		m.consumerMu.Unlock()
 		if wasMissing {
@@ -1652,6 +1661,7 @@ func (m *Manager) noteQueueMissing(qc common.QueueConfig) {
 	}
 	_, already := m.missingQueues[qc.Name]
 	m.missingQueues[qc.Name] = qc
+	m.markMissingSinceLocked(qc.Name)
 	m.consumerMu.Unlock()
 	if !already {
 		slog.Info("manager: queue does not exist yet; not consuming it (rechecked periodically)",
@@ -1666,10 +1676,47 @@ func (m *Manager) noteQueueMissing(qc common.QueueConfig) {
 // re-applied, so without this a queue created later would not be consumed
 // until the next config change. With nothing missing it does no work at all.
 func (m *Manager) RecheckMissingQueues(ctx context.Context) {
+	m.recheckMissing(ctx, func(time.Time) bool { return true })
+}
+
+// Pacing of the recheck on the config tick. The document lists a queue for
+// every client and lane, but only the ones that have published exist, so most
+// missing queues stay missing; probing all of them on every (now frequent)
+// tick would be a broker call per unused queue per tick. A queue that has been
+// missing for less than youngMissingQueueAge is the one a new client is about
+// to publish to, so it is probed on every tick; every queue is probed once per
+// fullMissingRecheckEvery, which is the cadence the router used for all of
+// them before F29.
+const (
+	youngMissingQueueAge    = 10 * time.Minute
+	fullMissingRecheckEvery = 5 * time.Minute
+)
+
+// RecheckMissingQueuesPaced is the recheck the config tick runs: the young
+// missing queues now, all of them when fullMissingRecheckEvery has passed.
+func (m *Manager) RecheckMissingQueuesPaced(ctx context.Context) {
+	now := time.Now()
+	m.consumerMu.Lock()
+	full := now.Sub(m.lastFullRecheck) >= fullMissingRecheckEvery
+	if full {
+		m.lastFullRecheck = now
+	}
+	m.consumerMu.Unlock()
+	m.recheckMissing(ctx, func(since time.Time) bool {
+		return full || now.Sub(since) < youngMissingQueueAge
+	})
+}
+
+// recheckMissing starts consumers for the missing queues whose first-missing
+// time passes want.
+func (m *Manager) recheckMissing(ctx context.Context, want func(since time.Time) bool) {
 	m.consumerMu.Lock()
 	qcs := make([]common.QueueConfig, 0, len(m.missingQueues))
 	for name, qc := range m.missingQueues {
-		if _, running := m.consumers[name]; !running {
+		if _, running := m.consumers[name]; running {
+			continue
+		}
+		if want(m.missingSince[name]) {
 			qcs = append(qcs, qc)
 		}
 	}
@@ -1680,6 +1727,17 @@ func (m *Manager) RecheckMissingQueues(ctx context.Context) {
 	// Failures other than "missing" are logged by startConsumers; the next
 	// recheck (or a Reconfigure) tries them again.
 	m.startConsumers(ctx, qcs)
+}
+
+// markMissingSinceLocked stamps name's first-missing time, if it has none.
+// consumerMu must be held.
+func (m *Manager) markMissingSinceLocked(name string) {
+	if m.missingSince == nil {
+		m.missingSince = make(map[string]time.Time)
+	}
+	if _, ok := m.missingSince[name]; !ok {
+		m.missingSince[name] = time.Now()
+	}
 }
 
 // detachMissingConsumer retires a consumer whose queue disappeared from under
@@ -1701,6 +1759,7 @@ func (m *Manager) detachMissingConsumer(rc *runningConsumer) {
 		m.missingQueues = make(map[string]common.QueueConfig)
 	}
 	m.missingQueues[name] = rc.queueCfg
+	m.markMissingSinceLocked(name)
 	m.consumerMu.Unlock()
 
 	rc.stopPoll()
