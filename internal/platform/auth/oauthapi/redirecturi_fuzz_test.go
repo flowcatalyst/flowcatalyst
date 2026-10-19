@@ -2,6 +2,7 @@ package oauthapi
 
 import (
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -42,10 +43,8 @@ func FuzzMatchRedirectURI(f *testing.F) {
 		if !MatchRedirectURI(uri, registered) {
 			return
 		}
-		for _, r := range registered {
-			if uri == r {
-				return // exact registration
-			}
+		if slices.Contains(registered, uri) {
+			return // exact registration
 		}
 		u, err := url.Parse(uri)
 		if err != nil {

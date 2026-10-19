@@ -1,11 +1,11 @@
 package shell
 
 import (
+	"net/http"
+	"regexp"
 	"time"
 
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
-	"net/http"
-	"regexp"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
 )

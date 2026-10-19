@@ -52,7 +52,7 @@ func main() {
 	cfg := server.LoadEnv()
 	if err := cfg.CheckTestHeadersAllowed(os.Getenv("APP_ENV")); err != nil {
 		slog.Error("fc-server: refusing to start", "err", err)
-		os.Exit(1)
+		os.Exit(1) //nolint:gocritic // fatal startup refusal; the deferred panic recover is moot
 	}
 	// Customer webhook targets may not reach loopback, cloud metadata or (by
 	// default) private networks; the platform's own endpoints are exempt.

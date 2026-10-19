@@ -28,7 +28,7 @@ func TestSessionCookieAttributes(t *testing.T) {
 func TestSessionSameSiteKnob(t *testing.T) {
 	t.Cleanup(func() { _ = SetSessionSameSite("lax") })
 	for in, want := range map[string]http.SameSite{
-		"": http.SameSiteLaxMode, "lax": http.SameSiteLaxMode, "Strict": http.SameSiteStrictMode, " none ": http.SameSiteNoneMode,
+		"": http.SameSiteLaxMode, "lax": http.SameSiteLaxMode, "Strict": http.SameSiteStrictMode, "\tnone": http.SameSiteNoneMode,
 	} {
 		if err := SetSessionSameSite(in); err != nil {
 			t.Fatal(err)

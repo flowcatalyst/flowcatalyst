@@ -65,8 +65,12 @@ func cborMap(n int, kv ...[]byte) []byte {
 }
 
 func (a *Authenticator) coseKey() []byte {
-	x := a.key.PublicKey.X.FillBytes(make([]byte, 32))
-	y := a.key.PublicKey.Y.FillBytes(make([]byte, 32))
+	// Uncompressed SEC1 point: 0x04 || X || Y.
+	pt, err := a.key.PublicKey.Bytes()
+	if err != nil {
+		a.t.Fatal(err)
+	}
+	x, y := pt[1:33], pt[33:65]
 	return cborMap(5,
 		cborUint(1), cborUint(2), // kty EC2
 		cborUint(3), cborNeg(-7), // alg ES256
