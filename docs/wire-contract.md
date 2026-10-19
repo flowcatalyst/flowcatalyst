@@ -218,6 +218,19 @@ non-browser caller (curl, a script) that sends JSON keeps working. Not guarded:
 (`/oauth/token`, `/oauth/introspect`, `/oauth/revoke`: form-encoded by the
 spec, client-authenticated, PKCE; no cookie).
 
+**Revocation, SSO and passkey additions (2026-10-19, F36 to F45).**
+`POST /oauth/revoke` still answers 200 for every token, but a client authenticated
+by credentials revokes only refresh tokens issued to it (a token bound to another
+client is left live); Bearer callers and unbound tokens are unchanged
+(`FC_OAUTH_REVOKE_ENFORCE_CLIENT=false` restores the old behaviour).
+`POST /oauth/introspect` is unchanged unless `FC_OAUTH_INTROSPECT_CLIENT_AUTH_ONLY=true`
+(Bearer then gets 401 `invalid_client`). With `FC_OIDC_REJECT_UNVERIFIED_EMAIL=true` an
+SSO callback whose id_token says `email_verified: false` is **403 `EMAIL_NOT_VERIFIED`**.
+A passkey assertion whose signature counter did not advance is
+**401 `INVALID_CREDENTIALS`** (and the counter is now stored). Refresh rotation:
+of concurrent presentations of one refresh token exactly one succeeds; the others
+get `invalid_grant` and the family is revoked as for any replay.
+
 **SSO callback binding (since 2026-10-13, F16 follow-up).**
 `GET /auth/oidc/login` and `GET /portal/auth/oidc/login` set a per-login cookie
 (`__Host-fc_sso_<digest>` over HTTPS, `fc_sso_<digest>` over HTTP; HttpOnly,

@@ -2619,6 +2619,92 @@ change/clear on update with the validation above; return id and code; in the des
 account's signing secret when set (inactive/missing: empty secret plus a log line, no fall-through), else the
 application's account as before; NOTIFY the pool on function updates; CLI flags as above.
 
+### F36. Refresh-token rotation was not atomic: concurrent presentations forked the family (identity review G1, 2026-10-19)
+
+**Bug.** `grantstore.Rotate` did find, revoke, insert and link as four statements. `RevokeByHash` had no
+`consumed_at IS NULL` guard and its rows-affected was ignored, so two simultaneous presentations of one refresh
+token both rotated and left two live descendants in one family; the replay reuse detection exists to catch never ran.
+
+**Fix.** One guarded UPDATE (`claimForRotation`: `WHERE consumed_at IS NULL AND not revoked AND not expired`, which
+revokes the token AND writes `replacedBy` in the same statement) plus the replacement insert, in one transaction.
+Exactly one presentation wins; the others affect zero rows and are handled as replays (family revoked, as before).
+A failed insert rolls the revocation back instead of stranding the client. Replay of an already-rotated token is
+unchanged. The Rust 10-second replay leeway was NOT added: the Go behaviour never tolerated a retry of a rotated
+token (it revokes the family), so adding it would be a behaviour change, not a fix. Test: 12 goroutines, one wins
+(`TestRotate_ConcurrentPresentationsExactlyOneWins`).
+
+### F37. The TOTP replay guard was read-then-write (identity review G2, 2026-10-19)
+
+**Fix.** `Repository.ClaimTOTPStep`: `UPDATE ... SET last_used_at = $step WHERE id = $1 AND (last_used_at IS NULL
+OR last_used_at < $step)`; `VerifyTOTP` passes only if this call claimed the step. The earlier read stays as a fast
+path. Test: 12 concurrent submissions of one code, exactly one passes.
+
+### F38. `FC_AUTH_ALLOW_TEST_HEADERS` was an identity-spoof switch compiled into the production binary (review G3, 2026-10-19)
+
+**Fix.** `fc-server` refuses to start when the variable is true unless `APP_ENV` is `local` or `test`
+(`EnvCfg.CheckTestHeadersAllowed`). fcdev sets the flag in code and does not go through that check, so fcdev and the
+e2e launcher (which runs fcdev) are unchanged. **An operator who sets `FC_AUTH_ALLOW_TEST_HEADERS=true` on fc-server
+now also needs `APP_ENV=local`.** No such setting exists in the repo, compose files or scripts.
+
+### F39. Session-cookie construction was duplicated at 11 sites (review G5, 2026-10-19)
+
+**Fix.** `platformmw.NewCookie` / `SessionCookie` / `ClearSessionCookie` build every cookie (fc_session set and
+clear at 7 sites, the trusted-device cookie, the SSO binding cookie, the UI flash cookie). Attributes are unchanged
+(SameSite Lax; Strict for the trusted-device cookie; Path, HttpOnly, Secure, MaxAge, Expires as before); attribute
+tests were written against the old code first and kept. New `FC_SESSION_COOKIE_SAME_SITE` (`lax` default, `strict`,
+`none`) applies to fc_session only.
+
+### F40. `/oauth/revoke` let any authenticated client revoke any refresh token it could name (review B1, 2026-10-19)
+
+**Fix.** RFC 7009 section 2.1: a client authenticated by credentials revokes only tokens issued to it; a token bound
+to another client is left alone and the response is still 200 (reveals nothing). Bearer callers (no client identity)
+and unbound tokens are unchanged. Callers found: fcdev (`fcdev logout`, own public client id) and the Rust SDK
+(`revoke_token`, own client id and secret): both revoke their own tokens. Escape hatch
+`FC_OAUTH_REVOKE_ENFORCE_CLIENT=false`. Introspection: access tokens carry no OAuth client claim, so ownership
+cannot be enforced; the opt-in `FC_OAUTH_INTROSPECT_CLIENT_AUTH_ONLY=true` refuses Bearer authentication on
+`/oauth/introspect` (default off: resource servers may introspect with a Bearer today).
+
+### F41. Upstream OIDC `email_verified` was ignored (review B2, 2026-10-19)
+
+**Fix.** `FC_OIDC_REJECT_UNVERIFIED_EMAIL=true` refuses an SSO login (employee and portal) when the id_token carries
+`email_verified` = `false` (bool or the string `"false"`, as Cognito sends it). Absent or `null` is always accepted.
+Default off: some IdPs send false for accounts the tenant trusts. Failure reason recorded in the login attempt.
+
+### F42. The multi-tenant issuer pattern was an unanchored regex (review B3, 2026-10-19)
+
+**Fix.** `FC_OIDC_ISSUER_PATTERN_STRICT=true` makes the pattern a full match (`^(?:pattern)$`). Default keeps the
+partial match (a deployed pattern written without `^...$` or without the scheme would stop matching) and logs a warning
+once per unanchored pattern. Tests cover anchored and unanchored legitimate forms (Entra tenant issuer, local http,
+Google) and near-miss issuers.
+
+### F43. A passkey login never stored the signature counter, and a counter regression was not refused (found writing the WebAuthn tests, 2026-10-19)
+
+**Bug.** `authenticateComplete` ran the `Authenticate` operation without `PersistedCredentialID`, so its validation
+failed and the error was discarded ("non-fatal"): the sign counter, backup flags and `last_used_at` of a passkey were
+never persisted. The library reports a counter regression as `CloneWarning` on a successful validation, and the handler
+never read it, so cloned-authenticator detection did not exist.
+
+**Fix.** `persistAssertion` looks the credential up by its authenticator id, requires it to belong to the signing
+principal, and runs the operation with the persisted id. A `CloneWarning` assertion is refused (`INVALID_CREDENTIALS`,
+recorded as a failed attempt). Authenticators that always report counter 0 (most synced passkeys) never trip it.
+
+### F44. The post-login return URL accepted control characters: `/<TAB>/host` was an open redirect (found by the new fuzz target, 2026-10-19)
+
+**Bug.** `safeRelativeReturnURL` (SSO callback and password reset) rejected `//` and `/\` but a browser drops ASCII
+tab/CR/LF from a URL, so `/<TAB>/evil.com` is read as `//evil.com`. **Fix.** Any control character is refused (no
+legitimate return path has one). Fuzz targets added for the redirect-URI matcher, session-token verify, return URL,
+bearer extraction, id_token hint parsing, backoff delay.
+
+### F45. Dependencies (2026-10-19)
+
+`go-webauthn` 0.17.4 to 0.18.2, `go-oidc` 3.18.0 to 3.21.0, `boombuler/barcode` 2019 pseudo-version to 1.1.0 (QR
+output byte-identical, pinned by `TestQRDataURI_Stable`), `x/net` 0.59.0 to 0.60.0 and `mongo-driver` 1.17.6 to 1.17.7
+(govulncheck: reachable HTTP/2 advisories in the router, mongo GSSAPI). go-webauthn 0.18 rejects a ceremony whose
+client volunteers an unrequested extension output; `webauthn.NewService` sets
+`ExtensionsUnsolicitedOutputPolicy: Ignore` to keep the 0.17 behaviour (test proves it fails without). Not taken: chi
+5.3.0 (propagates inline middlewares across mounted subrouters, a routing behaviour change). govulncheck's three chi
+`RealIP` advisories are covered by the new `FC_HTTP_REAL_IP_MIDDLEWARE` switch (default true, unchanged).
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -2848,3 +2934,7 @@ missing event source (F14), and unknown roles in the application principal sync 
   there, never on a deployed database; no live runner or real np delivery (the end-to-end test signs and verifies
   with the same webhook package the runner uses, but not through a running runner); the console UI is not done.
   The Java/Rust ports were not changed (hand-off above).
+- F36 to F45 (identity review fixes): integration tests on embedded Postgres; no browser, real IdP, real authenticator
+  or deployed environment. Passkey flows are proven with a software authenticator (attestation "none", ES256), not with
+  platform authenticators or attestation formats. SSO email_verified and the issuer pattern are proven against the
+  in-repo fake IdP only. The Java/Rust ports were not changed (hand-off in the identity review report).
