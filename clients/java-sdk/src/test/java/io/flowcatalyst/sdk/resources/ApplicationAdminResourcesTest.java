@@ -166,12 +166,15 @@ class ApplicationAdminResourcesTest {
     }
 
     @Test
-    void anotherApplicationIsA403() {
-        server.on("GET", "/api/applications/billing/users", 403,
-                "{\"error\":\"FORBIDDEN\",\"message\":\"Not authorised for application 'billing'\"}");
+    void anotherApplicationIsNotFound() {
+        // Platform F32: another application's code, an unbound credential and an unknown code
+        // all answer 404, so a caller cannot enumerate applications. A missing permission is
+        // still a 403.
+        server.on("GET", "/api/applications/billing/users", 404,
+                "{\"error\":\"Application_NOT_FOUND\",\"message\":\"Application not found\"}");
         FlowCatalystException ex = assertThrows(FlowCatalystException.class,
                 () -> client().applicationUsers().list("billing", null));
-        assertInstanceOf(SdkError.Forbidden.class, ex.error());
+        assertInstanceOf(SdkError.NotFound.class, ex.error());
     }
 
     @Test
