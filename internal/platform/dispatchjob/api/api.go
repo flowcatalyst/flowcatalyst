@@ -3,6 +3,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"slices"
 	"strconv"
@@ -761,7 +762,7 @@ func (s *State) cancel(ctx context.Context, in *apicommon.IDInput) (*apicommon.O
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.CancelDispatchJob(s.Repo), operations.CancelCommand{ID: in.ID}, ec); err != nil {
-		return nil, err
+		return nil, transitionConflict(err)
 	}
 	return s.reload(ctx, in.ID)
 }
@@ -775,7 +776,7 @@ func (s *State) complete(ctx context.Context, in *apicommon.IDInput) (*apicommon
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.CompleteDispatchJob(s.Repo), operations.CompleteCommand{ID: in.ID}, ec); err != nil {
-		return nil, err
+		return nil, transitionConflict(err)
 	}
 	return s.reload(ctx, in.ID)
 }
@@ -803,9 +804,20 @@ func (s *State) editPayload(ctx context.Context, in *editPayloadInput) (*apicomm
 	ec := auth.NewExecutionContext(ctx)
 	cmd := operations.EditPayloadCommand{ID: in.ID, Payload: in.Body.Payload, PayloadContentType: in.Body.PayloadContentType}
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.EditDispatchJobPayload(s.Repo), cmd, ec); err != nil {
-		return nil, err
+		return nil, transitionConflict(err)
 	}
 	return s.reload(ctx, in.ID)
+}
+
+// transitionConflict turns the SQL status guard's refusal (the job left the
+// allowed status between the operation's read and its write) into a 409, the
+// same answer the operation gives when it sees the wrong status itself. Any
+// other error passes through.
+func transitionConflict(err error) error {
+	if errors.Is(err, dispatchjob.ErrTransitionRefused) {
+		return usecase.Conflict("STATUS_CHANGED", "the job changed status while the action ran; reload it and try again")
+	}
+	return err
 }
 
 // reload re-fetches a job so cancel/complete can return the updated
