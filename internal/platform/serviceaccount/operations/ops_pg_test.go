@@ -86,7 +86,7 @@ func TestCreateServiceAccount_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 
 	desc := "machine account"
-	scope := "anchor"
+	scope := "client" // one link = CLIENT; F28 refuses a scope that disagrees
 	appID := "app_sacreatehappy"
 	ev, err := runOp(uow, operations.CreateServiceAccount(repo), operations.CreateCommand{
 		Code:          "SACreate-Happy", // lower-cased by the op

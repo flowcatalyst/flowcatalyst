@@ -77,6 +77,14 @@ func UpdateServiceAccount(
 				}
 				sa.ClientIDs = cmd.ClientIDs
 			}
+			// The stored scope and the token tier (which follows the client links)
+			// must agree after this update (F28). Checked only when the update
+			// touches one of the two, so renaming a legacy account still works.
+			if cmd.Scope != nil || reachChanged {
+				if err := requireScopeMatchesReach(sa.Scope, sa.ClientIDs); err != nil {
+					return zero, err
+				}
+			}
 			if cmd.WebhookCredentials != nil {
 				sa.WebhookCredentials = *cmd.WebhookCredentials
 			}

@@ -2276,6 +2276,48 @@ Note for Rust when it starts on a database Go migrated: Go's `iam_login_attempts
 CHECK constraints exist; Go 071 prunes `platform:iam:user:password-reset-requested`, which Rust re-seeds. Go now
 tolerates `_schema_migrations` being present and leaves it untouched.
 
+### F28. `PUT scope=ANCHOR` on a service account was echoed while the token stayed PARTNER (framework G77-3, 2026-10-19)
+
+**Bug.** A service account's `scope` is a stored descriptive field; the token tier is derived from the account's
+client links (`applyClientReach`: none = ANCHOR, one = CLIENT, several = PARTNER). `PUT {"scope":"ANCHOR"}` on an
+account with `clientIds` stored `ANCHOR`, returned `scope: ANCHOR` and left every token PARTNER (or CLIENT) until
+`clientIds` was cleared in the same call. The reverse also existed: `scope: CLIENT` with no links yields an ANCHOR
+token, wider than the field claims. The framework's e2e run hit it as 403 `ANCHOR_REQUIRED_FOR_PLATFORM_SWEEP`.
+
+**Choice: refuse, do not widen the token.** Making the token follow the stored scope would let one field edit
+(`scope: ANCHOR` beside links) turn a client-confined or partner credential into an all-clients credential, and the
+create-user rule (the requested scope wins but ANCHOR must be backed, never inferred) points the same way: ANCHOR
+needs its backing, here an empty link set. So create, create-with-credentials and update now return
+`400 SCOPE_REACH_MISMATCH` when the effective stored scope (ANCHOR, CLIENT or PARTNER, case-insensitive) differs
+from the tier the effective links give; the message names the links and the tier they give. Unset or non-tier
+values are left alone. On update the check runs only when the request carries `scope` or `clientIds`, over the
+merged result, so renaming a legacy inconsistent account still works and fixing it is one call carrying both
+fields (`{"scope":"ANCHOR","clientIds":[]}`). A refused call stores nothing and changes no token.
+
+**Existing data.** Not migrated: accounts already holding a mismatched scope keep it until their scope or links are
+next edited; their tokens are unchanged (they always followed the links).
+
+**Tests** (`-tags=integration`, `serviceaccount/operations/client_reach_pg_test.go`
+`TestServiceAccountScope_MustMatchReach`; four sub-tests failed before the change): create ANCHOR+links refused and
+nothing stored; create CLIENT with no links refused; matching/unset accepted; update ANCHOR with links remaining
+refused, stored scope and principal tier unchanged; ANCHOR with `clientIds: []` accepted and the principal becomes
+ANCHOR; adding links to a stored-ANCHOR account refused; rename unaffected; CLIENT with one link. The existing
+`TestCreateServiceAccount_HappyPath` used `anchor` beside one client (the bug) and now uses `client`.
+
+**SPA.** The service-account detail drawer sends `clientIds: []` for ANCHOR (it hid the client picker but still sent
+the old links) and, for an account with no stored scope, shows the tier its links give instead of "ANCHOR". The
+create drawer is unchanged: CLIENT with several clients, or PARTNER with one, now gets the 400 message. No browser
+run; `vue-tsc` not confirmed.
+
+**Wire impact.** `api/openapi.lock.json`: descriptions on `scope` and `clientIds` of the create and update bodies
+only; `frontend/src/api/generated/types.gen.ts` regenerated. The SDK specs (`make sdk-spec`) are left to the SDK
+release.
+
+**Rust hand-off.** In the service-account create and update operations, reject a `scope` of ANCHOR, CLIENT or
+PARTNER that disagrees with the tier the client links give (0 = ANCHOR, 1 = CLIENT, 2+ = PARTNER), with 400
+`SCOPE_REACH_MISMATCH`; on update compare the merged result and only when `scope` or `clientIds` is in the
+request. Do not make the token follow the stored scope.
+
 ### F32. Application admin routes answer 404 for every application that is not the caller's (owner ruling 2026-10-19)
 
 **Bug.** The F20 routes under `/api/applications/{appCode}/` (users, invitations) answered another

@@ -105,6 +105,9 @@ func CreateServiceAccountWithCredentials(
 			if cmd.ClientIDs != nil {
 				sa.ClientIDs = cmd.ClientIDs
 			}
+			if err := requireScopeMatchesReach(sa.Scope, sa.ClientIDs); err != nil {
+				return zero, err
+			}
 			authToken := generateAuthToken()
 			signingSecret := generateSigningSecret()
 			sa.WebhookCredentials = serviceaccount.WebhookCredentials{

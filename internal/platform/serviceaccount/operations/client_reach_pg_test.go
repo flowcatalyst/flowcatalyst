@@ -187,3 +187,89 @@ func TestServiceAccountReach_AppScopedKeepsClientGrants(t *testing.T) {
 	assert.False(t, p.AllApplications)
 	assert.Equal(t, []string{appID}, ids.Strings(p.AccessibleApplicationIDs))
 }
+
+// F28: the stored scope and the issued token tier must agree. PUT scope=ANCHOR
+// beside client links was accepted and echoed while the token stayed PARTNER.
+func TestServiceAccountScope_MustMatchReach(t *testing.T) {
+	pool := testpg.Pool(t)
+	uow := testpg.NewUoW(t)
+	principals := principal.NewRepository(pool)
+	saRepo := serviceaccount.NewRepository(pool)
+	seedClient(t, pool, "clt_f28_a", "f28-a")
+	seedClient(t, pool, "clt_f28_b", "f28-b")
+	str := func(s string) *string { return &s }
+
+	create := func(code string, scope *string, clientIDs []string) error {
+		_, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
+			operations.CreateServiceAccountWithCredentials(saRepo, principals,
+				platformauth.NewRepository(pool).OAuthClients,
+				client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+			operations.CreateCommand{Code: code, Name: code, Scope: scope, ClientIDs: clientIDs}, testpg.TestEC())
+		return err
+	}
+	update := func(id string, cmd operations.UpdateCommand) error {
+		cmd.ID = id
+		_, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
+			operations.UpdateServiceAccount(saRepo, principals, client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+			cmd, testpg.TestEC())
+		return err
+	}
+
+	t.Run("create: ANCHOR with client links is refused and nothing is stored", func(t *testing.T) {
+		err := create("f28-create-bad", str("ANCHOR"), []string{"clt_f28_a", "clt_f28_b"})
+		testpg.RequireUsecaseError(t, err, usecase.KindValidation, "SCOPE_REACH_MISMATCH")
+		got, ferr := saRepo.FindByCode(context.Background(), "f28-create-bad")
+		require.NoError(t, ferr)
+		assert.Nil(t, got)
+	})
+	t.Run("create: CLIENT with no links is refused (the token would be ANCHOR)", func(t *testing.T) {
+		err := create("f28-create-wide", str("CLIENT"), nil)
+		testpg.RequireUsecaseError(t, err, usecase.KindValidation, "SCOPE_REACH_MISMATCH")
+	})
+	t.Run("create: matching scopes are accepted, case-insensitively, and the token tier is that scope", func(t *testing.T) {
+		require.NoError(t, create("f28-ok-anchor", str("ANCHOR"), nil))
+		require.NoError(t, create("f28-ok-client", str("client"), []string{"clt_f28_a"}))
+		require.NoError(t, create("f28-ok-partner", str("PARTNER"), []string{"clt_f28_a", "clt_f28_b"}))
+		require.NoError(t, create("f28-ok-unset", nil, []string{"clt_f28_a"}))
+	})
+
+	p, res := provisionWithClients(t, "f28-upd", []string{"clt_f28_a", "clt_f28_b"})
+	require.Equal(t, principal.ScopePartner, p.Scope)
+	tier := func() principal.UserScope {
+		got, err := principals.FindByID(context.Background(), ids.PrincipalID(res.PrincipalID))
+		require.NoError(t, err)
+		return got.Scope
+	}
+	storedScope := func() *string {
+		got, err := saRepo.FindByID(context.Background(), res.ServiceAccount.ID)
+		require.NoError(t, err)
+		return got.Scope
+	}
+
+	t.Run("update: scope ANCHOR while links remain is refused, stored scope and token unchanged", func(t *testing.T) {
+		err := update(res.ServiceAccount.ID, operations.UpdateCommand{Scope: str("ANCHOR")})
+		testpg.RequireUsecaseError(t, err, usecase.KindValidation, "SCOPE_REACH_MISMATCH")
+		assert.Nil(t, storedScope())
+		assert.Equal(t, principal.ScopePartner, tier())
+	})
+	t.Run("update: scope and links together, ANCHOR with none, is accepted and the token follows", func(t *testing.T) {
+		require.NoError(t, update(res.ServiceAccount.ID, operations.UpdateCommand{Scope: str("ANCHOR"), ClientIDs: []string{}}))
+		require.NotNil(t, storedScope())
+		assert.Equal(t, "ANCHOR", *storedScope())
+		assert.Equal(t, principal.ScopeAnchor, tier())
+	})
+	t.Run("update: adding links while the stored scope is ANCHOR is refused", func(t *testing.T) {
+		err := update(res.ServiceAccount.ID, operations.UpdateCommand{ClientIDs: []string{"clt_f28_a"}})
+		testpg.RequireUsecaseError(t, err, usecase.KindValidation, "SCOPE_REACH_MISMATCH")
+		assert.Equal(t, principal.ScopeAnchor, tier(), "a refused update must not widen or narrow the token")
+	})
+	t.Run("update: a rename does not re-check the scope", func(t *testing.T) {
+		name := "renamed"
+		require.NoError(t, update(res.ServiceAccount.ID, operations.UpdateCommand{Name: &name}))
+	})
+	t.Run("update: both together to CLIENT with one link", func(t *testing.T) {
+		require.NoError(t, update(res.ServiceAccount.ID, operations.UpdateCommand{Scope: str("CLIENT"), ClientIDs: []string{"clt_f28_b"}}))
+		assert.Equal(t, principal.ScopeClient, tier())
+		assert.Equal(t, "CLIENT", *storedScope())
+	})
+}

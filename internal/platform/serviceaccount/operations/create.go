@@ -72,6 +72,9 @@ func CreateServiceAccount(repo *serviceaccount.Repository) usecaseop.Operation[C
 			if cmd.ClientIDs != nil {
 				sa.ClientIDs = cmd.ClientIDs
 			}
+			if err := requireScopeMatchesReach(sa.Scope, sa.ClientIDs); err != nil {
+				return nil, err
+			}
 			if cmd.WebhookCredentials != nil {
 				sa.WebhookCredentials = *cmd.WebhookCredentials
 			}

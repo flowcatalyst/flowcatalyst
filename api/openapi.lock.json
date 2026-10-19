@@ -3623,6 +3623,7 @@
             "type": "string"
           },
           "scope": {
+            "description": "Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.",
             "type": "string"
           },
           "webhookCredentials": {
@@ -11381,6 +11382,7 @@
             "type": "string"
           },
           "clientIds": {
+            "description": "Client links; replaces the set when present (an empty array clears it). Their count decides the token tier.",
             "items": {
               "type": "string"
             },
@@ -11393,6 +11395,7 @@
             "type": "string"
           },
           "scope": {
+            "description": "Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.",
             "type": "string"
           },
           "webhookCredentials": {

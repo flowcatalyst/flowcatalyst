@@ -1351,6 +1351,9 @@ export type CreateServiceAccountRequest = {
     code: string;
     description?: string;
     name: string;
+    /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     */
     scope?: string;
     webhookCredentials?: WebhookCredentialsDto;
     [key: string]: unknown;
@@ -4045,9 +4048,15 @@ export type UpdateServiceAccountRequest = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Client links; replaces the set when present (an empty array clears it). Their count decides the token tier.
+     */
     clientIds?: Array<string>;
     description?: string;
     name?: string;
+    /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     */
     scope?: string;
     webhookCredentials?: WebhookCredentialsDto;
     [key: string]: unknown;
@@ -5022,6 +5031,9 @@ export type CreateServiceAccountRequestWritable = {
     code: string;
     description?: string;
     name: string;
+    /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     */
     scope?: string;
     webhookCredentials?: WebhookCredentialsDto;
     [key: string]: unknown;
@@ -6549,9 +6561,15 @@ export type UpdateScheduledJobRequestWritable = {
 };
 
 export type UpdateServiceAccountRequestWritable = {
+    /**
+     * Client links; replaces the set when present (an empty array clears it). Their count decides the token tier.
+     */
     clientIds?: Array<string>;
     description?: string;
     name?: string;
+    /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     */
     scope?: string;
     webhookCredentials?: WebhookCredentialsDto;
     [key: string]: unknown;

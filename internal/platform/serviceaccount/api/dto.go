@@ -74,7 +74,7 @@ type CreateServiceAccountRequest struct {
 	Code          string   `json:"code"`
 	Name          string   `json:"name"`
 	Description   *string  `json:"description,omitempty"`
-	Scope         *string  `json:"scope,omitempty"`
+	Scope         *string  `json:"scope,omitempty" doc:"Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it."`
 	ClientIDs     []string `json:"clientIds,omitempty"`
 	ApplicationID *string  `json:"applicationId,omitempty"`
 	// AllApplications grants access to every application. Omitted or false
@@ -108,8 +108,8 @@ func (r CreateServiceAccountRequest) toCommand() (operations.CreateCommand, erro
 type UpdateServiceAccountRequest struct {
 	Name               *string                `json:"name,omitempty"`
 	Description        *string                `json:"description,omitempty"`
-	Scope              *string                `json:"scope,omitempty"`
-	ClientIDs          []string               `json:"clientIds,omitempty"`
+	Scope              *string                `json:"scope,omitempty" doc:"Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it."`
+	ClientIDs          []string               `json:"clientIds,omitempty" doc:"Client links; replaces the set when present (an empty array clears it). Their count decides the token tier."`
 	WebhookCredentials *WebhookCredentialsDTO `json:"webhookCredentials,omitempty"`
 }
 
