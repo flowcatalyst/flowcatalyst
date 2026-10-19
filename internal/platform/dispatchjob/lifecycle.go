@@ -704,22 +704,25 @@ func (l *Lifecycle) ReclaimStaleDelivery(ctx context.Context, id string, created
 }
 
 // Complete records a successful delivery: -> COMPLETED, stamping completed_at
-// and the end-to-end duration. Only from a live status: a settled job is never
-// overwritten by a late callback.
+// and the end-to-end duration, and counting the delivery as an attempt
+// (attempt_count is the number of attempts made, F31). Only from a live
+// status: a settled job is never overwritten by a late callback.
 func (l *Lifecycle) Complete(ctx context.Context, id string, createdAt time.Time, durationMillis int64) (bool, error) {
 	now := time.Now().UTC()
 	rows, err := l.leavePending(ctx, TComplete, byKey(id, createdAt),
-		new(changes).set("completed_at", now).set("duration_millis", durationMillis).set("updated_at", now))
+		new(changes).set("completed_at", now).set("duration_millis", durationMillis).set("updated_at", now).
+			raw("attempt_count", "j.attempt_count + 1"))
 	return len(rows) == 1, err
 }
 
 // Fail records a terminal failure: -> FAILED, stamping last_error,
-// completed_at and the duration. Only from a live status.
+// completed_at and the duration, and counting the failed delivery as an
+// attempt (F31). Only from a live status.
 func (l *Lifecycle) Fail(ctx context.Context, id string, createdAt time.Time, lastError *string, durationMillis int64) (bool, error) {
 	now := time.Now().UTC()
 	rows, err := l.leavePending(ctx, TFail, byKey(id, createdAt),
 		new(changes).set("completed_at", now).set("duration_millis", durationMillis).
-			set("last_error", lastError).set("updated_at", now))
+			set("last_error", lastError).set("updated_at", now).raw("attempt_count", "j.attempt_count + 1"))
 	return len(rows) == 1, err
 }
 

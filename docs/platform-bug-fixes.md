@@ -2366,6 +2366,49 @@ definition with the stored row before saving and skip an equal one: no write, no
 event, not counted in `updated`. Compare the fields in the table above (permissions as a set; binding codes as a
 set; a binding filter only if Rust stores it). Keep "omitted permissions keep the stored ones" for roles.
 
+### F31. `attemptCount` read 0 on a delivered job; the scheduled-job sync audited a rollup under a different key (framework G77-6, 2026-10-19)
+
+**`attemptCount`.** `msg_dispatch_jobs.attempt_count` was bumped only when a retry was scheduled, so it counted
+failed attempts that were retried: a job delivered on its first attempt read 0 (and "Attempts: 0 / 3" in the
+console), one delivered after a retry read 1, and one that exhausted its retries or was refused read one less than
+its attempt rows. The field is named and shown as the number of attempts. `Lifecycle.Complete` and `Lifecycle.Fail`
+(the two terminal delivery outcomes, called only from `processing.advance`) now bump it too, in the same statement
+that settles the job, so `attemptCount` equals the number of delivery attempts made: first-try success 1, one retry
+then success 2, three tries then failure 3. Deferrals (ack=false, 429), holds and stale recoveries are not attempts
+and do not bump it. `Requeue`/`ResetToPending` still zero it, so the next cycle starts from a full budget and the
+retry arithmetic (`attemptNumber = attempt_count + 1` at delivery) is unchanged. Existing completed or failed rows
+keep their old, lower counts (not migrated: the attempt rows hold the truth).
+
+The ledger line "MarkFailed does not bump attempt_count (pre-existing)" in the delivery-credentials hand-off is
+superseded.
+
+**Audit `entityType`.** The audit rows are derived from the event subject's second segment. A scheduled-job sync
+writes, per job, `Scheduledjob` (create and update alike, subject `platform.scheduledjob.<id>`) and one rollup row
+whose subject was `platform.scheduledjobs.synced.<app>`: entity type `Scheduledjobs`, entity id the literal
+`synced`. That plural rollup is the platform's convention for every sync (`Roles`, `Connections`,
+`Subscriptions`, `Eventtypes`, ... keyed by application code); the scheduled-job rollup alone had the extra
+`.synced.` segment, which made its entity id `synced` instead of the application code. The rollup's subject is now
+`platform.scheduledjobs.<app>`, like its peers, so the rollup row reads `Scheduledjobs` / `<app code>`. The two
+entity types stay: a job's own trail is `Scheduledjob` whichever path wrote it, and the per-sync rollup is a
+different record. If the owner wants one type for both, it is a one-line change per sync rollup (all of them).
+The event's `subject` on the published platform event changes with it. Existing audit rows are not rewritten:
+audit history is append-only and the application code is only inside `operation_json`.
+
+**Tests** (`-tags=integration`; each failed before the change):
+`dispatchjob/processing/attempt_count_pg_test.go` (first try 1 and equal to the attempt rows; one retry then
+delivered 2; exhausted 2 of 2), `scheduledjob/operations/audit_entity_pg_test.go` (create then update: per job
+`Scheduledjob`, per sync one `Scheduledjobs` keyed by the application code). Four existing tests pinned the old
+count and were changed: `TestProcess_UnauthorizedFailsFast`, `TestProcess_ConcurrentDeliveriesCallSubscriberOnce`,
+`TestLifecycleCallbackOutcomeColumns` (two assertions).
+
+**Wire impact.** `api/openapi.lock.json`: a description on `attemptCount` (three schemas), and the SPA's generated
+types. No shape change; the value of `attemptCount` on settled jobs is one higher than before.
+
+**Rust hand-off.** (1) Bump `attempt_count` in the terminal complete and fail transitions of the delivery
+handler, so it is attempts made; keep deferral/hold non-bumping and requeue zeroing. (2) Name the scheduled-job
+sync rollup subject `platform.scheduledjobs.<applicationCode>` (no `.synced.` segment) so the audit row's entity id
+is the application code like the other syncs' rollups.
+
 ### F32. Application admin routes answer 404 for every application that is not the caller's (owner ruling 2026-10-19)
 
 **Bug.** The F20 routes under `/api/applications/{appCode}/` (users, invitations) answered another

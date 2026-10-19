@@ -4212,6 +4212,7 @@
             "type": "string"
           },
           "attemptCount": {
+            "description": "Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts",
             "format": "int32",
             "type": "integer"
           },
@@ -4323,6 +4324,7 @@
             "type": "string"
           },
           "attemptCount": {
+            "description": "Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts",
             "format": "int32",
             "type": "integer"
           },
@@ -7805,6 +7807,7 @@
         "additionalProperties": false,
         "properties": {
           "attemptCount": {
+            "description": "Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts",
             "format": "int32",
             "type": "integer"
           },

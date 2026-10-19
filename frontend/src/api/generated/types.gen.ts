@@ -1551,6 +1551,9 @@ export type DispatchJobFilterOptionsResponse = {
 export type DispatchJobRead = {
     aggregate?: string;
     application?: string;
+    /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     */
     attemptCount: number;
     clientId?: string;
     clientIdentifier?: string;
@@ -1583,6 +1586,9 @@ export type DispatchJobResponse = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     */
     attemptCount: number;
     attempts?: Array<AttemptDto>;
     clientId?: string;
@@ -2669,6 +2675,9 @@ export type QueueConfig = {
 };
 
 export type RawDispatchJobResponse = {
+    /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     */
     attemptCount: number;
     attemptHistoryCount: number;
     clientId?: string;
@@ -5145,6 +5154,9 @@ export type DispatchJobFilterOptionsResponseWritable = {
 };
 
 export type DispatchJobResponseWritable = {
+    /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     */
     attemptCount: number;
     attempts?: Array<AttemptDto>;
     clientId?: string;

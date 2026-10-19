@@ -348,6 +348,7 @@ func TestLifecycleCallbackOutcomeColumns(t *testing.T) {
 	assert.Equal(t, "COMPLETED", s["status"])
 	assert.EqualValues(t, 5, s["duration_millis"])
 	assert.NotNil(t, s["completed_at"])
+	assert.EqualValues(t, 2, s["attempt_count"], "the delivery that completed the job is an attempt too (F31)")
 
 	// Settled now: a late retry / fail / defer leaves it COMPLETED.
 	for name, f := range map[string]func() (bool, error){
@@ -362,7 +363,7 @@ func TestLifecycleCallbackOutcomeColumns(t *testing.T) {
 	}
 	s = snapshot(t, pool, j.id)
 	assert.Equal(t, "COMPLETED", s["status"])
-	assert.EqualValues(t, 1, s["attempt_count"])
+	assert.EqualValues(t, 2, s["attempt_count"], "a refused late outcome counts nothing")
 }
 
 // A job is born PENDING whatever the entity says; a duplicate id is skipped

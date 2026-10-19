@@ -268,7 +268,7 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 			}
 
 			rollup := ScheduledJobsSynced{
-				Metadata:        usecase.NewEventMetadata(ec, ScheduledJobsSyncedType, Source, "platform.scheduledjobs.synced."+cmd.ApplicationCode),
+				Metadata:        usecase.NewEventMetadata(ec, ScheduledJobsSyncedType, Source, "platform.scheduledjobs."+cmd.ApplicationCode),
 				ApplicationCode: cmd.ApplicationCode,
 				ClientID:        cmd.ClientID,
 				Created:         created,

@@ -112,7 +112,7 @@ func (e ScheduledJobsSynced) EventType() string   { return ScheduledJobsSyncedTy
 func (e ScheduledJobsSynced) SpecVersion() string { return "1.0" }
 func (e ScheduledJobsSynced) Source() string      { return Source }
 func (e ScheduledJobsSynced) Subject() string {
-	return "platform.scheduledjobs.synced." + e.ApplicationCode
+	return "platform.scheduledjobs." + e.ApplicationCode
 }
 func (e ScheduledJobsSynced) Time() time.Time       { return e.Metadata.OccurredAt }
 func (e ScheduledJobsSynced) PrincipalID() string   { return e.Metadata.PrincipalID }

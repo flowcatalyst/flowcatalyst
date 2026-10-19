@@ -87,7 +87,7 @@ type DispatchJobResponse struct {
 	MaxRetries         uint32              `json:"maxRetries"`
 	RetryStrategy      string              `json:"retryStrategy"`
 	Status             string              `json:"status"`
-	AttemptCount       int32               `json:"attemptCount"`
+	AttemptCount       int32               `json:"attemptCount" doc:"Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts"`
 	LastError          *string             `json:"lastError,omitempty"`
 	Attempts           []AttemptDTO        `json:"attempts,omitempty"`
 	Metadata           []MetadataDTO       `json:"metadata,omitempty"`
@@ -205,7 +205,7 @@ type DispatchJobRead struct {
 	UpdatedAt     httpcompat.Time  `json:"updatedAt"`
 	CompletedAt   *httpcompat.Time `json:"completedAt,omitempty"`
 	LastAttemptAt *httpcompat.Time `json:"lastAttemptAt,omitempty"`
-	AttemptCount  int32            `json:"attemptCount"`
+	AttemptCount  int32            `json:"attemptCount" doc:"Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts"`
 }
 
 func readFromEntity(j *dispatchjob.DispatchJob) DispatchJobRead {
@@ -293,7 +293,7 @@ type RawDispatchJobResponse struct {
 	Mode                string           `json:"mode"`
 	Sequence            int32            `json:"sequence"`
 	Status              string           `json:"status"`
-	AttemptCount        int32            `json:"attemptCount"`
+	AttemptCount        int32            `json:"attemptCount" doc:"Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts"`
 	MaxRetries          uint32           `json:"maxRetries"`
 	LastError           *string          `json:"lastError,omitempty"`
 	TimeoutSeconds      uint32           `json:"timeoutSeconds"`

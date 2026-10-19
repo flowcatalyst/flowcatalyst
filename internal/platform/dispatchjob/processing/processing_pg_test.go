@@ -466,7 +466,7 @@ func TestProcess_ConcurrentDeliveriesCallSubscriberOnce(t *testing.T) {
 
 	status, attempts, _ := jobRow(t, pool, jobID)
 	assert.Equal(t, "COMPLETED", status)
-	assert.EqualValues(t, 0, attempts, "the winning delivery succeeded on its first attempt; attempt_count is only bumped on retry scheduling")
+	assert.EqualValues(t, 1, attempts, "the winning delivery succeeded on its first attempt, and attempt_count counts it (F31)")
 }
 
 // TestProcess_UnauthorizedFailsFast pins the 2026-09-22 ruling: a subscriber
@@ -493,10 +493,9 @@ func TestProcess_UnauthorizedFailsFast(t *testing.T) {
 
 	status, attempts, scheduled := jobRow(t, pool, "djproc_401fst")
 	assert.Equal(t, "FAILED", status, "a 401 is terminal on the first attempt")
-	// attempt_count is bumped by ScheduleRetry only (MarkFailed never has), so
-	// a first-attempt terminal failure leaves it at 0 — the attempt ROW is the
-	// record of the attempt. Pre-existing semantics, pinned as-is.
-	assert.EqualValues(t, 0, attempts)
+	// attempt_count is the number of attempts made (F31): the terminal
+	// attempt counts, so a first-attempt terminal failure reads 1.
+	assert.EqualValues(t, 1, attempts)
 	assert.Nil(t, scheduled, "no retry is scheduled for a credential refusal")
 
 	var lastError, body *string
