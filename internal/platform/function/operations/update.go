@@ -21,6 +21,11 @@ type UpdateCommand struct {
 	ClearPool   bool         `json:"clearPool,omitempty"`
 	Warm        *bool        `json:"warm,omitempty"`
 	Limits      *LimitsInput `json:"limits,omitempty"`
+	// ServiceAccount sets the webhook verifier service account (id or code);
+	// ClearServiceAccount returns the function to the application's account.
+	// Setting both is a validation error.
+	ServiceAccount      *string `json:"serviceAccount,omitempty"`
+	ClearServiceAccount bool    `json:"clearServiceAccount,omitempty"`
 }
 
 // UpdateFunction mutates an existing function's settings (description,
@@ -32,6 +37,9 @@ func UpdateFunction(repo *function.Repository) usecaseop.Operation[UpdateCommand
 		Validate: func(_ context.Context, cmd UpdateCommand) error {
 			if strings.TrimSpace(cmd.ID) == "" {
 				return usecase.Validation("ID_REQUIRED", "id is required")
+			}
+			if cmd.ClearServiceAccount && cmd.ServiceAccount != nil && strings.TrimSpace(*cmd.ServiceAccount) != "" {
+				return usecase.Validation("SERVICE_ACCOUNT_CONFLICT", "serviceAccount and clearServiceAccount are mutually exclusive")
 			}
 			return nil
 		},
@@ -62,6 +70,17 @@ func UpdateFunction(repo *function.Repository) usecaseop.Operation[UpdateCommand
 			if cmd.Warm != nil {
 				f.Warm = *cmd.Warm
 			}
+			prevSA := f.ServiceAccountID
+			switch {
+			case cmd.ClearServiceAccount:
+				f.ServiceAccountID = nil
+			case cmd.ServiceAccount != nil:
+				sa, err := resolveServiceAccount(ctx, repo, *cmd.ServiceAccount)
+				if err != nil {
+					return nil, err
+				}
+				f.ServiceAccountID = &sa.ID
+			}
 			newLimits := cmd.Limits.applyTo(f.Limits)
 			if err := validateLimits(newLimits); err != nil {
 				return nil, err
@@ -69,11 +88,13 @@ func UpdateFunction(repo *function.Repository) usecaseop.Operation[UpdateCommand
 			f.Limits = newLimits
 
 			event := FunctionUpdated{
-				Metadata:    usecase.NewEventMetadata(ec, FunctionUpdatedType, Source, subjectFor(f.ID)),
-				FunctionID:  f.ID,
-				Address:     f.Address,
-				Description: f.Description,
-				Status:      FunctionStatusActive,
+				Metadata:                 usecase.NewEventMetadata(ec, FunctionUpdatedType, Source, subjectFor(f.ID)),
+				FunctionID:               f.ID,
+				Address:                  f.Address,
+				Description:              f.Description,
+				Status:                   FunctionStatusActive,
+				ServiceAccountID:         f.ServiceAccountID,
+				PreviousServiceAccountID: prevSA,
 			}
 			return usecaseop.Save(f, repo, event), nil
 		},

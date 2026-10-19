@@ -48,11 +48,12 @@ func newTestState(t *testing.T) *State {
 	store, err := artifact.NewFileStore(t.TempDir())
 	require.NoError(t, err)
 	return &State{
-		Repo:      function.NewRepository(pool),
-		Events:    event.NewRepository(pool),
-		Artifacts: store,
-		Creds:     serviceaccount.NewCachedOutboundCredsResolver(saRepo, time.Millisecond),
-		Auth:      fncontrol.TokenAuth{Issuer: "https://issuer.test", Audience: "https://issuer.test"},
+		Repo:         function.NewRepository(pool),
+		Events:       event.NewRepository(pool),
+		Artifacts:    store,
+		Creds:        serviceaccount.NewCachedOutboundCredsResolver(saRepo, time.Millisecond),
+		AccountCreds: serviceaccount.NewCachedOutboundCredsByIDResolver(saRepo, time.Millisecond),
+		Auth:         fncontrol.TokenAuth{Issuer: "https://issuer.test", Audience: "https://issuer.test"},
 	}
 }
 

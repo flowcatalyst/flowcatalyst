@@ -18,6 +18,7 @@ package control
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -43,6 +44,14 @@ import (
 // webhook endpoint verifies exactly what the platform signs, whichever
 // delivery path it arrived by.
 type OutboundCredsResolver func(ctx context.Context, applicationID string) (serviceaccount.OutboundCreds, error)
+
+// ServiceAccountCredsResolver is OutboundCredsResolver keyed by service
+// account id — pass serviceaccount.NewCachedOutboundCredsByIDResolver(repo,
+// ttl). Used for a function that names its own webhook verifier account
+// (fng_functions.service_account_id). Both resolvers cache for one minute, so
+// a rotated secret or a deactivated account reaches runners within about a
+// minute of the change.
+type ServiceAccountCredsResolver func(ctx context.Context, serviceAccountID string) (serviceaccount.OutboundCreds, error)
 
 // defaultReRenderInterval is how often a held long-poll re-renders the
 // desired document while waiting for a NOTIFY (docs/function-runner-plan.md
@@ -77,6 +86,14 @@ type State struct {
 	// Creds serves every function with an empty WebhookSecret (a runner then
 	// answers `webhook` endpoints as unverifiable), so wiring always sets it.
 	Creds OutboundCredsResolver
+	// AccountCreds resolves the signing secret of a function that sets its own
+	// service account. Nil makes such a function fall back to Creds (tests that
+	// predate the setting); production wiring always sets it.
+	AccountCreds ServiceAccountCredsResolver
+	// warned dedups the "explicit account yields no secret" log line per
+	// (function, reason): the document re-renders every few seconds per held
+	// long-poll, and one line per change is enough.
+	warned sync.Map
 	// Auth is the platform's token issuer + audience, reported verbatim in
 	// every Desired document (fncontrol.Desired.Auth) so a runner validates
 	// `auth: platform` bearer tokens against the same JWKS this process

@@ -391,6 +391,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			RunnerURLByRuntime: cfg.FunctionsRunnerURLByRuntime,
 			Artifacts:          svcs.functionArtifacts,
 			Creds:              serviceaccount.NewCachedOutboundCredsResolver(repos.serviceAccountRepo, time.Minute),
+			AccountCreds:       serviceaccount.NewCachedOutboundCredsByIDResolver(repos.serviceAccountRepo, time.Minute),
 			Auth:               fncontrol.TokenAuth{Issuer: cfg.JWTIssuer, Audience: cfg.JWTIssuer},
 			Listener:           svcs.functionControlListener,
 		})

@@ -154,6 +154,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[apicomm
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
 	out := apicommon.MapSlice(rows, fromEntity)
+	s.fillServiceAccountCodes(ctx, out)
 	page := apicommon.NewOffsetPage(out, in.PageIndex(), in.PageSizeVal(), total)
 	return &apicommon.Out[apicommon.OffsetPage[FunctionResponse]]{Body: page}, nil
 }
@@ -173,7 +174,37 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if err := auth.CheckScopeAccess(ac, f.ClientID); err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[FunctionResponse]{Body: fromEntity(f)}, nil
+	body := fromEntity(f)
+	one := []FunctionResponse{body}
+	s.fillServiceAccountCodes(ctx, one)
+	return &apicommon.Out[FunctionResponse]{Body: one[0]}, nil
+}
+
+// fillServiceAccountCodes sets ServiceAccountCode on each response that names
+// a service account. Best-effort display data: a lookup failure leaves the
+// code absent rather than failing the read.
+func (s *State) fillServiceAccountCodes(ctx context.Context, items []FunctionResponse) {
+	var want []string
+	for _, it := range items {
+		if it.ServiceAccountID != nil {
+			want = append(want, *it.ServiceAccountID)
+		}
+	}
+	if len(want) == 0 {
+		return
+	}
+	codes, err := s.Repo.ServiceAccountCodes(ctx, want)
+	if err != nil {
+		return
+	}
+	for i := range items {
+		if items[i].ServiceAccountID == nil {
+			continue
+		}
+		if c, ok := codes[*items[i].ServiceAccountID]; ok {
+			items[i].ServiceAccountCode = &c
+		}
+	}
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateFunctionRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {

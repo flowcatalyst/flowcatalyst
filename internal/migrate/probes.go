@@ -118,6 +118,7 @@ var effectProbes = map[int64]string{
 	78: colExists("msg_dispatch_pools", "application_id"),
 	81: colExists("fng_versions", "requeued_at_revision"),
 	82: colExists("msg_dispatch_jobs", "connection_id"),
+	84: colExists("fng_functions", "service_account_id"),
 }
 
 // impliedBy: a migration with no effect of its own (it only alters columns of

@@ -16,13 +16,14 @@ WHERE f.address = $1;
 -- name: FunctionUpsert :exec
 INSERT INTO fng_functions
     (id, application_id, client_id, name, address, description, pool, warm,
-     limits, created_by, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     limits, created_by, created_at, updated_at, service_account_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT (id) DO UPDATE SET
     description = EXCLUDED.description,
     pool = EXCLUDED.pool,
     warm = EXCLUDED.warm,
     limits = EXCLUDED.limits,
+    service_account_id = EXCLUDED.service_account_id,
     updated_at = EXCLUDED.updated_at;
 
 -- name: FunctionDelete :exec

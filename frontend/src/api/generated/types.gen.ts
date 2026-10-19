@@ -1091,6 +1091,10 @@ export type CreateFunctionRequest = {
      * The runner pool that hosts the function (FC_FUNCTIONS_POOL on its runners); omitted means the default pool. Not the dispatch pool, which is always the function's own.
      */
     pool?: string;
+    /**
+     * Optional webhook verifier identity: a service account id OR code. Its signing secret is what this function's webhook endpoints verify deliveries with. Omitted means the application's service account.
+     */
+    serviceAccountId?: string;
     warm?: boolean;
     [key: string]: unknown;
 };
@@ -1901,6 +1905,8 @@ export type FunctionResponse = {
     limits: LimitsDto;
     name: string;
     pool?: string;
+    serviceAccountCode?: string;
+    serviceAccountId?: string;
     updatedAt: string;
     warm: boolean;
 };
@@ -3924,9 +3930,17 @@ export type UpdateFunctionRequest = {
      * Set true to move the function back to the default runner pool
      */
     clearPool?: boolean;
+    /**
+     * Set true to return the function to its application's service account
+     */
+    clearServiceAccount?: boolean;
     description?: string;
     limits?: LimitsDto;
     pool?: string;
+    /**
+     * Set the webhook verifier service account (id or code); must exist, be active and be reachable by the caller
+     */
+    serviceAccountId?: string;
     warm?: boolean;
     [key: string]: unknown;
 };
@@ -4843,6 +4857,10 @@ export type CreateFunctionRequestWritable = {
      * The runner pool that hosts the function (FC_FUNCTIONS_POOL on its runners); omitted means the default pool. Not the dispatch pool, which is always the function's own.
      */
     pool?: string;
+    /**
+     * Optional webhook verifier identity: a service account id OR code. Its signing secret is what this function's webhook endpoints verify deliveries with. Omitted means the application's service account.
+     */
+    serviceAccountId?: string;
     warm?: boolean;
     [key: string]: unknown;
 };
@@ -5344,6 +5362,8 @@ export type FunctionResponseWritable = {
     limits: LimitsDto;
     name: string;
     pool?: string;
+    serviceAccountCode?: string;
+    serviceAccountId?: string;
     updatedAt: string;
     warm: boolean;
 };
@@ -6477,9 +6497,17 @@ export type UpdateFunctionRequestWritable = {
      * Set true to move the function back to the default runner pool
      */
     clearPool?: boolean;
+    /**
+     * Set true to return the function to its application's service account
+     */
+    clearServiceAccount?: boolean;
     description?: string;
     limits?: LimitsDto;
     pool?: string;
+    /**
+     * Set the webhook verifier service account (id or code); must exist, be active and be reachable by the caller
+     */
+    serviceAccountId?: string;
     warm?: boolean;
     [key: string]: unknown;
 };

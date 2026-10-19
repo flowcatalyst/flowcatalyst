@@ -60,6 +60,9 @@ type FunctionCreated struct {
 	ApplicationID string
 	// ClientID is the owning client; nil (absent) for a platform function.
 	ClientID *string
+	// ServiceAccountID is the webhook verifier account chosen at create;
+	// absent when the function uses its application's.
+	ServiceAccountID *string
 }
 
 func (e FunctionCreated) EventID() string       { return e.Metadata.EventID }
@@ -75,11 +78,12 @@ func (e FunctionCreated) ExecutionID() string   { return e.Metadata.ExecutionID 
 func (e FunctionCreated) MessageGroup() string  { return groupFor(e.FunctionID) }
 func (e FunctionCreated) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		FunctionID    string  `json:"functionId"`
-		Address       string  `json:"address"`
-		ApplicationID string  `json:"applicationId"`
-		ClientID      *string `json:"clientId,omitempty"`
-	}{e.FunctionID, e.Address, e.ApplicationID, e.ClientID})
+		FunctionID       string  `json:"functionId"`
+		Address          string  `json:"address"`
+		ApplicationID    string  `json:"applicationId"`
+		ClientID         *string `json:"clientId,omitempty"`
+		ServiceAccountID *string `json:"serviceAccountId,omitempty"`
+	}{e.FunctionID, e.Address, e.ApplicationID, e.ClientID, e.ServiceAccountID})
 }
 
 // FunctionUpdated is emitted on a settings update (description, pool, warm,
@@ -91,6 +95,11 @@ type FunctionUpdated struct {
 	Description *string
 	// Status is always FunctionStatusActive.
 	Status string
+	// ServiceAccountID is the function's webhook verifier account after the
+	// update (nil: the application's); PreviousServiceAccountID the one
+	// before. Reported only when they differ.
+	ServiceAccountID         *string
+	PreviousServiceAccountID *string
 }
 
 func (e FunctionUpdated) EventID() string       { return e.Metadata.EventID }
@@ -110,7 +119,22 @@ func (e FunctionUpdated) ToDataJSON() ([]byte, error) {
 		Address     string  `json:"address"`
 		Description *string `json:"description,omitempty"`
 		Status      string  `json:"status"`
-	}{e.FunctionID, e.Address, e.Description, e.Status})
+		// serviceAccountChange is present only when the verifier account
+		// changed: {from, to}, each an id or null (null = the application's).
+		ServiceAccountChange *saChange `json:"serviceAccountChange,omitempty"`
+	}{e.FunctionID, e.Address, e.Description, e.Status, serviceAccountChange(e.PreviousServiceAccountID, e.ServiceAccountID)})
+}
+
+type saChange struct {
+	From *string `json:"from"`
+	To   *string `json:"to"`
+}
+
+func serviceAccountChange(from, to *string) *saChange {
+	if (from == nil && to == nil) || (from != nil && to != nil && *from == *to) {
+		return nil
+	}
+	return &saChange{From: from, To: to}
 }
 
 // FunctionDeleted is emitted on deletion.

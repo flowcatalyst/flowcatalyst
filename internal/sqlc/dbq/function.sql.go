@@ -98,7 +98,7 @@ func (q *Queries) FunctionDelete(ctx context.Context, id string) error {
 }
 
 const functionFindByAddress = `-- name: FunctionFindByAddress :one
-SELECT f.id, f.application_id, f.client_id, f.name, f.address, f.description, f.pool, f.warm, f.limits, f.created_by, f.created_at, f.updated_at, a.code AS application_code
+SELECT f.id, f.application_id, f.client_id, f.name, f.address, f.description, f.pool, f.warm, f.limits, f.created_by, f.created_at, f.updated_at, f.service_account_id, a.code AS application_code
 FROM fng_functions f
 LEFT JOIN app_applications a ON a.id = f.application_id
 WHERE f.address = $1
@@ -125,6 +125,7 @@ func (q *Queries) FunctionFindByAddress(ctx context.Context, address string) (Fu
 		&i.FngFunction.CreatedBy,
 		&i.FngFunction.CreatedAt,
 		&i.FngFunction.UpdatedAt,
+		&i.FngFunction.ServiceAccountID,
 		&i.ApplicationCode,
 	)
 	return i, err
@@ -132,7 +133,7 @@ func (q *Queries) FunctionFindByAddress(ctx context.Context, address string) (Fu
 
 const functionFindByID = `-- name: FunctionFindByID :one
 
-SELECT f.id, f.application_id, f.client_id, f.name, f.address, f.description, f.pool, f.warm, f.limits, f.created_by, f.created_at, f.updated_at, a.code AS application_code
+SELECT f.id, f.application_id, f.client_id, f.name, f.address, f.description, f.pool, f.warm, f.limits, f.created_by, f.created_at, f.updated_at, f.service_account_id, a.code AS application_code
 FROM fng_functions f
 LEFT JOIN app_applications a ON a.id = f.application_id
 WHERE f.id = $1
@@ -161,6 +162,7 @@ func (q *Queries) FunctionFindByID(ctx context.Context, id string) (FunctionFind
 		&i.FngFunction.CreatedBy,
 		&i.FngFunction.CreatedAt,
 		&i.FngFunction.UpdatedAt,
+		&i.FngFunction.ServiceAccountID,
 		&i.ApplicationCode,
 	)
 	return i, err
@@ -327,29 +329,31 @@ func (q *Queries) FunctionSettingUpsert(ctx context.Context, arg FunctionSetting
 const functionUpsert = `-- name: FunctionUpsert :exec
 INSERT INTO fng_functions
     (id, application_id, client_id, name, address, description, pool, warm,
-     limits, created_by, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     limits, created_by, created_at, updated_at, service_account_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT (id) DO UPDATE SET
     description = EXCLUDED.description,
     pool = EXCLUDED.pool,
     warm = EXCLUDED.warm,
     limits = EXCLUDED.limits,
+    service_account_id = EXCLUDED.service_account_id,
     updated_at = EXCLUDED.updated_at
 `
 
 type FunctionUpsertParams struct {
-	ID            string            `db:"id"`
-	ApplicationID ids.ApplicationID `db:"application_id"`
-	ClientID      *ids.ClientID     `db:"client_id"`
-	Name          string            `db:"name"`
-	Address       string            `db:"address"`
-	Description   *string           `db:"description"`
-	Pool          *string           `db:"pool"`
-	Warm          bool              `db:"warm"`
-	Limits        json.RawMessage   `db:"limits"`
-	CreatedBy     *string           `db:"created_by"`
-	CreatedAt     time.Time         `db:"created_at"`
-	UpdatedAt     time.Time         `db:"updated_at"`
+	ID               string            `db:"id"`
+	ApplicationID    ids.ApplicationID `db:"application_id"`
+	ClientID         *ids.ClientID     `db:"client_id"`
+	Name             string            `db:"name"`
+	Address          string            `db:"address"`
+	Description      *string           `db:"description"`
+	Pool             *string           `db:"pool"`
+	Warm             bool              `db:"warm"`
+	Limits           json.RawMessage   `db:"limits"`
+	CreatedBy        *string           `db:"created_by"`
+	CreatedAt        time.Time         `db:"created_at"`
+	UpdatedAt        time.Time         `db:"updated_at"`
+	ServiceAccountID *string           `db:"service_account_id"`
 }
 
 func (q *Queries) FunctionUpsert(ctx context.Context, arg FunctionUpsertParams) error {
@@ -366,6 +370,7 @@ func (q *Queries) FunctionUpsert(ctx context.Context, arg FunctionUpsertParams) 
 		arg.CreatedBy,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.ServiceAccountID,
 	)
 	return err
 }

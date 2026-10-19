@@ -1954,6 +1954,10 @@
             "description": "The runner pool that hosts the function (FC_FUNCTIONS_POOL on its runners); omitted means the default pool. Not the dispatch pool, which is always the function's own.",
             "type": "string"
           },
+          "serviceAccountId": {
+            "description": "Optional webhook verifier identity: a service account id OR code. Its signing secret is what this function's webhook endpoints verify deliveries with. Omitted means the application's service account.",
+            "type": "string"
+          },
           "warm": {
             "type": "boolean"
           }
@@ -3327,6 +3331,12 @@
             "type": "string"
           },
           "pool": {
+            "type": "string"
+          },
+          "serviceAccountCode": {
+            "type": "string"
+          },
+          "serviceAccountId": {
             "type": "string"
           },
           "updatedAt": {
@@ -6381,6 +6391,10 @@
             "description": "Set true to move the function back to the default runner pool",
             "type": "boolean"
           },
+          "clearServiceAccount": {
+            "description": "Set true to return the function to its application's service account",
+            "type": "boolean"
+          },
           "description": {
             "type": "string"
           },
@@ -6388,6 +6402,10 @@
             "$ref": "#/components/schemas/LimitsDTO"
           },
           "pool": {
+            "type": "string"
+          },
+          "serviceAccountId": {
+            "description": "Set the webhook verifier service account (id or code); must exist, be active and be reachable by the caller",
             "type": "string"
           },
           "warm": {

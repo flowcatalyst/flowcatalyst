@@ -194,6 +194,10 @@ type fnFunction struct {
 	ClientID *string `json:"clientId"`
 	Pool     *string `json:"pool"`
 	Warm     bool    `json:"warm"`
+	// ServiceAccountCode / ServiceAccountID: the function's own webhook
+	// verifier account; absent when it uses its application's.
+	ServiceAccountID   *string `json:"serviceAccountId"`
+	ServiceAccountCode *string `json:"serviceAccountCode"`
 }
 
 type fnVersion struct {
@@ -277,7 +281,7 @@ func (a *fnAPI) resolveClient(ctx context.Context, value string) (fnClient, erro
 }
 
 // createFunction creates the function an address names.
-func (a *fnAPI) createFunction(ctx context.Context, address, clientID, pool string) (*fnFunction, error) {
+func (a *fnAPI) createFunction(ctx context.Context, address, clientID, pool, serviceAccount string) (*fnFunction, error) {
 	app, name, ok := strings.Cut(address, ".")
 	if !ok || app == "" || name == "" || strings.Contains(name, ".") {
 		return nil, fmt.Errorf("%q is not an address of the form <application>.<name>", address)
@@ -294,6 +298,9 @@ func (a *fnAPI) createFunction(ctx context.Context, address, clientID, pool stri
 	}
 	if pool != "" {
 		req["pool"] = pool
+	}
+	if serviceAccount != "" {
+		req["serviceAccountId"] = serviceAccount // the platform resolves a code or an id
 	}
 	if err := a.json(ctx, http.MethodPost, "/api/functions", req, nil); err != nil {
 		return nil, err
@@ -356,7 +363,7 @@ func init() {
 
 func newFnPublishCmd() *cobra.Command {
 	var pf fnPlatformFlags
-	var runtime, clientID, pool string
+	var runtime, clientID, pool, serviceAccount string
 	var create, yes, asJSON bool
 	cmd := &cobra.Command{
 		Use:   "publish <address> <artifact>",
@@ -384,7 +391,14 @@ full sha256.
 
 --create --client <client> sets the owning client of a new function. <client>
 is the client's code (e.g. bevco) or its clt_... id; --client is ignored for a
-function that already exists.`,
+function that already exists.
+--create --service-account <account> sets the function's webhook verifier
+identity: the service account (code or id) whose signing secret its
+auth: webhook endpoints verify deliveries with. Set it when the deliveries are
+signed by an account other than the application's (for example a connection's
+own account); omitted, the application's service account is used. Change it
+later with: fcdev fn set <address> --service-account <account>
+Like --client it is ignored for a function that already exists.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			api, err := newFnAPI(cmd, &pf)
@@ -434,7 +448,7 @@ function that already exists.`,
 				return err
 			}
 			if fn == nil {
-				if fn, err = api.createFunction(ctx, address, owner.ID, pool); err != nil {
+				if fn, err = api.createFunction(ctx, address, owner.ID, pool, serviceAccount); err != nil {
 					return err
 				}
 				rep.say("created %s", fn.Address)
@@ -461,6 +475,7 @@ function that already exists.`,
 	cmd.Flags().BoolVar(&create, "create", false, "create the function if it does not exist")
 	cmd.Flags().StringVar(&clientID, "client", "", "with --create: the owning client, by code (e.g. bevco) or id (clt_...) (default: platform-owned)")
 	cmd.Flags().StringVar(&pool, "pool", "", "with --create: the runner pool (default: default)")
+	cmd.Flags().StringVar(&serviceAccount, "service-account", "", "with --create: the webhook verifier service account, by code or id (default: the application's)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print one JSON object on stdout; human output goes to stderr")
 	addYesFlag(cmd, &yes)
 	return cmd
@@ -509,7 +524,7 @@ func newFnPromoteCmd() *cobra.Command {
 
 func newFnDeployCmd() *cobra.Command {
 	var pf fnPlatformFlags
-	var runtime, clientID, pool string
+	var runtime, clientID, pool, serviceAccount string
 	var create, yes, dryRun, noPromote, skipUnchanged, asJSON bool
 	var wait time.Duration
 	cmd := &cobra.Command{
@@ -527,6 +542,13 @@ is the client's code (identifier, e.g. bevco, the same in every environment)
 or its clt_... id. A code is resolved with a read-only lookup of the client
 (needs permission to read clients; otherwise pass the id); an id is used as-is.
 --client is ignored for a function that already exists.
+--create --service-account <account> sets the function's webhook verifier
+identity: the service account (code or id) whose signing secret its
+auth: webhook endpoints verify deliveries with. Set it when the deliveries are
+signed by an account other than the application's (for example a connection's
+own account); omitted, the application's service account is used. Change it
+later with: fcdev fn set <address> --service-account <account>
+Like --client it is ignored for a function that already exists.
 
 For pipelines (the artifact's sha256 digest is the identity of a version):
 
@@ -641,7 +663,7 @@ digest) needs no prod confirmation; any other write to a prod profile does.`,
 				if plan.owner.ID != "" {
 					rep.say("owning client: %s", plan.owner)
 				}
-				if fn, err = api.createFunction(ctx, address, plan.owner.ID, pool); err != nil {
+				if fn, err = api.createFunction(ctx, address, plan.owner.ID, pool, serviceAccount); err != nil {
 					return err
 				}
 				rep.say("created %s", fn.Address)
@@ -698,6 +720,7 @@ digest) needs no prod confirmation; any other write to a prod profile does.`,
 	cmd.Flags().BoolVar(&create, "create", false, "create the function if it does not exist")
 	cmd.Flags().StringVar(&clientID, "client", "", "with --create: the owning client, by code (e.g. bevco, stable across environments) or id (clt_...)")
 	cmd.Flags().StringVar(&pool, "pool", "", "with --create: the runner pool")
+	cmd.Flags().StringVar(&serviceAccount, "service-account", "", "with --create: the webhook verifier service account, by code or id (default: the application's)")
 	cmd.Flags().DurationVar(&wait, "wait", time.Minute, "how long to wait for a runner to load the version")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "build and validate, then print what would be published and promoted; writes nothing remotely")
 	cmd.Flags().BoolVar(&noPromote, "no-promote", false, "publish and wait until READY, but do not move live")
@@ -715,11 +738,22 @@ func addYesFlag(cmd *cobra.Command, yes *bool) {
 func newFnSetCmd() *cobra.Command {
 	var pf fnPlatformFlags
 	var configs, secrets, dbs []string
-	var yes bool
+	var serviceAccount string
+	var clearServiceAccount, yes bool
 	cmd := &cobra.Command{
 		Use:   "set <address>",
-		Short: "Set config values, secrets and database DSNs on a function",
-		Args:  cobra.ExactArgs(1),
+		Short: "Set config values, secrets, database DSNs and the webhook service account on a function",
+		Long: `Sets config values (--config), secrets (--secret) and database DSNs (--db) on a
+function, and its webhook verifier identity.
+
+--service-account <account> names the service account (by code or id) whose
+signing secret the function's auth: webhook endpoints verify deliveries with.
+The platform validates that it exists, is active and that you may use it. The
+change reaches runners within about a minute (the platform caches service
+account credentials for one minute). --clear-service-account (or
+--service-account "") removes it, returning the function to its application's
+service account.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			api, err := newFnAPI(cmd, &pf)
 			if err != nil {
@@ -729,9 +763,29 @@ func newFnSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if len(configs)+len(secrets)+len(dbs) > 0 {
+			saChanged := cmd.Flags().Changed("service-account") || clearServiceAccount
+			if saChanged && clearServiceAccount && serviceAccount != "" {
+				return fmt.Errorf("--service-account and --clear-service-account are mutually exclusive")
+			}
+			if len(configs)+len(secrets)+len(dbs) > 0 || saChanged {
 				if err := api.confirm("change settings of "+fn.Address, yes); err != nil {
 					return err
+				}
+			}
+			if saChanged {
+				req := map[string]any{}
+				if clearServiceAccount || serviceAccount == "" {
+					req["clearServiceAccount"] = true
+				} else {
+					req["serviceAccountId"] = serviceAccount // the platform resolves a code or an id
+				}
+				if err := api.json(cmd.Context(), http.MethodPatch, "/api/functions/"+fn.ID, req, nil); err != nil {
+					return fmt.Errorf("service account: %w", err)
+				}
+				if clearServiceAccount || serviceAccount == "" {
+					fmt.Printf("cleared service account on %s (back to the application's)\n", fn.Address)
+				} else {
+					fmt.Printf("set service account %s on %s\n", serviceAccount, fn.Address)
 				}
 			}
 			for kind, list := range map[string][]string{"config": configs, "secrets": secrets, "db": dbs} {
@@ -753,6 +807,8 @@ func newFnSetCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&configs, "config", nil, "KEY=VALUE (repeatable)")
 	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "KEY=VALUE (repeatable; write-only)")
 	cmd.Flags().StringArrayVar(&dbs, "db", nil, "NAME=DSN (repeatable; write-only)")
+	cmd.Flags().StringVar(&serviceAccount, "service-account", "", "the webhook verifier service account, by code or id (empty string clears it)")
+	cmd.Flags().BoolVar(&clearServiceAccount, "clear-service-account", false, "remove the function's own service account (back to the application's)")
 	addYesFlag(cmd, &yes)
 	return cmd
 }
@@ -882,6 +938,11 @@ func newFnStatusCmd() *cobra.Command {
 				pool = *fn.Pool
 			}
 			fmt.Printf("%s (%s)  runner pool %s  warm %v\n", fn.Address, fn.ID, pool, fn.Warm)
+			if fn.ServiceAccountID != nil {
+				fmt.Printf("  webhook service account %s\n", firstNonEmpty(derefStr(fn.ServiceAccountCode), *fn.ServiceAccountID))
+			} else {
+				fmt.Println("  webhook service account: the application's")
+			}
 			named := map[int32][]string{}
 			for _, a := range aliases {
 				named[a.Version] = append(named[a.Version], a.Name)
@@ -996,4 +1057,11 @@ func (a *fnAPI) listVersions(ctx context.Context, id string) ([]fnVersion, error
 		return nil, err
 	}
 	return page.Data, nil
+}
+
+func derefStr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }

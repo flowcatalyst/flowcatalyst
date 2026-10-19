@@ -568,6 +568,12 @@ Configured with `FC_FUNCTIONS_ARTIFACT_STORE`. The runner keeps a disk cache by 
   the application's). Desired state carries that secret as `webhookSecret`, so the runner verifies
   exactly what the platform signs. Work package 8 confirms this against
   `dispatchjob/processing` credential resolution before building on it.
+  **Per-function override (F35, migration 084):** `fng_functions.service_account_id` (nullable, no FK)
+  names the service account whose signing secret is `webhookSecret` instead, for deliveries signed
+  by an account that is not the application's (the connection's, per the 2026-09-22 ruling).
+  Unset keeps the application fallback; set-but-inactive/missing yields an empty secret (logged),
+  never a fall-through. Set at create, change or clear on `PATCH /api/functions/{id}`
+  (`serviceAccountId` as id or code, `clearServiceAccount`), CLI `--service-account`.
 
 ### 8.6 Public routes (as built)
 

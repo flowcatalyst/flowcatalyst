@@ -30,7 +30,7 @@ func (r *Repository) FindFunctionsByPool(ctx context.Context, pool string) ([]Fu
 	rows, err := r.pool.Query(ctx, `
 		SELECT f.id, f.application_id, f.client_id, f.name, f.address,
 		       f.description, f.pool, f.warm, f.limits, f.created_by,
-		       f.created_at, f.updated_at, a.code AS application_code
+		       f.created_at, f.updated_at, f.service_account_id, a.code AS application_code
 		FROM fng_functions f
 		LEFT JOIN app_applications a ON a.id = f.application_id
 		WHERE COALESCE(f.pool, 'default') = $1

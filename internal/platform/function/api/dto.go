@@ -43,44 +43,50 @@ func limitsResponse(l function.Limits) LimitsDTO {
 
 // CreateFunctionRequest is the wire body for POST /api/functions.
 type CreateFunctionRequest struct {
-	ApplicationID string     `json:"applicationId" doc:"Owning application id"`
-	Name          string     `json:"name" doc:"Function name (lowercase, alphanumeric, hyphens; matches ^[a-z][a-z0-9-]{0,62}$)"`
-	ClientID      *string    `json:"clientId,omitempty"`
-	Description   *string    `json:"description,omitempty"`
-	Pool          *string    `json:"pool,omitempty" doc:"The runner pool that hosts the function (FC_FUNCTIONS_POOL on its runners); omitted means the default pool. Not the dispatch pool, which is always the function's own."`
-	Warm          *bool      `json:"warm,omitempty"`
-	Limits        *LimitsDTO `json:"limits,omitempty"`
+	ApplicationID    string     `json:"applicationId" doc:"Owning application id"`
+	Name             string     `json:"name" doc:"Function name (lowercase, alphanumeric, hyphens; matches ^[a-z][a-z0-9-]{0,62}$)"`
+	ClientID         *string    `json:"clientId,omitempty"`
+	Description      *string    `json:"description,omitempty"`
+	Pool             *string    `json:"pool,omitempty" doc:"The runner pool that hosts the function (FC_FUNCTIONS_POOL on its runners); omitted means the default pool. Not the dispatch pool, which is always the function's own."`
+	Warm             *bool      `json:"warm,omitempty"`
+	Limits           *LimitsDTO `json:"limits,omitempty"`
+	ServiceAccountID *string    `json:"serviceAccountId,omitempty" doc:"Optional webhook verifier identity: a service account id OR code. Its signing secret is what this function's webhook endpoints verify deliveries with. Omitted means the application's service account."`
 }
 
 func (r CreateFunctionRequest) toCommand() operations.CreateCommand {
 	return operations.CreateCommand{
-		ApplicationID: r.ApplicationID,
-		Name:          r.Name,
-		ClientID:      r.ClientID,
-		Description:   r.Description,
-		Pool:          r.Pool,
-		Warm:          r.Warm,
-		Limits:        r.Limits.toCommand(),
+		ApplicationID:  r.ApplicationID,
+		Name:           r.Name,
+		ClientID:       r.ClientID,
+		Description:    r.Description,
+		Pool:           r.Pool,
+		Warm:           r.Warm,
+		Limits:         r.Limits.toCommand(),
+		ServiceAccount: r.ServiceAccountID,
 	}
 }
 
 // UpdateFunctionRequest is the wire body for PATCH /api/functions/{id}.
 type UpdateFunctionRequest struct {
-	Description *string    `json:"description,omitempty"`
-	Pool        *string    `json:"pool,omitempty"`
-	ClearPool   bool       `json:"clearPool,omitempty" doc:"Set true to move the function back to the default runner pool"`
-	Warm        *bool      `json:"warm,omitempty"`
-	Limits      *LimitsDTO `json:"limits,omitempty"`
+	Description         *string    `json:"description,omitempty"`
+	Pool                *string    `json:"pool,omitempty"`
+	ClearPool           bool       `json:"clearPool,omitempty" doc:"Set true to move the function back to the default runner pool"`
+	Warm                *bool      `json:"warm,omitempty"`
+	Limits              *LimitsDTO `json:"limits,omitempty"`
+	ServiceAccountID    *string    `json:"serviceAccountId,omitempty" doc:"Set the webhook verifier service account (id or code); must exist, be active and be reachable by the caller"`
+	ClearServiceAccount bool       `json:"clearServiceAccount,omitempty" doc:"Set true to return the function to its application's service account"`
 }
 
 func (r UpdateFunctionRequest) toCommand(id string) operations.UpdateCommand {
 	return operations.UpdateCommand{
-		ID:          id,
-		Description: r.Description,
-		Pool:        r.Pool,
-		ClearPool:   r.ClearPool,
-		Warm:        r.Warm,
-		Limits:      r.Limits.toCommand(),
+		ID:                  id,
+		Description:         r.Description,
+		Pool:                r.Pool,
+		ClearPool:           r.ClearPool,
+		Warm:                r.Warm,
+		Limits:              r.Limits.toCommand(),
+		ServiceAccount:      r.ServiceAccountID,
+		ClearServiceAccount: r.ClearServiceAccount,
 	}
 }
 
@@ -99,23 +105,29 @@ type FunctionResponse struct {
 	CreatedBy       *string         `json:"createdBy,omitempty"`
 	CreatedAt       httpcompat.Time `json:"createdAt"`
 	UpdatedAt       httpcompat.Time `json:"updatedAt"`
+	// ServiceAccountID / ServiceAccountCode name the function's own webhook
+	// verifier account; both absent means the application's service account
+	// is used. The code is absent when the id no longer resolves.
+	ServiceAccountID   *string `json:"serviceAccountId,omitempty"`
+	ServiceAccountCode *string `json:"serviceAccountCode,omitempty"`
 }
 
 func fromEntity(f *function.Function) FunctionResponse {
 	return FunctionResponse{
-		ID:              f.ID,
-		ApplicationID:   f.ApplicationID,
-		ApplicationCode: f.ApplicationCode,
-		ClientID:        f.ClientID,
-		Name:            f.Name,
-		Address:         f.Address,
-		Description:     f.Description,
-		Pool:            f.Pool,
-		Warm:            f.Warm,
-		Limits:          limitsResponse(f.Limits),
-		CreatedBy:       f.CreatedBy,
-		CreatedAt:       jsontime.New(f.CreatedAt),
-		UpdatedAt:       jsontime.New(f.UpdatedAt),
+		ID:               f.ID,
+		ApplicationID:    f.ApplicationID,
+		ApplicationCode:  f.ApplicationCode,
+		ClientID:         f.ClientID,
+		Name:             f.Name,
+		Address:          f.Address,
+		Description:      f.Description,
+		Pool:             f.Pool,
+		Warm:             f.Warm,
+		Limits:           limitsResponse(f.Limits),
+		CreatedBy:        f.CreatedBy,
+		CreatedAt:        jsontime.New(f.CreatedAt),
+		UpdatedAt:        jsontime.New(f.UpdatedAt),
+		ServiceAccountID: f.ServiceAccountID,
 	}
 }
 

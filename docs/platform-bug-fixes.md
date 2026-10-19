@@ -2569,6 +2569,56 @@ bearer and cookie; "api" and no marker pass), `middleware.TestAuthenticatorRejec
 check an allowlist: admit only `token_use == "api"` or an absent marker, refuse every other value with the existing
 401. Do this before introducing any new token class. Keep identity and portal tokens refused as before.
 
+### F35. A webhook function could not verify deliveries signed by an account that is not its application's (np, 2026-10-19)
+
+**Bug.** For `auth: webhook` endpoints the runner verifies deliveries with `WebhookSecret`, which the desired
+document took from `NewCachedOutboundCredsResolver(fn.ApplicationID)`: the oldest active service account LINKED
+TO THE APPLICATION. Deliveries are signed by the connection's service account (F23, 2026-09-22 ruling). Where the
+application has no linked account (np: app `bevco-integration`, whose account `bevco-integration` is a plain
+account, not an `app:`-provisioned one) the secret was empty and every delivery was `401 INVALID_SIGNATURE`.
+
+**Fix.** A function gets an OPTIONAL service account of its own, its webhook verifier identity.
+- Migration `084_function_service_account.sql`: `fng_functions.service_account_id VARCHAR(17)` NULL, a bare
+  reference like `application_id`/`client_id` (no FK; `fng_` neighbours use none to other aggregates). Probe added
+  in `migrate/probes.go`; sqlc regenerated.
+- `function.Function.ServiceAccountID`; set on `CreateFunction` (`serviceAccount`), changed on `UpdateFunction`
+  (`serviceAccount`), cleared with `clearServiceAccount` (both together is `SERVICE_ACCOUNT_CONFLICT`). The value is
+  an id OR a code, resolved server side (id first, then code). Validation: exists (`SERVICE_ACCOUNT_NOT_FOUND`),
+  active (`SERVICE_ACCOUNT_INACTIVE`), reachable by the caller (`SCOPE_FORBIDDEN`): an anchor may use any account;
+  anyone else only an account scoped to clients they can all access (a platform-level account with no client scope
+  is anchor-only) and, for an application-linked account, an application they can reach. Validated only when set;
+  clearing needs no account.
+- Events: `function:updated` carries `serviceAccountChange: {from, to}` (ids, null = application's) only when it
+  changed; `function:created` carries `serviceAccountId` when set. Both additive.
+- API: `POST /api/functions` and `PATCH /api/functions/{id}` take `serviceAccountId` (id or code) and, on PATCH,
+  `clearServiceAccount`; `FunctionResponse` returns `serviceAccountId` and `serviceAccountCode` (both absent when
+  unset; the code is absent if the id no longer resolves).
+- Desired state (`control/document.go` `webhookSecretFor`): a function with an account uses
+  `NewCachedOutboundCredsByIDResolver` (wired next to `Creds` in `wire_routes.go`). Inactive/missing/no-secret gives
+  an EMPTY secret, never a fall-through to the application's account (deactivating an account must stop it
+  verifying), and logs `function webhook secret is empty: its service account cannot sign` once per (function,
+  reason) with the reason. Unset keeps the application fallback unchanged. No place exists in the function status API
+  or the runner contract for a warning, so the log line is the visibility; a runner contract field was not added.
+- `Repository.Persist` now `NOTIFY fng_desired` for the function's pool, so a change reaches held runner
+  long-polls immediately instead of at the next 15 s re-render. Both resolvers cache for ONE MINUTE, so a rotated
+  secret or a deactivated account reaches runners within about a minute.
+- CLI: `fcdev fn deploy|publish --create --service-account <code|id>`; `fcdev fn set <address> --service-account
+  <code|id>`, `--clear-service-account` (or `--service-account ""`); `fn status` prints the account.
+
+**Tests.** `operations/service_account_pg_test.go` (set by code/id, clear, unrelated update keeps it, not found,
+inactive, empty, set+clear conflict, create with/without, a rejected create persists nothing, caller reach),
+`control/service_account_test.go` (desired secret: own account vs application fallback vs inactive vs missing; and
+the np failure end to end: application with NO linked account, delivery signed by account X resolved by id verifies
+on the document's secret before/after, another account's signature does not), `cmd/fcdev/fn_service_account_test.go`.
+
+**Wire impact.** Additive: request fields `serviceAccountId`, `clearServiceAccount`; response fields
+`serviceAccountId`, `serviceAccountCode`; two event data fields. The runner contract is unchanged.
+
+**Rust/Java hand-off.** Add nullable `service_account_id` (VARCHAR(17), no FK) to the function table; set on create,
+change/clear on update with the validation above; return id and code; in the desired document use the function's
+account's signing secret when set (inactive/missing: empty secret plus a log line, no fall-through), else the
+application's account as before; NOTIFY the pool on function updates; CLI flags as above.
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads
@@ -2794,3 +2844,7 @@ missing event source (F14), and unknown roles in the application principal sync 
   authorize endpoint's bounce to `/auth/login` and back is the existing SPA contract, asserted only up
   to the redirect. The macOS Keychain size limit for the cached access token is untested (it is
   best-effort by design). The Java/Rust platform ports were not changed (hand-off above).
+- F35: integration tests on embedded Postgres and the fcdev unit tests against a fake platform; migration 084 ran
+  there, never on a deployed database; no live runner or real np delivery (the end-to-end test signs and verifies
+  with the same webhook package the runner uses, but not through a running runner); the console UI is not done.
+  The Java/Rust ports were not changed (hand-off above).

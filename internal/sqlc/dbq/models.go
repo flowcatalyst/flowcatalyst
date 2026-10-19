@@ -116,18 +116,19 @@ type FngDomain struct {
 }
 
 type FngFunction struct {
-	ID            string            `db:"id"`
-	ApplicationID ids.ApplicationID `db:"application_id"`
-	ClientID      *ids.ClientID     `db:"client_id"`
-	Name          string            `db:"name"`
-	Address       string            `db:"address"`
-	Description   *string           `db:"description"`
-	Pool          *string           `db:"pool"`
-	Warm          bool              `db:"warm"`
-	Limits        json.RawMessage   `db:"limits"`
-	CreatedBy     *string           `db:"created_by"`
-	CreatedAt     time.Time         `db:"created_at"`
-	UpdatedAt     time.Time         `db:"updated_at"`
+	ID               string            `db:"id"`
+	ApplicationID    ids.ApplicationID `db:"application_id"`
+	ClientID         *ids.ClientID     `db:"client_id"`
+	Name             string            `db:"name"`
+	Address          string            `db:"address"`
+	Description      *string           `db:"description"`
+	Pool             *string           `db:"pool"`
+	Warm             bool              `db:"warm"`
+	Limits           json.RawMessage   `db:"limits"`
+	CreatedBy        *string           `db:"created_by"`
+	CreatedAt        time.Time         `db:"created_at"`
+	UpdatedAt        time.Time         `db:"updated_at"`
+	ServiceAccountID *string           `db:"service_account_id"`
 }
 
 type FngPoolRevision struct {

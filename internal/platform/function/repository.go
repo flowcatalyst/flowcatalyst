@@ -3,6 +3,7 @@ package function
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -95,7 +96,7 @@ func (r *Repository) FindWithFilters(ctx context.Context, f ListFilters) ([]Func
 
 	q := `SELECT f.id, f.application_id, f.client_id, f.name, f.address,
 			f.description, f.pool, f.warm, f.limits, f.created_by,
-			f.created_at, f.updated_at, a.code AS application_code
+			f.created_at, f.updated_at, f.service_account_id, a.code AS application_code
 		FROM fng_functions f
 		LEFT JOIN app_applications a ON a.id = f.application_id` + flt.Where() + ` ORDER BY f.address`
 	if f.Limit != nil {
@@ -151,20 +152,30 @@ func (r *Repository) Persist(ctx context.Context, f *Function, tx *usecasepgx.Db
 	if err != nil {
 		return fmt.Errorf("function repo: marshal limits: %w", err)
 	}
-	return r.q.WithTx(tx.Inner()).FunctionUpsert(ctx, dbq.FunctionUpsertParams{
-		ID:            f.ID,
-		ApplicationID: ids.ApplicationID(f.ApplicationID),
-		ClientID:      ids.PtrOf[ids.ClientID](f.ClientID),
-		Name:          f.Name,
-		Address:       f.Address,
-		Description:   f.Description,
-		Pool:          f.Pool,
-		Warm:          f.Warm,
-		Limits:        limits,
-		CreatedBy:     f.CreatedBy,
-		CreatedAt:     f.CreatedAt,
-		UpdatedAt:     time.Now().UTC(),
-	})
+	if err := r.q.WithTx(tx.Inner()).FunctionUpsert(ctx, dbq.FunctionUpsertParams{
+		ID:               f.ID,
+		ApplicationID:    ids.ApplicationID(f.ApplicationID),
+		ClientID:         ids.PtrOf[ids.ClientID](f.ClientID),
+		Name:             f.Name,
+		Address:          f.Address,
+		Description:      f.Description,
+		Pool:             f.Pool,
+		Warm:             f.Warm,
+		Limits:           limits,
+		CreatedBy:        f.CreatedBy,
+		ServiceAccountID: f.ServiceAccountID,
+		CreatedAt:        f.CreatedAt,
+		UpdatedAt:        time.Now().UTC(),
+	}); err != nil {
+		return err
+	}
+	// Wake the pool's held desired long-polls: a change to the function's
+	// service account (its webhook verifier) or limits must reach runners
+	// now, not at the next re-render tick. Delivered at commit.
+	if _, err := tx.Inner().Exec(ctx, `SELECT pg_notify('fng_desired', $1)`, f.RunnerPool()); err != nil {
+		return fmt.Errorf("function repo: notify fng_desired: %w", err)
+	}
+	return nil
 }
 
 // Delete removes the function row. fng_versions, fng_aliases, and fng_settings
@@ -202,19 +213,20 @@ func rowToFunction(row dbq.FngFunction, applicationCode *string) (*Function, err
 		code = *applicationCode
 	}
 	return &Function{
-		ID:              row.ID,
-		ApplicationID:   string(row.ApplicationID),
-		ApplicationCode: code,
-		ClientID:        ids.StringPtr(row.ClientID),
-		Name:            row.Name,
-		Address:         row.Address,
-		Description:     row.Description,
-		Pool:            row.Pool,
-		Warm:            row.Warm,
-		Limits:          limits,
-		CreatedBy:       row.CreatedBy,
-		CreatedAt:       row.CreatedAt,
-		UpdatedAt:       row.UpdatedAt,
+		ID:               row.ID,
+		ApplicationID:    string(row.ApplicationID),
+		ApplicationCode:  code,
+		ClientID:         ids.StringPtr(row.ClientID),
+		Name:             row.Name,
+		Address:          row.Address,
+		Description:      row.Description,
+		Pool:             row.Pool,
+		Warm:             row.Warm,
+		Limits:           limits,
+		CreatedBy:        row.CreatedBy,
+		ServiceAccountID: row.ServiceAccountID,
+		CreatedAt:        row.CreatedAt,
+		UpdatedAt:        row.UpdatedAt,
 	}, nil
 }
 
@@ -660,4 +672,62 @@ func (r *Repository) GetPoolRevision(ctx context.Context, pool string) (int64, b
 		return 0, false, nil
 	}
 	return *row, true, nil
+}
+
+// ── Service account reference ───────────────────────────────────────────
+
+// ServiceAccountRef is the slice of an iam_service_accounts row the function
+// operations need to validate a webhook verifier choice. A raw-SQL read (the
+// connection repository does the same for its serviceAccountId) so this
+// package does not depend on the serviceaccount package.
+type ServiceAccountRef struct {
+	ID            string
+	Code          string
+	Active        bool
+	ClientIDs     []string
+	ApplicationID *string
+}
+
+// FindServiceAccountRef resolves a service account by id or, failing that, by
+// its unique code (the CLI/SDK pass codes). Nil when neither matches.
+func (r *Repository) FindServiceAccountRef(ctx context.Context, idOrCode string) (*ServiceAccountRef, error) {
+	var ref ServiceAccountRef
+	var clientIDs []string
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, code, active, client_ids, application_id
+		FROM iam_service_accounts
+		WHERE id = $1 OR code = $1
+		ORDER BY (id = $1) DESC
+		LIMIT 1`, idOrCode).Scan(&ref.ID, &ref.Code, &ref.Active, &clientIDs, &ref.ApplicationID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("function repo: find service account: %w", err)
+	}
+	ref.ClientIDs = clientIDs
+	return &ref, nil
+}
+
+// ServiceAccountCodes maps service account ids to their codes (ids that no
+// longer exist are absent). Read-side only: the API shows the code beside the
+// id.
+func (r *Repository) ServiceAccountCodes(ctx context.Context, accountIDs []string) (map[string]string, error) {
+	out := map[string]string{}
+	if len(accountIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.pool.Query(ctx, `SELECT id, code FROM iam_service_accounts WHERE id = ANY($1)`, accountIDs)
+	if err != nil {
+		return nil, fmt.Errorf("function repo: service account codes: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, code string
+		if err := rows.Scan(&id, &code); err != nil {
+			return nil, err
+		}
+		out[id] = code
+	}
+	return out, rows.Err()
 }

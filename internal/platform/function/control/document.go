@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"log/slog"
 
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
@@ -90,13 +91,9 @@ func (s *State) buildFunction(ctx context.Context, fn *function.Function, runtim
 		}
 	}
 
-	var webhookSecret string
-	if s.Creds != nil {
-		creds, err := s.Creds(ctx, fn.ApplicationID)
-		if err != nil {
-			return fncontrol.Function{}, false, usecase.Internal("SERVICE_ACCOUNT_CREDS", "outbound creds lookup failed", err)
-		}
-		webhookSecret = creds.SigningSecret
+	webhookSecret, err := s.webhookSecretFor(ctx, fn)
+	if err != nil {
+		return fncontrol.Function{}, false, err
 	}
 
 	return fncontrol.Function{
@@ -112,6 +109,42 @@ func (s *State) buildFunction(ctx context.Context, fn *function.Function, runtim
 		DB:            settings.DB,
 		Versions:      versions,
 	}, len(all) > 0, nil
+}
+
+// webhookSecretFor is the secret a runner verifies fn's `auth: webhook`
+// deliveries with. A function that names its own service account uses THAT
+// account's signing secret and nothing else: if the account is missing,
+// inactive or has no secret the answer is an empty secret (deliveries then fail
+// verification loudly) with the reason logged — never a silent fall-through to
+// the application's account, which is not who signs. A function with no
+// account of its own uses the application's, as before.
+func (s *State) webhookSecretFor(ctx context.Context, fn *function.Function) (string, error) {
+	if fn.ServiceAccountID != nil && s.AccountCreds != nil {
+		creds, err := s.AccountCreds(ctx, *fn.ServiceAccountID)
+		if err != nil {
+			return "", usecase.Internal("SERVICE_ACCOUNT_CREDS", "outbound creds lookup failed", err)
+		}
+		if creds.SigningSecret == "" {
+			reason := creds.Reason
+			if reason == "" {
+				reason = "service account " + *fn.ServiceAccountID + " has no signing secret"
+			}
+			key := fn.ID + "|" + reason
+			if _, seen := s.warned.LoadOrStore(key, struct{}{}); !seen {
+				slog.Warn("function webhook secret is empty: its service account cannot sign",
+					"address", fn.Address, "serviceAccountId", *fn.ServiceAccountID, "reason", reason)
+			}
+		}
+		return creds.SigningSecret, nil
+	}
+	if s.Creds == nil {
+		return "", nil
+	}
+	creds, err := s.Creds(ctx, fn.ApplicationID)
+	if err != nil {
+		return "", usecase.Internal("SERVICE_ACCOUNT_CREDS", "outbound creds lookup failed", err)
+	}
+	return creds.SigningSecret, nil
 }
 
 // runtimeOf resolves a stored version runtime ("" means the default).

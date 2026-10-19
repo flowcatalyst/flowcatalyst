@@ -75,6 +75,50 @@ type CreateCommand struct {
 	Pool          *string      `json:"pool,omitempty"`
 	Warm          *bool        `json:"warm,omitempty"`
 	Limits        *LimitsInput `json:"limits,omitempty"`
+	// ServiceAccount is the optional webhook verifier identity: a service
+	// account id or code (resolved here). Empty means the application's
+	// service account, as before.
+	ServiceAccount *string `json:"serviceAccount,omitempty"`
+}
+
+// resolveServiceAccount resolves idOrCode to a service account the caller may
+// bind a function to: it must exist, be active, and be reachable by the
+// caller — an anchor may use any account; anyone else only an account scoped
+// to clients they can all access (a platform-level account, with no client
+// scope, is anchor-only) and, for an application-linked account, an
+// application they can reach.
+func resolveServiceAccount(ctx context.Context, repo *function.Repository, idOrCode string) (*function.ServiceAccountRef, error) {
+	idOrCode = strings.TrimSpace(idOrCode)
+	if idOrCode == "" {
+		return nil, usecase.Validation("SERVICE_ACCOUNT_REQUIRED", "service account must not be empty; use the clear option to remove it")
+	}
+	sa, err := repo.FindServiceAccountRef(ctx, idOrCode)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "service account lookup failed", err)
+	}
+	if sa == nil {
+		return nil, usecase.Validation("SERVICE_ACCOUNT_NOT_FOUND", "service account '"+idOrCode+"' does not exist")
+	}
+	if !sa.Active {
+		return nil, usecase.Validation("SERVICE_ACCOUNT_INACTIVE", "service account '"+sa.Code+"' is inactive")
+	}
+	ac := auth.FromContext(ctx)
+	if ac.IsAnchor() {
+		return sa, nil
+	}
+	reachable := len(sa.ClientIDs) > 0
+	for _, cid := range sa.ClientIDs {
+		if !ac.CanAccessClient(cid) {
+			reachable = false
+		}
+	}
+	if sa.ApplicationID != nil && !ac.CanAccessApplication(*sa.ApplicationID) {
+		reachable = false
+	}
+	if !reachable {
+		return nil, usecase.Authorization("SCOPE_FORBIDDEN", "no access to service account '"+sa.Code+"'")
+	}
+	return sa, nil
 }
 
 // CreateFunction validates cmd, enforces per-resource client scope,
@@ -127,6 +171,13 @@ func CreateFunction(repo *function.Repository, apps *application.Repository) use
 			}
 
 			f := function.New(cmd.ApplicationID, app.Code, name)
+			if cmd.ServiceAccount != nil && strings.TrimSpace(*cmd.ServiceAccount) != "" {
+				sa, err := resolveServiceAccount(ctx, repo, *cmd.ServiceAccount)
+				if err != nil {
+					return nil, err
+				}
+				f.ServiceAccountID = &sa.ID
+			}
 			f.ClientID = cmd.ClientID
 			f.Description = cmd.Description
 			f.Pool = cmd.Pool
@@ -137,11 +188,12 @@ func CreateFunction(repo *function.Repository, apps *application.Repository) use
 			f.CreatedBy = &ec.PrincipalID
 
 			event := FunctionCreated{
-				Metadata:      usecase.NewEventMetadata(ec, FunctionCreatedType, Source, subjectFor(f.ID)),
-				FunctionID:    f.ID,
-				Address:       f.Address,
-				ApplicationID: f.ApplicationID,
-				ClientID:      f.ClientID,
+				Metadata:         usecase.NewEventMetadata(ec, FunctionCreatedType, Source, subjectFor(f.ID)),
+				FunctionID:       f.ID,
+				Address:          f.Address,
+				ApplicationID:    f.ApplicationID,
+				ClientID:         f.ClientID,
+				ServiceAccountID: f.ServiceAccountID,
 			}
 			return usecaseop.Save(f, repo, event), nil
 		},

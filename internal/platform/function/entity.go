@@ -99,12 +99,17 @@ type Function struct {
 	// Pool is the runner pool that hosts the function (FC_FUNCTIONS_POOL
 	// on the runners; plan §3). Nil means DefaultRunnerPool. It is NOT the
 	// dispatch pool: that is always DispatchPoolCode.
-	Pool      *string
-	Warm      bool
-	Limits    Limits
-	CreatedBy *string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Pool   *string
+	Warm   bool
+	Limits Limits
+	// ServiceAccountID is the OPTIONAL service account whose signing secret the
+	// platform hands the runner as this function's webhook verifier (the
+	// desired document's WebhookSecret). Nil means "use the application's
+	// service account" (the original behaviour). Referenced by id, no FK.
+	ServiceAccountID *string
+	CreatedBy        *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // IDStr satisfies usecase.HasID.

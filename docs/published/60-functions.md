@@ -47,6 +47,7 @@ curl -H "Authorization: Bearer dev" localhost:8099/fn/local.fn/hello/Aroha
 ```sh
 fcdev fn deploy billing.invoice-pdf . --create   # build, publish, wait until loaded, promote live
 fcdev fn set billing.invoice-pdf --config GREETING=Hi --secret STRIPE_KEY=sk_…
+fcdev fn set billing.invoice-pdf --service-account bevco-integration   # who signs its webhook deliveries
 fcdev fn publish billing.invoice-pdf function.wasm   # publish only
 fcdev fn promote billing.invoice-pdf 7                # point live at version 7 (--alias for others)
 fcdev fn invoke billing.invoice-pdf@qa hello/Aroha    # call through a runner
@@ -103,6 +104,28 @@ Every endpoint names exactly one auth mode — there is no default:
 
 A webhook endpoint accepts `POST` only. Paths use Go's routing patterns:
 `/orders/{id}`, `/files/{rest...}`.
+
+#### Which service account signs a webhook delivery
+
+A `Webhook` endpoint verifies the delivery signature with the signing secret of a service
+account. By default that is the application's service account (the oldest active account linked
+to the application). If the deliveries to your function are signed by another account — for
+example a connection's own account — give the function that account:
+
+```sh
+fcdev fn deploy shop.orders . --create --service-account bevco-integration   # at creation
+fcdev fn set shop.orders --service-account bevco-integration                 # change it
+fcdev fn set shop.orders --clear-service-account                             # back to the application's
+```
+
+The value is the account's code (or its id). The platform checks the account exists, is active
+and that you may use it. The API field is `serviceAccountId` on `POST /api/functions` and
+`PATCH /api/functions/{id}` (`clearServiceAccount: true` to clear); reads return `serviceAccountId` and
+`serviceAccountCode`. A function that names an account uses only that account's secret: if the
+account is deactivated or deleted, the secret is empty and every webhook delivery is refused
+(`401 INVALID_SIGNATURE`) — the platform logs the reason (`function webhook secret is empty`) and
+does not quietly use the application's account instead. Service-account credentials are cached for
+one minute, so a change or a rotated secret reaches runners within about a minute.
 
 ### Subscriptions and schedules
 

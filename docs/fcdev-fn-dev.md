@@ -67,7 +67,8 @@ on a platform.)
 - Pools, connections and target functions are **not resolved**; their existence
   and status, application ownership and the target's webhook endpoint are only
   checked on a real platform.
-- No delivery signing by a connection's service account; subscriptions and
+- No delivery signing by a connection's service account (on a real platform a function's
+  verifier account is set with `fcdev fn set <address> --service-account <code>`); subscriptions and
   schedules are not fired (call their paths with `--send`).
 - Listens on 127.0.0.1 only. Watching is by polling (300ms, mtime and size), and
   ignores `node_modules`, `dist`, `target`, `bin`, `vendor`, `.git`, hidden paths
