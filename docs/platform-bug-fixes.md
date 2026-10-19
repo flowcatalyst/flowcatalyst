@@ -2436,6 +2436,45 @@ changed (SDK code is not in this entry's scope; owner to decide whether SDK docs
 404 `Application_NOT_FOUND` for all three cases (other application, unbound credential, unknown code), for
 every caller kind, and keep 403 only for a missing permission.
 
+### F33. A stale IdP role mapping dropped the user's whole IdP role sync at login (owner position, 2026-10-19)
+
+**What was verified.** Owner position: the existence check on a mapping's platform role belongs to the mapping's
+write; at login a stale mapping is skipped with a warning and never costs the login. In Go it was the other way
+round. `CreateIdpRoleMapping` checked only the role name's shape (F18; its comment said "existence is checked when
+the mapping is applied at login"). At login, `LoginEndpoint.syncIdpRoles` passed every mapped role to
+`SyncIdpRoles`, whose `role.ResolveNames` fails the whole command on one missing role (`400 ROLE_NOT_FOUND`).
+The caller logs that and carries on, so the login itself did not fail, but the user's IdP role sync did, entirely:
+the other valid mapped roles were not granted and roles the user had lost upstream were not removed, for every
+user of the provider, for as long as one mapping pointed at a deleted role.
+
+**Fix.**
+- Mapping write: `CreateIdpRoleMapping` now resolves the platform role and refuses an unknown one,
+  `400 ROLE_NOT_FOUND` (the operation takes the role repository; `authapi.State` gained `Roles`). There is no
+  mapping update operation in Go (only create and delete), so create is the only write.
+- Login: before applying the authorised set, `syncIdpRoles` resolves each platform role and skips one that does
+  not exist with a `slog.Warn` ("skipped IDP role mapping: its platform role does not exist (stale mapping)",
+  principal, role, code). The valid roles are granted and the removals still happen. A real storage error still
+  fails the sync (best-effort, as before). `SyncIdpRoles` itself stays strict (its input validation is unchanged).
+- The identity provider's allow-list already skipped a missing allowed role with a warning; with an allow-list a
+  missing platform role is filtered out before this point, so the stale-mapping case arises on providers with no
+  allow-list.
+
+**Existing data.** Stale mappings already stored are not touched: they are now skipped at login with a warning, and
+an operator can delete them.
+
+**Tests** (`-tags=integration`; both failed before the change):
+`bridge/oidc_login_event_pg_test.go` `TestOidcLogin_StaleMappingIsSkippedNotFatalToTheRoleSync` (a real callback:
+one valid and one stale mapping; login completes, the valid role is granted), `auth/operations/ops_pg_test.go`
+`TestCreateIdpRoleMapping_RefusesAnUnknownPlatformRole`. The existing mapping tests now create the role the mapping
+points at.
+
+**Wire impact.** None in the OpenAPI lock (errors are not declared); `POST /api/idp-role-mappings`
+now answers `400 ROLE_NOT_FOUND` for an unknown role, where it used to answer 201.
+
+**Rust hand-off.** Check the platform role exists when an IdP role mapping is created or updated
+(`400 ROLE_NOT_FOUND`), and make the login-time sync skip a mapping whose role is missing with a warning, applying
+the rest, instead of failing the sync (or the login).
+
 ## Decisions taken conservatively (owner to confirm)
 
 1. Lifecycle writes need **update**, not the dedicated seeded permissions that no check reads

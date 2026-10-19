@@ -36,6 +36,7 @@ import (
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 )
 
@@ -207,7 +208,7 @@ func newOidcTestFixture(t *testing.T) *oidcTestFixture {
 	require.NoError(t, err)
 	require.Equal(t, platformRoleName, roleEv.Name)
 
-	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, authops.CreateIdpRoleMapping(authRepo.IdpRoleMappings),
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, authops.CreateIdpRoleMapping(authRepo.IdpRoleMappings, roles),
 		authops.CreateIdpRoleMappingCommand{
 			IdpType: "OIDC", IdpRoleName: rawIdpRoleName, PlatformRoleName: platformRoleName,
 		}, testpg.TestEC())
@@ -708,4 +709,43 @@ func TestOidcLogin_UnmappedDomainIsNotFound(t *testing.T) {
 	rec = httptest.NewRecorder()
 	f.endpoint.handleLogin(rec, req)
 	assert.Equal(t, http.StatusFound, rec.Code)
+}
+
+// F33: a mapping that points at a platform role which no longer exists is
+// skipped with a warning at login; the user's other mapped roles still sync
+// and the login succeeds. The existence check belongs to the mapping's write.
+func TestOidcLogin_StaleMappingIsSkippedNotFatalToTheRoleSync(t *testing.T) {
+	f := newOidcTestFixture(t)
+	ctx := context.Background()
+	email := "erin@" + f.domain
+
+	// A stale mapping: written before its role was deleted (mapping creation
+	// now refuses a missing role, so insert the row directly).
+	ghostRaw := "ghost-" + f.rawIdpRoleName
+	prefix, _, _ := strings.Cut(f.platformRoleName, ":")
+	_, err := f.pool.Exec(ctx, `INSERT INTO oauth_idp_role_mappings (id, idp_role_name, internal_role_name, idp_type)
+		VALUES ($1, $2, $3, 'OIDC')`, tsid.Generate(tsid.IdpRoleMapping), ghostRaw, prefix+":deleted-role")
+	require.NoError(t, err)
+	// No allow-list on the provider: with one, a missing role is filtered out
+	// before it can be resolved.
+	_, err = f.pool.Exec(ctx, `DELETE FROM oauth_identity_provider_allowed_roles WHERE identity_provider_id = $1`, f.identityProviderID)
+	require.NoError(t, err)
+
+	rec := f.login(t, map[string]any{
+		"nonce": "nonce-f33", "email": email, "roles": []string{f.rawIdpRoleName, ghostRaw},
+	}, "opaque-f33")
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+	require.True(t, f.lastSessionCalled, "the login completes")
+
+	var got []string
+	rows, err := f.pool.Query(ctx, `SELECT r.role_name FROM iam_principal_roles r
+		JOIN iam_principals p ON p.id = r.principal_id WHERE p.email = $1 ORDER BY 1`, email)
+	require.NoError(t, err)
+	defer rows.Close()
+	for rows.Next() {
+		var n string
+		require.NoError(t, rows.Scan(&n))
+		got = append(got, n)
+	}
+	assert.Equal(t, []string{f.platformRoleName}, got, "the valid mapping's role is granted; the stale one is skipped")
 }

@@ -23,7 +23,7 @@ type CreateIdpRoleMappingCommand struct {
 // [IdpRoleMappingCreated]. IDP role mappings are platform-level config with no
 // per-client resource dimension (Authorize: Public); the controller gates
 // writes with auth.RequireAnchor.
-func CreateIdpRoleMapping(repo *auth.IdpRoleMappingRepo) usecaseop.Operation[CreateIdpRoleMappingCommand, IdpRoleMappingCreated] {
+func CreateIdpRoleMapping(repo *auth.IdpRoleMappingRepo, roles *role.Repository) usecaseop.Operation[CreateIdpRoleMappingCommand, IdpRoleMappingCreated] {
 	return usecaseop.Operation[CreateIdpRoleMappingCommand, IdpRoleMappingCreated]{
 		Name: "CreateIdpRoleMapping",
 		Validate: func(_ context.Context, cmd CreateIdpRoleMappingCommand) error {
@@ -35,12 +35,17 @@ func CreateIdpRoleMapping(repo *auth.IdpRoleMappingRepo) usecaseop.Operation[Cre
 				}
 			}
 			// F18: the platform role is a canonical role name; a malformed one
-			// is refused, never trimmed (existence is checked when the mapping
-			// is applied at login).
+			// is refused, never trimmed. Existence is checked in Execute.
 			return role.ValidateName(cmd.PlatformRoleName)
 		},
 		Authorize: usecaseop.Public[CreateIdpRoleMappingCommand],
 		Execute: func(ctx context.Context, cmd CreateIdpRoleMappingCommand, ec usecase.ExecutionContext) (usecaseop.Plan[IdpRoleMappingCreated], error) {
+			// F33: the platform role must exist when the mapping is written.
+			// Login treats a mapping whose role has since gone as stale and
+			// skips it with a warning; a mapping never starts out stale.
+			if _, err := role.ResolveName(ctx, roles, cmd.PlatformRoleName); err != nil {
+				return nil, err
+			}
 			// An IdP role name maps to one platform role (the table's unique
 			// index is on idp_role_name). A duplicate used to reach that index
 			// and answer 500; it is a conflict (owner decision #38).

@@ -13,6 +13,8 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
+	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
@@ -44,6 +46,19 @@ func runAuthorized[C any, E usecase.DomainEvent](
 	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
 ) (E, error) {
 	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
+
+// irmRole creates the platform role "<app>:<name>" an IdP role mapping points
+// at (a mapping to a role that does not exist is refused, F33) and returns the
+// role repository the mapping operation checks against.
+func irmRole(t *testing.T, app, name string) *role.Repository {
+	t.Helper()
+	testpg.EnsureApplication(t, app)
+	roles := role.NewRepository(testpg.Pool(t))
+	_, err := usecaseop.Run(testpg.AnchorCtx(), testpg.NewUoW(t), roleops.CreateRole(roles),
+		roleops.CreateCommand{ApplicationCode: app, RoleName: name, DisplayName: name}, testpg.TestEC())
+	require.NoError(t, err)
+	return roles
 }
 
 // ══ AnchorDomain ══════════════════════════════════════════════════════════
@@ -373,13 +388,14 @@ func TestUpdateAnchorDomain_IntoAnExistingDomain_Conflict(t *testing.T) {
 func TestCreateIdpRoleMapping_Duplicate_Conflict(t *testing.T) {
 	t.Parallel()
 	repo := auth.NewRepository(testpg.Pool(t)).IdpRoleMappings
+	roles := irmRole(t, "irmdup", "admin")
 	uow := testpg.NewUoW(t)
 	cmd := operations.CreateIdpRoleMappingCommand{
 		IdpType: "keycloak", IdpRoleName: "irm-dup-upstream", PlatformRoleName: "irmdup:admin",
 	}
-	_, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo), cmd)
+	_, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo, roles), cmd)
 	require.NoError(t, err)
-	_, err = runAuthorized(uow, operations.CreateIdpRoleMapping(repo), cmd)
+	_, err = runAuthorized(uow, operations.CreateIdpRoleMapping(repo, roles), cmd)
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "MAPPING_EXISTS")
 }
 
@@ -388,9 +404,10 @@ func TestCreateIdpRoleMapping_Duplicate_Conflict(t *testing.T) {
 func TestCreateIdpRoleMapping_RejectsMalformedPlatformRole(t *testing.T) {
 	t.Parallel()
 	repo := auth.NewRepository(testpg.Pool(t)).IdpRoleMappings
+	roles := role.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 	for _, bad := range []string{"irmbad: admin", " irmbad:admin", "irmbad", "irmbad:ad min"} {
-		_, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo), operations.CreateIdpRoleMappingCommand{
+		_, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo, roles), operations.CreateIdpRoleMappingCommand{
 			IdpType: "keycloak", IdpRoleName: "irm-bad-upstream", PlatformRoleName: bad,
 		})
 		testpg.RequireUsecaseError(t, err, usecase.KindValidation, "INVALID_ROLE_NAME")
@@ -401,9 +418,10 @@ func TestCreateIdpRoleMapping_HappyPath(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := auth.NewRepository(testpg.Pool(t)).IdpRoleMappings
+	roles := irmRole(t, "irmcreate", "admin")
 	uow := testpg.NewUoW(t)
 
-	ev, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo), operations.CreateIdpRoleMappingCommand{
+	ev, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo, roles), operations.CreateIdpRoleMappingCommand{
 		IdpType: "keycloak", IdpRoleName: "irm-create-upstream", PlatformRoleName: "irmcreate:admin",
 	})
 	require.NoError(t, err)
@@ -425,6 +443,7 @@ func TestCreateIdpRoleMapping_HappyPath(t *testing.T) {
 func TestCreateIdpRoleMapping_Validation(t *testing.T) {
 	t.Parallel()
 	repo := auth.NewRepository(testpg.Pool(t)).IdpRoleMappings
+	roles := role.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
 	// All three fields share the one FIELD_REQUIRED code.
@@ -439,7 +458,7 @@ func TestCreateIdpRoleMapping_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo), tc.cmd)
+			_, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo, roles), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, "FIELD_REQUIRED")
 		})
 	}
@@ -449,9 +468,10 @@ func TestDeleteIdpRoleMapping_HappyPathAndErrors(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := auth.NewRepository(testpg.Pool(t)).IdpRoleMappings
+	roles := irmRole(t, "irmdelete", "viewer")
 	uow := testpg.NewUoW(t)
 
-	seeded, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo), operations.CreateIdpRoleMappingCommand{
+	seeded, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo, roles), operations.CreateIdpRoleMappingCommand{
 		IdpType: "entra", IdpRoleName: "irm-delete-upstream", PlatformRoleName: "irmdelete:viewer",
 	})
 	require.NoError(t, err)
@@ -780,4 +800,24 @@ func TestRotateOAuthClientSecret_Errors(t *testing.T) {
 	_, err = runAuthorized(uow, operations.RotateOAuthClientSecret(repo),
 		operations.RotateOAuthClientSecretCommand{ID: "oac_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "OAuthClient_NOT_FOUND")
+}
+
+// F33: the platform role of a mapping must exist when the mapping is written.
+// A mapping to a role that is missing was accepted and then, at every login,
+// failed the whole IdP role sync of the user instead of being skipped.
+func TestCreateIdpRoleMapping_RefusesAnUnknownPlatformRole(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := auth.NewRepository(testpg.Pool(t)).IdpRoleMappings
+	roles := role.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	testpg.EnsureApplication(t, "irmghost")
+
+	_, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo, roles), operations.CreateIdpRoleMappingCommand{
+		IdpType: "entra", IdpRoleName: "irm-ghost-upstream", PlatformRoleName: "irmghost:nosuchrole",
+	})
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ROLE_NOT_FOUND")
+	stored, err := repo.FindByIdpRole(ctx, "entra", "irm-ghost-upstream")
+	require.NoError(t, err)
+	assert.Empty(t, stored, "a refused mapping stores nothing")
 }

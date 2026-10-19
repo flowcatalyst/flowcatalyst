@@ -225,6 +225,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 
 		authapi.Register(humaAPI, &authapi.State{
 			Repo:         repos.authRepo,
+			Roles:        repos.roleRepo,
 			Applications: repos.applicationRepo,
 			PortalApps:   repos.portalAppRepo,
 			UoW:          uow,

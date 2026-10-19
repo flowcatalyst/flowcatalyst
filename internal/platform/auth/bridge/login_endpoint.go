@@ -928,6 +928,18 @@ func (e *LoginEndpoint) syncIdpRoles(ctx context.Context, p *principal.Principal
 	}
 	platformRoles := make([]string, 0, len(authorized))
 	for r := range authorized {
+		// F33: a mapping whose platform role no longer exists (deleted or
+		// renamed since the mapping was written, which checked it) is stale.
+		// Skip it with a warning: failing here would drop the user's whole
+		// IdP role sync, the other roles included.
+		if _, err := role.ResolveName(ctx, e.roles, r); err != nil {
+			if uerr := usecase.AsError(err); uerr != nil && uerr.Kind == usecase.KindValidation {
+				slog.Warn("skipped IDP role mapping: its platform role does not exist (stale mapping)",
+					"principalId", p.ID, "platformRole", r, "code", uerr.Code)
+				continue
+			}
+			return err
+		}
 		platformRoles = append(platformRoles, r)
 	}
 	return e.applySyncIdpRoles(ctx, p, platformRoles)

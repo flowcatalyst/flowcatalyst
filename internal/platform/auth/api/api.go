@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -29,6 +30,8 @@ import (
 // State bundles deps.
 type State struct {
 	Repo *auth.Repository
+	// Roles resolves the platform role an IdP role mapping points at (F33).
+	Roles *role.Repository
 	// Applications resolves oauth_client_application_ids to {id, name}
 	// display refs for OAuthClientResponse.Applications. Optional: nil
 	// leaves Applications empty (clients can still use applicationIds).
@@ -515,7 +518,7 @@ func (s *State) createIdpRoleMapping(ctx context.Context, in *apicommon.In[Creat
 		return nil, err
 	}
 	ec := platformauth.NewExecutionContext(ctx)
-	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateIdpRoleMapping(s.Repo.IdpRoleMappings), in.Body.toCommand(), ec)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateIdpRoleMapping(s.Repo.IdpRoleMappings, s.Roles), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
