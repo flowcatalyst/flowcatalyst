@@ -225,6 +225,9 @@ index-only pass. Flagging, not scheduling.
 
 ## 6. Rollout notes (partitioned tables)
 
+> The general rule for any change on a large table (indexes, constraints, backfills, rewrites) is in
+> [large-table-schema-changes.md](large-table-schema-changes.md). The notes below are the partitioned-index case.
+
 - All `*_read` and `*_events`/`*_dispatch_jobs` tables are partitioned. `CREATE INDEX` on
   the parent takes an `ACCESS EXCLUSIVE` lock and builds each partition serially. For a
   table with live data, do it online: `CREATE INDEX CONCURRENTLY` on each existing

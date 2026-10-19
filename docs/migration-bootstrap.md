@@ -39,3 +39,5 @@ Go database with lost ledger (data survives), foreign database at 070 (represent
 database at 015, a tracker that overclaims, a ledger poisoned by the old number-copying, and a Go ledger behind
 a complete foreign tracker (Go older than 072). `TestBootstrap_RealForeignMigrations` replays the other
 implementation's real files, read-only, when `FC_FOREIGN_MIGRATIONS_DIR` points at its `migrations/` directory.
+
+See also [large-table-schema-changes.md](large-table-schema-changes.md): how to write a migration that is safe on a large table (online index builds, `NOT VALID` constraints, batched backfills).
