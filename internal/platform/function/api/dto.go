@@ -147,6 +147,28 @@ func (r PublishVersionRequest) toCommand(functionID string) operations.PublishCo
 	return cmd
 }
 
+// PruneVersionsRequest is the wire body for POST …/versions/prune.
+type PruneVersionsRequest struct {
+	Keep   *int `json:"keep,omitempty" doc:"Untagged versions to keep (>= 1); omitted uses the platform setting FC_FUNCTIONS_KEEP_VERSIONS (default 20)" minimum:"1"`
+	DryRun bool `json:"dryRun,omitempty" doc:"Report what would be pruned and change nothing"`
+}
+
+// PrunedVersionResponse is one pruned (or, on a dry run, would-be pruned) version.
+type PrunedVersionResponse struct {
+	Number int32  `json:"number"`
+	Digest string `json:"digest"`
+}
+
+// PruneVersionsResponse reports a prune. Tagged versions (any alias points at
+// them) are never pruned and are not counted in untagged.
+type PruneVersionsResponse struct {
+	Keep             int                     `json:"keep"`
+	DryRun           bool                    `json:"dryRun"`
+	Untagged         int                     `json:"untagged" doc:"Untagged versions before pruning"`
+	Pruned           []PrunedVersionResponse `json:"pruned" doc:"Versions deleted (would be deleted, on a dry run), oldest first"`
+	ArtifactsDeleted int                     `json:"artifactsDeleted" doc:"Stored artifacts removed because no remaining version references them"`
+}
+
 // VersionResponse mirrors function.Version.
 type VersionResponse struct {
 	ID          string           `json:"id"`

@@ -2615,6 +2615,48 @@ export type ProvisionLoginClientRequest = {
     [key: string]: unknown;
 };
 
+export type PruneVersionsRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Report what would be pruned and change nothing
+     */
+    dryRun?: boolean;
+    /**
+     * Untagged versions to keep (>= 1); omitted uses the platform setting FC_FUNCTIONS_KEEP_VERSIONS (default 20)
+     */
+    keep?: number;
+    [key: string]: unknown;
+};
+
+export type PruneVersionsResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Stored artifacts removed because no remaining version references them
+     */
+    artifactsDeleted: number;
+    dryRun: boolean;
+    keep: number;
+    /**
+     * Versions deleted (would be deleted, on a dry run), oldest first
+     */
+    pruned: Array<PrunedVersionResponse>;
+    /**
+     * Untagged versions before pruning
+     */
+    untagged: number;
+};
+
+export type PrunedVersionResponse = {
+    digest: string;
+    number: number;
+};
+
 export type PublicAllowedResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -5775,6 +5817,35 @@ export type ProvisionLoginClientRequestWritable = {
     clientType?: string;
     redirectUris: Array<string>;
     [key: string]: unknown;
+};
+
+export type PruneVersionsRequestWritable = {
+    /**
+     * Report what would be pruned and change nothing
+     */
+    dryRun?: boolean;
+    /**
+     * Untagged versions to keep (>= 1); omitted uses the platform setting FC_FUNCTIONS_KEEP_VERSIONS (default 20)
+     */
+    keep?: number;
+    [key: string]: unknown;
+};
+
+export type PruneVersionsResponseWritable = {
+    /**
+     * Stored artifacts removed because no remaining version references them
+     */
+    artifactsDeleted: number;
+    dryRun: boolean;
+    keep: number;
+    /**
+     * Versions deleted (would be deleted, on a dry run), oldest first
+     */
+    pruned: Array<PrunedVersionResponse>;
+    /**
+     * Untagged versions before pruning
+     */
+    untagged: number;
 };
 
 export type PublicAllowedResponseWritable = {
@@ -11410,6 +11481,33 @@ export type PublishFunctionVersionResponses = {
 };
 
 export type PublishFunctionVersionResponse = PublishFunctionVersionResponses[keyof PublishFunctionVersionResponses];
+
+export type PruneFunctionVersionsData = {
+    body: PruneVersionsRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/versions/prune';
+};
+
+export type PruneFunctionVersionsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PruneFunctionVersionsError = PruneFunctionVersionsErrors[keyof PruneFunctionVersionsErrors];
+
+export type PruneFunctionVersionsResponses = {
+    /**
+     * OK
+     */
+    200: PruneVersionsResponse;
+};
+
+export type PruneFunctionVersionsResponse = PruneFunctionVersionsResponses[keyof PruneFunctionVersionsResponses];
 
 export type GetFunctionVersionData = {
     body?: never;

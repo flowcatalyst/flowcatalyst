@@ -244,3 +244,22 @@ func TestLoadRunnerURLsByRuntime(t *testing.T) {
 		t.Fatal("no overrides must be nil")
 	}
 }
+
+// FC_FUNCTIONS_KEEP_VERSIONS bounds the untagged versions a function keeps;
+// non-positive or unparseable values fall back to the default (20).
+func TestLoadEnv_FunctionsKeepVersions(t *testing.T) {
+	t.Setenv("FC_FUNCTIONS_KEEP_VERSIONS", "")
+	if c := LoadEnv(); c.FunctionsKeepVersions != 20 {
+		t.Errorf("default = %d, want 20", c.FunctionsKeepVersions)
+	}
+	t.Setenv("FC_FUNCTIONS_KEEP_VERSIONS", "7")
+	if c := LoadEnv(); c.FunctionsKeepVersions != 7 {
+		t.Errorf("set = %d, want 7", c.FunctionsKeepVersions)
+	}
+	for _, bad := range []string{"0", "-3", "many"} {
+		t.Setenv("FC_FUNCTIONS_KEEP_VERSIONS", bad)
+		if c := LoadEnv(); c.FunctionsKeepVersions != 20 {
+			t.Errorf("%q = %d, want the default 20", bad, c.FunctionsKeepVersions)
+		}
+	}
+}

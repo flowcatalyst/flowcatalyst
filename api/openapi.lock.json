@@ -7660,6 +7660,94 @@
         ],
         "type": "object"
       },
+      "PruneVersionsRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PruneVersionsRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "dryRun": {
+            "description": "Report what would be pruned and change nothing",
+            "type": "boolean"
+          },
+          "keep": {
+            "description": "Untagged versions to keep (\u003e= 1); omitted uses the platform setting FC_FUNCTIONS_KEEP_VERSIONS (default 20)",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "PruneVersionsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PruneVersionsResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "artifactsDeleted": {
+            "description": "Stored artifacts removed because no remaining version references them",
+            "format": "int64",
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "keep": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "pruned": {
+            "description": "Versions deleted (would be deleted, on a dry run), oldest first",
+            "items": {
+              "$ref": "#/components/schemas/PrunedVersionResponse"
+            },
+            "type": "array"
+          },
+          "untagged": {
+            "description": "Untagged versions before pruning",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "keep",
+          "dryRun",
+          "untagged",
+          "pruned",
+          "artifactsDeleted"
+        ],
+        "type": "object"
+      },
+      "PrunedVersionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "type": "string"
+          },
+          "number": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "number",
+          "digest"
+        ],
+        "type": "object"
+      },
       "PublicAllowedResponse": {
         "additionalProperties": false,
         "properties": {
@@ -20141,6 +20229,58 @@
           }
         },
         "summary": "Publish a new function version from a stored artifact",
+        "tags": [
+          "functions"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/functions/{id}/versions/prune": {
+      "post": {
+        "operationId": "pruneFunctionVersions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PruneVersionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PruneVersionsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Prune a function's oldest untagged versions",
         "tags": [
           "functions"
         ],

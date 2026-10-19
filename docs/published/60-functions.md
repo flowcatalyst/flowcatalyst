@@ -19,6 +19,28 @@ runner holds every credential; the function never sees one.
 | **Version** | One published build, numbered 1, 2, 3… Versions are immutable. |
 | **Alias** | A name pointing at a version. `live` is what subscriptions, schedules and ordinary calls reach; other aliases (`qa`, `canary`) are reachable over HTTP only. |
 
+### Old versions are pruned
+
+A function keeps its **20 most recent untagged versions** (platform setting
+`FC_FUNCTIONS_KEEP_VERSIONS`). After each publish, older untagged versions are
+deleted for good: the version record and its stored artifact. A version is
+*tagged* when any alias points at it (`live`, `canary`, `qa`…): tagged versions
+are never deleted and do not count towards the 20. The newest version, and a
+version published within the last hour that no runner has loaded yet, are also
+never deleted. Version numbers are never reused, so `billing.invoice-pdf@v7`
+never means two different builds; a pruned number simply stops existing. To
+keep a build for good, point an alias at it.
+
+A function that is already over the limit is pruned on its next publish. To do
+it sooner, or to look first:
+
+```
+fcdev fn prune billing.invoice-pdf --dry-run
+fcdev fn prune billing.invoice-pdf            # or --keep 10
+```
+
+(the API is `POST /api/functions/{id}/versions/prune`).
+
 Publishing a version changes nothing that is running. Promoting a version to
 `live` is the moment it takes effect — and the moment its subscriptions and
 schedules are created, updated or removed to match what the version declares.

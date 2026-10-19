@@ -10,6 +10,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 )
 
 // EnvCfg captures every env-driven knob fc-server reads: the
@@ -257,6 +258,12 @@ type EnvCfg struct {
 	// defaultFunctionArtifactDir in wire_services.go. docs/function-runner-plan.md §8.4.
 	FunctionsArtifactStore string
 
+	// FunctionsKeepVersions is how many UNTAGGED versions (not pointed at by
+	// any alias) a function keeps; older ones are deleted, with their
+	// artifacts, after each publish (FC_FUNCTIONS_KEEP_VERSIONS; non-positive
+	// or unparseable = function.DefaultKeepVersions, 20).
+	FunctionsKeepVersions int
+
 	// FunctionsRunnerURL is the function runner's base URL
 	// (FC_FUNCTIONS_RUNNER_URL), templated with "{pool}" so one platform can
 	// address several runner deployments (one per pool in production; fc-dev
@@ -415,6 +422,7 @@ func LoadEnv() EnvCfg {
 
 		FunctionsArtifactStore: envOr("FC_FUNCTIONS_ARTIFACT_STORE", ""),
 		FunctionsRunnerURL:     envOr("FC_FUNCTIONS_RUNNER_URL", "http://127.0.0.1:8095"),
+		FunctionsKeepVersions:  positiveOr(envInt("FC_FUNCTIONS_KEEP_VERSIONS", 0), function.DefaultKeepVersions),
 
 		FunctionsRunnerURLByRuntime: loadRunnerURLsByRuntime(os.Environ()),
 	}

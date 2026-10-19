@@ -40,6 +40,7 @@ func TestFunctionEventDataValidatesAgainstTheSeededSchema(t *testing.T) {
 		fnops.FunctionPromoted{FunctionID: "f", Address: "a.b", Number: 1, DispatchPoolCode: "fn-a-b", SubscriptionsCreated: 1},
 		fnops.FunctionPromoted{FunctionID: "f", Address: "a.b", DispatchPoolCode: "fn-a-b"},
 		fnops.FunctionScheduleWired{FunctionID: "f", ScheduledJobID: "s", Code: "c", Action: "deleted"},
+		fnops.VersionPruned{FunctionID: "f", Address: "a.b", VersionID: "v", Version: 3, Digest: "d"},
 		fnops.RouteSet{FunctionID: "f", RouteID: "r", Hostname: "h.com", PathPrefix: "/"},
 		fnops.RouteDeleted{FunctionID: "f", RouteID: "r", Hostname: "h.com", PathPrefix: "/"},
 		fnops.DBSettingSet{FunctionID: "f", Key: "maindb"},

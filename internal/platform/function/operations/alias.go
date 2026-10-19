@@ -8,6 +8,7 @@ package operations
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -132,12 +133,28 @@ func PutAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOperatio
 				UpdatedBy:  &ec.PrincipalID,
 			}
 			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
+				// Serialise against pruning: under the function row lock the
+				// version either still exists (and then a prune, which takes
+				// the same lock, sees this alias and keeps it) or is gone.
+				if ok, lockErr := repo.LockFunctionTx(ctx, tx, f.ID); lockErr != nil {
+					return lockErr
+				} else if !ok {
+					return function.ErrVersionGone
+				}
+				if exists, existsErr := repo.VersionExistsTx(ctx, tx, v.ID); existsErr != nil {
+					return existsErr
+				} else if !exists {
+					return function.ErrVersionGone
+				}
 				if aliasErr := repo.UpsertAliasTx(ctx, alias, tx); aliasErr != nil {
 					return aliasErr
 				}
 				_, bumpErr := repo.BumpPoolRevision(ctx, usecasepgx.WrapTxForBootstrap(tx), f.RunnerPool())
 				return bumpErr
 			}); err != nil {
+				if errors.Is(err, function.ErrVersionGone) {
+					return zero, usecase.NotFound("VERSION_NOT_FOUND", fmt.Sprintf("function %s has no version %d", f.ID, cmd.Number))
+				}
 				return zero, usecase.Internal("REPO", "alias write failed", err)
 			}
 

@@ -34,6 +34,7 @@ const (
 	// public routes, and DB settings (Java and Rust have no DB kind).
 	FunctionPromotedType      = "platform:admin:function:promoted"
 	FunctionScheduleWiredType = "platform:admin:function-schedule:wired"
+	VersionPrunedType         = "platform:admin:function-version:pruned"
 	RouteSetType              = "platform:admin:function-route:set"
 	RouteDeletedType          = "platform:admin:function-route:deleted"
 	DBSettingSetType          = "platform:admin:function-setting:set"
@@ -226,6 +227,40 @@ func (e VersionRetired) ToDataJSON() ([]byte, error) {
 		VersionID  string `json:"versionId"`
 		Version    int32  `json:"version"`
 	}{e.FunctionID, e.Address, e.VersionID, e.Version})
+}
+
+// VersionPruned is emitted once per version the retention limit deleted
+// (Go-only: Java and Rust do not prune): {functionId, address, versionId,
+// version, digest}. The version row is gone when the event is read; the
+// event is the record of it.
+type VersionPruned struct {
+	Metadata   usecase.EventMetadata
+	FunctionID string
+	Address    string
+	VersionID  string
+	Version    int32
+	Digest     string
+}
+
+func (e VersionPruned) EventID() string       { return e.Metadata.EventID }
+func (e VersionPruned) EventType() string     { return VersionPrunedType }
+func (e VersionPruned) SpecVersion() string   { return "1.0" }
+func (e VersionPruned) Source() string        { return AdminSource }
+func (e VersionPruned) Subject() string       { return subjectFor(e.FunctionID) }
+func (e VersionPruned) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e VersionPruned) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e VersionPruned) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e VersionPruned) CausationID() string   { return e.Metadata.CausationID }
+func (e VersionPruned) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e VersionPruned) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e VersionPruned) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		FunctionID string `json:"functionId"`
+		Address    string `json:"address"`
+		VersionID  string `json:"versionId"`
+		Version    int32  `json:"version"`
+		Digest     string `json:"digest"`
+	}{e.FunctionID, e.Address, e.VersionID, e.Version, e.Digest})
 }
 
 // AliasChanged is emitted whenever an alias is pointed at a version, `live`

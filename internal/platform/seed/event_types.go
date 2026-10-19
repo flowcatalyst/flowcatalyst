@@ -133,6 +133,7 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	groupAs("platform:function:domain", "Function Domain", "claimed", "released")
 	group("platform:admin:function", "promoted")
 	group("platform:admin:function-setting", "set", "deleted")
+	group("platform:admin:function-version", "pruned")
 	group("platform:admin:function-route", "set", "deleted")
 	group("platform:admin:function-schedule", "wired")
 

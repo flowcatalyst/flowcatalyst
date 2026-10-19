@@ -357,7 +357,7 @@ func (a *fnAPI) promote(ctx context.Context, fn *fnFunction, alias string, numbe
 // addFnPlatformCmds is the platform half of `fcdev fn`.
 func init() {
 	addFnPlatformCmds = func(cmd *cobra.Command) {
-		cmd.AddCommand(newFnPublishCmd(), newFnPromoteCmd(), newFnDeployCmd(), newFnSetCmd(), newFnInvokeCmd(), newFnStatusCmd(), newFnDeleteCmd())
+		cmd.AddCommand(newFnPublishCmd(), newFnPromoteCmd(), newFnDeployCmd(), newFnSetCmd(), newFnInvokeCmd(), newFnStatusCmd(), newFnPruneCmd(), newFnDeleteCmd())
 	}
 }
 
@@ -966,6 +966,75 @@ func newFnStatusCmd() *cobra.Command {
 var fnStdinIsTerminal = func() bool {
 	// Not ModeCharDevice: /dev/null is a character device but not a terminal.
 	return isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
+}
+
+func newFnPruneCmd() *cobra.Command {
+	var pf fnPlatformFlags
+	var keep int
+	var dryRun bool
+	cmd := &cobra.Command{
+		Use:   "prune <address>",
+		Short: "Delete a function's oldest untagged versions (and their artifacts)",
+		Long: `Deletes a function's oldest UNTAGGED versions beyond the keep limit, with their
+stored artifacts when no remaining version uses them. A version is tagged when
+any alias (live or another) points at it: tagged versions are never pruned and
+do not count. The newest version and a PUBLISHED version younger than an hour are
+never pruned. Version numbers are not reused.
+
+The platform prunes automatically after every publish (FC_FUNCTIONS_KEEP_VERSIONS,
+default 20); this is for catching a function that is already over the limit up,
+or for a different --keep. Use --dry-run to see what would go.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			api, err := newFnAPI(cmd, &pf)
+			if err != nil {
+				return err
+			}
+			fn, err := api.mustFunction(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			body := map[string]any{"dryRun": dryRun}
+			if cmd.Flags().Changed("keep") {
+				if keep < 1 {
+					return errors.New("--keep must be >= 1")
+				}
+				body["keep"] = keep
+			}
+			var res struct {
+				Keep             int `json:"keep"`
+				Untagged         int `json:"untagged"`
+				ArtifactsDeleted int `json:"artifactsDeleted"`
+				Pruned           []struct {
+					Number int32 `json:"number"`
+				} `json:"pruned"`
+			}
+			if err := api.json(cmd.Context(), http.MethodPost, "/api/functions/"+fn.ID+"/versions/prune", body, &res); err != nil {
+				return err
+			}
+			verb := "pruned"
+			if dryRun {
+				verb = "would prune"
+			}
+			nums := make([]string, len(res.Pruned))
+			for i, p := range res.Pruned {
+				nums[i] = fmt.Sprintf("v%d", p.Number)
+			}
+			fmt.Printf("%s: %d untagged version(s), keep %d, %s %d", fn.Address, res.Untagged, res.Keep, verb, len(res.Pruned))
+			if len(nums) > 0 {
+				fmt.Printf(" (%s)", strings.Join(nums, ", "))
+			}
+			if !dryRun && res.ArtifactsDeleted > 0 {
+				fmt.Printf("; %d artifact(s) deleted", res.ArtifactsDeleted)
+			}
+			fmt.Println()
+			return nil
+		},
+	}
+	pf.add(cmd)
+	cmd.Flags().IntVar(&keep, "keep", 0, "untagged versions to keep (default: the platform's FC_FUNCTIONS_KEEP_VERSIONS)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be pruned; change nothing")
+	return cmd
 }
 
 func newFnDeleteCmd() *cobra.Command {

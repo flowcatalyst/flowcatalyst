@@ -46,6 +46,9 @@ type State struct {
 	// ROUTE_HOST_NOT_CLAIMED check (docs/function-runner-plan.md §8, "public
 	// routes").
 	Domains *functiondomain.Repository
+	// KeepVersions is how many untagged versions a function keeps
+	// (FC_FUNCTIONS_KEEP_VERSIONS); < 1 means function.DefaultKeepVersions.
+	KeepVersions int
 }
 
 const tag = "functions"
@@ -95,6 +98,7 @@ func Register(api huma.API, s *State) {
 	}, s.publishVersion)
 	apiroute.Get(g, "listFunctionVersions", "/api/functions/{id}/versions", "List a function's versions", s.listVersions)
 	apiroute.Get(g, "getFunctionVersion", "/api/functions/{id}/versions/{number}", "Get one function version", s.getVersion)
+	apiroute.Post(g, "pruneFunctionVersions", "/api/functions/{id}/versions/prune", "Prune a function's oldest untagged versions", http.StatusOK, s.pruneVersions)
 	apiroute.Post(g, "retireFunctionVersion", "/api/functions/{id}/versions/{number}/retire", "Retire a function version", http.StatusOK, s.retireVersion)
 
 	// ── Aliases (WP4 + WP8 promote wiring) ──────────────────────────────
@@ -349,6 +353,11 @@ func (s *State) publishVersion(ctx context.Context, in *publishVersionInput) (*p
 	if !result.Created {
 		status = http.StatusOK
 	}
+	if result.Created {
+		// The publish has committed. Pruning is housekeeping after it: its
+		// own transaction, and it never fails the publish.
+		operations.PruneAfterPublish(ctx, s.UoW, s.Repo, s.Artifacts, in.ID, s.KeepVersions, ec)
+	}
 	return &publishVersionOutput{Body: versionResponse(result.Version), Status: status}, nil
 }
 
@@ -377,6 +386,38 @@ func (s *State) getVersion(ctx context.Context, in *versionPathInput) (*apicommo
 		return nil, err
 	}
 	return &apicommon.Out[VersionResponse]{Body: versionResponse(*v)}, nil
+}
+
+type pruneVersionsInput struct {
+	ID   string `path:"id"`
+	Body PruneVersionsRequest
+}
+
+// pruneVersions is the manual form of the post-publish pruning: same
+// selection and protections, optionally with its own keep and as a dry run.
+func (s *State) pruneVersions(ctx context.Context, in *pruneVersionsInput) (*apicommon.Out[PruneVersionsResponse], error) {
+	if err := auth.CanWriteFunctions(auth.FromContext(ctx)); err != nil {
+		return nil, err
+	}
+	keep := s.KeepVersions
+	if keep < 1 {
+		keep = function.DefaultKeepVersions
+	}
+	if in.Body.Keep != nil {
+		keep = *in.Body.Keep
+	}
+	ec := auth.NewExecutionContext(ctx)
+	res, err := usecaseop.RunTx(ctx, s.UoW, operations.PruneVersions(s.Repo),
+		operations.PruneCommand{FunctionID: in.ID, Keep: keep, DryRun: in.Body.DryRun}, ec)
+	if err != nil {
+		return nil, err
+	}
+	out := PruneVersionsResponse{Keep: res.Keep, DryRun: res.DryRun, Untagged: res.Untagged, Pruned: []PrunedVersionResponse{}}
+	for _, p := range res.Pruned {
+		out.Pruned = append(out.Pruned, PrunedVersionResponse{Number: p.Number, Digest: p.Digest})
+	}
+	out.ArtifactsDeleted = len(operations.DeleteReleasedArtifacts(ctx, s.Repo, s.Artifacts, res.ReleasedDigests))
+	return &apicommon.Out[PruneVersionsResponse]{Body: out}, nil
 }
 
 func (s *State) retireVersion(ctx context.Context, in *versionPathInput) (*apicommon.Out[VersionResponse], error) {
