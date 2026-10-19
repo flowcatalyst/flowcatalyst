@@ -527,6 +527,11 @@ COMPLETED and in-flight jobs (send it as `confirmCount`; a redrive confirms
 `409 FILTER_MATCH_CHANGED`, whose `details` also carry `completedCount`,
 `inFlightCount`, `redriveEligibleCount`.
 
+The requeue emits one `platform:messaging:dispatch-jobs:resent` event whose data is
+only `{ids: string[]}`. The redrive mark lives in the audit row's operation JSON
+(`redriveCompleted`, `confirmRedriveCompleted`); the skipped counts are in the HTTP
+response.
+
 **Permissions.** `view` is read-only. `platform:messaging:dispatch-job:requeue`
 gates both requeue endpoints (the preview also admits `view`);
 `...:redrive-completed` is additionally required when `redriveCompleted` is true

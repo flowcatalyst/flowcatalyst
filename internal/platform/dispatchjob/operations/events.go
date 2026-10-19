@@ -17,7 +17,6 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
 
@@ -73,9 +72,9 @@ func (DispatchJobCompleted) EventType() string { return DispatchJobCompletedType
 // affected ids, not just a count) since the wire response reports the
 // actual reset count and an operator wants to know which ones.
 //
-// IDs are every job reset. Redrive is true (and Redriven lists the ids) when
-// the run re-delivered COMPLETED jobs, the dangerous case an audit reader
-// filters on. Skipped are the jobs found and left alone by the status guard.
+// The event data is only the ids reset. Redrive, Redriven and Skipped are
+// not serialized: they are the use case's result for the HTTP response
+// bodies; the redrive mark is recorded in the audit row's operation JSON.
 type DispatchJobsResent struct {
 	Metadata usecase.EventMetadata
 	IDs      []string
@@ -96,22 +95,9 @@ func (e DispatchJobsResent) CausationID() string   { return e.Metadata.Causation
 func (e DispatchJobsResent) ExecutionID() string   { return e.Metadata.ExecutionID }
 func (e DispatchJobsResent) MessageGroup() string  { return "platform:dispatchjobs:resent" }
 func (e DispatchJobsResent) ToDataJSON() ([]byte, error) {
-	var inFlight, completed int
-	for _, s := range e.Skipped {
-		if s.Reason == dispatchjob.SkipInFlight {
-			inFlight++
-		} else {
-			completed++
-		}
-	}
 	return json.Marshal(struct {
-		IDs              []string `json:"ids"`
-		Redrive          bool     `json:"redrive"`
-		RedrivenCount    int      `json:"redrivenCount"`
-		RedrivenIDs      []string `json:"redrivenIds,omitempty"`
-		SkippedInFlight  int      `json:"skippedInFlight"`
-		SkippedCompleted int      `json:"skippedCompleted"`
-	}{e.IDs, e.Redrive, len(e.Redriven), e.Redriven, inFlight, completed})
+		IDs []string `json:"ids"`
+	}{e.IDs})
 }
 
 // DispatchJobPayloadEdited is emitted when an operator rewrites a job's

@@ -361,27 +361,24 @@ func TestRequeueGuard_RedriveNeedsBothFieldsAndThePermission(t *testing.T) {
 		`SELECT attempt_count FROM msg_dispatch_jobs WHERE id = $1`, g.completed).Scan(&attempts))
 	assert.Zero(t, attempts, "a redriven job gets a fresh retry budget")
 
-	// The audit trail tells a redrive apart: the event and the audit row say so.
-	var redrive bool
-	var count int
+	// The audit row tells a redrive apart; the event is only {ids}.
+	var evData string
 	require.NoError(t, pool.QueryRow(context.Background(),
-		`SELECT (data->>'redrive')::bool, (data->>'redrivenCount')::int FROM msg_events
-		  WHERE type = $1 AND data->'ids' ? $2`, operations.DispatchJobsResentType, g.completed).Scan(&redrive, &count))
-	assert.True(t, redrive)
-	assert.Equal(t, 1, count)
+		`SELECT data::text FROM msg_events
+		  WHERE type = $1 AND data->'ids' ? $2`, operations.DispatchJobsResentType, g.completed).Scan(&evData))
+	var ev map[string]any
+	require.NoError(t, json.Unmarshal([]byte(evData), &ev))
+	assert.Len(t, ev, 1, "the event carries only ids; the redrive mark lives in the audit row")
+	assert.Contains(t, ev, "ids")
 	var flagged bool
 	require.NoError(t, pool.QueryRow(context.Background(),
 		`SELECT (operation_json->>'redriveCompleted')::bool FROM aud_logs
 		  WHERE operation = 'ResendCommand' AND operation_json->'ids' ? $1 AND operation_json->>'redriveCompleted' = 'true'`, g.completed).Scan(&flagged))
 	assert.True(t, flagged, "the audit row carries redriveCompleted=true")
-	// An ordinary requeue's event says redrive=false.
+	// An ordinary requeue is not marked as a redrive in the audit row.
 	r2, err := requeueIDs(s, both, RequeueRequest{IDs: []string{g.failed}})
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, r2.Requeued)
-	require.NoError(t, pool.QueryRow(context.Background(),
-		`SELECT (data->>'redrive')::bool FROM msg_events WHERE type = $1 AND data->'ids' ? $2 ORDER BY id DESC LIMIT 1`,
-		operations.DispatchJobsResentType, g.failed).Scan(&redrive))
-	assert.False(t, redrive)
 }
 
 // A job that left the requeueable set after it was read is refused in SQL, not

@@ -90,8 +90,7 @@ flowchart LR
   with redriveCompleted and confirmRedriveCompleted"). The preview reports
   `completedCount` and `inFlightCount` apart from `eligibleCount`, and
   `redriveEligibleCount` (the `confirmCount` of a request that also redrives). A
-  redrive is recorded as such: the event `platform:messaging:dispatch-jobs:resent`
-  carries `redrive: true` and `redrivenCount`, and the audit row's operation JSON
+  redrive is recorded as such in the audit row, whose operation JSON
   carries `redriveCompleted: true`.
 - **Permissions.** Reading stays `platform:messaging:dispatch-job:view`. Each
   write has its own permission: `dispatch-job:requeue` (requeue by ids or by
