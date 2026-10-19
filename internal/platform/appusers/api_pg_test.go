@@ -205,10 +205,13 @@ func (f *fixture) idsOf(keys ...string) []string {
 	return out
 }
 
-func forbidden(t *testing.T, err error, app string) {
+// appNotFound asserts the one answer for an application that is not the
+// caller's (F32): 404 Application_NOT_FOUND, the same for another application's
+// code, an unbound credential and an unknown code.
+func appNotFound(t *testing.T, err error, app string) {
 	t.Helper()
-	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "FORBIDDEN")
-	assert.Contains(t, err.Error(), "Not authorised for application '"+app+"'")
+	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Application_NOT_FOUND")
+	assert.Contains(t, err.Error(), "Application not found: "+app)
 }
 
 // The users visible to an application: CLIENT users at its enabled clients
@@ -323,12 +326,12 @@ func TestAppUsers_ApplicationBinding(t *testing.T) {
 	}
 	for name, call := range calls {
 		t.Run(name, func(t *testing.T) {
-			forbidden(t, call(otherSvc, f.own), f.own)
-			forbidden(t, call(unbound, f.own), f.own)
+			appNotFound(t, call(otherSvc, f.own), f.own)
+			appNotFound(t, call(unbound, f.own), f.own)
 			// An application that does not exist answers a scoped caller the
-			// same 403, so it cannot probe which applications exist.
-			forbidden(t, call(otherSvc, "nosuchapp"), "nosuchapp")
-			// A caller reaching every application gets the 404.
+			// same 404, so it cannot probe which applications exist.
+			appNotFound(t, call(otherSvc, "nosuchapp"), "nosuchapp")
+			// A caller reaching every application gets the same 404.
 			admin := f.ctx(&auth.AuthContext{PrincipalID: "prn_a", Scope: auth.ScopeAnchor, Permissions: f.allPerms(), AllApplications: true})
 			testpg.RequireUsecaseError(t, call(admin, "nosuchapp"), usecase.KindNotFound, "Application_NOT_FOUND")
 		})
@@ -542,7 +545,7 @@ func TestAppUsers_Invite(t *testing.T) {
 	t.Run("a user of the other application cannot be invited here by an other-bound caller", func(t *testing.T) {
 		otherSvc := f.ctx(&auth.AuthContext{PrincipalID: "prn_o", Scope: auth.ScopeAnchor, Permissions: f.allPerms(), Applications: []string{f.otherID}})
 		_, err := f.s.invite(otherSvc, &inviteInput{AppCode: f.own, Body: InviteApplicationUserRequest{Email: "x2@example.test", Name: "X", ClientID: f.c1, Roles: []string{f.own + ":clerk"}}})
-		forbidden(t, err, f.own)
+		appNotFound(t, err, f.own)
 		assert.Zero(t, f.countUsers("x2@example.test"))
 	})
 }

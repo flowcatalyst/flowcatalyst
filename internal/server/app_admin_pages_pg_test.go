@@ -156,7 +156,7 @@ func TestApplicationAdminPagesEndToEnd(t *testing.T) {
 	code, _ = do("POST", "/api/applications/"+own+"/users", `{"email":"x@example.test","name":"X","clientId":"`+clientID+`","roles":[]}`)
 	assert.Equal(t, 400, code)
 
-	// another application: refused with the syncs' shape
+	// another application, or none: 404, the same for both (F32)
 	for _, c := range []struct{ m, p, b string }{
 		{"GET", "/api/applications/" + other + "/users", ""},
 		{"GET", "/api/applications/" + other + "/invitations", ""},
@@ -164,8 +164,8 @@ func TestApplicationAdminPagesEndToEnd(t *testing.T) {
 		{"GET", "/api/applications/nosuchapp" + sfx + "/users", ""},
 	} {
 		code, body = do(c.m, c.p, c.b)
-		assert.Equal(t, 403, code, "%s %s: %s", c.m, c.p, body)
-		assert.Contains(t, body, "Not authorised for application")
+		assert.Equal(t, 404, code, "%s %s: %s", c.m, c.p, body)
+		assert.Contains(t, body, "Application_NOT_FOUND")
 	}
 }
 

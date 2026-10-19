@@ -169,29 +169,30 @@ type ResendInvitationResponse struct {
 
 // ── access ───────────────────────────────────────────────────────────────
 
-func forbidApp(code string) error {
-	return httperror.Forbidden("Not authorised for application '" + code + "'")
+// notFoundApp is the one answer for every way the application in the path is
+// not the caller's: it does not exist, it is another application's, or the
+// credential is bound to none. Distinguishing them would let a credential probe
+// which applications exist (F32; the same principle as F23).
+func notFoundApp(code string) error {
+	return httperror.NotFound("Application", code)
 }
 
 // access resolves the application in the path and enforces the application
 // binding (the SDK syncs' rule, sdksync.requireAppAccess) and returns the
-// caller's scope over its users. For an application-scoped caller an unknown
-// code and another application's code are the same 403, so the answer does not
-// say which applications exist; a caller that reaches every application gets
-// the 404 for an unknown one.
+// caller's scope over its users. An unknown code, another
+// application's code and an unbound credential are all the same 404
+// Application_NOT_FOUND (F32), so the answer does not say which applications
+// exist.
 func (s *State) access(ctx context.Context, ac *auth.AuthContext, code string) (*application.Application, Scope, error) {
 	app, err := s.Apps.FindByCode(ctx, code)
 	if err != nil {
 		return nil, Scope{}, usecase.Internal("REPO", "find_by_code failed", err)
 	}
 	if app == nil {
-		if ac.IsApplicationScoped() {
-			return nil, Scope{}, forbidApp(code)
-		}
-		return nil, Scope{}, httperror.NotFound("Application", code)
+		return nil, Scope{}, notFoundApp(code)
 	}
 	if !ac.CanAccessApplication(string(app.ID)) {
-		return nil, Scope{}, forbidApp(code)
+		return nil, Scope{}, notFoundApp(code)
 	}
 	sc := Scope{ApplicationID: string(app.ID), ApplicationCode: app.Code}
 	if !ac.IsAnchor() {

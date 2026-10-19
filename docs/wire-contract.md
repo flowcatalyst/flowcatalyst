@@ -379,11 +379,11 @@ the built-in `platform:application-service` role (migration 080).
 
 **Confinement, all routes.**
 `{appCode}` routes: a bound application passes. Another application's code,
-an unbound credential, and (for any application-scoped credential) a code that
-names no application, all answer
-`403 {"error":"FORBIDDEN","message":"Not authorised for application '<code>'"}`,
-the SDK syncs' shape, so the answer does not say which applications exist. A
-credential reaching every application gets `404` for an unknown code.
+an unbound credential, and a code that names no application all answer the
+same `404 {"error":"Application_NOT_FOUND","message":"Application not found: <code>"}`
+(F32), so the answer does not say which applications exist. (The SDK sync
+routes `/api/applications/{appCode}/*/sync` keep their own
+`403 FORBIDDEN "Not authorised for application '<code>'"`.)
 Records outside the application answer the same `404` a missing id would
 (`Event_NOT_FOUND`, `DispatchJob_NOT_FOUND`, `User_NOT_FOUND`,
 `Invitation_NOT_FOUND`).

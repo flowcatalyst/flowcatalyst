@@ -1807,8 +1807,8 @@ Client reach (`scopeFilters`) stays on top. Ownership predicates:
 | invitation | an owned user who is active, INTERNAL, has no password and no external identity (the platform's `passwordSetupEligible`); PENDING while an invite token is unexpired, else EXPIRED | same |
 
 By id, a record outside the application answers the same `404` a missing id would (the PR-3(b)
-posture). `{appCode}` routes answer a foreign code, an unbound credential and (scoped callers) an
-unknown code with the SDK syncs' `403 "Not authorised for application '<code>'"`.
+posture). `{appCode}` routes answered a foreign code, an unbound credential and (scoped callers) an
+unknown code with the SDK syncs' `403 "Not authorised for application '<code>'"`; changed to 404 in F32.
 
 **New permissions** (built-in `platform:application-service` role; seed + migration `080`, idempotent,
 Down removes exactly these): `platform:application-service:event:view`, `:dispatch-job:view`,
@@ -2275,6 +2275,33 @@ and, when `FC_FOREIGN_MIGRATIONS_DIR` is set, the real Rust files replayed throu
 Note for Rust when it starts on a database Go migrated: Go's `iam_login_attempts` is partitioned and its enum
 CHECK constraints exist; Go 071 prunes `platform:iam:user:password-reset-requested`, which Rust re-seeds. Go now
 tolerates `_schema_migrations` being present and leaves it untouched.
+
+### F32. Application admin routes answer 404 for every application that is not the caller's (owner ruling 2026-10-19)
+
+**Bug.** The F20 routes under `/api/applications/{appCode}/` (users, invitations) answered another
+application's code, an unbound credential and (for application-scoped callers) an unknown code with
+`403 "Not authorised for application '<code>'"`, while a credential reaching every application got
+`404` for an unknown code. A 403 for an existing application against a 404 for a missing one lets a
+credential enumerate which applications exist; the owner ruled the same principle as F23 applies.
+
+**Fix.** `appusers.State.access` answers all of them, whoever asks, with the one
+`404 Application_NOT_FOUND "Application not found: <code>"`. Missing permission is still `403`
+(checked before the application is resolved). The SDK sync routes (`/api/applications/{appCode}/*/sync`,
+`sdksync.requireAppAccess`) are a different contract and keep their 403; not in the ruling.
+
+**Tests.** `TestAppUsers_ApplicationBinding` (six routes x other application, unbound credential, unknown
+code as a scoped caller, unknown code as an all-applications caller: all `Application_NOT_FOUND`, nothing
+changed) and `TestAppUsers_Invite` (integration), `TestApplicationAdminPagesEndToEnd` over HTTP (404 body).
+All three failed before the change.
+
+**Wire impact.** None in `api/openapi.lock.json` (the operations declare only `default` errors).
+`docs/wire-contract.md` "Application admin" updated. SDK clients that special-cased 403 here: the Java SDK
+test `ApplicationAdminResourcesTest.anotherApplicationIsA403` is a mock test of the old status and was not
+changed (SDK code is not in this entry's scope; owner to decide whether SDK docs need a line).
+
+**Rust hand-off.** Wherever Rust serves the application-scoped user/invitation routes, return
+404 `Application_NOT_FOUND` for all three cases (other application, unbound credential, unknown code), for
+every caller kind, and keep 403 only for a missing permission.
 
 ## Decisions taken conservatively (owner to confirm)
 
