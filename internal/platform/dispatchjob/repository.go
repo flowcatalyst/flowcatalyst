@@ -74,6 +74,31 @@ type FilterParams struct {
 	Subdomains   []string
 	Aggregates   []string
 
+	// EventTypes keeps jobs whose code is one of them. A job's code IS its
+	// event type for a job the event fan-out raises (the event's type), and the
+	// caller's own job code for an SDK or fn.dispatch job, so this is the same
+	// column as Code/Codes under the name the event-type lens uses; both apply
+	// when both are set. Served by idx_msg_dispatch_jobs_read_code_created.
+	EventTypes []string
+	// SubscriptionIDs keeps jobs of any of these subscriptions.
+	SubscriptionIDs []string
+
+	// Subscription and connection references by name rather than id. They are
+	// resolved to ids first (Repository.ResolveRefs: one lookup on the small
+	// subscription/connection tables) so the job query is a plain
+	// subscription_id / connection_id predicate with no join. A trailing * makes
+	// the value a prefix; otherwise it is exact. Until ResolveRefs has run, a
+	// params value carrying one matches nothing (fail closed).
+	SubscriptionCode *string
+	SubscriptionName *string // case-insensitive
+	ConnectionCode   *string
+	// ConnectionID keeps the jobs delivered through this connection: jobs that
+	// name it themselves (fn.dispatch) and the jobs of its subscriptions.
+	ConnectionID *string
+
+	// refs is what ResolveRefs resolved.
+	refs *resolvedRefs
+
 	// AccessibleClientIDs: a non-nil pointer scopes results to
 	// platform-scoped jobs (client_id IS NULL) plus jobs whose client_id is
 	// in the set; nil means no access scoping (anchor). Mirrors
@@ -162,6 +187,9 @@ func (p FilterParams) where() repocommon.Filter {
 	f.Any("application", p.Applications)
 	f.Any("subdomain", p.Subdomains)
 	f.Any("aggregate", p.Aggregates)
+	f.Any("code", p.EventTypes)
+	f.Any("subscription_id", p.SubscriptionIDs)
+	p.refsWhere(&f)
 	if p.Since != nil {
 		f.Clause("created_at >= $%d", *p.Since)
 	}
@@ -276,11 +304,8 @@ const readSelect = `SELECT id, external_id, source, kind, code, subject,
 	created_at, updated_at
 	FROM msg_dispatch_jobs_read`
 
-// FindWithFilters returns dispatch jobs matching non-nil filters, ordered
-// most-recent first. Powers the frontend's job list view (GET
-// /api/dispatch-jobs). Reads the msg_dispatch_jobs_read projection — the write
-// table carries no query indexes (migration 015). Hand-rolled dynamic query.
-func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]DispatchJob, error) {
+// ListSQL renders the list statement for p, for plan tests.
+func ListSQL(p FilterParams) (string, []any) {
 	f := p.where()
 	p.cursorCond(&f)
 	// id breaks ties at the same instant, so the order is total and a
@@ -299,7 +324,16 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 	if p.Offset > 0 {
 		q += fmt.Sprintf(" OFFSET $%d", f.Arg(p.Offset))
 	}
-	rows, err := r.pool.Query(ctx, q, f.Args()...)
+	return q, f.Args()
+}
+
+// FindWithFilters returns dispatch jobs matching non-nil filters, ordered
+// most-recent first. Powers the frontend's job list view (GET
+// /api/dispatch-jobs). Reads the msg_dispatch_jobs_read projection — the write
+// table carries no query indexes (migration 015). Hand-rolled dynamic query.
+func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]DispatchJob, error) {
+	q, args := ListSQL(p)
+	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

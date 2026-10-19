@@ -2832,6 +2832,12 @@
             },
             "type": "array"
           },
+          "eventTypes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "kinds": {
             "items": {
               "type": "string"
@@ -2857,6 +2863,7 @@
         "required": [
           "statuses",
           "codes",
+          "eventTypes",
           "clientIds",
           "dispatchPoolIds",
           "subscriptionIds",
@@ -5222,7 +5229,23 @@
             "description": "CSV of codes",
             "type": "string"
           },
+          "connectionCode": {
+            "description": "Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.",
+            "type": "string"
+          },
+          "connectionId": {
+            "description": "Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).",
+            "type": "string"
+          },
           "dispatchPoolId": {
+            "type": "string"
+          },
+          "eventType": {
+            "description": "Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).",
+            "type": "string"
+          },
+          "eventTypes": {
+            "description": "CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)",
             "type": "string"
           },
           "messageGroup": {
@@ -5248,7 +5271,19 @@
             "description": "CSV of subdomains",
             "type": "string"
           },
+          "subscriptionCode": {
+            "description": "Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.",
+            "type": "string"
+          },
           "subscriptionId": {
+            "type": "string"
+          },
+          "subscriptionIds": {
+            "description": "CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.",
+            "type": "string"
+          },
+          "subscriptionName": {
+            "description": "Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.",
             "type": "string"
           },
           "until": {
@@ -5363,7 +5398,23 @@
             "description": "The literal REDRIVE, confirming redriveCompleted.",
             "type": "string"
           },
+          "connectionCode": {
+            "description": "Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.",
+            "type": "string"
+          },
+          "connectionId": {
+            "description": "Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).",
+            "type": "string"
+          },
           "dispatchPoolId": {
+            "type": "string"
+          },
+          "eventType": {
+            "description": "Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).",
+            "type": "string"
+          },
+          "eventTypes": {
+            "description": "CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)",
             "type": "string"
           },
           "limit": {
@@ -5400,7 +5451,19 @@
             "description": "CSV of subdomains",
             "type": "string"
           },
+          "subscriptionCode": {
+            "description": "Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.",
+            "type": "string"
+          },
           "subscriptionId": {
+            "type": "string"
+          },
+          "subscriptionIds": {
+            "description": "CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.",
+            "type": "string"
+          },
+          "subscriptionName": {
+            "description": "Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.",
             "type": "string"
           },
           "until": {

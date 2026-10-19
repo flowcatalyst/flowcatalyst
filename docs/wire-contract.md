@@ -483,6 +483,34 @@ windowed (a single job or event already bounds them): `GET /api/dispatch-jobs/{i
 `/{id}/raw`, `/{id}/attempts`, `/event/{eventId}` (`/by-event/{eventId}`),
 `POST /{id}/sign`, and the write actions on one job.
 
+**Event type, subscription and connection filters (migration 086).** New filter
+fields on the list (`GET /api/dispatch-jobs`, `/bff/dispatch-jobs`, `/list-raw`)
+and, under the same names, in the bodies of `requeue-by-filter/preview` and
+`requeue-by-filter`:
+
+| field | meaning |
+|---|---|
+| `eventType` | exact event type; filters `code` (a job's `code` is its event type for an event-raised job and the caller's job code for an SDK or `fn.dispatch` job; no separate column exists) |
+| `eventTypes` | CSV, at most 10 (`400 TOO_MANY_EVENT_TYPES`); with `eventType` and `codes` all must hold |
+| `subscriptionIds` | CSV, at most 50 (`400 TOO_MANY_SUBSCRIPTION_IDS`); with `subscriptionId` both must hold |
+| `subscriptionCode`, `subscriptionName` | exact; trailing `*` = prefix; name case-insensitive. Resolved to subscription ids first (within the caller's tenants), then `subscription_id = ANY(ids)`; no match = empty list; over 200 matches = `400 TOO_MANY_MATCHES` |
+| `connectionId`, `connectionCode` | jobs of the connection's subscriptions plus jobs whose own `connection_id` is the connection (function dispatch). Code is resolved like the names (over 50 connections = `400 TOO_MANY_MATCHES`) |
+
+`GET /api/dispatch-jobs/filter-options` gains `eventTypes` (same list as `codes`),
+is cached per (tenant scope, window bucket) for 60 seconds, and still reads
+distinct values from the window rather than the event-type catalogue (events may
+be emitted unregistered; a direct job's code is not an event type).
+
+Schema (all implementations sharing the database): `msg_dispatch_jobs_read`
+gains `connection_id VARCHAR(17)` (projected verbatim from `msg_dispatch_jobs.connection_id`,
+set in the projector's insert and its `ON CONFLICT DO UPDATE`; NULL for event-raised
+jobs). Indexes on the read table: `(code, created_at DESC)` replaces the
+single-column `code` index, `(subscription_id, created_at DESC)` replaces the
+single-column `subscription_id` index, and a new partial
+`(connection_id, created_at DESC) WHERE connection_id IS NOT NULL`.
+Rows projected before the migration keep `connection_id` NULL until their next
+projection (or the optional backfill in `scripts/ops/086-dispatch-read-indexes-online.sql`).
+
 **Requeue guard.** `POST /api/dispatch-jobs/requeue` and
 `POST /api/dispatch-jobs/requeue-by-filter` reset `PENDING`, `FAILED` (`ERROR`),
 `CANCELLED`, `EXPIRED` jobs. `QUEUED`, `PROCESSING` (`IN_PROGRESS`) are never

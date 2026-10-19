@@ -86,7 +86,7 @@ func (p *DispatchJobProjection) step(ctx context.Context, batchSize int) (int, e
 		     attempt_count, last_attempt_at, completed_at, duration_millis, last_error,
 		     idempotency_key, is_completed, is_terminal,
 		     application, subdomain, aggregate,
-		     descriptor, metadata,
+		     descriptor, metadata, connection_id,
 		     created_at, updated_at, projected_at)
 		 SELECT j.id, j.external_id, j.source, j.kind, j.code, j.subject,
 		        j.event_id, j.correlation_id, j.target_url, j.protocol,
@@ -107,7 +107,7 @@ func (p *DispatchJobProjection) step(ctx context.Context, batchSize int) (int, e
 		        split_part(j.code, ':', 1),
 		        NULLIF(split_part(j.code, ':', 2), ''),
 		        NULLIF(split_part(j.code, ':', 3), ''),
-		        j.descriptor, j.metadata,
+		        j.descriptor, j.metadata, j.connection_id,
 		        j.created_at, j.updated_at, NOW()
 		   FROM msg_dispatch_jobs j
 		  WHERE j.id = ANY($1)
@@ -121,6 +121,7 @@ func (p *DispatchJobProjection) step(ctx context.Context, batchSize int) (int, e
 		     last_error = EXCLUDED.last_error,
 		     is_completed = EXCLUDED.is_completed,
 		     is_terminal = EXCLUDED.is_terminal,
+		     connection_id = EXCLUDED.connection_id,
 		     updated_at = EXCLUDED.updated_at,
 		     projected_at = NOW()`, ids, minCreated, maxCreated); err != nil {
 		return 0, fmt.Errorf("insert read: %w", err)

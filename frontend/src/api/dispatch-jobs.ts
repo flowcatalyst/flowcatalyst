@@ -49,6 +49,18 @@ export interface DispatchJobsListParams {
 	source?: string | undefined;
 	/** Exact message group. */
 	messageGroup?: string | undefined;
+	/** Event types (a job's code is its event type); at most 10. Served by an index that also orders by createdAt. */
+	eventTypes?: string[] | undefined;
+	/** Subscription ids; at most 50. */
+	subscriptionIds?: string[] | undefined;
+	/** Subscription code, exact; a trailing * makes it a prefix. Resolved to ids server-side. */
+	subscriptionCode?: string | undefined;
+	/** Subscription name, exact and case-insensitive; a trailing * makes it a prefix. */
+	subscriptionName?: string | undefined;
+	/** Jobs delivered through this connection (its subscriptions' jobs and function dispatches). */
+	connectionId?: string | undefined;
+	/** Connection code, exact; a trailing * makes it a prefix. */
+	connectionCode?: string | undefined;
 	/** RFC3339 lower bound on createdAt. */
 	since?: string | undefined;
 	/** RFC3339 upper bound on createdAt. */
@@ -75,6 +87,12 @@ export function filterBody(params: DispatchJobsListParams): DispatchJobFilterBod
 	if (params.codes?.length) body.codes = params.codes.join(",");
 	if (params.source) body.source = params.source;
 	if (params.messageGroup) body.messageGroup = params.messageGroup;
+	if (params.eventTypes?.length) body.eventTypes = params.eventTypes.join(",");
+	if (params.subscriptionIds?.length) body.subscriptionIds = params.subscriptionIds.join(",");
+	if (params.subscriptionCode) body.subscriptionCode = params.subscriptionCode;
+	if (params.subscriptionName) body.subscriptionName = params.subscriptionName;
+	if (params.connectionId) body.connectionId = params.connectionId;
+	if (params.connectionCode) body.connectionCode = params.connectionCode;
 	if (params.since) body.since = params.since;
 	if (params.until) body.until = params.until;
 	return body;

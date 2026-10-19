@@ -61,6 +61,23 @@ flowchart LR
   requeue-by-filter bodies). A window wider than the maximum (31 days by default;
   `FC_DISPATCH_JOB_MAX_WINDOW_DAYS`) is `400 WINDOW_TOO_LARGE`. Lookups keyed by
   one job or one event are not windowed: by id, by event id, attempts, sign.
+- **Filtering by event type, subscription and connection.** A dispatch job's
+  `code` is its event type for a job an event raised, and the caller's own job
+  code for a job created through the API or a function's `fn.dispatch`. The list
+  (and the same filter on `/list-raw` and in the
+  requeue-by-filter preview and run bodies) filters on it with `eventType` (one) and
+  `eventTypes` (comma-separated, at most 10) alongside the older `code` / `codes`.
+  Subscriptions: `subscriptionId`, `subscriptionIds` (at most 50),
+  `subscriptionCode` and `subscriptionName` (exact; a trailing `*` makes it a
+  prefix; name is case-insensitive). Connections: `connectionId`, `connectionCode`
+  (a connection's jobs are those of its subscriptions plus jobs that name the
+  connection themselves). Names and codes are looked up first, within the
+  caller's own tenants, and the job query is then a plain id match: a name that
+  matches nothing returns an empty list, a name that matches more than 200
+  subscriptions (50 connections) is `400 TOO_MANY_MATCHES`. All filters combine
+  (each must hold) and stay inside the time window. `filter-options` lists
+  `eventTypes` (= `codes`) from the jobs of the window; it is cached for a minute
+  per tenant scope and window.
 - **What a requeue will and will not reset.** Requeue (by ids, by filter, or one
   job) resets `PENDING`, `FAILED`, `CANCELLED` and `EXPIRED` jobs to `PENDING`.
   A `QUEUED` or `PROCESSING` job is in flight and is **never** reset — it is

@@ -362,8 +362,11 @@ type DispatchJobListResponse struct {
 
 // DispatchJobFilterOptionsResponse is the wire shape for GET /api/dispatch-jobs/filter-options.
 type DispatchJobFilterOptionsResponse struct {
-	Statuses        []string `json:"statuses"`
-	Codes           []string `json:"codes"`
+	Statuses []string `json:"statuses"`
+	Codes    []string `json:"codes"`
+	// EventTypes is the same list as Codes under the name the event-type filter uses
+	// (a job's code is its event type).
+	EventTypes      []string `json:"eventTypes"`
 	ClientIDs       []string `json:"clientIds"`
 	DispatchPoolIDs []string `json:"dispatchPoolIds"`
 	SubscriptionIDs []string `json:"subscriptionIds"`

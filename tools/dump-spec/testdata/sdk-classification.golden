@@ -130,6 +130,7 @@ admin	POST /api/event-types	createEventType
 admin	POST /api/function-domains	createFunctionDomain
 admin	POST /api/functions	createFunction
 admin	POST /api/functions/{id}/versions	publishFunctionVersion
+admin	POST /api/functions/{id}/versions/prune	pruneFunctionVersions
 admin	POST /api/functions/{id}/versions/{number}/retire	retireFunctionVersion
 admin	POST /api/identity-providers	createIdentityProvider
 admin	POST /api/idp-role-mappings	createIdpRoleMapping
@@ -181,6 +182,7 @@ admin	PUT /api/auth-configs/{id}	updateAuthConfig
 admin	PUT /api/clients/{id}	updateClient
 admin	PUT /api/clients/{id}/applications	updateClientApplications
 admin	PUT /api/connections/{id}	updateConnection
+admin	PUT /api/dispatch-jobs/{id}/payload	editDispatchJobPayload
 admin	PUT /api/dispatch-pools/{id}	updateDispatchPool
 admin	PUT /api/email-domain-mappings/{id}	updateEmailDomainMapping
 admin	PUT /api/event-types/{id}	updateEventType

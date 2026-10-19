@@ -1547,6 +1547,7 @@ export type DispatchJobFilterOptionsResponse = {
     clientIds: Array<string>;
     codes: Array<string>;
     dispatchPoolIds: Array<string>;
+    eventTypes: Array<string>;
     kinds: Array<string>;
     statuses: Array<string>;
     subscriptionIds: Array<string>;
@@ -2895,7 +2896,23 @@ export type RequeueByFilterPreviewRequest = {
      * CSV of codes
      */
     codes?: string;
+    /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     */
+    connectionCode?: string;
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     */
+    connectionId?: string;
     dispatchPoolId?: string;
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     */
+    eventType?: string;
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     */
+    eventTypes?: string;
     /**
      * Exact message group
      */
@@ -2917,7 +2934,19 @@ export type RequeueByFilterPreviewRequest = {
      * CSV of subdomains
      */
     subdomains?: string;
+    /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     */
+    subscriptionCode?: string;
     subscriptionId?: string;
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     */
+    subscriptionIds?: string;
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     */
+    subscriptionName?: string;
     /**
      * RFC3339 timestamp
      */
@@ -2993,7 +3022,23 @@ export type RequeueByFilterRequest = {
      * The literal REDRIVE, confirming redriveCompleted.
      */
     confirmRedriveCompleted?: string;
+    /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     */
+    connectionCode?: string;
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     */
+    connectionId?: string;
     dispatchPoolId?: string;
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     */
+    eventType?: string;
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     */
+    eventTypes?: string;
     /**
      * Most jobs to reset in this request (default and maximum 10000)
      */
@@ -3023,7 +3068,19 @@ export type RequeueByFilterRequest = {
      * CSV of subdomains
      */
     subdomains?: string;
+    /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     */
+    subscriptionCode?: string;
     subscriptionId?: string;
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     */
+    subscriptionIds?: string;
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     */
+    subscriptionName?: string;
     /**
      * RFC3339 timestamp
      */
@@ -5327,6 +5384,7 @@ export type DispatchJobFilterOptionsResponseWritable = {
     clientIds: Array<string>;
     codes: Array<string>;
     dispatchPoolIds: Array<string>;
+    eventTypes: Array<string>;
     kinds: Array<string>;
     statuses: Array<string>;
     subscriptionIds: Array<string>;
@@ -6058,7 +6116,23 @@ export type RequeueByFilterPreviewRequestWritable = {
      * CSV of codes
      */
     codes?: string;
+    /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     */
+    connectionCode?: string;
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     */
+    connectionId?: string;
     dispatchPoolId?: string;
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     */
+    eventType?: string;
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     */
+    eventTypes?: string;
     /**
      * Exact message group
      */
@@ -6080,7 +6154,19 @@ export type RequeueByFilterPreviewRequestWritable = {
      * CSV of subdomains
      */
     subdomains?: string;
+    /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     */
+    subscriptionCode?: string;
     subscriptionId?: string;
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     */
+    subscriptionIds?: string;
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     */
+    subscriptionName?: string;
     /**
      * RFC3339 timestamp
      */
@@ -6148,7 +6234,23 @@ export type RequeueByFilterRequestWritable = {
      * The literal REDRIVE, confirming redriveCompleted.
      */
     confirmRedriveCompleted?: string;
+    /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     */
+    connectionCode?: string;
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     */
+    connectionId?: string;
     dispatchPoolId?: string;
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     */
+    eventType?: string;
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     */
+    eventTypes?: string;
     /**
      * Most jobs to reset in this request (default and maximum 10000)
      */
@@ -6178,7 +6280,19 @@ export type RequeueByFilterRequestWritable = {
      * CSV of subdomains
      */
     subdomains?: string;
+    /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     */
+    subscriptionCode?: string;
     subscriptionId?: string;
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     */
+    subscriptionIds?: string;
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     */
+    subscriptionName?: string;
     /**
      * RFC3339 timestamp
      */
@@ -9294,6 +9408,34 @@ export type ListDispatchJobsData = {
          * Free-text source filter
          */
         source?: string;
+        /**
+         * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+         */
+        eventType?: string;
+        /**
+         * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+         */
+        eventTypes?: string;
+        /**
+         * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+         */
+        subscriptionIds?: string;
+        /**
+         * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+         */
+        subscriptionCode?: string;
+        /**
+         * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+         */
+        subscriptionName?: string;
+        /**
+         * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+         */
+        connectionId?: string;
+        /**
+         * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+         */
+        connectionCode?: string;
         limit?: number;
         offset?: number;
         /**
@@ -9513,6 +9655,34 @@ export type ListDispatchJobsRawData = {
          * Free-text source filter
          */
         source?: string;
+        /**
+         * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+         */
+        eventType?: string;
+        /**
+         * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+         */
+        eventTypes?: string;
+        /**
+         * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+         */
+        subscriptionIds?: string;
+        /**
+         * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+         */
+        subscriptionCode?: string;
+        /**
+         * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+         */
+        subscriptionName?: string;
+        /**
+         * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+         */
+        connectionId?: string;
+        /**
+         * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+         */
+        connectionCode?: string;
         limit?: number;
         offset?: number;
         /**
@@ -9594,6 +9764,34 @@ export type ListDispatchJobsRawAliasData = {
          * Free-text source filter
          */
         source?: string;
+        /**
+         * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+         */
+        eventType?: string;
+        /**
+         * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+         */
+        eventTypes?: string;
+        /**
+         * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+         */
+        subscriptionIds?: string;
+        /**
+         * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+         */
+        subscriptionCode?: string;
+        /**
+         * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+         */
+        subscriptionName?: string;
+        /**
+         * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+         */
+        connectionId?: string;
+        /**
+         * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+         */
+        connectionCode?: string;
         limit?: number;
         offset?: number;
         /**

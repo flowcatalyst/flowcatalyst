@@ -51,6 +51,9 @@ type State struct {
 	// for (FC_DISPATCH_JOB_MAX_WINDOW_DAYS); < 1 means
 	// dispatchjob.DefaultMaxWindowDays.
 	MaxWindowDays int
+
+	// filterOptions keeps the filter-options answers for a short time.
+	foCache filterOptionsCache
 }
 
 // window holds f to the time window every list-shaped read carries and reports
@@ -202,7 +205,21 @@ type DispatchJobFilter struct {
 	Aggregates     string `query:"aggregates" json:"aggregates,omitempty" doc:"CSV of aggregates"`
 	Codes          string `query:"codes" json:"codes,omitempty" doc:"CSV of codes"`
 	Source         string `query:"source" json:"source,omitempty" doc:"Free-text source filter"`
+
+	EventType        string `query:"eventType" json:"eventType,omitempty" doc:"Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold)."`
+	EventTypes       string `query:"eventTypes" json:"eventTypes,omitempty" doc:"CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)"`
+	SubscriptionIDs  string `query:"subscriptionIds" json:"subscriptionIds,omitempty" doc:"CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId."`
+	SubscriptionCode string `query:"subscriptionCode" json:"subscriptionCode,omitempty" doc:"Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs."`
+	SubscriptionName string `query:"subscriptionName" json:"subscriptionName,omitempty" doc:"Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode."`
+	ConnectionID     string `query:"connectionId" json:"connectionId,omitempty" doc:"Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch)."`
+	ConnectionCode   string `query:"connectionCode" json:"connectionCode,omitempty" doc:"Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs."`
 }
+
+// Caps on the multi-value filters, so one request cannot ship an unbounded ANY list.
+const (
+	maxEventTypes      = 10
+	maxSubscriptionIDs = 50
+)
 
 type listInput struct {
 	DispatchJobFilter
@@ -232,6 +249,19 @@ func splitCSV(s string) []string {
 // 400: the list ignores one (and shows more rows), but a bulk requeue that
 // silently dropped a bound would reset more jobs than the caller asked for.
 func (in *DispatchJobFilter) toParams(strict bool) (dispatchjob.FilterParams, error) {
+	eventTypes := splitCSV(in.EventTypes)
+	if in.EventType != "" && !slices.Contains(eventTypes, in.EventType) {
+		eventTypes = append(eventTypes, in.EventType)
+	}
+	if len(eventTypes) > maxEventTypes {
+		return dispatchjob.FilterParams{}, usecase.Validation("TOO_MANY_EVENT_TYPES",
+			"at most "+strconv.Itoa(maxEventTypes)+" event types may be filtered at once")
+	}
+	subIDs := splitCSV(in.SubscriptionIDs)
+	if len(subIDs) > maxSubscriptionIDs {
+		return dispatchjob.FilterParams{}, usecase.Validation("TOO_MANY_SUBSCRIPTION_IDS",
+			"at most "+strconv.Itoa(maxSubscriptionIDs)+" subscription ids may be filtered at once")
+	}
 	var bad error
 	ts := func(name, v string) *time.Time {
 		if v == "" {
@@ -262,6 +292,13 @@ func (in *DispatchJobFilter) toParams(strict bool) (dispatchjob.FilterParams, er
 		Subdomains:     splitCSV(in.Subdomains),
 		Aggregates:     splitCSV(in.Aggregates),
 		Codes:          splitCSV(in.Codes),
+
+		EventTypes:       eventTypes,
+		SubscriptionIDs:  subIDs,
+		SubscriptionCode: apicommon.OptStr(strings.TrimSpace(in.SubscriptionCode)),
+		SubscriptionName: apicommon.OptStr(strings.TrimSpace(in.SubscriptionName)),
+		ConnectionID:     apicommon.OptStr(in.ConnectionID),
+		ConnectionCode:   apicommon.OptStr(strings.TrimSpace(in.ConnectionCode)),
 	}
 	if strict && bad != nil {
 		return dispatchjob.FilterParams{}, bad
@@ -269,8 +306,11 @@ func (in *DispatchJobFilter) toParams(strict bool) (dispatchjob.FilterParams, er
 	return p, nil
 }
 
-func (in *listInput) toFilters() dispatchjob.FilterParams {
-	p, _ := in.toParams(false)
+func (in *listInput) toFilters() (dispatchjob.FilterParams, error) {
+	p, err := in.toParams(false)
+	if err != nil {
+		return p, err
+	}
 	// `size` (SPA) and `limit` (SDK) both cap rows; size wins when set.
 	p.Limit = in.Limit
 	if in.Size > 0 {
@@ -278,7 +318,29 @@ func (in *listInput) toFilters() dispatchjob.FilterParams {
 	}
 	p.Offset = in.Offset
 	p.SortAscending = in.Sort == "createdAt.asc"
-	return p
+	return p, nil
+}
+
+// listFilters is the list's filter for ac: the query's filter, tenant-scoped, with its
+// by-name references resolved (a lookup scoped to the caller's own tenants) and held to
+// the time window.
+func (s *State) listFilters(ctx context.Context, ac *auth.AuthContext, in *listInput) (dispatchjob.FilterParams, dispatchjob.Window, error) {
+	f, err := in.toFilters()
+	if err != nil {
+		return f, dispatchjob.Window{}, err
+	}
+	return s.scoped(ctx, ac, f)
+}
+
+// scoped scopes f to ac's tenants, resolves its by-name references and holds it to the
+// time window — the order every list-shaped read takes.
+func (s *State) scoped(ctx context.Context, ac *auth.AuthContext, f dispatchjob.FilterParams) (dispatchjob.FilterParams, dispatchjob.Window, error) {
+	f, win, err := s.window(scopeFilters(ac, f))
+	if err != nil {
+		return f, win, err
+	}
+	f, err = s.Repo.ResolveRefs(ctx, f)
+	return f, win, err
 }
 
 // scopeFilters applies SQL-side tenant scoping (anchor sees all → no
@@ -343,7 +405,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*DispatchJobListOut, e
 	if err != nil {
 		return nil, err
 	}
-	f, win, err := s.window(scopeFilters(ac, in.toFilters()))
+	f, win, err := s.listFilters(ctx, ac, in)
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +423,7 @@ func (s *State) listRaw(ctx context.Context, in *listInput) (*DispatchJobListOut
 	if err := auth.CanWritePermission(ac, viewRawPerm); err != nil {
 		return nil, err
 	}
-	f, win, err := s.window(scopeFilters(ac, in.toFilters()))
+	f, win, err := s.listFilters(ctx, ac, in)
 	if err != nil {
 		return nil, err
 	}
@@ -641,7 +703,7 @@ func (s *State) requeueByFilterPreview(ctx context.Context, in *apicommon.In[Req
 	if err != nil {
 		return nil, err
 	}
-	f, win, err := s.window(f)
+	f, win, err := s.scoped(ctx, ac, f)
 	if err != nil {
 		return nil, err
 	}
@@ -669,7 +731,7 @@ func (s *State) requeueByFilter(ctx context.Context, in *apicommon.In[RequeueByF
 	if err != nil {
 		return nil, err
 	}
-	f, win, err := s.window(f)
+	f, win, err := s.scoped(ctx, ac, f)
 	if err != nil {
 		return nil, err
 	}
@@ -780,17 +842,36 @@ func (s *State) filterOptions(ctx context.Context, in *filterOptionsInput) (*api
 	// Scoped as the list is: a client user sees the values of platform jobs
 	// and its own tenants' jobs only.
 	scope := operations.VisibleTo(ac, dispatchjob.FilterParams{}).AccessibleClientIDs
+	now := time.Now()
+	key := filterOptionsKey(scope, win.From, win.To)
+	if cached, ok := s.foCache.get(key, now); ok {
+		return &apicommon.Out[DispatchJobFilterOptionsResponse]{Body: cached}, nil
+	}
+	failed := false
 	q := func(col string) []string {
-		out, _ := s.Repo.DistinctValues(ctx, col, 200, scope, f.Since, f.Until)
+		out, err := s.Repo.DistinctValues(ctx, col, 200, scope, f.Since, f.Until)
+		if err != nil {
+			failed = true
+		}
 		return out
 	}
-	return &apicommon.Out[DispatchJobFilterOptionsResponse]{Body: DispatchJobFilterOptionsResponse{
+	// Event types come from the jobs of the window, not from the event-type catalogue:
+	// an event may be emitted without its type being registered, and a direct job's
+	// code is not an event type at all, so a catalogue-backed list would miss values
+	// the list can filter on.
+	codes := q("code")
+	resp := DispatchJobFilterOptionsResponse{
 		Statuses:        q("status"),
-		Codes:           q("code"),
+		Codes:           codes,
+		EventTypes:      codes,
 		ClientIDs:       q("client_id"),
 		DispatchPoolIDs: q("dispatch_pool_id"),
 		SubscriptionIDs: q("subscription_id"),
 		Kinds:           q("kind"),
 		Window:          windowResponse(win),
-	}}, nil
+	}
+	if !failed { // never keep a partial answer
+		s.foCache.put(key, now, resp)
+	}
+	return &apicommon.Out[DispatchJobFilterOptionsResponse]{Body: resp}, nil
 }
