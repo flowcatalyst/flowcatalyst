@@ -651,6 +651,14 @@ func safeRelativeReturnURL(u string) string {
 	if u == "" || u[0] != '/' || strings.HasPrefix(u, "//") || strings.HasPrefix(u, "/\\") {
 		return ""
 	}
+	// Browsers drop ASCII tab/CR/LF anywhere in a URL, so "/<TAB>/evil.com"
+	// is read as "//evil.com". No legitimate return path carries a control
+	// character, so refuse any.
+	for i := 0; i < len(u); i++ {
+		if u[i] < 0x20 || u[i] == 0x7f {
+			return ""
+		}
+	}
 	return u
 }
 
