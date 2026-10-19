@@ -64,7 +64,7 @@ func InvokeForTest(req TestRequest) TestResponse {
 	case req.Principal != nil:
 		p := req.Principal
 		meta.Caller = callerMeta{
-			Kind: "principal", ID: p.ID, Type: p.Type, Tier: p.Tier, Clients: p.Clients, Roles: p.Roles,
+			Kind: "principal", ID: p.ID, Type: p.Type, Tier: p.Tier, Clients: p.Clients, ClientCodes: p.ClientCodes, Roles: p.Roles,
 			Applications: p.Applications, AllApplications: p.AllApplications, Permissions: p.Permissions,
 		}
 	case req.Webhook:

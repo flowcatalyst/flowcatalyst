@@ -98,7 +98,7 @@ Every endpoint names exactly one auth mode — there is no default:
 | Declared with | Who calls it | What the runner checks first |
 |---|---|---|
 | `Webhook` | subscriptions and schedules | the platform's delivery signature |
-| `Platform` | people and services holding platform tokens | a valid platform access token; your code then checks the caller's permissions (`Principal.HasPermission`) |
+| `Platform` | people and services holding platform tokens | a valid platform access token; your code then checks the caller's permissions (`Principal.HasPermission`) and client access (`CanAccessClient(id)` or `CanAccessClientCode("bevco")`) |
 | `Open` | anyone | nothing — for health checks and third-party webhooks you verify yourself |
 
 A webhook endpoint accepts `POST` only. Paths use Go's routing patterns:

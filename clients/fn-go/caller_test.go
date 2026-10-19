@@ -78,6 +78,23 @@ func TestPrincipalCanAccessClient(t *testing.T) {
 	}
 }
 
+func TestPrincipalCanAccessClientCode(t *testing.T) {
+	if !(&Principal{Tier: "ANCHOR"}).CanAccessClientCode("bevco") {
+		t.Error("anchor principal must access any client code")
+	}
+	scoped := &Principal{Tier: "CLIENT", ClientCodes: []string{"bevco"}}
+	if !scoped.CanAccessClientCode("bevco") {
+		t.Error("scoped principal should access bevco")
+	}
+	if scoped.CanAccessClientCode("bev") || scoped.CanAccessClientCode("other") {
+		t.Error("scoped principal must match the exact code only")
+	}
+	var nilP *Principal
+	if nilP.CanAccessClientCode("bevco") {
+		t.Error("nil principal must not access")
+	}
+}
+
 func TestPrincipalCanAccessApplication(t *testing.T) {
 	all := &Principal{AllApplications: true}
 	if !all.CanAccessApplication("app_1") {

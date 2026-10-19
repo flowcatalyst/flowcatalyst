@@ -18,3 +18,16 @@ func TestCallerFromClaims_TokenUseAllowlist(t *testing.T) {
 		}
 	}
 }
+
+func TestCallerFromClaims_ClientsAndCodes(t *testing.T) {
+	c, err := callerFromClaims(platformClaims{Sub: "p", Clients: []string{"clt_a:bevco", "clt_b", "*", "clt_c:"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Clients; len(got) != 4 || got[0] != "clt_a" || got[1] != "clt_b" || got[2] != "*" || got[3] != "clt_c" {
+		t.Errorf("clients (ids) changed: %v", got)
+	}
+	if got := c.ClientCodes; len(got) != 2 || got[0] != "bevco" || got[1] != "*" {
+		t.Errorf("clientCodes = %v, want [bevco *]", got)
+	}
+}

@@ -28,11 +28,14 @@ pub struct Principal {
     pub tier: String,
     #[serde(default)]
     pub clients: Vec<String>,
+    /// Client identifiers (e.g. "bevco") matching `clients`; `["*"]` for anchors.
+    #[serde(default, rename = "clientCodes")]
+    pub client_codes: Vec<String>,
     #[serde(default)]
     pub roles: Vec<String>,
     #[serde(default)]
     pub applications: Vec<String>,
-    #[serde(default)]
+    #[serde(default, rename = "allApplications")]
     pub all_applications: bool,
     #[serde(default)]
     pub permissions: Vec<String>,
@@ -49,6 +52,11 @@ impl Principal {
 
     pub fn can_access_client(&self, client_id: &str) -> bool {
         self.is_anchor() || self.clients.iter().any(|c| c == client_id)
+    }
+
+    /// `can_access_client` by client identifier (code): anchor, or exact match.
+    pub fn can_access_client_code(&self, code: &str) -> bool {
+        self.is_anchor() || self.client_codes.iter().any(|c| c == code)
     }
 
     pub fn can_access_application(&self, application_id: &str) -> bool {
@@ -357,6 +365,23 @@ mod tests {
     }
 
     #[test]
+    fn can_access_client_code() {
+        let anchor = Principal {
+            tier: "ANCHOR".to_string(),
+            ..Default::default()
+        };
+        assert!(anchor.can_access_client_code("bevco"));
+        let p = Principal {
+            tier: "CLIENT".to_string(),
+            client_codes: vec!["bevco".to_string()],
+            ..Default::default()
+        };
+        assert!(p.can_access_client_code("bevco"));
+        assert!(!p.can_access_client_code("bev"));
+        assert!(!Principal::default().can_access_client_code("bevco"));
+    }
+
+    #[test]
     fn can_access_application() {
         let all = Principal {
             all_applications: true,
@@ -376,7 +401,7 @@ mod tests {
     fn caller_deserializes_principal_fields() {
         let json = r#"{
             "kind": "principal", "id": "prn_1", "type": "USER", "tier": "CLIENT",
-            "clients": ["clt_1"], "roles": ["operant:admin"], "applications": ["app_1"],
+            "clients": ["clt_1"], "clientCodes": ["bevco"], "roles": ["operant:admin"], "applications": ["app_1"],
             "allApplications": false, "permissions": ["platform:function:view"]
         }"#;
         let c: Caller = serde_json::from_str(json).unwrap();
@@ -385,6 +410,7 @@ mod tests {
         assert_eq!(p.id, "prn_1");
         assert_eq!(p.tier, "CLIENT");
         assert!(p.has_role("operant:admin"));
+        assert!(p.can_access_client_code("bevco"));
         assert!(p.has_permission("platform:function:view"));
     }
 

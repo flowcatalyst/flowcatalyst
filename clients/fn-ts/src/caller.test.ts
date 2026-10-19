@@ -54,6 +54,14 @@ test("canAccessClient: an anchor principal always passes", () => {
   assert.equal(p.canAccessClient("any-client"), true);
 });
 
+test("canAccessClientCode: anchor, exact match only", () => {
+  assert.equal(new Principal({ tier: "ANCHOR" }).canAccessClientCode("bevco"), true);
+  const p = new Principal({ tier: "CLIENT", clientCodes: ["bevco"] });
+  assert.equal(p.canAccessClientCode("bevco"), true);
+  assert.equal(p.canAccessClientCode("bev"), false);
+  assert.equal(new Principal({ tier: "CLIENT" }).canAccessClientCode("bevco"), false);
+});
+
 test("canAccessClient: scoped to the explicit clients list", () => {
   const p = new Principal({ tier: "CLIENT", clients: ["clt_a"] });
   assert.equal(p.canAccessClient("clt_a"), true);

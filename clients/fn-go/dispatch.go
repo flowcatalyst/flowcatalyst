@@ -30,6 +30,7 @@ type callerMeta struct {
 	Type            string   `json:"type,omitempty"`
 	Tier            string   `json:"tier,omitempty"`
 	Clients         []string `json:"clients,omitempty"`
+	ClientCodes     []string `json:"clientCodes,omitempty"`
 	Roles           []string `json:"roles,omitempty"`
 	Applications    []string `json:"applications,omitempty"`
 	AllApplications bool     `json:"allApplications,omitempty"`
@@ -151,6 +152,7 @@ func callerFromMeta(cm callerMeta) Caller {
 			Type:            cm.Type,
 			Tier:            cm.Tier,
 			Clients:         cm.Clients,
+			ClientCodes:     cm.ClientCodes,
 			Roles:           cm.Roles,
 			Applications:    cm.Applications,
 			AllApplications: cm.AllApplications,

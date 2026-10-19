@@ -8,6 +8,7 @@ export interface PrincipalData {
   type?: string;
   tier?: string;
   clients?: string[];
+  clientCodes?: string[];
   roles?: string[];
   applications?: string[];
   allApplications?: boolean;
@@ -35,6 +36,8 @@ export class Principal {
   readonly type: string;
   readonly tier: string;
   readonly clients: readonly string[];
+  /** Client identifiers (e.g. "bevco") matching `clients`; ["*"] for anchors. */
+  readonly clientCodes: readonly string[];
   readonly roles: readonly string[];
   readonly applications: readonly string[];
   readonly allApplications: boolean;
@@ -45,6 +48,7 @@ export class Principal {
     this.type = data.type ?? "";
     this.tier = data.tier ?? "";
     this.clients = data.clients ?? [];
+    this.clientCodes = data.clientCodes ?? [];
     this.roles = data.roles ?? [];
     this.applications = data.applications ?? [];
     this.allApplications = data.allApplications ?? false;
@@ -64,6 +68,12 @@ export class Principal {
   /** True for anchor principals, or when clientId is in `clients`. */
   canAccessClient(clientId: string): boolean {
     return this.isAnchor() || this.clients.includes(clientId);
+  }
+
+  /** True for anchor principals, or when `code` (the client identifier,
+   * e.g. "bevco") is in `clientCodes`. */
+  canAccessClientCode(code: string): boolean {
+    return this.isAnchor() || this.clientCodes.includes(code);
   }
 
   /** True when the principal holds all-applications access, or when

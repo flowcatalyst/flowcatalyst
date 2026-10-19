@@ -19,10 +19,13 @@ const (
 // "ANCHOR", "PARTNER" or "CLIENT"; Permissions entries may carry `*`
 // segment wildcards matched by HasPermission.
 type Principal struct {
-	ID              string
-	Type            string
-	Tier            string
-	Clients         []string
+	ID      string
+	Type    string
+	Tier    string
+	Clients []string
+	// ClientCodes are the client identifiers (e.g. "bevco") matching Clients;
+	// "*" for anchors. Use CanAccessClientCode to check one.
+	ClientCodes     []string
 	Roles           []string
 	Applications    []string
 	AllApplications bool
@@ -52,6 +55,18 @@ func (p *Principal) CanAccessClient(clientID string) bool {
 		return true
 	}
 	return slices.Contains(p.Clients, clientID)
+}
+
+// CanAccessClientCode is CanAccessClient by client identifier (code): true
+// for anchor principals, or when code is in ClientCodes.
+func (p *Principal) CanAccessClientCode(code string) bool {
+	if p == nil {
+		return false
+	}
+	if p.IsAnchor() {
+		return true
+	}
+	return slices.Contains(p.ClientCodes, code)
 }
 
 // CanAccessApplication reports whether the principal may act on the given

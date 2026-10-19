@@ -53,11 +53,14 @@ const (
 // Caller is who the runner proved the caller to be. Principal fields are set
 // only for kind "principal"; email and name are deliberately never passed.
 type Caller struct {
-	Kind            string   `json:"kind"`
-	ID              string   `json:"id,omitempty"`
-	Type            string   `json:"type,omitempty"`
-	Tier            string   `json:"tier,omitempty"`
-	Clients         []string `json:"clients,omitempty"`
+	Kind    string   `json:"kind"`
+	ID      string   `json:"id,omitempty"`
+	Type    string   `json:"type,omitempty"`
+	Tier    string   `json:"tier,omitempty"`
+	Clients []string `json:"clients,omitempty"`
+	// ClientCodes are the identifier halves of the token's "id:identifier"
+	// client entries ("*" stays "*"); additive to Clients, which stays ids.
+	ClientCodes     []string `json:"clientCodes,omitempty"`
 	Roles           []string `json:"roles,omitempty"`
 	Applications    []string `json:"applications,omitempty"`
 	AllApplications bool     `json:"allApplications,omitempty"`

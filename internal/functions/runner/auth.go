@@ -116,6 +116,7 @@ func callerFromClaims(c platformClaims) (*abi.Caller, error) {
 		Type:            c.Type,
 		Tier:            c.Tier,
 		Clients:         clientIDs(c.Clients),
+		ClientCodes:     clientCodes(c.Clients),
 		Roles:           c.Roles,
 		Applications:    c.Applications,
 		AllApplications: c.AllApplications,
@@ -129,6 +130,22 @@ func clientIDs(in []string) []string {
 	for _, c := range in {
 		id, _, _ := strings.Cut(c, ":")
 		out = append(out, id)
+	}
+	return out
+}
+
+// clientCodes keeps the identifier half of each "id:identifier" client entry
+// ("*" stays; an entry with no colon, or an empty identifier, gives no code).
+func clientCodes(in []string) []string {
+	var out []string
+	for _, c := range in {
+		if c == "*" {
+			out = append(out, c)
+			continue
+		}
+		if _, code, ok := strings.Cut(c, ":"); ok && code != "" {
+			out = append(out, code)
+		}
 	}
 	return out
 }

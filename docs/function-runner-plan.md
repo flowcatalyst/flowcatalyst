@@ -225,8 +225,9 @@ Request meta:
 
 - `{"kind":"webhook"}` (signature verified)
 - `{"kind":"anonymous"}`
-- `{"kind":"principal","id","type","tier","clients","roles","applications","allApplications","permissions"}`
-  (verified claims; `email`/`name` withheld)
+- `{"kind":"principal","id","type","tier","clients","clientCodes","roles","applications","allApplications","permissions"}`
+  (verified claims; `email`/`name` withheld). `clients` holds client ids; `clientCodes`
+  is the additive parallel list of client identifiers (e.g. `bevco`; `["*"]` for anchors)
 
 Response meta: `{"status", "headers":{k:[v]}}`.
 
