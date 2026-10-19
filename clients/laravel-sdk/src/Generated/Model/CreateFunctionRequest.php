@@ -49,6 +49,12 @@ class CreateFunctionRequest extends \ArrayObject
      */
     protected $pool;
     /**
+     * Optional webhook verifier identity: a service account id OR code. Its signing secret is what this function's webhook endpoints verify deliveries with. Omitted means the application's service account.
+     *
+     * @var string|null
+     */
+    protected $serviceAccountId;
+    /**
      * @var bool|null
      */
     protected $warm;
@@ -192,6 +198,28 @@ class CreateFunctionRequest extends \ArrayObject
     {
         $this->initialized['pool'] = true;
         $this->pool = $pool;
+        return $this;
+    }
+    /**
+     * Optional webhook verifier identity: a service account id OR code. Its signing secret is what this function's webhook endpoints verify deliveries with. Omitted means the application's service account.
+     *
+     * @return string|null
+     */
+    public function getServiceAccountId(): ?string
+    {
+        return $this->serviceAccountId;
+    }
+    /**
+     * Optional webhook verifier identity: a service account id OR code. Its signing secret is what this function's webhook endpoints verify deliveries with. Omitted means the application's service account.
+     *
+     * @param string|null $serviceAccountId
+     *
+     * @return self
+     */
+    public function setServiceAccountId(?string $serviceAccountId): self
+    {
+        $this->initialized['serviceAccountId'] = true;
+        $this->serviceAccountId = $serviceAccountId;
         return $this;
     }
     /**

@@ -46,6 +46,12 @@ class RequeueByFilterResponseNormalizer implements DenormalizerInterface, Normal
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
         }
+        if (\array_key_exists('redriven', $data) && $data['redriven'] !== null) {
+            $object->setRedriven($data['redriven']);
+        }
+        elseif (\array_key_exists('redriven', $data) && $data['redriven'] === null) {
+            $object->setRedriven(null);
+        }
         if (\array_key_exists('remaining', $data) && $data['remaining'] !== null) {
             $object->setRemaining($data['remaining']);
         }
@@ -58,20 +64,42 @@ class RequeueByFilterResponseNormalizer implements DenormalizerInterface, Normal
         elseif (\array_key_exists('requeued', $data) && $data['requeued'] === null) {
             $object->setRequeued(null);
         }
+        if (\array_key_exists('skippedCompleted', $data) && $data['skippedCompleted'] !== null) {
+            $object->setSkippedCompleted($data['skippedCompleted']);
+        }
+        elseif (\array_key_exists('skippedCompleted', $data) && $data['skippedCompleted'] === null) {
+            $object->setSkippedCompleted(null);
+        }
+        if (\array_key_exists('skippedInFlight', $data) && $data['skippedInFlight'] !== null) {
+            $object->setSkippedInFlight($data['skippedInFlight']);
+        }
+        elseif (\array_key_exists('skippedInFlight', $data) && $data['skippedInFlight'] === null) {
+            $object->setSkippedInFlight(null);
+        }
         if (\array_key_exists('truncated', $data) && $data['truncated'] !== null) {
             $object->setTruncated($data['truncated']);
         }
         elseif (\array_key_exists('truncated', $data) && $data['truncated'] === null) {
             $object->setTruncated(null);
         }
+        if (\array_key_exists('window', $data) && $data['window'] !== null) {
+            $object->setWindow($this->denormalizer->denormalize($data['window'], \FlowCatalyst\Generated\Model\WindowResponse::class, 'json', $context));
+        }
+        elseif (\array_key_exists('window', $data) && $data['window'] === null) {
+            $object->setWindow(null);
+        }
         return $object;
     }
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
+        $dataArray['redriven'] = $data->getRedriven();
         $dataArray['remaining'] = $data->getRemaining();
         $dataArray['requeued'] = $data->getRequeued();
+        $dataArray['skippedCompleted'] = $data->getSkippedCompleted();
+        $dataArray['skippedInFlight'] = $data->getSkippedInFlight();
         $dataArray['truncated'] = $data->getTruncated();
+        $dataArray['window'] = $this->normalizer->normalize($data->getWindow(), 'json', $context);
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

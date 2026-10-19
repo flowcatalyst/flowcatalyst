@@ -73,35 +73,51 @@ class DispatchJobFilterOptionsResponseNormalizer implements DenormalizerInterfac
         elseif (\array_key_exists('dispatchPoolIds', $data) && $data['dispatchPoolIds'] === null) {
             $object->setDispatchPoolIds(null);
         }
-        if (\array_key_exists('kinds', $data) && $data['kinds'] !== null) {
+        if (\array_key_exists('eventTypes', $data) && $data['eventTypes'] !== null) {
             $values_3 = [];
-            foreach ($data['kinds'] as $value_3) {
+            foreach ($data['eventTypes'] as $value_3) {
                 $values_3[] = $value_3;
             }
-            $object->setKinds($values_3);
+            $object->setEventTypes($values_3);
+        }
+        elseif (\array_key_exists('eventTypes', $data) && $data['eventTypes'] === null) {
+            $object->setEventTypes(null);
+        }
+        if (\array_key_exists('kinds', $data) && $data['kinds'] !== null) {
+            $values_4 = [];
+            foreach ($data['kinds'] as $value_4) {
+                $values_4[] = $value_4;
+            }
+            $object->setKinds($values_4);
         }
         elseif (\array_key_exists('kinds', $data) && $data['kinds'] === null) {
             $object->setKinds(null);
         }
         if (\array_key_exists('statuses', $data) && $data['statuses'] !== null) {
-            $values_4 = [];
-            foreach ($data['statuses'] as $value_4) {
-                $values_4[] = $value_4;
+            $values_5 = [];
+            foreach ($data['statuses'] as $value_5) {
+                $values_5[] = $value_5;
             }
-            $object->setStatuses($values_4);
+            $object->setStatuses($values_5);
         }
         elseif (\array_key_exists('statuses', $data) && $data['statuses'] === null) {
             $object->setStatuses(null);
         }
         if (\array_key_exists('subscriptionIds', $data) && $data['subscriptionIds'] !== null) {
-            $values_5 = [];
-            foreach ($data['subscriptionIds'] as $value_5) {
-                $values_5[] = $value_5;
+            $values_6 = [];
+            foreach ($data['subscriptionIds'] as $value_6) {
+                $values_6[] = $value_6;
             }
-            $object->setSubscriptionIds($values_5);
+            $object->setSubscriptionIds($values_6);
         }
         elseif (\array_key_exists('subscriptionIds', $data) && $data['subscriptionIds'] === null) {
             $object->setSubscriptionIds(null);
+        }
+        if (\array_key_exists('window', $data) && $data['window'] !== null) {
+            $object->setWindow($this->denormalizer->denormalize($data['window'], \FlowCatalyst\Generated\Model\WindowResponse::class, 'json', $context));
+        }
+        elseif (\array_key_exists('window', $data) && $data['window'] === null) {
+            $object->setWindow(null);
         }
         return $object;
     }
@@ -124,20 +140,26 @@ class DispatchJobFilterOptionsResponseNormalizer implements DenormalizerInterfac
         }
         $dataArray['dispatchPoolIds'] = $values_2;
         $values_3 = [];
-        foreach ($data->getKinds() as $value_3) {
+        foreach ($data->getEventTypes() as $value_3) {
             $values_3[] = $value_3;
         }
-        $dataArray['kinds'] = $values_3;
+        $dataArray['eventTypes'] = $values_3;
         $values_4 = [];
-        foreach ($data->getStatuses() as $value_4) {
+        foreach ($data->getKinds() as $value_4) {
             $values_4[] = $value_4;
         }
-        $dataArray['statuses'] = $values_4;
+        $dataArray['kinds'] = $values_4;
         $values_5 = [];
-        foreach ($data->getSubscriptionIds() as $value_5) {
+        foreach ($data->getStatuses() as $value_5) {
             $values_5[] = $value_5;
         }
-        $dataArray['subscriptionIds'] = $values_5;
+        $dataArray['statuses'] = $values_5;
+        $values_6 = [];
+        foreach ($data->getSubscriptionIds() as $value_6) {
+            $values_6[] = $value_6;
+        }
+        $dataArray['subscriptionIds'] = $values_6;
+        $dataArray['window'] = $this->normalizer->normalize($data->getWindow(), 'json', $context);
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

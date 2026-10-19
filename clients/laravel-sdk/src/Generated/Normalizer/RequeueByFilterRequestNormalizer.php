@@ -37,6 +37,9 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('redriveCompleted', $data) && \is_int($data['redriveCompleted'])) {
+            $data['redriveCompleted'] = (bool) $data['redriveCompleted'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
             unset($data['$schema']);
@@ -93,12 +96,47 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         elseif (\array_key_exists('confirmCount', $data) && $data['confirmCount'] === null) {
             $object->setConfirmCount(null);
         }
+        if (\array_key_exists('confirmRedriveCompleted', $data) && $data['confirmRedriveCompleted'] !== null) {
+            $object->setConfirmRedriveCompleted($data['confirmRedriveCompleted']);
+            unset($data['confirmRedriveCompleted']);
+        }
+        elseif (\array_key_exists('confirmRedriveCompleted', $data) && $data['confirmRedriveCompleted'] === null) {
+            $object->setConfirmRedriveCompleted(null);
+        }
+        if (\array_key_exists('connectionCode', $data) && $data['connectionCode'] !== null) {
+            $object->setConnectionCode($data['connectionCode']);
+            unset($data['connectionCode']);
+        }
+        elseif (\array_key_exists('connectionCode', $data) && $data['connectionCode'] === null) {
+            $object->setConnectionCode(null);
+        }
+        if (\array_key_exists('connectionId', $data) && $data['connectionId'] !== null) {
+            $object->setConnectionId($data['connectionId']);
+            unset($data['connectionId']);
+        }
+        elseif (\array_key_exists('connectionId', $data) && $data['connectionId'] === null) {
+            $object->setConnectionId(null);
+        }
         if (\array_key_exists('dispatchPoolId', $data) && $data['dispatchPoolId'] !== null) {
             $object->setDispatchPoolId($data['dispatchPoolId']);
             unset($data['dispatchPoolId']);
         }
         elseif (\array_key_exists('dispatchPoolId', $data) && $data['dispatchPoolId'] === null) {
             $object->setDispatchPoolId(null);
+        }
+        if (\array_key_exists('eventType', $data) && $data['eventType'] !== null) {
+            $object->setEventType($data['eventType']);
+            unset($data['eventType']);
+        }
+        elseif (\array_key_exists('eventType', $data) && $data['eventType'] === null) {
+            $object->setEventType(null);
+        }
+        if (\array_key_exists('eventTypes', $data) && $data['eventTypes'] !== null) {
+            $object->setEventTypes($data['eventTypes']);
+            unset($data['eventTypes']);
+        }
+        elseif (\array_key_exists('eventTypes', $data) && $data['eventTypes'] === null) {
+            $object->setEventTypes(null);
         }
         if (\array_key_exists('limit', $data) && $data['limit'] !== null) {
             $object->setLimit($data['limit']);
@@ -113,6 +151,13 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('messageGroup', $data) && $data['messageGroup'] === null) {
             $object->setMessageGroup(null);
+        }
+        if (\array_key_exists('redriveCompleted', $data) && $data['redriveCompleted'] !== null) {
+            $object->setRedriveCompleted($data['redriveCompleted']);
+            unset($data['redriveCompleted']);
+        }
+        elseif (\array_key_exists('redriveCompleted', $data) && $data['redriveCompleted'] === null) {
+            $object->setRedriveCompleted(null);
         }
         if (\array_key_exists('since', $data) && $data['since'] !== null) {
             $object->setSince($data['since']);
@@ -149,12 +194,33 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         elseif (\array_key_exists('subdomains', $data) && $data['subdomains'] === null) {
             $object->setSubdomains(null);
         }
+        if (\array_key_exists('subscriptionCode', $data) && $data['subscriptionCode'] !== null) {
+            $object->setSubscriptionCode($data['subscriptionCode']);
+            unset($data['subscriptionCode']);
+        }
+        elseif (\array_key_exists('subscriptionCode', $data) && $data['subscriptionCode'] === null) {
+            $object->setSubscriptionCode(null);
+        }
         if (\array_key_exists('subscriptionId', $data) && $data['subscriptionId'] !== null) {
             $object->setSubscriptionId($data['subscriptionId']);
             unset($data['subscriptionId']);
         }
         elseif (\array_key_exists('subscriptionId', $data) && $data['subscriptionId'] === null) {
             $object->setSubscriptionId(null);
+        }
+        if (\array_key_exists('subscriptionIds', $data) && $data['subscriptionIds'] !== null) {
+            $object->setSubscriptionIds($data['subscriptionIds']);
+            unset($data['subscriptionIds']);
+        }
+        elseif (\array_key_exists('subscriptionIds', $data) && $data['subscriptionIds'] === null) {
+            $object->setSubscriptionIds(null);
+        }
+        if (\array_key_exists('subscriptionName', $data) && $data['subscriptionName'] !== null) {
+            $object->setSubscriptionName($data['subscriptionName']);
+            unset($data['subscriptionName']);
+        }
+        elseif (\array_key_exists('subscriptionName', $data) && $data['subscriptionName'] === null) {
+            $object->setSubscriptionName(null);
         }
         if (\array_key_exists('until', $data) && $data['until'] !== null) {
             $object->setUntil($data['until']);
@@ -192,14 +258,32 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
             $dataArray['codes'] = $data->getCodes();
         }
         $dataArray['confirmCount'] = $data->getConfirmCount();
+        if ($data->isInitialized('confirmRedriveCompleted') && null !== $data->getConfirmRedriveCompleted()) {
+            $dataArray['confirmRedriveCompleted'] = $data->getConfirmRedriveCompleted();
+        }
+        if ($data->isInitialized('connectionCode') && null !== $data->getConnectionCode()) {
+            $dataArray['connectionCode'] = $data->getConnectionCode();
+        }
+        if ($data->isInitialized('connectionId') && null !== $data->getConnectionId()) {
+            $dataArray['connectionId'] = $data->getConnectionId();
+        }
         if ($data->isInitialized('dispatchPoolId') && null !== $data->getDispatchPoolId()) {
             $dataArray['dispatchPoolId'] = $data->getDispatchPoolId();
+        }
+        if ($data->isInitialized('eventType') && null !== $data->getEventType()) {
+            $dataArray['eventType'] = $data->getEventType();
+        }
+        if ($data->isInitialized('eventTypes') && null !== $data->getEventTypes()) {
+            $dataArray['eventTypes'] = $data->getEventTypes();
         }
         if ($data->isInitialized('limit') && null !== $data->getLimit()) {
             $dataArray['limit'] = $data->getLimit();
         }
         if ($data->isInitialized('messageGroup') && null !== $data->getMessageGroup()) {
             $dataArray['messageGroup'] = $data->getMessageGroup();
+        }
+        if ($data->isInitialized('redriveCompleted') && null !== $data->getRedriveCompleted()) {
+            $dataArray['redriveCompleted'] = $data->getRedriveCompleted();
         }
         if ($data->isInitialized('since') && null !== $data->getSince()) {
             $dataArray['since'] = $data->getSince();
@@ -216,8 +300,17 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         if ($data->isInitialized('subdomains') && null !== $data->getSubdomains()) {
             $dataArray['subdomains'] = $data->getSubdomains();
         }
+        if ($data->isInitialized('subscriptionCode') && null !== $data->getSubscriptionCode()) {
+            $dataArray['subscriptionCode'] = $data->getSubscriptionCode();
+        }
         if ($data->isInitialized('subscriptionId') && null !== $data->getSubscriptionId()) {
             $dataArray['subscriptionId'] = $data->getSubscriptionId();
+        }
+        if ($data->isInitialized('subscriptionIds') && null !== $data->getSubscriptionIds()) {
+            $dataArray['subscriptionIds'] = $data->getSubscriptionIds();
+        }
+        if ($data->isInitialized('subscriptionName') && null !== $data->getSubscriptionName()) {
+            $dataArray['subscriptionName'] = $data->getSubscriptionName();
         }
         if ($data->isInitialized('until') && null !== $data->getUntil()) {
             $dataArray['until'] = $data->getUntil();

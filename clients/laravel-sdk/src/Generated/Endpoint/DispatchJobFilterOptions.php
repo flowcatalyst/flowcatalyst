@@ -4,6 +4,16 @@ namespace FlowCatalyst\Generated\Endpoint;
 
 class DispatchJobFilterOptions extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
+    /**
+     * @param array{
+     *    "since"?: string, //RFC3339; start of the created_at window the values are read from (default: 24 hours before until/now)
+     *    "until"?: string, //RFC3339; end of the window (default: now)
+     * } $queryParameters
+     */
+    public function __construct(array $queryParameters = [])
+    {
+        $this->queryParameters = $queryParameters;
+    }
     use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
     public function getMethod(): string
     {
@@ -20,6 +30,16 @@ class DispatchJobFilterOptions extends \FlowCatalyst\Generated\Runtime\Client\Ba
     public function getExtraHeaders(): array
     {
         return ['Accept' => ['application/json']];
+    }
+    protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
+    {
+        $optionsResolver = parent::getQueryOptionsResolver();
+        $optionsResolver->setDefined(['since', 'until']);
+        $optionsResolver->setRequired([]);
+        $optionsResolver->setDefaults([]);
+        $optionsResolver->addAllowedTypes('since', ['string']);
+        $optionsResolver->addAllowedTypes('until', ['string']);
+        return $optionsResolver;
     }
     /**
      * {@inheritdoc}

@@ -33,6 +33,10 @@ class DispatchJobFilterOptionsResponse
     /**
      * @var list<string>|null
      */
+    protected $eventTypes;
+    /**
+     * @var list<string>|null
+     */
     protected $kinds;
     /**
      * @var list<string>|null
@@ -42,6 +46,10 @@ class DispatchJobFilterOptionsResponse
      * @var list<string>|null
      */
     protected $subscriptionIds;
+    /**
+     * @var WindowResponse|null
+     */
+    protected $window;
     /**
      * A URL to the JSON Schema for this object.
      *
@@ -121,6 +129,24 @@ class DispatchJobFilterOptionsResponse
     /**
      * @return list<string>|null
      */
+    public function getEventTypes(): ?array
+    {
+        return $this->eventTypes;
+    }
+    /**
+     * @param list<string>|null $eventTypes
+     *
+     * @return self
+     */
+    public function setEventTypes(?array $eventTypes): self
+    {
+        $this->initialized['eventTypes'] = true;
+        $this->eventTypes = $eventTypes;
+        return $this;
+    }
+    /**
+     * @return list<string>|null
+     */
     public function getKinds(): ?array
     {
         return $this->kinds;
@@ -170,6 +196,24 @@ class DispatchJobFilterOptionsResponse
     {
         $this->initialized['subscriptionIds'] = true;
         $this->subscriptionIds = $subscriptionIds;
+        return $this;
+    }
+    /**
+     * @return WindowResponse|null
+     */
+    public function getWindow(): ?WindowResponse
+    {
+        return $this->window;
+    }
+    /**
+     * @param WindowResponse|null $window
+     *
+     * @return self
+     */
+    public function setWindow(?WindowResponse $window): self
+    {
+        $this->initialized['window'] = true;
+        $this->window = $window;
         return $this;
     }
 }

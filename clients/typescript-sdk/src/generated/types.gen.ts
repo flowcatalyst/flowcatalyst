@@ -135,6 +135,28 @@ export type ApplicationFilterListResponse = {
     applicationCodes: Array<string>;
 };
 
+export type ApplicationInvitation = {
+    clientId: string;
+    createdAt: string;
+    email: string;
+    expiresAt?: string;
+    name: string;
+    roles: Array<string>;
+    status: string;
+    userId: string;
+};
+
+export type ApplicationInvitationList = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    invitations: Array<ApplicationInvitation>;
+    page: number;
+    pageSize: number;
+    total: number;
+};
+
 export type ApplicationListResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -208,6 +230,34 @@ export type ApplicationServiceAccountCredentials = {
     name: string;
     oauthClient: ApplicationOAuthClientCredentials;
     principalId: string;
+};
+
+export type ApplicationUser = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    active: boolean;
+    clientId: string;
+    createdAt: string;
+    email: string;
+    id: string;
+    idpType: string;
+    invitation?: string;
+    lastLoginAt?: string;
+    name: string;
+    roles: Array<string>;
+};
+
+export type ApplicationUserList = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    page: number;
+    pageSize: number;
+    total: number;
+    users: Array<ApplicationUser>;
 };
 
 export type AssignApplicationAccessRequest = {
@@ -943,6 +993,10 @@ export type CreateFunctionRequest = {
      * The runner pool that hosts the function (FC_FUNCTIONS_POOL on its runners); omitted means the default pool. Not the dispatch pool, which is always the function's own.
      */
     pool?: string;
+    /**
+     * Optional webhook verifier identity: a service account id OR code. Its signing secret is what this function's webhook endpoints verify deliveries with. Omitted means the application's service account.
+     */
+    serviceAccountId?: string;
     warm?: boolean;
     [key: string]: unknown | string | LimitsDto | boolean | undefined;
 };
@@ -1203,6 +1257,9 @@ export type CreateServiceAccountRequest = {
     code: string;
     description?: string;
     name: string;
+    /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     */
     scope?: string;
     webhookCredentials?: WebhookCredentialsDto;
     [key: string]: unknown | string | boolean | Array<string> | WebhookCredentialsDto | undefined;
@@ -1361,14 +1418,19 @@ export type DispatchJobFilterOptionsResponse = {
     clientIds: Array<string>;
     codes: Array<string>;
     dispatchPoolIds: Array<string>;
+    eventTypes: Array<string>;
     kinds: Array<string>;
     statuses: Array<string>;
     subscriptionIds: Array<string>;
+    window: WindowResponse;
 };
 
 export type DispatchJobRead = {
     aggregate?: string;
     application?: string;
+    /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     */
     attemptCount: number;
     clientId?: string;
     clientIdentifier?: string;
@@ -1401,6 +1463,9 @@ export type DispatchJobResponse = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     */
     attemptCount: number;
     attempts?: Array<AttemptDto>;
     clientId?: string;
@@ -1521,6 +1586,22 @@ export type DomainResponse = {
     id: string;
     updatedAt: string;
     zone: string;
+};
+
+export type EditPayloadRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)
+     */
+    payload: string;
+    /**
+     * New media type; omit to keep the job's
+     */
+    payloadContentType?: string;
+    [key: string]: unknown | string | string | undefined;
 };
 
 export type EmitRequest = {
@@ -1713,6 +1794,8 @@ export type FunctionResponse = {
     limits: LimitsDto;
     name: string;
     pool?: string;
+    serviceAccountCode?: string;
+    serviceAccountId?: string;
     updatedAt: string;
     warm: boolean;
 };
@@ -1751,12 +1834,13 @@ export type Heartbeat = {
      */
     readonly $schema?: string;
     budget: BudgetReport;
+    capabilities?: RunnerCapabilities;
     pool: string;
     revision: number;
     runnerId: string;
     startedAt: string;
     versions: Array<VersionReport>;
-    [key: string]: unknown | string | BudgetReport | number | Array<VersionReport> | undefined;
+    [key: string]: unknown | string | BudgetReport | RunnerCapabilities | number | Array<VersionReport> | undefined;
 };
 
 export type IdentityProviderListResponse = {
@@ -1807,6 +1891,31 @@ export type IdpRoleMappingResponse = {
     idpType: string;
     platformRoleName: string;
     updatedAt: string;
+};
+
+export type InviteApplicationUserRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    clientId: string;
+    email: string;
+    inviteRedirectUri?: string;
+    name: string;
+    returnInviteLink?: boolean;
+    roles: Array<string>;
+    sendInvitation?: boolean;
+    [key: string]: unknown | string | boolean | Array<string> | undefined;
+};
+
+export type InviteApplicationUserResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    id: string;
+    invitationSent: boolean;
+    inviteLink?: string;
 };
 
 export type Kv = {
@@ -2261,6 +2370,48 @@ export type ProvisionLoginClientRequest = {
     [key: string]: unknown | string | Array<string> | Array<string> | undefined;
 };
 
+export type PruneVersionsRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Report what would be pruned and change nothing
+     */
+    dryRun?: boolean;
+    /**
+     * Untagged versions to keep (>= 1); omitted uses the platform setting FC_FUNCTIONS_KEEP_VERSIONS (default 20)
+     */
+    keep?: number;
+    [key: string]: unknown | string | boolean | number | undefined;
+};
+
+export type PruneVersionsResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Stored artifacts removed because no remaining version references them
+     */
+    artifactsDeleted: number;
+    dryRun: boolean;
+    keep: number;
+    /**
+     * Versions deleted (would be deleted, on a dry run), oldest first
+     */
+    pruned: Array<PrunedVersionResponse>;
+    /**
+     * Untagged versions before pruning
+     */
+    untagged: number;
+};
+
+export type PrunedVersionResponse = {
+    digest: string;
+    number: number;
+};
+
 export type PublicAllowedResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2344,6 +2495,9 @@ export type QueueConfig = {
 };
 
 export type RawDispatchJobResponse = {
+    /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     */
     attemptCount: number;
     attemptHistoryCount: number;
     clientId?: string;
@@ -2495,7 +2649,23 @@ export type RequeueByFilterPreviewRequest = {
      * CSV of codes
      */
     codes?: string;
+    /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     */
+    connectionCode?: string;
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     */
+    connectionId?: string;
     dispatchPoolId?: string;
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     */
+    eventType?: string;
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     */
+    eventTypes?: string;
     /**
      * Exact message group
      */
@@ -2517,7 +2687,19 @@ export type RequeueByFilterPreviewRequest = {
      * CSV of subdomains
      */
     subdomains?: string;
+    /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     */
+    subscriptionCode?: string;
     subscriptionId?: string;
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     */
+    subscriptionIds?: string;
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     */
+    subscriptionName?: string;
     /**
      * RFC3339 timestamp
      */
@@ -2537,13 +2719,29 @@ export type RequeueByFilterPreviewResponse = {
         [key: string]: number;
     };
     /**
-     * Jobs the filter matches that the caller can see
+     * COMPLETED jobs the filter matches that the caller can see. A requeue skips them; they are redriven only with redriveCompleted and confirmRedriveCompleted
+     */
+    completedCount: number;
+    /**
+     * Jobs the filter matches in the window that the caller can see
      */
     count: number;
     /**
-     * How many of them a requeue would reset for this caller; send it back as confirmCount
+     * How many of them a requeue would reset for this caller (not COMPLETED, not in flight); send it back as confirmCount
      */
     eligibleCount: number;
+    /**
+     * QUEUED or PROCESSING jobs the filter matches; a requeue never resets them
+     */
+    inFlightCount: number;
+    /**
+     * eligibleCount + completedCount: the confirmCount of a request that also redrives COMPLETED jobs
+     */
+    redriveEligibleCount: number;
+    /**
+     * The created_at window the counts cover
+     */
+    window: WindowResponse;
 };
 
 export type RequeueByFilterRequest = {
@@ -2570,10 +2768,30 @@ export type RequeueByFilterRequest = {
      */
     codes?: string;
     /**
-     * The eligibleCount the caller was shown. If more jobs are eligible now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
+     * The eligibleCount the caller was shown (redriveEligibleCount when redriveCompleted). If more jobs would be reset now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
      */
     confirmCount: number;
+    /**
+     * The literal REDRIVE, confirming redriveCompleted.
+     */
+    confirmRedriveCompleted?: string;
+    /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     */
+    connectionCode?: string;
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     */
+    connectionId?: string;
     dispatchPoolId?: string;
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     */
+    eventType?: string;
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     */
+    eventTypes?: string;
     /**
      * Most jobs to reset in this request (default and maximum 10000)
      */
@@ -2582,6 +2800,10 @@ export type RequeueByFilterRequest = {
      * Exact message group
      */
     messageGroup?: string;
+    /**
+     * Also re-deliver the COMPLETED jobs the filter matches. Needs confirmRedriveCompleted=REDRIVE and the dispatch-job:redrive-completed permission (403 without it). Without both fields COMPLETED jobs are skipped and counted in skippedCompleted.
+     */
+    redriveCompleted?: boolean;
     /**
      * RFC3339 timestamp
      */
@@ -2599,12 +2821,24 @@ export type RequeueByFilterRequest = {
      * CSV of subdomains
      */
     subdomains?: string;
+    /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     */
+    subscriptionCode?: string;
     subscriptionId?: string;
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     */
+    subscriptionIds?: string;
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     */
+    subscriptionName?: string;
     /**
      * RFC3339 timestamp
      */
     until?: string;
-    [key: string]: unknown | string | number | number | undefined;
+    [key: string]: unknown | string | number | number | boolean | undefined;
 };
 
 export type RequeueByFilterResponse = {
@@ -2613,17 +2847,33 @@ export type RequeueByFilterResponse = {
      */
     readonly $schema?: string;
     /**
+     * How many of them were COMPLETED jobs re-delivered
+     */
+    redriven: number;
+    /**
      * Eligible jobs still matching after the run; run again to continue
      */
     remaining: number;
     /**
-     * Jobs reset to PENDING
+     * Jobs reset to PENDING (redriven COMPLETED jobs included)
      */
     requeued: number;
+    /**
+     * COMPLETED matches left alone because the redrive was not requested and confirmed
+     */
+    skippedCompleted: number;
+    /**
+     * QUEUED or PROCESSING matches left alone (never reset)
+     */
+    skippedInFlight: number;
     /**
      * The run stopped at its limit (or at confirmCount) with eligible jobs left
      */
     truncated: boolean;
+    /**
+     * The created_at window the run was held to
+     */
+    window: WindowResponse;
 };
 
 export type RequeueRequest = {
@@ -2632,10 +2882,18 @@ export type RequeueRequest = {
      */
     readonly $schema?: string;
     /**
-     * Dispatch job ids to reset to PENDING for re-dispatch
+     * The literal REDRIVE, confirming redriveCompleted. Without both fields, COMPLETED jobs are skipped.
+     */
+    confirmRedriveCompleted?: string;
+    /**
+     * Dispatch job ids to reset to PENDING for re-dispatch. QUEUED and PROCESSING jobs are never reset; COMPLETED jobs only with redriveCompleted and confirmRedriveCompleted. Skipped jobs are reported, not an error.
      */
     ids: Array<string>;
-    [key: string]: unknown | string | Array<string> | undefined;
+    /**
+     * Also re-deliver COMPLETED jobs. Needs confirmRedriveCompleted=REDRIVE and the dispatch-job:redrive-completed permission (403 without it).
+     */
+    redriveCompleted?: boolean;
+    [key: string]: unknown | string | Array<string> | boolean | undefined;
 };
 
 export type RequeueResponse = {
@@ -2643,7 +2901,46 @@ export type RequeueResponse = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * How many of them were COMPLETED jobs re-delivered (0 unless the request redrove)
+     */
+    redriven: number;
+    /**
+     * Jobs reset to PENDING (redriven COMPLETED jobs included)
+     */
     requeued: number;
+    /**
+     * The skipped jobs, with the reason
+     */
+    skipped: Array<SkippedJobResponse>;
+    /**
+     * COMPLETED jobs left alone because the redrive was not requested and confirmed
+     */
+    skippedCompleted: number;
+    /**
+     * QUEUED or PROCESSING jobs left alone
+     */
+    skippedInFlight: number;
+};
+
+export type ResendInvitationRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    inviteRedirectUri?: string;
+    returnInviteLink?: boolean;
+    sendInvitation?: boolean;
+    [key: string]: unknown | string | boolean | undefined;
+};
+
+export type ResendInvitationResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    expiresAt?: string;
+    inviteLink?: string;
 };
 
 export type ResetPasswordRequest = {
@@ -2759,6 +3056,16 @@ export type RouterConfig = {
     readonly $schema?: string;
     processingPools: Array<PoolConfig>;
     queues: Array<QueueConfig>;
+};
+
+export type RunnerCapabilities = {
+    extra?: {
+        [key: string]: unknown;
+    };
+    protocol: number;
+    runnerKind?: string;
+    runtimes: Array<string>;
+    version?: string;
 };
 
 export type ScheduledJobInstanceLogResponse = {
@@ -2956,6 +3263,15 @@ export type SettingResponse = {
     kind: string;
     updatedAt: string;
     value?: string;
+};
+
+export type SkippedJobResponse = {
+    id: string;
+    /**
+     * IN_FLIGHT: QUEUED or PROCESSING, never reset. COMPLETED_REDRIVE_NOT_CONFIRMED: completed jobs are redriven only with redriveCompleted and confirmRedriveCompleted.
+     */
+    reason: 'IN_FLIGHT' | 'COMPLETED_REDRIVE_NOT_CONFIRMED';
+    status: string;
 };
 
 export type SpecVersionResponse = {
@@ -3494,9 +3810,17 @@ export type UpdateFunctionRequest = {
      * Set true to move the function back to the default runner pool
      */
     clearPool?: boolean;
+    /**
+     * Set true to return the function to its application's service account
+     */
+    clearServiceAccount?: boolean;
     description?: string;
     limits?: LimitsDto;
     pool?: string;
+    /**
+     * Set the webhook verifier service account (id or code); must exist, be active and be reachable by the caller
+     */
+    serviceAccountId?: string;
     warm?: boolean;
     [key: string]: unknown | string | boolean | LimitsDto | undefined;
 };
@@ -3638,9 +3962,15 @@ export type UpdateServiceAccountRequest = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Client links; replaces the set when present (an empty array clears it). Their count decides the token tier.
+     */
     clientIds?: Array<string>;
     description?: string;
     name?: string;
+    /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     */
     scope?: string;
     webhookCredentials?: WebhookCredentialsDto;
     [key: string]: unknown | string | Array<string> | WebhookCredentialsDto | undefined;
@@ -3737,6 +4067,21 @@ export type WebhookCredentialsDto = {
     username?: string;
 };
 
+export type WindowResponse = {
+    /**
+     * true when the server supplied a bound the request did not (no since/until: the last 24 hours)
+     */
+    defaulted: boolean;
+    /**
+     * Start of the window (inclusive)
+     */
+    from: string;
+    /**
+     * End of the window; now when the request gave no until
+     */
+    to: string;
+};
+
 export type WiringResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3824,6 +4169,13 @@ export type ApplicationFilterListResponseWritable = {
     applicationCodes: Array<string>;
 };
 
+export type ApplicationInvitationListWritable = {
+    invitations: Array<ApplicationInvitation>;
+    page: number;
+    pageSize: number;
+    total: number;
+};
+
 export type ApplicationListResponseWritable = {
     applications: Array<ApplicationResponseWritable>;
     total: number;
@@ -3859,6 +4211,26 @@ export type ApplicationResponseWritable = {
 
 export type ApplicationRolesResponseWritable = {
     roles: Array<string>;
+};
+
+export type ApplicationUserWritable = {
+    active: boolean;
+    clientId: string;
+    createdAt: string;
+    email: string;
+    id: string;
+    idpType: string;
+    invitation?: string;
+    lastLoginAt?: string;
+    name: string;
+    roles: Array<string>;
+};
+
+export type ApplicationUserListWritable = {
+    page: number;
+    pageSize: number;
+    total: number;
+    users: Array<ApplicationUserWritable>;
 };
 
 export type AssignApplicationAccessRequestWritable = {
@@ -4304,6 +4676,10 @@ export type CreateFunctionRequestWritable = {
      * The runner pool that hosts the function (FC_FUNCTIONS_POOL on its runners); omitted means the default pool. Not the dispatch pool, which is always the function's own.
      */
     pool?: string;
+    /**
+     * Optional webhook verifier identity: a service account id OR code. Its signing secret is what this function's webhook endpoints verify deliveries with. Omitted means the application's service account.
+     */
+    serviceAccountId?: string;
     warm?: boolean;
     [key: string]: unknown | string | LimitsDto | boolean | undefined;
 };
@@ -4512,6 +4888,9 @@ export type CreateServiceAccountRequestWritable = {
     code: string;
     description?: string;
     name: string;
+    /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     */
     scope?: string;
     webhookCredentials?: WebhookCredentialsDto;
     [key: string]: unknown | boolean | string | Array<string> | WebhookCredentialsDto | undefined;
@@ -4604,12 +4983,17 @@ export type DispatchJobFilterOptionsResponseWritable = {
     clientIds: Array<string>;
     codes: Array<string>;
     dispatchPoolIds: Array<string>;
+    eventTypes: Array<string>;
     kinds: Array<string>;
     statuses: Array<string>;
     subscriptionIds: Array<string>;
+    window: WindowResponse;
 };
 
 export type DispatchJobResponseWritable = {
+    /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     */
     attemptCount: number;
     attempts?: Array<AttemptDto>;
     clientId?: string;
@@ -4692,6 +5076,18 @@ export type DocResponseWritable = {
     content: string;
     slug: string;
     title: string;
+};
+
+export type EditPayloadRequestWritable = {
+    /**
+     * The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)
+     */
+    payload: string;
+    /**
+     * New media type; omit to keep the job's
+     */
+    payloadContentType?: string;
+    [key: string]: unknown | string | string | undefined;
 };
 
 export type EmitRequestWritable = {
@@ -4786,6 +5182,8 @@ export type FunctionResponseWritable = {
     limits: LimitsDto;
     name: string;
     pool?: string;
+    serviceAccountCode?: string;
+    serviceAccountId?: string;
     updatedAt: string;
     warm: boolean;
 };
@@ -4808,12 +5206,13 @@ export type GrantPermissionRequestWritable = {
 
 export type HeartbeatWritable = {
     budget: BudgetReport;
+    capabilities?: RunnerCapabilities;
     pool: string;
     revision: number;
     runnerId: string;
     startedAt: string;
     versions: Array<VersionReport>;
-    [key: string]: unknown | BudgetReport | string | number | Array<VersionReport>;
+    [key: string]: unknown | BudgetReport | RunnerCapabilities | string | number | Array<VersionReport> | undefined;
 };
 
 export type IdentityProviderListResponseWritable = {
@@ -4843,6 +5242,23 @@ export type IdentityProviderResponseWritable = {
 
 export type IdpRoleMappingListResponseWritable = {
     items: Array<IdpRoleMappingResponse>;
+};
+
+export type InviteApplicationUserRequestWritable = {
+    clientId: string;
+    email: string;
+    inviteRedirectUri?: string;
+    name: string;
+    returnInviteLink?: boolean;
+    roles: Array<string>;
+    sendInvitation?: boolean;
+    [key: string]: unknown | string | boolean | Array<string> | undefined;
+};
+
+export type InviteApplicationUserResponseWritable = {
+    id: string;
+    invitationSent: boolean;
+    inviteLink?: string;
 };
 
 export type ListOutputBodyWritable = {
@@ -5088,6 +5504,35 @@ export type ProvisionLoginClientRequestWritable = {
     [key: string]: unknown | Array<string> | string | Array<string> | undefined;
 };
 
+export type PruneVersionsRequestWritable = {
+    /**
+     * Report what would be pruned and change nothing
+     */
+    dryRun?: boolean;
+    /**
+     * Untagged versions to keep (>= 1); omitted uses the platform setting FC_FUNCTIONS_KEEP_VERSIONS (default 20)
+     */
+    keep?: number;
+    [key: string]: unknown | boolean | number | undefined;
+};
+
+export type PruneVersionsResponseWritable = {
+    /**
+     * Stored artifacts removed because no remaining version references them
+     */
+    artifactsDeleted: number;
+    dryRun: boolean;
+    keep: number;
+    /**
+     * Versions deleted (would be deleted, on a dry run), oldest first
+     */
+    pruned: Array<PrunedVersionResponse>;
+    /**
+     * Untagged versions before pruning
+     */
+    untagged: number;
+};
+
 export type PublicAllowedResponseWritable = {
     origins: Array<string>;
 };
@@ -5205,7 +5650,23 @@ export type RequeueByFilterPreviewRequestWritable = {
      * CSV of codes
      */
     codes?: string;
+    /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     */
+    connectionCode?: string;
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     */
+    connectionId?: string;
     dispatchPoolId?: string;
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     */
+    eventType?: string;
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     */
+    eventTypes?: string;
     /**
      * Exact message group
      */
@@ -5227,7 +5688,19 @@ export type RequeueByFilterPreviewRequestWritable = {
      * CSV of subdomains
      */
     subdomains?: string;
+    /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     */
+    subscriptionCode?: string;
     subscriptionId?: string;
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     */
+    subscriptionIds?: string;
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     */
+    subscriptionName?: string;
     /**
      * RFC3339 timestamp
      */
@@ -5243,13 +5716,29 @@ export type RequeueByFilterPreviewResponseWritable = {
         [key: string]: number;
     };
     /**
-     * Jobs the filter matches that the caller can see
+     * COMPLETED jobs the filter matches that the caller can see. A requeue skips them; they are redriven only with redriveCompleted and confirmRedriveCompleted
+     */
+    completedCount: number;
+    /**
+     * Jobs the filter matches in the window that the caller can see
      */
     count: number;
     /**
-     * How many of them a requeue would reset for this caller; send it back as confirmCount
+     * How many of them a requeue would reset for this caller (not COMPLETED, not in flight); send it back as confirmCount
      */
     eligibleCount: number;
+    /**
+     * QUEUED or PROCESSING jobs the filter matches; a requeue never resets them
+     */
+    inFlightCount: number;
+    /**
+     * eligibleCount + completedCount: the confirmCount of a request that also redrives COMPLETED jobs
+     */
+    redriveEligibleCount: number;
+    /**
+     * The created_at window the counts cover
+     */
+    window: WindowResponse;
 };
 
 export type RequeueByFilterRequestWritable = {
@@ -5272,10 +5761,30 @@ export type RequeueByFilterRequestWritable = {
      */
     codes?: string;
     /**
-     * The eligibleCount the caller was shown. If more jobs are eligible now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
+     * The eligibleCount the caller was shown (redriveEligibleCount when redriveCompleted). If more jobs would be reset now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
      */
     confirmCount: number;
+    /**
+     * The literal REDRIVE, confirming redriveCompleted.
+     */
+    confirmRedriveCompleted?: string;
+    /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     */
+    connectionCode?: string;
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     */
+    connectionId?: string;
     dispatchPoolId?: string;
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     */
+    eventType?: string;
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     */
+    eventTypes?: string;
     /**
      * Most jobs to reset in this request (default and maximum 10000)
      */
@@ -5284,6 +5793,10 @@ export type RequeueByFilterRequestWritable = {
      * Exact message group
      */
     messageGroup?: string;
+    /**
+     * Also re-deliver the COMPLETED jobs the filter matches. Needs confirmRedriveCompleted=REDRIVE and the dispatch-job:redrive-completed permission (403 without it). Without both fields COMPLETED jobs are skipped and counted in skippedCompleted.
+     */
+    redriveCompleted?: boolean;
     /**
      * RFC3339 timestamp
      */
@@ -5301,39 +5814,106 @@ export type RequeueByFilterRequestWritable = {
      * CSV of subdomains
      */
     subdomains?: string;
+    /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     */
+    subscriptionCode?: string;
     subscriptionId?: string;
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     */
+    subscriptionIds?: string;
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     */
+    subscriptionName?: string;
     /**
      * RFC3339 timestamp
      */
     until?: string;
-    [key: string]: unknown | string | number | number | undefined;
+    [key: string]: unknown | string | number | number | boolean | undefined;
 };
 
 export type RequeueByFilterResponseWritable = {
+    /**
+     * How many of them were COMPLETED jobs re-delivered
+     */
+    redriven: number;
     /**
      * Eligible jobs still matching after the run; run again to continue
      */
     remaining: number;
     /**
-     * Jobs reset to PENDING
+     * Jobs reset to PENDING (redriven COMPLETED jobs included)
      */
     requeued: number;
+    /**
+     * COMPLETED matches left alone because the redrive was not requested and confirmed
+     */
+    skippedCompleted: number;
+    /**
+     * QUEUED or PROCESSING matches left alone (never reset)
+     */
+    skippedInFlight: number;
     /**
      * The run stopped at its limit (or at confirmCount) with eligible jobs left
      */
     truncated: boolean;
+    /**
+     * The created_at window the run was held to
+     */
+    window: WindowResponse;
 };
 
 export type RequeueRequestWritable = {
     /**
-     * Dispatch job ids to reset to PENDING for re-dispatch
+     * The literal REDRIVE, confirming redriveCompleted. Without both fields, COMPLETED jobs are skipped.
+     */
+    confirmRedriveCompleted?: string;
+    /**
+     * Dispatch job ids to reset to PENDING for re-dispatch. QUEUED and PROCESSING jobs are never reset; COMPLETED jobs only with redriveCompleted and confirmRedriveCompleted. Skipped jobs are reported, not an error.
      */
     ids: Array<string>;
-    [key: string]: unknown | Array<string>;
+    /**
+     * Also re-deliver COMPLETED jobs. Needs confirmRedriveCompleted=REDRIVE and the dispatch-job:redrive-completed permission (403 without it).
+     */
+    redriveCompleted?: boolean;
+    [key: string]: unknown | string | Array<string> | boolean | undefined;
 };
 
 export type RequeueResponseWritable = {
+    /**
+     * How many of them were COMPLETED jobs re-delivered (0 unless the request redrove)
+     */
+    redriven: number;
+    /**
+     * Jobs reset to PENDING (redriven COMPLETED jobs included)
+     */
     requeued: number;
+    /**
+     * The skipped jobs, with the reason
+     */
+    skipped: Array<SkippedJobResponse>;
+    /**
+     * COMPLETED jobs left alone because the redrive was not requested and confirmed
+     */
+    skippedCompleted: number;
+    /**
+     * QUEUED or PROCESSING jobs left alone
+     */
+    skippedInFlight: number;
+};
+
+export type ResendInvitationRequestWritable = {
+    inviteRedirectUri?: string;
+    returnInviteLink?: boolean;
+    sendInvitation?: boolean;
+    [key: string]: unknown | string | boolean | undefined;
+};
+
+export type ResendInvitationResponseWritable = {
+    expiresAt?: string;
+    inviteLink?: string;
 };
 
 export type ResetPasswordRequestWritable = {
@@ -5771,9 +6351,17 @@ export type UpdateFunctionRequestWritable = {
      * Set true to move the function back to the default runner pool
      */
     clearPool?: boolean;
+    /**
+     * Set true to return the function to its application's service account
+     */
+    clearServiceAccount?: boolean;
     description?: string;
     limits?: LimitsDto;
     pool?: string;
+    /**
+     * Set the webhook verifier service account (id or code); must exist, be active and be reachable by the caller
+     */
+    serviceAccountId?: string;
     warm?: boolean;
     [key: string]: unknown | boolean | string | LimitsDto | undefined;
 };
@@ -5879,9 +6467,15 @@ export type UpdateScheduledJobRequestWritable = {
 };
 
 export type UpdateServiceAccountRequestWritable = {
+    /**
+     * Client links; replaces the set when present (an empty array clears it). Their count decides the token tier.
+     */
     clientIds?: Array<string>;
     description?: string;
     name?: string;
+    /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     */
     scope?: string;
     webhookCredentials?: WebhookCredentialsDto;
     [key: string]: unknown | Array<string> | string | WebhookCredentialsDto | undefined;
@@ -6298,6 +6892,114 @@ export type SyncEventTypesResponses = {
 
 export type SyncEventTypesResponse = SyncEventTypesResponses[keyof SyncEventTypesResponses];
 
+export type ListApplicationInvitationsData = {
+    body?: never;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+    };
+    query?: {
+        /**
+         * PENDING | EXPIRED; absent = both
+         */
+        status?: string;
+        /**
+         * 0-based page (default 0)
+         */
+        page?: number;
+        /**
+         * Page size (default 50, max 200)
+         */
+        pageSize?: number;
+    };
+    url: '/api/applications/{appCode}/invitations';
+};
+
+export type ListApplicationInvitationsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListApplicationInvitationsError = ListApplicationInvitationsErrors[keyof ListApplicationInvitationsErrors];
+
+export type ListApplicationInvitationsResponses = {
+    /**
+     * OK
+     */
+    200: ApplicationInvitationList;
+};
+
+export type ListApplicationInvitationsResponse = ListApplicationInvitationsResponses[keyof ListApplicationInvitationsResponses];
+
+export type RevokeApplicationInvitationData = {
+    body?: never;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+        id: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/invitations/{id}';
+};
+
+export type RevokeApplicationInvitationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RevokeApplicationInvitationError = RevokeApplicationInvitationErrors[keyof RevokeApplicationInvitationErrors];
+
+export type RevokeApplicationInvitationResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RevokeApplicationInvitationResponse = RevokeApplicationInvitationResponses[keyof RevokeApplicationInvitationResponses];
+
+export type ResendApplicationInvitationData = {
+    body: ResendInvitationRequestWritable;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+        /**
+         * The invited user's id
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/invitations/{id}/resend';
+};
+
+export type ResendApplicationInvitationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ResendApplicationInvitationError = ResendApplicationInvitationErrors[keyof ResendApplicationInvitationErrors];
+
+export type ResendApplicationInvitationResponses = {
+    /**
+     * OK
+     */
+    200: ResendInvitationResponse;
+};
+
+export type ResendApplicationInvitationResponse = ResendApplicationInvitationResponses[keyof ResendApplicationInvitationResponses];
+
 export type SyncOpenapiData = {
     body: SyncOpenapiRequestWritable;
     path: {
@@ -6497,6 +7199,130 @@ export type SyncSubscriptionsResponses = {
 };
 
 export type SyncSubscriptionsResponse = SyncSubscriptionsResponses[keyof SyncSubscriptionsResponses];
+
+export type ListApplicationUsersData = {
+    body?: never;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+    };
+    query?: {
+        /**
+         * Case-insensitive substring of name or email
+         */
+        q?: string;
+        /**
+         * true | false; absent = both
+         */
+        active?: string;
+        /**
+         * Only users homed at this client
+         */
+        clientId?: string;
+        /**
+         * CSV of the application's roles; users holding any
+         */
+        roles?: string;
+        /**
+         * 0-based page (default 0)
+         */
+        page?: number;
+        /**
+         * Page size (default 50, max 200)
+         */
+        pageSize?: number;
+        /**
+         * name | email | createdAt (default createdAt)
+         */
+        sortField?: string;
+        /**
+         * asc | desc (default asc)
+         */
+        sortOrder?: string;
+    };
+    url: '/api/applications/{appCode}/users';
+};
+
+export type ListApplicationUsersErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListApplicationUsersError = ListApplicationUsersErrors[keyof ListApplicationUsersErrors];
+
+export type ListApplicationUsersResponses = {
+    /**
+     * OK
+     */
+    200: ApplicationUserList;
+};
+
+export type ListApplicationUsersResponse = ListApplicationUsersResponses[keyof ListApplicationUsersResponses];
+
+export type InviteApplicationUserData = {
+    body: InviteApplicationUserRequestWritable;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/users';
+};
+
+export type InviteApplicationUserErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type InviteApplicationUserError = InviteApplicationUserErrors[keyof InviteApplicationUserErrors];
+
+export type InviteApplicationUserResponses = {
+    /**
+     * Created
+     */
+    201: InviteApplicationUserResponse;
+};
+
+export type InviteApplicationUserResponse2 = InviteApplicationUserResponses[keyof InviteApplicationUserResponses];
+
+export type GetApplicationUserData = {
+    body?: never;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+        id: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/users/{id}';
+};
+
+export type GetApplicationUserErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetApplicationUserError = GetApplicationUserErrors[keyof GetApplicationUserErrors];
+
+export type GetApplicationUserResponses = {
+    /**
+     * OK
+     */
+    200: ApplicationUser;
+};
+
+export type GetApplicationUserResponse = GetApplicationUserResponses[keyof GetApplicationUserResponses];
 
 export type DeleteApplicationData = {
     body?: never;
@@ -7961,6 +8787,34 @@ export type ListDispatchJobsData = {
          * Free-text source filter
          */
         source?: string;
+        /**
+         * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+         */
+        eventType?: string;
+        /**
+         * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+         */
+        eventTypes?: string;
+        /**
+         * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+         */
+        subscriptionIds?: string;
+        /**
+         * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+         */
+        subscriptionCode?: string;
+        /**
+         * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+         */
+        subscriptionName?: string;
+        /**
+         * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+         */
+        connectionId?: string;
+        /**
+         * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+         */
+        connectionCode?: string;
         limit?: number;
         offset?: number;
         /**
@@ -8050,7 +8904,16 @@ export type DispatchJobsByEventResponse = DispatchJobsByEventResponses[keyof Dis
 export type DispatchJobFilterOptionsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * RFC3339; start of the created_at window the values are read from (default: 24 hours before until/now)
+         */
+        since?: string;
+        /**
+         * RFC3339; end of the window (default: now)
+         */
+        until?: string;
+    };
     url: '/api/dispatch-jobs/filter-options';
 };
 
@@ -8121,6 +8984,34 @@ export type ListDispatchJobsRawData = {
          * Free-text source filter
          */
         source?: string;
+        /**
+         * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+         */
+        eventType?: string;
+        /**
+         * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+         */
+        eventTypes?: string;
+        /**
+         * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+         */
+        subscriptionIds?: string;
+        /**
+         * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+         */
+        subscriptionCode?: string;
+        /**
+         * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+         */
+        subscriptionName?: string;
+        /**
+         * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+         */
+        connectionId?: string;
+        /**
+         * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+         */
+        connectionCode?: string;
         limit?: number;
         offset?: number;
         /**
@@ -8202,6 +9093,34 @@ export type ListDispatchJobsRawAliasData = {
          * Free-text source filter
          */
         source?: string;
+        /**
+         * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+         */
+        eventType?: string;
+        /**
+         * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+         */
+        eventTypes?: string;
+        /**
+         * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+         */
+        subscriptionIds?: string;
+        /**
+         * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+         */
+        subscriptionCode?: string;
+        /**
+         * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+         */
+        subscriptionName?: string;
+        /**
+         * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+         */
+        connectionId?: string;
+        /**
+         * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+         */
+        connectionCode?: string;
         limit?: number;
         offset?: number;
         /**
@@ -8416,6 +9335,33 @@ export type CompleteDispatchJobResponses = {
 };
 
 export type CompleteDispatchJobResponse = CompleteDispatchJobResponses[keyof CompleteDispatchJobResponses];
+
+export type EditDispatchJobPayloadData = {
+    body: EditPayloadRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/dispatch-jobs/{id}/payload';
+};
+
+export type EditDispatchJobPayloadErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type EditDispatchJobPayloadError = EditDispatchJobPayloadErrors[keyof EditDispatchJobPayloadErrors];
+
+export type EditDispatchJobPayloadResponses = {
+    /**
+     * OK
+     */
+    200: DispatchJobResponse;
+};
+
+export type EditDispatchJobPayloadResponse = EditDispatchJobPayloadResponses[keyof EditDispatchJobPayloadResponses];
 
 export type GetDispatchJobRawData = {
     body?: never;
@@ -8694,6 +9640,12 @@ export type SuspendDispatchPoolResponse = SuspendDispatchPoolResponses[keyof Sus
 
 export type GetRouterConfigData = {
     body?: never;
+    headers?: {
+        /**
+         * An ETag from an earlier answer; 304 when the document is unchanged
+         */
+        'If-None-Match'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/dispatch/router-config';
@@ -10225,6 +11177,33 @@ export type PublishFunctionVersionResponses = {
 };
 
 export type PublishFunctionVersionResponse = PublishFunctionVersionResponses[keyof PublishFunctionVersionResponses];
+
+export type PruneFunctionVersionsData = {
+    body: PruneVersionsRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/versions/prune';
+};
+
+export type PruneFunctionVersionsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PruneFunctionVersionsError = PruneFunctionVersionsErrors[keyof PruneFunctionVersionsErrors];
+
+export type PruneFunctionVersionsResponses = {
+    /**
+     * OK
+     */
+    200: PruneVersionsResponse;
+};
+
+export type PruneFunctionVersionsResponse = PruneFunctionVersionsResponses[keyof PruneFunctionVersionsResponses];
 
 export type GetFunctionVersionData = {
     body?: never;
@@ -14132,6 +15111,10 @@ export type GetFunctionRunnerDesiredData = {
          * Seconds to hold the request open for a change, capped at control.MaxWait
          */
         wait?: number;
+        /**
+         * Comma-separated runtimes the runner can run (for example wasm,js). Only versions of these runtimes are returned. Absent means wasm,js.
+         */
+        runtimes?: string;
     };
     url: '/control/functions/desired';
 };

@@ -51,6 +51,13 @@ class HeartbeatNormalizer implements DenormalizerInterface, NormalizerInterface,
         elseif (\array_key_exists('budget', $data) && $data['budget'] === null) {
             $object->setBudget(null);
         }
+        if (\array_key_exists('capabilities', $data) && $data['capabilities'] !== null) {
+            $object->setCapabilities($this->denormalizer->denormalize($data['capabilities'], \FlowCatalyst\Generated\Model\RunnerCapabilities::class, 'json', $context));
+            unset($data['capabilities']);
+        }
+        elseif (\array_key_exists('capabilities', $data) && $data['capabilities'] === null) {
+            $object->setCapabilities(null);
+        }
         if (\array_key_exists('pool', $data) && $data['pool'] !== null) {
             $object->setPool($data['pool']);
             unset($data['pool']);
@@ -101,6 +108,9 @@ class HeartbeatNormalizer implements DenormalizerInterface, NormalizerInterface,
     {
         $dataArray = [];
         $dataArray['budget'] = $this->normalizer->normalize($data->getBudget(), 'json', $context);
+        if ($data->isInitialized('capabilities') && null !== $data->getCapabilities()) {
+            $dataArray['capabilities'] = $this->normalizer->normalize($data->getCapabilities(), 'json', $context);
+        }
         $dataArray['pool'] = $data->getPool();
         $dataArray['revision'] = $data->getRevision();
         $dataArray['runnerId'] = $data->getRunnerId();

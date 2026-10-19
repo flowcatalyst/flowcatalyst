@@ -19,6 +19,8 @@ class DispatchJobResponse
      */
     protected $dollarSchema;
     /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     *
      * @var int|null
      */
     protected $attemptCount;
@@ -193,6 +195,8 @@ class DispatchJobResponse
         return $this;
     }
     /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     *
      * @return int|null
      */
     public function getAttemptCount(): ?int
@@ -200,6 +204,8 @@ class DispatchJobResponse
         return $this->attemptCount;
     }
     /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     *
      * @param int|null $attemptCount
      *
      * @return self

@@ -51,15 +51,45 @@ class RequeueByFilterRequest extends \ArrayObject
      */
     protected $codes;
     /**
-     * The eligibleCount the caller was shown. If more jobs are eligible now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
+     * The eligibleCount the caller was shown (redriveEligibleCount when redriveCompleted). If more jobs would be reset now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
      *
      * @var int|null
      */
     protected $confirmCount;
     /**
+     * The literal REDRIVE, confirming redriveCompleted.
+     *
+     * @var string|null
+     */
+    protected $confirmRedriveCompleted;
+    /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     *
+     * @var string|null
+     */
+    protected $connectionCode;
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     *
+     * @var string|null
+     */
+    protected $connectionId;
+    /**
      * @var string|null
      */
     protected $dispatchPoolId;
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     *
+     * @var string|null
+     */
+    protected $eventType;
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     *
+     * @var string|null
+     */
+    protected $eventTypes;
     /**
      * Most jobs to reset in this request (default and maximum 10000)
      *
@@ -72,6 +102,12 @@ class RequeueByFilterRequest extends \ArrayObject
      * @var string|null
      */
     protected $messageGroup;
+    /**
+     * Also re-deliver the COMPLETED jobs the filter matches. Needs confirmRedriveCompleted=REDRIVE and the dispatch-job:redrive-completed permission (403 without it). Without both fields COMPLETED jobs are skipped and counted in skippedCompleted.
+     *
+     * @var bool|null
+     */
+    protected $redriveCompleted;
     /**
      * RFC3339 timestamp
      *
@@ -101,9 +137,27 @@ class RequeueByFilterRequest extends \ArrayObject
      */
     protected $subdomains;
     /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     *
+     * @var string|null
+     */
+    protected $subscriptionCode;
+    /**
      * @var string|null
      */
     protected $subscriptionId;
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     *
+     * @var string|null
+     */
+    protected $subscriptionIds;
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     *
+     * @var string|null
+     */
+    protected $subscriptionName;
     /**
      * RFC3339 timestamp
      *
@@ -257,7 +311,7 @@ class RequeueByFilterRequest extends \ArrayObject
         return $this;
     }
     /**
-     * The eligibleCount the caller was shown. If more jobs are eligible now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
+     * The eligibleCount the caller was shown (redriveEligibleCount when redriveCompleted). If more jobs would be reset now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
      *
      * @return int|null
      */
@@ -266,7 +320,7 @@ class RequeueByFilterRequest extends \ArrayObject
         return $this->confirmCount;
     }
     /**
-     * The eligibleCount the caller was shown. If more jobs are eligible now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
+     * The eligibleCount the caller was shown (redriveEligibleCount when redriveCompleted). If more jobs would be reset now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
      *
      * @param int|null $confirmCount
      *
@@ -276,6 +330,72 @@ class RequeueByFilterRequest extends \ArrayObject
     {
         $this->initialized['confirmCount'] = true;
         $this->confirmCount = $confirmCount;
+        return $this;
+    }
+    /**
+     * The literal REDRIVE, confirming redriveCompleted.
+     *
+     * @return string|null
+     */
+    public function getConfirmRedriveCompleted(): ?string
+    {
+        return $this->confirmRedriveCompleted;
+    }
+    /**
+     * The literal REDRIVE, confirming redriveCompleted.
+     *
+     * @param string|null $confirmRedriveCompleted
+     *
+     * @return self
+     */
+    public function setConfirmRedriveCompleted(?string $confirmRedriveCompleted): self
+    {
+        $this->initialized['confirmRedriveCompleted'] = true;
+        $this->confirmRedriveCompleted = $confirmRedriveCompleted;
+        return $this;
+    }
+    /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     *
+     * @return string|null
+     */
+    public function getConnectionCode(): ?string
+    {
+        return $this->connectionCode;
+    }
+    /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     *
+     * @param string|null $connectionCode
+     *
+     * @return self
+     */
+    public function setConnectionCode(?string $connectionCode): self
+    {
+        $this->initialized['connectionCode'] = true;
+        $this->connectionCode = $connectionCode;
+        return $this;
+    }
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     *
+     * @return string|null
+     */
+    public function getConnectionId(): ?string
+    {
+        return $this->connectionId;
+    }
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     *
+     * @param string|null $connectionId
+     *
+     * @return self
+     */
+    public function setConnectionId(?string $connectionId): self
+    {
+        $this->initialized['connectionId'] = true;
+        $this->connectionId = $connectionId;
         return $this;
     }
     /**
@@ -294,6 +414,50 @@ class RequeueByFilterRequest extends \ArrayObject
     {
         $this->initialized['dispatchPoolId'] = true;
         $this->dispatchPoolId = $dispatchPoolId;
+        return $this;
+    }
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     *
+     * @return string|null
+     */
+    public function getEventType(): ?string
+    {
+        return $this->eventType;
+    }
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     *
+     * @param string|null $eventType
+     *
+     * @return self
+     */
+    public function setEventType(?string $eventType): self
+    {
+        $this->initialized['eventType'] = true;
+        $this->eventType = $eventType;
+        return $this;
+    }
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     *
+     * @return string|null
+     */
+    public function getEventTypes(): ?string
+    {
+        return $this->eventTypes;
+    }
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     *
+     * @param string|null $eventTypes
+     *
+     * @return self
+     */
+    public function setEventTypes(?string $eventTypes): self
+    {
+        $this->initialized['eventTypes'] = true;
+        $this->eventTypes = $eventTypes;
         return $this;
     }
     /**
@@ -338,6 +502,28 @@ class RequeueByFilterRequest extends \ArrayObject
     {
         $this->initialized['messageGroup'] = true;
         $this->messageGroup = $messageGroup;
+        return $this;
+    }
+    /**
+     * Also re-deliver the COMPLETED jobs the filter matches. Needs confirmRedriveCompleted=REDRIVE and the dispatch-job:redrive-completed permission (403 without it). Without both fields COMPLETED jobs are skipped and counted in skippedCompleted.
+     *
+     * @return bool|null
+     */
+    public function getRedriveCompleted(): ?bool
+    {
+        return $this->redriveCompleted;
+    }
+    /**
+     * Also re-deliver the COMPLETED jobs the filter matches. Needs confirmRedriveCompleted=REDRIVE and the dispatch-job:redrive-completed permission (403 without it). Without both fields COMPLETED jobs are skipped and counted in skippedCompleted.
+     *
+     * @param bool|null $redriveCompleted
+     *
+     * @return self
+     */
+    public function setRedriveCompleted(?bool $redriveCompleted): self
+    {
+        $this->initialized['redriveCompleted'] = true;
+        $this->redriveCompleted = $redriveCompleted;
         return $this;
     }
     /**
@@ -447,6 +633,28 @@ class RequeueByFilterRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     *
+     * @return string|null
+     */
+    public function getSubscriptionCode(): ?string
+    {
+        return $this->subscriptionCode;
+    }
+    /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     *
+     * @param string|null $subscriptionCode
+     *
+     * @return self
+     */
+    public function setSubscriptionCode(?string $subscriptionCode): self
+    {
+        $this->initialized['subscriptionCode'] = true;
+        $this->subscriptionCode = $subscriptionCode;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getSubscriptionId(): ?string
@@ -462,6 +670,50 @@ class RequeueByFilterRequest extends \ArrayObject
     {
         $this->initialized['subscriptionId'] = true;
         $this->subscriptionId = $subscriptionId;
+        return $this;
+    }
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     *
+     * @return string|null
+     */
+    public function getSubscriptionIds(): ?string
+    {
+        return $this->subscriptionIds;
+    }
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     *
+     * @param string|null $subscriptionIds
+     *
+     * @return self
+     */
+    public function setSubscriptionIds(?string $subscriptionIds): self
+    {
+        $this->initialized['subscriptionIds'] = true;
+        $this->subscriptionIds = $subscriptionIds;
+        return $this;
+    }
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     *
+     * @return string|null
+     */
+    public function getSubscriptionName(): ?string
+    {
+        return $this->subscriptionName;
+    }
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     *
+     * @param string|null $subscriptionName
+     *
+     * @return self
+     */
+    public function setSubscriptionName(?string $subscriptionName): self
+    {
+        $this->initialized['subscriptionName'] = true;
+        $this->subscriptionName = $subscriptionName;
         return $this;
     }
     /**

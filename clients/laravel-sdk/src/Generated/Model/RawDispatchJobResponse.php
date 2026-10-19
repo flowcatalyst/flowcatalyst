@@ -13,6 +13,8 @@ class RawDispatchJobResponse
         return array_key_exists($property, $this->initialized);
     }
     /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     *
      * @var int|null
      */
     protected $attemptCount;
@@ -137,6 +139,8 @@ class RawDispatchJobResponse
      */
     protected $updatedAt;
     /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     *
      * @return int|null
      */
     public function getAttemptCount(): ?int
@@ -144,6 +148,8 @@ class RawDispatchJobResponse
         return $this->attemptCount;
     }
     /**
+     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
+     *
      * @param int|null $attemptCount
      *
      * @return self

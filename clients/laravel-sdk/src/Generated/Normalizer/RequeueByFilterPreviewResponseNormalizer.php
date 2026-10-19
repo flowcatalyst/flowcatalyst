@@ -53,6 +53,12 @@ class RequeueByFilterPreviewResponseNormalizer implements DenormalizerInterface,
         elseif (\array_key_exists('byStatus', $data) && $data['byStatus'] === null) {
             $object->setByStatus(null);
         }
+        if (\array_key_exists('completedCount', $data) && $data['completedCount'] !== null) {
+            $object->setCompletedCount($data['completedCount']);
+        }
+        elseif (\array_key_exists('completedCount', $data) && $data['completedCount'] === null) {
+            $object->setCompletedCount(null);
+        }
         if (\array_key_exists('count', $data) && $data['count'] !== null) {
             $object->setCount($data['count']);
         }
@@ -65,6 +71,24 @@ class RequeueByFilterPreviewResponseNormalizer implements DenormalizerInterface,
         elseif (\array_key_exists('eligibleCount', $data) && $data['eligibleCount'] === null) {
             $object->setEligibleCount(null);
         }
+        if (\array_key_exists('inFlightCount', $data) && $data['inFlightCount'] !== null) {
+            $object->setInFlightCount($data['inFlightCount']);
+        }
+        elseif (\array_key_exists('inFlightCount', $data) && $data['inFlightCount'] === null) {
+            $object->setInFlightCount(null);
+        }
+        if (\array_key_exists('redriveEligibleCount', $data) && $data['redriveEligibleCount'] !== null) {
+            $object->setRedriveEligibleCount($data['redriveEligibleCount']);
+        }
+        elseif (\array_key_exists('redriveEligibleCount', $data) && $data['redriveEligibleCount'] === null) {
+            $object->setRedriveEligibleCount(null);
+        }
+        if (\array_key_exists('window', $data) && $data['window'] !== null) {
+            $object->setWindow($this->denormalizer->denormalize($data['window'], \FlowCatalyst\Generated\Model\WindowResponse::class, 'json', $context));
+        }
+        elseif (\array_key_exists('window', $data) && $data['window'] === null) {
+            $object->setWindow(null);
+        }
         return $object;
     }
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
@@ -75,8 +99,12 @@ class RequeueByFilterPreviewResponseNormalizer implements DenormalizerInterface,
             $values[$key] = $value;
         }
         $dataArray['byStatus'] = $values;
+        $dataArray['completedCount'] = $data->getCompletedCount();
         $dataArray['count'] = $data->getCount();
         $dataArray['eligibleCount'] = $data->getEligibleCount();
+        $dataArray['inFlightCount'] = $data->getInFlightCount();
+        $dataArray['redriveEligibleCount'] = $data->getRedriveEligibleCount();
+        $dataArray['window'] = $this->normalizer->normalize($data->getWindow(), 'json', $context);
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

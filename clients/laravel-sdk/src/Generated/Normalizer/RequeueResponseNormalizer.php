@@ -43,18 +43,54 @@ class RequeueResponseNormalizer implements DenormalizerInterface, NormalizerInte
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
         }
+        if (\array_key_exists('redriven', $data) && $data['redriven'] !== null) {
+            $object->setRedriven($data['redriven']);
+        }
+        elseif (\array_key_exists('redriven', $data) && $data['redriven'] === null) {
+            $object->setRedriven(null);
+        }
         if (\array_key_exists('requeued', $data) && $data['requeued'] !== null) {
             $object->setRequeued($data['requeued']);
         }
         elseif (\array_key_exists('requeued', $data) && $data['requeued'] === null) {
             $object->setRequeued(null);
         }
+        if (\array_key_exists('skipped', $data) && $data['skipped'] !== null) {
+            $values = [];
+            foreach ($data['skipped'] as $value) {
+                $values[] = $this->denormalizer->denormalize($value, \FlowCatalyst\Generated\Model\SkippedJobResponse::class, 'json', $context);
+            }
+            $object->setSkipped($values);
+        }
+        elseif (\array_key_exists('skipped', $data) && $data['skipped'] === null) {
+            $object->setSkipped(null);
+        }
+        if (\array_key_exists('skippedCompleted', $data) && $data['skippedCompleted'] !== null) {
+            $object->setSkippedCompleted($data['skippedCompleted']);
+        }
+        elseif (\array_key_exists('skippedCompleted', $data) && $data['skippedCompleted'] === null) {
+            $object->setSkippedCompleted(null);
+        }
+        if (\array_key_exists('skippedInFlight', $data) && $data['skippedInFlight'] !== null) {
+            $object->setSkippedInFlight($data['skippedInFlight']);
+        }
+        elseif (\array_key_exists('skippedInFlight', $data) && $data['skippedInFlight'] === null) {
+            $object->setSkippedInFlight(null);
+        }
         return $object;
     }
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
+        $dataArray['redriven'] = $data->getRedriven();
         $dataArray['requeued'] = $data->getRequeued();
+        $values = [];
+        foreach ($data->getSkipped() as $value) {
+            $values[] = $this->normalizer->normalize($value, 'json', $context);
+        }
+        $dataArray['skipped'] = $values;
+        $dataArray['skippedCompleted'] = $data->getSkippedCompleted();
+        $dataArray['skippedInFlight'] = $data->getSkippedInFlight();
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

@@ -51,9 +51,33 @@ class RequeueByFilterPreviewRequest extends \ArrayObject
      */
     protected $codes;
     /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     *
+     * @var string|null
+     */
+    protected $connectionCode;
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     *
+     * @var string|null
+     */
+    protected $connectionId;
+    /**
      * @var string|null
      */
     protected $dispatchPoolId;
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     *
+     * @var string|null
+     */
+    protected $eventType;
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     *
+     * @var string|null
+     */
+    protected $eventTypes;
     /**
      * Exact message group
      *
@@ -89,9 +113,27 @@ class RequeueByFilterPreviewRequest extends \ArrayObject
      */
     protected $subdomains;
     /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     *
+     * @var string|null
+     */
+    protected $subscriptionCode;
+    /**
      * @var string|null
      */
     protected $subscriptionId;
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     *
+     * @var string|null
+     */
+    protected $subscriptionIds;
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     *
+     * @var string|null
+     */
+    protected $subscriptionName;
     /**
      * RFC3339 timestamp
      *
@@ -245,6 +287,50 @@ class RequeueByFilterPreviewRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     *
+     * @return string|null
+     */
+    public function getConnectionCode(): ?string
+    {
+        return $this->connectionCode;
+    }
+    /**
+     * Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
+     *
+     * @param string|null $connectionCode
+     *
+     * @return self
+     */
+    public function setConnectionCode(?string $connectionCode): self
+    {
+        $this->initialized['connectionCode'] = true;
+        $this->connectionCode = $connectionCode;
+        return $this;
+    }
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     *
+     * @return string|null
+     */
+    public function getConnectionId(): ?string
+    {
+        return $this->connectionId;
+    }
+    /**
+     * Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     *
+     * @param string|null $connectionId
+     *
+     * @return self
+     */
+    public function setConnectionId(?string $connectionId): self
+    {
+        $this->initialized['connectionId'] = true;
+        $this->connectionId = $connectionId;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getDispatchPoolId(): ?string
@@ -260,6 +346,50 @@ class RequeueByFilterPreviewRequest extends \ArrayObject
     {
         $this->initialized['dispatchPoolId'] = true;
         $this->dispatchPoolId = $dispatchPoolId;
+        return $this;
+    }
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     *
+     * @return string|null
+     */
+    public function getEventType(): ?string
+    {
+        return $this->eventType;
+    }
+    /**
+     * Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     *
+     * @param string|null $eventType
+     *
+     * @return self
+     */
+    public function setEventType(?string $eventType): self
+    {
+        $this->initialized['eventType'] = true;
+        $this->eventType = $eventType;
+        return $this;
+    }
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     *
+     * @return string|null
+     */
+    public function getEventTypes(): ?string
+    {
+        return $this->eventTypes;
+    }
+    /**
+     * CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     *
+     * @param string|null $eventTypes
+     *
+     * @return self
+     */
+    public function setEventTypes(?string $eventTypes): self
+    {
+        $this->initialized['eventTypes'] = true;
+        $this->eventTypes = $eventTypes;
         return $this;
     }
     /**
@@ -391,6 +521,28 @@ class RequeueByFilterPreviewRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     *
+     * @return string|null
+     */
+    public function getSubscriptionCode(): ?string
+    {
+        return $this->subscriptionCode;
+    }
+    /**
+     * Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     *
+     * @param string|null $subscriptionCode
+     *
+     * @return self
+     */
+    public function setSubscriptionCode(?string $subscriptionCode): self
+    {
+        $this->initialized['subscriptionCode'] = true;
+        $this->subscriptionCode = $subscriptionCode;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getSubscriptionId(): ?string
@@ -406,6 +558,50 @@ class RequeueByFilterPreviewRequest extends \ArrayObject
     {
         $this->initialized['subscriptionId'] = true;
         $this->subscriptionId = $subscriptionId;
+        return $this;
+    }
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     *
+     * @return string|null
+     */
+    public function getSubscriptionIds(): ?string
+    {
+        return $this->subscriptionIds;
+    }
+    /**
+     * CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     *
+     * @param string|null $subscriptionIds
+     *
+     * @return self
+     */
+    public function setSubscriptionIds(?string $subscriptionIds): self
+    {
+        $this->initialized['subscriptionIds'] = true;
+        $this->subscriptionIds = $subscriptionIds;
+        return $this;
+    }
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     *
+     * @return string|null
+     */
+    public function getSubscriptionName(): ?string
+    {
+        return $this->subscriptionName;
+    }
+    /**
+     * Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     *
+     * @param string|null $subscriptionName
+     *
+     * @return self
+     */
+    public function setSubscriptionName(?string $subscriptionName): self
+    {
+        $this->initialized['subscriptionName'] = true;
+        $this->subscriptionName = $subscriptionName;
         return $this;
     }
     /**

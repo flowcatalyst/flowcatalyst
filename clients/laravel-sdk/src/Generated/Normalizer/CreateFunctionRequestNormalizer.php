@@ -89,6 +89,13 @@ class CreateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         elseif (\array_key_exists('pool', $data) && $data['pool'] === null) {
             $object->setPool(null);
         }
+        if (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] !== null) {
+            $object->setServiceAccountId($data['serviceAccountId']);
+            unset($data['serviceAccountId']);
+        }
+        elseif (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] === null) {
+            $object->setServiceAccountId(null);
+        }
         if (\array_key_exists('warm', $data) && $data['warm'] !== null) {
             $object->setWarm($data['warm']);
             unset($data['warm']);
@@ -119,6 +126,9 @@ class CreateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         $dataArray['name'] = $data->getName();
         if ($data->isInitialized('pool') && null !== $data->getPool()) {
             $dataArray['pool'] = $data->getPool();
+        }
+        if ($data->isInitialized('serviceAccountId') && null !== $data->getServiceAccountId()) {
+            $dataArray['serviceAccountId'] = $data->getServiceAccountId();
         }
         if ($data->isInitialized('warm') && null !== $data->getWarm()) {
             $dataArray['warm'] = $data->getWarm();

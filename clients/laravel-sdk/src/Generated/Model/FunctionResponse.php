@@ -63,6 +63,14 @@ class FunctionResponse
      */
     protected $pool;
     /**
+     * @var string|null
+     */
+    protected $serviceAccountCode;
+    /**
+     * @var string|null
+     */
+    protected $serviceAccountId;
+    /**
      * @var \DateTime|null
      */
     protected $updatedAt;
@@ -288,6 +296,42 @@ class FunctionResponse
     {
         $this->initialized['pool'] = true;
         $this->pool = $pool;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getServiceAccountCode(): ?string
+    {
+        return $this->serviceAccountCode;
+    }
+    /**
+     * @param string|null $serviceAccountCode
+     *
+     * @return self
+     */
+    public function setServiceAccountCode(?string $serviceAccountCode): self
+    {
+        $this->initialized['serviceAccountCode'] = true;
+        $this->serviceAccountCode = $serviceAccountCode;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getServiceAccountId(): ?string
+    {
+        return $this->serviceAccountId;
+    }
+    /**
+     * @param string|null $serviceAccountId
+     *
+     * @return self
+     */
+    public function setServiceAccountId(?string $serviceAccountId): self
+    {
+        $this->initialized['serviceAccountId'] = true;
+        $this->serviceAccountId = $serviceAccountId;
         return $this;
     }
     /**

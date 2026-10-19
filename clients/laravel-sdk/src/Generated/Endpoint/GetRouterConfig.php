@@ -4,6 +4,15 @@ namespace FlowCatalyst\Generated\Endpoint;
 
 class GetRouterConfig extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
+    /**
+     * @param array{
+     *    "If-None-Match"?: string, //An ETag from an earlier answer; 304 when the document is unchanged
+     * } $headerParameters
+     */
+    public function __construct(array $headerParameters = [])
+    {
+        $this->headerParameters = $headerParameters;
+    }
     use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
     public function getMethod(): string
     {
@@ -20,6 +29,15 @@ class GetRouterConfig extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoin
     public function getExtraHeaders(): array
     {
         return ['Accept' => ['application/json']];
+    }
+    protected function getHeadersOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
+    {
+        $optionsResolver = parent::getHeadersOptionsResolver();
+        $optionsResolver->setDefined(['If-None-Match']);
+        $optionsResolver->setRequired([]);
+        $optionsResolver->setDefaults([]);
+        $optionsResolver->addAllowedTypes('If-None-Match', ['string']);
+        return $optionsResolver;
     }
     /**
      * {@inheritdoc}

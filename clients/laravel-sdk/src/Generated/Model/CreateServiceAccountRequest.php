@@ -43,6 +43,8 @@ class CreateServiceAccountRequest extends \ArrayObject
      */
     protected $name;
     /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     *
      * @var string|null
      */
     protected $scope;
@@ -181,6 +183,8 @@ class CreateServiceAccountRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     *
      * @return string|null
      */
     public function getScope(): ?string
@@ -188,6 +192,8 @@ class CreateServiceAccountRequest extends \ArrayObject
         return $this->scope;
     }
     /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     *
      * @param string|null $scope
      *
      * @return self

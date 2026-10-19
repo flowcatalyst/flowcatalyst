@@ -40,6 +40,9 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         if (\array_key_exists('clearPool', $data) && \is_int($data['clearPool'])) {
             $data['clearPool'] = (bool) $data['clearPool'];
         }
+        if (\array_key_exists('clearServiceAccount', $data) && \is_int($data['clearServiceAccount'])) {
+            $data['clearServiceAccount'] = (bool) $data['clearServiceAccount'];
+        }
         if (\array_key_exists('warm', $data) && \is_int($data['warm'])) {
             $data['warm'] = (bool) $data['warm'];
         }
@@ -56,6 +59,13 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('clearPool', $data) && $data['clearPool'] === null) {
             $object->setClearPool(null);
+        }
+        if (\array_key_exists('clearServiceAccount', $data) && $data['clearServiceAccount'] !== null) {
+            $object->setClearServiceAccount($data['clearServiceAccount']);
+            unset($data['clearServiceAccount']);
+        }
+        elseif (\array_key_exists('clearServiceAccount', $data) && $data['clearServiceAccount'] === null) {
+            $object->setClearServiceAccount(null);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -78,6 +88,13 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         elseif (\array_key_exists('pool', $data) && $data['pool'] === null) {
             $object->setPool(null);
         }
+        if (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] !== null) {
+            $object->setServiceAccountId($data['serviceAccountId']);
+            unset($data['serviceAccountId']);
+        }
+        elseif (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] === null) {
+            $object->setServiceAccountId(null);
+        }
         if (\array_key_exists('warm', $data) && $data['warm'] !== null) {
             $object->setWarm($data['warm']);
             unset($data['warm']);
@@ -98,6 +115,9 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         if ($data->isInitialized('clearPool') && null !== $data->getClearPool()) {
             $dataArray['clearPool'] = $data->getClearPool();
         }
+        if ($data->isInitialized('clearServiceAccount') && null !== $data->getClearServiceAccount()) {
+            $dataArray['clearServiceAccount'] = $data->getClearServiceAccount();
+        }
         if ($data->isInitialized('description') && null !== $data->getDescription()) {
             $dataArray['description'] = $data->getDescription();
         }
@@ -106,6 +126,9 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         if ($data->isInitialized('pool') && null !== $data->getPool()) {
             $dataArray['pool'] = $data->getPool();
+        }
+        if ($data->isInitialized('serviceAccountId') && null !== $data->getServiceAccountId()) {
+            $dataArray['serviceAccountId'] = $data->getServiceAccountId();
         }
         if ($data->isInitialized('warm') && null !== $data->getWarm()) {
             $dataArray['warm'] = $data->getWarm();

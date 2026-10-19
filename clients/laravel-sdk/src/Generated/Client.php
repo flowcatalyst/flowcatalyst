@@ -142,6 +142,44 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $appCode Application code
+     * @param array{
+     *    "status"?: string, //PENDING | EXPIRED; absent = both
+     *    "page"?: int, //0-based page (default 0)
+     *    "pageSize"?: int, //Page size (default 50, max 200)
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationInvitationList|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listApplicationInvitations(string $appCode, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListApplicationInvitations($appCode, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $appCode Application code
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function revokeApplicationInvitation(string $appCode, string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RevokeApplicationInvitation($appCode, $id), $fetch);
+    }
+    /**
+     * @param string $appCode Application code
+     * @param string $id The invited user's id
+     * @param null|\FlowCatalyst\Generated\Model\ResendInvitationRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ResendInvitationResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function resendApplicationInvitation(string $appCode, string $id, ?\FlowCatalyst\Generated\Model\ResendInvitationRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ResendApplicationInvitation($appCode, $id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $appCode Application code
      * @param null|\FlowCatalyst\Generated\Model\SyncOpenapiRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -217,6 +255,48 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function syncSubscriptions(string $appCode, ?\FlowCatalyst\Generated\Model\SyncSubscriptionsRequest $requestBody = null, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SyncSubscriptions($appCode, $requestBody, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $appCode Application code
+     * @param array{
+     *    "q"?: string, //Case-insensitive substring of name or email
+     *    "active"?: string, //true | false; absent = both
+     *    "clientId"?: string, //Only users homed at this client
+     *    "roles"?: string, //CSV of the application's roles; users holding any
+     *    "page"?: int, //0-based page (default 0)
+     *    "pageSize"?: int, //Page size (default 50, max 200)
+     *    "sortField"?: string, //name | email | createdAt (default createdAt)
+     *    "sortOrder"?: string, //asc | desc (default asc)
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationUserList|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listApplicationUsers(string $appCode, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListApplicationUsers($appCode, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $appCode Application code
+     * @param null|\FlowCatalyst\Generated\Model\InviteApplicationUserRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\InviteApplicationUserResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function inviteApplicationUser(string $appCode, ?\FlowCatalyst\Generated\Model\InviteApplicationUserRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\InviteApplicationUser($appCode, $requestBody), $fetch);
+    }
+    /**
+     * @param string $appCode Application code
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationUser|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getApplicationUser(string $appCode, string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApplicationUser($appCode, $id), $fetch);
     }
     /**
      * @param string $id
@@ -794,6 +874,13 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "aggregates"?: string, //CSV of aggregates
      *    "codes"?: string, //CSV of codes
      *    "source"?: string, //Free-text source filter
+     *    "eventType"?: string, //Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     *    "eventTypes"?: string, //CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     *    "subscriptionIds"?: string, //CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     *    "subscriptionCode"?: string, //Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     *    "subscriptionName"?: string, //Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     *    "connectionId"?: string, //Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     *    "connectionCode"?: string, //Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
      *    "limit"?: int,
      *    "offset"?: int,
      *    "size"?: int, //Max rows (default 50, max 1000)
@@ -828,13 +915,17 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DispatchJobsByEvent($eventId), $fetch);
     }
     /**
+     * @param array{
+     *    "since"?: string, //RFC3339; start of the created_at window the values are read from (default: 24 hours before until/now)
+     *    "until"?: string, //RFC3339; end of the window (default: now)
+     * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\DispatchJobFilterOptionsResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
      */
-    public function dispatchJobFilterOptions(string $fetch = self::FETCH_OBJECT)
+    public function dispatchJobFilterOptions(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
     {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DispatchJobFilterOptions(), $fetch);
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DispatchJobFilterOptions($queryParameters), $fetch);
     }
     /**
      * @param array{
@@ -853,6 +944,13 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "aggregates"?: string, //CSV of aggregates
      *    "codes"?: string, //CSV of codes
      *    "source"?: string, //Free-text source filter
+     *    "eventType"?: string, //Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     *    "eventTypes"?: string, //CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     *    "subscriptionIds"?: string, //CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     *    "subscriptionCode"?: string, //Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     *    "subscriptionName"?: string, //Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     *    "connectionId"?: string, //Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     *    "connectionCode"?: string, //Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
      *    "limit"?: int,
      *    "offset"?: int,
      *    "size"?: int, //Max rows (default 50, max 1000)
@@ -883,6 +981,13 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "aggregates"?: string, //CSV of aggregates
      *    "codes"?: string, //CSV of codes
      *    "source"?: string, //Free-text source filter
+     *    "eventType"?: string, //Exact event type. A job's code is its event type for a job raised by an event (and the caller's own job code for an SDK or function-dispatched job), so this filters the same column as code, by an index that also orders by createdAt. Combines with eventTypes and codes (all must hold).
+     *    "eventTypes"?: string, //CSV of event types (at most 10; more is 400 TOO_MANY_EVENT_TYPES)
+     *    "subscriptionIds"?: string, //CSV of subscription ids (at most 50; more is 400 TOO_MANY_SUBSCRIPTION_IDS). Combines with subscriptionId.
+     *    "subscriptionCode"?: string, //Subscription code, exact; a trailing * makes it a prefix. Resolved to subscription ids first (400 TOO_MANY_MATCHES past 200); a code that matches nothing lists no jobs.
+     *    "subscriptionName"?: string, //Subscription name, exact and case-insensitive; a trailing * makes it a prefix. Resolved like subscriptionCode.
+     *    "connectionId"?: string, //Jobs delivered through this connection: the jobs of its subscriptions and the jobs that name the connection themselves (function dispatch).
+     *    "connectionCode"?: string, //Connection code, exact; a trailing * makes it a prefix. Resolved to connection ids first (400 TOO_MANY_MATCHES past 50); a code that matches nothing lists no jobs.
      *    "limit"?: int,
      *    "offset"?: int,
      *    "size"?: int, //Max rows (default 50, max 1000)
@@ -965,6 +1070,17 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function completeDispatchJob(string $id, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\CompleteDispatchJob($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\EditPayloadRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\DispatchJobResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function editDispatchJobPayload(string $id, ?\FlowCatalyst\Generated\Model\EditPayloadRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\EditDispatchJobPayload($id, $requestBody), $fetch);
     }
     /**
      * @param string $id
@@ -1071,13 +1187,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SuspendDispatchPool($id), $fetch);
     }
     /**
+     * @param array{
+     *    "If-None-Match"?: string, //An ETag from an earlier answer; 304 when the document is unchanged
+     * } $headerParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\RouterConfig|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
      */
-    public function getRouterConfig(string $fetch = self::FETCH_OBJECT)
+    public function getRouterConfig(array $headerParameters = [], string $fetch = self::FETCH_OBJECT)
     {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetRouterConfig(), $fetch);
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetRouterConfig($headerParameters), $fetch);
     }
     /**
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
@@ -1669,6 +1788,17 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function publishFunctionVersion(string $id, ?\FlowCatalyst\Generated\Model\PublishVersionRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PublishFunctionVersion($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\PruneVersionsRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PruneVersionsResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function pruneFunctionVersions(string $id, ?\FlowCatalyst\Generated\Model\PruneVersionsRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PruneFunctionVersions($id, $requestBody), $fetch);
     }
     /**
      * @param string $id
@@ -3186,6 +3316,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param array{
      *    "pool": string, //The runner pool to fetch desired state for
      *    "wait"?: int, //Seconds to hold the request open for a change, capped at control.MaxWait
+     *    "runtimes"?: string, //Comma-separated runtimes the runner can run (for example wasm,js). Only versions of these runtimes are returned. Absent means wasm,js.
      * } $queryParameters
      * @param array{
      *    "If-None-Match"?: string,

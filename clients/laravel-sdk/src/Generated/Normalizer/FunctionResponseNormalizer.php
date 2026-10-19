@@ -112,6 +112,18 @@ class FunctionResponseNormalizer implements DenormalizerInterface, NormalizerInt
         elseif (\array_key_exists('pool', $data) && $data['pool'] === null) {
             $object->setPool(null);
         }
+        if (\array_key_exists('serviceAccountCode', $data) && $data['serviceAccountCode'] !== null) {
+            $object->setServiceAccountCode($data['serviceAccountCode']);
+        }
+        elseif (\array_key_exists('serviceAccountCode', $data) && $data['serviceAccountCode'] === null) {
+            $object->setServiceAccountCode(null);
+        }
+        if (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] !== null) {
+            $object->setServiceAccountId($data['serviceAccountId']);
+        }
+        elseif (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] === null) {
+            $object->setServiceAccountId(null);
+        }
         if (\array_key_exists('updatedAt', $data) && $data['updatedAt'] !== null) {
             $object->setUpdatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']));
         }
@@ -147,6 +159,12 @@ class FunctionResponseNormalizer implements DenormalizerInterface, NormalizerInt
         $dataArray['name'] = $data->getName();
         if ($data->isInitialized('pool') && null !== $data->getPool()) {
             $dataArray['pool'] = $data->getPool();
+        }
+        if ($data->isInitialized('serviceAccountCode') && null !== $data->getServiceAccountCode()) {
+            $dataArray['serviceAccountCode'] = $data->getServiceAccountCode();
+        }
+        if ($data->isInitialized('serviceAccountId') && null !== $data->getServiceAccountId()) {
+            $dataArray['serviceAccountId'] = $data->getServiceAccountId();
         }
         $dataArray['updatedAt'] = $data->getUpdatedAt()->format('Y-m-d\TH:i:sP');
         $dataArray['warm'] = $data->getWarm();

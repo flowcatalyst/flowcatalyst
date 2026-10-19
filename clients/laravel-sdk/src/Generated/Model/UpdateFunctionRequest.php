@@ -25,6 +25,12 @@ class UpdateFunctionRequest extends \ArrayObject
      */
     protected $clearPool;
     /**
+     * Set true to return the function to its application's service account
+     *
+     * @var bool|null
+     */
+    protected $clearServiceAccount;
+    /**
      * @var string|null
      */
     protected $description;
@@ -36,6 +42,12 @@ class UpdateFunctionRequest extends \ArrayObject
      * @var string|null
      */
     protected $pool;
+    /**
+     * Set the webhook verifier service account (id or code); must exist, be active and be reachable by the caller
+     *
+     * @var string|null
+     */
+    protected $serviceAccountId;
     /**
      * @var bool|null
      */
@@ -82,6 +94,28 @@ class UpdateFunctionRequest extends \ArrayObject
     {
         $this->initialized['clearPool'] = true;
         $this->clearPool = $clearPool;
+        return $this;
+    }
+    /**
+     * Set true to return the function to its application's service account
+     *
+     * @return bool|null
+     */
+    public function getClearServiceAccount(): ?bool
+    {
+        return $this->clearServiceAccount;
+    }
+    /**
+     * Set true to return the function to its application's service account
+     *
+     * @param bool|null $clearServiceAccount
+     *
+     * @return self
+     */
+    public function setClearServiceAccount(?bool $clearServiceAccount): self
+    {
+        $this->initialized['clearServiceAccount'] = true;
+        $this->clearServiceAccount = $clearServiceAccount;
         return $this;
     }
     /**
@@ -136,6 +170,28 @@ class UpdateFunctionRequest extends \ArrayObject
     {
         $this->initialized['pool'] = true;
         $this->pool = $pool;
+        return $this;
+    }
+    /**
+     * Set the webhook verifier service account (id or code); must exist, be active and be reachable by the caller
+     *
+     * @return string|null
+     */
+    public function getServiceAccountId(): ?string
+    {
+        return $this->serviceAccountId;
+    }
+    /**
+     * Set the webhook verifier service account (id or code); must exist, be active and be reachable by the caller
+     *
+     * @param string|null $serviceAccountId
+     *
+     * @return self
+     */
+    public function setServiceAccountId(?string $serviceAccountId): self
+    {
+        $this->initialized['serviceAccountId'] = true;
+        $this->serviceAccountId = $serviceAccountId;
         return $this;
     }
     /**

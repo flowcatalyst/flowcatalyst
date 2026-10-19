@@ -8,6 +8,7 @@ class GetFunctionRunnerDesired extends \FlowCatalyst\Generated\Runtime\Client\Ba
      * @param array{
      *    "pool": string, //The runner pool to fetch desired state for
      *    "wait"?: int, //Seconds to hold the request open for a change, capped at control.MaxWait
+     *    "runtimes"?: string, //Comma-separated runtimes the runner can run (for example wasm,js). Only versions of these runtimes are returned. Absent means wasm,js.
      * } $queryParameters
      * @param array{
      *    "If-None-Match"?: string,
@@ -38,11 +39,12 @@ class GetFunctionRunnerDesired extends \FlowCatalyst\Generated\Runtime\Client\Ba
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['pool', 'wait']);
+        $optionsResolver->setDefined(['pool', 'wait', 'runtimes']);
         $optionsResolver->setRequired(['pool']);
         $optionsResolver->setDefaults([]);
         $optionsResolver->addAllowedTypes('pool', ['string']);
         $optionsResolver->addAllowedTypes('wait', ['int']);
+        $optionsResolver->addAllowedTypes('runtimes', ['string']);
         return $optionsResolver;
     }
     protected function getHeadersOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver

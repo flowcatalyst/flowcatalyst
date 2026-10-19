@@ -19,6 +19,8 @@ class UpdateServiceAccountRequest extends \ArrayObject
      */
     protected $dollarSchema;
     /**
+     * Client links; replaces the set when present (an empty array clears it). Their count decides the token tier.
+     *
      * @var list<string>|null
      */
     protected $clientIds;
@@ -31,6 +33,8 @@ class UpdateServiceAccountRequest extends \ArrayObject
      */
     protected $name;
     /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     *
      * @var string|null
      */
     protected $scope;
@@ -61,6 +65,8 @@ class UpdateServiceAccountRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Client links; replaces the set when present (an empty array clears it). Their count decides the token tier.
+     *
      * @return list<string>|null
      */
     public function getClientIds(): ?array
@@ -68,6 +74,8 @@ class UpdateServiceAccountRequest extends \ArrayObject
         return $this->clientIds;
     }
     /**
+     * Client links; replaces the set when present (an empty array clears it). Their count decides the token tier.
+     *
      * @param list<string>|null $clientIds
      *
      * @return self
@@ -115,6 +123,8 @@ class UpdateServiceAccountRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     *
      * @return string|null
      */
     public function getScope(): ?string
@@ -122,6 +132,8 @@ class UpdateServiceAccountRequest extends \ArrayObject
         return $this->scope;
     }
     /**
+     * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
+     *
      * @param string|null $scope
      *
      * @return self

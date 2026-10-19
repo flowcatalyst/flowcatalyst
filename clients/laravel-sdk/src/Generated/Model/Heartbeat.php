@@ -23,6 +23,10 @@ class Heartbeat extends \ArrayObject
      */
     protected $budget;
     /**
+     * @var RunnerCapabilities|null
+     */
+    protected $capabilities;
+    /**
      * @var string|null
      */
     protected $pool;
@@ -80,6 +84,24 @@ class Heartbeat extends \ArrayObject
     {
         $this->initialized['budget'] = true;
         $this->budget = $budget;
+        return $this;
+    }
+    /**
+     * @return RunnerCapabilities|null
+     */
+    public function getCapabilities(): ?RunnerCapabilities
+    {
+        return $this->capabilities;
+    }
+    /**
+     * @param RunnerCapabilities|null $capabilities
+     *
+     * @return self
+     */
+    public function setCapabilities(?RunnerCapabilities $capabilities): self
+    {
+        $this->initialized['capabilities'] = true;
+        $this->capabilities = $capabilities;
         return $this;
     }
     /**

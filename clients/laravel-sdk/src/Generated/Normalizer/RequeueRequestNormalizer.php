@@ -37,12 +37,22 @@ class RequeueRequestNormalizer implements DenormalizerInterface, NormalizerInter
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('redriveCompleted', $data) && \is_int($data['redriveCompleted'])) {
+            $data['redriveCompleted'] = (bool) $data['redriveCompleted'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
             unset($data['$schema']);
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+        }
+        if (\array_key_exists('confirmRedriveCompleted', $data) && $data['confirmRedriveCompleted'] !== null) {
+            $object->setConfirmRedriveCompleted($data['confirmRedriveCompleted']);
+            unset($data['confirmRedriveCompleted']);
+        }
+        elseif (\array_key_exists('confirmRedriveCompleted', $data) && $data['confirmRedriveCompleted'] === null) {
+            $object->setConfirmRedriveCompleted(null);
         }
         if (\array_key_exists('ids', $data) && $data['ids'] !== null) {
             $values = [];
@@ -55,6 +65,13 @@ class RequeueRequestNormalizer implements DenormalizerInterface, NormalizerInter
         elseif (\array_key_exists('ids', $data) && $data['ids'] === null) {
             $object->setIds(null);
         }
+        if (\array_key_exists('redriveCompleted', $data) && $data['redriveCompleted'] !== null) {
+            $object->setRedriveCompleted($data['redriveCompleted']);
+            unset($data['redriveCompleted']);
+        }
+        elseif (\array_key_exists('redriveCompleted', $data) && $data['redriveCompleted'] === null) {
+            $object->setRedriveCompleted(null);
+        }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $object[$key] = $value_1;
@@ -65,11 +82,17 @@ class RequeueRequestNormalizer implements DenormalizerInterface, NormalizerInter
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
+        if ($data->isInitialized('confirmRedriveCompleted') && null !== $data->getConfirmRedriveCompleted()) {
+            $dataArray['confirmRedriveCompleted'] = $data->getConfirmRedriveCompleted();
+        }
         $values = [];
         foreach ($data->getIds() as $value) {
             $values[] = $value;
         }
         $dataArray['ids'] = $values;
+        if ($data->isInitialized('redriveCompleted') && null !== $data->getRedriveCompleted()) {
+            $dataArray['redriveCompleted'] = $data->getRedriveCompleted();
+        }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
