@@ -251,6 +251,13 @@ type EnvCfg struct {
 	// default false): /oauth/introspect refuses Bearer authentication.
 	OAuthIntrospectClientAuthOnly bool
 
+	// OIDCRejectUnverifiedEmail (FC_OIDC_REJECT_UNVERIFIED_EMAIL, default
+	// false): refuse an SSO login when the IdP sends email_verified=false.
+	OIDCRejectUnverifiedEmail bool
+	// OIDCIssuerPatternStrict (FC_OIDC_ISSUER_PATTERN_STRICT, default false):
+	// multi-tenant issuer patterns must match the whole issuer.
+	OIDCIssuerPatternStrict bool
+
 	// SessionCookieSameSite is the SameSite mode of the fc_session cookie
 	// (FC_SESSION_COOKIE_SAME_SITE: lax (default) | strict | none).
 	SessionCookieSameSite string
@@ -413,6 +420,9 @@ func LoadEnv() EnvCfg {
 
 		OAuthRevokeEnforceClient:      envBool("FC_OAUTH_REVOKE_ENFORCE_CLIENT", true),
 		OAuthIntrospectClientAuthOnly: envBool("FC_OAUTH_INTROSPECT_CLIENT_AUTH_ONLY", false),
+
+		OIDCRejectUnverifiedEmail: envBool("FC_OIDC_REJECT_UNVERIFIED_EMAIL", false),
+		OIDCIssuerPatternStrict:   envBool("FC_OIDC_ISSUER_PATTERN_STRICT", false),
 
 		SessionCookieSameSite: envOr("FC_SESSION_COOKIE_SAME_SITE", "lax"),
 

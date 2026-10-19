@@ -80,6 +80,11 @@ type LoginEndpoint struct {
 	// as distinct, leaving the real session cookie standing after "logout".
 	CookieSecure bool
 
+	// RejectUnverifiedEmail refuses an SSO login when the IdP explicitly sends
+	// email_verified=false. An absent claim is always accepted (many IdPs omit
+	// it). Off by default (FC_OIDC_REJECT_UNVERIFIED_EMAIL).
+	RejectUnverifiedEmail bool
+
 	// LoginAttempts records USER_LOGIN outcomes for the OIDC callback
 	// (docs/spec/sso-login-attempts.md): one row per accepted or refused
 	// identity the IdP sent us, employee-plane only — a login state that
@@ -496,6 +501,8 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		Tid               string   `json:"tid"`
 		Nonce             string   `json:"nonce"`
 		Roles             []string `json:"roles"`
+		// Raw: IdPs send a bool or the strings "true"/"false" (Cognito).
+		EmailVerified json.RawMessage `json:"email_verified"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		// Malformed claims yield no usable identifier. Recorded as a
@@ -530,6 +537,12 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	if email == "" {
 		e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, nil, nil, "SSO: no email claim")
 		httperror.Write(w, usecase.Authorization("NO_EMAIL", "id_token has no email / preferred_username claim"))
+		return
+	}
+
+	if e.RejectUnverifiedEmail && claimExplicitlyFalse(claims.EmailVerified) {
+		e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, &email, nil, "SSO: email not verified by the IdP")
+		httperror.Write(w, usecase.Authorization("EMAIL_NOT_VERIFIED", "the identity provider reports this email address as unverified"))
 		return
 	}
 
@@ -1189,4 +1202,21 @@ func appIDOf(app *portalidentity.App) string {
 		return ""
 	}
 	return app.ID
+}
+
+// claimExplicitlyFalse reports whether a JSON claim is the boolean false or the
+// string "false" (any case). An absent, null or any other value is not false.
+func claimExplicitlyFalse(raw json.RawMessage) bool {
+	if strings.TrimSpace(string(raw)) == "null" {
+		return false
+	}
+	var b bool
+	if json.Unmarshal(raw, &b) == nil {
+		return !b
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return strings.EqualFold(strings.TrimSpace(s), "false")
+	}
+	return false
 }

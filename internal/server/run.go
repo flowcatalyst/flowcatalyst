@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"io"
 	"log/slog"
@@ -68,6 +69,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	bridge.SetIssuerPatternStrict(cfg.OIDCIssuerPatternStrict)
 	if err := platformmw.SetSessionSameSite(cfg.SessionCookieSameSite); err != nil {
 		return err
 	}

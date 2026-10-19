@@ -21,7 +21,9 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
@@ -283,11 +285,45 @@ func isValidIssuer(iss, issuerURL string, multiTenant bool, pattern *string) boo
 		return true
 	}
 	if multiTenant && pattern != nil && *pattern != "" {
+		if issuerPatternStrict.Load() {
+			// Full-match semantics: the pattern must cover the WHOLE issuer,
+			// so an unanchored pattern cannot be satisfied by a substring
+			// (https://evil.example/?x=login.microsoftonline.com/…).
+			if re, err := regexp.Compile(`^(?:` + *pattern + `)$`); err == nil {
+				return re.MatchString(iss)
+			}
+			return false
+		}
 		if re, err := regexp.Compile(*pattern); err == nil {
+			if !issuerPatternAnchored(*pattern) {
+				warnUnanchoredOnce(*pattern)
+			}
 			return re.MatchString(iss)
 		}
 	}
 	return false
+}
+
+// issuerPatternStrict switches isValidIssuer to full-match semantics
+// (FC_OIDC_ISSUER_PATTERN_STRICT). Off by default: existing patterns may rely
+// on the historical partial-match behaviour.
+var issuerPatternStrict atomic.Bool
+
+// SetIssuerPatternStrict enables or disables full-match issuer patterns.
+func SetIssuerPatternStrict(v bool) { issuerPatternStrict.Store(v) }
+
+// issuerPatternAnchored reports whether the pattern is pinned at both ends.
+func issuerPatternAnchored(p string) bool {
+	return strings.HasPrefix(p, "^") && strings.HasSuffix(p, "$") && !strings.HasSuffix(p, `\$`)
+}
+
+var warnedIssuerPatterns sync.Map
+
+func warnUnanchoredOnce(p string) {
+	if _, dup := warnedIssuerPatterns.LoadOrStore(p, true); !dup {
+		slog.Warn("OIDC issuer pattern is not anchored with ^...$; any issuer that merely CONTAINS a match is accepted. Anchor it or set FC_OIDC_ISSUER_PATTERN_STRICT=true",
+			"pattern", p)
+	}
 }
 
 // AuthCodeURL builds the redirect URL for an OIDC login start. The state
