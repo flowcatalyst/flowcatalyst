@@ -9,17 +9,29 @@ import {
 	type DispatchJobAttempt,
 	type DispatchJobDetail,
 } from "@/api/dispatch-jobs";
+import { useConfirm } from "primevue/useconfirm";
+import { subscriptionsApi, type Subscription } from "@/api/subscriptions";
+import { connectionsApi, type Connection } from "@/api/connections";
+import { fetchAuditLogsForEntity, type AuditLog } from "@/api/audit-logs";
 import { toast } from "@/utils/errorBus";
 import { useAuthStore } from "@/stores/auth";
 import { userHasPermission } from "@/stores/permissions";
 import {
 	DISPATCH_JOB_EDIT_PAYLOAD,
-	DISPATCH_JOB_REQUEUE,
 	DISPATCH_JOB_VIEW_RAW,
+	jobActions,
 } from "@/utils/dispatch-job-permissions";
 import PayloadEditDialog from "./PayloadEditDialog.vue";
+import RequeueSelectedDialog from "./RequeueSelectedDialog.vue";
 import { canEditPayload } from "./payloadEdit";
-import { requeueSkipNote } from "./requeueByFilter";
+import { requeueIdsOutcome } from "./requeueByFilter";
+import {
+	AUDIT_LOG_VIEW,
+	DISPATCH_JOB_AUDIT_ENTITY,
+	auditActor,
+	auditOperationLabel,
+	explainJobActionError,
+} from "./jobDetail";
 
 // Read-only working panel: the job, its payload, and every attempt with
 // what was SENT (signing account, headers) beside what came BACK (status,
@@ -33,9 +45,14 @@ const { id, goToList } = useDrawerRoute({ listPath: "/dispatch-jobs" });
 // without it the API answers 403, so the button is not shown.
 const authStore = useAuthStore();
 const canSign = computed(() => userHasPermission(authStore.user, DISPATCH_JOB_VIEW_RAW));
-// Requeue and Edit payload each have their own permission (the API refuses
-// without it), so the buttons are offered only to holders.
-const canRequeue = computed(() => userHasPermission(authStore.user, DISPATCH_JOB_REQUEUE));
+// Every write action has its own permission (the API refuses without it), so
+// a button is offered only to holders, and only where the job's status lets
+// the API accept it.
+const canViewAudit = computed(() => userHasPermission(authStore.user, AUDIT_LOG_VIEW));
+const actions = computed(() => jobActions(job.value?.status, (p) => userHasPermission(authStore.user, p)));
+const confirm = useConfirm();
+const acting = ref(false);
+const redriveDialog = ref(false);
 const canEdit = computed(() => userHasPermission(authStore.user, DISPATCH_JOB_EDIT_PAYLOAD));
 
 const job = ref<DispatchJobDetail | null>(null);
@@ -67,6 +84,10 @@ async function load() {
 	job.value = null;
 	attempts.value = [];
 	plan.value = null;
+	subscription.value = null;
+	connection.value = null;
+	audit.value = null;
+	auditError.value = false;
 	try {
 		const [j, a] = await Promise.all([
 			dispatchJobsApi.get(id.value),
@@ -77,11 +98,99 @@ async function load() {
 		// answer first. Position, not the stored attemptNumber, is the label:
 		// every requeue starts a new run numbered from 1 again.
 		attempts.value = [...a].reverse();
+		void loadRefs(j);
+		if (!auditCollapsed.value) void loadAudit();
 	} catch (error) {
 		console.error("Failed to load dispatch job:", error);
 		loadError.value = "Failed to load dispatch job.";
 	} finally {
 		loading.value = false;
+	}
+}
+
+// Subscription (name, code, link) and its connection. Best effort: a user
+// who may view jobs may not view subscriptions; then the id shows as before.
+const subscription = ref<Subscription | null>(null);
+const connection = ref<Connection | null>(null);
+async function loadRefs(j: DispatchJobDetail) {
+	if (!j.subscriptionId) return;
+	try {
+		const sub = await subscriptionsApi.get(j.subscriptionId);
+		if (job.value?.id !== j.id) return;
+		subscription.value = sub;
+		if (sub.connectionId) {
+			const c = await connectionsApi.get(sub.connectionId);
+			if (job.value?.id === j.id) connection.value = c;
+		}
+	} catch {
+		// Not visible to this user, or gone: keep the bare id.
+	}
+}
+
+// Audit rows for this job (aud_logs by entity), loaded when the section opens.
+const audit = ref<AuditLog[] | null>(null);
+const auditError = ref(false);
+const auditLoading = ref(false);
+const auditCollapsed = ref(true);
+async function loadAudit() {
+	if (!id.value || auditLoading.value) return;
+	const mine = id.value;
+	auditLoading.value = true;
+	auditError.value = false;
+	try {
+		const res = await fetchAuditLogsForEntity(DISPATCH_JOB_AUDIT_ENTITY, mine);
+		if (id.value === mine) audit.value = res.auditLogs;
+	} catch {
+		if (id.value === mine) auditError.value = true;
+	} finally {
+		auditLoading.value = false;
+	}
+}
+watch(auditCollapsed, (collapsed) => {
+	if (!collapsed && audit.value === null) void loadAudit();
+});
+
+// FAILED -> CANCELLED (never retried; a BLOCK_ON_ERROR group behind it moves on).
+function cancelJob() {
+	if (!job.value) return;
+	confirm.require({
+		header: "Cancel this job?",
+		message:
+			"The job is marked CANCELLED and will not be retried. If it blocks later jobs in its message group, they are released. This cannot be undone.",
+		icon: "pi pi-exclamation-triangle",
+		acceptLabel: "Cancel job",
+		rejectLabel: "Keep",
+		acceptClass: "p-button-danger",
+		accept: () => void runStatusAction("cancel"),
+	});
+}
+
+// FAILED -> COMPLETED: the delivery happened outside the platform.
+function completeJob() {
+	if (!job.value) return;
+	confirm.require({
+		header: "Mark this job completed?",
+		message:
+			"Use this only if the delivery was made another way. The job is marked COMPLETED without anything being sent, and a BLOCK_ON_ERROR group behind it is released. This cannot be undone.",
+		icon: "pi pi-check-circle",
+		acceptLabel: "Mark completed",
+		rejectLabel: "Keep",
+		accept: () => void runStatusAction("complete"),
+	});
+}
+
+async function runStatusAction(action: "cancel" | "complete") {
+	if (!id.value || acting.value) return;
+	acting.value = true;
+	try {
+		job.value = await (action === "cancel" ? dispatchJobsApi.cancel(id.value) : dispatchJobsApi.complete(id.value));
+		toast.success(action === "cancel" ? "Cancelled" : "Marked completed", id.value);
+		if (!auditCollapsed.value) await loadAudit();
+	} catch (error) {
+		toast.error(action === "cancel" ? "Cancel failed" : "Complete failed", explainJobActionError(action, error));
+		await load();
+	} finally {
+		acting.value = false;
 	}
 }
 
@@ -101,13 +210,10 @@ async function requeue() {
 	if (!id.value || requeuing.value) return;
 	requeuing.value = true;
 	try {
-		const res = await dispatchJobsApi.requeue([id.value]);
-		if (res.requeued === 0) {
-			// Skipped by the server's status guard (in flight, or completed).
-			toast.error("Not requeued", requeueSkipNote(res).replace(/^ — /, "") || "The job was not reset.");
-		} else {
-			toast.success("Requeued", `${res.requeued} dispatch job reset to PENDING`);
-		}
+		const o = requeueIdsOutcome(await dispatchJobsApi.requeue([id.value]));
+		// Nothing reset = the server's status guard (in flight, or completed).
+		if (o.severity === "info") toast.error("Not requeued", o.detail);
+		else toast.success(o.summary, o.detail);
 		await load();
 	} catch (error) {
 		toast.error("Requeue failed", error instanceof Error ? error.message : undefined);
@@ -204,7 +310,7 @@ function statusSeverity(status: string | undefined) {
           @click="sign"
         />
         <Button
-          v-if="canRequeue"
+          v-if="actions.requeue"
           label="Requeue"
           icon="pi pi-replay"
           size="small"
@@ -213,18 +319,63 @@ function statusSeverity(status: string | undefined) {
           v-tooltip="'Reset to PENDING for re-dispatch'"
           @click="requeue"
         />
+        <Button
+          v-if="actions.redrive"
+          label="Redrive"
+          icon="pi pi-exclamation-triangle"
+          size="small"
+          severity="danger"
+          outlined
+          v-tooltip="'Deliver this COMPLETED job again (asks you to confirm twice)'"
+          @click="redriveDialog = true"
+        />
+        <Button
+          v-if="actions.complete"
+          label="Mark completed"
+          icon="pi pi-check-circle"
+          size="small"
+          severity="secondary"
+          :loading="acting"
+          v-tooltip="'It was delivered out of band: mark it COMPLETED without sending'"
+          @click="completeJob"
+        />
+        <Button
+          v-if="actions.cancel"
+          label="Cancel job"
+          icon="pi pi-ban"
+          size="small"
+          severity="danger"
+          outlined
+          :loading="acting"
+          v-tooltip="'Stop retrying this FAILED job'"
+          @click="cancelJob"
+        />
       </div>
 
       <div class="columns">
         <section class="col">
           <h3>Job</h3>
           <div class="detail-row"><label>Descriptor</label><span>{{ job.descriptor || '-' }}</span></div>
-          <div class="detail-row"><label>Code</label><span class="font-mono">{{ job.code }}</span></div>
+          <div class="detail-row"><label>Event type</label><span class="font-mono" v-tooltip="'A job\'s code is its event type (or the caller\'s job code for SDK and function jobs)'">{{ job.code }}</span></div>
           <div class="detail-row"><label>Client</label><span class="font-mono">{{ job.clientId || '-' }}</span></div>
           <div class="detail-row"><label>Message group</label><span class="font-mono">{{ job.messageGroup || '-' }}</span></div>
           <div class="detail-row"><label>Mode</label><span>{{ job.mode }}</span></div>
           <div class="detail-row"><label>Target</label><span class="font-mono break">{{ job.targetUrl }}</span></div>
-          <div class="detail-row"><label>Subscription</label><span class="font-mono">{{ job.subscriptionId || '-' }}</span></div>
+          <div class="detail-row">
+            <label>Subscription</label>
+            <span v-if="subscription">
+              <RouterLink :to="`/subscriptions/${subscription.id}`" class="row-link">{{ subscription.name }}</RouterLink>
+              <span class="font-mono small"> ({{ subscription.code }})</span>
+            </span>
+            <span v-else class="font-mono">{{ job.subscriptionId || '-' }}</span>
+          </div>
+          <div v-if="job.subscriptionId" class="detail-row">
+            <label>Connection</label>
+            <span v-if="connection">
+              <RouterLink :to="`/connections/${connection.id}`" class="row-link">{{ connection.code }}</RouterLink>
+            </span>
+            <span v-else class="text-muted">{{ subscription ? 'none' : '-' }}</span>
+          </div>
           <div class="detail-row"><label>Event</label><span class="font-mono">{{ job.eventId || '-' }}</span></div>
           <div class="detail-row"><label>Attempts</label><span>{{ job.attemptCount }} / {{ job.maxRetries }}</span></div>
           <div class="detail-row"><label>Scheduled for</label><span>{{ formatDate(job.scheduledFor) }}</span></div>
@@ -258,6 +409,19 @@ function statusSeverity(status: string | undefined) {
             </div>
             <pre class="data-block">{{ formatJson(job.payload) }}</pre>
           </div>
+
+          <Panel v-if="canViewAudit" v-model:collapsed="auditCollapsed" header="Audit" toggleable class="audit">
+            <ProgressSpinner v-if="auditLoading" style="width: 1.25rem; height: 1.25rem" strokeWidth="6" />
+            <p v-else-if="auditError" class="text-muted">The audit trail could not be loaded.</p>
+            <p v-else-if="audit && !audit.length" class="text-muted">No audit entries: nobody has changed this job by hand.</p>
+            <ul v-else-if="audit" class="audit-list">
+              <li v-for="row in audit" :key="row.id">
+                <strong>{{ auditOperationLabel(row.operation) }}</strong>
+                <span class="text-muted"> by </span>{{ auditActor(row) }}
+                <span class="text-muted small"> · {{ formatDate(row.performedAt) }}</span>
+              </li>
+            </ul>
+          </Panel>
         </section>
 
         <section class="col">
@@ -318,6 +482,13 @@ function statusSeverity(status: string | undefined) {
       </div>
     </div>
     <PayloadEditDialog v-if="job" v-model:visible="editingPayload" :job="job" @done="payloadEdited" />
+    <RequeueSelectedDialog
+      v-if="job"
+      v-model:visible="redriveDialog"
+      :ids="[job.id]"
+      :completed-count="1"
+      @done="load"
+    />
   </EntityDrawer>
 </template>
 
@@ -353,5 +524,8 @@ h3 { font-size: 0.9375rem; font-weight: 600; margin: 0 0 0.25rem; color: var(--t
 .small { font-size: 0.75rem; }
 .text-sm { font-size: 0.8125rem; }
 .text-muted { color: var(--text-color-secondary); }
+.row-link { color: var(--primary-color); }
+.audit { margin-top: 0.5rem; }
+.audit-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.375rem; font-size: 0.875rem; }
 .error-text { color: var(--red-600, #dc2626); }
 </style>

@@ -8,6 +8,17 @@ import {
 	type RequeueByFilterResponse,
 } from "@/api/dispatch-jobs";
 import { toast } from "@/utils/errorBus";
+import { useAuthStore } from "@/stores/auth";
+import { userHasPermission } from "@/stores/permissions";
+import { DISPATCH_JOB_REDRIVE_COMPLETED } from "@/utils/dispatch-job-permissions";
+import RedriveConfirmStep from "./RedriveConfirmStep.vue";
+import {
+	initialRedrive,
+	redriveOffered,
+	redriveReady,
+	resetRedrive,
+	startRedrive,
+} from "./redriveConfirm";
 import {
 	REQUEUE_BY_FILTER_MAX,
 	plural,
@@ -19,6 +30,11 @@ import {
 // status, how many this caller may requeue), then runs it with that eligible
 // count as confirmCount. A 409 FILTER_MATCH_CHANGED (more jobs match now)
 // re-previews and asks again; nothing was reset.
+//
+// Holders of redrive-completed also get a separate, dangerous option to
+// redrive the COMPLETED matches: a second step that asks for the word REDRIVE
+// and the count (RedriveConfirmStep), then sends redriveCompleted with
+// confirmCount = redriveEligibleCount.
 
 const visible = defineModel<boolean>("visible", { required: true });
 const props = defineProps<{
@@ -31,6 +47,9 @@ const emit = defineEmits<{
 	done: [result: RequeueByFilterResponse | null];
 }>();
 
+const authStore = useAuthStore();
+const canRedrive = computed(() => userHasPermission(authStore.user, DISPATCH_JOB_REDRIVE_COMPLETED));
+const redrive = ref(initialRedrive());
 const preview = ref<RequeueByFilterPreviewResponse | null>(null);
 const loading = ref(false);
 const running = ref(false);
@@ -41,6 +60,8 @@ async function loadPreview() {
 	const mine = ++seq;
 	loading.value = true;
 	preview.value = null;
+	// A new count voids anything typed against the old one.
+	redrive.value = resetRedrive();
 	try {
 		const p = await dispatchJobsApi.previewRequeueByFilter(props.filter);
 		if (mine !== seq) return;
@@ -81,16 +102,28 @@ const windowText = computed(() => {
 const toRequeue = computed(() =>
 	preview.value ? Math.min(preview.value.eligibleCount, REQUEUE_BY_FILTER_MAX) : 0,
 );
+const offerRedrive = computed(() => redriveOffered(canRedrive.value, preview.value?.completedCount ?? 0));
+const inRedriveStep = computed(() => redrive.value.phase === "confirm" && !!preview.value);
+const canRedriveNow = computed(
+	() =>
+		!!preview.value &&
+		!loading.value &&
+		!running.value &&
+		redriveReady(redrive.value, preview.value.redriveEligibleCount),
+);
 const canConfirm = computed(
 	() => !!preview.value && !loading.value && !running.value && preview.value.eligibleCount > 0,
 );
 
-async function confirm() {
-	if (!preview.value || !canConfirm.value) return;
+async function confirm(withRedrive = false) {
+	if (!preview.value) return;
+	if (withRedrive ? !canRedriveNow.value : !canConfirm.value) return;
 	running.value = true;
 	changed.value = false;
 	try {
-		const res = await dispatchJobsApi.requeueByFilter(props.filter, preview.value.eligibleCount);
+		const res = withRedrive
+			? await dispatchJobsApi.requeueByFilter(props.filter, preview.value.redriveEligibleCount, true)
+			: await dispatchJobsApi.requeueByFilter(props.filter, preview.value.eligibleCount);
 		visible.value = false;
 		emit("done", res);
 	} catch (error) {
@@ -111,13 +144,21 @@ async function confirm() {
 <template>
   <Dialog
     v-model:visible="visible"
-    header="Requeue all matching jobs"
+    :header="inRedriveStep ? 'Redrive COMPLETED jobs' : 'Requeue all matching jobs'"
     modal
     :closable="!running"
     :style="{ width: '560px' }"
     :breakpoints="{ '640px': '95vw' }"
   >
-    <div class="rbf">
+    <div v-if="inRedriveStep && preview" class="rbf">
+      <RedriveConfirmStep
+        v-model:state="redrive"
+        :completed-count="preview.completedCount"
+        :confirm-count="preview.redriveEligibleCount"
+        includes-plain-requeue
+      />
+    </div>
+    <div v-else class="rbf">
       <section>
         <h4 class="rbf-heading">Filters</h4>
         <dl v-if="summary.length" class="rbf-filters">
@@ -161,9 +202,23 @@ async function confirm() {
             {{ plural(preview.inFlightCount, "job") }} QUEUED or PROCESSING will be left alone — a job in flight is never requeued.
           </p>
           <p v-if="preview.completedCount > 0" class="rbf-line text-muted">
-            {{ plural(preview.completedCount, "COMPLETED job") }} will be left alone — completed jobs are redriven only through the API
-            (redriveCompleted and confirmRedriveCompleted, with the redrive-completed permission).
+            {{ plural(preview.completedCount, "COMPLETED job") }} will be left alone — they were already delivered.
+            <template v-if="!canRedrive">Redriving them needs the redrive-completed permission.</template>
           </p>
+          <div v-if="offerRedrive" class="rbf-redrive">
+            <Button
+              :label="`Also redrive ${preview.completedCount.toLocaleString()} COMPLETED ${preview.completedCount === 1 ? 'job' : 'jobs'}…`"
+              icon="pi pi-exclamation-triangle"
+              severity="danger"
+              outlined
+              size="small"
+              :disabled="running"
+              @click="redrive = startRedrive()"
+            />
+            <small class="text-muted">
+              They were already delivered; this will deliver them again. You will be asked to confirm a second time.
+            </small>
+          </div>
           <p v-if="preview.eligibleCount > REQUEUE_BY_FILTER_MAX" class="rbf-line text-muted">
             At most {{ REQUEUE_BY_FILTER_MAX.toLocaleString() }} are requeued per run; run it again for the rest.
           </p>
@@ -181,15 +236,28 @@ async function confirm() {
     </div>
 
     <template #footer>
-      <Button label="Cancel" text severity="secondary" :disabled="running" @click="visible = false" />
-      <Button
-        :label="preview ? `Requeue ${plural(toRequeue, 'job')}` : 'Requeue'"
-        icon="pi pi-replay"
-        severity="danger"
-        :loading="running"
-        :disabled="!canConfirm"
-        @click="confirm"
-      />
+      <template v-if="inRedriveStep && preview">
+        <Button label="Back" text severity="secondary" :disabled="running" @click="redrive = resetRedrive()" />
+        <Button
+          :label="`Redrive ${plural(Math.min(preview.redriveEligibleCount, REQUEUE_BY_FILTER_MAX), 'job')}`"
+          icon="pi pi-replay"
+          severity="danger"
+          :loading="running"
+          :disabled="!canRedriveNow"
+          @click="confirm(true)"
+        />
+      </template>
+      <template v-else>
+        <Button label="Cancel" text severity="secondary" :disabled="running" @click="visible = false" />
+        <Button
+          :label="preview ? `Requeue ${plural(toRequeue, 'job')}` : 'Requeue'"
+          icon="pi pi-replay"
+          severity="danger"
+          :loading="running"
+          :disabled="!canConfirm"
+          @click="confirm(false)"
+        />
+      </template>
     </template>
   </Dialog>
 </template>
@@ -238,6 +306,14 @@ async function confirm() {
   align-items: center;
   gap: 0.5rem;
   font-size: 0.875rem;
+}
+
+.rbf-redrive {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.375rem;
+  margin-bottom: 0.5rem;
 }
 
 .rbf-line {

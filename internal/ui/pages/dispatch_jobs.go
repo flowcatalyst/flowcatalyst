@@ -17,6 +17,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	djops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
@@ -37,6 +38,10 @@ type DispatchJobStore interface {
 	FindByID(ctx context.Context, id string) (*dispatchjob.DispatchJob, error)
 	AttemptsByJob(ctx context.Context, jobID string) ([]dispatchjob.Attempt, error)
 	DistinctValues(ctx context.Context, column string, limit int, accessibleClientIDs *[]string, since, until *time.Time) ([]string, error)
+	// ResolveRefs resolves the by-name subscription and connection filters to
+	// ids (the API does the same before its list query; an unresolved name
+	// selects nothing).
+	ResolveRefs(ctx context.Context, p dispatchjob.FilterParams) (dispatchjob.FilterParams, error)
 }
 
 // DispatchJobs is the dispatch jobs page (/ui/dispatch-jobs), mirroring the
@@ -69,11 +74,35 @@ type DispatchJobs struct {
 // API's rule: the last 24 hours when the view names no dates, at most
 // MaxWindowDays).
 func (h *DispatchJobs) window(p dispatchjob.FilterParams) (dispatchjob.FilterParams, dispatchjob.Window, error) {
-	now := time.Now
+	return dispatchjob.EnforceWindow(p, h.now(), h.MaxWindowDays)
+}
+
+func (h *DispatchJobs) now() time.Time {
 	if h.Now != nil {
-		now = h.Now
+		return h.Now()
 	}
-	return dispatchjob.EnforceWindow(p, now(), h.MaxWindowDays)
+	return time.Now()
+}
+
+// scoped is the filter a read runs on, in the API's order: the view's filter
+// (a window preset becomes its since), scoped to the caller's tenants, held
+// to the time window, and its by-name subscription and connection references
+// resolved to ids. A view that cannot be run (too many event types) is a 400.
+func (h *DispatchJobs) scoped(ctx context.Context, ac *auth.AuthContext, q djQuery) (dispatchjob.FilterParams, dispatchjob.Window, error) {
+	if err := q.validate(); err != nil {
+		return dispatchjob.FilterParams{}, dispatchjob.Window{}, err
+	}
+	p := q.filterParams()
+	if preset, ok := djWindowPresets[q.Window]; ok && p.Since == nil && p.Until == nil {
+		since := h.now().Add(-preset.d)
+		p.Since = &since
+	}
+	p, win, err := h.window(djops.VisibleTo(ac, p))
+	if err != nil {
+		return p, win, err
+	}
+	p, err = h.Jobs.ResolveRefs(ctx, p)
+	return p, win, err
 }
 
 const (
@@ -84,6 +113,9 @@ const (
 	djDrawerSig  = "selDj"
 	djDialogSlot = "dj-dialog-slot"
 	djRBFDialog  = "dj-rbf"
+	// The drawer's confirm dialogs; their form action comes from the button.
+	djCancelDialog   = "dj-cancel"
+	djCompleteDialog = "dj-complete"
 
 	// djSelSig counts the ticked rows (the "Requeue selected" label).
 	djSelSig = "djSel"
@@ -92,6 +124,8 @@ const (
 	djRawPerm         = "platform:messaging:dispatch-job:view-raw"
 	djRequeuePerm     = auth.DispatchJobRequeuePerm
 	djEditPayloadPerm = auth.DispatchJobEditPayloadPerm
+	djCancelPerm      = auth.DispatchJobCancelPerm
+	djCompletePerm    = auth.DispatchJobCompletePerm
 
 	djLiveGet = "@get('/ui/dispatch-jobs', {contentType: 'form'})"
 	// djNavLink is a link that changes the filters (the group link, the
@@ -115,6 +149,17 @@ const (
 )
 
 var (
+	// djWindowPresets are the window picker's presets (jobWindow.ts). The
+	// default (24 hours) is the absence of a preset: the window then comes
+	// from the server and is shown as defaulted.
+	djWindowPresets = map[string]djWindowPreset{
+		"1h":  {"Last hour", time.Hour},
+		"3d":  {"Last 3 days", 3 * 24 * time.Hour},
+		"7d":  {"Last 7 days", 7 * 24 * time.Hour},
+		"31d": {"Last 31 days", 31 * 24 * time.Hour},
+	}
+	djWindowOrder = []string{"1h", "", "3d", "7d", "31d"}
+
 	djFacets = []string{djFacetClients, djFacetApps, djFacetSubs, djFacetAggs, djFacetCodes, djFacetStatuses}
 	djSizes  = []int{50, 100, 200, 500, 1000}
 
@@ -128,6 +173,14 @@ var (
 	djErrorStatuses = []string{"FAILED", "ERROR"}
 )
 
+type djWindowPreset struct {
+	label string
+	d     time.Duration
+}
+
+// djMaxEventTypes is the API's cap on eventTypes (TOO_MANY_EVENT_TYPES).
+const djMaxEventTypes = 10
+
 // Mount registers the page's routes (POSTs behind parseForm).
 func (h *DispatchJobs) Mount(r chi.Router) {
 	r.Get("/dispatch-jobs", h.list)
@@ -139,6 +192,8 @@ func (h *DispatchJobs) Mount(r chi.Router) {
 	post.Post("/dispatch-jobs/requeue-by-filter", h.requeueByFilter)
 	post.Post("/dispatch-jobs/{id}/requeue", h.requeueOne)
 	post.Post("/dispatch-jobs/{id}/sign", h.sign)
+	post.Post("/dispatch-jobs/{id}/cancel", h.cancel)
+	post.Post("/dispatch-jobs/{id}/complete", h.complete)
 	post.Post("/dispatch-jobs/{id}/payload", h.editPayload)
 }
 
@@ -152,7 +207,15 @@ type djQuery struct {
 	listQuery
 	Group    string
 	From, To string // YYYY-MM-DD, UTC days
-	Size     int
+	// Window is a preset key (djWindowPresets); empty is the default window.
+	// Dates, when chosen, win over it.
+	Window string
+	// EventTypes are the event types asked for (a job's code is its event
+	// type); Subscription is a subscription name and Connection a connection
+	// code, each exact or ending in * for a prefix.
+	EventTypes               []string
+	Subscription, Connection string
+	Size                     int
 	// After is the page's keyset position: rows after this one in the
 	// list's order ("Older"). Nil is the first page.
 	After *dispatchjob.ListCursor
@@ -165,6 +228,11 @@ func parseDJQuery(v url.Values) djQuery {
 		q.Group = q.Group[:maxQueryLen]
 	}
 	q.From, q.To = validDay(v.Get("from")), validDay(v.Get("to"))
+	if _, ok := djWindowPresets[v.Get("window")]; ok {
+		q.Window = v.Get("window")
+	}
+	q.EventTypes = parseEventTypes(v["eventTypes"])
+	q.Subscription, q.Connection = clipQuery(v.Get("subscription")), clipQuery(v.Get("connection"))
 	if n, err := strconv.Atoi(v.Get("size")); err == nil && slices.Contains(djSizes, n) {
 		q.Size = n
 	}
@@ -172,6 +240,38 @@ func parseDJQuery(v url.Values) djQuery {
 		q.After = &dispatchjob.ListCursor{CreatedAt: at, ID: id}
 	}
 	return q
+}
+
+func clipQuery(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) > maxQueryLen {
+		s = s[:maxQueryLen]
+	}
+	return s
+}
+
+// parseEventTypes reads the event type filter: values, each possibly a
+// comma-separated list, trimmed and de-duplicated. The count is not capped
+// here (validate says so, as the API's 400 does).
+func parseEventTypes(raw []string) []string {
+	var out []string
+	for _, r := range raw {
+		for part := range strings.SplitSeq(r, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" && len(part) <= maxQueryLen && !slices.Contains(out, part) {
+				out = append(out, part)
+			}
+		}
+	}
+	return out
+}
+
+// validate refuses a view the API would: more than 10 event types.
+func (q djQuery) validate() error {
+	if len(q.EventTypes) > djMaxEventTypes {
+		return usecase.Validation("TOO_MANY_EVENT_TYPES", fmt.Sprintf("at most %d event types can be filtered at once (got %d)", djMaxEventTypes, len(q.EventTypes)))
+	}
+	return nil
 }
 
 // filterValues is the filter alone: what "requeue all matching" acts on.
@@ -193,6 +293,18 @@ func (q djQuery) filterValues() url.Values {
 	}
 	if q.To != "" {
 		v.Set("to", q.To)
+	}
+	if q.Window != "" {
+		v.Set("window", q.Window)
+	}
+	if len(q.EventTypes) > 0 {
+		v.Set("eventTypes", strings.Join(q.EventTypes, ","))
+	}
+	if q.Subscription != "" {
+		v.Set("subscription", q.Subscription)
+	}
+	if q.Connection != "" {
+		v.Set("connection", q.Connection)
 	}
 	return v
 }
@@ -216,11 +328,18 @@ func encodeURL(path string, v url.Values) string {
 	return path
 }
 
-// sizeOnly keeps only a non-default result size (the error preset's URL).
+// sizeOnly keeps only a non-default result size and the time window (the
+// error preset's URL).
 func (q djQuery) sizeOnly() url.Values {
 	v := url.Values{}
 	if q.Size != djDefaultSize {
 		v.Set("size", strconv.Itoa(q.Size))
+	}
+	// The error preset keeps the time window: its run is held to it.
+	for k, val := range map[string]string{"window": q.Window, "from": q.From, "to": q.To} {
+		if val != "" {
+			v.Set(k, val)
+		}
 	}
 	return v
 }
@@ -261,17 +380,50 @@ func (q djQuery) withGroup(group string) djQuery {
 }
 
 func (q djQuery) filtered() bool {
-	return q.listQuery.filtered() || q.Group != "" || q.From != "" || q.To != ""
+	return q.listQuery.filtered() || q.Group != "" || q.From != "" || q.To != "" || q.Window != "" ||
+		len(q.EventTypes) > 0 || q.Subscription != "" || q.Connection != ""
 }
 
-// activeFilters is the Filters badge: the facets in use plus the group and
-// each end of the date range (the SPA's count).
+// failedLens reports whether the view is exactly the Failed quick view:
+// FAILED and ERROR (their legacy alias) and nothing else in the status facet.
+func (q djQuery) failedLens() bool {
+	st := q.facet(djFacetStatuses)
+	return len(st) == len(djErrorStatuses) && slices.ContainsFunc(st, func(s string) bool { return s == "FAILED" }) &&
+		slices.ContainsFunc(st, func(s string) bool { return s == "ERROR" })
+}
+
+// lensURL toggles the Failed quick view on this view: it sets the status
+// facet to FAILED and ERROR, or, when it is already on, clears it.
+func (q djQuery) failedLensURL() string {
+	next := q.first()
+	if q.failedLens() {
+		next.Facets = q.withFacet(djFacetStatuses, nil).Facets
+	} else {
+		next.Facets = q.withFacet(djFacetStatuses, slices.Clone(djErrorStatuses)).Facets
+	}
+	return next.URL()
+}
+
+// windowURL is this view with a window preset ("" is the default) and no
+// chosen dates.
+func (q djQuery) windowURL(key string) string {
+	next := q.first()
+	next.Window, next.From, next.To = key, "", ""
+	return next.URL()
+}
+
+// activeFilters is the Filters badge: the facets in use plus the group, the
+// event type, subscription and connection filters. The window and its dates
+// sit in their own bar above the table, so they are not counted here.
 func (q djQuery) activeFilters() int {
 	n := len(q.Facets)
-	for _, s := range []string{q.Group, q.From, q.To} {
+	for _, s := range []string{q.Group, q.Subscription, q.Connection} {
 		if s != "" {
 			n++
 		}
+	}
+	if len(q.EventTypes) > 0 {
+		n++
 	}
 	return n
 }
@@ -294,6 +446,15 @@ func (q djQuery) filterParams() dispatchjob.FilterParams {
 		p.MessageGroup = &group
 	}
 	p.Since, p.Until = dayBounds(q.From, q.To)
+	p.EventTypes = q.EventTypes
+	if q.Subscription != "" {
+		name := q.Subscription
+		p.SubscriptionName = &name
+	}
+	if q.Connection != "" {
+		code := q.Connection
+		p.ConnectionCode = &code
+	}
 	return p
 }
 
@@ -335,8 +496,16 @@ type djView struct {
 	CanSign   bool
 	// CanRequeue shows the requeue actions (dispatch-job:requeue).
 	CanRequeue bool
-	Dialog     templ.Component
-	Drawer     *djDetail
+	// Window is the created_at window the list covers (the one the query
+	// applied, defaulted or not).
+	Window dispatchjob.Window
+	// WindowText is the line above the table ("Showing the last 24 hours").
+	WindowText string
+	// EventTypeOptions are the distinct codes seen in the widest window, the
+	// event type filter's suggestions.
+	EventTypeOptions []kit.Option
+	Dialog           templ.Component
+	Drawer           *djDetail
 }
 
 func (h *DispatchJobs) list(w http.ResponseWriter, r *http.Request) {
@@ -370,7 +539,7 @@ func (h *DispatchJobs) renderPage(w http.ResponseWriter, r *http.Request, status
 // selection and replaces the address.
 func (v djView) patchList(sse *ds.SSE, full bool) error {
 	errs := []error{
-		patchDjTable(sse, v), sse.Patch(kit.CursorPager(v.pager())), sse.Patch(djBulkBar(v)),
+		patchDjTable(sse, v), sse.Patch(kit.CursorPager(v.pager())), sse.Patch(djBulkBar(v)), sse.Patch(djWindowBar(v)),
 		sse.PatchSignals(map[string]any{djSelSig: 0}),
 	}
 	if full {
@@ -400,10 +569,12 @@ func (h *DispatchJobs) listView(ctx context.Context, ac *auth.AuthContext, q djQ
 		return djView{}, err
 	}
 	v.Facets, v.ClientNames = facets, names
-	p, _, err := h.window(djops.VisibleTo(ac, q.filterParams()))
+	p, win, err := h.scoped(ctx, ac, q)
 	if err != nil {
 		return djView{}, err
 	}
+	v.Window, v.EventTypeOptions = win, facets["eventTypes"]
+	v.WindowText = windowText(win, h.now())
 	p.Limit, p.SortAscending, p.Cursor = q.Size, q.Dir == kit.SortAsc, q.After
 	jobs, err := h.Jobs.FindWithFilters(ctx, p)
 	if err != nil {
@@ -457,6 +628,8 @@ func (h *DispatchJobs) filterOptions(ctx context.Context, ac *auth.AuthContext, 
 	for _, f := range djFacets {
 		out[f] = withChosen(out[f], q.facet(f), names)
 	}
+	// Not a facet: the suggestions of the event type filter (every code seen).
+	out["eventTypes"] = plainOptions(distinct["code"])
 	return out, names, nil
 }
 
@@ -557,8 +730,12 @@ type djDetail struct {
 	// CanEditPayload is true while the job's payload may be edited (PENDING or
 	// FAILED: the API's rule); EditText and ContentType fill the editor.
 	CanEditPayload bool
-	EditText       string
-	ContentType    string
+	// CanCancel and CanComplete show the drawer's Cancel job / Mark completed:
+	// the job is FAILED (the API's rule) and the caller holds dispatch-job:cancel
+	// / dispatch-job:complete.
+	CanCancel, CanComplete bool
+	EditText               string
+	ContentType            string
 	// Plan is the sign action's answer, when the page renders it (without
 	// Datastar); a live drawer patches it into its slot instead.
 	Plan *djPlan
@@ -712,6 +889,8 @@ func (h *DispatchJobs) detailOf(ctx context.Context, ac *auth.AuthContext, j *di
 		// The editor opens on the stored text, pretty-printed for a JSON job.
 		CanEditPayload: slices.Contains(dispatchjob.EditableStatuses, j.Status) && auth.CanWritePermission(ac, djEditPayloadPerm) == nil,
 		ContentType:    j.PayloadContentType,
+		CanCancel:      j.Status == common.DispatchFailed && auth.CanWritePermission(ac, djCancelPerm) == nil,
+		CanComplete:    j.Status == common.DispatchFailed && auth.CanWritePermission(ac, djCompletePerm) == nil,
 	}
 	if j.Payload != nil {
 		d.EditText = *j.Payload
@@ -921,6 +1100,50 @@ func (h *DispatchJobs) requeue(w http.ResponseWriter, r *http.Request, picked []
 	}
 }
 
+// ── cancel / complete ──────────────────────────────────────────────────
+
+// cancel is the drawer's "Cancel job": the API's POST /dispatch-jobs/{id}/cancel
+// (FAILED -> CANCELLED; dispatch-job:cancel). The use case enforces the status
+// rule and the client scope.
+func (h *DispatchJobs) cancel(w http.ResponseWriter, r *http.Request) {
+	h.statusAction(w, r, djCancelPerm, h.Ops.Cancel, flashDjCancelled)
+}
+
+// complete is the drawer's "Mark completed": POST /dispatch-jobs/{id}/complete
+// (FAILED -> COMPLETED, the delivery happened out of band; dispatch-job:complete).
+func (h *DispatchJobs) complete(w http.ResponseWriter, r *http.Request) {
+	h.statusAction(w, r, djCompletePerm, h.Ops.Complete, flashDjCompleted)
+}
+
+func (h *DispatchJobs) statusAction(w http.ResponseWriter, r *http.Request, perm string, run func(context.Context, string) error, flash string) {
+	ctx := r.Context()
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, perm); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	id, err := djID(r)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if err := run(ctx, id); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if !ds.IsDatastar(r) {
+		h.Shell.SetFlash(w, flash)
+		http.Redirect(w, r, djURL(id), http.StatusSeeOther) //nolint:gosec // G710: djPath plus an id kit.ValidID accepted
+		return
+	}
+	sse := ds.NewSSE(w, r)
+	h.refreshList(sse, r, ac)
+	h.refreshDrawer(sse, r, ac, id)
+	if err := shell.Flash(sse, FlashMessages[flash]); err != nil {
+		slog.DebugContext(ctx, "ui: status action flash not delivered", "err", err)
+	}
+}
+
 // ── edit payload ───────────────────────────────────────────────────────
 
 // editPayload is the drawer's "Edit payload": the API's PUT
@@ -1039,7 +1262,12 @@ func (q djQuery) summary(clientNames map[string]string) []djKV {
 	add("Aggregate", q.facet(djFacetAggs), nil)
 	add("Code", q.facet(djFacetCodes), nil)
 	add("Status", q.facet(djFacetStatuses), nil)
-	for _, kv := range []djKV{{"Source", q.Q}, {"Message group", q.Group}, {"Created from", q.From}, {"Created to", q.To}} {
+	add("Event type", q.EventTypes, nil)
+	windowLabel := ""
+	if p, ok := djWindowPresets[q.Window]; ok && q.From == "" && q.To == "" {
+		windowLabel = p.label
+	}
+	for _, kv := range []djKV{{"Source", q.Q}, {"Message group", q.Group}, {"Subscription", q.Subscription}, {"Connection", q.Connection}, {"Window", windowLabel}, {"Created from", q.From}, {"Created to", q.To}} {
 		if kv.Value != "" {
 			out = append(out, kv)
 		}
@@ -1047,8 +1275,8 @@ func (q djQuery) summary(clientNames map[string]string) []djKV {
 	return out
 }
 
-func (h *DispatchJobs) preview(ctx context.Context, q djQuery, names map[string]string, changed bool) (djPreview, error) {
-	f, win, err := h.window(q.filterParams())
+func (h *DispatchJobs) preview(ctx context.Context, ac *auth.AuthContext, q djQuery, names map[string]string, changed bool) (djPreview, error) {
+	f, win, err := h.scoped(ctx, ac, q)
 	if err != nil {
 		return djPreview{}, err
 	}
@@ -1085,7 +1313,8 @@ func (h *DispatchJobs) requeueByFilterDialog(w http.ResponseWriter, r *http.Requ
 // confirm step opens for that view.
 func (h *DispatchJobs) requeueErrors(w http.ResponseWriter, r *http.Request) {
 	q := parseDJQuery(url.Values{djFacetStatuses: djErrorStatuses})
-	q.Size = parseDJQuery(r.URL.Query()).Size
+	keep := parseDJQuery(r.URL.Query())
+	q.Size, q.Window, q.From, q.To = keep.Size, keep.Window, keep.From, keep.To
 	h.openRequeueByFilter(w, r, q, true)
 }
 
@@ -1122,7 +1351,7 @@ func (h *DispatchJobs) showRequeueDialog(w http.ResponseWriter, r *http.Request,
 		}
 		names = clientNames(cs)
 	}
-	p, err := h.preview(ctx, q, names, changed)
+	p, err := h.preview(ctx, ac, q, names, changed)
 	if err != nil {
 		h.Shell.Fail(w, r, err)
 		return
@@ -1163,7 +1392,7 @@ func (h *DispatchJobs) requeueByFilter(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, usecase.Validation("INVALID_CONFIRM_COUNT", "confirmCount must be a whole number, not negative"))
 		return
 	}
-	f, _, err := h.window(q.filterParams())
+	f, _, err := h.scoped(ctx, ac, q)
 	if err != nil {
 		h.Shell.Fail(w, r, err)
 		return
@@ -1206,4 +1435,59 @@ func requeueOutcome(res djops.ResendByFilterResult) kit.FlashMessageProps {
 		return kit.FlashMessageProps{Kind: kit.FlashInfo, Summary: "Nothing requeued", Detail: "No matching job could be requeued."}
 	}
 	return kit.FlashMessageProps{Kind: kit.FlashSuccess, Summary: "Requeued " + counted(res.Requeued, "job"), Detail: counted(res.Requeued, "dispatch job") + " reset to PENDING."}
+}
+
+// windowText is the line above the table: "Showing the last 24 hours" when
+// the window ends about now, the dates otherwise (jobWindow.ts describeWindow).
+func windowText(w dispatchjob.Window, now time.Time) string {
+	span := w.To.Sub(w.From)
+	if d := now.Sub(w.To); d < -5*time.Minute || d > 5*time.Minute {
+		return "Showing " + w.From.UTC().Format("2006-01-02 15:04") + " to " + w.To.UTC().Format("2006-01-02 15:04") + " UTC"
+	}
+	switch hours := int(span.Round(time.Hour) / time.Hour); {
+	case span < 90*time.Minute && span >= 30*time.Minute:
+		return "Showing the last hour"
+	case span < 90*time.Minute:
+		return "Showing the last " + strconv.Itoa(max(1, int(span.Round(time.Minute)/time.Minute))) + " minutes"
+	case hours >= 72 && hours%24 == 0:
+		return "Showing the last " + strconv.Itoa(hours/24) + " days"
+	default:
+		return "Showing the last " + strconv.Itoa(hours) + " hours"
+	}
+}
+
+// djWindowChoice is one preset button of the window bar.
+type djWindowChoice struct {
+	Label, Href string
+	Active      bool
+}
+
+func (v djView) windowChoices() []djWindowChoice {
+	custom := v.Query.From != "" || v.Query.To != ""
+	out := make([]djWindowChoice, 0, len(djWindowOrder))
+	for _, key := range djWindowOrder {
+		label := "Last 24 hours"
+		if p, ok := djWindowPresets[key]; ok {
+			label = p.label
+		}
+		out = append(out, djWindowChoice{Label: label, Href: v.Query.windowURL(key), Active: !custom && v.Query.Window == key})
+	}
+	return out
+}
+
+// hidden is the toolbar form's hidden state: the sort, and the window preset
+// (typing in the toolbar must not drop it).
+func (v djView) hidden() []kit.HiddenField {
+	h := v.Query.hidden()
+	if v.Query.Window != "" {
+		h = append(h, kit.HiddenField{Name: "window", Value: v.Query.Window})
+	}
+	return h
+}
+
+func djConfirm(id, title, message, label string, tone kit.ConfirmTone) kit.ConfirmDialogProps {
+	return kit.ConfirmDialogProps{
+		ID: id, Action: djPath, Title: title, Message: message, ConfirmLabel: label, Tone: tone,
+		FormAttrs: templ.Attributes{"data-on:submit": kit.SubmitConfirm},
+	}
 }

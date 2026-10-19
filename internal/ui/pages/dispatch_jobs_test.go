@@ -27,6 +27,9 @@ type fakeDJStore struct {
 	params   []dispatchjob.FilterParams
 	// scopes records each DistinctValues tenant scope ("*" for none).
 	scopes []string
+	// resolved records each ResolveRefs input.
+	resolved   []dispatchjob.FilterParams
+	resolveErr error
 }
 
 func (f *fakeDJStore) FindWithFilters(_ context.Context, p dispatchjob.FilterParams) ([]dispatchjob.DispatchJob, error) {
@@ -48,6 +51,13 @@ func (f *fakeDJStore) FindWithFilters(_ context.Context, p dispatchjob.FilterPar
 		out = append(out, j)
 	}
 	return out[:min(len(out), p.Limit)], nil
+}
+
+// ResolveRefs marks the references as resolved by recording the params it saw;
+// the fake does no lookup.
+func (f *fakeDJStore) ResolveRefs(_ context.Context, p dispatchjob.FilterParams) (dispatchjob.FilterParams, error) {
+	f.resolved = append(f.resolved, p)
+	return p, f.resolveErr
 }
 
 func (f *fakeDJStore) FindByID(_ context.Context, id string) (*dispatchjob.DispatchJob, error) {
@@ -76,15 +86,27 @@ func (f *fakeDJStore) DistinctValues(_ context.Context, column string, _ int, sc
 }
 
 type fakeDJOps struct {
-	requeued [][]string
-	previews []dispatchjob.FilterParams
-	byFilter []dispatchjob.FilterParams
-	confirms []int64
-	summary  djops.MatchSummary
-	result   djops.ResendByFilterResult
-	err      error
-	planned  []string
-	edits    []string // "id|payload|contentType"
+	requeued  [][]string
+	previews  []dispatchjob.FilterParams
+	byFilter  []dispatchjob.FilterParams
+	confirms  []int64
+	summary   djops.MatchSummary
+	result    djops.ResendByFilterResult
+	err       error
+	planned   []string
+	edits     []string // "id|payload|contentType"
+	cancels   []string
+	completes []string
+}
+
+func (o *fakeDJOps) Cancel(_ context.Context, id string) error {
+	o.cancels = append(o.cancels, id)
+	return o.err
+}
+
+func (o *fakeDJOps) Complete(_ context.Context, id string) error {
+	o.completes = append(o.completes, id)
+	return o.err
 }
 
 func (o *fakeDJOps) EditPayload(_ context.Context, id, payload string, contentType *string) error {

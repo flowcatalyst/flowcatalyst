@@ -47,6 +47,11 @@ export interface ListFilterValues {
 	from: string;
 	/** YYYY-MM-DD, whole-day upper bound (inclusive). */
 	to: string;
+	eventTypes?: string[];
+	subscription?: string;
+	connection?: string;
+	/** Window preset label ("Last 7 days"), when a preset other than the default is chosen. */
+	windowLabel?: string;
 }
 
 export interface FilterSummaryItem {
@@ -74,6 +79,10 @@ export function summarizeFilters(
 	list("Status", f.statuses);
 	if (f.search) out.push({ label: "Source", value: f.search });
 	if (f.messageGroup) out.push({ label: "Message group", value: f.messageGroup });
+	list("Event type", f.eventTypes ?? []);
+	if (f.subscription) out.push({ label: "Subscription", value: f.subscription });
+	if (f.connection) out.push({ label: "Connection", value: f.connection });
+	if (f.windowLabel) out.push({ label: "Window", value: f.windowLabel });
 	if (f.from) out.push({ label: "Created from", value: f.from });
 	if (f.to) out.push({ label: "Created to", value: f.to });
 	return out;
@@ -105,9 +114,8 @@ export function plural(n: number, word: string): string {
 
 /**
  * What a requeue left alone, in words ("" when nothing was skipped): jobs in
- * flight (QUEUED, PROCESSING) are never reset; COMPLETED ones are redriven only
- * with the API's redriveCompleted + confirmRedriveCompleted, which this console
- * does not send.
+ * flight (QUEUED, PROCESSING) are never reset; COMPLETED ones are left alone
+ * unless the run was a confirmed redrive.
  */
 export function requeueSkipNote(res: {
 	skippedInFlight?: number;
@@ -120,16 +128,21 @@ export function requeueSkipNote(res: {
 }
 
 /** The toast for a finished run. */
-export function requeueOutcome(res: RequeueByFilterResponse): {
+export function requeueOutcome(res: Pick<RequeueByFilterResponse, "requeued" | "truncated" | "remaining"> & {
+	redriven?: number;
+	skippedInFlight?: number;
+	skippedCompleted?: number;
+}): {
 	severity: "success" | "warn" | "info";
 	summary: string;
 	detail: string;
 } {
 	const skipped = requeueSkipNote(res);
+	const redriven = res.redriven ? ` (${plural(res.redriven, "COMPLETED job")} redriven)` : "";
 	if (res.truncated) {
 		return {
 			severity: "warn",
-			summary: `Requeued ${plural(res.requeued, "job")}`,
+			summary: `Requeued ${plural(res.requeued, "job")}${redriven}`,
 			detail: `${res.remaining.toLocaleString()} remain — run it again to continue.${skipped}`,
 		};
 	}
@@ -138,7 +151,30 @@ export function requeueOutcome(res: RequeueByFilterResponse): {
 	}
 	return {
 		severity: "success",
-		summary: `Requeued ${plural(res.requeued, "job")}`,
+		summary: `Requeued ${plural(res.requeued, "job")}${redriven}`,
 		detail: `${plural(res.requeued, "dispatch job")} reset to PENDING.${skipped}`,
+	};
+}
+
+/**
+ * The toast for a requeue by ids: what was reset, what the guard left alone.
+ * (The response lists every skipped id with its reason; the counts are enough
+ * for a toast.)
+ */
+export function requeueIdsOutcome(res: {
+	requeued: number;
+	redriven?: number;
+	skippedInFlight?: number;
+	skippedCompleted?: number;
+}): { severity: "success" | "info"; summary: string; detail: string } {
+	const skipped = requeueSkipNote(res);
+	if (res.requeued === 0) {
+		return { severity: "info", summary: "Nothing requeued", detail: `No selected job could be requeued.${skipped}` };
+	}
+	const redriven = res.redriven ? ` (${plural(res.redriven, "COMPLETED job")} redriven)` : "";
+	return {
+		severity: "success",
+		summary: `Requeued ${plural(res.requeued, "job")}${redriven}`,
+		detail: `${plural(res.requeued, "dispatch job")} reset to PENDING${skipped}`,
 	};
 }

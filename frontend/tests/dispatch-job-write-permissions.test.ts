@@ -45,7 +45,7 @@ describe("buttons", () => {
 		expect(list).toMatch(/<Button\s+v-if="canRequeue"\s+:label="requeueSelectedLabel"/);
 		expect(list).toMatch(/<SplitButton\s+v-if="canRequeue"/);
 		const drawer = src("DispatchJobDetailDrawer.vue");
-		expect(drawer).toMatch(/<Button\s+v-if="canRequeue"\s+label="Requeue"/);
+		expect(drawer).toMatch(/<Button\s+v-if="actions\.requeue"\s+label="Requeue"/);
 	});
 
 	it("Edit payload needs the edit-payload permission", () => {

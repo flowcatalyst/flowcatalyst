@@ -13,17 +13,39 @@ import {
 	type DispatchJobsListParams,
 	type RequeueByFilterPreviewResponse,
 	type RequeueByFilterResponse,
+	type RequeueResponse,
+	type WindowResponse,
 } from "@/api/dispatch-jobs";
 import { notify, toast } from "@/utils/errorBus";
 import { useAuthStore } from "@/stores/auth";
 import { userHasPermission } from "@/stores/permissions";
-import { DISPATCH_JOB_REQUEUE } from "@/utils/dispatch-job-permissions";
+import { DISPATCH_JOB_REDRIVE_COMPLETED, DISPATCH_JOB_REQUEUE, jobActions } from "@/utils/dispatch-job-permissions";
 import RequeueByFilterDialog from "./RequeueByFilterDialog.vue";
+import RequeueSelectedDialog from "./RequeueSelectedDialog.vue";
+import {
+	activeLens,
+	explainListError,
+	filtersToParams,
+	lensFilters,
+	MAX_EVENT_TYPES,
+	suggestEventTypes,
+	validateFilters,
+	type JobListFilters,
+	type Lens,
+} from "./jobFilters";
+import {
+	customRangeTooLarge,
+	DEFAULT_WINDOW_KEY,
+	describeWindow,
+	normalizePreset,
+	selectPreset,
+	WINDOW_PRESETS,
+} from "./jobWindow";
 import { codeLevels } from "@/utils/code-facets";
 import {
 	ERROR_STATUSES,
+	requeueIdsOutcome,
 	requeueOutcome,
-	requeueSkipNote,
 	selectAllBannerState,
 	statusSeverity,
 	summarizeFilters,
@@ -40,6 +62,7 @@ const sizeOptions = [50, 100, 200, 500, 1000];
 // actions are offered only to holders.
 const authStore = useAuthStore();
 const canRequeue = computed(() => userHasPermission(authStore.user, DISPATCH_JOB_REQUEUE));
+const canRedrive = computed(() => userHasPermission(authStore.user, DISPATCH_JOB_REDRIVE_COMPLETED));
 const route = useRoute();
 const router = useRouter();
 
@@ -61,6 +84,16 @@ const listState = useListState({
 		// Created-at range, URL-synced as YYYY-MM-DD.
 		from: { type: "string", key: "from" },
 		to: { type: "string", key: "to" },
+		// Window preset ("1h" | "3d" | "7d" | "31d"); empty = the server's default (24h).
+		window: { type: "string", key: "window" },
+		// A job's code is its event type; the API filters it with an index.
+		eventTypes: { type: "array", key: "eventTypes" },
+		// Subscription name, exact or trailing-* prefix.
+		subscription: { type: "string", key: "subscription" },
+		// Connection code, exact or trailing-* prefix.
+		connection: { type: "string", key: "connection" },
+		// "stuck": PENDING/QUEUED older than 5 minutes.
+		lens: { type: "string", key: "lens" },
 	},
 	pageSize: 200,
 	sortField: "createdAt",
@@ -97,8 +130,35 @@ watch([filters.from, filters.to], ([from, to]) => {
 	if (toDateFilter(dateTo.value) !== to) dateTo.value = parseDateFilter(to);
 });
 function onDateRangeChange() {
-	filters.from.value = toDateFilter(dateFrom.value);
-	filters.to.value = toDateFilter(dateTo.value);
+	// Custom dates replace the preset.
+	withSuppressed(() => {
+		filters.window.value = "";
+		filters.from.value = toDateFilter(dateFrom.value);
+		filters.to.value = toDateFilter(dateTo.value);
+	});
+	syncToUrl();
+	load();
+}
+
+// ── window ──────────────────────────────────────────────────────────────
+// The server holds the list to a created_at window and echoes the one it
+// applied (X-Window-* headers). The picker is always visible.
+const windowPreset = computed(() => normalizePreset(filters.window.value));
+const customWindow = computed(() => !!filters.from.value || !!filters.to.value);
+const windowButtons = WINDOW_PRESETS.map((p) => ({ label: p.label.replace("Last ", ""), value: p.key, title: p.label }));
+const appliedWindow = ref<WindowResponse | null>(null);
+const windowLabel = computed(() => (appliedWindow.value ? describeWindow(appliedWindow.value, new Date()) : null));
+
+function onPresetChange(key: string | null) {
+	if (!key) return;
+	const sel = selectPreset(key);
+	withSuppressed(() => {
+		filters.window.value = sel.preset === DEFAULT_WINDOW_KEY ? "" : sel.preset;
+		filters.from.value = "";
+		filters.to.value = "";
+	});
+	dateFrom.value = null;
+	dateTo.value = null;
 	syncToUrl();
 	load();
 }
@@ -126,37 +186,32 @@ const { activeFilterCount } = useTableFilters(
 	{ globalParam: "search" },
 );
 
-function buildParams(): DispatchJobsListParams {
-	// The range filter is whole days: since = start of the "from" day,
-	// until = end of the "to" day, in the viewer's timezone.
-	const since = dateFrom.value
-		? new Date(
-				dateFrom.value.getFullYear(),
-				dateFrom.value.getMonth(),
-				dateFrom.value.getDate(),
-			).toISOString()
-		: undefined;
-	const until = dateTo.value
-		? new Date(
-				dateTo.value.getFullYear(),
-				dateTo.value.getMonth(),
-				dateTo.value.getDate() + 1,
-			).toISOString()
-		: undefined;
+function currentFilters(): JobListFilters {
 	return {
-		size: pageSize.value,
-		clientIds: filters.clients.value.length ? filters.clients.value : undefined,
-		statuses: filters.statuses.value.length ? filters.statuses.value : undefined,
-		applications: filters.applications.value.length ? filters.applications.value : undefined,
-		subdomains: filters.subdomains.value.length ? filters.subdomains.value : undefined,
-		aggregates: filters.aggregates.value.length ? filters.aggregates.value : undefined,
-		codes: filters.codes.value.length ? filters.codes.value : undefined,
-		source: filters.search.value || undefined,
-		messageGroup: filters.messageGroup.value || undefined,
-		since,
-		until,
-		sort: sortOrder.value === "asc" ? "createdAt.asc" : "createdAt.desc",
+		clients: filters.clients.value,
+		applications: filters.applications.value,
+		subdomains: filters.subdomains.value,
+		aggregates: filters.aggregates.value,
+		codes: filters.codes.value,
+		statuses: filters.statuses.value,
+		search: filters.search.value,
+		messageGroup: filters.messageGroup.value,
+		eventTypes: filters.eventTypes.value,
+		subscription: filters.subscription.value,
+		connection: filters.connection.value,
+		window: filters.window.value,
+		from: filters.from.value,
+		to: filters.to.value,
+		lens: filters.lens.value,
 	};
+}
+
+function buildParams(): DispatchJobsListParams {
+	return filtersToParams(currentFilters(), {
+		size: pageSize.value,
+		sort: sortOrder.value === "asc" ? "createdAt.asc" : "createdAt.desc",
+		now: new Date(),
+	});
 }
 
 const dispatchJobs = ref<DispatchJob[]>([]);
@@ -180,6 +235,13 @@ const { getLabel: clientLabel } = useClientOptions();
 
 function currentFilterValues() {
 	return {
+		eventTypes: filters.eventTypes.value,
+		subscription: filters.subscription.value,
+		connection: filters.connection.value,
+		windowLabel:
+			!customWindow.value && windowPreset.value !== DEFAULT_WINDOW_KEY
+				? WINDOW_PRESETS.find((p) => p.key === windowPreset.value)?.label
+				: undefined,
 		clients: filters.clients.value,
 		applications: filters.applications.value,
 		subdomains: filters.subdomains.value,
@@ -193,13 +255,27 @@ function currentFilterValues() {
 	};
 }
 
+// A readable message when the API (or the form) refused the filters.
+const listError = ref<string | null>(null);
+
 async function load() {
 	const mine = ++loadSeq;
+	const invalid =
+		validateFilters(currentFilters()) ??
+		(customRangeTooLarge(currentFilters()) ? explainListError({ code: "WINDOW_TOO_LARGE" }) : null);
+	if (invalid) {
+		listError.value = invalid;
+		dispatchJobs.value = [];
+		appliedWindow.value = null;
+		return;
+	}
 	const params = buildParams();
 	loading.value = true;
 	try {
-		const rows = await dispatchJobsApi.list(params);
+		const { rows, window } = await dispatchJobsApi.listWithWindow(params);
 		if (mine !== loadSeq) return;
+		listError.value = null;
+		appliedWindow.value = window;
 		dispatchJobs.value = rows;
 		loadedFilter.value = filterBody(params);
 		loadedSummary.value = summarizeFilters(currentFilterValues(), clientLabel);
@@ -209,7 +285,11 @@ async function load() {
 		const visible = new Set(dispatchJobs.value.map((j) => j.id));
 		selectedJobs.value = selectedJobs.value.filter((j) => visible.has(j.id));
 	} catch (error) {
+		if (mine !== loadSeq) return;
 		console.error("Failed to load dispatch jobs:", error);
+		listError.value = explainListError(error);
+		dispatchJobs.value = [];
+		appliedWindow.value = null;
 	} finally {
 		if (mine === loadSeq) loading.value = false;
 	}
@@ -279,9 +359,12 @@ async function onFilterRequeueDone(res: RequeueByFilterResponse | null) {
 // "Requeue everything in error": every job in an error status, whatever
 // else the view was filtered by, through the same preview + confirm.
 async function requeueEverythingInError() {
+	// Every other filter goes; the time window stays (the run is held to it).
+	const keep = { window: filters.window.value, from: filters.from.value, to: filters.to.value };
 	clearFilters();
-	dateFrom.value = null;
-	dateTo.value = null;
+	filters.window.value = keep.window;
+	filters.from.value = keep.from;
+	filters.to.value = keep.to;
 	filters.statuses.value = [...ERROR_STATUSES];
 	syncToUrl();
 	await load();
@@ -289,7 +372,7 @@ async function requeueEverythingInError() {
 }
 
 const requeueAllMenu = [
-	{ label: "Requeue everything in error", icon: "pi pi-exclamation-circle", command: () => void requeueEverythingInError() },
+	{ label: "Requeue everything in error in this window", icon: "pi pi-exclamation-circle", command: () => void requeueEverythingInError() },
 ];
 
 const requeueAllLabel = computed(() =>
@@ -309,18 +392,13 @@ const statusSelectOptions = computed<FilterOption[]>(() => {
 });
 
 // Reset the given jobs to PENDING so the scheduler re-dispatches them. The
-// server tenant-scopes the reset, so `requeued` may be < ids.length.
+// server tenant-scopes the reset and leaves in-flight and COMPLETED jobs
+// alone (reported in the response), so `requeued` may be < ids.length.
 async function requeueIds(ids: string[]) {
 	if (!ids.length || requeuing.value) return;
 	requeuing.value = true;
 	try {
-		const res = await dispatchJobsApi.requeue(ids);
-		const { requeued } = res;
-		const skipped = requeueSkipNote(res);
-		toast.success(
-			"Requeued",
-			`${requeued} dispatch job${requeued === 1 ? "" : "s"} reset to PENDING${skipped}`,
-		);
+		showIdsOutcome(await dispatchJobsApi.requeue(ids));
 		selectedJobs.value = [];
 		await load();
 	} catch (error) {
@@ -333,14 +411,44 @@ async function requeueIds(ids: string[]) {
 	}
 }
 
+function showIdsOutcome(res: RequeueResponse) {
+	const o = requeueIdsOutcome(res);
+	notify({ severity: o.severity, summary: o.summary, detail: o.detail, life: 5000 });
+}
+
+// COMPLETED rows among those ticked go through the redrive dialog, but only
+// for users who may redrive; everyone else requeues straight away and the
+// server reports the COMPLETED ones as left alone.
+const selectedDialogVisible = ref(false);
+const selectedDialogIds = ref<string[]>([]);
+const selectedDialogCompleted = ref(0);
+
+function openSelectedDialog(jobs: DispatchJob[]) {
+	selectedDialogIds.value = jobs.map((j) => j.id).filter((id): id is string => !!id);
+	selectedDialogCompleted.value = jobs.filter((j) => j.status === "COMPLETED").length;
+	selectedDialogVisible.value = true;
+}
+
+async function onSelectedDialogDone(res: RequeueResponse | null) {
+	if (res) showIdsOutcome(res);
+	selectedJobs.value = [];
+	await load();
+}
+
+function requeueJobs(jobs: DispatchJob[]) {
+	if (canRedrive.value && jobs.some((j) => j.status === "COMPLETED")) {
+		openSelectedDialog(jobs);
+		return;
+	}
+	void requeueIds(jobs.map((j) => j.id).filter((id): id is string => !!id));
+}
+
 function requeueSelected() {
 	if (allMatchingSelected.value) {
 		openRequeueAllMatching();
 		return;
 	}
-	requeueIds(
-		selectedJobs.value.map((j) => j.id).filter((id): id is string => !!id),
-	);
+	requeueJobs(selectedJobs.value);
 }
 
 const requeueSelectedLabel = computed(() => {
@@ -351,12 +459,17 @@ const requeueSelectedLabel = computed(() => {
 });
 
 function requeueOne(job: DispatchJob) {
-	if (job.id) requeueIds([job.id]);
+	if (job.id) requeueJobs([job]);
+}
+
+// Per-row action availability: permission AND the status the API would accept.
+function rowActions(job: DispatchJob) {
+	return jobActions(job.status, (p) => userHasPermission(authStore.user, p));
 }
 
 // Search / group reload: debounced, replacing the old Enter-to-search.
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
-watch([filters.search, filters.messageGroup], () => {
+watch([filters.search, filters.messageGroup, filters.subscription, filters.connection], () => {
 	clearTimeout(searchTimer);
 	searchTimer = setTimeout(load, 400);
 });
@@ -382,6 +495,7 @@ function metadataFull(job: DispatchJob): string {
 // subdomain and aggregate options are their segments, each narrowed by the
 // levels chosen above it (utils/code-facets.ts).
 const distinctCodes = ref<string[]>([]);
+const facetEventTypes = ref<string[]>([]);
 const statusOptions = ref<FilterOption[]>([]);
 const toOptions = (values: string[]): FilterOption[] =>
 	values.map((v) => ({ label: v, value: v }));
@@ -410,11 +524,52 @@ async function loadFilterOptions() {
 		// dispatchPoolIds/subscriptionIds/kinds); the application, subdomain
 		// and aggregate options are derived from the codes (above).
 		distinctCodes.value = data.codes;
+		facetEventTypes.value = data.eventTypes ?? data.codes;
 		statusOptions.value = toOptions(data.statuses);
 	} catch (error) {
 		console.error("Failed to load filter options:", error);
 	}
 }
+
+// ── quick lenses ────────────────────────────────────────────────────────
+// Failed = FAILED/ERROR; Stuck = PENDING/QUEUED created more than 5 minutes
+// ago. They set the status filter (visible in the Status popup) over the
+// other filters; choosing the active lens again clears it.
+const lens = computed(() => activeLens({ statuses: filters.statuses.value, lens: filters.lens.value }));
+function toggleLens(l: Lens) {
+	withSuppressed(() => {
+		if (lens.value === l) {
+			filters.statuses.value = [];
+			filters.lens.value = "";
+		} else {
+			const next = lensFilters(l);
+			filters.statuses.value = next.statuses;
+			filters.lens.value = next.lens;
+		}
+	});
+	syncToUrl();
+	load();
+}
+
+// Picking statuses by hand leaves the Stuck cap behind.
+function onStatusesChange() {
+	if (lens.value !== "stuck" && filters.lens.value) {
+		withSuppressed(() => {
+			filters.lens.value = "";
+		});
+		syncToUrl();
+	}
+	load();
+}
+
+// ── event type ──────────────────────────────────────────────────────────
+// Suggestions come from the window's distinct codes (a job's code is its
+// event type); anything typed is accepted too.
+const eventTypeSuggestions = ref<string[]>([]);
+function searchEventTypes(e: { query: string }) {
+	eventTypeSuggestions.value = suggestEventTypes(e.query, facetEventTypes.value, filters.eventTypes.value);
+}
+const eventTypesError = computed(() => validateFilters({ eventTypes: filters.eventTypes.value }));
 
 // Cascading clears: changing a parent wipes its dependent children. The
 // child writes are wrapped in `withSuppressed` so useListState's per-ref
@@ -497,6 +652,76 @@ function formatCode(code: string | undefined): {
       </div>
     </header>
 
+    <div class="window-bar" role="group" aria-label="Time window">
+      <span class="window-title">Window</span>
+      <SelectButton
+        :modelValue="customWindow ? null : windowPreset"
+        :options="windowButtons"
+        optionLabel="label"
+        optionValue="value"
+        :allowEmpty="false"
+        size="small"
+        aria-label="Window preset"
+        @update:modelValue="onPresetChange"
+      />
+      <span class="window-or">or</span>
+      <DatePicker
+        v-model="dateFrom"
+        dateFormat="yy-mm-dd"
+        placeholder="From"
+        showIcon
+        showButtonBar
+        size="small"
+        :maxDate="dateTo ?? undefined"
+        aria-label="Window from"
+        @update:modelValue="onDateRangeChange"
+      />
+      <DatePicker
+        v-model="dateTo"
+        dateFormat="yy-mm-dd"
+        placeholder="To"
+        showIcon
+        showButtonBar
+        size="small"
+        :minDate="dateFrom ?? undefined"
+        aria-label="Window to"
+        @update:modelValue="onDateRangeChange"
+      />
+      <span v-if="windowLabel" class="window-label" data-testid="window-label">
+        {{ windowLabel.text }}
+        <Tag v-if="windowLabel.defaulted" value="default window" severity="secondary" />
+      </span>
+    </div>
+    <p v-if="windowLabel?.defaulted" class="window-hint">
+      No dates were chosen, so only the last 24 hours are shown. Pick a longer window to look further back (up to 31 days).
+    </p>
+
+    <div class="lens-bar" role="group" aria-label="Quick views">
+      <span class="window-title">Quick views</span>
+      <Button
+        label="Failed"
+        icon="pi pi-times-circle"
+        size="small"
+        :severity="lens === 'failed' ? 'danger' : 'secondary'"
+        :outlined="lens !== 'failed'"
+        :aria-pressed="lens === 'failed'"
+        v-tooltip="'FAILED and ERROR jobs'"
+        @click="toggleLens('failed')"
+      />
+      <Button
+        label="Stuck"
+        icon="pi pi-clock"
+        size="small"
+        :severity="lens === 'stuck' ? 'warn' : 'secondary'"
+        :outlined="lens !== 'stuck'"
+        :aria-pressed="lens === 'stuck'"
+        v-tooltip="'PENDING or QUEUED jobs created more than 5 minutes ago'"
+        @click="toggleLens('stuck')"
+      />
+    </div>
+
+    <Message v-if="listError" severity="error" :closable="false" class="list-error">{{ listError }}</Message>
+
     <div class="fc-card">
       <DataTable
         v-model:selection="selectedJobs"
@@ -515,7 +740,7 @@ function formatCode(code: string | undefined): {
           <FcTableToolbar
             v-model:search="filters.search.value"
             search-placeholder="Search by source..."
-            :active-filter-count="activeFilterCount + (filters.from.value ? 1 : 0) + (filters.to.value ? 1 : 0) + (filters.messageGroup.value ? 1 : 0)"
+            :active-filter-count="activeFilterCount + (filters.eventTypes.value.length ? 1 : 0) + (filters.subscription.value ? 1 : 0) + (filters.connection.value ? 1 : 0) + (filters.messageGroup.value ? 1 : 0)"
             :has-active-filters="hasActiveFilters"
             show-refresh
             @refresh="load"
@@ -627,7 +852,7 @@ function formatCode(code: string | undefined): {
                     optionValue="value"
                     placeholder="All Statuses"
                     appendTo="self"
-                    @change="load"
+                    @change="onStatusesChange"
                   />
                 </template>
               </FcFormField>
@@ -640,34 +865,44 @@ function formatCode(code: string | undefined): {
                   />
                 </template>
               </FcFormField>
-              <FcFormField label="Created from">
+              <FcFormField label="Event type">
                 <template #default="{ id: fieldId }">
-                  <DatePicker
-                    :id="fieldId"
-                    v-model="dateFrom"
-                    dateFormat="yy-mm-dd"
-                    placeholder="Any date"
-                    showIcon
-                    showButtonBar
+                  <AutoComplete
+                    :inputId="fieldId"
+                    v-model="filters.eventTypes.value"
+                    multiple
+                    dropdown
+                    :suggestions="eventTypeSuggestions"
+                    :autoOptionFocus="true"
+                    :invalid="!!eventTypesError"
+                    placeholder="Type or pick an event type"
                     appendTo="self"
-                    :maxDate="dateTo ?? undefined"
-                    @update:modelValue="onDateRangeChange"
+                    @complete="searchEventTypes"
+                    @update:modelValue="load"
                   />
+                  <small :class="eventTypesError ? 'p-error' : 'field-hint'">
+                    {{ eventTypesError ?? `Up to ${MAX_EVENT_TYPES}. Press Enter to add what you typed.` }}
+                  </small>
                 </template>
               </FcFormField>
-              <FcFormField label="Created to">
+              <FcFormField label="Subscription">
                 <template #default="{ id: fieldId }">
-                  <DatePicker
+                  <InputText
                     :id="fieldId"
-                    v-model="dateTo"
-                    dateFormat="yy-mm-dd"
-                    placeholder="Any date"
-                    showIcon
-                    showButtonBar
-                    appendTo="self"
-                    :minDate="dateFrom ?? undefined"
-                    @update:modelValue="onDateRangeChange"
+                    v-model="filters.subscription.value"
+                    placeholder="Subscription name"
                   />
+                  <small class="field-hint">Exact name (any case), or end with * for a prefix: orders*</small>
+                </template>
+              </FcFormField>
+              <FcFormField label="Connection">
+                <template #default="{ id: fieldId }">
+                  <InputText
+                    :id="fieldId"
+                    v-model="filters.connection.value"
+                    placeholder="Connection code"
+                  />
+                  <small class="field-hint">Exact code, or end with * for a prefix: billing*</small>
                 </template>
               </FcFormField>
             </template>
@@ -763,12 +998,23 @@ function formatCode(code: string | undefined): {
                 @click="viewJob(data)"
               />
               <Button
-                v-if="canRequeue"
+                v-if="rowActions(data).requeue"
                 icon="pi pi-replay"
                 text
                 rounded
                 size="small"
                 v-tooltip="'Requeue — reset to PENDING for re-dispatch'"
+                :disabled="requeuing"
+                @click="requeueOne(data)"
+              />
+              <Button
+                v-if="rowActions(data).redrive"
+                icon="pi pi-exclamation-triangle"
+                text
+                rounded
+                size="small"
+                severity="danger"
+                v-tooltip="'Redrive — deliver this COMPLETED job again (asks you to confirm twice)'"
                 :disabled="requeuing"
                 @click="requeueOne(data)"
               />
@@ -794,12 +1040,62 @@ function formatCode(code: string | undefined): {
       @done="onFilterRequeueDone"
     />
 
+    <RequeueSelectedDialog
+      v-model:visible="selectedDialogVisible"
+      :ids="selectedDialogIds"
+      :completed-count="selectedDialogCompleted"
+      @done="onSelectedDialogDone"
+    />
+
     <!-- Detail drawer (child route /dispatch-jobs/:id) -->
     <RouterView />
   </div>
 </template>
 
 <style scoped>
+.window-bar,
+.lens-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.window-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-color-secondary);
+  min-width: 5.5rem;
+}
+
+.window-or {
+  font-size: 0.8125rem;
+  color: var(--text-color-secondary);
+}
+
+.window-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.window-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--text-color-secondary);
+}
+
+.list-error {
+  margin-bottom: 0.75rem;
+}
+
+.field-hint {
+  color: var(--text-color-secondary);
+}
+
 .size-select {
   width: 6rem;
 }

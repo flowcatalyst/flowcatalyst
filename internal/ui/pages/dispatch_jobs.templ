@@ -2,6 +2,7 @@ package pages
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
 )
@@ -49,7 +50,7 @@ func (v djView) toolbar() kit.TableToolbarProps {
 		ID: djFormID, Action: djPath, SearchPlaceholder: "Search by source...", SearchValue: v.Query.Q,
 		Size:      &kit.ResultSize{Options: djSizes, Selected: v.Query.Size},
 		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
-		ActiveFilterCount: v.Query.activeFilters(), Hidden: v.Query.hidden(),
+		ActiveFilterCount: v.Query.activeFilters(), Hidden: v.hidden(),
 		SearchAttrs: templ.Attributes{"data-on:input__debounce.400ms": djLiveGet},
 		FormAttrs:   templ.Attributes{"data-on:submit": djLiveGet},
 		Filters:     djFilters(v),
@@ -108,6 +109,7 @@ templ djPage(v djView) {
 		@kit.PageHeader(kit.PageHeaderProps{Title: "Dispatch Jobs", Subtitle: "Monitor webhook dispatch jobs and delivery status"})
 		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Dispatch Jobs.", Class: "mb-4"})
 		<div class="fc-card-flush">
+			@djWindowBar(v)
 			@kit.TableToolbar(v.toolbar())
 			@djBulkBar(v)
 			@djTable(v)
@@ -116,6 +118,8 @@ templ djPage(v djView) {
 		<form id="dj-row-form" method="post" hidden>
 			<input type="hidden" name="drawer" data-attr:value={ "$" + djDrawerSig }/>
 		</form>
+		@kit.ConfirmDialog(djConfirm(djCancelDialog, "Cancel this job?", "The job is marked CANCELLED and will not be retried. If it blocks later jobs in its message group, they are released. This cannot be undone.", "Cancel job", kit.ToneDanger))
+		@kit.ConfirmDialog(djConfirm(djCompleteDialog, "Mark this job completed?", "Use this only if the delivery was made another way. The job is marked COMPLETED without anything being sent, and a BLOCK_ON_ERROR group behind it is released. This cannot be undone.", "Mark completed", kit.ToneDefault))
 		<div id={ djDialogSlot }>
 			if v.Dialog != nil {
 				@v.Dialog
@@ -123,6 +127,48 @@ templ djPage(v djView) {
 		</div>
 		@djDrawer(v.Drawer)
 	</div>
+}
+
+// djWindowBar is the window picker: presets that set the created_at window
+// (the default is the last 24 hours), the window the list applied, and the
+// Failed quick view. Dates chosen in the Filters popover override a preset.
+templ djWindowBar(v djView) {
+	<div id="dj-window" class="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-sm">
+		<span class="fc-field-label">Window</span>
+		<div class="flex flex-wrap items-center gap-1" role="group" aria-label="Time window">
+			for _, c := range v.windowChoices() {
+				<a
+					href={ c.Href }
+					class={ "fc-btn fc-btn-sm", templ.KV("fc-btn-secondary", c.Active), templ.KV("fc-btn-outline", !c.Active) }
+					if c.Active {
+						aria-current="true"
+					}
+					data-on:click__prevent={ djNavLink }
+				>{ c.Label }</a>
+			}
+		</div>
+		<span data-testid="window-label">{ v.WindowText }</span>
+		if v.Window.Defaulted {
+			@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "default window"})
+		}
+		<span class="flex-1"></span>
+		<span class="fc-field-label">Quick view</span>
+		<a
+			href={ v.Query.failedLensURL() }
+			class={ "fc-btn fc-btn-sm", templ.KV("fc-btn-danger", v.Query.failedLens()), templ.KV("fc-btn-outline", !v.Query.failedLens()) }
+			title="FAILED and ERROR jobs"
+			if v.Query.failedLens() {
+				aria-pressed="true"
+			}
+			data-on:click__prevent={ djNavLink }
+		>
+			@kit.Icon(kit.IconProps{Name: "circle-alert", Class: "size-[1rem]"})
+			Failed
+		</a>
+	</div>
+	if v.Window.Defaulted {
+		<p class="px-3 pb-2 text-sm text-muted-foreground">No dates were chosen, so only the last 24 hours are shown. Pick a longer window to look further back (up to 31 days).</p>
+	}
 }
 
 templ djFilters(v djView) {
@@ -145,6 +191,57 @@ templ djFilters(v djView) {
 			}
 			data-on:input__debounce.400ms={ djLiveGet }
 		/>
+	}
+	@kit.FormField(kit.FormFieldProps{Label: "Event type", For: "dj-event-types"}) {
+		<input
+			type="text"
+			id="dj-event-types"
+			name="eventTypes"
+			class="fc-input"
+			list="dj-event-type-options"
+			placeholder="orders:order:created, ..."
+			autocomplete="off"
+			if len(v.Query.EventTypes) > 0 {
+				value={ strings.Join(v.Query.EventTypes, ",") }
+			}
+			data-on:input__debounce.400ms={ djLiveGet }
+		/>
+		<datalist id="dj-event-type-options">
+			for _, o := range v.EventTypeOptions {
+				<option value={ o.Value }></option>
+			}
+		</datalist>
+		<p class="mt-1 text-xs text-muted-foreground">Up to 10, comma-separated.</p>
+	}
+	@kit.FormField(kit.FormFieldProps{Label: "Subscription", For: "dj-subscription"}) {
+		<input
+			type="text"
+			id="dj-subscription"
+			name="subscription"
+			class="fc-input"
+			placeholder="Subscription name"
+			autocomplete="off"
+			if v.Query.Subscription != "" {
+				value={ v.Query.Subscription }
+			}
+			data-on:input__debounce.400ms={ djLiveGet }
+		/>
+		<p class="mt-1 text-xs text-muted-foreground">Exact name (any case), or end with * for a prefix: orders*</p>
+	}
+	@kit.FormField(kit.FormFieldProps{Label: "Connection", For: "dj-connection"}) {
+		<input
+			type="text"
+			id="dj-connection"
+			name="connection"
+			class="fc-input"
+			placeholder="Connection code"
+			autocomplete="off"
+			if v.Query.Connection != "" {
+				value={ v.Query.Connection }
+			}
+			data-on:input__debounce.400ms={ djLiveGet }
+		/>
+		<p class="mt-1 text-xs text-muted-foreground">Exact code, or end with * for a prefix: billing*</p>
 	}
 	@kit.DateRange(kit.DateRangeProps{
 		ID: "dj-created", Label: "Created (UTC days)", From: v.Query.From, To: v.Query.To,
@@ -329,6 +426,16 @@ templ djDrawerBody(d djDetail) {
 					}
 				</form>
 			}
+			if d.CanComplete {
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacySecondary, Icon: "circle-check", Attrs: confirmTrigger(djCompleteDialog, d.ActionBase+"/complete")}) {
+					Mark completed
+				}
+			}
+			if d.CanCancel {
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacySecondary, Icon: "ban", Attrs: confirmTrigger(djCancelDialog, d.ActionBase+"/cancel")}) {
+					Cancel job
+				}
+			}
 			if d.CanRequeue {
 				<form method="post" action={ d.ActionBase + "/requeue" } data-on:submit={ kit.SubmitForm }>
 					<input type="hidden" name="drawer" data-attr:value={ "$" + djDrawerSig }/>
@@ -343,7 +450,7 @@ templ djDrawerBody(d djDetail) {
 				<h3 class="fc-section-title">Job</h3>
 				<div class="fc-detail-grid">
 					@kit.DetailField(kit.DetailFieldProps{Label: "Descriptor", Value: d.Descriptor})
-					@kit.DetailField(kit.DetailFieldProps{Label: "Code"}) {
+					@kit.DetailField(kit.DetailFieldProps{Label: "Event type"}) {
 						<span class="font-mono">{ d.Code }</span>
 					}
 					@kit.DetailField(kit.DetailFieldProps{Label: "Client"}) {
@@ -571,7 +678,7 @@ templ djRequeueDialog(p djPreview) {
 					<p class="text-muted-foreground">{ counted(p.InFlight, "job") } QUEUED or PROCESSING will be left alone — a job in flight is never requeued.</p>
 				}
 				if p.Completed > 0 {
-					<p class="text-muted-foreground">{ counted(p.Completed, "COMPLETED job") } will be left alone — completed jobs are redriven only with redriveCompleted and confirmRedriveCompleted (API).</p>
+					<p class="text-muted-foreground">{ counted(p.Completed, "COMPLETED job") } will be left alone — they were already delivered. Redriving COMPLETED jobs is available in the console (it needs the redrive-completed permission).</p>
 				}
 				if p.OverCap {
 					<p class="text-muted-foreground">At most { thousands(djMaxRequeue) } are requeued per run; run it again for the rest.</p>

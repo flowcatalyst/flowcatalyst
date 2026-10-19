@@ -77,6 +77,12 @@ export interface FetchOptions extends RequestInit {
 	 * or expired reset token is a form-level error, not an expired session.
 	 */
 	suppressAuthErrorEvent?: boolean;
+	/**
+	 * Called with the raw Response of a successful call, before the body is
+	 * read — for the few endpoints that answer metadata in headers (the
+	 * dispatch job list's X-Window-* headers).
+	 */
+	onResponse?: (response: Response) => void;
 }
 
 /**
@@ -121,7 +127,7 @@ async function baseFetch<T>(
 	url: string,
 	options: FetchOptions = {},
 ): Promise<T> {
-	const { suppressGlobalErrorToast, suppressAuthErrorEvent, ...init } =
+	const { suppressGlobalErrorToast, suppressAuthErrorEvent, onResponse, ...init } =
 		options;
 
 	const headers: Record<string, string> = {
@@ -182,6 +188,8 @@ async function baseFetch<T>(
 
 		throw new ApiError(message, response.status, code);
 	}
+
+	onResponse?.(response);
 
 	// Handle 204 No Content
 	if (response.status === 204) {

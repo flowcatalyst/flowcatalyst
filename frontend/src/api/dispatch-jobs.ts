@@ -17,9 +17,23 @@ import type {
 	RequeueByFilterPreviewResponse,
 	RequeueByFilterResponse,
 	RequeueResponse,
+	WindowResponse,
 } from "./generated";
 
-export type { EditPayloadRequest, RequeueByFilterPreviewResponse, RequeueByFilterResponse, RequeueResponse };
+export type {
+	EditPayloadRequest,
+	RequeueByFilterPreviewResponse,
+	RequeueByFilterResponse,
+	RequeueResponse,
+	WindowResponse,
+};
+
+/**
+ * Confirmation that turns a requeue into a redrive of COMPLETED jobs. The
+ * server also needs the dispatch-job:redrive-completed permission (403
+ * otherwise) and a confirmCount of redriveEligibleCount.
+ */
+export const REDRIVE_CONFIRM_WORD = "REDRIVE";
 
 // Response types alias the generated contract (api/openapi.lock.json) so
 // `vue-tsc` fails on backend drift. Aliased under the historical names so
@@ -109,9 +123,36 @@ export function buildQuery(params: DispatchJobsListParams): string {
 	return s ? `?${s}` : "";
 }
 
+/**
+ * The window the server applied to a list, from its X-Window-From / -To /
+ * -Defaulted headers. null when the headers are absent (an older server).
+ */
+export function windowFromHeaders(h: Pick<Headers, "get">): WindowResponse | null {
+	const from = h.get("X-Window-From");
+	const to = h.get("X-Window-To");
+	if (!from || !to) return null;
+	return { from, to, defaulted: h.get("X-Window-Defaulted") === "true" };
+}
+
 export const dispatchJobsApi = {
 	list(params: DispatchJobsListParams): Promise<DispatchJobRead[]> {
 		return apiFetch(`/dispatch-jobs${buildQuery(params)}`);
+	},
+	/**
+	 * The list plus the window the server applied. The caller shows errors
+	 * (400 WINDOW_TOO_LARGE, TOO_MANY_* ...) inline, so the global toast is off.
+	 */
+	async listWithWindow(
+		params: DispatchJobsListParams,
+	): Promise<{ rows: DispatchJobRead[]; window: WindowResponse | null }> {
+		let window: WindowResponse | null = null;
+		const rows = await apiFetch<DispatchJobRead[]>(`/dispatch-jobs${buildQuery(params)}`, {
+			suppressGlobalErrorToast: true,
+			onResponse: (r) => {
+				window = windowFromHeaders(r.headers);
+			},
+		});
+		return { rows, window };
 	},
 	get(id: string): Promise<DispatchJobDetail> {
 		return apiFetch(`/dispatch-jobs/${encodeURIComponent(id)}`);
@@ -125,10 +166,14 @@ export const dispatchJobsApi = {
 	// Reset jobs to PENDING so the scheduler re-dispatches them. Returns the
 	// number actually reset (tenant-scoped server-side). Used by the list
 	// page's per-row retry + bulk "requeue selected".
-	requeue(ids: string[]): Promise<RequeueResponse> {
+	// With `redrive` the COMPLETED ones are reset too (needs the
+	// redrive-completed permission; 403 without it).
+	requeue(ids: string[], redrive = false): Promise<RequeueResponse> {
 		return apiFetch(`/dispatch-jobs/requeue`, {
 			method: "POST",
-			body: JSON.stringify({ ids }),
+			body: JSON.stringify(
+				redrive ? { ids, redriveCompleted: true, confirmRedriveCompleted: REDRIVE_CONFIRM_WORD } : { ids },
+			),
 		});
 	},
 	// How many jobs the filter matches (by status) and how many a requeue
@@ -144,10 +189,20 @@ export const dispatchJobsApi = {
 	// 409 FILTER_MATCH_CHANGED means more jobs match now: nothing was reset,
 	// re-preview and ask again. Errors are not toasted globally — the caller
 	// handles the 409 in its dialog.
-	requeueByFilter(filter: DispatchJobFilterBody, confirmCount: number): Promise<RequeueByFilterResponse> {
+	// With `redrive`, confirmCount must be the preview's redriveEligibleCount
+	// and COMPLETED jobs are reset as well.
+	requeueByFilter(
+		filter: DispatchJobFilterBody,
+		confirmCount: number,
+		redrive = false,
+	): Promise<RequeueByFilterResponse> {
 		return apiFetch(`/dispatch-jobs/requeue-by-filter`, {
 			method: "POST",
-			body: JSON.stringify({ ...filter, confirmCount }),
+			body: JSON.stringify({
+				...filter,
+				confirmCount,
+				...(redrive ? { redriveCompleted: true, confirmRedriveCompleted: REDRIVE_CONFIRM_WORD } : {}),
+			}),
 			suppressGlobalErrorToast: true,
 		});
 	},
@@ -159,6 +214,22 @@ export const dispatchJobsApi = {
 		return apiFetch(`/dispatch-jobs/${encodeURIComponent(id)}/payload`, {
 			method: "PUT",
 			body: JSON.stringify(body),
+			suppressGlobalErrorToast: true,
+		});
+	},
+	// Cancel a FAILED job (an operator override: it will not be retried, and
+	// a BLOCK_ON_ERROR group behind it is released). 409 when it is not FAILED.
+	cancel(id: string): Promise<DispatchJobDetail> {
+		return apiFetch(`/dispatch-jobs/${encodeURIComponent(id)}/cancel`, {
+			method: "POST",
+			suppressGlobalErrorToast: true,
+		});
+	},
+	// Mark a FAILED job COMPLETED (it was delivered out of band). 409 when
+	// it is not FAILED.
+	complete(id: string): Promise<DispatchJobDetail> {
+		return apiFetch(`/dispatch-jobs/${encodeURIComponent(id)}/complete`, {
+			method: "POST",
 			suppressGlobalErrorToast: true,
 		});
 	},

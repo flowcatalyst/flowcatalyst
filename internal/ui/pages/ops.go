@@ -501,6 +501,11 @@ type DispatchJobCommands interface {
 	// attempts are untouched. The use case enforces the status rule, the
 	// client scope and the payload validation.
 	EditPayload(ctx context.Context, id, payload string, contentType *string) error
+	// Cancel runs CancelDispatchJob (FAILED -> CANCELLED) and Complete runs
+	// CompleteDispatchJob (FAILED -> COMPLETED, delivered out of band). Each
+	// is a 409 unless the job is FAILED.
+	Cancel(ctx context.Context, id string) error
+	Complete(ctx context.Context, id string) error
 }
 
 // ErrPlanUnavailable is DispatchJobOps.Plan without a planner (the API's 501).
@@ -527,6 +532,18 @@ func (o DispatchJobOps) Requeue(ctx context.Context, ids []string) (int, error) 
 func (o DispatchJobOps) EditPayload(ctx context.Context, id, payload string, contentType *string) error {
 	_, err := usecaseop.Run(ctx, o.UoW, djops.EditDispatchJobPayload(o.Repo),
 		djops.EditPayloadCommand{ID: id, Payload: payload, PayloadContentType: contentType}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Cancel runs CancelDispatchJob.
+func (o DispatchJobOps) Cancel(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, djops.CancelDispatchJob(o.Repo), djops.CancelCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Complete runs CompleteDispatchJob.
+func (o DispatchJobOps) Complete(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, djops.CompleteDispatchJob(o.Repo), djops.CompleteCommand{ID: id}, auth.NewExecutionContext(ctx))
 	return err
 }
 
