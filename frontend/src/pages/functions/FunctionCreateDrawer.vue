@@ -2,11 +2,17 @@
 import { toast } from "@/utils/errorBus";
 import { computed, onMounted, ref } from "vue";
 import { functionsApi } from "@/api/functions";
+import { ApiError } from "@/api/client";
+import { serviceAccountsApi, type ServiceAccount } from "@/api/service-accounts";
 import { applicationsApi, type Application } from "@/api/applications";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import ClientSelect from "@/components/ClientSelect.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
-import { isValidFunctionName, buildFunctionAddress } from "@/pages/functions/functionHelpers";
+import {
+	isValidFunctionName,
+	buildFunctionAddress,
+	serviceAccountErrorMessage,
+} from "@/pages/functions/functionHelpers";
 
 const emit = defineEmits<{
 	changed: [];
@@ -20,6 +26,8 @@ const name = ref("");
 const clientId = ref<string | null>(null);
 const pool = ref("");
 const warm = ref(false);
+const serviceAccountId = ref<string | null>(null);
+const serviceAccounts = ref<ServiceAccount[]>([]);
 const memoryMb = ref<number | null>(null);
 const maxConcurrency = ref<number | null>(null);
 const timeoutMs = ref<number | null>(null);
@@ -46,7 +54,8 @@ const dirty = computed(
 		name.value !== "" ||
 		clientId.value !== null ||
 		pool.value !== "" ||
-		warm.value !== false,
+		warm.value !== false ||
+		serviceAccountId.value !== null,
 );
 
 const drawer = ref<InstanceType<typeof EntityDrawer> | null>(null);
@@ -65,6 +74,11 @@ onMounted(async () => {
 	} catch (e) {
 		console.error("Failed to load application list", e);
 	}
+	try {
+		serviceAccounts.value = (await serviceAccountsApi.list({ active: true })).serviceAccounts;
+	} catch (e) {
+		console.error("Failed to load service account list", e);
+	}
 });
 
 async function onSubmit() {
@@ -80,18 +94,20 @@ async function onSubmit() {
 			clientId: clientId.value || undefined,
 			pool: pool.value || undefined,
 			warm: warm.value,
+			serviceAccountId: serviceAccountId.value || undefined,
 			limits: {
 				memoryMb: memoryMb.value ?? undefined,
 				maxConcurrency: maxConcurrency.value ?? undefined,
 				timeoutMs: timeoutMs.value ?? undefined,
 				maxBodyBytes: maxBodyBytes.value ?? undefined,
 			},
-		});
+		}, { suppressGlobalErrorToast: true });
 		toast.success("Success", "Function created");
 		emit("changed");
 		replaceToDetail(created.id);
 	} catch (e) {
-		errorMessage.value = e instanceof Error ? e.message : "Failed to create function";
+		const fallback = e instanceof Error ? e.message : "Failed to create function";
+		errorMessage.value = serviceAccountErrorMessage(e instanceof ApiError ? e.code : undefined, fallback);
 	} finally {
 		submitting.value = false;
 	}
@@ -172,6 +188,33 @@ async function onSubmit() {
         </div>
         <small class="hint">
           A warm function keeps one pre-instantiated instance ready at all times.
+        </small>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h3>Webhook Verification</h3>
+
+      <div class="form-field">
+        <label>Service Account</label>
+        <Select
+          v-model="serviceAccountId"
+          :options="serviceAccounts"
+          optionLabel="name"
+          optionValue="id"
+          placeholder="Application's account (default)"
+          class="full-width"
+          showClear
+          filter
+        >
+          <template #option="{ option }">
+            <span>{{ option.name }}</span>
+            <code class="app-code-inline">{{ option.code }}</code>
+          </template>
+        </Select>
+        <small class="hint">
+          Optional. Verifies webhook deliveries to this function with this account's signing secret:
+          set it to the account on the connection that dispatches here. Blank uses the application's linked account.
         </small>
       </div>
     </div>

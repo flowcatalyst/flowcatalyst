@@ -35,6 +35,8 @@ export interface CreateFunctionRequest {
 	pool?: string;
 	warm?: boolean;
 	limits?: FunctionLimits;
+	/** Service account (id or code) that verifies webhook deliveries; unset = the application's account. */
+	serviceAccountId?: string;
 }
 
 export interface UpdateFunctionRequest {
@@ -44,6 +46,10 @@ export interface UpdateFunctionRequest {
 	clearPool?: boolean;
 	warm?: boolean;
 	limits?: FunctionLimits;
+	/** Service account (id or code); mutually exclusive with `clearServiceAccount`. */
+	serviceAccountId?: string;
+	/** Reverts to the application's linked account. */
+	clearServiceAccount?: boolean;
 }
 
 export interface ListFunctionsFilters {
@@ -73,17 +79,26 @@ export const functionsApi = {
 	},
 
 	/** POST /functions returns the standard created envelope `{ id }`, not the full record. */
-	create(data: CreateFunctionRequest): Promise<CreatedResponse> {
+	create(
+		data: CreateFunctionRequest,
+		opts?: { suppressGlobalErrorToast?: boolean },
+	): Promise<CreatedResponse> {
 		return apiFetch("/functions", {
 			method: "POST",
 			body: JSON.stringify(data),
+			...opts,
 		});
 	},
 
-	update(id: string, data: UpdateFunctionRequest): Promise<void> {
+	update(
+		id: string,
+		data: UpdateFunctionRequest,
+		opts?: { suppressGlobalErrorToast?: boolean },
+	): Promise<void> {
 		return apiFetch(`/functions/${id}`, {
 			method: "PATCH",
 			body: JSON.stringify(data),
+			...opts,
 		});
 	},
 

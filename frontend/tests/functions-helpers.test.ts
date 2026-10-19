@@ -19,6 +19,8 @@ import {
 	isValidFunctionName,
 	liveOrNewestVersion,
 	parseDescribe,
+	serviceAccountErrorMessage,
+	serviceAccountPatch,
 	versionDigestShort,
 } from "@/pages/functions/functionHelpers";
 import type { FunctionAlias, FunctionSetting, FunctionVersion } from "@/api/functions";
@@ -253,5 +255,23 @@ describe("delete confirmation helpers", () => {
 		expect(deleteAddressMatches("Billing:invoice-sync", "billing:invoice-sync")).toBe(false);
 		expect(deleteAddressMatches("billing:invoice", "billing:invoice-sync")).toBe(false);
 		expect(deleteAddressMatches("", "")).toBe(false);
+	});
+});
+
+describe("service account helpers", () => {
+	it("maps API error codes to readable text, else falls back", () => {
+		expect(serviceAccountErrorMessage("SERVICE_ACCOUNT_INACTIVE", "x")).toMatch(/inactive/);
+		expect(serviceAccountErrorMessage("SERVICE_ACCOUNT_NOT_FOUND", "x")).toMatch(/does not exist/);
+		expect(serviceAccountErrorMessage("SCOPE_FORBIDDEN", "x")).toMatch(/access/);
+		expect(serviceAccountErrorMessage("OTHER", "fallback")).toBe("fallback");
+		expect(serviceAccountErrorMessage(undefined, "fallback")).toBe("fallback");
+	});
+
+	it("builds the PATCH fields for set / change / clear / unchanged", () => {
+		expect(serviceAccountPatch(undefined, "sa1")).toEqual({ serviceAccountId: "sa1" });
+		expect(serviceAccountPatch("sa1", "sa2")).toEqual({ serviceAccountId: "sa2" });
+		expect(serviceAccountPatch("sa1", null)).toEqual({ clearServiceAccount: true });
+		expect(serviceAccountPatch("sa1", "sa1")).toEqual({});
+		expect(serviceAccountPatch(undefined, null)).toEqual({});
 	});
 });

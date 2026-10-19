@@ -11,6 +11,8 @@ import {
 	type FunctionSettingKind,
 	type FunctionVersion,
 } from "@/api/functions";
+import { ApiError } from "@/api/client";
+import { serviceAccountsApi, type ServiceAccount } from "@/api/service-accounts";
 import { useAuthStore } from "@/stores/auth";
 import { userHasPermission } from "@/stores/permissions";
 import { useClientOptions } from "@/composables/useClientOptions";
@@ -21,6 +23,8 @@ import {
 	aliasesForVersion,
 	computeMissingSettings,
 	describeFailure,
+	serviceAccountErrorMessage,
+	serviceAccountPatch,
 	deleteAddressMatches,
 	deleteSummary,
 	describeWiring,
@@ -60,6 +64,9 @@ const editMemoryMb = ref<number | null>(null);
 const editMaxConcurrency = ref<number | null>(null);
 const editTimeoutMs = ref<number | null>(null);
 const editMaxBodyBytes = ref<number | null>(null);
+const editServiceAccountId = ref<string | null>(null);
+const serviceAccounts = ref<ServiceAccount[]>([]);
+const loadingServiceAccounts = ref(false);
 
 const { dirty, markClean, reset: resetDirty } = useDirtyForm(() => ({
 	description: editDescription.value,
@@ -69,6 +76,7 @@ const { dirty, markClean, reset: resetDirty } = useDirtyForm(() => ({
 	maxConcurrency: editMaxConcurrency.value,
 	timeoutMs: editTimeoutMs.value,
 	maxBodyBytes: editMaxBodyBytes.value,
+	serviceAccountId: editServiceAccountId.value,
 }));
 
 const drawer = ref<InstanceType<typeof EntityDrawer> | null>(null);
@@ -156,9 +164,33 @@ function startEditing() {
 	editMaxConcurrency.value = fn.value.limits?.maxConcurrency ?? null;
 	editTimeoutMs.value = fn.value.limits?.timeoutMs ?? null;
 	editMaxBodyBytes.value = fn.value.limits?.maxBodyBytes ?? null;
+	editServiceAccountId.value = fn.value.serviceAccountId ?? null;
 	editing.value = true;
 	markClean();
+	void loadServiceAccounts();
 }
+
+async function loadServiceAccounts() {
+	if (serviceAccounts.value.length > 0) return;
+	loadingServiceAccounts.value = true;
+	try {
+		serviceAccounts.value = (await serviceAccountsApi.list({ active: true })).serviceAccounts;
+	} catch {
+		// the picker stays empty; the error surfaces via the global toast
+	} finally {
+		loadingServiceAccounts.value = false;
+	}
+}
+
+// The current account is always selectable, even if inactive/filtered out.
+const serviceAccountOptions = computed(() => {
+	const options = serviceAccounts.value.map((a) => ({ id: a.id, name: a.name, code: a.code }));
+	const cur = fn.value?.serviceAccountId;
+	if (cur && !options.some((o) => o.id === cur)) {
+		options.unshift({ id: cur, name: fn.value?.serviceAccountCode ?? cur, code: fn.value?.serviceAccountCode ?? "" });
+	}
+	return options;
+});
 
 function cancelEditing() {
 	editing.value = false;
@@ -181,14 +213,17 @@ async function saveChanges() {
 				timeoutMs: editTimeoutMs.value ?? undefined,
 				maxBodyBytes: editMaxBodyBytes.value ?? undefined,
 			},
-		});
+			...serviceAccountPatch(fn.value.serviceAccountId, editServiceAccountId.value),
+		}, { suppressGlobalErrorToast: true });
 		fn.value = await functionsApi.get(functionId);
 		editing.value = false;
 		resetDirty();
 		toast.success("Success", "Function updated");
 		emit("changed");
-	} catch {
-		// update errors surface via the global error toast
+	} catch (e) {
+		// global toast is suppressed so service-account codes read clearly
+		const fallback = e instanceof Error ? e.message : "Failed to update function";
+		toast.error("Error", serviceAccountErrorMessage(e instanceof ApiError ? e.code : undefined, fallback));
 	} finally {
 		saving.value = false;
 	}
@@ -522,6 +557,26 @@ function formatDate(dateString: string | undefined | null) {
                 <InputText :id="fieldId" v-model="editPool" placeholder="default" />
               </template>
             </FcFormField>
+            <FcFormField label="Service Account" span help="Verifies webhook deliveries to this function: set it to the account on the connection that dispatches here. Clear it to use the application's linked account.">
+              <template #default="{ id: fieldId }">
+                <Select
+                  :inputId="fieldId"
+                  v-model="editServiceAccountId"
+                  :options="serviceAccountOptions"
+                  optionLabel="name"
+                  optionValue="id"
+                  placeholder="Application's account (default)"
+                  :loading="loadingServiceAccounts"
+                  showClear
+                  filter
+                >
+                  <template #option="{ option }">
+                    <span>{{ option.name }}</span>
+                    <code class="sa-code">{{ option.code }}</code>
+                  </template>
+                </Select>
+              </template>
+            </FcFormField>
             <FcFormField label="Warm">
               <template #default="{ id: fieldId }">
                 <div class="warm-toggle">
@@ -562,6 +617,15 @@ function formatDate(dateString: string | undefined | null) {
             <FcDetailField label="Client" :value="clientLabel" />
             <FcDetailField label="Runner Pool" :value="poolLabel" />
             <FcDetailField label="Warm" :value="fn.warm ? 'Yes' : 'No'" />
+            <FcDetailField label="Service Account">
+              <router-link
+                v-if="fn.serviceAccountId"
+                :to="`/identity/service-accounts/${fn.serviceAccountId}`"
+              >
+                {{ fn.serviceAccountCode }}
+              </router-link>
+              <span v-else class="sa-default">Application's account (default)</span>
+            </FcDetailField>
             <FcDetailField v-if="fn.description" label="Description" :value="fn.description" span />
             <FcDetailField label="Memory" :value="`${fn.limits?.memoryMb ?? 64} MB`" />
             <FcDetailField label="Max Concurrency" :value="fn.limits?.maxConcurrency ?? 16" />
@@ -1071,6 +1135,16 @@ function formatDate(dateString: string | undefined | null) {
 </template>
 
 <style scoped>
+.sa-code {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.sa-default {
+  color: #64748b;
+}
+
 .warm-toggle {
   display: flex;
   align-items: center;

@@ -265,3 +265,35 @@ export function deleteSummary(versions: FunctionVersion[], aliases: FunctionAlia
 export function deleteAddressMatches(typed: string, address: string): boolean {
 	return address !== "" && typed.trim() === address;
 }
+
+// --- optional per-function service account (webhook delivery verifier) ---
+
+const SERVICE_ACCOUNT_ERRORS: Record<string, string> = {
+	SERVICE_ACCOUNT_NOT_FOUND: "That service account does not exist.",
+	SERVICE_ACCOUNT_INACTIVE: "That service account is inactive. Pick an active one.",
+	SERVICE_ACCOUNT_CONFLICT: "Cannot set and clear the service account in the same request.",
+	SERVICE_ACCOUNT_REQUIRED: "Pick a service account, or clear the field to use the application's account.",
+	SCOPE_FORBIDDEN: "You do not have access to that service account.",
+};
+
+/** Readable text for the service-account API error codes, else `fallback`. */
+export function serviceAccountErrorMessage(code: string | undefined, fallback: string): string {
+	return (code && SERVICE_ACCOUNT_ERRORS[code]) || fallback;
+}
+
+/**
+ * PATCH fields for a service-account edit. `current` is the function's
+ * present account id, `next` the picker's value (null = none). Returns an
+ * empty object when nothing changed; a cleared account sends
+ * `clearServiceAccount` (a blank id is rejected by the API).
+ */
+export function serviceAccountPatch(
+	current: string | null | undefined,
+	next: string | null | undefined,
+): { serviceAccountId?: string; clearServiceAccount?: boolean } {
+	const cur = current || null;
+	const nxt = next || null;
+	if (cur === nxt) return {};
+	if (nxt === null) return { clearServiceAccount: true };
+	return { serviceAccountId: nxt };
+}
