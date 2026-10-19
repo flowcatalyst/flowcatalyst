@@ -75,8 +75,6 @@ async function payloadEdited(updated: DispatchJobDetail | null) {
 	else await load();
 }
 
-watch(id, load, { immediate: true });
-
 async function load() {
 	if (!id.value) return;
 	loading.value = true;
@@ -149,6 +147,11 @@ async function loadAudit() {
 watch(auditCollapsed, (collapsed) => {
 	if (!collapsed && audit.value === null) void loadAudit();
 });
+
+// Runs load() now, so it must come after every ref that load() touches is
+// declared (an immediate watch runs during setup; a const used earlier is in
+// its temporal dead zone).
+watch(id, load, { immediate: true });
 
 // FAILED -> CANCELLED (never retried; a BLOCK_ON_ERROR group behind it moves on).
 function cancelJob() {
