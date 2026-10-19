@@ -2,10 +2,12 @@ package oauthapi
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 )
@@ -22,22 +24,28 @@ func (s *State) RegisterRevokeRoutes(r chi.Router) {
 
 // authenticateClientOrBearer authorizes a call to a protected OAuth
 // endpoint (introspect/revoke) via either a valid Bearer access token or
-// client credentials (Basic header / body). The resolved identity is unused by the
-// callers, so only the error (nil = authorized) is returned.
-func (s *State) authenticateClientOrBearer(r *http.Request, clientIDBody, clientSecretBody string) *oauthError {
+// client credentials (Basic header / body). It returns the authenticated OAuth
+// client, or nil when the caller authenticated with a Bearer token (a bearer
+// carries no OAuth client identity), plus the error (nil = authorized).
+// bearerAllowed=false refuses the Bearer path (client credentials only).
+func (s *State) authenticateClientOrBearer(r *http.Request, clientIDBody, clientSecretBody string, bearerAllowed bool) (*auth.OAuthClient, *oauthError) {
 	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
 		if token := authservice.ExtractBearerToken(authHeader); token != "" {
-			if _, err := s.Auth.ValidateToken(token); err != nil {
-				return newOAuthError(http.StatusUnauthorized, "invalid_token", "Token is invalid or expired")
+			if !bearerAllowed {
+				return nil, newOAuthError(http.StatusUnauthorized, "invalid_client", "Client authentication required")
 			}
-			return nil
+			if _, err := s.Auth.ValidateToken(token); err != nil {
+				return nil, newOAuthError(http.StatusUnauthorized, "invalid_token", "Token is invalid or expired")
+			}
+			return nil, nil
 		}
 		// A non-Bearer scheme (Basic ...) falls through to client auth.
 	}
-	if _, errResp := s.authenticateClient(r, clientIDBody, clientSecretBody); errResp != nil {
-		return errResp
+	client, errResp := s.authenticateClient(r, clientIDBody, clientSecretBody)
+	if errResp != nil {
+		return nil, errResp
 	}
-	return nil
+	return client, nil
 }
 
 // IntrospectResponse is the RFC 7662 result. Every field except `active`
@@ -65,7 +73,7 @@ func (s *State) Introspect(w http.ResponseWriter, r *http.Request) {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "Malformed form body")
 		return
 	}
-	if errResp := s.authenticateClientOrBearer(r, r.PostFormValue("client_id"), r.PostFormValue("client_secret")); errResp != nil {
+	if _, errResp := s.authenticateClientOrBearer(r, r.PostFormValue("client_id"), r.PostFormValue("client_secret"), !s.IntrospectClientAuthOnly); errResp != nil {
 		errResp.write(w)
 		return
 	}
@@ -111,7 +119,8 @@ func (s *State) Revoke(w http.ResponseWriter, r *http.Request) {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "Malformed form body")
 		return
 	}
-	if errResp := s.authenticateClientOrBearer(r, r.PostFormValue("client_id"), r.PostFormValue("client_secret")); errResp != nil {
+	client, errResp := s.authenticateClientOrBearer(r, r.PostFormValue("client_id"), r.PostFormValue("client_secret"), true)
+	if errResp != nil {
 		errResp.write(w)
 		return
 	}
@@ -120,6 +129,20 @@ func (s *State) Revoke(w http.ResponseWriter, r *http.Request) {
 	// artifact is a refresh token (matched by hash). Best-effort; RFC 7009
 	// mandates 200 even when the token is unknown.
 	tokenHash := grantstore.HashToken(r.PostFormValue("token"))
+	// RFC 7009 §2.1: a client may only revoke tokens issued to it. A token
+	// bound to another client is left alone (still 200, so the response
+	// reveals nothing about the token). A Bearer caller has no client
+	// identity and is not checked; tokens with no client binding (session /
+	// legacy) are not checked.
+	if client != nil && !s.RevokeAnyClient {
+		if stored, err := s.RefreshTokens.FindByHash(r.Context(), tokenHash); err == nil &&
+			stored != nil && stored.OAuthClientID != nil && *stored.OAuthClientID != client.ClientID {
+			slog.Warn("oauth revoke: token belongs to another client; not revoked",
+				"caller_client", client.ClientID, "token_client", *stored.OAuthClientID)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}
 	_, _ = s.RefreshTokens.RevokeByHash(r.Context(), tokenHash)
 	w.WriteHeader(http.StatusOK)
 }

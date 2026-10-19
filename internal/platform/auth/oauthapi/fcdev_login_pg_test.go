@@ -508,3 +508,54 @@ func TestFcdevDeactivatedClientIsRefused(t *testing.T) {
 	rr := rig.pkceAuthorize(newPKCE(t))
 	assert.Equal(t, 400, rr.Code)
 }
+
+func (r *loginRig) revoke(clientID, tok string) int {
+	req := httptest.NewRequest(http.MethodPost, "/oauth/revoke",
+		strings.NewReader(url.Values{"token": {tok}, "client_id": {clientID}}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	r.s.Revoke(rr, req)
+	return rr.Code
+}
+
+// A client may only revoke tokens issued to it (RFC 7009 §2.1): another
+// client's revoke answers 200 but the token stays live; the legacy
+// behaviour returns with RevokeAnyClient.
+func TestRevokeIsScopedToTheIssuedClient(t *testing.T) {
+	rig := newLoginRig(t, "fcdev-revoke-scope@login.test")
+	rig.s.OAuthClients.(finderWithExtras).extra["other-public"] = &auth.OAuthClient{
+		ClientID: "other-public", Active: true,
+	}
+	rt := rig.login()["refresh_token"].(string)
+	live := func() bool {
+		v, err := rig.s.RefreshTokens.FindValidByHash(context.Background(), grantstore.HashToken(rt))
+		require.NoError(t, err)
+		return v != nil
+	}
+
+	require.Equal(t, 200, rig.revoke("other-public", rt))
+	assert.True(t, live(), "another client must not revoke the token")
+
+	rig.s.RevokeAnyClient = true
+	require.Equal(t, 200, rig.revoke("other-public", rt))
+	assert.False(t, live(), "legacy flag restores cross-client revoke")
+}
+
+// IntrospectClientAuthOnly turns Bearer authentication on /oauth/introspect
+// into invalid_client; by default a Bearer is evaluated as a token.
+func TestIntrospectClientAuthOnlyRefusesBearer(t *testing.T) {
+	rig := newLoginRig(t, "fcdev-introspect@login.test")
+	call := func() map[string]any {
+		req := httptest.NewRequest(http.MethodPost, "/oauth/introspect", strings.NewReader(url.Values{"token": {"x"}}.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Authorization", "Bearer not-a-real-token")
+		rr := httptest.NewRecorder()
+		rig.s.Introspect(rr, req)
+		var body map[string]any
+		_ = json.Unmarshal(rr.Body.Bytes(), &body)
+		return body
+	}
+	assert.Equal(t, "invalid_token", call()["error"])
+	rig.s.IntrospectClientAuthOnly = true
+	assert.Equal(t, "invalid_client", call()["error"])
+}

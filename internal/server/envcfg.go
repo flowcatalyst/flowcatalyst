@@ -244,6 +244,13 @@ type EnvCfg struct {
 	// production. fcdev flips it on for the local embedded-PG flow.
 	AuthAllowTestHeaders bool
 
+	// OAuthRevokeEnforceClient (FC_OAUTH_REVOKE_ENFORCE_CLIENT, default true):
+	// /oauth/revoke only revokes tokens issued to the authenticated client.
+	OAuthRevokeEnforceClient bool
+	// OAuthIntrospectClientAuthOnly (FC_OAUTH_INTROSPECT_CLIENT_AUTH_ONLY,
+	// default false): /oauth/introspect refuses Bearer authentication.
+	OAuthIntrospectClientAuthOnly bool
+
 	// SessionCookieSameSite is the SameSite mode of the fc_session cookie
 	// (FC_SESSION_COOKIE_SAME_SITE: lax (default) | strict | none).
 	SessionCookieSameSite string
@@ -403,6 +410,9 @@ func LoadEnv() EnvCfg {
 		JWTSigningKeyPath:    os.Getenv("FC_JWT_SIGNING_KEY_PATH"),
 		JWTPreviousPublicKey: normalizedPreviousPublicKey(),
 		AuthAllowTestHeaders: envBool("FC_AUTH_ALLOW_TEST_HEADERS", false),
+
+		OAuthRevokeEnforceClient:      envBool("FC_OAUTH_REVOKE_ENFORCE_CLIENT", true),
+		OAuthIntrospectClientAuthOnly: envBool("FC_OAUTH_INTROSPECT_CLIENT_AUTH_ONLY", false),
 
 		SessionCookieSameSite: envOr("FC_SESSION_COOKIE_SAME_SITE", "lax"),
 

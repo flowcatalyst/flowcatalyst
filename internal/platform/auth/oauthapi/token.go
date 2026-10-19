@@ -78,6 +78,15 @@ type State struct {
 	// OAuthClientSecretRewriter.
 	SecretRewrites OAuthClientSecretRewriter
 	Principals     *principal.Repository
+	// RevokeAnyClient restores the legacy /oauth/revoke behaviour where any
+	// authenticated client may revoke any refresh token it can name. The zero
+	// value enforces RFC 7009 §2.1 (a client revokes only its own tokens).
+	// FC_OAUTH_REVOKE_ENFORCE_CLIENT=false sets it.
+	RevokeAnyClient bool
+	// IntrospectClientAuthOnly refuses Bearer-token authentication on
+	// /oauth/introspect (client credentials only). Off by default: a Bearer
+	// (resource server) may introspect today. FC_OAUTH_INTROSPECT_CLIENT_AUTH_ONLY.
+	IntrospectClientAuthOnly bool
 	// PortalIdentities resolves PORTAL-plane subjects (ptu_… ids minted by
 	// /portal/authorize flows) on the authorization_code grant. Optional —
 	// nil rejects portal codes (fail closed).
