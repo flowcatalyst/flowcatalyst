@@ -41,10 +41,7 @@ func Rotate(ctx context.Context, repo *RefreshTokenRepository, rawToken string, 
 		return RotationResult{}, err
 	}
 	if stored == nil {
-		if prior, ferr := repo.FindByHash(ctx, tokenHash); ferr == nil &&
-			prior != nil && prior.ReplacedBy != nil && prior.TokenFamily != nil {
-			_, _ = repo.RevokeAllInFamily(ctx, *prior.TokenFamily)
-		}
+		repo.revokeFamilyIfReplayed(ctx, tokenHash)
 		return RotationResult{}, nil
 	}
 
@@ -52,11 +49,6 @@ func Rotate(ctx context.Context, repo *RefreshTokenRepository, rawToken string, 
 		if aerr := authorize(stored); aerr != nil {
 			return RotationResult{Stored: stored}, aerr
 		}
-	}
-
-	// Rotate: revoke the presented token before issuing a replacement.
-	if _, err := repo.RevokeByHash(ctx, tokenHash); err != nil {
-		return RotationResult{Stored: stored}, err
 	}
 
 	raw, entity, err := GenerateTokenPair(stored.PrincipalID)
@@ -82,13 +74,42 @@ func Rotate(ctx context.Context, repo *RefreshTokenRepository, rawToken string, 
 		fam := entity.ID
 		entity.TokenFamily = &fam
 	}
-	if err := repo.Insert(ctx, entity); err != nil {
+
+	// Revoke-and-issue is ONE transaction around ONE guarded claim: of N
+	// concurrent presentations of the same token exactly one wins; losers
+	// are treated as replays (the winner's tx has already linked the token
+	// to its replacement, so reuse detection fires). A failed insert rolls
+	// the revocation back instead of stranding the client without a token.
+	tx, err := repo.pool.Begin(ctx)
+	if err != nil {
 		return RotationResult{Stored: stored}, err
 	}
-	// Link the rotated-out token to its replacement so a later replay of it
-	// trips the reuse-detection path above. Best-effort: the rotation itself
-	// is already durable.
-	_, _ = repo.MarkAsReplaced(ctx, tokenHash, entity.TokenHash)
+	defer func() { _ = tx.Rollback(ctx) }()
+	won, err := repo.claimForRotation(ctx, tx, tokenHash, entity.TokenHash)
+	if err != nil {
+		return RotationResult{Stored: stored}, err
+	}
+	if !won {
+		_ = tx.Rollback(ctx)
+		repo.revokeFamilyIfReplayed(ctx, tokenHash)
+		return RotationResult{}, nil
+	}
+	if err := repo.insertWith(ctx, tx, entity); err != nil {
+		return RotationResult{Stored: stored}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return RotationResult{Stored: stored}, err
+	}
 
 	return RotationResult{Stored: stored, NewRaw: raw, New: entity}, nil
+}
+
+// revokeFamilyIfReplayed is the BCP §4.14.2 reuse-detection step: a token we
+// don't accept as valid might be one we already rotated out; if its hash is
+// linked to a replacement the family is presumed compromised and revoked.
+func (r *RefreshTokenRepository) revokeFamilyIfReplayed(ctx context.Context, tokenHash string) {
+	if prior, ferr := r.FindByHash(ctx, tokenHash); ferr == nil &&
+		prior != nil && prior.ReplacedBy != nil && prior.TokenFamily != nil {
+		_, _ = r.RevokeAllInFamily(ctx, *prior.TokenFamily)
+	}
 }

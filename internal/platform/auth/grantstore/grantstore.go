@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
@@ -353,6 +354,15 @@ func refreshTokenID(id string) string { return refreshTokenPayloadType + ":" + i
 // Insert writes a new refresh token. The token_family is mirrored into
 // the grant_id column so a whole rotation family can be revoked at once.
 func (r *RefreshTokenRepository) Insert(ctx context.Context, t *RefreshToken) error {
+	return r.insertWith(ctx, r.pool, t)
+}
+
+// execer is the Exec surface shared by the pool and a transaction.
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+func (r *RefreshTokenRepository) insertWith(ctx context.Context, db execer, t *RefreshToken) error {
 	payload, err := json.Marshal(refreshTokenPayload{
 		AccountID:         t.PrincipalID,
 		ClientID:          t.OAuthClientID,
@@ -378,7 +388,7 @@ func (r *RefreshTokenRepository) Insert(ctx context.Context, t *RefreshToken) er
 		// Storage contract: accessibleClients always an array, never null.
 		payload, _ = injectEmptyArray(payload, "accessibleClients")
 	}
-	_, err = r.pool.Exec(ctx,
+	_, err = db.Exec(ctx,
 		`INSERT INTO oauth_oidc_payloads
 			(id, type, payload, grant_id, user_code, uid, expires_at, consumed_at, created_at)
 		VALUES ($1, $2, $3, $4, NULL, NULL, $5, NULL, $6)
@@ -452,6 +462,32 @@ func (r *RefreshTokenRepository) RevokeByHash(ctx context.Context, tokenHash str
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+// claimForRotation atomically revokes a still-valid token AND links it to its
+// replacement in one guarded statement. The WHERE clause is the lock: of N
+// concurrent presentations of the same token exactly one UPDATE matches
+// (the others block on the row lock, then re-evaluate against the committed
+// row, see consumed_at set, and affect zero rows). Returns whether this call
+// won the claim.
+func (r *RefreshTokenRepository) claimForRotation(ctx context.Context, db execer, tokenHash, newTokenHash string) (bool, error) {
+	now := time.Now().UTC()
+	tag, err := db.Exec(ctx,
+		`UPDATE oauth_oidc_payloads
+		SET payload = jsonb_set(jsonb_set(
+			jsonb_set(payload, '{revoked}', 'true'::jsonb),
+			'{revokedAt}', to_jsonb($4::text)),
+			'{replacedBy}', to_jsonb($5::text)
+		), consumed_at = $3
+		WHERE type = $1 AND payload->>'tokenHash' = $2
+		  AND consumed_at IS NULL
+		  AND expires_at > NOW()
+		  AND (payload->>'revoked' IS NULL OR payload->>'revoked' = 'false')`,
+		refreshTokenPayloadType, tokenHash, now, now.Format(time.RFC3339), newTokenHash)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // RevokeAllInFamily revokes every still-active token in a rotation family

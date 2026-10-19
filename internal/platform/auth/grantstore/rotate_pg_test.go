@@ -5,6 +5,8 @@ package grantstore_test
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -128,4 +130,57 @@ func TestRotate_LegacyTokenRootsFreshFamily(t *testing.T) {
 	require.NotNil(t, res.Stored)
 	require.NotNil(t, res.New.TokenFamily, "legacy rotation must root a family")
 	assert.Equal(t, res.New.ID, *res.New.TokenFamily, "family roots at the replacement's ID")
+}
+
+// TestRotate_ConcurrentPresentationsExactlyOneWins pins the atomic-claim
+// guarantee: N simultaneous presentations of ONE refresh token produce exactly
+// one replacement; the family never forks. Losers are treated as replays
+// (reuse detection), so afterwards the whole family is revoked.
+func TestRotate_ConcurrentPresentationsExactlyOneWins(t *testing.T) {
+	ctx := context.Background()
+	repo := grantstore.NewRefreshTokenRepository(testpg.Pool(t))
+	cid := "oac_rotate_race"
+	raw, entity := mintRoot(t, repo, "prn_rotaterace001", &cid, true)
+
+	const n = 12
+	var wins, losses atomic.Int32
+	var newRaws sync.Map
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			res, err := grantstore.Rotate(ctx, repo, raw, nil)
+			if err != nil {
+				t.Errorf("rotate error: %v", err)
+				return
+			}
+			if res.New != nil {
+				wins.Add(1)
+				newRaws.Store(res.NewRaw, true)
+			} else {
+				losses.Add(1)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	assert.EqualValues(t, 1, wins.Load(), "exactly one presentation may rotate")
+	assert.EqualValues(t, n-1, losses.Load())
+
+	// No fork: at most the winner's descendant ever existed, and a losing
+	// replay revoked the family (reuse detection), so nothing is valid now.
+	newRaws.Range(func(k, _ any) bool {
+		v, err := repo.FindValidByHash(ctx, grantstore.HashToken(k.(string)))
+		require.NoError(t, err)
+		if v != nil {
+			// Winner finished after every loser ran: the descendant is the
+			// single live token of the family.
+			assert.Equal(t, *entity.TokenFamily, *v.TokenFamily)
+		}
+		return true
+	})
 }
