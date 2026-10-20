@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
+	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
@@ -45,8 +46,8 @@ const (
 	callError = 1
 )
 
-func (e *Engine) instantiateHostModule(ctx context.Context) error {
-	_, err := e.rt.NewHostModuleBuilder(abi.ImportModule).
+func (e *Engine) instantiateHostModule(ctx context.Context, rt wazero.Runtime) error {
+	_, err := rt.NewHostModuleBuilder(abi.ImportModule).
 		NewFunctionBuilder().
 		WithGoModuleFunction(api.GoModuleFunc(e.hostCall), []api.ValueType{i32, i32, i32}, []api.ValueType{i64}).
 		WithParameterNames("op", "ptr", "len").

@@ -18,8 +18,9 @@
 //! `__fc_utf8_encode(string)` and `__fc_utf8_decode(bytes)`. The
 //! `@flowcatalyst/fn` SDK wraps all of this.
 use rquickjs::{Context, Ctx, Function, Object, Promise, Runtime, TypedArray, Value};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::io::Write;
+use std::time::{Duration, Instant};
 
 #[link(wasm_import_module = "fc")]
 extern "C" {
@@ -30,6 +31,23 @@ extern "C" {
 thread_local! {
     static ENGINE: RefCell<Option<(Runtime, Context)>> = const { RefCell::new(None) };
     static OUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+    /// When the current call must stop; None means no limit.
+    static DEADLINE: Cell<Option<Instant>> = const { Cell::new(None) };
+}
+
+/// Arms (or, with 0, clears) the deadline for the next call: `ms` from now.
+/// The host calls this before `fc_handle` when its wasm runtime does not
+/// enforce the call's context itself (docs/function-runtime-deadlines.md).
+/// QuickJS polls its interrupt handler from the bytecode loop, from the regexp
+/// matcher and from long builtins, so JS that spins, however it spins, stops
+/// within a few thousand opcodes of the deadline.
+#[no_mangle]
+pub extern "C" fn fc_js_deadline(ms: u64) {
+    DEADLINE.with(|d| d.set((ms > 0).then(|| Instant::now() + Duration::from_millis(ms))));
+}
+
+fn past_deadline() -> bool {
+    DEADLINE.with(|d| d.get().is_some_and(|t| Instant::now() >= t))
 }
 
 const MAX_STACK: usize = 512 << 10;
@@ -126,6 +144,7 @@ pub unsafe extern "C" fn fc_js_load(ptr: *mut u8, len: u32) -> u32 {
     let src = Vec::from_raw_parts(ptr, len as usize, len as usize);
     let Ok(rt) = Runtime::new() else { return 1 };
     rt.set_max_stack_size(MAX_STACK);
+    rt.set_interrupt_handler(Some(Box::new(past_deadline)));
     let Ok(ctx) = Context::full(&rt) else { return 1 };
     let ok = ctx.with(|ctx| {
         let g = ctx.globals();

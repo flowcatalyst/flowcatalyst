@@ -54,9 +54,18 @@ func (r *Runner) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/fn/{target}/{path...}", r.serveInvoke)
 	mux.HandleFunc("/fn/{target}", r.serveInvoke)
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	// Liveness fails when calls have outlived their deadline in numbers
+	// (engine.StuckLimit): their threads cannot be killed, so the process is
+	// replaced rather than left burning CPU.
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		if !r.eng.Healthy() {
+			http.Error(w, "function engine has calls stuck past their deadline", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
-		if !r.ready.Load() {
+		if !r.ready.Load() || !r.eng.Healthy() {
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}

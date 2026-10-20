@@ -64,6 +64,15 @@ func (m *Module) check() error {
 			return &LoadError{Code: LoadExportSignature, Detail: fmt.Sprintf("%s is %v→%v, want %v→%v", name, def.ParamTypes(), def.ResultTypes(), want.params, want.results)}
 		}
 	}
+	if m.coop {
+		def, ok := exports[ExportJSDeadline]
+		if !ok {
+			return &LoadError{Code: LoadExportMissing, Detail: "a cooperative module must export " + ExportJSDeadline + ": nothing else can stop it"}
+		}
+		if !sameSignature(def, signature{[]api.ValueType{i64}, nil}) {
+			return &LoadError{Code: LoadExportSignature, Detail: ExportJSDeadline + " must take an i64 and return nothing"}
+		}
+	}
 	if def, ok := exports[abi.ExportInitialize]; ok {
 		if !sameSignature(def, signature{}) {
 			return &LoadError{Code: LoadExportSignature, Detail: abi.ExportInitialize + " must take and return nothing"}

@@ -324,6 +324,8 @@ one-way, so keep the documented contract as the QuickJS subset.
 
 ### 6.1 (i) Stay on QuickJS-in-wazero
 
+> **Update 2026-10-20: item 1 below is done** (`docs/function-runtime-deadlines.md`): JS runs on its own cooperative wazero runtime with a QuickJS interrupt handler. Measured 3.5x on realistic work and 5x on compute, macOS and Linux arm64; amd64 still unmeasured.
+
 What it costs: everything in section 2. What is cheap to improve first:
 
 1. **Deadline mechanism for the JS runtime (projected 3.7-4.8x, upper bound measured in 2.4).** Put JS on its own `wazero.Runtime` with `WithCloseOnContextDone(false)` and enforce

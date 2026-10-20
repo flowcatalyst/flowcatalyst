@@ -55,5 +55,8 @@ func (m *metrics) handler(r *Runner) http.Handler {
 	gauges.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{
 		Name: "fc_fn_evictions_total", Help: "Versions whose compiled code was evicted (idle or memory pressure).",
 	}, func() float64 { return float64(r.evictions.Load()) }))
+	gauges.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "fc_fn_stuck_calls", Help: "JS calls running past their deadline plus grace that the runner abandoned; the process is unhealthy at the engine's StuckLimit.",
+	}, func() float64 { return float64(r.eng.Stuck()) }))
 	return promhttp.HandlerFor(prometheus.Gatherers{m.reg, gauges}, promhttp.HandlerOpts{ErrorHandling: promhttp.ContinueOnError})
 }

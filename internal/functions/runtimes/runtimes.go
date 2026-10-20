@@ -109,7 +109,7 @@ func NewLoader(eng *engine.Engine) *Loader {
 		eng:    eng,
 		jsLock: make(chan struct{}, 1),
 		compileJS: func(ctx context.Context) (*engine.Module, error) {
-			return eng.Compile(ctx, jsengine.Wasm)
+			return eng.CompileCooperative(ctx, jsengine.Wasm)
 		},
 	}
 }
