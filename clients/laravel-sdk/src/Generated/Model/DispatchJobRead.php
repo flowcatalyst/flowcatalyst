@@ -97,6 +97,10 @@ class DispatchJobRead
     /**
      * @var string|null
      */
+    protected $serviceAccountId;
+    /**
+     * @var string|null
+     */
     protected $source;
     /**
      * @var string|null
@@ -484,6 +488,24 @@ class DispatchJobRead
     {
         $this->initialized['scheduledFor'] = true;
         $this->scheduledFor = $scheduledFor;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getServiceAccountId(): ?string
+    {
+        return $this->serviceAccountId;
+    }
+    /**
+     * @param string|null $serviceAccountId
+     *
+     * @return self
+     */
+    public function setServiceAccountId(?string $serviceAccountId): self
+    {
+        $this->initialized['serviceAccountId'] = true;
+        $this->serviceAccountId = $serviceAccountId;
         return $this;
     }
     /**

@@ -1449,6 +1449,7 @@ export type DispatchJobRead = {
     mode: string;
     priority?: number;
     scheduledFor?: string;
+    serviceAccountId?: string;
     source?: string;
     status: string;
     subdomain?: string;

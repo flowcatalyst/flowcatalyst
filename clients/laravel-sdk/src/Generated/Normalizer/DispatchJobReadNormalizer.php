@@ -161,6 +161,12 @@ class DispatchJobReadNormalizer implements DenormalizerInterface, NormalizerInte
         elseif (\array_key_exists('scheduledFor', $data) && $data['scheduledFor'] === null) {
             $object->setScheduledFor(null);
         }
+        if (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] !== null) {
+            $object->setServiceAccountId($data['serviceAccountId']);
+        }
+        elseif (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] === null) {
+            $object->setServiceAccountId(null);
+        }
         if (\array_key_exists('source', $data) && $data['source'] !== null) {
             $object->setSource($data['source']);
         }
@@ -259,6 +265,9 @@ class DispatchJobReadNormalizer implements DenormalizerInterface, NormalizerInte
         }
         if ($data->isInitialized('scheduledFor') && null !== $data->getScheduledFor()) {
             $dataArray['scheduledFor'] = $data->getScheduledFor()->format('Y-m-d\TH:i:sP');
+        }
+        if ($data->isInitialized('serviceAccountId') && null !== $data->getServiceAccountId()) {
+            $dataArray['serviceAccountId'] = $data->getServiceAccountId();
         }
         if ($data->isInitialized('source') && null !== $data->getSource()) {
             $dataArray['source'] = $data->getSource();

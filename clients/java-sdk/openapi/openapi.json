@@ -3899,6 +3899,9 @@
             "format": "date-time",
             "type": "string"
           },
+          "serviceAccountId": {
+            "type": "string"
+          },
           "source": {
             "type": "string"
           },
