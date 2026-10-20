@@ -14,14 +14,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -42,6 +45,35 @@ type DispatchJobsBatchState struct {
 	// Clients resolves an item's clientCode to its client (ClientCodes). Nil
 	// means every code is unknown, so an item carrying one is refused.
 	Clients *client.Repository
+	// Principals resolves a serviceAccountId given as a principal id (prn_,
+	// which is what an application's own serviceAccountId is) to the service
+	// account it fronts (sac_), the id a delivery is signed by. Nil leaves a
+	// principal id unresolved, and it is refused rather than stored.
+	Principals *principal.Repository
+}
+
+// resolveJobServiceAccount returns the service-account id a job must carry.
+// A sac_ id passes through. A prn_ id (an application's serviceAccountId is its
+// principal's id) is resolved to the service account that principal is, so a
+// caller does not need to know the two apart; a principal that is not a
+// service account is a 400, because a job stored under it could never be
+// signed and would only fail at delivery. Anything else is passed through
+// unchanged (existing behaviour).
+func (s *DispatchJobsBatchState) resolveJobServiceAccount(ctx context.Context, id *string) (*string, error) {
+	if id == nil || !strings.HasPrefix(*id, "prn_") {
+		return id, nil
+	}
+	if s.Principals == nil {
+		return nil, httperror.BadRequest("SERVICE_ACCOUNT_NOT_FOUND", "serviceAccountId "+*id+" is a principal id and cannot be resolved here; pass the sac_ service account id")
+	}
+	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(*id))
+	if err != nil {
+		return nil, usecase.Internal("REPO", "service account lookup failed", err)
+	}
+	if p == nil || p.ServiceAccountID == nil || *p.ServiceAccountID == "" {
+		return nil, httperror.BadRequest("SERVICE_ACCOUNT_NOT_FOUND", "serviceAccountId "+*id+" is not a service account principal")
+	}
+	return p.ServiceAccountID, nil
 }
 
 // checkJobApplication enforces application confinement for an
@@ -292,6 +324,10 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		j.ClientID = cid
+		if j.ServiceAccountID, err = s.resolveJobServiceAccount(r.Context(), j.ServiceAccountID); err != nil {
+			httperror.Write(w, err)
+			return
+		}
 		// Application confinement (application-scoped callers only): any
 		// offending item rejects the whole batch, like the client guard above.
 		msg, err := s.checkJobApplication(r.Context(), ac, scope, subApp, &j)

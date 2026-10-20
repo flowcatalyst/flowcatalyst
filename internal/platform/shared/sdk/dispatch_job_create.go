@@ -140,6 +140,10 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 		httperror.Write(w, err)
 		return
 	}
+	if j.ServiceAccountID, err = s.resolveJobServiceAccount(r.Context(), j.ServiceAccountID); err != nil {
+		httperror.Write(w, err)
+		return
+	}
 	if req.Sequence != nil {
 		// Pointer on the singular DTO so an explicit `"sequence": 0` is
 		// honored (the batch's value-typed field coerces 0 → default 99).

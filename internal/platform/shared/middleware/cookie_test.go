@@ -55,3 +55,13 @@ func TestNewCookieDefaultsAndSessionCookie(t *testing.T) {
 		t.Fatalf("%+v", d)
 	}
 }
+
+func TestSameSiteNoneAlwaysSecure(t *testing.T) {
+	c := NewCookie(CookieSpec{Name: "x", Value: "v", SameSite: http.SameSiteNoneMode, Secure: false})
+	if !c.Secure {
+		t.Error("SameSite=None built without Secure: browsers would reject the cookie")
+	}
+	if c := NewCookie(CookieSpec{Name: "x", Value: "v", SameSite: http.SameSiteLaxMode}); c.Secure {
+		t.Error("Secure was forced on for Lax")
+	}
+}

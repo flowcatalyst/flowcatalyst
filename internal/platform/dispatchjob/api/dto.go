@@ -176,9 +176,12 @@ func fromEntity(j *dispatchjob.DispatchJob) DispatchJobResponse {
 // the list grid binds id/code/source/status/mode/targetUrl/createdAt, and
 // the interface also carries the projection facets.
 type DispatchJobRead struct {
-	ID               string  `json:"id"`
-	EventID          *string `json:"eventId,omitempty"`
-	SubscriptionID   *string `json:"subscriptionId,omitempty"`
+	ID             string  `json:"id"`
+	EventID        *string `json:"eventId,omitempty"`
+	SubscriptionID *string `json:"subscriptionId,omitempty"`
+	// ServiceAccountID is the service account whose secret signs this job's
+	// delivery; absent on a job nothing can sign.
+	ServiceAccountID *string `json:"serviceAccountId,omitempty"`
 	ClientID         *string `json:"clientId,omitempty"`
 	ClientIdentifier *string `json:"clientIdentifier,omitempty"`
 	Application      *string `json:"application,omitempty"`
@@ -223,31 +226,32 @@ func readFromEntity(j *dispatchjob.DispatchJob) DispatchJobRead {
 		meta = append(meta, MetadataDTO{Key: m.Key, Value: m.Value})
 	}
 	return DispatchJobRead{
-		ID:             j.ID,
-		EventID:        j.EventID,
-		SubscriptionID: j.SubscriptionID,
-		ClientID:       ids.StringPtr(j.ClientID),
-		MessageGroup:   j.MessageGroup,
-		Descriptor:     j.Descriptor,
-		Metadata:       meta,
-		Application:    app,
-		Subdomain:      sub,
-		Aggregate:      agg,
-		Code:           j.Code,
-		Source:         j.Source,
-		Subject:        j.Subject,
-		Status:         string(j.Status),
-		Kind:           string(j.Kind),
-		TargetURL:      j.TargetURL,
-		Mode:           mode,
-		DispatchMode:   &mode,
-		CorrelationID:  j.CorrelationID,
-		ScheduledFor:   tp(j.ScheduledFor),
-		CreatedAt:      jsontime.New(j.CreatedAt),
-		UpdatedAt:      jsontime.New(j.UpdatedAt),
-		CompletedAt:    tp(j.CompletedAt),
-		LastAttemptAt:  tp(j.LastAttemptAt),
-		AttemptCount:   j.AttemptCount,
+		ID:               j.ID,
+		EventID:          j.EventID,
+		SubscriptionID:   j.SubscriptionID,
+		ServiceAccountID: j.ServiceAccountID,
+		ClientID:         ids.StringPtr(j.ClientID),
+		MessageGroup:     j.MessageGroup,
+		Descriptor:       j.Descriptor,
+		Metadata:         meta,
+		Application:      app,
+		Subdomain:        sub,
+		Aggregate:        agg,
+		Code:             j.Code,
+		Source:           j.Source,
+		Subject:          j.Subject,
+		Status:           string(j.Status),
+		Kind:             string(j.Kind),
+		TargetURL:        j.TargetURL,
+		Mode:             mode,
+		DispatchMode:     &mode,
+		CorrelationID:    j.CorrelationID,
+		ScheduledFor:     tp(j.ScheduledFor),
+		CreatedAt:        jsontime.New(j.CreatedAt),
+		UpdatedAt:        jsontime.New(j.UpdatedAt),
+		CompletedAt:      tp(j.CompletedAt),
+		LastAttemptAt:    tp(j.LastAttemptAt),
+		AttemptCount:     j.AttemptCount,
 	}
 }
 

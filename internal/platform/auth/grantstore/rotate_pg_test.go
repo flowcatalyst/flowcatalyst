@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -137,6 +138,7 @@ func TestRotate_LegacyTokenRootsFreshFamily(t *testing.T) {
 // one replacement; the family never forks. Losers are treated as replays
 // (reuse detection), so afterwards the whole family is revoked.
 func TestRotate_ConcurrentPresentationsExactlyOneWins(t *testing.T) {
+	t.Setenv(grantstore.ReplayLeewayEnv, "0") // no leeway: a loser is a replay
 	ctx := context.Background()
 	repo := grantstore.NewRefreshTokenRepository(testpg.Pool(t))
 	cid := "oac_rotate_race"
@@ -183,4 +185,91 @@ func TestRotate_ConcurrentPresentationsExactlyOneWins(t *testing.T) {
 		}
 		return true
 	})
+}
+
+// With the default leeway a client racing itself (two requests refreshing the
+// same token at once, or a retry after a lost response) is not signed out:
+// the loser rotates into a sibling in the same family, and the family stays
+// intact. This was the cost of making rotation atomic (F36) until the leeway.
+func TestRotate_ConcurrentPresentationsWithinLeewayAllGetATokenAndFamilySurvives(t *testing.T) {
+	ctx := context.Background()
+	repo := grantstore.NewRefreshTokenRepository(testpg.Pool(t))
+	cid := "oac_rotate_leeway"
+	raw, entity := mintRoot(t, repo, "prn_rotateleeway01", &cid, true)
+
+	const n = 12
+	var raws sync.Map
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			res, err := grantstore.Rotate(ctx, repo, raw, nil)
+			if err != nil || res.New == nil {
+				t.Errorf("rotate: %v new=%v", err, res.New)
+				return
+			}
+			raws.Store(res.NewRaw, res.New)
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	count := 0
+	raws.Range(func(k, v any) bool {
+		count++
+		got, err := repo.FindValidByHash(ctx, grantstore.HashToken(k.(string)))
+		require.NoError(t, err)
+		require.NotNil(t, got, "every issued token is live")
+		assert.Equal(t, *entity.TokenFamily, *got.TokenFamily)
+		assert.Equal(t, entity.ExpiresAt.Unix(), got.ExpiresAt.Unix(), "a sibling keeps the family's absolute expiry")
+		return true
+	})
+	assert.Equal(t, n, count)
+}
+
+// Within the leeway the sibling still obeys the caller's binding check; a
+// refusal issues nothing.
+func TestRotate_LeewaySiblingStillAuthorizes(t *testing.T) {
+	ctx := context.Background()
+	repo := grantstore.NewRefreshTokenRepository(testpg.Pool(t))
+	cid := "oac_rotate_leeway2"
+	raw, _ := mintRoot(t, repo, "prn_rotateleeway02", &cid, true)
+	_, err := grantstore.Rotate(ctx, repo, raw, nil)
+	require.NoError(t, err)
+
+	refuse := errors.New("not your token")
+	res, err := grantstore.Rotate(ctx, repo, raw, func(*grantstore.RefreshToken) error { return refuse })
+	assert.ErrorIs(t, err, refuse)
+	assert.Nil(t, res.New)
+}
+
+// Past the leeway, presenting a rotated-out token is reuse: the whole family
+// is revoked, including the live replacement.
+func TestRotate_ReplayAfterLeewayRevokesFamily(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := grantstore.NewRefreshTokenRepository(pool)
+	cid := "oac_rotate_leeway3"
+	raw, entity := mintRoot(t, repo, "prn_rotateleeway03", &cid, true)
+	res, err := grantstore.Rotate(ctx, repo, raw, nil)
+	require.NoError(t, err)
+	require.NotNil(t, res.New)
+
+	// Age the rotation past the leeway.
+	_, err = pool.Exec(ctx, `UPDATE oauth_oidc_payloads
+		SET payload = jsonb_set(payload, '{revokedAt}', to_jsonb($2::text))
+		WHERE type = 'RefreshToken' AND payload->>'tokenHash' = $1`,
+		grantstore.HashToken(raw), time.Now().Add(-time.Minute).UTC().Format(time.RFC3339))
+	require.NoError(t, err)
+
+	again, err := grantstore.Rotate(ctx, repo, raw, nil)
+	require.NoError(t, err)
+	assert.Nil(t, again.New, "a replay past the leeway rotates nothing")
+	live, err := repo.FindValidByHash(ctx, grantstore.HashToken(res.NewRaw))
+	require.NoError(t, err)
+	assert.Nil(t, live, "the family's live replacement is revoked")
+	_ = entity
 }

@@ -37,12 +37,15 @@ func NewCookie(s CookieSpec) *http.Cookie {
 	if ss == 0 {
 		ss = http.SameSiteLaxMode
 	}
+	// Browsers reject SameSite=None without Secure, so the pair is never built
+	// apart: the cookie would silently never be stored.
+	secure := s.Secure || ss == http.SameSiteNoneMode
 	c := &http.Cookie{
 		Name:     s.Name,
 		Value:    s.Value,
 		Path:     path,
 		HttpOnly: true,
-		Secure:   s.Secure,
+		Secure:   secure,
 		SameSite: ss,
 	}
 	switch {
@@ -65,7 +68,7 @@ var sessionSameSite atomic.Int32
 func init() { sessionSameSite.Store(int32(http.SameSiteLaxMode)) }
 
 // SetSessionSameSite configures the fc_session SameSite mode: "" or "lax"
-// (default), "strict" or "none" ("none" requires Secure cookies in browsers).
+// (default), "strict" or "none" ("none" forces Secure on, which browsers require).
 func SetSessionSameSite(mode string) error {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "", "lax":

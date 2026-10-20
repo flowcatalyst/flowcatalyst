@@ -2938,3 +2938,34 @@ missing event source (F14), and unknown roles in the application principal sync 
   or deployed environment. Passkey flows are proven with a software authenticator (attestation "none", ES256), not with
   platform authenticators or attestation formats. SSO email_verified and the issuer pattern are proven against the
   in-repo fake IdP only. The Java/Rust ports were not changed (hand-off in the identity review report).
+
+### F46. Atomic refresh rotation signed a client out when it raced itself (found by the Java hand-off audit, 2026-10-20)
+
+**Bug.** F36 made rotation atomic and treated every loser as a replay, which revokes the family. Two requests of one
+SDK session refreshing the same token at once (the Laravel and TypeScript SDKs refresh per request without a lock), or a
+retry after a lost response, therefore signed the user out where before both succeeded.
+
+**Fix.** Replay leeway as in Java and Rust: a token rotated out within `FC_REFRESH_REPLAY_LEEWAY_SECS` (default 10, `0`
+turns it off) whose replacement is still valid rotates again into a sibling in the same family (same absolute expiry,
+binding check still applied). Later, or once the family is revoked, it is reuse and the family is revoked as before.
+Tests: `TestRotate_ConcurrentPresentationsWithinLeewayAllGetATokenAndFamilySurvives`, `..._LeewaySiblingStillAuthorizes`,
+`..._ReplayAfterLeewayRevokesFamily`; the original exactly-one-wins test now runs with the leeway off.
+
+### F47. `SameSite=None` was built without `Secure` (2026-10-20)
+
+`NewCookie` forces `Secure` when SameSite is None; browsers reject the pair otherwise, so the cookie was silently never
+stored. Test: `TestSameSiteNoneAlwaysSecure`.
+
+### F48. The router nudge fires before the writing transaction commits (F29 follow-up, 2026-10-20)
+
+The watcher now fetches at 1, 3 and 8 nudge delays (was 1 and 2) so a transaction of several seconds is still caught
+before the 30 s poll; the extra fetches are conditional (304).
+
+### F49. A dispatch job's serviceAccountId could be an application's principal id, which cannot sign (camel agent, 2026-10-20)
+
+An application's `serviceAccountId` is its principal's id (`prn_`); a delivery is signed by the service account
+(`sac_`). `POST /api/dispatch-jobs` and `/batch` now resolve a `prn_` id to the account it fronts and refuse a principal
+that is not a service account (400 `SERVICE_ACCOUNT_NOT_FOUND`) instead of storing a job that could never be signed.
+A `sac_` id passes through. The dispatch-job list row now carries `serviceAccountId` (`DispatchJobRead`), so whether a
+job will be signed can be checked from the list. Test: `TestCreateDispatchJob_ResolvesPrincipalIDToServiceAccount`.
+**Java/Rust hand-off:** same resolution at job creation and the list field; the Java hand-off doc should gain a row.

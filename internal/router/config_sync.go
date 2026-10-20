@@ -593,19 +593,21 @@ func Watch(ctx context.Context, cs *ConfigSource, manager *Manager, interval tim
 		case <-tick.C:
 			apply()
 		case <-cs.nudges():
-			// Something that changes the document was just created. Give the
-			// writer's transaction a moment to commit and further changes a
-			// moment to arrive, fetch, and once more to confirm (a conditional
-			// fetch is a 304 when nothing is new).
+			// Something that changes the document was just created. The nudge
+			// is raised inside the writer's transaction, before it commits, so
+			// fetch at 1, 3 and 8 delays after it (a conditional fetch is a
+			// 304 when nothing is new): the first catches a quick commit and
+			// a burst, the later ones a transaction that took seconds. Past
+			// that the normal poll picks it up.
 			delay := cs.NudgeDelay
 			if delay <= 0 {
 				delay = time.Second
 			}
-			for range 2 {
+			for _, wait := range []time.Duration{delay, 2 * delay, 5 * delay} {
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(delay):
+				case <-time.After(wait):
 				}
 				select {
 				case <-cs.nudges():
