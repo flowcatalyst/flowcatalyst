@@ -1,0 +1,11 @@
+[package]
+name = "wtspike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+[dependencies]
+wasmtime = { version = "=49.0.1", default-features = false, features = ["std","runtime","cranelift","wat","parallel-compilation"] }
+wasmtime-wasi = { version = "=49.0.1", default-features = false, features = ["p1"] }
+anyhow = "1"
+[profile.release]
+debug = false
