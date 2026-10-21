@@ -1,0 +1,8 @@
+{
+  "profile_format": 1,
+  "name": "fcmap",
+  "entry": "fcmap.ts",
+  "emission": "llvm",
+  "abi": { "prefix": "fcmap_", "init_symbol": "fcmap_init", "sink_register_symbol": "fcmap_sink" },
+  "exports": [{ "export": "w3x", "symbol": "fcmap_w3", "params": ["string"], "returns": "string" }]
+}

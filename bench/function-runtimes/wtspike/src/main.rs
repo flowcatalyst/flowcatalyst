@@ -53,7 +53,7 @@ fn instantiate(engine: &Engine, module: &Module, epoch: bool) -> Result<Guest> {
     let handle = inst.get_typed_func::<(u32, u32), u64>(&mut store, "fc_handle")?;
     let deadline = inst.get_typed_func::<u64, ()>(&mut store, "fc_js_deadline")?;
     let load = inst.get_typed_func::<(u32, u32), u32>(&mut store, "fc_js_load")?;
-    let src = std::fs::read(BUNDLE)?;
+    let src = std::fs::read(std::env::var("BUNDLE").unwrap_or_else(|_| BUNDLE.to_string()))?;
     let p = alloc.call(&mut store, src.len() as u32)?;
     mem.write(&mut store, p as usize, &src)?;
     assert_eq!(load.call(&mut store, (p, src.len() as u32))?, 0, "script load failed");
@@ -118,6 +118,55 @@ fn main() -> Result<()> {
             bench("W2 json 2KB ", &mut g, "{\"w\":2}", &json, 400, 30_000)?;
             bench("W3 xml 15KB ", &mut g, "{\"w\":3}", &xml, 40, 30_000)?;
             bench("W4 loop     ", &mut g, "{\"w\":4}", b"", 3, 30_000)?;
+        }
+    } else if which == "scriptc" {
+        let wasm = std::env::var("WASM").unwrap();
+        for epoch in [false, true] {
+            let e = engine(epoch)?;
+            if epoch { start_ticker(&e); }
+            let m = Module::from_file(&e, &wasm)?;
+            if !epoch {
+                for i in m.imports() { println!("  import {}.{}", i.module(), i.name()); }
+                for x in m.exports() { println!("  export {} {:?}", x.name(), x.ty()); }
+            }
+            let mut linker: Linker<WasiP1Ctx> = Linker::new(&e);
+            p1::add_to_linker_sync(&mut linker, |c| c)?;
+            linker.func_wrap("scriptc", "panic", |mut c: Caller<'_, WasiP1Ctx>, ptr: u32, len: u32| {
+                let mem = c.get_export("memory").and_then(|x| x.into_memory()).unwrap();
+                let mut b = vec![0u8; len as usize];
+                mem.read(&c, ptr as usize, &mut b).ok();
+                eprintln!("scriptc panic: {}", String::from_utf8_lossy(&b));
+            })?;
+            let mut store = Store::new(&e, WasiP1Ctx::from(WasiCtxBuilder::new().build_p1()));
+            if epoch { store.set_epoch_deadline(u64::MAX / 2); }
+            let inst = linker.instantiate(&mut store, &m)?;
+            let mem = inst.get_memory(&mut store, "memory").unwrap();
+            if let Ok(f) = inst.get_typed_func::<(), ()>(&mut store, "_initialize") { f.call(&mut store, ())?; }
+            inst.get_typed_func::<(), ()>(&mut store, "fcmap_init")?.call(&mut store, ())?;
+            let alloc = inst.get_typed_func::<u32, u32>(&mut store, "scriptc_alloc")?;
+            let free = inst.get_typed_func::<u32, ()>(&mut store, "scriptc_free")?;
+            let w3 = inst.get_typed_func::<(u32, u32, u32, u32), ()>(&mut store, "fcmap_w3")?;
+            let mut run = |store: &mut Store<WasiP1Ctx>| -> Result<Vec<u8>> {
+                let p = alloc.call(&mut *store, xml.len() as u32)?;
+                mem.write(&mut *store, p as usize, &xml)?;
+                let slots = alloc.call(&mut *store, 8)?;
+                w3.call(&mut *store, (p, xml.len() as u32, slots, slots + 4))?;
+                let mut sl = [0u8; 8];
+                mem.read(&*store, slots as usize, &mut sl)?;
+                let (rp, rl) = (u32::from_le_bytes(sl[0..4].try_into().unwrap()), u32::from_le_bytes(sl[4..8].try_into().unwrap()));
+                let mut out = vec![0u8; rl as usize];
+                mem.read(&*store, rp as usize, &mut out)?;
+                free.call(&mut *store, p)?;
+                free.call(&mut *store, slots)?;
+                Ok(out)
+            };
+            let want = std::fs::read(format!("{FIX}expected-w3.txt"))?;
+            let got = run(&mut store)?;
+            println!("scriptc module on wasmtime, epochs {}: output {}", if epoch { "ON" } else { "OFF" }, if got == want { "byte-identical to reference" } else { "DIFFERS" });
+            for _ in 0..200 { run(&mut store)?; }
+            let mut t = vec![];
+            for _ in 0..600 { let s0 = Instant::now(); run(&mut store)?; t.push(s0.elapsed().as_secs_f64() * 1e6); }
+            println!("  W3 xml 15KB per call: p50 {:.1} us", p50(t));
         }
     } else if which == "runaway" {
         // A Rust-style guest in an unconditional loop, stopped by the epoch deadline.
