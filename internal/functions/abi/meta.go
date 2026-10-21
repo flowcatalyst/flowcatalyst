@@ -92,6 +92,11 @@ const (
 	// runner that predates it answers UNKNOWN_OP, so ABI v1 modules keep
 	// working unchanged).
 	OpDispatch Op = 11
+	// OpTrace and OpTracing are the trace-log ops (docs/function-trace-design.md
+	// section 2; additive like OpDispatch: a runner that predates them answers
+	// UNKNOWN_OP and every SDK treats that as "not tracing").
+	OpTrace   Op = 12
+	OpTracing Op = 13
 )
 
 func (o Op) String() string {
@@ -118,6 +123,10 @@ func (o Op) String() string {
 		return "db.rollback"
 	case OpDispatch:
 		return "dispatch.create"
+	case OpTrace:
+		return "trace"
+	case OpTracing:
+		return "tracing"
 	}
 	return "unknown"
 }
@@ -274,3 +283,42 @@ const (
 	OutcomeHeader = common.DeliveryOutcomeHeader
 	OutcomeReject = common.DeliveryOutcomeReject
 )
+
+// Trace limits (docs/function-trace-design.md section 2).
+const (
+	TraceMaxMessage   = 4096  // bytes of TraceCall.Msg
+	TraceMaxData      = 32768 // bytes of the encoded TraceCall.Data
+	TraceMaxReference = 200   // characters of a reference
+	// TraceHTTP is the built-in context that captures requests and responses.
+	// Functions cannot write to it and do not declare it.
+	TraceHTTP = "http"
+)
+
+// Trace levels.
+const (
+	TraceDebug = "debug"
+	TraceInfo  = "info"
+	TraceWarn  = "warn"
+	TraceError = "error"
+)
+
+// TraceCall is the meta of an OpTrace call. The result is an empty success
+// whether or not the context is live.
+type TraceCall struct {
+	Context   string         `json:"context"`
+	Level     string         `json:"level,omitempty"` // default info
+	Msg       string         `json:"msg"`
+	Data      map[string]any `json:"data,omitempty"`
+	Reference string         `json:"reference,omitempty"`
+}
+
+// TracingCall is the meta of an OpTracing call.
+type TracingCall struct {
+	Context string `json:"context"`
+}
+
+// TracingResult is the result meta of an OpTracing call: Live is true iff the
+// context is enabled for the function now and this invocation was sampled in.
+type TracingResult struct {
+	Live bool `json:"live"`
+}

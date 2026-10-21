@@ -22,6 +22,8 @@ const (
 	PathEvents    = "/control/functions/events"    // POST EmitRequest → EmitResponse
 	// PathDispatchJobs: POST DispatchRequest → DispatchResponse.
 	PathDispatchJobs = "/control/functions/dispatch-jobs"
+	// PathTraceLog: POST TraceBatch → TraceAck (docs/function-trace-design.md section 5).
+	PathTraceLog = "/control/functions/trace-log"
 )
 
 // MaxWait caps the long-poll a runner may ask for.
@@ -88,8 +90,19 @@ type Function struct {
 	Config        map[string]string `json:"config,omitempty"`
 	Secrets       map[string]string `json:"secrets,omitempty"`
 	// DB maps a declared database name to its DSN.
-	DB       map[string]string `json:"db,omitempty"`
-	Versions []Version         `json:"versions"`
+	DB map[string]string `json:"db,omitempty"`
+	// Trace lists the function's trace windows that are live when the
+	// document is rendered (docs/function-trace-design.md section 4). The
+	// runner compares EnabledUntilMs with its own clock on every use.
+	Trace    []TraceState `json:"trace,omitempty"`
+	Versions []Version    `json:"versions"`
+}
+
+// TraceState is one live trace window of a function.
+type TraceState struct {
+	Context        string `json:"context"`
+	EnabledUntilMs int64  `json:"enabledUntilMs"` // unix milliseconds
+	SampleRate     int    `json:"sampleRate"`     // capture one invocation in N; 1 = all
 }
 
 // Limits are a function's resource limits.
@@ -215,4 +228,94 @@ type DispatchRequest struct {
 // DispatchResponse is the platform's answer to a DispatchRequest.
 type DispatchResponse struct {
 	JobID string `json:"jobId"`
+}
+
+// Trace record kinds.
+const (
+	TraceKindTrace = "trace" // written by the function with the trace op
+	TraceKindHTTP  = "http"  // the built-in request/response capture
+	TraceKindLog   = "log"   // stdout/stderr and log calls during an http-live invocation
+)
+
+// Trace record outcomes (TraceHTTPData.Outcome).
+const (
+	TraceOutcomeOK          = "ok"
+	TraceOutcomeTimeout     = "timeout"
+	TraceOutcomeTrap        = "trap"
+	TraceOutcomeOutOfMemory = "out_of_memory"
+	TraceOutcomeBadResponse = "bad_response"
+	TraceOutcomeBusy        = "busy"
+	TraceOutcomeError       = "error"
+)
+
+// TraceRecord is one captured record, as a runner ships it and as the
+// platform reads it back (the platform adds the id and creation time).
+type TraceRecord struct {
+	At            int64           `json:"at"` // unix milliseconds, the runner's clock
+	Address       string          `json:"address"`
+	Version       int             `json:"version"`
+	InvocationID  string          `json:"invocationId"`
+	CorrelationID string          `json:"correlationId,omitempty"`
+	Reference     string          `json:"reference,omitempty"`
+	Context       string          `json:"context"`
+	Kind          string          `json:"kind"`
+	Level         string          `json:"level"`
+	Message       string          `json:"message"`
+	Data          json.RawMessage `json:"data,omitempty"`
+}
+
+// TraceBatch is the body of POST PathTraceLog. The platform accepts at most
+// MaxTraceBatchRecords records and MaxTraceBatchBytes bytes per batch.
+type TraceBatch struct {
+	RunnerID string        `json:"runnerId"`
+	Pool     string        `json:"pool"`
+	Records  []TraceRecord `json:"records"`
+}
+
+// TraceAck is the answer to a TraceBatch (202).
+type TraceAck struct {
+	Accepted int `json:"accepted"`
+	Dropped  int `json:"dropped"`
+}
+
+// Trace limits (docs/function-trace-design.md section 5).
+const (
+	MaxTraceBatchRecords   = 500
+	MaxTraceBatchBytes     = 1 << 20
+	MaxTraceMessage        = 4096  // characters; longer is cut
+	MaxTraceHTTPData       = 65536 // bytes of a http record's data
+	MaxTraceData           = 32768 // bytes of a trace record's data
+	MaxTraceRecordsPerSec  = 200   // per function, platform side
+	TraceAcceptSlackMillis = 10_000
+)
+
+// TraceHTTPData is the data of a TraceKindHTTP record.
+type TraceHTTPData struct {
+	Request    TraceHTTPRequest  `json:"request"`
+	Response   TraceHTTPResponse `json:"response"`
+	DurationMs int64             `json:"durationMs"`
+	Outcome    string            `json:"outcome"`
+}
+
+// TraceHTTPRequest is the captured request.
+type TraceHTTPRequest struct {
+	Method        string              `json:"method"`
+	Path          string              `json:"path"`
+	RawQuery      string              `json:"rawQuery,omitempty"`
+	Headers       map[string][]string `json:"headers,omitempty"`
+	Body          *string             `json:"body"`         // null when withheld from the reader
+	BodyEncoding  string              `json:"bodyEncoding"` // "utf8" or "base64"
+	BodyBytes     int64               `json:"bodyBytes"`    // the real size
+	BodyTruncated bool                `json:"bodyTruncated"`
+	Caller        map[string]any      `json:"caller,omitempty"` // kind and id
+}
+
+// TraceHTTPResponse is the captured response.
+type TraceHTTPResponse struct {
+	Status        int                 `json:"status"`
+	Headers       map[string][]string `json:"headers,omitempty"`
+	Body          *string             `json:"body"`
+	BodyEncoding  string              `json:"bodyEncoding"`
+	BodyBytes     int64               `json:"bodyBytes"`
+	BodyTruncated bool                `json:"bodyTruncated"`
 }

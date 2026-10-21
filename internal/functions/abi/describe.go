@@ -38,6 +38,33 @@ type Describe struct {
 	// create dispatch jobs for through the dispatch capability (plan §5.3
 	// op 11). Like Emits it is a declaration the platform checks per call.
 	Dispatches []DispatchTarget `json:"dispatches,omitempty"`
+	// TraceContexts are the named trace points the function writes to with
+	// the trace op; an operator switches each on for a bounded time
+	// (docs/function-trace-design.md section 3). The built-in "http" context
+	// is not declared.
+	TraceContexts []TraceContext `json:"traceContexts,omitempty"`
+}
+
+// TraceContext declares one trace context.
+type TraceContext struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// Trace context limits.
+const (
+	MaxTraceContexts          = 20
+	MaxTraceContextDescLength = 200
+)
+
+// HasTraceContext reports whether the function declares the context.
+func (d *Describe) HasTraceContext(name string) bool {
+	for _, c := range d.TraceContexts {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // DispatchTarget is one declared dispatch destination: the address of a
@@ -123,7 +150,9 @@ func (e Endpoint) Pattern() string {
 var (
 	keyPattern    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_./-]{0,99}$`)
 	dbNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}$`)
-	hostPattern   = regexp.MustCompile(`^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$`)
+	// A trace context name: lowercase, digits and dashes, at most 40.
+	traceContextPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
+	hostPattern         = regexp.MustCompile(`^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$`)
 	// The platform's own rule for event-type codes: four non-empty
 	// colon-separated segments (eventtype.New). Ownership — the first
 	// segment is the function's application — is publish's check.
@@ -285,6 +314,26 @@ func (d *Describe) Validate() error {
 		}
 	}
 	checkList("emits", d.Emits, eventTypePattern)
+	if len(d.TraceContexts) > MaxTraceContexts {
+		add("traceContexts: at most %d contexts, got %d", MaxTraceContexts, len(d.TraceContexts))
+	}
+	seenTrace := map[string]bool{}
+	for i, c := range d.TraceContexts {
+		at := fmt.Sprintf("traceContexts[%d]", i)
+		switch {
+		case c.Name == TraceHTTP:
+			add("%s: %q is the built-in capture context and cannot be declared", at, c.Name)
+		case !traceContextPattern.MatchString(c.Name):
+			add("%s: %q is not a valid context name (lowercase letter first, then lowercase letters, digits or -; at most 40 characters)", at, c.Name)
+		}
+		if len(c.Description) > MaxTraceContextDescLength {
+			add("%s: description is over %d characters", at, MaxTraceContextDescLength)
+		}
+		if seenTrace[c.Name] {
+			add("%s: %q is declared twice", at, c.Name)
+		}
+		seenTrace[c.Name] = true
+	}
 	seenDispatch := map[[2]string]bool{}
 	for i, t := range d.Dispatches {
 		at := fmt.Sprintf("dispatches[%d]", i)

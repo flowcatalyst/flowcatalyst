@@ -134,6 +134,25 @@ func (c *Client) Heartbeat(ctx context.Context, hb Heartbeat) error {
 	return nil
 }
 
+// TraceLog ships a batch of trace records. A non-2xx answer is an error the
+// caller retries with backoff; a 2xx answer means the platform took the batch
+// (some records may be counted dropped in the TraceAck).
+func (c *Client) TraceLog(ctx context.Context, b TraceBatch) (*TraceAck, error) {
+	resp, err := c.do(ctx, http.MethodPost, PathTraceLog, b, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return nil, statusError(resp)
+	}
+	var ack TraceAck
+	if err := json.NewDecoder(resp.Body).Decode(&ack); err != nil {
+		return &TraceAck{}, nil // accepted; an unreadable ack is not a failure
+	}
+	return &ack, nil
+}
+
 // Artifact downloads an artifact by digest. The platform either streams it or
 // redirects to storage; Go's client drops the Authorization header on a
 // cross-host redirect, so storage never sees the runner's token.
