@@ -540,6 +540,8 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 	// the SPA's superset payloads stop 400-ing. Must run after every route has
 	// registered; keep in sync with the dump-spec tool so the lockfile matches.
 	httpcompat.RelaxRequestBodies(humaAPI)
+	// The runners' trace batches may grow fields at any depth (older platform, newer runner).
+	httpcompat.RelaxRequestBodiesDeep(humaAPI, functioncontrol.TraceLogOperationID)
 
 	// Exclude /bff/* from the published OpenAPI spec (the BFF
 	// handlers stay mounted and keep serving). Must run after every route

@@ -26,6 +26,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
@@ -79,6 +80,7 @@ func newTestServer(t *testing.T, s *State, ti *testTokenIssuer) *httptest.Server
 	humaCfg := apiroute.PlatformAPIConfig("fn-control-e2e", "test")
 	api := humachi.New(r, humaCfg)
 	Register(api, s)
+	httpcompat.RelaxRequestBodiesDeep(api, TraceLogOperationID) // as WirePlatform does
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
 	return srv

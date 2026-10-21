@@ -7,8 +7,11 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -371,5 +374,44 @@ func TestE2E_TraceLog_ClientAgainstRealServer(t *testing.T) {
 	huge.Message = strings.Repeat("x", fncontrol.MaxTraceBatchBytes+10)
 	_, err = client.TraceLog(context.Background(), fncontrol.TraceBatch{RunnerID: "runner-e2e", Pool: poolName, Records: []fncontrol.TraceRecord{huge}})
 	require.Error(t, err, "a body over 1 MiB is refused")
+	assert.Len(t, stored(t, s, fn.ID), 1)
+}
+
+// TestE2E_TraceLog_AcceptsFieldsAnOlderPlatformDoesNotKnow: a newer runner may
+// add fields to the batch and to a record. The whole batch must still be taken
+// (the runner drops a batch the platform refuses), the extra fields ignored.
+func TestE2E_TraceLog_AcceptsFieldsAnOlderPlatformDoesNotKnow(t *testing.T) {
+	t.Parallel()
+	s := newTestState(t)
+	ti := newTestTokenIssuer(t)
+	srv := newTestServer(t, s, ti)
+	token := ti.mint(t, "sa_fn_runner_trace_lenient", []string{"platform:function:runner:control"})
+	fn, poolName := traceFn(t, s)
+	setWindow(t, s, fn.ID, "orders", inFuture(time.Minute), 1)
+
+	r := rec(fn, "orders", "trace", time.Now())
+	raw, err := json.Marshal(map[string]any{
+		"runnerId": "runner-new", "pool": poolName, "futureBatchField": map[string]any{"a": 1},
+		"records": []any{
+			func() map[string]any {
+				var m map[string]any
+				b, _ := json.Marshal(r)
+				_ = json.Unmarshal(b, &m)
+				m["futureRecordField"] = "x"
+				m["anotherOne"] = []int{1, 2}
+				return m
+			}(),
+		},
+	})
+	require.NoError(t, err)
+	req, err := http.NewRequest(http.MethodPost, srv.URL+fncontrol.PathTraceLog, bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	require.Equal(t, http.StatusAccepted, resp.StatusCode, string(body))
 	assert.Len(t, stored(t, s, fn.ID), 1)
 }

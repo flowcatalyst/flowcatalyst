@@ -4104,6 +4104,7 @@ export type TraceRecord = {
     message: string;
     reference?: string;
     version: number;
+    [key: string]: unknown;
 };
 
 export type TraceRecordResponse = {

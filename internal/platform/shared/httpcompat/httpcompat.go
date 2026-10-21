@@ -150,6 +150,75 @@ func RelaxRequestBodies(api huma.API) {
 	}
 }
 
+// RelaxRequestBodiesDeep is RelaxRequestBodies for the named operations, all the
+// way down: every object schema reachable from the request body (nested
+// objects, list items) accepts and ignores unknown fields. For bodies a newer
+// peer may extend at any depth, such as the function runners' trace batches: a
+// runner that adds a field to a record must not have its whole batch refused
+// by an older platform (the runner drops a refused batch).
+//
+// Only for types used by these operations' request bodies and nowhere else: it
+// flips the shared component schemas. Call at the same place as
+// RelaxRequestBodies, in the server and the spec dumper.
+func RelaxRequestBodiesDeep(api huma.API, operationIDs ...string) {
+	doc := api.OpenAPI()
+	if doc == nil || doc.Paths == nil || doc.Components == nil || doc.Components.Schemas == nil {
+		return
+	}
+	want := map[string]bool{}
+	for _, id := range operationIDs {
+		want[id] = true
+	}
+	reg := doc.Components.Schemas
+	for _, item := range doc.Paths {
+		if item == nil {
+			continue
+		}
+		for _, op := range []*huma.Operation{item.Get, item.Put, item.Post, item.Delete, item.Options, item.Head, item.Patch, item.Trace} {
+			if op == nil || op.RequestBody == nil || !want[op.OperationID] {
+				continue
+			}
+			seen := map[*huma.Schema]bool{}
+			for _, mt := range op.RequestBody.Content {
+				if mt != nil {
+					relaxSchemaDeep(reg, mt.Schema, seen)
+				}
+			}
+		}
+	}
+}
+
+func relaxSchemaDeep(reg huma.Registry, s *huma.Schema, seen map[*huma.Schema]bool) {
+	for s != nil && s.Ref != "" {
+		s = reg.SchemaFromRef(s.Ref)
+	}
+	if s == nil || seen[s] {
+		return
+	}
+	seen[s] = true
+	if s.Type == huma.TypeObject {
+		switch v := s.AdditionalProperties.(type) {
+		case bool:
+			if !v {
+				s.AdditionalProperties = true
+			}
+		case nil:
+			s.AdditionalProperties = true
+		case *huma.Schema:
+			relaxSchemaDeep(reg, v, seen)
+		}
+	}
+	for _, p := range s.Properties {
+		relaxSchemaDeep(reg, p, seen)
+	}
+	relaxSchemaDeep(reg, s.Items, seen)
+	for _, group := range [][]*huma.Schema{s.AllOf, s.OneOf, s.AnyOf} {
+		for _, sub := range group {
+			relaxSchemaDeep(reg, sub, seen)
+		}
+	}
+}
+
 func relaxOperationBody(reg huma.Registry, op *huma.Operation) {
 	if op == nil || op.RequestBody == nil {
 		return

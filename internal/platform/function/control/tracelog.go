@@ -30,12 +30,17 @@ type traceLogInput struct {
 	Body fncontrol.TraceBatch
 }
 
+// TraceLogOperationID is the OpenAPI operation id of the trace-log ingest. Its
+// request body is relaxed all the way down (httpcompat.RelaxRequestBodiesDeep)
+// so a newer runner may add fields to a batch or a record.
+const TraceLogOperationID = "postFunctionRunnerTraceLog"
+
 // registerTraceLog mounts POST /control/functions/trace-log. Registered with
 // huma directly (not apiroute) to pin MaxBodyBytes to the design's 1 MiB batch
 // cap rather than rely on huma's default.
 func registerTraceLog(api huma.API, s *State) {
 	huma.Register(api, huma.Operation{
-		OperationID:   "postFunctionRunnerTraceLog",
+		OperationID:   TraceLogOperationID,
 		Method:        http.MethodPost,
 		Path:          fncontrol.PathTraceLog,
 		Summary:       "Ship trace records captured by a function runner (function-runner role only)",
