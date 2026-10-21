@@ -7,6 +7,10 @@ import type {
 	OffsetPageFunctionResponse as GenOffsetPageFunctionResponse,
 	PutAliasResponse,
 	SettingResponse,
+	TraceContextResponse,
+	TraceContextsResponse,
+	TraceLogResponse,
+	TraceRecordResponse,
 	VersionResponse,
 	WiringResponse,
 } from "./generated";
@@ -22,6 +26,26 @@ export type FunctionSetting = SettingResponse;
 export type FunctionLimits = LimitsDto;
 export type FunctionWiring = WiringResponse;
 export type PutFunctionAliasResponse = PutAliasResponse;
+
+export type TraceContext = TraceContextResponse;
+export type TraceContextList = TraceContextsResponse;
+export type TraceLogPage = TraceLogResponse;
+export type TraceLogRecord = TraceRecordResponse;
+
+/** Query of GET /functions/{id}/trace-log; empty values are not sent. */
+export interface TraceLogQuery {
+	context?: string;
+	kind?: "trace" | "http" | "log";
+	level?: string;
+	reference?: string;
+	correlationId?: string;
+	invocationId?: string;
+	version?: number;
+	since?: string;
+	until?: string;
+	limit?: number;
+	cursor?: string;
+}
 
 /** `fng_settings.kind` — see docs/function-runner-plan.md §8.1. */
 export type FunctionSettingKind = "CONFIG" | "SECRET" | "DB";
@@ -190,5 +214,44 @@ export const functionsApi = {
 		return apiFetch(`/functions/${id}/db/${encodeURIComponent(name)}`, {
 			method: "DELETE",
 		});
+	},
+
+	/** Declared trace contexts plus the built-in `http`, with their window state. */
+	listTraceContexts(id: string): Promise<TraceContextList> {
+		return apiFetch(`/functions/${id}/trace`);
+	},
+
+	/** Opens a window of `minutes` (capped per context); `http` also needs trace:view-bodies. */
+	enableTrace(
+		id: string,
+		context: string,
+		data: { minutes: number; sampleRate: number },
+		opts?: { suppressGlobalErrorToast?: boolean },
+	): Promise<TraceContext> {
+		return apiFetch(`/functions/${id}/trace/${encodeURIComponent(context)}`, {
+			method: "PUT",
+			body: JSON.stringify(data),
+			...opts,
+		});
+	},
+
+	disableTrace(id: string, context: string): Promise<void> {
+		return apiFetch(`/functions/${id}/trace/${encodeURIComponent(context)}`, {
+			method: "DELETE",
+		});
+	},
+
+	/** Newest first; pass the previous page's `nextCursor` as `cursor` for older records. */
+	listTraceLog(
+		id: string,
+		query: TraceLogQuery = {},
+		opts?: { suppressGlobalErrorToast?: boolean },
+	): Promise<TraceLogPage> {
+		const params = new URLSearchParams();
+		for (const [key, value] of Object.entries(query)) {
+			if (value !== undefined && value !== "") params.set(key, String(value));
+		}
+		const qs = params.toString();
+		return apiFetch(`/functions/${id}/trace-log${qs ? `?${qs}` : ""}`, opts);
 	},
 };
