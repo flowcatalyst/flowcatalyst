@@ -66,3 +66,24 @@ Keep QuickJS-in-wazero as the default JS runtime. Offer workerd as an opt-in `ru
 CPU-heavy first-party functions, only with process-level supervision, or send those functions to Rust.
 Before building either, try the cheaper idea: host-side `xml.parse` for QuickJS, which keeps the
 graceful limits and might reach the 1-2 ms range.
+
+## Part 2: can it run as a function runtime? (same day)
+
+The questions: load versions at runtime, host calls, concurrency, and recovery from a runaway. Files:
+`bench/function-runtimes/workerd-spike`. Same machine and caveats as above.
+
+| Question | Result |
+|---|---|
+| Load code at runtime | **Works.** The `workerLoader` binding (needs `compatibilityFlags = ["experimental"]` and `--experimental`; module names must end in `.js`) loads a Worker from code text presented at runtime, caches it by name, and unloads unused ones. Two versions ran side by side, output byte-identical to the reference. A loaded worker gets only the bindings we hand it (`globalOutbound: null` blocks everything else). |
+| Host calls | Must be async `fetch` calls to the runner (a service binding to an external server). **75 us per call** over loopback HTTP to a Node stub, 1.5 ms for 20 calls. Direct calls on QuickJS cost about 1.75 us each. Fine next to a real db or http call; noticeable for chatty logging. |
+| Request overhead | A keep-alive round trip through the loader for a tiny request: 138 us p50. |
+| Concurrency | **One process uses one core.** Throughput topped out at about 2.2k W3 requests/s with 4 or 8 clients while latency doubled, and the process sat at 99-115% CPU. CPU parallelism needs one process per core. A 20 ms request blocks every other function in that process while it runs. |
+| Runaway recovery | Detect (client deadline), SIGKILL, restart, reload one version, first good answer: **29 ms** after the kill. The loss is every in-flight request in that process and its loaded versions (they must be reloaded from the runner's desired state). |
+
+### Reading it
+
+Everything we feared is workable for first-party code: versions load dynamically, recovery is quick, the
+bridge is slow only relative to in-process calls. The structural costs are that a runner for it is a
+supervisor of several single-threaded processes (one per core at least), that a stuck function takes
+its process-mates with it, and that host calls become network calls. Memory per process and the
+runner-side supervisor design are the open items.
