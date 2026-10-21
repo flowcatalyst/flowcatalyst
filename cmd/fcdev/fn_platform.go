@@ -357,7 +357,7 @@ func (a *fnAPI) promote(ctx context.Context, fn *fnFunction, alias string, numbe
 // addFnPlatformCmds is the platform half of `fcdev fn`.
 func init() {
 	addFnPlatformCmds = func(cmd *cobra.Command) {
-		cmd.AddCommand(newFnPublishCmd(), newFnPromoteCmd(), newFnDeployCmd(), newFnSetCmd(), newFnInvokeCmd(), newFnStatusCmd(), newFnPruneCmd(), newFnDeleteCmd())
+		cmd.AddCommand(newFnPublishCmd(), newFnPromoteCmd(), newFnDeployCmd(), newFnSetCmd(), newFnInvokeCmd(), newFnStatusCmd(), newFnPruneCmd(), newFnDeleteCmd(), newFnTraceCmd())
 	}
 }
 

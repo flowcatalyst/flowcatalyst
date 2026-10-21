@@ -222,6 +222,30 @@ reading request and response bodies (and switching `http` on) needs `platform:fu
 without that last permission a viewer sees the records with the bodies hidden. Switching a context
 on or off is recorded in the audit log.
 
+**From the command line.** `fcdev fn trace` takes the same platform, profile and credential flags
+as the other `fn` commands.
+
+```sh
+fcdev fn trace on  billing.invoice-pdf orders --for 10m --sample 2   # live until 12:20:45 (10m)
+fcdev fn trace off billing.invoice-pdf orders
+fcdev fn trace status billing.invoice-pdf        # contexts, live or off, time left, sample
+fcdev fn trace log billing.invoice-pdf --reference T-1042 --since 30m
+fcdev fn trace log billing.invoice-pdf --context http --bodies -f
+fcdev fn trace run billing.invoice-pdf orders    # on, follow, and off again on Ctrl-C
+```
+
+`--for` takes a duration (`5m`, `1h`) and is rounded up to whole minutes; `--sample N` records one
+call in N. `log` prints the newest `--limit` records (default 100), oldest first, filtered by
+`--context`, `--kind`, `--level`, `--reference`, `--correlation`, `--invocation`, `--version`,
+`--since` and `--until` (a duration back from now, an RFC 3339 time or unix milliseconds). An `http`
+record is one line, `POST /orders -> 200 (12ms, ok)`; `--bodies` adds the request and response
+bodies (JSON is pretty-printed; base64 and truncation are noted, and bodies are hidden without
+`platform:function:trace:view-bodies`). `-f` keeps polling every 2 seconds and prints only new
+records until Ctrl-C; `--json` prints one raw JSON record per line. `run` shows only records from
+now on (unless `--since` says otherwise), stops when the window ends, and switches the context off
+on exit unless you pass `--keep`. A CI credential with only `platform:function-deployer` may not use
+trace logs.
+
 **Limits.** A message is at most 4096 bytes and `data` at most 32768 bytes (a record over the limit
 is dropped, never an error), and the platform keeps up to 200 records a second per function; the
 excess is counted as dropped. HTTP bodies are cut at 64 KiB, and `authorization`, `cookie`,
