@@ -86,6 +86,7 @@ func handleRequestFrame(frame []byte) []byte {
 		Version:  rm.Version,
 		Deadline: time.UnixMilli(rm.DeadlineUnixMs),
 	})
+	ctx = context.WithValue(ctx, ctxKeyTrace, &traceState{})
 	req = req.WithContext(ctx)
 
 	rec := httptest.NewRecorder()

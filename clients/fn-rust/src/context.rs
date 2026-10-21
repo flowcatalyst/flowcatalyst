@@ -3,6 +3,7 @@
 
 use crate::host::{host_call, op, HostError, HostOutcome};
 use crate::types::{Caller, Invocation};
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 /// A row from `db_query`. With `serde_json`'s `preserve_order` feature
@@ -131,11 +132,90 @@ pub struct Job {
     pub data_only: Option<bool>,
 }
 
+/// Severity of a trace record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TraceLevel {
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+impl TraceLevel {
+    fn as_str(self) -> &'static str {
+        match self {
+            TraceLevel::Debug => "debug",
+            TraceLevel::Info => "info",
+            TraceLevel::Warn => "warn",
+            TraceLevel::Error => "error",
+        }
+    }
+}
+
+/// Options for one `Context::trace` call.
+#[derive(Debug, Clone, Default)]
+pub struct TraceOpts {
+    /// Default info.
+    pub level: Option<TraceLevel>,
+    /// The business key for this record; overrides the invocation's
+    /// `set_reference` value for this call only.
+    pub reference: Option<String>,
+}
+
+impl TraceOpts {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn level(mut self, level: TraceLevel) -> Self {
+        self.level = Some(level);
+        self
+    }
+
+    pub fn reference(mut self, reference: &str) -> Self {
+        self.reference = Some(reference.to_string());
+        self
+    }
+}
+
+// Limits (internal/functions/abi: TraceMaxMessage, TraceMaxReference).
+const TRACE_MAX_MESSAGE: usize = 4096;
+const TRACE_MAX_REFERENCE: usize = 200;
+
+thread_local! {
+    /// Undeclared trace contexts already reported on this instance.
+    static WARNED_TRACE: RefCell<std::collections::BTreeSet<String>> =
+        const { RefCell::new(std::collections::BTreeSet::new()) };
+}
+
+/// Cuts `s` to at most `max` bytes without splitting a character.
+fn clip_utf8(s: &str, max: usize) -> &str {
+    if s.len() <= max {
+        return s;
+    }
+    let mut cut = max;
+    while !s.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    &s[..cut]
+}
+
+/// Cuts `s` to at most `max` characters.
+fn clip_chars(s: &str, max: usize) -> &str {
+    match s.char_indices().nth(max) {
+        Some((i, _)) => &s[..i],
+        None => s,
+    }
+}
+
 /// A request-scoped handle to the host and to the caller/invocation
 /// identity. Handlers receive `&Context` alongside `&Request`.
 pub struct Context {
     pub(crate) caller: Caller,
     pub(crate) invocation: Invocation,
+    /// The business key set with `set_reference`, stamped on later `trace`
+    /// calls of this invocation.
+    pub(crate) reference: RefCell<String>,
 }
 
 impl Context {
@@ -170,6 +250,116 @@ impl Context {
     }
     pub fn log_error(&self, msg: &str) {
         self.log("ERROR", msg, BTreeMap::new());
+    }
+
+    // --- op 12/13: trace / tracing ---------------------------------------
+    //
+    // Trace logs (docs/function-trace-design.md sections 2 and 9). Neither call
+    // can fail: a runner without the ops (UNKNOWN_OP), NOT_DECLARED, TOO_LARGE
+    // or any other host error is swallowed, so tracing never fails an
+    // invocation.
+
+    /// Records `msg` (and optional JSON-object `data`) under `context`. A
+    /// silent no-op unless an operator has switched the context on and this
+    /// invocation was sampled in; ask `tracing` first to skip expensive work.
+    /// The business key is `opts.reference`, else the invocation's
+    /// `set_reference` value. NOT_DECLARED writes one warning per context.
+    pub fn trace(
+        &self,
+        context: &str,
+        msg: &str,
+        data: Option<&serde_json::Map<String, serde_json::Value>>,
+        opts: TraceOpts,
+    ) {
+        #[derive(serde::Serialize)]
+        struct TraceMeta<'a> {
+            context: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            level: Option<&'static str>,
+            msg: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            data: Option<&'a serde_json::Map<String, serde_json::Value>>,
+            #[serde(skip_serializing_if = "str::is_empty")]
+            reference: &'a str,
+        }
+        let own;
+        let reference_cell;
+        let reference: &str = match opts.reference {
+            Some(r) => {
+                own = r;
+                &own
+            }
+            None => {
+                reference_cell = self.reference.borrow();
+                &reference_cell
+            }
+        };
+        let reference = clip_chars(reference, TRACE_MAX_REFERENCE);
+        let meta = TraceMeta {
+            context,
+            level: opts.level.map(TraceLevel::as_str),
+            msg: clip_utf8(msg, TRACE_MAX_MESSAGE),
+            data,
+            reference,
+        };
+        // Data that does not encode is dropped, never an error.
+        let Ok(mb) = serde_json::to_vec(&meta) else {
+            return;
+        };
+        if let Err(HostOutcome::Host(e)) = host_call(op::TRACE, &mb, &[]) {
+            if e.code == crate::host::error_code::NOT_DECLARED {
+                self.warn_not_declared(context);
+            }
+        }
+    }
+
+    /// True when `context` is switched on now and this invocation was sampled
+    /// in. The answer is not cached: it depends on the invocation. False on
+    /// any failure, including a runner that predates the op.
+    pub fn tracing(&self, context: &str) -> bool {
+        #[derive(serde::Serialize)]
+        struct TracingMeta<'a> {
+            context: &'a str,
+        }
+        #[derive(serde::Deserialize)]
+        struct TracingResult {
+            live: bool,
+        }
+        let Ok(mb) = serde_json::to_vec(&TracingMeta { context }) else {
+            return false;
+        };
+        match host_call(op::TRACING, &mb, &[]) {
+            Ok((rm, _)) => serde_json::from_slice::<TracingResult>(&rm).map(|r| r.live).unwrap_or(false),
+            Err(HostOutcome::Host(e)) => {
+                if e.code == crate::host::error_code::NOT_DECLARED {
+                    self.warn_not_declared(context);
+                }
+                false
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// Stamps later `trace` calls of this invocation with `reference` (the
+    /// author's business key: trip number, order number), unless a call passes
+    /// its own in `TraceOpts`.
+    pub fn set_reference(&self, reference: &str) {
+        *self.reference.borrow_mut() = reference.to_string();
+    }
+
+    /// Writes the NOT_DECLARED warning once per context; returns whether it
+    /// wrote. A `wasm32-unknown-unknown` guest has no stderr, so there the
+    /// warning goes out as a WARN log record instead.
+    fn warn_not_declared(&self, context: &str) -> bool {
+        let first = WARNED_TRACE.with(|w| w.borrow_mut().insert(context.to_string()));
+        if first {
+            let msg = format!("fn: trace context {context:?} is not declared; add it with App::trace_context (records for it are dropped)");
+            #[cfg(target_arch = "wasm32")]
+            self.log_warn(&msg);
+            #[cfg(not(target_arch = "wasm32"))]
+            eprintln!("{msg}");
+        }
+        first
     }
 
     // --- op 2/3: config.get / secret.get -------------------------------
@@ -470,13 +660,14 @@ fn db_query_meta(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::host::{op, set_fake_host, HostOutcome};
+    use crate::host::{op, set_fake_host, HostOutcome, HostResult};
     use crate::types::{Caller, Invocation};
 
     fn ctx() -> Context {
         Context {
             caller: Caller::default(),
             invocation: Invocation::default(),
+            reference: Default::default(),
         }
     }
 
@@ -777,5 +968,126 @@ mod tests {
         });
         ctx().log_info("hello");
         assert_eq!(crate::host::fake_host_calls().len(), 1);
+    }
+
+    // --- trace / tracing ------------------------------------------------
+
+    fn host_err(code: &str) -> HostResult {
+        Err(HostOutcome::Host(HostError {
+            code: code.to_string(),
+            message: "x".to_string(),
+        }))
+    }
+
+    fn last_trace_meta() -> serde_json::Value {
+        let calls = crate::host::fake_host_calls();
+        let (o, meta, _) = calls.last().expect("no host call made");
+        assert_eq!(*o, op::TRACE);
+        serde_json::from_slice(meta).unwrap()
+    }
+
+    #[test]
+    fn trace_sends_op12() {
+        set_fake_host(|_o, _m, _b| Ok((Vec::new(), Vec::new())));
+        let mut data = serde_json::Map::new();
+        data.insert("lines".into(), serde_json::json!(3));
+        ctx().trace(
+            "orders",
+            "resolved",
+            Some(&data),
+            TraceOpts::new().level(TraceLevel::Warn).reference("TRIP-1"),
+        );
+        assert_eq!(
+            last_trace_meta(),
+            serde_json::json!({"context": "orders", "level": "warn", "msg": "resolved", "data": {"lines": 3}, "reference": "TRIP-1"})
+        );
+    }
+
+    #[test]
+    fn trace_omits_unset_optional_fields() {
+        set_fake_host(|_o, _m, _b| Ok((Vec::new(), Vec::new())));
+        ctx().trace("orders", "hi", None, TraceOpts::new());
+        assert_eq!(last_trace_meta(), serde_json::json!({"context": "orders", "msg": "hi"}));
+    }
+
+    #[test]
+    fn set_reference_stamps_later_calls_and_a_calls_own_reference_wins() {
+        set_fake_host(|_o, _m, _b| Ok((Vec::new(), Vec::new())));
+        let c = ctx();
+        c.trace("orders", "before", None, TraceOpts::new());
+        c.set_reference("ORD-9");
+        c.trace("orders", "after", None, TraceOpts::new());
+        c.trace("orders", "override", None, TraceOpts::new().reference("ORD-10"));
+        let calls = crate::host::fake_host_calls();
+        let refs: Vec<serde_json::Value> = calls
+            .iter()
+            .map(|(_, m, _)| serde_json::from_slice::<serde_json::Value>(m).unwrap()["reference"].clone())
+            .collect();
+        assert_eq!(refs, vec![serde_json::Value::Null, "ORD-9".into(), "ORD-10".into()]);
+        // A fresh invocation starts with no reference.
+        ctx().trace("orders", "other invocation", None, TraceOpts::new());
+        assert!(last_trace_meta().get("reference").is_none());
+    }
+
+    #[test]
+    fn trace_cuts_an_over_long_message_and_reference() {
+        set_fake_host(|_o, _m, _b| Ok((Vec::new(), Vec::new())));
+        let msg = "é".repeat(3000);
+        let reference = "r".repeat(500);
+        ctx().trace("orders", &msg, None, TraceOpts::new().reference(&reference));
+        let m = last_trace_meta();
+        assert!(m["msg"].as_str().unwrap().len() <= TRACE_MAX_MESSAGE);
+        assert_eq!(m["reference"].as_str().unwrap().chars().count(), TRACE_MAX_REFERENCE);
+    }
+
+    #[test]
+    fn trace_never_fails_on_any_host_error() {
+        for code in ["UNKNOWN_OP", "TOO_LARGE", "BAD_REQUEST", "UNAVAILABLE", "NOT_DECLARED"] {
+            set_fake_host(move |_o, _m, _b| host_err(code));
+            ctx().trace("orders", "m", None, TraceOpts::new());
+            assert!(!ctx().tracing("orders"));
+        }
+        set_fake_host(|_o, _m, _b| Err(HostOutcome::Transport(crate::host::TransportError("bad frame".into()))));
+        ctx().trace("orders", "m", None, TraceOpts::new());
+        assert!(!ctx().tracing("orders"));
+    }
+
+    #[test]
+    fn not_declared_warns_once_per_context() {
+        assert!(ctx().warn_not_declared("only-here-1"));
+        assert!(!ctx().warn_not_declared("only-here-1"));
+        assert!(ctx().warn_not_declared("only-here-2"));
+    }
+
+    #[test]
+    fn tracing_sends_op13_and_returns_live() {
+        set_fake_host(|o, meta, _b| {
+            assert_eq!(o, op::TRACING);
+            let m: serde_json::Value = serde_json::from_slice(meta).unwrap();
+            assert_eq!(m["context"], "orders");
+            Ok((br#"{"live":true}"#.to_vec(), Vec::new()))
+        });
+        assert!(ctx().tracing("orders"));
+    }
+
+    #[test]
+    fn tracing_is_false_when_not_live_and_on_an_empty_result() {
+        set_fake_host(|_o, _m, _b| Ok((br#"{"live":false}"#.to_vec(), Vec::new())));
+        assert!(!ctx().tracing("orders"));
+        set_fake_host(|_o, _m, _b| Ok((Vec::new(), Vec::new())));
+        assert!(!ctx().tracing("orders"));
+    }
+
+    #[test]
+    fn tracing_is_never_cached() {
+        let live = std::rc::Rc::new(std::cell::Cell::new(false));
+        let l = live.clone();
+        set_fake_host(move |_o, _m, _b| Ok((format!(r#"{{"live":{}}}"#, l.get()).into_bytes(), Vec::new())));
+        let c = ctx();
+        assert!(!c.tracing("orders"));
+        live.set(true); // the next invocation was sampled in
+        assert!(c.tracing("orders"));
+        assert!(ctx().tracing("orders"));
+        assert_eq!(crate::host::fake_host_calls().len(), 3);
     }
 }

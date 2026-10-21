@@ -37,7 +37,7 @@ pub mod testing;
 mod types;
 
 pub use app::{App, DispatchOpts, Handler};
-pub use context::{CapabilityError, Context, Event, HttpRequest, HttpResponse, Job, Row};
+pub use context::{CapabilityError, Context, Event, HttpRequest, HttpResponse, Job, Row, TraceLevel, TraceOpts};
 pub use host::{error_code, HostError};
 pub use types::{Caller, Error, Invocation, Principal, Request, Response};
 

@@ -73,6 +73,7 @@ error types. Concretely:
 | Wiring | `Subscribe`, `Schedule` | `fn.subscribe`, `fn.schedule` | `subscribe`, `schedule` |
 | Needs | `Config`, `Secret`, `DB`, `HTTPAllow`, `Emits`, `Dispatches` | `fn.config`, `secret`, `db`, `httpAllow`, `emits`, `dispatches` | `config`, `secret`, `db`, `http_allow`, `emits`, `dispatches_with` |
 | Capabilities | `Emit`, `Dispatch`, `HTTPClient`, `Log`, `database/sql` driver `"fc"` | `fn.emit`, `fn.dispatch`, `fn.fetch`, `fn.log`, `console` | `Context::{config_get, secret_get, http_fetch, emit, dispatch, db_*, log*}` |
+| Trace logs (additive; SDKs unreleased) | `TraceContexts`, `Trace`, `Tracing`, `SetReference`, `WithLevel`, `WithReference` | `fn.traceContexts`, `req.trace`, `req.tracing`, `req.setReference` | `trace_context`, `Context::{trace, tracing, set_reference}` |
 | Outcomes | `Retry`, `Reject` | `fn.retry`, `fn.reject` | `Response` helpers |
 | Testing | `FakeHost`, `InvokeForTest`, `DescribeForTest` | `testing.ts` (`installFakeHost`; not exported from the index) | `testing.rs`, `FakeHost` |
 
@@ -227,6 +228,7 @@ version.
 | export `_initialize` | `() -> ()` | Optional wasip1 reactor init, called once before anything else |
 | import `fc.call` | `(op i32, ptr i32, len i32) -> i64` | Returns `code<<32 \| resultLen`; 0 = success |
 | import `fc.take` | `(dst i32) -> ()` | Copies the buffered result into guest memory at `dst`, then clears it |
+| host ops 12 `trace` and 13 `tracing` (through `fc.call`) | see section 2.4 | **Additive, IN FORCE**: the trace-log ops (`docs/function-trace-design.md`). A runner that predates them answers `UNKNOWN_OP`; the SDKs treat that as "not tracing" and never fail the call |
 | allowed import modules | `fc`, `wasi_snapshot_preview1` | Anything else: `LOAD:IMPORT_NOT_ALLOWED` |
 | WASI environment | no preopens, empty args and env, real clock, crypto random, stdout/stderr to the function log at INFO/WARN | |
 
@@ -269,6 +271,7 @@ predates it.
 | `httpAllow[]` | hosts | hostname or `*.suffix`; no IPs, no localhost |
 | `emits[]` | event types | four colon-separated segments |
 | `dispatches[]` | `{target, path, connection, pool?}` | `connection` required; one entry per (target, path) |
+| `traceContexts[]` | `{name, description?}` | **Additive, IN FORCE.** `name` matches `^[a-z][a-z0-9-]{0,39}$` and is not `http` (the built-in capture context); at most 20; unique; `description` at most 200 characters. Like every key, a platform or runner that predates it rejects the describe, so release platform and runner first, SDK second |
 
 **Adding a key is additive in meaning but not in transport.** The ordering rule that follows
 (IN FORCE as a rule, because it is forced by the strict parser): **platform and runner first, SDK
@@ -309,6 +312,8 @@ that predates them rejects the describe at publish as an unknown key", plan 5.4)
 | 9 | `db.commit` | `{tx}` | none |
 | 10 | `db.rollback` | `{tx}` | none |
 | 11 | `dispatch.create` | `{target, path, code, subject, metadata[{key,value}], messageGroup, mode, correlationId, causationId, contentType, descriptor, maxRetries, timeoutSeconds, dataOnly}` / payload | `{jobId}` |
+| 12 | `trace` | `{context, level?, msg, data?, reference?}`; `level` is `debug` \| `info` \| `warn` \| `error` (default `info`), `data` a JSON object | none. A silent no-op for a context that is not live. Errors: `NOT_DECLARED` (context neither in `traceContexts` nor `http`), `BAD_REQUEST` (malformed meta; `http` is not writable by functions), `TOO_LARGE` (`msg` over 4096 bytes, `data` over 32768 bytes; the SDKs cut `msg` to 4096 bytes and `reference` to 200 characters before sending) |
+| 13 | `tracing` | `{context}` | `{live}`: true iff the context is switched on for this function now and this invocation was sampled in. `NOT_DECLARED` as above |
 
 Wire conventions that are frozen with the ops: `db` byte params are base64 strings and
 `Date`/`time.Time` params are ISO-8601 (no per-parameter type tag exists); dispatch `metadata` is
@@ -326,7 +331,7 @@ adding a code is additive, but an SDK must map an unknown code to a non-retryabl
 
 **Today (IN FORCE):** a new op takes the next number (12, 13, ...). A runner that predates it answers
 `UNKNOWN_OP` at call time. That is a *runtime* discovery: a function that calls op 12 on an old
-runner fails on the first call, not at deploy. Op 11 was added this way.
+runner fails on the first call, not at deploy. Ops 11, 12 and 13 were added this way.
 
 **PROPOSED:** the `requires.ops` mechanism in 2.3. Rule: an SDK that exposes a new op must put it
 in `requires.ops` whenever the function declares or uses it (for op 11 that is exactly when

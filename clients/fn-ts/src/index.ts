@@ -19,6 +19,7 @@ import { httpAllow, fetchFn, FnResponse } from "./http";
 import { emit, emits } from "./event";
 import { dispatch, dispatches } from "./job";
 import { json, text, status, retry, reject } from "./respond";
+import { traceContexts } from "./trace";
 import { log, installConsole } from "./log";
 import { describeJSON } from "./describe";
 import { handleRequest } from "./dispatch";
@@ -33,6 +34,7 @@ export type { EventInput } from "./event";
 export type { DispatchInput, DispatchesOptions, MetadataEntry } from "./job";
 export type { FetchOptions } from "./http";
 export type { CORSConfig, EndpointOptions, SubOptions, SchedOptions, Auth } from "./registry";
+export type { TraceContext, TraceLevel, TraceOptions, Tracer } from "./trace";
 export type { Row, DBParam } from "./db";
 
 /** Installs globalThis.__fc = {describe, handle}. Exposed mainly for tests
@@ -69,6 +71,7 @@ export const fn = {
   httpAllow,
   emits,
   dispatches,
+  traceContexts,
 
   // Capabilities.
   emit,

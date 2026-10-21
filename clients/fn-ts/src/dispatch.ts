@@ -10,6 +10,7 @@ import { callerFromMeta } from "./caller";
 import { FnHeaders, FnQuery } from "./headers";
 import { callHost, utf8Decode, utf8Encode } from "./native";
 import { OpLog } from "./ops";
+import { newTracer } from "./trace";
 import type { FnRequest, FnResponseLike, Invocation } from "./types";
 
 interface RequestMeta {
@@ -68,6 +69,7 @@ function makeRequest(rm: RequestMeta, body: Uint8Array, params: Record<string, s
     deadline: new Date(rm.deadlineUnixMs ?? 0),
   };
   let cachedText: string | undefined;
+  const tracer = newTracer();
   const req: FnRequest = {
     id: rm.id ?? "",
     method: rm.method ?? "",
@@ -85,6 +87,9 @@ function makeRequest(rm: RequestMeta, body: Uint8Array, params: Record<string, s
     },
     caller,
     invocation,
+    trace: tracer.trace,
+    tracing: tracer.tracing,
+    setReference: tracer.setReference,
   };
   return req;
 }

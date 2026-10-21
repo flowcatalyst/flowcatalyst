@@ -11,6 +11,7 @@ type ctxKey int
 const (
 	ctxKeyCaller ctxKey = iota
 	ctxKeyInvocation
+	ctxKeyTrace
 )
 
 // Principal is a verified caller identity (plan §5.2: caller.kind ==

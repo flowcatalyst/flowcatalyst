@@ -94,6 +94,7 @@ pub struct App {
     pub(crate) http_allow: Vec<String>,
     pub(crate) emits: Vec<String>,
     pub(crate) dispatches: Vec<(String, String, DispatchOpts)>,
+    pub(crate) trace_contexts: Vec<(String, String)>,
 }
 
 impl App {
@@ -188,6 +189,40 @@ impl App {
         self
     }
 
+    /// Declares a trace context (describe key `traceContexts`): a named trace
+    /// point this function writes to with `Context::trace`, which an operator
+    /// can switch on for a limited time. `name` is a lowercase letter first,
+    /// then lowercase letters, digits or `-`, at most 40 characters, and not
+    /// `http` (the built-in capture context); `description` (at most 200
+    /// characters, may be empty) tells operators what it records. A bad
+    /// declaration panics at registration, so build, describe and deploy all
+    /// fail with the message.
+    pub fn trace_context(&mut self, name: &str, description: &str) -> &mut Self {
+        let at = format!("traceContexts[{}]", self.trace_contexts.len());
+        let valid_name = name.len() <= 40
+            && name.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+            && name
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+        if name == "http" {
+            panic!("fn: {at}: {name:?} is the built-in capture context and cannot be declared");
+        }
+        if !valid_name {
+            panic!("fn: {at}: {name:?} is not a valid context name (lowercase letter first, then lowercase letters, digits or -; at most 40 characters)");
+        }
+        if description.chars().count() > 200 {
+            panic!("fn: {at}: description is over 200 characters");
+        }
+        if self.trace_contexts.iter().any(|(n, _)| n == name) {
+            panic!("fn: {at}: {name:?} is declared twice");
+        }
+        if self.trace_contexts.len() >= 20 {
+            panic!("fn: traceContexts: at most 20 contexts");
+        }
+        self.trace_contexts.push((name.to_string(), description.to_string()));
+        self
+    }
+
     /// Matches `method`/`path` against every registered endpoint. Returns
     /// `RouteMatch::Found` on a full match, `MethodMismatch` if some
     /// endpoint's path matches but not its method (-> 405), or `NoMatch`
@@ -264,6 +299,20 @@ impl App {
                 .collect();
             doc.insert("dispatches".into(), serde_json::Value::Array(ds));
         }
+        if !self.trace_contexts.is_empty() {
+            let ts: Vec<_> = self
+                .trace_contexts
+                .iter()
+                .map(|(n, d)| {
+                    let mut e = serde_json::json!({"name": n});
+                    if !d.is_empty() {
+                        e["description"] = serde_json::json!(d);
+                    }
+                    e
+                })
+                .collect();
+            doc.insert("traceContexts".into(), serde_json::Value::Array(ts));
+        }
 
         serde_json::to_vec(&serde_json::Value::Object(doc)).expect("fn: describe: serialization is infallible for this shape")
     }
@@ -333,10 +382,61 @@ mod tests {
         app.open("GET /healthz", ok);
         let doc: serde_json::Value = serde_json::from_slice(&app.describe_json()).unwrap();
         let obj = doc.as_object().unwrap();
-        for key in ["subscriptions", "schedules", "config", "secrets", "db", "httpAllow", "emits", "dispatches"] {
+        for key in ["subscriptions", "schedules", "config", "secrets", "db", "httpAllow", "emits", "dispatches", "traceContexts"] {
             assert!(!obj.contains_key(key), "expected {key} to be omitted when empty");
         }
         assert!(obj.contains_key("endpoints"));
+    }
+
+    #[test]
+    fn describe_trace_contexts() {
+        let mut app = App::new();
+        app.open("GET /healthz", ok)
+            .trace_context("orders", "What the mapping decided.")
+            .trace_context("retry-3", "");
+        let doc: serde_json::Value = serde_json::from_slice(&app.describe_json()).unwrap();
+        assert_eq!(
+            doc["traceContexts"],
+            serde_json::json!([{"name": "orders", "description": "What the mapping decided."}, {"name": "retry-3"}])
+        );
+    }
+
+    fn panic_message(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
+        let err = std::panic::catch_unwind(f).unwrap_err();
+        match err.downcast::<String>() {
+            Ok(s) => *s,
+            Err(e) => e.downcast_ref::<&str>().map(|s| s.to_string()).unwrap_or_default(),
+        }
+    }
+
+    #[test]
+    fn trace_context_rejects_bad_declarations() {
+        let long_name = "a".repeat(41);
+        let long_desc = "d".repeat(201);
+        for (name, desc, want) in [
+            ("http", "", "built-in capture context"),
+            ("Orders", "", "not a valid context name"),
+            ("1x", "", "not a valid context name"),
+            ("", "", "not a valid context name"),
+            (long_name.as_str(), "", "not a valid context name"),
+            ("ok", long_desc.as_str(), "description is over 200"),
+        ] {
+            let msg = panic_message(|| {
+                App::new().trace_context(name, desc);
+            });
+            assert!(msg.contains(want), "{name:?}: panic = {msg:?}, want {want:?}");
+        }
+        let msg = panic_message(|| {
+            App::new().trace_context("dup", "").trace_context("dup", "");
+        });
+        assert!(msg.contains("declared twice"), "{msg}");
+        let msg = panic_message(|| {
+            let mut app = App::new();
+            for i in 0..21 {
+                app.trace_context(&format!("c{i}"), "");
+            }
+        });
+        assert!(msg.contains("at most 20"), "{msg}");
     }
 
     #[test]

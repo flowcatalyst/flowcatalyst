@@ -107,6 +107,7 @@ pub(crate) fn handle_frame(app: &App, frame: &[u8]) -> Vec<u8> {
             version: rm.version,
             deadline_unix_ms: rm.deadline_unix_ms,
         },
+        reference: Default::default(),
     };
 
     match (ep.handler)(&req, &ctx) {

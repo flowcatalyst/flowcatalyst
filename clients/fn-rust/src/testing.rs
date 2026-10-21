@@ -206,6 +206,7 @@ mod tests {
         let ctx = crate::Context {
             caller: Default::default(),
             invocation: Default::default(),
+            reference: Default::default(),
         };
         assert_eq!(ctx.secret_get("K").unwrap().as_deref(), Some("v"));
         assert!(ctx.config_get("K").unwrap_err().is_retryable());

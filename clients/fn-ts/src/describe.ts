@@ -14,6 +14,7 @@ export interface DescribeDoc {
   httpAllow?: string[];
   emits?: string[];
   dispatches?: { target: string; path: string; pool?: string; connection: string }[];
+  traceContexts?: { name: string; description?: string }[];
 }
 
 export function buildDescribeDoc(): DescribeDoc {
@@ -62,6 +63,7 @@ export function buildDescribeDoc(): DescribeDoc {
       if (d.pool) dj.pool = d.pool;
       return dj;
     });
+  if (registry.traceContexts.length > 0) doc.traceContexts = registry.traceContexts.map((c) => ({ ...c }));
   return doc;
 }
 

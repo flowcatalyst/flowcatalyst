@@ -166,6 +166,72 @@ subscription without a mode keeps each message group in order and moves on
 past a failure (`NEXT_ON_ERROR`), like every other subscription; ask for
 `IMMEDIATE` if you do not need ordering.
 
+## Trace logs
+
+When something goes wrong in production you want to see what the function decided, without
+paying to log everything all the time. Trace logs are opt-in and time-boxed: the function
+writes to named **contexts**, and nothing is stored unless an operator switches a context on,
+for a limited time. The rest of the time a trace call is a cheap no-op.
+
+A **context** is a name (lowercase letter first, then lowercase letters, digits or `-`, at most
+40 characters, at most 20 per function) that you declare in code, with an optional description
+of up to 200 characters that operators see next to the switch. `http` is built in and needs no
+declaration: while it is on, every call to the function also records its request, response,
+timing and outcome, together with everything the call printed or logged. A function cannot
+write to `http` itself.
+
+```ts
+import { fn } from "@flowcatalyst/fn";
+
+fn.traceContexts({ name: "orders", description: "What the order mapping decided, line by line." });
+
+fn.webhook("POST /events/order-created", (req) => {
+  const order = req.json() as { tripNumber: string; lines: unknown[] };
+  req.setReference(order.tripNumber); // the business key; stamps every later record of this call
+
+  req.trace("orders", "mapping order", { lines: order.lines.length });
+  if (req.tracing("orders")) {
+    // only build an expensive payload when someone is looking
+    req.trace("orders", "full order", { order }, { level: "debug" });
+  }
+  return fn.status(202);
+});
+```
+
+| | Go | Rust |
+|---|---|---|
+| Declare | `fn.TraceContexts(fn.TraceContext{Name: "orders", Description: "..."})` | `app.trace_context("orders", "...")` |
+| Record | `fn.Trace(ctx, "orders", "mapping order", map[string]any{"lines": n}, fn.WithLevel(fn.TraceWarn), fn.WithReference(trip))` | `ctx.trace("orders", "mapping order", Some(&data), TraceOpts::new().level(TraceLevel::Warn).reference(trip))` |
+| Ask | `fn.Tracing(ctx, "orders")` | `ctx.tracing("orders")` |
+| Business key | `fn.SetReference(ctx, trip)` | `ctx.set_reference(trip)` |
+
+`level` is `debug`, `info` (the default), `warn` or `error`. `data` is an optional JSON object. A
+`reference` is your business key (a trip or order number, at most 200 characters); a call's own
+reference wins over the one set with `setReference`. Tracing never fails a call: trace and tracing
+calls never throw or return an error, whatever happens. If the context is off, was not sampled in,
+is not declared (one warning per context is written to the function log) or the runner is an older
+one that does not know trace logs, the call does nothing and `tracing` answers false. Ask `tracing`
+before building anything expensive: its answer depends on the invocation, so do not remember it.
+
+**Turning a context on.** Open the function's *Diagnostics* page, or run `fcdev fn trace on
+<address> <context> --for 5m`. An operator picks how long (at most 60 minutes for your own
+contexts, 15 for `http`, whose bodies can be sensitive) and may sample, recording one call in N. The
+switch takes effect within about a second and turns itself off when the time is up. Switching
+contexts needs `platform:function:trace:manage`, reading records needs `platform:function:trace:view`, and
+reading request and response bodies (and switching `http` on) needs `platform:function:trace:view-bodies`;
+without that last permission a viewer sees the records with the bodies hidden. Switching a context
+on or off is recorded in the audit log.
+
+**Limits.** A message is at most 4096 bytes and `data` at most 32768 bytes (a record over the limit
+is dropped, never an error), and the platform keeps up to 200 records a second per function; the
+excess is counted as dropped. HTTP bodies are cut at 64 KiB, and `authorization`, `cookie`,
+`set-cookie` and any header whose name contains `secret`, `token` or `password` are redacted.
+
+**What is stored, and for how long.** Each record has the time, function version, invocation id,
+correlation id (the request's `X-Correlation-Id`), reference, context, kind (`trace`, `http` or
+`log`), level, message and data. Records are kept for 30 days and then deleted. Records are shipped
+by the runner in the background, so they survive whatever happens to the call itself.
+
 ## What a function can reach
 
 | Capability | Notes |

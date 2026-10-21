@@ -80,6 +80,12 @@ system does not have.
   names the dispatch pool; declared only, resolved by the platform on every call) and `Dispatch`
   (`fn.Job{Target, Path, Payload, Metadata, …}` → job id), wrapping host op 11; same error classes
   as `Emit`; not idempotent (see `docs/function-runner-plan.md` §8.7).
+- `trace.go` — trace logs (host ops 12/13): `TraceContexts` declares named contexts (describe key
+  `traceContexts`; a bad declaration panics at registration), `Trace(ctx, "orders", msg, data, fn.WithLevel(..),
+  fn.WithReference(..))` records, `Tracing(ctx, "orders")` says whether the context is live for this invocation,
+  `SetReference(ctx, ref)` stamps the invocation's later records. A no-op unless an operator switches the
+  context on for a limited time; none of these can fail (an older runner's `UNKNOWN_OP`, `NOT_DECLARED` — one
+  stderr warning per context — and `TOO_LARGE` are swallowed). See `docs/published/60-functions.md`.
 - `event.go` — `Emit`, wrapping host op 5; `errors.Is(err, ErrRetryable)`
   distinguishes platform trouble (`UNAVAILABLE`) from a permanent refusal.
 - `db.go` — a `database/sql` driver registered as `"fc"` over host ops

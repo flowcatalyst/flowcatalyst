@@ -138,14 +138,18 @@ Errors use the platform's standard problem shape.
 
 ## 9. SDKs
 
+The three SDKs expose the same operations; where the handler's first argument lives differs by language.
+
 | SDK | API |
 |---|---|
-| TypeScript (`@flowcatalyst/fn`) | `ctx.trace(context, message, data?, { level?, reference? })`, `ctx.tracing(context): boolean`, `ctx.setReference(ref)` (stamps later calls of the invocation). Definition option `traceContexts: [{ name, description }]`. |
-| Go (`fn`) | `ctx.Trace(context, msg string, data map[string]any, opts ...TraceOption)`, `ctx.Tracing(context) bool`, `fn.WithReference(r)`, `fn.WithLevel(l)`, `ctx.SetReference(r)`. Describe: `TraceContexts`. |
-| Rust (`flowcatalyst-fn`) | `ctx.trace(context, msg, data, opts)`, `ctx.tracing(context) -> bool`, `ctx.set_reference(r)`. Describe: `trace_contexts`. |
+| TypeScript (`@flowcatalyst/fn`) | `req.trace(context, message, data?, { level?, reference? })`, `req.tracing(context): boolean`, `req.setReference(ref)` (stamps later calls of the invocation). Declaration: `fn.traceContexts({ name: "description" })`. |
+| Go (`fn`) | `fn.Trace(ctx, context, msg, data, opts ...TraceOption)`, `fn.Tracing(ctx, context) bool`, `fn.SetReference(ctx, ref)`, `fn.WithReference(r)`, `fn.WithLevel(l)`. Declaration: `fn.TraceContexts(fn.TraceContext{...})`. |
+| Rust (`flowcatalyst-fn`) | `ctx.trace(context, msg, data, TraceOpts)`, `ctx.tracing(context) -> bool`, `ctx.set_reference(r)`. Declaration: `app.trace_context(name, description)`. |
 
-None of these can fail or throw: a runner without the ops, `NOT_DECLARED` or any host error is swallowed
-(`NOT_DECLARED` is written once per context to stderr as a warning).
+Declarations validate what `abi.Describe.Validate` checks and fail at registration (build and describe), like `dispatches`.
+None of the calls can fail or throw: a runner without the ops, `NOT_DECLARED` or any host error is swallowed
+(`NOT_DECLARED` is written once per context to stderr as a warning; on `wasm32-unknown-unknown`, which has no stderr, as a WARN log record).
+`msg` is cut to 4096 bytes and `reference` to 200 characters client-side; `data` is left to the host's `TOO_LARGE`.
 
 ## 10. UI and CLI
 

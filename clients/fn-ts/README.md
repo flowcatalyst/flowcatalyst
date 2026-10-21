@@ -55,7 +55,7 @@ system does not have.
 
 - `src/errors.ts` — `FnError` (code, message, retryable) and `isRetryable`,
   the error-code vocabulary shared across every host op (plan §5.3).
-- `src/ops.ts` — the ten host capability op numbers.
+- `src/ops.ts` — the host capability op numbers.
 - `src/native.ts` — the seam to the engine's natives: `callHost` wraps
   `globalThis.__fc_call`, `utf8Encode`/`utf8Decode` wrap
   `globalThis.__fc_utf8_encode`/`__fc_utf8_decode` (falling back to
@@ -81,6 +81,12 @@ system does not have.
   `httpAllow`/`emits`).
 - `src/respond.ts` — `json`/`text`/`status`/`retry`/`reject` response
   builders.
+- `src/trace.ts` — trace logs (host ops 12/13): `fn.traceContexts({ name, description? })` declares named
+  contexts (describe key `traceContexts`; a bad declaration throws at registration), and each request carries
+  `req.trace(context, message, data?, { level?, reference? })`, `req.tracing(context)` and
+  `req.setReference(ref)`. A no-op unless an operator switches the context on for a limited time; none of
+  these can throw (an older runner's `UNKNOWN_OP`, `NOT_DECLARED` — one warning per context — and `TOO_LARGE`
+  are swallowed, and `tracing` answers false). See `docs/published/60-functions.md`.
 - `src/describe.ts` — builds the `fc_describe` JSON document (plan §5.4)
   from the registry; never touches a host import.
 - `src/dispatch.ts` — turns a request frame (meta JSON string + body bytes)
@@ -106,7 +112,7 @@ npm test          # node --test over src/**/*.test.ts, via tsx
 npm run typecheck # tsc --noEmit
 ```
 
-68 tests across 6 files, run against a settable fake `__fc_call` on plain
+92 tests across 7 files, run against a settable fake `__fc_call` on plain
 Node — no QuickJS runtime needed: routing (precedence, 404, 405+Allow,
 HEAD-falls-back-to-GET), the describe-JSON golden shape, request parsing
 (params/query/headers/body/caller), every response shape (json/text/status/

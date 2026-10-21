@@ -2,6 +2,7 @@
 // registry.ts (Handler) and dispatch.ts (the frame <-> FnRequest/response
 // translation) without either importing the other.
 import type { Caller } from "./caller";
+import type { Tracer } from "./trace";
 import type { FnHeaders, FnQuery } from "./headers";
 
 export interface Invocation {
@@ -11,7 +12,7 @@ export interface Invocation {
   readonly deadline: Date;
 }
 
-export interface FnRequest {
+export interface FnRequest extends Tracer {
   readonly id: string;
   readonly method: string;
   readonly path: string;

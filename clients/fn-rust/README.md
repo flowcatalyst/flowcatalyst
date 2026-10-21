@@ -170,6 +170,17 @@ whether or not a given build uses all of it.
   and keeps `export!`'s per-call `App` rebuild cheap and alloc-free for the
   registration step itself.
 
+## Trace logs
+
+`App::trace_context("orders", "what it records")` declares a named trace context (describe key
+`traceContexts`; a bad declaration panics at registration). `Context::trace("orders", msg, Some(&data),
+TraceOpts::new().level(TraceLevel::Warn).reference(trip))` (host op 12) records, `Context::tracing("orders")`
+(op 13) says whether the context is live for this invocation, and `Context::set_reference(trip)` stamps the
+invocation's later records. A no-op unless an operator switches the context on for a limited time; none of
+these can fail: an older runner's `UNKNOWN_OP`, `NOT_DECLARED` (one warning per context; on
+`wasm32-unknown-unknown` there is no stderr, so it goes out as a WARN log record) and `TOO_LARGE` are
+swallowed. See `docs/published/60-functions.md`.
+
 ## Dispatching a job
 
 `App::dispatches_with("app.logger", "/deliver", DispatchOpts::new("yard-conn"))` declares a target

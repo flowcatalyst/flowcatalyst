@@ -57,6 +57,7 @@ type registry struct {
 	httpAllow  []string
 	emits      []string
 	dispatches []dispatchJSON
+	traceCtxs  []TraceContext
 }
 
 func newRegistry() *registry {
