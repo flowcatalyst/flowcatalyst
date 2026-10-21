@@ -654,7 +654,7 @@ its group.
 ## Function-runner control plane: runtimes and capabilities
 
 The runner-facing routes under `/control/functions/` (`desired`, `heartbeat`,
-`artifacts/{digest}`, `events`, `dispatch-jobs`) are the Go v1 control
+`artifacts/{digest}`, `events`, `dispatch-jobs`, `trace-log`) are the Go v1 control
 protocol. Additions for runners of runtimes beyond the built-in `wasm` and
 `js` (all additive; a runner that predates them keeps working unchanged):
 
@@ -674,6 +674,13 @@ protocol. Additions for runners of runtimes beyond the built-in `wasm` and
   of the function's pool advertises (heartbeat within 60s) is refused
   `409 POOL_LACKS_RUNTIME`. For the built-in runtimes the guard applies only
   once the pool has at least one live runner.
+- `POST /control/functions/trace-log` — a runner ships trace records
+  (`{runnerId, pool, records[]}`; `docs/function-trace-design.md` section 5):
+  `202 {accepted, dropped}`. At most 500 records and 1 MiB per batch, per
+  function 200 records/second, a record is taken only while its
+  `(function, context)` window is live (plus 10 s). Unknown fields are accepted
+  at every depth (a newer runner may add them). The desired document's
+  function entry carries `trace` (the live windows).
 - Delivery URLs for subscriptions, scheduled jobs and function dispatch use
   `FC_FUNCTIONS_RUNNER_URL_<RT>` when set for the version's runtime (see
   `docs/environment-variables.md`).

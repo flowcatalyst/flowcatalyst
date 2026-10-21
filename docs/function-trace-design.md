@@ -1,6 +1,6 @@
 # Function trace logs: design (2026-10-21)
 
-Status: owner-approved plan (2026-10-21), contract types committed, build in progress. Modelled on the
+Status: BUILT and verified end to end on 2026-10-21 (isolated fcdev: TypeScript function, runner, platform, CLI and the admin UI in a browser). Modelled on the
 Integral platform's *process logs* (`inhance/InhanceMono/packages_root/packages/integral-service-v2/docs/process-log-design.md`):
 opt-in, named, time-boxed capture that is a cheap no-op the rest of the time. Functions are first-party
 code (`docs/function-stability-contract.md` section 0.1).
@@ -167,3 +167,18 @@ None of the calls can fail or throw: a runner without the ops, `NOT_DECLARED` or
 | D UI and CLI | Diagnostics section, `fcdev fn trace` | A's API and generated types |
 
 Hand-offs after: Java runner and Rust platform notes (additive contract), and the framework-level process log module for applications.
+
+## 12. As built: differences from this design, and follow-ups
+
+Differences (accepted):
+- Record `at` in the platform's read API is RFC 3339 UTC (the runner ships unix ms). `DELETE /trace/{context}` is 204. `bodiesRedacted` is present only when bodies are withheld.
+- SDK surface: TypeScript `req.trace` (handlers receive `req`), Go `fn.Trace(ctx, ...)`, Rust `ctx.trace`; contexts declared with `fn.traceContexts(...)`, `fn.TraceContexts(...)`, `app.trace_context(...)` (section 9).
+- The runner queue is bounded by bytes as well as count (`FC_FN_TRACE_QUEUE_BYTES`, 32 MiB), because a record can carry two 64 KiB bodies. A record over the platform's data cap has its bodies halved until it fits.
+- The ingest body is accepted with unknown fields at every depth (`httpcompat.RelaxRequestBodiesDeep`); the runner drops a batch the platform refuses.
+- `platform:function-deployer` (the CI role) holds none of the trace permissions.
+
+Follow-ups noticed in the end-to-end run, not done:
+- `log` records written before a function's first `trace` call carry no `reference` (the runner only learns it from `trace` calls); stamp them when the invocation ends.
+- `durationMs` is whole milliseconds, so fast calls read 0; consider microsecond precision.
+- A guest-made 500 (an uncaught exception answered as `FUNCTION_PANIC`) has outcome `ok`; the status and level show the error.
+- The log table is cramped in the narrow drawer.
