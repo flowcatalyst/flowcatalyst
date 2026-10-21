@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -970,4 +971,40 @@ func BenchmarkInvokeTrace(b *testing.B) {
 	b.Run("http-live", func(b *testing.B) {
 		run(b, control.TraceState{Context: "http", EnabledUntilMs: time.Now().Add(time.Hour).UnixMilli(), SampleRate: 1})
 	})
+}
+
+// A queue that is within its record count but over its byte budget drops the
+// oldest records: two big bodies per record would otherwise let 5000 records
+// hold hundreds of megabytes.
+func TestTraceQueueIsBoundedInBytes(t *testing.T) {
+	tr := newTestTracer(&fakeTraceSink{}, 5000, 65536)
+	tr.maxBytes = minTraceQueueBytes // 1 MiB
+	big := control.TraceRecord{Kind: control.TraceKindHTTP, Data: json.RawMessage(strings.Repeat("x", 60000))}
+	for i := 0; i < 100; i++ {
+		r := big
+		r.Message = fmt.Sprintf("m%d", i)
+		tr.add(r)
+	}
+	// each record is about 60.5 KB, so about 17 fit in 1 MiB
+	if n := tr.queued(); n < 10 || n > 20 {
+		t.Fatalf("queued %d records under a 1 MiB budget", n)
+	}
+	if tr.bytes > tr.maxBytes {
+		t.Fatalf("queued bytes %d over the budget %d", tr.bytes, tr.maxBytes)
+	}
+	if d := counterVal(tr.m.traceDropped); d != float64(100-tr.queued()) {
+		t.Fatalf("dropped %v, queued %d", d, tr.queued())
+	}
+	// the newest are the ones kept, in order
+	first := tr.take()
+	if len(first) == 0 || first[len(first)-1].Message != "m99" && tr.queued() == 0 {
+		t.Fatalf("newest record lost: %+v", first[len(first)-1].Message)
+	}
+	// draining returns the accounting to zero
+	for tr.queued() > 0 {
+		tr.take()
+	}
+	if tr.bytes != 0 {
+		t.Fatalf("bytes after draining = %d", tr.bytes)
+	}
 }

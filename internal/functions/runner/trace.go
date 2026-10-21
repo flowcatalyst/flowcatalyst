@@ -28,12 +28,16 @@ import (
 const (
 	defaultTraceQueue     = 5000
 	defaultTraceBodyBytes = 65536
-	traceFlushEvery       = 2 * time.Second
-	traceBatchAt          = 200 // queued records that trigger a flush before the tick
-	traceShipTimeout      = 10 * time.Second
-	traceBackoffBase      = time.Second
-	traceBackoffMax       = 30 * time.Second
-	traceCloseGrace       = 3 * time.Second
+	// defaultTraceQueueBytes bounds the memory of the queued records (a record
+	// can carry two 64 KiB bodies, so a count alone would allow ~300 MB).
+	defaultTraceQueueBytes = 32 << 20
+	minTraceQueueBytes     = 1 << 20
+	traceFlushEvery        = 2 * time.Second
+	traceBatchAt           = 200 // queued records that trigger a flush before the tick
+	traceShipTimeout       = 10 * time.Second
+	traceBackoffBase       = time.Second
+	traceBackoffMax        = 30 * time.Second
+	traceCloseGrace        = 3 * time.Second
 	// maxInvocationLogRecords bounds the log records one invocation can queue,
 	// so a chatty guest cannot push every other record out of the queue.
 	maxInvocationLogRecords = 500
@@ -379,10 +383,12 @@ type tracer struct {
 	backoffMax  time.Duration
 	closeGrace  time.Duration
 
-	mu   sync.Mutex
-	buf  []control.TraceRecord // ring
-	head int
-	n    int
+	mu       sync.Mutex
+	buf      []control.TraceRecord // ring
+	head     int
+	n        int
+	bytes    int // estimated size of the queued records
+	maxBytes int
 
 	wake      chan struct{}
 	stop      chan struct{}
@@ -396,21 +402,37 @@ func newTracer(ship TraceShipper, m *metrics, log *slog.Logger, runnerID, pool s
 		ship: ship, m: m, log: log, runnerID: runnerID, pool: pool, now: now,
 		bodyBytes: bodyBytes, flushEvery: traceFlushEvery, batchAt: traceBatchAt,
 		backoffBase: traceBackoffBase, backoffMax: traceBackoffMax, closeGrace: traceCloseGrace,
-		buf:  make([]control.TraceRecord, queue),
+		buf: make([]control.TraceRecord, queue), maxBytes: defaultTraceQueueBytes,
 		wake: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{}),
 	}
 }
 
-// add queues a record. It never blocks: a full queue drops its oldest record.
+// recordSize estimates a record's size in the queue and on the wire (JSON
+// escaping can inflate a message).
+func recordSize(rec control.TraceRecord) int {
+	return 512 + len(rec.Data) + 2*len(rec.Message) + len(rec.Reference) + len(rec.CorrelationID)
+}
+
+// dropOldest removes the oldest queued record and counts it dropped. The lock is held.
+func (t *tracer) dropOldest() {
+	t.bytes -= recordSize(t.buf[t.head])
+	t.buf[t.head] = control.TraceRecord{}
+	t.head = (t.head + 1) % len(t.buf)
+	t.n--
+	t.m.traceDropped.Inc()
+}
+
+// add queues a record. It never blocks: a full queue (by count or by bytes)
+// drops its oldest records.
 func (t *tracer) add(rec control.TraceRecord) {
+	size := recordSize(rec)
 	t.mu.Lock()
-	if t.n == len(t.buf) {
-		t.head = (t.head + 1) % len(t.buf)
-		t.n--
-		t.m.traceDropped.Inc()
+	for t.n > 0 && (t.n == len(t.buf) || t.bytes+size > t.maxBytes) {
+		t.dropOldest()
 	}
 	t.buf[(t.head+t.n)%len(t.buf)] = rec
 	t.n++
+	t.bytes += size
 	full := t.n >= t.batchAt
 	t.mu.Unlock()
 	t.m.traceRecords.WithLabelValues(rec.Kind).Inc()
@@ -432,11 +454,12 @@ func (t *tracer) take() []control.TraceRecord {
 	size := 0
 	for t.n > 0 && len(out) < control.MaxTraceBatchRecords {
 		rec := t.buf[t.head]
-		est := 512 + len(rec.Data) + 2*len(rec.Message) + len(rec.Reference) + len(rec.CorrelationID)
+		est := recordSize(rec)
 		if len(out) > 0 && size+est > control.MaxTraceBatchBytes/2 {
 			break
 		}
 		size += est
+		t.bytes -= est
 		t.buf[t.head] = control.TraceRecord{}
 		t.head = (t.head + 1) % len(t.buf)
 		t.n--

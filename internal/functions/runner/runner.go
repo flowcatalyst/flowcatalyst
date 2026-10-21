@@ -65,7 +65,9 @@ type Config struct {
 	TraceQueue int
 	// TraceBodyBytes cuts captured request/response bodies (0 = FC_FN_TRACE_BODY_BYTES, default 65536).
 	TraceBodyBytes int
-	Logger         *slog.Logger
+	// TraceQueueBytes bounds the memory of the queued trace records (0 = FC_FN_TRACE_QUEUE_BYTES, default 32 MiB, at least 1 MiB).
+	TraceQueueBytes int
+	Logger          *slog.Logger
 }
 
 // Runner serves one pool's functions.
@@ -166,7 +168,12 @@ func New(ctx context.Context, cfg Config) (*Runner, error) {
 		if bodyBytes <= 0 {
 			bodyBytes = envutil.Int("FC_FN_TRACE_BODY_BYTES", defaultTraceBodyBytes)
 		}
+		queueBytes := cfg.TraceQueueBytes
+		if queueBytes == 0 {
+			queueBytes = envutil.Int("FC_FN_TRACE_QUEUE_BYTES", defaultTraceQueueBytes)
+		}
 		r.tracer = newTracer(ship, r.metrics, log, r.id, cfg.Pool, max(queue, 1), max(bodyBytes, 0), func() time.Time { return r.now() })
+		r.tracer.maxBytes = max(queueBytes, minTraceQueueBytes)
 	}
 	r.jwks = &jwksVerifier{fallback: cfg.IssuerFallback}
 	r.tokens = r.jwks
