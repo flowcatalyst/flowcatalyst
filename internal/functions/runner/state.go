@@ -18,6 +18,7 @@ type function struct {
 	id       string
 	address  string
 	settings atomic.Pointer[control.Function]
+	trace    atomic.Pointer[traceWindows]  // live-until windows from desired state; nil = none
 	permits  atomic.Pointer[chan struct{}] // capacity = maxConcurrency; replaced to resize
 	versions map[int]*version
 	live     int            // version number the platform wants live

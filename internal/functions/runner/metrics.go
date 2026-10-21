@@ -15,6 +15,10 @@ type metrics struct {
 	reg         *prometheus.Registry
 	invocations *prometheus.CounterVec
 	duration    *prometheus.HistogramVec
+
+	traceRecords       *prometheus.CounterVec
+	traceDropped       prometheus.Counter
+	traceFlushFailures prometheus.Counter
 }
 
 func newMetrics() *metrics {
@@ -30,7 +34,19 @@ func newMetrics() *metrics {
 			Buckets: []float64{.0005, .001, .0025, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 30},
 		}, []string{"address", "version"}),
 	}
-	m.reg.MustRegister(m.invocations, m.duration)
+	m.traceRecords = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "fc_fn_trace_records_total",
+		Help: "Trace records queued for shipping, by kind (trace, http, log).",
+	}, []string{"kind"})
+	m.traceDropped = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "fc_fn_trace_dropped_total",
+		Help: "Trace records dropped before reaching the platform (queue overflow, per-invocation cap, refused or unshippable batches).",
+	})
+	m.traceFlushFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "fc_fn_trace_flush_failures_total",
+		Help: "Trace batches the platform did not accept.",
+	})
+	m.reg.MustRegister(m.invocations, m.duration, m.traceRecords, m.traceDropped, m.traceFlushFailures)
 	return m
 }
 

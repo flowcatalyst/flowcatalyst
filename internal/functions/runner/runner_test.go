@@ -36,6 +36,7 @@ type fakeCP struct {
 	dispatches []control.DispatchRequest
 	// dispatchErr, when set, is what Dispatch answers instead of a job id.
 	dispatchErr *abi.Error
+	traces      fakeTraceSink
 }
 
 func newFakeCP() *fakeCP {
@@ -140,12 +141,13 @@ const describeDoc = `{"abi":1,"endpoints":[
  {"path":"/spin","auth":"none","timeoutMs":150},
  {"path":"/grow","auth":"none"},
  {"path":"/trap","auth":"none"},
+ {"path":"/malformed","auth":"none"},
  {"path":"/call","auth":"none"},
  {"method":"GET","path":"/cors","auth":"none","cors":{"origins":["https://app.acme.com"]}},
  {"method":"POST","path":"/small","auth":"none","maxBodyBytes":4},
  {"method":"POST","path":"/huge","auth":"none","maxBodyBytes":9000000000000},
  {"method":"POST","path":"/secure-post","auth":"platform"}
-],"config":["GREETING"],"secrets":["KEY"],"emits":["app:dom:agg:done"],"httpAllow":["example.com"],"dispatches":[{"target":"app.logger","path":"/deliver","connection":"logger-conn"}]}`
+],"config":["GREETING"],"secrets":["KEY"],"emits":["app:dom:agg:done"],"httpAllow":["example.com"],"dispatches":[{"target":"app.logger","path":"/deliver","connection":"logger-conn"}],"traceContexts":[{"name":"orders","description":"order mapping"}]}`
 
 // The fixture routes by path, so /hook and /secure need fixture paths too:
 // they fall through to its 404, which is still a guest answer (not a runner

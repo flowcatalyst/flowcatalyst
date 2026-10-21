@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"io"
 	"sync"
 	"time"
 
@@ -21,26 +22,48 @@ const (
 // shared by concurrent calls: get hands one out exclusively and put takes it
 // back (or closes it).
 type pool struct {
-	mod    *engine.Module
-	cfg    engine.InstanceConfig
-	warm   bool // keep at least one idle instance ready
+	mod  *engine.Module
+	cfg  engine.InstanceConfig
+	warm bool // keep at least one idle instance ready
+	// stdio builds an instance's stdout/stderr writers around its sink.
+	stdio  func(*invSink) (stdout, stderr io.Writer)
 	mu     sync.Mutex
 	idle   []idleInstance
 	closed bool
 }
 
+// pooledInstance is an instance with the sink its writers consult to learn
+// which invocation is running on it.
+type pooledInstance struct {
+	*engine.Instance
+	sink *invSink
+}
+
 type idleInstance struct {
-	inst  *engine.Instance
+	inst  *pooledInstance
 	since time.Time
 }
 
-func newPool(mod *engine.Module, cfg engine.InstanceConfig, warm bool) *pool {
-	return &pool{mod: mod, cfg: cfg, warm: warm}
+func newPool(mod *engine.Module, cfg engine.InstanceConfig, warm bool, stdio func(*invSink) (io.Writer, io.Writer)) *pool {
+	return &pool{mod: mod, cfg: cfg, warm: warm, stdio: stdio}
+}
+
+func (p *pool) create(ctx context.Context) (*pooledInstance, error) {
+	sink := &invSink{}
+	cfg := p.cfg
+	if p.stdio != nil {
+		cfg.Stdout, cfg.Stderr = p.stdio(sink)
+	}
+	inst, err := p.mod.Instantiate(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &pooledInstance{Instance: inst, sink: sink}, nil
 }
 
 // get returns an idle instance, or creates one. engine.ErrNoMemory means the
 // budget cannot cover a new instance right now.
-func (p *pool) get(ctx context.Context) (*engine.Instance, error) {
+func (p *pool) get(ctx context.Context) (*pooledInstance, error) {
 	p.mu.Lock()
 	if n := len(p.idle); n > 0 {
 		inst := p.idle[n-1].inst
@@ -49,12 +72,12 @@ func (p *pool) get(ctx context.Context) (*engine.Instance, error) {
 		return inst, nil
 	}
 	p.mu.Unlock()
-	return p.mod.Instantiate(ctx, p.cfg)
+	return p.create(ctx)
 }
 
 // put returns an instance after a call. A broken, worn-out or over-grown
 // instance is closed instead of kept.
-func (p *pool) put(inst *engine.Instance) {
+func (p *pool) put(inst *pooledInstance) {
 	if inst.Broken() || inst.Calls() >= recycleAfterCalls || uint64(inst.MemoryBytes()) > p.cfg.MemoryCapBytes/2 {
 		_ = inst.Close(context.Background())
 		return
@@ -77,7 +100,7 @@ func (p *pool) prewarm(ctx context.Context) error {
 	if have {
 		return nil
 	}
-	inst, err := p.mod.Instantiate(ctx, p.cfg)
+	inst, err := p.create(ctx)
 	if err != nil {
 		return err
 	}
@@ -89,7 +112,7 @@ func (p *pool) prewarm(ctx context.Context) error {
 func (p *pool) trim(now time.Time) {
 	p.mu.Lock()
 	keep := p.idle[:0]
-	var drop []*engine.Instance
+	var drop []*pooledInstance
 	for i, it := range p.idle {
 		retain := now.Sub(it.since) < idleInstanceTTL || (p.warm && i == len(p.idle)-1 && len(keep) == 0)
 		if retain {

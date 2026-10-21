@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/budget"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
@@ -60,7 +61,11 @@ type Config struct {
 	TrustedProxies []netip.Prefix
 	// Tokens overrides platform-token verification (tests).
 	Tokens TokenVerifier
-	Logger *slog.Logger
+	// TraceQueue bounds the queued trace records (0 = FC_FN_TRACE_QUEUE, default 5000).
+	TraceQueue int
+	// TraceBodyBytes cuts captured request/response bodies (0 = FC_FN_TRACE_BODY_BYTES, default 65536).
+	TraceBodyBytes int
+	Logger         *slog.Logger
 }
 
 // Runner serves one pool's functions.
@@ -79,6 +84,8 @@ type Runner struct {
 	log        *slog.Logger
 	id         string
 	started    time.Time
+	tracer     *tracer          // nil when the control plane cannot take trace batches
+	now        func() time.Time // the clock trace windows are compared against
 
 	mu        sync.RWMutex
 	functions map[string]*function // by address
@@ -149,6 +156,18 @@ func New(ctx context.Context, cfg Config) (*Runner, error) {
 		loadRetry:  cfg.LoadRetry.withDefaults(),
 		wake:       make(chan struct{}, 1),
 	}
+	r.now = time.Now
+	if ship, ok := cfg.ControlPlane.(TraceShipper); ok {
+		queue := cfg.TraceQueue
+		if queue <= 0 {
+			queue = envutil.Int("FC_FN_TRACE_QUEUE", defaultTraceQueue)
+		}
+		bodyBytes := cfg.TraceBodyBytes
+		if bodyBytes <= 0 {
+			bodyBytes = envutil.Int("FC_FN_TRACE_BODY_BYTES", defaultTraceBodyBytes)
+		}
+		r.tracer = newTracer(ship, r.metrics, log, r.id, cfg.Pool, max(queue, 1), max(bodyBytes, 0), func() time.Time { return r.now() })
+	}
 	r.jwks = &jwksVerifier{fallback: cfg.IssuerFallback}
 	r.tokens = r.jwks
 	if cfg.Tokens != nil {
@@ -174,12 +193,14 @@ func (r *Runner) Drain() {
 
 // Run reconciles until ctx ends, then unloads everything.
 func (r *Runner) Run(ctx context.Context) error {
+	r.tracer.start()
 	var wg sync.WaitGroup
 	wg.Go(func() { r.reconcileLoop(ctx) })
 	wg.Go(func() { r.heartbeatLoop(ctx) })
 	wg.Go(func() { r.maintenanceLoop(ctx) })
 	wg.Wait()
 	r.shutdown()
+	r.tracer.close() // after the calls drained, so their records are in the queue
 	return nil
 }
 
@@ -266,6 +287,7 @@ func (r *Runner) apply(ctx context.Context, d *control.Desired) {
 		}
 		fn.setConcurrency(limitsOf(&df).MaxConcurrency)
 		fn.settings.Store(&df)
+		fn.trace.Store(newTraceWindows(fn.trace.Load(), df.Trace))
 
 		want := map[int]bool{}
 		fn.live = 0
@@ -622,11 +644,11 @@ func (r *Runner) compile(ctx context.Context, v *version, warm bool) (*runtimes.
 		return nil, nil, err
 	}
 	lim := limitsOf(v.fn.snapshot())
-	pl := newPool(p.Module, p.InstanceConfig(engine.InstanceConfig{
-		MemoryCapBytes: uint64(lim.MemoryMB) << 20,
-		Stdout:         &guestWriter{log: r.log, fn: v.fn.address, ver: v.number, level: slog.LevelInfo},
-		Stderr:         &guestWriter{log: r.log, fn: v.fn.address, ver: v.number, level: slog.LevelWarn},
-	}), warm)
+	stdio := func(s *invSink) (io.Writer, io.Writer) {
+		return &guestWriter{log: r.log, fn: v.fn.address, ver: v.number, level: slog.LevelInfo, sink: s},
+			&guestWriter{log: r.log, fn: v.fn.address, ver: v.number, level: slog.LevelWarn, sink: s}
+	}
+	pl := newPool(p.Module, p.InstanceConfig(engine.InstanceConfig{MemoryCapBytes: uint64(lim.MemoryMB) << 20}), warm, stdio)
 	return p, pl, nil
 }
 
@@ -785,11 +807,29 @@ type guestWriter struct {
 	fn    string
 	ver   int
 	level slog.Level
+	sink  *invSink // the invocation running on the instance, for trace capture
 }
 
 func (g *guestWriter) Write(p []byte) (int, error) {
 	g.log.Log(context.Background(), g.level, string(trimNewline(p)), "fn.address", g.fn, "fn.version", g.ver, "stream", "guest")
+	if g.sink != nil {
+		if tr := g.sink.cur.Load(); tr != nil {
+			tr.guestOutput(levelName(g.level), p)
+		}
+	}
 	return len(p), nil
+}
+
+func levelName(l slog.Level) string {
+	switch {
+	case l >= slog.LevelError:
+		return "error"
+	case l >= slog.LevelWarn:
+		return "warn"
+	case l >= slog.LevelInfo:
+		return "info"
+	}
+	return "debug"
 }
 
 func trimNewline(p []byte) []byte {

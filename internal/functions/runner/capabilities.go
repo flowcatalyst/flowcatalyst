@@ -38,6 +38,8 @@ type capabilities struct {
 	http        *http.Client
 	database    DBProvider
 	tx          txSet
+	// trace is the invocation's trace state; nil when no context is live for it.
+	trace *invTrace
 }
 
 // Emitter sends an event on a function's behalf (the control plane).
@@ -64,6 +66,10 @@ func (c *capabilities) Call(ctx context.Context, op abi.Op, meta, body []byte) (
 		return c.emit(ctx, meta, body)
 	case abi.OpDispatch:
 		return c.dispatch(ctx, meta, body)
+	case abi.OpTrace:
+		return c.traceOp(meta)
+	case abi.OpTracing:
+		return c.tracingOp(meta)
 	case abi.OpDBQuery, abi.OpDBExec, abi.OpDBBegin, abi.OpDBCommit, abi.OpDBRollback:
 		return c.dbCall(ctx, op, meta)
 	}
@@ -103,6 +109,7 @@ func (c *capabilities) logCall(ctx context.Context, meta []byte) ([]byte, []byte
 		attrs = append(attrs, "guest."+k, v)
 	}
 	c.log.Log(ctx, level, l.Msg, attrs...)
+	c.trace.logRecord(levelName(level), l.Msg, l.Attrs)
 	return nil, nil, nil
 }
 

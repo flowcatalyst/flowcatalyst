@@ -241,6 +241,17 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 		}
 	}
 
+	invID := tsid.GenerateUntyped()
+	correlation := strings.TrimSpace(req.Header.Get("X-Correlation-Id"))
+	tr := r.traceBegin(fn, ver, invID, correlation)
+	if tr != nil && tr.httpLive {
+		// Capture the answer whatever it is (including the refusals below that
+		// follow the function being resolved); the outcome is final when this runs.
+		cw := &captureWriter{ResponseWriter: w, limit: r.tracer.bodyBytes}
+		w = cw
+		defer func() { tr.captureHTTP(req, path, body, caller, cw, outcome, start) }()
+	}
+
 	release, ok := fn.tryAcquire()
 	if !ok {
 		outcome = "busy"
@@ -298,7 +309,6 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 		}
 	}()
 
-	invID := tsid.GenerateUntyped()
 	headers := req.Header.Clone()
 	if ep.Auth == abi.AuthPlatform || t.version > 0 {
 		// The caller is proven; never hand the guest a credential it could
@@ -336,9 +346,13 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 		return
 	}
 
-	caps := &capabilities{fn: fn, ver: ver, invID: invID, log: r.guestLogger(fn, ver), emitter: r.cp, dispatcher: r.cp, correlation: strings.TrimSpace(req.Header.Get("X-Correlation-Id")), http: r.httpClient, database: r.db}
+	caps := &capabilities{fn: fn, ver: ver, invID: invID, log: r.guestLogger(fn, ver), emitter: r.cp, dispatcher: r.cp, correlation: correlation, http: r.httpClient, database: r.db, trace: tr}
 	out, herr := func() ([]byte, error) {
 		defer caps.tx.rollbackAll()
+		if tr != nil {
+			inst.sink.cur.Store(tr)
+			defer inst.sink.cur.Store(nil)
+		}
 		return inst.Handle(ctx, frame, caps)
 	}()
 	returned = true
