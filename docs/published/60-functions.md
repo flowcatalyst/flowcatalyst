@@ -6,7 +6,12 @@ publish it, and promote a version to `live`. The platform then wires it up:
 subscriptions deliver events to it, schedules fire it, and callers invoke it
 over HTTP — with no server of yours to run.
 
-Functions run in the **function runner**, a sandbox built on WebAssembly. A
+Functions are **first-party code**: written and published by the people who operate
+this platform to provide services to their customers. Customers do not write or run
+functions of their own, and nothing in the platform or the SDKs is built to let them.
+
+Functions run in the **function runner**, a sandbox built on WebAssembly (it isolates
+faults and limits what each function can reach; it is not hardened against hostile code). A
 function reaches nothing except what it declares: its config and secret keys,
 its databases, the hosts it may call, and the event types it may emit. The
 runner holds every credential; the function never sees one.

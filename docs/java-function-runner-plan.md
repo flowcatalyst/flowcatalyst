@@ -50,7 +50,7 @@ this repo's control protocol**, not "adapt the Java host in place".
 | Runtime packaging | jlink runtime image bundled in a per-OS/arch tarball. JRE-on-PATH is rejected for the installable artifact. No GraalVM native (cannot load jars at runtime). |
 | Install | `fcdev runner install java` (top-level `runner` noun, not under `fn`). |
 | Where it lives | `runners/jvm/` and `clients/fn-java/` in **this repo**, so the contract, conformance suite, fcdev and both runners change in one PR. |
-| Trust | JVM functions are first-party only; separate pools; a distinct publish permission. Client-supplied code stays on Wasm/JS. |
+| Trust | JVM functions are first-party only; separate pools; a distinct publish permission. Client-supplied code is not run on the platform at all (owner ruling 2026-10-21: functions are first-party only; customers never run their own code). |
 | wasmtime | Mechanism designed generically (§5.1); not in scope now. |
 
 ---

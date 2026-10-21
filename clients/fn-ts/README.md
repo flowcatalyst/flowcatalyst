@@ -38,6 +38,19 @@ fn.webhook(
 fn.emits("hello:greeting:greeting:sent");
 ```
 
+## Trust model
+
+**Trust model (owner ruling 2026-10-21).** Functions are first-party code. Everything a
+function runs is written, reviewed and published by the people who operate this platform, in
+order to provide services to their customers. Customers never publish or run their own code on
+FlowCatalyst, there are no plans for them to, and nothing here may be built, documented, exposed
+or configured to allow it. The sandbox (WebAssembly, capability declarations, limits, deadlines)
+exists for fault isolation, least privilege and fair sharing between our own functions. It is not
+designed, hardened or tested to contain a hostile author. Treat any idea of letting a customer or
+other third party run code here as a new product that needs a new owner decision first: it would
+need real hardening (VM-level isolation, per-tenant pools, CPU and memory quotas), which this
+system does not have.
+
 ## Package layout
 
 - `src/errors.ts` — `FnError` (code, message, retryable) and `isRetryable`,

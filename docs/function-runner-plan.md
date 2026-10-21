@@ -863,8 +863,10 @@ Sized for one agent each. Every package names its tests and runs a mutation chec
 
 ## 14. Non-goals
 
-- Running untrusted third-party code as a multi-tenant public service. The sandbox is strong, but
-  CPU fairness is by permits and deadlines, not per-function CPU quotas.
+- Running code written by customers or any third party, as a multi-tenant public service or in any
+  other form. *Owner ruling 2026-10-21:* functions are first-party only, now and for the foreseeable
+  future; the sandbox is for fault isolation and least privilege, CPU fairness is by permits and
+  deadlines (not per-function CPU quotas), and none of it is hardened against a hostile author.
 - The WebAssembly component model / WASI preview 2. wazero does not implement it; our ABI is
   small enough to version ourselves.
 - A JVM runtime, or compatibility with any other function-service artifact format.

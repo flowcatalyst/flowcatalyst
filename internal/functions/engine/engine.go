@@ -3,6 +3,11 @@
 // module every guest calls capabilities through, the load-time module check,
 // and instances whose linear memory is charged to the runner's budget.
 //
+// Trust model (owner ruling 2026-10-21): every function is first-party code, written and
+// published by the platform's operators; customers never run their own code. The sandbox
+// isolates faults and limits reach, and is not hardened against a hostile author. Do not
+// extend the engine to run third-party code without a new owner decision.
+//
 // The engine knows nothing about HTTP, routing or auth: an Instance takes a
 // request frame and returns a response frame, and host calls are delegated to
 // the Host the caller passes in.
