@@ -1,6 +1,6 @@
 {
   "name": "@flowcatalyst/fn",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "FlowCatalyst guest SDK for JavaScript/TypeScript functions, running on the function runner's shared QuickJS engine (docs/function-runner-plan.md \u00a72.2/\u00a79).",
   "license": "Apache-2.0",
   "type": "module",
