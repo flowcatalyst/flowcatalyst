@@ -288,6 +288,12 @@ type EnvCfg struct {
 	// or unparseable = function.DefaultKeepVersions, 20).
 	FunctionsKeepVersions int
 
+	// FunctionsTrace holds the function trace-log settings
+	// (FC_FUNCTIONS_TRACE_MAX_MINUTES, FC_FUNCTIONS_TRACE_HTTP_MAX_MINUTES,
+	// FC_FUNCTIONS_TRACE_RETENTION_DAYS; non-positive or unparseable = the
+	// function.DefaultTrace* defaults, 60 / 15 / 30).
+	FunctionsTrace function.TraceLimits
+
 	// DispatchJobMaxWindowDays is the widest created_at window a dispatch-job
 	// list-shaped read (list, list-raw, filter-options, the requeue-by-filter
 	// preview and run) may cover (FC_DISPATCH_JOB_MAX_WINDOW_DAYS; non-positive
@@ -464,6 +470,11 @@ func LoadEnv() EnvCfg {
 		FunctionsArtifactStore: envOr("FC_FUNCTIONS_ARTIFACT_STORE", ""),
 		FunctionsRunnerURL:     envOr("FC_FUNCTIONS_RUNNER_URL", "http://127.0.0.1:8095"),
 		FunctionsKeepVersions:  positiveOr(envInt("FC_FUNCTIONS_KEEP_VERSIONS", 0), function.DefaultKeepVersions),
+		FunctionsTrace: function.TraceLimits{
+			MaxMinutes:     positiveOr(envInt("FC_FUNCTIONS_TRACE_MAX_MINUTES", 0), function.DefaultTraceMaxMinutes),
+			HTTPMaxMinutes: positiveOr(envInt("FC_FUNCTIONS_TRACE_HTTP_MAX_MINUTES", 0), function.DefaultTraceHTTPMaxMinutes),
+			RetentionDays:  positiveOr(envInt("FC_FUNCTIONS_TRACE_RETENTION_DAYS", 0), function.DefaultTraceRetentionDays),
+		},
 
 		FunctionsRunnerURLByRuntime: loadRunnerURLsByRuntime(os.Environ()),
 

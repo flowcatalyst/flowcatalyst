@@ -147,6 +147,15 @@ var javaRustFunctionEventTypes = map[string]bool{
 	"platform:function:domain:released":   true,
 }
 
+// goFunctionFamilyEventTypes are platform:function:* codes Go emits that Java
+// and Rust do not (yet): trace contexts (docs/function-trace-design.md), the
+// owner-approved codes platform:function:trace:{enabled,disabled}. They stay in
+// the shared family; a Java/Rust mirror would use the same codes.
+var goFunctionFamilyEventTypes = map[string]bool{
+	"platform:function:trace:enabled":  true,
+	"platform:function:trace:disabled": true,
+}
+
 // goOnlyFunctionEventTypes are the function event types Go emits that Java
 // and Rust have no counterpart for, so they keep their platform:admin:function*
 // codes, source and data (docs/platform-bug-fixes.md F11, owner ruling
@@ -196,7 +205,7 @@ func TestFunctionEventTypesFollowJavaAndRust(t *testing.T) {
 	for _, code := range codes {
 		switch {
 		case strings.HasPrefix(code, "platform:function:"):
-			if !javaRustFunctionEventTypes[code] {
+			if !javaRustFunctionEventTypes[code] && !goFunctionFamilyEventTypes[code] {
 				t.Errorf("%s (%s) is in the platform:function family but Java and Rust do not emit it", code, emitted[code])
 			}
 		case strings.HasPrefix(code, "platform:admin:function"):

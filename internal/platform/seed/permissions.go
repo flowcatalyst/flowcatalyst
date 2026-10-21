@@ -172,6 +172,11 @@ const (
 	// heartbeat, artifact download, event emit. Held only by
 	// platform:function-runner, never by a human role.
 	permFunctionRunnerControl = "platform:function:runner:control"
+	// permFunctionTrace* gate function trace logs
+	// (docs/function-trace-design.md section 1).
+	permFunctionTraceManage     = "platform:function:trace:manage"
+	permFunctionTraceView       = "platform:function:trace:view"
+	permFunctionTraceViewBodies = "platform:function:trace:view-bodies"
 )
 
 // IAM context — users, roles, access control.

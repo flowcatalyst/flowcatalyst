@@ -104,10 +104,26 @@ type State struct {
 	// back to ReRenderInterval-only polling for the wait duration.
 	Listener *Listener
 
+	// traceLimits is the per-function trace ingest rate limiter (created on
+	// first use; see traceLimiter).
+	traceLimits     *traceRateLimiter
+	traceLimitsOnce sync.Once
+
 	// ReRenderInterval overrides defaultReRenderInterval (tests).
 	ReRenderInterval time.Duration
 	// ArtifactPresignTTL overrides defaultArtifactPresignTTL.
 	ArtifactPresignTTL time.Duration
+}
+
+// traceLimiter is the trace ingest rate limiter, created on first use so a
+// State built as a literal (tests) needs no constructor.
+func (s *State) traceLimiter() *traceRateLimiter {
+	s.traceLimitsOnce.Do(func() {
+		if s.traceLimits == nil {
+			s.traceLimits = newTraceRateLimiter()
+		}
+	})
+	return s.traceLimits
 }
 
 func (s *State) reRenderInterval() time.Duration {
@@ -139,4 +155,5 @@ func Register(api huma.API, s *State) {
 		"Emit an event on a function's behalf (function-runner role only)", 201, s.emit)
 	apiroute.Post(g, "postFunctionRunnerDispatchJob", fncontrol.PathDispatchJobs,
 		"Create a dispatch job on a function's behalf (function-runner role only)", 201, s.dispatch)
+	registerTraceLog(api, s)
 }

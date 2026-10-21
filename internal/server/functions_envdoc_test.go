@@ -33,6 +33,9 @@ func TestFunctionsEnvVarsDocumented(t *testing.T) {
 	// Variables read elsewhere (envcfg.go) are documented too.
 	read["FC_FUNCTIONS_ARTIFACT_STORE"], read["FC_FUNCTIONS_RUNNER_URL"] = true, true
 	read["FC_FUNCTIONS_KEEP_VERSIONS"] = true
+	read["FC_FUNCTIONS_TRACE_MAX_MINUTES"] = true
+	read["FC_FUNCTIONS_TRACE_HTTP_MAX_MINUTES"] = true
+	read["FC_FUNCTIONS_TRACE_RETENTION_DAYS"] = true
 	for name := range documented {
 		if !read[name] {
 			t.Errorf("%s is documented but not read by the code", name)

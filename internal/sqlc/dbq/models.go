@@ -163,6 +163,32 @@ type FngSetting struct {
 	UpdatedAt  time.Time `db:"updated_at"`
 }
 
+type FngTraceContext struct {
+	FunctionID   string     `db:"function_id"`
+	Context      string     `db:"context"`
+	EnabledUntil *time.Time `db:"enabled_until"`
+	SampleRate   int32      `db:"sample_rate"`
+	EnabledBy    *string    `db:"enabled_by"`
+	UpdatedAt    time.Time  `db:"updated_at"`
+}
+
+type FngTraceLog struct {
+	ID            string          `db:"id"`
+	FunctionID    string          `db:"function_id"`
+	Version       int32           `db:"version"`
+	InvocationID  string          `db:"invocation_id"`
+	CorrelationID *string         `db:"correlation_id"`
+	Reference     *string         `db:"reference"`
+	Context       string          `db:"context"`
+	Kind          string          `db:"kind"`
+	Level         string          `db:"level"`
+	Message       string          `db:"message"`
+	Data          json.RawMessage `db:"data"`
+	At            time.Time       `db:"at"`
+	RunnerID      *string         `db:"runner_id"`
+	CreatedAt     time.Time       `db:"created_at"`
+}
+
 type FngVersion struct {
 	ID                 string          `db:"id"`
 	FunctionID         string          `db:"function_id"`
@@ -538,6 +564,7 @@ type MsgDispatchJobsRead struct {
 	ProjectedAt      *time.Time      `db:"projected_at"`
 	Descriptor       *string         `db:"descriptor"`
 	Metadata         json.RawMessage `db:"metadata"`
+	ConnectionID     *string         `db:"connection_id"`
 }
 
 type MsgDispatchPool struct {

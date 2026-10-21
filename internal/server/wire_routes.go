@@ -356,6 +356,8 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Domains:   repos.functionDomainRepo,
 			// FC_FUNCTIONS_KEEP_VERSIONS.
 			KeepVersions: cfg.FunctionsKeepVersions,
+			// FC_FUNCTIONS_TRACE_*.
+			Trace: cfg.FunctionsTrace,
 		})
 
 		// Public routes: domain claims (docs/function-runner-plan.md §8).

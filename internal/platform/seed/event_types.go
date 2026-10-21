@@ -131,6 +131,7 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	groupAs("platform:function:config", "Function Config", "updated")
 	groupAs("platform:function:secret", "Function Secret", "set", "deleted")
 	groupAs("platform:function:domain", "Function Domain", "claimed", "released")
+	groupAs("platform:function:trace", "Function Trace", "enabled", "disabled")
 	group("platform:admin:function", "promoted")
 	group("platform:admin:function-setting", "set", "deleted")
 	group("platform:admin:function-route", "set", "deleted")

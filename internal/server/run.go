@@ -27,6 +27,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/oauthtoken"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
 	routerapi "github.com/flowcatalyst/flowcatalyst-go/internal/router/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/stream"
@@ -216,6 +217,15 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 		// status IN (QUEUED, PROCESSING), so concurrent instances are safe.
 		go dispatchjob.RunReaper(ctx, dispatchjob.NewRepository(pool),
 			dispatchjob.DefaultReaperInterval, dispatchjob.DefaultProcessingLiveAfter)
+
+		// Function trace-log retention backstop (docs/function-trace-design.md
+		// section 1, decision 8): a daily sweep of records past
+		// FC_FUNCTIONS_TRACE_RETENTION_DAYS across all functions. Not
+		// leader-gated: it is a bounded DELETE of rows that are past
+		// retention, idempotent under concurrent replicas (the same posture
+		// as the reaper above).
+		go function.RunTraceRetention(ctx, function.NewRepository(pool), cfg.FunctionsTrace,
+			function.DefaultTracePruneDelay, function.DefaultTracePruneInterval)
 
 		// Function control plane's NOTIFY fng_desired fan-out
 		// (docs/function-runner-plan.md §8.3). Not leader-gated: every

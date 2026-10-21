@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
@@ -95,6 +96,10 @@ func (s *State) buildFunction(ctx context.Context, fn *function.Function, runtim
 	if err != nil {
 		return fncontrol.Function{}, false, err
 	}
+	trace, err := s.traceStates(ctx, fn.ID)
+	if err != nil {
+		return fncontrol.Function{}, false, err
+	}
 
 	return fncontrol.Function{
 		ID:            fn.ID,
@@ -107,8 +112,32 @@ func (s *State) buildFunction(ctx context.Context, fn *function.Function, runtim
 		Config:        settings.Config,
 		Secrets:       settings.Secrets,
 		DB:            settings.DB,
+		Trace:         trace,
 		Versions:      versions,
 	}, len(all) > 0, nil
+}
+
+// traceStates is the function's trace windows that are live now
+// (docs/function-trace-design.md section 4). A window that has expired simply
+// leaves the document at its next render, so a toggle or an expiry changes
+// the ETag; the runner also checks the clock on every use.
+func (s *State) traceStates(ctx context.Context, functionID string) ([]fncontrol.TraceState, error) {
+	rows, err := s.Repo.ListLiveTraceContexts(ctx, functionID, time.Now())
+	if err != nil {
+		return nil, usecase.Internal("REPO", "list_live_trace_contexts failed", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	out := make([]fncontrol.TraceState, 0, len(rows))
+	for _, c := range rows {
+		out = append(out, fncontrol.TraceState{
+			Context:        c.Context,
+			EnabledUntilMs: c.EnabledUntil.UnixMilli(),
+			SampleRate:     int(c.SampleRate),
+		})
+	}
+	return out, nil
 }
 
 // webhookSecretFor is the secret a runner verifies fn's `auth: webhook`

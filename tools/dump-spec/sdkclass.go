@@ -105,7 +105,7 @@ var internalOps = idSet(
 	// Function runner control plane: machine-to-machine from the function
 	// runner to the platform, not console and not application surface.
 	"getFunctionRunnerArtifact", "getFunctionRunnerDesired", "postFunctionRunnerDispatchJob",
-	"postFunctionRunnerEvent", "postFunctionRunnerHeartbeat",
+	"postFunctionRunnerEvent", "postFunctionRunnerHeartbeat", "postFunctionRunnerTraceLog",
 
 	// Passkey browser ceremonies (session-bound; the credential list/delete
 	// operations stay admin).

@@ -264,6 +264,31 @@ func TestLoadEnv_FunctionsKeepVersions(t *testing.T) {
 	}
 }
 
+// The function trace-log settings fall back to 60 / 15 / 30 when unset,
+// non-positive or unparseable.
+func TestLoadEnv_FunctionsTrace(t *testing.T) {
+	for _, k := range []string{"FC_FUNCTIONS_TRACE_MAX_MINUTES", "FC_FUNCTIONS_TRACE_HTTP_MAX_MINUTES", "FC_FUNCTIONS_TRACE_RETENTION_DAYS"} {
+		t.Setenv(k, "")
+	}
+	if c := LoadEnv(); c.FunctionsTrace.MaxMinutes != 60 || c.FunctionsTrace.HTTPMaxMinutes != 15 || c.FunctionsTrace.RetentionDays != 30 {
+		t.Errorf("defaults = %+v, want 60/15/30", c.FunctionsTrace)
+	}
+	t.Setenv("FC_FUNCTIONS_TRACE_MAX_MINUTES", "120")
+	t.Setenv("FC_FUNCTIONS_TRACE_HTTP_MAX_MINUTES", "5")
+	t.Setenv("FC_FUNCTIONS_TRACE_RETENTION_DAYS", "7")
+	if c := LoadEnv(); c.FunctionsTrace.MaxMinutes != 120 || c.FunctionsTrace.HTTPMaxMinutes != 5 || c.FunctionsTrace.RetentionDays != 7 {
+		t.Errorf("set = %+v, want 120/5/7", c.FunctionsTrace)
+	}
+	for _, bad := range []string{"0", "-3", "many"} {
+		t.Setenv("FC_FUNCTIONS_TRACE_MAX_MINUTES", bad)
+		t.Setenv("FC_FUNCTIONS_TRACE_HTTP_MAX_MINUTES", bad)
+		t.Setenv("FC_FUNCTIONS_TRACE_RETENTION_DAYS", bad)
+		if c := LoadEnv(); c.FunctionsTrace.MaxMinutes != 60 || c.FunctionsTrace.HTTPMaxMinutes != 15 || c.FunctionsTrace.RetentionDays != 30 {
+			t.Errorf("%q = %+v, want the defaults", bad, c.FunctionsTrace)
+		}
+	}
+}
+
 // FC_DISPATCH_JOB_MAX_WINDOW_DAYS bounds the created_at window a dispatch-job
 // list-shaped read may cover; non-positive or unparseable values fall back to
 // the default (31).

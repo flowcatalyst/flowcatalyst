@@ -28,6 +28,10 @@ const (
 	ConfigUpdatedType    = "platform:function:config:updated"
 	SecretSetType        = "platform:function:secret:set"
 	SecretDeletedType    = "platform:function:secret:deleted"
+	// Trace contexts (docs/function-trace-design.md section 1): Go-originated,
+	// in the shared family because the function API is one resource tree.
+	TraceEnabledType  = "platform:function:trace:enabled"
+	TraceDisabledType = "platform:function:trace:disabled"
 	// Source is the envelope source of the events shared with Java and Rust.
 	Source = "platform:function"
 
@@ -632,4 +636,64 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// TraceEnabled is emitted when a trace context is switched on:
+// {functionId, address, context, enabledUntil, sampleRate}.
+type TraceEnabled struct {
+	Metadata     usecase.EventMetadata
+	FunctionID   string
+	Address      string
+	Context      string
+	EnabledUntil time.Time
+	SampleRate   int
+}
+
+func (e TraceEnabled) EventID() string       { return e.Metadata.EventID }
+func (e TraceEnabled) EventType() string     { return TraceEnabledType }
+func (e TraceEnabled) SpecVersion() string   { return "1.0" }
+func (e TraceEnabled) Source() string        { return Source }
+func (e TraceEnabled) Subject() string       { return subjectFor(e.FunctionID) }
+func (e TraceEnabled) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e TraceEnabled) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e TraceEnabled) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e TraceEnabled) CausationID() string   { return e.Metadata.CausationID }
+func (e TraceEnabled) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e TraceEnabled) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e TraceEnabled) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		FunctionID   string    `json:"functionId"`
+		Address      string    `json:"address"`
+		Context      string    `json:"context"`
+		EnabledUntil time.Time `json:"enabledUntil"`
+		SampleRate   int       `json:"sampleRate"`
+	}{e.FunctionID, e.Address, e.Context, e.EnabledUntil.UTC(), e.SampleRate})
+}
+
+// TraceDisabled is emitted when a trace context is switched off:
+// {functionId, address, context}.
+type TraceDisabled struct {
+	Metadata   usecase.EventMetadata
+	FunctionID string
+	Address    string
+	Context    string
+}
+
+func (e TraceDisabled) EventID() string       { return e.Metadata.EventID }
+func (e TraceDisabled) EventType() string     { return TraceDisabledType }
+func (e TraceDisabled) SpecVersion() string   { return "1.0" }
+func (e TraceDisabled) Source() string        { return Source }
+func (e TraceDisabled) Subject() string       { return subjectFor(e.FunctionID) }
+func (e TraceDisabled) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e TraceDisabled) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e TraceDisabled) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e TraceDisabled) CausationID() string   { return e.Metadata.CausationID }
+func (e TraceDisabled) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e TraceDisabled) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e TraceDisabled) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		FunctionID string `json:"functionId"`
+		Address    string `json:"address"`
+		Context    string `json:"context"`
+	}{e.FunctionID, e.Address, e.Context})
 }

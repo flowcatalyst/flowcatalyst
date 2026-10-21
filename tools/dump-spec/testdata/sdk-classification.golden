@@ -13,6 +13,7 @@ admin	DELETE /api/functions/{id}/config/{key}	deleteFunctionConfig
 admin	DELETE /api/functions/{id}/db/{name}	deleteFunctionDB
 admin	DELETE /api/functions/{id}/routes/{routeId}	deleteFunctionRoute
 admin	DELETE /api/functions/{id}/secrets/{key}	deleteFunctionSecret
+admin	DELETE /api/functions/{id}/trace/{context}	disableFunctionTraceContext
 admin	DELETE /api/identity-providers/{id}	deleteIdentityProvider
 admin	DELETE /api/idp-role-mappings/{id}	deleteIdpRoleMapping
 admin	DELETE /api/oauth-clients/{id}	deleteOAuthClient
@@ -61,6 +62,8 @@ admin	GET /api/functions/{id}	getFunction
 admin	GET /api/functions/{id}/aliases	listFunctionAliases
 admin	GET /api/functions/{id}/routes	listFunctionRoutes
 admin	GET /api/functions/{id}/settings	listFunctionSettings
+admin	GET /api/functions/{id}/trace	listFunctionTraceContexts
+admin	GET /api/functions/{id}/trace-log	listFunctionTraceLog
 admin	GET /api/functions/{id}/versions	listFunctionVersions
 admin	GET /api/functions/{id}/versions/{number}	getFunctionVersion
 admin	GET /api/identity-providers	listIdentityProviders
@@ -192,6 +195,7 @@ admin	PUT /api/functions/{id}/config/{key}	putFunctionConfig
 admin	PUT /api/functions/{id}/db/{name}	putFunctionDB
 admin	PUT /api/functions/{id}/routes	putFunctionRoute
 admin	PUT /api/functions/{id}/secrets/{key}	putFunctionSecret
+admin	PUT /api/functions/{id}/trace/{context}	enableFunctionTraceContext
 admin	PUT /api/identity-providers/{id}	updateIdentityProvider
 admin	PUT /api/oauth-clients/{id}	updateOAuthClient
 admin	PUT /api/portal-apps/{id}	updatePortalApp
@@ -309,3 +313,4 @@ internal	POST /auth/webauthn/register/complete	webauthnRegisterComplete
 internal	POST /control/functions/dispatch-jobs	postFunctionRunnerDispatchJob
 internal	POST /control/functions/events	postFunctionRunnerEvent
 internal	POST /control/functions/heartbeat	postFunctionRunnerHeartbeat
+internal	POST /control/functions/trace-log	postFunctionRunnerTraceLog

@@ -1,0 +1,308 @@
+// trace.go is the function trace-context write path
+// (docs/function-trace-design.md sections 1 and 7): EnableTraceContext opens
+// a time-boxed window, DisableTraceContext closes it. Every write bumps the
+// function's pool revision in the same transaction, which wakes the runners'
+// long-poll on fng_desired (mirrors settings.go's PutSetting).
+package operations
+
+import (
+	"context"
+	"log/slog"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+)
+
+// Trace error codes (design section 7).
+const (
+	TraceWindowTooLong   = "TRACE_WINDOW_TOO_LONG"
+	TraceContextUnknown  = "TRACE_CONTEXT_UNKNOWN"
+	traceInvalidSampling = "TRACE_SAMPLE_RATE_INVALID"
+)
+
+// EnableTraceCommand is the input DTO for PUT /api/functions/{id}/trace/{context}.
+type EnableTraceCommand struct {
+	FunctionID string `json:"functionId"`
+	Context    string `json:"context"`
+	Minutes    int    `json:"minutes"`
+	// SampleRate captures one invocation in N; 0 means 1 (all).
+	SampleRate int `json:"sampleRate"`
+}
+
+// TraceContextState is a context's state after a write or in a listing.
+type TraceContextState struct {
+	Name         string
+	Description  string
+	BuiltIn      bool
+	EnabledUntil *time.Time
+	SampleRate   int
+	Live         bool
+	MaxMinutes   int
+}
+
+// EnableTraceContext opens (or re-opens) a window on one context of a
+// function: `http`, or a context declared by a READY version of it. The
+// window is [now, now+minutes], capped by limits (the `http` cap is lower).
+// Pruning the function's old records is housekeeping after the commit
+// (PruneTraceAfterEnable).
+func EnableTraceContext(repo *function.Repository, limits function.TraceLimits) usecaseop.TxOperation[EnableTraceCommand, TraceContextState] {
+	limits = limits.Normalised()
+	return usecaseop.TxOperation[EnableTraceCommand, TraceContextState]{
+		Name: "EnableFunctionTraceContext",
+		Validate: func(_ context.Context, cmd EnableTraceCommand) error {
+			if strings.TrimSpace(cmd.FunctionID) == "" {
+				return usecase.Validation("FUNCTION_ID_REQUIRED", "functionId is required")
+			}
+			if cmd.Context != function.TraceHTTPContext && !function.TraceContextPattern.MatchString(cmd.Context) {
+				return usecase.Validation(TraceContextUnknown, "context '"+cmd.Context+"' is not a valid trace context name")
+			}
+			if cmd.Minutes < 1 {
+				return usecase.Validation("TRACE_MINUTES_INVALID", "minutes must be at least 1")
+			}
+			if capMinutes := limits.MaxMinutesFor(cmd.Context); cmd.Minutes > capMinutes {
+				return usecase.Validation(TraceWindowTooLong, "minutes is over the "+strconv.Itoa(capMinutes)+
+					"-minute limit for the "+cmd.Context+" context")
+			}
+			if cmd.SampleRate != 0 && (cmd.SampleRate < function.MinTraceSampleRate || cmd.SampleRate > function.MaxTraceSampleRate) {
+				return usecase.Validation(traceInvalidSampling, "sampleRate must be between 1 and 1000")
+			}
+			return nil
+		},
+		Authorize: usecaseop.Public[EnableTraceCommand],
+		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd EnableTraceCommand, ec usecase.ExecutionContext) (TraceContextState, error) {
+			var zero TraceContextState
+
+			f, err := repo.FindByID(ctx, cmd.FunctionID)
+			if err != nil {
+				return zero, usecase.Internal("REPO", "find_by_id failed", err)
+			}
+			if f == nil {
+				return zero, httperror.NotFound("Function", cmd.FunctionID)
+			}
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+				return zero, err
+			}
+
+			declared, err := DeclaredTraceContexts(ctx, repo, f.ID)
+			if err != nil {
+				return zero, err
+			}
+			desc, known := traceContextKnown(declared, cmd.Context)
+			if !known {
+				return zero, usecase.Validation(TraceContextUnknown,
+					"context '"+cmd.Context+"' is not declared by a READY version of this function")
+			}
+
+			now := time.Now().UTC()
+			until := now.Add(time.Duration(cmd.Minutes) * time.Minute)
+			rate := int32(max(cmd.SampleRate, function.MinTraceSampleRate)) //nolint:gosec // validated 1..1000
+			by := ec.PrincipalID
+			row := function.TraceContext{
+				FunctionID: f.ID, Context: cmd.Context, EnabledUntil: &until,
+				SampleRate: rate, EnabledBy: &by, UpdatedAt: now,
+			}
+			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
+				if upErr := repo.UpsertTraceContextTx(ctx, &row, tx); upErr != nil {
+					return upErr
+				}
+				_, bumpErr := repo.BumpPoolRevision(ctx, usecasepgx.WrapTxForBootstrap(tx), f.RunnerPool())
+				return bumpErr
+			}); err != nil {
+				return zero, usecase.Internal("REPO", "trace context write failed", err)
+			}
+
+			event := TraceEnabled{
+				Metadata:   usecase.NewEventMetadata(ec, TraceEnabledType, Source, subjectFor(f.ID)),
+				FunctionID: f.ID, Address: f.Address, Context: cmd.Context,
+				EnabledUntil: until, SampleRate: int(rate),
+			}
+			if r := usecasepgx.EmitEventScoped(ctx, s, event, cmd); !usecase.IsSuccess(r) {
+				_, e := usecase.Into(r)
+				return zero, e
+			}
+			return TraceStateOf(cmd.Context, desc, &row, limits, now), nil
+		},
+	}
+}
+
+// DisableTraceCommand is the input DTO for DELETE /api/functions/{id}/trace/{context}.
+type DisableTraceCommand struct {
+	FunctionID string `json:"functionId"`
+	Context    string `json:"context"`
+}
+
+// DisableTraceContext closes a context's window. Idempotent: a context that
+// is already off, or was never on, succeeds the same way.
+func DisableTraceContext(repo *function.Repository) usecaseop.TxOperation[DisableTraceCommand, struct{}] {
+	return usecaseop.TxOperation[DisableTraceCommand, struct{}]{
+		Name: "DisableFunctionTraceContext",
+		Validate: func(_ context.Context, cmd DisableTraceCommand) error {
+			if strings.TrimSpace(cmd.FunctionID) == "" {
+				return usecase.Validation("FUNCTION_ID_REQUIRED", "functionId is required")
+			}
+			if cmd.Context != function.TraceHTTPContext && !function.TraceContextPattern.MatchString(cmd.Context) {
+				return usecase.Validation(TraceContextUnknown, "context '"+cmd.Context+"' is not a valid trace context name")
+			}
+			return nil
+		},
+		Authorize: usecaseop.Public[DisableTraceCommand],
+		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd DisableTraceCommand, ec usecase.ExecutionContext) (struct{}, error) {
+			var zero struct{}
+
+			f, err := repo.FindByID(ctx, cmd.FunctionID)
+			if err != nil {
+				return zero, usecase.Internal("REPO", "find_by_id failed", err)
+			}
+			if f == nil {
+				return zero, httperror.NotFound("Function", cmd.FunctionID)
+			}
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+				return zero, err
+			}
+
+			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
+				if dErr := repo.DisableTraceContextTx(ctx, f.ID, cmd.Context, time.Now().UTC(), tx); dErr != nil {
+					return dErr
+				}
+				_, bumpErr := repo.BumpPoolRevision(ctx, usecasepgx.WrapTxForBootstrap(tx), f.RunnerPool())
+				return bumpErr
+			}); err != nil {
+				return zero, usecase.Internal("REPO", "trace context write failed", err)
+			}
+
+			event := TraceDisabled{
+				Metadata:   usecase.NewEventMetadata(ec, TraceDisabledType, Source, subjectFor(f.ID)),
+				FunctionID: f.ID, Address: f.Address, Context: cmd.Context,
+			}
+			if r := usecasepgx.EmitEventScoped(ctx, s, event, cmd); !usecase.IsSuccess(r) {
+				_, e := usecase.Into(r)
+				return zero, e
+			}
+			return zero, nil
+		},
+	}
+}
+
+// DeclaredTraceContexts is the union of the trace contexts declared by the
+// function's READY versions, by name. A version whose describe document no
+// longer parses is skipped (it cannot declare anything the runner would act on).
+func DeclaredTraceContexts(ctx context.Context, repo *function.Repository, functionID string) ([]abi.TraceContext, error) {
+	versions, err := repo.ListVersionsByFunction(ctx, functionID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "list_versions_by_function failed", err)
+	}
+	byName := map[string]abi.TraceContext{}
+	for _, v := range versions {
+		if v.Status != function.VersionReady {
+			continue
+		}
+		d, err := abi.ParseDescribe(v.Describe)
+		if err != nil {
+			slog.Warn("trace contexts: skipping a version with an unparseable describe document",
+				"functionId", functionID, "version", v.Number, "err", err)
+			continue
+		}
+		for _, c := range d.TraceContexts {
+			if prev, ok := byName[c.Name]; !ok || (prev.Description == "" && c.Description != "") {
+				byName[c.Name] = c
+			}
+		}
+	}
+	out := make([]abi.TraceContext, 0, len(byName))
+	for _, c := range byName {
+		out = append(out, c)
+	}
+	slices.SortFunc(out, func(a, b abi.TraceContext) int { return strings.Compare(a.Name, b.Name) })
+	return out, nil
+}
+
+// traceContextKnown reports whether name is `http` or declared, and its description.
+func traceContextKnown(declared []abi.TraceContext, name string) (string, bool) {
+	if name == function.TraceHTTPContext {
+		return httpTraceDescription, true
+	}
+	for _, c := range declared {
+		if c.Name == name {
+			return c.Description, true
+		}
+	}
+	return "", false
+}
+
+const httpTraceDescription = "Built-in capture of each request and response, with the function's log output."
+
+// TraceStateOf renders a context's state. row may be nil (never switched on).
+func TraceStateOf(name, description string, row *function.TraceContext, limits function.TraceLimits, now time.Time) TraceContextState {
+	st := TraceContextState{
+		Name: name, Description: description, BuiltIn: name == function.TraceHTTPContext,
+		SampleRate: 1, MaxMinutes: limits.Normalised().MaxMinutesFor(name),
+	}
+	if row != nil {
+		st.EnabledUntil = row.EnabledUntil
+		st.SampleRate = int(row.SampleRate)
+		st.Live = row.Live(now)
+	}
+	return st
+}
+
+// ListTraceContexts is a pure read: the union of the contexts declared by the
+// function's READY versions plus the built-in `http`, with each one's window.
+// `http` comes first, then the declared contexts by name.
+func ListTraceContexts(ctx context.Context, repo *function.Repository, limits function.TraceLimits, functionID string) (*function.Function, []TraceContextState, error) {
+	f, err := repo.FindByID(ctx, functionID)
+	if err != nil {
+		return nil, nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if f == nil {
+		return nil, nil, httperror.NotFound("Function", functionID)
+	}
+	if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+		return nil, nil, err
+	}
+	declared, err := DeclaredTraceContexts(ctx, repo, f.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	rows, err := repo.ListTraceContexts(ctx, f.ID)
+	if err != nil {
+		return nil, nil, usecase.Internal("REPO", "list_trace_contexts failed", err)
+	}
+	byName := make(map[string]*function.TraceContext, len(rows))
+	for i := range rows {
+		byName[rows[i].Context] = &rows[i]
+	}
+	now := time.Now().UTC()
+	out := make([]TraceContextState, 0, len(declared)+1)
+	out = append(out, TraceStateOf(function.TraceHTTPContext, httpTraceDescription, byName[function.TraceHTTPContext], limits, now))
+	for _, c := range declared {
+		out = append(out, TraceStateOf(c.Name, c.Description, byName[c.Name], limits, now))
+	}
+	return f, out, nil
+}
+
+// PruneTraceAfterEnable deletes the function's trace records older than the
+// retention, chunked, after an enable committed. Housekeeping: its own
+// statements, and it never fails the enable.
+func PruneTraceAfterEnable(ctx context.Context, repo *function.Repository, limits function.TraceLimits, functionID string) {
+	limits = limits.Normalised()
+	n, err := repo.PruneTraceLog(ctx, functionID, time.Now().Add(-limits.Retention()),
+		function.TracePruneChunk, function.TracePruneMaxChunks)
+	if err != nil {
+		slog.Warn("function trace prune failed", "functionId", functionID, "err", err)
+		return
+	}
+	if n > 0 {
+		slog.Info("function trace records pruned", "functionId", functionID, "deleted", n)
+	}
+}

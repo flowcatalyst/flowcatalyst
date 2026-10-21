@@ -155,3 +155,37 @@ func TestDispatchJobWritePermissionsInBuiltInRoles(t *testing.T) {
 		t.Fatal("messaging-admin role not found")
 	}
 }
+
+// TestFunctionTracePermissionsInBuiltInRoles pins who holds the trace
+// permissions (docs/function-trace-design.md section 1): operators switch
+// tracing on and read bodies, readers read records with bodies withheld, the
+// CI deployer role stays minimal. Existing deployments get the same from
+// migration 087.
+func TestFunctionTracePermissionsInBuiltInRoles(t *testing.T) {
+	want := map[string][]string{
+		"platform:messaging-admin":     {"platform:function:trace:view", "platform:function:trace:manage", "platform:function:trace:view-bodies"},
+		"platform:viewer":              {"platform:function:trace:view"},
+		"platform:function-publisher":  {"platform:function:trace:view"},
+		"platform:function-deployer":   nil,
+		"platform:admin":               nil,
+		"platform:super-admin":         nil, // wildcard
+		"platform:function-runner":     nil,
+		"platform:application-service": nil,
+	}
+	got := map[string][]string{}
+	for _, r := range PlatformRoles() {
+		for _, p := range r.Permissions {
+			if strings.HasPrefix(p, "platform:function:trace:") {
+				got[r.Name] = append(got[r.Name], p)
+			}
+		}
+	}
+	for role, perms := range want {
+		slices.Sort(perms)
+		g := got[role]
+		slices.Sort(g)
+		if !slices.Equal(g, perms) {
+			t.Errorf("%s holds trace permissions %v, want %v", role, g, perms)
+		}
+	}
+}

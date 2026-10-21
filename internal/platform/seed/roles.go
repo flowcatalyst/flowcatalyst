@@ -153,6 +153,7 @@ func PlatformRoles() []role.Role {
 				permAdminProcessDelete, permAdminProcessArchive, permAdminProcessSync,
 				permFunctionView, permFunctionManage,
 				permFunctionDomainManage, permFunctionRouteManage,
+				permFunctionTraceView, permFunctionTraceManage, permFunctionTraceViewBodies,
 			}),
 
 		// platform:viewer
@@ -172,7 +173,7 @@ func PlatformRoles() []role.Role {
 				permAdminScheduledJobRead,
 				permAdminScheduledJobInstanceRead,
 				permAdminProcessRead,
-				permFunctionView,
+				permFunctionView, permFunctionTraceView,
 				permAdminAuditLogRead,
 				permAdminLoginAttemptRead,
 				permAdminIdentityProviderRead,
@@ -223,7 +224,7 @@ func PlatformRoles() []role.Role {
 		// secret:manage.
 		mk("function-publisher", "Function Publisher",
 			"Publish and promote function versions",
-			[]string{permFunctionView, permFunctionPublish, permFunctionPromote}),
+			[]string{permFunctionView, permFunctionTraceView, permFunctionPublish, permFunctionPromote}),
 
 		// platform:function-deployer — a CI account running `fcdev fn deploy
 		// <addr> . --create --client <code>` (F26): resolve a client code

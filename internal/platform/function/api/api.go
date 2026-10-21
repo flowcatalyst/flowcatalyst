@@ -49,6 +49,9 @@ type State struct {
 	// KeepVersions is how many untagged versions a function keeps
 	// (FC_FUNCTIONS_KEEP_VERSIONS); < 1 means function.DefaultKeepVersions.
 	KeepVersions int
+	// Trace is the trace-log settings (FC_FUNCTIONS_TRACE_*); zero fields mean
+	// the function.DefaultTrace* defaults.
+	Trace function.TraceLimits
 }
 
 const tag = "functions"
@@ -114,6 +117,12 @@ func Register(api huma.API, s *State) {
 	apiroute.Put(g, "putFunctionDB", "/api/functions/{id}/db/{name}", "Set a database DSN", http.StatusOK, s.putDB)
 	apiroute.Delete(g, "deleteFunctionDB", "/api/functions/{id}/db/{name}", "Remove a database DSN", http.StatusNoContent, s.deleteDB)
 	apiroute.Get(g, "listFunctionSettings", "/api/functions/{id}/settings", "List a function's settings keys", s.listSettings)
+
+	// ── Trace logs (docs/function-trace-design.md section 7) ─────────────
+	apiroute.Get(g, "listFunctionTraceContexts", "/api/functions/{id}/trace", "List a function's trace contexts and their windows", s.getTrace)
+	apiroute.Put(g, "enableFunctionTraceContext", "/api/functions/{id}/trace/{context}", "Switch a trace context on for a bounded time", http.StatusOK, s.putTrace)
+	apiroute.Delete(g, "disableFunctionTraceContext", "/api/functions/{id}/trace/{context}", "Switch a trace context off", http.StatusNoContent, s.deleteTrace)
+	apiroute.Get(g, "listFunctionTraceLog", "/api/functions/{id}/trace-log", "Read a function's trace records, newest first", s.getTraceLog)
 
 	// ── Public routes (docs/function-runner-plan.md §8, "public routes") ──
 	apiroute.Put(g, "putFunctionRoute", "/api/functions/{id}/routes", "Create or update a public route", http.StatusOK, s.putRoute)

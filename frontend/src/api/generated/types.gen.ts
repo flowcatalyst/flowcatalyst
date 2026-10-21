@@ -1754,6 +1754,22 @@ export type EmitResponse = {
     eventId: string;
 };
 
+export type EnableTraceRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * How long the window stays open, from 1 up to the context's maxMinutes
+     */
+    minutes: number;
+    /**
+     * Capture one invocation in N (1 to 1000). Default 1: all.
+     */
+    sampleRate?: number;
+    [key: string]: unknown;
+};
+
 export type ErrorModel = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1903,6 +1919,7 @@ export type Function = {
     secrets?: {
         [key: string]: string;
     };
+    trace?: Array<TraceState>;
     versions: Array<Version>;
     warm: boolean;
     webhookSecret?: string;
@@ -4009,6 +4026,111 @@ export type TokenResponse = {
     token_type: string;
 };
 
+export type TraceAck = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    accepted: number;
+    dropped: number;
+};
+
+export type TraceBatch = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    pool: string;
+    records: Array<TraceRecord>;
+    runnerId: string;
+    [key: string]: unknown;
+};
+
+export type TraceContextResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * True for the built-in http context
+     */
+    builtIn: boolean;
+    description: string;
+    enabledUntil: string | null;
+    /**
+     * The window is open now (enabledUntil is in the future)
+     */
+    live: boolean;
+    /**
+     * The longest window this context may be enabled for
+     */
+    maxMinutes: number;
+    name: string;
+    /**
+     * One invocation in N is captured; 1 = all
+     */
+    sampleRate: number;
+};
+
+export type TraceContextsResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    contexts: Array<TraceContextResponse>;
+};
+
+export type TraceLogResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Pass as cursor to fetch the next (older) page; null on the last page
+     */
+    nextCursor: string | null;
+    records: Array<TraceRecordResponse>;
+};
+
+export type TraceRecord = {
+    address: string;
+    at: number;
+    context: string;
+    correlationId?: string;
+    data?: unknown;
+    invocationId: string;
+    kind: string;
+    level: string;
+    message: string;
+    reference?: string;
+    version: number;
+};
+
+export type TraceRecordResponse = {
+    at: string;
+    bodiesRedacted?: boolean;
+    context: string;
+    correlationId: string | null;
+    /**
+     * The record's data. For kind http: request, response, durationMs, outcome.
+     */
+    data: unknown;
+    id: string;
+    invocationId: string;
+    kind: 'trace' | 'http' | 'log';
+    level: string;
+    message: string;
+    reference: string | null;
+    runnerId: string | null;
+    version: number;
+};
+
+export type TraceState = {
+    context: string;
+    enabledUntilMs: number;
+    sampleRate: number;
+};
+
 export type UpdateAnchorDomainRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -5504,6 +5626,18 @@ export type EmitResponseWritable = {
     eventId: string;
 };
 
+export type EnableTraceRequestWritable = {
+    /**
+     * How long the window stays open, from 1 up to the context's maxMinutes
+     */
+    minutes: number;
+    /**
+     * Capture one invocation in N (1 to 1000). Default 1: all.
+     */
+    sampleRate?: number;
+    [key: string]: unknown;
+};
+
 export type ErrorModelWritable = {
     details?: {
         [key: string]: unknown;
@@ -6791,6 +6925,52 @@ export type TokenResponseWritable = {
     refresh_token?: string;
     scope?: string;
     token_type: string;
+};
+
+export type TraceAckWritable = {
+    accepted: number;
+    dropped: number;
+};
+
+export type TraceBatchWritable = {
+    pool: string;
+    records: Array<TraceRecord>;
+    runnerId: string;
+    [key: string]: unknown;
+};
+
+export type TraceContextResponseWritable = {
+    /**
+     * True for the built-in http context
+     */
+    builtIn: boolean;
+    description: string;
+    enabledUntil: string | null;
+    /**
+     * The window is open now (enabledUntil is in the future)
+     */
+    live: boolean;
+    /**
+     * The longest window this context may be enabled for
+     */
+    maxMinutes: number;
+    name: string;
+    /**
+     * One invocation in N is captured; 1 = all
+     */
+    sampleRate: number;
+};
+
+export type TraceContextsResponseWritable = {
+    contexts: Array<TraceContextResponseWritable>;
+};
+
+export type TraceLogResponseWritable = {
+    /**
+     * Pass as cursor to fetch the next (older) page; null on the last page
+     */
+    nextCursor: string | null;
+    records: Array<TraceRecordResponse>;
 };
 
 export type UpdateAnchorDomainRequestWritable = {
@@ -11796,6 +11976,161 @@ export type ListFunctionSettingsResponses = {
 
 export type ListFunctionSettingsResponse = ListFunctionSettingsResponses[keyof ListFunctionSettingsResponses];
 
+export type ListFunctionTraceContextsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/trace';
+};
+
+export type ListFunctionTraceContextsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFunctionTraceContextsError = ListFunctionTraceContextsErrors[keyof ListFunctionTraceContextsErrors];
+
+export type ListFunctionTraceContextsResponses = {
+    /**
+     * OK
+     */
+    200: TraceContextsResponse;
+};
+
+export type ListFunctionTraceContextsResponse = ListFunctionTraceContextsResponses[keyof ListFunctionTraceContextsResponses];
+
+export type ListFunctionTraceLogData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: {
+        /**
+         * Only this context
+         */
+        context?: string;
+        /**
+         * Only this record kind
+         */
+        kind?: 'trace' | 'http' | 'log';
+        /**
+         * Only this level (debug, info, warn, error)
+         */
+        level?: string;
+        /**
+         * The author's business key, exact match
+         */
+        reference?: string;
+        /**
+         * The request's X-Correlation-Id, exact match
+         */
+        correlationId?: string;
+        /**
+         * One invocation's records
+         */
+        invocationId?: string;
+        /**
+         * Only this function version
+         */
+        version?: number;
+        /**
+         * Oldest record time: RFC 3339 or unix milliseconds
+         */
+        since?: string;
+        /**
+         * Newest record time: RFC 3339 or unix milliseconds
+         */
+        until?: string;
+        /**
+         * Page size, default 100, max 500
+         */
+        limit?: number;
+        /**
+         * nextCursor of the previous page
+         */
+        cursor?: string;
+    };
+    url: '/api/functions/{id}/trace-log';
+};
+
+export type ListFunctionTraceLogErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFunctionTraceLogError = ListFunctionTraceLogErrors[keyof ListFunctionTraceLogErrors];
+
+export type ListFunctionTraceLogResponses = {
+    /**
+     * OK
+     */
+    200: TraceLogResponse;
+};
+
+export type ListFunctionTraceLogResponse = ListFunctionTraceLogResponses[keyof ListFunctionTraceLogResponses];
+
+export type DisableFunctionTraceContextData = {
+    body?: never;
+    path: {
+        id: string;
+        context: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/trace/{context}';
+};
+
+export type DisableFunctionTraceContextErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DisableFunctionTraceContextError = DisableFunctionTraceContextErrors[keyof DisableFunctionTraceContextErrors];
+
+export type DisableFunctionTraceContextResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DisableFunctionTraceContextResponse = DisableFunctionTraceContextResponses[keyof DisableFunctionTraceContextResponses];
+
+export type EnableFunctionTraceContextData = {
+    body: EnableTraceRequestWritable;
+    path: {
+        id: string;
+        context: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/trace/{context}';
+};
+
+export type EnableFunctionTraceContextErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type EnableFunctionTraceContextError = EnableFunctionTraceContextErrors[keyof EnableFunctionTraceContextErrors];
+
+export type EnableFunctionTraceContextResponses = {
+    /**
+     * OK
+     */
+    200: TraceContextResponse;
+};
+
+export type EnableFunctionTraceContextResponse = EnableFunctionTraceContextResponses[keyof EnableFunctionTraceContextResponses];
+
 export type ListFunctionVersionsData = {
     body?: never;
     path: {
@@ -16012,6 +16347,31 @@ export type PostFunctionRunnerHeartbeatResponses = {
 };
 
 export type PostFunctionRunnerHeartbeatResponse = PostFunctionRunnerHeartbeatResponses[keyof PostFunctionRunnerHeartbeatResponses];
+
+export type PostFunctionRunnerTraceLogData = {
+    body: TraceBatchWritable;
+    path?: never;
+    query?: never;
+    url: '/control/functions/trace-log';
+};
+
+export type PostFunctionRunnerTraceLogErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PostFunctionRunnerTraceLogError = PostFunctionRunnerTraceLogErrors[keyof PostFunctionRunnerTraceLogErrors];
+
+export type PostFunctionRunnerTraceLogResponses = {
+    /**
+     * Accepted
+     */
+    202: TraceAck;
+};
+
+export type PostFunctionRunnerTraceLogResponse = PostFunctionRunnerTraceLogResponses[keyof PostFunctionRunnerTraceLogResponses];
 
 export type OauthIntrospectData = {
     body: TokenIntrospectFormWritable;

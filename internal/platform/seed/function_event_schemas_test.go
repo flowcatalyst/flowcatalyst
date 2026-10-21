@@ -3,6 +3,7 @@ package seed
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	"github.com/stretchr/testify/assert"
@@ -43,6 +44,8 @@ func TestFunctionEventDataValidatesAgainstTheSeededSchema(t *testing.T) {
 		fnops.VersionPruned{FunctionID: "f", Address: "a.b", VersionID: "v", Version: 3, Digest: "d"},
 		fnops.RouteSet{FunctionID: "f", RouteID: "r", Hostname: "h.com", PathPrefix: "/"},
 		fnops.RouteDeleted{FunctionID: "f", RouteID: "r", Hostname: "h.com", PathPrefix: "/"},
+		fnops.TraceEnabled{FunctionID: "f", Address: "a.b", Context: "http", EnabledUntil: time.Now(), SampleRate: 1},
+		fnops.TraceDisabled{FunctionID: "f", Address: "a.b", Context: "http"},
 		fnops.DBSettingSet{FunctionID: "f", Key: "maindb"},
 		fnops.DBSettingDeleted{FunctionID: "f", Key: "maindb"},
 		domainops.DomainClaimed{DomainID: "d", Hostname: "acme.com", Owner: domainops.OwnerOf(nil)},

@@ -213,6 +213,13 @@ const (
 	// (/control/functions/… — docs/function-runner-plan.md §8.3, WP5): a
 	// deployed runner's own credential, never granted to a human role.
 	permFunctionRunnerControl = "platform:function:runner:control"
+	// permFunctionTrace* gate function trace logs
+	// (docs/function-trace-design.md section 1): manage switches contexts on
+	// and off, view reads records with request/response bodies withheld,
+	// view-bodies reads the bodies and is also required to enable `http`.
+	permFunctionTraceManage     = "platform:function:trace:manage"
+	permFunctionTraceView       = "platform:function:trace:view"
+	permFunctionTraceViewBodies = "platform:function:trace:view-bodies"
 	// Super-admin wildcard.
 	permSuperAdmin = "platform:*:*:*"
 )
@@ -1182,6 +1189,28 @@ func CanManageFunctionDomains(a *AuthContext) error {
 // CanManageFunctionRoutes gates writing a function's public routes.
 func CanManageFunctionRoutes(a *AuthContext) error {
 	return requirePermission(a, permFunctionRouteManage)
+}
+
+// CanManageFunctionTrace gates switching a function's trace contexts on and off.
+func CanManageFunctionTrace(a *AuthContext) error {
+	return requirePermission(a, permFunctionTraceManage)
+}
+
+// CanViewFunctionTrace gates reading a function's trace contexts and records.
+func CanViewFunctionTrace(a *AuthContext) error {
+	return requirePermission(a, permFunctionTraceView)
+}
+
+// CanViewFunctionTraceBodies reports whether a may read captured request and
+// response bodies (and enable the `http` context). Not an error-returning
+// gate: a viewer without it still reads the records, bodies withheld.
+func CanViewFunctionTraceBodies(a *AuthContext) bool {
+	return requirePermission(a, permFunctionTraceViewBodies) == nil
+}
+
+// RequireFunctionTraceBodies gates enabling the `http` context.
+func RequireFunctionTraceBodies(a *AuthContext) error {
+	return requirePermission(a, permFunctionTraceViewBodies)
 }
 
 // CanControlFunctionRunner gates the control plane a function runner polls
