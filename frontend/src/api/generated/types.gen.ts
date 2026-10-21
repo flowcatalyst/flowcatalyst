@@ -1760,9 +1760,13 @@ export type EnableTraceRequest = {
      */
     readonly $schema?: string;
     /**
-     * How long the window stays open, from 1 up to the context's maxMinutes
+     * Stay on until switched off, with no time limit (minutes is ignored)
      */
-    minutes: number;
+    indefinite?: boolean;
+    /**
+     * How long the window stays open, from 1 up to the context's maxMinutes. Required unless indefinite.
+     */
+    minutes?: number;
     /**
      * Capture one invocation in N (1 to 1000). Default 1: all.
      */
@@ -4058,6 +4062,10 @@ export type TraceContextResponse = {
     description: string;
     enabledUntil: string | null;
     /**
+     * Switched on with no time limit; it stays on until switched off (enabledUntil is then far in the future)
+     */
+    indefinite: boolean;
+    /**
      * The window is open now (enabledUntil is in the future)
      */
     live: boolean;
@@ -5629,9 +5637,13 @@ export type EmitResponseWritable = {
 
 export type EnableTraceRequestWritable = {
     /**
-     * How long the window stays open, from 1 up to the context's maxMinutes
+     * Stay on until switched off, with no time limit (minutes is ignored)
      */
-    minutes: number;
+    indefinite?: boolean;
+    /**
+     * How long the window stays open, from 1 up to the context's maxMinutes. Required unless indefinite.
+     */
+    minutes?: number;
     /**
      * Capture one invocation in N (1 to 1000). Default 1: all.
      */
@@ -6947,6 +6959,10 @@ export type TraceContextResponseWritable = {
     builtIn: boolean;
     description: string;
     enabledUntil: string | null;
+    /**
+     * Switched on with no time limit; it stays on until switched off (enabledUntil is then far in the future)
+     */
+    indefinite: boolean;
     /**
      * The window is open now (enabledUntil is in the future)
      */

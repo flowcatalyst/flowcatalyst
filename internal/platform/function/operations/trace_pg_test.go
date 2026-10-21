@@ -309,3 +309,29 @@ func TestPruneTraceAfterEnable_NeverFails(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, n)
 }
+
+func TestEnableTrace_Indefinite_NoCapAndStaysLive(t *testing.T) {
+	t.Parallel()
+	f := newTestFunctionFixture(t, "app_optrace0020a", "optraceapp20", "trace-fn")
+	f.seedTraceVersion(1, function.VersionReady, "orders")
+
+	// No time limit: minutes is ignored, so neither the cap nor the minimum applies.
+	st, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.EnableTraceContext(f.repo, traceLimits),
+		operations.EnableTraceCommand{FunctionID: f.fn.ID, Context: "http", Indefinite: true}, testpg.TestEC())
+	require.NoError(t, err)
+	assert.True(t, st.Live)
+	assert.True(t, st.Indefinite)
+	assert.True(t, function.IsIndefiniteUntil(st.EnabledUntil))
+
+	// Re-enabling with a time limit replaces it.
+	timed, err := f.enableTrace("http", 5, 1)
+	require.NoError(t, err)
+	assert.False(t, timed.Indefinite)
+	assert.True(t, timed.EnabledUntil.Before(time.Now().Add(time.Hour)))
+
+	// Disabling ends an indefinite window like any other.
+	_, err = usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.EnableTraceContext(f.repo, traceLimits),
+		operations.EnableTraceCommand{FunctionID: f.fn.ID, Context: "orders", Indefinite: true}, testpg.TestEC())
+	require.NoError(t, err)
+	require.NoError(t, f.disableTrace("orders"))
+}

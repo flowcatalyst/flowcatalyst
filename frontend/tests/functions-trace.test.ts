@@ -17,6 +17,7 @@ import {
 	anyLive,
 	bodyView,
 	buildTraceQuery,
+	contextState,
 	countdown,
 	durationChoices,
 	emptyFilters,
@@ -160,7 +161,7 @@ describe("body display", () => {
 		expect(BODIES_HIDDEN_MESSAGE).toBe(
 			"Bodies hidden: you do not have permission to view request and response bodies",
 		);
-		const sfc = src("FunctionDiagnostics.vue");
+		const sfc = src("FunctionTraceLogPage.vue");
 		expect(sfc).toMatch(/v-if="data\.bodiesRedacted"[^>]*>\s*\{\{ BODIES_HIDDEN_MESSAGE \}\}/);
 		expect(sfc).toContain("bodyView(d.request, redacted)");
 		expect(sfc).toContain("r.bodiesRedacted === true");
@@ -190,6 +191,20 @@ describe("http record data", () => {
 	});
 });
 
+describe("context state", () => {
+	const base = { name: "orders", description: "", builtIn: false, sampleRate: 1, maxMinutes: 60 };
+	const now = Date.parse("2026-10-21T12:00:00Z");
+
+	it("a timed window counts down, an indefinite one has no countdown, off is off", () => {
+		const timed = contextState({ ...base, live: true, indefinite: false, enabledUntil: "2026-10-21T12:05:00Z" }, now);
+		expect(timed).toEqual({ live: true, indefinite: false, label: "5:00" });
+		const forever = contextState({ ...base, live: true, indefinite: true, enabledUntil: "9999-12-31T23:59:59Z" }, now);
+		expect(forever).toEqual({ live: true, indefinite: true, label: "" });
+		expect(contextState({ ...base, live: false, indefinite: false, enabledUntil: null }, now).live).toBe(false);
+		expect(anyLive([{ ...base, live: true, indefinite: true, enabledUntil: "9999-12-31T23:59:59Z" }], now)).toBe(true);
+	});
+});
+
 describe("permission gating", () => {
 	it("codes are the API's", () => {
 		expect(FUNCTION_TRACE_VIEW).toBe("platform:function:trace:view");
@@ -213,11 +228,21 @@ describe("permission gating", () => {
 		expect(enableBlockedReason("http", all)).toBeNull();
 	});
 
-	it("the SFC hides controls without manage and shows the section in the drawer", () => {
-		const sfc = src("FunctionDiagnostics.vue");
-		expect(sfc).toMatch(/<Column v-if="gates\.manage" header="Actions"/);
-		expect(sfc).toContain(':disabled="enableBlockedReason(data.name, gates) !== null"');
+	it("the controls hide actions without manage; the drawer has them and the log is its own page", () => {
+		const sfc = src("FunctionTraceControls.vue");
+		expect(sfc).toContain('v-if="gates.manage" class="context-actions"');
+		expect(sfc).toContain(':disabled="enableBlockedReason(c.name, gates) !== null"');
 		expect(sfc).toMatch(/<Message v-if="!gates\.view"/);
-		expect(src("FunctionDetailDrawer.vue")).toContain("<FunctionDiagnostics :function-id=\"fn.id\" />");
+		expect(src("FunctionDetailDrawer.vue")).toContain('<FunctionTraceControls :function-id="fn.id" />');
+		// the log is not in the drawer: it has a page and a route
+		expect(sfc).not.toContain("trace-log");
+		expect(src("FunctionTraceLogPage.vue")).toContain('data-testid="trace-log"');
+		expect(sfc).toContain("name: 'function-traces'");
+	});
+
+	it("a context can be switched on with no time limit", () => {
+		const sfc = src("FunctionTraceControls.vue");
+		expect(sfc).toContain('data-testid="trace-indefinite"');
+		expect(sfc).toContain("{ indefinite: true, sampleRate: enableSampleRate.value }");
 	});
 });

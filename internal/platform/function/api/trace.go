@@ -32,6 +32,7 @@ type TraceContextResponse struct {
 	BuiltIn     bool   `json:"builtIn" doc:"True for the built-in http context"`
 	// EnabledUntil is when the window closes; null when it was never switched on or was switched off.
 	EnabledUntil *httpcompat.Time `json:"enabledUntil" nullable:"true"`
+	Indefinite   bool             `json:"indefinite" doc:"Switched on with no time limit; it stays on until switched off (enabledUntil is then far in the future)"`
 	SampleRate   int              `json:"sampleRate" doc:"One invocation in N is captured; 1 = all"`
 	Live         bool             `json:"live" doc:"The window is open now (enabledUntil is in the future)"`
 	MaxMinutes   int              `json:"maxMinutes" doc:"The longest window this context may be enabled for"`
@@ -40,7 +41,7 @@ type TraceContextResponse struct {
 func traceContextResponse(st operations.TraceContextState) TraceContextResponse {
 	out := TraceContextResponse{
 		Name: st.Name, Description: st.Description, BuiltIn: st.BuiltIn,
-		SampleRate: st.SampleRate, Live: st.Live, MaxMinutes: st.MaxMinutes,
+		SampleRate: st.SampleRate, Live: st.Live, MaxMinutes: st.MaxMinutes, Indefinite: st.Indefinite,
 	}
 	if st.EnabledUntil != nil {
 		t := jsontime.New(st.EnabledUntil.UTC())
@@ -56,8 +57,9 @@ type TraceContextsResponse struct {
 
 // EnableTraceRequest is the wire body for PUT …/trace/{context}.
 type EnableTraceRequest struct {
-	Minutes    int `json:"minutes" doc:"How long the window stays open, from 1 up to the context's maxMinutes"`
-	SampleRate int `json:"sampleRate,omitempty" doc:"Capture one invocation in N (1 to 1000). Default 1: all."`
+	Minutes    int  `json:"minutes,omitempty" doc:"How long the window stays open, from 1 up to the context's maxMinutes. Required unless indefinite."`
+	Indefinite bool `json:"indefinite,omitempty" doc:"Stay on until switched off, with no time limit (minutes is ignored)"`
+	SampleRate int  `json:"sampleRate,omitempty" doc:"Capture one invocation in N (1 to 1000). Default 1: all."`
 }
 
 // TraceRecordResponse is one trace-log record.
@@ -125,7 +127,7 @@ func (s *State) putTrace(ctx context.Context, in *putTraceInput) (*apicommon.Out
 	ec := auth.NewExecutionContext(ctx)
 	limits := s.traceLimits()
 	cmd := operations.EnableTraceCommand{
-		FunctionID: in.ID, Context: in.Context, Minutes: in.Body.Minutes, SampleRate: in.Body.SampleRate,
+		FunctionID: in.ID, Context: in.Context, Minutes: in.Body.Minutes, Indefinite: in.Body.Indefinite, SampleRate: in.Body.SampleRate,
 	}
 	st, err := usecaseop.RunTx(ctx, s.UoW, operations.EnableTraceContext(s.Repo, limits), cmd, ec)
 	if err != nil {

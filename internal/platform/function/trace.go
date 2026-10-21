@@ -101,6 +101,17 @@ type TraceContext struct {
 	UpdatedAt    time.Time
 }
 
+// TraceIndefiniteUntil is the enabled_until stored for a context that was
+// switched on with no time limit ("until I turn it off"). A far-future
+// instant rather than a second column, so every reader (the runner's
+// desired-state window, the ingest gate, Live) keeps comparing one timestamp.
+var TraceIndefiniteUntil = time.Date(9999, time.December, 31, 23, 59, 59, 0, time.UTC)
+
+// IsIndefiniteUntil reports whether t is the no-time-limit sentinel.
+func IsIndefiniteUntil(t *time.Time) bool {
+	return t != nil && t.Year() >= 9000
+}
+
 // Live reports whether the window is open at now. Compared when read: an
 // expired window needs no cleanup.
 func (c TraceContext) Live(now time.Time) bool {

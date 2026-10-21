@@ -72,6 +72,7 @@ type traceState struct {
 	BuiltIn      bool    `json:"builtIn"`
 	EnabledUntil *string `json:"enabledUntil"`
 	SampleRate   int     `json:"sampleRate"`
+	Indefinite   bool    `json:"indefinite"`
 	Live         bool    `json:"live"`
 	MaxMinutes   int     `json:"maxMinutes"`
 }
@@ -231,8 +232,8 @@ func traceTarget(ctx context.Context, api *fnAPI, address string) (*fnFunction, 
 }
 
 // enableTrace switches a context on for d and prints the state.
-func enableTrace(ctx context.Context, api *fnAPI, fn *fnFunction, name string, d time.Duration, sample int, out io.Writer) (traceState, error) {
-	if d <= 0 {
+func enableTrace(ctx context.Context, api *fnAPI, fn *fnFunction, name string, d time.Duration, forever bool, sample int, out io.Writer) (traceState, error) {
+	if !forever && d <= 0 {
 		return traceState{}, errors.New("--for must be positive (for example 5m)")
 	}
 	if sample < 1 {
@@ -241,12 +242,17 @@ func enableTrace(ctx context.Context, api *fnAPI, fn *fnFunction, name string, d
 	minutes := max(int((d+time.Minute-1)/time.Minute), 1)
 	var st traceState
 	body := map[string]any{"minutes": minutes, "sampleRate": sample}
+	if forever {
+		body = map[string]any{"indefinite": true, "sampleRate": sample}
+	}
 	err := api.json(ctx, http.MethodPut, "/api/functions/"+fn.ID+"/trace/"+url.PathEscape(name), body, &st)
 	if err != nil {
 		return st, traceError(err, fmt.Sprintf("%s has no trace context %q", fn.Address, name))
 	}
 	line := fmt.Sprintf("%s on %s", name, fn.Address)
-	if until, ok := st.until(); ok {
+	if forever {
+		line += ": live until you switch it off (fcdev fn trace off)"
+	} else if until, ok := st.until(); ok {
 		line += fmt.Sprintf(": live until %s (%dm)", until.Local().Format("15:04:05"), minutes)
 	} else {
 		line += fmt.Sprintf(": on for %dm", minutes)
@@ -274,14 +280,16 @@ func newFnTraceOnCmd() *cobra.Command {
 	var pf fnPlatformFlags
 	var forD time.Duration
 	var sample int
+	var noLimit bool
 	var yes bool
 	cmd := &cobra.Command{
 		Use:   "on <address> <context>",
-		Short: "Switch a trace context on for a limited time",
-		Long: `Switches a function's trace context on. It turns itself off when the time is up.
---for takes a Go duration (5m, 1h) and is rounded up to whole minutes; the
-platform caps it (60 minutes, 15 for http). --sample N records one call in N.
-Takes effect within about a second.`,
+		Short: "Switch a trace context on, for a time or until you switch it off",
+		Long: `Switches a function's trace context on. By default it turns itself off when the
+time is up: --for takes a Go duration (5m, 1h), rounded up to whole minutes, and
+the platform caps it (60 minutes, 15 for http). --no-limit keeps it on until
+"fcdev fn trace off". --sample N records one call in N. Takes effect within
+about a second.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			api, err := newFnAPI(cmd, &pf)
@@ -296,12 +304,13 @@ Takes effect within about a second.`,
 			if err := api.confirm(fmt.Sprintf("switch trace context %s on for %s", args[1], fn.Address), yes); err != nil {
 				return err
 			}
-			_, err = enableTrace(ctx, api, fn, args[1], forD, sample, cmd.OutOrStdout())
+			_, err = enableTrace(ctx, api, fn, args[1], forD, noLimit, sample, cmd.OutOrStdout())
 			return err
 		},
 	}
 	pf.add(cmd)
 	cmd.Flags().DurationVar(&forD, "for", 5*time.Minute, "how long to keep it on (rounded up to whole minutes)")
+	cmd.Flags().BoolVar(&noLimit, "no-limit", false, "no time limit: stay on until switched off (--for is ignored)")
 	cmd.Flags().IntVar(&sample, "sample", 1, "record one call in N")
 	addYesFlag(cmd, &yes)
 	return cmd
@@ -368,7 +377,9 @@ func newFnTraceStatusCmd() *cobra.Command {
 				if c.Live {
 					state = "live"
 				}
-				if t, ok := c.until(); ok && c.Live {
+				if c.Live && c.Indefinite {
+					until = "until switched off"
+				} else if t, ok := c.until(); ok && c.Live {
 					until = t.Local().Format("15:04:05")
 					if left := t.Sub(now); left > 0 {
 						until += " (" + left.Round(time.Second).String() + " left)"
@@ -608,7 +619,7 @@ unless --since says otherwise. Takes the same filters as "trace log".`,
 				return err
 			}
 			out := cmd.OutOrStdout()
-			st, err := enableTrace(ctx, api, fn, args[1], forD, sample, out)
+			st, err := enableTrace(ctx, api, fn, args[1], forD, false, sample, out)
 			if err != nil {
 				return err
 			}

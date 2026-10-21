@@ -19,7 +19,7 @@ import { useClientOptions } from "@/composables/useClientOptions";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
 import { useDirtyForm } from "@/composables/useDirtyForm";
-import FunctionDiagnostics from "@/pages/functions/FunctionDiagnostics.vue";
+import FunctionTraceControls from "@/pages/functions/FunctionTraceControls.vue";
 import {
 	aliasesForVersion,
 	computeMissingSettings,
@@ -973,9 +973,9 @@ function formatDate(dateString: string | undefined | null) {
         </div>
       </FcFormSection>
 
-      <!-- Diagnostics (opt-in, time-boxed trace logs) -->
+      <!-- Diagnostics (opt-in trace logs; the log itself is its own page) -->
       <FcFormSection title="Diagnostics" flat>
-        <FunctionDiagnostics :function-id="fn.id" />
+        <FunctionTraceControls :function-id="fn.id" />
       </FcFormSection>
 
       <!-- Danger Zone -->

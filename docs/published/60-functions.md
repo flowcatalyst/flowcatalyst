@@ -213,10 +213,12 @@ is not declared (one warning per context is written to the function log) or the 
 one that does not know trace logs, the call does nothing and `tracing` answers false. Ask `tracing`
 before building anything expensive: its answer depends on the invocation, so do not remember it.
 
-**Turning a context on.** Open the function's *Diagnostics* page, or run `fcdev fn trace on
+**Turning a context on.** Open the function's *Diagnostics* section (the switches), and its *View trace logs* page for the records, or run `fcdev fn trace on
 <address> <context> --for 5m`. An operator picks how long (at most 60 minutes for your own
 contexts, 15 for `http`, whose bodies can be sensitive) and may sample, recording one call in N. The
-switch takes effect within about a second and turns itself off when the time is up. Switching
+switch takes effect within about a second and turns itself off when the time is up, unless it was switched on
+with *no time limit* (the checkbox in the dialog, or `fcdev fn trace on ... --no-limit`), in which case it stays on until
+someone switches it off; that skips the caps above, so mind the sample rate and the volume. Switching
 contexts needs `platform:function:trace:manage`, reading records needs `platform:function:trace:view`, and
 reading request and response bodies (and switching `http` on) needs `platform:function:trace:view-bodies`;
 without that last permission a viewer sees the records with the bodies hidden. Switching a context

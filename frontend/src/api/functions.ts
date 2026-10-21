@@ -225,7 +225,7 @@ export const functionsApi = {
 	enableTrace(
 		id: string,
 		context: string,
-		data: { minutes: number; sampleRate: number },
+		data: { minutes?: number; indefinite?: boolean; sampleRate: number },
 		opts?: { suppressGlobalErrorToast?: boolean },
 	): Promise<TraceContext> {
 		return apiFetch(`/functions/${id}/trace/${encodeURIComponent(context)}`, {

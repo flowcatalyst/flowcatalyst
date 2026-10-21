@@ -497,6 +497,11 @@ const router = createRouter({
 						},
 					],
 				},
+				{
+					path: "functions/:id/traces",
+					name: "function-traces",
+					component: () => import("@/pages/functions/FunctionTraceLogPage.vue"),
+				},
 				// Dispatch Jobs
 				{
 					path: "dispatch-jobs",

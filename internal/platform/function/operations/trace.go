@@ -36,6 +36,9 @@ type EnableTraceCommand struct {
 	FunctionID string `json:"functionId"`
 	Context    string `json:"context"`
 	Minutes    int    `json:"minutes"`
+	// Indefinite switches the context on with no time limit, until it is
+	// switched off. Minutes is ignored and the minute caps do not apply.
+	Indefinite bool `json:"indefinite"`
 	// SampleRate captures one invocation in N; 0 means 1 (all).
 	SampleRate int `json:"sampleRate"`
 }
@@ -45,7 +48,8 @@ type TraceContextState struct {
 	Name         string
 	Description  string
 	BuiltIn      bool
-	EnabledUntil *time.Time
+	EnabledUntil *time.Time // nil when off; the far-future sentinel when Indefinite
+	Indefinite   bool
 	SampleRate   int
 	Live         bool
 	MaxMinutes   int
@@ -67,12 +71,14 @@ func EnableTraceContext(repo *function.Repository, limits function.TraceLimits) 
 			if cmd.Context != function.TraceHTTPContext && !function.TraceContextPattern.MatchString(cmd.Context) {
 				return usecase.Validation(TraceContextUnknown, "context '"+cmd.Context+"' is not a valid trace context name")
 			}
-			if cmd.Minutes < 1 {
-				return usecase.Validation("TRACE_MINUTES_INVALID", "minutes must be at least 1")
-			}
-			if capMinutes := limits.MaxMinutesFor(cmd.Context); cmd.Minutes > capMinutes {
-				return usecase.Validation(TraceWindowTooLong, "minutes is over the "+strconv.Itoa(capMinutes)+
-					"-minute limit for the "+cmd.Context+" context")
+			if !cmd.Indefinite {
+				if cmd.Minutes < 1 {
+					return usecase.Validation("TRACE_MINUTES_INVALID", "minutes must be at least 1 (or set indefinite)")
+				}
+				if capMinutes := limits.MaxMinutesFor(cmd.Context); cmd.Minutes > capMinutes {
+					return usecase.Validation(TraceWindowTooLong, "minutes is over the "+strconv.Itoa(capMinutes)+
+						"-minute limit for the "+cmd.Context+" context")
+				}
 			}
 			if cmd.SampleRate != 0 && (cmd.SampleRate < function.MinTraceSampleRate || cmd.SampleRate > function.MaxTraceSampleRate) {
 				return usecase.Validation(traceInvalidSampling, "sampleRate must be between 1 and 1000")
@@ -106,6 +112,9 @@ func EnableTraceContext(repo *function.Repository, limits function.TraceLimits) 
 
 			now := time.Now().UTC()
 			until := now.Add(time.Duration(cmd.Minutes) * time.Minute)
+			if cmd.Indefinite {
+				until = function.TraceIndefiniteUntil
+			}
 			rate := int32(max(cmd.SampleRate, function.MinTraceSampleRate)) //nolint:gosec // validated 1..1000
 			by := ec.PrincipalID
 			row := function.TraceContext{
@@ -125,7 +134,7 @@ func EnableTraceContext(repo *function.Repository, limits function.TraceLimits) 
 			event := TraceEnabled{
 				Metadata:   usecase.NewEventMetadata(ec, TraceEnabledType, Source, subjectFor(f.ID)),
 				FunctionID: f.ID, Address: f.Address, Context: cmd.Context,
-				EnabledUntil: until, SampleRate: int(rate),
+				EnabledUntil: until, Indefinite: cmd.Indefinite, SampleRate: int(rate),
 			}
 			if r := usecasepgx.EmitEventScoped(ctx, s, event, cmd); !usecase.IsSuccess(r) {
 				_, e := usecase.Into(r)
@@ -250,6 +259,7 @@ func TraceStateOf(name, description string, row *function.TraceContext, limits f
 	}
 	if row != nil {
 		st.EnabledUntil = row.EnabledUntil
+		st.Indefinite = function.IsIndefiniteUntil(row.EnabledUntil)
 		st.SampleRate = int(row.SampleRate)
 		st.Live = row.Live(now)
 	}

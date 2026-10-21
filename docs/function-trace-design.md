@@ -181,4 +181,7 @@ Follow-ups noticed in the end-to-end run, not done:
 - `log` records written before a function's first `trace` call carry no `reference` (the runner only learns it from `trace` calls); stamp them when the invocation ends.
 - `durationMs` is whole milliseconds, so fast calls read 0; consider microsecond precision.
 - A guest-made 500 (an uncaught exception answered as `FUNCTION_PANIC`) has outcome `ok`; the status and level show the error.
-- The log table is cramped in the narrow drawer.
+
+Changed after first use (2026-10-21):
+- **No time limit.** `PUT /trace/{context}` also takes `{ "indefinite": true }` (minutes ignored, caps do not apply, `minutes` is no longer required): the window is stored as `enabled_until = 9999-12-31T23:59:59Z` (`function.TraceIndefiniteUntil`), so every reader keeps comparing one timestamp and nothing changed in the runner or the ingest gate. The state response carries `indefinite`; `TraceEnabled` omits `enabledUntil` for it. Retention (30 days) and the runner's per-function rate cap are then the only bounds on volume. `fcdev fn trace on --no-limit`.
+- **The log is its own page**, `/functions/{id}/traces` (the drawer keeps only the switches and a "View trace logs" button): the records are wide, and the drawer was too narrow for them. The switches are a list of cards rather than a table, which wrapped badly in the drawer.

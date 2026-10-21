@@ -4851,8 +4851,12 @@
             "readOnly": true,
             "type": "string"
           },
+          "indefinite": {
+            "description": "Stay on until switched off, with no time limit (minutes is ignored)",
+            "type": "boolean"
+          },
           "minutes": {
-            "description": "How long the window stays open, from 1 up to the context's maxMinutes",
+            "description": "How long the window stays open, from 1 up to the context's maxMinutes. Required unless indefinite.",
             "format": "int64",
             "type": "integer"
           },
@@ -4862,9 +4866,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "minutes"
-        ],
         "type": "object"
       },
       "ErrorModel": {
@@ -11218,6 +11219,10 @@
               "null"
             ]
           },
+          "indefinite": {
+            "description": "Switched on with no time limit; it stays on until switched off (enabledUntil is then far in the future)",
+            "type": "boolean"
+          },
           "live": {
             "description": "The window is open now (enabledUntil is in the future)",
             "type": "boolean"
@@ -11241,6 +11246,7 @@
           "description",
           "builtIn",
           "enabledUntil",
+          "indefinite",
           "sampleRate",
           "live",
           "maxMinutes"

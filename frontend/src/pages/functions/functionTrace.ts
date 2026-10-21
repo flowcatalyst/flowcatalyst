@@ -2,7 +2,7 @@
  * Non-reactive logic behind the function Diagnostics section (trace logs;
  * docs/function-trace-design.md §10): permission gating, the live-window
  * countdown, filter-to-query mapping and the display shape of `http`
- * records. Kept out of FunctionDiagnostics.vue so it can be pinned in
+ * records. Kept out of the trace components so it can be pinned in
  * vitest (no @vue/test-utils in this repo).
  */
 
@@ -91,8 +91,22 @@ export function sampleLabel(sampleRate: number): string {
 	return sampleRate > 1 ? `1 in ${sampleRate}` : "all invocations";
 }
 
+/** A context's state now: live (with a countdown, or "until switched off") or off. */
+export interface ContextState {
+	live: boolean;
+	indefinite: boolean;
+	/** Countdown text; empty when indefinite or off. */
+	label: string;
+}
+
+export function contextState(c: TraceContext, nowMs: number): ContextState {
+	if (c.indefinite && c.enabledUntil) return { live: true, indefinite: true, label: "" };
+	const cd = countdown(c.enabledUntil, nowMs);
+	return { live: cd.live, indefinite: false, label: cd.label };
+}
+
 export function anyLive(contexts: TraceContext[], nowMs: number): boolean {
-	return contexts.some((c) => countdown(c.enabledUntil, nowMs).live);
+	return contexts.some((c) => contextState(c, nowMs).live);
 }
 
 export const SINCE_CHOICES = [

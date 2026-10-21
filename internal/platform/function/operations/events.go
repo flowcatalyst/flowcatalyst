@@ -646,6 +646,7 @@ type TraceEnabled struct {
 	Address      string
 	Context      string
 	EnabledUntil time.Time
+	Indefinite   bool // no time limit: enabledUntil is left out of the event data
 	SampleRate   int
 }
 
@@ -661,13 +662,18 @@ func (e TraceEnabled) CausationID() string   { return e.Metadata.CausationID }
 func (e TraceEnabled) ExecutionID() string   { return e.Metadata.ExecutionID }
 func (e TraceEnabled) MessageGroup() string  { return groupFor(e.FunctionID) }
 func (e TraceEnabled) ToDataJSON() ([]byte, error) {
+	var until *time.Time
+	if !e.Indefinite {
+		u := e.EnabledUntil.UTC()
+		until = &u
+	}
 	return json.Marshal(struct {
-		FunctionID   string    `json:"functionId"`
-		Address      string    `json:"address"`
-		Context      string    `json:"context"`
-		EnabledUntil time.Time `json:"enabledUntil"`
-		SampleRate   int       `json:"sampleRate"`
-	}{e.FunctionID, e.Address, e.Context, e.EnabledUntil.UTC(), e.SampleRate})
+		FunctionID   string     `json:"functionId"`
+		Address      string     `json:"address"`
+		Context      string     `json:"context"`
+		EnabledUntil *time.Time `json:"enabledUntil,omitempty"`
+		SampleRate   int        `json:"sampleRate"`
+	}{e.FunctionID, e.Address, e.Context, until, e.SampleRate})
 }
 
 // TraceDisabled is emitted when a trace context is switched off:
