@@ -87,3 +87,30 @@ bridge is slow only relative to in-process calls. The structural costs are that 
 supervisor of several single-threaded processes (one per core at least), that a stuck function takes
 its process-mates with it, and that host calls become network calls. Memory per process and the
 runner-side supervisor design are the open items.
+
+## Part 3: Linux and amd64 (2026-10-22)
+
+*`workerd` 2026-10-22, `node:24-slim` (glibc) in Docker Desktop on the same M4 Pro, so a Linux VM on
+macOS, not bare metal. Script: `bench/function-runtimes/workerd-spike/run-linux.sh` + `test.mjs`.*
+
+| | macOS arm64 (part 1/2) | Linux arm64 (container) | Linux amd64 (emulated) |
+|---|---|---|---|
+| W2, W3, W4 output vs reference | identical | identical | identical |
+| W2 / W3 / W4 per call | 2.8 us / 0.35 ms / 22 ms | 3.1 us / 0.39 ms / 21.6 ms | 8.6 us / 0.77 ms / 27.5 ms (emulation: not a speed result) |
+| Idle RSS, one worker | about 85 MB | 92 MB | 147 MB (emulated) |
+| W3 requests/s, c=1 / 4 / 8 | about 2.2k peak | 1.7k / 2.0k / 1.9k | not measured |
+| Runaway `for(;;){}` | process stuck, no recovery | same: a second request got no answer within 1 s | not measured |
+| SIGKILL to first good answer (reload one version) | 29 ms | 74 ms (includes a 50 ms wait) | not measured |
+
+Findings:
+- **Linux behaves like macOS.** Same output, same speed, same one-core ceiling, same absence of a CPU
+  limit. The decision in the recommendation above is unchanged.
+- **Linux needs `ca-certificates`.** On a slim image workerd exits at start with
+  `TLS configuration: unexpected error: No CA certificates were loaded from the system`, even for a
+  config with no TLS. A workerd image or the fcdev-managed install must carry a CA bundle.
+- **amd64 was only run to check that the build and the output are right** (QEMU emulation on an arm64
+  host). Its timings say nothing about native amd64; that needs a real amd64 Linux box.
+- **Windows is not tested.** The npm package ships `@cloudflare/workerd-windows-64` (same release);
+  per the owner, Windows matters only for `fcdev`, which is not code-signed today.
+- **Still not measured:** the real host-call bridge (all host calls are stubs), and throughput with one
+  process per core.
