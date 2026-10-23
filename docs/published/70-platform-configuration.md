@@ -13,6 +13,24 @@ new row.
 
 A property is either **plain** (stored and shown as text) or a **secret**.
 
+## Who may do what
+
+Every call is a permission. Anchor scope (reaching every client) is reach, not
+authority, so an anchor-tier caller needs one of these:
+
+| Action | Platform administrator | An application's service account |
+|---|---|---|
+| List and read properties | `platform:admin:config:view` | `platform:application-service:config:view` |
+| Set and delete properties | `platform:admin:config:update` | `platform:application-service:config:update` |
+| Reveal a secret | `platform:admin:config:reveal` | `platform:application-service:config:reveal` |
+
+`platform:admin` holds view and update; `platform:config-secrets-admin` holds all
+three; super-admin holds everything through its wildcard; the
+`platform:application-service` role holds the three application-service permissions,
+which reach only the application(s) the account is bound to (and, below anchor tier,
+the clients it may act for). A caller below anchor tier who holds none of these is
+decided by the per-role access grants on the application, as before.
+
 ## Secrets
 
 A secret is **encrypted at rest** (AES-256-GCM, the platform key) and is **never

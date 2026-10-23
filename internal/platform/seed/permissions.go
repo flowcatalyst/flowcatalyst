@@ -262,6 +262,10 @@ var permsApplicationService = []string{
 	"platform:application-service:scheduled-job:sync",
 	"platform:application-service:process:view",
 	"platform:application-service:process:sync",
+	// Read and write its own application's platform config (list, get, set,
+	// delete). Confined to the applications the account is bound to.
+	"platform:application-service:config:view",
+	"platform:application-service:config:update",
 	// Read a SECRET platform-config value of its own application in plaintext
 	// (GET /api/config/.../secret). Confined to the applications the account is
 	// bound to and, below anchor tier, to the clients it may act for.

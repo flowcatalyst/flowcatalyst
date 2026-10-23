@@ -136,6 +136,8 @@ const (
 	permAppSvcRoleUpdate         = "platform:application-service:role:update"
 	permAppSvcRoleDelete         = "platform:application-service:role:delete"
 	permAppSvcProcessSync        = "platform:application-service:process:sync"
+	permAppSvcConfigView         = "platform:application-service:config:view"
+	permAppSvcConfigUpdate       = "platform:application-service:config:update"
 	permAppSvcConfigReveal       = "platform:application-service:config:reveal"
 	permAppSvcSubscriptionCreate = "platform:application-service:subscription:create"
 	permAppSvcSubscriptionUpdate = "platform:application-service:subscription:update"
@@ -1057,6 +1059,37 @@ func CanUpdatePlatformConfig(a *AuthContext) error { return anchorWith(a, permAd
 // wildcard covers it), at anchor tier.
 func CanRevealPlatformConfigSecret(a *AuthContext) error {
 	return anchorWith(a, permAdminConfigReveal)
+}
+
+// RequireConfigView and RequireConfigUpdate gate reading and writing platform
+// config (list, get; set, delete) for an anchor-tier caller. Anchor scope is
+// reach, not authority: the caller must hold platform:admin:config:view|update,
+// or, as an application's service account bound to specific applications (not
+// all-applications access), platform:application-service:config:view|update,
+// which the handler then confines to those applications. Callers below anchor
+// tier are not decided here: the per-role access grants on the application
+// (app_platform_config_access) gate them.
+func RequireConfigView(a *AuthContext) error {
+	return requireConfig(a, permAdminConfigView, permAppSvcConfigView)
+}
+
+// RequireConfigUpdate: see RequireConfigView.
+func RequireConfigUpdate(a *AuthContext) error {
+	return requireConfig(a, permAdminConfigUpdate, permAppSvcConfigUpdate)
+}
+
+func requireConfig(a *AuthContext, adminPerm, appPerm string) error {
+	if a != nil && !a.IsAnchor() {
+		return nil
+	}
+	adminErr := anchorWith(a, adminPerm)
+	if adminErr == nil {
+		return nil
+	}
+	if a.IsApplicationScoped() && a.HasPermission(appPerm) {
+		return nil
+	}
+	return adminErr
 }
 
 // CanRevealApplicationConfigSecret is the application-service counterpart: a

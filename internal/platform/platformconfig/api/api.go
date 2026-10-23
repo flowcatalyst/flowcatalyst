@@ -131,6 +131,9 @@ func (s *State) listProperties(ctx context.Context, in *listPropsInput) (*apicom
 	if err := s.confineApp(ctx, ac, in.App); err != nil {
 		return nil, err
 	}
+	if err := auth.RequireConfigView(ac); err != nil {
+		return nil, err
+	}
 	if !ac.IsAnchor() {
 		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, false)
 		if err != nil {
@@ -173,6 +176,9 @@ func (s *State) getProperty(ctx context.Context, in *propertyInput) (*apicommon.
 	if err := s.confineApp(ctx, ac, in.App); err != nil {
 		return nil, err
 	}
+	if err := auth.RequireConfigView(ac); err != nil {
+		return nil, err
+	}
 	if !ac.IsAnchor() {
 		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, false)
 		if err != nil {
@@ -208,6 +214,12 @@ type setPropertyInput struct {
 func (s *State) setProperty(ctx context.Context, in *setPropertyInput) (*apicommon.Out[ConfigResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := s.confineApp(ctx, ac, in.App); err != nil {
+		return nil, err
+	}
+	// Gate before anything is looked up, so an unauthorised caller cannot probe
+	// which clients exist (the use case checks again, and decides for callers
+	// below anchor tier by their access grants).
+	if err := auth.RequireConfigUpdate(ac); err != nil {
 		return nil, err
 	}
 	// The SPA passes clientId as a query param; the body carries only
@@ -251,6 +263,9 @@ func (s *State) setProperty(ctx context.Context, in *setPropertyInput) (*apicomm
 func (s *State) deleteProperty(ctx context.Context, in *propertyInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := s.confineApp(ctx, ac, in.App); err != nil {
+		return nil, err
+	}
+	if err := auth.RequireConfigUpdate(ac); err != nil {
 		return nil, err
 	}
 	if !ac.IsAnchor() {

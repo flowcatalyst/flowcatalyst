@@ -361,3 +361,35 @@ func TestEncryptLegacySecrets_ConvertsPlaintextRowsOnce(t *testing.T) {
 	assert.Equal(t, raw, again, "a second run leaves converted rows alone")
 	_ = n2
 }
+
+// Anchor scope is reach, not authority: an anchor-tier caller needs
+// config:update to set a property.
+func TestSetProperty_AnchorNeedsConfigUpdate(t *testing.T) {
+	t.Parallel()
+	repo := platformconfig.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	cmd := operations.SetPropertyCommand{ApplicationCode: "gateapp", Section: "s", Property: "p", Value: "v"}
+
+	for name, perms := range map[string][]string{
+		"no permission":    nil,
+		"config view only": {"platform:admin:config:view"},
+	} {
+		ctx := testpg.WithAuth(context.Background(), &auth.AuthContext{
+			PrincipalID: "prn_gatetest00001", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: perms})
+		_, err := usecaseop.Run(ctx, uow, operations.SetProperty(repo), cmd, testpg.TestEC())
+		require.Error(t, err, name)
+		assert.Contains(t, err.Error(), "permission required", name)
+	}
+
+	ctx := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_gatetest00001", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{"platform:admin:config:update"}})
+	_, err := usecaseop.Run(ctx, uow, operations.SetProperty(repo), cmd, testpg.TestEC())
+	require.NoError(t, err)
+
+	appCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_gatetest00002", Scope: auth.ScopeAnchor, Applications: []string{"app_gate"},
+		Permissions: []string{"platform:application-service:config:update"}})
+	_, err = usecaseop.Run(appCtx, uow, operations.SetProperty(repo), cmd, testpg.TestEC())
+	require.NoError(t, err, "an application-bound service account with the application-service permission")
+}

@@ -32,6 +32,16 @@ schema `SecretResponse`). Go commits: `4d4c6c8c` (platform), `2be7c7da` (admin p
 4. The Go tests to port are in `internal/platform/platformconfig/{api,operations}` (authorisation table,
    encrypted-at-rest, fail-closed without a key, legacy conversion).
 
+## Also, gate the other four calls (2026-10-23)
+
+List, get, set and delete were open to any anchor-tier caller (no permission check; anchor scope was treated as
+authority). They are now gated: view for list and get, update for set and delete, for an anchor-tier caller:
+`platform:admin:config:view|update`, or, for an application-bound service account (not all-applications access),
+`platform:application-service:config:view|update` (new, carried by the `platform:application-service` role).
+Callers below anchor tier keep the existing per-role access grants. The gate runs before any client lookup.
+Go: `auth.RequireConfigView` / `RequireConfigUpdate`; tests in `shared/auth/config_gate_test.go` and
+`platformconfig/operations/ops_pg_test.go`. Only the SPA's admin pages call these routes today.
+
 ## Also
 
 - The Java SDK (`java-sdk` v0.0.22) already has `client.platformConfig().revealSecret(..)`; its `toString` redacts.

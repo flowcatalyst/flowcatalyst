@@ -36,10 +36,11 @@ func (c SetPropertyCommand) AuditMaskedFields() []string {
 // SetProperty upserts the (app, section, property, scope, client_id)
 // coordinate with the supplied value and emits [PropertySet].
 //
-// Unlike the access mutations, set-property is NOT anchor-only: the handler
-// admitted any anchor, OR any non-anchor principal holding write access to the
+// Unlike the access mutations, set-property is NOT anchor-only: it admits an
+// anchor holding config:update (auth.RequireConfigUpdate: anchor scope is
+// reach, not authority), OR a non-anchor principal holding write access to the
 // target application (repo.HasAccess(..., wantWrite=true)). The Authorize phase
-// encodes that exact rule 1:1 — it captures repo to run the access check.
+// encodes that rule — it captures repo to run the access check.
 func SetProperty(repo *platformconfig.Repository) usecaseop.Operation[SetPropertyCommand, PropertySet] {
 	return usecaseop.Operation[SetPropertyCommand, PropertySet]{
 		Name: "SetProperty",
@@ -61,7 +62,8 @@ func SetProperty(repo *platformconfig.Repository) usecaseop.Operation[SetPropert
 		Authorize: func(ctx context.Context, cmd SetPropertyCommand) error {
 			ac := auth.FromContext(ctx)
 			if ac.IsAnchor() {
-				return nil
+				// Anchor scope is reach, not authority: the caller needs config:update.
+				return auth.RequireConfigUpdate(ac)
 			}
 			ok, err := repo.HasAccess(ctx, cmd.ApplicationCode, ac.Roles, true)
 			if err != nil {
