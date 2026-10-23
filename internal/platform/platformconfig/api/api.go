@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -12,6 +13,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -32,6 +34,10 @@ type State struct {
 	// Apps resolves the {app} path code to an application, for confining
 	// application-scoped principals (see confineApp).
 	Apps AppLookup
+	// Clients resolves a request's clientId (a clt_ id or the client's
+	// identifier) to the client id; see resolveClientID. Nil passes the
+	// reference through (handler tests without a client repository).
+	Clients ClientLookup
 	// Audit records every secret reveal. Required for the reveal endpoint: a
 	// reveal that cannot be recorded is refused.
 	Audit *audit.Repository
@@ -40,6 +46,39 @@ type State struct {
 // AppLookup is the slice of the application repository the confinement needs.
 type AppLookup interface {
 	FindByCode(ctx context.Context, code string) (*application.Application, error)
+}
+
+// ClientLookup is the slice of the client repository clientId resolution needs.
+type ClientLookup interface {
+	FindByID(ctx context.Context, id string) (*client.Client, error)
+	FindByIdentifier(ctx context.Context, identifier string) (*client.Client, error)
+}
+
+// resolveClientID canonicalises a request's client reference (the clt_ id or
+// the client's identifier, e.g. "acme") to the client id, so a client has one
+// scope however it is named. An empty reference means the global value. An
+// unknown client is a 404: it must not create (or read) a row keyed by a
+// string that is no client.
+func (s *State) resolveClientID(ctx context.Context, ref string) (string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" || s.Clients == nil {
+		return ref, nil
+	}
+	c, err := s.Clients.FindByID(ctx, ref)
+	if err != nil {
+		return "", usecase.Internal("REPO", "client lookup failed", err)
+	}
+	if c == nil {
+		// Identifiers are stored lower-case.
+		c, err = s.Clients.FindByIdentifier(ctx, strings.ToLower(ref))
+		if err != nil {
+			return "", usecase.Internal("REPO", "client lookup failed", err)
+		}
+	}
+	if c == nil {
+		return "", httperror.NotFound("Client", ref)
+	}
+	return string(c.ID), nil
 }
 
 // confineApp keeps an application-scoped principal (one that does not hold
@@ -126,7 +165,7 @@ type propertyInput struct {
 	App      string `path:"app"`
 	Section  string `path:"section"`
 	Property string `path:"property"`
-	ClientID string `query:"clientId"`
+	ClientID string `query:"clientId" doc:"Scope to one client: the client's id (clt_...) or its identifier (e.g. acme). The platform stores the id, so both name the same value. Omit for the application's global value. An unknown client is 404."`
 }
 
 func (s *State) getProperty(ctx context.Context, in *propertyInput) (*apicommon.Out[ConfigResponse], error) {
@@ -143,7 +182,11 @@ func (s *State) getProperty(ctx context.Context, in *propertyInput) (*apicommon.
 			return nil, httperror.Forbidden("No read access to platform config for " + in.App)
 		}
 	}
-	scope, clientID := scopeFor(in.ClientID)
+	cid, err := s.resolveClientID(ctx, in.ClientID)
+	if err != nil {
+		return nil, err
+	}
+	scope, clientID := scopeFor(cid)
 	c, err := s.Repo.FindByCoordinate(ctx, in.App, in.Section, in.Property, scope, clientID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_coordinate failed", err)
@@ -158,7 +201,7 @@ type setPropertyInput struct {
 	App      string `path:"app"`
 	Section  string `path:"section"`
 	Property string `path:"property"`
-	ClientID string `query:"clientId"`
+	ClientID string `query:"clientId" doc:"Scope to one client: the client's id (clt_...) or its identifier (e.g. acme); the platform stores the id. Omit for the application's global value. An unknown client is 404."`
 	Body     SetPropertyRequest
 }
 
@@ -173,13 +216,28 @@ func (s *State) setProperty(ctx context.Context, in *setPropertyInput) (*apicomm
 		cid := in.ClientID
 		in.Body.ClientID = &cid
 	}
+	// Canonicalise the client (id or identifier) before anything is written;
+	// an unknown client is refused here, not stored.
+	var clientRef string
+	if in.Body.ClientID != nil {
+		clientRef = *in.Body.ClientID
+	}
+	resolved, err := s.resolveClientID(ctx, clientRef)
+	if err != nil {
+		return nil, err
+	}
+	if resolved == "" {
+		in.Body.ClientID = nil
+	} else {
+		in.Body.ClientID = &resolved
+	}
 	// Authorization (anchor, or non-anchor with write access to the app) runs
 	// inside the use case's Authorize phase.
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.SetProperty(s.Repo), in.Body.toCommand(in.App, in.Section, in.Property), ec); err != nil {
 		return nil, err
 	}
-	scope, clientID := scopeFor(in.ClientID)
+	scope, clientID := scopeFor(resolved)
 	c, err := s.Repo.FindByCoordinate(ctx, in.App, in.Section, in.Property, scope, clientID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_coordinate failed", err)
@@ -204,7 +262,11 @@ func (s *State) deleteProperty(ctx context.Context, in *propertyInput) (*apicomm
 			return nil, httperror.Forbidden("No write access to platform config for " + in.App)
 		}
 	}
-	scope, clientID := scopeFor(in.ClientID)
+	cid, err := s.resolveClientID(ctx, in.ClientID)
+	if err != nil {
+		return nil, err
+	}
+	scope, clientID := scopeFor(cid)
 	c, err := s.Repo.FindByCoordinate(ctx, in.App, in.Section, in.Property, scope, clientID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_coordinate failed", err)
@@ -291,19 +353,28 @@ type revealOutput struct {
 }
 
 // authorizeReveal is the reveal rule (see revealSecret).
-func (s *State) authorizeReveal(ctx context.Context, ac *auth.AuthContext, app, clientID string) error {
+//
+// It returns the canonical client id of the requested scope ("" for the global
+// value). The client reference is resolved only after the caller has passed the
+// application and permission checks, so an unauthorised caller cannot probe
+// which clients exist.
+func (s *State) authorizeReveal(ctx context.Context, ac *auth.AuthContext, app, clientRef string) (string, error) {
 	if err := s.confineApp(ctx, ac, app); err != nil {
-		return err
+		return "", err
 	}
 	if !(ac.IsAnchor() && ac.IsApplicationScoped()) {
 		if err := auth.CanRevealPlatformConfigSecret(ac); err != nil {
-			return err
+			return "", err
 		}
 	}
-	if clientID != "" && !ac.CanAccessClient(clientID) {
-		return httperror.Forbidden("Not authorised for client '" + clientID + "'")
+	clientID, err := s.resolveClientID(ctx, clientRef)
+	if err != nil {
+		return "", err
 	}
-	return nil
+	if clientID != "" && !ac.CanAccessClient(clientID) {
+		return "", httperror.Forbidden("Not authorised for client '" + clientID + "'")
+	}
+	return clientID, nil
 }
 
 // revealSecret returns a SECRET's plaintext. It is the only place one leaves
@@ -316,10 +387,11 @@ func (s *State) authorizeReveal(ctx context.Context, ac *auth.AuthContext, app, 
 //   - the response is never cached.
 func (s *State) revealSecret(ctx context.Context, in *propertyInput) (*revealOutput, error) {
 	ac := auth.FromContext(ctx)
-	if err := s.authorizeReveal(ctx, ac, in.App, in.ClientID); err != nil {
+	cid, err := s.authorizeReveal(ctx, ac, in.App, in.ClientID)
+	if err != nil {
 		return nil, err
 	}
-	scope, clientID := scopeFor(in.ClientID)
+	scope, clientID := scopeFor(cid)
 	c, err := s.Repo.FindByCoordinate(ctx, in.App, in.Section, in.Property, scope, clientID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_coordinate failed", err)

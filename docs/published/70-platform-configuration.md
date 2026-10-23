@@ -4,8 +4,12 @@ Platform configuration is a store of named values that an application keeps on
 the platform: settings it reads at start-up, per-client options, and secrets
 such as an API key or an SFTP password. Each value belongs to an **application**
 and is addressed by **section** and **property** (`orders` / `sftp` / `password`).
-A value is **global**, or it can be set **for one client**, which overrides the
-global value for that client only.
+A value is **global**, or it can be set **for one client**. The two are separate
+rows: asking for a client's value never falls back to the global one.
+
+A client is named by its id (`clt_…`) or by its identifier (`acme`); the platform
+stores the id, so both mean the same scope. An unknown client is `404`, never a
+new row.
 
 A property is either **plain** (stored and shown as text) or a **secret**.
 

@@ -278,7 +278,7 @@ async function copyRevealed() {
         </div>
         <div class="field">
           <label for="cfg-client">Client (optional)</label>
-          <InputText id="cfg-client" v-model="form.clientId" :disabled="!!editing" placeholder="clt_… — empty for a platform-wide value" class="w-full" />
+          <InputText id="cfg-client" v-model="form.clientId" :disabled="!!editing" placeholder="client id or code — empty for the application-wide value" class="w-full" />
         </div>
         <div class="field">
           <label>Type</label>
