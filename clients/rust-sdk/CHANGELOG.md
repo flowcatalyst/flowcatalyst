@@ -9,6 +9,15 @@ First version, seeded from `flowcatalyst-rust/crates/fc-sdk` with the wire
 shapes fixed to the platform contract. The README lists every change from
 fc-sdk and the wire-contract ambiguities found. Summary:
 
+### Platform config
+- `platform_config()` resource: `list`, `get`, `set`, `delete` and
+  `reveal_secret(app, section, property, client_id)`. `SECRET` properties come
+  back as `"***"` from list/get/set; `reveal_secret` (`GET
+  /api/config/{app}/{section}/{property}/secret`) is the only way to read the
+  plaintext. It is audited server-side, never cached by the SDK, and returns a
+  `SecretValue` that prints `***` in `Debug`/`Display` (`expose()` reads it).
+  Errors: 403, 404, 400 `NOT_A_SECRET`.
+
 ### Outbox
 - `outbox_messages` DDL is the Java SDK's migration byte for byte (PostgreSQL
   and MySQL); payload bound as `TEXT`, `status` as `SMALLINT`.

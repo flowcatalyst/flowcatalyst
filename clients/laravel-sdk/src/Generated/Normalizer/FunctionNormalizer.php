@@ -100,12 +100,22 @@ class FunctionNormalizer implements DenormalizerInterface, NormalizerInterface, 
         elseif (\array_key_exists('secrets', $data) && $data['secrets'] === null) {
             $object->setSecrets(null);
         }
-        if (\array_key_exists('versions', $data) && $data['versions'] !== null) {
+        if (\array_key_exists('trace', $data) && $data['trace'] !== null) {
             $values_3 = [];
-            foreach ($data['versions'] as $value_3) {
-                $values_3[] = $this->denormalizer->denormalize($value_3, \FlowCatalyst\Generated\Model\Version::class, 'json', $context);
+            foreach ($data['trace'] as $value_3) {
+                $values_3[] = $this->denormalizer->denormalize($value_3, \FlowCatalyst\Generated\Model\TraceState::class, 'json', $context);
             }
-            $object->setVersions($values_3);
+            $object->setTrace($values_3);
+        }
+        elseif (\array_key_exists('trace', $data) && $data['trace'] === null) {
+            $object->setTrace(null);
+        }
+        if (\array_key_exists('versions', $data) && $data['versions'] !== null) {
+            $values_4 = [];
+            foreach ($data['versions'] as $value_4) {
+                $values_4[] = $this->denormalizer->denormalize($value_4, \FlowCatalyst\Generated\Model\Version::class, 'json', $context);
+            }
+            $object->setVersions($values_4);
         }
         elseif (\array_key_exists('versions', $data) && $data['versions'] === null) {
             $object->setVersions(null);
@@ -155,11 +165,18 @@ class FunctionNormalizer implements DenormalizerInterface, NormalizerInterface, 
             }
             $dataArray['secrets'] = $values_2;
         }
-        $values_3 = [];
-        foreach ($data->getVersions() as $value_3) {
-            $values_3[] = $this->normalizer->normalize($value_3, 'json', $context);
+        if ($data->isInitialized('trace') && null !== $data->getTrace()) {
+            $values_3 = [];
+            foreach ($data->getTrace() as $value_3) {
+                $values_3[] = $this->normalizer->normalize($value_3, 'json', $context);
+            }
+            $dataArray['trace'] = $values_3;
         }
-        $dataArray['versions'] = $values_3;
+        $values_4 = [];
+        foreach ($data->getVersions() as $value_4) {
+            $values_4[] = $this->normalizer->normalize($value_4, 'json', $context);
+        }
+        $dataArray['versions'] = $values_4;
         $dataArray['warm'] = $data->getWarm();
         if ($data->isInitialized('webhookSecret') && null !== $data->getWebhookSecret()) {
             $dataArray['webhookSecret'] = $data->getWebhookSecret();

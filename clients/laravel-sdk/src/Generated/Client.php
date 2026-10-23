@@ -784,6 +784,21 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SetPlatformConfigProperty($app, $section, $property, $requestBody, $queryParameters), $fetch);
     }
     /**
+     * @param string $app
+     * @param string $section
+     * @param string $property
+     * @param array{
+     *    "clientId"?: string,
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\SecretResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function revealPlatformConfigSecret(string $app, string $section, string $property, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RevealPlatformConfigSecret($app, $section, $property, $queryParameters), $fetch);
+    }
+    /**
      * @param array{
      *    "status"?: string,
      *    "clientId"?: string,
@@ -1767,6 +1782,62 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function listFunctionSettings(string $id, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFunctionSettings($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\TraceContextsResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listFunctionTraceContexts(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFunctionTraceContexts($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param array{
+     *    "context"?: string, //Only this context
+     *    "kind"?: string, //Only this record kind
+     *    "level"?: string, //Only this level (debug, info, warn, error)
+     *    "reference"?: string, //The author's business key, exact match
+     *    "correlationId"?: string, //The request's X-Correlation-Id, exact match
+     *    "invocationId"?: string, //One invocation's records
+     *    "version"?: int, //Only this function version
+     *    "since"?: string, //Oldest record time: RFC 3339 or unix milliseconds
+     *    "until"?: string, //Newest record time: RFC 3339 or unix milliseconds
+     *    "limit"?: int, //Page size, default 100, max 500
+     *    "cursor"?: string, //nextCursor of the previous page
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\TraceLogResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listFunctionTraceLog(string $id, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFunctionTraceLog($id, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $context
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function disableFunctionTraceContext(string $id, string $context, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DisableFunctionTraceContext($id, $context), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $context
+     * @param null|\FlowCatalyst\Generated\Model\EnableTraceRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\TraceContextResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function enableFunctionTraceContext(string $id, string $context, ?\FlowCatalyst\Generated\Model\EnableTraceRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\EnableFunctionTraceContext($id, $context, $requestBody), $fetch);
     }
     /**
      * @param string $id
@@ -3358,6 +3429,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function postFunctionRunnerHeartbeat(?\FlowCatalyst\Generated\Model\Heartbeat $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostFunctionRunnerHeartbeat($requestBody), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\TraceBatch $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\TraceAck|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postFunctionRunnerTraceLog(?\FlowCatalyst\Generated\Model\TraceBatch $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostFunctionRunnerTraceLog($requestBody), $fetch);
     }
     public static function create($httpClient = null, array $additionalPlugins = [], array $additionalNormalizers = [])
     {

@@ -25,6 +25,7 @@ import { ClientsResource } from "./resources/clients.js";
 import { PrincipalsResource } from "./resources/principals.js";
 import { MeResource } from "./resources/me.js";
 import { ConnectionsResource } from "./resources/connections.js";
+import { PlatformConfigResource } from "./resources/platform-config.js";
 import {
 	DefinitionSynchronizer,
 	type DefinitionSynchronizerOptions,
@@ -138,6 +139,7 @@ export class FlowCatalystClient {
 	private _principals?: PrincipalsResource;
 	private _me?: MeResource;
 	private _connections?: ConnectionsResource;
+	private _platformConfig?: PlatformConfigResource;
 	private _definitions?: DefinitionSynchronizer;
 	private _router?: RouterResource;
 	private _scheduledJobs?: ScheduledJobsResource;
@@ -239,6 +241,11 @@ export class FlowCatalystClient {
 	/** Connections resource */
 	connections(): ConnectionsResource {
 		return (this._connections ??= new ConnectionsResource(this));
+	}
+
+	/** Platform config resource (properties and SECRET reveal) */
+	platformConfig(): PlatformConfigResource {
+		return (this._platformConfig ??= new PlatformConfigResource(this));
 	}
 
 	/**

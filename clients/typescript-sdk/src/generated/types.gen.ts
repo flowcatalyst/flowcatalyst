@@ -3141,6 +3141,22 @@ export type SearchClientRequest = {
     [key: string]: unknown | string | undefined;
 };
 
+export type SecretResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    applicationCode: string;
+    clientId?: string;
+    property: string;
+    section: string;
+    /**
+     * The value's version: it changes whenever the secret is set. Use it to detect rotation.
+     */
+    updatedAt: string;
+    value: string;
+};
+
 export type SendPasswordResetInputBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -6029,6 +6045,18 @@ export type SearchClientRequestWritable = {
     [key: string]: unknown | string;
 };
 
+export type SecretResponseWritable = {
+    applicationCode: string;
+    clientId?: string;
+    property: string;
+    section: string;
+    /**
+     * The value's version: it changes whenever the secret is set. Use it to detect rotation.
+     */
+    updatedAt: string;
+    value: string;
+};
+
 export type SendPasswordResetInputBodyWritable = {
     reset2fa?: boolean;
     [key: string]: unknown | boolean | undefined;
@@ -8550,6 +8578,37 @@ export type SetPlatformConfigPropertyResponses = {
 };
 
 export type SetPlatformConfigPropertyResponse = SetPlatformConfigPropertyResponses[keyof SetPlatformConfigPropertyResponses];
+
+export type RevealPlatformConfigSecretData = {
+    body?: never;
+    path: {
+        app: string;
+        section: string;
+        property: string;
+    };
+    query?: {
+        clientId?: string;
+    };
+    url: '/api/config/{app}/{section}/{property}/secret';
+};
+
+export type RevealPlatformConfigSecretErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RevealPlatformConfigSecretError = RevealPlatformConfigSecretErrors[keyof RevealPlatformConfigSecretErrors];
+
+export type RevealPlatformConfigSecretResponses = {
+    /**
+     * OK
+     */
+    200: SecretResponse;
+};
+
+export type RevealPlatformConfigSecretResponse = RevealPlatformConfigSecretResponses[keyof RevealPlatformConfigSecretResponses];
 
 export type ListConnectionsData = {
     body?: never;

@@ -69,3 +69,23 @@ def test_error_model_matches_our_parsing(lock: dict[str, Any]) -> None:
     err = lock["components"]["schemas"]["ErrorModel"]
     assert {"error", "message"} <= set(err["required"])
     assert "details" in err["properties"]
+
+
+def test_platform_config_operations_exist(lock: dict[str, Any]) -> None:
+    from flowcatalyst.resources import platform_config as pc
+
+    for op in (
+        pc.LIST_OPERATION,
+        pc.GET_OPERATION,
+        pc.SET_OPERATION,
+        pc.DELETE_OPERATION,
+        pc.REVEAL_OPERATION,
+    ):
+        assert lock["paths"][op.path][op.method.lower()]["operationId"] == op.operation_id
+    reveal = lock["paths"][pc.REVEAL_OPERATION.path]["get"]
+    assert ("query", "clientId") in {(p["in"], p["name"]) for p in reveal["parameters"]}
+    secret = lock["components"]["schemas"]["SecretResponse"]
+    from flowcatalyst.models.platform_config import SecretResponse
+
+    sent = {f.alias or n for n, f in SecretResponse.model_fields.items()}
+    assert set(secret["required"]) <= sent

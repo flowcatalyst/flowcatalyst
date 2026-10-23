@@ -254,6 +254,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\EmitResponse::class => \FlowCatalyst\Generated\Normalizer\EmitResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\EnableTraceRequest::class => \FlowCatalyst\Generated\Normalizer\EnableTraceRequestNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\ErrorModel::class => \FlowCatalyst\Generated\Normalizer\ErrorModelNormalizer::class,
         
         \FlowCatalyst\Generated\Model\Event::class => \FlowCatalyst\Generated\Normalizer\EventNormalizer::class,
@@ -470,6 +472,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\SearchClientRequest::class => \FlowCatalyst\Generated\Normalizer\SearchClientRequestNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\SecretResponse::class => \FlowCatalyst\Generated\Normalizer\SecretResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\SendPasswordResetInputBody::class => \FlowCatalyst\Generated\Normalizer\SendPasswordResetInputBodyNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ServiceAccountListResponse::class => \FlowCatalyst\Generated\Normalizer\ServiceAccountListResponseNormalizer::class,
@@ -565,6 +569,22 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\SyncUsersResponse::class => \FlowCatalyst\Generated\Normalizer\SyncUsersResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\TokenAuth::class => \FlowCatalyst\Generated\Normalizer\TokenAuthNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\TraceAck::class => \FlowCatalyst\Generated\Normalizer\TraceAckNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\TraceBatch::class => \FlowCatalyst\Generated\Normalizer\TraceBatchNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\TraceContextResponse::class => \FlowCatalyst\Generated\Normalizer\TraceContextResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\TraceContextsResponse::class => \FlowCatalyst\Generated\Normalizer\TraceContextsResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\TraceLogResponse::class => \FlowCatalyst\Generated\Normalizer\TraceLogResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\TraceRecord::class => \FlowCatalyst\Generated\Normalizer\TraceRecordNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\TraceRecordResponse::class => \FlowCatalyst\Generated\Normalizer\TraceRecordResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\TraceState::class => \FlowCatalyst\Generated\Normalizer\TraceStateNormalizer::class,
         
         \FlowCatalyst\Generated\Model\UpdateAnchorDomainRequest::class => \FlowCatalyst\Generated\Normalizer\UpdateAnchorDomainRequestNormalizer::class,
         
@@ -778,6 +798,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\EditPayloadRequest::class => false,
             \FlowCatalyst\Generated\Model\EmitRequest::class => false,
             \FlowCatalyst\Generated\Model\EmitResponse::class => false,
+            \FlowCatalyst\Generated\Model\EnableTraceRequest::class => false,
             \FlowCatalyst\Generated\Model\ErrorModel::class => false,
             \FlowCatalyst\Generated\Model\Event::class => false,
             \FlowCatalyst\Generated\Model\EventFilterOption::class => false,
@@ -886,6 +907,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\ScheduledJobInstanceResponse::class => false,
             \FlowCatalyst\Generated\Model\ScheduledJobResponse::class => false,
             \FlowCatalyst\Generated\Model\SearchClientRequest::class => false,
+            \FlowCatalyst\Generated\Model\SecretResponse::class => false,
             \FlowCatalyst\Generated\Model\SendPasswordResetInputBody::class => false,
             \FlowCatalyst\Generated\Model\ServiceAccountListResponse::class => false,
             \FlowCatalyst\Generated\Model\ServiceAccountOAuthSecrets::class => false,
@@ -934,6 +956,14 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\SyncUsersRequest::class => false,
             \FlowCatalyst\Generated\Model\SyncUsersResponse::class => false,
             \FlowCatalyst\Generated\Model\TokenAuth::class => false,
+            \FlowCatalyst\Generated\Model\TraceAck::class => false,
+            \FlowCatalyst\Generated\Model\TraceBatch::class => false,
+            \FlowCatalyst\Generated\Model\TraceContextResponse::class => false,
+            \FlowCatalyst\Generated\Model\TraceContextsResponse::class => false,
+            \FlowCatalyst\Generated\Model\TraceLogResponse::class => false,
+            \FlowCatalyst\Generated\Model\TraceRecord::class => false,
+            \FlowCatalyst\Generated\Model\TraceRecordResponse::class => false,
+            \FlowCatalyst\Generated\Model\TraceState::class => false,
             \FlowCatalyst\Generated\Model\UpdateAnchorDomainRequest::class => false,
             \FlowCatalyst\Generated\Model\UpdateApplicationRequest::class => false,
             \FlowCatalyst\Generated\Model\UpdateAuthConfigRequest::class => false,

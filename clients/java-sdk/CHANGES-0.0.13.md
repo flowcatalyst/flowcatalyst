@@ -187,3 +187,13 @@ DTO.
 `openapi/openapi.json` (each repo vendors its own server's lock; the drift script allows that one).
 This change is not copied there, so its `tools/sdk-drift.sh` reports drift until the directory is
 copied across (everything but `openapi/openapi.json`; `VERSION` and `pom.xml` already drift).
+
+## Platform config: reveal a SECRET
+
+- New `client.platformConfig()` (`PlatformConfigResource`): `list`, `get`, `set`, `delete`, and
+  `revealSecret(app, section, property, clientId)` for `GET /api/config/{app}/{section}/{property}/secret`.
+- `get`/`list`/`set` always return `"***"` for `valueType` SECRET; `revealSecret` is the only way to
+  read plaintext. Needs `platform:admin:config:reveal` or the application's own service account.
+  403 is `SdkError.Forbidden`, 404 `NotFound`, 400 `NOT_A_SECRET` is `HttpStatus` (status 400).
+- Every reveal is audited server-side. The SDK does not cache it or log it, and `RevealedSecret.toString()` masks the value.
+- `openapi/openapi.json` and `openapi.admin.json` refreshed from the current spec (models regenerate at build).

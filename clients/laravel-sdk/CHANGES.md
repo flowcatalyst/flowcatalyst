@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- New `platformConfig()->revealSecret($app, $section, $property, ?$clientId)` returning
+  `PlatformConfigSecret` (`GET /api/config/{app}/{section}/{property}/secret`, audited; needs
+  `platform:admin:config:reveal` or the application's own service account). `get`/`list` now
+  always return `***` for SECRET values. The reveal is uncached and the DTO redacts `value` in
+  var_dump/JSON/toArray()/serialize. Generated client regenerated (adds `RevealPlatformConfigSecret`
+  plus the function-trace endpoints already in the spec).
+
 Additive only; nothing removed, renamed or behaviour-changed (the only runtime difference is the
 deprecation notice described below).
 

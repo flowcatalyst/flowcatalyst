@@ -257,6 +257,24 @@ resume, enable, disable) returns only an `error`; a create route that answers
 a route that answers a body returns it. `go test ./client/` checks all of this
 against `api/openapi.lock.json`.
 
+### Platform config and secrets
+
+`c.PlatformConfig()` has `Get`, `Set`, `Delete` and `RevealSecret`. Ordinary
+reads (`Get`, and the response to `Set`) return the literal `"***"`
+(`client.SecretMask`) as the value of every SECRET property, for every
+caller. The only way to read the plaintext is:
+
+```go
+s, err := c.PlatformConfig().RevealSecret(ctx, "orders", "smtp", "password", "" /* clientID, optional */)
+```
+
+It needs `platform:admin:config:reveal` (or the application's own service
+account for its own application) and is audited by the platform. Errors are
+`*client.APIError`: 403 not authorised, 404 no such property, 400
+`NOT_A_SECRET` for a PLAIN property (use `Get`). The SDK does not cache the
+value and does not log it; `SecretResponse` redacts the value under
+`%v`/`%+v`/`%#v` and `slog`.
+
 ## Packages
 
 | Package | Purpose |

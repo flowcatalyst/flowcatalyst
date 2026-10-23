@@ -14,6 +14,7 @@ import io.flowcatalyst.sdk.resources.EventTypesResource;
 import io.flowcatalyst.sdk.resources.EventsResource;
 import io.flowcatalyst.sdk.resources.MeResource;
 import io.flowcatalyst.sdk.resources.PermissionsResource;
+import io.flowcatalyst.sdk.resources.PlatformConfigResource;
 import io.flowcatalyst.sdk.resources.PrincipalsResource;
 import io.flowcatalyst.sdk.resources.ProcessesResource;
 import io.flowcatalyst.sdk.resources.RolesResource;
@@ -57,6 +58,7 @@ public final class FlowCatalystClient {
     private PrincipalsResource principals;
     private MeResource me;
     private ConnectionsResource connections;
+    private PlatformConfigResource platformConfig;
     private RouterResource router;
     private ScheduledJobsResource scheduledJobs;
     private AuditLogsResource auditLogs;
@@ -141,6 +143,15 @@ public final class FlowCatalystClient {
     /** Me resource (user-scoped access to clients and applications). */
     public synchronized MeResource me() {
         return me != null ? me : (me = new MeResource(transport));
+    }
+
+    /**
+     * Platform-config properties. SECRET values read back as {@code "***"}; use
+     * {@code platformConfig().revealSecret(...)} for the plaintext.
+     */
+    public synchronized PlatformConfigResource platformConfig() {
+        return platformConfig != null
+                ? platformConfig : (platformConfig = new PlatformConfigResource(transport));
     }
 
     public synchronized ConnectionsResource connections() {

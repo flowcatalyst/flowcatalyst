@@ -33,6 +33,7 @@ pub mod event_types;
 pub mod me;
 pub mod openapi;
 pub mod permissions;
+pub mod platform_config;
 pub mod principals;
 pub mod processes;
 pub mod roles;
@@ -89,6 +90,7 @@ pub use event_types::*;
 pub use me::*;
 pub use openapi::*;
 pub use permissions::*;
+pub use platform_config::*;
 pub use principals::*;
 pub use processes::*;
 pub use roles::*;
@@ -239,6 +241,11 @@ impl FlowCatalystClient {
     /// Permissions catalogue — `/api/roles/permissions/*`.
     pub fn permissions(&self) -> permissions::Permissions<'_> {
         permissions::Permissions { client: self }
+    }
+
+    /// Platform config properties and secret reveal — `/api/config/*`.
+    pub fn platform_config(&self) -> platform_config::PlatformConfig<'_> {
+        platform_config::PlatformConfig { client: self }
     }
 
     /// Principals (users + service accounts) — `/api/principals/*`.

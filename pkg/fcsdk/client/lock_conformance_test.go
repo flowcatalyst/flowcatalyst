@@ -166,6 +166,20 @@ func lockCases() []lockCase {
 			return c.Connections().Sync(ctx, "orders", &client.SyncConnectionsRequest{Connections: []client.SyncConnectionItem{{Code: "c", Name: "n"}}}, true)
 		}},
 
+		// ── Platform config ──
+		{name: "PlatformConfig.Get", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.PlatformConfig().Get(ctx, "orders", "smtp", "password", "clt_1")
+		}},
+		{name: "PlatformConfig.Set", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.PlatformConfig().Set(ctx, "orders", "smtp", "password", &client.SetConfigPropertyRequest{Value: "v", ValueType: "SECRET", Description: "d", ClientID: "clt_1"})
+		}},
+		{name: "PlatformConfig.Delete", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return nil, c.PlatformConfig().Delete(ctx, "orders", "smtp", "password", "clt_1")
+		}},
+		{name: "PlatformConfig.RevealSecret", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.PlatformConfig().RevealSecret(ctx, "orders", "smtp", "password", "clt_1")
+		}},
+
 		// ── Dispatch pools ──
 		{name: "DispatchPools.Create", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.DispatchPools().Create(ctx, &client.CreateDispatchPoolRequest{Code: "p", Name: "P"})
@@ -551,22 +565,23 @@ func TestOutsideLockRoutesStayOutside(t *testing.T) {
 func TestEveryResourceMethodIsRegistered(t *testing.T) {
 	c := client.New("http://unused")
 	resources := map[string]any{
-		"Applications":  c.Applications(),
-		"Clients":       c.Clients(),
-		"Connections":   c.Connections(),
-		"DispatchPools": c.DispatchPools(),
-		"EventTypes":    c.EventTypes(),
-		"Subscriptions": c.Subscriptions(),
-		"Processes":     c.Processes(),
-		"Principals":    c.Principals(),
-		"Roles":         c.Roles(),
-		"Permissions":   c.Permissions(),
-		"AuditLogs":     c.AuditLogs(),
-		"ScheduledJobs": c.ScheduledJobs(),
-		"Docs":          c.Docs(),
-		"OpenAPI":       c.OpenAPI(),
-		"Me":            c.Me(),
-		"Router":        c.Router(),
+		"Applications":   c.Applications(),
+		"Clients":        c.Clients(),
+		"Connections":    c.Connections(),
+		"DispatchPools":  c.DispatchPools(),
+		"PlatformConfig": c.PlatformConfig(),
+		"EventTypes":     c.EventTypes(),
+		"Subscriptions":  c.Subscriptions(),
+		"Processes":      c.Processes(),
+		"Principals":     c.Principals(),
+		"Roles":          c.Roles(),
+		"Permissions":    c.Permissions(),
+		"AuditLogs":      c.AuditLogs(),
+		"ScheduledJobs":  c.ScheduledJobs(),
+		"Docs":           c.Docs(),
+		"OpenAPI":        c.OpenAPI(),
+		"Me":             c.Me(),
+		"Router":         c.Router(),
 	}
 	registered := map[string]bool{}
 	for _, tc := range lockCases() {

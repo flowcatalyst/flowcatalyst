@@ -42,6 +42,20 @@ async with FlowCatalyst(
 
 Blocking code: `with FlowCatalystSync(url, credentials=...) as fc: fc.sync.roles(...)`.
 
+## Platform config and secret reveal
+
+`fc.platform_config` (and the same on `FlowCatalystSync`): `list(app)`, `get`, `set`, `delete`,
+and `reveal_secret(app, section, property, client_id=None)`.
+
+* `list`/`get`/`set` always return the literal `"***"` as `value` for `value_type == "SECRET"`
+  properties, for every caller. `reveal_secret` is the only way to read the plaintext
+  (`GET /api/config/{app}/{section}/{property}/secret`); every call is audited server-side.
+* Needs `platform:admin:config:reveal`, or the application's own service account for its own
+  application. Errors: `ForbiddenError` (403), `NotFoundError` (404), `ValidationError` with
+  `code == "NOT_A_SECRET"` (400, property is PLAIN: use `get`).
+* The result's `value` is a pydantic `SecretStr` (redacted in `repr`/`str`/JSON); read it with
+  `result.value.get_secret_value()`. The SDK never caches or logs it; add your own TTL cache if needed.
+
 ## Develop
 
 Everything runs in a venv inside this directory (git-ignored). No network is needed to run tests.

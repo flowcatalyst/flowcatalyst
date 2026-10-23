@@ -85,6 +85,8 @@ export {
 	SubscriptionsResource,
 	DispatchPoolsResource,
 	ConnectionsResource,
+	PlatformConfigResource,
+	type RevealedSecret,
 	RolesResource,
 	PermissionsResource,
 	ApplicationsResource,

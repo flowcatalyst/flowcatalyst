@@ -129,6 +129,7 @@ typed client with auth, retries, and neverthrow results:
 - `client.subscriptions()`, `client.dispatchPools()`, `client.connections()`, `client.processes()`
 - `client.roles()`, `client.permissions()`, `client.applications()`, `client.clients()`, `client.principals()`, `client.me()`
 - `client.scheduledJobs()`, `client.auditLogs()`, `client.router()`, `client.definitions()`
+- `client.platformConfig()` — `list(app)`, `get(app, section, property, {clientId}?)`, `set(...)`, `delete(...)`, `revealSecret(app, section, property, clientId?)`
 
 Anything not covered by a resource class is available through the generated
 functions (importable from the package root or the `api` namespace), passed
@@ -141,6 +142,24 @@ const result = await client.request((httpClient, headers) =>
   api.listDispatchJobs({ client: httpClient, headers, query: { status: 'FAILED' } }),
 );
 ```
+
+### Platform config secrets
+
+`platformConfig().list()` / `.get()` ALWAYS return the literal `"***"` as the
+`value` of `SECRET` properties, for every caller. The only way to read the
+plaintext is the audited reveal call:
+
+```typescript
+const r = await client.platformConfig().revealSecret('my-app', 'smtp', 'password');
+if (r.isOk()) use(r.value.value); // r.value.updatedAt changes when the secret is rotated
+```
+
+Requires `platform:admin:config:reveal`, or the application's own service
+account for its own application. Errors: `forbidden` (403), `not_found` (404),
+`http_error` with `status: 400` / `body.error === 'NOT_A_SECRET'` for a PLAIN
+property (use `get`). The call is never cached by the SDK. The returned `value`
+is a non-enumerable property, so it does not appear in `console.log`,
+spread copies or `JSON.stringify` (rendered as `[REDACTED]`); never log it.
 
 ## Syncing Definitions
 

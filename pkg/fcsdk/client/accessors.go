@@ -81,3 +81,8 @@ func (c *FlowCatalystClient) ScheduledJobs() *ScheduledJobsResource {
 func (c *FlowCatalystClient) OpenAPI() *OpenAPIResource {
 	return &OpenAPIResource{c: c}
 }
+
+// PlatformConfig returns the platform-config accessor — /api/config/*.
+func (c *FlowCatalystClient) PlatformConfig() *PlatformConfigResource {
+	return &PlatformConfigResource{c: c}
+}

@@ -17,6 +17,7 @@ from flowcatalyst.errors import (
     ValidationError,
 )
 from flowcatalyst.metadata import metadata_to_wire
+from flowcatalyst.models.platform_config import ConfigProperty, SecretResponse
 from flowcatalyst.models.sync import SyncResult, SyncRole
 from flowcatalyst.retry import RetryPolicy, Timeouts
 
@@ -24,6 +25,7 @@ __all__ = [
     "AuthError",
     "ClientCredentials",
     "ClientCredentialsTokenProvider",
+    "ConfigProperty",
     "ConflictError",
     "FlowCatalyst",
     "FlowCatalystError",
@@ -35,6 +37,7 @@ __all__ = [
     "RateLimitedError",
     "RequestTimeoutError",
     "RetryPolicy",
+    "SecretResponse",
     "ServerError",
     "Settings",
     "SyncResult",

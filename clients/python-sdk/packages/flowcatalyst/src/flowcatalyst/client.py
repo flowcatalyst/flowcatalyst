@@ -14,7 +14,9 @@ import httpx
 from flowcatalyst.auth.tokens import ClientCredentials, ClientCredentialsTokenProvider
 from flowcatalyst.config import Settings
 from flowcatalyst.http import Transport
+from flowcatalyst.models.platform_config import ConfigProperty, SecretResponse
 from flowcatalyst.models.sync import SyncResult, SyncRole
+from flowcatalyst.resources.platform_config import PlatformConfigResource
 from flowcatalyst.resources.sync import SyncResource
 from flowcatalyst.retry import RetryPolicy, Timeouts
 
@@ -65,6 +67,7 @@ class FlowCatalyst:
             auth = self._tokens
         self._transport = Transport(self._client, base_url, auth=auth, **common)
         self.sync = SyncResource(self._transport)
+        self.platform_config = PlatformConfigResource(self._transport)
 
     @classmethod
     def from_settings(cls, settings: Settings, **kwargs: Any) -> FlowCatalyst:
@@ -170,6 +173,55 @@ class _SyncSyncResource:
         return self._runner.run(self._inner.roles(app_code, roles, remove_unlisted=remove_unlisted))
 
 
+class _SyncPlatformConfigResource:
+    def __init__(self, runner: _LoopThread, inner: PlatformConfigResource) -> None:
+        self._runner = runner
+        self._inner = inner
+
+    def list(self, app: str) -> list[ConfigProperty]:
+        return self._runner.run(self._inner.list(app))
+
+    def get(
+        self, app: str, section: str, property: str, *, client_id: str | None = None
+    ) -> ConfigProperty:
+        return self._runner.run(self._inner.get(app, section, property, client_id=client_id))
+
+    def set(
+        self,
+        app: str,
+        section: str,
+        property: str,
+        value: str,
+        *,
+        value_type: str | None = None,
+        description: str | None = None,
+        client_id: str | None = None,
+    ) -> ConfigProperty:
+        return self._runner.run(
+            self._inner.set(
+                app,
+                section,
+                property,
+                value,
+                value_type=value_type,
+                description=description,
+                client_id=client_id,
+            )
+        )
+
+    def delete(
+        self, app: str, section: str, property: str, *, client_id: str | None = None
+    ) -> None:
+        return self._runner.run(self._inner.delete(app, section, property, client_id=client_id))
+
+    def reveal_secret(
+        self, app: str, section: str, property: str, *, client_id: str | None = None
+    ) -> SecretResponse:
+        return self._runner.run(
+            self._inner.reveal_secret(app, section, property, client_id=client_id)
+        )
+
+
 class FlowCatalystSync:
     """Blocking facade over :class:`FlowCatalyst` for code that runs outside an event loop
     (boot scripts, CLIs, sync-psycopg code). One implementation: calls run on a private
@@ -184,6 +236,9 @@ class FlowCatalystSync:
             self._runner.stop()
             raise
         self.sync = _SyncSyncResource(self._runner, self._client.sync)
+        self.platform_config = _SyncPlatformConfigResource(
+            self._runner, self._client.platform_config
+        )
         self.tokens = _SyncTokens(self._runner, lambda: self._client.tokens)
 
     def close(self) -> None:

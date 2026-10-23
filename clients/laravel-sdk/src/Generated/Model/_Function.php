@@ -45,6 +45,10 @@ class _Function
      */
     protected $secrets;
     /**
+     * @var list<TraceState>|null
+     */
+    protected $trace;
+    /**
      * @var list<Version>|null
      */
     protected $versions;
@@ -198,6 +202,24 @@ class _Function
     {
         $this->initialized['secrets'] = true;
         $this->secrets = $secrets;
+        return $this;
+    }
+    /**
+     * @return list<TraceState>|null
+     */
+    public function getTrace(): ?array
+    {
+        return $this->trace;
+    }
+    /**
+     * @param list<TraceState>|null $trace
+     *
+     * @return self
+     */
+    public function setTrace(?array $trace): self
+    {
+        $this->initialized['trace'] = true;
+        $this->trace = $trace;
         return $this;
     }
     /**

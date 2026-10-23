@@ -21,6 +21,14 @@ export {
 	type MyApplicationsResponse,
 } from "./me.js";
 export { ConnectionsResource } from "./connections.js";
+export {
+	PlatformConfigResource,
+	type RevealedSecret,
+	type PlatformConfigScope,
+	type ConfigResponse,
+	type ConfigListResponse,
+	type SetPropertyRequest,
+} from "./platform-config.js";
 export { AuditLogsResource } from "./audit-logs.js";
 export {
 	ScheduledJobsResource,

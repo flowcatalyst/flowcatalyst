@@ -6,6 +6,7 @@ namespace FlowCatalyst\Client\Resources;
 
 use FlowCatalyst\Client\FlowCatalystClient;
 use FlowCatalyst\DTOs\PlatformConfigProperty;
+use FlowCatalyst\DTOs\PlatformConfigSecret;
 
 /**
  * Platform configuration properties (`/api/config/...`,
@@ -13,8 +14,10 @@ use FlowCatalyst\DTOs\PlatformConfigProperty;
  *
  * Authorisation is enforced by the platform: anchors may read and write any
  * application's config; other callers need a platform-config access grant
- * (read, or write for `set`/`delete`) for the application, and see SECRET
- * values masked. Path segments are URL-encoded here.
+ * (read, or write for `set`/`delete`) for the application. SECRET properties
+ * always come back from `get`/`list` as the literal `***`, for every caller;
+ * the only way to read a secret's plaintext is {@see revealSecret()}.
+ * Path segments are URL-encoded here.
  */
 class PlatformConfig
 {
@@ -55,7 +58,8 @@ class PlatformConfig
     }
 
     /**
-     * Get one property. `$clientId` selects a client-scoped value; omit for
+     * Get one property. SECRET properties return the literal `***` as `value`;
+     * use {@see revealSecret()} for the plaintext. `$clientId` selects a client-scoped value; omit for
      * the global value. A missing property is a 404 FlowCatalystException.
      */
     public function get(
@@ -83,6 +87,35 @@ class PlatformConfig
         return $this->client->request(
             'GET',
             $this->path($application, $section, $property, $clientId),
+        );
+    }
+
+    /**
+     * Reveal the plaintext of a SECRET property
+     * (`GET /api/config/{app}/{section}/{property}/secret`).
+     *
+     * Requires the `platform:admin:config:reveal` permission, or being the
+     * application's own service account for its own application. Every call
+     * is audited by the platform. Errors: 403 not authorised, 404 no such
+     * property, 400 `NOT_A_SECRET` (the property is PLAIN; use `get`) - all
+     * surfaced as the SDK's normal exceptions.
+     *
+     * The call is deliberately uncached and the response is never logged;
+     * the returned DTO redacts `value` in var_dump/print_r/JSON/toArray()
+     * output. Read it explicitly via `->value`. A caller wanting a cache
+     * should add its own TTL cache around this call.
+     */
+    public function revealSecret(
+        string $application,
+        string $section,
+        string $property,
+        ?string $clientId = null,
+    ): PlatformConfigSecret {
+        return PlatformConfigSecret::fromArray(
+            $this->client->request(
+                'GET',
+                $this->path($application, $section, $property, null, '/secret', $clientId),
+            )
         );
     }
 
@@ -130,15 +163,17 @@ class PlatformConfig
         );
     }
 
-    private function path(string $application, string $section, string $property, ?string $clientId): string
+    private function path(string $application, string $section, string $property, ?string $clientId, string $suffix = '', ?string $clientIdOverride = null): string
     {
+        $clientId = $clientIdOverride ?? $clientId;
         $query = $clientId !== null ? '?' . http_build_query(['clientId' => $clientId]) : '';
 
         return sprintf(
-            '/api/config/%s/%s/%s%s',
+            '/api/config/%s/%s/%s%s%s',
             rawurlencode($application),
             rawurlencode($section),
             rawurlencode($property),
+            $suffix,
             $query,
         );
     }

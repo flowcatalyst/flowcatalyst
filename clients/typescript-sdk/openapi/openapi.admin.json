@@ -4874,7 +4874,7 @@
             "type": "boolean"
           },
           "keep": {
-            "description": "Untagged versions to keep (\u003e= 1); omitted uses the platform setting FC_FUNCTIONS_KEEP_VERSIONS (default 20)",
+            "description": "Untagged versions to keep (>= 1); omitted uses the platform setting FC_FUNCTIONS_KEEP_VERSIONS (default 20)",
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -5034,7 +5034,7 @@
             "type": "string"
           },
           "aliasPrefixes": {
-            "description": "Opt-in alias prefixes: for each prefix p, \"p-\u003chostname\u003e\" serves alias p (live routes only; no hyphens)",
+            "description": "Opt-in alias prefixes: for each prefix p, \"p-<hostname>\" serves alias p (live routes only; no hyphens)",
             "items": {
               "type": "string"
             },
@@ -5965,6 +5965,48 @@
         },
         "required": [
           "term"
+        ],
+        "type": "object"
+      },
+      "SecretResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SecretResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applicationCode": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "property": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "The value's version: it changes whenever the secret is set. Use it to detect rotation.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationCode",
+          "section",
+          "property",
+          "value",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -9105,6 +9147,79 @@
         "summary": "Suspend a client",
         "tags": [
           "clients"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/config/{app}/{section}/{property}/secret": {
+      "get": {
+        "operationId": "revealPlatformConfigSecret",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "section",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "property",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "clientId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read a SECRET platform-config value in plaintext (audited; the only endpoint that returns one)",
+        "tags": [
+          "platform-config"
         ],
         "x-sdk": "admin"
       }
