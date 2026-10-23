@@ -458,9 +458,10 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		loginattemptapi.Register(humaAPI, &loginattemptapi.State{Repo: repos.loginAttemptRepo})
 
 		platformconfigapi.Register(humaAPI, &platformconfigapi.State{
-			Repo: repos.platformConfigRepo,
-			UoW:  uow,
-			Apps: repos.applicationRepo,
+			Repo:  repos.platformConfigRepo,
+			UoW:   uow,
+			Apps:  repos.applicationRepo,
+			Audit: repos.auditRepo,
 		})
 
 		processapi.Register(humaAPI, &processapi.State{

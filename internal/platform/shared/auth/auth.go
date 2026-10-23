@@ -107,6 +107,7 @@ const (
 	permEmailDomainMappingDelete    = "platform:iam:email-domain-mapping:delete"
 	permAdminConfigView             = "platform:admin:config:view"
 	permAdminConfigUpdate           = "platform:admin:config:update"
+	permAdminConfigReveal           = "platform:admin:config:reveal"
 	permCorsOriginView              = "platform:admin:cors-origin:view"
 	permCorsOriginCreate            = "platform:admin:cors-origin:create"
 	permCorsOriginDelete            = "platform:admin:cors-origin:delete"
@@ -1048,6 +1049,13 @@ func CanDeleteEmailDomainMappings(a *AuthContext) error {
 // here — a non-anchor grant holder acts there without a permission code.
 func CanReadPlatformConfig(a *AuthContext) error   { return anchorWith(a, permAdminConfigView) }
 func CanUpdatePlatformConfig(a *AuthContext) error { return anchorWith(a, permAdminConfigUpdate) }
+
+// CanRevealPlatformConfigSecret gates reading a SECRET platform-config value
+// in plaintext. Reveal is not implied by view/update: a caller must hold
+// platform:admin:config:reveal (super-admin's wildcard covers it).
+func CanRevealPlatformConfigSecret(a *AuthContext) error {
+	return anchorWith(a, permAdminConfigReveal)
+}
 
 // ── CORS origin (admin) ──────────────────────────────────────────────────
 func CanReadCorsOrigins(a *AuthContext) error   { return anchorWith(a, permCorsOriginView) }

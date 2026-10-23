@@ -3,17 +3,23 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
@@ -26,6 +32,9 @@ type State struct {
 	// Apps resolves the {app} path code to an application, for confining
 	// application-scoped principals (see confineApp).
 	Apps AppLookup
+	// Audit records every secret reveal. Required for the reveal endpoint: a
+	// reveal that cannot be recorded is refused.
+	Audit *audit.Repository
 }
 
 // AppLookup is the slice of the application repository the confinement needs.
@@ -65,6 +74,8 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "getPlatformConfigProperty", "/api/config/{app}/{section}/{property}", "Get a single platform-config property", s.getProperty)
 	// The SPA calls /api/config/...; the legacy /api/platform-config/...
 	// path is kept for the list/access admin routes below.
+	apiroute.Get(g, "revealPlatformConfigSecret", "/api/config/{app}/{section}/{property}/secret",
+		"Read a SECRET platform-config value in plaintext (audited; the only endpoint that returns one)", s.revealSecret)
 	apiroute.Put(g, "setPlatformConfigProperty", "/api/config/{app}/{section}/{property}", "Set a platform-config property", http.StatusOK, s.setProperty)
 	apiroute.Delete(g, "deletePlatformConfigProperty", "/api/config/{app}/{section}/{property}", "Delete a platform-config property", http.StatusNoContent, s.deleteProperty)
 	apiroute.Get(g, "listPlatformConfigAccess", "/api/platform-config/{app}/access", "List access grants for an application", s.listAccess)
@@ -96,11 +107,7 @@ func (s *State) listProperties(ctx context.Context, in *listPropsInput) (*apicom
 	}
 	out := make([]ConfigResponse, 0, len(rows))
 	for i := range rows {
-		c := rows[i]
-		if !ac.IsAnchor() && c.ValueType == platformconfig.ValueSecret {
-			c.Value = "***"
-		}
-		out = append(out, configFromEntity(&c))
+		out = append(out, configFromEntity(&rows[i]))
 	}
 	return &apicommon.Out[ConfigListResponse]{Body: ConfigListResponse{Items: out}}, nil
 }
@@ -143,9 +150,6 @@ func (s *State) getProperty(ctx context.Context, in *propertyInput) (*apicommon.
 	}
 	if c == nil {
 		return nil, httperror.NotFound("Config", in.App+"/"+in.Section+"/"+in.Property)
-	}
-	if !ac.IsAnchor() && c.ValueType == platformconfig.ValueSecret {
-		c.Value = "***"
 	}
 	return &apicommon.Out[ConfigResponse]{Body: configFromEntity(c)}, nil
 }
@@ -278,4 +282,86 @@ func (s *State) revokeAccess(ctx context.Context, in *apicommon.IDInput) (*apico
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
+}
+
+type revealOutput struct {
+	// CacheControl keeps the plaintext out of every shared or browser cache.
+	CacheControl string `header:"Cache-Control"`
+	Body         SecretResponse
+}
+
+// authorizeReveal is the reveal rule (see revealSecret).
+func (s *State) authorizeReveal(ctx context.Context, ac *auth.AuthContext, app, clientID string) error {
+	if err := s.confineApp(ctx, ac, app); err != nil {
+		return err
+	}
+	if !(ac.IsAnchor() && ac.IsApplicationScoped()) {
+		if err := auth.CanRevealPlatformConfigSecret(ac); err != nil {
+			return err
+		}
+	}
+	if clientID != "" && !ac.CanAccessClient(clientID) {
+		return httperror.Forbidden("Not authorised for client '" + clientID + "'")
+	}
+	return nil
+}
+
+// revealSecret returns a SECRET's plaintext. It is the only place one leaves
+// the platform, so it is strict:
+//   - the caller is confined to its own application (confineApp), and an
+//     application's own service account may reveal its application's secrets;
+//     every other caller must hold platform:admin:config:reveal;
+//   - a client-scoped secret needs access to that client;
+//   - the reveal is audited, and refused if the audit row cannot be written;
+//   - the response is never cached.
+func (s *State) revealSecret(ctx context.Context, in *propertyInput) (*revealOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := s.authorizeReveal(ctx, ac, in.App, in.ClientID); err != nil {
+		return nil, err
+	}
+	scope, clientID := scopeFor(in.ClientID)
+	c, err := s.Repo.FindByCoordinate(ctx, in.App, in.Section, in.Property, scope, clientID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_coordinate failed", err)
+	}
+	if c == nil {
+		return nil, httperror.NotFound("Config", in.App+"/"+in.Section+"/"+in.Property)
+	}
+	if c.ValueType != platformconfig.ValueSecret {
+		return nil, usecase.Validation("NOT_A_SECRET", "this property is not a SECRET; read it with GET /api/config/{app}/{section}/{property}")
+	}
+	value, err := s.Repo.RevealValue(c)
+	if err != nil {
+		return nil, usecase.Internal("REVEAL", "secret could not be decrypted", err)
+	}
+	if s.Audit == nil {
+		return nil, usecase.Internal("AUDIT", "secret reveal is not wired to the audit log", nil)
+	}
+	detail, _ := json.Marshal(map[string]string{
+		"applicationCode": c.ApplicationCode, "section": c.Section, "property": c.Property,
+	})
+	actor := ac.PrincipalID
+	if err := s.Audit.Insert(ctx, &audit.Log{
+		ID:            tsid.Generate(tsid.AuditLog),
+		EntityType:    "PLATFORM_CONFIG",
+		EntityID:      c.ID,
+		Operation:     "SECRET_REVEALED",
+		OperationJSON: detail,
+		PrincipalID:   &actor,
+		ClientID:      ids.StringPtr(c.ClientID),
+		PerformedAt:   time.Now().UTC(),
+	}); err != nil {
+		return nil, usecase.Internal("AUDIT", "secret reveal could not be audited", err)
+	}
+	return &revealOutput{
+		CacheControl: "no-store",
+		Body: SecretResponse{
+			ApplicationCode: c.ApplicationCode,
+			Section:         c.Section,
+			Property:        c.Property,
+			ClientID:        ids.StringPtr(c.ClientID),
+			Value:           value,
+			UpdatedAt:       jsontime.New(c.UpdatedAt),
+		},
+	}, nil
 }

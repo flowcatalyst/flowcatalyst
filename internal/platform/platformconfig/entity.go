@@ -56,7 +56,12 @@ func ParseValueType(s string) (ValueType, bool) {
 	}
 }
 
-// Config is a single config row.
+// EncryptedPrefix marks a SECRET value stored encrypted at rest.
+const EncryptedPrefix = "encrypted:"
+
+// Config is a single config row. For a SECRET, Value is the stored
+// representation (ciphertext) when read from the repository and the plaintext
+// when about to be written; it must never reach a response: use MaskedValue.
 type Config struct {
 	ID              string        `json:"id"`
 	ApplicationCode string        `json:"applicationCode"`

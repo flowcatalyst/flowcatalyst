@@ -84,3 +84,15 @@ SELECT EXISTS(
       AND role_code = ANY(@role_codes::text[])
       AND can_write = true
 );
+
+-- name: PlatformConfigListPlaintextSecrets :many
+-- SECRET rows written before values were encrypted at rest (no "encrypted:"
+-- marker). Drained by Repository.EncryptLegacySecrets at start-up.
+SELECT id, value
+FROM app_platform_configs
+WHERE value_type = 'SECRET' AND value NOT LIKE 'encrypted:%';
+
+-- name: PlatformConfigSetStoredValue :exec
+-- Replaces only the stored value (no updated_at bump: the value did not
+-- change, only its representation).
+UPDATE app_platform_configs SET value = $2 WHERE id = $1 AND value_type = 'SECRET';

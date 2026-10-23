@@ -330,6 +330,55 @@ func (q *Queries) PlatformConfigFindByID(ctx context.Context, id string) (AppPla
 	return i, err
 }
 
+const platformConfigListPlaintextSecrets = `-- name: PlatformConfigListPlaintextSecrets :many
+SELECT id, value
+FROM app_platform_configs
+WHERE value_type = 'SECRET' AND value NOT LIKE 'encrypted:%'
+`
+
+type PlatformConfigListPlaintextSecretsRow struct {
+	ID    string `db:"id"`
+	Value string `db:"value"`
+}
+
+// SECRET rows written before values were encrypted at rest (no "encrypted:"
+// marker). Drained by Repository.EncryptLegacySecrets at start-up.
+func (q *Queries) PlatformConfigListPlaintextSecrets(ctx context.Context) ([]PlatformConfigListPlaintextSecretsRow, error) {
+	rows, err := q.db.Query(ctx, platformConfigListPlaintextSecrets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PlatformConfigListPlaintextSecretsRow{}
+	for rows.Next() {
+		var i PlatformConfigListPlaintextSecretsRow
+		if err := rows.Scan(&i.ID, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const platformConfigSetStoredValue = `-- name: PlatformConfigSetStoredValue :exec
+UPDATE app_platform_configs SET value = $2 WHERE id = $1 AND value_type = 'SECRET'
+`
+
+type PlatformConfigSetStoredValueParams struct {
+	ID    string `db:"id"`
+	Value string `db:"value"`
+}
+
+// Replaces only the stored value (no updated_at bump: the value did not
+// change, only its representation).
+func (q *Queries) PlatformConfigSetStoredValue(ctx context.Context, arg PlatformConfigSetStoredValueParams) error {
+	_, err := q.db.Exec(ctx, platformConfigSetStoredValue, arg.ID, arg.Value)
+	return err
+}
+
 const platformConfigUpsert = `-- name: PlatformConfigUpsert :exec
 INSERT INTO app_platform_configs
     (id, application_code, section, property, scope, client_id,

@@ -39,3 +39,41 @@ func TestConfineApp(t *testing.T) {
 		}
 	}
 }
+
+func TestAuthorizeReveal(t *testing.T) {
+	s := &State{Apps: fakeApps{
+		"orders":  {ID: "app_orders", Code: "orders"},
+		"billing": {ID: "app_billing", Code: "billing"},
+	}}
+	revealer := []string{"platform:admin:config:reveal"}
+	cases := []struct {
+		name     string
+		ac       *auth.AuthContext
+		app      string
+		clientID string
+		allowed  bool
+	}{
+		{"own application's service account, no permission needed",
+			&auth.AuthContext{Scope: auth.ScopeAnchor, Applications: []string{"app_orders"}}, "orders", "", true},
+		{"service account refused another application",
+			&auth.AuthContext{Scope: auth.ScopeAnchor, Applications: []string{"app_orders"}}, "billing", "", false},
+		{"all-applications anchor without the permission is refused",
+			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true}, "orders", "", false},
+		{"all-applications anchor with config:view+update only is refused",
+			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:admin:config:view", "platform:admin:config:update"}}, "orders", "", false},
+		{"all-applications anchor with the permission",
+			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true, Permissions: revealer}, "orders", "", true},
+		{"super-admin wildcard",
+			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:*:*:*"}}, "orders", "", true},
+		{"non-anchor with the permission is still refused",
+			&auth.AuthContext{Scope: auth.ScopeClient, Clients: []string{"clt_a"}, Permissions: revealer}, "orders", "", false},
+		{"client-scoped reveal needs that client (anchor reaches every client)",
+			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true, Permissions: revealer}, "orders", "clt_a", true},
+	}
+	for _, c := range cases {
+		err := s.authorizeReveal(context.Background(), c.ac, c.app, c.clientID)
+		if (err == nil) != c.allowed {
+			t.Errorf("%s: err=%v, want allowed=%v", c.name, err, c.allowed)
+		}
+	}
+}

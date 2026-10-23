@@ -68,11 +68,23 @@ func configFromEntity(c *platformconfig.Config) ConfigResponse {
 		Scope:           string(c.Scope),
 		ClientID:        ids.StringPtr(c.ClientID),
 		ValueType:       string(c.ValueType),
-		Value:           c.Value,
-		Description:     c.Description,
-		CreatedAt:       jsontime.New(c.CreatedAt),
-		UpdatedAt:       jsontime.New(c.UpdatedAt),
+		// A SECRET is never serialised: reveal is its own, audited endpoint.
+		Value:       c.MaskedValue(),
+		Description: c.Description,
+		CreatedAt:   jsontime.New(c.CreatedAt),
+		UpdatedAt:   jsontime.New(c.UpdatedAt),
 	}
+}
+
+// SecretResponse is the body of the reveal endpoint: the one place a SECRET's
+// plaintext leaves the platform.
+type SecretResponse struct {
+	ApplicationCode string          `json:"applicationCode"`
+	Section         string          `json:"section"`
+	Property        string          `json:"property"`
+	ClientID        *string         `json:"clientId,omitempty"`
+	Value           string          `json:"value"`
+	UpdatedAt       httpcompat.Time `json:"updatedAt" doc:"The value's version: it changes whenever the secret is set. Use it to detect rotation."`
 }
 
 // AccessResponse mirrors platformconfig.Access.

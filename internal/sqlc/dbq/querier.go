@@ -259,6 +259,12 @@ type Querier interface {
 	// Queries for app_platform_configs + app_platform_config_access. Two
 	// entity types, one repo (mirroring the legacy-platform shape).
 	PlatformConfigFindByID(ctx context.Context, id string) (AppPlatformConfig, error)
+	// SECRET rows written before values were encrypted at rest (no "encrypted:"
+	// marker). Drained by Repository.EncryptLegacySecrets at start-up.
+	PlatformConfigListPlaintextSecrets(ctx context.Context) ([]PlatformConfigListPlaintextSecretsRow, error)
+	// Replaces only the stored value (no updated_at bump: the value did not
+	// change, only its representation).
+	PlatformConfigSetStoredValue(ctx context.Context, arg PlatformConfigSetStoredValueParams) error
 	PlatformConfigUpsert(ctx context.Context, arg PlatformConfigUpsertParams) error
 	// iam_principal_application_access + iam_client_access_grants do NOT have
 	// FK ON DELETE CASCADE on principal_id (only iam_principal_roles does), so

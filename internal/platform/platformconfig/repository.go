@@ -2,13 +2,16 @@ package platformconfig
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
@@ -17,11 +20,87 @@ import (
 
 // Repository is the Postgres-backed repo for both Config and Access rows.
 // Tables: app_platform_configs + app_platform_config_access.
-type Repository struct{ q *dbq.Queries }
+type Repository struct {
+	q *dbq.Queries
+	// enc encrypts SECRET values at rest. Nil when no key is configured:
+	// reads of PLAIN rows still work, but writing or revealing a SECRET value
+	// fails closed (ErrNoEncryptionKey) rather than storing plaintext.
+	enc *encryption.Service
+}
+
+// ErrNoEncryptionKey means a SECRET value was written or revealed while
+// FLOWCATALYST_APP_KEY is not configured.
+var ErrNoEncryptionKey = errors.New("platform config: no encryption key configured (FLOWCATALYST_APP_KEY)")
 
 // NewRepository wires a repo.
+//
+// The encryption service is taken from the environment (FLOWCATALYST_APP_KEY);
+// without a key SECRET values cannot be written or revealed (fail closed).
 func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: dbq.New(pool)}
+	enc, _ := encryption.FromEnv()
+	return &Repository{q: dbq.New(pool), enc: enc}
+}
+
+// WithEncryption returns the repository using enc for SECRET values.
+func (r *Repository) WithEncryption(enc *encryption.Service) *Repository {
+	r.enc = enc
+	return r
+}
+
+// storedValue is the representation written to the value column: SECRET
+// values are AES-256-GCM encrypted and carry the "encrypted:" marker, so a
+// legacy plaintext row (no marker) is distinguishable from ciphertext.
+func (r *Repository) storedValue(c *Config) (string, error) {
+	if c.ValueType != ValueSecret {
+		return c.Value, nil
+	}
+	if r.enc == nil {
+		return "", ErrNoEncryptionKey
+	}
+	ct, err := r.enc.Encrypt(c.Value)
+	if err != nil {
+		return "", err
+	}
+	return EncryptedPrefix + ct, nil
+}
+
+// RevealValue returns the plaintext of a SECRET config as stored (c comes from
+// a Find*, so c.Value is the stored representation). A row without the
+// "encrypted:" marker is a legacy plaintext secret and is returned as is
+// (EncryptLegacySecrets removes them at start-up).
+func (r *Repository) RevealValue(c *Config) (string, error) {
+	if c.ValueType != ValueSecret {
+		return "", errors.New("platform config: not a secret")
+	}
+	if !strings.HasPrefix(c.Value, EncryptedPrefix) {
+		return c.Value, nil
+	}
+	if r.enc == nil {
+		return "", ErrNoEncryptionKey
+	}
+	return r.enc.Decrypt(c.Value)
+}
+
+// EncryptLegacySecrets encrypts SECRET rows still stored as plaintext and
+// returns how many it converted. Idempotent; safe to run on every start.
+func (r *Repository) EncryptLegacySecrets(ctx context.Context) (int, error) {
+	rows, err := r.q.PlatformConfigListPlaintextSecrets(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) > 0 && r.enc == nil {
+		return 0, ErrNoEncryptionKey
+	}
+	for _, row := range rows {
+		ct, err := r.enc.Encrypt(row.Value)
+		if err != nil {
+			return 0, err
+		}
+		if err := r.q.PlatformConfigSetStoredValue(ctx, dbq.PlatformConfigSetStoredValueParams{ID: row.ID, Value: EncryptedPrefix + ct}); err != nil {
+			return 0, err
+		}
+	}
+	return len(rows), nil
 }
 
 // FindByID loads a config row by id.
@@ -85,6 +164,10 @@ func (r *Repository) FindConfigsByApplication(ctx context.Context, app string) (
 
 // Persist implements usecasepgx.Persist[Config].
 func (r *Repository) Persist(ctx context.Context, c *Config, tx *usecasepgx.DbTx) error {
+	value, err := r.storedValue(c)
+	if err != nil {
+		return err
+	}
 	return r.q.WithTx(tx.Inner()).PlatformConfigUpsert(ctx, dbq.PlatformConfigUpsertParams{
 		ID:              c.ID,
 		ApplicationCode: c.ApplicationCode,
@@ -93,7 +176,7 @@ func (r *Repository) Persist(ctx context.Context, c *Config, tx *usecasepgx.DbTx
 		Scope:           string(c.Scope),
 		ClientID:        ids.PtrOf[ids.ClientID](ids.StringPtr(c.ClientID)),
 		ValueType:       string(c.ValueType),
-		Value:           c.Value,
+		Value:           value,
 		Description:     c.Description,
 		CreatedAt:       c.CreatedAt,
 		UpdatedAt:       time.Now().UTC(),

@@ -279,7 +279,7 @@ var _ = []string{
 	permAdminServiceAccountManage,
 	permAdminCorsOriginRead, permAdminCorsOriginCreate,
 	permAdminCorsOriginDelete, permAdminCorsOriginManage,
-	permAdminConfigRead, permAdminConfigUpdate,
+	permAdminConfigRead, permAdminConfigUpdate, permAdminConfigReveal,
 	permAdminBatchEventsWrite, permAdminBatchDispatchJobsWrite, permAdminBatchAuditLogsWrite,
 	permAdminDispatchJobRedriveComplete,
 	permIAMUserManage, permIAMRoleManage, permIAMPermissionRead,

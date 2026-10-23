@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -153,6 +154,14 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	svcs.encSvc, err = encryption.FromEnv()
 	if err != nil {
 		return nil, fmt.Errorf("encryption init: %w", err)
+	}
+	// SECRET platform-config values are encrypted at rest. Convert any rows
+	// written before that (idempotent).
+	repos.platformConfigRepo.WithEncryption(svcs.encSvc)
+	if n, err := repos.platformConfigRepo.EncryptLegacySecrets(context.Background()); err != nil {
+		return nil, fmt.Errorf("platform config: encrypt legacy secrets: %w", err)
+	} else if n > 0 {
+		slog.Info("platform config: encrypted legacy plaintext secrets", "count", n)
 	}
 	// Distributed rate-limit store: Redis when FC_REDIS_URL is reachable,
 	// else Postgres, else Noop (FC_RATE_LIMIT_DISABLE=1). Throttles

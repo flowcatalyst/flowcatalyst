@@ -146,6 +146,11 @@ const (
 	// Config
 	permAdminConfigRead   = "platform:admin:config:view"
 	permAdminConfigUpdate = "platform:admin:config:update"
+	// permAdminConfigReveal reads a SECRET platform-config value in plaintext
+	// (GET .../secret). Not part of any seeded role: super-admin's wildcard
+	// covers it; an application's own service account may reveal its own
+	// application's secrets without it (see platformconfig/api reveal).
+	permAdminConfigReveal = "platform:admin:config:reveal"
 
 	// Batch
 	permAdminBatchEventsWrite       = "platform:messaging:batch:events-write"

@@ -4,6 +4,8 @@ package operations_test
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,13 +14,24 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
 
-func TestMain(m *testing.M) { testpg.RunMain(m) }
+func TestMain(m *testing.M) {
+	// SECRET values are encrypted at rest and fail closed without a key.
+	if os.Getenv("FLOWCATALYST_APP_KEY") == "" {
+		key, err := encryption.GenerateKey()
+		if err != nil {
+			panic(err)
+		}
+		os.Setenv("FLOWCATALYST_APP_KEY", key)
+	}
+	testpg.RunMain(m)
+}
 
 // runAuthorized drives op through the full use-case envelope (Validate →
 // Authorize → Execute → atomic commit) as an anchor principal — the common
@@ -103,8 +116,11 @@ func TestSetProperty_Upsert_OverwriteExisting(t *testing.T) {
 	got, err := repo.FindByID(ctx, first.ConfigID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.Equal(t, "correct-horse", got.Value, "stored value must change on overwrite")
 	assert.Equal(t, platformconfig.ValueSecret, got.ValueType)
+	revealed, err := repo.RevealValue(got)
+	require.NoError(t, err)
+	assert.Equal(t, "correct-horse", revealed, "stored value must change on overwrite")
+	assert.NotEqual(t, "correct-horse", got.Value, "and is stored encrypted")
 }
 
 // All three required fields share the single FIELD_REQUIRED code.
@@ -256,4 +272,92 @@ func TestPlatformConfigWrites_RequireAnchor(t *testing.T) {
 			ApplicationCode: "pcauthz-denied", Section: "smtp", Property: "host", Value: "x",
 		}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "FORBIDDEN")
+}
+
+// ── SECRET values are encrypted at rest ──────────────────────────────────
+
+func TestSecret_StoredEncrypted_RevealedOnlyThroughRevealValue(t *testing.T) {
+	t.Parallel()
+	pool := testpg.Pool(t)
+	key, err := encryption.GenerateKey()
+	require.NoError(t, err)
+	enc, err := encryption.New(key)
+	require.NoError(t, err)
+	repo := platformconfig.NewRepository(pool).WithEncryption(enc)
+	uow := testpg.NewUoW(t)
+
+	vt := "SECRET"
+	_, err = runAuthorized(uow, operations.SetProperty(repo), operations.SetPropertyCommand{
+		ApplicationCode: "secretapp", Section: "sftp", Property: "password", Value: "s3cr3t-pw", ValueType: &vt})
+	require.NoError(t, err)
+
+	var raw string
+	require.NoError(t, pool.QueryRow(context.Background(),
+		`SELECT value FROM app_platform_configs WHERE application_code='secretapp' AND property='password'`).Scan(&raw))
+	assert.True(t, strings.HasPrefix(raw, platformconfig.EncryptedPrefix), "stored with the marker")
+	assert.NotContains(t, raw, "s3cr3t-pw", "plaintext never stored")
+
+	c, err := repo.FindByCoordinate(context.Background(), "secretapp", "sftp", "password", platformconfig.ScopeGlobal, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "***", c.MaskedValue())
+	got, err := repo.RevealValue(c)
+	require.NoError(t, err)
+	assert.Equal(t, "s3cr3t-pw", got)
+
+	// A different key cannot read it.
+	otherKey, _ := encryption.GenerateKey()
+	other, _ := encryption.New(otherKey)
+	_, err = platformconfig.NewRepository(pool).WithEncryption(other).RevealValue(c)
+	assert.Error(t, err)
+}
+
+func TestSecret_NoKey_FailsClosedInsteadOfStoringPlaintext(t *testing.T) {
+	t.Parallel()
+	pool := testpg.Pool(t)
+	repo := platformconfig.NewRepository(pool).WithEncryption(nil)
+	uow := testpg.NewUoW(t)
+	vt := "SECRET"
+	_, err := runAuthorized(uow, operations.SetProperty(repo), operations.SetPropertyCommand{
+		ApplicationCode: "nokeyapp", Section: "s", Property: "p", Value: "v", ValueType: &vt})
+	require.Error(t, err)
+	var n int
+	require.NoError(t, pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM app_platform_configs WHERE application_code='nokeyapp'`).Scan(&n))
+	assert.Zero(t, n, "nothing was written")
+}
+
+func TestEncryptLegacySecrets_ConvertsPlaintextRowsOnce(t *testing.T) {
+	t.Parallel()
+	pool := testpg.Pool(t)
+	key, _ := encryption.GenerateKey()
+	enc, _ := encryption.New(key)
+	repo := platformconfig.NewRepository(pool).WithEncryption(enc)
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO app_platform_configs (id, application_code, section, property, scope, value_type, value, created_at, updated_at)
+		 VALUES ('cfg_legacy1', 'legacyapp', 's', 'p', 'GLOBAL', 'SECRET', 'old-plain', now(), now())`)
+	require.NoError(t, err)
+
+	c, err := repo.FindByCoordinate(context.Background(), "legacyapp", "s", "p", platformconfig.ScopeGlobal, nil)
+	require.NoError(t, err)
+	got, err := repo.RevealValue(c)
+	require.NoError(t, err)
+	assert.Equal(t, "old-plain", got, "a legacy plaintext row is still readable before conversion")
+
+	n, err := repo.EncryptLegacySecrets(context.Background())
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, n, 1)
+	var raw string
+	require.NoError(t, pool.QueryRow(context.Background(), `SELECT value FROM app_platform_configs WHERE id='cfg_legacy1'`).Scan(&raw))
+	assert.True(t, strings.HasPrefix(raw, platformconfig.EncryptedPrefix))
+	c, _ = repo.FindByCoordinate(context.Background(), "legacyapp", "s", "p", platformconfig.ScopeGlobal, nil)
+	got, err = repo.RevealValue(c)
+	require.NoError(t, err)
+	assert.Equal(t, "old-plain", got)
+
+	n2, err := repo.EncryptLegacySecrets(context.Background())
+	require.NoError(t, err)
+	var again string
+	_ = pool.QueryRow(context.Background(), `SELECT value FROM app_platform_configs WHERE id='cfg_legacy1'`).Scan(&again)
+	assert.Equal(t, raw, again, "a second run leaves converted rows alone")
+	_ = n2
 }
