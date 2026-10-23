@@ -17,12 +17,14 @@ schema `SecretResponse`). Go commits: `4d4c6c8c` (platform), `2be7c7da` (admin p
 3. **Reveal endpoint** `GET /api/config/{app}/{section}/{property}/secret?clientId=`:
    - response `SecretResponse {applicationCode, section, property, clientId?, value, updatedAt}` with
      `Cache-Control: no-store`; `updatedAt` is the value's version (it changes when the secret is set);
-   - authorisation, in order: the application confinement that already exists (an application-scoped principal
-     only reaches its own application); then either the caller is an application-scoped anchor principal for that
-     application (an application's own service account) **or** holds the new permission
-     `platform:admin:config:reveal` (anchor required; not implied by `config:view`/`config:update`; add it to the
-     permission catalogue, in no seeded role, super-admin's wildcard covers it); a client-scoped value also needs
-     access to that client;
+   - authorisation (amended 2026-10-23, always a permission): the application confinement that already exists;
+     then the caller holds `platform:admin:config:reveal` (anchor required; not implied by `config:view`/`update`;
+     in no seeded role except the new `platform:config-secrets-admin`, which also carries config view and update;
+     super-admin's wildcard covers it) **or** `platform:application-service:config:reveal` (carried by the
+     `platform:application-service` role), in which case the principal must be application-scoped (not
+     all-applications) and bound to the requested application, and, below anchor tier, may reveal only
+     **client-scoped** values of clients in its client list (the application-wide value is refused);
+     a client-scoped value always needs access to that client; the client reference is resolved after these checks;
    - `404` for a missing property, `400 NOT_A_SECRET` for a PLAIN one;
    - **every reveal writes an audit row** (`entityType PLATFORM_CONFIG`, `entityId` the config id, operation
      `SECRET_REVEALED`, principal, client; never the value) and the reveal is **refused if the audit row cannot be

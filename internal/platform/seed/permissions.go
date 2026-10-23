@@ -262,6 +262,10 @@ var permsApplicationService = []string{
 	"platform:application-service:scheduled-job:sync",
 	"platform:application-service:process:view",
 	"platform:application-service:process:sync",
+	// Read a SECRET platform-config value of its own application in plaintext
+	// (GET /api/config/.../secret). Confined to the applications the account is
+	// bound to and, below anchor tier, to the clients it may act for.
+	"platform:application-service:config:reveal",
 	// Read its own application (and that application's client configs and
 	// roles). Confined to the applications the service account is bound to by
 	// auth.CanReadApplication; it is not a grant to read every application.

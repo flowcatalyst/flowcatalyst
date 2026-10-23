@@ -217,6 +217,15 @@ func PlatformRoles() []role.Role {
 			"Permissions for application service accounts (scoped to own application)",
 			append([]string(nil), permsApplicationService...)),
 
+		// platform:config-secrets-admin — the deliberate grant for reading
+		// platform-config secrets in plaintext. platform:admin edits config but
+		// cannot reveal a secret; super-admin's wildcard can. Give this role to
+		// the few people (or break-glass accounts) who may, instead of widening
+		// platform:admin.
+		mk("config-secrets-admin", "Platform Config Secrets Administrator",
+			"View and edit platform configuration and reveal its secrets (every reveal is audited)",
+			[]string{permAdminConfigRead, permAdminConfigUpdate, permAdminConfigReveal}),
+
 		// platform:function-publisher — CI / developer tooling (`fcdev fn
 		// publish|promote`, docs/function-runner-plan.md §10). View, publish,
 		// and promote; NOT manage (create/update/delete the function

@@ -43,37 +43,59 @@ func TestConfineApp(t *testing.T) {
 }
 
 func TestAuthorizeReveal(t *testing.T) {
-	s := &State{Apps: fakeApps{
-		"orders":  {ID: "app_orders", Code: "orders"},
-		"billing": {ID: "app_billing", Code: "billing"},
-	}}
-	revealer := []string{"platform:admin:config:reveal"}
+	s := &State{
+		Apps: fakeApps{
+			"orders":  {ID: "app_orders", Code: "orders"},
+			"billing": {ID: "app_billing", Code: "billing"},
+		},
+		Clients: newFakeClients(),
+	}
+	const (
+		admin  = "platform:admin:config:reveal"
+		appSvc = "platform:application-service:config:reveal"
+		acme   = "clt_acme00000000001"
+	)
 	cases := []struct {
-		name     string
-		ac       *auth.AuthContext
-		app      string
-		clientID string
-		allowed  bool
+		name      string
+		ac        *auth.AuthContext
+		app       string
+		clientRef string
+		allowed   bool
 	}{
-		{"own application's service account, no permission needed",
-			&auth.AuthContext{Scope: auth.ScopeAnchor, Applications: []string{"app_orders"}}, "orders", "", true},
-		{"service account refused another application",
-			&auth.AuthContext{Scope: auth.ScopeAnchor, Applications: []string{"app_orders"}}, "billing", "", false},
-		{"all-applications anchor without the permission is refused",
-			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true}, "orders", "", false},
-		{"all-applications anchor with config:view+update only is refused",
-			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:admin:config:view", "platform:admin:config:update"}}, "orders", "", false},
-		{"all-applications anchor with the permission",
-			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true, Permissions: revealer}, "orders", "", true},
+		// platform administrators
+		{"all-applications anchor with the admin permission",
+			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{admin}}, "orders", "", true},
 		{"super-admin wildcard",
-			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:*:*:*"}}, "orders", "", true},
-		{"non-anchor with the permission is still refused",
-			&auth.AuthContext{Scope: auth.ScopeClient, Clients: []string{"clt_a"}, Permissions: revealer}, "orders", "", false},
-		{"client-scoped reveal needs that client (anchor reaches every client)",
-			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true, Permissions: revealer}, "orders", "clt_a", true},
+			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:*:*:*"}}, "orders", "acme", true},
+		{"admin without the permission is refused, even with config view and update",
+			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:admin:config:view", "platform:admin:config:update"}}, "orders", "", false},
+		{"the admin permission needs anchor tier",
+			&auth.AuthContext{Scope: auth.ScopeClient, Clients: []string{acme}, AllApplications: true, Permissions: []string{admin}}, "orders", "acme", false},
+
+		// an application's service account (application-service permission)
+		{"own application's service account WITH the permission",
+			&auth.AuthContext{Scope: auth.ScopeAnchor, Applications: []string{"app_orders"}, Permissions: []string{appSvc}}, "orders", "", true},
+		{"own application's service account WITHOUT the permission is refused (no implicit grant)",
+			&auth.AuthContext{Scope: auth.ScopeAnchor, Applications: []string{"app_orders"}}, "orders", "", false},
+		{"service account refused another application",
+			&auth.AuthContext{Scope: auth.ScopeAnchor, Applications: []string{"app_orders"}, Permissions: []string{appSvc}}, "billing", "", false},
+		{"the application-service permission does not reach every application",
+			&auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{appSvc}}, "orders", "", false},
+
+		// below anchor tier: bound application AND the clients it may act for
+		{"client-tier service account: its client's value in its application",
+			&auth.AuthContext{Scope: auth.ScopeClient, Clients: []string{acme}, Applications: []string{"app_orders"}, Permissions: []string{appSvc}}, "orders", "acme", true},
+		{"client-tier service account: the application-wide value is refused",
+			&auth.AuthContext{Scope: auth.ScopeClient, Clients: []string{acme}, Applications: []string{"app_orders"}, Permissions: []string{appSvc}}, "orders", "", false},
+		{"client-tier service account: another client is refused",
+			&auth.AuthContext{Scope: auth.ScopeClient, Clients: []string{"clt_other0000000001"}, Applications: []string{"app_orders"}, Permissions: []string{appSvc}}, "orders", "acme", false},
+		{"client-tier service account: another application is refused",
+			&auth.AuthContext{Scope: auth.ScopeClient, Clients: []string{acme}, Applications: []string{"app_orders"}, Permissions: []string{appSvc}}, "billing", "acme", false},
+		{"client-tier account bound to no application is refused",
+			&auth.AuthContext{Scope: auth.ScopeClient, Clients: []string{acme}, Permissions: []string{appSvc}}, "orders", "acme", false},
 	}
 	for _, c := range cases {
-		_, err := s.authorizeReveal(context.Background(), c.ac, c.app, c.clientID)
+		_, err := s.authorizeReveal(context.Background(), c.ac, c.app, c.clientRef)
 		if (err == nil) != c.allowed {
 			t.Errorf("%s: err=%v, want allowed=%v", c.name, err, c.allowed)
 		}

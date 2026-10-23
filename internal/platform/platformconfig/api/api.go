@@ -352,19 +352,39 @@ type revealOutput struct {
 	Body         SecretResponse
 }
 
-// authorizeReveal is the reveal rule (see revealSecret).
+// authorizeReveal is the reveal rule (see revealSecret). Reveal is always a
+// permission, never implied by being an application's service account:
+//
+//   - a platform administrator holds platform:admin:config:reveal (anchor tier);
+//   - an application's service account holds
+//     platform:application-service:config:reveal, and is then confined to the
+//     applications it is bound to (an account with all-applications access is
+//     not "its own application" and needs the admin permission instead), and,
+//     below anchor tier, to client-scoped values of the clients it may act for
+//     (the application-wide value is not one client's).
 //
 // It returns the canonical client id of the requested scope ("" for the global
 // value). The client reference is resolved only after the caller has passed the
-// application and permission checks, so an unauthorised caller cannot probe
+// permission and application checks, so an unauthorised caller cannot probe
 // which clients exist.
 func (s *State) authorizeReveal(ctx context.Context, ac *auth.AuthContext, app, clientRef string) (string, error) {
 	if err := s.confineApp(ctx, ac, app); err != nil {
 		return "", err
 	}
-	if !(ac.IsAnchor() && ac.IsApplicationScoped()) {
-		if err := auth.CanRevealPlatformConfigSecret(ac); err != nil {
-			return "", err
+	adminErr := auth.CanRevealPlatformConfigSecret(ac)
+	if adminErr != nil {
+		if auth.CanRevealApplicationConfigSecret(ac) != nil {
+			return "", adminErr
+		}
+		if !ac.IsApplicationScoped() {
+			return "", httperror.Forbidden("platform:application-service:config:reveal reaches only the account's own applications; this account is not bound to one")
+		}
+		a, err := s.Apps.FindByCode(ctx, app)
+		if err != nil {
+			return "", usecase.Internal("REPO", "find application failed", err)
+		}
+		if a == nil || !ac.CanAccessApplication(string(a.ID)) {
+			return "", httperror.Forbidden("Not authorised for application '" + app + "'")
 		}
 	}
 	clientID, err := s.resolveClientID(ctx, clientRef)
@@ -373,6 +393,9 @@ func (s *State) authorizeReveal(ctx context.Context, ac *auth.AuthContext, app, 
 	}
 	if clientID != "" && !ac.CanAccessClient(clientID) {
 		return "", httperror.Forbidden("Not authorised for client '" + clientID + "'")
+	}
+	if clientID == "" && !ac.IsAnchor() {
+		return "", httperror.Forbidden("a caller below anchor tier can reveal only a client's own value; pass clientId")
 	}
 	return clientID, nil
 }

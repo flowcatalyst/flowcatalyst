@@ -36,12 +36,22 @@ can tell when it was rotated. The response carries `Cache-Control: no-store`; do
 not cache the value beyond a short, bounded time in your own process, and never
 log it.
 
-**Who may reveal.** An application's own service account may reveal the secrets
-of **its own application** (never another's). Any other caller needs the
-permission `platform:admin:config:reveal`, which no built-in role carries except
-super-admin (its `platform:*:*:*` covers it); grant it through a role. Viewing or
-editing configuration does not imply it. A client-scoped secret also requires
-access to that client.
+**Who may reveal.** Always a permission, never implied by being an application's
+service account:
+
+- A **platform administrator** holds `platform:admin:config:reveal` (anchor tier).
+  Super-admin has it through its wildcard, and the role
+  `platform:config-secrets-admin` (config view, edit and reveal) is the deliberate
+  grant for the few people who may; `platform:admin` can edit configuration but
+  cannot reveal a secret.
+- An **application's service account** holds `platform:application-service:config:reveal`,
+  which the `platform:application-service` role carries. It reaches only the
+  applications the account is bound to, never another's, and, for an account below
+  anchor tier, only the **values of the clients it may act for** (not the
+  application-wide value).
+
+Viewing or editing configuration does not imply reveal. A client-scoped secret also
+requires access to that client.
 
 **Every reveal is audited** (who, which property, when; never the value), and a
 reveal that cannot be recorded is refused.

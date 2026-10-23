@@ -136,6 +136,7 @@ const (
 	permAppSvcRoleUpdate         = "platform:application-service:role:update"
 	permAppSvcRoleDelete         = "platform:application-service:role:delete"
 	permAppSvcProcessSync        = "platform:application-service:process:sync"
+	permAppSvcConfigReveal       = "platform:application-service:config:reveal"
 	permAppSvcSubscriptionCreate = "platform:application-service:subscription:create"
 	permAppSvcSubscriptionUpdate = "platform:application-service:subscription:update"
 	permAppSvcSubscriptionDelete = "platform:application-service:subscription:delete"
@@ -1051,10 +1052,20 @@ func CanReadPlatformConfig(a *AuthContext) error   { return anchorWith(a, permAd
 func CanUpdatePlatformConfig(a *AuthContext) error { return anchorWith(a, permAdminConfigUpdate) }
 
 // CanRevealPlatformConfigSecret gates reading a SECRET platform-config value
-// in plaintext. Reveal is not implied by view/update: a caller must hold
-// platform:admin:config:reveal (super-admin's wildcard covers it).
+// in plaintext as a platform administrator. Reveal is not implied by
+// view/update: a caller must hold platform:admin:config:reveal (super-admin's
+// wildcard covers it), at anchor tier.
 func CanRevealPlatformConfigSecret(a *AuthContext) error {
 	return anchorWith(a, permAdminConfigReveal)
+}
+
+// CanRevealApplicationConfigSecret is the application-service counterpart: a
+// service account that holds platform:application-service:config:reveal. The
+// permission is only half of the rule; the handler then confines the caller to
+// the applications it is bound to and, below anchor tier, to the clients it may
+// act for (see platformconfig/api authorizeReveal).
+func CanRevealApplicationConfigSecret(a *AuthContext) error {
+	return requirePermission(a, permAppSvcConfigReveal)
 }
 
 // ── CORS origin (admin) ──────────────────────────────────────────────────
