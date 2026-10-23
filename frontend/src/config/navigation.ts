@@ -165,6 +165,11 @@ export const NAVIGATION_CONFIG: NavGroup[] = [
 						icon: "pi pi-tag",
 						route: "/platform/settings/names",
 					},
+					{
+						label: "Configuration",
+						icon: "pi pi-sliders-h",
+						route: "/platform/settings/config",
+					},
 				],
 			},
 			{

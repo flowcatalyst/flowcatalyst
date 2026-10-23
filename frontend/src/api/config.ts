@@ -3,6 +3,7 @@ import type {
 	AccessListResponse as GenAccessListResponse,
 	ConfigListResponse as GenConfigListResponse,
 	ConfigResponse,
+	SecretResponse,
 } from "./generated";
 
 // Hand-rolled by design: GET /api/public/login-theme is a chi-mounted public
@@ -71,12 +72,32 @@ function configUrl(
 	property: string,
 	clientId?: string,
 ): string {
-	let url = `/config/${appCode}/${section}/${property}`;
+	let url = `/config/${encodeURIComponent(appCode)}/${encodeURIComponent(section)}/${encodeURIComponent(property)}`;
 	if (clientId) url += `?clientId=${encodeURIComponent(clientId)}`;
 	return url;
 }
 
+export type RevealedSecret = SecretResponse;
+
 export const configApi = {
+	// List every property of an application. SECRET values come back as "***".
+	listProperties(appCode: string): Promise<ConfigListResponse> {
+		return apiFetch(`/platform-config/${encodeURIComponent(appCode)}`);
+	},
+
+	// Read one SECRET's plaintext. The only call that returns one; the server
+	// audits every reveal (needs platform:admin:config:reveal).
+	revealSecret(
+		appCode: string,
+		section: string,
+		property: string,
+		clientId?: string,
+	): Promise<RevealedSecret> {
+		const url = configUrl(appCode, section, property, clientId);
+		const [path, query] = url.split("?");
+		return apiFetch(`${path}/secret${query ? `?${query}` : ""}`);
+	},
+
 	// Get login theme (public, no auth needed)
 	getLoginTheme(clientId?: string): Promise<LoginTheme> {
 		const url = clientId

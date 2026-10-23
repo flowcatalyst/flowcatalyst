@@ -570,6 +570,12 @@ const router = createRouter({
 					component: () =>
 						import("@/pages/platform/settings/PlatformNamesSettingsPage.vue"),
 				},
+				{
+					path: "platform/settings/config",
+					name: "config-settings",
+					component: () =>
+						import("@/pages/platform/settings/PlatformConfigPage.vue"),
+				},
 				// Platform - Debug
 				{
 					path: "platform/debug/events",

@@ -201,6 +201,7 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
 	"/platform/login-attempts": "platform:admin:login-attempt:view",
 	"/platform/settings/theme": "platform:admin:settings:view",
 	"/platform/settings/names": "platform:admin:settings:view",
+	"/platform/settings/config": "platform:admin:config:view",
 	"/platform/debug/events": "platform:messaging:event:view-raw",
 	"/platform/debug/dispatch-jobs": "platform:messaging:dispatch-job:view",
 };
