@@ -2,6 +2,14 @@ export interface NavItem {
 	label: string;
 	icon: string;
 	route?: string;
+	// A page outside the SPA (a server-rendered /ui page). Opens as a full page
+	// load, not a router navigation.
+	href?: string;
+	// Permission needed to see an href item (href items have no SPA route to
+	// derive it from).
+	permission?: string;
+	// Platform feature flag that must be on (from /api/config/platform).
+	feature?: "ingestion";
 	children?: NavItem[];
 	expanded?: boolean;
 	// Restrict an item to a single audience by scope. "anchor" shows only to
@@ -228,6 +236,13 @@ export const NAVIGATION_CONFIG: NavGroup[] = [
 				label: "Dispatch Jobs",
 				icon: "pi pi-send",
 				route: "/dispatch-jobs",
+			},
+			{
+				label: "Ingestions",
+				icon: "pi pi-download",
+				href: "/ui/ingestions",
+				permission: "platform:ingestion:ingestion:view",
+				feature: "ingestion",
 			},
 			{
 				label: "Scheduled Jobs",

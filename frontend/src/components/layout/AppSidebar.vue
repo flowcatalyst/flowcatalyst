@@ -5,7 +5,7 @@ import { NAVIGATION_CONFIG, type NavItem } from "@/config/navigation";
 import { usePlatformConfigStore } from "@/stores/platformConfig";
 import { useAppThemeStore } from "@/stores/appTheme";
 import { useAuthStore } from "@/stores/auth";
-import { canAccessPath, canSeeScope } from "@/stores/permissions";
+import { canAccessPath, canSeeScope, userHasPermission } from "@/stores/permissions";
 import {
 	isSectionOpen,
 	loadClosedSections,
@@ -61,6 +61,16 @@ function visibleItem(item: NavItem): NavItem | null {
 				(!c.route || canAccessPath(authStore.user, c.route)),
 		);
 		return children.length > 0 ? { ...item, children } : null;
+	}
+	if (item.feature === "ingestion" && !platformConfigStore.ingestionEnabled) {
+		return null;
+	}
+	if (
+		item.href &&
+		item.permission &&
+		!userHasPermission(authStore.user, item.permission)
+	) {
+		return null;
 	}
 	if (item.route && !canAccessPath(authStore.user, item.route)) return null;
 	return item;
@@ -204,6 +214,17 @@ function isActive(item: NavItem): boolean {
               </RouterLink>
             </div>
           </div>
+
+          <!-- Page outside the SPA (server-rendered /ui) -->
+          <a
+            v-else-if="item.href"
+            :href="item.href"
+            class="nav-item"
+            :title="collapsed ? item.label : ''"
+          >
+            <i :class="item.icon"></i>
+            <span v-if="!collapsed" class="nav-label">{{ item.label }}</span>
+          </a>
 
           <!-- Simple nav item -->
           <RouterLink

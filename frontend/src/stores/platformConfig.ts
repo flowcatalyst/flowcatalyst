@@ -3,6 +3,7 @@ import { ref, computed } from "vue";
 
 export interface PlatformFeatures {
 	messagingEnabled: boolean;
+	ingestion?: boolean;
 }
 
 export interface PlatformConfig {
@@ -29,6 +30,8 @@ export const usePlatformConfigStore = defineStore("platformConfig", () => {
 	const messagingEnabled = computed(
 		() => config.value.features.messagingEnabled,
 	);
+
+	const ingestionEnabled = computed(() => !!config.value.features.ingestion);
 
 	const platformName = computed(
 		() => config.value.platformName || DEFAULT_CONFIG.platformName,
@@ -71,6 +74,7 @@ export const usePlatformConfigStore = defineStore("platformConfig", () => {
 		error,
 		// Computed
 		messagingEnabled,
+		ingestionEnabled,
 		platformName,
 		// Actions
 		loadConfig,
