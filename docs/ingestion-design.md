@@ -19,8 +19,7 @@ It is the inbound twin of subscriptions.
 | The runtime that actually reads sources (Camel today) | **Outside the platform**: its own repository and release, talking to the platform's runtime API (section 7). Optional; an installation without it simply has no ingestions running |
 | Inhance's own extensions (MiX, WebIQ) and its definition files | Stay in `mono-repo`, built on the released runtime |
 
-Out of scope: any engine inside the platform process; the `camel-route` source (owner: not needed, so it is not part of
-the contract); the Java platform mirror (a hand-off document follows once the Go side exists; the Java control plane
+Out of scope: any engine inside the platform process; the Java platform mirror (a hand-off document follows once the Go side exists; the Java control plane
 is the reference for it).
 
 ## 2. The model
@@ -41,8 +40,18 @@ ingestion = (application, client?, code) + source + split + target + flags
 
 **Changed from the current contract:**
 
-- `camel-route` is removed. `mix` and `webiq` are no longer built-in kinds: they are `custom` kinds supplied by an
-  extension (owner: moving to extensions), so the platform's core knows nine kinds, not eleven.
+- `mix` and `webiq` are no longer built-in kinds: they are kinds supplied by a runtime extension (owner: moving to
+  extensions), so the platform's own list is nine kinds, not eleven.
+- **`camel-route` stays, but as a kind the Camel runtime reports, not as part of the platform** (owner 2026-10-24: keep it
+  if it earns its place). Today nothing in `client-code` uses it, only the guide's examples; it is the escape hatch for
+  a component or a reshaping step that does not justify an extension. The platform stores it as any runtime-reported
+  kind (`{kind: "camel-route", settings: {yaml}}`), knows nothing about Camel, and only leases it to a runtime that carries
+  it, so a non-Camel runtime later simply does not report it. It is dangerous (the route runs with the runtime's network,
+  identity and environment), so a kind may declare a **required permission** in what the runtime reports: the platform
+  refuses to create or change an ingestion of that kind unless the caller holds it (`platform:ingestion:ingestion:route`,
+  role `platform:ingestion-route-author`), and the Camel runtime reports the kind only when
+  `INGEST_CAMEL_ROUTES_ENABLED` is true (default false). The runtime, not the platform, validates the YAML: at "test
+  connection" and when it takes the lease, reporting `FAILING` with the reason.
 - **The target refers to platform entities, not strings.** Today it holds a delivery URL, a dispatch pool id and a
   service account id. In the platform it is
   `{code, connection, path?, pool, mode, batchSize}`: `connection` and `pool` are codes validated when the ingestion
@@ -83,6 +92,7 @@ Subdomain `ingestion` (four segments, like every platform permission):
 | `platform:ingestion:ingestion:create` / `update` / `delete` | change definitions; `update` includes pause and resume |
 | `platform:ingestion:ingestion:promote` | make a version live (section 5) |
 | `platform:ingestion:ingestion:test` | run "test connection" (it makes a real outbound call from a runtime, so it is its own grant) |
+| `platform:ingestion:ingestion:route` | create or change an ingestion of a kind that declares it needs this (`camel-route`); removing one needs only `delete` |
 | `platform:ingestion:set:apply` | apply or release a set |
 | `platform:ingestion:runtime:operate` | the runtime API: poll, report, state |
 
@@ -170,11 +180,23 @@ versions, definition), "Export YAML", test connection, sets and their applies, p
 ingestions a set owns. **Which UI stack the platform uses is decided separately** (`flowcatalyst-framework/docs/go/ui.md` section 16 and the
 owner's 2026-10-24 question about moving to Nuxt UI); the work package for the pages waits on it.
 
-## 10. The runtime repository (separate document)
+## 10. The runtime repository: consumed, not embedded (separate document to follow)
 
-Split from the monorepo by CI like the function SDKs; publishes `ingest-contract` and `ingest-extension` as Maven
-artifacts; loads extension jars from `INGEST_EXTENSIONS_DIR` at start; `fcdev` installs it (jar or container) and scaffolds
-an extension project. Written up after the platform side, since it depends on the contract above.
+A business should **consume** the runtime and keep its own extensions outside it; it should not carry the runtime's
+source inside its mono-repo. Three tiers, from least to most involved:
+
+| Tier | The business has | Upgrade |
+|---|---|---|
+| A. Image plus extensions directory | A Dockerfile `FROM` the released runtime image and a folder of extension jars copied to `INGEST_EXTENSIONS_DIR`, loaded at start | change the image tag |
+| B. Maven assembly | A small module in its own mono-repo (`apps/ingest-runtime`) that depends on the released `ingest-runtime` artifact and on its own extension modules (which live anywhere in its repository), and builds its image | change one version |
+| C. Source | A fork, or the runtime repository pulled in with `git subtree` (preferred over a submodule: no second checkout step in CI), only for a business that changes the runtime itself | `git subtree pull` |
+
+The runtime repository is split from the monorepo by CI like the function SDKs, tagged, and publishes the image and the
+artifacts (`ingest-contract`, `ingest-extension`, `ingest-runtime`) to the registry the framework already publishes to.
+Compatibility is checked, not assumed: the runtime refuses an extension built against an incompatible extension API
+major version, and the platform serves the current and previous runtime contract (section 7). `fcdev` installs the
+runtime for local work (image or jar) and scaffolds an extension project. A business keeps its CI test of its own
+extensions against each new runtime release (a Renovate or Dependabot bump of the image tag or version).
 
 ## 11. Work packages (each sized for one agent, with tests and a mutation check)
 
