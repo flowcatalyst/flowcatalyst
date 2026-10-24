@@ -381,7 +381,8 @@ func TestJobs_PermissionAndReach(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, e.do(http.MethodPost, jobsPath(i.ID, rt), body).code)
 	e.who = e.principal(permRuntime)
 	e.who.Clients = []string{"clt_someoneelse0"}
-	assert.Equal(t, http.StatusForbidden, e.do(http.MethodPost, jobsPath(i.ID, rt), body).code, "another client's ingestion")
+	assert.Equal(t, http.StatusOK, e.do(http.MethodPost, jobsPath(i.ID, rt), body).code,
+		"the runtime role is platform-wide: the client a person's account is confined to does not matter")
 }
 
 const secretsSection = "secrets"
@@ -512,5 +513,6 @@ func TestSecrets_PermissionAndReach(t *testing.T) {
 		"the reveal grants of platform config do not open this route")
 	e.who = e.principal(permRuntime)
 	e.who.Clients = []string{"clt_someoneelse0"}
-	assert.Equal(t, http.StatusForbidden, e.do(http.MethodGet, secretPath(i.ID, "sftp-password", holder), nil).code)
+	assert.Equal(t, http.StatusOK, e.do(http.MethodGet, secretPath(i.ID, "sftp-password", holder), nil).code,
+		"the runtime role is platform-wide: the client a person's account is confined to does not matter")
 }

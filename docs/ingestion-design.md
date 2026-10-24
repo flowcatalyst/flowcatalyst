@@ -182,9 +182,10 @@ as the runtime's service account (`platform:ingestion:runtime:operate`).
   by which time the first runtime has stopped it. A runtime that goes silent drops out of the count after a window and the
   survivors take its share. The share counts every leased ingestion whichever runtime can run it, so a runtime that
   carries fewer kinds simply holds what it can.
-- **The runtime's account.** A runtime holds the role `platform:ingestion-runtime`. An account provisioned for one
-  application is bound to it and so polls only that application's ingestions; a runtime shared by several integration
-  applications uses an account created with `allApplications` (which needs a caller who has that reach).
+- **The runtime's account.** A runtime holds the role `platform:ingestion-runtime`, and that role is **platform-wide**
+  (owner 2026-10-24: one fleet serves every application's ingestions, no fleet per application): the runtime routes
+  (poll, report, state, jobs, secrets) reach every client and every application whatever way the account was provisioned,
+  and the permission is the gate. The fair share spreads the ingestions over the instances of the fleet.
 - **Report:** route states, exchange windows, failures (with the lease checked), idempotent per window.
 - **State:** `GET/PUT /state/{ingestionId}/{key}`; a write from a runtime without the lease is `409 LEASE_NOT_HELD`.
 - **Test connection** is pull-based: the pages queue a request (`ing_test_requests`); a runtime that carries the kind

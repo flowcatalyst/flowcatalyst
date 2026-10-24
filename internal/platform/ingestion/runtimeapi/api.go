@@ -130,7 +130,7 @@ func (s *State) poll(ctx context.Context, in *pollInput) (*apicommon.Out[PollRes
 	req := ingestion.PollRequest{
 		RuntimeID: b.RuntimeID, ContractVersion: b.ContractVersion, Kinds: b.Kinds, URL: b.URL, Now: now, Lease: s.lease(),
 	}
-	req.Clients, req.Applications = ingestion.ListReach(ac)
+	req.Clients, req.Applications = ingestion.ListReach(runtimeReach(ac))
 	res, err := s.Repo.Poll(ctx, req)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "poll failed", err)
@@ -197,7 +197,7 @@ func (s *State) report(ctx context.Context, in *reportInput) (*apicommon.Empty, 
 		return nil, err
 	}
 	b := in.Body
-	rep := ingestion.Report{RuntimeID: b.RuntimeID, Caller: ac, Now: s.now()}
+	rep := ingestion.Report{RuntimeID: b.RuntimeID, Caller: runtimeReach(ac), Now: s.now()}
 	for _, r := range b.Routes {
 		rep.Routes = append(rep.Routes, ingestion.RouteReport{IngestionID: r.IngestionID, Version: r.Version, Status: r.Status, Error: r.Error})
 	}
@@ -254,6 +254,19 @@ type putStateInput struct {
 	Body        StateValue
 }
 
+// runtimeReach is the reach of a caller that holds platform:ingestion:runtime:operate:
+// every client and every application. A runtime is infrastructure that serves the
+// whole platform, and one fleet runs every application's ingestions (the fair share
+// spreads them over its instances), so how its service account was provisioned (bound
+// to one application or not) must not decide which ingestions it runs. The permission
+// is the gate; it is held by runtime accounts only.
+func runtimeReach(ac *auth.AuthContext) *auth.AuthContext {
+	r := *ac
+	r.Scope = auth.ScopeAnchor
+	r.AllApplications = true
+	return &r
+}
+
 // requireIngestion checks the caller may operate the runtime API and reaches
 // the ingestion, and returns it.
 func (s *State) requireIngestion(ctx context.Context, id string) (*ingestion.Ingestion, error) {
@@ -268,7 +281,7 @@ func (s *State) requireIngestion(ctx context.Context, id string) (*ingestion.Ing
 	if i == nil {
 		return nil, operations.NotFound(id)
 	}
-	return i, ingestion.CheckReach(ac, i)
+	return i, ingestion.CheckReach(runtimeReach(ac), i)
 }
 
 func (s *State) getState(ctx context.Context, in *getStateInput) (*apicommon.Out[StateValue], error) {

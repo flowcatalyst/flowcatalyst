@@ -42,10 +42,10 @@ same code for the client (the short form answers `409` then).
 ## Running it
 
 You need a platform with ingestion enabled (`FC_INGESTION_ENABLED=true`, on by default in `fcdev`), and a
-service account for the runtime holding the platform role `platform:ingestion-runtime`. An account provisioned for one
-application polls only that application's ingestions; a runtime shared by several integration applications needs an
-account created with `allApplications`. With more than one runtime the platform spreads the polled sources evenly over
-the live ones (fair share), and a runtime that stops polling hands its share to the others once its leases expire.
+service account for the runtime holding the platform role `platform:ingestion-runtime`. The role is platform-wide: the runtime routes reach every client's and every application's ingestions, however the
+account was provisioned, so one fleet serves them all. With more than one runtime instance the platform spreads the polled
+sources evenly over the live ones (fair share), and an instance that stops polling hands its share to the others once its
+leases expire.
 
 ```
 java -jar ingestor-runtime-X.Y.Z-all.jar        # from a directory that holds config/application.yaml

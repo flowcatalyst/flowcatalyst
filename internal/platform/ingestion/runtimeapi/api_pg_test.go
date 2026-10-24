@@ -206,7 +206,19 @@ func (e *env) poll(runtime string, version int, kinds ...map[string]any) respons
 	if len(kinds) > 0 {
 		body["kinds"] = kinds
 	}
-	return e.do(http.MethodPost, base+"/poll", body)
+	r := e.do(http.MethodPost, base+"/poll", body)
+	// The runtime role reaches every ingestion on the platform, and the tests share
+	// one database: a test sees only the ingestions of its own application.
+	if arr, ok := r.json["ingestions"].([]any); ok {
+		own := []any{}
+		for _, x := range arr {
+			if m, _ := x.(map[string]any); m != nil && m["applicationCode"] == e.app.Code {
+				own = append(own, x)
+			}
+		}
+		r.json["ingestions"] = own
+	}
+	return r
 }
 
 func (e *env) count(query string, args ...any) int {
@@ -422,10 +434,16 @@ func TestIngestionTest_PermissionAndReach(t *testing.T) {
 
 // A runtime sees only what its service account reaches: a client-tier
 // account never receives another client's ingestions.
-func TestPoll_ConfinedToReach(t *testing.T) {
+// The runtime role is platform-wide: how the account was provisioned, or the clients
+// it is confined to as a person, does not decide which ingestions a runtime runs.
+func TestPoll_ReachIsPlatformWide(t *testing.T) {
 	e := newEnv(t)
-	e.save("mine", sqsSource, true)
+	i := e.save("mine", sqsSource, true)
 	e.who = e.principal(permRuntime)
 	e.who.Clients = []string{"clt_someoneelse0"}
-	assert.Empty(t, e.poll("rt-"+unique(), ingestion.ContractVersion).list("ingestions"))
+	e.who.AllApplications = false
+	e.who.Applications = []string{"app_someoneelse0"}
+	got := e.poll("rt-"+unique(), ingestion.ContractVersion).list("ingestions")
+	require.Len(t, got, 1)
+	assert.Equal(t, i.ID, got[0]["id"])
 }
