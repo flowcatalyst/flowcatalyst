@@ -83,6 +83,10 @@ public final class Transport {
         return execute("PUT", baseUrl + path, null, body, javaType(type), true);
     }
 
+    public <T> T put(String path, Map<String, Object> query, Object body, Class<T> type) {
+        return execute("PUT", baseUrl + path, query, body, javaType(type), true);
+    }
+
     public <T> T delete(String path, Class<T> type) {
         return execute("DELETE", baseUrl + path, null, null, javaType(type), true);
     }
@@ -211,6 +215,10 @@ public final class Transport {
     private Object parseResponse(String body, int status, JavaType responseType) {
         if (responseType == null || status == 204 || body == null || body.isEmpty()) {
             return null;
+        }
+        // A String response is the body as it came (a YAML file), not a JSON string.
+        if (responseType.getRawClass() == String.class) {
+            return body;
         }
         try {
             return mapper.readValue(body, responseType);

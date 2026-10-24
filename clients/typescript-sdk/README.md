@@ -128,6 +128,7 @@ typed client with auth, retries, and neverthrow results:
 - `client.eventTypes()` — `list()`, `get(id)`, `getByCode(code)`, `create(...)`, `update(...)`, `addSchemaVersion(...)`, `archive(id)`, `sync(...)`
 - `client.subscriptions()`, `client.dispatchPools()`, `client.connections()`, `client.processes()`
 - `client.roles()`, `client.permissions()`, `client.applications()`, `client.clients()`, `client.principals()`, `client.me()`
+- `client.ingestions()` — CRUD, `pause`/`resume`, versions (`saveVersion`, `makeVersionLive`), `getDefinition` (YAML), `listHistory`, `listFailures`, `listSourceKinds`, `testConnection`/`getTest`, and sets (`applySet(name, req, dryRun?)`, `reapplySet`, `releaseSet`, ...). Secrets in a definition are names, never values; the runtime API is not part of this SDK
 - `client.scheduledJobs()`, `client.auditLogs()`, `client.router()`, `client.definitions()`
 - `client.platformConfig()` — `list(app)`, `get(app, section, property, {clientId}?)`, `set(...)`, `delete(...)`, `revealSecret(app, section, property, clientId?)`
 

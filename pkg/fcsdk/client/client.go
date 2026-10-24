@@ -242,6 +242,9 @@ func (c *FlowCatalystClient) do(ctx context.Context, method, fullURL string, bod
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
+		if _, ok := out.(*yamlBody); ok {
+			req.Header.Set("Accept", "application/yaml")
+		}
 		if c.tokenProvider != nil {
 			token, err := c.tokenProvider(ctx)
 			if err != nil {
@@ -280,12 +283,21 @@ func (c *FlowCatalystClient) do(ctx context.Context, method, fullURL string, bod
 	return lastErr
 }
 
+// yamlBody is an out value for an endpoint that answers a YAML document: the
+// body is kept as it is instead of decoded as JSON.
+type yamlBody string
+
 func handleResponse(resp *http.Response, out any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		if out == nil || resp.StatusCode == http.StatusNoContent {
 			_, _ = io.Copy(io.Discard, resp.Body)
 			return nil
+		}
+		if y, ok := out.(*yamlBody); ok {
+			b, err := io.ReadAll(resp.Body)
+			*y = yamlBody(b)
+			return err
 		}
 		dec := json.NewDecoder(resp.Body)
 		if err := dec.Decode(out); err != nil && !errors.Is(err, io.EOF) {

@@ -89,3 +89,38 @@ def test_platform_config_operations_exist(lock: dict[str, Any]) -> None:
 
     sent = {f.alias or n for n, f in SecretResponse.model_fields.items()}
     assert set(secret["required"]) <= sent
+
+
+def test_ingestion_operations_exist_with_their_parameters(lock: dict[str, Any]) -> None:
+    from flowcatalyst.resources.ingestion import OPERATIONS
+
+    for op in OPERATIONS:
+        found = lock["paths"][op.path][op.method.lower()]
+        assert found["operationId"] == op.operation_id, op
+    assert not any("runtime" in op.path for op in OPERATIONS)
+    list_params = {p["name"] for p in lock["paths"]["/api/ingestions"]["get"]["parameters"]}
+    assert {"applicationCode", "clientId", "q", "status", "kind", "after", "limit"} <= list_params
+    apply_params = {
+        p["name"] for p in lock["paths"]["/api/ingestion-sets/{name}"]["put"]["parameters"]
+    }
+    assert "dryRun" in apply_params
+
+
+def test_ingestion_definition_models_are_subsets_of_the_lock(lock: dict[str, Any]) -> None:
+    from flowcatalyst.models.ingestion import (
+        Ingestion,
+        IngestionDefinition,
+        IngestionTest,
+        Target,
+    )
+
+    schemas = lock["components"]["schemas"]
+
+    def fields(model: Any) -> set[str]:
+        return {f.alias or n for n, f in model.model_fields.items()}
+
+    assert fields(Target) == set(schemas["Target"]["properties"])
+    assert fields(IngestionDefinition) == set(schemas["IngestionDefinition"]["properties"])
+    for model, name in ((Ingestion, "IngestionResponse"), (IngestionTest, "IngestionTestResponse")):
+        assert set(schemas[name]["required"]) <= fields(model), name
+        assert fields(model) <= set(schemas[name]["properties"]), name

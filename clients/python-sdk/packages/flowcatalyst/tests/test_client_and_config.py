@@ -9,15 +9,19 @@ from flowcatalyst import ClientCredentials, FlowCatalyst, Settings
 
 EXPECTED_API = sorted(
     [
+        "ApplyIngestionSetItem",
         "AuthError",
         "ClientCredentials",
         "ClientCredentialsTokenProvider",
         "ConfigProperty",
         "ConflictError",
+        "CustomSource",
         "FlowCatalyst",
         "FlowCatalystError",
         "FlowCatalystSync",
         "ForbiddenError",
+        "Ingestion",
+        "IngestionDefinition",
         "NetworkError",
         "NotFoundError",
         "PartialError",
@@ -29,6 +33,7 @@ EXPECTED_API = sorted(
         "Settings",
         "SyncResult",
         "SyncRole",
+        "Target",
         "Timeouts",
         "ValidationError",
         "metadata_to_wire",

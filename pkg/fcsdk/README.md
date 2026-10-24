@@ -257,6 +257,24 @@ resume, enable, disable) returns only an `error`; a create route that answers
 a route that answers a body returns it. `go test ./client/` checks all of this
 against `api/openapi.lock.json`.
 
+### Ingestions
+
+`c.Ingestions()` covers `/api/ingestions`, source kinds and connection tests
+(`List`, `Create`, `Get`, `Update`, `Delete`, `Pause`, `Resume`, `ListVersions`,
+`SaveVersion`, `MakeVersionLive`, `Definition`, `History`, `Failures`,
+`SourceKinds`, `TestConnection`, `GetTest`); `c.IngestionSets()` covers
+`/api/ingestion-sets` (`List`, `Apply`, `ListApplies`, `GetApply`, `Reapply`,
+`Release`; `dryRun` is a `*bool`, sent only when given). An ingestion needs an
+`Application` code (an INTEGRATION application) and a `Client` (id or
+identifier). The source and split are typed unions (`client.HTTPSource`,
+`client.CSVSplit`, ...); `client.CustomSource{Type, Settings}` is the escape
+hatch for a runtime extension's kind, and a kind this SDK does not know reads
+back as `client.Unrecognized` and is written back unchanged. Secrets are
+`client.SecretRef` names, never values. Lists are cursor-paged: pass the
+answer's `NextCursor` as `After`. `Definition` returns the YAML that
+`fcdev ingest apply` reads. The runtime API (`/api/ingestion-runtime/v1/*`) is
+the runtime's own client and is not in this SDK.
+
 ### Platform config and secrets
 
 `c.PlatformConfig()` has `Get`, `Set`, `Delete` and `RevealSecret`. Ordinary
@@ -286,7 +304,7 @@ value and does not log it; `SecretResponse` redacts the value under
 | `outboxpgx` | The use-case `Sink` (a `DispatchJobSink`) writing to `outbox_messages` via pgx, plus the lower-level `WriteDispatchJob`. |
 | `outboxsql` | `Writer` for `database/sql` (Postgres, MySQL) and the table DDL. |
 | `sync` | `DefinitionSet` + `Synchronizer`: declarative sync of every application category. |
-| `client` | Platform HTTP API client: event types, subscriptions, dispatch pools, applications, processes, principals, roles, permissions, audit logs, clients, connections, me, router, scheduled jobs, OpenAPI, docs. |
+| `client` | Platform HTTP API client: event types, subscriptions, dispatch pools, applications, processes, principals, roles, permissions, audit logs, clients, connections, ingestions and ingestion sets, me, router, scheduled jobs, OpenAPI, docs. |
 | `auth` | Access-token claims, `TokenValidator` (JWKS), `HmacTokenValidator`, `OAuthClient`, `ClientCredentialsProvider`. |
 | `webhook` | HMAC-SHA256 webhook signature verification (`Verifier` for the platform's router; `Validator` for the SDK-peer shape). |
 | `scheduledjobs` | `Runner` for platform-fired scheduled jobs: handlers by job code, a lock per firing, logs and completion reported back. |

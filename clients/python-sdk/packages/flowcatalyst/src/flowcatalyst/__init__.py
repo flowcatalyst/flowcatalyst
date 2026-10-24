@@ -17,20 +17,31 @@ from flowcatalyst.errors import (
     ValidationError,
 )
 from flowcatalyst.metadata import metadata_to_wire
+from flowcatalyst.models.ingestion import (
+    ApplyIngestionSetItem,
+    CustomSource,
+    Ingestion,
+    IngestionDefinition,
+    Target,
+)
 from flowcatalyst.models.platform_config import ConfigProperty, SecretResponse
 from flowcatalyst.models.sync import SyncResult, SyncRole
 from flowcatalyst.retry import RetryPolicy, Timeouts
 
 __all__ = [
+    "ApplyIngestionSetItem",
     "AuthError",
     "ClientCredentials",
     "ClientCredentialsTokenProvider",
     "ConfigProperty",
     "ConflictError",
+    "CustomSource",
     "FlowCatalyst",
     "FlowCatalystError",
     "FlowCatalystSync",
     "ForbiddenError",
+    "Ingestion",
+    "IngestionDefinition",
     "NetworkError",
     "NotFoundError",
     "PartialError",
@@ -42,6 +53,7 @@ __all__ = [
     "Settings",
     "SyncResult",
     "SyncRole",
+    "Target",
     "Timeouts",
     "ValidationError",
     "metadata_to_wire",

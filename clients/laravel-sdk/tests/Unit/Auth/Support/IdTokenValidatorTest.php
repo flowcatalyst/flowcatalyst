@@ -122,16 +122,16 @@ final class IdTokenValidatorTest extends TestCase
 
     public function test_not_yet_valid_token_beyond_leeway_is_refused(): void
     {
-        // nbf 61s in the future — outside the 60s leeway.
-        $token = $this->issuer->sign($this->baseClaims(['nbf' => time() + 61]));
+        // nbf 65s in the future — outside the 60s leeway even if the clock ticks between signing and validating.
+        $token = $this->issuer->sign($this->baseClaims(['nbf' => time() + 65]));
 
         $this->assertNull($this->validator()->validate($token));
     }
 
     public function test_not_yet_valid_token_within_leeway_is_accepted(): void
     {
-        // nbf 59s in the future — inside the 60s leeway.
-        $token = $this->issuer->sign($this->baseClaims(['nbf' => time() + 59]));
+        // nbf 55s in the future — inside the 60s leeway even if the clock ticks between signing and validating.
+        $token = $this->issuer->sign($this->baseClaims(['nbf' => time() + 55]));
 
         $this->assertNotNull($this->validator()->validate($token));
     }

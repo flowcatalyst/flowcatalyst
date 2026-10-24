@@ -197,3 +197,14 @@ copied across (everything but `openapi/openapi.json`; `VERSION` and `pom.xml` al
   403 is `SdkError.Forbidden`, 404 `NotFound`, 400 `NOT_A_SECRET` is `HttpStatus` (status 400).
 - Every reveal is audited server-side. The SDK does not cache it or log it, and `RevealedSecret.toString()` masks the value.
 - `openapi/openapi.json` and `openapi.admin.json` refreshed from the current spec (models regenerate at build).
+
+## Ingestions
+
+`client.ingestions()` (`IngestionsResource`: CRUD, pause/resume, versions, definition as YAML text,
+history, failures, source kinds, connection tests) and `client.ingestionSets()`
+(`IngestionSetsResource`: list, apply with `dryRun`, applies, reapply, release), from
+`api/openapi.lock.json` and `docs/ingestion-design.md` section 5. `IngestionDefinitions` holds the
+typed `Source` / `Split` forms (sealed, tagged by `kind`; `Custom` for extension kinds), `Mode` and
+`target(...)`. The runtime operations are not included. `Transport` gained `put` with a query and
+returns a `String` response body as it came. `openapi/*.json` were refreshed with `dump-spec` (the
+rest of their diff is earlier lock changes). Tests: `IngestionsResourceTest`.

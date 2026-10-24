@@ -584,6 +584,26 @@ $app = FlowCatalyst::admin()->applications()->create(new CreateApplicationReques
 ));
 ```
 
+### Ingestions
+
+```php
+use FlowCatalyst\DTOs\Ingestion\{IngestionDefinition, IngestionSource, IngestionSplit, IngestionTarget};
+
+$definition = new IngestionDefinition(
+    name: 'Orders drop',
+    source: new IngestionSource(IngestionSource::SFTP, [/* host, directory, credential: ['name' => 'sftp-password'], ... */]),
+    split: IngestionSplit::csv(header: true),
+    target: new IngestionTarget('order', 'https://app.example.com/hook', pool: 'default', mode: IngestionTarget::MODE_NEXT_ON_ERROR, batchSize: 10),
+);
+
+$ing = FlowCatalyst::ingestions()->create('edi', 'acme', 'orders', $definition);
+FlowCatalyst::ingestions()->update($ing->id, $definition, expectedVersion: $ing->version);
+```
+
+An ingestion has an INTEGRATION application (code) and a client (id or identifier). Secrets are referenced by
+name, never passed as values. A runtime-supplied source kind is `IngestionSource::custom($type, $settings)`.
+`ingestionSets()->apply($name, $items, dryRun: true)` plans a set apply without writing.
+
 ## Portal identities
 
 Portal users (`ptu_…`) are a separate end-user population from platform

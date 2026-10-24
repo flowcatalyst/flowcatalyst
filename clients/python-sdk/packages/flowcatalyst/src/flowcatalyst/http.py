@@ -66,6 +66,7 @@ class Transport:
         params: Mapping[str, str] | None = None,
         json: Any = None,
         data: Mapping[str, str] | None = None,
+        accept: str = "application/json",
         idempotent: bool | None = None,
         timeout: Timeouts | None = None,  # noqa: ASYNC109 - per-call override, not asyncio's
     ) -> httpx.Response:
@@ -80,7 +81,7 @@ class Transport:
         try:
             async with asyncio.timeout(timeouts.total):
                 return await self._send_loop(
-                    method, path, params, json, data, is_idempotent, timeouts
+                    method, path, params, json, data, accept, is_idempotent, timeouts
                 )
         except TimeoutError as exc:
             raise RequestTimeoutError(
@@ -94,6 +95,7 @@ class Transport:
         params: Mapping[str, str] | None,
         json: Any,
         data: Mapping[str, str] | None,
+        accept: str,
         idempotent: bool,
         timeouts: Timeouts,
     ) -> httpx.Response:
@@ -102,7 +104,7 @@ class Transport:
         url = f"{self._base}{path}"
         while True:
             attempt += 1
-            headers = {"User-Agent": self._user_agent, "Accept": "application/json"}
+            headers = {"User-Agent": self._user_agent, "Accept": accept}
             token: str | None = None
             if self._auth is not None:
                 token = await self._auth.get()

@@ -94,6 +94,17 @@ export {
 	PrincipalsResource,
 	ScheduledJobsResource,
 	AuditLogsResource,
+	IngestionsResource,
+	type Ingestion,
+	type IngestionDefinition,
+	type IngestionSource,
+	type IngestionSplit,
+	type IngestionTarget,
+	type CreateIngestionRequest,
+	type UpdateIngestionRequest,
+	type SaveIngestionVersionRequest,
+	type ApplyIngestionSetRequest,
+	type TestIngestionRequest,
 } from "./resources/index.js";
 
 // Scheduled-job runner (handler registration + lock + completion callback).

@@ -31,6 +31,7 @@ import {
 	type DefinitionSynchronizerOptions,
 } from "./sync/definition-synchronizer.js";
 import { RouterResource } from "./resources/router.js";
+import { IngestionsResource } from "./resources/ingestions.js";
 import { ScheduledJobsResource } from "./resources/scheduled-jobs.js";
 import {
 	ScheduledJobRunner,
@@ -144,6 +145,7 @@ export class FlowCatalystClient {
 	private _router?: RouterResource;
 	private _scheduledJobs?: ScheduledJobsResource;
 	private _auditLogs?: AuditLogsResource;
+	private _ingestions?: IngestionsResource;
 
 	constructor(config: FlowCatalystConfig) {
 		this.config = {
@@ -266,6 +268,11 @@ export class FlowCatalystClient {
 	/** Audit Logs resource (read-only queries against `iam_audit_logs`). */
 	auditLogs(): AuditLogsResource {
 		return (this._auditLogs ??= new AuditLogsResource(this));
+	}
+
+	/** Ingestions resource (definitions, versions, test connection, sets). */
+	ingestions(): IngestionsResource {
+		return (this._ingestions ??= new IngestionsResource(this));
 	}
 
 	/**

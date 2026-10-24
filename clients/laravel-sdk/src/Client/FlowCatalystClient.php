@@ -13,6 +13,8 @@ use FlowCatalyst\Client\Resources\Clients;
 use FlowCatalyst\Client\Resources\DispatchPools;
 use FlowCatalyst\Client\Resources\EmailDomainMappings;
 use FlowCatalyst\Client\Resources\EventTypes;
+use FlowCatalyst\Client\Resources\IngestionSets;
+use FlowCatalyst\Client\Resources\Ingestions;
 use FlowCatalyst\Client\Resources\Me;
 use FlowCatalyst\Client\Resources\Permissions;
 use FlowCatalyst\Client\Resources\PlatformConfig;
@@ -35,6 +37,9 @@ use Psr\Http\Message\ResponseInterface;
 
 class FlowCatalystClient
 {
+    /** Key under which request() returns a 2xx body that is not JSON. */
+    public const RAW_BODY = '_raw';
+
     private Client $httpClient;
     private TokenProviderInterface $tokenProvider;
     private readonly string $baseUrl;
@@ -49,6 +54,8 @@ class FlowCatalystClient
     private ?Principals $principals = null;
     private ?Processes $processes = null;
     private ?Connections $connections = null;
+    private ?Ingestions $ingestions = null;
+    private ?IngestionSets $ingestionSets = null;
     private ?Me $me = null;
     private ?Router $router = null;
     private ?ScheduledJobs $scheduledJobs = null;
@@ -139,6 +146,22 @@ class FlowCatalystClient
     public function admin(): Admin
     {
         return $this->admin ??= new Admin($this);
+    }
+
+    /**
+     * Get the Ingestions resource (ingestions, versions, source kinds, test connection).
+     */
+    public function ingestions(): Ingestions
+    {
+        return $this->ingestions ??= new Ingestions($this);
+    }
+
+    /**
+     * Get the Ingestion Sets resource.
+     */
+    public function ingestionSets(): IngestionSets
+    {
+        return $this->ingestionSets ??= new IngestionSets($this);
     }
 
     /**
@@ -434,6 +457,12 @@ class FlowCatalystClient
         $statusCode = $response->getStatusCode();
         $body = (string) $response->getBody();
         $data = json_decode($body, true) ?? [];
+
+        // A 2xx answer that is not JSON (the ingestion definition is YAML) is
+        // handed back whole under RAW_BODY.
+        if ($statusCode >= 200 && $statusCode < 300 && $body !== '' && json_last_error() !== JSON_ERROR_NONE) {
+            $data = [self::RAW_BODY => $body];
+        }
 
         if ($statusCode === 401) {
             throw AuthenticationException::tokenExpired();

@@ -56,6 +56,24 @@ and `reveal_secret(app, section, property, client_id=None)`.
 * The result's `value` is a pydantic `SecretStr` (redacted in `repr`/`str`/JSON); read it with
   `result.value.get_secret_value()`. The SDK never caches or logs it; add your own TTL cache if needed.
 
+## Ingestions
+
+`fc.ingestions` and `fc.ingestion_sets` (and the same on `FlowCatalystSync`) cover the ingestion
+API: CRUD, pause/resume, versions, the YAML definition, history, failures, source kinds, connection
+tests and sets (`apply(..., dry_run=True)`, applies, reapply, release). The runtime operations
+(`/api/ingestion-runtime/v1/*`) are the runtime's own client and are not here.
+
+* An ingestion needs an `application` (code of an INTEGRATION application) and a `client` (id or
+  identifier). Its `IngestionDefinition` (`name`, `source`, `split`, `target`) is typed per kind
+  (`HttpSource`, `SftpSource`, ..., `CustomSource(type=..., settings={...})` for a runtime
+  extension's kind). Secrets are `SecretRef(name=...)`: names, never values.
+* `list`/`failures` return a page with `next_cursor`; `iter()`/`iter_failures()` follow it (async
+  client only).
+* `update(id, definition, expected_version=...)`; a stale version or a taken code is a
+  `ConflictError` (`code` is `INGESTION_CODE_EXISTS`, `INGESTION_SET_OWNED`, ...).
+* Hand-written like the other resources (no generator in this SDK);
+  `tests/test_contract_lock.py` checks the operations and models against the lock.
+
 ## Develop
 
 Everything runs in a venv inside this directory (git-ignored). No network is needed to run tests.

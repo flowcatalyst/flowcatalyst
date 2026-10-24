@@ -9,6 +9,8 @@ use FlowCatalyst\Client\FlowCatalystClient;
 use FlowCatalyst\Client\Resources\Applications;
 use FlowCatalyst\Client\Resources\DispatchPools;
 use FlowCatalyst\Client\Resources\EventTypes;
+use FlowCatalyst\Client\Resources\IngestionSets;
+use FlowCatalyst\Client\Resources\Ingestions;
 use FlowCatalyst\Client\Resources\Permissions;
 use FlowCatalyst\Client\Resources\Roles;
 use FlowCatalyst\Client\Resources\Subscriptions;
@@ -17,6 +19,8 @@ use Illuminate\Support\Facades\Facade;
 /**
  * @method static Admin admin()
  * @method static EventTypes eventTypes()
+ * @method static Ingestions ingestions()
+ * @method static IngestionSets ingestionSets()
  * @method static Subscriptions subscriptions()
  * @method static DispatchPools dispatchPools()
  * @method static Roles roles()

@@ -30,6 +30,7 @@ pub mod connections;
 pub mod dispatch_pools;
 pub mod docs;
 pub mod event_types;
+pub mod ingestions;
 pub mod me;
 pub mod openapi;
 pub mod permissions;
@@ -87,6 +88,7 @@ pub use connections::*;
 pub use dispatch_pools::*;
 pub use docs::*;
 pub use event_types::*;
+pub use ingestions::*;
 pub use me::*;
 pub use openapi::*;
 pub use permissions::*;
@@ -221,6 +223,12 @@ impl FlowCatalystClient {
     /// Connections — `/api/connections/*`.
     pub fn connections(&self) -> connections::Connections<'_> {
         connections::Connections { client: self }
+    }
+
+    /// Ingestions, their sets, source kinds and tests — `/api/ingestions/*`,
+    /// `/api/ingestion-sets/*`, `/api/ingestion-source-kinds`, `/api/ingestion-tests/*`.
+    pub fn ingestions(&self) -> ingestions::Ingestions<'_> {
+        ingestions::Ingestions { client: self }
     }
 
     /// Dispatch pools — `/api/dispatch-pools/*`.
@@ -412,6 +420,12 @@ impl FlowCatalystClient {
 
     pub(crate) async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, ClientError> {
         self.call::<(), T>(Method::GET, &self.url(path), None).await
+    }
+
+    /// GET returning the body as text (a YAML file, not JSON).
+    pub(crate) async fn get_text(&self, path: &str) -> Result<String, ClientError> {
+        let (_, body) = self.send(Method::GET, &self.url(path), None).await?;
+        Ok(String::from_utf8_lossy(&body.0).into_owned())
     }
 
     /// GET against an absolute URL (the router).

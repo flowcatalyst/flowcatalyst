@@ -166,6 +166,77 @@ func lockCases() []lockCase {
 			return c.Connections().Sync(ctx, "orders", &client.SyncConnectionsRequest{Connections: []client.SyncConnectionItem{{Code: "c", Name: "n"}}}, true)
 		}},
 
+		// ── Ingestions ──
+		{name: "Ingestions.List", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().List(ctx, &client.ListIngestionsFilters{ApplicationCode: "app", ClientID: "clt_1", Q: "q", Status: "ACTIVE", Kind: "http", After: "cur", Limit: new(uint32(10))})
+		}},
+		{name: "Ingestions.Create", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().Create(ctx, &client.CreateIngestionRequest{Application: "app", Client: "acme", Code: "orders", Name: "Orders", Source: ingestionSource(), Split: client.NoSplit{}, Target: ingestionTarget(), Live: new(true)})
+		}},
+		{name: "Ingestions.Get", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().Get(ctx, "ing_1")
+		}},
+		{name: "Ingestions.Update", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().Update(ctx, "ing_1", &client.UpdateIngestionRequest{ExpectedVersion: 1, Name: "Orders", Source: ingestionSource(), Split: client.NoSplit{}, Target: ingestionTarget()})
+		}},
+		{name: "Ingestions.Delete", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return nil, c.Ingestions().Delete(ctx, "ing_1")
+		}},
+		{name: "Ingestions.Pause", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().Pause(ctx, "ing_1")
+		}},
+		{name: "Ingestions.Resume", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().Resume(ctx, "ing_1")
+		}},
+		{name: "Ingestions.ListVersions", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().ListVersions(ctx, "ing_1")
+		}},
+		{name: "Ingestions.SaveVersion", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().SaveVersion(ctx, "ing_1", &client.SaveIngestionVersionRequest{Name: "Orders", Source: ingestionSource(), Split: client.NoSplit{}, Target: ingestionTarget(), Live: new(false)})
+		}},
+		{name: "Ingestions.MakeVersionLive", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().MakeVersionLive(ctx, "ing_1", "3")
+		}},
+		{name: "Ingestions.Definition", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().Definition(ctx, "ing_1")
+		}, discardsBody: true},
+		{name: "Ingestions.History", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().History(ctx, "ing_1", new(uint32(10)), new(uint32(20)))
+		}},
+		{name: "Ingestions.Failures", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().Failures(ctx, "ing_1", "cur", new(uint32(10)))
+		}},
+		{name: "Ingestions.SourceKinds", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().SourceKinds(ctx)
+		}},
+		{name: "Ingestions.TestConnection", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().TestConnection(ctx, &client.TestIngestionRequest{Application: "app", Client: "acme", Definition: &client.IngestionDefinition{Name: "Orders", Source: ingestionSource(), Split: client.NoSplit{}, Target: ingestionTarget()}})
+		}},
+		{name: "Ingestions.GetTest", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().GetTest(ctx, "igt_1")
+		}},
+		// ── Ingestion sets ──
+		{name: "IngestionSets.List", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.IngestionSets().List(ctx)
+		}},
+		{name: "IngestionSets.Apply", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.IngestionSets().Apply(ctx, "repo", &client.ApplyIngestionSetRequest{
+				Items: []client.IngestionSetItem{{Application: "app", Client: "acme", Code: "orders", Name: "Orders", Source: ingestionSource(), Split: client.NoSplit{}, Target: ingestionTarget()}},
+				Files: []client.SetFile{{Path: "orders.yaml", Content: "x"}},
+			}, new(true))
+		}},
+		{name: "IngestionSets.ListApplies", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.IngestionSets().ListApplies(ctx, "repo")
+		}},
+		{name: "IngestionSets.GetApply", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.IngestionSets().GetApply(ctx, "repo", "ina_1")
+		}},
+		{name: "IngestionSets.Reapply", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.IngestionSets().Reapply(ctx, "repo", "ina_1", new(true))
+		}},
+		{name: "IngestionSets.Release", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.IngestionSets().Release(ctx, "repo")
+		}},
 		// ── Platform config ──
 		{name: "PlatformConfig.Get", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.PlatformConfig().Get(ctx, "orders", "smtp", "password", "clt_1")
@@ -579,6 +650,8 @@ func TestEveryResourceMethodIsRegistered(t *testing.T) {
 		"AuditLogs":      c.AuditLogs(),
 		"ScheduledJobs":  c.ScheduledJobs(),
 		"Docs":           c.Docs(),
+		"Ingestions":     c.Ingestions(),
+		"IngestionSets":  c.IngestionSets(),
 		"OpenAPI":        c.OpenAPI(),
 		"Me":             c.Me(),
 		"Router":         c.Router(),

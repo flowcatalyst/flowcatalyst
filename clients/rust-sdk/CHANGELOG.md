@@ -9,6 +9,18 @@ First version, seeded from `flowcatalyst-rust/crates/fc-sdk` with the wire
 shapes fixed to the platform contract. The README lists every change from
 fc-sdk and the wire-contract ambiguities found. Summary:
 
+### Ingestions
+- `ingestions()` resource: CRUD, `pause`/`resume`, versions (`list_versions`,
+  `save_version`, `make_version_live`), `definition` (the YAML file as text),
+  `list_history`, `list_failures`, `list_source_kinds`, connection tests
+  (`test_connection`, `get_test`) and sets (`apply_set` with `dry_run`,
+  `list_sets`, `list_set_applies`, `get_set_apply`, `reapply_set`,
+  `release_set`). `dryRun`, filters and cursors are sent only when given.
+- `Source`, `Split`, `HttpAuth`, `ApiAuth`, `DatabaseTrack` and `PollResults`
+  are tagged enums on `kind`; a runtime extension's kind (and `camel-route`) is
+  `Source::Custom { kind_type, settings }`. Secrets are `SecretRef` names only.
+- The runtime operations (`/api/ingestion-runtime/v1/*`) are not in this SDK.
+
 ### Platform config
 - `platform_config()` resource: `list`, `get`, `set`, `delete` and
   `reveal_secret(app, section, property, client_id)`. `SECRET` properties come

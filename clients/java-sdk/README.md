@@ -28,7 +28,7 @@ SDK and is not part of it.
 | Package | What it does |
 |---|---|
 | `io.flowcatalyst.sdk` | `FlowCatalystClient` — builder config, resource accessors |
-| `…sdk.resources` | 16 typed resource families (event types, subscriptions, dispatch pools, dispatch jobs, connections, roles, permissions, applications, clients, principals, processes, scheduled jobs, audit logs, me, router) |
+| `…sdk.resources` | 18 typed resource families (ingestions, ingestion sets, event types, subscriptions, dispatch pools, dispatch jobs, connections, roles, permissions, applications, clients, principals, processes, scheduled jobs, audit logs, me, router) |
 | `…sdk.error` | `sealed interface SdkError` + `FlowCatalystException` — handle failures with a pattern-matching `switch` |
 | `…sdk.outbox` | Transactional outbox: `OutboxManager`, DTO builders, `OutboxDriver` SPI + `JdbcOutboxDriver`, raw SQL migrations in `migrations/` |
 | `…sdk.tsid` | TSID generation (13-char Crockford Base32, platform-compatible; collision-free monotonic sequence) |
@@ -189,6 +189,34 @@ The credential needs the built-in `platform:application-service` role's
 data answers `403` (a code) or `404` (an id), and a credential bound to no application is
 refused with `403`. `returnInviteLink` gives the live link back instead of emailing it: treat
 it like a password.
+
+## Ingestions
+
+`client.ingestions()` and `client.ingestionSets()` manage ingestions: data taken from a source,
+split into records, each record becoming a dispatch job. An ingestion has a required INTEGRATION
+application code and a required client (id or identifier). `IngestionDefinitions` types the
+`source` and `split`, which the OpenAPI document leaves as open objects tagged by `kind`; a kind a
+runtime extension supplies (and `camel-route`) is `Source.Custom(type, settings)`. A secret is a
+`SecretRef` name, never a value.
+
+```java
+var created = client.ingestions().create(new CreateIngestionRequest()
+        .application("orders").client("acme").code("feed").name("Feed")
+        .source(new Source.Sftp("sftp.acme.test", 22, "/out", "feed",
+                new SecretRef("acme-sftp-key"), null, "*.csv", Duration.ofMinutes(5)))
+        .split(new Split.Csv(true))
+        .target(IngestionDefinitions.target("orders:feed:row", "https://api.example.com/rows",
+                "orders-pool", Mode.NEXT_ON_ERROR, 100)));
+
+var page = client.ingestions().list(IngestionsResource.ListFilters.page(null, 50));
+var next = client.ingestions().list(IngestionsResource.ListFilters.page(page.getNextCursor(), 50));
+String yaml = client.ingestions().getDefinition(created.getId());   // the file form
+```
+
+Update takes the live version you read as `expectedVersion` (409 when it moved); a code in use
+answers 409 `INGESTION_CODE_EXISTS`. Sets apply definition files together:
+`ingestionSets().apply(name, request, true)` is a dry run. The runtime operations
+(`/api/ingestion-runtime/v1/*`) are the runtime's own client and are not in this SDK.
 
 ## Declaring definitions
 

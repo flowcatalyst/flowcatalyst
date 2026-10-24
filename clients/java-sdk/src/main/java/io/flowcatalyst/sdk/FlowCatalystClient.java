@@ -12,6 +12,8 @@ import io.flowcatalyst.sdk.resources.DispatchJobsResource;
 import io.flowcatalyst.sdk.resources.DispatchPoolsResource;
 import io.flowcatalyst.sdk.resources.EventTypesResource;
 import io.flowcatalyst.sdk.resources.EventsResource;
+import io.flowcatalyst.sdk.resources.IngestionSetsResource;
+import io.flowcatalyst.sdk.resources.IngestionsResource;
 import io.flowcatalyst.sdk.resources.MeResource;
 import io.flowcatalyst.sdk.resources.PermissionsResource;
 import io.flowcatalyst.sdk.resources.PlatformConfigResource;
@@ -59,6 +61,8 @@ public final class FlowCatalystClient {
     private MeResource me;
     private ConnectionsResource connections;
     private PlatformConfigResource platformConfig;
+    private IngestionsResource ingestions;
+    private IngestionSetsResource ingestionSets;
     private RouterResource router;
     private ScheduledJobsResource scheduledJobs;
     private AuditLogsResource auditLogs;
@@ -152,6 +156,17 @@ public final class FlowCatalystClient {
     public synchronized PlatformConfigResource platformConfig() {
         return platformConfig != null
                 ? platformConfig : (platformConfig = new PlatformConfigResource(transport));
+    }
+
+    /** Ingestions: source, split and target definitions, versions, tests, failures. */
+    public synchronized IngestionsResource ingestions() {
+        return ingestions != null ? ingestions : (ingestions = new IngestionsResource(transport));
+    }
+
+    /** Ingestion sets: groups of ingestions applied together from definition files. */
+    public synchronized IngestionSetsResource ingestionSets() {
+        return ingestionSets != null
+                ? ingestionSets : (ingestionSets = new IngestionSetsResource(transport));
     }
 
     public synchronized ConnectionsResource connections() {

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- New `ingestions()` and `ingestionSets()` resources for the ingestion API: `ingestions()->list/create/get/update/delete/pause/resume`,
+  `versions/saveVersion/makeVersionLive`, `definition` (the YAML file as a string), `history`, `failures`, `sourceKinds`,
+  `testConnection/getTest`; `ingestionSets()->list/apply/applies/getApply/reapply/release` (`dryRun` on apply and reapply).
+  Typed `IngestionDefinition`, `IngestionSource` (any built-in kind, `IngestionSource::custom($type, $settings)` for a
+  runtime-supplied one), `IngestionSplit`, `IngestionTarget`, `Ingestion`, `IngestionVersion`, `IngestionList` under
+  `FlowCatalyst\DTOs\Ingestion`. Secrets in a definition are names, never values. Hand-written (the generated client is
+  not regenerated for these); the ingestion-runtime routes are deliberately not exposed.
+- `FlowCatalystClient::request()` returns a 2xx body that is not JSON whole under `FlowCatalystClient::RAW_BODY`
+  (previously `[]`).
+
 - New `platformConfig()->revealSecret($app, $section, $property, ?$clientId)` returning
   `PlatformConfigSecret` (`GET /api/config/{app}/{section}/{property}/secret`, audited; needs
   `platform:admin:config:reveal` or the application's own service account). `get`/`list` now

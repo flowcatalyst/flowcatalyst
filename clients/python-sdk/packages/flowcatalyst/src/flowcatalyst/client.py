@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 import threading
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from concurrent.futures import Future
@@ -14,8 +15,26 @@ import httpx
 from flowcatalyst.auth.tokens import ClientCredentials, ClientCredentialsTokenProvider
 from flowcatalyst.config import Settings
 from flowcatalyst.http import Transport
+from flowcatalyst.models.ingestion import (
+    ApplyIngestionSetItem,
+    Ingestion,
+    IngestionDefinition,
+    IngestionFailurePage,
+    IngestionHistoryPage,
+    IngestionPage,
+    IngestionSet,
+    IngestionSetApply,
+    IngestionSetArchive,
+    IngestionSetPlan,
+    IngestionSetRelease,
+    IngestionSourceKind,
+    IngestionTest,
+    IngestionVersion,
+    SetFile,
+)
 from flowcatalyst.models.platform_config import ConfigProperty, SecretResponse
 from flowcatalyst.models.sync import SyncResult, SyncRole
+from flowcatalyst.resources.ingestion import IngestionSetsResource, IngestionsResource
 from flowcatalyst.resources.platform_config import PlatformConfigResource
 from flowcatalyst.resources.sync import SyncResource
 from flowcatalyst.retry import RetryPolicy, Timeouts
@@ -68,6 +87,8 @@ class FlowCatalyst:
         self._transport = Transport(self._client, base_url, auth=auth, **common)
         self.sync = SyncResource(self._transport)
         self.platform_config = PlatformConfigResource(self._transport)
+        self.ingestions = IngestionsResource(self._transport)
+        self.ingestion_sets = IngestionSetsResource(self._transport)
 
     @classmethod
     def from_settings(cls, settings: Settings, **kwargs: Any) -> FlowCatalyst:
@@ -222,6 +243,166 @@ class _SyncPlatformConfigResource:
         )
 
 
+class _SyncIngestionsResource:
+    """Every :class:`IngestionsResource` call except the ``iter`` generators: page with
+    ``list(after=...)`` / ``failures(after=...)`` instead."""
+
+    def __init__(self, runner: _LoopThread, inner: IngestionsResource) -> None:
+        self._runner = runner
+        self._inner = inner
+
+    def list(
+        self,
+        *,
+        application_code: str | None = None,
+        client_id: str | None = None,
+        q: str | None = None,
+        status: str | None = None,
+        kind: str | None = None,
+        after: str | None = None,
+        limit: int | None = None,
+    ) -> IngestionPage:
+        return self._runner.run(
+            self._inner.list(
+                application_code=application_code,
+                client_id=client_id,
+                q=q,
+                status=status,
+                kind=kind,
+                after=after,
+                limit=limit,
+            )
+        )
+
+    def create(
+        self,
+        *,
+        application: str,
+        client: str,
+        code: str,
+        definition: IngestionDefinition,
+        live: bool | None = None,
+        note: str | None = None,
+    ) -> Ingestion:
+        return self._runner.run(
+            self._inner.create(
+                application=application,
+                client=client,
+                code=code,
+                definition=definition,
+                live=live,
+                note=note,
+            )
+        )
+
+    def get(self, id: str) -> Ingestion:
+        return self._runner.run(self._inner.get(id))
+
+    def update(
+        self,
+        id: str,
+        definition: IngestionDefinition,
+        *,
+        expected_version: int,
+        note: str | None = None,
+    ) -> Ingestion:
+        return self._runner.run(
+            self._inner.update(id, definition, expected_version=expected_version, note=note)
+        )
+
+    def delete(self, id: str) -> None:
+        return self._runner.run(self._inner.delete(id))
+
+    def pause(self, id: str) -> Ingestion:
+        return self._runner.run(self._inner.pause(id))
+
+    def resume(self, id: str) -> Ingestion:
+        return self._runner.run(self._inner.resume(id))
+
+    def versions(self, id: str) -> builtins.list[IngestionVersion]:
+        return self._runner.run(self._inner.versions(id))
+
+    def save_version(
+        self,
+        id: str,
+        definition: IngestionDefinition,
+        *,
+        live: bool | None = None,
+        note: str | None = None,
+    ) -> IngestionVersion:
+        return self._runner.run(self._inner.save_version(id, definition, live=live, note=note))
+
+    def make_version_live(self, id: str, version: int) -> Ingestion:
+        return self._runner.run(self._inner.make_version_live(id, version))
+
+    def definition(self, id: str) -> str:
+        return self._runner.run(self._inner.definition(id))
+
+    def history(
+        self, id: str, *, limit: int | None = None, offset: int | None = None
+    ) -> IngestionHistoryPage:
+        return self._runner.run(self._inner.history(id, limit=limit, offset=offset))
+
+    def failures(
+        self, id: str, *, after: str | None = None, limit: int | None = None
+    ) -> IngestionFailurePage:
+        return self._runner.run(self._inner.failures(id, after=after, limit=limit))
+
+    def source_kinds(self) -> builtins.list[IngestionSourceKind]:
+        return self._runner.run(self._inner.source_kinds())
+
+    def test_connection(
+        self,
+        *,
+        ingestion_id: str | None = None,
+        definition: IngestionDefinition | None = None,
+        application: str | None = None,
+        client: str | None = None,
+    ) -> IngestionTest:
+        return self._runner.run(
+            self._inner.test_connection(
+                ingestion_id=ingestion_id,
+                definition=definition,
+                application=application,
+                client=client,
+            )
+        )
+
+    def get_test(self, id: str) -> IngestionTest:
+        return self._runner.run(self._inner.get_test(id))
+
+
+class _SyncIngestionSetsResource:
+    def __init__(self, runner: _LoopThread, inner: IngestionSetsResource) -> None:
+        self._runner = runner
+        self._inner = inner
+
+    def list(self) -> builtins.list[IngestionSet]:
+        return self._runner.run(self._inner.list())
+
+    def apply(
+        self,
+        name: str,
+        items: Sequence[ApplyIngestionSetItem],
+        *,
+        files: Sequence[SetFile] | None = None,
+        dry_run: bool = False,
+    ) -> IngestionSetPlan:
+        return self._runner.run(self._inner.apply(name, items, files=files, dry_run=dry_run))
+
+    def applies(self, name: str) -> builtins.list[IngestionSetApply]:
+        return self._runner.run(self._inner.applies(name))
+
+    def get_apply(self, name: str, apply_id: str) -> IngestionSetArchive:
+        return self._runner.run(self._inner.get_apply(name, apply_id))
+
+    def reapply(self, name: str, apply_id: str, *, dry_run: bool = False) -> IngestionSetPlan:
+        return self._runner.run(self._inner.reapply(name, apply_id, dry_run=dry_run))
+
+    def release(self, name: str) -> IngestionSetRelease:
+        return self._runner.run(self._inner.release(name))
+
+
 class FlowCatalystSync:
     """Blocking facade over :class:`FlowCatalyst` for code that runs outside an event loop
     (boot scripts, CLIs, sync-psycopg code). One implementation: calls run on a private
@@ -239,6 +420,8 @@ class FlowCatalystSync:
         self.platform_config = _SyncPlatformConfigResource(
             self._runner, self._client.platform_config
         )
+        self.ingestions = _SyncIngestionsResource(self._runner, self._client.ingestions)
+        self.ingestion_sets = _SyncIngestionSetsResource(self._runner, self._client.ingestion_sets)
         self.tokens = _SyncTokens(self._runner, lambda: self._client.tokens)
 
     def close(self) -> None:
