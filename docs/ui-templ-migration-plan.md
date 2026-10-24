@@ -98,8 +98,12 @@ verification section, as for the earlier areas.
 | Passkey and 2FA flows need client code | One small WebAuthn island, tested with a virtual authenticator |
 | Two component families (kit and `@flowcatalyst/ui`) | Shared tokens; the boundary is platform admin (kit) versus business applications (Nuxt UI) |
 
-## 7. Rulings needed
+## 7. Rulings (owner, 2026-10-24)
 
-1. Wave order as written, in particular **functions and configuration before ingestion**, and **sign-in last**.
-2. The **diagram island** (vendor Mermaid for processes) now or later.
-3. The **code editor island**: CodeMirror 6 as a vendored web component (MIT).
+1. Wave order as written, functions and configuration before ingestion, sign-in last: **yes**.
+2. **Diagram island: vendor Mermaid.** Its published single-file bundle is committed under `internal/ui/assets/` with its
+   licence and loaded by a script tag **only on the pages that draw a diagram**, served compressed; no Vite or Node in the
+   product build. Diagrams render in Mermaid's strict security mode from the stored source.
+3. **Code editor island: CodeMirror 6, vendored.** It has no official single-file bundle, so a small pinned script
+   (`tools/`, esbuild) builds one custom bundle (JSON, YAML, basic editing) that is committed with its licence. The script runs
+   only when upgrading, never in the normal build.
