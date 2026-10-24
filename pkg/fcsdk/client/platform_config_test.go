@@ -101,7 +101,7 @@ func TestSecretResponseIsRedactedWhenPrinted(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, s := range []string{
-		fmt.Sprintf("%v", got), fmt.Sprintf("%+v", got), fmt.Sprintf("%#v", got), fmt.Sprintf("%s", got),
+		fmt.Sprintf("%v", got), fmt.Sprintf("%+v", got), fmt.Sprintf("%#v", got), got.String(),
 		fmt.Sprintf("%v", *got), fmt.Sprint(got), fmt.Sprintf("%v", []*client.SecretResponse{got}),
 	} {
 		assert.NotContains(t, s, "hunter2-plaintext")

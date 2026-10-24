@@ -980,7 +980,7 @@ func TestTraceQueueIsBoundedInBytes(t *testing.T) {
 	tr := newTestTracer(&fakeTraceSink{}, 5000, 65536)
 	tr.maxBytes = minTraceQueueBytes // 1 MiB
 	big := control.TraceRecord{Kind: control.TraceKindHTTP, Data: json.RawMessage(strings.Repeat("x", 60000))}
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		r := big
 		r.Message = fmt.Sprintf("m%d", i)
 		tr.add(r)

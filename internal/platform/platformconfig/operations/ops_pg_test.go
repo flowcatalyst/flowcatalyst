@@ -28,7 +28,9 @@ func TestMain(m *testing.M) {
 		if err != nil {
 			panic(err)
 		}
-		os.Setenv("FLOWCATALYST_APP_KEY", key)
+		if err := os.Setenv("FLOWCATALYST_APP_KEY", key); err != nil {
+			panic(err)
+		}
 	}
 	testpg.RunMain(m)
 }
@@ -288,7 +290,8 @@ func TestSecret_StoredEncrypted_RevealedOnlyThroughRevealValue(t *testing.T) {
 
 	vt := "SECRET"
 	_, err = runAuthorized(uow, operations.SetProperty(repo), operations.SetPropertyCommand{
-		ApplicationCode: "secretapp", Section: "sftp", Property: "password", Value: "s3cr3t-pw", ValueType: &vt})
+		ApplicationCode: "secretapp", Section: "sftp", Property: "password", Value: "s3cr3t-pw", ValueType: &vt,
+	})
 	require.NoError(t, err)
 
 	var raw string
@@ -318,7 +321,8 @@ func TestSecret_NoKey_FailsClosedInsteadOfStoringPlaintext(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	vt := "SECRET"
 	_, err := runAuthorized(uow, operations.SetProperty(repo), operations.SetPropertyCommand{
-		ApplicationCode: "nokeyapp", Section: "s", Property: "p", Value: "v", ValueType: &vt})
+		ApplicationCode: "nokeyapp", Section: "s", Property: "p", Value: "v", ValueType: &vt,
+	})
 	require.Error(t, err)
 	var n int
 	require.NoError(t, pool.QueryRow(context.Background(),
@@ -375,7 +379,8 @@ func TestSetProperty_AnchorNeedsConfigUpdate(t *testing.T) {
 		"config view only": {"platform:admin:config:view"},
 	} {
 		ctx := testpg.WithAuth(context.Background(), &auth.AuthContext{
-			PrincipalID: "prn_gatetest00001", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: perms})
+			PrincipalID: "prn_gatetest00001", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: perms,
+		})
 		_, err := usecaseop.Run(ctx, uow, operations.SetProperty(repo), cmd, testpg.TestEC())
 		require.Error(t, err, name)
 		assert.Contains(t, err.Error(), "permission required", name)
@@ -383,13 +388,15 @@ func TestSetProperty_AnchorNeedsConfigUpdate(t *testing.T) {
 
 	ctx := testpg.WithAuth(context.Background(), &auth.AuthContext{
 		PrincipalID: "prn_gatetest00001", Scope: auth.ScopeAnchor, AllApplications: true,
-		Permissions: []string{"platform:admin:config:update"}})
+		Permissions: []string{"platform:admin:config:update"},
+	})
 	_, err := usecaseop.Run(ctx, uow, operations.SetProperty(repo), cmd, testpg.TestEC())
 	require.NoError(t, err)
 
 	appCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
 		PrincipalID: "prn_gatetest00002", Scope: auth.ScopeAnchor, Applications: []string{"app_gate"},
-		Permissions: []string{"platform:application-service:config:update"}})
+		Permissions: []string{"platform:application-service:config:update"},
+	})
 	_, err = usecaseop.Run(appCtx, uow, operations.SetProperty(repo), cmd, testpg.TestEC())
 	require.NoError(t, err, "an application-bound service account with the application-service permission")
 }
