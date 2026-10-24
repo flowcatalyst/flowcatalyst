@@ -90,6 +90,15 @@ const (
 	// docs/function-runner-plan.md §8 (public routes).
 	FunctionDomain
 	FunctionRoute
+	// Ingestion and friends back the ing_* tables — see
+	// docs/ingestion-design.md section 3. Runtime ids, state keys and
+	// route states have natural keys and get no EntityType.
+	Ingestion
+	IngestionVersion
+	IngestionSet
+	IngestionSetApply
+	IngestionFailure
+	IngestionTest
 )
 
 // Prefix returns the 3-character prefix for this entity type. These are
@@ -198,6 +207,18 @@ func (e EntityType) Prefix() string {
 		return "fdm"
 	case FunctionRoute:
 		return "frt"
+	case Ingestion:
+		return "ing"
+	case IngestionVersion:
+		return "inv"
+	case IngestionSet:
+		return "ins"
+	case IngestionSetApply:
+		return "isa"
+	case IngestionFailure:
+		return "ifl"
+	case IngestionTest:
+		return "itr"
 	default:
 		return "unk"
 	}

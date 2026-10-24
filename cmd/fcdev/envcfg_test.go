@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"testing"
 )
 
@@ -124,5 +125,21 @@ func TestDevEnvCfg_IssuerFollowsAPIPort(t *testing.T) {
 	t.Setenv("FC_EXTERNAL_BASE_URL", "https://dev.example.test")
 	if cfg := devEnvCfg(startOpts{APIPort: 18180}, "postgres://x", routerCredentials{}); cfg.JWTIssuer != "https://dev.example.test" {
 		t.Fatalf("an explicit base URL was overridden: %q", cfg.JWTIssuer)
+	}
+}
+
+// fcdev has ingestion on unless FC_INGESTION_ENABLED says otherwise.
+func TestDevEnvCfg_IngestionOnByDefault(t *testing.T) {
+	opts := startOpts{APIPort: 8080, MetricsPort: 9090}
+	t.Setenv("FC_INGESTION_ENABLED", "") // restores whatever was set when the test ends
+	if err := os.Unsetenv("FC_INGESTION_ENABLED"); err != nil {
+		t.Fatal(err)
+	}
+	if cfg := devEnvCfg(opts, "postgres://localhost/fc", devCreds); !cfg.IngestionEnabled {
+		t.Error("ingestion must be on in dev by default")
+	}
+	t.Setenv("FC_INGESTION_ENABLED", "false")
+	if cfg := devEnvCfg(opts, "postgres://localhost/fc", devCreds); cfg.IngestionEnabled {
+		t.Error("an explicit FC_INGESTION_ENABLED=false must win")
 	}
 }

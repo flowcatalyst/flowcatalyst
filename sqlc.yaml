@@ -204,6 +204,14 @@ sql:
             go_type:
               import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
               type: "PrincipalID"
+          - column: "ing_ingestions.application_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ApplicationID"
+          - column: "ing_ingestions.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
           - column: "msg_connections.client_id"
             go_type:
               import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"

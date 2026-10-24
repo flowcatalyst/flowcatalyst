@@ -137,6 +137,10 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	group("platform:admin:function-route", "set", "deleted")
 	group("platform:admin:function-schedule", "wired")
 
+	// ── platform:ingestion ──────────────────────────────────────────────
+	groupAs("platform:ingestion:ingestion", "Ingestion",
+		"created", "updated", "deleted", "paused", "resumed", "version-saved", "version-live")
+
 	// ── platform:messaging ──────────────────────────────────────────────
 	group("platform:messaging:dispatch-job", "cancelled", "completed", "payload-edited")
 	push("platform:messaging:dispatch-jobs:resent", "Dispatch Jobs Resent")

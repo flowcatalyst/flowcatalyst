@@ -189,3 +189,48 @@ func TestFunctionTracePermissionsInBuiltInRoles(t *testing.T) {
 		}
 	}
 }
+
+// TestIngestionRoles pins who holds the ingestion permissions
+// (docs/ingestion-design.md section 4): the admin holds every human grant but
+// route, route authoring is a role of its own, and only the runtime's role
+// holds the runtime API.
+func TestIngestionRoles(t *testing.T) {
+	const (
+		view    = "platform:ingestion:ingestion:view"
+		create  = "platform:ingestion:ingestion:create"
+		update  = "platform:ingestion:ingestion:update"
+		del     = "platform:ingestion:ingestion:delete"
+		promote = "platform:ingestion:ingestion:promote"
+		test    = "platform:ingestion:ingestion:test"
+		route   = "platform:ingestion:ingestion:route"
+		apply   = "platform:ingestion:set:apply"
+		operate = "platform:ingestion:runtime:operate"
+	)
+	want := map[string][]string{
+		"platform:ingestion-admin":        {view, create, update, del, promote, test, apply},
+		"platform:ingestion-operator":     {view, update, test},
+		"platform:ingestion-viewer":       {view},
+		"platform:ingestion-route-author": {view, create, update, route},
+		"platform:ingestion-runtime":      {operate},
+	}
+	got := map[string][]string{}
+	for _, r := range PlatformRoles() {
+		for _, p := range r.Permissions {
+			if strings.HasPrefix(p, "platform:ingestion:") {
+				got[r.Name] = append(got[r.Name], p)
+			}
+		}
+	}
+	for role, perms := range want {
+		slices.Sort(perms)
+		g := got[role]
+		slices.Sort(g)
+		if !slices.Equal(g, perms) {
+			t.Errorf("%s holds %v, want %v", role, g, perms)
+		}
+		delete(got, role)
+	}
+	for role, perms := range got {
+		t.Errorf("%s must not hold ingestion permissions, has %v", role, perms)
+	}
+}

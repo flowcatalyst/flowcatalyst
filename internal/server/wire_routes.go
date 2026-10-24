@@ -36,6 +36,8 @@ import (
 	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
 	functiondomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain/api"
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	ingestionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/api"
 	loginattemptapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
 	passwordresetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset/api"
@@ -329,6 +331,20 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Subs: repos.subscriptionRepo,
 			UoW:  uow,
 		})
+
+		// Ingestions (docs/ingestion-design.md): mounted only when
+		// FC_INGESTION_ENABLED is on, so off they answer 404.
+		if cfg.IngestionEnabled {
+			ingestionapi.Register(humaAPI, &ingestionapi.State{
+				Repo: ingestion.NewRepository(pool),
+				Resolver: ingestion.NewResolver(repos.applicationRepo, repos.clientRepo,
+					repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, nil),
+				Apps:    repos.applicationRepo,
+				Clients: repos.clientRepo,
+				Audit:   repos.auditRepo,
+				UoW:     uow,
+			})
+		}
 
 		subscriptionapi.Register(humaAPI, &subscriptionapi.State{
 			Repo: repos.subscriptionRepo,

@@ -121,7 +121,7 @@ var adminTags = idSet(
 	"anchor-domains", "applications", "audit-logs", "auth-configs", "clients", "connections",
 	"cors-origins", "dispatch-jobs", "dispatch-pools", "docs", "email-domain-mappings",
 	"event-types", "events", "function-domains", "functions", "identity-providers",
-	"idp-role-mappings", "login-attempts", "oauth-clients", "platform-config",
+	"idp-role-mappings", "ingestions", "login-attempts", "oauth-clients", "platform-config",
 	"portal-apps", "portal-users", "principals", "processes", "reset-approvals",
 	"roles", "scheduled-jobs", "service-accounts", "subscriptions", "webauthn",
 )

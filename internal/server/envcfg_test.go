@@ -326,3 +326,15 @@ func TestCheckTestHeadersAllowed(t *testing.T) {
 		}
 	}
 }
+
+// Ingestion is off unless FC_INGESTION_ENABLED turns it on.
+func TestLoadEnv_IngestionEnabled(t *testing.T) {
+	t.Setenv("FC_INGESTION_ENABLED", "")
+	if c := LoadEnv(); c.IngestionEnabled {
+		t.Error("ingestion must be off by default")
+	}
+	t.Setenv("FC_INGESTION_ENABLED", "true")
+	if c := LoadEnv(); !c.IngestionEnabled {
+		t.Error("FC_INGESTION_ENABLED=true must turn it on")
+	}
+}

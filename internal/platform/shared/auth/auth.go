@@ -224,6 +224,19 @@ const (
 	permFunctionTraceManage     = "platform:function:trace:manage"
 	permFunctionTraceView       = "platform:function:trace:view"
 	permFunctionTraceViewBodies = "platform:function:trace:view-bodies"
+	// Ingestion (docs/ingestion-design.md section 4): the ingestion
+	// subdomain, four segments like every platform permission.
+	permIngestionView    = "platform:ingestion:ingestion:view"
+	permIngestionCreate  = "platform:ingestion:ingestion:create"
+	permIngestionUpdate  = "platform:ingestion:ingestion:update"
+	permIngestionDelete  = "platform:ingestion:ingestion:delete"
+	permIngestionPromote = "platform:ingestion:ingestion:promote"
+	permIngestionTest    = "platform:ingestion:ingestion:test"
+	// PermIngestionRoute is exported because the ingestion operations apply
+	// it per source kind (a kind that declares it needs it), not per route.
+	PermIngestionRoute       = "platform:ingestion:ingestion:route"
+	permIngestionSetApply    = "platform:ingestion:set:apply"
+	permIngestionRuntimeOper = "platform:ingestion:runtime:operate"
 	// Super-admin wildcard.
 	permSuperAdmin = "platform:*:*:*"
 )
@@ -1273,4 +1286,25 @@ func RequireFunctionTraceBodies(a *AuthContext) error {
 // function secrets and DSNs in the pool, so it is never client-delegable.
 func CanControlFunctionRunner(a *AuthContext) error {
 	return requirePermission(a, permFunctionRunnerControl)
+}
+
+// ── Ingestion permissions ────────────────────────────────────────────────
+// Permission only: scope is reach, not authority. Below anchor tier the caller
+// then sees and changes only the ingestions of its own clients, and an
+// application-scoped service account only its own application's; the
+// ingestion package's reach checks apply that.
+func CanReadIngestions(a *AuthContext) error    { return requirePermission(a, permIngestionView) }
+func CanCreateIngestions(a *AuthContext) error  { return requirePermission(a, permIngestionCreate) }
+func CanUpdateIngestions(a *AuthContext) error  { return requirePermission(a, permIngestionUpdate) }
+func CanDeleteIngestions(a *AuthContext) error  { return requirePermission(a, permIngestionDelete) }
+func CanPromoteIngestions(a *AuthContext) error { return requirePermission(a, permIngestionPromote) }
+func CanTestIngestions(a *AuthContext) error    { return requirePermission(a, permIngestionTest) }
+
+// CanApplyIngestionSets gates applying or releasing an ingestion set.
+func CanApplyIngestionSets(a *AuthContext) error { return requirePermission(a, permIngestionSetApply) }
+
+// CanOperateIngestionRuntime gates the runtime API an ingestion runtime's
+// service account calls.
+func CanOperateIngestionRuntime(a *AuthContext) error {
+	return requirePermission(a, permIngestionRuntimeOper)
 }

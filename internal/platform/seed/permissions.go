@@ -182,6 +182,21 @@ const (
 	permFunctionTraceManage     = "platform:function:trace:manage"
 	permFunctionTraceView       = "platform:function:trace:view"
 	permFunctionTraceViewBodies = "platform:function:trace:view-bodies"
+
+	// Ingestion (docs/ingestion-design.md section 4): the ingestion subdomain,
+	// four segments like every platform permission. update includes pause and
+	// resume; route gates creating or changing an ingestion of a source kind
+	// that declares it needs it (camel-route); runtime:operate is the runtime
+	// API, held only by platform:ingestion-runtime, never by a human role.
+	permIngestionView           = "platform:ingestion:ingestion:view"
+	permIngestionCreate         = "platform:ingestion:ingestion:create"
+	permIngestionUpdate         = "platform:ingestion:ingestion:update"
+	permIngestionDelete         = "platform:ingestion:ingestion:delete"
+	permIngestionPromote        = "platform:ingestion:ingestion:promote"
+	permIngestionTest           = "platform:ingestion:ingestion:test"
+	permIngestionRoute          = "platform:ingestion:ingestion:route"
+	permIngestionSetApply       = "platform:ingestion:set:apply"
+	permIngestionRuntimeOperate = "platform:ingestion:runtime:operate"
 )
 
 // IAM context — users, roles, access control.

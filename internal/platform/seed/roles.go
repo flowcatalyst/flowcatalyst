@@ -258,6 +258,37 @@ func PlatformRoles() []role.Role {
 		mk("function-runner", "Function Runner",
 			"Fetches function runner desired state and reports heartbeats",
 			[]string{permFunctionRunnerControl}),
+
+		// The ingestion roles (docs/ingestion-design.md section 4). Admin holds
+		// every human grant but route and the runtime's: a source kind that
+		// runs a route the operator wrote is a separate, deliberate grant.
+		mk("ingestion-admin", "Ingestion Administrator",
+			"Manages ingestions: create, change, delete, make versions live, test connections and apply sets",
+			[]string{
+				permIngestionView, permIngestionCreate, permIngestionUpdate, permIngestionDelete,
+				permIngestionPromote, permIngestionTest, permIngestionSetApply,
+			}),
+
+		mk("ingestion-operator", "Ingestion Operator",
+			"Views ingestions, changes them, pauses and resumes them, and tests their connections",
+			[]string{permIngestionView, permIngestionUpdate, permIngestionTest}),
+
+		mk("ingestion-viewer", "Ingestion Viewer",
+			"View-only access to ingestions, their versions, history and failures",
+			[]string{permIngestionView}),
+
+		// Route authoring runs code on the runtime's network and identity, so
+		// it is its own role: it can write ingestions (including route ones)
+		// but not delete them or make them live.
+		mk("ingestion-route-author", "Ingestion Route Author",
+			"Creates and changes ingestions of source kinds that run a route (camel-route)",
+			[]string{permIngestionView, permIngestionCreate, permIngestionUpdate, permIngestionRoute}),
+
+		// The ingestion runtime's own role: same posture as platform:router
+		// and platform:function-runner, one permission and nothing else.
+		mk("ingestion-runtime", "Ingestion Runtime",
+			"Polls for ingestions to run and reports their state",
+			[]string{permIngestionRuntimeOperate}),
 	}
 }
 

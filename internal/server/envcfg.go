@@ -301,6 +301,12 @@ type EnvCfg struct {
 	// no time bound is held to the last 24 hours.
 	DispatchJobMaxWindowDays int
 
+	// IngestionEnabled mounts the ingestion routes (FC_INGESTION_ENABLED,
+	// default false; fcdev default true) and tells the SPA, through
+	// GET /api/config/platform, to show the ingestion pages. Off: the routes
+	// answer 404. The permissions, roles and tables exist either way.
+	IngestionEnabled bool
+
 	// FunctionsRunnerURL is the function runner's base URL
 	// (FC_FUNCTIONS_RUNNER_URL), templated with "{pool}" so one platform can
 	// address several runner deployments (one per pool in production; fc-dev
@@ -440,6 +446,8 @@ func LoadEnv() EnvCfg {
 		SessionCookieSameSite: envOr("FC_SESSION_COOKIE_SAME_SITE", "lax"),
 
 		DebugEndpointsEnabled: envBool("FC_DEBUG_ENDPOINTS_ENABLED", false),
+
+		IngestionEnabled: envBool("FC_INGESTION_ENABLED", false),
 
 		MCPPlatformURL:  envFirst("FLOWCATALYST_URL", "FC_MCP_PLATFORM_URL", "", ""),
 		MCPClientID:     os.Getenv("FLOWCATALYST_CLIENT_ID"),

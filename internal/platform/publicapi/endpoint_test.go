@@ -199,3 +199,28 @@ func TestLoginTheme_NilConfigsServesEmptyTheme(t *testing.T) {
 		t.Errorf("want an empty theme, got brand=%s primary=%s", str(got.BrandName), str(got.PrimaryColor))
 	}
 }
+
+// The platform config the SPA reads says whether ingestions are served, so the
+// navigation entry is shown only when the routes are mounted.
+func TestPlatform_FeaturesIngestion(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		e := New(fakeConfigs{}).WithIngestion(enabled)
+		rec := httptest.NewRecorder()
+		e.handlePlatform(rec, httptest.NewRequest(http.MethodGet, "/api/config/platform", nil))
+		var out struct {
+			Features struct {
+				MessagingEnabled bool `json:"messagingEnabled"`
+				Ingestion        bool `json:"ingestion"`
+			} `json:"features"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("response is not valid JSON: %v", err)
+		}
+		if out.Features.Ingestion != enabled {
+			t.Errorf("features.ingestion = %v, want %v", out.Features.Ingestion, enabled)
+		}
+		if !out.Features.MessagingEnabled {
+			t.Error("features.messagingEnabled must stay true")
+		}
+	}
+}

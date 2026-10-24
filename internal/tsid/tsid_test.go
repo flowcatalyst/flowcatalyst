@@ -205,3 +205,18 @@ func TestKnownValueDecode(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, int64(32), v)
 }
+
+func TestIngestionPrefixes(t *testing.T) {
+	want := map[tsid.EntityType]string{
+		tsid.Ingestion:         "ing",
+		tsid.IngestionVersion:  "inv",
+		tsid.IngestionSet:      "ins",
+		tsid.IngestionSetApply: "isa",
+		tsid.IngestionFailure:  "ifl",
+		tsid.IngestionTest:     "itr",
+	}
+	for et, prefix := range want {
+		assert.Equal(t, prefix, et.Prefix())
+		assert.Len(t, tsid.Generate(et), 17)
+	}
+}

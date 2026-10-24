@@ -37,6 +37,7 @@ import (
 	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
 	functiondomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain/api"
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
+	ingestionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/api"
 	loginattemptapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt/api"
 	platformconfigapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/api"
 	portalusersapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity/api"
@@ -90,6 +91,7 @@ func buildSpec(withSDK bool) (*huma.OpenAPI, error) {
 	functioncontrol.Register(api, &functioncontrol.State{})
 	functiondomainapi.Register(api, &functiondomainapi.State{})
 	identityproviderapi.Register(api, &identityproviderapi.State{})
+	ingestionapi.Register(api, &ingestionapi.State{})
 	platformconfigapi.Register(api, &platformconfigapi.State{})
 	portalusersapi.Register(api, &portalusersapi.State{})
 	principalapi.Register(api, &principalapi.State{})

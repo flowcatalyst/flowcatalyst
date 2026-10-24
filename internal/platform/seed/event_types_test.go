@@ -11,7 +11,7 @@ func TestPlatformEventTypesCatalogShape(t *testing.T) {
 	if len(defs) < 138 {
 		t.Fatalf("expected 138+ event-type definitions, got %d", len(defs))
 	}
-	subdomains := map[string]bool{"iam": true, "admin": true, "messaging": true, "developer": true, "portal": true, "function": true}
+	subdomains := map[string]bool{"iam": true, "admin": true, "messaging": true, "developer": true, "portal": true, "function": true, "ingestion": true}
 	seen := map[string]bool{}
 	for _, d := range defs {
 		if seen[d.Code] {
@@ -20,7 +20,7 @@ func TestPlatformEventTypesCatalogShape(t *testing.T) {
 		seen[d.Code] = true
 		parts := strings.Split(d.Code, ":")
 		if len(parts) != 4 || parts[0] != "platform" || !subdomains[parts[1]] {
-			t.Fatalf("unexpected code %s — must be platform:{iam|admin|messaging|developer|portal|function}:{aggregate}:{event}", d.Code)
+			t.Fatalf("unexpected code %s — must be platform:{iam|admin|messaging|developer|portal|function|ingestion}:{aggregate}:{event}", d.Code)
 		}
 		if d.Name == "" {
 			t.Fatalf("%s: empty name", d.Code)

@@ -36,11 +36,21 @@ type Endpoint struct {
 	// resolveClient is optional; when nil, ?client= is ignored and every
 	// caller receives the GLOBAL theme.
 	resolveClient ClientIDResolver
+	// ingestion is features.ingestion: whether the platform serves ingestions.
+	ingestion bool
 }
 
 // New wires an Endpoint.
 func New(configs branding.Reader) *Endpoint {
 	return &Endpoint{configs: configs}
+}
+
+// WithIngestion reports whether the platform serves ingestions
+// (FC_INGESTION_ENABLED), which the SPA reads as features.ingestion to show or
+// hide its ingestion pages.
+func (e *Endpoint) WithIngestion(enabled bool) *Endpoint {
+	e.ingestion = enabled
+	return e
 }
 
 // WithClientResolver enables per-client login branding: GET
@@ -72,11 +82,12 @@ type platformResponse struct {
 
 type featuresResponse struct {
 	MessagingEnabled bool `json:"messagingEnabled"`
+	Ingestion        bool `json:"ingestion"`
 }
 
 func (e *Endpoint) handlePlatform(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, platformResponse{
-		Features:     featuresResponse{MessagingEnabled: true},
+		Features:     featuresResponse{MessagingEnabled: true, Ingestion: e.ingestion},
 		PlatformName: branding.PlatformName(r.Context(), e.configs),
 	})
 }

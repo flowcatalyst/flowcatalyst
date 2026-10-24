@@ -34,6 +34,11 @@ func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials
 		cfg.DebugEndpointsEnabled = true
 	}
 
+	// Ingestion is on in dev unless FC_INGESTION_ENABLED says otherwise.
+	if _, set := os.LookupEnv("FC_INGESTION_ENABLED"); !set {
+		cfg.IngestionEnabled = true
+	}
+
 	// Subsystem toggles follow the CLI flags. Defaults (in flag config)
 	// match the historical fcdev: scheduler+stream on, outbox+router off.
 	cfg.SchedulerEnabled = opts.SchedulerEnabled

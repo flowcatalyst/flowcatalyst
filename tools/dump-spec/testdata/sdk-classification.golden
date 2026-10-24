@@ -16,6 +16,7 @@ admin	DELETE /api/functions/{id}/secrets/{key}	deleteFunctionSecret
 admin	DELETE /api/functions/{id}/trace/{context}	disableFunctionTraceContext
 admin	DELETE /api/identity-providers/{id}	deleteIdentityProvider
 admin	DELETE /api/idp-role-mappings/{id}	deleteIdpRoleMapping
+admin	DELETE /api/ingestions/{id}	deleteIngestion
 admin	DELETE /api/oauth-clients/{id}	deleteOAuthClient
 admin	DELETE /api/platform-config/access/{id}	revokePlatformConfigAccess
 admin	DELETE /api/platform/cors/{id}	deleteCorsOrigin
@@ -48,6 +49,7 @@ admin	GET /api/audit-logs/principal/{principalId}	auditLogsByPrincipal
 admin	GET /api/audit-logs/{id}	getAuditLog
 admin	GET /api/auth-configs	listAuthConfigs
 admin	GET /api/clients/{id}/applications	getClientApplications
+admin	GET /api/config/{app}/{section}/{property}/secret	revealPlatformConfigSecret
 admin	GET /api/dispatch-jobs/filter-options	dispatchJobFilterOptions
 admin	GET /api/docs	listDocs
 admin	GET /api/docs/applications/{appCode}/{slug}	getApplicationDoc
@@ -69,6 +71,13 @@ admin	GET /api/functions/{id}/versions/{number}	getFunctionVersion
 admin	GET /api/identity-providers	listIdentityProviders
 admin	GET /api/identity-providers/{id}	getIdentityProvider
 admin	GET /api/idp-role-mappings	listIdpRoleMappings
+admin	GET /api/ingestion-source-kinds	listIngestionSourceKinds
+admin	GET /api/ingestions	listIngestions
+admin	GET /api/ingestions/{id}	getIngestion
+admin	GET /api/ingestions/{id}/definition	getIngestionDefinition
+admin	GET /api/ingestions/{id}/failures	listIngestionFailures
+admin	GET /api/ingestions/{id}/history	listIngestionHistory
+admin	GET /api/ingestions/{id}/versions	listIngestionVersions
 admin	GET /api/login-attempts	listLoginAttempts
 admin	GET /api/oauth-clients	listOAuthClients
 admin	GET /api/oauth-clients/by-client-id/{clientId}	getOAuthClientByClientID
@@ -137,6 +146,11 @@ admin	POST /api/functions/{id}/versions/prune	pruneFunctionVersions
 admin	POST /api/functions/{id}/versions/{number}/retire	retireFunctionVersion
 admin	POST /api/identity-providers	createIdentityProvider
 admin	POST /api/idp-role-mappings	createIdpRoleMapping
+admin	POST /api/ingestions	createIngestion
+admin	POST /api/ingestions/{id}/pause	pauseIngestion
+admin	POST /api/ingestions/{id}/resume	resumeIngestion
+admin	POST /api/ingestions/{id}/versions	saveIngestionVersion
+admin	POST /api/ingestions/{id}/versions/{version}/live	makeIngestionVersionLive
 admin	POST /api/oauth-clients	createOAuthClient
 admin	POST /api/oauth-clients/{id}/activate	activateOAuthClient
 admin	POST /api/oauth-clients/{id}/deactivate	deactivateOAuthClient
@@ -197,6 +211,7 @@ admin	PUT /api/functions/{id}/routes	putFunctionRoute
 admin	PUT /api/functions/{id}/secrets/{key}	putFunctionSecret
 admin	PUT /api/functions/{id}/trace/{context}	enableFunctionTraceContext
 admin	PUT /api/identity-providers/{id}	updateIdentityProvider
+admin	PUT /api/ingestions/{id}	updateIngestion
 admin	PUT /api/oauth-clients/{id}	updateOAuthClient
 admin	PUT /api/portal-apps/{id}	updatePortalApp
 admin	PUT /api/principals/{id}/application-access	assignPrincipalApplicationAccess

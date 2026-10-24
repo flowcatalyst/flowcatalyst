@@ -1,0 +1,102 @@
+package operations
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
+)
+
+// SaveVersionCommand is the input DTO.
+type SaveVersionCommand struct {
+	ID         string               `json:"id"`
+	Definition ingestion.Definition `json:"definition"`
+	// Live also makes the saved version the one runtimes receive; otherwise it
+	// is kept until MakeVersionLive.
+	Live bool    `json:"live"`
+	Note *string `json:"note,omitempty"`
+}
+
+// SaveVersion records the definition as the ingestion's next version and
+// emits [IngestionVersionSaved]. Unlike UpdateIngestion it does not need the
+// live version to be unchanged, and a version that is not made live runs
+// nowhere.
+func SaveVersion(repo *ingestion.Repository, resolver ingestion.Resolver) usecaseop.Operation[SaveVersionCommand, IngestionVersionSaved] {
+	return usecaseop.Operation[SaveVersionCommand, IngestionVersionSaved]{
+		Name: "SaveIngestionVersion",
+		Validate: func(_ context.Context, cmd SaveVersionCommand) error {
+			if err := requireID(cmd.ID); err != nil {
+				return err
+			}
+			return validateDefinition(cmd.Definition)
+		},
+		// Per-resource authz runs post-load in Execute; the coarse permissions
+		// (update, plus promote when Live) are the controller's.
+		Authorize: usecaseop.Public[SaveVersionCommand],
+		Execute: func(ctx context.Context, cmd SaveVersionCommand, ec usecase.ExecutionContext) (usecaseop.Plan[IngestionVersionSaved], error) {
+			i, err := loadEditable(ctx, repo, cmd.ID)
+			if err != nil {
+				return nil, err
+			}
+			if err := requireKindPermission(ctx, repo, cmd.Definition.Source); err != nil {
+				return nil, err
+			}
+			if err := checkTarget(ctx, resolver, i, cmd.Definition); err != nil {
+				return nil, err
+			}
+			v := i.SaveVersion(cmd.Definition, cmd.Live, cmd.Note, new(ec.PrincipalID))
+			event := IngestionVersionSaved{
+				ingestionEvent: newEvent(ec, IngestionVersionSavedType, i.ID),
+				Code:           i.Code,
+				Version:        v.Number,
+				Live:           cmd.Live,
+			}
+			return usecaseop.Save(i, repo, event), nil
+		},
+	}
+}
+
+// MakeVersionLiveCommand is the input DTO.
+type MakeVersionLiveCommand struct {
+	ID      string `json:"id"`
+	Version int    `json:"version"`
+}
+
+// MakeVersionLive moves the live pointer to a saved version (forwards or
+// back) and emits [IngestionVersionLive].
+func MakeVersionLive(repo *ingestion.Repository) usecaseop.Operation[MakeVersionLiveCommand, IngestionVersionLive] {
+	return usecaseop.Operation[MakeVersionLiveCommand, IngestionVersionLive]{
+		Name: "MakeIngestionVersionLive",
+		Validate: func(_ context.Context, cmd MakeVersionLiveCommand) error {
+			return requireID(cmd.ID)
+		},
+		// Per-resource authz runs post-load in Execute; the coarse "may
+		// promote ingestions" permission is the controller's.
+		Authorize: usecaseop.Public[MakeVersionLiveCommand],
+		Execute: func(ctx context.Context, cmd MakeVersionLiveCommand, ec usecase.ExecutionContext) (usecaseop.Plan[IngestionVersionLive], error) {
+			i, err := loadEditable(ctx, repo, cmd.ID)
+			if err != nil {
+				return nil, err
+			}
+			v, err := repo.FindVersion(ctx, i.ID, cmd.Version)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_version failed", err)
+			}
+			if v == nil {
+				return nil, usecase.NotFound("INGESTION_VERSION_NOT_FOUND",
+					fmt.Sprintf("Ingestion %s has no version %d", i.Code, cmd.Version))
+			}
+			if err := i.MakeLive(*v); err != nil {
+				return nil, usecase.Internal("REPO", "make_live failed", err)
+			}
+			event := IngestionVersionLive{
+				ingestionEvent: newEvent(ec, IngestionVersionLiveType, i.ID),
+				Code:           i.Code,
+				Version:        v.Number,
+			}
+			return usecaseop.Save(i, repo, event), nil
+		},
+	}
+}

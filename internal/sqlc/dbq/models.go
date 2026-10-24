@@ -436,6 +436,124 @@ type IamUserMfaRecoveryCode struct {
 	CreatedAt   time.Time       `db:"created_at"`
 }
 
+type IngExchangeMetric struct {
+	IngestionID string    `db:"ingestion_id"`
+	RuntimeID   string    `db:"runtime_id"`
+	WindowStart time.Time `db:"window_start"`
+	WindowSecs  int32     `db:"window_secs"`
+	Completed   int64     `db:"completed"`
+	Failed      int64     `db:"failed"`
+	Records     int64     `db:"records"`
+	Jobs        int64     `db:"jobs"`
+}
+
+type IngFailure struct {
+	ID           string    `db:"id"`
+	IngestionID  string    `db:"ingestion_id"`
+	RuntimeID    *string   `db:"runtime_id"`
+	Version      *int32    `db:"version"`
+	Kind         string    `db:"kind"`
+	Message      string    `db:"message"`
+	AfterRecords int64     `db:"after_records"`
+	Excerpt      *string   `db:"excerpt"`
+	OccurredAt   time.Time `db:"occurred_at"`
+	CreatedAt    time.Time `db:"created_at"`
+}
+
+type IngIngestion struct {
+	ID                 string            `db:"id"`
+	ApplicationID      ids.ApplicationID `db:"application_id"`
+	ClientID           ids.ClientID      `db:"client_id"`
+	Code               string            `db:"code"`
+	Name               string            `db:"name"`
+	Active             bool              `db:"active"`
+	Version            int32             `db:"version"`
+	LatestVersion      int32             `db:"latest_version"`
+	Source             json.RawMessage   `db:"source"`
+	Split              json.RawMessage   `db:"split"`
+	Target             json.RawMessage   `db:"target"`
+	KeepFailedPayloads bool              `db:"keep_failed_payloads"`
+	ManagedBy          *string           `db:"managed_by"`
+	CreatedAt          time.Time         `db:"created_at"`
+	UpdatedAt          time.Time         `db:"updated_at"`
+}
+
+type IngLease struct {
+	IngestionID string    `db:"ingestion_id"`
+	RuntimeID   string    `db:"runtime_id"`
+	AcquiredAt  time.Time `db:"acquired_at"`
+	ExpiresAt   time.Time `db:"expires_at"`
+	Released    bool      `db:"released"`
+}
+
+type IngRouteState struct {
+	IngestionID string    `db:"ingestion_id"`
+	RuntimeID   string    `db:"runtime_id"`
+	Version     int32     `db:"version"`
+	Status      string    `db:"status"`
+	Error       *string   `db:"error"`
+	UpdatedAt   time.Time `db:"updated_at"`
+}
+
+type IngRuntime struct {
+	RuntimeID       string          `db:"runtime_id"`
+	Kinds           json.RawMessage `db:"kinds"`
+	ContractVersion int32           `db:"contract_version"`
+	Url             *string         `db:"url"`
+	FirstSeenAt     time.Time       `db:"first_seen_at"`
+	LastSeenAt      time.Time       `db:"last_seen_at"`
+}
+
+type IngSet struct {
+	ID        string    `db:"id"`
+	Name      string    `db:"name"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+}
+
+type IngSetApply struct {
+	ID         string          `db:"id"`
+	SetID      string          `db:"set_id"`
+	ArchiveUri *string         `db:"archive_uri"`
+	Summary    json.RawMessage `db:"summary"`
+	AppliedBy  *string         `db:"applied_by"`
+	AppliedAt  time.Time       `db:"applied_at"`
+}
+
+type IngState struct {
+	IngestionID string    `db:"ingestion_id"`
+	Key         string    `db:"key"`
+	Value       string    `db:"value"`
+	UpdatedAt   time.Time `db:"updated_at"`
+}
+
+type IngTestRequest struct {
+	ID            string          `db:"id"`
+	IngestionID   *string         `db:"ingestion_id"`
+	ApplicationID string          `db:"application_id"`
+	ClientID      string          `db:"client_id"`
+	Kind          string          `db:"kind"`
+	Definition    json.RawMessage `db:"definition"`
+	Status        string          `db:"status"`
+	ClaimedBy     *string         `db:"claimed_by"`
+	Result        json.RawMessage `db:"result"`
+	RequestedBy   *string         `db:"requested_by"`
+	CreatedAt     time.Time       `db:"created_at"`
+	ExpiresAt     time.Time       `db:"expires_at"`
+	CompletedAt   *time.Time      `db:"completed_at"`
+}
+
+type IngVersion struct {
+	ID          string          `db:"id"`
+	IngestionID string          `db:"ingestion_id"`
+	Version     int32           `db:"version"`
+	Definition  json.RawMessage `db:"definition"`
+	Note        *string         `db:"note"`
+	AppliedFrom *string         `db:"applied_from"`
+	CreatedBy   *string         `db:"created_by"`
+	CreatedAt   time.Time       `db:"created_at"`
+}
+
 type MsgConnection struct {
 	ID               string        `db:"id"`
 	Code             string        `db:"code"`

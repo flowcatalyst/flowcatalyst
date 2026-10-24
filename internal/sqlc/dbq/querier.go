@@ -7,6 +7,7 @@ package dbq
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
@@ -193,6 +194,23 @@ type Querier interface {
 	IdpRoleMappingFindByID(ctx context.Context, id string) (OauthIdpRoleMapping, error)
 	IdpRoleMappingFindByIdpRole(ctx context.Context, idpRoleName string) ([]OauthIdpRoleMapping, error)
 	IdpRoleMappingUpsert(ctx context.Context, arg IdpRoleMappingUpsertParams) error
+	IngestionDelete(ctx context.Context, id string) error
+	// Reads the operator API makes beside the ingestion aggregate: the failures
+	// tab and the source kinds the live runtimes report.
+	// The failures tab pages by id, newest first (idx_ing_failures_ingestion).
+	IngestionFailureList(ctx context.Context, arg IngestionFailureListParams) ([]IngFailure, error)
+	IngestionFindByCode(ctx context.Context, arg IngestionFindByCodeParams) (IngIngestion, error)
+	// Queries for ing_ingestions and ing_versions. The filtered, paged list is a
+	// hand-rolled dynamic query in the repository (docs/sqlc.md).
+	IngestionFindByID(ctx context.Context, id string) (IngIngestion, error)
+	IngestionInsert(ctx context.Context, arg IngestionInsertParams) error
+	IngestionRuntimeKindsSeenSince(ctx context.Context, lastSeenAt time.Time) ([]json.RawMessage, error)
+	// Guarded on the version pointer and the latest number the caller read: a
+	// concurrent save or promote moves one of them and this updates no row.
+	IngestionUpdate(ctx context.Context, arg IngestionUpdateParams) (int64, error)
+	IngestionVersionFind(ctx context.Context, arg IngestionVersionFindParams) (IngVersion, error)
+	IngestionVersionInsert(ctx context.Context, arg IngestionVersionInsertParams) error
+	IngestionVersionList(ctx context.Context, ingestionID string) ([]IngVersion, error)
 	OAuthClientDelete(ctx context.Context, id string) error
 	OAuthClientFindAll(ctx context.Context) ([]OauthClient, error)
 	OAuthClientFindByClientID(ctx context.Context, clientID string) (OauthClient, error)

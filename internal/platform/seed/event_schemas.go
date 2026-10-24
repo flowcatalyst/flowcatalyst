@@ -314,6 +314,19 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqNullableStrArray("created"), reqNullableStrArray("updated"), reqNullableStrArray("archived"),
 	)
 
+	// ── platform:ingestion:ingestion ────────────────────────────────────
+	m["platform:ingestion:ingestion:created"] = obj(
+		reqStr("ingestionId"), reqStr("applicationId"), reqStr("clientId"), reqStr("code"), reqU32("version"),
+	)
+	m["platform:ingestion:ingestion:updated"] = obj(reqStr("ingestionId"), reqStr("code"), reqU32("version"))
+	m["platform:ingestion:ingestion:deleted"] = obj(reqStr("ingestionId"), reqStr("code"))
+	m["platform:ingestion:ingestion:paused"] = obj(reqStr("ingestionId"), reqStr("code"))
+	m["platform:ingestion:ingestion:resumed"] = obj(reqStr("ingestionId"), reqStr("code"))
+	m["platform:ingestion:ingestion:version-saved"] = obj(
+		reqStr("ingestionId"), reqStr("code"), reqU32("version"), reqBool("live"),
+	)
+	m["platform:ingestion:ingestion:version-live"] = obj(reqStr("ingestionId"), reqStr("code"), reqU32("version"))
+
 	// ── platform:function (shared with Java and Rust), platform:admin:function* (Go-only)
 	// The shared codes carry Java's and Rust's schemas, except that
 	// function:created has no runtime (a Go function has none; Go's runtime

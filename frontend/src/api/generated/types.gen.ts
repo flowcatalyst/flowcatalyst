@@ -1155,6 +1155,45 @@ export type CreateIdpRoleMappingRequest = {
     [key: string]: unknown;
 };
 
+export type CreateIngestionRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Code of the owning application, which must be of type INTEGRATION
+     */
+    application: string;
+    /**
+     * The client's id (clt_...) or identifier
+     */
+    client: string;
+    /**
+     * Lowercase letters, digits and hyphens, unique within the application and client
+     */
+    code: string;
+    /**
+     * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
+     */
+    keepFailedPayloads?: boolean;
+    /**
+     * Make the first version live. Default true; false saves it to be made live later.
+     */
+    live?: boolean;
+    name: string;
+    note?: string;
+    /**
+     * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
+     */
+    source: unknown;
+    /**
+     * How a payload becomes records: {kind: none|csv|json|xml, ...}
+     */
+    split: unknown;
+    target: Target;
+    [key: string]: unknown;
+};
+
 export type CreateMappingRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2042,6 +2081,165 @@ export type IdpRoleMappingResponse = {
     idpType: string;
     platformRoleName: string;
     updatedAt: string;
+};
+
+export type IngestionFailureListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    failures: Array<IngestionFailureResponse>;
+    hasMore: boolean;
+    /**
+     * Pass as after to read the next page; absent on the last
+     */
+    nextCursor?: string;
+};
+
+export type IngestionFailureResponse = {
+    afterRecords: number;
+    /**
+     * The start of the payload, only for an ingestion that keeps failed payloads
+     */
+    excerpt?: string;
+    id: string;
+    kind: string;
+    message: string;
+    occurredAt: string;
+    runtimeId?: string;
+    version?: number;
+};
+
+export type IngestionHistoryEntry = {
+    /**
+     * The command the operation ran with
+     */
+    details?: unknown;
+    id: string;
+    operation: string;
+    performedAt: string;
+    principalId?: string;
+    principalName?: string;
+};
+
+export type IngestionHistoryResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    entries: Array<IngestionHistoryEntry>;
+    hasMore: boolean;
+};
+
+export type IngestionListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    hasMore: boolean;
+    ingestions: Array<IngestionResponse>;
+    /**
+     * Pass as after to read the next page; absent on the last
+     */
+    nextCursor?: string;
+};
+
+export type IngestionResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    applicationCode: string;
+    applicationId: string;
+    clientId: string;
+    clientIdentifier: string;
+    code: string;
+    createdAt: string;
+    id: string;
+    /**
+     * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
+     */
+    keepFailedPayloads?: boolean;
+    latestVersion: number;
+    /**
+     * Id of the set that owns the ingestion; it is read-only until the set is released
+     */
+    managedBy?: string;
+    name: string;
+    /**
+     * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
+     */
+    source: unknown;
+    /**
+     * How a payload becomes records: {kind: none|csv|json|xml, ...}
+     */
+    split: unknown;
+    status: 'ACTIVE' | 'PAUSED';
+    target: Target;
+    updatedAt: string;
+    version: number;
+};
+
+export type IngestionSourceKindListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    kinds: Array<IngestionSourceKindResponse>;
+};
+
+export type IngestionSourceKindResponse = {
+    builtIn: boolean;
+    description?: string;
+    kind: string;
+    /**
+     * Creating or changing an ingestion of this kind needs this permission
+     */
+    requiredPermission?: string;
+    /**
+     * The kind's settings, as the runtime describes them for the form
+     */
+    settings?: unknown;
+    singleOwner: boolean;
+};
+
+export type IngestionVersionListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    versions: Array<IngestionVersionResponse>;
+};
+
+export type IngestionVersionResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Id of the set apply that produced the version
+     */
+    appliedFrom?: string;
+    createdAt: string;
+    createdBy?: string;
+    id: string;
+    /**
+     * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
+     */
+    keepFailedPayloads?: boolean;
+    live: boolean;
+    name: string;
+    note?: string;
+    /**
+     * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
+     */
+    source: unknown;
+    /**
+     * How a payload becomes records: {kind: none|csv|json|xml, ...}
+     */
+    split: unknown;
+    target: Target;
+    version: number;
 };
 
 export type IntrospectResponse = {
@@ -3337,6 +3535,33 @@ export type RunnerCapabilities = {
     version?: string;
 };
 
+export type SaveIngestionVersionRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
+     */
+    keepFailedPayloads?: boolean;
+    /**
+     * Also make the saved version live (needs the promote permission). Default false.
+     */
+    live?: boolean;
+    name: string;
+    note?: string;
+    /**
+     * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
+     */
+    source: unknown;
+    /**
+     * How a payload becomes records: {kind: none|csv|json|xml, ...}
+     */
+    split: unknown;
+    target: Target;
+    [key: string]: unknown;
+};
+
 export type ScheduledJobInstanceLogResponse = {
     clientId?: string;
     createdAt: string;
@@ -3976,6 +4201,16 @@ export type SyncUsersResponse = {
     updated: number;
 };
 
+export type Target = {
+    batchSize: number;
+    code: string;
+    connection?: string;
+    mode: string;
+    pool: string;
+    serviceAccount?: string;
+    targetUrl: string;
+};
+
 export type TokenAuth = {
     audience: string;
     issuer: string;
@@ -4310,6 +4545,33 @@ export type UpdateIdentityProviderRequest = {
      */
     primaryClientId?: string;
     syncRolesFromIdp?: boolean;
+    [key: string]: unknown;
+};
+
+export type UpdateIngestionRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The live version the caller read (0 when none is live); a different current version is a 409
+     */
+    expectedVersion: number;
+    /**
+     * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
+     */
+    keepFailedPayloads?: boolean;
+    name: string;
+    note?: string;
+    /**
+     * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
+     */
+    source: unknown;
+    /**
+     * How a payload becomes records: {kind: none|csv|json|xml, ...}
+     */
+    split: unknown;
+    target: Target;
     [key: string]: unknown;
 };
 
@@ -5268,6 +5530,41 @@ export type CreateIdpRoleMappingRequestWritable = {
     [key: string]: unknown;
 };
 
+export type CreateIngestionRequestWritable = {
+    /**
+     * Code of the owning application, which must be of type INTEGRATION
+     */
+    application: string;
+    /**
+     * The client's id (clt_...) or identifier
+     */
+    client: string;
+    /**
+     * Lowercase letters, digits and hyphens, unique within the application and client
+     */
+    code: string;
+    /**
+     * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
+     */
+    keepFailedPayloads?: boolean;
+    /**
+     * Make the first version live. Default true; false saves it to be made live later.
+     */
+    live?: boolean;
+    name: string;
+    note?: string;
+    /**
+     * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
+     */
+    source: unknown;
+    /**
+     * How a payload becomes records: {kind: none|csv|json|xml, ...}
+     */
+    split: unknown;
+    target: Target;
+    [key: string]: unknown;
+};
+
 export type CreateMappingRequestWritable = {
     additionalClientIds?: Array<string>;
     /**
@@ -5807,6 +6104,96 @@ export type IdentityProviderResponseWritable = {
 
 export type IdpRoleMappingListResponseWritable = {
     items: Array<IdpRoleMappingResponse>;
+};
+
+export type IngestionFailureListResponseWritable = {
+    failures: Array<IngestionFailureResponse>;
+    hasMore: boolean;
+    /**
+     * Pass as after to read the next page; absent on the last
+     */
+    nextCursor?: string;
+};
+
+export type IngestionHistoryResponseWritable = {
+    entries: Array<IngestionHistoryEntry>;
+    hasMore: boolean;
+};
+
+export type IngestionListResponseWritable = {
+    hasMore: boolean;
+    ingestions: Array<IngestionResponseWritable>;
+    /**
+     * Pass as after to read the next page; absent on the last
+     */
+    nextCursor?: string;
+};
+
+export type IngestionResponseWritable = {
+    applicationCode: string;
+    applicationId: string;
+    clientId: string;
+    clientIdentifier: string;
+    code: string;
+    createdAt: string;
+    id: string;
+    /**
+     * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
+     */
+    keepFailedPayloads?: boolean;
+    latestVersion: number;
+    /**
+     * Id of the set that owns the ingestion; it is read-only until the set is released
+     */
+    managedBy?: string;
+    name: string;
+    /**
+     * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
+     */
+    source: unknown;
+    /**
+     * How a payload becomes records: {kind: none|csv|json|xml, ...}
+     */
+    split: unknown;
+    status: 'ACTIVE' | 'PAUSED';
+    target: Target;
+    updatedAt: string;
+    version: number;
+};
+
+export type IngestionSourceKindListResponseWritable = {
+    kinds: Array<IngestionSourceKindResponse>;
+};
+
+export type IngestionVersionListResponseWritable = {
+    versions: Array<IngestionVersionResponseWritable>;
+};
+
+export type IngestionVersionResponseWritable = {
+    /**
+     * Id of the set apply that produced the version
+     */
+    appliedFrom?: string;
+    createdAt: string;
+    createdBy?: string;
+    id: string;
+    /**
+     * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
+     */
+    keepFailedPayloads?: boolean;
+    live: boolean;
+    name: string;
+    note?: string;
+    /**
+     * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
+     */
+    source: unknown;
+    /**
+     * How a payload becomes records: {kind: none|csv|json|xml, ...}
+     */
+    split: unknown;
+    target: Target;
+    version: number;
 };
 
 export type IntrospectResponseWritable = {
@@ -6609,6 +6996,29 @@ export type RouterConfigWritable = {
     queues: Array<QueueConfig>;
 };
 
+export type SaveIngestionVersionRequestWritable = {
+    /**
+     * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
+     */
+    keepFailedPayloads?: boolean;
+    /**
+     * Also make the saved version live (needs the promote permission). Default false.
+     */
+    live?: boolean;
+    name: string;
+    note?: string;
+    /**
+     * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
+     */
+    source: unknown;
+    /**
+     * How a payload becomes records: {kind: none|csv|json|xml, ...}
+     */
+    split: unknown;
+    target: Target;
+    [key: string]: unknown;
+};
+
 export type ScheduledJobInstanceResponseWritable = {
     clientId?: string;
     completedAt?: string;
@@ -7132,6 +7542,29 @@ export type UpdateIdentityProviderRequestWritable = {
      */
     primaryClientId?: string;
     syncRolesFromIdp?: boolean;
+    [key: string]: unknown;
+};
+
+export type UpdateIngestionRequestWritable = {
+    /**
+     * The live version the caller read (0 when none is live); a different current version is a 409
+     */
+    expectedVersion: number;
+    /**
+     * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
+     */
+    keepFailedPayloads?: boolean;
+    name: string;
+    note?: string;
+    /**
+     * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
+     */
+    source: unknown;
+    /**
+     * How a payload becomes records: {kind: none|csv|json|xml, ...}
+     */
+    split: unknown;
+    target: Target;
     [key: string]: unknown;
 };
 
@@ -12563,6 +12996,420 @@ export type DeleteIdpRoleMappingResponses = {
 };
 
 export type DeleteIdpRoleMappingResponse = DeleteIdpRoleMappingResponses[keyof DeleteIdpRoleMappingResponses];
+
+export type ListIngestionSourceKindsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/ingestion-source-kinds';
+};
+
+export type ListIngestionSourceKindsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListIngestionSourceKindsError = ListIngestionSourceKindsErrors[keyof ListIngestionSourceKindsErrors];
+
+export type ListIngestionSourceKindsResponses = {
+    /**
+     * OK
+     */
+    200: IngestionSourceKindListResponse;
+};
+
+export type ListIngestionSourceKindsResponse = ListIngestionSourceKindsResponses[keyof ListIngestionSourceKindsResponses];
+
+export type ListIngestionsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Only the ingestions of this application
+         */
+        applicationCode?: string;
+        /**
+         * Only the ingestions of this client: its id or identifier
+         */
+        clientId?: string;
+        /**
+         * Matches the code or name, ignoring case
+         */
+        q?: string;
+        status?: 'ACTIVE' | 'PAUSED';
+        /**
+         * A source kind; for an extension's kind, its type
+         */
+        kind?: string;
+        /**
+         * Cursor from a previous page's nextCursor
+         */
+        after?: string;
+        /**
+         * Page size (default 50, at most 200)
+         */
+        limit?: number;
+    };
+    url: '/api/ingestions';
+};
+
+export type ListIngestionsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListIngestionsError = ListIngestionsErrors[keyof ListIngestionsErrors];
+
+export type ListIngestionsResponses = {
+    /**
+     * OK
+     */
+    200: IngestionListResponse;
+};
+
+export type ListIngestionsResponse = ListIngestionsResponses[keyof ListIngestionsResponses];
+
+export type CreateIngestionData = {
+    body: CreateIngestionRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/ingestions';
+};
+
+export type CreateIngestionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateIngestionError = CreateIngestionErrors[keyof CreateIngestionErrors];
+
+export type CreateIngestionResponses = {
+    /**
+     * Created
+     */
+    201: IngestionResponse;
+};
+
+export type CreateIngestionResponse = CreateIngestionResponses[keyof CreateIngestionResponses];
+
+export type DeleteIngestionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}';
+};
+
+export type DeleteIngestionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteIngestionError = DeleteIngestionErrors[keyof DeleteIngestionErrors];
+
+export type DeleteIngestionResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteIngestionResponse = DeleteIngestionResponses[keyof DeleteIngestionResponses];
+
+export type GetIngestionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}';
+};
+
+export type GetIngestionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetIngestionError = GetIngestionErrors[keyof GetIngestionErrors];
+
+export type GetIngestionResponses = {
+    /**
+     * OK
+     */
+    200: IngestionResponse;
+};
+
+export type GetIngestionResponse = GetIngestionResponses[keyof GetIngestionResponses];
+
+export type UpdateIngestionData = {
+    body: UpdateIngestionRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}';
+};
+
+export type UpdateIngestionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type UpdateIngestionError = UpdateIngestionErrors[keyof UpdateIngestionErrors];
+
+export type UpdateIngestionResponses = {
+    /**
+     * OK
+     */
+    200: IngestionResponse;
+};
+
+export type UpdateIngestionResponse = UpdateIngestionResponses[keyof UpdateIngestionResponses];
+
+export type GetIngestionDefinitionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/definition';
+};
+
+export type GetIngestionDefinitionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetIngestionDefinitionError = GetIngestionDefinitionErrors[keyof GetIngestionDefinitionErrors];
+
+export type GetIngestionDefinitionResponses = {
+    /**
+     * The definition file `fcdev ingest apply` reads back
+     */
+    200: string;
+};
+
+export type GetIngestionDefinitionResponse = GetIngestionDefinitionResponses[keyof GetIngestionDefinitionResponses];
+
+export type ListIngestionFailuresData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: {
+        /**
+         * Cursor from a previous page's nextCursor
+         */
+        after?: string;
+        /**
+         * Page size (default 50, at most 200)
+         */
+        limit?: number;
+    };
+    url: '/api/ingestions/{id}/failures';
+};
+
+export type ListIngestionFailuresErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListIngestionFailuresError = ListIngestionFailuresErrors[keyof ListIngestionFailuresErrors];
+
+export type ListIngestionFailuresResponses = {
+    /**
+     * OK
+     */
+    200: IngestionFailureListResponse;
+};
+
+export type ListIngestionFailuresResponse = ListIngestionFailuresResponses[keyof ListIngestionFailuresResponses];
+
+export type ListIngestionHistoryData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: {
+        /**
+         * Page size (default 50, at most 200)
+         */
+        limit?: number;
+        offset?: number;
+    };
+    url: '/api/ingestions/{id}/history';
+};
+
+export type ListIngestionHistoryErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListIngestionHistoryError = ListIngestionHistoryErrors[keyof ListIngestionHistoryErrors];
+
+export type ListIngestionHistoryResponses = {
+    /**
+     * OK
+     */
+    200: IngestionHistoryResponse;
+};
+
+export type ListIngestionHistoryResponse = ListIngestionHistoryResponses[keyof ListIngestionHistoryResponses];
+
+export type PauseIngestionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/pause';
+};
+
+export type PauseIngestionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PauseIngestionError = PauseIngestionErrors[keyof PauseIngestionErrors];
+
+export type PauseIngestionResponses = {
+    /**
+     * OK
+     */
+    200: IngestionResponse;
+};
+
+export type PauseIngestionResponse = PauseIngestionResponses[keyof PauseIngestionResponses];
+
+export type ResumeIngestionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/resume';
+};
+
+export type ResumeIngestionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ResumeIngestionError = ResumeIngestionErrors[keyof ResumeIngestionErrors];
+
+export type ResumeIngestionResponses = {
+    /**
+     * OK
+     */
+    200: IngestionResponse;
+};
+
+export type ResumeIngestionResponse = ResumeIngestionResponses[keyof ResumeIngestionResponses];
+
+export type ListIngestionVersionsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/versions';
+};
+
+export type ListIngestionVersionsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListIngestionVersionsError = ListIngestionVersionsErrors[keyof ListIngestionVersionsErrors];
+
+export type ListIngestionVersionsResponses = {
+    /**
+     * OK
+     */
+    200: IngestionVersionListResponse;
+};
+
+export type ListIngestionVersionsResponse = ListIngestionVersionsResponses[keyof ListIngestionVersionsResponses];
+
+export type SaveIngestionVersionData = {
+    body: SaveIngestionVersionRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/versions';
+};
+
+export type SaveIngestionVersionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type SaveIngestionVersionError = SaveIngestionVersionErrors[keyof SaveIngestionVersionErrors];
+
+export type SaveIngestionVersionResponses = {
+    /**
+     * Created
+     */
+    201: IngestionVersionResponse;
+};
+
+export type SaveIngestionVersionResponse = SaveIngestionVersionResponses[keyof SaveIngestionVersionResponses];
+
+export type MakeIngestionVersionLiveData = {
+    body?: never;
+    path: {
+        id: string;
+        version: number;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/versions/{version}/live';
+};
+
+export type MakeIngestionVersionLiveErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type MakeIngestionVersionLiveError = MakeIngestionVersionLiveErrors[keyof MakeIngestionVersionLiveErrors];
+
+export type MakeIngestionVersionLiveResponses = {
+    /**
+     * OK
+     */
+    200: IngestionResponse;
+};
+
+export type MakeIngestionVersionLiveResponse = MakeIngestionVersionLiveResponses[keyof MakeIngestionVersionLiveResponses];
 
 export type ListLoginAttemptsData = {
     body?: never;

@@ -40,6 +40,7 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 	// (passed through /oauth/authorize) into the client whose theme
 	// overrides the platform one.
 	publicapi.New(repos.platformConfigRepo).
+		WithIngestion(cfg.IngestionEnabled).
 		WithClientResolver(func(ctx context.Context, identifier string) (string, error) {
 			c, err := repos.clientRepo.FindByIdentifier(ctx, identifier)
 			if err != nil || c == nil {
