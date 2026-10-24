@@ -27,6 +27,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/lestrrat-go/jwx/v2 v2.1.6
 	github.com/mattn/go-isatty v0.0.21
+	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/nats-io/nats-server/v2 v2.12.9
 	github.com/nats-io/nats.go v1.52.0
@@ -40,8 +41,10 @@ require (
 	github.com/starfederation/datastar-go v1.2.2
 	github.com/stretchr/testify v1.12.1
 	github.com/tetratelabs/wazero v1.12.0
+	github.com/yuin/goldmark v1.7.13
 	github.com/zalando/go-keyring v0.2.8
 	go.mongodb.org/mongo-driver v1.17.7
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/crypto v0.57.0
 	golang.org/x/net v0.60.0
 	golang.org/x/oauth2 v0.36.0
@@ -69,6 +72,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.1 // indirect
+	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
@@ -86,6 +90,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
+	github.com/gorilla/css v1.0.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
@@ -125,7 +130,6 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
