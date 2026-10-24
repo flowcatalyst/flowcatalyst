@@ -1,0 +1,470 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+const idpLiveGet = "@get('/ui/identity-providers', {contentType: 'form'})"
+
+func (v idpView) columns() []kit.DataColumn {
+	sortable := func(label, key string) kit.DataColumn {
+		return kit.DataColumn{Label: label, Href: v.Query.sortURL(key), Direction: v.Query.direction(key), LinkAttrs: templ.Attributes{"data-on:click__prevent": sortClick}}
+	}
+	return []kit.DataColumn{
+		sortable("Name", "name"), sortable("Code", "code"), sortable("Type", "type"), {Label: "Issuer"}, {Label: "Allowed Domains"},
+		sortable("Created", "created"), {Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v idpView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No identity providers found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = v.Query.clearURL()
+	}
+	return e
+}
+
+func (v idpView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: idpFormID, Action: idpPath, SearchPlaceholder: "Search providers...", SearchValue: v.Query.Q,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		Hidden:      v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": idpLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": idpLiveGet},
+	}
+}
+
+func (v idpView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "idp-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: idpList.rows,
+		Noun: "identity providers", HrefPattern: v.Query.pagePattern(), FormID: idpFormID,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func (v idpView) drawerSignals() string {
+	if v.Drawer == nil {
+		return "{" + idpDrawerSig + ": ''}"
+	}
+	return "{" + idpDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "'}"
+}
+
+// idpMoreDomains is the SPA's "+N more" after the first three domains.
+func idpMoreDomains(domains []string) string {
+	return "+" + strconv.Itoa(len(domains)-3) + " more"
+}
+
+templ idpTypeTag(t string) {
+	@kit.Tag(kit.TagProps{Severity: idpTypeSeverity(t), Label: t})
+}
+
+templ idpPage(v idpView) {
+	<div data-signals={ v.drawerSignals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Identity Providers", Subtitle: "Configure external identity providers for federated authentication.", Actions: idpActions(v)})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Identity Providers.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@idpTable(v)
+			@kit.Paginator(v.pager())
+		</div>
+		<div id={ idpDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		if v.Perms.Delete {
+			@kit.ConfirmDialog(idpDeleteConfirm())
+		}
+		@idpDrawer(v.Drawer)
+	</div>
+}
+
+templ idpActions(v idpView) {
+	if v.Perms.Create {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: idpPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Add Identity Provider
+		}
+	}
+}
+
+templ idpTable(v idpView) {
+	@kit.DataTable(kit.DataTableProps{ID: "idp-table", BodyID: "idp-rows", Columns: v.columns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "idp-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }>{ row.Name }</a>
+				}
+				@kit.TD(kit.TDProps{}) {
+					<code class="font-mono text-[13px]">{ row.Code }</code>
+				}
+				@kit.TD(kit.TDProps{}) {
+					@idpTypeTag(row.Type)
+				}
+				@kit.TD(kit.TDProps{Class: "max-w-[200px] truncate text-[12px] text-muted-foreground"}) {
+					if row.Issuer != "" {
+						{ row.Issuer }
+					} else {
+						-
+					}
+				}
+				@kit.TD(kit.TDProps{}) {
+					if len(row.Domains) > 0 {
+						<div class="flex flex-wrap items-center gap-1">
+							for i, d := range row.Domains {
+								if i < 3 {
+									@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: d})
+								}
+							}
+							if len(row.Domains) > 3 {
+								<span class="text-[12px] text-muted-foreground">{ idpMoreDomains(row.Domains) }</span>
+							}
+						</div>
+					} else {
+						<span class="text-muted-foreground">All domains</span>
+					}
+				}
+				@kit.TD(kit.TDProps{}) {
+					<time datetime={ row.CreatedISO }>{ row.Created }</time>
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+}
+
+templ idpDrawer(d *idpDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@idpDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: idpDrawerID, Signal: idpDrawerSig, Label: "Identity provider"})
+	}
+}
+
+templ idpDrawerContent(d idpDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@idpDrawerBody(d)
+	}
+}
+
+templ idpYesNo(on bool) {
+	if on {
+		<span class="inline-flex items-center gap-1">
+			@kit.Icon(kit.IconProps{Name: "check", Class: "size-4 text-green-600"})
+			Yes
+		</span>
+	} else {
+		<span class="inline-flex items-center gap-1 text-muted-foreground">
+			@kit.Icon(kit.IconProps{Name: "x", Class: "size-4"})
+			No
+		</span>
+	}
+}
+
+// idpDrawerBody mirrors the SPA's IdentityProviderDetailDrawer.
+templ idpDrawerBody(d idpDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Provider", Actions: idpEditButton(d)}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Name", Value: d.Name})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Code"}) {
+				<code>{ d.Code }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Type", Value: d.Type})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created", Value: d.Created})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Last Updated", Value: d.Updated})
+		</div>
+	}
+	if d.Type == "OIDC" {
+		@kit.FormSection(kit.FormSectionProps{Title: "OIDC Configuration"}) {
+			<div class="fc-detail-grid">
+				@kit.DetailField(kit.DetailFieldProps{Label: "Multi-Tenant"}) {
+					@idpYesNo(d.MultiTenant)
+				}
+				@kit.DetailField(kit.DetailFieldProps{Label: "Issuer URL", Value: d.Issuer, Span: true})
+				if d.MultiTenant && d.Pattern != "" {
+					@kit.DetailField(kit.DetailFieldProps{Label: "Issuer Pattern", Value: d.Pattern, Span: true})
+				}
+				@kit.DetailField(kit.DetailFieldProps{Label: "Client ID"}) {
+					<code>{ d.ClientID }</code>
+				}
+				@kit.DetailField(kit.DetailFieldProps{Label: "Client Secret"}) {
+					if d.HasSecret {
+						<span class="inline-flex items-center gap-1">
+							@kit.Icon(kit.IconProps{Name: "check", Class: "size-4 text-green-600"})
+							Configured
+						</span>
+					} else {
+						<span class="inline-flex items-center gap-1 text-muted-foreground">
+							@kit.Icon(kit.IconProps{Name: "x", Class: "size-4"})
+							Not configured
+						</span>
+					}
+				}
+			</div>
+		}
+		@kit.FormSection(kit.FormSectionProps{Title: "Role Sync"}) {
+			<div class="fc-detail-grid">
+				@kit.DetailField(kit.DetailFieldProps{Label: "Sync Roles from IDP"}) {
+					if d.Sync {
+						@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Enabled"})
+					} else {
+						@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "Disabled"})
+					}
+				}
+				if d.Sync {
+					@kit.DetailField(kit.DetailFieldProps{Label: "Allowed Roles", Span: true}) {
+						if len(d.Roles) > 0 {
+							<div class="flex flex-wrap gap-1">
+								for _, name := range d.Roles {
+									@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: name})
+								}
+							</div>
+						} else {
+							<span class="text-muted-foreground">All mapped roles allowed</span>
+						}
+					}
+				}
+			</div>
+		}
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Email Domains"}) {
+		if len(d.Domains) > 0 {
+			<div class="flex flex-wrap gap-1">
+				for _, domain := range d.Domains {
+					@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: domain})
+				}
+			</div>
+		} else {
+			<span class="text-muted-foreground">No domains routed to this provider</span>
+		}
+	}
+	if d.Perms.Delete {
+		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
+			@poolActionItem("Delete Identity Provider", "Deletion is blocked while email domains still route to this provider. Cannot be undone.") {
+				if d.Internal {
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Attrs: templ.Attributes{"disabled": true, "title": undeletableInternal}}) {
+						Delete
+					}
+				} else {
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Attrs: confirmTrigger(idpDeleteDialog, d.ActionBase+"/delete")}) {
+						Delete
+					}
+				}
+			}
+		}
+	}
+}
+
+templ idpEditButton(d idpDetail) {
+	if d.Perms.Update {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Edit
+		}
+	}
+}
+
+// idpFormDialogC is the create or edit dialog. The OIDC parts follow the
+// type, the issuer pattern the multi-tenant switch, the scope the listed
+// domains, the client the scope, the allowed roles the sync switch.
+templ idpFormDialogC(f idpForm) {
+	@kit.FormDialog(f.dialog()) {
+		<div class="flex flex-col gap-4" data-signals={ f.signals() }>
+			@kit.FormSection(kit.FormSectionProps{Title: "Provider"}) {
+				<div class="flex flex-col gap-4">
+					if !f.Edit {
+						@idpField(f, "code")
+					}
+					@idpField(f, "name")
+					if !f.Edit {
+						@idpField(f, "type")
+					}
+				</div>
+			}
+			<div id={ f.id("oidc") } data-show="$idpFormType === 'OIDC'" style={ hiddenUnless(f.oidc()) }>
+				@kit.FormSection(kit.FormSectionProps{Title: "OIDC Configuration"}) {
+					<div class="flex flex-col gap-4">
+						@idpField(f, "multiTenant")
+						@idpField(f, "issuerUrl")
+						@idpField(f, "issuerPattern")
+						@idpField(f, "clientId")
+						@idpSecret(f)
+					</div>
+				}
+			</div>
+			@kit.FormSection(kit.FormSectionProps{Title: "Email Domains"}) {
+				<div class="flex flex-col gap-4">
+					@idpField(f, "domains")
+					@idpField(f, "scope")
+					@idpField(f, "client")
+					if f.Edit {
+						@idpField(f, "release")
+					}
+				</div>
+			}
+			<div id={ f.id("sync-section") } data-show="$idpFormType === 'OIDC'" style={ hiddenUnless(f.oidc()) }>
+				@kit.FormSection(kit.FormSectionProps{Title: "Role Sync"}) {
+					<div class="flex flex-col gap-4">
+						@idpField(f, "sync")
+						@idpField(f, "roles")
+					</div>
+				}
+			</div>
+		</div>
+	}
+}
+
+// hiddenUnless is the style of a part that starts hidden (the page then shows
+// and hides it with its signal).
+func hiddenUnless(shown bool) string {
+	if shown {
+		return ""
+	}
+	return "display: none"
+}
+
+// idpSecret is the client secret control (the SPA's SecretRefInput): where
+// the secret is held and the secret or its reference. Write-only: what is
+// stored is never sent to the page.
+templ idpSecret(f idpForm) {
+	@kit.Field(f.fieldProps("secret", "Client Secret", f.secretHelp(), false)) {
+		<div class="flex flex-col gap-2">
+			@kit.Select(kit.SelectProps{ID: f.id("secret-kind"), Name: "secretKind", Options: idpSecretKindOptions(), Selected: f.secretKindValue(), Attrs: templ.Attributes{"data-bind:idp-form-secret-kind": true, "aria-label": "Where the client secret is held"}})
+			<div data-show="$idpFormSecretKind === 'encrypt'" style={ hiddenUnless(f.secretKindValue() == "encrypt") }>
+				@kit.PasswordInput(kit.PasswordInputProps{ID: f.id("secret-value"), Name: "secretValue", Signal: "idpSecret", Placeholder: "your-client-secret", Invalid: f.fieldError("secret") != "", DescribedBy: f.describedBy("secret")})
+				<p class="mt-1 text-sm text-muted-foreground">Encrypted when saved and never shown again.</p>
+			</div>
+			<div data-show="$idpFormSecretKind !== 'encrypt'" style={ hiddenUnless(f.secretKindValue() != "encrypt") }>
+				@kit.Input(f.inputProps("secretRef", f.SecretRef, kit.InputProps{Placeholder: "secret-name", Class: "font-mono", Attrs: templ.Attributes{"autocomplete": "off", "spellcheck": "false"}}))
+				<p class="mt-1 text-sm text-muted-foreground">A reference to a secret held in the store you chose, not the secret itself.</p>
+			</div>
+		</div>
+	}
+}
+
+templ idpField(f idpForm, key string) {
+	switch key {
+		case "code":
+			@kit.Field(f.fieldProps(key, "Code", "A unique identifier for this provider (cannot be changed later)", true)) {
+				@kit.Input(f.inputProps(key, f.Code, kit.InputProps{Placeholder: "e.g., google, azure-ad, okta", Required: true, Attrs: templ.Attributes{"maxlength": "100", "pattern": "[a-z][a-z0-9\\-]*", "title": idpCodeHelp, "autofocus": true, "autocomplete": "off"}}))
+			}
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", idpNameHelp(f.Edit), true)) {
+				@kit.Input(f.inputProps(key, f.Name, kit.InputProps{Placeholder: "e.g., Google Workspace, Azure AD", Required: true, Attrs: idpNameAttrs(f.Edit)}))
+			}
+		case "type":
+			@kit.Field(f.fieldProps(key, "Type", "", true)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: idpTypeOptions, Selected: f.Type, Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:idp-form-type": true}})
+			}
+		case "multiTenant":
+			<div id={ f.id(key) + "-field" } class="flex flex-col gap-1">
+				@kit.Switch(kit.SwitchProps{ID: f.id(key), Name: key, Value: "true", Checked: f.MultiTenant, Label: "Multi-Tenant Mode", Attrs: templ.Attributes{"data-bind:idp-form-mt": true}})
+				<p class="text-sm text-muted-foreground">Enable for providers like Azure AD where the issuer varies per tenant</p>
+			</div>
+		case "issuerUrl":
+			@kit.Field(f.fieldProps(key, "Issuer URL", "The OpenID Connect issuer URL. For a multi-tenant provider, the base URL for the authorization and token endpoints (for example .../organizations/v2.0 or .../common/v2.0).", true)) {
+				@kit.Input(f.inputProps(key, f.IssuerURL, kit.InputProps{Placeholder: "https://login.example.com", Attrs: templ.Attributes{"autocomplete": "off"}}))
+			}
+		case "issuerPattern":
+			<div id={ f.id(key) + "-wrap" } data-show="$idpFormMt" style={ hiddenUnless(f.MultiTenant) }>
+				@kit.Field(f.fieldProps(key, "Issuer Pattern", "Pattern for validating the token issuer. Use {tenantId} as the placeholder. Leave empty to derive it from the Issuer URL.", false)) {
+					@kit.Input(f.inputProps(key, f.IssuerPattern, kit.InputProps{Placeholder: "https://login.microsoftonline.com/{tenantId}/v2.0", Attrs: templ.Attributes{"autocomplete": "off"}}))
+				}
+			</div>
+		case "clientId":
+			@kit.Field(f.fieldProps(key, "Client ID", "", true)) {
+				@kit.Input(f.inputProps(key, f.ClientID, kit.InputProps{Placeholder: "Your OAuth client ID", Attrs: templ.Attributes{"autocomplete": "off"}}))
+			}
+		case "domains":
+			@kit.Field(f.fieldProps(key, "Allowed Domains", idpDomainsHelp(f.Edit), false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Domains, Placeholder: "example.com", Rows: 3, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-on:input": "$idpFormHasDomains = el.value.trim() !== ''", "spellcheck": "false", "autocapitalize": "off"}})
+			}
+		case "scope":
+			<div id={ f.id(key) + "-wrap" } data-show="$idpFormHasDomains" style={ hiddenUnless(f.hasDomains()) }>
+				@kit.Field(f.fieldProps(key, "Domain scope", f.scopeHelp(), !f.Edit)) {
+					@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: idpScopeOptions, Selected: f.Scope, Placeholder: "Choose a scope", Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:idp-form-scope": true}})
+				}
+			</div>
+		case "client":
+			<div id={ f.id(key) + "-wrap" } data-show="$idpFormScope === 'CLIENT'" style={ hiddenUnless(f.Scope == "CLIENT") }>
+				@kit.Field(f.fieldProps(key, "Primary Client", f.clientHelp(), true)) {
+					@kit.Autocomplete(kit.AutocompleteProps{
+						ID: f.id(key), Name: key, Value: f.Client, Placeholder: "Search for a client...", Source: clientOptionsPath, Options: f.ClientOptions,
+						Disabled: !f.CanPickClient, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key),
+					})
+				}
+			</div>
+		case "secret":
+			@idpSecret(f)
+		case "release":
+			@idpRelease(f)
+		case "sync":
+			<div id={ f.id(key) + "-field" } class="flex flex-col gap-1">
+				@kit.Switch(kit.SwitchProps{ID: f.id(key), Name: key, Value: "true", Checked: f.Sync, Label: "Sync Roles from IDP", Attrs: templ.Attributes{"data-bind:idp-form-sync": true}})
+				<p class="text-sm text-muted-foreground">When enabled, roles from the provider's token are synchronized at every login. Synced roles are filtered by the allowed roles below.</p>
+			</div>
+		case "roles":
+			<div id={ f.id(key) + "-field" } data-show="$idpFormSync" style={ hiddenUnless(f.Sync) }>
+				if f.CanPickRoles {
+					@kit.MultiSelect(kit.MultiSelectProps{
+						ID: f.id("roles-pick"), Name: "roles", Label: "Allowed Roles", Options: f.RoleOptions, Selected: f.Roles,
+						Placeholder: "All mapped roles allowed", MaxLabels: 3, Chips: true, Search: true, Signal: "idpFormRolesQ", EmptyText: "No roles found",
+						DescribedBy: f.describedBy(key),
+					})
+					<p class="mt-1 text-sm text-muted-foreground">Restrict which roles this provider may grant. Leave empty to allow all mapped roles.</p>
+					if f.fieldError(key) != "" {
+						<p id={ f.id(key) + "-err" } class="text-sm text-destructive" role="alert">{ f.fieldError(key) }</p>
+					}
+				} else {
+					<p class="text-sm text-muted-foreground">Choosing roles needs permission to view roles; the roles already allowed stay as they are.</p>
+				}
+			</div>
+	}
+}
+
+// idpRelease is the SPA's "Remove Email Domains" confirmation: shown when an
+// edit drops domains, and the save waits for the box to be ticked.
+templ idpRelease(f idpForm) {
+	<div id={ f.id("release-field") } class="flex flex-col gap-2">
+		if len(f.Release) > 0 {
+			@kit.Alert(kit.AlertProps{Icon: "triangle-alert", Title: "Remove Email Domains", Description: "These domains fall back to internal password authentication. Users who were provisioned through SSO must reset their password before they can log in again, and roles synced from this provider will be removed."})
+			<div class="flex flex-wrap gap-1">
+				for _, d := range f.Release {
+					@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: d})
+				}
+			</div>
+			@kit.Checkbox(kit.CheckboxProps{ID: f.id("release"), Name: "confirmRelease", Value: "yes", Label: "Save and release these domains", Attrs: templ.Attributes{"required": true}})
+		}
+	</div>
+}
+
+func idpNameHelp(edit bool) string {
+	if edit {
+		return ""
+	}
+	return "A human-readable name for this provider"
+}
+
+func idpNameAttrs(edit bool) templ.Attributes {
+	a := templ.Attributes{"maxlength": "255", "autocomplete": "off"}
+	if edit {
+		a["autofocus"] = true
+	}
+	return a
+}
+
+func idpDomainsHelp(edit bool) string {
+	if edit {
+		return "One per line. The set of domains routed to this provider. Added domains are mapped (or re-linked from their current provider); removed domains fall back to internal password authentication."
+	}
+	return "One per line. Domains listed here are routed to this provider in Email Domain management: unknown domains get a new mapping; domains mapped to another provider are re-linked to this one (their existing client and 2FA configuration is kept)."
+}

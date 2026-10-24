@@ -1,0 +1,149 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+// dbgRowClick opens a row's drawer from anywhere on the row, through its
+// Event ID link; one handler on the <tbody>.
+const dbgRowClick = "const r = evt.target.closest('tr'); r && !evt.target.closest('a') && r.querySelector('a')?.click()"
+
+templ dbgEvPage(v dbgEvView) {
+	<div data-signals={ v.signals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Raw Events", Subtitle: "Debug view of the transactional event store"})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Debug, Raw Events.", Class: "mb-4"})
+		@kit.Alert(kit.AlertProps{
+			Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "Debug view of the raw events table",
+			Description: "This table is write-optimized with minimal indexes, so there is no filtering or paging. For regular queries use the Events page, which reads the read-optimized projection.",
+			Class:       "mb-4",
+		})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@dbgEvTable(v)
+			@dbgEvSummary(v)
+		</div>
+		@dbgEvDrawer(v.Drawer)
+	</div>
+}
+
+func (v dbgEvView) signals() string {
+	sel := ""
+	if v.Drawer != nil {
+		sel = v.Drawer.ID // matched eventIDPattern: no quote can occur
+	}
+	return "{" + dbgEvDrawerSig + ": '" + sel + "'}"
+}
+
+templ dbgEvSummary(v dbgEvView) {
+	<p id="dbg-ev-summary" class="p-3 text-center text-sm text-muted-foreground">Showing the { thousands(int64(len(v.Rows))) } most recent raw events</p>
+}
+
+templ dbgEvTable(v dbgEvView) {
+	@kit.Table(kit.TableProps{ID: "dbg-ev-table", Dense: true, Class: "min-w-[48rem]"}) {
+		@kit.THead(kit.THeadProps{Caps: true}) {
+			@kit.TR(kit.TRProps{Static: true}) {
+				@kit.TH(kit.THProps{}) {
+					Event ID
+				}
+				@kit.TH(kit.THProps{}) {
+					Type
+				}
+				@kit.TH(kit.THProps{}) {
+					Source
+				}
+				@kit.TH(kit.THProps{}) {
+					Subject
+				}
+				@kit.TH(kit.THProps{}) {
+					Dedup ID
+				}
+				@kit.TH(kit.THProps{}) {
+					Time
+				}
+			}
+		}
+		@kit.TBody(kit.TBodyProps{ID: "dbg-ev-rows", Striped: true, Attrs: templ.Attributes{"data-on:click": dbgRowClick}}) {
+			if len(v.Rows) == 0 {
+				@kit.EmptyRow(kit.EmptyRowProps{Colspan: 6, Empty: kit.EmptyStateProps{Message: "No events found", Status: true}})
+			}
+			for _, row := range v.Rows {
+				@kit.TR(kit.TRProps{Clickable: true}) {
+					@kit.TD(kit.TDProps{}) {
+						<a href={ templ.SafeURL(row.Href) } class="font-mono text-sm" title={ row.ID } data-on:click__prevent={ liveLink }>{ row.ShortID }</a>
+					}
+					@kit.TD(kit.TDProps{Class: "whitespace-normal!"}) {
+						@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: row.Type})
+					}
+					@kit.TD(kit.TDProps{Class: "whitespace-normal! wrap-anywhere"}) {
+						{ row.Source }
+					}
+					@kit.TD(kit.TDProps{Class: "max-w-56"}) {
+						<span class="block truncate text-sm" title={ row.Subject }>{ row.Subject }</span>
+					}
+					@kit.TD(kit.TDProps{}) {
+						<span class="font-mono text-sm" title={ row.Dedup }>{ row.DedupShort }</span>
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: row.Time})
+					}
+				}
+			}
+		}
+	}
+}
+
+templ dbgEvDrawer(d *dbgEvDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@dbgEvDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: dbgEvDrawerID, Signal: dbgEvDrawerSig, Label: "Raw event", Size: kit.DrawerWide})
+	}
+}
+
+templ dbgEvDrawerContent(d dbgEvDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@dbgEvDrawerBody(d)
+	}
+}
+
+// dbgEvDrawerBody mirrors the SPA's Raw Event Details dialog (read-only).
+templ dbgEvDrawerBody(d dbgEvDetail) {
+	<div id={ dbgEvDrawerID + "-body" } class="flex flex-col gap-4">
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "ID", Span: true}) {
+				<span class="font-mono">{ d.ID }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Type", Span: true}) {
+				@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: d.Type})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Source", Value: d.Source})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Subject", Value: d.Subject})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Time"}) {
+				@kit.LocalTime(kit.LocalTimeProps{At: d.Time})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Client ID"}) {
+				<span class="font-mono">{ d.ClientID }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Message Group", Value: d.MessageGroup})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Correlation ID"}) {
+				<span class="font-mono wrap-anywhere">{ d.Correlation }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Causation ID"}) {
+				<span class="font-mono wrap-anywhere">{ d.Causation }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Deduplication ID"}) {
+				<span class="font-mono wrap-anywhere">{ d.Deduplication }</span>
+			}
+		</div>
+		<div>
+			<h4 class="fc-field-label mb-1">Data</h4>
+			<pre class="fc-json whitespace-pre-wrap break-all" tabindex="0" aria-label="Event data">{ d.Data }</pre>
+		</div>
+		if len(d.Context) > 0 {
+			<div>
+				<h4 class="fc-field-label mb-1">Context Data</h4>
+				@djKVList(d.Context, "")
+			</div>
+		}
+	</div>
+}

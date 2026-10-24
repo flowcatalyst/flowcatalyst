@@ -1,0 +1,79 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+templ raPage(v raView) {
+	<div>
+		@kit.PageHeader(kit.PageHeaderProps{
+			Title:    "Password reset approvals",
+			Subtitle: "Users with no authenticator or passkey who've requested a password reset. Approving emails them a reset link and clears their 2FA so they re-enrol.",
+			Actions:  raRefresh(),
+		})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Client Administration → Reset Approvals.", Class: "mb-4"})
+		@raRegion(v)
+	</div>
+}
+
+templ raRefresh() {
+	@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: raPath, Icon: "refresh-cw", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-label": "Refresh"}}) {
+		Refresh
+	}
+}
+
+// raRegion is what a refresh or a decision patches: the queue.
+templ raRegion(v raView) {
+	<div id={ raRegionID } class="fc-card-flush">
+		if len(v.Rows) == 0 {
+			<p class="p-6 text-center text-sm text-muted-foreground" role="status">No pending reset requests.</p>
+		} else {
+			@kit.Table(kit.TableProps{}) {
+				@kit.THead(kit.THeadProps{Caps: true}) {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TH(kit.THProps{}) {
+							User
+						}
+						@kit.TH(kit.THProps{}) {
+							Requested
+						}
+						@kit.TH(kit.THProps{}) {
+							Expires
+						}
+						@kit.TH(kit.THProps{Class: "w-px"}) {
+							Actions
+						}
+					}
+				}
+				@kit.TBody(kit.TBodyProps{}) {
+					for _, row := range v.Rows {
+						@kit.TR(kit.TRProps{ID: "ra-" + row.ID}) {
+							@kit.TD(kit.TDProps{}) {
+								<span class="block font-medium">{ row.Name }</span>
+								<span class="block text-[13px] text-muted-foreground">{ row.Email }</span>
+							}
+							@kit.TD(kit.TDProps{}) {
+								@kit.LocalTime(kit.LocalTimeProps{At: row.Requested})
+							}
+							@kit.TD(kit.TDProps{}) {
+								@kit.LocalTime(kit.LocalTimeProps{At: row.Expires})
+							}
+							@kit.TD(kit.TDProps{}) {
+								<div class="flex items-center justify-end gap-2">
+									<form method="post" action={ row.ActionBase + "/approve" } data-on:submit={ kit.SubmitForm }>
+										@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Small: true}) {
+											Approve
+										}
+									</form>
+									<form method="post" action={ row.ActionBase + "/deny" } data-on:submit={ kit.SubmitForm }>
+										@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: kit.LegacyTextPrimary, Small: true}) {
+											Deny
+										}
+									</form>
+								</div>
+							}
+						}
+					}
+				}
+			}
+		}
+	</div>
+}

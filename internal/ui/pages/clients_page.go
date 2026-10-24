@@ -41,8 +41,7 @@ type ClientConfigReader interface {
 // ClientsPage is the clients page (/ui/clients), mirroring the SPA's
 // ClientListPage, ClientCreateDrawer and ClientDetailDrawer: the list, the
 // drawer with the applications picker, create and edit, activate, suspend
-// and deactivate. Login Branding stays on the SPA (its theme editor is
-// shared with the platform settings, not ported yet).
+// and deactivate. Login Branding is ClientTheme's page.
 type ClientsPage struct {
 	Clients ClientStore
 	Ops     ClientCommands

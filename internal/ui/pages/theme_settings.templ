@@ -1,0 +1,259 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+// thmPreviewExpr asks for the preview of the values as they stand; it runs a
+// moment after the last change to any field.
+func (v thmView) previewExpr() string {
+	return "@post('" + v.PreviewAction + "', {contentType: 'form', retryMaxCount: 0})"
+}
+
+// thmPickerExpr is a colour picker's handler. It writes the picked colour into
+// its text field and, as the SPA's editor does for the primary and the
+// background colour, regenerates the gradient from them.
+func thmPickerExpr(field string, gradient bool) string {
+	e := "const f = el.form; f." + field + ".value = el.value;"
+	if gradient {
+		e += " f.backgroundGradient.value = 'linear-gradient(135deg, ' + f.primaryColor.value + ' 0%, ' + f.backgroundColor.value + ' 100%)'"
+	}
+	return e
+}
+
+// thmPickerValue is the picker's initial value: it takes #rrggbb only.
+func thmPickerValue(c string) string {
+	if len(c) == 7 && c[0] == '#' && thmColorPattern.MatchString(c) {
+		return c
+	}
+	return "#000000"
+}
+
+templ thmSettingsPage(v thmView) {
+	@kit.PageHeader(kit.PageHeaderProps{Title: "Theme Settings", Subtitle: "Customize the appearance of the platform with your branding."})
+	@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Settings, Theme.", Class: "mb-4"})
+	@thmEditor(v)
+	<p class="mt-4 text-sm text-muted-foreground">
+		This is the platform-wide theme. Individual clients can override it under
+		<strong>Clients, (select a client), Login Branding</strong>.
+	</p>
+}
+
+// thmEditor is the form beside its preview. A failed save patches it whole,
+// with the values as typed.
+templ thmEditor(v thmView) {
+	<div id="thm-editor" style="display:flex;flex-wrap:wrap;gap:1.5rem;align-items:flex-start">
+		<div style="flex:1 1 28rem;min-width:0">
+			@thmForm(v)
+		</div>
+		<div style="flex:0 1 26rem;min-width:18rem" class="flex flex-col gap-3">
+			<h3 class="fc-section-title">Preview</h3>
+			@thmPreviewPanel(v.Values.preview())
+			<p class="text-xs text-muted-foreground">
+				The preview shows the colors, text and an inline SVG logo. A logo loaded from an address and the custom CSS take effect on the sign-in pages only.
+			</p>
+		</div>
+	</div>
+}
+
+templ thmForm(v thmView) {
+	<form
+		id="thm-form"
+		method="post"
+		action={ v.Action }
+		class="flex flex-col gap-4"
+		data-on:submit={ kit.SubmitForm }
+		data-on:input__debounce.400ms={ v.previewExpr() }
+	>
+		<div id="thm-error">
+			if v.Errs.Form != "" {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "circle-x", Title: v.Errs.Form})
+			}
+		</div>
+		if v.Client != nil {
+			@thmClientSwitch(v)
+		}
+		<div
+			id="thm-fields"
+			class="flex flex-col gap-4"
+			if v.Client != nil && !v.Client.Enabled {
+				style="display:none"
+			}
+			if v.Client != nil {
+				data-show="$thmEnabled"
+			}
+		>
+			@kit.FormSection(kit.FormSectionProps{Title: "Branding"}) {
+				<div class="flex flex-col gap-4">
+					@thmText(v, "brandName", "Brand Name", "Displayed as the main heading on the login page", v.Values.BrandName, "")
+					@thmText(v, "brandSubtitle", "Brand Subtitle", "Displayed below the brand name", v.Values.BrandSubtitle, "")
+					@thmText(v, "footerText", "Footer Text", "Displayed at the bottom of the login form", v.Values.FooterText, "")
+				</div>
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Logo"}) {
+				<div class="flex flex-col gap-4">
+					@thmText(v, "logoUrl", "Logo URL", "URL to an image file (PNG, SVG, etc.)", v.Values.LogoURL, "https://example.com/logo.png")
+					@kit.Field(thmField(v, "logoSvg", "Logo SVG (inline)", "Paste inline SVG markup. Takes precedence over Logo URL if both are set.")) {
+						@kit.Textarea(kit.TextareaProps{
+							ID: v.id("logoSvg"), Name: "logoSvg", Value: v.Values.LogoSVG, Rows: 4, Placeholder: "<svg>...</svg>",
+							Disabled: v.ReadOnly, Invalid: v.fieldError("logoSvg") != "", DescribedBy: thmDescribedBy(v, "logoSvg"),
+							Attrs: templ.Attributes{"spellcheck": "false"},
+						})
+					}
+					@kit.Field(thmField(v, "logoHeight", "Logo Height (px)", "Height of the logo in pixels (default: 40, max: 120)")) {
+						@kit.Input(kit.InputProps{
+							ID: v.id("logoHeight"), Name: "logoHeight", Type: "number", Value: v.Values.LogoHeight,
+							Disabled: v.ReadOnly, Invalid: v.fieldError("logoHeight") != "", DescribedBy: thmDescribedBy(v, "logoHeight"),
+							Attrs: templ.Attributes{"min": "20", "max": "120", "step": "1"},
+						})
+					}
+				</div>
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Colors"}) {
+				<div class="flex flex-col gap-4">
+					@thmColor(v, "primaryColor", "Primary Color", "Main brand color for headings", v.Values.PrimaryColor, true)
+					@thmColor(v, "accentColor", "Accent Color", "Button and link color", v.Values.AccentColor, false)
+					@thmColor(v, "backgroundColor", "Background Color", "Page background color", v.Values.BackgroundColor, true)
+					@thmText(v, "backgroundGradient", "Background Gradient", "CSS gradient (overrides background color if set)", v.Values.BackgroundGradient, "")
+				</div>
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Advanced"}) {
+				<div class="flex flex-col gap-4">
+					@kit.Field(thmField(v, "customCss", "Custom CSS", "Additional CSS rules to inject on the login page")) {
+						@kit.Textarea(kit.TextareaProps{
+							ID: v.id("customCss"), Name: "customCss", Value: v.Values.CustomCSS, Rows: 4, Placeholder: ".login-card { ... }",
+							Disabled: v.ReadOnly, Invalid: v.fieldError("customCss") != "", DescribedBy: thmDescribedBy(v, "customCss"),
+							Attrs: templ.Attributes{"spellcheck": "false"},
+						})
+					}
+				</div>
+			}
+		</div>
+		if !v.ReadOnly {
+			<div class="flex flex-wrap items-center justify-end gap-2">
+				if v.Client == nil {
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyText, Href: thmPath + "?defaults=1", Icon: "rotate-ccw"}) {
+						Reset to Defaults
+					}
+				}
+				@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Icon: "check"}) {
+					Save Changes
+				}
+			</div>
+		}
+	</form>
+}
+
+func thmField(v thmView, key, label, help string) kit.FieldProps {
+	return kit.FieldProps{
+		Label: label, For: v.id(key), Description: help, Error: v.fieldError(key),
+		Attrs: templ.Attributes{"id": v.id(key) + "-field"},
+	}
+}
+
+func thmDescribedBy(v thmView, key string) string {
+	if v.fieldError(key) != "" {
+		return v.id(key) + "-err"
+	}
+	return ""
+}
+
+templ thmText(v thmView, key, label, help, value, placeholder string) {
+	@kit.Field(thmField(v, key, label, help)) {
+		@kit.Input(kit.InputProps{
+			ID: v.id(key), Name: key, Value: value, Placeholder: placeholder, Disabled: v.ReadOnly,
+			Invalid: v.fieldError(key) != "", DescribedBy: thmDescribedBy(v, key),
+			Attrs: templ.Attributes{"autocomplete": "off"},
+		})
+	}
+}
+
+// thmColor is a colour field: the text the platform stores, and a picker that
+// writes into it.
+templ thmColor(v thmView, key, label, help, value string, gradient bool) {
+	@kit.Field(thmField(v, key, label, help)) {
+		<div class="flex items-center gap-2">
+			<input
+				type="color"
+				value={ thmPickerValue(value) }
+				aria-label={ label + " picker" }
+				disabled?={ v.ReadOnly }
+				data-on:input={ thmPickerExpr(key, gradient) }
+			/>
+			@kit.Input(kit.InputProps{
+				ID: v.id(key), Name: key, Value: value, Disabled: v.ReadOnly, Class: "font-mono",
+				Invalid: v.fieldError(key) != "", DescribedBy: thmDescribedBy(v, key),
+				Attrs: templ.Attributes{"autocomplete": "off", "spellcheck": "false"},
+			})
+		</div>
+	}
+}
+
+// thmPreviewPanel is the sign-in page in miniature. It is built only from the
+// values thmPreview vouches for.
+templ thmPreviewPanel(p thmPreview) {
+	<div id="thm-preview" style={ "background:" + p.Background + ";border-radius:0.75rem;padding:2rem 1.5rem;min-height:30rem;display:flex;align-items:center;justify-content:center" } role="img" aria-label="Preview of the sign-in page">
+		<div style="text-align:center;width:100%;max-width:17.5rem">
+			if p.LogoSrc != "" {
+				<img src={ templ.SafeURL(p.LogoSrc) } alt="" style="max-width:7.5rem;max-height:3rem;object-fit:contain;margin-bottom:0.75rem"/>
+			} else if p.LogoURL != "" {
+				<p style="color:#9fb3c8;font-size:0.75rem;margin:0 0 0.75rem;word-break:break-all">Logo: { p.LogoURL }</p>
+			} else {
+				<div style="width:3rem;height:3rem;background:rgba(255,255,255,0.1);border-radius:0.625rem;display:inline-flex;align-items:center;justify-content:center;margin-bottom:0.75rem;color:#fff">
+					@kit.Icon(kit.IconProps{Name: "zap", Class: "size-6"})
+				</div>
+			}
+			<h1 style="font-size:1.375rem;font-weight:700;margin:0;color:#fff">{ p.BrandName }</h1>
+			<p style="color:#9fb3c8;font-size:0.8125rem;margin:0.25rem 0 1.25rem">{ p.Subtitle }</p>
+			<div style="background:#fff;border-radius:0.625rem;padding:1.5rem 1.25rem;text-align:left">
+				<h2 style="font-size:0.9375rem;font-weight:600;color:#1e293b;margin:0 0 1rem">Sign in</h2>
+				<div style="height:2.25rem;background:#f1f5f9;border-radius:0.375rem;margin-bottom:0.75rem"></div>
+				<div style={ "height:2.25rem;border-radius:0.375rem;color:#fff;font-weight:500;font-size:0.8125rem;display:flex;align-items:center;justify-content:center;background-color:" + p.Accent }>Continue</div>
+			</div>
+			<p style="color:#627d98;font-size:0.6875rem;margin:1rem 0 0">{ p.Footer }</p>
+		</div>
+	</div>
+}
+
+// thmClientSwitch is a client's "use custom branding" switch; it shows or
+// hides the editor's fields, and the server reads it with the post.
+templ thmClientSwitch(v thmView) {
+	<div data-signals={ thmEnabledSignal(v.Client.Enabled) } class="flex items-start gap-3">
+		@kit.Switch(kit.SwitchProps{
+			ID: "thm-enabled", Name: "enabled", Checked: v.Client.Enabled, Disabled: v.ReadOnly,
+			Attrs: templ.Attributes{"data-bind:thm-enabled": ""},
+		})
+		<label for="thm-enabled" class="cursor-pointer">
+			<strong>Use custom branding for this client</strong>
+			<p class="mt-1 text-sm text-muted-foreground">
+				When off, this client's users see the platform-wide theme. Turning it on starts from the current platform theme so you only change what differs.
+			</p>
+		</label>
+	</div>
+}
+
+func thmEnabledSignal(on bool) string {
+	if on {
+		return "{thmEnabled: true}"
+	}
+	return "{thmEnabled: false}"
+}
+
+// thmClientPage is a client's Login Branding page.
+templ thmClientPage(v thmView) {
+	@kit.PageHeader(kit.PageHeaderProps{
+		Title:    "Login Branding",
+		Subtitle: "Custom sign-in appearance for " + v.Client.Name,
+		Actions:  thmBackButton(v.Client),
+	})
+	@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Clients, Login Branding.", Class: "mb-4"})
+	@thmEditor(v)
+	<p class="mt-4 text-sm text-muted-foreground">
+		Applies to the sign-in, forgot-password and reset-password pages. To get this branding, the application sends users to
+		<code>{ "/oauth/authorize?…&client=" + v.Client.Identifier }</code>. Portal users are not affected.
+	</p>
+}
+
+templ thmBackButton(c *thmClient) {
+	@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Href: cliURL(c.ID), Icon: "arrow-left"}) {
+		Back to client
+	}
+}

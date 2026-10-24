@@ -1,0 +1,67 @@
+package pages
+
+import (
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// docsLiveGet filters the navigation as the user types.
+const docsLiveGet = "@get(el.form.action, {contentType: 'form'})"
+
+templ docsPage(v docsView) {
+	<script type="module" src={ assets.URL("fc-diagram.js") }></script>
+	@kit.PageHeader(kit.PageHeaderProps{Title: "Documentation", Subtitle: "The platform's published docs plus each application's synced pages."})
+	@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Platform, Documentation.", Class: "mb-4"})
+	<div style="display:flex;flex-wrap:wrap;gap:1.5rem;align-items:flex-start">
+		<aside style="flex:1 1 14rem;max-width:18rem" class="flex flex-col gap-3" aria-label="Documentation pages">
+			<form method="get" action={ v.Self } data-on:submit={ docsLiveGet }>
+				@kit.Input(kit.InputProps{
+					ID: "docs-filter", Name: "q", Value: v.Q, Placeholder: "Filter docs...",
+					Attrs: templ.Attributes{"aria-label": "Filter docs", "autocomplete": "off", "data-on:input__debounce.300ms": docsLiveGet},
+				})
+			</form>
+			@docsNavigation(v)
+		</aside>
+		<main style="flex:4 1 24rem;min-width:0" class="fc-card p-6">
+			if v.Content != nil {
+				@v.Content
+			} else if v.Problem != "" {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "circle-x", Title: v.Problem})
+			}
+		</main>
+	</div>
+}
+
+// docsNavigation is the page list; it is what a filter change patches.
+templ docsNavigation(v docsView) {
+	<nav id={ docsNavID } class="flex flex-col gap-0.5" aria-label="Pages">
+		for _, g := range v.Groups {
+			<div class="mt-4 mb-1 px-2.5 text-xs font-semibold uppercase text-muted-foreground">{ g.Label }</div>
+			for _, l := range g.Links {
+				<a
+					href={ templ.SafeURL(l.Href) }
+					class={ "block rounded-md px-2.5 py-1.5 text-sm hover:bg-foreground/5", templ.KV("bg-foreground/10 font-semibold", l.Active) }
+					if l.Active {
+						aria-current="page"
+					}
+				>{ l.Title }</a>
+			}
+		}
+	</nav>
+}
+
+// docsBody is a page's text: sanitised Markdown (docsContent has run it
+// through internal/ui/md) with its diagrams drawn from their source.
+templ docsBody(segs []docsSegment) {
+	<article class="fc-markdown">
+		for _, s := range segs {
+			if s.Mermaid {
+				@kit.Diagram(kit.DiagramProps{Label: "Diagram", Bundle: assets.URL("mermaid.min.js"), Class: "mt-4 mb-4"}) {
+					{ s.Text }
+				}
+			} else {
+				@templ.Raw(s.Text)
+			}
+		}
+	</article>
+}

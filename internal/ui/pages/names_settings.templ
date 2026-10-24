@@ -1,0 +1,50 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+templ namesPage(v namesView) {
+	@kit.PageHeader(kit.PageHeaderProps{Title: "Names", Subtitle: "Set the name used across the platform"})
+	@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Settings, Names.", Class: "mb-4"})
+	@namesForm(v)
+}
+
+// namesForm is what a failed save patches: the field with the name as typed
+// and its error.
+templ namesForm(v namesView) {
+	<form id="names-form" method="post" action={ namesPath } data-on:submit={ kit.SubmitForm } style="max-width:40rem">
+		@kit.FormSection(kit.FormSectionProps{Title: "Platform Name"}) {
+			<div class="flex flex-col gap-4">
+				@kit.Field(kit.FieldProps{
+					Label: "Platform name", For: "names-platform-name", Error: v.Error, ErrorID: "names-platform-name-err",
+					Description: "Shown wherever the product is named to users: security emails, the authenticator-app label for two-factor codes, passkey prompts, and the browser tab. Defaults to “FlowCatalyst”.",
+				}) {
+					@kit.Input(kit.InputProps{
+						ID: "names-platform-name", Name: "platformName", Value: v.Name, Placeholder: "FlowCatalyst", Disabled: v.ReadOnly,
+						Invalid: v.Error != "", DescribedBy: namesDescribedBy(v),
+						Attrs: templ.Attributes{"autocomplete": "off", "maxlength": "200"},
+					})
+				}
+				if !v.ReadOnly {
+					<div class="flex flex-wrap items-center justify-end gap-2">
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyText, Href: namesPath + "?default=1", Icon: "rotate-ccw"}) {
+							Reset to default
+						}
+						@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Icon: "check"}) {
+							Save
+						}
+					</div>
+				}
+				<p class="text-xs text-muted-foreground">
+					The authenticator-app and email names update immediately. The passkey prompt name updates on the next server restart.
+				</p>
+			</div>
+		}
+	</form>
+}
+
+func namesDescribedBy(v namesView) string {
+	if v.Error != "" {
+		return "names-platform-name-err"
+	}
+	return ""
+}

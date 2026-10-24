@@ -127,12 +127,19 @@ func firstHeading(file, fallback string) string {
 	return fallback
 }
 
-// ── handlers ─────────────────────────────────────────────────────────────
+// ── reads (shared with the server-rendered UI) ───────────────────────────
 
-func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[DocListResponse], error) {
-	if err := auth.CanReadPlatformDocs(auth.FromContext(ctx)); err != nil {
-		return nil, err
-	}
+// The reads below carry no permission check: the HTTP handlers and the UI's
+// documentation page both gate on auth.CanReadPlatformDocs first, then call
+// them, so the two surfaces list and resolve pages the same way.
+
+// SourcePlatform is the {source} of a published platform page; any other
+// source is an application code.
+const SourcePlatform = "platform"
+
+// Index lists the published platform pages and each application's synced
+// pages, applications sorted by name.
+func (s *State) Index(ctx context.Context) (DocListResponse, error) {
 	pages, _ := publishedIndex()
 	resp := DocListResponse{Platform: make([]DocSummary, 0, len(pages)), Applications: []AppDocsGroup{}}
 	for _, p := range pages {
@@ -142,7 +149,7 @@ func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[Do
 	if s.AppDocs != nil && s.Apps != nil {
 		appIDs, err := s.AppDocs.ApplicationIDsWithDocs(ctx)
 		if err != nil {
-			return nil, usecase.Internal("DOCS", "listing application docs failed", err)
+			return resp, usecase.Internal("DOCS", "listing application docs failed", err)
 		}
 		for _, appID := range appIDs {
 			app, aerr := s.Apps.FindByID(ctx, appID)
@@ -151,7 +158,7 @@ func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[Do
 			}
 			summaries, derr := s.AppDocs.ListByApplication(ctx, appID)
 			if derr != nil {
-				return nil, usecase.Internal("DOCS", "listing application docs failed", derr)
+				return resp, usecase.Internal("DOCS", "listing application docs failed", derr)
 			}
 			group := AppDocsGroup{ApplicationCode: app.Code, ApplicationName: app.Name, Docs: make([]DocSummary, 0, len(summaries))}
 			for _, d := range summaries {
@@ -162,6 +169,55 @@ func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[Do
 		slices.SortFunc(resp.Applications, func(a, b AppDocsGroup) int {
 			return strings.Compare(a.ApplicationName, b.ApplicationName)
 		})
+	}
+	return resp, nil
+}
+
+// PlatformPage is one published platform page as Markdown.
+func (s *State) PlatformPage(slug string) (DocResponse, error) {
+	_, bySlug := publishedIndex()
+	d, ok := bySlug[slug]
+	if !ok {
+		return DocResponse{}, httperror.NotFound("Doc", slug)
+	}
+	content, err := docs.FS.ReadFile(d.file)
+	if err != nil {
+		return DocResponse{}, httperror.NotFound("Doc", slug)
+	}
+	return DocResponse{Slug: d.slug, Title: d.title, Content: string(content)}, nil
+}
+
+// ApplicationPage is one application-synced page as Markdown.
+func (s *State) ApplicationPage(ctx context.Context, appCode, slug string) (DocResponse, error) {
+	if s.AppDocs == nil || s.Apps == nil {
+		return DocResponse{}, httperror.NotFound("Doc", slug)
+	}
+	app, err := s.Apps.FindByCode(ctx, appCode)
+	if err != nil {
+		return DocResponse{}, usecase.Internal("REPO", "find_application failed", err)
+	}
+	if app == nil {
+		return DocResponse{}, httperror.NotFound("Application", appCode)
+	}
+	doc, err := s.AppDocs.GetByApplicationSlug(ctx, string(app.ID), slug)
+	if err != nil {
+		return DocResponse{}, usecase.Internal("DOCS", "doc lookup failed", err)
+	}
+	if doc == nil {
+		return DocResponse{}, httperror.NotFound("Doc", slug)
+	}
+	return DocResponse{Slug: doc.Slug, Title: doc.Title, Content: doc.Content}, nil
+}
+
+// ── handlers ─────────────────────────────────────────────────────────────
+
+func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[DocListResponse], error) {
+	if err := auth.CanReadPlatformDocs(auth.FromContext(ctx)); err != nil {
+		return nil, err
+	}
+	resp, err := s.Index(ctx)
+	if err != nil {
+		return nil, err
 	}
 	return &apicommon.Out[DocListResponse]{Body: resp}, nil
 }
@@ -174,16 +230,11 @@ func (s *State) getPlatform(ctx context.Context, in *getPlatformDocInput) (*apic
 	if err := auth.CanReadPlatformDocs(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	_, bySlug := publishedIndex()
-	d, ok := bySlug[in.Slug]
-	if !ok {
-		return nil, httperror.NotFound("Doc", in.Slug)
-	}
-	content, err := docs.FS.ReadFile(d.file)
+	doc, err := s.PlatformPage(in.Slug)
 	if err != nil {
-		return nil, httperror.NotFound("Doc", in.Slug)
+		return nil, err
 	}
-	return &apicommon.Out[DocResponse]{Body: DocResponse{Slug: d.slug, Title: d.title, Content: string(content)}}, nil
+	return &apicommon.Out[DocResponse]{Body: doc}, nil
 }
 
 type getApplicationDocInput struct {
@@ -195,22 +246,9 @@ func (s *State) getApplication(ctx context.Context, in *getApplicationDocInput) 
 	if err := auth.CanReadPlatformDocs(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if s.AppDocs == nil || s.Apps == nil {
-		return nil, httperror.NotFound("Doc", in.Slug)
-	}
-	app, err := s.Apps.FindByCode(ctx, in.AppCode)
+	doc, err := s.ApplicationPage(ctx, in.AppCode, in.Slug)
 	if err != nil {
-		return nil, usecase.Internal("REPO", "find_application failed", err)
+		return nil, err
 	}
-	if app == nil {
-		return nil, httperror.NotFound("Application", in.AppCode)
-	}
-	doc, err := s.AppDocs.GetByApplicationSlug(ctx, string(app.ID), in.Slug)
-	if err != nil {
-		return nil, usecase.Internal("DOCS", "doc lookup failed", err)
-	}
-	if doc == nil {
-		return nil, httperror.NotFound("Doc", in.Slug)
-	}
-	return &apicommon.Out[DocResponse]{Body: DocResponse{Slug: doc.Slug, Title: doc.Title, Content: doc.Content}}, nil
+	return &apicommon.Out[DocResponse]{Body: doc}, nil
 }

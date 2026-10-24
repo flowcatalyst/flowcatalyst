@@ -1,0 +1,182 @@
+package pages
+
+import (
+	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+templ dbgDjPage(v dbgDjView) {
+	<div data-signals={ v.signals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Raw Dispatch Jobs", Subtitle: "Debug view of the transactional dispatch job store"})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Debug, Raw Dispatch Jobs.", Class: "mb-4"})
+		@kit.Alert(kit.AlertProps{
+			Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "Debug view of the raw dispatch jobs table",
+			Description: "This table is write-optimized with minimal indexes, so there is no filtering or paging. For regular queries use the Dispatch Jobs page, which reads the read-optimized projection.",
+			Class:       "mb-4",
+		})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@dbgDjTable(v)
+			@dbgDjSummary(v)
+		</div>
+		@dbgDjDrawer(v.Drawer)
+	</div>
+}
+
+func (v dbgDjView) signals() string {
+	sel := ""
+	if v.Drawer != nil {
+		sel = v.Drawer.ID // matched kit.ValidID: no quote can occur
+	}
+	return "{" + dbgDjDrawerSig + ": '" + sel + "'}"
+}
+
+templ dbgDjSummary(v dbgDjView) {
+	<p id="dbg-dj-summary" class="p-3 text-center text-sm text-muted-foreground">Showing the { thousands(int64(len(v.Rows))) } most recent raw dispatch jobs</p>
+}
+
+templ dbgDjTable(v dbgDjView) {
+	@kit.Table(kit.TableProps{ID: "dbg-dj-table", Dense: true, Class: "min-w-[48rem]"}) {
+		@kit.THead(kit.THeadProps{Caps: true}) {
+			@kit.TR(kit.TRProps{Static: true}) {
+				@kit.TH(kit.THProps{}) {
+					Job ID
+				}
+				@kit.TH(kit.THProps{}) {
+					Code
+				}
+				@kit.TH(kit.THProps{}) {
+					Kind
+				}
+				@kit.TH(kit.THProps{}) {
+					Status
+				}
+				@kit.TH(kit.THProps{}) {
+					Attempts
+				}
+				@kit.TH(kit.THProps{}) {
+					Payload
+				}
+				@kit.TH(kit.THProps{}) {
+					Idempotency Key
+				}
+				@kit.TH(kit.THProps{}) {
+					Created
+				}
+			}
+		}
+		@kit.TBody(kit.TBodyProps{ID: "dbg-dj-rows", Striped: true, Attrs: templ.Attributes{"data-on:click": dbgRowClick}}) {
+			if len(v.Rows) == 0 {
+				@kit.EmptyRow(kit.EmptyRowProps{Colspan: 8, Empty: kit.EmptyStateProps{Message: "No dispatch jobs found", Status: true}})
+			}
+			for _, row := range v.Rows {
+				@kit.TR(kit.TRProps{Clickable: true}) {
+					@kit.TD(kit.TDProps{}) {
+						<a href={ templ.SafeURL(row.Href) } class="font-mono text-sm" title={ row.ID } data-on:click__prevent={ liveLink }>{ row.ShortID }</a>
+					}
+					@kit.TD(kit.TDProps{Class: "whitespace-normal! wrap-anywhere"}) {
+						@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: row.Code})
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						{ row.Kind }
+					}
+					@kit.TD(kit.TDProps{}) {
+						@kit.Tag(kit.TagProps{Severity: row.StatusSeverity, Label: row.Status})
+					}
+					@kit.TD(kit.TDProps{}) {
+						{ row.Attempts }
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						{ row.Payload }
+					}
+					@kit.TD(kit.TDProps{}) {
+						<span class="font-mono text-sm" title={ row.Key }>{ row.KeyShort }</span>
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: row.Created})
+					}
+				}
+			}
+		}
+	}
+}
+
+templ dbgDjDrawer(d *dbgDjDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@dbgDjDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: dbgDjDrawerID, Signal: dbgDjDrawerSig, Label: "Raw dispatch job", Size: kit.DrawerWide})
+	}
+}
+
+templ dbgDjDrawerContent(d dbgDjDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@dbgDjDrawerBody(d)
+	}
+}
+
+// dbgDjDrawerBody mirrors the SPA's Raw Dispatch Job Details dialog (read-only).
+templ dbgDjDrawerBody(d dbgDjDetail) {
+	<div id={ dbgDjDrawerID + "-body" } class="flex flex-col gap-4">
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "ID", Span: true}) {
+				<span class="font-mono">{ d.ID }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Code"}) {
+				@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: d.Code})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Kind", Value: d.Kind})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
+				@kit.Tag(kit.TagProps{Severity: d.StatusSeverity, Label: d.Status})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Source", Value: d.Source})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Target URL", Span: true}) {
+				<span class="font-mono text-sm wrap-anywhere">{ d.TargetURL }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Client ID"}) {
+				<span class="font-mono">{ d.ClientID }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Subscription ID"}) {
+				<span class="font-mono">{ d.SubscriptionID }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Message Group", Value: d.Group})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Attempts", Value: d.Attempts})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Last Error", Span: true}) {
+				<span class="wrap-anywhere">{ d.LastError }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Idempotency Key"}) {
+				<span class="font-mono wrap-anywhere">{ d.Key }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Correlation ID"}) {
+				<span class="font-mono wrap-anywhere">{ d.Correlation }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Event ID"}) {
+				<span class="font-mono wrap-anywhere">{ d.EventID }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Payload", Value: d.Payload})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created At"}) {
+				@kit.LocalTime(kit.LocalTimeProps{At: d.Created})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Updated At"}) {
+				@kit.LocalTime(kit.LocalTimeProps{At: d.Updated})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Scheduled For"}) {
+				@dbgOptionalTime(d.Scheduled)
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Completed At"}) {
+				@dbgOptionalTime(d.Completed)
+			}
+		</div>
+	</div>
+}
+
+templ dbgOptionalTime(t *time.Time) {
+	if t != nil {
+		@kit.LocalTime(kit.LocalTimeProps{At: *t})
+	} else {
+		<span class="text-muted-foreground">-</span>
+	}
+}

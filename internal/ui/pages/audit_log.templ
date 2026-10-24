@@ -1,0 +1,209 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+var auditFacetLabels = map[string][3]string{
+	auditFacetApps:    {"Application", "All Applications", "{0} applications selected"},
+	auditFacetClients: {"Client", "All Clients", "{0} clients selected"},
+}
+
+func (v auditView) facetProps(name string) kit.MultiSelectProps {
+	l := auditFacetLabels[name]
+	return kit.MultiSelectProps{
+		ID: "audit-filter-" + name, Name: name, Label: l[0], Options: v.Facets[name], Selected: v.Query.facet(name),
+		Placeholder: l[1], ManyLabel: l[2], EmptyText: "No options", Search: true, Signal: "auditQ" + name,
+		OptionAttrs: templ.Attributes{"data-on:change": auditLiveGet},
+	}
+}
+
+func (v auditView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = auditPath
+	}
+	return kit.TableToolbarProps{
+		ID: auditFormID, Action: auditPath, HideSearch: true,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.Query.activeFilters(),
+		FormAttrs:         templ.Attributes{"data-on:submit": auditLiveGet},
+		Filters:           auditFilters(v),
+	}
+}
+
+func (v auditView) pager() kit.CursorPagerProps {
+	p := kit.CursorPagerProps{
+		ID: "audit-pager", Summary: "Showing the " + thousands(int64(len(v.Rows))) + " most recent entries",
+		OlderHref: v.OlderHref, LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+	if v.Query.After != nil {
+		p.NewestHref = v.Query.first().URL()
+		p.Summary = "Showing " + thousands(int64(len(v.Rows))) + " older entries"
+	}
+	return p
+}
+
+func (v auditView) signals() string {
+	sel := ""
+	if v.Drawer != nil {
+		sel = v.Drawer.ID // matched eventIDPattern: no quote can occur
+	}
+	return "{" + auditDrawerSig + ": '" + sel + "'}"
+}
+
+func (v auditView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No audit logs found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = auditPath
+	}
+	return e
+}
+
+templ auditPage(v auditView) {
+	<div data-signals={ v.signals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Audit Log", Subtitle: "View system activity and changes"})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Audit Log.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@auditTable(v)
+			@kit.CursorPager(v.pager())
+		</div>
+		@auditDrawer(v.Drawer)
+	</div>
+}
+
+templ auditFilters(v auditView) {
+	@kit.FilterSelect(kit.FilterSelectProps{Name: "entityType", Label: "Entity Type", Placeholder: "All Entity Types", Options: v.EntityTypes, Selected: v.Query.EntityType, Attrs: templ.Attributes{"data-on:change": auditLiveGet}})
+	@kit.FilterSelect(kit.FilterSelectProps{Name: "operation", Label: "Operation", Placeholder: "All Operations", Options: v.Operations, Selected: v.Query.Operation, Attrs: templ.Attributes{"data-on:change": auditLiveGet}})
+	for _, f := range auditFacets {
+		@kit.MultiSelect(v.facetProps(f))
+	}
+}
+
+templ auditContext(label string) {
+	if label != "" {
+		<span class="text-sm">{ label }</span>
+	} else {
+		<span class="text-muted-foreground">-</span>
+	}
+}
+
+templ auditTable(v auditView) {
+	@kit.Table(kit.TableProps{ID: "audit-table", Dense: true, Class: "min-w-[48rem]"}) {
+		@kit.THead(kit.THeadProps{Caps: true}) {
+			@kit.TR(kit.TRProps{Static: true}) {
+				@kit.TH(kit.THProps{}) {
+					Time
+				}
+				@kit.TH(kit.THProps{}) {
+					Entity Type
+				}
+				@kit.TH(kit.THProps{}) {
+					Entity ID
+				}
+				@kit.TH(kit.THProps{}) {
+					Operation
+				}
+				@kit.TH(kit.THProps{}) {
+					Performed By
+				}
+				@kit.TH(kit.THProps{}) {
+					Application
+				}
+				@kit.TH(kit.THProps{}) {
+					Client
+				}
+				@kit.TH(kit.THProps{}) {
+					<span class="sr-only">Actions</span>
+				}
+			}
+		}
+		@kit.TBody(kit.TBodyProps{ID: "audit-rows", Striped: true, Attrs: templ.Attributes{"data-on:click": auditRowClick}}) {
+			if e := v.empty(); e != nil {
+				@kit.EmptyRow(kit.EmptyRowProps{Colspan: 8, Empty: *e})
+			}
+			for _, row := range v.Rows {
+				@kit.TR(kit.TRProps{Clickable: true}) {
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: row.Time})
+					}
+					@kit.TD(kit.TDProps{Class: "whitespace-normal!"}) {
+						@kit.Tag(kit.TagProps{Severity: entityTypeSeverity(row.EntityType), Label: row.EntityType})
+					}
+					@kit.TD(kit.TDProps{}) {
+						<span class="font-mono text-sm" title={ row.EntityID }>{ truncateID(row.EntityID) }</span>
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						{ row.Operation }
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						{ row.Principal }
+					}
+					@kit.TD(kit.TDProps{}) {
+						@auditContext(row.Application)
+					}
+					@kit.TD(kit.TDProps{}) {
+						@auditContext(row.Client)
+					}
+					@kit.RowActions(kit.RowActionsProps{ID: "audit-" + row.ID + "-actions", RowLabel: row.Operation, Actions: []kit.RowAction{
+						{Icon: "eye", Label: "View details", Href: row.Href, Attrs: templ.Attributes{"data-on:click__prevent": liveLink}},
+					}})
+				}
+			}
+		}
+	}
+}
+
+templ auditDrawer(d *auditDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@auditDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: auditDrawerID, Signal: auditDrawerSig, Label: "Audit log", Size: kit.DrawerWide})
+	}
+}
+
+templ auditDrawerContent(d auditDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@auditDrawerBody(d)
+	}
+}
+
+// auditDrawerBody mirrors the SPA's detail dialog (read-only).
+templ auditDrawerBody(d auditDetail) {
+	<div class="flex flex-col gap-4">
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Time"}) {
+				@kit.LocalTime(kit.LocalTimeProps{At: d.Time})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Entity Type"}) {
+				@kit.Tag(kit.TagProps{Severity: entityTypeSeverity(d.EntityType), Label: d.EntityType})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Entity ID", Span: true}) {
+				<span class="font-mono wrap-anywhere">{ d.EntityID }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Operation", Value: d.Operation})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Performed By", Value: d.Principal})
+			if d.PrincipalID != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Principal ID", Span: true}) {
+					<span class="font-mono wrap-anywhere">{ d.PrincipalID }</span>
+				}
+			}
+			if d.Application != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Application", Value: d.Application})
+			}
+			if d.Client != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Client", Value: d.Client})
+			}
+		</div>
+		if d.Data != "" {
+			<div>
+				<h4 class="fc-field-label mb-1">Operation Data</h4>
+				<pre class="fc-json whitespace-pre-wrap break-all" tabindex="0" aria-label="Operation data">{ d.Data }</pre>
+			</div>
+		}
+	</div>
+}

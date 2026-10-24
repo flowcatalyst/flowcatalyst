@@ -12,7 +12,10 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/docsapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
@@ -35,6 +38,21 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 	ingestionResolver := ingestion.NewResolver(repos.applicationRepo, repos.clientRepo,
 		repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, nil)
 	return ui.Mount(r, ui.Config{
+		// The new sign-in pages (/ui/auth/*) call the public auth endpoints of
+		// this same router in-process.
+		SignInUpstream: r,
+
+		// The two-factor and passkey pages use the services the login endpoint
+		// does: the same MFA service, token issuer, domain policy, backoff store
+		// and session JWT.
+		TwoFactor: &pages.AuthMFA{
+			MFA: svcs.mfaSvc, Tokens: svcs.mfaTokens, Policy: svcs.twofaPolicy, Principals: repos.principalRepo,
+			Attempts: repos.loginAttemptRepo, Backoff: loginbackoff.PolicyFromEnv(),
+			Notifier: svcs.notifier, Audit: repos.auditRepo, CookieSecure: !cfg.AuthAllowTestHeaders,
+			Sessions: svcs.authProvider, SessionTTL: login.SessionTTL,
+			Passkeys: repos.webauthnCredRepo, PasskeyOps: pages.PasskeyOps{Repo: repos.webauthnCredRepo, UoW: uow},
+		},
+
 		Authenticate: platformmw.Authenticator(platformmw.AuthConfig{
 			Provider:         svcs.authProvider,
 			AllowTestHeaders: cfg.AuthAllowTestHeaders,
@@ -99,6 +117,9 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 		DeveloperUserOps:      pages.DeveloperUserOps{Repo: repos.principalRepo, Roles: repos.roleRepo, UoW: uow},
 		PlatformConfig:        platformConfigService(repos, uow),
 		PlatformConfigOps:     pages.ConfigOps{Repo: repos.platformConfigRepo, UoW: uow},
+		Docs:                  &docsapi.State{AppDocs: appdocs.NewRepository(pool), Apps: repos.applicationRepo},
+		DebugEvents:           repos.eventRepo,
+		DebugDispatchJobs:     repos.dispatchJobRepo,
 		Functions:             repos.functionRepo,
 		FunctionZones:         repos.functionDomainRepo,
 		FunctionOps: pages.FunctionOps{
@@ -137,6 +158,21 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 
 		Portal:    pages.PortalReader{Identities: repos.portalIdentityRepo, PortalApps: repos.portalAppRepo},
 		PortalOps: pages.PortalOps{Identities: repos.portalIdentityRepo, Apps: repos.portalAppRepo, Clients: repos.clientRepo, OAuthClients: repos.authRepo.OAuthClients, UoW: uow},
+
+		OAuthClients:   repos.authRepo.OAuthClients,
+		OAuthClientOps: pages.OAuthClientOps{Repo: repos.authRepo.OAuthClients, PortalApps: repos.portalAppRepo, UoW: uow},
+		ResetApprovals: resetApprovalState(cfg, repos, svcs),
+
+		IdentityProviders:   repos.idpRepo,
+		IdentityProviderOps: pages.IdpOps{Repo: repos.idpRepo, Mappings: repos.edmRepo, Principals: repos.principalRepo, Enc: svcs.encSvc, UoW: uow},
+		EmailDomains:        repos.edmRepo,
+		EmailDomainOps:      pages.EmailDomainOps{Repo: repos.edmRepo, IDPs: repos.idpRepo, Principals: repos.principalRepo, UoW: uow},
+
+		Audit:           repos.auditRepo,
+		LoginAttempts:   repos.loginAttemptRepo,
+		LoginPrincipals: repos.principalRepo,
+		Cors:            repos.corsRepo,
+		CorsOps:         pages.CorsOps{Repo: repos.corsRepo, UoW: uow},
 	})
 }
 

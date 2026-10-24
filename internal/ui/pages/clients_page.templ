@@ -172,7 +172,7 @@ templ cliDrawerBody(d cliDetail) {
 	}
 	@kit.FormSection(kit.FormSectionProps{Title: "Login Branding"}) {
 		@poolActionItem("Login Branding", "Customize the sign-in, forgot-password and reset-password pages for this client.") {
-			@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Icon: "palette", Href: "/clients/" + d.ID + "/theme"}) {
+			@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Icon: "palette", Href: themeClientPath(d.ID)}) {
 				Edit Branding
 			}
 		}

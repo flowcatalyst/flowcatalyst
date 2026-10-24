@@ -1,0 +1,212 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+// loginRowClick opens a row's drawer from anywhere on the row, through its
+// View details link.
+const loginRowClick = "const r = evt.target.closest('tr'); r && !evt.target.closest('a') && r.querySelector('a')?.click()"
+
+func (v loginView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = loginPath
+	}
+	return kit.TableToolbarProps{
+		ID: loginFormID, Action: loginPath, SearchPlaceholder: "Search by email or client_id...", SearchValue: v.Query.Identifier,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.Query.activeFilters(),
+		SearchAttrs:       templ.Attributes{"data-on:input__debounce.400ms": loginLiveGet},
+		FormAttrs:         templ.Attributes{"data-on:submit": loginLiveGet},
+		Filters:           loginFilters(v),
+	}
+}
+
+func (v loginView) pager() kit.CursorPagerProps {
+	p := kit.CursorPagerProps{
+		ID: "login-pager", Summary: "Showing the " + thousands(int64(len(v.Rows))) + " most recent attempts",
+		OlderHref: v.OlderHref, LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+	if v.Query.After != nil {
+		p.NewestHref = v.Query.first().URL()
+		p.Summary = "Showing " + thousands(int64(len(v.Rows))) + " older attempts"
+	}
+	return p
+}
+
+func (v loginView) signals() string {
+	sel := ""
+	if v.Drawer != nil {
+		sel = v.Drawer.Key // matched loginKeyPattern: no quote can occur
+	}
+	return "{" + loginDrawerSig + ": '" + sel + "'}"
+}
+
+func (v loginView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No login attempts found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = loginPath
+	}
+	return e
+}
+
+templ loginPage(v loginView) {
+	<div data-signals={ v.signals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Login Attempts", Subtitle: "Authentication attempt history for users and service accounts"})
+		<p class="-mt-4 mb-4 max-w-4xl text-xs text-muted-foreground">SSO sign-ins appear when the platform accepts or refuses the identity provider's response. Failures at the identity provider itself (wrong password, MFA) are only in that provider's logs.</p>
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Login Attempts.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@loginTable(v)
+			@kit.CursorPager(v.pager())
+		</div>
+		@loginDrawer(v.Drawer)
+	</div>
+}
+
+templ loginFilters(v loginView) {
+	@kit.FilterSelect(kit.FilterSelectProps{Name: "attemptType", Label: "Attempt Type", Placeholder: "All Types", Options: withChosen(loginTypeOptions, nonEmpty(v.Query.Type), nil), Selected: v.Query.Type, Attrs: templ.Attributes{"data-on:change": loginLiveGet}})
+	@kit.FilterSelect(kit.FilterSelectProps{Name: "outcome", Label: "Outcome", Placeholder: "All Outcomes", Options: withChosen(loginOutcomeOptions, nonEmpty(v.Query.Outcome), nil), Selected: v.Query.Outcome, Attrs: templ.Attributes{"data-on:change": loginLiveGet}})
+	@kit.DateRange(kit.DateRangeProps{
+		ID: "login-range", Label: "Attempted (UTC days)", FromName: "from", ToName: "to", From: v.Query.From, To: v.Query.To,
+		FromLabel: "Attempted from", ToLabel: "Attempted to",
+		Attrs: templ.Attributes{"data-on:change": loginLiveGet},
+	})
+}
+
+templ loginMuted(text string) {
+	if text != "" {
+		<span class="text-sm">{ text }</span>
+	} else {
+		<span class="text-muted-foreground">-</span>
+	}
+}
+
+templ loginTable(v loginView) {
+	@kit.Table(kit.TableProps{ID: "login-table", Dense: true, Class: "min-w-[48rem]"}) {
+		@kit.THead(kit.THeadProps{Caps: true}) {
+			@kit.TR(kit.TRProps{Static: true}) {
+				@kit.TH(kit.THProps{}) {
+					Time
+				}
+				@kit.TH(kit.THProps{}) {
+					Type
+				}
+				@kit.TH(kit.THProps{}) {
+					Outcome
+				}
+				@kit.TH(kit.THProps{}) {
+					Identifier
+				}
+				@kit.TH(kit.THProps{}) {
+					Failure Reason
+				}
+				@kit.TH(kit.THProps{}) {
+					IP Address
+				}
+				@kit.TH(kit.THProps{}) {
+					<span class="sr-only">Actions</span>
+				}
+			}
+		}
+		@kit.TBody(kit.TBodyProps{ID: "login-rows", Striped: true, Attrs: templ.Attributes{"data-on:click": loginRowClick}}) {
+			if e := v.empty(); e != nil {
+				@kit.EmptyRow(kit.EmptyRowProps{Colspan: 7, Empty: *e})
+			}
+			for _, row := range v.Rows {
+				@kit.TR(kit.TRProps{Clickable: true}) {
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: row.Time})
+					}
+					@kit.TD(kit.TDProps{Class: "whitespace-normal!"}) {
+						@kit.Tag(kit.TagProps{Severity: attemptTypeSeverity(row.Type), Label: attemptTypeLabel(row.Type)})
+					}
+					@kit.TD(kit.TDProps{}) {
+						@kit.Tag(kit.TagProps{Severity: outcomeSeverity(row.Outcome), Label: row.Outcome})
+					}
+					@kit.TD(kit.TDProps{}) {
+						<span class="font-mono text-sm">{ row.Identifier }</span>
+					}
+					@kit.TD(kit.TDProps{}) {
+						@loginMuted(row.Reason)
+					}
+					@kit.TD(kit.TDProps{}) {
+						if row.IP != "" {
+							<span class="font-mono text-sm">{ row.IP }</span>
+						} else {
+							<span class="text-muted-foreground">-</span>
+						}
+					}
+					@kit.RowActions(kit.RowActionsProps{ID: "login-" + row.ID + "-actions", RowLabel: row.Identifier, Actions: []kit.RowAction{
+						{Icon: "eye", Label: "View details", Href: row.Href, Attrs: templ.Attributes{"data-on:click__prevent": liveLink}},
+					}})
+				}
+			}
+		}
+	}
+}
+
+templ loginDrawer(d *loginDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@loginDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: loginDrawerID, Signal: loginDrawerSig, Label: "Login attempt", Size: kit.DrawerWide})
+	}
+}
+
+templ loginDrawerContent(d loginDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@loginDrawerBody(d)
+	}
+}
+
+// loginLinked is an id that links to its page when it resolved to one.
+templ loginLinked(text, href string) {
+	if href != "" {
+		<a href={ templ.SafeURL(href) } class="font-mono wrap-anywhere text-primary">{ text }</a>
+	} else {
+		<span class="font-mono wrap-anywhere">{ text }</span>
+	}
+}
+
+// loginDrawerBody mirrors the SPA's detail dialog (read-only).
+templ loginDrawerBody(d loginDetail) {
+	<div class="flex flex-col gap-4">
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Time"}) {
+				@kit.LocalTime(kit.LocalTimeProps{At: d.Time})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Type"}) {
+				@kit.Tag(kit.TagProps{Severity: attemptTypeSeverity(d.Type), Label: attemptTypeLabel(d.Type)})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Outcome"}) {
+				@kit.Tag(kit.TagProps{Severity: outcomeSeverity(d.Outcome), Label: d.Outcome})
+			}
+			if d.Reason != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Failure Reason", Value: d.Reason})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Identifier", Span: true}) {
+				@loginLinked(d.Identifier, d.IdentifierHref)
+			}
+			if d.PrincipalID != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Principal ID", Span: true}) {
+					@loginLinked(d.PrincipalID, d.PrincipalHref)
+				}
+			}
+			if d.IP != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "IP Address"}) {
+					<span class="font-mono">{ d.IP }</span>
+				}
+			}
+			if d.UserAgent != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "User Agent", Span: true}) {
+					<span class="wrap-anywhere">{ d.UserAgent }</span>
+				}
+			}
+		</div>
+	</div>
+}

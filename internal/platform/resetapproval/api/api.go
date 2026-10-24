@@ -61,7 +61,9 @@ type listOutput struct {
 	}
 }
 
-func (s *State) list(ctx context.Context, _ *struct{}) (*listOutput, error) {
+// Pending lists the requests the caller may decide (GET /api/reset-approvals);
+// the server-rendered UI calls it in-process with the caller on ctx.
+func (s *State) Pending(ctx context.Context) ([]RequestDTO, error) {
 	ac := auth.FromContext(ctx)
 	// Client-admins (and anchors) only: the queue is what an administrator
 	// holding user:update may approve or deny.
@@ -80,8 +82,7 @@ func (s *State) list(ctx context.Context, _ *struct{}) (*listOutput, error) {
 	if err != nil {
 		return nil, usecase.Internal("REPO", "list reset-approvals failed", err)
 	}
-	out := &listOutput{}
-	out.Body.Requests = make([]RequestDTO, 0, len(reqs))
+	out := make([]RequestDTO, 0, len(reqs))
 	for _, r := range reqs {
 		dto := RequestDTO{
 			ID:          r.ID,
@@ -96,8 +97,18 @@ func (s *State) list(ctx context.Context, _ *struct{}) (*listOutput, error) {
 				dto.Email = p.UserIdentity.Email
 			}
 		}
-		out.Body.Requests = append(out.Body.Requests, dto)
+		out = append(out, dto)
 	}
+	return out, nil
+}
+
+func (s *State) list(ctx context.Context, _ *struct{}) (*listOutput, error) {
+	reqs, err := s.Pending(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := &listOutput{}
+	out.Body.Requests = reqs
 	return out, nil
 }
 
@@ -109,56 +120,76 @@ type messageOutput struct {
 	Body apicommon.StatusChangeResponse
 }
 
-func (s *State) approve(ctx context.Context, in *idInput) (*messageOutput, error) {
+// Approve approves a pending request and emails the user an authorised reset
+// link (POST /api/reset-approvals/{id}/approve); it returns the message the
+// API answers with.
+func (s *State) Approve(ctx context.Context, id string) (string, error) {
 	ac := auth.FromContext(ctx)
-	req, err := s.Approvals.FindByID(ctx, in.ID)
+	req, err := s.Approvals.FindByID(ctx, id)
 	if err != nil {
-		return nil, usecase.Internal("REPO", "find reset-approval failed", err)
+		return "", usecase.Internal("REPO", "find reset-approval failed", err)
 	}
 	if req == nil {
-		return nil, httperror.NotFound("ResetApprovalRequest", in.ID)
+		return "", httperror.NotFound("ResetApprovalRequest", id)
 	}
 	if err := auth.RequireUserAdmin(ac, ids.StringPtr(req.ClientID), auth.CanUpdatePrincipals); err != nil {
-		return nil, err
+		return "", err
 	}
 	ok, err := s.Approvals.Decide(ctx, req.ID, resetapproval.StatusApproved, ac.PrincipalID)
 	if err != nil {
-		return nil, usecase.Internal("REPO", "decide reset-approval failed", err)
+		return "", usecase.Internal("REPO", "decide reset-approval failed", err)
 	}
 	if !ok {
-		return nil, usecase.Validation("ALREADY_DECIDED", "request is no longer pending")
+		return "", usecase.Validation("ALREADY_DECIDED", "request is no longer pending")
 	}
 	// Email the user an authorised reset link (clears 2FA so they re-onboard).
 	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(req.PrincipalID))
 	if err != nil || p == nil {
-		return nil, httperror.NotFound("Principal", req.PrincipalID)
+		return "", httperror.NotFound("Principal", req.PrincipalID)
 	}
 	if s.Sender != nil {
 		if serr := s.Sender.SendResetEmail(ctx, p, req.Reset2FA); serr != nil {
 			slog.Warn("failed to send approved reset link", "principal", p.ID, "err", serr)
 		}
 	}
-	return &messageOutput{Body: apicommon.StatusChangeResponse{Message: "Reset approved — the user has been emailed a link"}}, nil
+	return "Reset approved — the user has been emailed a link", nil
 }
 
-func (s *State) deny(ctx context.Context, in *idInput) (*messageOutput, error) {
+// Deny denies a pending request (POST /api/reset-approvals/{id}/deny).
+func (s *State) Deny(ctx context.Context, id string) (string, error) {
 	ac := auth.FromContext(ctx)
-	req, err := s.Approvals.FindByID(ctx, in.ID)
+	req, err := s.Approvals.FindByID(ctx, id)
 	if err != nil {
-		return nil, usecase.Internal("REPO", "find reset-approval failed", err)
+		return "", usecase.Internal("REPO", "find reset-approval failed", err)
 	}
 	if req == nil {
-		return nil, httperror.NotFound("ResetApprovalRequest", in.ID)
+		return "", httperror.NotFound("ResetApprovalRequest", id)
 	}
 	if err := auth.RequireUserAdmin(ac, ids.StringPtr(req.ClientID), auth.CanUpdatePrincipals); err != nil {
-		return nil, err
+		return "", err
 	}
 	ok, err := s.Approvals.Decide(ctx, req.ID, resetapproval.StatusDenied, ac.PrincipalID)
 	if err != nil {
-		return nil, usecase.Internal("REPO", "decide reset-approval failed", err)
+		return "", usecase.Internal("REPO", "decide reset-approval failed", err)
 	}
 	if !ok {
-		return nil, usecase.Validation("ALREADY_DECIDED", "request is no longer pending")
+		return "", usecase.Validation("ALREADY_DECIDED", "request is no longer pending")
 	}
-	return &messageOutput{Body: apicommon.StatusChangeResponse{Message: "Reset request denied"}}, nil
+	return "Reset request denied", nil
+}
+
+func (s *State) approve(ctx context.Context, in *idInput) (*messageOutput, error) {
+	msg, err := s.Approve(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &messageOutput{Body: apicommon.StatusChangeResponse{Message: msg}}, nil
+}
+
+func (s *State) deny(ctx context.Context, in *idInput) (*messageOutput, error) {
+	msg, err := s.Deny(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &messageOutput{Body: apicommon.StatusChangeResponse{Message: msg}}, nil
 }

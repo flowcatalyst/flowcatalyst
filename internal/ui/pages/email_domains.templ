@@ -1,0 +1,363 @@
+package pages
+
+import (
+	"slices"
+	"strings"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+const edmLiveGet = "@get('/ui/email-domains', {contentType: 'form'})"
+
+var edmScopeFilterOptions = []kit.Option{
+	{Value: "ANCHOR", Label: "Anchor"},
+	{Value: "PARTNER", Label: "Partner"},
+	{Value: "CLIENT", Label: "Client"},
+}
+
+func (v edmView) columns() []kit.DataColumn {
+	sortable := func(label, key string) kit.DataColumn {
+		return kit.DataColumn{Label: label, Href: v.Query.sortURL(key), Direction: v.Query.direction(key), LinkAttrs: templ.Attributes{"data-on:click__prevent": sortClick}}
+	}
+	return []kit.DataColumn{
+		sortable("Email Domain", "domain"), sortable("Identity Provider", "idp"), sortable("Scope Type", "scope"), {Label: "Primary Client"},
+		sortable("Created", "created"), {Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v edmView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No email domain mappings found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = v.Query.clearURL()
+	}
+	return e
+}
+
+func (v edmView) filterCount() int {
+	n := len(v.Query.Facets)
+	if v.Query.Status != "" {
+		n++
+	}
+	return n
+}
+
+func (v edmView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: edmFormID, Action: edmPath, SearchPlaceholder: "Search domains...", SearchValue: v.Query.Q,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.filterCount(), Hidden: v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": edmLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": edmLiveGet},
+		Filters:     edmFilters(v),
+	}
+}
+
+func (v edmView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "edm-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: edmList.rows,
+		Noun: "email domain mappings", HrefPattern: v.Query.pagePattern(), FormID: edmFormID,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func (v edmView) drawerSignals() string {
+	if v.Drawer == nil {
+		return "{" + edmDrawerSig + ": ''}"
+	}
+	return "{" + edmDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "'}"
+}
+
+templ edmScopeTag(scope string) {
+	@kit.Tag(kit.TagProps{Severity: edmScopeSeverity(scope), Label: scope})
+}
+
+templ edmPage(v edmView) {
+	<div data-signals={ v.drawerSignals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Email Domain Mappings", Subtitle: "Map email domains to identity providers and define user scope.", Actions: edmActions(v)})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Email Domains.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@edmTable(v)
+			@kit.Paginator(v.pager())
+		</div>
+		<div id={ edmDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		if v.Perms.Delete {
+			@kit.ConfirmDialog(edmDeleteConfirm())
+		}
+		@edmDrawer(v.Drawer)
+	</div>
+}
+
+templ edmActions(v edmView) {
+	if v.Perms.Create {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: edmPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Add Domain Mapping
+		}
+	}
+}
+
+templ edmFilters(v edmView) {
+	@kit.FilterSelect(kit.FilterSelectProps{Name: "status", Label: "Scope Type", Placeholder: "All scopes", Options: edmScopeFilterOptions, Selected: v.Query.Status, Attrs: templ.Attributes{"data-on:change": edmLiveGet}})
+	@kit.Field(kit.FieldProps{Label: "Identity Provider", For: "edm-filter-idp"}) {
+		@kit.Input(kit.InputProps{ID: "edm-filter-idp", Name: edmIdpFacet, Value: v.idpFilter(), Placeholder: "Filter by provider name", Attrs: templ.Attributes{"data-on:input__debounce.300ms": edmLiveGet, "autocomplete": "off"}})
+	}
+}
+
+templ edmTable(v edmView) {
+	@kit.DataTable(kit.DataTableProps{ID: "edm-table", BodyID: "edm-rows", Columns: v.columns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "edm-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }>{ row.Domain }</a>
+				}
+				@kit.TD(kit.TDProps{}) {
+					{ row.Provider }
+				}
+				@kit.TD(kit.TDProps{}) {
+					@edmScopeTag(row.Scope)
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px]"}) {
+					if row.Client != "" {
+						{ row.Client }
+					} else {
+						<span class="text-muted-foreground">-</span>
+					}
+				}
+				@kit.TD(kit.TDProps{}) {
+					<time datetime={ row.CreatedISO }>{ row.Created }</time>
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+}
+
+templ edmDrawer(d *edmDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@edmDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: edmDrawerID, Signal: edmDrawerSig, Label: "Email domain mapping"})
+	}
+}
+
+templ edmDrawerContent(d edmDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@edmDrawerBody(d)
+	}
+}
+
+// edmDrawerBody mirrors the SPA's EmailDomainMappingDetailDrawer.
+templ edmDrawerBody(d edmDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Mapping", Actions: edmEditButton(d)}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Email Domain", Value: d.Domain})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Identity Provider", Value: d.Provider})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Scope Type", Value: d.Scope})
+			if d.Scope == "CLIENT" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Primary Client", Value: d.Client})
+			}
+			if d.MultiTenant {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Required OIDC Tenant ID", Span: true}) {
+					if d.Tenant != "" {
+						<code>{ d.Tenant }</code>
+					} else {
+						<span class="text-muted-foreground">Not set</span>
+					}
+				}
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created", Value: d.Created})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Last Updated", Value: d.Updated})
+		</div>
+	}
+	if d.show2FA() {
+		@kit.FormSection(kit.FormSectionProps{Title: "Two-Factor Authentication"}) {
+			<div class="fc-detail-grid">
+				@kit.DetailField(kit.DetailFieldProps{Label: "Two-Factor Authentication"}) {
+					if d.Require2FA {
+						@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Required"})
+					} else {
+						@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "Optional"})
+					}
+				}
+				if d.Require2FA {
+					@kit.DetailField(kit.DetailFieldProps{Label: "Allowed 2FA Methods"}) {
+						<div class="flex flex-wrap gap-1">
+							for _, m := range d.Methods {
+								@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: edmMethodLabel(m)})
+							}
+						</div>
+					}
+					@kit.DetailField(kit.DetailFieldProps{Label: "Remember Device", Value: d.rememberText()})
+				}
+			</div>
+		}
+	}
+	if d.Perms.Delete {
+		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
+			@poolActionItem("Delete Mapping", "Users from this domain will no longer be able to authenticate. Cannot be undone.") {
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Attrs: confirmTrigger(edmDeleteDialog, d.ActionBase+"/delete")}) {
+					Delete
+				}
+			}
+		}
+	}
+}
+
+templ edmEditButton(d edmDetail) {
+	if d.Perms.Update {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Edit
+		}
+	}
+}
+
+// edmFormDialogC is the create or edit dialog. The tenant follows the chosen
+// provider being multi-tenant, the two-factor section its not being OIDC, the
+// client the scope.
+templ edmFormDialogC(f edmForm) {
+	@kit.FormDialog(f.dialog()) {
+		<div class="flex flex-col gap-4" data-signals={ f.signals() }>
+			@kit.FormSection(kit.FormSectionProps{Title: "Mapping"}) {
+				<div class="flex flex-col gap-4">
+					if f.Edit {
+						@kit.DetailField(kit.DetailFieldProps{Label: "Email Domain"}) {
+							<span class="font-medium">{ f.Domain }</span>
+							<small class="fc-field-help">Email domain cannot be changed</small>
+						}
+					} else {
+						@edmField(f, "emailDomain")
+					}
+					@edmField(f, "identityProviderId")
+					if f.Edit {
+						@edmField(f, "move")
+						@kit.DetailField(kit.DetailFieldProps{Label: "Scope Type"}) {
+							@edmScopeTag(f.Scope)
+							<small class="fc-field-help">The scope of an existing mapping cannot be changed here: delete the mapping and create it again to change it.</small>
+						}
+					} else {
+						@edmField(f, "scopeType")
+					}
+					@edmField(f, "client")
+					@edmField(f, "tenant")
+					<div data-show="$edmFormScope === 'ANCHOR'" style={ hiddenUnless(f.Scope == "ANCHOR") }>
+						@kit.Alert(kit.AlertProps{Icon: "info", Description: "Anchor users have platform admin access and can access all clients."})
+					</div>
+					<div data-show="$edmFormScope === 'PARTNER'" style={ hiddenUnless(f.Scope == "PARTNER") }>
+						@kit.Alert(kit.AlertProps{Icon: "info", Description: "Partner users can be granted access to multiple clients after login."})
+					</div>
+				</div>
+			}
+			<div id={ f.id("twofactor") } data-show="$edmFormIdp !== '' && !$edmFormOidc.includes($edmFormIdp)" style={ hiddenUnless(f.show2FA()) }>
+				@kit.FormSection(kit.FormSectionProps{Title: "Two-Factor Authentication"}) {
+					<div class="flex flex-col gap-4">
+						@edmField(f, "require2fa")
+						@edmField(f, "methods")
+						@edmField(f, "remember")
+						@edmField(f, "days")
+					</div>
+				}
+			</div>
+		</div>
+	}
+}
+
+templ edmField(f edmForm, key string) {
+	switch key {
+		case "emailDomain":
+			@kit.Field(f.fieldProps(key, "Email Domain", "Users with emails from this domain will use the selected identity provider", true)) {
+				@kit.Input(f.inputProps(key, f.EmailDomain, kit.InputProps{Placeholder: "example.com", Required: true, Attrs: templ.Attributes{"maxlength": "255", "autofocus": true, "autocomplete": "off", "spellcheck": "false"}}))
+			}
+		case "identityProviderId":
+			@kit.Field(f.fieldProps(key, "Identity Provider", edmProviderHelp(f.Edit), true)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Providers, Selected: f.ProviderID, Placeholder: "Select an identity provider", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:edm-form-idp": true}})
+			}
+		case "move":
+			@edmMoveNotice(f)
+		case "scopeType":
+			@kit.Field(f.fieldProps(key, "Scope Type", "", true)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: edmScopeOptions, Selected: cmpOrString(f.Scope, "CLIENT"), Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:edm-form-scope": true}})
+			}
+		case "client":
+			<div id={ f.id(key) + "-wrap" } data-show="$edmFormScope !== 'ANCHOR'" style={ hiddenUnless(f.clientShown()) }>
+				@kit.Field(f.fieldProps(key, "Primary Client", f.clientHelp(), true)) {
+					@kit.Autocomplete(kit.AutocompleteProps{
+						ID: f.id(key), Name: key, Value: f.Client, Placeholder: "Search for a client...", Source: clientOptionsPath, Options: f.ClientOptions,
+						Disabled: !f.CanPickClient, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key),
+					})
+				}
+			</div>
+		case "tenant":
+			<div id={ f.id(key) + "-wrap" } data-show="$edmFormMt.includes($edmFormIdp)" style={ hiddenUnless(f.showTenant()) }>
+				@kit.Field(f.fieldProps(key, "Required OIDC Tenant ID", "For Azure AD/Entra, enter the tenant GUID. Only users from this tenant can authenticate for this domain.", true)) {
+					@kit.Input(f.inputProps(key, f.Tenant, kit.InputProps{Placeholder: "e.g., 2e789bd9-a313-462a-b520-df9b586c00ed", Class: "font-mono", Attrs: templ.Attributes{"autocomplete": "off", "spellcheck": "false"}}))
+				}
+			</div>
+		case "require2fa":
+			<div id={ f.id(key) + "-field" } class="flex flex-col gap-1">
+				@kit.Switch(kit.SwitchProps{ID: f.id(key), Name: key, Value: "true", Checked: f.Require2FA, Label: "Require Two-Factor Authentication", Attrs: templ.Attributes{"data-bind:edm-form-req": true}})
+				<p class="text-sm text-muted-foreground">Applies to password sign-in for this domain. Passkey sign-in is unaffected; federated (SSO) users are never prompted.</p>
+			</div>
+		case "methods":
+			<div id={ f.id(key) + "-field" } data-show="$edmFormReq" style={ hiddenUnless(f.Require2FA) }>
+				<fieldset class="flex flex-col gap-2" aria-describedby={ f.describedBy(key) }>
+					<legend class="fc-field-label">Allowed 2FA Methods</legend>
+					for _, o := range edmMethodOptions {
+						@kit.Checkbox(kit.CheckboxProps{ID: f.id("methods-" + strings.ToLower(o.Value)), Name: "methods", Value: o.Value, Checked: slices.Contains(f.Methods, o.Value), Label: o.Label})
+					}
+					<p class="text-sm text-muted-foreground">Select at least one method.</p>
+					if f.fieldError(key) != "" {
+						<p id={ f.id(key) + "-err" } class="text-sm text-destructive" role="alert">{ f.fieldError(key) }</p>
+					}
+				</fieldset>
+			</div>
+		case "remember":
+			<div id={ f.id(key) + "-field" } data-show="$edmFormReq" style={ hiddenUnless(f.Require2FA) }>
+				@kit.Switch(kit.SwitchProps{ID: f.id(key), Name: key, Value: "true", Checked: f.Remember, Label: "Allow \"remember this device\"", Attrs: templ.Attributes{"data-bind:edm-form-rem": true}})
+			</div>
+		case "days":
+			<div id={ f.id(key) + "-field-wrap" } data-show="$edmFormReq && $edmFormRem" style={ hiddenUnless(f.Require2FA && f.Remember) }>
+				@kit.Field(f.fieldProps(key, "Remember for (days)", "", false)) {
+					@kit.Input(f.inputProps(key, f.days(), kit.InputProps{Type: "number", Attrs: templ.Attributes{"min": "1", "max": "365", "step": "1", "inputmode": "numeric"}}))
+				}
+			</div>
+	}
+}
+
+func edmProviderHelp(edit bool) string {
+	if edit {
+		return "Changing the provider moves this domain's users to a different sign-in method: you'll be asked to confirm"
+	}
+	return ""
+}
+
+// edmMoveNotice is the SPA's "Change Identity Provider" confirmation: shown
+// when an edit names another provider, and the save waits for the box to be
+// ticked.
+templ edmMoveNotice(f edmForm) {
+	<div id={ f.id("move-field") } class="flex flex-col gap-2">
+		if f.Move != nil {
+			@kit.Alert(kit.AlertProps{Icon: "triangle-alert", Title: "Change Identity Provider", Description: f.Move.text()})
+			@kit.Checkbox(kit.CheckboxProps{ID: f.id("move"), Name: "confirmMove", Value: "yes", Label: "Move " + f.Domain + " to " + f.Move.To, Attrs: templ.Attributes{"required": true}})
+		}
+	</div>
+}
+
+func (m edmMove) text() string {
+	if m.ToInternal {
+		return "Users provisioned through SSO will be converted to password sign-in: they must reset their password before they can log in again, and roles synced from the identity provider will be removed. Moving from " + m.From + " to " + m.To + "."
+	}
+	return "From their next login, users on this domain will sign in through " + m.To + ". Password login for this domain will be disabled. Moving from " + m.From + "."
+}

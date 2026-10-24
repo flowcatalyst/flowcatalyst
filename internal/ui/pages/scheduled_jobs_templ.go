@@ -153,7 +153,7 @@ func sjPage(v sjView) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.drawerSignals())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 77, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 77, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 		if templ_7745c5c3_Err != nil {
@@ -194,7 +194,7 @@ func sjPage(v sjView) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(sjDialogSlot)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 85, Col: 24}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 85, Col: 24}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 		if templ_7745c5c3_Err != nil {
@@ -381,7 +381,7 @@ func sjTable(v sjView) templ.Component {
 						var templ_7745c5c3_Var13 templ.SafeURL
 						templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(row.DetailHref)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 114, Col: 29}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 114, Col: 29}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 						if templ_7745c5c3_Err != nil {
@@ -394,7 +394,7 @@ func sjTable(v sjView) templ.Component {
 						var templ_7745c5c3_Var14 string
 						templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(liveLink)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 114, Col: 86}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 114, Col: 86}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 						if templ_7745c5c3_Err != nil {
@@ -407,7 +407,7 @@ func sjTable(v sjView) templ.Component {
 						var templ_7745c5c3_Var15 string
 						templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(row.Code)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 114, Col: 131}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 114, Col: 131}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 						if templ_7745c5c3_Err != nil {
@@ -460,7 +460,7 @@ func sjTable(v sjView) templ.Component {
 						var templ_7745c5c3_Var17 templ.SafeURL
 						templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinURLErrs(row.DetailHref)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 123, Col: 29}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 123, Col: 29}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 						if templ_7745c5c3_Err != nil {
@@ -473,7 +473,7 @@ func sjTable(v sjView) templ.Component {
 						var templ_7745c5c3_Var18 string
 						templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(liveLink)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 123, Col: 130}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 123, Col: 130}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 						if templ_7745c5c3_Err != nil {
@@ -486,7 +486,7 @@ func sjTable(v sjView) templ.Component {
 						var templ_7745c5c3_Var19 string
 						templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(row.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 123, Col: 143}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 123, Col: 143}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 						if templ_7745c5c3_Err != nil {
@@ -530,7 +530,7 @@ func sjTable(v sjView) templ.Component {
 						var templ_7745c5c3_Var22 string
 						templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var21).String())
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 1, Col: 0}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 1, Col: 0}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 						if templ_7745c5c3_Err != nil {
@@ -543,7 +543,7 @@ func sjTable(v sjView) templ.Component {
 						var templ_7745c5c3_Var23 string
 						templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(row.Client)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 126, Col: 93}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 126, Col: 93}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 						if templ_7745c5c3_Err != nil {
@@ -587,7 +587,7 @@ func sjTable(v sjView) templ.Component {
 						var templ_7745c5c3_Var26 string
 						templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var25).String())
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 1, Col: 0}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 1, Col: 0}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 						if templ_7745c5c3_Err != nil {
@@ -600,7 +600,7 @@ func sjTable(v sjView) templ.Component {
 						var templ_7745c5c3_Var27 string
 						templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(row.Application)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 129, Col: 91}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 129, Col: 91}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 						if templ_7745c5c3_Err != nil {
@@ -639,7 +639,7 @@ func sjTable(v sjView) templ.Component {
 						var templ_7745c5c3_Var29 string
 						templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(row.Crons)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 132, Col: 48}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 132, Col: 48}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 						if templ_7745c5c3_Err != nil {
@@ -652,7 +652,7 @@ func sjTable(v sjView) templ.Component {
 						var templ_7745c5c3_Var30 string
 						templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(row.Timezone)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 133, Col: 62}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 133, Col: 62}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 						if templ_7745c5c3_Err != nil {
@@ -713,7 +713,7 @@ func sjTable(v sjView) templ.Component {
 						var templ_7745c5c3_Var33 string
 						templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(row.LastFired)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 139, Col: 20}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 139, Col: 20}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 						if templ_7745c5c3_Err != nil {
@@ -908,7 +908,7 @@ func sjDrawerBody(d sjDetail) templ.Component {
 				var templ_7745c5c3_Var41 string
 				templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(d.Code)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 168, Col: 18}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 168, Col: 18}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 				if templ_7745c5c3_Err != nil {
@@ -984,7 +984,7 @@ func sjDrawerBody(d sjDetail) templ.Component {
 					var templ_7745c5c3_Var43 string
 					templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(d.TargetURL)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 182, Col: 42}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 182, Col: 42}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 					if templ_7745c5c3_Err != nil {
@@ -1030,7 +1030,7 @@ func sjDrawerBody(d sjDetail) templ.Component {
 					var templ_7745c5c3_Var45 string
 					templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(c)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 190, Col: 19}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 190, Col: 19}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 					if templ_7745c5c3_Err != nil {
@@ -1077,7 +1077,7 @@ func sjDrawerBody(d sjDetail) templ.Component {
 					var templ_7745c5c3_Var47 string
 					templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(d.Payload)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 199, Col: 71}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 199, Col: 71}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 					if templ_7745c5c3_Err != nil {
@@ -1279,7 +1279,7 @@ func sjActionButton(action, icon, label string, variant kit.LegacyVariant) templ
 		var templ_7745c5c3_Var54 templ.SafeURL
 		templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinURLErrs(action)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 243, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 243, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 		if templ_7745c5c3_Err != nil {
@@ -1292,7 +1292,7 @@ func sjActionButton(action, icon, label string, variant kit.LegacyVariant) templ
 		var templ_7745c5c3_Var55 string
 		templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.ResolveAttributeValue(kit.SubmitForm)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 243, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 243, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var55)
 		if templ_7745c5c3_Err != nil {
@@ -1305,7 +1305,7 @@ func sjActionButton(action, icon, label string, variant kit.LegacyVariant) templ
 		var templ_7745c5c3_Var56 string
 		templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.ResolveAttributeValue("$" + sjDrawerSig)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 244, Col: 72}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 244, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var56)
 		if templ_7745c5c3_Err != nil {
@@ -1330,7 +1330,7 @@ func sjActionButton(action, icon, label string, variant kit.LegacyVariant) templ
 			var templ_7745c5c3_Var58 string
 			templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 246, Col: 10}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 246, Col: 10}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 			if templ_7745c5c3_Err != nil {
@@ -1777,7 +1777,7 @@ func sjInstanceTable(id string, rows []sjInstanceRow, empty string, full bool) t
 							var templ_7745c5c3_Var78 templ.SafeURL
 							templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.JoinURLErrs(in.Href)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 306, Col: 23}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 306, Col: 23}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var78))
 							if templ_7745c5c3_Err != nil {
@@ -1790,7 +1790,7 @@ func sjInstanceTable(id string, rows []sjInstanceRow, empty string, full bool) t
 							var templ_7745c5c3_Var79 string
 							templ_7745c5c3_Var79, templ_7745c5c3_Err = templ.JoinStringErrs(in.FiredAt)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 306, Col: 88}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 306, Col: 88}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var79))
 							if templ_7745c5c3_Err != nil {
@@ -1826,7 +1826,7 @@ func sjInstanceTable(id string, rows []sjInstanceRow, empty string, full bool) t
 								var templ_7745c5c3_Var81 string
 								templ_7745c5c3_Var81, templ_7745c5c3_Err = templ.JoinStringErrs(in.ScheduledFor)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 310, Col: 24}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 310, Col: 24}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var81))
 								if templ_7745c5c3_Err != nil {
@@ -1858,7 +1858,7 @@ func sjInstanceTable(id string, rows []sjInstanceRow, empty string, full bool) t
 							var templ_7745c5c3_Var83 string
 							templ_7745c5c3_Var83, templ_7745c5c3_Err = templ.JoinStringErrs(in.Trigger)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 314, Col: 18}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 314, Col: 18}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var83))
 							if templ_7745c5c3_Err != nil {
@@ -1915,7 +1915,7 @@ func sjInstanceTable(id string, rows []sjInstanceRow, empty string, full bool) t
 							var templ_7745c5c3_Var86 string
 							templ_7745c5c3_Var86, templ_7745c5c3_Err = templ.JoinStringErrs(in.Attempts)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 320, Col: 19}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 320, Col: 19}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var86))
 							if templ_7745c5c3_Err != nil {
@@ -1946,7 +1946,7 @@ func sjInstanceTable(id string, rows []sjInstanceRow, empty string, full bool) t
 							var templ_7745c5c3_Var88 string
 							templ_7745c5c3_Var88, templ_7745c5c3_Err = templ.JoinStringErrs(in.Delivered)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 323, Col: 20}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 323, Col: 20}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var88))
 							if templ_7745c5c3_Err != nil {
@@ -1977,7 +1977,7 @@ func sjInstanceTable(id string, rows []sjInstanceRow, empty string, full bool) t
 							var templ_7745c5c3_Var90 string
 							templ_7745c5c3_Var90, templ_7745c5c3_Err = templ.JoinStringErrs(in.Completed)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 326, Col: 20}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 326, Col: 20}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var90))
 							if templ_7745c5c3_Err != nil {
@@ -2014,7 +2014,7 @@ func sjInstanceTable(id string, rows []sjInstanceRow, empty string, full bool) t
 									var templ_7745c5c3_Var92 string
 									templ_7745c5c3_Var92, templ_7745c5c3_Err = templ.ResolveAttributeValue(in.Error)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 331, Col: 78}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 331, Col: 78}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var92)
 									if templ_7745c5c3_Err != nil {
@@ -2027,7 +2027,7 @@ func sjInstanceTable(id string, rows []sjInstanceRow, empty string, full bool) t
 									var templ_7745c5c3_Var93 string
 									templ_7745c5c3_Var93, templ_7745c5c3_Err = templ.JoinStringErrs(in.Error)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 331, Col: 91}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 331, Col: 91}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var93))
 									if templ_7745c5c3_Err != nil {
@@ -2154,7 +2154,7 @@ func sjInstancesPage(v sjInstancesView) templ.Component {
 		var templ_7745c5c3_Var96 templ.SafeURL
 		templ_7745c5c3_Var96, templ_7745c5c3_Err = templ.JoinURLErrs(sjPath)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 373, Col: 18}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 373, Col: 18}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var96))
 		if templ_7745c5c3_Err != nil {
@@ -2167,7 +2167,7 @@ func sjInstancesPage(v sjInstancesView) templ.Component {
 		var templ_7745c5c3_Var97 templ.SafeURL
 		templ_7745c5c3_Var97, templ_7745c5c3_Err = templ.JoinURLErrs(sjURL(v.JobID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 374, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 374, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var97))
 		if templ_7745c5c3_Err != nil {
@@ -2180,7 +2180,7 @@ func sjInstancesPage(v sjInstancesView) templ.Component {
 		var templ_7745c5c3_Var98 string
 		templ_7745c5c3_Var98, templ_7745c5c3_Err = templ.JoinStringErrs(v.JobCode)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 374, Col: 64}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 374, Col: 64}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var98))
 		if templ_7745c5c3_Err != nil {
@@ -2193,7 +2193,7 @@ func sjInstancesPage(v sjInstancesView) templ.Component {
 		var templ_7745c5c3_Var99 string
 		templ_7745c5c3_Var99, templ_7745c5c3_Err = templ.JoinStringErrs(v.JobName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 376, Col: 52}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 376, Col: 52}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var99))
 		if templ_7745c5c3_Err != nil {
@@ -2206,7 +2206,7 @@ func sjInstancesPage(v sjInstancesView) templ.Component {
 		var templ_7745c5c3_Var100 templ.SafeURL
 		templ_7745c5c3_Var100, templ_7745c5c3_Err = templ.JoinURLErrs(sjURL(v.JobID) + "/instances")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 378, Col: 83}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 378, Col: 83}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var100))
 		if templ_7745c5c3_Err != nil {
@@ -2219,7 +2219,7 @@ func sjInstancesPage(v sjInstancesView) templ.Component {
 		var templ_7745c5c3_Var101 string
 		templ_7745c5c3_Var101, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.live())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 378, Col: 161}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 378, Col: 161}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var101)
 		if templ_7745c5c3_Err != nil {
@@ -2294,7 +2294,7 @@ func sjInstancesClear(v sjInstancesView) templ.Component {
 			var templ_7745c5c3_Var103 templ.SafeURL
 			templ_7745c5c3_Var103, templ_7745c5c3_Err = templ.JoinURLErrs(sjURL(v.JobID) + "/instances")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 391, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 391, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var103))
 			if templ_7745c5c3_Err != nil {
@@ -2387,7 +2387,7 @@ func sjInstancePage(v sjInstanceView) templ.Component {
 		var templ_7745c5c3_Var106 templ.SafeURL
 		templ_7745c5c3_Var106, templ_7745c5c3_Err = templ.JoinURLErrs(sjPath)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 408, Col: 18}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 408, Col: 18}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var106))
 		if templ_7745c5c3_Err != nil {
@@ -2400,7 +2400,7 @@ func sjInstancePage(v sjInstanceView) templ.Component {
 		var templ_7745c5c3_Var107 templ.SafeURL
 		templ_7745c5c3_Var107, templ_7745c5c3_Err = templ.JoinURLErrs(sjURL(v.JobID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 409, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 409, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var107))
 		if templ_7745c5c3_Err != nil {
@@ -2413,7 +2413,7 @@ func sjInstancePage(v sjInstanceView) templ.Component {
 		var templ_7745c5c3_Var108 string
 		templ_7745c5c3_Var108, templ_7745c5c3_Err = templ.JoinStringErrs(v.JobCode)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 409, Col: 64}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 409, Col: 64}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var108))
 		if templ_7745c5c3_Err != nil {
@@ -2426,7 +2426,7 @@ func sjInstancePage(v sjInstanceView) templ.Component {
 		var templ_7745c5c3_Var109 string
 		templ_7745c5c3_Var109, templ_7745c5c3_Err = templ.JoinStringErrs(v.In.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 412, Col: 44}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 412, Col: 44}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var109))
 		if templ_7745c5c3_Err != nil {
@@ -2455,7 +2455,7 @@ func sjInstancePage(v sjInstanceView) templ.Component {
 			var templ_7745c5c3_Var111 string
 			templ_7745c5c3_Var111, templ_7745c5c3_Err = templ.JoinStringErrs(v.In.Trigger)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 416, Col: 18}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 416, Col: 18}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var111))
 			if templ_7745c5c3_Err != nil {
@@ -2484,7 +2484,7 @@ func sjInstancePage(v sjInstanceView) templ.Component {
 					var templ_7745c5c3_Var113 string
 					templ_7745c5c3_Var113, templ_7745c5c3_Err = templ.JoinStringErrs(v.CompletionStatus)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 421, Col: 26}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 421, Col: 26}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var113))
 					if templ_7745c5c3_Err != nil {
@@ -2512,7 +2512,7 @@ func sjInstancePage(v sjInstanceView) templ.Component {
 					var templ_7745c5c3_Var115 string
 					templ_7745c5c3_Var115, templ_7745c5c3_Err = templ.JoinStringErrs(v.CompletionStatus)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 425, Col: 26}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 425, Col: 26}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var115))
 					if templ_7745c5c3_Err != nil {
@@ -2574,7 +2574,7 @@ func sjInstancePage(v sjInstanceView) templ.Component {
 				var templ_7745c5c3_Var117 string
 				templ_7745c5c3_Var117, templ_7745c5c3_Err = templ.JoinStringErrs(v.In.Error)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 439, Col: 96}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 439, Col: 96}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var117))
 				if templ_7745c5c3_Err != nil {
@@ -2611,7 +2611,7 @@ func sjInstancePage(v sjInstanceView) templ.Component {
 				var templ_7745c5c3_Var119 string
 				templ_7745c5c3_Var119, templ_7745c5c3_Err = templ.JoinStringErrs(v.CompletionText)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 444, Col: 88}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 444, Col: 88}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var119))
 				if templ_7745c5c3_Err != nil {
@@ -2834,7 +2834,7 @@ func sjInstancePage(v sjInstanceView) templ.Component {
 								var templ_7745c5c3_Var130 string
 								templ_7745c5c3_Var130, templ_7745c5c3_Err = templ.JoinStringErrs(l.Time)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 476, Col: 17}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 476, Col: 17}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var130))
 								if templ_7745c5c3_Err != nil {
@@ -2891,7 +2891,7 @@ func sjInstancePage(v sjInstanceView) templ.Component {
 								var templ_7745c5c3_Var133 string
 								templ_7745c5c3_Var133, templ_7745c5c3_Err = templ.JoinStringErrs(l.Message)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 482, Col: 20}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 482, Col: 20}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var133))
 								if templ_7745c5c3_Err != nil {
@@ -2927,7 +2927,7 @@ func sjInstancePage(v sjInstanceView) templ.Component {
 									var templ_7745c5c3_Var135 string
 									templ_7745c5c3_Var135, templ_7745c5c3_Err = templ.JoinStringErrs(l.Metadata)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 486, Col: 73}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 486, Col: 73}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var135))
 									if templ_7745c5c3_Err != nil {
@@ -3515,7 +3515,7 @@ func sjField(f sjForm, key string) templ.Component {
 			var templ_7745c5c3_Var153 string
 			templ_7745c5c3_Var153, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-field")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/scheduled_jobs.templ`, Line: 601, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `scheduled_jobs.templ`, Line: 601, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var153)
 			if templ_7745c5c3_Err != nil {

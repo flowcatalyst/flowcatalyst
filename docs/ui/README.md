@@ -1640,3 +1640,257 @@ Pages: `users.go|templ` (list, filters, drawer frame), `users_detail.go` (the dr
 Differences from the SPA: dialogs instead of drawer forms; the drawer is one column as in the SPA but the pickers are multi-selects, not dual panes; revoking client access asks first (the SPA revokes at once); the all-applications switch is a Grant/Restrict button, and restricting your own flag asks (as the SPA); the sign-in link switch is new (the API's `returnInviteLink`); the confirmations name no user (shared dialogs). Passkey administration: the SPA's users pages have none. The permission-denied dialog was not needed (a refusal is the flash).
 
 Not verified in a browser: the area has not been opened in light, dark and narrow widths, the email check's round trip, the scope/client swap in the edit dialog, the chips in the dialogs and the file upload through Datastar are covered by rendered markup and the multipart tests only. Tests: `users_test.go` (permission matrix of the drawer, forged posts for every write, dialogs refused, sign-in link on request only, credentials never in a response, list URL state, edit mapping, import) and `users_pg_test.go` (`-tags=integration`: the real API handlers: create with and without the link, edit and association modes, roles, applications, password, delete and the last-administrator guard, a client administrator confined to its client and bounded in roles, view-only forged posts, the role ceiling).
+
+## Platform pages A: audit log, login attempts, CORS origins (wave 4)
+
+Pages: `audit_log.go|templ`, `login_attempts.go|templ`, `cors_origins.go|templ`. Spec: the SPA's `AuditLogListPage`, `LoginAttemptListPage` and `CorsOriginsPage`; the old pages stay and the three sidebar entries now link to `/ui`.
+
+| URL | GET | POST |
+|---|---|---|
+| `/ui/audit-log?entityType&operation&applications&clients&after` | the list (100 per page, newest first, keyset) | - |
+| `/ui/audit-log/{id}` | the list with the drawer open; Datastar patches the drawer | - |
+| `/ui/login-attempts?attemptType&outcome&q&from&to&after` | the list (100 per page, newest first, keyset) | - |
+| `/ui/login-attempts/{key}` | the drawer; `key` is `<attempted_at in unix microseconds>.<id>` | - |
+| `/ui/cors-origins?q&sort&dir&page&rows` | the list (10/25/50 per page) | - |
+| `/ui/cors-origins/new`, `/ui/cors-origins/{id}/delete` | the add dialog, the removal confirmation (it names the origin) | add, remove |
+
+- **Gates, as the API's.** Audit log: `platform:admin:audit-log:view` and nothing else (the log is not tenant-scoped, so a client-scoped holder reads all of it, as through the API). Login attempts: anchor scope plus `platform:admin:login-attempt:view`. CORS origins: anchor plus `cors-origin:view` to read, `:create` to add, `:delete` to remove; Add Origin and the remove action are hidden without them and the POSTs and dialogs check again. The use cases carry no resource-level authz (the controller's coarse check is the whole rule), so the page's check is the guard.
+- **Audit log.** Filters as the SPA's: entity type and operation (selects of the distinct values, cached 30 s like the other firehose lists), application and client (multi-selects). The SPA lists only applications that appear in the log; names come from the applications list when the caller may read applications (`application:view`), else the id is shown. The drawer shows the SPA's dialog (time, entity type, entity id, operation, performed by, principal id, application, client, pretty-printed operation data).
+- **Login attempts.** Filters as the SPA's: attempt type, outcome, identifier (exact match, the toolbar search), date range. The drawer shows the row; the identifier and principal id link to `/ui/users/{id}` or `/ui/service-accounts/{id}` when the caller may read principals and the principal resolves (the SPA's link resolution; any failure leaves plain text). A service account token's identifier is an OAuth client id, which has no `/ui` page, so it stays plain text. There is no read by id, so the drawer finds the row by its own time in the key.
+- **CORS origins.** Search (origin or description), sort and paging in memory, as the SPA. Add validates as the SPA does (required; must start with `http://` or `https://`; lower-cased; blank description is none), then the use case's own format and uniqueness rules answer on the field. The removal confirmation names the origin and repeats the 5-minute cache warning; toasts are the SPA's sentences.
+
+Differences from the SPA: the date range of login attempts is whole UTC days (two date inputs, like the dispatch jobs list), because the SPA sends `datetime-local` values that `GET /api/login-attempts` does not parse as RFC 3339 (it ignores them); the audit page has no export, principal filter or date range because neither the SPA page nor `GET /api/audit-logs` offers any (`platform:admin:audit-log:export` is seeded but nothing uses it); the sidebar entries keep the SPA's permission strings (`audit:view`, `cors:view`), which are not the API's, as in `navigation.ts`.
+
+No credential or secret is shown on these pages (user agents and IP addresses are the most sensitive fields).
+
+Not verified in a browser: the three pages have not been opened in light, dark or narrow widths, and the row click, live filters and dialogs are covered by rendered markup and handler tests only. Tests: `audit_log_test.go`, `login_attempts_test.go`, `cors_origins_test.go` (list, filters and URL state, keyset paging, drawers, permission matrices including forged posts, validation) and the `*_pg_test.go` files (`-tags=integration`: the real repositories and use cases, audit rows written by add and remove, a forged remove deletes nothing). Mutation checks (run, seen to fail, restored): skipping the delete permission check fails `TestCorsOriginsPermissions`; swapping the audit permission for the sidebar's `audit:view` fails `TestAuditLogList`.
+
+## Sign-in pages A: login, SSO landing, forgot and reset password, logout, portal login (`/ui/auth/*`)
+
+Pages: `auth_signin.go|templ` (the login steps, the SSO landing, logout, the context, the theme), `auth_reset.go|templ` (forgot, reset and set password), `auth_signin_portal.go|templ` (the portal login). Spec: the SPA's `pages/auth/*` (`LoginPage`, `CallbackPage`, `ForgotPasswordPage`, `ResetPasswordPage`, `LogoutPage`, `PortalLoginPage`) and the second-factor step of `TwoFactorChallenge`.
+
+**Additive, not switched on.** The SPA's `/auth/login` and every existing auth endpoint are unchanged and stay the default (`guard.LoginPath`, the emailed reset and invite links and `GET /portal/authorize` still point at the SPA). The new pages are reached only by their `/ui/auth/*` URL; there is no flag: nothing links to them and no redirect leads there. The owner switches later by pointing `guard.LoginPath`, the email links (`ExternalBaseURL` paths) and `portalauth.State.LoginPagePath` at these URLs.
+
+| URL | GET | POST |
+|---|---|---|
+| `/ui/auth/login?redirect&client&oauth&interaction&...` | the email step | `/ui/auth/login/email`, `.../password`, `.../2fa`, `.../setup` (the steps below) |
+| `/ui/auth/callback?redirect&error&error_description` | where the OIDC bridge returns after SSO | - |
+| `/ui/auth/forgot-password?email&...` | the form | the form (the answer is the same for any address) |
+| `/ui/auth/reset-password?token`, `/ui/auth/set-password?token` | the form (reset, or the invite framing), or why the link is unusable | set the password |
+| `/ui/auth/logout` | the confirmation | sign out |
+| `/ui/auth/portal-login?flow` | the portal login | `/ui/auth/portal-login/email`, `.../password`, `.../reset` |
+
+- **No second implementation of the rules.** Every step is one in-process call to the public endpoint the SPA calls (`/auth/check-domain`, `/auth/login`, `/auth/2fa/verify`, `/auth/2fa/challenge/email`, `/auth/password-setup/request`, `/auth/password-reset/{request,validate,confirm}`, `/auth/logout`, `/portal/auth/*`, `/api/public/login-theme`), dispatched through the platform's own router (`ui.Config.SignInUpstream`, wired to the root router in `wire_ui.go`) with the browser's host, remote address, `Origin`/`Sec-Fetch-Site`, `User-Agent` and cookies. Hence the per-(email, IP) backoff and the per-email ceiling (429 with `Retry-After`, shown as "try again in N seconds"), the SSO enforcement, the Argon2id timing equalisation and one answer for an unknown user and a wrong password, the 2FA gate and its own backoff, the login CSRF guard (`CredentialCSRF`), the portal rate limit and the password policy are the endpoints' own, and a fix to them reaches the new pages. The endpoint's `Set-Cookie` headers (the session cookie, the trusted-device cookie) go to the browser unchanged, so the attributes are the platform's builders'. Deviation from "use cases directly, no HTTP hop": there is a dispatch but no HTTP hop, and re-using the handlers is what makes "same lockout, same cookies" true by construction.
+- **Steps.** Email (SSO discovery: an external domain redirects 303 to `/auth/oidc/login?domain=...` with the OAuth round trip as `oauth_*` and `return_url=/ui/auth/callback?...`; an internal user who never set a password is offered the emailed link; everyone else, including an unknown address, gets the password step), password, second factor (authenticator code, emailed code or recovery code, "remember this device" when the domain allows it), setup link, forgot, reset/set password (policy, factor code, invite redirect, the session an invite establishes), logout (the confirmation is a GET, signing out a POST), portal login (email, SSO hand-off or password, forgot password).
+- **After sign-in** (the SPA's `redirectAfterLogin` order): an OIDC interaction (`/oidc/interaction/{uid}/login`, the uid is checked), an OAuth round trip (`/oauth/authorize?` + the forwarded fields), a `?redirect=` that `safeUIRedirect` accepts (the port of `safeUiRedirect`: same origin, path `/ui` or under it after cleaning; `..`, encoded dots and slashes, `//host`, backslashes, control characters and schemes are refused), else `/ui/`. The sign-in context rides between steps as hidden fields (never the password). A reset's `redirectUri` and a portal's `redirectUrl` are the values the endpoints validated when the invite or flow was made; the page follows only an http(s) URL or a same-site path from them.
+- **CSRF and headers.** The group is outside the session guards but behind `guard.CSRF` (an unsafe request needs `Sec-Fetch-Site` same-origin or a matching `Origin`; neither is refused, so a form on another site cannot sign a victim in to the attacker's account), `guard.SecurityHeaders` (CSP, no framing, no-store, same-origin referrer) and compression. The CSP's `img-src` is widened to `https:` on these pages only, for a tenant's logo. The SSO landing is the one route that reads the session cookie (to tell a finished sign-in from a refused one); a stale cookie only means "not signed in".
+- **Branding.** The theme is the one the SPA's login page uses: `GET /api/public/login-theme?client=<identifier>` (platform theme with the client's layered over, field by field), asked for the `?client=` the relying party passed through `/oauth/authorize`, carried page to page. Values are validated before they reach a style attribute (plain colours and gradients only; no `url(`), the logo is an https or same-site URL, or the tenant's SVG shown as an image data URL (it cannot run script), and the tenant's CSS is applied as the SPA does (a `<` is stripped so it cannot close its element). The reset and portal pages follow the SPA: a portal token or flow shows no platform brand.
+- **Secrets.** Passwords and the reset token are never written back into a response except the reset token in the reset form's hidden field (the page the emailed link opened); an invalid or expired link does not echo it. The pending 2FA token is a short-lived signed token that grants no session; it rides in the challenge form. Every page is `no-store`.
+
+Differences from the SPA: native forms (a refused step re-renders the page with the status code: 401, 403, 422, 429) instead of in-page state, so the page works without script (the password toggle and strength meter use Datastar); the OIDC `CallbackPage` code exchange (client `platform-admin-ui`, `sessionStorage` state) is not ported: the platform's SSO is the bridge's server-side callback, which this area's `/ui/auth/callback` lands after (no OAuth client of that name exists in the platform); passkey sign-in and forced 2FA enrolment (QR code, recovery codes) are not in these pages: a password that owes enrolment, and a reset on a domain that compels 2FA, are handed to the current sign-in (`/auth/login`) with a message; the two-factor pages of `auth_mfa*.go` are a separate, cookie-carried implementation that this area does not call.
+
+Tests: `auth_signin_test.go`, `auth_reset_test.go`, `auth_signin_portal_test.go` (unit, a fake of the endpoints: the redirect validation table incl. the SPA's cases, the landing order, each step, uniform refusals, lockout display, cookie pass-through, cross-site posts refused, theme sanitising, secrets never echoed) and `auth_signin_pg_test.go` (`-tags=integration`: the whole platform router on Postgres: a real sign-in and the cookie it sets, an unknown user and a wrong password answered alike, the backoff locking an address out, a forged cross-site post getting no session, forgot password answered alike, a bad reset token, sign-out).
+
+Not verified in a browser: the pages have not been opened in a browser at all (light styling, narrow widths, the password toggle and strength meter, autofocus, the SSO round trip to a real identity provider, the 2FA remember-device cookie round trip). New Tailwind classes: none (layout is inline style plus classes already in `kit.css`), so `make ui-kit-sync` was not run.
+
+## Sign-in pages B: passkeys and two-factor (`/ui/auth/*`)
+
+Pages: `auth_mfa.go` (the challenge, the token hand-over, the session), `auth_mfa_enroll.go` (enrolment after the password), `auth_mfa_security.go` (the signed-in security page), `auth_mfa_qr.go` (the QR code), `auth_passkey.go` (the passkey sign-in page, the passkey list and removal), `auth_mfa.templ`, `auth_mfa_security.templ`; the browser half is `static/fc-webauthn.js`. Spec: the SPA's `TwoFactorChallenge`, `TwoFactorSetup`, `TwoFactorSection`, `PasskeysSection` and `api/webauthn.ts`, and the `/auth/2fa/*` and `/auth/webauthn/*` endpoints.
+
+**Additive, not switched on.** The SPA's sign-in, `/auth/2fa/*` and `/auth/webauthn/*` are unchanged and stay the default; nothing links to these pages and no redirect leads there. They are mounted when `ui.Config.TwoFactor` is set (it is, in `wire_ui.go`).
+
+| URL | GET | POST |
+|---|---|---|
+| `/ui/auth/2fa?next&method` | the challenge (needs the challenge cookie) | `/ui/auth/2fa/verify` (method, code, remember), `/ui/auth/2fa/email` (send the code) |
+| `/ui/auth/2fa/enroll?next` | the method menu (enroll token) | `.../enroll/totp`, `.../enroll/totp/confirm`, `.../enroll/email`, `.../enroll/email/confirm`, `.../enroll/done` |
+| `/ui/auth/2fa/start`, `/ui/auth/2fa/enroll/start` | - | take the token `/auth/login` answered with (`token`, `next`), keep it in the challenge cookie, redirect to the page |
+| `/ui/auth/passkey?next&email` | "Sign in with a passkey" (loads `fc-webauthn.js`) | - (the script calls `/auth/webauthn/authenticate/*`) |
+| `/ui/auth/security` (session) | methods, recovery codes, remembered devices, passkeys | `.../security/2fa/{totp,email}` (+ `/confirm`), `.../2fa/{method}/remove`, `.../2fa/recovery-codes`, `.../2fa/devices/{id}/revoke`, `.../passkeys/{id}/remove` |
+
+- **Same services, same rules.** The pages call `mfa.Service`, the `mfatoken` issuer, `twofa.Policy`, the login-attempt backoff (`loginbackoff.Check`, per (email, IP), shared with the password step; wrong codes are recorded as failed `USER_LOGIN` attempts), `notify.Notifier` and the audit repository directly, as the login endpoint's handlers do, and mint the session with the same `provider.MintSessionToken` and cookie builder. The rules copied from the endpoint's handlers rather than shared (they are unexported there): the usable factors are the confirmed ones narrowed to the domain's allowed set when it compels 2FA; a method the domain does not allow cannot be enrolled (403); a user whose domain compels 2FA cannot remove their last factor (409); recovery codes exist only for authenticator-app users and are generated at first TOTP enrolment; a burnt recovery code emails the user; remember-this-device is honoured only when the domain allows it, with the `__Host-fc_td`/`fc_td` cookie the login endpoint reads.
+- **No new way around 2FA.** A session is minted at exactly two places: `verify` (a code that the service accepts, for the pending token's user) and `enroll/done` (the enroll token's user holds a factor the domain accepts, or the domain no longer compels one). The between-step token is the `mfatoken` JWT (HS256, rejected by the session middleware) in an HttpOnly cookie scoped to `/ui/auth`; a pending token does nothing on the enrol pages and an enroll token nothing on the challenge, a bad, expired or other-user token redirects to the default sign-in, and the cookie ends with the sign-in. `next` is validated twice (when taken, when used): `/ui` or under, no scheme or host, no dot segments, no encoded dots, slashes or backslashes, no control characters.
+- **Hand-over from the password step.** Sign-in pages A call `/auth/login` in-process and handle `mfa_required` inline, and send `enrollment_required` to the current sign-in. To use these pages instead, post the answer's `mfaToken` (or `enrollToken`) as `token` to `/ui/auth/2fa/start` (or `.../enroll/start`) with the `next`; the endpoint checks the token's purpose and user before setting the cookie. The agreed `ContinueAfterPassword`/`CompleteSignIn` functions were not needed: the decision stays in `/auth/login`, and `AuthMFA.completeSignIn` issues the session (JWT, cookie, success attempt) the way `completeLogin` does.
+- **Secrets are shown once.** The TOTP key and the QR code are in the response of the begin step; a wrong code re-renders the setup from the `uri` the form echoes (a hidden field of the page that showed it; only drawn, never trusted: the confirm is against the secret the service stored, and a `uri` that is not an `otpauth://totp/` URI with a secret draws nothing). Recovery codes are in the response that creates them (first enrolment, regenerate) and nowhere else: not a URL, cookie, signal or later page. Both pages are `no-store` (`guard.SecurityHeaders`), copy is a button that reads the element's text (`$mfaCopied` only says "copied"), and "I've saved them" leaves for a page without them.
+- **QR code on the server.** `qrSVG` draws `boombuler/barcode/qr` (already in `go.mod` through `pquerna/otp`, which the service uses for its PNG; now a direct dependency) as inline SVG: one `<path>` of unit squares at error-correction M on a white ground with the four-module quiet zone (a dark theme must not swallow it). The markup is made of integers only. `TestQRSVGIsTheEncodersMatrix` compares the drawing module by module with the encoder's matrix.
+- **Passkeys.** `fc-webauthn.js` (one committed IIFE bundle, 10 kB, loaded only by the passkey sign-in page and the security page) is `@simplewebauthn/browser` 13.3.0 (the version the SPA uses) plus about 100 lines of glue, built by `tools/vendor-webauthn` (`npm ci && npm run build`; exact versions, esbuild 0.28.2, reproducible; licence in `static/LICENSE-webauthn.md`; sha256 in `assets.WebAuthnSHA256`, checked by `TestIslandBundlesArePinned`; never part of the normal build). It drives `navigator.credentials` and posts to the platform's `/auth/webauthn/*` endpoints with the SPA's JSON (the endpoints verify, apply the backoff, record the attempt and set the session cookie, so a passkey sign-in is the endpoint's, not a copy); it ends by navigating to the validated `next`, or by reloading the security page. A passkey sign-in meets no second factor, as on those endpoints; a password sign-in still does, a passkey notwithstanding. List and removal are server side: the security page lists the user's credentials and removes one by the revoke use case after the same ownership check as `DELETE /auth/webauthn/credentials/{id}` (another user's id is a 404 and removes nothing).
+- **Security page.** Self-service only: every action acts on the session's principal; a form field naming another user changes nothing (device revocation is scoped to the owner in the service). Remove method, remove passkey and regenerate recovery codes confirm in a native dialog (the SPA confirms none of them; destructive and credential actions here do). Reached by URL: the sidebar has no entry for it (the SPA's navigation has none either; the profile link of the user menu still goes to the SPA's `/profile`).
+
+Differences from the SPA: native forms with the status in the response (401 wrong code, 422 empty or non-matching code, 429 backoff) instead of in-page state; a wrong enrolment code re-renders the setup instead of keeping it in memory; no conditional-UI autofill for passkeys; a user with no platform role cannot reach the security page (the `/ui` role-less gate; their profile lives in the SPA).
+
+Tests: `auth_mfa_test.go` (unit, fakes of the services: token purposes and bad tokens, the method offer incl. a domain-narrowed set, verify success/failure/forged method/burnt recovery codes, remember-device only when allowed, email challenge, the token hand-over, enrolment menu and forged methods, the enroll token never ending in a session without a confirmed factor, secrets shown once, the security page's last-factor guard, domain gates, session requirement for every POST, self-service scoping incl. another user's device and passkey, `authNext` table, passkey page), `auth_mfa_qr_test.go`, `internal/ui/twofactor_mount_test.go` (mounted only when wired, no session needed for the sign-in pages, session required for the security page, cross-site posts refused), and `auth_mfa_pg_test.go` (`-tags=integration`: real `mfa.Service`, TOTP with generated codes and the replay guard, 10 recovery codes shown once and usable once, remember-device cookie and owner-scoped revocation, backoff 429 refusing even the right code, the email factor, and the passkey ceremony driven with the repository's software authenticator against the real `/auth/webauthn/*` handlers: register, sign in (session cookie set), a wrong key refused, the security page listing and a second user unable to remove the credential). Mutation checks (run, seen to fail, restored): dropping the factor requirement of `enroll/done` fails `TestEnrollmentIsTheOnlyWayPastTheEnrollToken`; dropping the passkey ownership check fails `TestSelfServiceActsOnlyOnTheSessionsUser`.
+
+Not verified in a browser: none of these pages has been opened in one (layout, dark mode, narrow widths, the confirm dialogs, the copy button) and `fc-webauthn.js` has not been run in a browser: no virtual authenticator was driven through Chrome; the server path it calls was exercised headlessly (above) and the bundle is pinned and reproducible. New Tailwind classes: none (checked against `kit.css`), so `make ui-kit-sync` was not run.
+
+## Platform pages B: Documentation, Theme, Names, Raw views (wave 5)
+
+The SPA's `DocsPage`, `LoginThemeSettingsPage`, `ClientLoginThemePage`, `PlatformNamesSettingsPage` and the two debug
+pages, added beside the SPA (nothing of it is touched; the sidebar entries link to `/ui`). Files:
+`pages/docs*`, `theme_settings*`, `names_settings*`, `debug_*`.
+
+| Page | Routes | Gate (the API's) |
+|---|---|---|
+| Documentation | `/ui/platform/docs` (opens the first platform page), `/ui/platform/docs/{source}/{slug}?q=` | `platform:admin:docs:view` (`auth.CanReadPlatformDocs`) |
+| Theme | `/ui/platform/settings/theme` (`?defaults=1`), POST same, POST `/preview` | read: `platformconfig.Service.List` (config view, confinement, grants); save: `AuthorizeUpdate`, then the `SetProperty` use case |
+| Login Branding | `/ui/clients/{id}/theme`, POST same, POST `/preview` | `CanReadClients` for the page; save: `AuthorizeUpdate`, `ResolveClientID` (unknown client refused), `SetProperty`; switch off: `Service.Delete` |
+| Names | `/ui/platform/settings/names` (`?default=1`), POST same | as Theme |
+| Raw Events | `/ui/debug/events?size=`, `/ui/debug/events/{id}` (drawer) | `platform:messaging:event:view-raw` (not scoped to a client, as the API) |
+| Raw Dispatch Jobs | `/ui/debug/dispatch-jobs?size=`, `/ui/debug/dispatch-jobs/{id}` | `platform:messaging:dispatch-job:view-raw`; a job opened from the list is checked against the viewer's clients as `GET /api/dispatch-jobs/{id}/raw` does |
+
+- **Documentation.** The listing and page lookups were lifted out of the huma handlers into `docsapi.State.Index`,
+  `PlatformPage` and `ApplicationPage` (no permission check inside); the handlers and this page both gate on
+  `CanReadPlatformDocs` and call them. Markdown goes through `internal/ui/md` (raw HTML is dropped, `javascript:` links
+  removed). ` ```mermaid ` fences are cut out of the source before rendering and drawn by the Mermaid island
+  (`kit.Diagram`); a fence of another language that mentions mermaid is code. As the SPA's click handler, a link to a
+  sibling `.md` file opens that page of the same source and an external link opens in a new tab (rewritten on the
+  sanitised output, so text that merely looks like a link is not touched). Navigation between pages is plain links;
+  the filter (title or slug, case-insensitive) patches the navigation only. A page that is not there is a message in
+  the pane with a 404, the list stays. `{source}` and `{slug}` must be names (`[A-Za-z0-9_.-]`), so they are safe in a
+  URL and an expression.
+- **Theme and Login Branding** share one editor (`thmView`, `thmEditor`). Both read and write the platform-config row
+  (`platform/login/theme`, the client's override with the client's id) through `platformconfig.Service` and the
+  `SetProperty` use case, so the access rules are those of `PUT /api/config/platform/login/theme`; the stored value is the
+  SPA's `JSON.stringify(theme)` (blank optional fields null) and `GET /api/public/login-theme` serves it (tested end
+  to end). The override starts from the platform theme; the switch off deletes the override rather than storing a copy.
+  The colour pickers write into their text fields (primary and background also regenerate the gradient, as the SPA).
+  A viewer without write access sees the values with the controls disabled and no Save.
+- **Live preview that runs nothing.** The preview is rendered by the server (`POST .../preview`, debounced on form
+  input; nothing is read or saved) from values it vouches for: colours and the gradient are validated and fall back to
+  the built-in look, text is escaped, an inline SVG logo is shown as an `<img src="data:image/svg+xml;base64,...">` (an
+  image cannot run script; the SPA injects it with `v-html`), an SVG with script or handlers is not shown, a logo
+  address is named, not loaded (the admin CSP is `img-src 'self' data:`), and **custom CSS is never applied** to the admin
+  page. Only the preview's own stylesheet-free inline styles are used, so no kit stylesheet rebuild was needed.
+- **Validation on save** (field errors, nothing stored): colours must be hex or `rgb()`/`rgba()` (the rule `branding`
+  uses for emails), the gradient a CSS gradient of colours and stops, the logo URL http(s), the inline SVG an `<svg>`
+  element of at most 64 kB without `<script>`, `foreignObject`, `iframe`, `embed`, `object`, `on*=` or `javascript:`, the
+  logo height a whole number from 20 to 120 (the field's own range), text fields at most 500 characters, custom CSS
+  at most 64 kB. The SPA's editor enforces none of this beyond the height's input attributes.
+- **Names.** One field; empty is "Platform name cannot be empty." (the SPA's message), at most 200 characters; the
+  stored name is what `branding.PlatformName` reads for emails, 2FA and passkeys.
+- **Raw views.** The most recent N rows of the write-side tables (`FindRecentRaw`, N one of 50/100/200/500/1000, default
+  200), no filtering or paging, and a drawer (the SPA's dialog) reading one row (`FindRawByID` / `FindByID`).
+
+Differences from the SPA: the diagram has no click-to-enlarge lightbox (`kit.Diagram` scales to the column and keeps
+its source below); a view-only user sees disabled controls where the SPA shows editable ones that fail on save; the
+Dispatch Jobs debug link is shown for `dispatch-job:view-raw` (the API's permission) where the SPA's route guard names
+`dispatch-job:view`; the sidebar's Theme and Names still require `platform:admin:settings:view`, which no role is seeded
+with (docs/platform-bug-fixes.md), as in the SPA; the pages themselves are gated by the API's rules, not that code.
+
+Tests: `docs_test.go`, `theme_settings_test.go`, `names_settings_test.go`, `debug_test.go` (unit, fakes: the permission matrix with
+forged posts from a viewer and from nobody, the SPA's PUT bodies, validation, the preview's escaping, SVG and
+custom-CSS handling, mermaid splitting, link rewriting, the filter, client scoping of a raw job) and
+`docs_pg_test.go`, `theme_settings_pg_test.go`, `debug_pg_test.go` (`-tags=integration`: the real `docsapi.State`,
+`platformconfig.Service` and `SetProperty`; what the pages save is what `/api/public/login-theme` serves and
+`branding.PlatformName` reads, the override layers and is deleted, a client user without grants and a viewer change
+nothing; the raw views read the write tables). Mutation checks (run, seen to fail, restored): dropping the update gate of the
+names post fails `TestNamesPermissionMatrix`; dropping the script check of the preview's SVG fails `TestThemePreview`.
+
+Not verified in a browser: the Datastar interplay (the debounced preview post, the picker handlers writing into the text
+fields, the switch showing and hiding the fields, the navigation filter patch, the drawers) and the Mermaid island on a
+docs page are covered by the rendered markup in tests only.
+
+## Authentication admin A: identity providers and email domains (wave 5)
+
+Mirrors `IdentityProviderListPage`, `IdentityProviderCreateDrawer`, `IdentityProviderDetailDrawer` and
+`EmailDomainMappingListPage`, `EmailDomainMappingCreateDrawer`, `EmailDomainMappingDetailDrawer`. Both areas are additive: the SPA
+pages stay. Routes: `/ui/identity-providers` and `/ui/email-domains`, each with the list (`?q&sort&dir&page&rows`), `/new`, `/{id}`
+(drawer), `/{id}/edit`, and POST-only `/{id}/delete`. Email domains filter on `?status=` (the scope, ANCHOR, PARTNER, CLIENT) and
+`?idp=` (a contains match on the provider's name, as the SPA's text filter).
+
+- **Gates** are the API's: every identity provider and mapping permission is anchor-only (`auth.anchorWith`). Reads need `view`;
+  create, update, delete their own permission; the provider move needs the mapping `update`. The edit dialog needs `view` and
+  `update` (the SPA loads the record, then PUTs). Controls are hidden without the permission and every route makes the check itself
+  before it loads anything, so a forged post is refused without telling a real id from an invented one (the matrix tests post
+  every write as a no-permission caller, a viewer and a non-anchor holder of every permission). The seeded `internal` provider's
+  Delete is disabled with the reason (the use case refuses it too).
+- **Client secret: write-only.** The page never reads `oidcClientSecretRef` into a view: the drawer says "Configured" or "Not
+  configured" (the API's `hasClientSecret`), the edit form says whether one is set and leaves the field blank (blank keeps the
+  stored secret). The SPA's `SecretRefInput` is reproduced: a select of where it is held (Local Encrypted, AWS Secrets Manager, AWS
+  Parameter Store, GCP Secret Manager, HashiCorp Vault) and one value. Local Encrypted takes the secret itself in `kit.PasswordInput`
+  and sends `encrypt:` plus it; the API handler's inline encryption (`encryption.EncryptSecretRef`, errors mapped to the same
+  `ENCRYPTION_NOT_CONFIGURED` / `UNSUPPORTED_SECRET_SCHEME` validations) is done by `IdpOps`, so the use case sees what the API's
+  does. The others take a reference in a text field and send `<scheme>://<value>`. The kit's `SecretRefInput` was **not** used: it
+  holds the NAME of a secret under a pattern (`store:name`) that cannot express the scheme references the API accepts or the local
+  encrypted kind the SPA offers. A refused form never echoes a typed secret (the failure patch leaves the password field to the
+  browser; it is patched only when the secret is itself the field at fault, and then empty).
+- **Domains and scope.** The SPA's chip input is a textarea (one domain per line; commas and spaces also split), lower-cased,
+  de-duplicated, each checked with the SPA's pattern. Once domains are listed the scope choice appears (Anchor or Client; Partner
+  mappings are made on the Email Domains page); Client shows the primary client (the platform's client select). An edit never
+  infers a scope (the provider stores none). Scope codes (`MAPPING_SCOPE_REQUIRED`, `INVALID_MAPPING_SCOPE`,
+  `PRIMARY_CLIENT_NOT_ALLOWED`) show next to the scope, `PRIMARY_CLIENT_REQUIRED` on the client. The create command is the SPA's
+  POST body, the edit command its PUT body (the whole domain set always; the secret only when entered).
+- **Releasing domains** (the SPA's "Remove Email Domains" dialog): an edit that drops a domain is answered with the warning, the
+  domains and a required checkbox; the use case runs only when `confirmRelease=yes` is posted. This is stricter than the SPA (its
+  confirmation was client-side only).
+- **Role sync.** OIDC providers only. The allowed roles are a kit multi-select (needs `role:view`; without it the roles already
+  allowed stay as stored and a posted role is ignored); a posted role not in the list is refused before the use case.
+- **Delete** keeps the SPA's confirmation; the use case's refusal while domains still route to the provider (409
+  `DOMAINS_STILL_MAPPED`) is the error flash.
+- **Email domain mapping form.** Create: domain (the SPA's pattern, lower-cased), provider, scope (default Client), primary client
+  (Client **and Partner**), the tenant when the chosen provider is multi-tenant (required), and for a provider that is not OIDC the
+  two-factor policy (require, methods, remember device, 1 to 365 days). The parts follow the select through signals (the OIDC and
+  multi-tenant provider ids). Edit: the domain and the scope are shown, not editable; the provider select, the client, the tenant and the
+  policy are. A changed provider is answered with the SPA's "Change Identity Provider" text (to an internal provider the SSO users
+  are converted and must reset their password; to an OIDC provider password login is disabled) and a required checkbox; only
+  then does `MoveMappingToProvider` run, followed by the update, and the count converted is flashed as the SPA's toast does. The
+  tenant and the two-factor parts follow the provider the mapping will be on.
+- **Not in the SPA, so not here:** activate and deactivate of a provider, a test connection and redirect information for a
+  provider. The SPA pages have none of these (the API has no such routes either).
+
+SPA behaviours that were bugs, recorded and not copied:
+
+1. The mapping edit form offers a Scope Type and sends it, but `PUT /api/email-domain-mappings/{id}` has no scope (`UpdateCommand`);
+   the body is dropped. Changing Client to Anchor therefore cleared the client and left a CLIENT mapping with none. The scope is read-only
+   here; **owner decision needed** if a scope change should be possible (it needs an API change).
+2. Create sends a primary client for the CLIENT scope only, but the use case also requires it for PARTNER, so a partner mapping could
+   never be created from the SPA. The client field is shown and required for Partner.
+3. The list's Primary Client column shows the raw id. The names are shown when the client list can be read (id otherwise).
+4. The SPA's edit sends `oidcIssuerPattern: null` for a blank pattern, which the API reads as "unchanged": a pattern cannot be cleared.
+   Kept as it is (the page sends the same body); a clear would need the API to take an empty string.
+5. The SPA's tenant and two-factor parts follow the provider the mapping had before a move; here the one it will have.
+
+Differences from the SPA: dialogs for create and edit (the SPA uses the drawer); the domain chip input is a textarea; the provider
+and mapping lists page at 100 rows like the SPA's paginator; the role pick list is a multi-select with chips and search.
+
+Not verified in a browser: the pages have not been opened in light, dark and narrow widths; the signals that show and hide the OIDC,
+scope, client, tenant, two-factor and secret parts (`data-show` expressions, including the id lists tested with `includes`), the password
+field's reveal toggle and the multi-select chips are covered by the rendered markup in tests only.
+Tests: `identity_providers_test.go` and `email_domains_test.go` (permission matrices with forged posts, controls per permission, list
+filters and sorts, create and update command bodies, the secret kinds and that neither the stored nor the typed secret is in any
+answer, the release and move confirmations, field errors from the use case's codes, native posts) and
+`identity_providers_pg_test.go` (`-tags=integration`: create with encrypted storage and the domains' mappings and client link, the scope
+refusal, the confirmed release falling back to the internal provider, delete blocked while mapped, a mapping with a two-factor policy,
+the confirmed move, forged posts by a viewer and a non-anchor caller writing nothing and no audit rows). Mutation checks: dropping the
+`CanDeleteIdentityProviders` gate fails the permission matrix (the forged delete reaches the use case), and bypassing the release
+confirmation fails `TestIdentityProvidersUpdateReleasesDomainsOnlyWhenConfirmed`.
+The sidebar's Identity Providers and Email Domains entries link to `/ui/identity-providers` and `/ui/email-domains`.
+
+## Authentication admin B: OAuth clients and reset approvals (wave 5)
+
+Pages: `oauth_clients.go` (list, drawer, actions), `oauth_clients_form.go` (create and edit dialogs, rotation, the shown-once dialogs), `oauth_clients_ops.go` (`OAuthClientOps`: the use cases), `oauth_clients.templ`; `reset_approvals.go`, `reset_approvals.templ`. Spec: the SPA's `OAuthClientListPage`, `OAuthClientCreateDrawer`, `OAuthClientDetailDrawer` and `ResetApprovalsPage`.
+
+**Additive, not switched on.** The SPA's pages stay the default (the old UI is kept so it can be used if necessary); the sidebar entries now carry a `ui` path (`/ui/oauth-clients`, `/ui/reset-approvals`), as the other migrated areas, and each page says it is a preview.
+
+| URL | GET (navigation) | GET (Datastar) | POST |
+|---|---|---|---|
+| `/ui/oauth-clients` (`?q&sort&dir&page&rows`) | the list | table, pager, toolbar state, URL | - |
+| `/ui/oauth-clients/new` | list + create dialog | the dialog | create |
+| `/ui/oauth-clients/{id}` | list + drawer | drawer content | - |
+| `/ui/oauth-clients/{id}/edit` | list + edit dialog | the dialog | update |
+| `/ui/oauth-clients/portal-app-options?portalClientId=` | - | the Portal app field for that owner | - |
+| `/ui/oauth-clients/{id}/{activate,deactivate,delete}` | - | - | the action |
+| `/ui/oauth-clients/{id}/{rotate-secret,rotate-secret-now,revoke-previous-secret}` | - | - | the secret action |
+| `/ui/reset-approvals` | the queue | the queue (the Refresh button) | - |
+| `/ui/reset-approvals/{id}/{approve,deny}` | - | - | the decision |
+
+- **Gates are the API's.** Every OAuth client route is anchor-only and needs the permission of its operation, checked before anything is read: list and drawer `CanReadOAuthClients`; create `CanCreateOAuthClients`; edit, activate, deactivate `CanUpdateOAuthClients` (the edit dialog also needs view); delete `CanDeleteOAuthClients`; rotate, rotate without overlap and revoke the previous secret `CanRotateOAuthClientSecrets` (`regenerate-secret`, as the API's `rotate-secret`, `regenerate-secret` and `revoke-previous-secret`). Controls are hidden without the permission (and the confirmation dialogs are not rendered); a forged post is refused by the page before the use case runs. A caller who may create or rotate but not view gets the secret dialog and neither the table nor the drawer (`TestOAuthClientsPermissionMatrix`, `TestOAuthClientRotation`). Use cases are the API's (`pages.OAuthClientOps` runs `authops.CreateOAuthClient` and friends through the unit of work). The portal app rule moved out of the API handler into `authapi.ResolvePortalApp`, which both call. Reset approvals call `resetapi.State.Pending/Approve/Deny` in-process (the huma handlers are thin wrappers of the same methods): the `user:update` permission, the queue confined to the caller's clients (an anchor sees all), the per-request client check (`RequireUserAdmin`: a client administrator cannot decide another client's or a platform user's request) and the single decision (`ALREADY_DECIDED`) are the API's.
+- **Secrets are shown once.** The create (CONFIDENTIAL) and rotate responses carry a modal with the secret (the client id and secret on create), copy buttons, and the warning "will not be shown again". The create dialog cannot be dismissed except by "I've copied the secret" (a close by anything else reopens it, as for the application login client); the rotation dialog can. Every way of closing removes the dialog from the page. The response is `Cache-Control: no-store` (the `noStore` writer), a native post gets the page itself (post/redirect/get would lose the secret), and the secret is in no URL, signal, redirect, flash, drawer or later page (tests assert it appears once and never in a signal, the drawer or the list). The stored reference (`SecretRef`, `PreviousSecretRef`) is never read into a view. The integration test verifies the dialog's secret against the stored hash with the key, and that a forged rotation changes nothing.
+- **Rotation.** "Rotate Secret" is the SPA's (body-less `rotate-secret`): the new secret works at once and the old one for the 24-hour overlap, with the SPA's confirmation text. The drawer also shows what the API reports and the SPA ignores: while an overlap is open, "Previous secret still accepted" with its end and whether the old secret was used since (`previousSecretExpiresAt`, `previousSecretLastUsedAt`), and **Revoke Previous Secret** (confirmed) ends it now. **Rotate Without Overlap** (`graceSeconds: 0`, confirmed, danger) is for a secret believed compromised. `regenerate-secret` is the SDK's alias of `rotate-secret`, so the page has no separate action for it.
+- **Form.** Fields and checks are the SPA's: name; type (create only; PUBLIC forces PKCE on and the PKCE box follows the type); redirect URIs (required on create; on edit required for the `authorization_code` and `refresh_token` grants), post-logout redirect URIs, allowed origins (stored as scheme and host, a path is refused); grant types and default scopes (multi-selects; a value the client holds that the form cannot offer is kept); associated applications (searchable multi-select of active applications, offered only to who may list them, as the SPA's call); portal owner client (offered only to who may list clients) and, for an owner, the portal app of that client (the select re-fetches on change); API access (disabled for a portal client; the use case refuses the combination). Create sends the SPA's body (optional fields only when set); edit sends everything, an emptied list clearing it and an emptied owner clearing the owner and its app. Use-case codes land on their field (`CLIENT_NAME_REQUIRED`, `INVALID_CLIENT_TYPE`, `PORTAL_API_ACCESS_CONFLICT`, `PORTAL_APP_*`).
+- **List and drawer.** Search over name, client id and application names; sort by name, client id, type, status, created; 100-row pages (50/100/250/500). Row: Edit inline; View details, Deactivate… or Activate…, Delete… in the menu. The drawer is the SPA's three sections (configuration with the copy button for the client id, client secret for CONFIDENTIAL clients, activation). Owner client and portal app names need the permissions of the lists the SPA reads them from; otherwise the ids are shown.
+- **Reset approvals.** The SPA's table (user, requested, expires, Approve and Deny) with a Refresh button; decisions answer with the queue as it now stands and the SPA's toast ("Approved", "Denied"); like the SPA they are immediate, with no confirmation. A request decided meanwhile shows the API's "request is no longer pending".
+
+Differences from the SPA: the three URL lists are textareas, one per line (the SPA adds and removes chips); create and edit are dialogs (the pattern ruled for pools; create opens the new client's drawer, as the SPA navigates to it); **Activate and Deactivate ask for confirmation** (the SPA toggles at once; deactivating stops every login through the client); Delete is in the row menu only, as the SPA; the flash messages carry no client name (flash keys carry no request text); the overlap display, Revoke Previous Secret and Rotate Without Overlap are not in the SPA; the portal app select is a Datastar-patched field rather than a client-side filter. The sidebar entry for OAuth clients required the permission `platform:iam:oauth-client:view`, which no role holds (the API's is `platform:auth:oauth-client:view`): corrected, so a non-wildcard administrator sees the entry.
+
+Tests: `oauth_clients_test.go` and `reset_approvals_test.go` (unit, fakes of the use cases and of the API state: list, search and sort; the permission matrix with forged posts for six caller shapes across every route, controls hidden; drawer and overlap; create confidential/public with the SPA's bodies, validation and the use case's refusals, the shown-once dialog; edit bodies; rotation, no-store, no secret in a signal or a later page, a rotate-only caller; state actions; portal app options; the reset queue and decisions) and `oauth_clients_pg_test.go`, `reset_approvals_pg_test.go` (`-tags=integration`: the real use cases and the real API state on Postgres: the secrets shown are the stored ones, the 24-hour overlap and its revocation, immediate cutover, portal rules, audit, forged posts changing nothing; the reset queue confined by client, forged and repeated decisions refused, the link sent only on approval). Mutation checks (run, seen to fail, restored): dropping the rotate permission check fails `TestOAuthClientsPermissionMatrix` (a viewer's forged rotate ran and showed the secret); dropping the `noStore` writer fails `TestOAuthClientCreateConfidentialShowsTheSecretOnce` and `TestOAuthClientRotation`.
+
+Not verified in a browser: none of these pages has been opened in one (layout, dark mode, narrow widths, the dialogs, the copy buttons, the Datastar-driven PKCE and API-access switches and the portal app re-fetch, the persistent create dialog's reopen on Escape); they are covered by the rendered markup and the server responses in the tests only. New Tailwind classes: none beyond the kit's, so `make ui-kit-sync` was not run.

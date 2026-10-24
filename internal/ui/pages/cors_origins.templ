@@ -1,0 +1,145 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+func (v corsView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: corsFormID, Action: corsPath, SearchPlaceholder: "Search origins...", SearchValue: v.Query.Q,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		Hidden:      v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": corsLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": corsLiveGet},
+	}
+}
+
+func (v corsView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "cors-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: corsList.rows,
+		Noun: "origins", HrefPattern: v.Query.pagePattern(), FormID: corsFormID,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func (v corsView) columns() []kit.DataColumn {
+	sortable := func(label, key string) kit.DataColumn {
+		return kit.DataColumn{
+			Label: label, Href: v.Query.sortURL(key), Direction: v.Query.direction(key),
+			LinkAttrs: templ.Attributes{"data-on:click__prevent": sortClick},
+		}
+	}
+	cols := []kit.DataColumn{sortable("Origin", "origin"), sortable("Description", "description"), sortable("Added", "added")}
+	if v.Perms.Delete {
+		cols = append(cols, kit.DataColumn{Label: "Actions", Class: "w-px"})
+	}
+	return cols
+}
+
+func (v corsView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	if v.Query.filtered() {
+		return &kit.EmptyStateProps{Message: "No CORS origins found", Status: true, ClearHref: v.Query.clearURL()}
+	}
+	return &kit.EmptyStateProps{Message: "No CORS origins configured", Status: true}
+}
+
+templ corsPage(v corsView) {
+	<div>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "CORS Origins", Subtitle: "Manage allowed origins for cross-origin API requests. " + corsCacheNote, Actions: corsActions(v)})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under CORS Origins.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@corsTable(v)
+			@kit.Paginator(v.pager())
+		</div>
+		<div id={ corsDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+	</div>
+}
+
+templ corsActions(v corsView) {
+	if v.Perms.Create {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: corsPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Add Origin
+		}
+	}
+}
+
+templ corsTable(v corsView) {
+	@kit.DataTable(kit.DataTableProps{ID: "cors-table", BodyID: "cors-rows", Columns: v.columns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "cors-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					<code class="font-mono text-[13px]">{ row.Origin }</code>
+				}
+				@kit.TD(kit.TDProps{Class: "text-muted-foreground"}) {
+					if row.Description != "" {
+						{ row.Description }
+					} else {
+						—
+					}
+				}
+				@kit.TD(kit.TDProps{Class: "text-sm"}) {
+					@kit.LocalTime(kit.LocalTimeProps{At: row.Added, DateOnly: true})
+				}
+				if v.Perms.Delete {
+					@kit.RowActions(kit.RowActionsProps{ID: "cors-" + row.ID + "-actions", RowLabel: row.Origin, Actions: []kit.RowAction{
+						{Icon: "trash-2", Label: "Remove", Href: row.DeleteHref, Destructive: true, Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}},
+					}})
+				}
+			}
+		}
+	}
+}
+
+// corsAddDialogC is the add dialog.
+templ corsAddDialogC(f corsForm) {
+	@kit.FormDialog(f.dialog()) {
+		<div class="flex flex-col gap-4">
+			@corsField(f, "origin")
+			@corsField(f, "description")
+		</div>
+	}
+}
+
+templ corsField(f corsForm, key string) {
+	switch key {
+		case "origin":
+			@kit.Field(f.fieldProps(key, "Origin URL", "Include protocol (https://) and port if non-standard. No trailing slash or path.", true)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Origin, Placeholder: "https://app.example.com", Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"required": true, "autocomplete": "off", "spellcheck": "false", "autofocus": true}})
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description", "", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Description, Placeholder: "e.g., Production SPA, Development environment", Rows: 2, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+	}
+}
+
+// corsDeleteDialogC is the removal confirmation: it names the origin and
+// warns that browsers keep allowing it until the cache expires.
+templ corsDeleteDialogC(id, origin string) {
+	@kit.Dialog(kit.DialogProps{
+		ID: corsDelDialog, Title: "Remove CORS Origin", Width: kit.WidthNarrow, Role: "alertdialog",
+		Attrs:  templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"},
+		Footer: corsDeleteFooter(id),
+	}) {
+		<form id={ corsDelDialog + "-form" } method="post" action={ corsDeleteURL(id) } class="flex flex-col gap-3" data-on:submit={ kit.SubmitConfirm }>
+			<p>Are you sure you want to remove this CORS origin?</p>
+			<code class="block rounded-md bg-muted px-3 py-2 font-mono text-sm wrap-anywhere">{ origin }</code>
+			@kit.Alert(kit.AlertProps{Icon: "triangle-alert", Title: "Cached for up to 5 minutes", Description: "Requests from this origin will be blocked by browsers after the cache expires (up to 5 minutes)."})
+		</form>
+	}
+}
+
+templ corsDeleteFooter(id string) {
+	<button type="button" class="fc-btn fc-btn-text" autofocus data-on:click={ kit.CloseDialog }>Cancel</button>
+	<button type="submit" form={ corsDelDialog + "-form" } class="fc-btn fc-btn-danger">Remove</button>
+}

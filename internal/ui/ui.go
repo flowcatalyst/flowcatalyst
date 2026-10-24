@@ -85,6 +85,14 @@ type Config struct {
 	PlatformConfig    pages.ConfigService
 	PlatformConfigOps pages.ConfigCommands
 
+	// The Theme and Names settings and a client's Login Branding read and write
+	// platform config through PlatformConfig and PlatformConfigOps (their
+	// client page reads ClientStore). Docs backs the Documentation pages;
+	// DebugEvents and DebugDispatchJobs the raw views.
+	Docs              pages.DocsSource
+	DebugEvents       pages.RawEventStore
+	DebugDispatchJobs pages.RawDispatchJobStore
+
 	// FunctionTrace and FunctionTraceOps back the trace switches and the trace
 	// log page of a function (/ui/functions/{id}/traces).
 	FunctionTrace    pages.TraceStore
@@ -151,6 +159,42 @@ type Config struct {
 	// client select reads ClientStore.
 	Portal    pages.PortalStore
 	PortalOps pages.PortalCommands
+
+	// OAuthClients and OAuthClientOps back the OAuth clients page; its pickers
+	// read ApplicationStore, ClientStore and Portal. ResetApprovals backs the
+	// password reset approvals page.
+	OAuthClients   pages.OAuthClientStore
+	OAuthClientOps pages.OAuthClientCommands
+	ResetApprovals pages.ResetApprovalService
+
+	// IdentityProviders and EmailDomains back the identity providers and email
+	// domain mappings pages; the role allow-list reads Roles above, the
+	// primary client select and names Clients and ClientStore.
+	IdentityProviders   pages.IdpStore
+	IdentityProviderOps pages.IdpCommands
+	EmailDomains        pages.EmailDomainStore
+	EmailDomainOps      pages.EmailDomainCommands
+
+	// The audit log and login attempts pages read their repositories; the audit
+	// log's filters and labels read Applications' store (ApplicationStore) and
+	// ClientStore, the login attempt drawer links through LoginPrincipals. The
+	// CORS origins page reads Cors and changes it through CorsOps.
+	Audit           pages.AuditStore
+	LoginAttempts   pages.LoginAttemptStore
+	LoginPrincipals pages.LoginPrincipals
+	Cors            pages.CorsStore
+	CorsOps         pages.CorsCommands
+
+	// SignInUpstream, when set, mounts the new sign-in pages under /ui/auth
+	// (docs/ui/README.md, "Sign-in pages"). It is the platform's router: each
+	// step of a sign-in is one in-process call to the public endpoint the
+	// current sign-in uses, so the rules are theirs. Nil leaves the pages out.
+	SignInUpstream http.Handler
+
+	// TwoFactor, when set, mounts the two-factor and passkey sign-in pages
+	// (/ui/auth/2fa, /ui/auth/passkey) and the signed-in security page
+	// (/ui/auth/security). Mount sets its Shell.
+	TwoFactor *pages.AuthMFA
 }
 
 // Mount registers /ui and everything under it on r.
@@ -164,6 +208,26 @@ func Mount(r chi.Router, cfg Config) error {
 		// Static, public, long-cached: no session needed (the future login
 		// page uses them too).
 		r.Handle("/assets/*", assets.Handler())
+
+		// The sign-in pages are what a caller without a session reaches: no
+		// session guard, but the same compression, headers and CSRF check.
+		if cfg.SignInUpstream != nil {
+			r.Group(func(r chi.Router) {
+				r.Use(compress.Handler, platformmw.CorrelationID, guard.SecurityHeaders, csrf, withSprite)
+				(&pages.SignIn{Upstream: cfg.SignInUpstream, Authenticate: cfg.Authenticate}).Mount(r)
+			})
+		}
+
+		// The two-factor and passkey pages are reached from the sign-in, so
+		// without a session either (the challenge is held by its own cookie).
+		if cfg.TwoFactor != nil {
+			cfg.TwoFactor.Shell = sh
+			r.Group(func(r chi.Router) {
+				r.Use(compress.Handler, platformmw.CorrelationID, guard.SecurityHeaders, csrf, withSprite)
+				cfg.TwoFactor.MountPublic(r)
+				(&pages.AuthPasskeys{}).Mount(r)
+			})
+		}
 
 		r.Group(func(r chi.Router) {
 			r.Use(
@@ -182,6 +246,9 @@ func Mount(r chi.Router, cfg Config) error {
 				http.Redirect(w, r, "/ui/dispatch-pools", http.StatusFound)
 			})
 			r.Post("/logout", signOut(cfg.CookieSecure))
+			if cfg.TwoFactor != nil {
+				cfg.TwoFactor.MountSession(r)
+			}
 			(&pages.DispatchPools{Pools: cfg.DispatchPools, Ops: cfg.DispatchPoolOps, Clients: cfg.Clients, Shell: sh}).Mount(r)
 			(&pages.Connections{Connections: cfg.Connections, Ops: cfg.ConnectionOps, Clients: cfg.Clients, ServiceAccounts: cfg.ServiceAccounts, Shell: sh}).Mount(r)
 			(&pages.EventTypes{Store: cfg.EventTypes, Ops: cfg.EventTypeOps, Apps: cfg.Applications, Shell: sh}).Mount(r)
@@ -193,12 +260,25 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.Events{Events: cfg.Events, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.Processes{Store: cfg.Processes, Ops: cfg.ProcessOps, Shell: sh}).Mount(r)
 			(&pages.PlatformConfig{Config: cfg.PlatformConfig, Ops: cfg.PlatformConfigOps, Apps: cfg.Applications, ClientIdentifier: cfg.ClientIdentifier, Shell: sh}).Mount(r)
+			(&pages.ThemeSettings{Config: cfg.PlatformConfig, Ops: cfg.PlatformConfigOps, Shell: sh}).Mount(r)
+			(&pages.ClientTheme{Clients: cfg.ClientStore, Config: cfg.PlatformConfig, Ops: cfg.PlatformConfigOps, Shell: sh}).Mount(r)
+			(&pages.NamesSettings{Config: cfg.PlatformConfig, Ops: cfg.PlatformConfigOps, Shell: sh}).Mount(r)
+			(&pages.Docs{Source: cfg.Docs, Shell: sh}).Mount(r)
+			(&pages.DebugEvents{Events: cfg.DebugEvents, Shell: sh}).Mount(r)
+			(&pages.DebugDispatchJobs{Jobs: cfg.DebugDispatchJobs, Shell: sh}).Mount(r)
 			// The functions area embeds the switches (trace.Switches) in its drawer.
 			trace := &pages.FunctionTrace{Store: cfg.FunctionTrace, Ops: cfg.FunctionTraceOps, Shell: sh}
 			trace.Mount(r)
 			(&pages.Functions{Functions: cfg.Functions, Ops: cfg.FunctionOps, Zones: cfg.FunctionZones, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Apps: cfg.ApplicationStore, ServiceAccounts: cfg.ServiceAccounts, Trace: trace, Shell: sh}).Mount(r)
 			(&pages.PortalApps{Store: cfg.Portal, Ops: cfg.PortalOps, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.PortalUsers{Store: cfg.Portal, Ops: cfg.PortalOps, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
+			(&pages.OAuthClients{Clients: cfg.OAuthClients, Ops: cfg.OAuthClientOps, Apps: cfg.ApplicationStore, ClientNames: cfg.ClientStore, Portal: cfg.Portal, Shell: sh}).Mount(r)
+			(&pages.ResetApprovals{Service: cfg.ResetApprovals, Shell: sh}).Mount(r)
+			(&pages.IdentityProviders{Store: cfg.IdentityProviders, Ops: cfg.IdentityProviderOps, Roles: cfg.Roles, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Shell: sh}).Mount(r)
+			(&pages.EmailDomains{Store: cfg.EmailDomains, Ops: cfg.EmailDomainOps, IdPs: cfg.IdentityProviders, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Shell: sh}).Mount(r)
+			(&pages.AuditLogPage{Store: cfg.Audit, Apps: cfg.ApplicationStore, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
+			(&pages.LoginAttempts{Store: cfg.LoginAttempts, Principals: cfg.LoginPrincipals, Shell: sh}).Mount(r)
+			(&pages.CorsOrigins{Store: cfg.Cors, Ops: cfg.CorsOps, Shell: sh}).Mount(r)
 			(&pages.RolesPage{Store: cfg.Roles, Ops: cfg.RoleOps, Permissions: cfg.Permissions, Apps: cfg.Applications, Shell: sh}).Mount(r)
 			(&pages.PermissionsPage{Catalogue: cfg.Permissions, Apps: cfg.Applications, Shell: sh}).Mount(r)
 			(&pages.ServiceAccounts{Accounts: cfg.ServiceAccountStore, Ops: cfg.ServiceAccountOps, Principals: cfg.ServicePrincipals, OAuthClients: cfg.ServiceOAuthClients, Roles: cfg.ServiceAccountRoles, Clients: cfg.ClientStore, Apps: cfg.ApplicationStore, Connections: cfg.Connections, ConnectionOps: cfg.ConnectionOps, Shell: sh}).Mount(r)

@@ -121,7 +121,7 @@ func TestClientsPage(t *testing.T) {
 	drawer := h.do(t, anchorAdmin(), req{target: "/ui/clients/clt_1", datastar: true})
 	mustContain(t, drawer, "Client Details", `<code id="cli-id-value">clt_1</code>`, "Available (1)", "Enabled (<span",
 		`name="applicationIds" value="app_1" checked`, `name="applicationIds" value="app_2"`, ">Inactive<",
-		`href="/clients/clt_1/theme"`, "Suspend Client", "Deactivate Client", `"selCli":"clt_1"`)
+		`href="/ui/clients/clt_1/theme"`, "Suspend Client", "Deactivate Client", `"selCli":"clt_1"`)
 	mustNotContain(t, drawer, "Activate Client")
 }
 

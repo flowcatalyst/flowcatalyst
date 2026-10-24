@@ -113,6 +113,18 @@ const (
 	flashPortalAppGranted      = "portal-app-granted"
 	flashPortalAccessRevoked   = "portal-access-revoked"
 
+	flashIdpCreated = "identity-provider-created"
+	flashIdpUpdated = "identity-provider-updated"
+	flashIdpDeleted = "identity-provider-deleted"
+
+	flashEdmCreated = "email-domain-created"
+	flashEdmUpdated = "email-domain-updated"
+	flashEdmMoved   = "email-domain-moved"
+	flashEdmDeleted = "email-domain-deleted"
+
+	flashCorsAdded   = "cors-origin-added"
+	flashCorsRemoved = "cors-origin-removed"
+
 	flashIngSetReapplied = "ingestion-set-reapplied"
 	flashIngSetReleased  = "ingestion-set-released"
 )
@@ -127,9 +139,23 @@ const (
 	flashIngDeleted      = "ingestion-deleted"
 )
 
+// The platform settings pages' keys (theme, client login branding, names).
+const (
+	flashThemeSaved       = "theme-saved"
+	flashThemeClientSaved = "client-theme-saved"
+	flashThemeClientReset = "client-theme-reset"
+	flashNameSaved        = "platform-name-saved"
+)
+
 // FlashMessages is the table the shell maps flash keys through
 // (shell.Shell.Flashes). A key not listed here is never rendered.
 var FlashMessages = map[string]kit.FlashMessageProps{
+	// The SPA's toasts of the theme, client branding and names pages.
+	flashThemeSaved:       success("Theme saved successfully"),
+	flashThemeClientSaved: success("Login branding saved"),
+	flashThemeClientReset: success("Login branding reset to the platform theme"),
+	flashNameSaved:        {Kind: kit.FlashSuccess, Summary: "Saved", Detail: "Platform name updated."},
+
 	// The Nuxt control plane's ingestion toasts name the code; a Datastar
 	// answer gets the same from the table, a flash key after a native post
 	// carries no request text.
@@ -263,6 +289,22 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashPortalUserDeleted:     success("Portal user deleted"),
 	flashPortalAppGranted:      success("Portal app access granted"),
 	flashPortalAccessRevoked:   success("Portal app access removed"),
+
+	// The SPA's identity provider and email domain toasts name the record; a
+	// Datastar answer does too, a flash key after a native post carries no
+	// request text.
+	flashIdpCreated: success("Identity provider created successfully"),
+	flashIdpUpdated: success("Identity provider updated successfully"),
+	flashIdpDeleted: success("Identity provider deleted"),
+	flashEdmCreated: success("Email domain mapping created successfully"),
+	flashEdmUpdated: success("Email domain mapping updated successfully"),
+	flashEdmMoved:   {Kind: kit.FlashSuccess, Summary: "Provider changed", Detail: "The domain now signs in through the new provider"},
+	flashEdmDeleted: success("Email domain mapping deleted"),
+
+	// The SPA's CORS toasts name the origin; a Datastar answer does too, a
+	// flash key after a native post carries no request text.
+	flashCorsAdded:   success("CORS origin added successfully"),
+	flashCorsRemoved: success("CORS origin removed"),
 
 	// The Datastar answers of the sets name the set and the apply; a flash key
 	// after a native post carries no request text.

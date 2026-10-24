@@ -538,17 +538,24 @@ func (s *State) deleteIdpRoleMapping(ctx context.Context, in *apicommon.IDInput)
 }
 
 // resolvePortalApp makes a linked portal app authoritative for the portal
+// owner (see ResolvePortalApp).
+func (s *State) resolvePortalApp(ctx context.Context, appID *string, portalClientID **string) error {
+	return ResolvePortalApp(ctx, s.PortalApps, appID, portalClientID)
+}
+
+// ResolvePortalApp makes a linked portal app authoritative for the portal
 // owner: portalAppId (when non-empty) must name an existing app, and
 // portalClientId becomes that app's client — a conflicting explicit
-// portalClientId is refused rather than silently overridden.
-func (s *State) resolvePortalApp(ctx context.Context, appID *string, portalClientID **string) error {
+// portalClientId is refused rather than silently overridden. The create and
+// update handlers and the server-rendered UI share it.
+func ResolvePortalApp(ctx context.Context, apps *portalidentity.AppRepository, appID *string, portalClientID **string) error {
 	if appID == nil || strings.TrimSpace(*appID) == "" {
 		return nil
 	}
-	if s.PortalApps == nil {
+	if apps == nil {
 		return usecase.Internal("PORTAL_APPS", "portal app repo not wired", nil)
 	}
-	app, err := s.PortalApps.FindByID(ctx, strings.TrimSpace(*appID))
+	app, err := apps.FindByID(ctx, strings.TrimSpace(*appID))
 	if err != nil {
 		return usecase.Internal("REPO", "find_portal_app failed", err)
 	}
