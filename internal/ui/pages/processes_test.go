@@ -167,20 +167,21 @@ func TestProcessDrawer(t *testing.T) {
 	h := newProcHarness()
 	cur := h.do(t, anchorAdmin(), req{target: "/ui/processes/prc_1", datastar: true})
 	mustContain(t, cur, `"selProc":"prc_1"`, "Ships &lt;orders&gt;", `href="/ui/processes/prc_1/edit"`, `data-action="/ui/processes/prc_1/archive"`,
-		"Diagram rendering is not in the new UI yet", `href="/processes/prc_1"`, `class="fc-code-block"`,
-		"B{&lt;script&gt;alert(1)&lt;/script&gt;}", `aria-label="Diagram source (mermaid)"`, ">fulfilment<")
-	mustNotContain(t, cur, "<script>alert", `/ui/processes/prc_1/delete`)
+		`<fc-diagram class="block" data-bundle="/ui/assets/mermaid.`, `class="fc-code-block mt-2"`,
+		"B{&lt;script&gt;alert(1)&lt;/script&gt;}", `role="img" aria-label="Diagram of `, ">fulfilment<")
+	mustNotContain(t, cur, "<script>alert", `/ui/processes/prc_1/delete`, "current UI")
 
 	arch := h.do(t, anchorAdmin(), req{target: "/ui/processes/prc_2", datastar: true})
 	mustContain(t, arch, `data-action="/ui/processes/prc_2/delete"`, "No diagram body yet.", ">ARCHIVED<")
 	mustNotContain(t, arch, "/ui/processes/prc_2/edit", "/ui/processes/prc_2/archive")
 
 	other := h.do(t, anchorAdmin(), req{target: "/ui/processes/prc_3", datastar: true})
-	mustContain(t, other, "diagram type is plantuml", "@startuml")
+	mustContain(t, other, "diagram type is plantuml", "@startuml", `aria-label="Diagram source (plantuml)"`)
+	mustNotContain(t, other, "<fc-diagram")
 
 	// Full page: the list with the drawer open.
 	page := h.do(t, anchorAdmin(), req{target: "/ui/processes/prc_1"})
-	mustContain(t, page, `{selProc: &#39;prc_1&#39;}`, "Shipment Flow", "Showing 1 to 3 of 3 processes")
+	mustContain(t, page, `{selProc: &#39;prc_1&#39;}`, "Shipment Flow", "Showing 1 to 3 of 3 processes", `src="/ui/assets/fc-diagram.`)
 	if rec := h.rec(t, anchorAdmin(), req{target: "/ui/processes/prc_404", datastar: true}); !strings.Contains(rec.Body.String(), "fc-flash-error") {
 		t.Errorf("missing process: %s", rec.Body.String())
 	}

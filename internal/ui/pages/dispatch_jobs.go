@@ -741,6 +741,14 @@ type djDetail struct {
 	Plan *djPlan
 }
 
+// editorLanguage is the payload editor's language: JSON for a JSON content type.
+func (d djDetail) editorLanguage() string {
+	if strings.Contains(strings.ToLower(d.ContentType), "json") {
+		return "json"
+	}
+	return ""
+}
+
 func (d djDetail) drawerProps() kit.DrawerProps {
 	return kit.DrawerProps{ID: djDrawerID, Signal: djDrawerSig, Label: "Dispatch job", Size: kit.DrawerTwoThirds, Title: d.Title, Subtitle: d.ID}
 }

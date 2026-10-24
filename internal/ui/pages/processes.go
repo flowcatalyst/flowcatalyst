@@ -77,9 +77,8 @@ func (o ProcessOps) Delete(ctx context.Context, id string) error {
 
 // Processes is the processes page (/ui/processes), mirroring the SPA's
 // ProcessListPage, ProcessDetailDrawer, ProcessCreatePage and
-// ProcessEditPage. The drawer shows the diagram's source: rendering Mermaid
-// is not in the new UI (owner ruling), so it links to the SPA for the
-// rendered diagram and its downloads.
+// ProcessEditPage. The drawer draws a Mermaid diagram in the browser
+// (kit.Diagram) with its source below; there are no SVG/PNG downloads.
 type Processes struct {
 	Store ProcessStore
 	Ops   ProcessCommands
@@ -325,7 +324,6 @@ type procDetail struct {
 	Tags                        []string
 	Archived                    bool
 	Body, DiagramType           string
-	SPAHref                     string
 	EditHref, ActionBase        string
 	Perms                       procPerms
 }
@@ -360,7 +358,7 @@ func procDetailOf(ac *auth.AuthContext, p *process.Process) procDetail {
 	return procDetail{
 		ID: p.ID, Code: p.Code, Name: p.Name, Description: deref(p.Description), Tags: p.Tags,
 		Archived: p.Status == process.StatusArchived, Body: p.Body, DiagramType: p.DiagramType,
-		SPAHref: "/processes/" + url.PathEscape(p.ID), EditHref: procURL(p.ID) + "/edit", ActionBase: procURL(p.ID),
+		EditHref: procURL(p.ID) + "/edit", ActionBase: procURL(p.ID),
 		Perms: procPermsFor(ac),
 	}
 }
@@ -489,10 +487,7 @@ func procConfirm(id, title, message, label string, tone kit.ConfirmTone) kit.Con
 	}
 }
 
-// procRenderNote says what the drawer shows instead of the diagram.
+// procRenderNote says why the drawer shows a diagram's source and not a drawing.
 func procRenderNote(d procDetail) string {
-	if !d.mermaid() {
-		return "This process's diagram type is " + d.DiagramType + ", which the current UI does not render either; its source is shown below."
-	}
-	return "The Mermaid source is shown below. The current UI renders the diagram and downloads it as SVG or PNG."
+	return "This process's diagram type is " + d.DiagramType + ", which is not drawn; its source is shown below."
 }

@@ -55,7 +55,7 @@ func TestProcessesPageAgainstPostgres(t *testing.T) {
 	assert.Contains(t, list, `<option value="orders">`, "the application's subdomains are the options")
 	drawer := do(req{target: base, datastar: true})
 	assert.Contains(t, drawer, "A --&gt; B")
-	assert.Contains(t, drawer, `href="/processes/`+p.ID+`"`)
+	assert.Contains(t, drawer, "<fc-diagram", "the diagram is drawn in the browser; the source stays in the page")
 
 	do(req{method: http.MethodPost, target: base + "/edit", datastar: true, multipart: true, form: url.Values{
 		"name": {"Shipment v2"}, "description": {""}, "tags": {""}, "body": {"graph LR\n  X --> Y"}, "drawer": {p.ID},

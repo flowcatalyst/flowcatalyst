@@ -13,7 +13,7 @@ state actions and delete behind confirmations; the app shell works at phone widt
 rendered by the server from a theme cookie. Phase 3 (core operations): `/ui/event-types` and
 `/ui/subscriptions`, `/ui/applications`, `/ui/clients`, `/ui/scheduled-jobs`, `/ui/dispatch-jobs`,
 `/ui/events` and `/ui/processes` at parity (sections below; Processes shows the diagram's source, not
-the rendered diagram, by owner ruling). Pages, Datastar streams and assets are compressed
+the rendered diagram until 2026-10-24; now drawn by the Mermaid island, see "Islands"). Pages, Datastar streams and assets are compressed
 ("Compression" below).
 
 ## Architecture
@@ -487,10 +487,10 @@ connections: the list (`?q&app&subdomain&status&page&rows`, the SPA's URL keys),
   none; the order is by code). A chosen application or subdomain that is not an option is dropped
   from the canonical URL.
 - Drawer: description, Edit and Archive for a CURRENT process, Delete for an ARCHIVED one (the SPA's
-  guards, which the use cases enforce since bug 23's fix), tags. **The diagram is shown as its source**
-  (kit code block, escaped) under a notice that rendering is not in the new UI yet, with a link to the
-  process in the current UI (`/processes/{id}`), which renders it and has the SVG/PNG downloads
-  (owner ruling: Mermaid is not vendored). A non-Mermaid diagram type is named in the notice.
+  guards, which the use cases enforce since bug 23's fix), tags. **The diagram is drawn by the Mermaid
+  island** (2026-10-24, owner ruling: vendor Mermaid; see "Islands"), with the source kept below it in a details block;
+  a non-Mermaid diagram type shows its source with a note. The SVG/PNG downloads are not in the new UI (the current UI
+  has them).
 - Create and edit are form dialogs with the SPA's fields: code (create only), name, description, tags
   (comma-separated: trimmed, blanks dropped; an emptied field clears them, as the SPA sends `[]`) and
   the Mermaid source (verbatim). The SPA's own check (code and name required) is a field error; the use
@@ -500,7 +500,7 @@ connections: the list (`?q&app&subdomain&status&page&rows`, the SPA's URL keys),
 Differences from the SPA: dialogs instead of full-page editors; **Archive asks for confirmation** (the
 SPA archives at once; owner ruling: archive and delete go through the shared confirmation); the row
 Edit is disabled with "Archived processes cannot be edited." for an archived process (the SPA's pencil
-opens its editor, bug 24); no rendered diagram, no SVG/PNG download (link to the current UI instead);
+opens its editor, bug 24); no SVG/PNG download (the diagram itself is drawn by the Mermaid island since 2026-10-24);
 the flash says "Process created" etc. without the code (flash keys carry no request text).
 
 ## Compression
@@ -604,6 +604,44 @@ tests green.
    client scoping); see `dispatch_pools_test.go`.
 5. `make ui-generate ui-kit-sync` (new Tailwind classes need the stylesheet rebuilt), then
    `make ui-verify lint test-unit`.
+
+## Islands (Mermaid and CodeMirror)
+
+Two parts need real client code and are web elements loaded by a script tag **only on the pages that use them**
+(owner ruling 2026-10-24; no Vite or Node in the product build). Both files are committed under
+`internal/ui/assets/static/`, served compressed like the other assets, with their licences.
+
+| Part | Files | Page loads |
+|---|---|---|
+| `kit.Diagram` (`<fc-diagram>`) | `fc-diagram.js` (ours, 1.9 kB) and `mermaid.min.js` (unmodified `dist/mermaid.min.js` of npm `mermaid@12.1.0`, sha256 `6484afc3...18b2`, `assets.MermaidSHA256`) | `<script type="module" src={ assets.URL("fc-diagram.js") }>`; the element fetches the Mermaid bundle itself, once, on the first diagram |
+| `kit.CodeEditor` (`<fc-code-editor>`) | `fc-code-editor.js` (CodeMirror 6 with JSON and YAML, built by `tools/vendor-codemirror`, `assets.CodeEditorSHA256`) | `<script defer src={ assets.URL("fc-code-editor.js") }>` |
+
+Both render the server's text as the fallback (a `<pre>` source, a `<textarea>`), so a page without script is
+usable. Used by the Processes drawer (diagram) and the dispatch job payload editor (JSON when the content type is).
+A page that patches such a part in (a drawer, a dialog) must carry the script in its page template, not in the
+patched fragment.
+
+Mermaid runs with `securityLevel: "strict"` and `suppressErrorRendering`; a source it rejects leaves the drawing
+hidden and the source open. **The CSP is unchanged**: the bundle is a same-origin script (`script-src 'self'`),
+Mermaid's inline `<style>` and `style=""` fit the existing `style-src 'unsafe-inline'`, and it does not use
+`eval` (`'unsafe-eval'` stays only for Datastar). Checked in headless Chrome under the exact policy.
+Transfer sizes (Brotli, best): `mermaid.min.js` 5.49 MB raw, 1.18 MB; `fc-code-editor.js` 340 kB, 97 kB;
+`fc-diagram.js` 1.8 kB, 0.7 kB. The first request in a coding compresses at the best level (about 6 s for
+Mermaid, once per process); later requests and revalidations are served from memory.
+
+`<fc-code-editor>` replaces its textarea with a hidden input of the same `name` (and `data-bind*` attributes) and
+the editor, and writes every change into the input with a bubbling `input` event, so forms, Datastar signals and
+dirty-form checks work. It does not follow later writes to the input.
+
+Upgrading Mermaid: `npm pack mermaid@X`, copy `package/dist/mermaid.min.js` and `package/LICENSE`, then change
+`assets.MermaidVersion`, `assets.MermaidSHA256` and this table together. Upgrading CodeMirror (run only then):
+
+```
+cd tools/vendor-codemirror && npm ci && npm run build   # after editing the exact versions in package.json
+```
+
+The build is reproducible; copy the printed `shasum -a 256` of `fc-code-editor.js` into `assets.CodeEditorSHA256`
+and commit the bundle with `LICENSE-codemirror.md` (regenerated by the script). `node_modules` is not committed.
 
 ## Refreshing the kit
 
@@ -981,6 +1019,5 @@ checkbox, two live links and the requeue button each carry Datastar attributes; 
   graph through the Datastar SDK; now a direct requirement) compresses pages and streams. Keep, or should
   streams be left to the SDK once it closes its encoder?
 - **Dispatch Jobs and Events sidebar entries** now link to their `/ui` pages in the `/ui` sidebar.
-- **Processes: ported with the diagram as source** (owner ruling 2026-10-10: no vendored Mermaid; a
-  link to the current UI for the rendered diagram). The sidebar entry links to `/ui/processes`. Open:
-  render the diagram later (vendored Mermaid island or a server-side renderer)?
+- **Processes: ported with the diagram as source** (owner ruling 2026-10-10: no vendored Mermaid). **Resolved
+  2026-10-24:** Mermaid is vendored and the diagram is drawn (see "Islands"). The sidebar entry links to `/ui/processes`.

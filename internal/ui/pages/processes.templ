@@ -1,6 +1,9 @@
 package pages
 
-import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+import (
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
 
 var procStatusOptions = []kit.Option{
 	{Value: "CURRENT", Label: "Current"},
@@ -83,8 +86,9 @@ templ procTagList(tags []string) {
 
 templ procsPage(v procsView) {
 	<div data-signals={ v.drawerSignals() }>
+		<script type="module" src={ assets.URL("fc-diagram.js") }></script>
 		@kit.PageHeader(kit.PageHeaderProps{Title: "Processes", Subtitle: "Workflow documentation — how events, dispatch jobs, and reactive aggregates compose into a business process.", Actions: procsActions(v)})
-		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Processes, with the rendered diagrams.", Class: "mb-4"})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Processes.", Class: "mb-4"})
 		<div class="fc-card-flush">
 			@kit.TableToolbar(v.toolbar())
 			@procsTable(v)
@@ -180,8 +184,8 @@ templ procDrawerContent(d procDetail) {
 	}
 }
 
-// procDrawerBody mirrors the SPA's ProcessDetailDrawer, with the diagram's
-// source in place of the rendered diagram (and its SVG/PNG downloads).
+// procDrawerBody mirrors the SPA's ProcessDetailDrawer, without the diagram's
+// SVG/PNG downloads.
 templ procDrawerBody(d procDetail) {
 	<div class="flex flex-col gap-4">
 		if d.Description != "" {
@@ -209,18 +213,17 @@ templ procDrawerBody(d procDetail) {
 		if len(d.Tags) > 0 {
 			@procTagList(d.Tags)
 		}
-		@kit.Alert(kit.AlertProps{Icon: "info", Title: "Diagram rendering is not in the new UI yet", Description: procRenderNote(d)}) {
-			<a href={ d.SPAHref } class="col-start-2 mt-1 inline-flex w-fit items-center gap-1 text-sm text-primary">
-				@kit.Icon(kit.IconProps{Name: "external-link", Class: "size-[1rem]"})
-				Open in the current UI
-			</a>
-		}
 		if d.Body == "" {
 			<div class="fc-empty">
 				@kit.Icon(kit.IconProps{Name: "network", Class: "size-8"})
 				<p>No diagram body yet. Edit this process to add Mermaid source.</p>
 			</div>
+		} else if d.mermaid() {
+			@kit.Diagram(kit.DiagramProps{Label: "Diagram of " + d.Name, Bundle: assets.URL("mermaid.min.js")}) {
+				{ d.Body }
+			}
 		} else {
+			@kit.Alert(kit.AlertProps{Icon: "info", Title: "Diagram is shown as source", Description: procRenderNote(d)})
 			@kit.CodeBlock(kit.CodeBlockProps{ID: "proc-source", Label: "Diagram source (" + d.DiagramType + ")"}) {
 				{ d.Body }
 			}

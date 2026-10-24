@@ -131,6 +131,8 @@ var renderers = map[string]renderer{
 	"autocomplete-options": simple(AutocompleteOptions),
 	"code-chips":           simple(CodeChips),
 	"code-block":           simple(CodeBlock),
+	"code-editor":          simple(CodeEditor),
+	"diagram":              simple(Diagram),
 	"paginator":            simple(Paginator),
 	"multi-select":         simple(MultiSelect),
 	"toggle-group":         simple(ToggleGroup),
@@ -145,6 +147,18 @@ var renderers = map[string]renderer{
 		}
 		return Tabs(p), err
 	},
+	"tab-list": func(f *fixture) (templ.Component, error) {
+		p, err := decode[TabListProps](f)
+		p.Panels = map[string]templ.Component{}
+		for _, t := range p.Tabs {
+			p.Panels[t.Value] = f.slot(t.Value)
+		}
+		return TabList(p), err
+	},
+	"password-input":           simple(PasswordInput),
+	"secret-ref-input":         simple(SecretRefInput),
+	"permission-denied-dialog": simple(PermissionDeniedDialog),
+	"markdown":                 simple(Markdown),
 	"form-section": func(f *fixture) (templ.Component, error) {
 		p, err := decode[FormSectionProps](f)
 		p.Actions = f.slot("actions")

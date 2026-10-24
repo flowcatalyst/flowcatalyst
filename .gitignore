@@ -68,3 +68,4 @@ frontend/*.tsbuildinfo
 
 # Pinned dev tools built by `make tools`
 /.tools/
+tools/vendor-codemirror/node_modules/

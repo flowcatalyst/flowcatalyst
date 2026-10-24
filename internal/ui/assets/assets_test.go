@@ -30,6 +30,21 @@ func TestDatastarIsThePinnedFile(t *testing.T) {
 	}
 }
 
+// The vendored Mermaid bundle must be exactly the pinned npm file, and the
+// CodeMirror bundle exactly the recorded build.
+func TestIslandBundlesArePinned(t *testing.T) {
+	for name, want := range map[string]string{"mermaid.min.js": MermaidSHA256, "fc-code-editor.js": CodeEditorSHA256} {
+		f := byName[name]
+		if f == nil {
+			t.Fatalf("%s not embedded", name)
+		}
+		sum := sha256.Sum256(f.body)
+		if got := hex.EncodeToString(sum[:]); got != want {
+			t.Errorf("%s sha256 = %s, want %s (see docs/ui/README.md, Islands)", name, got, want)
+		}
+	}
+}
+
 // The embedded sprite must be the one the last kit sync copied: its sha256 is
 // recorded in KIT_SOURCE by scripts/ui-kit-sync.sh, so a hand-edited sprite
 // (or a sync that was not committed together with KIT_SOURCE) fails.
@@ -98,7 +113,7 @@ func TestEveryIconUsedIsInTheSprite(t *testing.T) {
 }
 
 func TestRequiredAssetsAndNotices(t *testing.T) {
-	for _, name := range []string{"kit.css", "lucide-sprite.svg", "datastar.js", "LICENSE-datastar.md", "LICENSE-lucide.txt", "KIT-THIRD-PARTY-NOTICES.md"} {
+	for _, name := range []string{"kit.css", "lucide-sprite.svg", "datastar.js", "LICENSE-datastar.md", "LICENSE-lucide.txt", "mermaid.min.js", "fc-diagram.js", "fc-code-editor.js", "LICENSE-mermaid.md", "LICENSE-codemirror.md", "KIT-THIRD-PARTY-NOTICES.md"} {
 		if byName[name] == nil {
 			t.Errorf("%s is not embedded", name)
 		}

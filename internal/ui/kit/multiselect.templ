@@ -22,6 +22,8 @@ type MultiSelectProps struct {
 	// with {0} replaced by the count (default "{0} selected").
 	MaxLabels int    `json:"maxLabels"`
 	ManyLabel string `json:"manyLabel"`
+	// Chips lists the chosen options as removable chips under the trigger.
+	Chips bool `json:"chips"`
 	// Search adds a search box bound to Signal.
 	Search    bool   `json:"search"`
 	Signal    string `json:"signal"`
@@ -73,13 +75,35 @@ func (p MultiSelectProps) maxLabels() int {
 	return p.MaxLabels
 }
 
+// chipsExpr rebuilds the chips from the checked options after any change
+// (text through textContent, never markup).
+const chipsExpr = "; const ch = el.closest('.fc-form-field').querySelector('.fc-multiselect-chips'); ch.replaceChildren(...[...el.querySelectorAll('.fc-multiselect-option input:checked')].map(i => { const s = document.createElement('span'); s.className = 'fc-multiselect-chip'; s.dataset.value = i.value; const t = document.createElement('span'); t.textContent = i.nextElementSibling.textContent; const b = document.createElement('button'); b.type = 'button'; b.className = 'fc-multiselect-chip-remove'; b.setAttribute('aria-label', 'Remove ' + t.textContent); b.textContent = '\u00d7'; s.append(t, b); return s }))"
+
+// removeChipExpr unchecks the option behind the clicked chip's button and
+// lets the disclosure's change handler refresh the summary and the chips.
+const removeChipExpr = "const b = evt.target.closest('button'); if (b) { const d = el.closest('.fc-form-field').querySelector('details'); const i = [...d.querySelectorAll('input')].find(i => i.value === b.parentElement.dataset.value); i.checked = false; i.dispatchEvent(new Event('change', {bubbles: true})) }"
+
 func (p MultiSelectProps) detailsAttrs() templ.Attributes {
+	change := summaryExpr
+	if p.Chips {
+		change += chipsExpr
+	}
 	return templ.Attributes{
 		"data-placeholder": p.Placeholder,
 		"data-max-labels":  strconv.Itoa(p.maxLabels()),
 		"data-many-label":  orDefault(p.ManyLabel, "{0} selected"),
-		"data-on:change":   summaryExpr,
+		"data-on:change":   change,
 	}
+}
+
+func (p MultiSelectProps) selectedOptions() []Option {
+	var out []Option
+	for _, o := range p.Options {
+		if p.checked(o.Value) {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 func (p MultiSelectProps) filterExpr() string {
@@ -120,6 +144,13 @@ templ MultiSelect(p MultiSelectProps) {
 				</div>
 			}
 		</details>
+		if p.Chips {
+			<div id={ p.ID + "-chips" } class="fc-multiselect-chips" data-on:click={ removeChipExpr }>
+				for _, o := range p.selectedOptions() {
+					<span class="fc-multiselect-chip" data-value={ o.Value }><span>{ o.Label }</span><button type="button" class="fc-multiselect-chip-remove" aria-label={ "Remove " + o.Label }>&times;</button></span>
+				}
+			</div>
+		}
 	</div>
 }
 

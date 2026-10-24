@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
 )
 
@@ -106,6 +107,7 @@ func (v djView) empty() *kit.EmptyStateProps {
 
 templ djPage(v djView) {
 	<div data-signals={ v.signals() }>
+		<script defer src={ assets.URL("fc-code-editor.js") }></script>
 		@kit.PageHeader(kit.PageHeaderProps{Title: "Dispatch Jobs", Subtitle: "Monitor webhook dispatch jobs and delivery status"})
 		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Dispatch Jobs.", Class: "mb-4"})
 		<div class="fc-card-flush">
@@ -504,7 +506,7 @@ templ djDrawerBody(d djDetail) {
 								<label class="fc-field-label" for="dj-edit-ct">Content type</label>
 								@kit.Input(kit.InputProps{ID: "dj-edit-ct", Name: "contentType", Value: d.ContentType, Class: "font-mono", Attrs: templ.Attributes{"maxlength": "100", "autocomplete": "off"}})
 								<label class="fc-field-label" for="dj-edit-payload">Payload</label>
-								@kit.Textarea(kit.TextareaProps{ID: "dj-edit-payload", Name: "payload", Value: d.EditText, Rows: 14, Required: true, Class: "font-mono", Attrs: templ.Attributes{"spellcheck": "false"}})
+								@kit.CodeEditor(kit.CodeEditorProps{ID: "dj-edit-payload", Name: "payload", Value: d.EditText, Language: d.editorLanguage(), Label: "Payload", Rows: 14})
 								<p class="text-sm text-muted-foreground">Saving does not retry the job — its status and attempts stay as they are. Use Requeue afterwards to deliver it with the new payload. Up to 256 KiB; JSON content types must be valid JSON.</p>
 								<div>
 									@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: kit.LegacySecondary, Icon: "save"}) {

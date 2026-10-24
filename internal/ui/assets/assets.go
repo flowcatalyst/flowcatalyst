@@ -15,6 +15,10 @@
 // page group, so the page compression (internal/ui/compress) never sees
 // them.
 //
+// Two islands are loaded only by the pages that need them: fc-diagram.js (the
+// <fc-diagram> element, which fetches mermaid.min.js on its first diagram) and
+// fc-code-editor.js (the <fc-code-editor> element, CodeMirror 6).
+//
 // Provenance (kit commit, Tailwind version, Datastar version and hash) is in
 // KIT_SOURCE next to this file; the refresh procedure is in docs/ui/README.md.
 package assets
@@ -46,6 +50,19 @@ const DatastarVersion = "1.0.4"
 // https://cdn.jsdelivr.net/gh/starfederation/datastar@1.0.4/bundles/datastar.js
 // (the URL the kit gallery loads). A test fails if the embedded file differs.
 const DatastarSHA256 = "727844adfc825ee651fb93c544a2a739986f9a21820a94524b35f0cac470cf91"
+
+// MermaidVersion is the vendored Mermaid release: dist/mermaid.min.js of the
+// npm package mermaid@MermaidVersion, unmodified.
+const MermaidVersion = "12.1.0"
+
+// MermaidSHA256 is the sha256 of static/mermaid.min.js (npm tarball integrity
+// sha512-wlVCp+8eTupfC...cVsz/xzzA80LQ==). A test fails if the embedded file differs.
+const MermaidSHA256 = "6484afc32872a3aa16cac9a76ba1816a1ed4cc870a6593cc2e17757750f518b2"
+
+// CodeEditorSHA256 is the sha256 of static/fc-code-editor.js as built by
+// tools/vendor-codemirror (the build is reproducible for the pinned
+// versions). A test fails on a hand edit or an unrecorded rebuild.
+const CodeEditorSHA256 = "74b59f1db8170b490d4a76140dd2c8318d62581bb95362c1563da295f99ca49f"
 
 //go:embed static
 var embedded embed.FS
