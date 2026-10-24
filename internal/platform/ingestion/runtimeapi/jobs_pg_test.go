@@ -65,6 +65,7 @@ func (tg targets) target(extra string) string {
 func (tg targets) viaConnection() string {
 	return tg.target(fmt.Sprintf(`,"connection":%q`, tg.connection.Code))
 }
+
 func (tg targets) viaAccount() string {
 	return tg.target(fmt.Sprintf(`,"serviceAccount":%q`, tg.account.Code))
 }
@@ -228,7 +229,8 @@ func TestJobs_ExternalIDIsIdempotent(t *testing.T) {
 	ids := []any{first.list("results")[0]["id"], first.list("results")[1]["id"]}
 
 	again := e.do(http.MethodPost, jobsPath(i.ID, rt), map[string]any{"records": []map[string]any{
-		{"payload": "2", "externalId": "k2"}, {"payload": "3", "externalId": "k3"}, {"payload": "4"}, {"payload": "3 again", "externalId": "k3"}}})
+		{"payload": "2", "externalId": "k2"}, {"payload": "3", "externalId": "k3"}, {"payload": "4"}, {"payload": "3 again", "externalId": "k3"},
+	}})
 	require.Equal(t, http.StatusOK, again.code, again.raw)
 	assert.EqualValues(t, 2, again.json["created"], "k3 once and the record with no key")
 	results := again.list("results")
