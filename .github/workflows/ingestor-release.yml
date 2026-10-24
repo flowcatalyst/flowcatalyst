@@ -1,0 +1,108 @@
+name: Release ingestor
+
+# DRAFT, OFF. Fires on `ingestor/v*` (cut via `make release-ingestor BUMP=…`), but
+# every job is guarded by the repository variable INGESTOR_RELEASE == 'true'.
+# Until the owner sets it, a tag push runs nothing.
+#
+# When on: builds the fat jar (ingestor-runtime-X.Y.Z-all.jar) and publishes a GitHub
+# Release on this repository with the jar and a SHA256 sidecar (fcdev downloads the
+# jar from there to run an ingestor locally), then builds the container image from
+# ingestor/Dockerfile and pushes it to ghcr.io/flowcatalyst/ingestor:X.Y.Z and :latest.
+#
+# The owner must first set: the variable INGESTOR_RELEASE, the secret
+# FRAMEWORK_PACKAGES_TOKEN (read:packages on flowcatalyst/framework, the framework is
+# resolved from GitHub Packages), and allow this repository to write packages to
+# ghcr.io/flowcatalyst/ingestor. The release itself needs only GITHUB_TOKEN.
+
+on:
+  push:
+    tags:
+      - 'ingestor/v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)build, e.g. ingestor/v0.1.0'
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    if: vars.INGESTOR_RELEASE == 'true'
+    name: Build + publish ingestor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag + version
+        id: meta
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [[ ! "$TAG" =~ ^ingestor/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag '$TAG' does not match ingestor/vX.Y.Z[-suffix]" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#ingestor/v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: ingestor/pom.xml
+          server-id: github-framework
+          server-username: GITHUB_ACTOR
+          server-password: FRAMEWORK_PACKAGES_TOKEN
+
+      - name: Build and test
+        working-directory: ingestor
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          FRAMEWORK_PACKAGES_TOKEN: ${{ secrets.FRAMEWORK_PACKAGES_TOKEN }}
+        run: ./mvnw -B -Drevision=${{ steps.meta.outputs.version }} verify
+
+      - name: Collect the jar and its checksum
+        id: jar
+        run: |
+          mkdir -p dist
+          cp ingestor/ingestor-runtime/target/ingestor-runtime-${{ steps.meta.outputs.version }}-all.jar dist/
+          # The example extension, for trying the extensions directory.
+          cp ingestor/ingestor-extensions/generator/target/ingestor-extension-generator-${{ steps.meta.outputs.version }}.jar dist/
+          (cd dist && for f in *.jar; do sha256sum "$f" > "$f.sha256"; done)
+          ls -l dist
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          NOTES="Ingestor runtime v${VERSION}. Run: \`java -jar ingestor-runtime-${VERSION}-all.jar\` (see ingestor/README.md). Verify: \`sha256sum -c ingestor-runtime-${VERSION}-all.jar.sha256\`."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "ingestor v${VERSION}" --notes "$NOTES"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the image
+        uses: docker/build-push-action@v6
+        with:
+          context: ingestor
+          file: ingestor/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/flowcatalyst/ingestor:${{ steps.meta.outputs.version }}
+            ghcr.io/flowcatalyst/ingestor:latest

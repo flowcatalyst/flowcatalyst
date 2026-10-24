@@ -1,0 +1,26 @@
+# Every value can be overridden by the environment variable named after its path, for example
+# INGEST_EXTENSIONS_DIR or FLOWCATALYST_BASE_URL (see README.md). The runtime's service-account secret
+# (FLOWCATALYST_CLIENT_SECRET) goes in config/secrets.local.yaml, which is never committed, or in the
+# environment.
+
+http:
+  port: 8091
+
+ingest:
+  # runtime-id: defaults to runtime-<hostname>
+  poll-interval: 1m
+  # extensions-dir: /opt/ingestor/extensions
+  camel-routes-enabled: false
+  # Only for a local stand-in for AWS, or an S3-compatible store. Leave unset for AWS itself.
+  # aws:
+  #   endpoint: http://localhost:4566
+
+# The platform, and the runtime's service account on it (FLOWCATALYST_CLIENT_ID and
+# FLOWCATALYST_CLIENT_SECRET), which holds the role platform:ingestion-runtime.
+flowcatalyst:
+  base-url: http://localhost:8080
+  # Names the account's application to the client library; the runtime API does not use it.
+  application: ingestor
+  # The runtime creates dispatch jobs and receives none.
+  receivers:
+    enabled: false

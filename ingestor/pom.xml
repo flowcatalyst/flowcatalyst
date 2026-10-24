@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!--
+    The ingestor: the runtime that reads sources (HTTP push, SFTP, S3, SQS, RabbitMQ, a polled table or
+    API, a Camel route, or a kind an extension adds) and turns what it reads into dispatch jobs on a
+    FlowCatalyst platform. It talks to the platform's ingestion runtime API (/api/ingestion-runtime/v1).
+    Released as a fat jar and an image; extensions are jars in INGEST_EXTENSIONS_DIR. See README.md.
+
+    The version is ${revision} so that every module carries it; scripts/release.sh rewrites the property.
+  -->
+  <groupId>io.flowcatalyst.ingestor</groupId>
+  <artifactId>ingestor-parent</artifactId>
+  <version>${revision}</version>
+  <packaging>pom</packaging>
+  <name>ingestor-parent</name>
+
+  <modules>
+    <module>ingestor-contract</module>
+    <module>ingestor-extension</module>
+    <module>ingestor-extensions/generator</module>
+    <module>ingestor-runtime</module>
+  </modules>
+
+  <properties>
+    <revision>0.1.0</revision>
+    <!-- The extension API's major version (ExtensionApi.MAJOR); an extension jar declares it in its manifest. -->
+    <ingestor.extension-api>1</ingestor.extension-api>
+    <maven.compiler.release>25</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+    <!--
+      Published to GitHub Packages (https://maven.pkg.github.com/flowcatalyst/framework, a token
+      with read:packages), or built at its tag into the local repository. Its BOM also fixes the AWS
+      SDK at the version Camel's aws2 components are built against.
+    -->
+    <flowcatalyst-framework.version>0.1.2</flowcatalyst-framework.version>
+    <camel.version>4.22.1</camel.version>
+    <amqp-client.version>5.37.0</amqp-client.version>
+
+    <!-- build -->
+    <errorprone.version>2.50.0</errorprone.version>
+    <nullaway.version>0.14.2</nullaway.version>
+    <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
+    <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
+    <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
+    <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
+    <maven-install-plugin.version>3.1.4</maven-install-plugin.version>
+    <maven-shade-plugin.version>3.6.0</maven-shade-plugin.version>
+  </properties>
+
+  <!--
+    The framework, until it is on Maven Central: GitHub Packages needs a token with read:packages as the
+    server github-framework in settings.xml (the workflows write one). A machine that has built the
+    framework into its local repository, or builds offline (mvn -o), never asks.
+  -->
+  <repositories>
+    <repository>
+      <id>github-framework</id>
+      <url>https://maven.pkg.github.com/flowcatalyst/framework</url>
+    </repository>
+  </repositories>
+
+  <dependencyManagement>
+    <dependencies>
+      <!--
+        Manages the framework modules and the libraries they are built against (Jackson, Jetty,
+        SLF4J, JUnit, AssertJ, Testcontainers).
+      -->
+      <dependency>
+        <groupId>io.flowcatalyst.framework</groupId>
+        <artifactId>framework-bom</artifactId>
+        <version>${flowcatalyst-framework.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.camel</groupId>
+        <artifactId>camel-bom</artifactId>
+        <version>${camel.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>com.rabbitmq</groupId>
+        <artifactId>amqp-client</artifactId>
+        <version>${amqp-client.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>io.flowcatalyst.ingestor</groupId>
+        <artifactId>ingestor-contract</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flowcatalyst.ingestor</groupId>
+        <artifactId>ingestor-extension</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flowcatalyst.ingestor</groupId>
+        <artifactId>ingestor-extension-generator</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <!-- Every module: nullness annotations, the logging API, and the test stack. -->
+  <dependencies>
+    <dependency>
+      <groupId>org.jspecify</groupId>
+      <artifactId>jspecify</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>${maven-resources-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${maven-surefire-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>${maven-jar-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-install-plugin</artifactId>
+          <version>${maven-install-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-shade-plugin</artifactId>
+          <version>${maven-shade-plugin.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+    <plugins>
+      <!-- The framework's compiler settings: Error Prone, with NullAway as an error on main code. -->
+      <plugin>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${maven-compiler-plugin.version}</version>
+        <configuration>
+          <release>${maven.compiler.release}</release>
+          <showWarnings>true</showWarnings>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>com.google.errorprone</groupId>
+              <artifactId>error_prone_core</artifactId>
+              <version>${errorprone.version}</version>
+            </path>
+            <path>
+              <groupId>com.uber.nullaway</groupId>
+              <artifactId>nullaway</artifactId>
+              <version>${nullaway.version}</version>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
+        <executions>
+          <execution>
+            <id>default-compile</id>
+            <configuration>
+              <compilerArgs>
+                <arg>-XDcompilePolicy=simple</arg>
+                <arg>--should-stop=ifError=FLOW</arg>
+                <arg>-Xlint:all,-processing</arg>
+                <arg>-Xplugin:ErrorProne -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=io.flowcatalyst.ingestor -XepOpt:NullAway:JSpecifyMode=true</arg>
+              </compilerArgs>
+            </configuration>
+          </execution>
+          <execution>
+            <id>default-testCompile</id>
+            <configuration>
+              <compilerArgs>
+                <arg>-XDcompilePolicy=simple</arg>
+                <arg>--should-stop=ifError=FLOW</arg>
+                <arg>-Xlint:all,-processing</arg>
+                <arg>-Xplugin:ErrorProne -Xep:NullAway:OFF</arg>
+              </compilerArgs>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

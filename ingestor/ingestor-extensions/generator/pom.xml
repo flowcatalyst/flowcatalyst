@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.flowcatalyst.ingestor</groupId>
+    <artifactId>ingestor-parent</artifactId>
+    <version>${revision}</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+  <artifactId>ingestor-extension-generator</artifactId>
+  <name>ingestor-extension-generator</name>
+  <description>An ingestor extension that makes up records on a schedule: the worked example, and for samples, demos and load tests.</description>
+
+  <dependencies>
+    <!-- The kind (ExtensionKind). -->
+    <dependency>
+      <groupId>io.flowcatalyst.ingestor</groupId>
+      <artifactId>ingestor-contract</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <!-- The runtime's part. Provided by the runtime, which loads this jar from INGEST_EXTENSIONS_DIR. -->
+    <dependency>
+      <groupId>io.flowcatalyst.ingestor</groupId>
+      <artifactId>ingestor-extension</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-core-engine</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <!-- The extension API this jar was built against; the runtime refuses a jar of another major version. -->
+              <Ingestor-Extension-Api>${ingestor.extension-api}</Ingestor-Extension-Api>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

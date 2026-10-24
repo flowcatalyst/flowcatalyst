@@ -1,0 +1,9 @@
+# Read on top of application.yaml while APP_ENV is local (the default): run IngestRuntime with this
+# module's directory as the working directory. Only local stand-ins here. The service account is a
+# real secret and goes in secrets.local.yaml.
+
+ingest:
+  advertised-url: http://localhost:8091
+  # SQS and S3 locally: a LocalStack.
+  aws:
+    endpoint: http://localhost:4566

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.flowcatalyst.ingestor</groupId>
+    <artifactId>ingestor-parent</artifactId>
+    <version>${revision}</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+  <artifactId>ingestor-extension</artifactId>
+  <name>ingestor-extension</name>
+  <description>What an extension implements to add a kind of source to the ingestor runtime: its endpoint, a polled-source base, and what the runtime gives it.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.flowcatalyst.ingestor</groupId>
+      <artifactId>ingestor-contract</artifactId>
+    </dependency>
+    <!-- An extension builds a Camel endpoint; camel-support has the base classes for one. -->
+    <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-support</artifactId>
+    </dependency>
+    <!-- The runtime's HTTP clients (ServiceClients), which an extension registers its own with, and
+         the client's failures, which tell a refused login (PolledSource). -->
+    <dependency>
+      <groupId>io.flowcatalyst.framework</groupId>
+      <artifactId>framework-httpclient-module</artifactId>
+    </dependency>
+    <!-- Secret: a resolved secret, which never prints its value. -->
+    <dependency>
+      <groupId>io.flowcatalyst.framework</groupId>
+      <artifactId>framework-core</artifactId>
+    </dependency>
+  </dependencies>
+</project>

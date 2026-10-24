@@ -1,0 +1,111 @@
+name: Split ingestor
+
+# READY BUT OFF. Fires on `ingestor/v*` (cut via `make release-ingestor
+# BUMP=…`), but every job is guarded by the repository variable
+# SPLIT_INGESTOR == 'true' (Settings > Secrets and variables > Actions >
+# Variables). Until the owner sets it, a tag push runs nothing.
+#
+# When on: build and test ingestor/ (JDK 25, the framework from GitHub
+# Packages), split it out with splitsh-lite, force-push it to the standalone
+# flowcatalyst/ingestor repo (token: secret INGESTOR_TOKEN, a deploy key or
+# fine-grained token with contents:write on that repo) and re-tag plain
+# vX.Y.Z there.
+#
+# The owner must first create: the repository flowcatalyst/ingestor (empty),
+# the secret INGESTOR_TOKEN, the secret FRAMEWORK_PACKAGES_TOKEN (read:packages
+# on flowcatalyst/framework), and the variable SPLIT_INGESTOR.
+# The jar and image are built by ingestor-release.yml, not here.
+
+on:
+  push:
+    tags:
+      - 'ingestor/v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create on target repo (e.g., v0.1.0). Leave empty to just sync main.'
+        required: false
+
+concurrency:
+  group: split-ingestor
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  split:
+    if: vars.SPLIT_INGESTOR == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: ingestor/pom.xml
+          server-id: github-framework
+          server-username: GITHUB_ACTOR
+          server-password: FRAMEWORK_PACKAGES_TOKEN
+
+      - name: Resolve version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          # ingestor/v0.1.0 -> v0.1.0
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            VERSION="${REF_NAME#ingestor/}"
+          else
+            VERSION="$INPUT_TAG"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Check tag matches ingestor/VERSION and the pom
+        if: env.VERSION != ''
+        run: |
+          FILE=$(tr -d '[:space:]' < ingestor/VERSION)
+          POM=$(sed -n 's|.*<revision>\([^<]*\)</revision>.*|\1|p' ingestor/pom.xml | head -1)
+          if [[ "v$FILE" != "$VERSION" || "$POM" != "$FILE" ]]; then
+            echo "::error::tag $VERSION, ingestor/VERSION $FILE and the pom <revision> $POM must agree"
+            exit 1
+          fi
+
+      - name: Build and test
+        working-directory: ingestor
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          FRAMEWORK_PACKAGES_TOKEN: ${{ secrets.FRAMEWORK_PACKAGES_TOKEN }}
+        run: ./mvnw -B verify
+
+      - name: Install splitsh-lite
+        run: |
+          curl -L https://github.com/splitsh/lite/releases/download/v1.0.1/lite_linux_amd64.tar.gz | tar xz
+          chmod +x splitsh-lite
+          sudo mv splitsh-lite /usr/local/bin/
+
+      - name: Split and push
+        env:
+          TARGET_REPO: https://x-access-token:${{ secrets.INGESTOR_TOKEN }}@github.com/flowcatalyst/ingestor.git
+        run: |
+          # Split the subtree (preserves per-file commit history)
+          SHA=$(splitsh-lite --prefix=ingestor)
+          echo "Split SHA: $SHA"
+
+          git remote add split "$TARGET_REPO" || git remote set-url split "$TARGET_REPO"
+          git push split "$SHA:refs/heads/main" --force
+
+          if [[ -n "$VERSION" ]]; then
+            git push split "$SHA:refs/tags/$VERSION" --force
+            echo "Tagged and pushed: $VERSION"
+          fi
+
+          echo "Successfully pushed to flowcatalyst/ingestor"

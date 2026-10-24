@@ -3,7 +3,7 @@
 #
 # Usage: scripts/release.sh <kind> <bump>
 #   <kind>  release line: dev (the fcdev developer binary), ts, laravel, java,
-#           go-sdk, fn-ts, fn-rust, fn-go
+#           go-sdk, fn-ts, fn-rust, fn-go, ingestor (the Camel ingest runtime)
 #   <bump>  patch | minor | major | X.Y.Z[-suffix]
 #
 # The version source of truth is a per-line VERSION file, seeded from the Rust
@@ -18,7 +18,7 @@ kind="${1:-}"
 bump="${2:-}"
 
 usage() {
-	echo "usage: scripts/release.sh <dev|ts|laravel|java|go-sdk|fn-ts|fn-rust|fn-go> <patch|minor|major|X.Y.Z[-suffix]>" >&2
+	echo "usage: scripts/release.sh <dev|ts|laravel|java|go-sdk|fn-ts|fn-rust|fn-go|ingestor> <patch|minor|major|X.Y.Z[-suffix]>" >&2
 	exit 2
 }
 [ -n "$kind" ] && [ -n "$bump" ] || usage
@@ -35,10 +35,14 @@ usage() {
 # (pkg/fcsdk/vX.Y.Z, clients/fn-go/vX.Y.Z); go_module names the module path
 # its go.mod must declare (guarded below).
 #
+# The ingestor adds manifest_revision: the <revision> property of its parent
+# pom.xml, which every Maven module's version reads.
+#
 # RELEASE_DRY_RUN=1 runs every check and shows the bump diff, then reverts and
 # exits without committing, tagging or pushing.
 manifest=""
 manifest_pom=""
+manifest_revision=""
 manifest_toml=""
 lock_npm=""
 lock_cargo=""
@@ -55,6 +59,7 @@ case "$kind" in
 	fn-ts)   prefix="fn-ts-sdk";      version_file="clients/fn-ts/VERSION";         label="fn-ts-sdk"; manifest="clients/fn-ts/package.json"; lock_npm="clients/fn-ts/package-lock.json"; workflow="split-fn-ts-sdk.yml" ;;
 	fn-rust) prefix="fn-rust-sdk";    version_file="clients/fn-rust/VERSION";       label="fn-rust-sdk"; manifest_toml="clients/fn-rust/Cargo.toml"; lock_cargo="clients/fn-rust/Cargo.lock"; lock_cargo_crate="flowcatalyst-fn"; workflow="split-fn-rust-sdk.yml" ;;
 	fn-go)   prefix="clients/fn-go";  version_file="clients/fn-go/VERSION";         label="fn-go-sdk"; go_module="github.com/flowcatalyst/flowcatalyst/clients/fn-go"; go_mod_file="clients/fn-go/go.mod" ;;
+	ingestor) prefix="ingestor";      version_file="ingestor/VERSION";              label="ingestor"; manifest_revision="ingestor/pom.xml"; workflow="split-ingestor.yml" ;;
 	*)       echo "✗ unknown release kind: $kind" >&2; usage ;;
 esac
 
@@ -181,6 +186,22 @@ if [ -n "$manifest_pom" ]; then
 	fi
 fi
 
+# The ingestor's parent pom: the <revision> property carries the version.
+if [ -n "$manifest_revision" ]; then
+	awk -v new="$new" '
+		/<revision>[^<]+<\/revision>/ && !done {
+			sub(/<revision>[^<]+<\/revision>/, "<revision>" new "</revision>")
+			done=1
+		}
+		{print}
+	' "$manifest_revision" > "$manifest_revision.tmp" && mv "$manifest_revision.tmp" "$manifest_revision"
+	if ! grep -q "<revision>$new</revision>" "$manifest_revision"; then
+		echo "✗ Failed to update <revision> in $manifest_revision. Reverting." >&2
+		git checkout -- "$version_file" "$manifest_revision"
+		exit 1
+	fi
+fi
+
 # Cargo.toml: the first top-level `version = "…"` is the [package] one.
 if [ -n "$manifest_toml" ]; then
 	awk -v new="$new" '
@@ -226,7 +247,7 @@ if [ -n "$lock_cargo" ]; then
 	fi
 fi
 
-touched="$manifest $manifest_pom $manifest_toml $lock_npm $lock_cargo"
+touched="$manifest $manifest_pom $manifest_revision $manifest_toml $lock_npm $lock_cargo"
 
 git --no-pager diff --stat -- "$version_file" $touched
 echo ""
