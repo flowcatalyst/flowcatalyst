@@ -1,0 +1,61 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+templ portalBody(v portalView) {
+	@signinTitle(v.title())
+	switch v.Step {
+		case portalStepExpired:
+			<p style="color:#627d98;font-size:14px;line-height:1.6;margin:0">
+				This sign-in session has expired. Please return to the application and try again; it will bring you back here.
+			</p>
+		case portalStepPassword:
+			@portalPasswordStep(v)
+		default:
+			@portalEmailStep(v)
+	}
+}
+
+templ portalEmailStep(v portalView) {
+	@signinError(v.Error)
+	<form method="post" action="/ui/auth/portal-login/email" class="flex flex-col gap-5">
+		<input type="hidden" name="flow" value={ v.Flow }/>
+		<p style="color:#627d98;font-size:14px;margin:0">Enter your email address to continue.</p>
+		@kit.Field(kit.FieldProps{Label: "Email", For: "portalEmail"}) {
+			@kit.Input(kit.InputProps{
+				ID: "portalEmail", Name: "email", Type: "email", Value: v.Email, Placeholder: "you@company.com", Required: true,
+				Attrs: templ.Attributes{"autocomplete": "username", "autofocus": true},
+			})
+		}
+		@signinSubmit("Continue", v.Theme)
+	</form>
+}
+
+templ portalPasswordStep(v portalView) {
+	@signinError(v.Error)
+	<form method="post" action="/ui/auth/portal-login/password" class="flex flex-col gap-5">
+		<input type="hidden" name="flow" value={ v.Flow }/>
+		<input type="hidden" name="email" value={ v.Email }/>
+		<p style="color:#627d98;font-size:14px;margin:0">Enter your password to sign in.</p>
+		<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#f8fafc;border-radius:8px">
+			<span style="color:#475569;font-size:14px;overflow-wrap:anywhere">{ v.Email }</span>
+			<a href={ safeHref("/ui/auth/portal-login?flow=" + queryEscape(v.Flow)) } style={ "font-size:14px;font-weight:500;color:" + v.Theme.Accent }>Change</a>
+		</div>
+		@kit.Field(kit.FieldProps{Label: "Password", For: "portalPassword"}) {
+			@kit.PasswordInput(kit.PasswordInputProps{
+				ID: "portalPassword", Name: "password", Signal: "portalPassword", Placeholder: "Your password",
+				Required: true, Autocomplete: "current-password",
+			})
+		}
+		@signinSubmit("Sign in", v.Theme)
+	</form>
+	<form method="post" action="/ui/auth/portal-login/reset" style="margin-top:16px;text-align:center;font-size:14px">
+		<input type="hidden" name="flow" value={ v.Flow }/>
+		<input type="hidden" name="email" value={ v.Email }/>
+		if v.ResetSent {
+			<span style="color:#166534">If an account exists, a reset email has been sent.</span>
+		} else {
+			<button type="submit" formnovalidate style={ "background:none;border:0;padding:0;cursor:pointer;color:" + v.Theme.Accent }>Forgot password?</button>
+		}
+	</form>
+}

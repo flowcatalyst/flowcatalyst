@@ -1,0 +1,15 @@
+{
+  "name": "vendor-webauthn",
+  "private": true,
+  "description": "Builds internal/ui/assets/static/fc-webauthn.js (@simplewebauthn/browser plus the passkey forms' glue). Run only when upgrading; see docs/ui/README.md.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@simplewebauthn/browser": "13.3.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

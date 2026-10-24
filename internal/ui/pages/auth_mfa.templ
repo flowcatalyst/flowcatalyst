@@ -1,0 +1,233 @@
+package pages
+
+import (
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// authDocument is the bare page of the sign-in area: a centred card.
+templ authDocument(title string, scripts []string, content templ.Component) {
+	<!DOCTYPE html>
+	<html lang="en" { kit.ThemeHTMLAttrs(kit.ThemeSystem, false)... }>
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } · FlowCatalyst</title>
+			<link rel="icon" href="data:,"/>
+			<link rel="stylesheet" href={ assets.URL("kit.css") }/>
+			<script type="module" src={ assets.URL("datastar.js") }></script>
+			for _, s := range scripts {
+				<script defer src={ assets.URL(s) }></script>
+			}
+		</head>
+		<body>
+			<main class="mx-auto flex min-h-screen max-w-md flex-col justify-center p-[24px]">
+				<div class="fc-card flex flex-col gap-4">
+					@content
+				</div>
+			</main>
+		</body>
+	</html>
+}
+
+templ authHidden(next string) {
+	if next != "" {
+		<input type="hidden" name="next" value={ next }/>
+	}
+}
+
+templ authBanner(message string) {
+	if message != "" {
+		@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "triangle-alert", Description: message})
+	}
+}
+
+// codeField is the one-time-code input of the 2FA forms.
+templ codeField(placeholder string, numeric bool) {
+	@kit.Input(kit.InputProps{
+		ID: "code", Name: "code", Placeholder: placeholder, Required: true,
+		Attrs: codeAttrs(numeric),
+	})
+}
+
+// ── the challenge ──────────────────────────────────────────────────────
+templ mfaChallenge(v mfaChallengeView) {
+	<h1 class="m-0 text-lg font-semibold">Two-factor verification</h1>
+	@authBanner(v.Error)
+	switch v.Active {
+		case "TOTP":
+			<p class="m-0 text-sm text-muted-foreground">Enter the 6-digit code from your authenticator app.</p>
+		case "EMAIL_PIN":
+			<p class="m-0 text-sm text-muted-foreground">
+				if v.EmailSent {
+					Enter the code we emailed you.
+				} else {
+					We'll email a one-time code to your address.
+				}
+			</p>
+			if !v.EmailSent {
+				<form method="post" action="/ui/auth/2fa/email">
+					@authHidden(v.Next)
+					@kit.Button(kit.ButtonProps{Type: "submit", Icon: "mail", Class: "w-full"}) {
+						Email me a code
+					}
+				</form>
+			}
+		default:
+			<p class="m-0 text-sm text-muted-foreground">Enter one of your recovery codes.</p>
+	}
+	if v.Active != "EMAIL_PIN" || v.EmailSent {
+		<form method="post" action="/ui/auth/2fa/verify" class="flex flex-col gap-4">
+			@authHidden(v.Next)
+			<input type="hidden" name="method" value={ v.Active }/>
+			@codeField(codePlaceholder(v.Active), v.Active != "RECOVERY_CODE")
+			if v.RememberAllowed {
+				<label class="flex items-center gap-2 text-sm text-muted-foreground">
+					<input type="checkbox" name="remember" value="1"/>
+					Remember this device for 30 days
+				</label>
+			}
+			@kit.Button(kit.ButtonProps{Type: "submit", Class: "w-full"}) {
+				Verify
+			}
+		</form>
+	}
+	<div class="flex flex-col gap-1 text-sm">
+		if v.has("TOTP") && v.Active != "TOTP" {
+			<a href={ templ.SafeURL(challengeHref(v.Next, "TOTP")) }>Use authenticator app</a>
+		}
+		if v.has("EMAIL_PIN") && v.Active != "EMAIL_PIN" {
+			<a href={ templ.SafeURL(challengeHref(v.Next, "EMAIL_PIN")) }>Use an email code</a>
+		}
+		if v.Active != "RECOVERY_CODE" {
+			<a href={ templ.SafeURL(challengeHref(v.Next, "RECOVERY_CODE")) }>Use a recovery code</a>
+		}
+	</div>
+}
+
+// ── enrollment ─────────────────────────────────────────────────────────
+templ mfaEnroll(v mfaEnrollView) {
+	<h1 class="m-0 text-lg font-semibold">Set up two-factor authentication</h1>
+	@authBanner(v.Error)
+	<p class="m-0 text-sm text-muted-foreground">
+		Two-factor authentication adds a second step when you sign in with a password. Choose how you'd like to receive your codes.
+	</p>
+	<div class="flex flex-col gap-2">
+		for _, m := range v.Methods {
+			<form method="post" action={ enrollAction(m) }>
+				@authHidden(v.Next)
+				if m == "TOTP" {
+					@kit.Button(kit.ButtonProps{Type: "submit", Icon: "shield", Class: "w-full"}) {
+						Use an authenticator app
+					}
+				} else if m == "EMAIL_PIN" {
+					@kit.Button(kit.ButtonProps{Type: "submit", Icon: "mail", Variant: kit.ButtonOutline, Class: "w-full"}) {
+						Use email codes
+					}
+				}
+			</form>
+		}
+	</div>
+}
+
+templ mfaTOTP(s mfaTOTPSetup) {
+	<h1 class="m-0 text-lg font-semibold">Set up two-factor authentication</h1>
+	@mfaTOTPPanel(s)
+}
+
+templ mfaEmail(s mfaEmailSetup) {
+	<h1 class="m-0 text-lg font-semibold">Set up two-factor authentication</h1>
+	@mfaEmailPanel(s)
+}
+
+templ mfaCodes(v mfaCodesView) {
+	<h1 class="m-0 text-lg font-semibold">Recovery codes</h1>
+	@mfaCodesPanel(v)
+}
+
+// mfaTOTPPanel is the authenticator step: scan the QR code (or enter the
+// key), then type the code the app shows.
+templ mfaTOTPPanel(s mfaTOTPSetup) {
+	<div class="flex flex-col gap-4" id="mfa-totp-setup">
+		@authBanner(s.Error)
+		<p class="m-0 text-sm text-muted-foreground">
+			Scan this QR code with your authenticator app (Google Authenticator, 1Password, Authy…), or enter the key manually, then type the 6-digit code it shows.
+		</p>
+		if s.QR != nil {
+			@s.QR
+		}
+		<div class="flex items-center justify-between gap-4">
+			<code class="fc-mono-chip break-all p-3 select-all" id="mfa-totp-secret">{ s.Secret }</code>
+			<a href={ templ.SafeURL(s.URI) } class="whitespace-nowrap">Open in app</a>
+		</div>
+		<form method="post" action={ s.Action } class="flex flex-col gap-4">
+			@authHidden(s.Next)
+			<input type="hidden" name="uri" value={ s.URI }/>
+			@codeField("123456", true)
+			@kit.Button(kit.ButtonProps{Type: "submit", Class: "w-full"}) {
+				Verify
+			}
+		</form>
+	</div>
+}
+
+templ mfaEmailPanel(s mfaEmailSetup) {
+	<div class="flex flex-col gap-4" id="mfa-email-setup">
+		@authBanner(s.Error)
+		<p class="m-0 text-sm text-muted-foreground">We've emailed you a code. Enter it below.</p>
+		<form method="post" action={ s.Action } class="flex flex-col gap-4">
+			@authHidden(s.Next)
+			@codeField("123456", true)
+			@kit.Button(kit.ButtonProps{Type: "submit", Class: "w-full"}) {
+				Verify
+			}
+		</form>
+	</div>
+}
+
+// mfaCodesPanel shows recovery codes once, with a copy button. The codes are
+// plain page text: no signal, attribute or URL holds them, and the copy
+// expression reads the element.
+templ mfaCodesPanel(v mfaCodesView) {
+	<div class="flex flex-col gap-4" id="mfa-codes-panel" data-signals="{mfaCopied: ''}">
+		<p class="m-0 text-sm text-muted-foreground">
+			Save these recovery codes somewhere safe. Each can be used once if you lose access to your second factor. They will not be shown again.
+		</p>
+		<ul id="mfa-codes" class="fc-mono-chip m-0 grid list-none grid-cols-2 gap-1 p-4">
+			for _, c := range v.Codes {
+				<li><code>{ c }</code></li>
+			}
+		</ul>
+		<p class="m-0 text-xs text-muted-foreground" role="status" data-text="$mfaCopied"></p>
+		@kit.Button(kit.ButtonProps{Variant: kit.ButtonOutline, Icon: "copy", Class: "w-full", Attrs: templ.Attributes{"data-on:click": mfaCopyExpr}}) {
+			Copy codes
+		}
+		if v.Action != "" {
+			<form method="post" action={ v.Action }>
+				@authHidden(v.Next)
+				@kit.Button(kit.ButtonProps{Type: "submit", Class: "w-full"}) {
+					I've saved them — continue
+				}
+			</form>
+		} else {
+			@kit.Button(kit.ButtonProps{Href: v.Href, Class: "w-full"}) {
+				I've saved them — continue
+			}
+		}
+	</div>
+}
+
+// ── passkey sign-in ────────────────────────────────────────────────────
+templ passkeySignIn(v passkeySignInView) {
+	<h1 class="m-0 text-lg font-semibold">Sign in with a passkey</h1>
+	<p class="m-0 text-sm text-muted-foreground">
+		Use Touch ID, Face ID, Windows Hello or a security key instead of a password.
+	</p>
+	<form data-fc-passkey-signin data-next={ v.Next } class="flex flex-col gap-4">
+		@kit.Input(kit.InputProps{ID: "email", Name: "email", Type: "email", Value: v.Email, Placeholder: "you@example.com", Required: true, Attrs: templ.Attributes{"autocomplete": "username webauthn", "autofocus": true}})
+		<div data-fc-passkey-error role="alert" hidden class="text-sm text-destructive"></div>
+		@kit.Button(kit.ButtonProps{Type: "submit", Icon: "key-round", Class: "w-full"}) {
+			Sign in with a passkey
+		}
+	</form>
+}

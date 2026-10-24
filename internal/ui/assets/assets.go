@@ -64,6 +64,12 @@ const MermaidSHA256 = "6484afc32872a3aa16cac9a76ba1816a1ed4cc870a6593cc2e1775775
 // versions). A test fails on a hand edit or an unrecorded rebuild.
 const CodeEditorSHA256 = "74b59f1db8170b490d4a76140dd2c8318d62581bb95362c1563da295f99ca49f"
 
+// WebAuthnSHA256 is the sha256 of static/fc-webauthn.js as built by
+// tools/vendor-webauthn (@simplewebauthn/browser 13.3.0 and the passkey forms'
+// glue; the build is reproducible for the pinned versions). A test fails on a
+// hand edit or an unrecorded rebuild.
+const WebAuthnSHA256 = "63687571b2db9c295575719e219442ec658c0c825fce69ec0781e0c8c7cb9dce"
+
 //go:embed static
 var embedded embed.FS
 

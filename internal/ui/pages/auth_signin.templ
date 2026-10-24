@@ -1,0 +1,273 @@
+package pages
+
+import (
+	"strings"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// signinDocument is a full sign-in page: no app shell (there is no session),
+// the tenant's branding behind a white card. The card is always light, so the
+// page ignores the UI's theme cookie. portal drops the platform's brand (the
+// portal plane serves a client's customers, not platform users).
+templ signinDocument(title string, th signinTheme, portal bool, content templ.Component) {
+	<!DOCTYPE html>
+	<html lang="en" { kit.ThemeHTMLAttrs(kit.ThemeLight, false)... }>
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="robots" content="noindex"/>
+			<title>{ title }</title>
+			<link rel="icon" href="data:,"/>
+			<link rel="stylesheet" href={ assets.URL("kit.css") }/>
+			<script type="module" src={ assets.URL("datastar.js") }></script>
+			if th.CustomCSS != "" {
+				@templ.Raw("<style>" + th.CustomCSS + "</style>")
+			}
+		</head>
+		<body style="margin:0">
+			<div style={ th.pageStyle() }>
+				<main style="width:100%;max-width:480px">
+					if portal {
+						<div style="text-align:center;margin-bottom:32px">
+							<h1 style="font-size:32px;font-weight:700;color:#fff;margin:0">Portal Login</h1>
+						</div>
+					} else {
+						@signinBrand(th)
+					}
+					<div style="background:#fff;color:#102a43;border-radius:16px;padding:40px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+						@content
+					</div>
+					if !portal {
+						<p style="text-align:center;color:#9fb3c8;font-size:14px;margin:24px 0 0">{ th.Footer }</p>
+					}
+				</main>
+			</div>
+		</body>
+	</html>
+}
+
+templ signinBrand(th signinTheme) {
+	<div style="text-align:center;margin-bottom:32px">
+		if th.LogoURL != "" {
+			<img src={ th.LogoURL } alt="Logo" style="max-width:200px;max-height:72px;margin-bottom:16px;object-fit:contain"/>
+		}
+		<h1 style="font-size:32px;font-weight:700;color:#fff;margin:0">{ th.BrandName }</h1>
+		<p style="color:#9fb3c8;margin:8px 0 0;font-size:16px">{ th.Subtitle }</p>
+	</div>
+}
+
+// signinHidden carries the sign-in context to the next step.
+templ signinHidden(c signinContext) {
+	for _, kv := range c.hidden() {
+		<input type="hidden" name={ kv[0] } value={ kv[1] }/>
+	}
+}
+
+templ signinTitle(text string) {
+	<h2 style="font-size:20px;font-weight:600;color:#102a43;margin:0 0 24px">{ text }</h2>
+}
+
+templ signinError(message string) {
+	if message != "" {
+		<div style="margin-bottom:24px">
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "triangle-alert", Description: message})
+		</div>
+	}
+}
+
+templ signinNotice(message string) {
+	if message != "" {
+		<div style="margin-bottom:24px">
+			@kit.Alert(kit.AlertProps{Role: "status", Icon: "check", Description: message})
+		</div>
+	}
+}
+
+// signinSubmit is the full-width, accent-coloured submit button.
+templ signinSubmit(label string, th signinTheme) {
+	@kit.Button(kit.ButtonProps{Type: "submit", Attrs: th.accentStyle()}) {
+		{ label }
+	}
+}
+
+// signinIdentity is the email being signed in, with a way back.
+templ signinIdentity(v signinView, changeLabel string) {
+	<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#f8fafc;border-radius:8px">
+		<div style="display:flex;align-items:center;gap:12px;min-width:0">
+			<div style={ "width:40px;height:40px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;background:" + v.Theme.Accent }>{ v.initial() }</div>
+			<span style="color:#475569;font-size:14px;overflow-wrap:anywhere">{ v.Email }</span>
+		</div>
+		<a href={ templ.SafeURL(v.loginLink()) } style={ "font-size:14px;font-weight:500;color:" + v.Theme.Accent }>{ changeLabel }</a>
+	</div>
+}
+
+templ signinLoginBody(v signinView) {
+	@signinTitle(v.title())
+	@signinNotice(v.Notice)
+	@signinError(v.Error)
+	switch v.Step {
+		case stepPassword:
+			@signinPasswordStep(v)
+		case stepSetup:
+			@signinSetupStep(v)
+		case stepSetupSent:
+			@signinSetupSentStep(v)
+		case stepTwoFactor:
+			@signinTwoFactorStep(v)
+		case stepEnroll:
+			@signinEnrollStep(v)
+		default:
+			@signinEmailStep(v)
+	}
+}
+
+templ signinEmailStep(v signinView) {
+	<form method="post" action="/ui/auth/login/email" class="flex flex-col gap-5">
+		@signinHidden(v.Ctx)
+		@kit.Field(kit.FieldProps{Label: "Email address", For: "email", Description: "We'll check if your organization uses single sign-on"}) {
+			@kit.Input(kit.InputProps{
+				ID: "email", Name: "email", Type: "email", Value: v.Email, Placeholder: "you@company.com", Required: true,
+				Attrs: templ.Attributes{"autocomplete": "username", "autofocus": true},
+			})
+		}
+		@signinSubmit("Continue", v.Theme)
+		if v.passkeyLink() != "" {
+			<div style="text-align:center;font-size:14px">
+				<a href={ templ.SafeURL(v.passkeyLink()) } style={ "color:" + v.Theme.Accent }>Sign in with a passkey</a>
+			</div>
+		}
+	</form>
+}
+
+templ signinPasswordStep(v signinView) {
+	<form method="post" action="/ui/auth/login/password" class="flex flex-col gap-5">
+		@signinHidden(v.Ctx)
+		<input type="hidden" name="email" value={ v.Email }/>
+		@signinIdentity(v, "Change")
+		@kit.Field(kit.FieldProps{Label: "Password", For: "password"}) {
+			@kit.PasswordInput(kit.PasswordInputProps{
+				ID: "password", Name: "password", Signal: "loginPassword", Placeholder: "Enter your password",
+				Required: true, Autocomplete: "current-password",
+			})
+		}
+		<div style="text-align:right;font-size:14px">
+			<a href={ templ.SafeURL(v.forgotLink()) } style={ "color:" + v.Theme.Accent }>Forgot password?</a>
+		</div>
+		@signinSubmit("Sign in", v.Theme)
+	</form>
+}
+
+templ signinSetupStep(v signinView) {
+	<form method="post" action="/ui/auth/login/setup" class="flex flex-col gap-5">
+		@signinHidden(v.Ctx)
+		<input type="hidden" name="email" value={ v.Email }/>
+		@signinIdentity(v, "Use a different email")
+		<p style="color:#627d98;font-size:14px;line-height:1.6;margin:0">
+			This is your first time signing in. We'll email you a link to create your password. This confirms it's really you.
+		</p>
+		@signinSubmit("Email me a link", v.Theme)
+	</form>
+}
+
+templ signinSetupSentStep(v signinView) {
+	<div class="flex flex-col gap-5">
+		@kit.Alert(kit.AlertProps{Role: "status", Icon: "mail", Description: "We sent a link to " + v.Email + ". Open it on this device to create your password. The link expires in 72 hours."})
+		<a href={ templ.SafeURL(v.loginLink()) } style={ "font-size:14px;font-weight:500;color:" + v.Theme.Accent }>Back to sign in</a>
+	</div>
+}
+
+// signinTwoFactorStep is the challenge: a code from the authenticator app, an
+// emailed code, or a recovery code. The pending token is a short-lived signed
+// token (it grants no session); the buttons that change the page rather than
+// verify (send, switch) skip validation.
+templ signinTwoFactorStep(v signinView) {
+	<form method="post" action="/ui/auth/login/2fa" class="flex flex-col gap-4">
+		@signinHidden(v.Ctx)
+		<input type="hidden" name="mfaToken" value={ v.MFAToken }/>
+		<input type="hidden" name="method" value={ v.Method }/>
+		<input type="hidden" name="methods" value={ strings.Join(v.Methods, ",") }/>
+		if v.RememberAllowed {
+			<input type="hidden" name="remember" value="1"/>
+		}
+		if v.EmailSent {
+			<input type="hidden" name="sent" value="1"/>
+		}
+		switch v.Method {
+			case "TOTP":
+				<p style="margin:0;font-size:14px;color:#627d98">Enter the 6-digit code from your authenticator app.</p>
+			case "EMAIL_PIN":
+				if v.EmailSent {
+					<p style="margin:0;font-size:14px;color:#627d98">Enter the code we emailed you.</p>
+				} else {
+					<p style="margin:0;font-size:14px;color:#627d98">We'll email a one-time code to your address.</p>
+					@kit.Button(kit.ButtonProps{Type: "submit", Icon: "mail", Attrs: templ.Attributes{"name": "action", "value": "send", "formnovalidate": true}}) {
+						Email me a code
+					}
+				}
+			default:
+				<p style="margin:0;font-size:14px;color:#627d98">Enter one of your recovery codes.</p>
+		}
+		if v.Method != "EMAIL_PIN" || v.EmailSent {
+			@kit.Input(kit.InputProps{
+				ID: "code", Name: "code", Required: true,
+				Placeholder: v.codePlaceholder(),
+				Attrs:       templ.Attributes{"autocomplete": "one-time-code", "inputmode": "text", "autofocus": true},
+			})
+			if v.RememberAllowed {
+				@kit.Checkbox(kit.CheckboxProps{ID: "rememberDevice", Name: "rememberDevice", Value: "1", Label: "Remember this device for 30 days"})
+			}
+			@signinSubmit("Verify", v.Theme)
+		}
+		<div class="flex flex-col gap-2" style="font-size:14px">
+			if v.hasMethod("TOTP") && v.Method != "TOTP" {
+				<button type="submit" name="switch" value="TOTP" formnovalidate style={ "background:none;border:0;padding:0;text-align:left;cursor:pointer;color:" + v.Theme.Accent }>Use authenticator app</button>
+			}
+			if v.hasMethod("EMAIL_PIN") && v.Method != "EMAIL_PIN" {
+				<button type="submit" name="switch" value="EMAIL_PIN" formnovalidate style={ "background:none;border:0;padding:0;text-align:left;cursor:pointer;color:" + v.Theme.Accent }>Use an email code</button>
+			}
+			if v.Method != "RECOVERY_CODE" {
+				<button type="submit" name="switch" value="RECOVERY_CODE" formnovalidate style={ "background:none;border:0;padding:0;text-align:left;cursor:pointer;color:" + v.Theme.Accent }>Use a recovery code</button>
+			}
+		</div>
+	</form>
+}
+
+// signinEnrollStep: the account must enrol a second factor before it can sign
+// in. Enrolment (QR code, recovery codes) is done by the current sign-in page.
+templ signinEnrollStep(v signinView) {
+	<div class="flex flex-col gap-5">
+		@kit.Alert(kit.AlertProps{Role: "status", Icon: "shield", Description: "Your account must set up two-factor authentication before it can sign in."})
+		if v.EnrollToken != "" && v.uiNext() != "" {
+			<form method="post" action="/ui/auth/2fa/enroll/start" class="flex flex-col gap-5">
+				<input type="hidden" name="token" value={ v.EnrollToken }/>
+				<input type="hidden" name="next" value={ v.uiNext() }/>
+				@signinSubmit("Set up two-factor authentication", v.Theme)
+			</form>
+		} else {
+			@kit.Button(kit.ButtonProps{Href: v.legacyLink(), Attrs: v.Theme.accentStyle()}) {
+				Continue to the current sign-in
+			}
+		}
+	</div>
+}
+
+templ signinFailureBody(th signinTheme, message string) {
+	@signinTitle("Authentication failed")
+	@signinError(message)
+	@kit.Button(kit.ButtonProps{Href: "/ui/auth/login", Attrs: th.accentStyle()}) {
+		Try again
+	}
+}
+
+templ signinLogoutBody(th signinTheme) {
+	@signinTitle("Log out of the Identity Server?")
+	<form method="post" action="/ui/auth/logout" class="flex flex-col gap-5">
+		<p style="color:#627d98;font-size:14px;line-height:1.6;margin:0">
+			You have been signed out of the application. To finish signing out completely, for example so that you can sign back in as a different user, you also need to log out of the Identity Server.
+		</p>
+		@signinSubmit("Log out of Identity Server", th)
+		<p style="color:#627d98;font-size:13px;margin:0">If you don't want to log out, you can simply close this tab.</p>
+	</form>
+}

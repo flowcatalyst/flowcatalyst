@@ -31,9 +31,9 @@ func TestDatastarIsThePinnedFile(t *testing.T) {
 }
 
 // The vendored Mermaid bundle must be exactly the pinned npm file, and the
-// CodeMirror bundle exactly the recorded build.
+// CodeMirror and WebAuthn bundles exactly the recorded builds.
 func TestIslandBundlesArePinned(t *testing.T) {
-	for name, want := range map[string]string{"mermaid.min.js": MermaidSHA256, "fc-code-editor.js": CodeEditorSHA256} {
+	for name, want := range map[string]string{"mermaid.min.js": MermaidSHA256, "fc-code-editor.js": CodeEditorSHA256, "fc-webauthn.js": WebAuthnSHA256} {
 		f := byName[name]
 		if f == nil {
 			t.Fatalf("%s not embedded", name)

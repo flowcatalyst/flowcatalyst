@@ -1,0 +1,158 @@
+package pages
+
+import (
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// securityPageContent is the security page: two-factor, recovery codes,
+// remembered devices and passkeys, each a card as in the current UI's profile.
+templ securityPageContent(v securityView) {
+	if v.ShowPasskeys {
+		<script defer src={ assets.URL("fc-webauthn.js") }></script>
+	}
+	@kit.PageHeader(kit.PageHeaderProps{Title: "Security", Subtitle: "Your two-factor authentication and passkeys"})
+	@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same cards on your profile.", Class: "mb-4"})
+	if v.Error != "" {
+		@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "triangle-alert", Description: v.Error, Class: "mb-4"})
+	}
+	if v.Message != "" {
+		@kit.Alert(kit.AlertProps{Role: "status", Icon: "circle-check", Description: v.Message, Class: "mb-4"})
+	}
+	<div class="flex max-w-3xl flex-col gap-4">
+		@kit.FormSection(kit.FormSectionProps{Title: "Two-Factor Authentication", Card: true}) {
+			@securityTwoFactor(v)
+		}
+		if v.ShowPasskeys {
+			@kit.FormSection(kit.FormSectionProps{Title: "Passkeys", Card: true}) {
+				@securityPasskeys(v)
+			}
+		}
+	</div>
+}
+
+templ securityTwoFactor(v securityView) {
+	<p class="m-0 mb-4 text-sm text-muted-foreground">
+		Add a second step to password sign-in.
+		if v.Required {
+			<strong>Your organisation requires 2FA.</strong>
+		}
+	</p>
+	if len(v.Methods) > 0 {
+		<ul class="m-0 mb-4 flex list-none flex-col gap-2 p-0">
+			for _, m := range v.Methods {
+				<li class="flex items-center justify-between gap-3">
+					<span>{ m.Label }</span>
+					@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Size: kit.ButtonSm, Attrs: kit.OpenModal("confirm-remove-" + m.Type)}) {
+						Remove
+					}
+					@kit.ConfirmDialog(kit.ConfirmDialogProps{
+						ID: "confirm-remove-" + m.Type, Action: authSecurityPath + "/2fa/" + m.Type + "/remove",
+						Title: "Remove " + m.Label, Message: "Remove " + m.Label + " as a second factor? You can set it up again later.",
+						ConfirmLabel: "Remove", Tone: kit.ToneDanger,
+					})
+				</li>
+			}
+		</ul>
+	} else {
+		<p class="m-0 mb-4 text-sm text-muted-foreground">No second factor enrolled yet.</p>
+	}
+	if v.Panel != nil {
+		@v.Panel
+	} else if len(v.Addable) > 0 {
+		<div class="flex flex-wrap gap-2">
+			for _, m := range v.Addable {
+				<form method="post" action={ addAction(m.Type) }>
+					@kit.Button(kit.ButtonProps{Type: "submit", Icon: "plus", Variant: kit.ButtonOutline}) {
+						Add { m.Label }
+					}
+				</form>
+			}
+		</div>
+	}
+	if v.HasTOTP {
+		<h3 class="mt-4 mb-1 text-base font-semibold">Recovery codes</h3>
+		<p class="m-0 mb-2 text-sm text-muted-foreground">{ unusedCodes(v.RecoveryLeft) } remaining.</p>
+		@kit.Button(kit.ButtonProps{Variant: kit.ButtonOutline, Size: kit.ButtonSm, Attrs: kit.OpenModal("confirm-regenerate")}) {
+			Regenerate recovery codes
+		}
+		@kit.ConfirmDialog(kit.ConfirmDialogProps{
+			ID: "confirm-regenerate", Action: authSecurityPath + "/2fa/recovery-codes",
+			Title: "Regenerate recovery codes", Message: "Generate a new set? The codes you have now stop working.",
+			ConfirmLabel: "Regenerate", Tone: kit.ToneWarn,
+		})
+	}
+	if len(v.Devices) > 0 {
+		<h3 class="mt-4 mb-2 text-base font-semibold">Remembered devices</h3>
+		<ul class="m-0 flex list-none flex-col gap-2 p-0">
+			for _, d := range v.Devices {
+				<li class="flex items-center justify-between gap-3">
+					<span>
+						@deviceName(d.Label)
+						<small class="text-muted-foreground">
+							· last used
+							@kit.LocalTime(kit.LocalTimeProps{At: d.LastUsed, DateOnly: true, Empty: "—"})
+						</small>
+					</span>
+					<form method="post" action={ authSecurityPath + "/2fa/devices/" + d.ID + "/revoke" }>
+						@kit.Button(kit.ButtonProps{Type: "submit", Variant: kit.ButtonGhost, Size: kit.ButtonSm}) {
+							Revoke
+						}
+					</form>
+				</li>
+			}
+		</ul>
+	}
+}
+
+templ deviceName(label string) {
+	if label == "" {
+		Unknown device
+	} else {
+		{ label }
+	}
+}
+
+templ securityPasskeys(v securityView) {
+	<p class="m-0 mb-4 text-sm text-muted-foreground">
+		Passkeys let you sign in without a password using Touch ID, Face ID, Windows Hello, or a hardware security key.
+	</p>
+	<form data-fc-passkey-register data-done={ authSecurityPath + "?added=1" } class="mb-4 flex flex-col gap-2">
+		<div class="flex flex-wrap gap-2">
+			@kit.Input(kit.InputProps{ID: "passkey-name", Name: "name", Placeholder: "Name (e.g. 'My Computer/Phone')", Required: true, Class: "max-w-xs"})
+			@kit.Button(kit.ButtonProps{Type: "submit", Icon: "key-round"}) {
+				Add a passkey
+			}
+		</div>
+		<div data-fc-passkey-error role="alert" hidden class="text-sm text-destructive"></div>
+	</form>
+	if len(v.Passkeys) == 0 {
+		<p class="m-0 text-sm text-muted-foreground">No passkeys registered yet.</p>
+	} else {
+		<ul class="m-0 flex list-none flex-col gap-3 p-0">
+			for _, k := range v.Passkeys {
+				<li class="flex items-center justify-between gap-3">
+					<div>
+						<div class="font-medium">{ k.Name }</div>
+						<div class="text-xs text-muted-foreground">
+							Added
+							@kit.LocalTime(kit.LocalTimeProps{At: k.Added, DateOnly: true, Empty: "—"})
+							if !k.LastUsed.IsZero() {
+								· Last used
+								@kit.LocalTime(kit.LocalTimeProps{At: k.LastUsed, DateOnly: true, Empty: "—"})
+							}
+						</div>
+					</div>
+					@kit.Button(kit.ButtonProps{Variant: kit.ButtonDestructiveOutline, Size: kit.ButtonSm, Attrs: kit.OpenModal("confirm-passkey-" + k.ID)}) {
+						Remove
+					}
+					@kit.ConfirmDialog(kit.ConfirmDialogProps{
+						ID: "confirm-passkey-" + k.ID, Action: authSecurityPath + "/passkeys/" + k.ID + "/remove",
+						Title: "Remove passkey", Message: "Remove " + k.Name + "? You will no longer be able to sign in with it.",
+						ConfirmLabel: "Remove", Tone: kit.ToneDanger,
+					})
+				</li>
+			}
+		</ul>
+	}
+}

@@ -1,0 +1,101 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+templ forgotBody(v forgotView) {
+	if v.Submitted {
+		@signinTitle("Check your email")
+		<div class="flex flex-col gap-5">
+			@kit.Alert(kit.AlertProps{Role: "status", Icon: "mail", Description: "If an account exists for " + v.Email + ", you'll receive a password reset link shortly."})
+			<a href={ safeHref(v.loginLink()) } style={ "font-size:14px;font-weight:500;color:" + v.Theme.Accent }>Back to sign in</a>
+		</div>
+	} else {
+		@signinTitle("Reset your password")
+		@signinError(v.Error)
+		<form method="post" action="/ui/auth/forgot-password" class="flex flex-col gap-5">
+			@signinHidden(v.Ctx)
+			<p style="color:#627d98;font-size:14px;line-height:1.6;margin:0">Enter your email address and we'll send you a link to reset your password.</p>
+			@kit.Field(kit.FieldProps{Label: "Email address", For: "email"}) {
+				@kit.Input(kit.InputProps{
+					ID: "email", Name: "email", Type: "email", Value: v.Email, Placeholder: "you@company.com", Required: true,
+					Attrs: templ.Attributes{"autocomplete": "username", "autofocus": true},
+				})
+			}
+			@signinSubmit("Send reset link", v.Theme)
+			<a href={ safeHref(v.loginLink()) } style={ "font-size:14px;font-weight:500;color:" + v.Theme.Accent }>Back to sign in</a>
+		</form>
+	}
+}
+
+templ resetBody(v resetView) {
+	@signinTitle(v.title())
+	switch v.State {
+		case resetInvalid:
+			@resetInvalidState(v)
+		case resetEnroll:
+			<div class="flex flex-col gap-5">
+				@kit.Alert(kit.AlertProps{Role: "status", Icon: "shield", Description: "Your password is set. Your account must now set up two-factor authentication, which this page cannot do yet: continue with the current sign-in page."})
+				@kit.Button(kit.ButtonProps{Href: "/auth/login", Attrs: v.Theme.accentStyle()}) {
+					Continue to the current sign-in
+				}
+			</div>
+		case resetPortalDone:
+			@kit.Alert(kit.AlertProps{Role: "status", Icon: "check", Description: "Your password is set. You can now sign in from the application that invited you."})
+		default:
+			@resetFormState(v)
+	}
+}
+
+templ resetInvalidState(v resetView) {
+	<div class="flex flex-col gap-5">
+		if v.Expired && v.Invite {
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "triangle-alert", Description: "This invite link has expired. Ask your administrator to send a new invite."})
+		} else if v.Expired {
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "triangle-alert", Description: "This password reset link has expired. Reset links are valid for 15 minutes."})
+		} else if v.Invite {
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "triangle-alert", Description: "This invite link is invalid or has already been used."})
+		} else {
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "triangle-alert", Description: "This password reset link is invalid or has already been used."})
+		}
+		if !v.Invite {
+			<a href={ safeHref(v.forgotLink()) } style={ "font-size:14px;font-weight:500;color:" + v.Theme.Accent }>Request a new reset link</a>
+		}
+	</div>
+}
+
+templ resetFormState(v resetView) {
+	@signinError(v.Error)
+	<form method="post" action={ safeHref(v.action()) } class="flex flex-col gap-5">
+		@signinHidden(v.Ctx)
+		<input type="hidden" name="token" value={ v.Token }/>
+		if v.RequiresFactor {
+			<input type="hidden" name="requiresFactor" value="1"/>
+		}
+		if v.Portal {
+			<input type="hidden" name="portal" value="1"/>
+		}
+		@kit.Field(kit.FieldProps{Label: "New password", For: "password"}) {
+			@kit.PasswordInput(kit.PasswordInputProps{
+				ID: "password", Name: "password", Signal: "newPassword", Required: true, Meter: true, Autocomplete: "new-password",
+			})
+		}
+		@kit.Field(kit.FieldProps{Label: "Confirm password", For: "confirmPassword"}) {
+			@kit.PasswordInput(kit.PasswordInputProps{
+				ID: "confirmPassword", Name: "confirmPassword", Signal: "confirmPassword", Required: true, Autocomplete: "new-password",
+			})
+		}
+		if v.RequiresFactor {
+			@kit.Field(kit.FieldProps{Label: "Authenticator code", For: "factorCode", Description: "Enter the 6-digit code from your authenticator app."}) {
+				@kit.Input(kit.InputProps{
+					ID: "factorCode", Name: "factorCode", Required: true, Placeholder: "123456",
+					Attrs: templ.Attributes{"autocomplete": "one-time-code", "inputmode": "numeric"},
+				})
+			}
+		}
+		if v.Invite {
+			@signinSubmit("Set password", v.Theme)
+		} else {
+			@signinSubmit("Reset password", v.Theme)
+		}
+	</form>
+}
