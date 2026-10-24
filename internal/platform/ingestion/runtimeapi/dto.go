@@ -111,3 +111,47 @@ type ReportRequest struct {
 	Failures  []Failure        `json:"failures,omitempty" maxItems:"500"`
 	Tests     []TestAnswer     `json:"tests,omitempty" maxItems:"20"`
 }
+
+// MaxJobRecords is the most records one jobs request carries.
+const MaxJobRecords = 1000
+
+// JobRecord is one record to become a dispatch job. It carries only the
+// record: where the job goes, what signs it and for which client are the
+// ingestion's own target, and a field for any of them is refused.
+type JobRecord struct {
+	Payload            string  `json:"payload" doc:"The record, as text"`
+	PayloadContentType string  `json:"payloadContentType,omitempty" doc:"Defaults to application/json; at most 100 characters"`
+	MessageGroup       *string `json:"messageGroup,omitempty" doc:"Orders the jobs of a group within the target's mode; at most 200 characters"`
+	ExternalID         *string `json:"externalId,omitempty" doc:"The record's idempotency key within the ingestion, at most 100 characters: sending it again answers the job it made first"`
+	CorrelationID      *string `json:"correlationId,omitempty" doc:"At most 100 characters"`
+	Subject            *string `json:"subject,omitempty" doc:"At most 500 characters"`
+}
+
+// CreateJobsRequest is the wire body for
+// POST /api/ingestion-runtime/v1/ingestions/{id}/jobs.
+type CreateJobsRequest struct {
+	Records []JobRecord `json:"records" maxItems:"1000"`
+}
+
+// JobResult is the outcome of the record at Index: the job it is (new or the
+// one an earlier request made under the same externalId), or why it was not
+// made. A record that failed does not fail the others.
+type JobResult struct {
+	Index int     `json:"index"`
+	ID    string  `json:"id,omitempty"`
+	Error *string `json:"error,omitempty"`
+	// Existing is true when the externalId had already made this job.
+	Existing bool `json:"existing,omitempty"`
+}
+
+// CreateJobsResponse answers a jobs request, one result per record in order.
+type CreateJobsResponse struct {
+	Created int         `json:"created" doc:"Jobs made by this request; records answered with an existing job are not counted"`
+	Results []JobResult `json:"results"`
+}
+
+// SecretValue is a revealed secret.
+type SecretValue struct {
+	Value     string          `json:"value"`
+	UpdatedAt httpcompat.Time `json:"updatedAt"`
+}

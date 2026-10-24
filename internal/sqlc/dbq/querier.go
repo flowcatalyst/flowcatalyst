@@ -195,6 +195,9 @@ type Querier interface {
 	IdpRoleMappingFindByIdpRole(ctx context.Context, idpRoleName string) ([]OauthIdpRoleMapping, error)
 	IdpRoleMappingUpsert(ctx context.Context, arg IdpRoleMappingUpsertParams) error
 	IngestionDelete(ctx context.Context, id string) error
+	// Exchange counts over the last day and the last week, from the windows the
+	// runtimes reported. A window counts in the period its start falls in.
+	IngestionExchangeTotals(ctx context.Context, arg IngestionExchangeTotalsParams) (IngestionExchangeTotalsRow, error)
 	IngestionFailureInsert(ctx context.Context, arg IngestionFailureInsertParams) error
 	// Reads the operator API makes beside the ingestion aggregate: the failures
 	// tab and the source kinds the live runtimes report.
@@ -206,6 +209,11 @@ type Querier interface {
 	IngestionFindByID(ctx context.Context, id string) (IngIngestion, error)
 	IngestionFindByIDs(ctx context.Context, argIds []string) ([]IngIngestion, error)
 	IngestionInsert(ctx context.Context, arg IngestionInsertParams) error
+	// The first request to name a key wins it; the caller reads back who did.
+	IngestionJobKeyClaim(ctx context.Context, arg IngestionJobKeyClaimParams) (int64, error)
+	IngestionJobKeysFind(ctx context.Context, arg IngestionJobKeysFindParams) ([]IngestionJobKeysFindRow, error)
+	IngestionLastExchange(ctx context.Context, arg IngestionLastExchangeParams) (time.Time, error)
+	IngestionLastFailure(ctx context.Context, ingestionID string) (time.Time, error)
 	// The lease is taken in one statement: a conflicting row is taken over only by
 	// its holder (a renewal) or once it has expired, and two runtimes racing for
 	// the same ingestion are serialised on the row, so exactly one affects it.
@@ -217,16 +225,25 @@ type Querier interface {
 	// A runtime that stops running an ingestion marks its lease released; nobody
 	// else takes it before it expires, because the holder may be finishing a batch.
 	IngestionLeaseReleaseExcept(ctx context.Context, arg IngestionLeaseReleaseExceptParams) (int64, error)
+	// The leases a runtime holds and has not released, to be renewed first.
+	IngestionLeasesHeldBy(ctx context.Context, arg IngestionLeasesHeldByParams) ([]string, error)
 	IngestionListManagedBy(ctx context.Context, managedBy *string) ([]IngIngestion, error)
 	// A window re-sent replaces the counts: it never adds to them.
 	IngestionMetricUpsert(ctx context.Context, arg IngestionMetricUpsertParams) error
+	// The activity tab: what each runtime last said about the ingestion.
+	IngestionRouteStateList(ctx context.Context, ingestionID string) ([]IngRouteState, error)
 	IngestionRouteStateUpsert(ctx context.Context, arg IngestionRouteStateUpsertParams) error
+	IngestionRuntimeKinds(ctx context.Context, runtimeID string) (json.RawMessage, error)
 	IngestionRuntimeKindsSeenSince(ctx context.Context, lastSeenAt time.Time) ([]json.RawMessage, error)
 	// Queries for the runtime API (docs/ingestion-design.md section 7): runtimes,
 	// leases, state, reports and test requests. The live-ingestion read the poll
 	// makes is hand-rolled in the repository (it shares the list's row type), and
 	// so are the retention deletes (chunked, as for the function trace log).
 	IngestionRuntimeUpsert(ctx context.Context, arg IngestionRuntimeUpsertParams) error
+	// The runtimes that polled within the lease window: the denominator of a
+	// runtime's fair share of the polled ingestions (the asking runtime has just
+	// been upserted, so it counts itself).
+	IngestionRuntimesLive(ctx context.Context, arg IngestionRuntimesLiveParams) (int64, error)
 	IngestionSetApplyFind(ctx context.Context, arg IngestionSetApplyFindParams) (IngSetApply, error)
 	// Forgets the applies beyond the newest @keep of a set, returning where their
 	// archives were kept.

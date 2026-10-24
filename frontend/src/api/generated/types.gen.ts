@@ -1210,6 +1210,27 @@ export type CreateIngestionRequest = {
     [key: string]: unknown;
 };
 
+export type CreateJobsRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    records: Array<JobRecord>;
+    [key: string]: unknown;
+};
+
+export type CreateJobsResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Jobs made by this request; records answered with an existing job are not counted
+     */
+    created: number;
+    results: Array<JobResult>;
+};
+
 export type CreateMappingRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2512,6 +2533,40 @@ export type JwksResponse = {
      */
     readonly $schema?: string;
     keys: Array<Jwk>;
+};
+
+export type JobRecord = {
+    /**
+     * At most 100 characters
+     */
+    correlationId?: string;
+    /**
+     * The record's idempotency key within the ingestion, at most 100 characters: sending it again answers the job it made first
+     */
+    externalId?: string;
+    /**
+     * Orders the jobs of a group within the target's mode; at most 200 characters
+     */
+    messageGroup?: string;
+    /**
+     * The record, as text
+     */
+    payload: string;
+    /**
+     * Defaults to application/json; at most 100 characters
+     */
+    payloadContentType?: string;
+    /**
+     * At most 500 characters
+     */
+    subject?: string;
+};
+
+export type JobResult = {
+    error?: string;
+    existing?: boolean;
+    id?: string;
+    index: number;
 };
 
 export type Kv = {
@@ -3959,6 +4014,15 @@ export type SecretResponse = {
     /**
      * The value's version: it changes whenever the secret is set. Use it to detect rotation.
      */
+    updatedAt: string;
+    value: string;
+};
+
+export type SecretValue = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
     updatedAt: string;
     value: string;
 };
@@ -5952,6 +6016,19 @@ export type CreateIngestionRequestWritable = {
     [key: string]: unknown;
 };
 
+export type CreateJobsRequestWritable = {
+    records: Array<JobRecord>;
+    [key: string]: unknown;
+};
+
+export type CreateJobsResponseWritable = {
+    /**
+     * Jobs made by this request; records answered with an existing job are not counted
+     */
+    created: number;
+    results: Array<JobResult>;
+};
+
 export type CreateMappingRequestWritable = {
     additionalClientIds?: Array<string>;
     /**
@@ -7576,6 +7653,11 @@ export type SecretResponseWritable = {
     /**
      * The value's version: it changes whenever the secret is set. Use it to detect rotation.
      */
+    updatedAt: string;
+    value: string;
+};
+
+export type SecretValueWritable = {
     updatedAt: string;
     value: string;
 };
@@ -13521,6 +13603,74 @@ export type DeleteIdpRoleMappingResponses = {
 };
 
 export type DeleteIdpRoleMappingResponse = DeleteIdpRoleMappingResponses[keyof DeleteIdpRoleMappingResponses];
+
+export type IngestionRuntimeCreateJobsData = {
+    body: CreateJobsRequestWritable;
+    path: {
+        id: string;
+    };
+    query: {
+        /**
+         * The sending runtime, which must carry the ingestion's kind and for a polled source hold its lease
+         */
+        runtimeId: string;
+    };
+    url: '/api/ingestion-runtime/v1/ingestions/{id}/jobs';
+};
+
+export type IngestionRuntimeCreateJobsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type IngestionRuntimeCreateJobsError = IngestionRuntimeCreateJobsErrors[keyof IngestionRuntimeCreateJobsErrors];
+
+export type IngestionRuntimeCreateJobsResponses = {
+    /**
+     * OK
+     */
+    200: CreateJobsResponse;
+};
+
+export type IngestionRuntimeCreateJobsResponse = IngestionRuntimeCreateJobsResponses[keyof IngestionRuntimeCreateJobsResponses];
+
+export type IngestionRuntimeGetSecretData = {
+    body?: never;
+    path: {
+        id: string;
+        /**
+         * A secret the ingestion's live definition names
+         */
+        name: string;
+    };
+    query: {
+        /**
+         * The asking runtime, which must carry the ingestion's kind and for a polled source hold its lease
+         */
+        runtimeId: string;
+    };
+    url: '/api/ingestion-runtime/v1/ingestions/{id}/secrets/{name}';
+};
+
+export type IngestionRuntimeGetSecretErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type IngestionRuntimeGetSecretError = IngestionRuntimeGetSecretErrors[keyof IngestionRuntimeGetSecretErrors];
+
+export type IngestionRuntimeGetSecretResponses = {
+    /**
+     * OK
+     */
+    200: SecretValue;
+};
+
+export type IngestionRuntimeGetSecretResponse = IngestionRuntimeGetSecretResponses[keyof IngestionRuntimeGetSecretResponses];
 
 export type IngestionRuntimePollData = {
     body: PollRequestWritable;

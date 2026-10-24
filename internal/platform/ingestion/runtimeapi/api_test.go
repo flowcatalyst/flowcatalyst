@@ -74,6 +74,8 @@ func TestRuntimeRoutes_RefusedWithoutPermission(t *testing.T) {
 		{http.MethodPost, "/api/ingestion-runtime/v1/report", map[string]any{"runtimeId": "rt-1"}},
 		{http.MethodGet, "/api/ingestion-runtime/v1/state/ing_1/watermark?runtimeId=rt-1", nil},
 		{http.MethodPut, "/api/ingestion-runtime/v1/state/ing_1/watermark?runtimeId=rt-1", map[string]any{"value": "x"}},
+		{http.MethodPost, "/api/ingestion-runtime/v1/ingestions/ing_1/jobs?runtimeId=rt-1", map[string]any{"records": []map[string]any{{"payload": "x"}}}},
+		{http.MethodGet, "/api/ingestion-runtime/v1/ingestions/ing_1/secrets/sftp-password?runtimeId=rt-1", nil},
 	}
 	for _, rt := range routes {
 		var args []any

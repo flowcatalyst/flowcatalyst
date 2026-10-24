@@ -115,6 +115,7 @@ var internalOps = idSet(
 	// the platform (its own client, in the runtime repository), not console
 	// and not application surface.
 	"ingestionRuntimePoll", "ingestionRuntimeReport", "ingestionRuntimeGetState", "ingestionRuntimePutState",
+	"ingestionRuntimeCreateJobs", "ingestionRuntimeGetSecret",
 
 	// Served to the router host / browsers, not to a console or an application.
 	"getRouterConfig", "publicAllowedOrigins",

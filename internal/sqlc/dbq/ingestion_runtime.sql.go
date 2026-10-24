@@ -85,6 +85,68 @@ func (q *Queries) IngestionFindByIDs(ctx context.Context, ids []string) ([]IngIn
 	return items, nil
 }
 
+const ingestionJobKeyClaim = `-- name: IngestionJobKeyClaim :execrows
+INSERT INTO ing_job_keys (ingestion_id, external_id, job_id, created_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (ingestion_id, external_id) DO NOTHING
+`
+
+type IngestionJobKeyClaimParams struct {
+	IngestionID string    `db:"ingestion_id"`
+	ExternalID  string    `db:"external_id"`
+	JobID       string    `db:"job_id"`
+	CreatedAt   time.Time `db:"created_at"`
+}
+
+// The first request to name a key wins it; the caller reads back who did.
+func (q *Queries) IngestionJobKeyClaim(ctx context.Context, arg IngestionJobKeyClaimParams) (int64, error) {
+	result, err := q.db.Exec(ctx, ingestionJobKeyClaim,
+		arg.IngestionID,
+		arg.ExternalID,
+		arg.JobID,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const ingestionJobKeysFind = `-- name: IngestionJobKeysFind :many
+SELECT external_id, job_id FROM ing_job_keys
+WHERE ingestion_id = $1 AND external_id = ANY($2::text[])
+`
+
+type IngestionJobKeysFindParams struct {
+	IngestionID string   `db:"ingestion_id"`
+	ExternalIds []string `db:"external_ids"`
+}
+
+type IngestionJobKeysFindRow struct {
+	ExternalID string `db:"external_id"`
+	JobID      string `db:"job_id"`
+}
+
+func (q *Queries) IngestionJobKeysFind(ctx context.Context, arg IngestionJobKeysFindParams) ([]IngestionJobKeysFindRow, error) {
+	rows, err := q.db.Query(ctx, ingestionJobKeysFind, arg.IngestionID, arg.ExternalIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IngestionJobKeysFindRow{}
+	for rows.Next() {
+		var i IngestionJobKeysFindRow
+		if err := rows.Scan(&i.ExternalID, &i.JobID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ingestionLeaseClaim = `-- name: IngestionLeaseClaim :execrows
 INSERT INTO ing_leases (ingestion_id, runtime_id, acquired_at, expires_at, released)
 VALUES ($1, $2, $3, $4, FALSE)
@@ -241,6 +303,17 @@ func (q *Queries) IngestionRouteStateUpsert(ctx context.Context, arg IngestionRo
 		arg.UpdatedAt,
 	)
 	return err
+}
+
+const ingestionRuntimeKinds = `-- name: IngestionRuntimeKinds :one
+SELECT kinds FROM ing_runtimes WHERE runtime_id = $1
+`
+
+func (q *Queries) IngestionRuntimeKinds(ctx context.Context, runtimeID string) (json.RawMessage, error) {
+	row := q.db.QueryRow(ctx, ingestionRuntimeKinds, runtimeID)
+	var kinds json.RawMessage
+	err := row.Scan(&kinds)
+	return kinds, err
 }
 
 const ingestionRuntimeUpsert = `-- name: IngestionRuntimeUpsert :exec

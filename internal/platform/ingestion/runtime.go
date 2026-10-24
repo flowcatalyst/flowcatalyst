@@ -85,25 +85,76 @@ func (r *Repository) Poll(ctx context.Context, req PollRequest) (*PollResult, er
 		if err != nil {
 			return err
 		}
-		held := []string{} // not nil: sqlc sends a nil slice as NULL
+		// Fair share: the polled (single-owner) ingestions are spread evenly over
+		// the runtimes that are alive, so a second runtime takes half of what the
+		// first one holds. A runtime over its share stops listing the surplus and
+		// marks those leases released; a lease is never handed over directly, the
+		// other runtime claims it once it has expired, by which time the first
+		// has stopped it. The share counts every polled ingestion, whichever
+		// runtime can run it, as the reference does (the runtimes of a kind a
+		// runtime does not carry simply hold what they can).
+		polled := 0
 		for _, item := range live {
-			src := item.Definition.Source
-			if !slices.Contains(carried, RunKind(src)) {
+			if item.Definition.Source.SingleOwner() {
+				polled++
+			}
+		}
+		runtimes, err := q.IngestionRuntimesLive(ctx, dbq.IngestionRuntimesLiveParams{Since: req.Now.Add(-req.Lease), Until: req.Now})
+		if err != nil {
+			return fmt.Errorf("count live runtimes: %w", err)
+		}
+		share := FairShare(polled, int(runtimes))
+		mine, err := q.IngestionLeasesHeldBy(ctx, dbq.IngestionLeasesHeldByParams{RuntimeID: req.RuntimeID, Now: req.Now})
+		if err != nil {
+			return fmt.Errorf("leases held: %w", err)
+		}
+
+		held := []string{} // not nil: sqlc sends a nil slice as NULL
+		claim := func(id string) (bool, error) {
+			n, err := q.IngestionLeaseClaim(ctx, dbq.IngestionLeaseClaimParams{
+				IngestionID: id, RuntimeID: req.RuntimeID, Now: req.Now, ExpiresAt: req.Now.Add(req.Lease),
+			})
+			if err != nil {
+				return false, fmt.Errorf("claim lease: %w", err)
+			}
+			if n == 0 {
+				return false, nil // another runtime holds it
+			}
+			held = append(held, id)
+			return true, nil
+		}
+		// What this runtime already holds is renewed first, up to its share; then
+		// it claims unleased ones up to the share.
+		var runnable []ListItem
+		for _, item := range live {
+			if slices.Contains(carried, RunKind(item.Definition.Source)) {
+				runnable = append(runnable, item)
+			}
+		}
+		keep := map[string]bool{}
+		for _, item := range runnable {
+			if item.Definition.Source.SingleOwner() && slices.Contains(mine, item.ID) && len(held) < share {
+				if ok, err := claim(item.ID); err != nil {
+					return err
+				} else if ok {
+					keep[item.ID] = true
+				}
+			}
+		}
+		for _, item := range runnable {
+			if !item.Definition.Source.SingleOwner() || keep[item.ID] || len(held) >= share {
 				continue
 			}
-			if src.SingleOwner() {
-				n, err := q.IngestionLeaseClaim(ctx, dbq.IngestionLeaseClaimParams{
-					IngestionID: item.ID, RuntimeID: req.RuntimeID, Now: req.Now, ExpiresAt: req.Now.Add(req.Lease),
-				})
-				if err != nil {
-					return fmt.Errorf("claim lease: %w", err)
-				}
-				if n == 0 {
-					continue // another runtime holds it
-				}
-				held = append(held, item.ID)
+			if ok, err := claim(item.ID); err != nil {
+				return err
+			} else if ok {
+				keep[item.ID] = true
 			}
-			res.Ingestions = append(res.Ingestions, item)
+		}
+		for _, item := range runnable {
+			if !item.Definition.Source.SingleOwner() || keep[item.ID] {
+				res.Ingestions = append(res.Ingestions, item)
+			}
 		}
 		if _, err := q.IngestionLeaseReleaseExcept(ctx, dbq.IngestionLeaseReleaseExceptParams{
 			RuntimeID: req.RuntimeID, Keep: held,
@@ -151,4 +202,10 @@ func liveIngestions(ctx context.Context, tx pgx.Tx, clients, applications *[]str
 		out = append(out, ListItem{Ingestion: *ing, ApplicationCode: row.ApplicationCode, ClientIdentifier: row.ClientIdentifier})
 	}
 	return out, nil
+}
+
+// FairShare is how many of the polled ingestions one of the live runtimes may
+// hold: an even split, rounded up so that none is left without a holder.
+func FairShare(polled, runtimes int) int {
+	return (polled + max(runtimes, 1) - 1) / max(runtimes, 1)
 }

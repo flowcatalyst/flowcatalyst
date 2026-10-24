@@ -60,7 +60,7 @@ ingestion = (application, client, code) + source + split + target + flags
   - `serviceAccount`: an **optional** service account code, for signing without a connection; it may not be set together with `connection` (the connection's account is the signer);
   - neither set: unsigned delivery;
   - `code`, `mode` (`IMMEDIATE`, `NEXT_ON_ERROR`, `BLOCK_ON_ERROR`) and `batchSize` as today.
-  The job's **client is the ingestion's client**; it is not a target field. Anything that does not resolve is a `400` at save, not a failure in the runtime later. A runtime creates the jobs through the batch job API, which already takes the client by code; it is extended to take the pool and connection by code too (it takes ids today).
+  The job's **client is the ingestion's client**; it is not a target field. Anything that does not resolve is a `400` at save, not a failure in the runtime later. A runtime creates the jobs through its own runtime call (section 7), which builds them from this target.
 - Ids are platform TSIDs (`ing_...`), not ULIDs.
 
 ## 3. Tables (Go migrations, from 088)
@@ -74,6 +74,7 @@ table holds a secret value.
 | `ing_versions` | `ingestion_versions` | one row per saved version: definition, `note`, `applied_from` (set apply), who and when. `live` is the version runtimes receive (see section 5) |
 | `ing_runtimes` | `runtimes` | `runtime_id`, `last_seen_at`, `kinds` JSONB, `contract_version`, `url` (informational) |
 | `ing_leases` | `ingestion_leases` | polled sources run on one runtime at a time; `expires_at`, `released` |
+| `ing_job_keys` | (new) | the idempotency key (`externalId`) of each job a runtime created, per ingestion; written with the job, **pruned** after 7 days |
 | `ing_state` | `ingestion_state` | small values a polled source keeps (watermark, cursor); only the lease holder writes |
 | `ing_route_states` | `ingestion_route_states` | per runtime: version, status, error |
 | `ing_exchange_metrics` | `ingestion_exchange_metrics` | per window: completed, failed, records, jobs; **pruned** after 30 days (a partition-or-delete job like the other high-volume tables) |
@@ -96,7 +97,7 @@ Subdomain `ingestion` (four segments, like every platform permission):
 | `platform:ingestion:ingestion:test` | run "test connection" (it makes a real outbound call from a runtime, so it is its own grant) |
 | `platform:ingestion:ingestion:route` | create or change an ingestion of a kind that declares it needs this (`camel-route`); removing one needs only `delete` |
 | `platform:ingestion:set:apply` | apply or release a set |
-| `platform:ingestion:runtime:operate` | the runtime API: poll, report, state |
+| `platform:ingestion:runtime:operate` | the runtime API: poll, report, state, jobs, secrets |
 
 Seeded roles: `platform:ingestion-admin` (all but runtime), `platform:ingestion-operator` (view, update, test),
 `platform:ingestion-viewer`, and `platform:ingestion-runtime` for a runtime's service account. Super-admin's wildcard
@@ -106,10 +107,13 @@ covers everything. The role ceiling rules (a caller cannot grant what it does no
 account reaches only its own application's ingestions (the existing confinement). Per-application and per-client scoping
 is therefore the same axes as the rest of the platform.
 
-**Secrets.** An ingestion names secrets (`sftp-password`). A runtime reads them as the platform's per-client config
-secrets through the audited reveal call (`platform:application-service:config:reveal` held by the runtime's service
-account), always at the ingestion's client scope with no global fallback. Nothing changes there. The platform may warn at
-save when a named secret has no value (a masked config listing is enough to know).
+**Secrets.** An ingestion names secrets (`sftp-password`). A runtime reads them through the runtime API's secrets call
+(section 7), not through the config reveal: the call reveals only the secrets the ingestion's live definition names, at the
+ingestion's client, only to a runtime that carries the kind and (for a polled source) holds the lease, and audits each
+reveal under the runtime's principal and the ingestion. The runtime's service account therefore holds no
+`platform:application-service:config:reveal`, and `platform:ingestion-runtime` gains nothing beyond
+`platform:ingestion:runtime:operate`: the jobs and secrets calls are authorised by it plus those checks. The platform may
+warn at save when a named secret has no value (a masked config listing is enough to know).
 
 ## 5. API (OpenAPI, then SDKs)
 
@@ -125,7 +129,7 @@ Everything below is huma, in `api/openapi.lock.json`, so the SDKs and the SPA ty
 | `listIngestionSourceKinds` | `GET /api/ingestion-source-kinds` | built-in kinds plus the kinds the live runtimes report; the form is drawn from this |
 | `testIngestionConnection` | `POST /api/ingestion-tests` | queues a test (section 7); `GET /api/ingestion-tests/{id}` for the result |
 | `applyIngestionSet`, `listIngestionSets`, `listIngestionSetApplies`, `reapplyIngestionSet`, `releaseIngestionSet` | `/api/ingestion-sets...` | as today: a set owns its ingestions (read-only in the pages) until released |
-| `ingestionRuntimePoll`, `ingestionRuntimeReport`, `ingestionRuntimeGetState`, `ingestionRuntimePutState` | `/api/ingestion-runtime/v1/...` | the runtime contract (section 7) |
+| `ingestionRuntimePoll`, `ingestionRuntimeReport`, `ingestionRuntimeGetState`, `ingestionRuntimePutState`, `ingestionRuntimeCreateJobs`, `ingestionRuntimeGetSecret` | `/api/ingestion-runtime/v1/...` | the runtime contract (section 7) |
 
 Errors use the platform envelope with codes in the platform's style (`INGESTION_NOT_FOUND`,
 `INGESTION_CODE_EXISTS`, `INGESTION_TARGET_INVALID`, `INGESTION_SET_OWNED`, `LEASE_NOT_HELD`).
@@ -171,13 +175,45 @@ as the runtime's service account (`platform:ingestion:runtime:operate`).
   `database-poll`, `api-poll`, `custom`) are given to one runtime holding a lease in `ing_leases` (a runtime that cannot
   renew stops before the lease ends); `http`, `sqs` and `rabbitmq` go to every runtime that carries them. An ingestion
   of a kind no live runtime reports shows as **"no runtime carries this kind"**, not as a failure.
+  **Fair share (built 2026-10-24, ported from the Java control plane):** the leased ingestions spread evenly over the live
+  runtimes (those that polled within one lease window, counting the asker): a runtime may hold ceil(leased / live). It renews
+  what it already holds up to its share, claims unleased ones to fill it, and stops listing the surplus, marking those
+  leases released. A lease is never handed over directly: the surplus is claimed by another runtime only after it has expired,
+  by which time the first runtime has stopped it. A runtime that goes silent drops out of the count after a window and the
+  survivors take its share. The share counts every leased ingestion whichever runtime can run it, so a runtime that
+  carries fewer kinds simply holds what it can.
+- **The runtime's account.** A runtime holds the role `platform:ingestion-runtime`. An account provisioned for one
+  application is bound to it and so polls only that application's ingestions; a runtime shared by several integration
+  applications uses an account created with `allApplications` (which needs a caller who has that reach).
 - **Report:** route states, exchange windows, failures (with the lease checked), idempotent per window.
 - **State:** `GET/PUT /state/{ingestionId}/{key}`; a write from a runtime without the lease is `409 LEASE_NOT_HELD`.
 - **Test connection** is pull-based: the pages queue a request (`ing_test_requests`); a runtime that carries the kind
   receives it in its next poll, runs it without dispatching anything, and posts the result. This replaces the control
   plane calling the runtime's address, which does not work from a platform behind a firewall.
-- **Jobs:** a runtime creates dispatch jobs through the platform's existing batch dispatch-job API as its service
-  account, naming the target's connection and pool by code (extending that API if it does not yet accept codes).
+- **Jobs:** `POST /api/ingestion-runtime/v1/ingestions/{id}/jobs?runtimeId=` takes `{records: [{payload, payloadContentType?,
+  messageGroup?, externalId?, correlationId?, subject?}]}`, at most 1000 per request, and answers
+  `{created, results: [{index, id} | {index, error}]}`. A runtime does **not** use the batch dispatch-job API: that takes ids,
+  has no connection field, and an application-confined service account cannot create jobs for another application's
+  ingestion. The platform builds every job from the **ingestion's own target**, resolved as at save: the target's `code` and
+  `targetUrl`, the pool by code, the connection by code (the job carries `connection_id`, so pausing the connection holds it),
+  the signer (the connection's service account, or the target's explicit `serviceAccount`, or none), the `mode`, the
+  ingestion's client, source `ingestion:<application>:<code>`, and metadata naming the ingestion and the runtime. A record
+  carries only the record: a field naming any of those is refused, so the runtime can neither choose nor alter them.
+  Job creation is the batch API's own (`sdk.NewJobFromItem`), so a job persists identically whichever way it was made. Only a
+  **live, active** ingestion takes jobs (`404` unknown, `409 INGESTION_NOT_LIVE` paused or no live version, `409
+  INGESTION_TARGET_INVALID` when the target no longer resolves); the runtime must have polled and carry the ingestion's kind
+  (`409 RUNTIME_KIND_NOT_CARRIED`) and, for a polled source, hold its lease (`409 LEASE_NOT_HELD`). A record that cannot be a
+  job (no payload, a field over its length) is answered with its `error`; the rest are made. An `externalId` is the
+  record's idempotency key **within the ingestion**: sending it again answers the job it made first (`existing: true`), also
+  within one request. Keys live in `ing_job_keys`, written in the transaction that creates the job and pruned after 7 days.
+- **Secrets:** `GET /api/ingestion-runtime/v1/ingestions/{id}/secrets/{name}?runtimeId=` answers `{value, updatedAt}` for a
+  secret the ingestion's **live definition names** (found by walking the typed source model: source credentials, http auth
+  tokens, api-poll auth, database and queue passwords; for an extension kind, its text settings), read from the
+  ingestion's application, section `secrets`, at the ingestion's client with no global fallback. A name the definition does
+  not reference, or that has no value, is `404 SECRET_NOT_FOUND`. The same kind, lease and liveness checks as the jobs call
+  apply. It is the audited reveal of platform config (`platformconfig.Service`): refused if the audit row cannot be written,
+  `Cache-Control: no-store`, and the audit row names the runtime's principal, the ingestion and the runtime id. The runtime's
+  service account holds no config-reveal permission and needs none.
 - **Versioning:** the contract is a public API. Poll carries `contractVersion`; the platform serves the current version
   and the one before (N-1) and answers `426` with the supported range otherwise. Additive changes do not bump it.
 

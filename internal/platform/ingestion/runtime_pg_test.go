@@ -4,6 +4,7 @@ package ingestion_test
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -19,7 +20,10 @@ import (
 // requests. Every poll is confined to the test's own client, so tests share
 // the database without taking each other's leases.
 
-var t0 = time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
+// Every test environment polls on a day of its own (env.e.t0): the runtime table is
+// global and fair share counts the runtimes seen within a lease window, so runtimes of
+// other tests must not fall into this test's window.
+var tBase = time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
 
 const lease = 3 * time.Minute
 
@@ -93,10 +97,10 @@ func TestPoll_SharedGoesToEveryRuntime(t *testing.T) {
 	e.mustSave(t, e.newIngestion("draft", sqsDef(t, "Draft", "q-draft"), false))
 
 	a, b := "rt-a-"+unique(), "rt-b-"+unique()
-	assert.Equal(t, []string{sqs.ID}, given(e.poll(t, a, t0)))
-	assert.Equal(t, []string{sqs.ID}, given(e.poll(t, b, t0)))
+	assert.Equal(t, []string{sqs.ID}, given(e.poll(t, a, e.t0)))
+	assert.Equal(t, []string{sqs.ID}, given(e.poll(t, b, e.t0)))
 
-	got := e.poll(t, a, t0).Ingestions[0]
+	got := e.poll(t, a, e.t0).Ingestions[0]
 	assert.Equal(t, e.app.Code, got.ApplicationCode)
 	assert.Equal(t, e.client.Identifier, got.ClientIdentifier)
 	assert.Equal(t, 0, e.count(t, `SELECT count(*) FROM ing_leases WHERE ingestion_id = $1`, sqs.ID), "a shared source has no lease")
@@ -118,7 +122,7 @@ func TestPoll_LeaseRaceExactlyOneWins(t *testing.T) {
 	for n, rt := range runtimes {
 		wg.Go(func() {
 			<-start
-			res, err := e.repo.Poll(context.Background(), e.pollRequest(rt, t0, nil))
+			res, err := e.repo.Poll(context.Background(), e.pollRequest(rt, e.t0, nil))
 			assert.NoError(t, err)
 			results[n] = res
 		})
@@ -146,12 +150,12 @@ func TestLease_RenewalAndExpiryHandover(t *testing.T) {
 	i := e.live(t, "handover", e.sftp(t))
 	a, b := "rt-a-"+unique(), "rt-b-"+unique()
 
-	assert.Equal(t, []string{i.ID}, given(e.poll(t, a, t0)), "a takes the lease")
-	assert.Empty(t, given(e.poll(t, b, t0.Add(time.Minute))), "b waits while a holds it")
-	assert.Equal(t, []string{i.ID}, given(e.poll(t, a, t0.Add(2*time.Minute))), "a renews (lease now ends at +5m)")
-	assert.Empty(t, given(e.poll(t, b, t0.Add(4*time.Minute))), "without the renewal it would have gone to b by now")
-	assert.Equal(t, []string{i.ID}, given(e.poll(t, b, t0.Add(6*time.Minute))), "a stopped renewing: b takes it after +5m")
-	assert.Empty(t, given(e.poll(t, a, t0.Add(7*time.Minute))), "a does not get it back while b holds it")
+	assert.Equal(t, []string{i.ID}, given(e.poll(t, a, e.t0)), "a takes the lease")
+	assert.Empty(t, given(e.poll(t, b, e.t0.Add(time.Minute))), "b waits while a holds it")
+	assert.Equal(t, []string{i.ID}, given(e.poll(t, a, e.t0.Add(2*time.Minute))), "a renews (lease now ends at +5m)")
+	assert.Empty(t, given(e.poll(t, b, e.t0.Add(4*time.Minute))), "without the renewal it would have gone to b by now")
+	assert.Equal(t, []string{i.ID}, given(e.poll(t, b, e.t0.Add(6*time.Minute))), "a stopped renewing: b takes it after +5m")
+	assert.Empty(t, given(e.poll(t, a, e.t0.Add(7*time.Minute))), "a does not get it back while b holds it")
 }
 
 // A runtime that stops getting an ingestion marks its lease released; nobody
@@ -160,19 +164,19 @@ func TestLease_ReleasedWhenNoLongerRunnable(t *testing.T) {
 	e := newEnv(t)
 	i := e.live(t, "released", e.sftp(t))
 	a, b := "rt-a-"+unique(), "rt-b-"+unique()
-	require.Equal(t, []string{i.ID}, given(e.poll(t, a, t0)))
+	require.Equal(t, []string{i.ID}, given(e.poll(t, a, e.t0)))
 
 	i = e.mustFind(t, i.ID)
 	i.Pause()
 	e.mustSave(t, i)
-	assert.Empty(t, given(e.poll(t, a, t0.Add(time.Minute))))
+	assert.Empty(t, given(e.poll(t, a, e.t0.Add(time.Minute))))
 	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_leases WHERE ingestion_id = $1 AND runtime_id = $2 AND released`, i.ID, a))
 
 	i = e.mustFind(t, i.ID)
 	i.Resume()
 	e.mustSave(t, i)
-	assert.Empty(t, given(e.poll(t, b, t0.Add(2*time.Minute))), "a released lease is not handed over before it expires")
-	assert.Equal(t, []string{i.ID}, given(e.poll(t, b, t0.Add(4*time.Minute))))
+	assert.Empty(t, given(e.poll(t, b, e.t0.Add(2*time.Minute))), "a released lease is not handed over before it expires")
+	assert.Equal(t, []string{i.ID}, given(e.poll(t, b, e.t0.Add(4*time.Minute))))
 }
 
 // A runtime never gets an ingestion whose kind it does not carry, and the
@@ -186,7 +190,7 @@ func TestPoll_KindCapabilityFiltering(t *testing.T) {
 	sqs := e.live(t, "queue", sqsDef(t, "Queue", "q-kind"))
 
 	plain, ext, limited := "rt-plain-"+unique(), "rt-ext-"+unique(), "rt-limited-"+unique()
-	assert.ElementsMatch(t, []string{sftp.ID, sqs.ID}, given(e.poll(t, plain, t0)), "no extension: the built-ins, not the custom kind")
+	assert.ElementsMatch(t, []string{sftp.ID, sqs.ID}, given(e.poll(t, plain, e.t0)), "no extension: the built-ins, not the custom kind")
 	assert.Equal(t, 0, e.count(t, `SELECT count(*) FROM ing_leases WHERE ingestion_id = $1`, custom.ID), "a lease is never taken for a kind nobody carries")
 
 	carries, err := e.repo.AnyLiveRuntimeCarries(ctx)
@@ -194,13 +198,13 @@ func TestPoll_KindCapabilityFiltering(t *testing.T) {
 	assert.False(t, carries(kind), "no runtime carries this kind yet")
 
 	// The extension runtime takes the custom kind and the shared queue; sftp is still held by plain.
-	assert.ElementsMatch(t, []string{custom.ID, sqs.ID}, given(e.poll(t, ext, t0, ingestion.RuntimeKind{Kind: kind})))
+	assert.ElementsMatch(t, []string{custom.ID, sqs.ID}, given(e.poll(t, ext, e.t0, ingestion.RuntimeKind{Kind: kind})))
 	carries, err = e.repo.AnyLiveRuntimeCarries(ctx)
 	require.NoError(t, err)
 	assert.True(t, carries(kind))
 
 	// A runtime that names built-in kinds carries exactly those.
-	assert.Equal(t, []string{sqs.ID}, given(e.poll(t, limited, t0, ingestion.RuntimeKind{Kind: "sqs"})))
+	assert.Equal(t, []string{sqs.ID}, given(e.poll(t, limited, e.t0, ingestion.RuntimeKind{Kind: "sqs"})))
 }
 
 // Polled-source state belongs to the lease holder: another runtime cannot
@@ -211,25 +215,25 @@ func TestState_Fencing(t *testing.T) {
 	e := newEnv(t)
 	i := e.live(t, "state", e.sftp(t))
 	a, b := "rt-a-"+unique(), "rt-b-"+unique()
-	require.Equal(t, []string{i.ID}, given(e.poll(t, a, t0)))
+	require.Equal(t, []string{i.ID}, given(e.poll(t, a, e.t0)))
 
-	require.NoError(t, e.repo.PutState(ctx, i.ID, a, "watermark", "2030-01-01T00:00:00Z", t0.Add(time.Minute)))
-	require.NoError(t, e.repo.PutState(ctx, i.ID, a, "watermark", "2030-01-02T00:00:00Z", t0.Add(time.Minute)), "a write replaces")
-	v, found, err := e.repo.GetState(ctx, i.ID, a, "watermark", t0.Add(time.Minute))
+	require.NoError(t, e.repo.PutState(ctx, i.ID, a, "watermark", "2030-01-01T00:00:00Z", e.t0.Add(time.Minute)))
+	require.NoError(t, e.repo.PutState(ctx, i.ID, a, "watermark", "2030-01-02T00:00:00Z", e.t0.Add(time.Minute)), "a write replaces")
+	v, found, err := e.repo.GetState(ctx, i.ID, a, "watermark", e.t0.Add(time.Minute))
 	require.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, "2030-01-02T00:00:00Z", v)
-	_, found, err = e.repo.GetState(ctx, i.ID, a, "other", t0.Add(time.Minute))
+	_, found, err = e.repo.GetState(ctx, i.ID, a, "other", e.t0.Add(time.Minute))
 	require.NoError(t, err)
 	assert.False(t, found)
 
-	assert.Equal(t, "LEASE_NOT_HELD", conflictCode(t, e.repo.PutState(ctx, i.ID, b, "watermark", "stolen", t0.Add(time.Minute))))
-	_, _, err = e.repo.GetState(ctx, i.ID, b, "watermark", t0.Add(time.Minute))
+	assert.Equal(t, "LEASE_NOT_HELD", conflictCode(t, e.repo.PutState(ctx, i.ID, b, "watermark", "stolen", e.t0.Add(time.Minute))))
+	_, _, err = e.repo.GetState(ctx, i.ID, b, "watermark", e.t0.Add(time.Minute))
 	assert.Equal(t, "LEASE_NOT_HELD", conflictCode(t, err))
-	assert.Equal(t, "LEASE_NOT_HELD", conflictCode(t, e.repo.PutState(ctx, i.ID, a, "watermark", "late", t0.Add(4*time.Minute))), "an expired lease holds nothing")
+	assert.Equal(t, "LEASE_NOT_HELD", conflictCode(t, e.repo.PutState(ctx, i.ID, a, "watermark", "late", e.t0.Add(4*time.Minute))), "an expired lease holds nothing")
 
-	require.Equal(t, []string{i.ID}, given(e.poll(t, b, t0.Add(4*time.Minute))))
-	v, found, err = e.repo.GetState(ctx, i.ID, b, "watermark", t0.Add(4*time.Minute))
+	require.Equal(t, []string{i.ID}, given(e.poll(t, b, e.t0.Add(4*time.Minute))))
+	v, found, err = e.repo.GetState(ctx, i.ID, b, "watermark", e.t0.Add(4*time.Minute))
 	require.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, "2030-01-02T00:00:00Z", v, "the value survives the ingestion moving to another runtime")
@@ -241,15 +245,15 @@ func TestReport_WindowIsIdempotent(t *testing.T) {
 	e := newEnv(t)
 	i := e.live(t, "metrics", sqsDef(t, "Metrics", "q-metrics"))
 	a, b := "rt-a-"+unique(), "rt-b-"+unique()
-	from := t0.Add(-time.Minute)
+	from := e.t0.Add(-time.Minute)
 	win := func(completed int64) []ingestion.WindowReport {
-		return []ingestion.WindowReport{{IngestionID: i.ID, From: from, To: t0, Completed: completed, Failed: 1, Records: completed * 2, Dispatch: completed * 2}}
+		return []ingestion.WindowReport{{IngestionID: i.ID, From: from, To: e.t0, Completed: completed, Failed: 1, Records: completed * 2, Dispatch: completed * 2}}
 	}
 
-	e.report(t, ingestion.Report{RuntimeID: a, Metrics: win(10), Now: t0})
-	e.report(t, ingestion.Report{RuntimeID: a, Metrics: win(10), Now: t0.Add(time.Second)})
-	e.report(t, ingestion.Report{RuntimeID: a, Metrics: win(12), Now: t0.Add(2 * time.Second)})
-	e.report(t, ingestion.Report{RuntimeID: b, Metrics: win(5), Now: t0})
+	e.report(t, ingestion.Report{RuntimeID: a, Metrics: win(10), Now: e.t0})
+	e.report(t, ingestion.Report{RuntimeID: a, Metrics: win(10), Now: e.t0.Add(time.Second)})
+	e.report(t, ingestion.Report{RuntimeID: a, Metrics: win(12), Now: e.t0.Add(2 * time.Second)})
+	e.report(t, ingestion.Report{RuntimeID: b, Metrics: win(5), Now: e.t0})
 
 	var rows, completed, records, secs int
 	require.NoError(t, e.pool.QueryRow(context.Background(),
@@ -269,17 +273,17 @@ func TestReport_LeaseRule(t *testing.T) {
 	polled := e.live(t, "polled", e.sftp(t))
 	shared := e.live(t, "shared", sqsDef(t, "Shared", "q-report"))
 	holder, other := "rt-h-"+unique(), "rt-o-"+unique()
-	require.Equal(t, []string{polled.ID}, given(e.poll(t, holder, t0, ingestion.RuntimeKind{Kind: "sftp"})))
+	require.Equal(t, []string{polled.ID}, given(e.poll(t, holder, e.t0, ingestion.RuntimeKind{Kind: "sftp"})))
 
 	about := func(rt string) ingestion.Report {
 		return ingestion.Report{
-			RuntimeID: rt, Now: t0.Add(time.Second),
+			RuntimeID: rt, Now: e.t0.Add(time.Second),
 			Routes: []ingestion.RouteReport{
 				{IngestionID: polled.ID, Version: 1, Status: "STARTED"},
 				{IngestionID: shared.ID, Version: 1, Status: "FAILING", Error: new("login refused")},
 				{IngestionID: "ing_missing000", Version: 1, Status: "STARTED"},
 			},
-			Failures: []ingestion.FailureReport{{IngestionID: polled.ID, Version: 1, At: t0, Kind: "SOURCE", Message: "boom"}},
+			Failures: []ingestion.FailureReport{{IngestionID: polled.ID, Version: 1, At: e.t0, Kind: "SOURCE", Message: "boom"}},
 		}
 	}
 	sum := e.report(t, about(other))
@@ -306,11 +310,11 @@ func TestReport_FailureExcerptRule(t *testing.T) {
 
 	fail := func(id string) ingestion.FailureReport {
 		return ingestion.FailureReport{
-			IngestionID: id, Version: 1, At: t0, Kind: "REJECTED", Message: "not json",
+			IngestionID: id, Version: 1, At: e.t0, Kind: "REJECTED", Message: "not json",
 			AfterRecords: new(int64(3)), Excerpt: new("id,name\n1,Ann"),
 		}
 	}
-	e.report(t, ingestion.Report{RuntimeID: "rt-" + unique(), Now: t0, Failures: []ingestion.FailureReport{fail(plain.ID), fail(keep.ID)}})
+	e.report(t, ingestion.Report{RuntimeID: "rt-" + unique(), Now: e.t0, Failures: []ingestion.FailureReport{fail(plain.ID), fail(keep.ID)}})
 
 	page, err := e.repo.ListFailures(context.Background(), plain.ID, "", 10)
 	require.NoError(t, err)
@@ -333,30 +337,30 @@ func TestTestRequest_Lifecycle(t *testing.T) {
 	e := newEnv(t)
 	kind := "wiq" + unique()
 	def := e.custom(t, kind)
-	queued, err := e.repo.QueueTest(ctx, nil, e.app.ID, e.client.ID, def, nil, t0)
+	queued, err := e.repo.QueueTest(ctx, nil, e.app.ID, e.client.ID, def, nil, e.t0)
 	require.NoError(t, err)
 	assert.Equal(t, kind, queued.Kind)
-	assert.Equal(t, ingestion.TestPending, queued.EffectiveStatus(t0))
+	assert.Equal(t, ingestion.TestPending, queued.EffectiveStatus(e.t0))
 
-	assert.Empty(t, e.poll(t, "rt-none-"+unique(), t0.Add(time.Second)).Tests, "a runtime that does not carry the kind is not asked")
+	assert.Empty(t, e.poll(t, "rt-none-"+unique(), e.t0.Add(time.Second)).Tests, "a runtime that does not carry the kind is not asked")
 	ext, other := "rt-ext-"+unique(), "rt-other-"+unique()
-	res := e.poll(t, ext, t0.Add(time.Second), ingestion.RuntimeKind{Kind: kind})
+	res := e.poll(t, ext, e.t0.Add(time.Second), ingestion.RuntimeKind{Kind: kind})
 	require.Len(t, res.Tests, 1)
 	assert.Equal(t, queued.ID, res.Tests[0].ID)
 	assert.Equal(t, e.app.Code, res.Tests[0].ApplicationCode)
 	assert.Equal(t, e.client.Identifier, res.Tests[0].ClientIdentifier)
-	assert.Empty(t, e.poll(t, other, t0.Add(2*time.Second), ingestion.RuntimeKind{Kind: kind}).Tests, "taken once")
-	assert.Equal(t, ingestion.TestRunning, e.mustFindTest(t, queued.ID).EffectiveStatus(t0.Add(time.Minute)))
+	assert.Empty(t, e.poll(t, other, e.t0.Add(2*time.Second), ingestion.RuntimeKind{Kind: kind}).Tests, "taken once")
+	assert.Equal(t, ingestion.TestRunning, e.mustFindTest(t, queued.ID).EffectiveStatus(e.t0.Add(time.Minute)))
 
 	answer := ingestion.TestAnswer{TestID: queued.ID, Result: ingestion.TestResult{
 		Outcome: "RESULTS", Steps: []string{"logged in", "asked once"}, Records: new(int64(7)), Excerpt: new("{\"secret\":1}"),
 	}}
-	e.report(t, ingestion.Report{RuntimeID: other, Now: t0.Add(10 * time.Second), Tests: []ingestion.TestAnswer{answer}})
+	e.report(t, ingestion.Report{RuntimeID: other, Now: e.t0.Add(10 * time.Second), Tests: []ingestion.TestAnswer{answer}})
 	assert.Equal(t, ingestion.TestRunning, e.mustFindTest(t, queued.ID).Status, "only the runtime that took it answers it")
 
-	e.report(t, ingestion.Report{RuntimeID: ext, Now: t0.Add(20 * time.Second), Tests: []ingestion.TestAnswer{answer}})
+	e.report(t, ingestion.Report{RuntimeID: ext, Now: e.t0.Add(20 * time.Second), Tests: []ingestion.TestAnswer{answer}})
 	done := e.mustFindTest(t, queued.ID)
-	assert.Equal(t, ingestion.TestDone, done.EffectiveStatus(t0.Add(time.Hour)), "an answered request does not expire")
+	assert.Equal(t, ingestion.TestDone, done.EffectiveStatus(e.t0.Add(time.Hour)), "an answered request does not expire")
 	require.NotNil(t, done.Result)
 	assert.Equal(t, "RESULTS", done.Result.Outcome)
 	assert.Equal(t, []string{"logged in", "asked once"}, done.Result.Steps)
@@ -365,9 +369,9 @@ func TestTestRequest_Lifecycle(t *testing.T) {
 	assert.NotNil(t, done.CompletedAt)
 
 	// Nobody answers in time: EXPIRED, never claimed after, never answered after.
-	late, err := e.repo.QueueTest(ctx, nil, e.app.ID, e.client.ID, def, nil, t0)
+	late, err := e.repo.QueueTest(ctx, nil, e.app.ID, e.client.ID, def, nil, e.t0)
 	require.NoError(t, err)
-	pastExpiry := t0.Add(ingestion.TestRequestTTL)
+	pastExpiry := e.t0.Add(ingestion.TestRequestTTL)
 	assert.Equal(t, ingestion.TestExpired, late.EffectiveStatus(pastExpiry))
 	assert.Empty(t, e.poll(t, ext, pastExpiry, ingestion.RuntimeKind{Kind: kind}).Tests)
 	e.report(t, ingestion.Report{RuntimeID: ext, Now: pastExpiry, Tests: []ingestion.TestAnswer{{TestID: late.ID, Result: answer.Result}}})
@@ -381,11 +385,11 @@ func TestTestRequest_ExpiresWhenTakenButUnanswered(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
 	kind := "wiq" + unique()
-	queued, err := e.repo.QueueTest(ctx, nil, e.app.ID, e.client.ID, e.custom(t, kind), nil, t0)
+	queued, err := e.repo.QueueTest(ctx, nil, e.app.ID, e.client.ID, e.custom(t, kind), nil, e.t0)
 	require.NoError(t, err)
 	rt := "rt-" + unique()
-	require.Len(t, e.poll(t, rt, t0.Add(time.Second), ingestion.RuntimeKind{Kind: kind}).Tests, 1)
-	pastExpiry := t0.Add(ingestion.TestRequestTTL + time.Second)
+	require.Len(t, e.poll(t, rt, e.t0.Add(time.Second), ingestion.RuntimeKind{Kind: kind}).Tests, 1)
+	pastExpiry := e.t0.Add(ingestion.TestRequestTTL + time.Second)
 	e.report(t, ingestion.Report{RuntimeID: rt, Now: pastExpiry, Tests: []ingestion.TestAnswer{{
 		TestID: queued.ID, Result: ingestion.TestResult{Outcome: "FAILED", Steps: []string{"too late"}},
 	}}})
@@ -425,6 +429,9 @@ func TestPrune(t *testing.T) {
 		exec(`INSERT INTO ing_test_requests (id, application_id, client_id, kind, definition, status, created_at, expires_at)
 			VALUES ($1, $2, $3, 'sftp', '{}', 'PENDING', $4, $4)`, "ingt"+unique()[:12], e.app.ID, e.client.ID, at)
 	}
+	for k, at := range []time.Time{now.Add(-8 * 24 * time.Hour), now.Add(-24 * time.Hour)} {
+		exec(`INSERT INTO ing_job_keys (ingestion_id, external_id, job_id, created_at) VALUES ($1, $2, $3, $4)`, ing.ID, fmt.Sprintf("k%d", k), "job"+unique()[:8], at)
+	}
 	// An expired lease on its own ingestion, and a live one; runtimes seen long ago and lately.
 	live := e.live(t, "prune-live", e.sftp(t))
 	exec(`INSERT INTO ing_leases (ingestion_id, runtime_id, acquired_at, expires_at) VALUES ($1, $2, $3, $4)`, ing.ID, rt, old, now.Add(-time.Minute))
@@ -437,12 +444,14 @@ func TestPrune(t *testing.T) {
 	assert.GreaterOrEqual(t, pruned.Metrics, int64(1))
 	assert.GreaterOrEqual(t, pruned.Failures, int64(1))
 	assert.GreaterOrEqual(t, pruned.TestRequests, int64(1))
+	assert.GreaterOrEqual(t, pruned.JobKeys, int64(1))
 	assert.GreaterOrEqual(t, pruned.Leases, int64(1))
 	assert.GreaterOrEqual(t, pruned.Runtimes, int64(1))
 
 	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_exchange_metrics WHERE runtime_id = $1`, rt), "the recent window stays")
 	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_failures WHERE runtime_id = $1`, rt))
 	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_test_requests WHERE client_id = $1`, e.client.ID))
+	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_job_keys WHERE ingestion_id = $1`, ing.ID), "the key from a day ago stays")
 	assert.Equal(t, 0, e.count(t, `SELECT count(*) FROM ing_leases WHERE ingestion_id = $1`, ing.ID), "the expired lease goes")
 	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_leases WHERE ingestion_id = $1`, live.ID), "the live lease stays")
 	assert.Equal(t, 0, e.count(t, `SELECT count(*) FROM ing_runtimes WHERE runtime_id = $1`, rt+"-old"))

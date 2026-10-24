@@ -6,7 +6,9 @@ import (
 	"context"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
@@ -45,7 +47,10 @@ type env struct {
 	repo   *ingestion.Repository
 	app    *application.Application
 	client *client.Client
+	t0     time.Time // the day this environment polls on (see tBase)
 }
+
+var envSeq atomic.Int64
 
 func withTx(t *testing.T, uow *usecasepgx.UnitOfWork, fn func(*usecasepgx.DbTx) error) error {
 	t.Helper()
@@ -64,7 +69,7 @@ func unique() string { return strings.ToLower(tsid.GenerateUntyped()) }
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	e := &env{pool: testpg.Pool(t), uow: testpg.NewUoW(t)}
+	e := &env{pool: testpg.Pool(t), uow: testpg.NewUoW(t), t0: tBase.AddDate(0, 0, int(envSeq.Add(1)))}
 	e.repo = ingestion.NewRepository(e.pool)
 	e.app = application.NewIntegration("ing-"+unique(), "Ingest")
 	e.client = client.New("Acme", "acme-"+unique())

@@ -478,6 +478,13 @@ type IngIngestion struct {
 	UpdatedAt          time.Time         `db:"updated_at"`
 }
 
+type IngJobKey struct {
+	IngestionID string    `db:"ingestion_id"`
+	ExternalID  string    `db:"external_id"`
+	JobID       string    `db:"job_id"`
+	CreatedAt   time.Time `db:"created_at"`
+}
+
 type IngLease struct {
 	IngestionID string    `db:"ingestion_id"`
 	RuntimeID   string    `db:"runtime_id"`

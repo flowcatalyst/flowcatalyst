@@ -21,10 +21,12 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	ingestionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/runtimeapi"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -70,6 +72,7 @@ type env struct {
 	now    time.Time
 	app    *application.Application
 	client *client.Client
+	config *platformconfig.Service
 }
 
 // newEnv is one integration application and one client behind the real
@@ -96,13 +99,26 @@ func newEnv(t *testing.T) *env {
 	api.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
 		next(huma.WithContext(ctx, auth.WithContext(ctx.Context(), e.who)))
 	})
-	runtimeapi.Register(api, &runtimeapi.State{Repo: e.repo, Now: func() time.Time { return e.now }})
-	ingestionapi.Register(api, &ingestionapi.State{
-		Repo: e.repo,
-		Resolver: ingestion.NewResolver(apps, clients, dispatchpool.NewRepository(e.pool),
-			connection.NewRepository(e.pool), serviceaccount.NewRepository(e.pool), nil),
-		Apps: apps, Clients: clients, Audit: audit.NewRepository(e.pool), UoW: uow,
+	resolver := ingestion.NewResolver(apps, clients, dispatchpool.NewRepository(e.pool),
+		connection.NewRepository(e.pool), serviceaccount.NewRepository(e.pool), nil)
+	enc, err := encryption.New(os.Getenv("FLOWCATALYST_APP_KEY"))
+	require.NoError(t, err)
+	e.config = &platformconfig.Service{
+		Repo: platformconfig.NewRepository(e.pool).WithEncryption(enc), UoW: uow, Apps: apps, Clients: clients,
+		Audit: audit.NewRepository(e.pool),
+	}
+	runtimeapi.Register(api, &runtimeapi.State{
+		Repo: e.repo, Jobs: dispatchjob.NewRepository(e.pool), Resolver: resolver,
+		Connections: connection.NewRepository(e.pool), Config: e.config, Now: func() time.Time { return e.now },
 	})
+	ingestionapi.Register(api, &ingestionapi.State{
+		Repo:     e.repo,
+		Resolver: resolver,
+		Apps:     apps, Clients: clients, Audit: audit.NewRepository(e.pool), UoW: uow,
+	})
+	// As the server does, after every route has registered.
+	httpcompat.RelaxRequestBodies(api)
+	httpcompat.RelaxRequestBodiesDeep(api, runtimeapi.PollOperationID, runtimeapi.ReportOperationID)
 	e.api = api
 	return e
 }

@@ -89,3 +89,26 @@ func TestServiceListAndDelete(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, rows)
 }
+
+// RevealAuthorised is Reveal for a caller authorised some other way: it needs
+// no reveal permission, still audits (adding the caller's detail to the row),
+// and is refused when the audit row cannot be written.
+func TestServiceRevealAuthorised_AuditsWithDetailAndRefusesWithoutAudit(t *testing.T) {
+	ctx := context.Background()
+	svc := newServiceFixture(t, "svcauthorised")
+	caller := &auth.AuthContext{PrincipalID: "prn_runtime", Scope: auth.ScopeAnchor, AllApplications: true}
+
+	r, err := svc.RevealAuthorised(ctx, caller, "svcauthorised", "sftp", "password", "", map[string]string{"ingestionId": "ing_1"})
+	require.NoError(t, err)
+	assert.Equal(t, "s3cr3t-pw", r.Value)
+	var n int
+	require.NoError(t, testpg.Pool(t).QueryRow(ctx, `SELECT count(*) FROM aud_logs WHERE entity_id = $1 AND operation = 'SECRET_REVEALED'
+		AND principal_id = 'prn_runtime' AND operation_json->>'ingestionId' = 'ing_1' AND operation_json->>'property' = 'password'`, r.Config.ID).Scan(&n))
+	assert.Equal(t, 1, n)
+
+	svc.Audit = nil
+	_, err = svc.RevealAuthorised(ctx, caller, "svcauthorised", "sftp", "password", "", nil)
+	require.Error(t, err)
+	_, err = svc.RevealAuthorised(ctx, caller, "svcauthorised", "sftp", "missing", "", nil)
+	require.Error(t, err, "an unknown property is not found")
+}

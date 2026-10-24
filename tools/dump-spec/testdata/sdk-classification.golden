@@ -322,11 +322,13 @@ internal	GET /api/dispatch-jobs/{id}/raw	getDispatchJobRaw
 internal	GET /api/dispatch/router-config	getRouterConfig
 internal	GET /api/events/list-raw	listEventsRaw
 internal	GET /api/events/raw	listEventsRawAlias
+internal	GET /api/ingestion-runtime/v1/ingestions/{id}/secrets/{name}	ingestionRuntimeGetSecret
 internal	GET /api/ingestion-runtime/v1/state/{ingestionId}/{key}	ingestionRuntimeGetState
 internal	GET /api/platform/cors/allowed	publicAllowedOrigins
 internal	GET /control/functions/artifacts/{digest}	getFunctionRunnerArtifact
 internal	GET /control/functions/desired	getFunctionRunnerDesired
 internal	POST /api/event-types/{id}/schemas	addEventTypeSchema
+internal	POST /api/ingestion-runtime/v1/ingestions/{id}/jobs	ingestionRuntimeCreateJobs
 internal	POST /api/ingestion-runtime/v1/poll	ingestionRuntimePoll
 internal	POST /api/ingestion-runtime/v1/report	ingestionRuntimeReport
 internal	POST /api/oauth-clients/{id}/regenerate-secret	regenerateOAuthClientSecret

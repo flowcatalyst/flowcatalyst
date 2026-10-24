@@ -1,5 +1,5 @@
 // Package runtimeapi wires the routes an ingestion runtime calls
-// (docs/ingestion-design.md section 7): poll, report and state, under
+// (docs/ingestion-design.md section 7): poll, report, state, job creation and secrets, under
 // /api/ingestion-runtime/v1, as the runtime's service account holding
 // platform:ingestion:runtime:operate. The runtime is not an application SDK
 // client; these operations are not in the application SDKs.
@@ -15,8 +15,11 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -24,9 +27,20 @@ import (
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
 
-// State bundles the dependencies.
+// State bundles the dependencies. Jobs, Resolver, Connections and Config back
+// the job and secret calls only.
 type State struct {
 	Repo *ingestion.Repository
+	// Jobs is where a record's dispatch job is created.
+	Jobs *dispatchjob.Repository
+	// Resolver resolves an ingestion's target (and its application) as the
+	// save did.
+	Resolver ingestion.Resolver
+	// Connections finds the service account of the target's connection, which
+	// signs the jobs.
+	Connections *connection.Repository
+	// Config reveals the secrets an ingestion names, audited.
+	Config *platformconfig.Service
 	// Lease is how long a lease lasts without being renewed; zero is
 	// ingestion.DefaultLease.
 	Lease time.Duration
@@ -60,6 +74,8 @@ func Register(api huma.API, s *State) {
 	}, s.poll)
 	apiroute.Post(g, ReportOperationID, "/api/ingestion-runtime/v1/report", "A runtime reports route states, exchange windows, failures and test answers (ingestion runtime only)", http.StatusNoContent, s.report)
 	apiroute.Get(g, "ingestionRuntimeGetState", "/api/ingestion-runtime/v1/state/{ingestionId}/{key}", "Read a value a polled source keeps (lease holder only)", s.getState)
+	apiroute.Post(g, CreateJobsOperationID, "/api/ingestion-runtime/v1/ingestions/{id}/jobs", "Create dispatch jobs from records, under the ingestion's own target (ingestion runtime only)", http.StatusOK, s.createJobs)
+	apiroute.Get(g, GetSecretOperationID, "/api/ingestion-runtime/v1/ingestions/{id}/secrets/{name}", "Reveal a secret the ingestion names (ingestion runtime only)", s.getSecret)
 	apiroute.Put(g, "ingestionRuntimePutState", "/api/ingestion-runtime/v1/state/{ingestionId}/{key}", "Store a value a polled source keeps (lease holder only)", http.StatusNoContent, s.putState)
 }
 
@@ -239,24 +255,24 @@ type putStateInput struct {
 }
 
 // requireIngestion checks the caller may operate the runtime API and reaches
-// the ingestion the state belongs to.
-func (s *State) requireIngestion(ctx context.Context, id string) error {
+// the ingestion, and returns it.
+func (s *State) requireIngestion(ctx context.Context, id string) (*ingestion.Ingestion, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanOperateIngestionRuntime(ac); err != nil {
-		return err
+		return nil, err
 	}
 	i, err := s.Repo.FindByID(ctx, id)
 	if err != nil {
-		return usecase.Internal("REPO", "find_by_id failed", err)
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if i == nil {
-		return operations.NotFound(id)
+		return nil, operations.NotFound(id)
 	}
-	return ingestion.CheckReach(ac, i)
+	return i, ingestion.CheckReach(ac, i)
 }
 
 func (s *State) getState(ctx context.Context, in *getStateInput) (*apicommon.Out[StateValue], error) {
-	if err := s.requireIngestion(ctx, in.IngestionID); err != nil {
+	if _, err := s.requireIngestion(ctx, in.IngestionID); err != nil {
 		return nil, err
 	}
 	value, found, err := s.Repo.GetState(ctx, in.IngestionID, in.RuntimeID, in.Key, s.now())
@@ -270,7 +286,7 @@ func (s *State) getState(ctx context.Context, in *getStateInput) (*apicommon.Out
 }
 
 func (s *State) putState(ctx context.Context, in *putStateInput) (*apicommon.Empty, error) {
-	if err := s.requireIngestion(ctx, in.IngestionID); err != nil {
+	if _, err := s.requireIngestion(ctx, in.IngestionID); err != nil {
 		return nil, err
 	}
 	if utf8.RuneCountInString(in.Body.Value) > ingestion.MaxStateValue {

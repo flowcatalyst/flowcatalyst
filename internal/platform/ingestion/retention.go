@@ -23,11 +23,11 @@ const (
 )
 
 // Pruned counts the rows one retention sweep deleted.
-type Pruned struct{ Metrics, Failures, TestRequests, Leases, Runtimes int64 }
+type Pruned struct{ Metrics, Failures, TestRequests, JobKeys, Leases, Runtimes int64 }
 
 // Prune deletes the records past retention as of now: exchange metrics and
-// failures after 30 days, test requests after a day, leases that have expired,
-// and runtimes unseen for 7 days. The high-volume tables go in bounded chunks;
+// failures after 30 days, test requests after a day, job keys after a week,
+// leases that have expired, and runtimes unseen for 7 days. The high-volume tables go in bounded chunks;
 // every delete is idempotent, so concurrent sweeps on several replicas are safe.
 func (r *Repository) Prune(ctx context.Context, now time.Time) (Pruned, error) {
 	var p Pruned
@@ -43,6 +43,10 @@ func (r *Repository) Prune(ctx context.Context, now time.Time) (Pruned, error) {
 	if p.TestRequests, err = r.deleteChunked(ctx, `DELETE FROM ing_test_requests WHERE id IN (
 		SELECT id FROM ing_test_requests WHERE created_at < $1 LIMIT $2)`, now.Add(-TestRequestRetention)); err != nil {
 		return p, fmt.Errorf("ingestion repo: prune test requests: %w", err)
+	}
+	if p.JobKeys, err = r.deleteChunked(ctx, `DELETE FROM ing_job_keys WHERE ctid = ANY(ARRAY(
+		SELECT ctid FROM ing_job_keys WHERE created_at < $1 LIMIT $2))`, now.Add(-JobKeysRetention)); err != nil {
+		return p, fmt.Errorf("ingestion repo: prune job keys: %w", err)
 	}
 	ct, err := r.pool.Exec(ctx, `DELETE FROM ing_leases WHERE expires_at < $1`, now)
 	if err != nil {
@@ -98,7 +102,7 @@ func RunRetention(ctx context.Context, repo *Repository, delay, interval time.Du
 			slog.Warn("ingestion retention sweep failed", "err", err)
 		case p != Pruned{}:
 			slog.Info("ingestion retention sweep", "metrics", p.Metrics, "failures", p.Failures,
-				"test_requests", p.TestRequests, "leases", p.Leases, "runtimes", p.Runtimes)
+				"test_requests", p.TestRequests, "job_keys", p.JobKeys, "leases", p.Leases, "runtimes", p.Runtimes)
 		}
 		timer.Reset(interval)
 	}

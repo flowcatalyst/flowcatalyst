@@ -3,6 +3,7 @@ package platformconfig
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"strings"
 	"time"
 
@@ -295,8 +296,19 @@ func (s *Service) Reveal(ctx context.Context, ac *auth.AuthContext, app, section
 	if err != nil {
 		return nil, err
 	}
-	scope, clientID := ScopeFor(cid)
-	c, err := s.Repo.FindByCoordinate(ctx, app, section, property, scope, clientID)
+	return s.RevealAuthorised(ctx, ac, app, section, property, cid, nil)
+}
+
+// RevealAuthorised is Reveal for a caller whose right to this value is decided
+// by something other than the reveal permission (the ingestion runtime API
+// reveals only the secrets an ingestion names, to the runtime that runs it):
+// the caller has done that check, and clientID is the canonical client id of
+// the value's scope ("" for the global value). The lookup, the plaintext and
+// the audit-or-refuse rule are Reveal's own; detail is added to the audit row
+// to say on whose behalf the value was read.
+func (s *Service) RevealAuthorised(ctx context.Context, ac *auth.AuthContext, app, section, property, clientID string, detail map[string]string) (*Revealed, error) {
+	scope, scopeClient := ScopeFor(clientID)
+	c, err := s.Repo.FindByCoordinate(ctx, app, section, property, scope, scopeClient)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_coordinate failed", err)
 	}
@@ -313,16 +325,16 @@ func (s *Service) Reveal(ctx context.Context, ac *auth.AuthContext, app, section
 	if s.Audit == nil {
 		return nil, usecase.Internal("AUDIT", "secret reveal is not wired to the audit log", nil)
 	}
-	detail, _ := json.Marshal(map[string]string{
-		"applicationCode": c.ApplicationCode, "section": c.Section, "property": c.Property,
-	})
+	fields := map[string]string{"applicationCode": c.ApplicationCode, "section": c.Section, "property": c.Property}
+	maps.Copy(fields, detail)
+	operationJSON, _ := json.Marshal(fields)
 	actor := ac.PrincipalID
 	if err := s.Audit.Insert(ctx, &audit.Log{
 		ID:            tsid.Generate(tsid.AuditLog),
 		EntityType:    "PLATFORM_CONFIG",
 		EntityID:      c.ID,
 		Operation:     "SECRET_REVEALED",
-		OperationJSON: detail,
+		OperationJSON: operationJSON,
 		PrincipalID:   &actor,
 		ClientID:      ids.StringPtr(c.ClientID),
 		PerformedAt:   time.Now().UTC(),

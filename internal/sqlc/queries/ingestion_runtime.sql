@@ -111,3 +111,16 @@ JOIN app_applications a ON a.id = t.application_id
 JOIN tnt_clients c ON c.id = t.client_id
 LEFT JOIN ing_ingestions i ON i.id = t.ingestion_id
 WHERE t.id = ANY(@ids::text[]);
+
+-- name: IngestionRuntimeKinds :one
+SELECT kinds FROM ing_runtimes WHERE runtime_id = $1;
+
+-- The first request to name a key wins it; the caller reads back who did.
+-- name: IngestionJobKeyClaim :execrows
+INSERT INTO ing_job_keys (ingestion_id, external_id, job_id, created_at)
+VALUES (@ingestion_id, @external_id, @job_id, @created_at)
+ON CONFLICT (ingestion_id, external_id) DO NOTHING;
+
+-- name: IngestionJobKeysFind :many
+SELECT external_id, job_id FROM ing_job_keys
+WHERE ingestion_id = @ingestion_id AND external_id = ANY(@external_ids::text[]);

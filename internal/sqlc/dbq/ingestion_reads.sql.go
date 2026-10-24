@@ -11,6 +11,55 @@ import (
 	"time"
 )
 
+const ingestionExchangeTotals = `-- name: IngestionExchangeTotals :one
+SELECT
+    COALESCE(SUM(completed) FILTER (WHERE window_start >= $1::timestamptz), 0)::bigint AS completed_day,
+    COALESCE(SUM(failed)    FILTER (WHERE window_start >= $1::timestamptz), 0)::bigint AS failed_day,
+    COALESCE(SUM(records)   FILTER (WHERE window_start >= $1::timestamptz), 0)::bigint AS records_day,
+    COALESCE(SUM(jobs)      FILTER (WHERE window_start >= $1::timestamptz), 0)::bigint AS jobs_day,
+    COALESCE(SUM(completed), 0)::bigint AS completed_week,
+    COALESCE(SUM(failed), 0)::bigint    AS failed_week,
+    COALESCE(SUM(records), 0)::bigint   AS records_week,
+    COALESCE(SUM(jobs), 0)::bigint      AS jobs_week
+FROM ing_exchange_metrics
+WHERE ingestion_id = $2 AND window_start >= $3::timestamptz
+`
+
+type IngestionExchangeTotalsParams struct {
+	SinceDay    time.Time `db:"since_day"`
+	IngestionID string    `db:"ingestion_id"`
+	SinceWeek   time.Time `db:"since_week"`
+}
+
+type IngestionExchangeTotalsRow struct {
+	CompletedDay  int64 `db:"completed_day"`
+	FailedDay     int64 `db:"failed_day"`
+	RecordsDay    int64 `db:"records_day"`
+	JobsDay       int64 `db:"jobs_day"`
+	CompletedWeek int64 `db:"completed_week"`
+	FailedWeek    int64 `db:"failed_week"`
+	RecordsWeek   int64 `db:"records_week"`
+	JobsWeek      int64 `db:"jobs_week"`
+}
+
+// Exchange counts over the last day and the last week, from the windows the
+// runtimes reported. A window counts in the period its start falls in.
+func (q *Queries) IngestionExchangeTotals(ctx context.Context, arg IngestionExchangeTotalsParams) (IngestionExchangeTotalsRow, error) {
+	row := q.db.QueryRow(ctx, ingestionExchangeTotals, arg.SinceDay, arg.IngestionID, arg.SinceWeek)
+	var i IngestionExchangeTotalsRow
+	err := row.Scan(
+		&i.CompletedDay,
+		&i.FailedDay,
+		&i.RecordsDay,
+		&i.JobsDay,
+		&i.CompletedWeek,
+		&i.FailedWeek,
+		&i.RecordsWeek,
+		&i.JobsWeek,
+	)
+	return i, err
+}
+
 const ingestionFailureList = `-- name: IngestionFailureList :many
 
 SELECT id, ingestion_id, runtime_id, version, kind, message, after_records, excerpt, occurred_at, created_at FROM ing_failures
@@ -49,6 +98,67 @@ func (q *Queries) IngestionFailureList(ctx context.Context, arg IngestionFailure
 			&i.Excerpt,
 			&i.OccurredAt,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const ingestionLastExchange = `-- name: IngestionLastExchange :one
+SELECT window_start FROM ing_exchange_metrics
+WHERE ingestion_id = $1 AND window_start >= $2 AND completed + failed > 0
+ORDER BY window_start DESC LIMIT 1
+`
+
+type IngestionLastExchangeParams struct {
+	IngestionID string    `db:"ingestion_id"`
+	WindowStart time.Time `db:"window_start"`
+}
+
+func (q *Queries) IngestionLastExchange(ctx context.Context, arg IngestionLastExchangeParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, ingestionLastExchange, arg.IngestionID, arg.WindowStart)
+	var window_start time.Time
+	err := row.Scan(&window_start)
+	return window_start, err
+}
+
+const ingestionLastFailure = `-- name: IngestionLastFailure :one
+SELECT occurred_at FROM ing_failures WHERE ingestion_id = $1 ORDER BY id DESC LIMIT 1
+`
+
+func (q *Queries) IngestionLastFailure(ctx context.Context, ingestionID string) (time.Time, error) {
+	row := q.db.QueryRow(ctx, ingestionLastFailure, ingestionID)
+	var occurred_at time.Time
+	err := row.Scan(&occurred_at)
+	return occurred_at, err
+}
+
+const ingestionRouteStateList = `-- name: IngestionRouteStateList :many
+SELECT ingestion_id, runtime_id, version, status, error, updated_at FROM ing_route_states WHERE ingestion_id = $1 ORDER BY runtime_id
+`
+
+// The activity tab: what each runtime last said about the ingestion.
+func (q *Queries) IngestionRouteStateList(ctx context.Context, ingestionID string) ([]IngRouteState, error) {
+	rows, err := q.db.Query(ctx, ingestionRouteStateList, ingestionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IngRouteState{}
+	for rows.Next() {
+		var i IngRouteState
+		if err := rows.Scan(
+			&i.IngestionID,
+			&i.RuntimeID,
+			&i.Version,
+			&i.Status,
+			&i.Error,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
