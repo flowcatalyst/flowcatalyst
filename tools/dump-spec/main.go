@@ -38,6 +38,7 @@ import (
 	functiondomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain/api"
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
 	ingestionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/api"
+	ingestionruntimeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/runtimeapi"
 	loginattemptapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt/api"
 	platformconfigapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/api"
 	portalusersapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity/api"
@@ -92,6 +93,7 @@ func buildSpec(withSDK bool) (*huma.OpenAPI, error) {
 	functiondomainapi.Register(api, &functiondomainapi.State{})
 	identityproviderapi.Register(api, &identityproviderapi.State{})
 	ingestionapi.Register(api, &ingestionapi.State{})
+	ingestionruntimeapi.Register(api, &ingestionruntimeapi.State{})
 	platformconfigapi.Register(api, &platformconfigapi.State{})
 	portalusersapi.Register(api, &portalusersapi.State{})
 	principalapi.Register(api, &principalapi.State{})
@@ -119,7 +121,7 @@ func buildSpec(withSDK bool) (*huma.OpenAPI, error) {
 	// Accept-and-ignore unknown request-body fields (serde-style leniency).
 	// Keep in sync with WirePlatform so the lockfile matches the live spec.
 	httpcompat.RelaxRequestBodies(api)
-	httpcompat.RelaxRequestBodiesDeep(api, functioncontrol.TraceLogOperationID)
+	httpcompat.RelaxRequestBodiesDeep(api, functioncontrol.TraceLogOperationID, ingestionruntimeapi.PollOperationID, ingestionruntimeapi.ReportOperationID)
 
 	// Exclude /bff/* from the published spec (handlers stay
 	// mounted in the server). Keep in sync with WirePlatform.

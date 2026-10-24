@@ -158,3 +158,91 @@ func (e IngestionVersionLive) ToDataJSON() ([]byte, error) {
 		Version     int    `json:"version"`
 	}{e.IngestionID, e.Code, e.Version})
 }
+
+const (
+	IngestionManagedType     = "platform:ingestion:ingestion:managed"
+	IngestionSetAppliedType  = "platform:ingestion:set:applied"
+	IngestionSetReleasedType = "platform:ingestion:set:released"
+)
+
+// IngestionManaged is emitted when an ingestion changes owner without its
+// definition changing: taken into a set, or let go of by it. ManagedBy is the
+// id of the owning set, nil once released.
+type IngestionManaged struct {
+	ingestionEvent
+	Code      string
+	ManagedBy *string
+}
+
+func (IngestionManaged) EventType() string { return IngestionManagedType }
+func (e IngestionManaged) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		IngestionID string  `json:"ingestionId"`
+		Code        string  `json:"code"`
+		ManagedBy   *string `json:"managedBy"`
+	}{e.IngestionID, e.Code, e.ManagedBy})
+}
+
+// setEvent is what a set's events carry: the envelope and the set.
+type setEvent struct {
+	Metadata usecase.EventMetadata
+	SetID    string
+}
+
+func (e setEvent) EventID() string       { return e.Metadata.EventID }
+func (e setEvent) SpecVersion() string   { return "1.0" }
+func (e setEvent) Source() string        { return Source }
+func (e setEvent) Subject() string       { return "platform.ingestion-set." + e.SetID }
+func (e setEvent) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e setEvent) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e setEvent) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e setEvent) CausationID() string   { return e.Metadata.CausationID }
+func (e setEvent) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e setEvent) MessageGroup() string  { return "platform:ingestion-set:" + e.SetID }
+
+func newSetEvent(ec usecase.ExecutionContext, eventType, setID string) setEvent {
+	return setEvent{Metadata: usecase.NewEventMetadata(ec, eventType, Source, "platform.ingestion-set."+setID), SetID: setID}
+}
+
+// IngestionSetApplied is emitted once for an apply that changed something,
+// after the events of the ingestions it created, changed and removed.
+type IngestionSetApplied struct {
+	setEvent
+	Name        string
+	ApplyID     string
+	GoingBackTo *string
+	Created     int
+	Changed     int
+	Adopted     int
+	Removed     int
+}
+
+func (IngestionSetApplied) EventType() string { return IngestionSetAppliedType }
+func (e IngestionSetApplied) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		SetID       string  `json:"setId"`
+		Name        string  `json:"name"`
+		ApplyID     string  `json:"applyId"`
+		GoingBackTo *string `json:"goingBackTo,omitempty"`
+		Created     int     `json:"created"`
+		Changed     int     `json:"changed"`
+		Adopted     int     `json:"adopted"`
+		Removed     int     `json:"removed"`
+	}{e.SetID, e.Name, e.ApplyID, e.GoingBackTo, e.Created, e.Changed, e.Adopted, e.Removed})
+}
+
+// IngestionSetReleased is emitted when a set lets go of its ingestions.
+type IngestionSetReleased struct {
+	setEvent
+	Name     string
+	Released int
+}
+
+func (IngestionSetReleased) EventType() string { return IngestionSetReleasedType }
+func (e IngestionSetReleased) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		SetID    string `json:"setId"`
+		Name     string `json:"name"`
+		Released int    `json:"released"`
+	}{e.SetID, e.Name, e.Released})
+}

@@ -130,6 +130,23 @@ Everything below is huma, in `api/openapi.lock.json`, so the SDKs and the SPA ty
 Errors use the platform envelope with codes in the platform's style (`INGESTION_NOT_FOUND`,
 `INGESTION_CODE_EXISTS`, `INGESTION_TARGET_INVALID`, `INGESTION_SET_OWNED`, `LEASE_NOT_HELD`).
 
+**Sets (built).** `PUT /api/ingestion-sets/{name}` takes `{items, files?}`: each item is a definition file with its
+`application`, `client` (id or identifier) and `code`. In one transaction, serialised with every other set apply, it
+resolves every item (application, client, target, reach, kind permission) and then, per item: **CREATE** when nothing
+has that (application, client, code); **UNCHANGED** when the set owns it and it says the same; **CHANGE** when the set
+owns it and it differs (the definition is saved as the next live version, `applied_from` naming the apply; `active` is
+set from the file, so a pause made since is undone); **ADOPT** when it was made by hand (taken into the set, a new
+version only if it differs). An ingestion owned by another set is a `409 INGESTION_SET_OWNED` and nothing is written.
+**An ingestion the set owns but no longer lists is deleted**, as `DELETE /api/ingestions/{id}` would (versions, leases and
+state go; failure and metric rows are left to retention); it is not deactivated. Any unresolvable item fails the whole
+apply. `dryRun=true` does the checks and reports the changes, writing nothing. An apply that changes something is recorded
+in `ing_set_applies` (changes and counts in `summary`, `applied_by`), its items and files are archived in the artifact
+store (the function artifact store, `file://` or `s3://`; the digest is in `archive_uri`), and the newest 10 applies are
+kept. `POST .../applies/{applyId}/reapply` applies an archived apply's items again as a new apply (`goingBackTo`).
+`POST .../release` ends ownership and changes nothing else. A set's ingestions are read-only (update, save version,
+make live, delete); pause and resume still work. Applying and releasing need `platform:ingestion:set:apply`; listing sets
+and applies needs `view` and a caller that reaches all clients and applications.
+
 **SDKs.** The TypeScript, Java, Go, Python, Rust and Laravel SDKs get an `ingestions` resource (CRUD, versions,
 definition, sets, source kinds, test) the same way every other resource arrives: from the lock, with a conformance
 case per operation. The runtime operations are **not** in the application SDKs (they are the runtime's own client, in

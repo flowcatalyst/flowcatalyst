@@ -49,6 +49,25 @@ func (f *File) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(rest, &f.Definition)
 }
 
+// MarshalJSON writes the JSON form UnmarshalJSON reads: the identity beside the
+// definition's own fields.
+func (f File) MarshalJSON() ([]byte, error) {
+	raw, err := json.Marshal(f.Definition)
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, err
+	}
+	for key, value := range map[string]any{"application": f.Application, "client": f.Client, "code": f.Code, "active": f.Active} {
+		if fields[key], err = json.Marshal(value); err != nil {
+			return nil, err
+		}
+	}
+	return json.Marshal(fields)
+}
+
 // ParseFiles reads every YAML document of a definition file. An extension's
 // source is written flat, its type as the kind and its settings beside it
 // (kind: camel-route, yaml: ...); a built-in kind or kind: custom is read as

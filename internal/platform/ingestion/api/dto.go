@@ -91,9 +91,12 @@ type IngestionResponse struct {
 	Version       int `json:"version"`
 	LatestVersion int `json:"latestVersion"`
 	IngestionDefinition
-	ManagedBy *string         `json:"managedBy,omitempty" doc:"Id of the set that owns the ingestion; it is read-only until the set is released"`
-	CreatedAt httpcompat.Time `json:"createdAt"`
-	UpdatedAt httpcompat.Time `json:"updatedAt"`
+	ManagedBy *string `json:"managedBy,omitempty" doc:"Id of the set that owns the ingestion; it is read-only until the set is released"`
+	// RuntimeNotice is set while a running ingestion's kind is carried by no
+	// live runtime: nothing has failed, nobody is there to run it yet.
+	RuntimeNotice *string         `json:"runtimeNotice,omitempty"`
+	CreatedAt     httpcompat.Time `json:"createdAt"`
+	UpdatedAt     httpcompat.Time `json:"updatedAt"`
 }
 
 func fromEntity(i *ingestion.Ingestion, applicationCode, clientIdentifier string) (IngestionResponse, error) {
@@ -212,4 +215,138 @@ type IngestionSourceKindResponse struct {
 // IngestionSourceKindListResponse is the wire shape for GET /api/ingestion-source-kinds.
 type IngestionSourceKindListResponse struct {
 	Kinds []IngestionSourceKindResponse `json:"kinds"`
+}
+
+// TestIngestionRequest is the wire body for POST /api/ingestion-tests: a saved
+// ingestion to test, or a definition not yet saved with the application and
+// client it would belong to.
+type TestIngestionRequest struct {
+	IngestionID *string              `json:"ingestionId,omitempty" doc:"Test this saved ingestion's live definition"`
+	Application string               `json:"application,omitempty" doc:"With definition: code of the owning application, which must be of type INTEGRATION"`
+	Client      string               `json:"client,omitempty" doc:"With definition: the client's id (clt_...) or identifier"`
+	Definition  *IngestionDefinition `json:"definition,omitempty" doc:"A definition to test without saving it"`
+}
+
+// IngestionTestResponse is a queued test and, once a runtime has answered, its
+// result. A runtime tries the source once from its own network with its own
+// secrets and dispatches nothing; no secret is in the result.
+type IngestionTestResponse struct {
+	ID          string  `json:"id"`
+	IngestionID *string `json:"ingestionId,omitempty"`
+	// Kind is the source kind a runtime must carry to take the test.
+	Kind   string `json:"kind"`
+	Status string `json:"status" enum:"PENDING,RUNNING,DONE,EXPIRED" doc:"PENDING until a runtime takes it, RUNNING while it tries, DONE with its result, EXPIRED when none answered in time"`
+	// RuntimeID is the runtime that took the test.
+	RuntimeID   *string          `json:"runtimeId,omitempty"`
+	CreatedAt   httpcompat.Time  `json:"createdAt"`
+	ExpiresAt   httpcompat.Time  `json:"expiresAt"`
+	CompletedAt *httpcompat.Time `json:"completedAt,omitempty"`
+	Outcome     *string          `json:"outcome,omitempty" enum:"RESULTS,NO_RESULTS,REFUSED,FAILED,NOT_SUPPORTED"`
+	Steps       []string         `json:"steps,omitempty" doc:"What the runtime did, step by step, for a person"`
+	Records     *int64           `json:"records,omitempty" doc:"How many records the split makes of the answer, when it answered"`
+	Excerpt     *string          `json:"excerpt,omitempty" doc:"The start of the answer, only for an ingestion that keeps failed payloads"`
+	Notice      *string          `json:"notice,omitempty" doc:"Set while no live runtime carries the kind: the test waits, nothing has failed"`
+}
+
+// IngestionSetItem is one ingestion of a set in the definition-file form: its
+// identity, whether it runs, and the definition.
+type IngestionSetItem struct {
+	Application string `json:"application" doc:"Code of the owning application, which must be of type INTEGRATION"`
+	Client      string `json:"client" doc:"The client's id (clt_...) or identifier"`
+	Code        string `json:"code"`
+	Active      *bool  `json:"active,omitempty" doc:"Whether the ingestion runs. Default true; an apply sets it, so a pause made since is undone."`
+	IngestionDefinition
+}
+
+// file reads the item as a definition file.
+func (i IngestionSetItem) file() (ingestion.File, error) {
+	def, err := parseDefinition(i.IngestionDefinition)
+	if err != nil {
+		return ingestion.File{}, err
+	}
+	return ingestion.File{Application: i.Application, Client: i.Client, Code: i.Code, Active: i.Active == nil || *i.Active, Definition: def}, nil
+}
+
+func itemOf(f ingestion.File) (IngestionSetItem, error) {
+	def, err := definitionBody(f.Definition)
+	if err != nil {
+		return IngestionSetItem{}, err
+	}
+	return IngestionSetItem{Application: f.Application, Client: f.Client, Code: f.Code, Active: &f.Active, IngestionDefinition: def}, nil
+}
+
+// ApplyIngestionSetRequest is the wire body for PUT /api/ingestion-sets/{name}:
+// every ingestion the set should own. An empty list deletes whatever the set
+// owns.
+type ApplyIngestionSetRequest struct {
+	Items []IngestionSetItem  `json:"items" doc:"The set's ingestions, no two of the same application, client and code"`
+	Files []ingestion.SetFile `json:"files,omitempty" maxItems:"500" doc:"The files the items were read from, as they are in the repository; kept with the apply (at most 2 MB in all)"`
+}
+
+// IngestionSetPlanResponse is what an apply did, or what a dry run would do.
+type IngestionSetPlanResponse struct {
+	Name    string                `json:"name"`
+	DryRun  bool                  `json:"dryRun"`
+	ApplyID *string               `json:"applyId,omitempty" doc:"The recorded apply; absent for a dry run and for an apply that changed nothing"`
+	Changes []ingestion.SetChange `json:"changes" doc:"Each item of the set, then each ingestion removed from it"`
+}
+
+// IngestionSetResponse is a set and how many ingestions it owns.
+type IngestionSetResponse struct {
+	ID         string          `json:"id"`
+	Name       string          `json:"name"`
+	Ingestions int             `json:"ingestions"`
+	CreatedAt  httpcompat.Time `json:"createdAt"`
+	UpdatedAt  httpcompat.Time `json:"updatedAt"`
+}
+
+// IngestionSetListResponse lists sets by name.
+type IngestionSetListResponse struct {
+	Sets []IngestionSetResponse `json:"sets"`
+}
+
+// IngestionSetApplyResponse is one kept apply of a set.
+type IngestionSetApplyResponse struct {
+	ID          string                `json:"id"`
+	Set         string                `json:"set"`
+	AppliedAt   httpcompat.Time       `json:"appliedAt"`
+	AppliedBy   *string               `json:"appliedBy,omitempty"`
+	GoingBackTo *string               `json:"goingBackTo,omitempty" doc:"The earlier apply it applied again"`
+	Items       int                   `json:"items" doc:"How many items it was given"`
+	Files       int                   `json:"files" doc:"How many files they were read from"`
+	Changes     []ingestion.SetChange `json:"changes"`
+}
+
+func fromSetApply(set string, a ingestion.SetApply) IngestionSetApplyResponse {
+	changes := a.Summary.Changes
+	if changes == nil {
+		changes = []ingestion.SetChange{}
+	}
+	return IngestionSetApplyResponse{
+		ID: a.ID, Set: set, AppliedAt: jsontime.New(a.AppliedAt), AppliedBy: a.AppliedBy, GoingBackTo: a.Summary.GoingBackTo,
+		Items: a.Summary.Items, Files: a.Summary.Files, Changes: changes,
+	}
+}
+
+// IngestionSetApplyListResponse lists a set's kept applies, newest first.
+type IngestionSetApplyListResponse struct {
+	Applies []IngestionSetApplyResponse `json:"applies"`
+}
+
+// IngestionSetArchiveResponse is what one apply was given, as kept in the
+// artifact store.
+type IngestionSetArchiveResponse struct {
+	Set         string              `json:"set"`
+	ApplyID     string              `json:"applyId"`
+	AppliedAt   httpcompat.Time     `json:"appliedAt"`
+	AppliedBy   string              `json:"appliedBy"`
+	GoingBackTo *string             `json:"goingBackTo,omitempty"`
+	Items       []IngestionSetItem  `json:"items"`
+	Files       []ingestion.SetFile `json:"files"`
+}
+
+// IngestionSetReleaseResponse is how many ingestions a set let go of.
+type IngestionSetReleaseResponse struct {
+	Name     string `json:"name"`
+	Released int    `json:"released"`
 }

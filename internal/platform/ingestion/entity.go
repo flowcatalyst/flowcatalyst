@@ -116,6 +116,23 @@ func (i *Ingestion) MakeLive(v Version) error {
 	return nil
 }
 
+// TakeInto makes the set the ingestion's owner, and stamps the versions saved
+// since the read as produced by the set apply. Taking the ingestion into the
+// set it is already in changes nothing.
+func (i *Ingestion) TakeInto(setID, applyID string) {
+	i.ManagedBy = &setID
+	for n := range i.pending {
+		i.pending[n].AppliedFrom = &applyID
+	}
+	i.UpdatedAt = time.Now().UTC()
+}
+
+// Release ends the set's ownership; the definition stays as it is.
+func (i *Ingestion) Release() {
+	i.ManagedBy = nil
+	i.UpdatedAt = time.Now().UTC()
+}
+
 // Pause stops the ingestion running without changing its definition.
 func (i *Ingestion) Pause() {
 	i.Active = false

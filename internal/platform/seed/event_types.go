@@ -139,7 +139,8 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 
 	// ── platform:ingestion ──────────────────────────────────────────────
 	groupAs("platform:ingestion:ingestion", "Ingestion",
-		"created", "updated", "deleted", "paused", "resumed", "version-saved", "version-live")
+		"created", "updated", "deleted", "paused", "resumed", "version-saved", "version-live", "managed")
+	groupAs("platform:ingestion:set", "Ingestion Set", "applied", "released")
 
 	// ── platform:messaging ──────────────────────────────────────────────
 	group("platform:messaging:dispatch-job", "cancelled", "completed", "payload-edited")

@@ -28,6 +28,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
 	routerapi "github.com/flowcatalyst/flowcatalyst-go/internal/router/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/stream"
@@ -226,6 +227,16 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 		// as the reaper above).
 		go function.RunTraceRetention(ctx, function.NewRepository(pool), cfg.FunctionsTrace,
 			function.DefaultTracePruneDelay, function.DefaultTracePruneInterval)
+
+		// Ingestion runtime records past retention (metrics and failures 30
+		// days, test requests a day, expired leases, runtimes unseen for 7
+		// days). Gated with the platform housekeeping, not the scheduler, and
+		// not leader-gated: bounded idempotent deletes, as the trace-log
+		// retention above.
+		if cfg.IngestionEnabled {
+			go ingestion.RunRetention(ctx, ingestion.NewRepository(pool),
+				ingestion.DefaultRetentionDelay, ingestion.DefaultRetentionInterval)
+		}
 
 		// Function control plane's NOTIFY fng_desired fan-out
 		// (docs/function-runner-plan.md §8.3). Not leader-gated: every

@@ -195,6 +195,7 @@ type Querier interface {
 	IdpRoleMappingFindByIdpRole(ctx context.Context, idpRoleName string) ([]OauthIdpRoleMapping, error)
 	IdpRoleMappingUpsert(ctx context.Context, arg IdpRoleMappingUpsertParams) error
 	IngestionDelete(ctx context.Context, id string) error
+	IngestionFailureInsert(ctx context.Context, arg IngestionFailureInsertParams) error
 	// Reads the operator API makes beside the ingestion aggregate: the failures
 	// tab and the source kinds the live runtimes report.
 	// The failures tab pages by id, newest first (idx_ing_failures_ingestion).
@@ -203,8 +204,55 @@ type Querier interface {
 	// Queries for ing_ingestions and ing_versions. The filtered, paged list is a
 	// hand-rolled dynamic query in the repository (docs/sqlc.md).
 	IngestionFindByID(ctx context.Context, id string) (IngIngestion, error)
+	IngestionFindByIDs(ctx context.Context, argIds []string) ([]IngIngestion, error)
 	IngestionInsert(ctx context.Context, arg IngestionInsertParams) error
+	// The lease is taken in one statement: a conflicting row is taken over only by
+	// its holder (a renewal) or once it has expired, and two runtimes racing for
+	// the same ingestion are serialised on the row, so exactly one affects it.
+	IngestionLeaseClaim(ctx context.Context, arg IngestionLeaseClaimParams) (int64, error)
+	IngestionLeaseHeld(ctx context.Context, arg IngestionLeaseHeldParams) (bool, error)
+	// The row is locked while the value is written, so the lease cannot run out and
+	// pass to another runtime in between.
+	IngestionLeaseLockHeld(ctx context.Context, arg IngestionLeaseLockHeldParams) (string, error)
+	// A runtime that stops running an ingestion marks its lease released; nobody
+	// else takes it before it expires, because the holder may be finishing a batch.
+	IngestionLeaseReleaseExcept(ctx context.Context, arg IngestionLeaseReleaseExceptParams) (int64, error)
+	IngestionListManagedBy(ctx context.Context, managedBy *string) ([]IngIngestion, error)
+	// A window re-sent replaces the counts: it never adds to them.
+	IngestionMetricUpsert(ctx context.Context, arg IngestionMetricUpsertParams) error
+	IngestionRouteStateUpsert(ctx context.Context, arg IngestionRouteStateUpsertParams) error
 	IngestionRuntimeKindsSeenSince(ctx context.Context, lastSeenAt time.Time) ([]json.RawMessage, error)
+	// Queries for the runtime API (docs/ingestion-design.md section 7): runtimes,
+	// leases, state, reports and test requests. The live-ingestion read the poll
+	// makes is hand-rolled in the repository (it shares the list's row type), and
+	// so are the retention deletes (chunked, as for the function trace log).
+	IngestionRuntimeUpsert(ctx context.Context, arg IngestionRuntimeUpsertParams) error
+	IngestionSetApplyFind(ctx context.Context, arg IngestionSetApplyFindParams) (IngSetApply, error)
+	// Forgets the applies beyond the newest @keep of a set, returning where their
+	// archives were kept.
+	IngestionSetApplyForget(ctx context.Context, arg IngestionSetApplyForgetParams) ([]*string, error)
+	IngestionSetApplyInsert(ctx context.Context, arg IngestionSetApplyInsertParams) error
+	IngestionSetApplyList(ctx context.Context, setID string) ([]IngSetApply, error)
+	IngestionSetFindByIDs(ctx context.Context, argIds []string) ([]IngSet, error)
+	// Queries for sets of ingestions (docs/ingestion-design.md section 3): ing_sets
+	// and ing_set_applies, and the reads of the ingestions a set owns.
+	IngestionSetFindByName(ctx context.Context, name string) (IngSet, error)
+	IngestionSetInsert(ctx context.Context, arg IngestionSetInsertParams) error
+	// Every set with how many ingestions it owns.
+	IngestionSetList(ctx context.Context) ([]IngestionSetListRow, error)
+	IngestionSetTouch(ctx context.Context, arg IngestionSetTouchParams) error
+	IngestionStateGet(ctx context.Context, arg IngestionStateGetParams) (string, error)
+	IngestionStatePut(ctx context.Context, arg IngestionStatePutParams) error
+	// A runtime claims the pending requests for the kinds it carries; SKIP LOCKED
+	// lets two runtimes polling together take different ones, never the same.
+	IngestionTestClaim(ctx context.Context, arg IngestionTestClaimParams) ([]IngTestRequest, error)
+	// Only the runtime that claimed a request, while it is open, answers it.
+	IngestionTestComplete(ctx context.Context, arg IngestionTestCompleteParams) (int64, error)
+	IngestionTestFind(ctx context.Context, id string) (IngTestRequest, error)
+	IngestionTestInsert(ctx context.Context, arg IngestionTestInsertParams) error
+	// What a claimed request is named by: its application, client and, for a saved
+	// ingestion, its code.
+	IngestionTestRefs(ctx context.Context, argIds []string) ([]IngestionTestRefsRow, error)
 	// Guarded on the version pointer and the latest number the caller read: a
 	// concurrent save or promote moves one of them and this updates no row.
 	IngestionUpdate(ctx context.Context, arg IngestionUpdateParams) (int64, error)

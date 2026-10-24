@@ -7,11 +7,13 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 )
 
 // EnvCfg captures every env-driven knob fc-server reads: the
@@ -307,6 +309,11 @@ type EnvCfg struct {
 	// answer 404. The permissions, roles and tables exist either way.
 	IngestionEnabled bool
 
+	// IngestionLease is how long a polled ingestion's lease lasts without
+	// being renewed by its runtime's poll (FC_INGESTION_LEASE_SECONDS;
+	// non-positive or unparseable = ingestion.DefaultLease, 3 minutes).
+	IngestionLease time.Duration
+
 	// FunctionsRunnerURL is the function runner's base URL
 	// (FC_FUNCTIONS_RUNNER_URL), templated with "{pool}" so one platform can
 	// address several runner deployments (one per pool in production; fc-dev
@@ -448,6 +455,7 @@ func LoadEnv() EnvCfg {
 		DebugEndpointsEnabled: envBool("FC_DEBUG_ENDPOINTS_ENABLED", false),
 
 		IngestionEnabled: envBool("FC_INGESTION_ENABLED", false),
+		IngestionLease:   time.Duration(positiveOr(envInt("FC_INGESTION_LEASE_SECONDS", 0), int(ingestion.DefaultLease/time.Second))) * time.Second,
 
 		MCPPlatformURL:  envFirst("FLOWCATALYST_URL", "FC_MCP_PLATFORM_URL", "", ""),
 		MCPClientID:     os.Getenv("FLOWCATALYST_CLIENT_ID"),

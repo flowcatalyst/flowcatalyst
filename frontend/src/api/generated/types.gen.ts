@@ -260,6 +260,22 @@ export type ApplicationUserList = {
     users: Array<ApplicationUser>;
 };
 
+export type ApplyIngestionSetRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The files the items were read from, as they are in the repository; kept with the apply (at most 2 MB in all)
+     */
+    files?: Array<SetFile>;
+    /**
+     * The set's ingestions, no two of the same application, client and code
+     */
+    items: Array<IngestionSetItem>;
+    [key: string]: unknown;
+};
+
 export type AssignApplicationAccessRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1928,6 +1944,34 @@ export type EventTypeResponse = {
     updatedAt: string;
 };
 
+export type ExchangeWindow = {
+    completed: number;
+    dispatchJobs: number;
+    failed: number;
+    from: string;
+    ingestionId: string;
+    records: number;
+    to: string;
+    [key: string]: unknown;
+};
+
+export type Failure = {
+    /**
+     * How many of the payload's records were read before it failed
+     */
+    afterRecords?: number;
+    at: string;
+    /**
+     * The start of what it failed on; the platform keeps it only for an ingestion that keeps failed payloads
+     */
+    excerpt?: string;
+    ingestionId: string;
+    kind: 'REJECTED' | 'NOT_DISPATCHED' | 'SOURCE' | 'AUTH';
+    message: string;
+    version: number;
+    [key: string]: unknown;
+};
+
 export type FireNowRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2083,6 +2127,23 @@ export type IdpRoleMappingResponse = {
     updatedAt: string;
 };
 
+export type IngestionDefinition = {
+    /**
+     * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
+     */
+    keepFailedPayloads?: boolean;
+    name: string;
+    /**
+     * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
+     */
+    source: unknown;
+    /**
+     * How a payload becomes records: {kind: none|csv|json|xml, ...}
+     */
+    split: unknown;
+    target: Target;
+};
+
 export type IngestionFailureListResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2166,6 +2227,7 @@ export type IngestionResponse = {
      */
     managedBy?: string;
     name: string;
+    runtimeNotice?: string;
     /**
      * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
      */
@@ -2178,6 +2240,120 @@ export type IngestionResponse = {
     target: Target;
     updatedAt: string;
     version: number;
+};
+
+export type IngestionSetApplyListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    applies: Array<IngestionSetApplyResponse>;
+};
+
+export type IngestionSetApplyResponse = {
+    appliedAt: string;
+    appliedBy?: string;
+    changes: Array<SetChange>;
+    /**
+     * How many files they were read from
+     */
+    files: number;
+    /**
+     * The earlier apply it applied again
+     */
+    goingBackTo?: string;
+    id: string;
+    /**
+     * How many items it was given
+     */
+    items: number;
+    set: string;
+};
+
+export type IngestionSetArchiveResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    appliedAt: string;
+    appliedBy: string;
+    applyId: string;
+    files: Array<SetFile>;
+    goingBackTo?: string;
+    items: Array<IngestionSetItem>;
+    set: string;
+};
+
+export type IngestionSetItem = {
+    /**
+     * Whether the ingestion runs. Default true; an apply sets it, so a pause made since is undone.
+     */
+    active?: boolean;
+    /**
+     * Code of the owning application, which must be of type INTEGRATION
+     */
+    application: string;
+    /**
+     * The client's id (clt_...) or identifier
+     */
+    client: string;
+    code: string;
+    /**
+     * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
+     */
+    keepFailedPayloads?: boolean;
+    name: string;
+    /**
+     * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
+     */
+    source: unknown;
+    /**
+     * How a payload becomes records: {kind: none|csv|json|xml, ...}
+     */
+    split: unknown;
+    target: Target;
+};
+
+export type IngestionSetListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    sets: Array<IngestionSetResponse>;
+};
+
+export type IngestionSetPlanResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The recorded apply; absent for a dry run and for an apply that changed nothing
+     */
+    applyId?: string;
+    /**
+     * Each item of the set, then each ingestion removed from it
+     */
+    changes: Array<SetChange>;
+    dryRun: boolean;
+    name: string;
+};
+
+export type IngestionSetReleaseResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    name: string;
+    released: number;
+};
+
+export type IngestionSetResponse = {
+    createdAt: string;
+    id: string;
+    ingestions: number;
+    name: string;
+    updatedAt: string;
 };
 
 export type IngestionSourceKindListResponse = {
@@ -2201,6 +2377,41 @@ export type IngestionSourceKindResponse = {
      */
     settings?: unknown;
     singleOwner: boolean;
+};
+
+export type IngestionTestResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    completedAt?: string;
+    createdAt: string;
+    /**
+     * The start of the answer, only for an ingestion that keeps failed payloads
+     */
+    excerpt?: string;
+    expiresAt: string;
+    id: string;
+    ingestionId?: string;
+    kind: string;
+    /**
+     * Set while no live runtime carries the kind: the test waits, nothing has failed
+     */
+    notice?: string;
+    outcome?: 'RESULTS' | 'NO_RESULTS' | 'REFUSED' | 'FAILED' | 'NOT_SUPPORTED';
+    /**
+     * How many records the split makes of the answer, when it answered
+     */
+    records?: number;
+    runtimeId?: string;
+    /**
+     * PENDING until a runtime takes it, RUNNING while it tries, DONE with its result, EXPIRED when none answered in time
+     */
+    status: 'PENDING' | 'RUNNING' | 'DONE' | 'EXPIRED';
+    /**
+     * What the runtime did, step by step, for a person
+     */
+    steps?: Array<string>;
 };
 
 export type IngestionVersionListResponse = {
@@ -2605,6 +2816,50 @@ export type PermissionResponse = {
     description?: string;
     name: string;
     permission: string;
+};
+
+export type PollRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The contract version the runtime speaks; the platform serves the current one and the one before it
+     */
+    contractVersion: number;
+    /**
+     * The kinds the runtime's extensions add (and camel-route); built-in kinds are all carried unless some are named here
+     */
+    kinds?: Array<RuntimeKind>;
+    /**
+     * The asking runtime; unique among running runtimes
+     */
+    runtimeId: string;
+    /**
+     * Where the runtime can be reached; informational, the platform never calls it
+     */
+    url?: string;
+    [key: string]: unknown;
+};
+
+export type PollResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * When the platform read them
+     */
+    asOf: string;
+    /**
+     * Live versions only: every shared ingestion of a kind the runtime carries, and the polled ones whose lease it holds
+     */
+    ingestions: Array<RuntimeIngestion>;
+    leaseFor: string;
+    /**
+     * Pending test requests for kinds the runtime carries
+     */
+    tests: Array<RuntimeTest>;
 };
 
 export type PoolConfig = {
@@ -3073,6 +3328,19 @@ export type RegisterCompleteResponse = {
     credentialId: string;
 };
 
+export type ReportRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    failures?: Array<Failure>;
+    metrics?: Array<ExchangeWindow>;
+    routes?: Array<RouteState>;
+    runtimeId: string;
+    tests?: Array<TestAnswer>;
+    [key: string]: unknown;
+};
+
 export type RequestDto = {
     clientId?: string;
     createdAt: string;
@@ -3516,6 +3784,17 @@ export type RouteResponse = {
     updatedAt: string;
 };
 
+export type RouteState = {
+    error?: string;
+    ingestionId: string;
+    /**
+     * STARTED is running, FAILING is running but the source keeps failing, FAILED could not be built or started
+     */
+    status: 'STARTED' | 'FAILING' | 'FAILED';
+    version: number;
+    [key: string]: unknown;
+};
+
 export type RouterConfig = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3533,6 +3812,40 @@ export type RunnerCapabilities = {
     runnerKind?: string;
     runtimes: Array<string>;
     version?: string;
+};
+
+export type RuntimeIngestion = {
+    applicationCode: string;
+    clientId: string;
+    clientIdentifier: string;
+    code: string;
+    id: string;
+    keepFailedPayloads: boolean;
+    name: string;
+    source: unknown;
+    split: unknown;
+    target: Target;
+    /**
+     * The live version; a runtime rebuilds the route when it differs
+     */
+    version: number;
+};
+
+export type RuntimeKind = {
+    description?: string;
+    kind: string;
+    requiredPermission?: string;
+    settings?: unknown;
+    [key: string]: unknown;
+};
+
+export type RuntimeTest = {
+    expiresAt: string;
+    /**
+     * Answer it in the next report under tests
+     */
+    id: string;
+    ingestion: RuntimeIngestion;
 };
 
 export type SaveIngestionVersionRequest = {
@@ -3740,6 +4053,15 @@ export type SetApplicationAccessResponse = {
     removed: number;
 };
 
+export type SetChange = {
+    action: 'CREATE' | 'CHANGE' | 'ADOPT' | 'UNCHANGED' | 'REMOVE';
+    application: string;
+    changed: Array<string>;
+    client: string;
+    code: string;
+    ingestionId?: string;
+};
+
 export type SetDeveloperCredentialResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3747,6 +4069,11 @@ export type SetDeveloperCredentialResponse = {
     readonly $schema?: string;
     clientSecret?: string;
     id: string;
+};
+
+export type SetFile = {
+    content: string;
+    path: string;
 };
 
 export type SetPropertyRequest = {
@@ -3789,6 +4116,15 @@ export type SpecVersionResponse = {
     schema: unknown;
     status: string;
     version: string;
+};
+
+export type StateValue = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    value: string;
+    [key: string]: unknown;
 };
 
 export type StatusChangeRequest = {
@@ -4209,6 +4545,45 @@ export type Target = {
     pool: string;
     serviceAccount?: string;
     targetUrl: string;
+};
+
+export type TestAnswer = {
+    /**
+     * The start of the answer; the platform keeps it only if the tested definition keeps failed payloads
+     */
+    excerpt?: string;
+    id: string;
+    outcome: 'RESULTS' | 'NO_RESULTS' | 'REFUSED' | 'FAILED' | 'NOT_SUPPORTED';
+    records?: number;
+    /**
+     * What happened, step by step, for a person; no secret or token
+     */
+    steps: Array<string>;
+    [key: string]: unknown;
+};
+
+export type TestIngestionRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * With definition: code of the owning application, which must be of type INTEGRATION
+     */
+    application?: string;
+    /**
+     * With definition: the client's id (clt_...) or identifier
+     */
+    client?: string;
+    /**
+     * A definition to test without saving it
+     */
+    definition?: IngestionDefinition;
+    /**
+     * Test this saved ingestion's live definition
+     */
+    ingestionId?: string;
+    [key: string]: unknown;
 };
 
 export type TokenAuth = {
@@ -4988,6 +5363,18 @@ export type ApplicationUserListWritable = {
     pageSize: number;
     total: number;
     users: Array<ApplicationUserWritable>;
+};
+
+export type ApplyIngestionSetRequestWritable = {
+    /**
+     * The files the items were read from, as they are in the repository; kept with the apply (at most 2 MB in all)
+     */
+    files?: Array<SetFile>;
+    /**
+     * The set's ingestions, no two of the same application, client and code
+     */
+    items: Array<IngestionSetItem>;
+    [key: string]: unknown;
 };
 
 export type AssignApplicationAccessRequestWritable = {
@@ -6147,6 +6534,7 @@ export type IngestionResponseWritable = {
      */
     managedBy?: string;
     name: string;
+    runtimeNotice?: string;
     /**
      * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
      */
@@ -6161,8 +6549,75 @@ export type IngestionResponseWritable = {
     version: number;
 };
 
+export type IngestionSetApplyListResponseWritable = {
+    applies: Array<IngestionSetApplyResponse>;
+};
+
+export type IngestionSetArchiveResponseWritable = {
+    appliedAt: string;
+    appliedBy: string;
+    applyId: string;
+    files: Array<SetFile>;
+    goingBackTo?: string;
+    items: Array<IngestionSetItem>;
+    set: string;
+};
+
+export type IngestionSetListResponseWritable = {
+    sets: Array<IngestionSetResponse>;
+};
+
+export type IngestionSetPlanResponseWritable = {
+    /**
+     * The recorded apply; absent for a dry run and for an apply that changed nothing
+     */
+    applyId?: string;
+    /**
+     * Each item of the set, then each ingestion removed from it
+     */
+    changes: Array<SetChange>;
+    dryRun: boolean;
+    name: string;
+};
+
+export type IngestionSetReleaseResponseWritable = {
+    name: string;
+    released: number;
+};
+
 export type IngestionSourceKindListResponseWritable = {
     kinds: Array<IngestionSourceKindResponse>;
+};
+
+export type IngestionTestResponseWritable = {
+    completedAt?: string;
+    createdAt: string;
+    /**
+     * The start of the answer, only for an ingestion that keeps failed payloads
+     */
+    excerpt?: string;
+    expiresAt: string;
+    id: string;
+    ingestionId?: string;
+    kind: string;
+    /**
+     * Set while no live runtime carries the kind: the test waits, nothing has failed
+     */
+    notice?: string;
+    outcome?: 'RESULTS' | 'NO_RESULTS' | 'REFUSED' | 'FAILED' | 'NOT_SUPPORTED';
+    /**
+     * How many records the split makes of the answer, when it answered
+     */
+    records?: number;
+    runtimeId?: string;
+    /**
+     * PENDING until a runtime takes it, RUNNING while it tries, DONE with its result, EXPIRED when none answered in time
+     */
+    status: 'PENDING' | 'RUNNING' | 'DONE' | 'EXPIRED';
+    /**
+     * What the runtime did, step by step, for a person
+     */
+    steps?: Array<string>;
 };
 
 export type IngestionVersionListResponseWritable = {
@@ -6392,6 +6847,42 @@ export type PermissionResponseWritable = {
     description?: string;
     name: string;
     permission: string;
+};
+
+export type PollRequestWritable = {
+    /**
+     * The contract version the runtime speaks; the platform serves the current one and the one before it
+     */
+    contractVersion: number;
+    /**
+     * The kinds the runtime's extensions add (and camel-route); built-in kinds are all carried unless some are named here
+     */
+    kinds?: Array<RuntimeKind>;
+    /**
+     * The asking runtime; unique among running runtimes
+     */
+    runtimeId: string;
+    /**
+     * Where the runtime can be reached; informational, the platform never calls it
+     */
+    url?: string;
+    [key: string]: unknown;
+};
+
+export type PollResponseWritable = {
+    /**
+     * When the platform read them
+     */
+    asOf: string;
+    /**
+     * Live versions only: every shared ingestion of a kind the runtime carries, and the polled ones whose lease it holds
+     */
+    ingestions: Array<RuntimeIngestion>;
+    leaseFor: string;
+    /**
+     * Pending test requests for kinds the runtime carries
+     */
+    tests: Array<RuntimeTest>;
 };
 
 export type PortalAppListResponseWritable = {
@@ -6646,6 +7137,15 @@ export type RegisterCompleteRequestWritable = {
 
 export type RegisterCompleteResponseWritable = {
     credentialId: string;
+};
+
+export type ReportRequestWritable = {
+    failures?: Array<Failure>;
+    metrics?: Array<ExchangeWindow>;
+    routes?: Array<RouteState>;
+    runtimeId: string;
+    tests?: Array<TestAnswer>;
+    [key: string]: unknown;
 };
 
 export type RequeueByFilterPreviewRequestWritable = {
@@ -7155,6 +7655,11 @@ export type SettingResponseWritable = {
     value?: string;
 };
 
+export type StateValueWritable = {
+    value: string;
+    [key: string]: unknown;
+};
+
 export type StatusChangeRequestWritable = {
     reason: string;
     [key: string]: unknown;
@@ -7323,6 +7828,26 @@ export type SyncUsersResponseWritable = {
     passwordHashIgnored?: Array<string>;
     syncedEmails: Array<string>;
     updated: number;
+};
+
+export type TestIngestionRequestWritable = {
+    /**
+     * With definition: code of the owning application, which must be of type INTEGRATION
+     */
+    application?: string;
+    /**
+     * With definition: the client's id (clt_...) or identifier
+     */
+    client?: string;
+    /**
+     * A definition to test without saving it
+     */
+    definition?: IngestionDefinition;
+    /**
+     * Test this saved ingestion's live definition
+     */
+    ingestionId?: string;
+    [key: string]: unknown;
 };
 
 export type TokenFormWritable = {
@@ -12997,6 +13522,311 @@ export type DeleteIdpRoleMappingResponses = {
 
 export type DeleteIdpRoleMappingResponse = DeleteIdpRoleMappingResponses[keyof DeleteIdpRoleMappingResponses];
 
+export type IngestionRuntimePollData = {
+    body: PollRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/ingestion-runtime/v1/poll';
+};
+
+export type IngestionRuntimePollErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorModel;
+    /**
+     * Upgrade Required
+     */
+    426: ErrorModel;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorModel;
+};
+
+export type IngestionRuntimePollError = IngestionRuntimePollErrors[keyof IngestionRuntimePollErrors];
+
+export type IngestionRuntimePollResponses = {
+    /**
+     * OK
+     */
+    200: PollResponse;
+};
+
+export type IngestionRuntimePollResponse = IngestionRuntimePollResponses[keyof IngestionRuntimePollResponses];
+
+export type IngestionRuntimeReportData = {
+    body: ReportRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/ingestion-runtime/v1/report';
+};
+
+export type IngestionRuntimeReportErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type IngestionRuntimeReportError = IngestionRuntimeReportErrors[keyof IngestionRuntimeReportErrors];
+
+export type IngestionRuntimeReportResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type IngestionRuntimeReportResponse = IngestionRuntimeReportResponses[keyof IngestionRuntimeReportResponses];
+
+export type IngestionRuntimeGetStateData = {
+    body?: never;
+    path: {
+        ingestionId: string;
+        key: string;
+    };
+    query: {
+        /**
+         * The asking runtime, which must hold the ingestion's lease
+         */
+        runtimeId: string;
+    };
+    url: '/api/ingestion-runtime/v1/state/{ingestionId}/{key}';
+};
+
+export type IngestionRuntimeGetStateErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type IngestionRuntimeGetStateError = IngestionRuntimeGetStateErrors[keyof IngestionRuntimeGetStateErrors];
+
+export type IngestionRuntimeGetStateResponses = {
+    /**
+     * OK
+     */
+    200: StateValue;
+};
+
+export type IngestionRuntimeGetStateResponse = IngestionRuntimeGetStateResponses[keyof IngestionRuntimeGetStateResponses];
+
+export type IngestionRuntimePutStateData = {
+    body: StateValueWritable;
+    path: {
+        ingestionId: string;
+        key: string;
+    };
+    query: {
+        /**
+         * The writing runtime, which must hold the ingestion's lease
+         */
+        runtimeId: string;
+    };
+    url: '/api/ingestion-runtime/v1/state/{ingestionId}/{key}';
+};
+
+export type IngestionRuntimePutStateErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type IngestionRuntimePutStateError = IngestionRuntimePutStateErrors[keyof IngestionRuntimePutStateErrors];
+
+export type IngestionRuntimePutStateResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type IngestionRuntimePutStateResponse = IngestionRuntimePutStateResponses[keyof IngestionRuntimePutStateResponses];
+
+export type ListIngestionSetsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/ingestion-sets';
+};
+
+export type ListIngestionSetsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListIngestionSetsError = ListIngestionSetsErrors[keyof ListIngestionSetsErrors];
+
+export type ListIngestionSetsResponses = {
+    /**
+     * OK
+     */
+    200: IngestionSetListResponse;
+};
+
+export type ListIngestionSetsResponse = ListIngestionSetsResponses[keyof ListIngestionSetsResponses];
+
+export type ApplyIngestionSetData = {
+    body: ApplyIngestionSetRequestWritable;
+    path: {
+        /**
+         * The set's name: lowercase letters, digits and hyphens
+         */
+        name: string;
+    };
+    query?: {
+        /**
+         * Do all the checks and say what would be done, writing nothing
+         */
+        dryRun?: boolean;
+    };
+    url: '/api/ingestion-sets/{name}';
+};
+
+export type ApplyIngestionSetErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ApplyIngestionSetError = ApplyIngestionSetErrors[keyof ApplyIngestionSetErrors];
+
+export type ApplyIngestionSetResponses = {
+    /**
+     * OK
+     */
+    200: IngestionSetPlanResponse;
+};
+
+export type ApplyIngestionSetResponse = ApplyIngestionSetResponses[keyof ApplyIngestionSetResponses];
+
+export type ListIngestionSetAppliesData = {
+    body?: never;
+    path: {
+        /**
+         * The set's name: lowercase letters, digits and hyphens
+         */
+        name: string;
+    };
+    query?: never;
+    url: '/api/ingestion-sets/{name}/applies';
+};
+
+export type ListIngestionSetAppliesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListIngestionSetAppliesError = ListIngestionSetAppliesErrors[keyof ListIngestionSetAppliesErrors];
+
+export type ListIngestionSetAppliesResponses = {
+    /**
+     * OK
+     */
+    200: IngestionSetApplyListResponse;
+};
+
+export type ListIngestionSetAppliesResponse = ListIngestionSetAppliesResponses[keyof ListIngestionSetAppliesResponses];
+
+export type GetIngestionSetApplyData = {
+    body?: never;
+    path: {
+        name: string;
+        applyId: string;
+    };
+    query?: never;
+    url: '/api/ingestion-sets/{name}/applies/{applyId}';
+};
+
+export type GetIngestionSetApplyErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetIngestionSetApplyError = GetIngestionSetApplyErrors[keyof GetIngestionSetApplyErrors];
+
+export type GetIngestionSetApplyResponses = {
+    /**
+     * OK
+     */
+    200: IngestionSetArchiveResponse;
+};
+
+export type GetIngestionSetApplyResponse = GetIngestionSetApplyResponses[keyof GetIngestionSetApplyResponses];
+
+export type ReapplyIngestionSetData = {
+    body?: never;
+    path: {
+        name: string;
+        applyId: string;
+    };
+    query?: {
+        /**
+         * Do all the checks and say what would be done, writing nothing
+         */
+        dryRun?: boolean;
+    };
+    url: '/api/ingestion-sets/{name}/applies/{applyId}/reapply';
+};
+
+export type ReapplyIngestionSetErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ReapplyIngestionSetError = ReapplyIngestionSetErrors[keyof ReapplyIngestionSetErrors];
+
+export type ReapplyIngestionSetResponses = {
+    /**
+     * OK
+     */
+    200: IngestionSetPlanResponse;
+};
+
+export type ReapplyIngestionSetResponse = ReapplyIngestionSetResponses[keyof ReapplyIngestionSetResponses];
+
+export type ReleaseIngestionSetData = {
+    body?: never;
+    path: {
+        /**
+         * The set's name: lowercase letters, digits and hyphens
+         */
+        name: string;
+    };
+    query?: never;
+    url: '/api/ingestion-sets/{name}/release';
+};
+
+export type ReleaseIngestionSetErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ReleaseIngestionSetError = ReleaseIngestionSetErrors[keyof ReleaseIngestionSetErrors];
+
+export type ReleaseIngestionSetResponses = {
+    /**
+     * OK
+     */
+    200: IngestionSetReleaseResponse;
+};
+
+export type ReleaseIngestionSetResponse = ReleaseIngestionSetResponses[keyof ReleaseIngestionSetResponses];
+
 export type ListIngestionSourceKindsData = {
     body?: never;
     path?: never;
@@ -13021,6 +13851,58 @@ export type ListIngestionSourceKindsResponses = {
 };
 
 export type ListIngestionSourceKindsResponse = ListIngestionSourceKindsResponses[keyof ListIngestionSourceKindsResponses];
+
+export type TestIngestionConnectionData = {
+    body: TestIngestionRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/ingestion-tests';
+};
+
+export type TestIngestionConnectionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type TestIngestionConnectionError = TestIngestionConnectionErrors[keyof TestIngestionConnectionErrors];
+
+export type TestIngestionConnectionResponses = {
+    /**
+     * Accepted
+     */
+    202: IngestionTestResponse;
+};
+
+export type TestIngestionConnectionResponse = TestIngestionConnectionResponses[keyof TestIngestionConnectionResponses];
+
+export type GetIngestionTestData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestion-tests/{id}';
+};
+
+export type GetIngestionTestErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetIngestionTestError = GetIngestionTestErrors[keyof GetIngestionTestErrors];
+
+export type GetIngestionTestResponses = {
+    /**
+     * OK
+     */
+    200: IngestionTestResponse;
+};
+
+export type GetIngestionTestResponse = GetIngestionTestResponses[keyof GetIngestionTestResponses];
 
 export type ListIngestionsData = {
     body?: never;

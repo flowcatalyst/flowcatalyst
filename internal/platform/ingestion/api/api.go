@@ -12,6 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -31,6 +32,9 @@ type State struct {
 	Clients  ClientLookup
 	Audit    *audit.Repository
 	UoW      *usecasepgx.UnitOfWork
+	// SetArchive keeps what each apply of a set was given (file:// or s3://,
+	// as for function artifacts).
+	SetArchive artifact.Store
 }
 
 // AppLookup is the slice of the application repository the responses need.
@@ -65,6 +69,8 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "listIngestionHistory", "/api/ingestions/{id}/history", "List the audit history of an ingestion", s.history)
 	apiroute.Get(g, "listIngestionFailures", "/api/ingestions/{id}/failures", "List the failures runtimes reported for an ingestion", s.failures)
 	apiroute.Get(g, "listIngestionSourceKinds", "/api/ingestion-source-kinds", "List the source kinds a definition can use", s.sourceKinds)
+	registerTests(g, s)
+	registerSets(g, s)
 }
 
 // resolveClient canonicalises a request's client reference (the clt_ id or the
@@ -122,6 +128,11 @@ func (s *State) respond(ctx context.Context, i *ingestion.Ingestion) (*apicommon
 	if err != nil {
 		return nil, usecase.Internal("MARSHAL", "ingestion does not render", err)
 	}
+	notice, err := s.runtimeNotices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	body.RuntimeNotice = notice(i)
 	return &apicommon.Out[IngestionResponse]{Body: body}, nil
 }
 
@@ -172,12 +183,17 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Ingesti
 	if err != nil {
 		return nil, err
 	}
+	notice, err := s.runtimeNotices(ctx)
+	if err != nil {
+		return nil, err
+	}
 	body := IngestionListResponse{Ingestions: make([]IngestionResponse, 0, len(page.Items)), HasMore: page.Next != ""}
 	for _, item := range page.Items {
 		r, err := fromEntity(&item.Ingestion, item.ApplicationCode, item.ClientIdentifier)
 		if err != nil {
 			return nil, usecase.Internal("MARSHAL", "ingestion does not render", err)
 		}
+		r.RuntimeNotice = notice(&item.Ingestion)
 		body.Ingestions = append(body.Ingestions, r)
 	}
 	if page.Next != "" {

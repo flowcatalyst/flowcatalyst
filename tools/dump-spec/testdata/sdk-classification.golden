@@ -71,7 +71,11 @@ admin	GET /api/functions/{id}/versions/{number}	getFunctionVersion
 admin	GET /api/identity-providers	listIdentityProviders
 admin	GET /api/identity-providers/{id}	getIdentityProvider
 admin	GET /api/idp-role-mappings	listIdpRoleMappings
+admin	GET /api/ingestion-sets	listIngestionSets
+admin	GET /api/ingestion-sets/{name}/applies	listIngestionSetApplies
+admin	GET /api/ingestion-sets/{name}/applies/{applyId}	getIngestionSetApply
 admin	GET /api/ingestion-source-kinds	listIngestionSourceKinds
+admin	GET /api/ingestion-tests/{id}	getIngestionTest
 admin	GET /api/ingestions	listIngestions
 admin	GET /api/ingestions/{id}	getIngestion
 admin	GET /api/ingestions/{id}/definition	getIngestionDefinition
@@ -146,6 +150,9 @@ admin	POST /api/functions/{id}/versions/prune	pruneFunctionVersions
 admin	POST /api/functions/{id}/versions/{number}/retire	retireFunctionVersion
 admin	POST /api/identity-providers	createIdentityProvider
 admin	POST /api/idp-role-mappings	createIdpRoleMapping
+admin	POST /api/ingestion-sets/{name}/applies/{applyId}/reapply	reapplyIngestionSet
+admin	POST /api/ingestion-sets/{name}/release	releaseIngestionSet
+admin	POST /api/ingestion-tests	testIngestionConnection
 admin	POST /api/ingestions	createIngestion
 admin	POST /api/ingestions/{id}/pause	pauseIngestion
 admin	POST /api/ingestions/{id}/resume	resumeIngestion
@@ -211,6 +218,7 @@ admin	PUT /api/functions/{id}/routes	putFunctionRoute
 admin	PUT /api/functions/{id}/secrets/{key}	putFunctionSecret
 admin	PUT /api/functions/{id}/trace/{context}	enableFunctionTraceContext
 admin	PUT /api/identity-providers/{id}	updateIdentityProvider
+admin	PUT /api/ingestion-sets/{name}	applyIngestionSet
 admin	PUT /api/ingestions/{id}	updateIngestion
 admin	PUT /api/oauth-clients/{id}	updateOAuthClient
 admin	PUT /api/portal-apps/{id}	updatePortalApp
@@ -314,10 +322,13 @@ internal	GET /api/dispatch-jobs/{id}/raw	getDispatchJobRaw
 internal	GET /api/dispatch/router-config	getRouterConfig
 internal	GET /api/events/list-raw	listEventsRaw
 internal	GET /api/events/raw	listEventsRawAlias
+internal	GET /api/ingestion-runtime/v1/state/{ingestionId}/{key}	ingestionRuntimeGetState
 internal	GET /api/platform/cors/allowed	publicAllowedOrigins
 internal	GET /control/functions/artifacts/{digest}	getFunctionRunnerArtifact
 internal	GET /control/functions/desired	getFunctionRunnerDesired
 internal	POST /api/event-types/{id}/schemas	addEventTypeSchema
+internal	POST /api/ingestion-runtime/v1/poll	ingestionRuntimePoll
+internal	POST /api/ingestion-runtime/v1/report	ingestionRuntimeReport
 internal	POST /api/oauth-clients/{id}/regenerate-secret	regenerateOAuthClientSecret
 internal	POST /api/service-accounts/{id}/regenerate-secret	regenerateServiceAccountSigningSecret_regenerate-secret
 internal	POST /api/service-accounts/{id}/regenerate-token	regenerateServiceAccountAuthToken_regenerate-token
@@ -329,3 +340,4 @@ internal	POST /control/functions/dispatch-jobs	postFunctionRunnerDispatchJob
 internal	POST /control/functions/events	postFunctionRunnerEvent
 internal	POST /control/functions/heartbeat	postFunctionRunnerHeartbeat
 internal	POST /control/functions/trace-log	postFunctionRunnerTraceLog
+internal	PUT /api/ingestion-runtime/v1/state/{ingestionId}/{key}	ingestionRuntimePutState

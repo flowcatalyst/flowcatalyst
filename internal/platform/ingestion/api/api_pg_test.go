@@ -23,6 +23,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	ingestionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -97,6 +98,8 @@ type env struct {
 	clientA  *client.Client
 	clientB  *client.Client
 	poolCode string
+	// state is what the routes run on; a test swaps SetArchive to fail it.
+	state *ingestionapi.State
 }
 
 func unique() string { return strings.ToLower(tsid.GenerateUntyped()) }
@@ -141,12 +144,16 @@ func newEnv(t *testing.T) *env {
 	api.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
 		next(huma.WithContext(ctx, auth.WithContext(ctx.Context(), e.who)))
 	})
-	ingestionapi.Register(api, &ingestionapi.State{
-		Repo: ingestion.NewRepository(e.pool),
+	archive, err := artifact.NewFileStore(t.TempDir())
+	require.NoError(t, err)
+	e.state = &ingestionapi.State{
+		SetArchive: archive,
+		Repo:       ingestion.NewRepository(e.pool),
 		Resolver: ingestion.NewResolver(apps, clients, dispatchpool.NewRepository(e.pool),
 			connection.NewRepository(e.pool), serviceaccount.NewRepository(e.pool), nil),
 		Apps: apps, Clients: clients, Audit: audit.NewRepository(e.pool), UoW: e.uow,
-	})
+	}
+	ingestionapi.Register(api, e.state)
 	e.api = api
 	return e
 }

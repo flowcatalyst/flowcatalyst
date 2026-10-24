@@ -326,6 +326,12 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqStr("ingestionId"), reqStr("code"), reqU32("version"), reqBool("live"),
 	)
 	m["platform:ingestion:ingestion:version-live"] = obj(reqStr("ingestionId"), reqStr("code"), reqU32("version"))
+	m["platform:ingestion:ingestion:managed"] = obj(reqStr("ingestionId"), reqStr("code"), optStr("managedBy"))
+	m["platform:ingestion:set:applied"] = obj(
+		reqStr("setId"), reqStr("name"), reqStr("applyId"), optStr("goingBackTo"),
+		reqU32("created"), reqU32("changed"), reqU32("adopted"), reqU32("removed"),
+	)
+	m["platform:ingestion:set:released"] = obj(reqStr("setId"), reqStr("name"), reqU32("released"))
 
 	// ── platform:function (shared with Java and Rust), platform:admin:function* (Go-only)
 	// The shared codes carry Java's and Rust's schemas, except that

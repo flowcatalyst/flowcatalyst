@@ -797,6 +797,39 @@
         ],
         "type": "object"
       },
+      "ApplyIngestionSetRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ApplyIngestionSetRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "files": {
+            "description": "The files the items were read from, as they are in the repository; kept with the apply (at most 2 MB in all)",
+            "items": {
+              "$ref": "#/components/schemas/SetFile"
+            },
+            "maxItems": 500,
+            "type": "array"
+          },
+          "items": {
+            "description": "The set's ingestions, no two of the same application, client and code",
+            "items": {
+              "$ref": "#/components/schemas/IngestionSetItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "AssignApplicationAccessRequest": {
         "additionalProperties": true,
         "properties": {
@@ -5302,6 +5335,101 @@
         ],
         "type": "object"
       },
+      "ExchangeWindow": {
+        "additionalProperties": true,
+        "properties": {
+          "completed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "dispatchJobs": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "from": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "ingestionId": {
+            "type": "string"
+          },
+          "records": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "to": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ingestionId",
+          "from",
+          "to",
+          "completed",
+          "failed",
+          "records",
+          "dispatchJobs"
+        ],
+        "type": "object"
+      },
+      "Failure": {
+        "additionalProperties": true,
+        "properties": {
+          "afterRecords": {
+            "description": "How many of the payload's records were read before it failed",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "excerpt": {
+            "description": "The start of what it failed on; the platform keeps it only for an ingestion that keeps failed payloads",
+            "maxLength": 2048,
+            "type": "string"
+          },
+          "ingestionId": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "REJECTED",
+              "NOT_DISPATCHED",
+              "SOURCE",
+              "AUTH"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ingestionId",
+          "version",
+          "at",
+          "kind",
+          "message"
+        ],
+        "type": "object"
+      },
       "FireNowRequest": {
         "additionalProperties": true,
         "properties": {
@@ -5769,6 +5897,34 @@
         ],
         "type": "object"
       },
+      "IngestionDefinition": {
+        "additionalProperties": false,
+        "properties": {
+          "keepFailedPayloads": {
+            "description": "Keep the first 2 KB of a payload that failed. Off unless the client has agreed.",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "description": "Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}"
+          },
+          "split": {
+            "description": "How a payload becomes records: {kind: none|csv|json|xml, ...}"
+          },
+          "target": {
+            "$ref": "#/components/schemas/Target"
+          }
+        },
+        "required": [
+          "name",
+          "source",
+          "split",
+          "target"
+        ],
+        "type": "object"
+      },
       "IngestionFailureListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -5981,6 +6137,9 @@
           "name": {
             "type": "string"
           },
+          "runtimeNotice": {
+            "type": "string"
+          },
           "source": {
             "description": "Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}"
           },
@@ -6022,6 +6181,292 @@
           "source",
           "split",
           "target"
+        ],
+        "type": "object"
+      },
+      "IngestionSetApplyListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionSetApplyListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applies": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionSetApplyResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "applies"
+        ],
+        "type": "object"
+      },
+      "IngestionSetApplyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "appliedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "appliedBy": {
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/SetChange"
+            },
+            "type": "array"
+          },
+          "files": {
+            "description": "How many files they were read from",
+            "format": "int64",
+            "type": "integer"
+          },
+          "goingBackTo": {
+            "description": "The earlier apply it applied again",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "items": {
+            "description": "How many items it was given",
+            "format": "int64",
+            "type": "integer"
+          },
+          "set": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "set",
+          "appliedAt",
+          "items",
+          "files",
+          "changes"
+        ],
+        "type": "object"
+      },
+      "IngestionSetArchiveResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionSetArchiveResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "appliedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "appliedBy": {
+            "type": "string"
+          },
+          "applyId": {
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/SetFile"
+            },
+            "type": "array"
+          },
+          "goingBackTo": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionSetItem"
+            },
+            "type": "array"
+          },
+          "set": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "set",
+          "applyId",
+          "appliedAt",
+          "appliedBy",
+          "items",
+          "files"
+        ],
+        "type": "object"
+      },
+      "IngestionSetItem": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "description": "Whether the ingestion runs. Default true; an apply sets it, so a pause made since is undone.",
+            "type": "boolean"
+          },
+          "application": {
+            "description": "Code of the owning application, which must be of type INTEGRATION",
+            "type": "string"
+          },
+          "client": {
+            "description": "The client's id (clt_...) or identifier",
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "keepFailedPayloads": {
+            "description": "Keep the first 2 KB of a payload that failed. Off unless the client has agreed.",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "description": "Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}"
+          },
+          "split": {
+            "description": "How a payload becomes records: {kind: none|csv|json|xml, ...}"
+          },
+          "target": {
+            "$ref": "#/components/schemas/Target"
+          }
+        },
+        "required": [
+          "application",
+          "client",
+          "code",
+          "name",
+          "source",
+          "split",
+          "target"
+        ],
+        "type": "object"
+      },
+      "IngestionSetListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionSetListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "sets": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionSetResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sets"
+        ],
+        "type": "object"
+      },
+      "IngestionSetPlanResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionSetPlanResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applyId": {
+            "description": "The recorded apply; absent for a dry run and for an apply that changed nothing",
+            "type": "string"
+          },
+          "changes": {
+            "description": "Each item of the set, then each ingestion removed from it",
+            "items": {
+              "$ref": "#/components/schemas/SetChange"
+            },
+            "type": "array"
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "dryRun",
+          "changes"
+        ],
+        "type": "object"
+      },
+      "IngestionSetReleaseResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionSetReleaseResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "released": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "released"
+        ],
+        "type": "object"
+      },
+      "IngestionSetResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "ingestions": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "ingestions",
+          "createdAt",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -6076,6 +6521,92 @@
           "kind",
           "builtIn",
           "singleOwner"
+        ],
+        "type": "object"
+      },
+      "IngestionTestResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionTestResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "completedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "excerpt": {
+            "description": "The start of the answer, only for an ingestion that keeps failed payloads",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "ingestionId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "notice": {
+            "description": "Set while no live runtime carries the kind: the test waits, nothing has failed",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "RESULTS",
+              "NO_RESULTS",
+              "REFUSED",
+              "FAILED",
+              "NOT_SUPPORTED"
+            ],
+            "type": "string"
+          },
+          "records": {
+            "description": "How many records the split makes of the answer, when it answered",
+            "format": "int64",
+            "type": "integer"
+          },
+          "runtimeId": {
+            "type": "string"
+          },
+          "status": {
+            "description": "PENDING until a runtime takes it, RUNNING while it tries, DONE with its result, EXPIRED when none answered in time",
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "DONE",
+              "EXPIRED"
+            ],
+            "type": "string"
+          },
+          "steps": {
+            "description": "What the runtime did, step by step, for a person",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "createdAt",
+          "expiresAt"
         ],
         "type": "object"
       },
@@ -7401,6 +7932,96 @@
         "required": [
           "permission",
           "name"
+        ],
+        "type": "object"
+      },
+      "PollRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PollRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "contractVersion": {
+            "description": "The contract version the runtime speaks; the platform serves the current one and the one before it",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kinds": {
+            "description": "The kinds the runtime's extensions add (and camel-route); built-in kinds are all carried unless some are named here",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeKind"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "runtimeId": {
+            "description": "The asking runtime; unique among running runtimes",
+            "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+            "type": "string"
+          },
+          "url": {
+            "description": "Where the runtime can be reached; informational, the platform never calls it",
+            "maxLength": 500,
+            "pattern": "^https?://[^\\s]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runtimeId",
+          "contractVersion"
+        ],
+        "type": "object"
+      },
+      "PollResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PollResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "asOf": {
+            "description": "When the platform read them",
+            "format": "date-time",
+            "type": "string"
+          },
+          "ingestions": {
+            "description": "Live versions only: every shared ingestion of a kind the runtime carries, and the polled ones whose lease it holds",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeIngestion"
+            },
+            "type": "array"
+          },
+          "leaseFor": {
+            "examples": [
+              "PT3M"
+            ],
+            "type": "string"
+          },
+          "tests": {
+            "description": "Pending test requests for kinds the runtime carries",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeTest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "asOf",
+          "leaseFor",
+          "ingestions",
+          "tests"
         ],
         "type": "object"
       },
@@ -8768,6 +9389,56 @@
         ],
         "type": "object"
       },
+      "ReportRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ReportRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/Failure"
+            },
+            "maxItems": 500,
+            "type": "array"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/ExchangeWindow"
+            },
+            "maxItems": 2000,
+            "type": "array"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/RouteState"
+            },
+            "maxItems": 2000,
+            "type": "array"
+          },
+          "runtimeId": {
+            "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+            "type": "string"
+          },
+          "tests": {
+            "items": {
+              "$ref": "#/components/schemas/TestAnswer"
+            },
+            "maxItems": 20,
+            "type": "array"
+          }
+        },
+        "required": [
+          "runtimeId"
+        ],
+        "type": "object"
+      },
       "RequestDTO": {
         "additionalProperties": false,
         "properties": {
@@ -9642,6 +10313,38 @@
         ],
         "type": "object"
       },
+      "RouteState": {
+        "additionalProperties": true,
+        "properties": {
+          "error": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "ingestionId": {
+            "type": "string"
+          },
+          "status": {
+            "description": "STARTED is running, FAILING is running but the source keeps failing, FAILED could not be built or started",
+            "enum": [
+              "STARTED",
+              "FAILING",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ingestionId",
+          "version",
+          "status"
+        ],
+        "type": "object"
+      },
       "RouterConfig": {
         "additionalProperties": false,
         "properties": {
@@ -9700,6 +10403,101 @@
         "required": [
           "protocol",
           "runtimes"
+        ],
+        "type": "object"
+      },
+      "RuntimeIngestion": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationCode": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "clientIdentifier": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "keepFailedPayloads": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {},
+          "split": {},
+          "target": {
+            "$ref": "#/components/schemas/Target"
+          },
+          "version": {
+            "description": "The live version; a runtime rebuilds the route when it differs",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "clientId",
+          "clientIdentifier",
+          "applicationCode",
+          "code",
+          "name",
+          "source",
+          "split",
+          "target",
+          "keepFailedPayloads"
+        ],
+        "type": "object"
+      },
+      "RuntimeKind": {
+        "additionalProperties": true,
+        "properties": {
+          "description": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "kind": {
+            "maxLength": 50,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "requiredPermission": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "settings": {}
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "RuntimeTest": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "Answer it in the next report under tests",
+            "type": "string"
+          },
+          "ingestion": {
+            "$ref": "#/components/schemas/RuntimeIngestion"
+          }
+        },
+        "required": [
+          "id",
+          "expiresAt",
+          "ingestion"
         ],
         "type": "object"
       },
@@ -10318,6 +11116,47 @@
         ],
         "type": "object"
       },
+      "SetChange": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "CREATE",
+              "CHANGE",
+              "ADOPT",
+              "UNCHANGED",
+              "REMOVE"
+            ],
+            "type": "string"
+          },
+          "application": {
+            "type": "string"
+          },
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "client": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "ingestionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "application",
+          "client",
+          "code",
+          "action",
+          "changed"
+        ],
+        "type": "object"
+      },
       "SetDeveloperCredentialResponse": {
         "additionalProperties": false,
         "properties": {
@@ -10339,6 +11178,22 @@
         },
         "required": [
           "id"
+        ],
+        "type": "object"
+      },
+      "SetFile": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
         ],
         "type": "object"
       },
@@ -10451,6 +11306,28 @@
           "schema",
           "status",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "StateValue": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/StateValue.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "value": {
+            "maxLength": 4000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
         ],
         "type": "object"
       },
@@ -11570,6 +12447,79 @@
           "mode",
           "batchSize"
         ],
+        "type": "object"
+      },
+      "TestAnswer": {
+        "additionalProperties": true,
+        "properties": {
+          "excerpt": {
+            "description": "The start of the answer; the platform keeps it only if the tested definition keeps failed payloads",
+            "maxLength": 2048,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "RESULTS",
+              "NO_RESULTS",
+              "REFUSED",
+              "FAILED",
+              "NOT_SUPPORTED"
+            ],
+            "type": "string"
+          },
+          "records": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "steps": {
+            "description": "What happened, step by step, for a person; no secret or token",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "outcome",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "TestIngestionRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/TestIngestionRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "application": {
+            "description": "With definition: code of the owning application, which must be of type INTEGRATION",
+            "type": "string"
+          },
+          "client": {
+            "description": "With definition: the client's id (clt_...) or identifier",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/IngestionDefinition",
+            "description": "A definition to test without saving it"
+          },
+          "ingestionId": {
+            "description": "Test this saved ingestion's live definition",
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "TokenAuth": {
@@ -22558,6 +23508,520 @@
         "x-sdk": "admin"
       }
     },
+    "/api/ingestion-runtime/v1/poll": {
+      "post": {
+        "operationId": "ingestionRuntimePoll",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PollRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PollResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "426": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Upgrade Required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "A runtime asks what it should run (ingestion runtime only)",
+        "tags": [
+          "ingestion-runtime"
+        ]
+      }
+    },
+    "/api/ingestion-runtime/v1/report": {
+      "post": {
+        "operationId": "ingestionRuntimeReport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "A runtime reports route states, exchange windows, failures and test answers (ingestion runtime only)",
+        "tags": [
+          "ingestion-runtime"
+        ]
+      }
+    },
+    "/api/ingestion-runtime/v1/state/{ingestionId}/{key}": {
+      "get": {
+        "operationId": "ingestionRuntimeGetState",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ingestionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The asking runtime, which must hold the ingestion's lease",
+            "explode": false,
+            "in": "query",
+            "name": "runtimeId",
+            "required": true,
+            "schema": {
+              "description": "The asking runtime, which must hold the ingestion's lease",
+              "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateValue"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read a value a polled source keeps (lease holder only)",
+        "tags": [
+          "ingestion-runtime"
+        ]
+      },
+      "put": {
+        "operationId": "ingestionRuntimePutState",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ingestionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The writing runtime, which must hold the ingestion's lease",
+            "explode": false,
+            "in": "query",
+            "name": "runtimeId",
+            "required": true,
+            "schema": {
+              "description": "The writing runtime, which must hold the ingestion's lease",
+              "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StateValue"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Store a value a polled source keeps (lease holder only)",
+        "tags": [
+          "ingestion-runtime"
+        ]
+      }
+    },
+    "/api/ingestion-sets": {
+      "get": {
+        "operationId": "listIngestionSets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionSetListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the sets that own ingestions",
+        "tags": [
+          "ingestion-sets"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/ingestion-sets/{name}": {
+      "put": {
+        "operationId": "applyIngestionSet",
+        "parameters": [
+          {
+            "description": "The set's name: lowercase letters, digits and hyphens",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The set's name: lowercase letters, digits and hyphens",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Do all the checks and say what would be done, writing nothing",
+            "explode": false,
+            "in": "query",
+            "name": "dryRun",
+            "schema": {
+              "description": "Do all the checks and say what would be done, writing nothing",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyIngestionSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionSetPlanResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Make a set's ingestions what its items say: create, change, take in ones made by hand, and delete what it no longer lists",
+        "tags": [
+          "ingestion-sets"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/ingestion-sets/{name}/applies": {
+      "get": {
+        "operationId": "listIngestionSetApplies",
+        "parameters": [
+          {
+            "description": "The set's name: lowercase letters, digits and hyphens",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The set's name: lowercase letters, digits and hyphens",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionSetApplyListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List a set's kept applies, newest first",
+        "tags": [
+          "ingestion-sets"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/ingestion-sets/{name}/applies/{applyId}": {
+      "get": {
+        "operationId": "getIngestionSetApply",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "applyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionSetArchiveResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get what one apply of a set was given",
+        "tags": [
+          "ingestion-sets"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/ingestion-sets/{name}/applies/{applyId}/reapply": {
+      "post": {
+        "operationId": "reapplyIngestionSet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "applyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Do all the checks and say what would be done, writing nothing",
+            "explode": false,
+            "in": "query",
+            "name": "dryRun",
+            "schema": {
+              "description": "Do all the checks and say what would be done, writing nothing",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionSetPlanResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Go back to an earlier apply: apply the set again with the items that apply was given, as a new apply",
+        "tags": [
+          "ingestion-sets"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/ingestion-sets/{name}/release": {
+      "post": {
+        "operationId": "releaseIngestionSet",
+        "parameters": [
+          {
+            "description": "The set's name: lowercase letters, digits and hyphens",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The set's name: lowercase letters, digits and hyphens",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionSetReleaseResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Let go of a set: its ingestions stay as they are and are edited one at a time again",
+        "tags": [
+          "ingestion-sets"
+        ],
+        "x-sdk": "admin"
+      }
+    },
     "/api/ingestion-source-kinds": {
       "get": {
         "operationId": "listIngestionSourceKinds",
@@ -22584,6 +24048,90 @@
           }
         },
         "summary": "List the source kinds a definition can use",
+        "tags": [
+          "ingestions"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/ingestion-tests": {
+      "post": {
+        "operationId": "testIngestionConnection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestIngestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionTestResponse"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Queue a test of an ingestion's source",
+        "tags": [
+          "ingestions"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/ingestion-tests/{id}": {
+      "get": {
+        "operationId": "getIngestionTest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionTestResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a queued test and, once a runtime has answered, its result",
         "tags": [
           "ingestions"
         ],
