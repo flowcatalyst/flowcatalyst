@@ -67,6 +67,21 @@ const (
 
 	flashCfgSaved   = "config-saved"
 	flashCfgDeleted = "config-deleted"
+
+	flashTraceOn  = "trace-enabled"
+	flashTraceOff = "trace-disabled"
+
+	flashFnCreated        = "function-created"
+	flashFnUpdated        = "function-updated"
+	flashFnDeleted        = "function-deleted"
+	flashFnPromoted       = "function-promoted"
+	flashFnAliasSaved     = "function-alias-saved"
+	flashFnAliasRemoved   = "function-alias-removed"
+	flashFnRetired        = "function-version-retired"
+	flashFnSettingSaved   = "function-setting-saved"
+	flashFnSettingRemoved = "function-setting-removed"
+	flashFnRouteSaved     = "function-route-saved"
+	flashFnRouteRemoved   = "function-route-removed"
 )
 
 // FlashMessages is the table the shell maps flash keys through
@@ -138,6 +153,26 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	// The SPA's toasts name the property; a flash key carries no request text.
 	flashCfgSaved:   {Kind: kit.FlashSuccess, Summary: "Saved", Detail: "The property was saved"},
 	flashCfgDeleted: {Kind: kit.FlashSuccess, Summary: "Deleted", Detail: "The property was deleted"},
+
+	// The SPA's trace toasts name the context; a Datastar answer does too, a
+	// flash key after a native post carries no request text.
+	flashTraceOn:  {Kind: kit.FlashSuccess, Summary: "Tracing on", Detail: "The context is on"},
+	flashTraceOff: {Kind: kit.FlashSuccess, Summary: "Tracing off", Detail: "The context is off"},
+
+	// The SPA's function toasts. A Datastar answer replaces the detail with
+	// text the server built (the version promoted, the wiring changed, the key
+	// set); a flash key after a native post carries none.
+	flashFnCreated:        success("Function created"),
+	flashFnUpdated:        success("Function updated"),
+	flashFnDeleted:        success("Function deleted"),
+	flashFnPromoted:       {Kind: kit.FlashSuccess, Summary: "Promoted", Detail: "The version is now live"},
+	flashFnAliasSaved:     {Kind: kit.FlashSuccess, Summary: "Alias updated", Detail: "The alias was updated"},
+	flashFnAliasRemoved:   success("Alias removed"),
+	flashFnRetired:        success("Version retired"),
+	flashFnSettingSaved:   success("Setting saved"),
+	flashFnSettingRemoved: success("Setting removed"),
+	flashFnRouteSaved:     success("Route saved"),
+	flashFnRouteRemoved:   success("Route removed"),
 }
 
 // success is the SPA's toast.success("Success", detail).

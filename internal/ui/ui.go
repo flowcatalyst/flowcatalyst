@@ -83,6 +83,18 @@ type Config struct {
 	// application select reads Applications.
 	PlatformConfig    pages.ConfigService
 	PlatformConfigOps pages.ConfigCommands
+
+	// FunctionTrace and FunctionTraceOps back the trace switches and the trace
+	// log page of a function (/ui/functions/{id}/traces).
+	FunctionTrace    pages.TraceStore
+	FunctionTraceOps pages.TraceCommands
+
+	// Functions, FunctionOps and FunctionZones back the functions list and
+	// drawer; its pickers read Clients, ClientStore, Applications' store
+	// (ApplicationStore) and ServiceAccounts.
+	Functions     pages.FunctionStore
+	FunctionOps   pages.FunctionCommands
+	FunctionZones pages.FunctionZones
 }
 
 // Mount registers /ui and everything under it on r.
@@ -125,6 +137,10 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.Events{Events: cfg.Events, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.Processes{Store: cfg.Processes, Ops: cfg.ProcessOps, Shell: sh}).Mount(r)
 			(&pages.PlatformConfig{Config: cfg.PlatformConfig, Ops: cfg.PlatformConfigOps, Apps: cfg.Applications, ClientIdentifier: cfg.ClientIdentifier, Shell: sh}).Mount(r)
+			// The functions area embeds the switches (trace.Switches) in its drawer.
+			trace := &pages.FunctionTrace{Store: cfg.FunctionTrace, Ops: cfg.FunctionTraceOps, Shell: sh}
+			trace.Mount(r)
+			(&pages.Functions{Functions: cfg.Functions, Ops: cfg.FunctionOps, Zones: cfg.FunctionZones, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Apps: cfg.ApplicationStore, ServiceAccounts: cfg.ServiceAccounts, Trace: trace, Shell: sh}).Mount(r)
 			(&pages.ClientOptions{Clients: cfg.Clients, Shell: sh}).Mount(r)
 		})
 

@@ -88,6 +88,14 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 		ProcessOps:            pages.ProcessOps{Repo: repos.processRepo, UoW: uow},
 		PlatformConfig:        platformConfigService(repos, uow),
 		PlatformConfigOps:     pages.ConfigOps{Repo: repos.platformConfigRepo, UoW: uow},
+		Functions:             repos.functionRepo,
+		FunctionZones:         repos.functionDomainRepo,
+		FunctionOps: pages.FunctionOps{
+			Repo: repos.functionRepo, Apps: repos.applicationRepo, Wiring: svcs.functionWiring, Domains: repos.functionDomainRepo,
+			Artifacts: svcs.functionArtifacts, UoW: uow,
+		},
+		FunctionTrace:    pages.TraceReader{Repository: repos.functionRepo, Limits: cfg.FunctionsTrace},
+		FunctionTraceOps: pages.TraceOps{Repo: repos.functionRepo, UoW: uow, Limits: cfg.FunctionsTrace},
 	})
 }
 

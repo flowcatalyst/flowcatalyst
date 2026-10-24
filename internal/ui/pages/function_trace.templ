@@ -1,0 +1,491 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+// traceFilterExpr puts a chip's value into its filter and applies it (the
+// value is in a data attribute: user data never goes into an expression).
+const traceFilterExpr = "const f = document.getElementById('" + traceFiltersID + "'); f.elements[el.dataset.field].value = el.dataset.value; f.requestSubmit()"
+
+// traceClearExpr empties the filters and applies the empty view.
+const traceClearExpr = "const f = el.closest('form'); f.querySelectorAll('[data-filter]').forEach(c => c.value = ''); f.requestSubmit()"
+
+// traceSubmitExpr applies a changed filter at once.
+const traceSubmitExpr = "el.form.requestSubmit()"
+
+// traceLiveExpr opens (or reopens) the log's request from the filter bar: one
+// request at a time per bar, because Datastar cancels the bar's earlier one.
+const traceLiveExpr = "@get(el.action, {contentType: 'form'})"
+
+// traceTickExpr keeps a card's countdown ticking in the browser and, when it
+// reaches zero, asks for the switches again (once).
+const traceTickExpr = "const s = Math.ceil((+el.dataset.until - Date.now()) / 1000); s > 0 ? (el.textContent = (s >= 3600 ? Math.floor(s / 3600) + ':' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') : Math.floor(s / 60)) + ':' + String(s % 60).padStart(2, '0')) : (el.dataset.done || (el.dataset.done = '1', @get(el.dataset.refresh)))"
+
+func traceTickAttrs(fnID string, c traceCard, onPage bool) templ.Attributes {
+	refresh := traceBase + "/" + fnID + "/trace/switches"
+	if onPage {
+		refresh += "?page=traces"
+	}
+	return templ.Attributes{
+		"data-until":                   c.UntilMs,
+		"data-refresh":                 refresh,
+		"data-on-interval__duration.1s": traceTickExpr,
+	}
+}
+
+// ── the switches ───────────────────────────────────────────────────────
+
+// TraceSwitches is the switches panel of a function: one card per trace
+// context with its state and, for a viewer who may manage tracing, Enable (or
+// Change) and Disable. The function drawer embeds it (FunctionTrace.Switches
+// builds the view); the log page shows it above the log.
+templ TraceSwitches(fnID string, v TraceSwitchesView) {
+	<div class="flex flex-col gap-3">
+		@traceSwitchesBody(fnID, v)
+		<div id={ traceDialogSlot }>
+			if v.dialog != nil {
+				@v.dialog
+			}
+		</div>
+	</div>
+}
+
+templ traceSwitchesBody(fnID string, v TraceSwitchesView) {
+	<div id={ traceSwitchesID } class="flex flex-col gap-3">
+		if !v.gates.View {
+			@kit.Alert(kit.AlertProps{ID: "trace-no-permission", Icon: "info", Title: "You do not have permission to view trace logs (platform:function:trace:view)."})
+		} else {
+			<p class="text-sm text-muted-foreground">
+				Tracing is <strong>off by default</strong>. Switch a context on for a set time, or until you switch it off. The built-in
+				<code class="fc-mono-chip">http</code> context captures request and response <strong>bodies</strong>, which can hold sensitive data.
+			</p>
+			<ul class="flex flex-col gap-2" id="trace-contexts">
+				for _, c := range v.cards {
+					@traceCardC(fnID, v, c)
+				}
+				if len(v.cards) == 0 {
+					<li class="text-sm text-muted-foreground">No contexts.</li>
+				}
+			</ul>
+			if !v.hasDeclared {
+				@kit.Alert(kit.AlertProps{
+					ID:          "trace-no-declared",
+					Icon:        "info",
+					Title:       "This function declares no trace contexts yet, so only http is available (it is always available).",
+					Description: "To add your own, list their names under traceContexts in the function's describe document and publish a new version; the SDK's trace and tracing helpers write to them.",
+				})
+			}
+			if v.showLogLink {
+				<div>
+					@kit.Button(kit.ButtonProps{Href: traceLogPath(fnID), Icon: "external-link", Attrs: templ.Attributes{"id": "trace-view-logs"}}) {
+						View trace logs
+					}
+				</div>
+			}
+		}
+	</div>
+}
+
+templ traceCardC(fnID string, v TraceSwitchesView, c traceCard) {
+	<li id={ "trace-context-" + c.Name } class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border p-3">
+		<div class="min-w-0 flex-1">
+			<div class="flex items-center gap-2">
+				<code class="fc-mono-chip">{ c.Name }</code>
+				if c.BuiltIn {
+					@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "built-in"})
+				}
+			</div>
+			<p class="mt-1 text-sm text-muted-foreground">
+				if c.Description != "" {
+					{ c.Description }
+				} else {
+					No description.
+				}
+			</p>
+			<p class="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
+				if c.Live {
+					@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Live"})
+					if c.Indefinite {
+						<span>until switched off</span>
+					} else {
+						<span>
+							<time class="tabular-nums" datetime={ c.UntilISO } { traceTickAttrs(fnID, c, !v.showLogLink)... }>{ c.Label }</time>
+							left
+						</span>
+					}
+					<span class="text-muted-foreground">{ c.Sample }</span>
+				} else {
+					@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "Off"})
+				}
+			</p>
+			if c.Name == "http" && c.Blocked != "" {
+				<small class="mt-1 block text-xs text-muted-foreground" id="trace-http-blocked">{ c.Blocked }</small>
+			}
+		</div>
+		if v.gates.Manage {
+			<div class="flex items-center gap-1">
+				@kit.Button(kit.ButtonProps{
+					Variant:  kit.ButtonOutline,
+					Size:     kit.ButtonSm,
+					Href:     traceEnableHref(fnID, c.Name, !v.showLogLink),
+					Disabled: c.Blocked != "",
+					Attrs:    templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog", "title": c.Blocked},
+				}) {
+					if c.Live {
+						Change
+					} else {
+						Enable
+					}
+				}
+				if c.Live {
+					<form method="post" action={ traceContextPath(fnID, c.Name) + "/disable" } data-on:submit={ kit.SubmitForm }>
+						if !v.showLogLink {
+							<input type="hidden" name="page" value="traces"/>
+						}
+						@kit.Button(kit.ButtonProps{Variant: kit.ButtonDestructiveOutline, Size: kit.ButtonSm, Type: "submit"}) {
+							Disable
+						}
+					</form>
+				}
+			</div>
+		}
+	</li>
+}
+
+// ── the enable dialog ──────────────────────────────────────────────────
+
+templ traceFormDialogC(f traceForm) {
+	@kit.FormDialog(f.dialog()) {
+		<div class="flex flex-col gap-4" data-signals={ f.signals() }>
+			if f.Context == "http" {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "This records request and response bodies, which can hold sensitive data."})
+			}
+			@traceField(f, "minutes")
+			@traceField(f, "indefinite")
+			@traceField(f, "sampleRate")
+		</div>
+	}
+}
+
+templ traceField(f traceForm, key string) {
+	switch key {
+		case "minutes":
+			@kit.Field(kit.FieldProps{
+				Label: "Stay on for", For: f.id(key), Description: "At most " + f.maxText() + " minutes for this context.",
+				Error: f.Errs.Fields[key], ErrorID: f.id(key) + "-err", Attrs: templ.Attributes{"id": f.id(key) + "-field"},
+			}) {
+				@kit.Select(kit.SelectProps{
+					ID: f.id(key), Name: key, Options: f.durationOptions(), Selected: f.Minutes, Disabled: f.Indefinite,
+					Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key),
+					Attrs: templ.Attributes{"data-attr:disabled": "$" + traceIndefSignal},
+				})
+			}
+		case "indefinite":
+			@kit.Field(kit.FieldProps{For: f.id(key), Error: f.Errs.Fields[key], ErrorID: f.id(key) + "-err", Attrs: templ.Attributes{"id": f.id(key) + "-field"}}) {
+				<div class="flex items-center gap-2">
+					@kit.Checkbox(kit.CheckboxProps{
+						ID: f.id(key), Name: key, Value: "1", Checked: f.Indefinite, Label: "No time limit: keep it on until I switch it off",
+						Attrs: templ.Attributes{"data-on:change": "$" + traceIndefSignal + " = el.checked"},
+					})
+				</div>
+			}
+		case "sampleRate":
+			@kit.Field(kit.FieldProps{
+				Label: "Sample rate (1 in N)", For: f.id(key), Description: "1 captures every invocation; 10 captures one in ten.",
+				Error: f.Errs.Fields[key], ErrorID: f.id(key) + "-err", Attrs: templ.Attributes{"id": f.id(key) + "-field"},
+			}) {
+				@kit.Input(kit.InputProps{
+					ID: f.id(key), Name: key, Type: "number", Value: f.SampleRate, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key),
+					Attrs: templ.Attributes{"min": "1", "max": "1000", "step": "1", "inputmode": "numeric"},
+				})
+			}
+	}
+}
+
+// ── the log page ───────────────────────────────────────────────────────
+
+templ traceLogPage(v traceLogView) {
+	<div>
+		<header class="fc-page-header">
+			<div>
+				<a href={ traceBackPath(v.FnID) } class="mb-1.5 inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground" id="trace-back">
+					@kit.Icon(kit.IconProps{Name: "arrow-left", Class: "size-4"})
+					Back to function
+				</a>
+				<h1 class="fc-page-title">Trace logs</h1>
+				if v.Address != "" {
+					<p class="fc-page-subtitle"><code>{ v.Address }</code></p>
+				}
+			</div>
+		</header>
+		<div class="flex flex-col gap-3">
+			<details id="trace-switches-panel" class="fc-card group" open?={ v.Dialog != nil }>
+				<summary class="flex cursor-pointer list-none items-center gap-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
+					@kit.Icon(kit.IconProps{Name: "chevron-right", Class: "size-4 transition-transform group-open:rotate-90"})
+					Tracing switches
+				</summary>
+				<div class="mt-3">
+					@TraceSwitches(v.FnID, v.switchesWithDialog())
+				</div>
+			</details>
+			<section class="fc-card flex flex-col gap-3" aria-labelledby="trace-log-title">
+				<form
+					id={ traceFiltersID }
+					method="get"
+					action={ traceLogPath(v.FnID) }
+					class="flex flex-col gap-3"
+					data-on:submit={ traceLiveExpr }
+					if v.Live && !v.Q.Paused {
+						data-init={ traceLiveExpr }
+					}
+				>
+					<div class="flex flex-wrap items-center justify-between gap-2">
+						<h2 id="trace-log-title" class="text-[13px] font-semibold tracking-wide text-muted-foreground uppercase">Trace log</h2>
+						@traceStatus(v)
+					</div>
+					<div class="flex flex-wrap items-center gap-2" id="trace-filter-bar">
+						@traceContextField(v)
+						@kit.Select(kit.SelectProps{
+							ID: "trace-kind", Name: "kind", Options: plainOptions(traceKinds), Selected: v.Q.Kind, Placeholder: "Kind", Class: "min-w-32",
+							Attrs: templ.Attributes{"data-filter": true, "aria-label": "Kind", "data-on:change": traceSubmitExpr},
+						})
+						@kit.Select(kit.SelectProps{
+							ID: "trace-level", Name: "level", Options: plainOptions(traceLevels), Selected: v.Q.Level, Placeholder: "Level", Class: "min-w-32",
+							Attrs: templ.Attributes{"data-filter": true, "aria-label": "Level", "data-on:change": traceSubmitExpr},
+						})
+						@kit.Select(kit.SelectProps{
+							ID: "trace-since", Name: "since", Options: traceSinceChoices, Selected: v.Q.Since, Class: "min-w-40",
+							Attrs: templ.Attributes{"data-filter": true, "aria-label": "Time", "data-on:change": traceSubmitExpr},
+						})
+						@traceTextFilter("reference", "Reference", v.Q.Reference)
+						@traceTextFilter("correlationId", "Correlation id", v.Q.CorrelationID)
+						@traceTextFilter("invocationId", "Invocation id", v.Q.InvocationID)
+						@traceClear(v)
+					</div>
+				</form>
+				@traceError(v.Err)
+				@traceRecordList(v)
+				@traceMore(v)
+			</section>
+		</div>
+	</div>
+}
+
+templ traceTextFilter(name, label, value string) {
+	@kit.Input(kit.InputProps{
+		ID: "trace-" + kebab(name), Name: name, Value: value, Placeholder: label, Class: "w-44",
+		Attrs: templ.Attributes{"data-filter": true, "aria-label": label, "autocomplete": "off", "data-on:input__debounce.300ms": traceSubmitExpr},
+	})
+}
+
+// traceStatus is the live state and the buttons that act on it. Refresh comes
+// first: it is the form's default button (Enter in a filter). Pause and
+// Resume are the submitter, so the server sees which one was pressed; the
+// paused state itself rides in a hidden field.
+templ traceStatus(v traceLogView) {
+	<div id="trace-status" class="flex flex-wrap items-center gap-2">
+		if v.Q.Paused {
+			<input type="hidden" name="paused" value="1"/>
+		}
+		if v.Live && !v.Q.Paused {
+			@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Auto refresh every 5 s"})
+		} else if v.Live {
+			@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "Auto refresh paused"})
+		}
+		@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Size: kit.ButtonSm, Type: "submit", Icon: "refresh-cw"}) {
+			Refresh
+		}
+		if v.Live && v.Q.Paused {
+			@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Size: kit.ButtonSm, Type: "submit", Icon: "play", Attrs: templ.Attributes{"name": "resume", "value": "1", "id": "trace-resume"}}) {
+				Resume
+			}
+		} else if v.Live {
+			@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Size: kit.ButtonSm, Type: "submit", Icon: "pause", Attrs: templ.Attributes{"name": "pause", "value": "1", "id": "trace-pause"}}) {
+				Pause
+			}
+		}
+	</div>
+}
+
+templ traceContextField(v traceLogView) {
+	<span id="trace-context-field">
+		@kit.Select(kit.SelectProps{
+			ID: "trace-context", Name: "context", Options: v.contextOptions(), Selected: v.Q.Context, Placeholder: "Context", Class: "min-w-36",
+			Attrs: templ.Attributes{"data-filter": true, "aria-label": "Context", "data-on:change": traceSubmitExpr},
+		})
+	</span>
+}
+
+templ traceClear(v traceLogView) {
+	<span id="trace-clear">
+		if v.Q.filtered() {
+			@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Size: kit.ButtonSm, Icon: "funnel-x", Attrs: templ.Attributes{"data-on:click": traceClearExpr}}) {
+				Clear
+			}
+		}
+	</span>
+}
+
+templ traceError(msg string) {
+	<div id="trace-error" role="alert">
+		if msg != "" {
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Icon: "circle-x", Title: msg})
+		}
+	</div>
+}
+
+templ traceRecordList(v traceLogView) {
+	<div id={ traceRecordsID } class="overflow-hidden rounded-lg border border-border" data-testid="trace-log">
+		if len(v.Records) == 0 {
+			<p id="trace-empty" class="p-6 text-center text-sm text-muted-foreground" role="status">
+				if v.Q.filtered() {
+					No records match these filters.
+				} else {
+					No trace records yet. Switch a context on above and invoke the function.
+				}
+			</p>
+		}
+		@traceRows(v)
+	</div>
+}
+
+templ traceRows(v traceLogView) {
+	for _, rec := range v.Records {
+		@traceRecord(rec)
+	}
+}
+
+templ traceMore(v traceLogView) {
+	<div id="trace-more" class="flex justify-center">
+		if v.NextCursor != "" {
+			<a
+				href={ v.Q.pageURL(v.FnID, v.NextCursor) }
+				class={ kit.ButtonClasses(kit.ButtonOutline, kit.ButtonSm) }
+				data-more={ v.Q.moreURL(v.FnID, v.NextCursor) }
+				data-on:click__prevent="@get(el.dataset.more)"
+			>Load more</a>
+		}
+	</div>
+}
+
+// traceRecord is one record: a summary line, and the record in full when it
+// is opened. A record never changes, so a refresh leaves the rows it already
+// has alone (data-ignore-morph): the ones the viewer opened stay open.
+templ traceRecord(rec traceRec) {
+	<details id={ rec.DomID } class="group border-b border-border last:border-b-0" data-ignore-morph>
+		<summary class="flex cursor-pointer list-none flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-sm outline-none hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+			@kit.Icon(kit.IconProps{Name: "chevron-right", Class: "size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"})
+			<span class="shrink-0 text-xs text-muted-foreground tabular-nums">
+				@kit.LocalTime(kit.LocalTimeProps{At: rec.At})
+			</span>
+			<code class="fc-mono-chip">{ rec.Context }</code>
+			<span class="inline-flex gap-1.5">
+				@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: rec.Kind})
+				@kit.Tag(kit.TagProps{Severity: traceLevelSeverity(rec.Level), Label: rec.Level})
+			</span>
+			<span class="min-w-0 flex-1 basis-60 break-words">{ rec.headline() }</span>
+			if rec.Reference != "" {
+				@traceChip("reference", rec.Reference, rec.Reference, "Filter to this reference")
+			}
+			if rec.CorrelationID != "" {
+				@traceChip("correlationId", rec.CorrelationID, rec.CorrelationText, rec.CorrelationID)
+			}
+			<span class="inline-flex items-center gap-1.5">
+				@traceChip("invocationId", rec.InvocationID, rec.InvocationText, rec.InvocationID+" (show only this invocation)")
+				<span class="fc-tag fc-tag-secondary" title={ rec.countTitle() }>{ rec.countText() }</span>
+			</span>
+		</summary>
+		@traceExpansion(rec)
+	</details>
+}
+
+templ traceChip(field, value, text, title string) {
+	<button
+		type="button"
+		class="cursor-pointer text-xs break-all text-primary hover:underline"
+		title={ title }
+		data-field={ field }
+		data-value={ value }
+		data-on:click__prevent__stop={ traceFilterExpr }
+	>{ text }</button>
+}
+
+templ traceExpansion(rec traceRec) {
+	<div class="flex flex-col gap-2 px-3 pb-3 pl-10">
+		<div class="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+			<span>{ rec.versionText() }</span>
+			if rec.RunnerID != "" {
+				<span>runner { rec.RunnerID }</span>
+			}
+			<span>{ rec.atText() }</span>
+		</div>
+		if rec.Kind == "http" {
+			if rec.HTTP != nil {
+				<p class="font-medium">{ rec.HTTP.Summary }</p>
+			}
+			if rec.Redacted {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "lock", Title: traceBodiesHidden})
+			}
+			if rec.HTTP != nil {
+				<div class="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(18rem,1fr))]">
+					for _, p := range rec.HTTP.Panels {
+						@tracePanelC(p)
+					}
+				</div>
+			}
+		} else {
+			<p class="font-medium break-words">{ rec.Message }</p>
+			if rec.Data != "" {
+				@traceBlock("data", "data", rec.dataID(), rec.Data, "")
+			}
+		}
+	</div>
+}
+
+templ tracePanelC(p tracePanel) {
+	<section class="min-w-0 rounded-lg border border-border bg-card p-3">
+		<h3 class="mb-2 text-sm font-semibold">
+			{ p.Title }
+			if p.Line != "" {
+				<span class="ml-2 font-mono font-normal break-all text-muted-foreground">{ p.Line }</span>
+			}
+		</h3>
+		if len(p.Headers) > 0 {
+			<table class="mb-2 w-full text-xs">
+				<tbody>
+					for _, h := range p.Headers {
+						<tr>
+							<th class="py-0.5 pr-2 text-left align-top font-medium whitespace-nowrap text-muted-foreground" scope="row">{ h[0] }</th>
+							<td class="py-0.5 break-all">{ h[1] }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		}
+		switch p.Body.State {
+			case "shown":
+				@traceBlock(p.Body.Label, "body", p.BodyID, p.Body.Text, p.Body.Note)
+			case "empty":
+				<small class="text-xs text-muted-foreground">
+					No body
+					if p.Body.Note != "" {
+						({ p.Body.Note })
+					}
+				</small>
+		}
+	</section>
+}
+
+// traceBlock is a body or a record's data: a label, a note, a copy button and
+// the text (a pre, so the copy button reads exactly what is shown).
+templ traceBlock(label, what, id, text, note string) {
+	<div>
+		<div class="flex items-center gap-2">
+			@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: label})
+			if note != "" {
+				<small class="text-xs text-muted-foreground">{ note }</small>
+			}
+			@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Size: kit.ButtonSm, Icon: "copy", Class: "ml-auto", Attrs: templ.Attributes{"data-on:click": kit.CopyText(id), "aria-label": "Copy " + what, "title": "Copy " + what}})
+		</div>
+		<pre id={ id } class="mt-1 max-h-80 overflow-auto rounded-md border border-border bg-background p-2 font-mono text-xs break-all whitespace-pre-wrap">{ text }</pre>
+	</div>
+}

@@ -1094,3 +1094,119 @@ by filter against real rows), not by a headless run. The acceptance run in a bro
 - **Dispatch Jobs and Events sidebar entries** now link to their `/ui` pages in the `/ui` sidebar.
 - **Processes: ported with the diagram as source** (owner ruling 2026-10-10: no vendored Mermaid). **Resolved
   2026-10-24:** Mermaid is vendored and the diagram is drawn (see "Islands"). The sidebar entry links to `/ui/processes`.
+
+## Functions: trace switches and trace log (wave 2, part 2)
+
+Pages: `function_trace.go|templ` (switches, log, stream), `function_trace_form.go` (enable dialog),
+`function_trace_view.go` (URL state, record view models). Spec: the SPA's `FunctionTraceControls.vue`,
+`FunctionTraceLogPage.vue`, `functionTrace.ts` and `docs/function-trace-design.md`.
+
+| URL | GET | POST |
+|---|---|---|
+| `/ui/functions/{id}/traces` | the log page; a Datastar GET patches the log and, while a window is live and the page is not paused, stays open as a stream | - |
+| `/ui/functions/{id}/traces/more?cursor=` | Datastar: appends the next (older) page and replaces `#trace-more` | - |
+| `/ui/functions/{id}/trace/switches` | Datastar: the switches again (a countdown reached zero) | - |
+| `/ui/functions/{id}/trace/{context}/enable` | the enable dialog (slot `#trace-dialog-slot`; a navigation gets the log page with it open) | enable |
+| `/ui/functions/{id}/trace/{context}/disable` | - | disable (no confirmation, as in the SPA) |
+
+- **Embedding.** The function drawer calls `FunctionTrace.Switches(ctx, fnID, showLogLink)`, which returns
+  `TraceSwitches(fnID, view)`: one card per context (name, built-in tag, description, Live/Off, countdown or
+  "until switched off", sample rate), Enable/Change and Disable, the slot for the dialog and, with `showLogLink`,
+  "View trace logs". Patch target `#fn-trace-switches`. `ui.Config.FunctionTrace` / `FunctionTraceOps` back it; `ui.Mount`
+  builds the handler once. A post made from the log page carries `page=traces` and comes back to it; from the drawer, to `/ui/functions/{id}`.
+- **Permissions** are the API's: the page needs `trace:view` (else a 403 page; the switches component shows the SPA's notice
+  and reads nothing); Enable/Change/Disable need `trace:manage` and are left out without it; `http` also needs `trace:view-bodies`
+  (shown disabled with the SPA's reason, refused again on the post). Bodies of `http` records are withheld without
+  `trace:view-bodies`: the view model never keeps them (and an `http` record is never printed raw), so they are in no response.
+  The function address under the title needs `function:view`.
+- **Enable dialog.** Duration (5, 15, 30, 60 within the context's cap), "No time limit" (disables the duration), sample rate 1 to 1000.
+  Field errors from the use case (`TRACE_WINDOW_TOO_LONG`, `TRACE_MINUTES_INVALID`, `TRACE_SAMPLE_RATE_INVALID`) land on the field.
+- **Log.** Filters (context, kind, level, time, reference, correlation id, invocation id) are the URL (`?kind=http&since=60`) and apply
+  live; reference, correlation and invocation cells are chips that filter to their value (the value rides in a data attribute, never in an
+  expression). Rows are native `<details>` with `data-ignore-morph`: a record never changes, so refresh ticks leave the rows the viewer
+  opened alone. `http` records expand to Request and Response panels (headers sorted, JSON pretty-printed, base64 labelled, truncation noted,
+  copy button); other records show their message and pretty data. Load more appends 100 older records (a plain link works without Datastar).
+- **Stream.** The filter bar's own request is the stream (`@get(el.action, {contentType: 'form'})`): Datastar cancels the bar's
+  earlier request when a new one starts, so there is one stream per page. It patches status, context options, error line, records and
+  "Load more" every 5 s while any window is live, then ends by itself when the window closes, the viewer leaves, or after 30 minutes
+  (the page then reads "paused"; Resume reopens). Pause and Resume are the form's submitter (`pause=1`, `resume=1`), the paused state a hidden field.
+  Enabling or disabling on the page resubmits the bar so the stream matches the new state.
+- **Differences from the SPA.** Counts per invocation and the order of rows are as loaded; refresh ticks do not update the count of rows
+  already shown. A new filter, Refresh or a restart replaces the list (rows collapse; the SPA kept them expanded). The copy buttons copy
+  the text shown (pretty JSON), the SPA copied the raw body. "Back to function" links to `/ui/functions/{id}` (the drawer's deep link).
+  The SPA's countdown is a client clock; here it is a client tick on a server-rendered label, and at zero the card asks for the switches again.
+- **Kit.** No new kit part; `make ui-kit-sync` was run so `kit.css` has the classes the templates use.
+- **Tests.** `function_trace_test.go` (permission matrix, forged posts, bodies and secrets never in a response, stream start/continue/end,
+  paging, validation) and `function_trace_pg_test.go` (`-tags=integration`: enable, cap refusal, no limit, disable, forged posts, redaction,
+  against the real use cases). Not done: the area has not been opened in a real browser (light, dark, narrow).
+
+## Functions: list and drawer (wave 2, part 1)
+
+Pages: `functions.go|templ` (list, filters, drawer, tabs), `functions_detail.go` (the drawer's view model, describe
+parsing), `functions_form.go` (create and edit dialogs), `functions_actions.go` (versions and aliases, settings, routes,
+delete), `functions_ops.go` (`FunctionCommands`, `FunctionOps`: the use cases). Spec: the SPA's `FunctionListPage.vue`,
+`FunctionCreateDrawer.vue`, `FunctionDetailDrawer.vue` and `functionHelpers.ts`; the rules are `internal/platform/function/api`.
+The trace switches and log are part 2 (above); the drawer embeds them through `FunctionTrace.Switches`.
+
+| URL | GET | POST |
+|---|---|---|
+| `/ui/functions?q&application&client&page&rows` | the list (search is an address prefix; 100 rows by default) | - |
+| `/ui/functions/new` | the create dialog | create |
+| `/ui/functions/{id}?tab=` | the list with the drawer open; a Datastar GET patches the drawer | - |
+| `/ui/functions/{id}/edit` | the edit dialog | update |
+| `/ui/functions/{id}/delete` | the delete dialog (typed address) | delete |
+| `/ui/functions/{id}/aliases/new?version=` | the point-alias dialog | `/aliases` (save), `/aliases/{name}/delete` (remove; live is the demote) |
+| `/ui/functions/{id}/versions/{n}/...` | - | `promote` (the live alias, no confirmation, as the SPA), `retire` |
+| `/ui/functions/{id}/settings/{config,secrets,db}/{new,edit}?key=` | the set dialog | `/settings/{kind}` (save), `/settings/{kind}/delete?key=` |
+| `/ui/functions/{id}/routes/new`, `/routes/{routeId}/edit` | the route dialog | `/routes` (save), `/routes/{routeId}/delete` |
+
+- **Reads** are the API's: `CanReadFunctions`; a caller below anchor is confined in SQL to platform functions and its
+  clients (the list), and `auth.CheckScopeAccess` on the function for the drawer and every dialog. The drawer reads the
+  versions, aliases, settings and routes of the function with the same check.
+- **Writes** make the check of the endpoint they mirror, again on every post (a control that is not shown is not the guard):
+  create, edit, delete, retire and config values `CanWriteFunctions` ("manage"); promote, point alias, remove alias
+  `CanPromoteFunctions`; secrets and databases `CanManageFunctionSecrets`; routes `CanManageFunctionRoutes`. The claimed zones
+  are listed with `CanManageFunctionDomains`. The use cases then check the function's client (`SCOPE_FORBIDDEN`, a 403 flash or
+  the form's error), so a client user cannot touch another client's function or create a platform-owned one. A caller who may
+  write but not read gets the flash only (the drawer and table are not re-read).
+- **Drawer tabs** (kit `TabList`, `?tab=` kept in the address bar): Overview (details, Diagnostics, Danger Zone), Versions (versions
+  and aliases), What it declares (endpoints, subscriptions, schedules, config/secret/db names, HTTP allow-list, emits, dispatches,
+  from the live version, else the newest), Settings, Routes. Every action posts the drawer's record and tab (hidden fields from
+  the signals), so the answer refreshes the drawer where the user is.
+- **Secrets are write-only.** A secret or database row shows `set` or `missing`; the repository does not return the value and the
+  row builder never reads one. The dialog is the kit password input with no value, a failed save does not echo it (config values
+  are echoed: they are plain text), the use case encrypts it and masks it in the audit, and the success flash names the key only.
+  `TestFunctionPagesNeverCarrySecretValues` serves every tab and dialog from a store that holds a secret and a DSN, and the
+  integration test searches `aud_logs`, `msg_events` and every answer of a whole run for them.
+- **Versions.** Promote to live for a ready version that is not live (the live one offers Demote…, which removes the live alias and
+  unwires the function after a confirmation); Point alias… for any ready version; Retire… behind a confirmation, disabled with the
+  reason for a retired version or one an alias still points at. The promote and demote flashes say what the wiring changed ("Version 2 is now live — pool
+  fn-billing-invoice-pdf · 2 subscriptions created"), built on the server from the use case's summary; a native post gets the fixed key.
+- **Delete** is the typed-address confirmation (the SPA's, `fcdev fn delete`'s): the dialog shows the version count and the live
+  version; the server compares the trimmed text with the address exactly (case matters) and refuses anything else with the field
+  error, whatever the dialog did. After the commit the artifacts no other function references are removed from the store, best
+  effort, as the API does.
+- **Create and edit.** Application select (all applications; disabled with the reason without `CanReadApplications`), name (the
+  SPA's rule, checked again by the use case), client (the shared client autocomplete), runner pool, warm, service account (active
+  accounts and the current one; disabled with the reason without `CanReadServiceAccounts`, and then the account is left alone
+  because a disabled field is not posted), four limits (blank = default on create, unchanged on edit). Edit sends only what changed:
+  description, pool (a blank pool clears it), service account set or cleared. Use-case codes (address exists, limit ceilings,
+  service-account refusals) land on their field.
+
+Differences from the SPA: dialogs for create and edit (the SPA edits in the drawer); the drawer is five tabs, not one scroll; the
+row's Edit opens the edit dialog (the SPA opened the drawer in edit mode); the create dialog does not preview the address (the
+help line says it is `{application code}.{name}`); a blank description now clears it (the SPA's `description || undefined`
+could not); Promote to live is not offered on the version that is already live; the **Routes tab and claimed zones are new**
+(the SPA has no routes UI; the API and the runner do): a route is hostname, path prefix, what it serves (live or one alias) and
+alias prefixes, its hostname and path read-only when editing because they are its key; the client filter is a select of the
+active clients the caller can access.
+
+SPA behaviours that were bugs, not copied: edit could not clear the description; retiring an aliased version was offered and
+failed with a toast; Promote to live was offered on the version already live.
+
+Not verified in a browser: the page has not been opened in light, dark and narrow widths, and the tab signal round trip (a
+tab kept across an action) is covered by the rendered markup in tests only. Tests: `functions_test.go` (permission matrix of the
+drawer, forged posts for every write with and without the permission, dialogs refused, secrets never in a response, create and edit
+bodies, promote/demote/retire, settings, routes, typed-address delete, native fallbacks) and `functions_pg_test.go`
+(`-tags=integration`: the whole life of a function against the real use cases with encryption and audit checks, and client scope).
+The sidebar's Functions entry links to `/ui/functions`; two shell tests that used it as the example of an unported entry now use Audit Log.

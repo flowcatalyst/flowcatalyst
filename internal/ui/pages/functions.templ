@@ -1,0 +1,1028 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// ── list ───────────────────────────────────────────────────────────────
+
+func (v fnsView) facetProps(name, label, all string, opts []kit.Option) kit.FilterSelectProps {
+	selected := ""
+	if vals := v.Query.facet(name); len(vals) > 0 {
+		selected = vals[0]
+	}
+	return kit.FilterSelectProps{Name: name, Label: label, Placeholder: all, Options: opts, Selected: selected, Attrs: templ.Attributes{"data-on:change": fnsLiveGet}}
+}
+
+func (v fnsView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: fnsFormID, Action: fnsPath, SearchPlaceholder: "Search by address prefix...", SearchValue: v.Query.Q,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: len(v.Query.Facets), Hidden: v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": fnsLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": fnsLiveGet},
+		Filters:     fnsFilters(v),
+	}
+}
+
+func (v fnsView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "fns-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: fnsList.rows,
+		Noun: "functions", HrefPattern: v.Query.pagePattern(), FormID: fnsFormID,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func fnsColumns() []kit.DataColumn {
+	return []kit.DataColumn{
+		{Label: "Address"}, {Label: "Application"}, {Label: "Client"}, {Label: "Pool"}, {Label: "Warm"}, {Label: "Created"},
+		{Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v fnsView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No functions found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = v.Query.clearURL()
+	}
+	return e
+}
+
+// signals declares the page's signals: the record the drawer opens with (a
+// navigation to /ui/functions/{id}) or none, and the drawer's tab. The id is
+// checked by kit.ID, so it is safe inside the expression.
+func (v fnsView) signals() string {
+	if v.Drawer == nil {
+		return "{" + fnsDrawerSig + ": '', " + fnsTabSig + ": '" + fnsTabOverview + "'}"
+	}
+	return "{" + fnsDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "', " + fnsTabSig + ": '" + kit.ID(v.Drawer.Tab) + "'}"
+}
+
+templ fnsTags(pool string, warm bool) {
+	@kit.Badge(kit.BadgeProps{Variant: kit.BadgeInfo}) {
+		{ pool }
+	}
+	@fnsWarmBadge(warm)
+}
+
+templ fnsWarmBadge(warm bool) {
+	if warm {
+		@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSuccess}) {
+			Warm
+		}
+	} else {
+		@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSecondary}) {
+			Lazy
+		}
+	}
+}
+
+templ fnsPage(v fnsView) {
+	<div data-signals={ v.signals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Functions", Subtitle: "WebAssembly functions the platform stores, versions and runs", Actions: fnsActions(v)})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Functions.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@fnsTable(v)
+			@kit.Paginator(v.pager())
+		</div>
+		<div id={ fnsDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		@fnsConfirmDialogs(v.Perms)
+		@fnsDrawer(v.Drawer)
+	</div>
+}
+
+templ fnsActions(v fnsView) {
+	if v.Perms.Manage {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: fnsPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Create Function
+		}
+	}
+}
+
+templ fnsFilters(v fnsView) {
+	@kit.FilterSelect(v.facetProps(fnsFacetApp, "Application", "All applications", v.Apps))
+	@kit.FilterSelect(v.facetProps(fnsFacetClient, "Client", "All clients", v.Clients))
+}
+
+// fnsTable is the patch target for live updates.
+templ fnsTable(v fnsView) {
+	@kit.DataTable(kit.DataTableProps{ID: "fns-table", BodyID: "fns-rows", Columns: fnsColumns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "fns-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="no-underline" data-on:click__prevent={ liveLink }><code class="fc-mono-chip">{ row.Address }</code></a>
+				}
+				@kit.TD(kit.TDProps{}) {
+					<code class="fc-mono-chip">{ row.Application }</code>
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+					{ row.Client }
+				}
+				@kit.TD(kit.TDProps{}) {
+					<code class="fc-mono-chip">{ row.Pool }</code>
+				}
+				@kit.TD(kit.TDProps{}) {
+					@fnsWarmBadge(row.Warm)
+				}
+				@kit.TD(kit.TDProps{}) {
+					<time datetime={ row.CreatedISO }>{ row.Created }</time>
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+}
+
+// ── the drawer ─────────────────────────────────────────────────────────
+
+// fnsDrawer is the drawer frame, rendered with the page: empty (closed), or
+// with the record a navigation to /ui/functions/{id} opens.
+templ fnsDrawer(d *fnsDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@fnsDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: fnsDrawerID, Signal: fnsDrawerSig, Label: "Function", Size: kit.DrawerWide})
+	}
+}
+
+// fnsDrawerContent is the drawer's content for one function, patched into the
+// frame (mode inner) when a row opens it or an action changes the function.
+templ fnsDrawerContent(d fnsDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@fnsDrawerBody(d)
+	}
+}
+
+templ fnsDrawerBody(d fnsDetail) {
+	@kit.TabList(kit.TabListProps{
+		ID: "fns-tabs", Signal: fnsTabSig, Label: "Function sections", Tabs: fnsTabs, Selected: d.Tab,
+		Panels: map[string]templ.Component{
+			fnsTabOverview: fnsOverview(d),
+			"versions":     fnsVersions(d),
+			"declares":     fnsDeclares(d),
+			"settings":     fnsSettings(d),
+			"routes":       fnsRoutes(d),
+		},
+	})
+}
+
+// fnsLink fetches a dialog through Datastar instead of navigating.
+func fnsLink() templ.Attributes {
+	return templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}
+}
+
+// fnsPostButton is an immediate action (no confirmation): a form that posts
+// through Datastar, carrying the drawer and tab fields.
+templ fnsPostButton(action, label string, p kit.LegacyButtonProps) {
+	<form method="post" action={ action } data-on:submit={ kit.SubmitForm } class="inline">
+		for _, h := range fnsHidden() {
+			<input type="hidden" name={ h.Name } value={ h.Value } { h.Attrs... }/>
+		}
+		@kit.LegacyButton(withType(p, "submit")) {
+			{ label }
+		}
+	</form>
+}
+
+func withType(p kit.LegacyButtonProps, t string) kit.LegacyButtonProps {
+	p.Type = t
+	return p
+}
+
+templ fnsEditButton(d fnsDetail) {
+	if d.Perms.Manage {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.Base + "/edit", Icon: "pencil", Attrs: fnsLink()}) {
+			Edit
+		}
+	}
+}
+
+// fnsOverview is the SPA's Function Details section and Danger Zone.
+templ fnsOverview(d fnsDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Function Details", Actions: fnsEditButton(d)}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Address"}) {
+				<code>{ d.Address }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Application", Value: d.Application})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Client", Value: d.Client})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Runner Pool", Value: d.Pool})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Warm"}) {
+				{ yesNo(d.Warm) }
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Service Account"}) {
+				if d.ServiceAccountID != "" {
+					<a href={ templ.SafeURL("/identity/service-accounts/" + d.ServiceAccountID) }>{ d.ServiceAccountCode }</a>
+				} else {
+					<span class="text-muted-foreground">Application's account (default)</span>
+				}
+			}
+			if d.Description != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Description", Value: d.Description, Span: true})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Memory", Value: d.Memory})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Max Concurrency", Value: d.Concurrency})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Timeout", Value: d.Timeout})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Max Body", Value: d.Body})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created", Value: d.Created})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Updated", Value: d.Updated})
+		</div>
+	}
+	if d.Diagnostics != nil {
+		@kit.FormSection(kit.FormSectionProps{Title: "Diagnostics"}) {
+			@d.Diagnostics
+		}
+	}
+	if d.Perms.Manage {
+		@kit.FormSection(kit.FormSectionProps{Title: "Danger Zone", Danger: true}) {
+			<div class="fc-danger-item">
+				<div><strong>Delete Function</strong><p>Removes this function, along with its versions, wiring and artifacts. Cannot be undone.</p></div>
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Href: d.Base + "/delete", Icon: "trash-2", Attrs: fnsLink()}) {
+					Delete
+				}
+			</div>
+		}
+	}
+}
+
+// ── versions and aliases ───────────────────────────────────────────────
+templ fnsVersions(d fnsDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Versions", Description: "Publish and deploy from the CLI: fcdev fn deploy " + d.Address + " ."}) {
+		if len(d.Versions) == 0 {
+			<p class="text-muted-foreground">No versions published yet.</p>
+		} else {
+			@kit.Table(kit.TableProps{ID: "fns-versions", Dense: true}) {
+				@kit.THead(kit.THeadProps{Caps: true}) {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TH(kit.THProps{}) {
+							#
+						}
+						@kit.TH(kit.THProps{}) {
+							Runtime
+						}
+						@kit.TH(kit.THProps{}) {
+							Status
+						}
+						@kit.TH(kit.THProps{}) {
+							Digest
+						}
+						@kit.TH(kit.THProps{}) {
+							Published
+						}
+						@kit.TH(kit.THProps{}) {
+							Aliases
+						}
+						@kit.TH(kit.THProps{}) {
+							Actions
+						}
+					}
+				}
+				@kit.TBody(kit.TBodyProps{Striped: true}) {
+					for _, v := range d.Versions {
+						@kit.TR(kit.TRProps{ID: "fns-version-" + strconv.Itoa(int(v.Number)), Static: true}) {
+							@kit.TD(kit.TDProps{}) {
+								{ strconv.Itoa(int(v.Number)) }
+							}
+							@kit.TD(kit.TDProps{}) {
+								{ v.Runtime }
+							}
+							@kit.TD(kit.TDProps{Class: "whitespace-normal"}) {
+								@poolStatusBadge(v.Status, v.Variant)
+								if v.Failure != "" {
+									<div class="mt-1 text-xs text-destructive">{ v.Failure }</div>
+								}
+							}
+							@kit.TD(kit.TDProps{}) {
+								<code class="text-xs" title={ v.DigestFull }>{ v.Digest }</code>
+							}
+							@kit.TD(kit.TDProps{}) {
+								<time datetime={ v.PublishedISO }>{ v.Published }</time>
+							}
+							@kit.TD(kit.TDProps{}) {
+								@fnsAliasTags(v.Aliases)
+							}
+							@kit.TD(kit.TDProps{}) {
+								@fnsVersionActions(d, v)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Aliases", Actions: fnsPointAliasButton(d)}) {
+		if len(d.Aliases) == 0 {
+			<p class="text-muted-foreground">No aliases yet.</p>
+		} else {
+			@kit.Table(kit.TableProps{ID: "fns-aliases", Dense: true}) {
+				@kit.THead(kit.THeadProps{Caps: true}) {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TH(kit.THProps{}) {
+							Name
+						}
+						@kit.TH(kit.THProps{}) {
+							Version
+						}
+						@kit.TH(kit.THProps{}) {
+							Updated
+						}
+						@kit.TH(kit.THProps{}) {
+							Actions
+						}
+					}
+				}
+				@kit.TBody(kit.TBodyProps{Striped: true}) {
+					for _, a := range d.Aliases {
+						@kit.TR(kit.TRProps{ID: "fns-alias-" + a.Name, Static: true}) {
+							@kit.TD(kit.TDProps{}) {
+								@fnsAliasTags([]string{a.Name})
+							}
+							@kit.TD(kit.TDProps{}) {
+								{ strconv.Itoa(int(a.Version)) }
+							}
+							@kit.TD(kit.TDProps{}) {
+								<time datetime={ a.ISO }>{ a.Updated }</time>
+							}
+							@kit.TD(kit.TDProps{}) {
+								if d.Perms.Promote {
+									@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Small: true, Icon: "trash-2", Attrs: removeAliasTrigger(d, a)}) {
+										Remove
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func removeAliasTrigger(d fnsDetail, a fnsAliasRow) templ.Attributes {
+	attrs := confirmTrigger(fnsRemoveAliasDialog, d.Base+"/aliases/"+a.Name+"/delete")
+	if a.Live {
+		attrs = confirmTrigger(fnsDemoteDialog, d.Base+"/aliases/"+a.Name+"/delete")
+	}
+	attrs["aria-label"] = "Remove alias " + a.Name
+	return attrs
+}
+
+templ fnsAliasTags(names []string) {
+	<div class="flex flex-wrap items-center gap-1">
+		for _, n := range names {
+			if n == "live" {
+				@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSuccess}) {
+					{ n }
+				}
+			} else {
+				@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSecondary}) {
+					{ n }
+				}
+			}
+		}
+		if len(names) == 0 {
+			<span class="text-muted-foreground">—</span>
+		}
+	</div>
+}
+
+templ fnsPointAliasButton(d fnsDetail) {
+	if d.Perms.Promote {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.Base + "/aliases/new", Icon: "plus", Attrs: fnsLink()}) {
+			Point Alias
+		}
+	}
+}
+
+// fnsVersionActions: Promote to live (the live version offers Demote), Point
+// alias for ready versions with the promote permission; Retire with manage.
+templ fnsVersionActions(d fnsDetail, v fnsVersionRow) {
+	<div class="flex flex-wrap items-center gap-1">
+		if v.Ready && d.Perms.Promote {
+			if v.Live {
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyWarnOutline, Small: true, Icon: "arrow-down", Attrs: confirmTrigger(fnsDemoteDialog, d.Base+"/aliases/live/delete")}) {
+					Demote…
+				}
+			} else {
+				@fnsPostButton(d.Base+"/versions/"+strconv.Itoa(int(v.Number))+"/promote", "Promote to live", kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Small: true, Icon: "arrow-up"})
+			}
+			@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Small: true, Href: d.Base + "/aliases/new?version=" + strconv.Itoa(int(v.Number)), Attrs: fnsLink()}) {
+				Point alias…
+			}
+		}
+		if d.Perms.Manage {
+			@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Small: true, Disabled: v.Retired || v.Aliased, Attrs: fnsRetireAttrs(d, v)}) {
+				Retire…
+			}
+		}
+	</div>
+}
+
+func fnsRetireAttrs(d fnsDetail, v fnsVersionRow) templ.Attributes {
+	switch {
+	case v.Retired:
+		return templ.Attributes{"title": "This version is retired."}
+	case v.Aliased:
+		return templ.Attributes{"title": "An alias still points at this version. Remove the alias first."}
+	}
+	return confirmTrigger(fnsRetireDialog, d.Base+"/versions/"+strconv.Itoa(int(v.Number))+"/retire")
+}
+
+// ── what it declares ───────────────────────────────────────────────────
+templ fnsDeclares(d fnsDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "What It Declares", Description: fnsDeclaredFrom(d)}) {
+		if d.Declared != nil {
+			<div class="flex flex-col gap-5">
+				<div>
+					<h4 class="fc-field-label mb-2">Endpoints</h4>
+					if len(d.Declared.Endpoints) == 0 {
+						<p class="text-muted-foreground">No endpoints declared.</p>
+					} else {
+						@kit.Table(kit.TableProps{Dense: true}) {
+							@kit.THead(kit.THeadProps{Caps: true}) {
+								@kit.TR(kit.TRProps{Static: true}) {
+									@kit.TH(kit.THProps{}) {
+										Method
+									}
+									@kit.TH(kit.THProps{}) {
+										Path
+									}
+									@kit.TH(kit.THProps{}) {
+										Auth
+									}
+								}
+							}
+							@kit.TBody(kit.TBodyProps{Striped: true}) {
+								for _, e := range d.Declared.Endpoints {
+									@kit.TR(kit.TRProps{Static: true}) {
+										@kit.TD(kit.TDProps{}) {
+											{ e.Method }
+										}
+										@kit.TD(kit.TDProps{}) {
+											<code>{ e.Path }</code>
+										}
+										@kit.TD(kit.TDProps{}) {
+											@kit.Badge(kit.BadgeProps{Variant: fnsAuthVariant(e.Auth)}) {
+												{ e.Auth }
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				</div>
+				<div>
+					<h4 class="fc-field-label mb-2">Subscriptions</h4>
+					if len(d.Declared.Subscriptions) == 0 {
+						<p class="text-muted-foreground">No subscriptions declared.</p>
+					} else {
+						<ul class="flex flex-col gap-1">
+							for _, s := range d.Declared.Subscriptions {
+								<li>
+									<code>{ s.EventType }</code> → <code>{ s.Path }</code>
+									if s.Mode != "" {
+										<span class="text-muted-foreground">({ s.Mode })</span>
+									}
+								</li>
+							}
+						</ul>
+					}
+				</div>
+				<div>
+					<h4 class="fc-field-label mb-2">Schedules</h4>
+					if len(d.Declared.Schedules) == 0 {
+						<p class="text-muted-foreground">No schedules declared.</p>
+					} else {
+						<ul class="flex flex-col gap-1">
+							for _, s := range d.Declared.Schedules {
+								<li>
+									<code>{ s.Cron }</code> → <code>{ s.Path }</code>
+									if s.Timezone != "" {
+										<span class="text-muted-foreground">({ s.Timezone })</span>
+									}
+								</li>
+							}
+						</ul>
+					}
+				</div>
+				<div>
+					<h4 class="fc-field-label mb-2">Config / Secrets / Databases</h4>
+					<div class="flex flex-wrap gap-1">
+						for _, k := range d.Declared.Config {
+							@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSecondary}) {
+								{ k }
+							}
+						}
+						for _, k := range d.Declared.Secrets {
+							@kit.Badge(kit.BadgeProps{Variant: kit.BadgeWarn}) {
+								{ k }
+							}
+						}
+						for _, k := range d.Declared.DB {
+							@kit.Badge(kit.BadgeProps{Variant: kit.BadgeInfo}) {
+								{ k }
+							}
+						}
+						if len(d.Declared.Config)+len(d.Declared.Secrets)+len(d.Declared.DB) == 0 {
+							<span class="text-muted-foreground">None declared.</span>
+						}
+					</div>
+				</div>
+				@fnsChips("Outbound HTTP allow-list", d.Declared.HTTPAllow)
+				@fnsChips("Emits", d.Declared.Emits)
+				@fnsChips("Dispatches", d.Declared.Dispatches)
+			</div>
+		}
+	}
+}
+
+func fnsDeclaredFrom(d fnsDetail) string {
+	if d.Declared == nil {
+		return "No published version yet."
+	}
+	return d.DeclaredFrom
+}
+
+func fnsAuthVariant(auth string) kit.BadgeVariant {
+	switch auth {
+	case "webhook":
+		return kit.BadgeInfo
+	case "platform":
+		return kit.BadgeSuccess
+	}
+	return kit.BadgeSecondary
+}
+
+templ fnsChips(title string, items []string) {
+	<div>
+		<h4 class="fc-field-label mb-2">{ title }</h4>
+		<div class="flex flex-wrap gap-1">
+			for _, k := range items {
+				@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSecondary}) {
+					{ k }
+				}
+			}
+			if len(items) == 0 {
+				<span class="text-muted-foreground">None declared.</span>
+			}
+		</div>
+	</div>
+}
+
+// ── settings ───────────────────────────────────────────────────────────
+templ fnsSettings(d fnsDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Settings"}) {
+		<div class="flex flex-col gap-6">
+			if d.Missing {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "One or more declared keys have no value set.", Description: "Promoting a version to live is refused while any are missing."})
+			}
+			@fnsSettingTable(d, "config", "Config", "Key", "No config keys declared.", "", d.Config, d.Perms.Manage)
+			@fnsSettingTable(d, "secrets", "Secrets", "Key", "No secrets declared.", "Write-only — values are never shown once set.", d.Secrets, d.Perms.Secrets)
+			@fnsSettingTable(d, "db", "Databases", "Name", "No databases declared.", "Write-only — DSNs are never shown once set.", d.DBs, d.Perms.Secrets)
+		</div>
+	}
+}
+
+// fnsSettingTable is one group. A secret's and database's value column is the
+// word "set" or "missing", never a value.
+templ fnsSettingTable(d fnsDetail, kind string, title, keyLabel, empty, note string, rows []fnsSettingRow, canWrite bool) {
+	<div>
+		<div class="mb-2 flex items-center justify-between gap-2">
+			<h4 class="fc-field-label">{ title }</h4>
+			if canWrite {
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Small: true, Href: d.Base + "/settings/" + kind + "/new", Icon: "plus", Attrs: fnsLink()}) {
+					Add
+				}
+			}
+		</div>
+		if note != "" {
+			<p class="mb-2 text-sm text-muted-foreground">{ note }</p>
+		}
+		if len(rows) == 0 {
+			<p class="text-muted-foreground">{ empty }</p>
+		} else {
+			@kit.Table(kit.TableProps{ID: "fns-settings-" + kind, Dense: true}) {
+				@kit.THead(kit.THeadProps{Caps: true}) {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TH(kit.THProps{}) {
+							{ keyLabel }
+						}
+						@kit.TH(kit.THProps{}) {
+							Value
+						}
+						@kit.TH(kit.THProps{}) {
+							Actions
+						}
+					}
+				}
+				@kit.TBody(kit.TBodyProps{Striped: true}) {
+					for _, r := range rows {
+						@kit.TR(kit.TRProps{Static: true}) {
+							@kit.TD(kit.TDProps{}) {
+								<code>{ r.Key }</code>
+							}
+							@kit.TD(kit.TDProps{Class: "whitespace-normal break-all"}) {
+								if !r.Set {
+									@kit.Badge(kit.BadgeProps{Variant: kit.BadgeWarn}) {
+										missing
+									}
+								} else if kind == "config" {
+									{ r.Value }
+								} else {
+									@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSuccess}) {
+										set
+									}
+								}
+							}
+							@kit.TD(kit.TDProps{}) {
+								if canWrite {
+									<div class="flex items-center gap-1">
+										@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Small: true, Href: r.EditHref, Attrs: fnsLink()}) {
+											{ fnsSetLabel(kind, r.Set) }
+										}
+										if r.Set {
+											@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Small: true, Icon: "trash-2", Attrs: fnsRemoveSettingAttrs(r)}) {
+												Remove
+											}
+										}
+									</div>
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	</div>
+}
+
+func fnsSetLabel(kind string, set bool) string {
+	switch {
+	case !set:
+		return "Set"
+	case kind == "config":
+		return "Edit"
+	}
+	return "Replace"
+}
+
+func fnsRemoveSettingAttrs(r fnsSettingRow) templ.Attributes {
+	attrs := confirmTrigger(fnsRemoveSettingDialog, r.RemoveHref)
+	attrs["aria-label"] = "Remove " + r.Key
+	return attrs
+}
+
+// ── routes ─────────────────────────────────────────────────────────────
+templ fnsRoutes(d fnsDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Public Routes", Description: "A hostname and path prefix that serve this function's live version, or one alias. The hostname must be covered by a claimed zone.", Actions: fnsAddRouteButton(d)}) {
+		if len(d.Routes) == 0 {
+			<p class="text-muted-foreground">No public routes.</p>
+		} else {
+			@kit.Table(kit.TableProps{ID: "fns-routes", Dense: true}) {
+				@kit.THead(kit.THeadProps{Caps: true}) {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TH(kit.THProps{}) {
+							Hostname
+						}
+						@kit.TH(kit.THProps{}) {
+							Path
+						}
+						@kit.TH(kit.THProps{}) {
+							Serves
+						}
+						@kit.TH(kit.THProps{}) {
+							Alias prefixes
+						}
+						@kit.TH(kit.THProps{}) {
+							Actions
+						}
+					}
+				}
+				@kit.TBody(kit.TBodyProps{Striped: true}) {
+					for _, rt := range d.Routes {
+						@kit.TR(kit.TRProps{ID: "fns-route-" + rt.ID, Static: true}) {
+							@kit.TD(kit.TDProps{}) {
+								<code>{ rt.Hostname }</code>
+							}
+							@kit.TD(kit.TDProps{}) {
+								<code>{ rt.PathPrefix }</code>
+							}
+							@kit.TD(kit.TDProps{}) {
+								@fnsAliasTags([]string{rt.Serves})
+							}
+							@kit.TD(kit.TDProps{}) {
+								if rt.Prefixes != "" {
+									{ rt.Prefixes }
+								} else {
+									<span class="text-muted-foreground">—</span>
+								}
+							}
+							@kit.TD(kit.TDProps{}) {
+								if d.Perms.Routes {
+									<div class="flex items-center gap-1">
+										@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Small: true, Href: rt.EditHref, Attrs: fnsLink()}) {
+											Edit
+										}
+										@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Small: true, Icon: "trash-2", Attrs: fnsRemoveRouteAttrs(rt)}) {
+											Remove
+										}
+									</div>
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if d.ShowZone {
+		@kit.FormSection(kit.FormSectionProps{Title: "Claimed Zones", Description: "The hostname zones this function's owner has claimed; a route's hostname is the zone or a name under it."}) {
+			if len(d.Zones) == 0 {
+				<p class="text-muted-foreground">No zone is claimed for this function's owner, so no route can be added.</p>
+			} else {
+				<div class="flex flex-wrap gap-1">
+					for _, z := range d.Zones {
+						<code class="fc-mono-chip">{ z }</code>
+					}
+				</div>
+			}
+		}
+	}
+}
+
+func fnsRemoveRouteAttrs(rt fnsRouteRow) templ.Attributes {
+	attrs := confirmTrigger(fnsRemoveRouteDialog, rt.RemoveHref)
+	attrs["aria-label"] = "Remove route " + rt.Hostname + rt.PathPrefix
+	return attrs
+}
+
+templ fnsAddRouteButton(d fnsDetail) {
+	if d.Perms.Routes {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.Base + "/routes/new", Icon: "plus", Attrs: fnsLink()}) {
+			Add Route
+		}
+	}
+}
+
+// ── confirmations ──────────────────────────────────────────────────────
+
+// fnsConfirm is one shared confirm dialog. Its rendered action is the list
+// (which accepts no POST); the trigger sets the record's action.
+func fnsConfirm(id, title, message, label string, tone kit.ConfirmTone) kit.ConfirmDialogProps {
+	return kit.ConfirmDialogProps{
+		ID: id, Action: fnsPath, Title: title, Message: message, ConfirmLabel: label, Tone: tone,
+		Hidden:    fnsHidden(),
+		FormAttrs: templ.Attributes{"data-on:submit": kit.SubmitConfirm},
+	}
+}
+
+// fnsConfirmDialogs are the SPA's confirmations, one per action, shared by the
+// drawer's rows. Only the actions the user may run are rendered.
+templ fnsConfirmDialogs(perms fnsPerms) {
+	if perms.Manage {
+		@kit.ConfirmDialog(fnsConfirm(fnsRetireDialog, "Retire Version", "Retire this version? A version still pointed at by an alias cannot be retired.", "Retire", kit.ToneWarn))
+	}
+	if perms.Promote {
+		@kit.ConfirmDialog(fnsConfirm(fnsRemoveAliasDialog, "Remove Alias", "Remove this alias?", "Remove", kit.ToneDanger))
+		@kit.ConfirmDialog(fnsConfirm(fnsDemoteDialog, "Remove Live Alias", "Remove the live alias? This is the live alias: removing it unwires this function's subscriptions and schedules.", "Remove", kit.ToneDanger))
+	}
+	if perms.Manage || perms.Secrets {
+		@kit.ConfirmDialog(fnsConfirm(fnsRemoveSettingDialog, "Remove Setting", "Remove this setting? The function stops finding it.", "Remove", kit.ToneDanger))
+	}
+	if perms.Routes {
+		@kit.ConfirmDialog(fnsConfirm(fnsRemoveRouteDialog, "Remove Route", "Remove this public route? Requests to its hostname and path stop reaching the function.", "Remove", kit.ToneDanger))
+	}
+}
+
+// ── dialogs ────────────────────────────────────────────────────────────
+
+// fnsFormDialogC is the create or edit dialog (kit form-dialog.md).
+templ fnsFormDialogC(f fnsForm) {
+	@kit.FormDialog(f.dialogProps()) {
+		if f.Edit {
+			@fnsField(f, "description")
+			<div class="grid gap-4 sm:grid-cols-2">
+				@fnsField(f, "pool")
+				@fnsField(f, "warm")
+			</div>
+			@fnsField(f, "serviceAccountId")
+			<div class="grid gap-4 sm:grid-cols-2">
+				@fnsField(f, "memoryMb")
+				@fnsField(f, "maxConcurrency")
+				@fnsField(f, "timeoutMs")
+				@fnsField(f, "maxBodyBytes")
+			</div>
+		} else {
+			@kit.FormSection(kit.FormSectionProps{Title: "Identity"}) {
+				<div class="flex flex-col gap-4">
+					@fnsField(f, "application")
+					@fnsField(f, "name")
+					@fnsField(f, "client")
+				</div>
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Runner"}) {
+				<div class="flex flex-col gap-4">
+					@fnsField(f, "pool")
+					@fnsField(f, "warm")
+				</div>
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Webhook Verification"}) {
+				@fnsField(f, "serviceAccountId")
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Limits", Description: "Optional. Left blank, the defaults apply (shown as placeholders)."}) {
+				<div class="grid gap-4 sm:grid-cols-2">
+					@fnsField(f, "memoryMb")
+					@fnsField(f, "maxConcurrency")
+					@fnsField(f, "timeoutMs")
+					@fnsField(f, "maxBodyBytes")
+				</div>
+			}
+		}
+	}
+}
+
+// fnsField renders one field of the function form; a failed submit patches
+// each one by its id ("{control}-field").
+templ fnsField(f fnsForm, key string) {
+	switch key {
+		case "application":
+			@kit.Field(f.fieldProps(key, "Application", f.appHelp(), true)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Apps, Selected: f.Application, Placeholder: "Select an application", Required: true, Disabled: !f.CanPickApp, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", "Becomes part of the address, which never changes. Lowercase letters, numbers and hyphens; starts with a letter.", true)) {
+				@kit.Input(f.inputProps(key, f.Name, kit.InputProps{Placeholder: "invoice-pdf", Required: true, Attrs: templ.Attributes{"maxlength": "63", "autofocus": true, "autocomplete": "off", "spellcheck": "false"}}))
+			}
+		case "client":
+			@kit.Field(f.fieldProps(key, "Client", f.clientHelp(), false)) {
+				@kit.Autocomplete(kit.AutocompleteProps{ID: f.id(key), Name: key, Value: f.Client, Placeholder: "Search for a client (optional)", Source: clientOptionsPath, Options: f.ClientOptions, Disabled: !f.CanPickClient, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description", "", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Description, Rows: 2, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "pool":
+			@kit.Field(f.fieldProps(key, "Runner Pool", f.poolHelp(), false)) {
+				@kit.Input(f.inputProps(key, f.Pool, kit.InputProps{Placeholder: "default", Attrs: templ.Attributes{"autocomplete": "off", "spellcheck": "false"}}))
+			}
+		case "warm":
+			@kit.Field(kit.FieldProps{Label: "Warm", Description: "A warm function keeps one pre-instantiated instance ready at all times.", Attrs: templ.Attributes{"id": f.id(key) + "-field"}}) {
+				@kit.Switch(kit.SwitchProps{ID: f.id(key), Name: key, Value: "true", Checked: f.Warm, Label: "Keep warm"})
+			}
+		case "serviceAccountId":
+			@kit.Field(f.fieldProps(key, "Service Account", f.saHelp(), false)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.ServiceAccounts, Selected: f.ServiceAccount, Placeholder: "Application's account (default)", Disabled: !f.CanPickServiceAccount, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "memoryMb":
+			@kit.Field(f.fieldProps(key, "Memory (MB)", "", false)) {
+				@kit.Input(f.inputProps(key, f.Memory, kit.InputProps{Type: "number", Placeholder: "64", Attrs: numberAttrs()}))
+			}
+		case "maxConcurrency":
+			@kit.Field(f.fieldProps(key, "Max Concurrency", "", false)) {
+				@kit.Input(f.inputProps(key, f.Concurrency, kit.InputProps{Type: "number", Placeholder: "16", Attrs: numberAttrs()}))
+			}
+		case "timeoutMs":
+			@kit.Field(f.fieldProps(key, "Timeout (ms)", "", false)) {
+				@kit.Input(f.inputProps(key, f.Timeout, kit.InputProps{Type: "number", Placeholder: "30000", Attrs: numberAttrs()}))
+			}
+		case "maxBodyBytes":
+			@kit.Field(f.fieldProps(key, "Max Body Bytes", "", false)) {
+				@kit.Input(f.inputProps(key, f.Body, kit.InputProps{Type: "number", Placeholder: "1048576", Attrs: numberAttrs()}))
+			}
+	}
+}
+
+// fnsAliasDialogC is the Point Alias dialog.
+templ fnsAliasDialogC(f fnsAliasForm) {
+	@kit.FormDialog(kit.FormDialogProps{
+		ID: fnsAliasDialog, Signal: "fnsAlias", Action: fnsURL(f.FunctionID) + "/aliases", Open: f.Open, Error: f.Errs.Form,
+		Title: "Point Alias", SubmitLabel: "Save", Hidden: fnsHidden(),
+	}) {
+		@fnsAliasField(f, "name")
+		@fnsAliasField(f, "version")
+	}
+}
+
+templ fnsAliasField(f fnsAliasForm, key string) {
+	switch key {
+		case "name":
+			@kit.Field(f.fieldProps(key, "Alias name", "For example live, qa or canary. Pointing live wires the function's subscriptions and schedules.", true)) {
+				@kit.Input(f.inputProps(key, f.Name, kit.InputProps{Placeholder: "live", Required: true, Attrs: templ.Attributes{"maxlength": "31", "autofocus": true, "autocomplete": "off", "spellcheck": "false"}}))
+			}
+		case "version":
+			@kit.Field(f.fieldProps(key, "Version", "Only a version that finished loading (READY) can be pointed at.", true)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Versions, Selected: f.Version, Placeholder: "Select a READY version", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+	}
+}
+
+// fnsSettingDialogC is the dialog that sets a config value, secret or
+// database DSN.
+templ fnsSettingDialogC(f fnsSettingForm) {
+	@kit.FormDialog(kit.FormDialogProps{
+		ID: fnsSettingDialog, Signal: "fnsSetting", Action: f.action(), Open: f.Open, Error: f.Errs.Form,
+		Title: "Set " + fnsKindLabel(f.Kind), SubmitLabel: "Save", Hidden: append(fnsHidden(), f.keyFixedField()),
+	}) {
+		@fnsSettingField(f, "key")
+		@fnsSettingField(f, "value")
+	}
+}
+
+func (f fnsSettingForm) keyFixedField() kit.HiddenField {
+	if f.KeyFixed {
+		return kit.HiddenField{Name: "keyFixed", Value: "1"}
+	}
+	return kit.HiddenField{Name: "keyFixed", Value: ""}
+}
+
+templ fnsSettingField(f fnsSettingForm, key string) {
+	switch key {
+		case "key":
+			@kit.Field(f.fieldProps(key, f.keyLabel(), "", true)) {
+				@kit.Input(f.inputProps(key, f.Key, kit.InputProps{Required: true, Attrs: f.keyAttrs()}))
+			}
+		case "value":
+			@kit.Field(f.fieldProps(key, "Value", f.valueHelp(), true)) {
+				if f.secret() {
+					@kit.PasswordInput(kit.PasswordInputProps{ID: f.id(key), Name: key, Signal: "fnsSecret", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+				} else {
+					@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Value, Rows: 2, Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+				}
+			}
+	}
+}
+
+// fnsRouteDialogC is the public-route dialog.
+templ fnsRouteDialogC(f fnsRouteForm) {
+	@kit.FormDialog(kit.FormDialogProps{
+		ID: fnsRouteDialog, Signal: "fnsRoute", Action: fnsURL(f.FunctionID) + "/routes", Open: f.Open, Error: f.Errs.Form,
+		Title: f.title(), SubmitLabel: "Save", Hidden: append(fnsHidden(), f.editField()),
+	}) {
+		@fnsRouteField(f, "hostname")
+		@fnsRouteField(f, "pathPrefix")
+		@fnsRouteField(f, "alias")
+		@fnsRouteField(f, "aliasPrefixes")
+	}
+}
+
+templ fnsRouteField(f fnsRouteForm, key string) {
+	switch key {
+		case "hostname":
+			@kit.Field(f.fieldProps(key, "Hostname", "A lowercase DNS name covered by a claimed zone: no port, no wildcard.", true)) {
+				@kit.Input(f.inputProps(key, f.Hostname, kit.InputProps{Required: true, Placeholder: "api.example.com", Attrs: f.keyAttrs(templ.Attributes{"autofocus": !f.Edit})}))
+			}
+		case "pathPrefix":
+			@kit.Field(f.fieldProps(key, "Path prefix", "The prefix routed to this function, such as / or /webhooks. It is stripped before the function's own endpoints match.", true)) {
+				@kit.Input(f.inputProps(key, f.PathPrefix, kit.InputProps{Required: true, Placeholder: "/", Attrs: f.keyAttrs(nil)}))
+			}
+		case "alias":
+			@kit.Field(f.fieldProps(key, "Serves", "Live unless an alias is chosen.", false)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Aliases, Selected: f.Alias, Placeholder: "live", Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "aliasPrefixes":
+			@kit.Field(f.fieldProps(key, "Alias prefixes", "Optional, live routes only. For each prefix p (no hyphens), p-<hostname> serves alias p. Separate with commas or spaces.", false)) {
+				@kit.Input(f.inputProps(key, f.AliasPrefixes, kit.InputProps{Placeholder: "qa, canary", Attrs: templ.Attributes{"autocomplete": "off", "spellcheck": "false"}}))
+			}
+	}
+}
+
+// fnsDeleteDialogC is the typed-address delete confirmation.
+templ fnsDeleteDialogC(f fnsDeleteForm) {
+	@kit.FormDialog(kit.FormDialogProps{
+		ID: fnsDeleteDialog, Signal: "fnsDelete", Action: fnsURL(f.FunctionID) + "/delete", Open: f.Open, Error: f.Errs.Form,
+		Title: "Delete Function", SubmitLabel: "Delete", RequireChange: true, Hidden: fnsHidden(),
+	}) {
+		<div class="flex flex-col gap-2 text-sm">
+			<p>Permanently delete <code>{ f.Address }</code>?</p>
+			<ul class="list-disc pl-5">
+				<li>{ f.versionsText() }</li>
+				<li>Live version: <strong>{ f.liveText() }</strong></li>
+			</ul>
+			<p class="text-muted-foreground">Every version, alias and artifact is removed, along with the subscriptions, scheduled jobs and routes owned by this function and its dispatch pool. This cannot be undone.</p>
+		</div>
+		@fnsDeleteField(f)
+	}
+}
+
+templ fnsDeleteField(f fnsDeleteForm) {
+	@kit.Field(kit.FieldProps{Label: "Type " + f.Address + " to confirm", For: f.id("confirm"), Required: true, Error: f.fieldError("confirm"), Attrs: templ.Attributes{"id": f.id("confirm") + "-field"}}) {
+		@kit.Input(f.inputProps("confirm", "", kit.InputProps{Required: true, Placeholder: f.Address, Attrs: templ.Attributes{"autocomplete": "off", "spellcheck": "false", "autofocus": true}}))
+	}
+}
