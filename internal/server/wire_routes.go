@@ -38,6 +38,7 @@ import (
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	ingestionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/api"
+	ingestionruntimeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/runtimeapi"
 	loginattemptapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
 	passwordresetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset/api"
@@ -343,6 +344,12 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 				Clients: repos.clientRepo,
 				Audit:   repos.auditRepo,
 				UoW:     uow,
+				// Sets keep what each apply was given beside the function artifacts.
+				SetArchive: svcs.functionArtifacts,
+			})
+			ingestionruntimeapi.Register(humaAPI, &ingestionruntimeapi.State{
+				Repo:  ingestion.NewRepository(pool),
+				Lease: cfg.IngestionLease,
 			})
 		}
 
@@ -473,13 +480,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 
 		loginattemptapi.Register(humaAPI, &loginattemptapi.State{Repo: repos.loginAttemptRepo})
 
-		platformconfigapi.Register(humaAPI, &platformconfigapi.State{
-			Repo:    repos.platformConfigRepo,
-			UoW:     uow,
-			Apps:    repos.applicationRepo,
-			Clients: repos.clientRepo,
-			Audit:   repos.auditRepo,
-		})
+		platformconfigapi.Register(humaAPI, &platformconfigapi.State{Svc: platformConfigService(repos, uow)})
 
 		processapi.Register(humaAPI, &processapi.State{
 			Repo: repos.processRepo,
@@ -559,7 +560,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 	// registered; keep in sync with the dump-spec tool so the lockfile matches.
 	httpcompat.RelaxRequestBodies(humaAPI)
 	// The runners' trace batches may grow fields at any depth (older platform, newer runner).
-	httpcompat.RelaxRequestBodiesDeep(humaAPI, functioncontrol.TraceLogOperationID)
+	httpcompat.RelaxRequestBodiesDeep(humaAPI, functioncontrol.TraceLogOperationID, ingestionruntimeapi.PollOperationID, ingestionruntimeapi.ReportOperationID)
 
 	// Exclude /bff/* from the published OpenAPI spec (the BFF
 	// handlers stay mounted and keep serving). Must run after every route

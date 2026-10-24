@@ -7,10 +7,12 @@ import (
 
 	"github.com/a-h/templ"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/process"
 	procops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
 
 // The create and edit dialogs (the SPA's ProcessCreatePage and
@@ -184,6 +186,12 @@ func (h *Processes) editForm(w http.ResponseWriter, r *http.Request) {
 	p, err := h.loadProcess(ctx, ac, id)
 	if err != nil {
 		h.Shell.Fail(w, r, err)
+		return
+	}
+	// An archived process is read-only, a stale link included (the SPA's edit
+	// page sends the user back to the drawer).
+	if p.Status == process.StatusArchived {
+		h.Shell.Fail(w, r, usecase.BusinessRule("PROCESS_ARCHIVED", process.CannotEditReason))
 		return
 	}
 	h.showForm(w, r, ac, procForm{

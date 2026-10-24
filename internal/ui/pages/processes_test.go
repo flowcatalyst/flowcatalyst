@@ -221,6 +221,10 @@ func TestProcessCreateAndEdit(t *testing.T) {
 	edit := h.do(t, anchorAdmin(), req{target: "/ui/processes/prc_1/edit", datastar: true})
 	mustContain(t, edit, "Edit process", "Shipment Flow (orders:fulfilment:shipment-flow)", `value="fulfilment, billing"`, "A[Start]")
 	mustNotContain(t, edit, `name="code"`)
+	// An archived process has no edit form, not even by a stale link.
+	archived := h.do(t, anchorAdmin(), req{target: "/ui/processes/prc_2/edit", datastar: true})
+	mustContain(t, archived, "fc-flash-error", process.CannotEditReason)
+	mustNotContain(t, archived, "Edit process")
 	h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/processes/prc_1/edit", datastar: true, form: url.Values{
 		"name": {" Shipments "}, "description": {""}, "tags": {""}, "body": {"graph TD\n"}, "drawer": {"prc_1"},
 	}})

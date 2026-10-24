@@ -79,12 +79,15 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 		ScheduledJobInstances: sjInstances,
 		ScheduledJobOps:       pages.ScheduledJobOps{Repo: repos.scheduledJobRepo, Instances: sjInstances, UoW: uow},
 		DispatchJobs:          repos.dispatchJobRepo,
+		DispatchJobAudit:      repos.auditRepo,
 		DispatchJobOps:        pages.DispatchJobOps{Repo: repos.dispatchJobRepo, UoW: uow, Planner: dispatchPlanner(repos)},
 		ClientIdentifier:      client.NewCachedIdentifierResolver(repos.clientRepo, time.Minute),
 		DispatchJobMaxWindow:  cfg.DispatchJobMaxWindowDays,
 		Events:                repos.eventRepo,
 		Processes:             repos.processRepo,
 		ProcessOps:            pages.ProcessOps{Repo: repos.processRepo, UoW: uow},
+		PlatformConfig:        platformConfigService(repos, uow),
+		PlatformConfigOps:     pages.ConfigOps{Repo: repos.platformConfigRepo, UoW: uow},
 	})
 }
 

@@ -30,6 +30,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
 
 // repoSet bundles every subdomain repository WirePlatform builds against
@@ -102,5 +103,17 @@ func buildRepos(pool *pgxpool.Pool) *repoSet {
 		webauthnCeremonyRepo:        webauthn.NewCeremonyRepository(pool),
 		resetTokenRepo:              passwordreset.NewRepository(pool),
 		resetApprovalRepo:           resetapproval.NewRepository(pool),
+	}
+}
+
+// platformConfigService is the platform-config access rules, shared by the
+// HTTP API and the /ui Configuration page.
+func platformConfigService(repos *repoSet, uow *usecasepgx.UnitOfWork) *platformconfig.Service {
+	return &platformconfig.Service{
+		Repo:    repos.platformConfigRepo,
+		UoW:     uow,
+		Apps:    repos.applicationRepo,
+		Clients: repos.clientRepo,
+		Audit:   repos.auditRepo,
 	}
 }

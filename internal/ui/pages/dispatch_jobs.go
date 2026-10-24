@@ -13,12 +13,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	djops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -36,12 +38,21 @@ import (
 type DispatchJobStore interface {
 	FindWithFilters(ctx context.Context, p dispatchjob.FilterParams) ([]dispatchjob.DispatchJob, error)
 	FindByID(ctx context.Context, id string) (*dispatchjob.DispatchJob, error)
+	// FindByIDs reads the ticked rows' statuses (the requeue dialog counts
+	// the COMPLETED ones).
+	FindByIDs(ctx context.Context, ids []string) ([]dispatchjob.DispatchJob, error)
 	AttemptsByJob(ctx context.Context, jobID string) ([]dispatchjob.Attempt, error)
 	DistinctValues(ctx context.Context, column string, limit int, accessibleClientIDs *[]string, since, until *time.Time) ([]string, error)
 	// ResolveRefs resolves the by-name subscription and connection filters to
 	// ids (the API does the same before its list query; an unresolved name
 	// selects nothing).
 	ResolveRefs(ctx context.Context, p dispatchjob.FilterParams) (dispatchjob.FilterParams, error)
+}
+
+// DispatchJobAudit reads a job's audit rows (the SPA's
+// GET /api/audit-logs/entity/Dispatchjob/{id}); *audit.Repository satisfies it.
+type DispatchJobAudit interface {
+	FindWithFilters(ctx context.Context, p audit.FilterParams) ([]audit.Log, error)
 }
 
 // DispatchJobs is the dispatch jobs page (/ui/dispatch-jobs), mirroring the
@@ -53,6 +64,13 @@ type DispatchJobs struct {
 	Jobs    DispatchJobStore
 	Ops     DispatchJobCommands
 	Clients ClientStore
+	// Subs and Connections name the drawer's subscription and connection, as
+	// the SPA does best effort (a caller without their view permissions sees
+	// the bare id); Audit fills the drawer's Audit section for callers with
+	// the audit-log view permission. Any may be nil.
+	Subs        SubscriptionStore
+	Connections ConnectionStore
+	Audit       DispatchJobAudit
 	// ClientIdentifier resolves a job's client id to the client's
 	// identifier for the grid (the API's cached resolver); nil shows ids.
 	ClientIdentifier func(ctx context.Context, clientID string) (string, bool)
@@ -97,6 +115,12 @@ func (h *DispatchJobs) scoped(ctx context.Context, ac *auth.AuthContext, q djQue
 		since := h.now().Add(-preset.d)
 		p.Since = &since
 	}
+	if q.stuckLens() {
+		// Nothing newer than five minutes; the cap only ever lowers the bound.
+		if cap := h.now().Add(-djStuckAfter); p.Until == nil || cap.Before(*p.Until) {
+			p.Until = &cap
+		}
+	}
 	p, win, err := h.window(djops.VisibleTo(ac, p))
 	if err != nil {
 		return p, win, err
@@ -116,6 +140,9 @@ const (
 	// The drawer's confirm dialogs; their form action comes from the button.
 	djCancelDialog   = "dj-cancel"
 	djCompleteDialog = "dj-complete"
+	// djSelDialog is the requeue dialog of ticked rows that include COMPLETED
+	// jobs (the SPA's RequeueSelectedDialog).
+	djSelDialog = "dj-sel"
 
 	// djSelSig counts the ticked rows (the "Requeue selected" label).
 	djSelSig = "djSel"
@@ -126,6 +153,12 @@ const (
 	djEditPayloadPerm = auth.DispatchJobEditPayloadPerm
 	djCancelPerm      = auth.DispatchJobCancelPerm
 	djCompletePerm    = auth.DispatchJobCompletePerm
+	djRedrivePerm     = auth.DispatchJobRedriveCompletedPerm
+	djAuditPerm       = "platform:admin:audit-log:view"
+	// djAuditEntity is the audit entity type of a dispatch job: its domain
+	// events use the subject platform.dispatchjob.<id>, which the audit
+	// writer capitalises.
+	djAuditEntity = "Dispatchjob"
 
 	djLiveGet = "@get('/ui/dispatch-jobs', {contentType: 'form'})"
 	// djNavLink is a link that changes the filters (the group link, the
@@ -142,6 +175,12 @@ const (
 	djFacetAggs     = "aggregates"
 	djFacetCodes    = "codes"
 	djFacetStatuses = "statuses"
+
+	// djStuckAfter is how old a PENDING or QUEUED job must be to count as
+	// stuck (jobFilters.ts STUCK_AFTER_MS).
+	djStuckAfter = 5 * time.Minute
+	// djLensStuck is the lens parameter's one value.
+	djLensStuck = "stuck"
 
 	djDefaultSize = 200
 	// djMaxRequeue is ResendByFilterMaxLimit: one requeue-by-filter run's cap.
@@ -171,11 +210,23 @@ var (
 	// djErrorStatuses are the "in error" statuses: FAILED and its legacy
 	// alias ERROR (requeueByFilter.ts ERROR_STATUSES).
 	djErrorStatuses = []string{"FAILED", "ERROR"}
+	// djStuckStatuses are the statuses of the Stuck quick view.
+	djStuckStatuses = []string{"PENDING", "QUEUED"}
 )
 
 type djWindowPreset struct {
 	label string
 	d     time.Duration
+}
+
+// djRedriveWord is the literal a redrive's second step asks to be typed (and
+// the API's confirmRedriveCompleted).
+const djRedriveWord = dispatchjob.RedriveConfirmation
+
+// djStep sets a dialog form's step and submits it (the footer's buttons sit
+// outside the form; both ids are constants).
+func djStep(formID, step string) string {
+	return "document.getElementById('" + kit.ID(formID) + "').elements.step.value = '" + kit.ID(step) + "'; document.getElementById('" + kit.ID(formID) + "').requestSubmit()"
 }
 
 // djMaxEventTypes is the API's cap on eventTypes (TOO_MANY_EVENT_TYPES).
@@ -187,10 +238,12 @@ func (h *DispatchJobs) Mount(r chi.Router) {
 	r.Get("/dispatch-jobs/requeue-by-filter", h.requeueByFilterDialog)
 	r.Get("/dispatch-jobs/requeue-errors", h.requeueErrors)
 	r.Get("/dispatch-jobs/{id}", h.detail)
+	r.Get("/dispatch-jobs/{id}/audit", h.auditSection)
 	post := r.With(parseForm)
 	post.Post("/dispatch-jobs/requeue", h.requeueSelected)
 	post.Post("/dispatch-jobs/requeue-by-filter", h.requeueByFilter)
 	post.Post("/dispatch-jobs/{id}/requeue", h.requeueOne)
+	post.Post("/dispatch-jobs/{id}/redrive", h.redriveOne)
 	post.Post("/dispatch-jobs/{id}/sign", h.sign)
 	post.Post("/dispatch-jobs/{id}/cancel", h.cancel)
 	post.Post("/dispatch-jobs/{id}/complete", h.complete)
@@ -210,6 +263,9 @@ type djQuery struct {
 	// Window is a preset key (djWindowPresets); empty is the default window.
 	// Dates, when chosen, win over it.
 	Window string
+	// Lens is "stuck" while the view is the Stuck quick view (PENDING and
+	// QUEUED jobs older than five minutes); the statuses alone cannot say.
+	Lens string
 	// EventTypes are the event types asked for (a job's code is its event
 	// type); Subscription is a subscription name and Connection a connection
 	// code, each exact or ending in * for a prefix.
@@ -232,6 +288,10 @@ func parseDJQuery(v url.Values) djQuery {
 		q.Window = v.Get("window")
 	}
 	q.EventTypes = parseEventTypes(v["eventTypes"])
+	// Picking other statuses by hand leaves the Stuck cap behind.
+	if v.Get("lens") == djLensStuck && sameSet(q.facet(djFacetStatuses), djStuckStatuses) {
+		q.Lens = djLensStuck
+	}
 	q.Subscription, q.Connection = clipQuery(v.Get("subscription")), clipQuery(v.Get("connection"))
 	if n, err := strconv.Atoi(v.Get("size")); err == nil && slices.Contains(djSizes, n) {
 		q.Size = n
@@ -296,6 +356,9 @@ func (q djQuery) filterValues() url.Values {
 	}
 	if q.Window != "" {
 		v.Set("window", q.Window)
+	}
+	if q.Lens != "" {
+		v.Set("lens", q.Lens)
 	}
 	if len(q.EventTypes) > 0 {
 		v.Set("eventTypes", strings.Join(q.EventTypes, ","))
@@ -392,14 +455,29 @@ func (q djQuery) failedLens() bool {
 		slices.ContainsFunc(st, func(s string) bool { return s == "ERROR" })
 }
 
-// lensURL toggles the Failed quick view on this view: it sets the status
+func sameSet(a, b []string) bool {
+	return len(a) == len(b) && !slices.ContainsFunc(a, func(s string) bool { return !slices.Contains(b, s) })
+}
+
+// stuckLens reports whether the view is the Stuck quick view.
+func (q djQuery) stuckLens() bool { return q.Lens == djLensStuck }
+
+// failedLensURL toggles the Failed quick view on this view: it sets the status
 // facet to FAILED and ERROR, or, when it is already on, clears it.
-func (q djQuery) failedLensURL() string {
+func (q djQuery) failedLensURL() string { return q.lensURL(q.failedLens(), djErrorStatuses, "") }
+
+// stuckLensURL toggles the Stuck quick view: PENDING and QUEUED jobs created
+// more than five minutes ago.
+func (q djQuery) stuckLensURL() string { return q.lensURL(q.stuckLens(), djStuckStatuses, djLensStuck) }
+
+func (q djQuery) lensURL(on bool, statuses []string, lens string) string {
 	next := q.first()
-	if q.failedLens() {
+	next.Lens = ""
+	if on {
 		next.Facets = q.withFacet(djFacetStatuses, nil).Facets
 	} else {
-		next.Facets = q.withFacet(djFacetStatuses, slices.Clone(djErrorStatuses)).Facets
+		next.Facets = q.withFacet(djFacetStatuses, slices.Clone(statuses)).Facets
+		next.Lens = lens
 	}
 	return next.URL()
 }
@@ -475,14 +553,17 @@ type djRow struct {
 	Client           string
 	ClientIsID       bool
 	Platform         bool
-	CanRequeue       bool
-	Group, GroupHref string
-	Status           string
-	Severity         kit.TagSeverity
-	Meta, MetaFull   string
-	Created          time.Time
-	RequeueAction    string
-	ValidID          bool
+	// CanRequeue and CanRedrive show the row's Requeue (a status the API
+	// resets) or Redrive (a COMPLETED job, for holders of redrive-completed).
+	CanRequeue, CanRedrive bool
+	RedriveAction          string
+	Group, GroupHref       string
+	Status                 string
+	Severity               kit.TagSeverity
+	Meta, MetaFull         string
+	Created                time.Time
+	RequeueAction          string
+	ValidID                bool
 }
 
 type djView struct {
@@ -496,6 +577,9 @@ type djView struct {
 	CanSign   bool
 	// CanRequeue shows the requeue actions (dispatch-job:requeue).
 	CanRequeue bool
+	// CanRedrive adds the redrive of COMPLETED jobs (dispatch-job:redrive-completed
+	// on top of the requeue permission).
+	CanRedrive bool
 	// Window is the created_at window the list covers (the one the query
 	// applied, defaulted or not).
 	Window dispatchjob.Window
@@ -564,6 +648,7 @@ func (h *DispatchJobs) listView(ctx context.Context, ac *auth.AuthContext, q djQ
 		Query: q, CanSign: auth.CanWritePermission(ac, djRawPerm) == nil,
 		CanRequeue: auth.CanWritePermission(ac, djRequeuePerm) == nil,
 	}
+	v.CanRedrive = v.CanRequeue && auth.CanWritePermission(ac, djRedrivePerm) == nil
 	facets, names, err := h.filterOptions(ctx, ac, q)
 	if err != nil {
 		return djView{}, err
@@ -582,7 +667,8 @@ func (h *DispatchJobs) listView(ctx context.Context, ac *auth.AuthContext, q djQ
 	}
 	for i := range jobs {
 		row := h.toRow(ctx, q, &jobs[i])
-		row.CanRequeue = v.CanRequeue
+		row.CanRequeue = v.CanRequeue && slices.Contains(dispatchjob.RequeueableStatuses, jobs[i].Status)
+		row.CanRedrive = v.CanRedrive && jobs[i].Status == common.DispatchCompleted
 		v.Rows = append(v.Rows, row)
 	}
 	// A full page may have an older one; a short page is the last.
@@ -671,7 +757,7 @@ func (h *DispatchJobs) toRow(ctx context.Context, q djQuery, j *dispatchjob.Disp
 	row := djRow{
 		ID: j.ID, Href: djURL(j.ID), Descriptor: deref(j.Descriptor), Code: j.Code,
 		Status: string(j.Status), Severity: djSeverity(string(j.Status)), Created: j.CreatedAt,
-		RequeueAction: djURL(j.ID) + "/requeue", ValidID: kit.ValidID(j.ID),
+		RequeueAction: djURL(j.ID) + "/requeue", RedriveAction: djURL(j.ID) + "/redrive", ValidID: kit.ValidID(j.ID),
 	}
 	row.Meta, row.MetaFull = metadataPreview(j.Metadata)
 	switch {
@@ -716,17 +802,28 @@ type djDetail struct {
 	Descriptor, Code, ClientID string
 	Group, Mode, Target        string
 	Subscription, Event        string
-	Attempts                   string
-	ScheduledFor, Created      time.Time
-	Completed                  time.Time
-	LastError                  string
-	Metadata                   []djKV
-	Payload                    string
-	History                    []djAttempt
-	ActionBase                 string
-	CanSign                    bool
-	// CanRequeue shows the drawer's Requeue (dispatch-job:requeue).
-	CanRequeue bool
+	// SubName, SubCode and SubHref name the subscription, ConnCode and
+	// ConnHref its connection (best effort: empty for a caller who may not
+	// read them, then the bare id shows); ConnShown says the job has a
+	// subscription, so the Connection line is drawn.
+	SubName, SubCode, SubHref string
+	ConnCode, ConnHref        string
+	ConnShown                 bool
+	Attempts                  string
+	ScheduledFor, Created     time.Time
+	Completed                 time.Time
+	LastError                 string
+	Metadata                  []djKV
+	Payload                   string
+	History                   []djAttempt
+	ActionBase                string
+	CanSign                   bool
+	// CanRequeue shows the drawer's Requeue (dispatch-job:requeue, and a status
+	// the API resets); CanRedrive its Redrive (a COMPLETED job, redrive-completed).
+	CanRequeue, CanRedrive bool
+	// CanAudit shows the Audit section (audit-log view); AuditHref loads it.
+	CanAudit  bool
+	AuditHref string
 	// CanEditPayload is true while the job's payload may be edited (PENDING or
 	// FAILED: the API's rule); EditText and ContentType fill the editor.
 	CanEditPayload bool
@@ -893,7 +990,9 @@ func (h *DispatchJobs) detailOf(ctx context.Context, ac *auth.AuthContext, j *di
 		LastError: deref(j.LastError), Payload: prettyText(j.Payload),
 		History: toAttempts(attempts), ActionBase: djURL(j.ID),
 		CanSign:    auth.CanWritePermission(ac, djRawPerm) == nil,
-		CanRequeue: auth.CanWritePermission(ac, djRequeuePerm) == nil,
+		CanRequeue: auth.CanWritePermission(ac, djRequeuePerm) == nil && slices.Contains(dispatchjob.RequeueableStatuses, j.Status),
+		CanRedrive: j.Status == common.DispatchCompleted && auth.CanWritePermission(ac, djRequeuePerm) == nil && auth.CanWritePermission(ac, djRedrivePerm) == nil,
+		CanAudit:   h.Audit != nil && auth.CanWritePermission(ac, djAuditPerm) == nil, AuditHref: djURL(j.ID) + "/audit",
 		// The editor opens on the stored text, pretty-printed for a JSON job.
 		CanEditPayload: slices.Contains(dispatchjob.EditableStatuses, j.Status) && auth.CanWritePermission(ac, djEditPayloadPerm) == nil,
 		ContentType:    j.PayloadContentType,
@@ -909,7 +1008,35 @@ func (h *DispatchJobs) detailOf(ctx context.Context, ac *auth.AuthContext, j *di
 	for _, m := range j.Metadata {
 		d.Metadata = append(d.Metadata, djKV{Key: m.Key, Value: m.Value})
 	}
+	h.nameRefs(ctx, ac, j, &d)
 	return d, nil
+}
+
+// nameRefs fills the drawer's subscription and connection links, as the SPA
+// does after the job loads: best effort, with the reads' own checks, so a
+// caller who may not read subscriptions or connections (or a record that is
+// gone) keeps the bare id.
+func (h *DispatchJobs) nameRefs(ctx context.Context, ac *auth.AuthContext, j *dispatchjob.DispatchJob, d *djDetail) {
+	if j.SubscriptionID == nil || *j.SubscriptionID == "" {
+		return
+	}
+	d.ConnShown = true
+	if h.Subs == nil || auth.CanReadSubscriptions(ac) != nil {
+		return
+	}
+	sub, err := h.Subs.FindByID(ctx, *j.SubscriptionID)
+	if err != nil || sub == nil || (sub.ClientID != nil && !ac.CanAccessClient(string(*sub.ClientID))) {
+		return
+	}
+	d.SubName, d.SubCode, d.SubHref = sub.Name, sub.Code, "/ui/subscriptions/"+url.PathEscape(sub.ID)
+	if sub.ConnectionID == nil || *sub.ConnectionID == "" || h.Connections == nil || auth.CanReadConnections(ac) != nil {
+		return
+	}
+	conn, err := h.Connections.FindByID(ctx, *sub.ConnectionID)
+	if err != nil || conn == nil || (conn.ClientID != nil && !ac.CanAccessClient(string(*conn.ClientID))) {
+		return
+	}
+	d.ConnCode, d.ConnHref = conn.Code, "/ui/connections/"+url.PathEscape(conn.ID)
 }
 
 func djID(r *http.Request) (string, error) {
@@ -980,6 +1107,77 @@ func openDjDrawer(sse *ds.SSE, d djDetail) error {
 		sse.PatchSignals(map[string]any{djDrawerSig: d.ID}),
 		sse.Focus(djDrawerID+"-title"),
 	)
+}
+
+// ── audit ──────────────────────────────────────────────────────────────
+
+type djAuditEntry struct {
+	Operation, Actor string
+	At               time.Time
+}
+
+// djAudit is the drawer's Audit section: who changed the job by hand, newest
+// first. Failed is set when the rows could not be read.
+type djAudit struct {
+	Entries []djAuditEntry
+	Failed  bool
+}
+
+// auditOperationLabel turns an audit operation name into words:
+// "CancelCommand" is "Cancel", "EditPayloadCommand" is "Edit payload".
+func auditOperationLabel(op string) string {
+	base := strings.TrimSuffix(op, "Command")
+	var b strings.Builder
+	for i, r := range base {
+		if i > 0 && unicode.IsUpper(r) && !unicode.IsUpper(rune(base[i-1])) {
+			b.WriteByte(' ')
+		}
+		b.WriteRune(unicode.ToLower(r))
+	}
+	words := b.String()
+	if words == "" {
+		return op
+	}
+	return strings.ToUpper(words[:1]) + words[1:]
+}
+
+// auditSection fills the drawer's Audit section when it is opened (the SPA
+// reads GET /api/audit-logs/entity/Dispatchjob/{id} then): the audit-log view
+// permission, and the job's own checks.
+func (h *DispatchJobs) auditSection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ac := auth.FromContext(ctx)
+	id, err := djID(r)
+	if err == nil && h.Audit == nil {
+		err = httperror.NotFound("DispatchJob", id)
+	}
+	if err == nil {
+		if err = auth.CanWritePermission(ac, djViewPerm); err == nil {
+			if err = auth.CanWritePermission(ac, djAuditPerm); err == nil {
+				_, err = h.loadJob(ctx, ac, id)
+			}
+		}
+	}
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if !ds.IsDatastar(r) {
+		http.Redirect(w, r, djURL(id), http.StatusSeeOther) //nolint:gosec // G710: djPath plus an id kit.ValidID accepted
+		return
+	}
+	entity := djAuditEntity
+	rows, err := h.Audit.FindWithFilters(ctx, audit.FilterParams{EntityType: &entity, EntityID: &id, Limit: 500})
+	a := djAudit{Failed: err != nil}
+	if err != nil {
+		slog.WarnContext(ctx, "ui: dispatch job audit not read", "id", id, "err", err)
+	}
+	for _, l := range rows {
+		a.Entries = append(a.Entries, djAuditEntry{Operation: auditOperationLabel(l.Operation), Actor: cmp.Or(deref(l.PrincipalName), deref(l.PrincipalID), "system"), At: l.PerformedAt})
+	}
+	if err := ds.NewSSE(w, r).Patch(djAuditBody(a), ds.WithMode(ds.ModeReplace)); err != nil {
+		slog.DebugContext(ctx, "ui: dispatch job audit patch not delivered", "err", err)
+	}
 }
 
 // ── sign ───────────────────────────────────────────────────────────────
@@ -1062,6 +1260,21 @@ func (h *DispatchJobs) requeueOne(w http.ResponseWriter, r *http.Request) {
 	h.requeue(w, r, []string{id})
 }
 
+// redriveOne is the row's and the drawer's Redrive of a COMPLETED job: the
+// same two-step dialog as ticked rows that include COMPLETED ones.
+func (h *DispatchJobs) redriveOne(w http.ResponseWriter, r *http.Request) {
+	id, err := djID(r)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if err := auth.CanWritePermission(auth.FromContext(r.Context()), djRedrivePerm); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	h.requeue(w, r, []string{id})
+}
+
 // requeueSelected is "Requeue selected": the ticked rows' ids.
 func (h *DispatchJobs) requeueSelected(w http.ResponseWriter, r *http.Request) {
 	var picked []string
@@ -1073,6 +1286,26 @@ func (h *DispatchJobs) requeueSelected(w http.ResponseWriter, r *http.Request) {
 	h.requeue(w, r, picked)
 }
 
+// djSelection is the dialog of a requeue of ticked rows that include COMPLETED
+// jobs (RequeueSelectedDialog): a plain requeue leaves them alone; redriving
+// them is the separate, dangerous option behind a typed confirmation.
+type djSelection struct {
+	IDs       []string
+	Drawer    string
+	Completed int
+	// Confirm is the second step (the word and the count); Error is its
+	// message after a wrong entry.
+	Confirm bool
+	Error   string
+}
+
+// others is how many of the ticked rows a plain requeue would reset.
+func (s djSelection) others() int { return len(s.IDs) - s.Completed }
+
+// requeue runs a requeue of ids. A caller who may redrive and has COMPLETED
+// jobs among them goes through the dialog (step "" opens it, "confirm" shows
+// the typed confirmation, "redrive" runs it); everyone else requeues at once
+// and is told what the status guard left alone.
 func (h *DispatchJobs) requeue(w http.ResponseWriter, r *http.Request, picked []string) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
@@ -1080,10 +1313,96 @@ func (h *DispatchJobs) requeue(w http.ResponseWriter, r *http.Request, picked []
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	n := 0
+	step := r.PostFormValue("step")
+	redrivePerm := auth.CanWritePermission(ac, djRedrivePerm)
+	if (step == "confirm" || step == "redrive") && redrivePerm != nil {
+		h.Shell.Fail(w, r, redrivePerm)
+		return
+	}
+	if redrivePerm == nil && len(picked) > 0 && step != "plain" {
+		sel, err := h.selection(ctx, ac, picked, r.PostFormValue("drawer"))
+		if err != nil {
+			h.Shell.Fail(w, r, err)
+			return
+		}
+		switch {
+		case step == "redrive":
+			if msg := redriveEntryError(r.PostFormValue("word"), r.PostFormValue("count"), sel.Completed); msg != "" {
+				sel.Confirm, sel.Error = true, msg
+				h.showSelectionDialog(w, r, sel)
+				return
+			}
+			h.runRequeue(w, r, ac, picked, true)
+		case step == "confirm" && sel.Completed > 0:
+			sel.Confirm = true
+			h.showSelectionDialog(w, r, sel)
+		case sel.Completed > 0:
+			h.showSelectionDialog(w, r, sel)
+		case step != "":
+			h.Shell.Fail(w, r, usecase.Validation("NOTHING_TO_REDRIVE", "None of the selected jobs is COMPLETED any more."))
+		default:
+			h.runRequeue(w, r, ac, picked, false)
+		}
+		return
+	}
+	h.runRequeue(w, r, ac, picked, false)
+}
+
+// selection counts the COMPLETED jobs among the ticked ones the caller can
+// reach (the use case drops the rest).
+func (h *DispatchJobs) selection(ctx context.Context, ac *auth.AuthContext, picked []string, drawer string) (djSelection, error) {
+	jobs, err := h.Jobs.FindByIDs(ctx, picked)
+	if err != nil {
+		return djSelection{}, usecase.Internal("REPO", "find_by_ids failed", err)
+	}
+	sel := djSelection{IDs: picked, Drawer: drawer}
+	for i := range jobs {
+		if jobs[i].Status == common.DispatchCompleted && auth.CanAccessScope(ac, ids.StringPtr(jobs[i].ClientID)) {
+			sel.Completed++
+		}
+	}
+	return sel, nil
+}
+
+// redriveEntryError checks the second step: the word typed exactly and the
+// number of jobs the run resets retyped (thousands separators tolerated).
+func redriveEntryError(word, count string, want int) string {
+	n, err := strconv.Atoi(strings.NewReplacer(",", "", " ", "").Replace(strings.TrimSpace(count)))
+	switch {
+	case want <= 0:
+		return "There is nothing to redrive."
+	case word != djRedriveWord:
+		return "Type " + djRedriveWord + " exactly as shown."
+	case err != nil || n != want:
+		return "Type the number of jobs shown: " + thousands(int64(want)) + "."
+	}
+	return ""
+}
+
+func (h *DispatchJobs) showSelectionDialog(w http.ResponseWriter, r *http.Request, sel djSelection) {
+	if !ds.IsDatastar(r) {
+		// The dialog exists only as an answer: show the list with it open.
+		ac := auth.FromContext(r.Context())
+		view, err := h.listView(r.Context(), ac, djReferer(r))
+		if err != nil {
+			h.Shell.Fail(w, r, err)
+			return
+		}
+		view.Dialog = djSelectionDialog(sel)
+		h.renderPage(w, r, http.StatusOK, view)
+		return
+	}
+	if err := patchDialogSlot(ds.NewSSE(w, r), djDialogSlot, djSelectionDialog(sel)); err != nil {
+		slog.DebugContext(r.Context(), "ui: requeue dialog not delivered", "err", err)
+	}
+}
+
+func (h *DispatchJobs) runRequeue(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, picked []string, redrive bool) {
+	ctx := r.Context()
+	var res RequeueResult
 	if len(picked) > 0 {
 		var err error
-		if n, err = h.Ops.Requeue(ctx, picked); err != nil {
+		if res, err = h.Ops.Requeue(ctx, picked, redrive); err != nil {
 			h.Shell.Fail(w, r, err)
 			return
 		}
@@ -1098,14 +1417,50 @@ func (h *DispatchJobs) requeue(w http.ResponseWriter, r *http.Request, picked []
 	if drawer := r.PostFormValue("drawer"); drawer != "" && slices.Contains(picked, drawer) {
 		h.refreshDrawer(sse, r, ac, drawer)
 	}
-	noun := "dispatch jobs"
-	if n == 1 {
-		noun = "dispatch job"
+	if err := errors.Join(sse.CloseDialog(djSelDialog), shell.Flash(sse, idsOutcome(res, len(picked) == 1))); err != nil {
+		slog.DebugContext(ctx, "ui: requeue outcome not delivered", "err", err)
 	}
-	msg := kit.FlashMessageProps{Kind: kit.FlashSuccess, Summary: "Requeued", Detail: strconv.Itoa(n) + " " + noun + " reset to PENDING"}
-	if err := shell.Flash(sse, msg); err != nil {
-		slog.DebugContext(ctx, "ui: requeue flash not delivered", "err", err)
+}
+
+// idsOutcome is the SPA's toast for a requeue by ids: what was reset, what the
+// guard left alone. A single job that was not reset is an error (the drawer
+// and row say why).
+func idsOutcome(res RequeueResult, single bool) kit.FlashMessageProps {
+	skipped := skipNote(int64(res.SkippedInFlight), int64(res.SkippedCompleted))
+	if res.Requeued == 0 {
+		if single {
+			return kit.FlashMessageProps{Kind: kit.FlashError, Summary: "Not requeued", Detail: "No selected job could be requeued." + skipped}
+		}
+		return kit.FlashMessageProps{Kind: kit.FlashInfo, Summary: "Nothing requeued", Detail: "No selected job could be requeued." + skipped}
 	}
+	n := int64(res.Requeued)
+	return kit.FlashMessageProps{
+		Kind: kit.FlashSuccess, Summary: "Requeued " + counted(n, "job") + redrivenNote(int64(res.Redriven)),
+		Detail: counted(n, "dispatch job") + " reset to PENDING" + skipped,
+	}
+}
+
+// skipNote is what a requeue left alone, in words ("" when nothing): jobs in
+// flight are never reset, COMPLETED ones only by a confirmed redrive.
+func skipNote(inFlight, completed int64) string {
+	var parts []string
+	if inFlight > 0 {
+		parts = append(parts, counted(inFlight, "job")+" in flight (QUEUED or PROCESSING) left alone")
+	}
+	if completed > 0 {
+		parts = append(parts, counted(completed, "COMPLETED job")+" left alone")
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " — " + strings.Join(parts, "; ")
+}
+
+func redrivenNote(n int64) string {
+	if n == 0 {
+		return ""
+	}
+	return " (" + counted(n, "COMPLETED job") + " redriven)"
 }
 
 // ── cancel / complete ──────────────────────────────────────────────────
@@ -1249,6 +1604,40 @@ type djPreview struct {
 	OverCap, Changed    bool
 	ByStatus            []djStatusCount
 	Action              string
+	// CanRedrive offers "Also redrive the COMPLETED jobs" (redrive-completed);
+	// RedriveCount is the number a redrive confirms (every job it resets).
+	CanRedrive   bool
+	RedriveCount int64
+	// RedriveHref opens the redrive step and Review returns to the first
+	// (the filter's own URL).
+	RedriveHref, Review string
+	// Redrive is the second step (the word and the count); Error is its
+	// message after a wrong entry.
+	Redrive bool
+	Error   string
+}
+
+func (p djPreview) title() string {
+	if p.Redrive {
+		return "Redrive COMPLETED jobs"
+	}
+	return "Requeue all matching jobs"
+}
+
+// confirmCount is the number the run is confirmed with: the eligible jobs, or
+// with a redrive those plus the COMPLETED ones.
+func (p djPreview) confirmCount() int64 {
+	if p.Redrive {
+		return p.RedriveCount
+	}
+	return p.Eligible
+}
+
+// djRBFOpts is how the requeue-by-filter dialog opens: after a changed
+// match (nothing was reset), or at the redrive step.
+type djRBFOpts struct {
+	Changed, Redrive bool
+	Error            string
 }
 
 // summary is summarizeFilters: the active filters as label/value lines.
@@ -1283,7 +1672,7 @@ func (q djQuery) summary(clientNames map[string]string) []djKV {
 	return out
 }
 
-func (h *DispatchJobs) preview(ctx context.Context, ac *auth.AuthContext, q djQuery, names map[string]string, changed bool) (djPreview, error) {
+func (h *DispatchJobs) preview(ctx context.Context, ac *auth.AuthContext, q djQuery, names map[string]string, opts djRBFOpts) (djPreview, error) {
 	f, win, err := h.scoped(ctx, ac, q)
 	if err != nil {
 		return djPreview{}, err
@@ -1299,9 +1688,16 @@ func (h *DispatchJobs) preview(ctx context.Context, ac *auth.AuthContext, q djQu
 	p := djPreview{
 		Summary: q.summary(names), Window: window, Count: sum.Count, Eligible: sum.Eligible, Completed: sum.Completed, InFlight: sum.InFlight,
 		OutOfScope: sum.Count - sum.Eligible - sum.Completed - sum.InFlight,
-		ToRequeue:  min(sum.Eligible, int64(djMaxRequeue)), OverCap: sum.Eligible > int64(djMaxRequeue), Changed: changed,
-		Action: encodeURL(djPath+"/requeue-by-filter", q.filterValues()),
+		ToRequeue:  min(sum.Eligible, int64(djMaxRequeue)), OverCap: sum.Eligible > int64(djMaxRequeue), Changed: opts.Changed,
+		Action:     encodeURL(djPath+"/requeue-by-filter", q.filterValues()),
+		CanRedrive: sum.Completed > 0 && auth.CanWritePermission(ac, djRedrivePerm) == nil, RedriveCount: sum.RedriveEligible(),
+		Error: opts.Error,
 	}
+	p.Redrive = opts.Redrive && p.CanRedrive
+	p.Review = p.Action
+	step := q.filterValues()
+	step.Set("step", "redrive")
+	p.RedriveHref = encodeURL(djPath+"/requeue-by-filter", step)
 	for status, n := range sum.ByStatus {
 		p.ByStatus = append(p.ByStatus, djStatusCount{Status: status, Count: n, Severity: djSeverity(status)})
 	}
@@ -1313,7 +1709,7 @@ func (h *DispatchJobs) preview(ctx context.Context, ac *auth.AuthContext, q djQu
 
 // requeueByFilterDialog opens the confirm step for the view in the query.
 func (h *DispatchJobs) requeueByFilterDialog(w http.ResponseWriter, r *http.Request) {
-	h.openRequeueByFilter(w, r, parseDJQuery(r.URL.Query()), false)
+	h.openRequeueByFilter(w, r, parseDJQuery(r.URL.Query()), false, r.URL.Query().Get("step") == "redrive")
 }
 
 // requeueErrors is "Requeue everything in error": the list switches to every
@@ -1323,23 +1719,23 @@ func (h *DispatchJobs) requeueErrors(w http.ResponseWriter, r *http.Request) {
 	q := parseDJQuery(url.Values{djFacetStatuses: djErrorStatuses})
 	keep := parseDJQuery(r.URL.Query())
 	q.Size, q.Window, q.From, q.To = keep.Size, keep.Window, keep.From, keep.To
-	h.openRequeueByFilter(w, r, q, true)
+	h.openRequeueByFilter(w, r, q, true, false)
 }
 
-func (h *DispatchJobs) openRequeueByFilter(w http.ResponseWriter, r *http.Request, q djQuery, switchList bool) {
+func (h *DispatchJobs) openRequeueByFilter(w http.ResponseWriter, r *http.Request, q djQuery, switchList, redrive bool) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, djRequeuePerm); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	h.showRequeueDialog(w, r, ac, q, switchList, false)
+	h.showRequeueDialog(w, r, ac, q, switchList, djRBFOpts{Redrive: redrive})
 }
 
 // showRequeueDialog answers with the confirm step for q: patched into the
 // dialog slot (with the list switched to q when switchList), or, without
 // Datastar, the page at q with the dialog open.
-func (h *DispatchJobs) showRequeueDialog(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, q djQuery, switchList, changed bool) {
+func (h *DispatchJobs) showRequeueDialog(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, q djQuery, switchList bool, opts djRBFOpts) {
 	ctx := r.Context()
 	live := ds.IsDatastar(r)
 	var view djView
@@ -1359,7 +1755,7 @@ func (h *DispatchJobs) showRequeueDialog(w http.ResponseWriter, r *http.Request,
 		}
 		names = clientNames(cs)
 	}
-	p, err := h.preview(ctx, ac, q, names, changed)
+	p, err := h.preview(ctx, ac, q, names, opts)
 	if err != nil {
 		h.Shell.Fail(w, r, err)
 		return
@@ -1367,7 +1763,7 @@ func (h *DispatchJobs) showRequeueDialog(w http.ResponseWriter, r *http.Request,
 	if !live {
 		view.Dialog = djRequeueDialog(p)
 		status := http.StatusOK
-		if changed {
+		if opts.Changed {
 			status = http.StatusConflict
 		}
 		h.renderPage(w, r, status, view)
@@ -1405,9 +1801,21 @@ func (h *DispatchJobs) requeueByFilter(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	res, err := h.Ops.RequeueByFilter(ctx, f, confirm)
+	redrive := r.PostFormValue("redrive") != ""
+	if redrive {
+		if err := auth.CanWritePermission(ac, djRedrivePerm); err != nil {
+			h.Shell.Fail(w, r, err)
+			return
+		}
+		// The typed word and count come first: a wrong entry runs nothing.
+		if msg := redriveEntryError(r.PostFormValue("word"), r.PostFormValue("count"), int(confirm)); msg != "" {
+			h.showRequeueDialog(w, r, ac, q, false, djRBFOpts{Redrive: true, Error: msg})
+			return
+		}
+	}
+	res, err := h.Ops.RequeueByFilter(ctx, f, confirm, redrive)
 	if ue := usecase.AsError(err); ue != nil && ue.Code == "FILTER_MATCH_CHANGED" {
-		h.showRequeueDialog(w, r, ac, q, false, true)
+		h.showRequeueDialog(w, r, ac, q, false, djRBFOpts{Changed: true})
 		return
 	}
 	if err != nil {
@@ -1436,13 +1844,15 @@ func (h *DispatchJobs) requeueByFilter(w http.ResponseWriter, r *http.Request) {
 
 // requeueOutcome is the SPA's toast for a finished run.
 func requeueOutcome(res djops.ResendByFilterResult) kit.FlashMessageProps {
+	skipped := skipNote(res.SkippedInFlight, res.SkippedCompleted)
+	summary := "Requeued " + counted(res.Requeued, "job") + redrivenNote(res.Redriven)
 	switch {
 	case res.Remaining > 0:
-		return kit.FlashMessageProps{Kind: kit.FlashWarn, Summary: "Requeued " + counted(res.Requeued, "job"), Detail: thousands(res.Remaining) + " remain — run it again to continue."}
+		return kit.FlashMessageProps{Kind: kit.FlashWarn, Summary: summary, Detail: thousands(res.Remaining) + " remain — run it again to continue." + skipped}
 	case res.Requeued == 0:
-		return kit.FlashMessageProps{Kind: kit.FlashInfo, Summary: "Nothing requeued", Detail: "No matching job could be requeued."}
+		return kit.FlashMessageProps{Kind: kit.FlashInfo, Summary: "Nothing requeued", Detail: "No matching job could be requeued." + skipped}
 	}
-	return kit.FlashMessageProps{Kind: kit.FlashSuccess, Summary: "Requeued " + counted(res.Requeued, "job"), Detail: counted(res.Requeued, "dispatch job") + " reset to PENDING."}
+	return kit.FlashMessageProps{Kind: kit.FlashSuccess, Summary: summary, Detail: counted(res.Requeued, "dispatch job") + " reset to PENDING." + skipped}
 }
 
 // windowText is the line above the table: "Showing the last 24 hours" when
@@ -1484,11 +1894,14 @@ func (v djView) windowChoices() []djWindowChoice {
 }
 
 // hidden is the toolbar form's hidden state: the sort, and the window preset
-// (typing in the toolbar must not drop it).
+// and quick view (typing in the toolbar must not drop them).
 func (v djView) hidden() []kit.HiddenField {
 	h := v.Query.hidden()
 	if v.Query.Window != "" {
 		h = append(h, kit.HiddenField{Name: "window", Value: v.Query.Window})
+	}
+	if v.Query.Lens != "" {
+		h = append(h, kit.HiddenField{Name: "lens", Value: v.Query.Lens})
 	}
 	return h
 }

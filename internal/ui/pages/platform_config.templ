@@ -1,0 +1,290 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+const cfgLiveGet = "@get('/ui/platform/config', {contentType: 'form'})"
+
+func (v cfgView) columns() []kit.DataColumn {
+	sortable := func(label, key string) kit.DataColumn {
+		return kit.DataColumn{Label: label, Href: v.Query.sortURL(key), Direction: v.Query.direction(key), LinkAttrs: templ.Attributes{"data-on:click__prevent": sortClick}}
+	}
+	return []kit.DataColumn{
+		sortable("Section", "section"),
+		sortable("Property", "property"),
+		{Label: "Scope"},
+		{Label: "Type"},
+		{Label: "Value"},
+		{Label: "Description"},
+		sortable("Updated", "updated"),
+		{Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v cfgView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No properties for this application", Status: true}
+	if v.Query.Q != "" {
+		e.ClearHref = v.clearURL()
+	}
+	return e
+}
+
+// clearURL is the view without the search, keeping the application and sort.
+func (v cfgView) clearURL() string {
+	next := v.Query
+	next.Q, next.Page = "", 1
+	return next.URL()
+}
+
+func (v cfgView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.Q != "" {
+		clear = v.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID:                cfgFormID,
+		Action:            cfgPath,
+		SearchPlaceholder: "Search section, property, description...",
+		SearchValue:       v.Query.Q,
+		ClearHref:         clear,
+		ClearAttrs:        templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		Hidden:            append(v.Query.hidden(), kit.HiddenField{Name: "app", Value: v.App}),
+		SearchAttrs:       templ.Attributes{"data-on:input__debounce.300ms": cfgLiveGet},
+		FormAttrs:         templ.Attributes{"data-on:submit": cfgLiveGet},
+	}
+}
+
+func (v cfgView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "cfg-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: cfgList.rows,
+		Noun: "properties", HrefPattern: v.Query.pagePattern(), FormID: cfgFormID,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+templ cfgPage(v cfgView) {
+	<div>
+		@kit.PageHeader(kit.PageHeaderProps{
+			Title:    "Configuration",
+			Subtitle: "Platform configuration per application. Secret values are write-only here and are never shown unless you reveal one, which is audited.",
+			Actions:  cfgActions(v),
+		})
+		@kit.Alert(kit.AlertProps{
+			Icon:        "info",
+			Title:       "New UI preview",
+			Description: "This page is served by the new server-rendered UI. The current UI has the same page under Settings, Configuration.",
+			Class:       "mb-4",
+		})
+		<div class="fc-card-flush">
+			<form id="cfg-app-form" method="get" action={ cfgPath } class="flex flex-wrap items-center gap-3 px-4 pt-4">
+				@kit.Label(kit.LabelProps{For: "cfg-app"}) {
+					Application
+				}
+				@kit.Select(kit.SelectProps{
+					ID:       "cfg-app",
+					Name:     "app",
+					Options:  v.Apps,
+					Selected: v.App,
+					Attrs:    templ.Attributes{"data-on:change": cfgLiveGet},
+				})
+			</form>
+			@kit.TableToolbar(v.toolbar())
+			@cfgTable(v)
+			@kit.Paginator(v.pager())
+		</div>
+		<div id={ cfgDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		<div id={ cfgRevealSlot }>
+			if v.Reveal != nil {
+				@v.Reveal
+			}
+		</div>
+		@cfgConfirmDialogs(v.Perms)
+	</div>
+}
+
+// cfgActions is the header's Add button; it carries the application, so it is
+// patched when the application changes.
+templ cfgActions(v cfgView) {
+	<span id="cfg-actions">
+		if v.Perms.Edit {
+			@kit.LegacyButton(kit.LegacyButtonProps{Href: cfgNewHref(v.App), Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+				Add property
+			}
+		}
+	</span>
+}
+
+templ cfgTable(v cfgView) {
+	@kit.DataTable(kit.DataTableProps{ID: "cfg-table", BodyID: "cfg-rows", Columns: v.columns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "cfg-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					{ row.Section }
+				}
+				@kit.TD(kit.TDProps{}) {
+					<span class="font-medium">{ row.Property }</span>
+				}
+				@kit.TD(kit.TDProps{}) {
+					if row.Client != "" {
+						@kit.Badge(kit.BadgeProps{Variant: kit.BadgeInfo}) {
+							{ row.Client }
+						}
+					} else {
+						<span class="text-muted-foreground">Global</span>
+					}
+				}
+				@kit.TD(kit.TDProps{}) {
+					if row.Secret {
+						@kit.Badge(kit.BadgeProps{Variant: kit.BadgeWarn}) {
+							Secret
+						}
+					} else {
+						@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSecondary}) {
+							Plain
+						}
+					}
+				}
+				@kit.TD(kit.TDProps{Class: "max-w-xs"}) {
+					if row.Secret {
+						<span class="inline-flex items-center gap-1.5 tracking-wider text-muted-foreground">
+							@kit.Icon(kit.IconProps{Name: "lock", Class: "size-3.5"})
+							••••••••
+						</span>
+					} else {
+						<code class="font-mono text-[13px] break-all" title={ row.ValueFull }>{ row.Value }</code>
+					}
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+					if row.Description != "" {
+						{ row.Description }
+					} else {
+						—
+					}
+				}
+				@kit.TD(kit.TDProps{}) {
+					<time datetime={ row.UpdatedISO }>{ row.Updated }</time>
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+}
+
+templ cfgConfirmDialogs(perms cfgPerms) {
+	if perms.Reveal {
+		@kit.ConfirmDialog(cfgConfirm(cfgRevealDialog, "Reveal secret", "Show the value of this secret? This is recorded in the audit log under your name.", "Reveal", kit.ToneWarn))
+	}
+	if perms.Edit {
+		@kit.ConfirmDialog(cfgConfirm(cfgDeleteDialog, "Delete property", "Delete this property? Applications reading it will stop finding it.", "Delete", kit.ToneDanger))
+	}
+}
+
+// cfgRevealDialogC shows a revealed secret. It is in the reveal response
+// only, and removes itself from the page however it is closed (the button,
+// Escape): the value is in no signal, URL or flash, and a page that has not
+// got the dialog has not got the value.
+templ cfgRevealDialogC(r cfgRevealed) {
+	@kit.Dialog(kit.DialogProps{
+		ID:          "cfg-reveal-value-dialog",
+		Title:       "Secret value",
+		Description: r.Section + "/" + r.Property + ": this reveal was recorded in the audit log.",
+		Persistent:  true,
+		Footer:      cfgRevealFooter(),
+		Attrs: templ.Attributes{
+			"open":           true,
+			"data-init":      "el.open && el.close(); el.showModal()",
+			"data-on:cancel": "evt.preventDefault(); el.remove()",
+			"data-signals":   "{cfgCopied: ''}",
+		},
+	}) {
+		<div class="flex flex-col gap-3">
+			<code id="cfg-reveal-value" class="fc-mono-chip block break-all p-3 select-all">{ r.Value }</code>
+			<p class="text-xs text-muted-foreground" role="status" data-text="$cfgCopied"></p>
+		</div>
+	}
+}
+
+templ cfgRevealFooter() {
+	@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Icon: "copy", Attrs: templ.Attributes{"data-on:click": cfgCopyExpr}}) {
+		Copy
+	}
+	@kit.Button(kit.ButtonProps{Attrs: templ.Attributes{"data-on:click": "const d = el.closest('dialog'); d.close(); d.remove()"}}) {
+		Close
+	}
+}
+
+// cfgCopyExpr copies the revealed value and says so in the dialog.
+const cfgCopyExpr = "navigator.clipboard.writeText(document.getElementById('cfg-reveal-value').textContent).then(() => $cfgCopied = 'Copied to the clipboard')"
+
+// cfgFormDialogC is the add or edit dialog.
+templ cfgFormDialogC(f cfgForm) {
+	@kit.FormDialog(f.dialog()) {
+		<div class="flex flex-col gap-4" data-signals={ f.signals() }>
+			<div class="grid gap-4 sm:grid-cols-2">
+				@cfgField(f, "section")
+				@cfgField(f, "property")
+			</div>
+			@cfgField(f, "client")
+			@cfgField(f, "valueType")
+			@cfgField(f, "value")
+			@cfgField(f, "description")
+		</div>
+	}
+}
+
+templ cfgField(f cfgForm, key string) {
+	switch key {
+		case "section":
+			@kit.Field(f.fieldProps(key, "Section", "", true)) {
+				@kit.Input(f.inputProps(key, f.Section, kit.InputProps{Required: true, Attrs: f.coordinateAttrs(templ.Attributes{"autofocus": !f.Edit})}))
+			}
+		case "property":
+			@kit.Field(f.fieldProps(key, "Property", "", true)) {
+				@kit.Input(f.inputProps(key, f.Property, kit.InputProps{Required: true, Attrs: f.coordinateAttrs(nil)}))
+			}
+		case "client":
+			@kit.Field(f.fieldProps(key, "Client (optional)", "The client's identifier or id. Leave empty for the application-wide value.", false)) {
+				@kit.Input(f.inputProps(key, f.Client, kit.InputProps{Placeholder: "client identifier or id", Attrs: f.coordinateAttrs(nil)}))
+			}
+		case "valueType":
+			@kit.Field(kit.FieldProps{Label: "Type", Error: f.fieldError(key), Attrs: templ.Attributes{"id": f.id(key) + "-field"}}) {
+				@kit.ToggleGroup(kit.ToggleGroupProps{
+					Kind:       kit.ToggleExclusive,
+					Name:       key,
+					Options:    cfgTypeOptions,
+					Selected:   []string{f.valueType()},
+					Attrs:      templ.Attributes{"role": "radiogroup", "aria-label": "Type"},
+					InputAttrs: templ.Attributes{"data-on:change": "$" + cfgSecretSig + " = el.value === 'SECRET'"},
+				})
+			}
+		case "value":
+			@kit.Field(kit.FieldProps{Label: "Value", For: f.id("plainValue"), Required: true, Error: f.fieldError(key), ErrorID: f.id(key) + "-err", Attrs: templ.Attributes{"id": f.id(key) + "-field"}}) {
+				<div data-show={ "!$" + cfgSecretSig } style={ cfgHiddenWhen(f.Secret) }>
+					@kit.Textarea(kit.TextareaProps{ID: f.id("plainValue"), Name: "plainValue", Value: f.PlainValue, Rows: 3, Invalid: f.fieldError(key) != "" && !f.Secret, DescribedBy: f.describedBy(key)})
+				</div>
+				<div data-show={ "$" + cfgSecretSig } style={ cfgHiddenWhen(!f.Secret) } class="flex flex-col gap-1.5">
+					@kit.PasswordInput(kit.PasswordInputProps{ID: f.id("secretValue"), Name: "secretValue", Signal: cfgSecretPw, Placeholder: f.secretPlaceholder(), Invalid: f.fieldError(key) != "" && f.Secret, DescribedBy: f.describedBy(key)})
+					<p class="text-xs text-muted-foreground">Stored encrypted. It cannot be read back here; only a reveal (audited) returns it.</p>
+				</div>
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description", "", false)) {
+				@kit.Input(f.inputProps(key, f.Description, kit.InputProps{Attrs: templ.Attributes{"autocomplete": "off"}}))
+			}
+	}
+}
+
+// cfgHiddenWhen hides a value control on first paint, before Datastar
+// evaluates data-show.
+func cfgHiddenWhen(hidden bool) string {
+	if hidden {
+		return "display: none"
+	}
+	return ""
+}

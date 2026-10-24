@@ -28,16 +28,18 @@ func TestDispatchJobsPageAgainstPostgres(t *testing.T) {
 		Jobs: repo, Ops: DispatchJobOps{Repo: repo, UoW: testpg.NewUoW(t)},
 		Clients: client.NewRepository(pool), Shell: shellForTest(),
 	}
+	var seedAged func(id, code, status string, minutesAgo int)
 	// The write table and the read projection (no projector runs here).
-	seed := func(id, code, status string) {
+	seed := func(id, code, status string) { seedAged(id, code, status, 0) }
+	seedAged = func(id, code, status string, minutesAgo int) {
 		t.Helper()
 		_, err := pool.Exec(ctx, `INSERT INTO msg_dispatch_jobs (id, code, target_url, status, attempt_count, last_error, payload, created_at, updated_at)
-			VALUES ($1, $2, 'http://example.invalid/hook', $3, 3, 'HTTP 500', '{"n":1,"a":"<x>"}', NOW(), NOW())`, id, code, status)
+			VALUES ($1, $2, 'http://example.invalid/hook', $3, 3, 'HTTP 500', '{"n":1,"a":"<x>"}', NOW() - make_interval(mins => $4), NOW())`, id, code, status, minutesAgo)
 		require.NoError(t, err)
 		_, err = pool.Exec(ctx, `INSERT INTO msg_dispatch_jobs_read
 			(id, code, application, subdomain, aggregate, target_url, kind, protocol, mode, status, max_retries, attempt_count, created_at, updated_at)
 			VALUES ($1, $2::text, split_part($2::text, ':', 1), split_part($2::text, ':', 2), split_part($2::text, ':', 3), 'http://example.invalid/hook',
-			        'EVENT', 'HTTP_WEBHOOK', 'IMMEDIATE', $3, 3, 3, NOW(), NOW())`, id, code, status)
+			        'EVENT', 'HTTP_WEBHOOK', 'IMMEDIATE', $3, 3, 3, NOW() - make_interval(mins => $4), NOW())`, id, code, status, minutesAgo)
 		require.NoError(t, err)
 	}
 	seed("djbuipg000001", "uipg:sales:order:created", "FAILED")
@@ -73,11 +75,38 @@ func TestDispatchJobsPageAgainstPostgres(t *testing.T) {
 	assert.Contains(t, drawer, "HTTP 500")
 	assert.Contains(t, drawer, "&#34;a&#34;: &#34;&lt;x&gt;&#34;")
 
-	// Ticked rows: the FAILED one is reset; the COMPLETED one is left alone (a
-	// completed job is redriven only through the API's redrive fields).
-	do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/requeue", datastar: true, form: url.Values{"ids": {"djbuipg000003", "djbuipg000004"}}})
+	// Ticked rows including a COMPLETED one: the caller may redrive, so the dialog
+	// asks first and nothing is reset.
+	ticked := url.Values{"ids": {"djbuipg000003", "djbuipg000004"}}
+	asked := do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/requeue", datastar: true, form: ticked})
+	assert.Contains(t, asked, "of them COMPLETED")
+	assert.Equal(t, common.DispatchFailed, status("djbuipg000004"))
+	// "Requeue 1 other job": the FAILED one is reset; the COMPLETED one is left alone.
+	do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/requeue", datastar: true, form: url.Values{"ids": ticked["ids"], "step": {"plain"}}})
 	assert.Equal(t, common.DispatchCompleted, status("djbuipg000003"))
 	assert.Equal(t, common.DispatchPending, status("djbuipg000004"))
+	// A wrong confirmation redrives nothing; the typed one redrives the COMPLETED job.
+	do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/requeue", datastar: true, form: url.Values{"ids": {"djbuipg000003"}, "step": {"redrive"}, "word": {"REDRIVE"}, "count": {"2"}}})
+	assert.Equal(t, common.DispatchCompleted, status("djbuipg000003"))
+	do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/requeue", datastar: true, form: url.Values{"ids": {"djbuipg000003"}, "step": {"redrive"}, "word": {"REDRIVE"}, "count": {"1"}}})
+	assert.Equal(t, common.DispatchPending, status("djbuipg000003"))
+
+	// The Stuck lens: only PENDING and QUEUED jobs older than five minutes.
+	seedAged("djbuipg000010", "uipgs:sales:order:paid", "PENDING", 60)
+	seedAged("djbuipg000011", "uipgs:sales:order:paid", "PENDING", 1)
+	stuck := do(req{target: "/ui/dispatch-jobs?applications=uipgs&statuses=PENDING&statuses=QUEUED&lens=stuck"})
+	assert.Contains(t, stuck, "djbuipg000010")
+	assert.NotContains(t, stuck, "djbuipg000011")
+	assert.Contains(t, do(req{target: "/ui/dispatch-jobs?applications=uipgs&statuses=PENDING&statuses=QUEUED"}), "djbuipg000011")
+
+	// Requeue by filter with a redrive: the typed count covers the eligible and the COMPLETED jobs.
+	seed("djbuipg000020", "uipgr:sales:order:paid", "FAILED")
+	seed("djbuipg000021", "uipgr:sales:order:paid", "COMPLETED")
+	redrive := do(req{target: "/ui/dispatch-jobs/requeue-by-filter?applications=uipgr&step=redrive", datastar: true})
+	assert.Contains(t, redrive, `name="confirmCount" value="2"`)
+	do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/requeue-by-filter?applications=uipgr", datastar: true, form: url.Values{"confirmCount": {"2"}, "redrive": {"1"}, "word": {"REDRIVE"}, "count": {"2"}}})
+	assert.Equal(t, common.DispatchPending, status("djbuipg000020"))
+	assert.Equal(t, common.DispatchPending, status("djbuipg000021"))
 
 	preview := do(req{target: "/ui/dispatch-jobs/requeue-by-filter?applications=uipg&statuses=FAILED", datastar: true})
 	assert.Contains(t, preview, "2 jobs</strong> match")

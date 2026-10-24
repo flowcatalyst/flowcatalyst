@@ -64,6 +64,9 @@ const (
 	flashProcUpdated  = "process-updated"
 	flashProcArchived = "process-archived"
 	flashProcDeleted  = "process-deleted"
+
+	flashCfgSaved   = "config-saved"
+	flashCfgDeleted = "config-deleted"
 )
 
 // FlashMessages is the table the shell maps flash keys through
@@ -131,6 +134,10 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashProcUpdated:  {Kind: kit.FlashSuccess, Summary: "Process updated"},
 	flashProcArchived: {Kind: kit.FlashSuccess, Summary: "Process archived"},
 	flashProcDeleted:  {Kind: kit.FlashSuccess, Summary: "Process deleted"},
+
+	// The SPA's toasts name the property; a flash key carries no request text.
+	flashCfgSaved:   {Kind: kit.FlashSuccess, Summary: "Saved", Detail: "The property was saved"},
+	flashCfgDeleted: {Kind: kit.FlashSuccess, Summary: "Deleted", Detail: "The property was deleted"},
 }
 
 // success is the SPA's toast.success("Success", detail).

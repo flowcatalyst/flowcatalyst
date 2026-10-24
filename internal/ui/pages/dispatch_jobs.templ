@@ -167,6 +167,18 @@ templ djWindowBar(v djView) {
 			@kit.Icon(kit.IconProps{Name: "circle-alert", Class: "size-[1rem]"})
 			Failed
 		</a>
+		<a
+			href={ v.Query.stuckLensURL() }
+			class={ "fc-btn fc-btn-sm", templ.KV("fc-btn-warn", v.Query.stuckLens()), templ.KV("fc-btn-outline", !v.Query.stuckLens()) }
+			title="PENDING and QUEUED jobs created more than 5 minutes ago"
+			if v.Query.stuckLens() {
+				aria-pressed="true"
+			}
+			data-on:click__prevent={ djNavLink }
+		>
+			@kit.Icon(kit.IconProps{Name: "clock", Class: "size-[1rem]"})
+			Stuck
+		</a>
 	</div>
 	if v.Window.Defaulted {
 		<p class="px-3 pb-2 text-sm text-muted-foreground">No dates were chosen, so only the last 24 hours are shown. Pick a longer window to look further back (up to 31 days).</p>
@@ -394,6 +406,9 @@ func djRowActions(row djRow) kit.RowActionsProps {
 	if row.CanRequeue {
 		p.Actions = append(p.Actions, kit.RowAction{Icon: "rotate-ccw", Label: "Requeue — reset to PENDING for re-dispatch", Attrs: templ.Attributes{"data-on:click": djRowRequeue, "data-action": row.RequeueAction}})
 	}
+	if row.CanRedrive {
+		p.Actions = append(p.Actions, kit.RowAction{Icon: "triangle-alert", Label: "Redrive — deliver this COMPLETED job again (asks you to confirm twice)", Attrs: templ.Attributes{"data-on:click": djRowRequeue, "data-action": row.RedriveAction, "aria-haspopup": "dialog"}})
+	}
 	return p
 }
 
@@ -446,6 +461,14 @@ templ djDrawerBody(d djDetail) {
 					}
 				</form>
 			}
+			if d.CanRedrive {
+				<form method="post" action={ d.ActionBase + "/redrive" } data-on:submit={ kit.SubmitForm }>
+					<input type="hidden" name="drawer" data-attr:value={ "$" + djDrawerSig }/>
+					@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: kit.LegacyDangerOutline, Icon: "triangle-alert", Attrs: templ.Attributes{"title": "Deliver this COMPLETED job again (asks you to confirm twice)", "aria-haspopup": "dialog"}}) {
+						Redrive
+					}
+				</form>
+			}
 		</div>
 		<div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
 			<section class="flex min-w-0 flex-col gap-3">
@@ -467,7 +490,23 @@ templ djDrawerBody(d djDetail) {
 						<span class="font-mono wrap-anywhere">{ d.Target }</span>
 					}
 					@kit.DetailField(kit.DetailFieldProps{Label: "Subscription"}) {
-						<span class="font-mono">{ d.Subscription }</span>
+						if d.SubName != "" {
+							<a href={ templ.SafeURL(d.SubHref) }>{ d.SubName }</a>
+							<span class="font-mono text-xs">{ " (" + d.SubCode + ")" }</span>
+						} else {
+							<span class="font-mono">{ d.Subscription }</span>
+						}
+					}
+					if d.ConnShown {
+						@kit.DetailField(kit.DetailFieldProps{Label: "Connection"}) {
+							if d.ConnCode != "" {
+								<a href={ templ.SafeURL(d.ConnHref) }>{ d.ConnCode }</a>
+							} else if d.SubName != "" {
+								<span class="text-muted-foreground">none</span>
+							} else {
+								<span class="text-muted-foreground">-</span>
+							}
+						}
 					}
 					@kit.DetailField(kit.DetailFieldProps{Label: "Event"}) {
 						<span class="font-mono">{ d.Event }</span>
@@ -517,6 +556,12 @@ templ djDrawerBody(d djDetail) {
 						</details>
 					}
 				</div>
+				if d.CanAudit {
+					<details class="rounded-lg border border-border p-3" data-on:toggle={ "el.open && @get('" + d.AuditHref + "')" }>
+						<summary class="cursor-pointer text-sm font-medium">Audit</summary>
+						@djAuditBody(djAudit{})
+					</details>
+				}
 			</section>
 			<section class="flex min-w-0 flex-col gap-3">
 				<h3 class="fc-section-title">Attempts</h3>
@@ -634,70 +679,209 @@ templ djPlanSection(p djPlan) {
 // ── requeue by filter ──────────────────────────────────────────────────
 
 // djRequeueDialog is the SPA's RequeueByFilterDialog. Its form posts to the
-// filter's own URL with the eligible count the user was shown.
+// filter's own URL with the count the user was shown; holders of
+// redrive-completed also get the second step that redrives the COMPLETED
+// matches.
 templ djRequeueDialog(p djPreview) {
 	@kit.Dialog(kit.DialogProps{
-		ID: djRBFDialog, Title: "Requeue all matching jobs", Width: kit.WidthWide, Closable: true,
+		ID: djRBFDialog, Title: p.title(), Width: kit.WidthWide, Closable: true,
 		Attrs:  templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"},
 		Footer: djRequeueFooter(p),
 	}) {
 		<form id={ djRBFDialog + "-form" } method="post" action={ p.Action } class="flex flex-col gap-4" data-on:submit={ kit.SubmitForm }>
-			<input type="hidden" name="confirmCount" value={ strconv.FormatInt(p.Eligible, 10) }/>
-			<section>
-				<h4 class="fc-field-label mb-1.5 uppercase">Filters</h4>
-				if len(p.Summary) > 0 {
-					<dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
-						for _, kv := range p.Summary {
-							<dt class="text-muted-foreground">{ kv.Key }</dt>
-							<dd class="break-all">{ kv.Value }</dd>
-						}
-					</dl>
-				} else {
-					<p class="flex items-center gap-1.5 text-sm text-orange-600">
-						@kit.Icon(kit.IconProps{Name: "triangle-alert", Class: "size-[1rem]"})
-						No filters — this matches every dispatch job you can see.
-					</p>
-				}
-			</section>
-			<section class="flex flex-col gap-2 text-sm">
-				<h4 class="fc-field-label uppercase">Matching jobs</h4>
-				<p class="text-muted-foreground">Created { p.Window }.</p>
-				<p><strong>{ counted(p.Count, "job") }</strong> match.</p>
-				if len(p.ByStatus) > 0 {
-					<div class="flex flex-wrap gap-1.5">
-						for _, s := range p.ByStatus {
-							@kit.Tag(kit.TagProps{Severity: s.Severity, Label: s.Status + " · " + thousands(s.Count)})
-						}
-					</div>
-				}
-				<p>
-					<strong>{ counted(p.Eligible, "job") }</strong> can be requeued.
-					if p.OutOfScope > 0 {
-						<span class="text-muted-foreground">{ thousands(p.OutOfScope) } platform-scoped or outside your client access will be left alone.</span>
-					}
-				</p>
-				if p.InFlight > 0 {
-					<p class="text-muted-foreground">{ counted(p.InFlight, "job") } QUEUED or PROCESSING will be left alone — a job in flight is never requeued.</p>
-				}
-				if p.Completed > 0 {
-					<p class="text-muted-foreground">{ counted(p.Completed, "COMPLETED job") } will be left alone — they were already delivered. Redriving COMPLETED jobs is available in the console (it needs the redrive-completed permission).</p>
-				}
-				if p.OverCap {
-					<p class="text-muted-foreground">At most { thousands(djMaxRequeue) } are requeued per run; run it again for the rest.</p>
-				}
-			</section>
-			if p.Changed {
-				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "More jobs match than when you looked, so nothing was requeued. The counts above are current — review them and confirm again."})
+			<input type="hidden" name="confirmCount" value={ strconv.FormatInt(p.confirmCount(), 10) }/>
+			if p.Redrive {
+				<input type="hidden" name="redrive" value="1"/>
+				@djRedriveStep(counted(p.Completed, "COMPLETED job"), p.RedriveCount, true, p.Error)
+			} else {
+				@djRequeueReview(p)
 			}
-			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "Requeue resets each job to PENDING — clearing its attempt count, schedule and last error — and the scheduler delivers it again. Jobs in flight and jobs that already completed are left alone."})
 		</form>
 	}
 }
 
+// djRequeueReview is the dialog's first step: the filter, what it matches and
+// what a requeue will do.
+templ djRequeueReview(p djPreview) {
+	<section>
+		<h4 class="fc-field-label mb-1.5 uppercase">Filters</h4>
+		if len(p.Summary) > 0 {
+			<dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
+				for _, kv := range p.Summary {
+					<dt class="text-muted-foreground">{ kv.Key }</dt>
+					<dd class="break-all">{ kv.Value }</dd>
+				}
+			</dl>
+		} else {
+			<p class="flex items-center gap-1.5 text-sm text-orange-600">
+				@kit.Icon(kit.IconProps{Name: "triangle-alert", Class: "size-[1rem]"})
+				No filters — this matches every dispatch job you can see.
+			</p>
+		}
+	</section>
+	<section class="flex flex-col gap-2 text-sm">
+		<h4 class="fc-field-label uppercase">Matching jobs</h4>
+		<p class="text-muted-foreground">Created { p.Window }.</p>
+		<p><strong>{ counted(p.Count, "job") }</strong> match.</p>
+		if len(p.ByStatus) > 0 {
+			<div class="flex flex-wrap gap-1.5">
+				for _, s := range p.ByStatus {
+					@kit.Tag(kit.TagProps{Severity: s.Severity, Label: s.Status + " · " + thousands(s.Count)})
+				}
+			</div>
+		}
+		<p>
+			<strong>{ counted(p.Eligible, "job") }</strong> can be requeued.
+			if p.OutOfScope > 0 {
+				<span class="text-muted-foreground">{ thousands(p.OutOfScope) } platform-scoped or outside your client access will be left alone.</span>
+			}
+		</p>
+		if p.InFlight > 0 {
+			<p class="text-muted-foreground">{ counted(p.InFlight, "job") } QUEUED or PROCESSING will be left alone — a job in flight is never requeued.</p>
+		}
+		if p.Completed > 0 {
+			<p class="text-muted-foreground">
+				{ counted(p.Completed, "COMPLETED job") } will be left alone — they were already delivered.
+				if !p.CanRedrive {
+					Redriving them needs the redrive-completed permission.
+				}
+			</p>
+		}
+		if p.CanRedrive {
+			<div>
+				<a href={ p.RedriveHref } class="fc-btn fc-btn-outline fc-btn-sm" aria-haspopup="dialog" data-on:click__prevent={ liveLink }>
+					@kit.Icon(kit.IconProps{Name: "triangle-alert", Class: "size-[1rem]"})
+					{ "Also redrive " + counted(p.Completed, "COMPLETED job") + "…" }
+				</a>
+				<p class="mt-1 text-xs text-muted-foreground">They were already delivered; this will deliver them again. You will be asked to confirm a second time.</p>
+			</div>
+		}
+		if p.OverCap {
+			<p class="text-muted-foreground">At most { thousands(djMaxRequeue) } are requeued per run; run it again for the rest.</p>
+		}
+	</section>
+	if p.Changed {
+		@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "More jobs match than when you looked, so nothing was requeued. The counts above are current — review them and confirm again."})
+	}
+	@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "Requeue resets each job to PENDING — clearing its attempt count, schedule and last error — and the scheduler delivers it again. Jobs in flight and jobs that already completed are left alone."})
+}
+
 templ djRequeueFooter(p djPreview) {
 	<button type="button" class="fc-btn fc-btn-text" data-on:click={ kit.CloseDialog }>Cancel</button>
-	<button type="submit" form={ djRBFDialog + "-form" } class="fc-btn fc-btn-danger" disabled?={ p.Eligible == 0 }>
-		@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
-		{ "Requeue " + counted(p.ToRequeue, "job") }
-	</button>
+	if p.Redrive {
+		<a href={ p.Review } class="fc-btn fc-btn-text" data-on:click__prevent={ liveLink }>Back</a>
+		<button type="submit" form={ djRBFDialog + "-form" } class="fc-btn fc-btn-danger">
+			@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
+			{ "Redrive " + counted(p.Completed, "COMPLETED job") }
+		</button>
+	} else {
+		<button type="submit" form={ djRBFDialog + "-form" } class="fc-btn fc-btn-danger" disabled?={ p.Eligible == 0 }>
+			@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
+			{ "Requeue " + counted(p.ToRequeue, "job") }
+		</button>
+	}
+}
+
+// djAuditBody is the Audit section's content, replaced when it is opened.
+templ djAuditBody(a djAudit) {
+	<div id="dj-audit-body" class="mt-2 text-sm">
+		if a.Failed {
+			<p class="text-muted-foreground">The audit trail could not be loaded.</p>
+		} else if len(a.Entries) == 0 {
+			<p class="text-muted-foreground">No audit entries: nobody has changed this job by hand.</p>
+		} else {
+			<ul class="flex flex-col gap-1.5">
+				for _, e := range a.Entries {
+					<li>
+						<strong>{ e.Operation }</strong>
+						<span class="text-muted-foreground">{ " by " }</span>
+						{ e.Actor }
+						<span class="text-xs text-muted-foreground">{ " · " }</span>
+						@kit.LocalTime(kit.LocalTimeProps{At: e.At})
+					</li>
+				}
+			</ul>
+		}
+	</div>
+}
+
+// ── requeue of ticked rows with COMPLETED jobs among them ──────────────
+
+const djSelForm = djSelDialog + "-form"
+
+// djSelectionDialog is the SPA's RequeueSelectedDialog: review (what a plain
+// requeue does, and the option to also redrive the COMPLETED ones), then the
+// typed confirmation.
+templ djSelectionDialog(s djSelection) {
+	@kit.Dialog(kit.DialogProps{
+		ID: djSelDialog, Title: djSelTitle(s), Width: kit.WidthDefault, Closable: true,
+		Attrs:  templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"},
+		Footer: djSelectionFooter(s),
+	}) {
+		<form id={ djSelForm } method="post" action={ djPath + "/requeue" } class="flex flex-col gap-4" data-on:submit={ kit.SubmitForm }>
+			<input type="hidden" name="step" value="plain"/>
+			<input type="hidden" name="drawer" value={ s.Drawer }/>
+			for _, id := range s.IDs {
+				<input type="hidden" name="ids" value={ id }/>
+			}
+			if s.Confirm {
+				@djRedriveStep(counted(int64(s.Completed), "COMPLETED job"), int64(s.Completed), false, s.Error)
+			} else {
+				<p class="text-sm">
+					<strong>{ counted(int64(len(s.IDs)), "job") }</strong> selected, <strong>{ thousands(int64(s.Completed)) }</strong> of them COMPLETED.
+					A requeue leaves COMPLETED jobs alone; jobs in flight (QUEUED or PROCESSING) are also never reset.
+				</p>
+				<p class="text-sm text-muted-foreground">Redriving the COMPLETED ones delivers them again: they were already delivered once. You will be asked to confirm a second time.</p>
+			}
+		</form>
+	}
+}
+
+func djSelTitle(s djSelection) string {
+	if s.Confirm {
+		return "Redrive COMPLETED jobs"
+	}
+	return "Requeue selected jobs"
+}
+
+templ djSelectionFooter(s djSelection) {
+	<button type="button" class="fc-btn fc-btn-text" data-on:click={ kit.CloseDialog }>Cancel</button>
+	if s.Confirm {
+		<button type="button" class="fc-btn fc-btn-text" data-on:click={ djStep(djSelForm, "review") }>Back</button>
+		<button type="button" class="fc-btn fc-btn-danger" data-on:click={ djStep(djSelForm, "redrive") }>
+			@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
+			{ "Redrive " + counted(int64(s.Completed), "COMPLETED job") }
+		</button>
+	} else {
+		<button type="button" class="fc-btn fc-btn-outline" data-on:click={ djStep(djSelForm, "confirm") }>
+			@kit.Icon(kit.IconProps{Name: "triangle-alert", Class: "size-[1rem]"})
+			{ "Also redrive " + counted(int64(s.Completed), "COMPLETED job") + "…" }
+		</button>
+		<button type="submit" form={ djSelForm } class="fc-btn fc-btn-danger" disabled?={ s.others() == 0 }>
+			@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
+			{ "Requeue " + counted(int64(s.others()), "other job") }
+		</button>
+	}
+}
+
+// djRedriveStep is the second step of a redrive (RedriveConfirmStep): the
+// word and the count are the confirmation. count is what the run resets.
+templ djRedriveStep(completed string, count int64, includesPlain bool, errMsg string) {
+	@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Icon: "triangle-alert", Description: completed + " were already delivered. Redriving them delivers them again: the receiver sees each one a second time and may act on it twice. This cannot be undone."})
+	@kit.FormField(kit.FormFieldProps{Label: "Type " + djRedriveWord + " to confirm", For: "dj-redrive-word"}) {
+		@kit.Input(kit.InputProps{ID: "dj-redrive-word", Name: "word", Placeholder: djRedriveWord, Required: true, Attrs: templ.Attributes{"autocomplete": "off", "autofocus": true}})
+	}
+	@kit.FormField(kit.FormFieldProps{Label: "Type the number of jobs that will be reset: " + thousands(count), For: "dj-redrive-count", Error: errMsg}) {
+		@kit.Input(kit.InputProps{ID: "dj-redrive-count", Name: "count", Placeholder: strconv.FormatInt(count, 10), Required: true, Invalid: errMsg != "", DescribedBy: djDescribedBy(errMsg), Attrs: templ.Attributes{"autocomplete": "off", "inputmode": "numeric"}})
+	}
+	if includesPlain {
+		<p class="text-sm text-muted-foreground">This is every job the run resets: the { completed } plus the ones a plain requeue would reset.</p>
+	}
+}
+
+func djDescribedBy(errMsg string) string {
+	if errMsg == "" {
+		return ""
+	}
+	return "dj-redrive-count-msg"
 }

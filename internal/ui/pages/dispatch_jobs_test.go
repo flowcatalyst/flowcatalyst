@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	djops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
 	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
@@ -70,6 +71,16 @@ func (f *fakeDJStore) FindByID(_ context.Context, id string) (*dispatchjob.Dispa
 	return nil, nil
 }
 
+func (f *fakeDJStore) FindByIDs(_ context.Context, ids []string) ([]dispatchjob.DispatchJob, error) {
+	var out []dispatchjob.DispatchJob
+	for _, j := range f.jobs {
+		if slices.Contains(ids, j.ID) {
+			out = append(out, j)
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeDJStore) AttemptsByJob(_ context.Context, id string) ([]dispatchjob.Attempt, error) {
 	return f.attempts[id], nil
 }
@@ -87,6 +98,9 @@ func (f *fakeDJStore) DistinctValues(_ context.Context, column string, _ int, sc
 
 type fakeDJOps struct {
 	requeued  [][]string
+	redrives  []bool // each requeue's redrive flag
+	byRedrive []bool // each by-filter run's redrive flag
+	requeue   RequeueResult
 	previews  []dispatchjob.FilterParams
 	byFilter  []dispatchjob.FilterParams
 	confirms  []int64
@@ -118,9 +132,13 @@ func (o *fakeDJOps) EditPayload(_ context.Context, id, payload string, contentTy
 	return o.err
 }
 
-func (o *fakeDJOps) Requeue(_ context.Context, ids []string) (int, error) {
+func (o *fakeDJOps) Requeue(_ context.Context, ids []string, redrive bool) (RequeueResult, error) {
 	o.requeued = append(o.requeued, ids)
-	return len(ids), o.err
+	o.redrives = append(o.redrives, redrive)
+	if o.requeue != (RequeueResult{}) {
+		return o.requeue, o.err
+	}
+	return RequeueResult{Requeued: len(ids)}, o.err
 }
 
 func (o *fakeDJOps) Preview(_ context.Context, f dispatchjob.FilterParams) (djops.MatchSummary, error) {
@@ -128,8 +146,9 @@ func (o *fakeDJOps) Preview(_ context.Context, f dispatchjob.FilterParams) (djop
 	return o.summary, nil
 }
 
-func (o *fakeDJOps) RequeueByFilter(_ context.Context, f dispatchjob.FilterParams, confirm int64) (djops.ResendByFilterResult, error) {
+func (o *fakeDJOps) RequeueByFilter(_ context.Context, f dispatchjob.FilterParams, confirm int64, redrive bool) (djops.ResendByFilterResult, error) {
 	o.byFilter = append(o.byFilter, f)
+	o.byRedrive = append(o.byRedrive, redrive)
 	o.confirms = append(o.confirms, confirm)
 	return o.result, o.err
 }
@@ -159,6 +178,35 @@ func djJob(id, code string, status common.DispatchStatus, client string, minutes
 type djHarness struct {
 	store *fakeDJStore
 	ops   *fakeDJOps
+	// subs, conns and audit are wired into the page only when a test sets them.
+	subs  *fakeSubs
+	conns *fakeConns
+	audit *fakeDJAudit
+}
+
+type fakeDJAudit struct {
+	rows   []audit.Log
+	err    error
+	filter []audit.FilterParams
+}
+
+func (f *fakeDJAudit) FindWithFilters(_ context.Context, p audit.FilterParams) ([]audit.Log, error) {
+	f.filter = append(f.filter, p)
+	return f.rows, f.err
+}
+
+// wire adds the optional dependencies the test set.
+func (h *djHarness) wire(page *DispatchJobs) *DispatchJobs {
+	if h.subs != nil {
+		page.Subs = h.subs
+	}
+	if h.conns != nil {
+		page.Connections = h.conns
+	}
+	if h.audit != nil {
+		page.Audit = h.audit
+	}
+	return page
 }
 
 func newDJHarness() *djHarness {
@@ -195,7 +243,7 @@ func (h *djHarness) rec(t *testing.T, ac *auth.AuthContext, q req) *httptest.Res
 			return map[string]string{"clt_1": "acme"}[id], id == "clt_1"
 		},
 	}
-	return serveMounted(t, ac, q, page)
+	return serveMounted(t, ac, q, h.wire(page))
 }
 
 func (h *djHarness) do(t *testing.T, ac *auth.AuthContext, q req) string {
@@ -330,10 +378,10 @@ func TestDispatchJobsRequeue(t *testing.T) {
 	if got := h.ops.requeued[0]; strings.Join(got, ",") != "djb_1,djb_3" {
 		t.Errorf("requeued %v", got)
 	}
-	one := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_2/requeue", datastar: true, form: url.Values{"drawer": {""}}})
+	one := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_3/requeue", datastar: true, form: url.Values{"drawer": {""}}})
 	mustContain(t, one, "1 dispatch job reset to PENDING")
 	mustNotContain(t, one, "selector #dj-drawer\n")
-	native := h.rec(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_2/requeue", form: url.Values{}, referer: "http://example.com/ui/dispatch-jobs?size=50"})
+	native := h.rec(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_3/requeue", form: url.Values{}, referer: "http://example.com/ui/dispatch-jobs?size=50"})
 	if native.Code != http.StatusSeeOther || native.Header().Get("Location") != "/ui/dispatch-jobs?size=50" {
 		t.Errorf("native requeue: %d %s", native.Code, native.Header().Get("Location"))
 	}

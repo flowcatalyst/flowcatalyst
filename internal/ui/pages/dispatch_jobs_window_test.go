@@ -20,7 +20,7 @@ func (h *djHarness) recAt(t *testing.T, now time.Time, q req) string {
 		ClientIdentifier: func(_ context.Context, id string) (string, bool) { return id, false },
 		Now:              func() time.Time { return now },
 	}
-	return serveMounted(t, anchorAdmin(), q, page).Body.String()
+	return serveMounted(t, anchorAdmin(), q, h.wire(page)).Body.String()
 }
 
 func TestDispatchJobQueryNewFilters(t *testing.T) {
@@ -198,11 +198,4 @@ func TestDispatchJobsCancelComplete(t *testing.T) {
 	failed := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/cancel", datastar: true, form: url.Values{}})
 	mustContain(t, failed, "fc-flash-error")
 	mustNotContain(t, failed, "The job will not be retried")
-}
-
-func TestDispatchJobsRedriveNote(t *testing.T) {
-	h := newDJHarness()
-	h.ops.summary.Completed = 4
-	dlg := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/requeue-by-filter", datastar: true})
-	mustContain(t, dlg, "4 COMPLETED jobs", "Redriving COMPLETED jobs is available in the console")
 }

@@ -485,14 +485,18 @@ func (o ScheduledJobOps) Fire(ctx context.Context, id string) (string, error) {
 // DispatchJobCommands are the dispatch-job operations the dispatch jobs page
 // runs; DispatchJobOps runs what internal/platform/dispatchjob/api runs.
 type DispatchJobCommands interface {
-	// Requeue runs ResendDispatchJobs and returns how many jobs were reset
-	// (ids outside the caller's tenants are dropped by the use case).
-	Requeue(ctx context.Context, ids []string) (int, error)
+	// Requeue runs ResendDispatchJobs and reports what it did (ids outside
+	// the caller's tenants are dropped by the use case). redrive sends the
+	// API's two redrive fields, so COMPLETED jobs are re-delivered too; the
+	// caller has checked dispatch-job:redrive-completed and the typed
+	// confirmation.
+	Requeue(ctx context.Context, ids []string, redrive bool) (RequeueResult, error)
 	// Preview counts what a requeue-by-filter would touch (SummarizeMatches).
 	Preview(ctx context.Context, f dispatchjob.FilterParams) (djops.MatchSummary, error)
-	// RequeueByFilter runs ResendByFilter with the confirmed eligible count
-	// and the default (maximum) limit. f already carries its time window.
-	RequeueByFilter(ctx context.Context, f dispatchjob.FilterParams, confirmCount int64) (djops.ResendByFilterResult, error)
+	// RequeueByFilter runs ResendByFilter with the confirmed count (the
+	// eligible count, or with redrive the eligible plus COMPLETED count) and
+	// the default (maximum) limit. f already carries its time window.
+	RequeueByFilter(ctx context.Context, f dispatchjob.FilterParams, confirmCount int64, redrive bool) (djops.ResendByFilterResult, error)
 	// Plan builds the job's delivery without sending it (the "sign" action);
 	// ErrPlanUnavailable when the server has no planner wired.
 	Plan(ctx context.Context, j *dispatchjob.DispatchJob) (*dispatchprocessing.DeliveryPlan, error)
@@ -519,13 +523,32 @@ type DispatchJobOps struct {
 	Planner func(ctx context.Context, j *dispatchjob.DispatchJob) (*dispatchprocessing.DeliveryPlan, error)
 }
 
+// RequeueResult is what a requeue by ids did: the jobs reset (the redriven
+// COMPLETED ones included) and the ones the status guard left alone.
+type RequeueResult struct {
+	Requeued, Redriven, SkippedInFlight, SkippedCompleted int
+}
+
 // Requeue runs ResendDispatchJobs.
-func (o DispatchJobOps) Requeue(ctx context.Context, ids []string) (int, error) {
-	ev, err := usecaseop.Run(ctx, o.UoW, djops.ResendDispatchJobs(o.Repo), djops.ResendCommand{IDs: ids}, auth.NewExecutionContext(ctx))
-	if err != nil {
-		return 0, err
+func (o DispatchJobOps) Requeue(ctx context.Context, ids []string, redrive bool) (RequeueResult, error) {
+	cmd := djops.ResendCommand{IDs: ids}
+	if redrive {
+		cmd.RedriveCompleted, cmd.ConfirmRedriveCompleted = true, dispatchjob.RedriveConfirmation
 	}
-	return len(ev.IDs), nil
+	ev, err := usecaseop.Run(ctx, o.UoW, djops.ResendDispatchJobs(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	if err != nil {
+		return RequeueResult{}, err
+	}
+	res := RequeueResult{Requeued: len(ev.IDs), Redriven: len(ev.Redriven)}
+	for _, s := range ev.Skipped {
+		switch s.Reason {
+		case dispatchjob.SkipInFlight:
+			res.SkippedInFlight++
+		case dispatchjob.SkipCompletedNotConfirmed:
+			res.SkippedCompleted++
+		}
+	}
+	return res, nil
 }
 
 // EditPayload runs EditDispatchJobPayload.
@@ -552,10 +575,13 @@ func (o DispatchJobOps) Preview(ctx context.Context, f dispatchjob.FilterParams)
 	return djops.SummarizeMatches(ctx, o.Repo, f)
 }
 
-// RequeueByFilter runs ResendByFilter (limit 0: the default, which is the cap;
-// no redrive: COMPLETED jobs and jobs in flight are left alone).
-func (o DispatchJobOps) RequeueByFilter(ctx context.Context, f dispatchjob.FilterParams, confirmCount int64) (djops.ResendByFilterResult, error) {
-	return djops.ResendByFilter(ctx, o.UoW, o.Repo, f, confirmCount, 0, djops.ResendByFilterOptions{}, auth.NewExecutionContext(ctx))
+// RequeueByFilter runs ResendByFilter (limit 0: the default, which is the cap).
+func (o DispatchJobOps) RequeueByFilter(ctx context.Context, f dispatchjob.FilterParams, confirmCount int64, redrive bool) (djops.ResendByFilterResult, error) {
+	var opts djops.ResendByFilterOptions
+	if redrive {
+		opts = djops.ResendByFilterOptions{RedriveCompleted: true, ConfirmRedriveCompleted: dispatchjob.RedriveConfirmation}
+	}
+	return djops.ResendByFilter(ctx, o.UoW, o.Repo, f, confirmCount, 0, opts, auth.NewExecutionContext(ctx))
 }
 
 // Plan runs the planner.

@@ -1,4 +1,4 @@
-package api
+package platformconfig
 
 import (
 	"context"
@@ -17,7 +17,7 @@ func (f fakeApps) FindByCode(_ context.Context, code string) (*application.Appli
 }
 
 func TestConfineApp(t *testing.T) {
-	s := &State{Apps: fakeApps{
+	s := &Service{Apps: fakeApps{
 		"orders":  {ID: "app_orders", Code: "orders"},
 		"billing": {ID: "app_billing", Code: "billing"},
 	}}
@@ -35,7 +35,7 @@ func TestConfineApp(t *testing.T) {
 		{"non-anchor is left to the role grants", &auth.AuthContext{Scope: auth.ScopeClient}, "billing", true},
 	}
 	for _, c := range cases {
-		err := s.confineApp(context.Background(), c.ac, c.app)
+		err := s.ConfineApp(context.Background(), c.ac, c.app)
 		if (err == nil) != c.allowed {
 			t.Errorf("%s: err=%v, want allowed=%v", c.name, err, c.allowed)
 		}
@@ -43,7 +43,7 @@ func TestConfineApp(t *testing.T) {
 }
 
 func TestAuthorizeReveal(t *testing.T) {
-	s := &State{
+	s := &Service{
 		Apps: fakeApps{
 			"orders":  {ID: "app_orders", Code: "orders"},
 			"billing": {ID: "app_billing", Code: "billing"},
@@ -121,7 +121,7 @@ func TestAuthorizeReveal(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		_, err := s.authorizeReveal(context.Background(), c.ac, c.app, c.clientRef)
+		_, err := s.AuthorizeReveal(context.Background(), c.ac, c.app, c.clientRef)
 		if (err == nil) != c.allowed {
 			t.Errorf("%s: err=%v, want allowed=%v", c.name, err, c.allowed)
 		}
@@ -153,7 +153,7 @@ func newFakeClients() fakeClients {
 // identifier in another case all resolve to the id; an unknown client is
 // refused rather than becoming a row keyed by a string that is no client.
 func TestResolveClientID(t *testing.T) {
-	s := &State{Clients: newFakeClients()}
+	s := &Service{Clients: newFakeClients()}
 	for ref, want := range map[string]string{
 		"":                    "",
 		"  ":                  "",
@@ -161,16 +161,16 @@ func TestResolveClientID(t *testing.T) {
 		"acme":                "clt_acme00000000001",
 		"ACME":                "clt_acme00000000001",
 	} {
-		got, err := s.resolveClientID(context.Background(), ref)
+		got, err := s.ResolveClientID(context.Background(), ref)
 		if err != nil || got != want {
 			t.Errorf("resolve(%q) = %q, %v; want %q", ref, got, err, want)
 		}
 	}
-	if _, err := s.resolveClientID(context.Background(), "nobody"); err == nil {
+	if _, err := s.ResolveClientID(context.Background(), "nobody"); err == nil {
 		t.Error("an unknown client must be refused")
 	}
 	// No client repository (handler tests): the reference passes through.
-	if got, err := (&State{}).resolveClientID(context.Background(), "x"); err != nil || got != "x" {
+	if got, err := (&Service{}).ResolveClientID(context.Background(), "x"); err != nil || got != "x" {
 		t.Errorf("no lookup: got %q, %v", got, err)
 	}
 }
@@ -179,21 +179,21 @@ func TestResolveClientID(t *testing.T) {
 // passed the permission check: an unauthorised caller learns nothing about
 // which clients exist (403 for a real and for an unknown client alike).
 func TestAuthorizeReveal_ClientResolution(t *testing.T) {
-	s := &State{
+	s := &Service{
 		Apps:    fakeApps{"orders": {ID: "app_orders", Code: "orders"}},
 		Clients: newFakeClients(),
 	}
 	admin := &auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:admin:config:reveal"}}
-	got, err := s.authorizeReveal(context.Background(), admin, "orders", "acme")
+	got, err := s.AuthorizeReveal(context.Background(), admin, "orders", "acme")
 	if err != nil || got != "clt_acme00000000001" {
 		t.Fatalf("code resolves to the id: got %q, %v", got, err)
 	}
-	if _, err := s.authorizeReveal(context.Background(), admin, "orders", "nobody"); err == nil {
+	if _, err := s.AuthorizeReveal(context.Background(), admin, "orders", "nobody"); err == nil {
 		t.Error("an unknown client is refused for an authorised caller")
 	}
 	nobody := &auth.AuthContext{Scope: auth.ScopeAnchor, AllApplications: true}
 	for _, ref := range []string{"acme", "nobody"} {
-		_, err := s.authorizeReveal(context.Background(), nobody, "orders", ref)
+		_, err := s.AuthorizeReveal(context.Background(), nobody, "orders", ref)
 		if err == nil || strings.Contains(err.Error(), "Client") {
 			t.Errorf("unauthorised caller, client %q: want a plain 403, got %v", ref, err)
 		}

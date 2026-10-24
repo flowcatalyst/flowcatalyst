@@ -72,6 +72,7 @@ var navigation = []navSection{
 		{label: "Settings", icon: "settings", children: []navEntry{
 			{label: "Theme", icon: "palette", spa: "/platform/settings/theme", permission: "platform:admin:settings:view"},
 			{label: "Names", icon: "tag", spa: "/platform/settings/names", permission: "platform:admin:settings:view"},
+			{label: "Configuration", icon: "list", spa: "/platform/settings/config", ui: "/ui/platform/config", permission: "platform:admin:config:view"},
 		}},
 		{label: "Debug", icon: "wrench", children: []navEntry{
 			{label: "Raw Events", icon: "database", spa: "/platform/debug/events", permission: "platform:messaging:event:view-raw"},

@@ -405,16 +405,24 @@ Differences from the SPA: dialogs for create/edit; **cron expressions are a text
 
 ### Dispatch jobs (`/ui/dispatch-jobs`)
 
-Mirrors `DispatchJobListPage`, `DispatchJobDetailDrawer` and `RequeueByFilterDialog`. Routes: the list
-(`?clients&applications&subdomains&aggregates&codes&statuses` (repeated), `q` (source), `group`,
-`from`/`to` (YYYY-MM-DD), `dir=asc`, `size`, `after` (keyset position)), `/{id}` (drawer),
-`/{id}/sign`, `/{id}/requeue`, `/requeue` (ticked ids), `/requeue-by-filter` (GET: the confirm step,
+Mirrors `DispatchJobListPage`, `DispatchJobDetailDrawer`, `RequeueByFilterDialog` and `RequeueSelectedDialog`.
+Routes: the list (`?clients&applications&subdomains&aggregates&codes&statuses` (repeated), `q` (source), `group`,
+`eventTypes` (comma list, at most 10), `subscription`, `connection` (exact, or ending in `*`), `window`
+(`1h|3d|7d|31d`; none is the last 24 hours), `from`/`to` (YYYY-MM-DD), `lens=stuck`, `dir=asc`, `size`, `after`
+(keyset position)), `/{id}` (drawer), `/{id}/sign`, `/{id}/requeue`, `/{id}/redrive`, `/{id}/cancel`,
+`/{id}/complete`, `/{id}/payload`, `/{id}/audit` (GET, fills the drawer's Audit section), `/requeue` (ticked ids;
+`step=plain|confirm|redrive`), `/requeue-by-filter` (GET: the confirm step, `step=redrive` for the second step;
 POST: the run; the filter is the URL's query), `/requeue-errors` (the error preset).
 
 - Every route makes the API's checks (`internal/platform/dispatchjob/api`): `dispatch-job:view`, SQL
   tenant scoping (`operations.VisibleTo`), per-job client scope on the drawer; **Sign needs
   `dispatch-job:view-raw`** and is omitted without it (as the SPA now does, bug 20). Requeue (row, drawer, selection, by filter) runs `ResendDispatchJobs` / `ResendByFilter` as the
-  API does, with the API's gate (`dispatch-job:requeue`; Edit payload needs `dispatch-job:edit-payload`; the buttons are hidden without them). The list, the filter dialog and its run carry the API's time window: no dates means the last 24 hours, at most `FC_DISPATCH_JOB_MAX_WINDOW_DAYS` (31); QUEUED, PROCESSING and COMPLETED jobs are left alone by a requeue (redrive is API-only for now).
+  API does, with the API's gate (`dispatch-job:requeue`; Edit payload needs `dispatch-job:edit-payload`, Cancel job `dispatch-job:cancel`, Mark completed `dispatch-job:complete`, Redrive `dispatch-job:redrive-completed` on top of requeue; each control is hidden without its permission and the server stays the guard). A row or the drawer offers Requeue only for a status the API resets (PENDING, FAILED, ERROR, CANCELLED, EXPIRED, as `jobActions` in the SPA) and Redrive only on a COMPLETED job. The list, the filter dialog and its run carry the API's time window: no dates means the last 24 hours, at most `FC_DISPATCH_JOB_MAX_WINDOW_DAYS` (31); QUEUED and PROCESSING jobs are never reset, COMPLETED ones only by a confirmed redrive. The outcome flash says what the guard left alone ("2 jobs in flight (QUEUED or PROCESSING) left alone").
+- **Window bar** (preset buttons, "Showing the last 24 hours", a "default window" tag when the server chose it) and two **quick views**: Failed (FAILED and ERROR) and Stuck (PENDING and QUEUED created more than five minutes ago: `lens=stuck` caps the window's end at now minus 5 minutes, only ever lowering a chosen end date; picking other statuses by hand drops the lens). A requeue by filter acts on the lens too.
+- **Redrive** (re-delivering COMPLETED jobs) is the SPA's double confirmation, server-driven. Ticked rows that include COMPLETED ones, and a row's or the drawer's Redrive, open a dialog for a holder of `redrive-completed` (anyone else requeues at once and is told the COMPLETED ones were left alone): step 1 offers "Requeue N other jobs" or "Also redrive N COMPLETED jobs…"; step 2 asks for the word `REDRIVE` and the number of jobs the run resets, and a wrong entry runs nothing and says why on the field. The by-filter dialog does the same from its review step (`step=redrive`; the number is the eligible plus the COMPLETED count, sent as `confirmCount` with `redrive=1`; a changed match goes back to the review).
+- **Edit payload** is in the drawer for a PENDING or FAILED job (the CodeMirror island, JSON when the content type is). **Audit** (audit-log view permission) loads when the drawer's section is opened; the **subscription and connection** lines link to their pages when the caller may read them (the bare id otherwise, as the SPA does best effort).
+- **Created from/to stay UTC days** (wave 1 ruling, 2026-10-24: conservative). The SPA uses the browser's zone; a server-rendered page does not know it, and sending it would make the 31-day window depend on DST and on a hidden form field. A UTC day is always 24 hours, so a 31-day range is never refused by a day the user cannot see. The label says "UTC days", times in the table stay in the viewer's zone.
+
 - **The filtered view's URL is what "Requeue all matching" acts on**: its link carries the view's
   filter (not size, sort or position) to `/requeue-by-filter?…`; the confirm step previews that filter
   (`SummarizeMatches`: count, by status, eligible, out of scope, the 10,000 cap) and its form posts to
@@ -502,6 +510,51 @@ SPA archives at once; owner ruling: archive and delete go through the shared con
 Edit is disabled with "Archived processes cannot be edited." for an archived process (the SPA's pencil
 opens its editor, bug 24); no SVG/PNG download (the diagram itself is drawn by the Mermaid island since 2026-10-24);
 the flash says "Process created" etc. without the code (flash keys carry no request text).
+
+### Configuration (`/ui/platform/config`)
+
+Mirrors `PlatformConfigPage` (Platform, Settings, Configuration; shown with `platform:admin:config:view`).
+Routes: the list (`?app&q&sort&dir&page&rows`), `/new?app` and `/edit?app&section&property&client` (the dialog),
+and POSTs `/save` (add and edit are one upsert, as `PUT /api/config/...`), `/delete` and `/reveal`
+(the property is named in the query string: `app`, `section`, `property`, `client` = the client's id).
+
+- **One rule set with the API.** The access rules moved out of the API handlers into
+  `platformconfig.Service` (`internal/platform/platformconfig/service.go`): `AuthorizeRead`,
+  `AuthorizeUpdate`, `AuthorizeWrite`, `AuthorizeRevealApp`/`RevealReach`/`AuthorizeReveal`, `ResolveClientID`,
+  `Delete` and `Reveal`. Both the huma handlers and this page call it, so view, update, delete and reveal,
+  the application confinement, "client resolved only after the permission check" and the below-anchor rules
+  cannot drift. Set runs the `SetProperty` use case, as the API.
+- The application select offers `platform` and the active applications the viewer may read (the SPA's
+  `applicationsApi.list({activeOnly})`); an application-scoped account is not offered `platform`. The table
+  (section, property, scope, type, value, description, updated) searches section, property and description,
+  sorts, and pages 25 rows. A client-scoped value shows the client's identifier.
+- **Secrets are never in the page.** The row builder does not read a secret's value at all: the table shows a
+  lock and bullets, the edit dialog never prefills it, and the secret password input has no value to echo, so a
+  failed save re-renders without it. Changing a secret needs a new value (as the SPA). The type is a toggle
+  group; the value control swaps between a textarea and the kit password input by a signal, and the server
+  reads the one that matches the chosen type.
+- Edit and Delete are offered when the viewer passes the API's write rule for the application
+  (`AuthorizeWrite`); Reveal when the viewer holds a reveal permission that reaches the application and
+  that row's client (`AuthorizeRevealApp`, `RevealReach`). The server decides again on every post: a forged
+  save, delete or reveal from a view-only or update-only caller is refused and changes nothing.
+- **Reveal.** A confirmation says it is recorded in the audit log under the caller's name, then
+  `platformconfig.Service.Reveal` runs the API's audited path (permission, confinement, client access, audit row
+  or refusal). The value comes back in that response only, in a dialog (Copy and Close) patched into
+  `#cfg-reveal-slot`: not in a URL, a signal, a flash or the table. The dialog removes itself from the page when
+  it is closed (Close, Escape; no light dismiss), so no plaintext stays in the DOM. The response is
+  `Cache-Control: no-store` (the stream helper sets `no-cache` itself when it starts; the `noStore` writer
+  stamps the header as the response begins). A native post gets the page with the dialog, also uncacheable.
+- Errors follow "Datastar errors": validation lands on its field (section, property, value, an unknown
+  client "No client with this identifier."), a refusal on a Datastar delete or reveal is an error flash, a
+  refused save is the dialog's error region.
+
+Differences from the SPA: add and edit are form dialogs (the same fields); a secret's reveal sits in a modal
+that cannot be dismissed by the mask; Delete and Reveal ask first through the shared confirmation dialogs (the
+SPA's PrimeVue confirm); the flash says "The property was saved/deleted" without the coordinates (flash keys
+carry no request text); the nav entry uses the `list` icon (the kit sprite has no sliders icon).
+
+Not verified in a browser: the signal-driven value swap, the reveal dialog's self-removal and the Copy button
+are covered by the rendered markup in tests only.
 
 ## Compression
 
@@ -992,6 +1045,26 @@ The SPA's `GET /api/events` answers in 0.9 ms (200 rows, 67 KB) and 2.2 ms (1,00
 event row costs ~1 KB of HTML and ~0.09 ms to apply; a dispatch-job row ~2.9 KB and ~0.23 ms (its
 checkbox, two live links and the requeue button each carry Datastar attributes; delegating them to the
 `<tbody>` as the selection count already is would cut both, not done).
+
+### Wave 1 parity pass 2026-10-24
+
+Method: for each area, `git log --since=2026-10-10 -- frontend/src/pages/<area> internal/platform/<area>` (plus
+`internal/ui`, since several commits the same afternoon as a port already changed the `/ui` page), each behaviour change read
+against the page. Dispatch jobs is caught up (section above); the other nine:
+
+- **Dispatch pools: checked.** Edit clearing the rate limit and description (d1158fae) and a client-scoped user picking its own client (108894d6) already changed `/ui` in the same commits; the F19 pool ownership and the identifier stored on create are not on the page.
+- **Connections: checked.** The F17 sync fix and `PUT serviceAccountId` are API-only (the SPA's edit does not send it, so neither does the dialog); nothing in the SPA since 2026-10-10.
+- **Events: checked.** The detail's context data (bug 22) and the 1,000 size clamp are in; F20's application-scoped reads (the application-service view permission with confinement to the caller's applications) are API-only: `/ui` still requires the messaging view permission, the stricter reading, and an application service account does not sign in to it.
+- **Processes: changed.** The SPA's edit page sends a stale link to an archived process back to the drawer (10a5ac1e); the edit form now answers `PROCESS_ARCHIVED` ("Archived processes cannot be edited.") instead of opening. Edit, archive and delete gating by status were already in (ccf2dd52).
+- **Clients: checked.** Deactivate-sets-INACTIVE (ff65ec46) changed `/ui` in its own commit; the SPA's move to browser paging (db4e7766) is what `/ui` already did (100 rows, 50/100/250/500).
+- **Event types: checked.** The archive and delete rules and their reasons, the sync gate (a3414cc9) and the schema fixes are in. Create is now anchor-reach only at the use case (0a8df193); the New button is still shown to a client-scoped holder of `event-type:create`, as in the SPA, and the refusal reaches the form as a flash.
+- **Subscriptions: checked.** Queue select, `clientScoped` and `sequence` on create, the pool code, the blank connection on update and the per-operation permissions were all in the port or the same-day fixes; F30 (sync no-ops) is API-only.
+- **Applications: checked.** The one SPA commit (90e41132) gates Provision Service Account on anchor reach, `service-account:create` and `application:update`; `/ui` has had that gate since 8b1cb0fa, with the same "No service account" text. Its role locks (`isRoleAboveUser`, 403 `ROLE_ABOVE_CALLER`) are in the user and service-account drawers, which are wave 4; F18/F21 are role-API changes.
+- **Scheduled jobs: checked.** Per-operation permissions (210e4b55) changed `/ui` in the same commit; the application-service firings report and F31 are API-only.
+
+Not done: none of this was opened in a real browser (light, dark, narrow) yet; the dispatch jobs additions are covered by
+handler tests (`dispatch_jobs_redrive_test.go`) and the Postgres page test (the Stuck lens, the ticked-row dialog and a redrive
+by filter against real rows), not by a headless run. The acceptance run in a browser stays before the owner is asked to switch the area.
 
 ### Owner decisions needed
 
