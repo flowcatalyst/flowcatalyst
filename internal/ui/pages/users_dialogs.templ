@@ -1,0 +1,420 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// usrCheckGet asks for the email's domain check with the form's fields.
+const usrCheckGet = "@get('/ui/users/check-email', {contentType: 'form'})"
+
+// ── create ─────────────────────────────────────────────────────────────
+
+// usrCreateDialogC is the create dialog (kit form-dialog.md).
+templ usrCreateDialogC(f usrCreateForm) {
+	@kit.FormDialog(f.dialogProps()) {
+		@usrField(f, "name")
+		@usrField(f, "email")
+		if f.ClientMode {
+			@usrField(f, "password")
+		}
+		@usrDomainRegion(f)
+	}
+}
+
+// usrDomainRegion is what depends on the email: the domain's note, the client
+// the domain needs, what the user will receive and the sign-in link switch. A
+// check on the email patches it by id.
+templ usrDomainRegion(f usrCreateForm) {
+	<div id="usr-form-domain" class="flex flex-col gap-4">
+		if f.CheckErr != "" {
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Title: f.CheckErr})
+		}
+		if f.Check != nil && f.Check.Warning != nil {
+			<p class="text-sm text-amber-600">{ *f.Check.Warning }</p>
+		} else if f.Check != nil && f.Check.Info != nil {
+			<p class="text-sm text-muted-foreground">{ *f.Check.Info }</p>
+		}
+		if f.needsClient() {
+			@usrField(f, "clientId")
+		}
+		if f.Check != nil && !f.Check.EmailExists {
+			if f.internal() {
+				@kit.Alert(kit.AlertProps{Icon: "mail", Title: "The user will be emailed a one-time sign-in link to set their own password.", Description: "We never see or store an admin-set password. Scope: " + f.Check.DerivedScope + "."})
+			} else {
+				@kit.Alert(kit.AlertProps{Icon: "info", Title: "This user will authenticate via their organization's identity provider (" + f.Check.AuthProvider + ").", Description: "There is no password to set. Scope: " + f.Check.DerivedScope + "."})
+			}
+		}
+		if f.linkOffered() {
+			@usrLinkSwitch(f)
+		}
+	</div>
+}
+
+// usrLinkSwitch asks for the sign-in link: off by default, so nothing is shown
+// and the platform sends its own email.
+templ usrLinkSwitch(f usrCreateForm) {
+	@kit.Field(kit.FieldProps{Label: "Sign-in link", Description: f.linkHelp(), Attrs: templ.Attributes{"id": "usr-form-link-field"}}) {
+		@kit.Switch(kit.SwitchProps{ID: f.id("returnLink"), Name: "returnLink", Value: "1", Checked: f.ShowLink, Label: "Show the link instead of emailing it"})
+	}
+}
+
+func (f usrCreateForm) linkHelp() string {
+	if f.ClientMode {
+		return "Only when no password is set. The link is a bearer credential valid for 72 hours, shown once; the platform sends no email."
+	}
+	return "The link is a bearer credential valid for 72 hours, shown once after the user is created; the platform sends no email."
+}
+
+// usrField renders one field of the create form; a failed submit patches each
+// one by its id ("{control}-field").
+templ usrField(f usrCreateForm, key string) {
+	switch key {
+		case "name":
+			@kit.Field(f.fieldProps(key, "Full Name", "", true)) {
+				@kit.Input(f.inputProps(key, f.Name, kit.InputProps{Placeholder: "e.g., John Smith", Required: true, Attrs: templ.Attributes{"maxlength": "255", "autocomplete": "off", "autofocus": true}}))
+			}
+		case "email":
+			@kit.Field(f.fieldProps(key, "Email Address", "", true)) {
+				@kit.Input(f.inputProps(key, f.Email, kit.InputProps{Type: "email", Placeholder: "e.g., john.smith@example.com", Required: true, Attrs: usrEmailAttrs(f)}))
+			}
+		case "password":
+			@kit.Field(f.fieldProps(key, "Password", "Leave blank to require the user to set it via a reset email.", false)) {
+				@kit.PasswordInput(kit.PasswordInputProps{ID: f.id(key), Name: key, Signal: "usrPw", Meter: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "clientId":
+			@kit.Field(f.fieldProps(key, "Client", f.clientHelp(), true)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Choices, Selected: f.ClientID, Placeholder: "Select a client", Required: true, Disabled: !f.CanPickClient, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+	}
+}
+
+// usrEmailAttrs: the platform form checks the email's domain when the field
+// is left (the SPA's check on blur); the client form has no check.
+func usrEmailAttrs(f usrCreateForm) templ.Attributes {
+	a := templ.Attributes{"autocomplete": "off", "spellcheck": "false"}
+	if !f.ClientMode {
+		a["data-on:change"] = usrCheckGet
+	}
+	return a
+}
+
+// usrLinkDialogC shows a sign-in link. It is in the response that minted the
+// link only, and removes itself from the page however it is closed (the
+// button, Escape): the link is in no signal, URL or flash, and a page that
+// has not got the dialog has not got the link.
+templ usrLinkDialogC(link string) {
+	@kit.Dialog(kit.DialogProps{
+		ID:          "usr-link-dialog",
+		Title:       "Sign-in link",
+		Description: "Give this link to the new user so they can set their password. It is valid for 72 hours and is shown only now; anyone holding it can set the password.",
+		Persistent:  true,
+		Footer:      usrLinkFooter(),
+		Attrs: templ.Attributes{
+			"open":           true,
+			"data-init":      "el.open && el.close(); el.showModal()",
+			"data-on:cancel": "evt.preventDefault(); el.remove()",
+			"data-signals":   "{usrLinkCopied: ''}",
+		},
+	}) {
+		<div class="flex flex-col gap-3">
+			<code id="usr-link-value" class="fc-mono-chip block break-all p-3 select-all">{ link }</code>
+			<p class="text-xs text-muted-foreground" role="status" data-text="$usrLinkCopied"></p>
+		</div>
+	}
+}
+
+templ usrLinkFooter() {
+	@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Icon: "copy", Attrs: templ.Attributes{"data-on:click": usrLinkCopyExpr}}) {
+		Copy
+	}
+	@kit.Button(kit.ButtonProps{Attrs: templ.Attributes{"data-on:click": "const d = el.closest('dialog'); d.close(); d.remove()"}}) {
+		Close
+	}
+}
+
+// usrLinkCopyExpr copies the link and says so in the dialog.
+const usrLinkCopyExpr = "navigator.clipboard.writeText(document.getElementById('usr-link-value').textContent).then(() => $usrLinkCopied = 'Copied to the clipboard')"
+
+// ── edit ───────────────────────────────────────────────────────────────
+
+var usrScopeOptions = []kit.Option{
+	{Value: "ANCHOR", Label: "Anchor"},
+	{Value: "PARTNER", Label: "Partner"},
+	{Value: "CLIENT", Label: "Client"},
+}
+
+// usrEditDialogC is the edit dialog (the info card's edit form).
+templ usrEditDialogC(f usrEditForm) {
+	@kit.FormDialog(f.dialogProps()) {
+		<div class="flex flex-col gap-4" data-signals={ f.scopeSignals() }>
+			@usrEditField(f, "name")
+			if f.CanScope {
+				@usrEditField(f, "scope")
+				@usrEditField(f, "clientId")
+			}
+		</div>
+	}
+}
+
+templ usrEditField(f usrEditForm, key string) {
+	switch key {
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", "", true)) {
+				@kit.Input(f.inputProps(key, f.Name, kit.InputProps{Required: true, Attrs: templ.Attributes{"maxlength": "255", "autocomplete": "off", "autofocus": true}}))
+			}
+		case "scope":
+			@kit.Field(f.fieldProps(key, "Type", "Anchor users reach every client; a partner reaches its home client and the clients it is granted; a client user one client.", false)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: usrScopeOptions, Selected: f.Scope, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:usr-scope": true}})
+			}
+		case "clientId":
+			@kit.Field(usrClientFieldProps(f, key)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Clients, Selected: f.ClientID, Placeholder: "Select a client", Disabled: !f.CanPickClient, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+	}
+}
+
+// usrClientFieldProps: the client follows the type; an anchor has none.
+func usrClientFieldProps(f usrEditForm, key string) kit.FieldProps {
+	p := f.fieldProps(key, f.clientLabel(), "", false)
+	if !f.CanPickClient {
+		p.Description = "Choosing a client needs permission to view clients."
+	}
+	p.Attrs["data-show"] = "$usrScope !== 'ANCHOR'"
+	return p
+}
+
+// ── password ───────────────────────────────────────────────────────────
+
+templ usrPasswordDialogC(f usrPasswordForm) {
+	@kit.FormDialog(kit.FormDialogProps{
+		ID: usrPwdDialog, Signal: "usrPwd", Action: usrURL(f.UserID) + "/reset-password", Open: f.Open, Error: f.Errs.Form,
+		Title: "Reset Password", Description: usrPasswordWho(f), SubmitLabel: "Set Password", Hidden: usrHidden(),
+	}) {
+		@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "The user will need to sign in with this new password immediately.", Description: "Only use this when the user can't receive the password-reset email (e.g. lost inbox access)."})
+		@usrPasswordField(f, "newPassword")
+		@usrPasswordField(f, "confirmPassword")
+	}
+}
+
+func usrPasswordWho(f usrPasswordForm) string {
+	if f.Email == "" {
+		return "Set a new password for " + f.Name + "."
+	}
+	return "Set a new password for " + f.Name + " (" + f.Email + ")."
+}
+
+// usrPasswordField: the password and its confirmation. Neither has a value to
+// echo, so a failed save re-renders them empty.
+templ usrPasswordField(f usrPasswordForm, key string) {
+	switch key {
+		case "newPassword":
+			@kit.Field(f.fieldProps(key, "New password", "", true)) {
+				@kit.PasswordInput(kit.PasswordInputProps{ID: f.id(key), Name: key, Signal: "usrPwNew", Meter: true, Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "confirmPassword":
+			@kit.Field(f.fieldProps(key, "Confirm password", "", true)) {
+				@kit.PasswordInput(kit.PasswordInputProps{ID: f.id(key), Name: key, Signal: "usrPwConfirm", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+	}
+}
+
+// ── roles ──────────────────────────────────────────────────────────────
+
+templ usrRolesDialogC(f usrRolesForm) {
+	@kit.FormDialog(kit.FormDialogProps{
+		ID: usrRolesDialog, Signal: "usrRoles", Action: usrURL(f.UserID) + "/roles", Open: f.Open, Error: f.Errs.Form,
+		Title: "Manage Roles", Description: f.Name, SubmitLabel: "Save Roles", Width: kit.WidthWide, Hidden: usrHidden(),
+	}) {
+		@kit.MultiSelect(kit.MultiSelectProps{
+			ID: "usr-roles-select", Name: "roles", Label: "Roles", Options: f.Choices.Options, Selected: f.Choices.Selected,
+			Placeholder: "No roles selected", ManyLabel: "{0} roles selected", EmptyText: "No roles found",
+			Chips: true, Search: true, Signal: "usrRoleQ", Open: true, MaxLabels: 1,
+		})
+		if len(f.Choices.Locked) > 0 {
+			<div class="flex flex-col gap-1 text-sm">
+				<span class="fc-field-label">Kept as they are</span>
+				<p class="text-muted-foreground">These roles hold permissions you do not have, so you cannot add or remove them.</p>
+				for _, r := range f.Choices.Locked {
+					<div class="flex items-center gap-2">
+						@kit.Icon(kit.IconProps{Name: "lock", Class: "size-4 text-muted-foreground"})
+						<span class="font-medium">{ r.Display }</span>
+						<code class="text-xs text-muted-foreground">{ r.Name }</code>
+						<input type="hidden" name="roles" value={ r.Name }/>
+					</div>
+				}
+			</div>
+		}
+		if f.Choices.Hidden > 0 {
+			<p class="text-sm text-muted-foreground">
+				{ strconv.Itoa(f.Choices.Hidden) } role(s) hidden because their application isn't enabled for this user. Add the application under Application Access to make them available here.
+			</p>
+		}
+	}
+}
+
+// ── application access ─────────────────────────────────────────────────
+
+templ usrAppsDialogC(f usrAppsForm) {
+	@kit.FormDialog(kit.FormDialogProps{
+		ID: usrAppsDialog, Signal: "usrApps", Action: usrURL(f.UserID) + "/applications", Open: f.Open, Error: f.Errs.Form,
+		Title: "Manage Application Access", Description: f.Name, SubmitLabel: "Save Application Access", Width: kit.WidthWide, Hidden: usrHidden(),
+	}) {
+		@kit.MultiSelect(kit.MultiSelectProps{
+			ID: "usr-apps-select", Name: "applicationIds", Label: "Applications", Options: f.Options, Selected: f.Selected,
+			Placeholder: "No applications selected", ManyLabel: "{0} applications selected", EmptyText: "No applications found",
+			Chips: true, Search: true, Signal: "usrAppQ", Open: true, MaxLabels: 1,
+		})
+		if len(f.Kept) > 0 {
+			<div class="flex flex-col gap-1 text-sm">
+				<span class="fc-field-label">Kept as they are</span>
+				<p class="text-muted-foreground">These applications are not offered (they may be inactive) and stay granted.</p>
+				for _, a := range f.Kept {
+					<div class="flex items-center gap-2">
+						<span class="font-medium">{ a.Name }</span>
+						<code class="text-xs text-muted-foreground">{ a.Code }</code>
+						<input type="hidden" name="applicationIds" value={ a.ID }/>
+					</div>
+				}
+			</div>
+		}
+	}
+}
+
+// ── client access ──────────────────────────────────────────────────────
+
+templ usrGrantDialogC(f usrGrantForm) {
+	@kit.FormDialog(kit.FormDialogProps{
+		ID: usrGrantDialog, Signal: "usrGrant", Action: usrURL(f.UserID) + "/clients", Open: f.Open, Error: f.Errs.Form,
+		Title: "Grant Client Access", Description: f.Name, SubmitLabel: "Grant Access", Hidden: usrHidden(),
+	}) {
+		@usrGrantField(f)
+	}
+}
+
+templ usrGrantField(f usrGrantForm) {
+	@kit.Field(f.fieldProps("clientId", "Client", usrGrantHelp(f), true)) {
+		@kit.Select(kit.SelectProps{ID: f.id("clientId"), Name: "clientId", Options: f.Choices, Selected: f.ClientID, Placeholder: "Select a client", Required: true, Disabled: !f.CanPick, Invalid: f.fieldError("clientId") != "", DescribedBy: f.describedBy("clientId")})
+	}
+}
+
+func usrGrantHelp(f usrGrantForm) string {
+	if !f.CanPick {
+		return "Choosing a client needs permission to view clients."
+	}
+	return ""
+}
+
+// ── CSV import ─────────────────────────────────────────────────────────
+
+// usrImportDialogC is the import dialog. It is a dialog with its own
+// multipart form rather than a form dialog: the file must reach the server
+// even from a form posted without script.
+templ usrImportDialogC(f usrImportForm) {
+	@kit.Dialog(kit.DialogProps{
+		ID: usrImportDialog, Title: "Import users from CSV", Width: kit.WidthWide, Persistent: true,
+		Description: "Upload a CSV with columns Full Name, Email and Roles (pipe-separated, e.g. role-one|role-two). New users are created and emailed an invite to set their password. Existing users, and users whose email domain belongs to another client, are skipped and listed afterwards.",
+		Footer:      usrImportFooter(),
+		Attrs:       templ.Attributes{"open": f.Open, "data-init": "el.open && el.close(); el.showModal()"},
+	}) {
+		<form id={ usrImportDialog + "-form" } method="post" action={ usersPath + "/import" } enctype="multipart/form-data" class="flex flex-col gap-4" data-signals="{usrImportBusy: false}" data-indicator="usrImportBusy" data-on:submit={ kit.SubmitForm }>
+			@kit.FormDialogError(usrImportDialog, f.Errs.Form)
+			if !f.CanAssign {
+				<p class="text-sm text-muted-foreground">You cannot assign roles: users are created without the roles in the file.</p>
+			}
+			@usrImportField(f, "clientId")
+			@usrImportField(f, "file")
+			<p class="text-sm"><a href={ templ.SafeURL(usersPath + "/import/template.csv") } download="user-import-template.csv">Download template</a></p>
+		</form>
+	}
+}
+
+templ usrImportFooter() {
+	@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Attrs: templ.Attributes{"data-on:click": kit.CloseDialog}}) {
+		Cancel
+	}
+	@kit.Button(kit.ButtonProps{Type: "submit", Attrs: templ.Attributes{"form": usrImportDialog + "-form", "data-attr:disabled": "$usrImportBusy"}}) {
+		Import
+	}
+}
+
+templ usrImportField(f usrImportForm, key string) {
+	switch key {
+		case "clientId":
+			if len(f.Choices) == 1 {
+				<input type="hidden" name="clientId" value={ f.ClientID }/>
+			} else {
+				@kit.Field(f.fieldProps(key, "Client", "", true)) {
+					@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Choices, Selected: f.ClientID, Placeholder: "Select a client", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+				}
+			}
+		case "file":
+			@kit.Field(f.fieldProps(key, "CSV file", "", true)) {
+				@kit.Input(f.inputProps(key, "", kit.InputProps{Type: "file", Required: true, Attrs: templ.Attributes{"accept": ".csv,text/csv"}}))
+			}
+	}
+}
+
+// usrImportReportC is the import's outcome: the counts and the rows that were
+// not created.
+templ usrImportReportC(res api.BulkImportResponse) {
+	@kit.Dialog(kit.DialogProps{
+		ID: "usr-import-report", Title: "Import complete", Width: kit.WidthWide, Closable: true,
+		Description: strconv.Itoa(res.Created) + " created, " + strconv.Itoa(res.Skipped) + " skipped, " + strconv.Itoa(res.Failed) + " failed.",
+		Footer:      usrReportFooter(),
+		Attrs:       templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-on:close": "el.remove()"},
+	}) {
+		if res.Skipped+res.Failed == 0 {
+			<p class="text-sm text-muted-foreground">Every row was created.</p>
+		} else {
+			@kit.Table(kit.TableProps{ID: "usr-import-rows", Dense: true}) {
+				@kit.THead(kit.THeadProps{Caps: true}) {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TH(kit.THProps{}) {
+							Row
+						}
+						@kit.TH(kit.THProps{}) {
+							Email
+						}
+						@kit.TH(kit.THProps{}) {
+							Status
+						}
+						@kit.TH(kit.THProps{}) {
+							Message
+						}
+					}
+				}
+				@kit.TBody(kit.TBodyProps{Striped: true}) {
+					for _, row := range res.Results {
+						if row.Status != "created" || row.Message != "" {
+							@kit.TR(kit.TRProps{Static: true}) {
+								@kit.TD(kit.TDProps{}) {
+									{ strconv.Itoa(row.Row) }
+								}
+								@kit.TD(kit.TDProps{}) {
+									{ row.Email }
+								}
+								@kit.TD(kit.TDProps{}) {
+									@kit.Badge(kit.BadgeProps{Variant: importStatusBadge(row.Status)}) {
+										{ row.Status }
+									}
+								}
+								@kit.TD(kit.TDProps{Class: "whitespace-normal"}) {
+									{ row.Message }
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+templ usrReportFooter() {
+	@kit.Button(kit.ButtonProps{Attrs: templ.Attributes{"data-on:click": kit.CloseDialog}}) {
+		Close
+	}
+}

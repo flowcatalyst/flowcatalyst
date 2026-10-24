@@ -26,7 +26,9 @@ type navEntry struct {
 	// permission required to see the entry ("" = none), as ROUTE_PERMISSIONS.
 	permission string
 	// scope restricts the entry to anchor or client users ("" = everyone).
-	scope    string
+	scope string
+	// feature is the platform feature the entry needs ("" = none).
+	feature  string
 	children []navEntry
 }
 
@@ -40,31 +42,52 @@ const (
 	scopeClient = "client"
 )
 
+const featureIngestion = "ingestion"
+
+// Features are the platform features that switch navigation entries on (the
+// public platform config's features: GET /api/config/platform).
+type Features struct {
+	// Ingestion shows the ingestion pages (FC_INGESTION_ENABLED).
+	Ingestion bool
+}
+
+func (f Features) has(feature string) bool {
+	switch feature {
+	case "":
+		return true
+	case featureIngestion:
+		return f.Ingestion
+	}
+	return false
+}
+
 var navigation = []navSection{
 	{"Overview", []navEntry{
 		{label: "Dashboard", icon: "house", spa: "/dashboard", permission: "platform:*:*:*", scope: scopeAnchor},
 	}},
 	{"Identity & Access", []navEntry{
-		{label: "User Management", icon: "users", spa: "/users", permission: "platform:iam:user:view", scope: scopeAnchor},
-		{label: "Service Accounts", icon: "server", spa: "/identity/service-accounts", permission: "platform:iam:service-account:view"},
-		{label: "Developer Users", icon: "code", spa: "/identity/developer-users", scope: scopeAnchor},
+		{label: "User Management", icon: "users", spa: "/users", ui: "/ui/users", permission: "platform:iam:user:view", scope: scopeAnchor},
+		{label: "Service Accounts", icon: "server", spa: "/identity/service-accounts", ui: "/ui/service-accounts", permission: "platform:iam:service-account:view"},
+		{label: "Developer Users", icon: "code", spa: "/identity/developer-users", ui: "/ui/developer-users", scope: scopeAnchor},
 		{label: "Identity Providers", icon: "id-card", spa: "/authentication/identity-providers", permission: "platform:iam:identity-provider:view"},
 		{label: "Email Domains", icon: "mail", spa: "/authentication/email-domain-mappings", permission: "platform:iam:email-domain-mapping:view"},
 		{label: "OAuth Clients", icon: "key-round", spa: "/authentication/oauth-clients", permission: "platform:iam:oauth-client:view"},
-		{label: "Roles", icon: "shield", spa: "/authorization/roles", permission: "platform:iam:role:view", scope: scopeAnchor},
-		{label: "Permissions", icon: "lock", spa: "/authorization/permissions", permission: "platform:iam:permission:view", scope: scopeAnchor},
+		{label: "Roles", icon: "shield", spa: "/authorization/roles", ui: "/ui/roles", permission: "platform:iam:role:view", scope: scopeAnchor},
+		{label: "Permissions", icon: "lock", spa: "/authorization/permissions", ui: "/ui/permissions", permission: "platform:iam:permission:view", scope: scopeAnchor},
 	}},
 	{"Client Administration", []navEntry{
-		{label: "User Management", icon: "users", spa: "/client-administration/users", permission: "platform:iam:user:view", scope: scopeClient},
+		{label: "User Management", icon: "users", spa: "/client-administration/users", ui: "/ui/users", permission: "platform:iam:user:view", scope: scopeClient},
 		{label: "Reset Approvals", icon: "shield", spa: "/authentication/reset-approvals", permission: "platform:iam:user:update"},
 	}},
 	{"Portal", []navEntry{
-		{label: "Portal Apps", icon: "app-window", spa: "/identity/portal-apps", permission: "platform:iam:portal-user:view"},
-		{label: "Portal Users", icon: "globe", spa: "/identity/portal-users", permission: "platform:iam:portal-user:view"},
+		{label: "Portal Apps", icon: "app-window", spa: "/identity/portal-apps", ui: "/ui/portal-apps", permission: "platform:iam:portal-user:view"},
+		{label: "Portal Users", icon: "globe", spa: "/identity/portal-users", ui: "/ui/portal-users", permission: "platform:iam:portal-user:view"},
 	}},
 	{"Platform", []navEntry{
 		{label: "Applications", icon: "layout-grid", spa: "/applications", ui: "/ui/applications", permission: "platform:admin:application:view"},
 		{label: "Clients", icon: "building-2", spa: "/clients", ui: "/ui/clients", permission: "platform:admin:client:view"},
+		{label: "Ingestions", icon: "download", ui: "/ui/ingestions", permission: "platform:ingestion:ingestion:view", feature: featureIngestion},
+		{label: "Ingestion sets", icon: "archive", ui: "/ui/ingestion-sets", permission: "platform:ingestion:ingestion:view", scope: scopeAnchor, feature: featureIngestion},
 		{label: "CORS Origins", icon: "link", spa: "/platform/cors", permission: "platform:admin:cors:view"},
 		{label: "Audit Log", icon: "history", spa: "/platform/audit-log", permission: "platform:admin:audit:view"},
 		{label: "Documentation", icon: "book-open", spa: "/platform/docs", scope: scopeAnchor},
@@ -90,7 +113,7 @@ var navigation = []navSection{
 		{label: "Scheduled Jobs", icon: "clock", spa: "/scheduled-jobs", ui: "/ui/scheduled-jobs", permission: "platform:messaging:scheduled-job:view"},
 	}},
 	{"Developer", []navEntry{
-		{label: "Applications", icon: "book-open", spa: "/developer", permission: "platform:developer:application-openapi:view"},
+		{label: "Applications", icon: "book-open", spa: "/developer", ui: "/ui/developer", permission: "platform:developer:application-openapi:view"},
 		{label: "Processes", icon: "network", spa: "/processes", ui: "/ui/processes", permission: "platform:messaging:process:view"},
 	}},
 }
@@ -99,7 +122,10 @@ var navigation = []navSection{
 // refuses them before this runs); the scope must match (anchor users have no
 // home client: the AuthContext's anchor scope); the permission, if any, must
 // be held (wildcards as the backend matches them).
-func (e navEntry) visible(ac *auth.AuthContext) bool {
+func (e navEntry) visible(ac *auth.AuthContext, features Features) bool {
+	if !features.has(e.feature) {
+		return false
+	}
 	switch e.scope {
 	case scopeAnchor:
 		if !ac.IsAnchor() {
@@ -128,6 +154,12 @@ func (e navEntry) isCurrent(path string) bool {
 // Navigation is the sidebar for ac, with the entry for currentPath marked
 // current. Empty groups are dropped, as the SPA does.
 func Navigation(ac *auth.AuthContext, currentPath string) []kit.NavGroup {
+	return NavigationWith(ac, currentPath, Features{})
+}
+
+// NavigationWith is Navigation with the platform features that are on: an
+// entry that needs a feature is absent without it.
+func NavigationWith(ac *auth.AuthContext, currentPath string, features Features) []kit.NavGroup {
 	var out []kit.NavGroup
 	for _, sec := range navigation {
 		var items []kit.NavItem
@@ -136,19 +168,19 @@ func Navigation(ac *auth.AuthContext, currentPath string) []kit.NavGroup {
 				var kids []kit.NavItem
 				open := false
 				for _, c := range e.children {
-					if !c.visible(ac) {
+					if !c.visible(ac, features) {
 						continue
 					}
 					cur := c.isCurrent(currentPath)
 					open = open || cur
 					kids = append(kids, kit.NavItem{Label: c.label, Href: c.href(), Icon: c.icon, Current: cur})
 				}
-				if len(kids) > 0 && e.visible(ac) {
+				if len(kids) > 0 && e.visible(ac, features) {
 					items = append(items, kit.NavItem{Label: e.label, Icon: e.icon, Open: open, Children: kids})
 				}
 				continue
 			}
-			if e.visible(ac) {
+			if e.visible(ac, features) {
 				items = append(items, kit.NavItem{Label: e.label, Href: e.href(), Icon: e.icon, Current: e.isCurrent(currentPath)})
 			}
 		}

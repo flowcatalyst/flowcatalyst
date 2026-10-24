@@ -1,0 +1,208 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+// ── the lazy placeholders the drawer embeds ────────────────────────────
+
+// IngestionActivityTab is the Activity tab's content: a placeholder that asks
+// for the panel (GET /ui/ingestions/{id}/activity) as soon as it is on the
+// page, so a tab that is never opened is never read. The URL rides in a data
+// attribute, not in the expression.
+templ IngestionActivityTab(id string) {
+	@ingLazyPanel(ingActivityID, ingTabURL(id)+"/activity", "Reading what the runtimes reported…")
+}
+
+// IngestionFailuresTab is the Failures tab's content (GET /ui/ingestions/{id}/failures).
+templ IngestionFailuresTab(id string) {
+	@ingLazyPanel(ingFailuresID, ingTabURL(id)+"/failures", "Reading the failures…")
+}
+
+// IngestionHistoryTab is the History tab's content (GET /ui/ingestions/{id}/history).
+templ IngestionHistoryTab(id string) {
+	@ingLazyPanel(ingHistoryID, ingTabURL(id)+"/history", "Reading the history…")
+}
+
+templ ingLazyPanel(panelID, url, text string) {
+	<div id={ panelID } data-url={ url } data-init="@get(el.dataset.url)" role="status" class="text-sm text-muted-foreground">{ text }</div>
+}
+
+// ── activity ───────────────────────────────────────────────────────────
+templ ingActivityPanel(v ingActivityView) {
+	<div id={ ingActivityID } class="flex flex-col gap-4">
+		@kit.FormSection(kit.FormSectionProps{Title: "Runtimes", Description: "What each runtime last reported for it."}) {
+			if len(v.Routes) == 0 {
+				<p class="text-sm text-muted-foreground" id="ing-no-routes">No runtime has reported it yet.</p>
+			} else {
+				@kit.Table(kit.TableProps{ID: "ing-routes", Dense: true, Attrs: templ.Attributes{"aria-label": "Runtime reports"}}) {
+					@kit.THead(kit.THeadProps{}) {
+						@kit.TR(kit.TRProps{Static: true}) {
+							@kit.TH(kit.THProps{}) {
+								Runtime
+							}
+							@kit.TH(kit.THProps{}) {
+								Status
+							}
+							@kit.TH(kit.THProps{Class: "text-right"}) {
+								Version
+							}
+							@kit.TH(kit.THProps{Class: "text-right"}) {
+								Reported
+							}
+						}
+					}
+					@kit.TBody(kit.TBodyProps{}) {
+						for _, rt := range v.Routes {
+							@ingRouteRowC(rt)
+						}
+					}
+				}
+			}
+		}
+		@kit.FormSection(kit.FormSectionProps{Title: "Activity", Description: "Exchanges every runtime reported."}) {
+			<div class="fc-detail-grid" id="ing-activity-totals">
+				@kit.DetailField(kit.DetailFieldProps{Label: "Last 24 hours", Value: v.Day, Span: true})
+				@kit.DetailField(kit.DetailFieldProps{Label: "Last 7 days", Value: v.Week, Span: true})
+				@kit.DetailField(kit.DetailFieldProps{Label: "Last exchange"}) {
+					@kit.LocalTime(kit.LocalTimeProps{At: v.LastExchange, Empty: "None in 7 days"})
+				}
+				@kit.DetailField(kit.DetailFieldProps{Label: "Last failure"}) {
+					@kit.LocalTime(kit.LocalTimeProps{At: v.LastFailure, Empty: "None kept"})
+				}
+			</div>
+		}
+	</div>
+}
+
+templ ingRouteRowC(rt ingRouteRow) {
+	@kit.TR(kit.TRProps{}) {
+		@kit.TD(kit.TDProps{}) {
+			<code class="fc-mono-chip">{ rt.Runtime }</code>
+		}
+		@kit.TD(kit.TDProps{}) {
+			@kit.Tag(kit.TagProps{Severity: rt.Severity, Label: rt.Status})
+		}
+		@kit.TD(kit.TDProps{Class: "text-right tabular-nums"}) {
+			if rt.Stale {
+				<span class="text-warning" title="Not the live version">{ ingInt(rt.Version) }</span>
+			} else {
+				{ ingInt(rt.Version) }
+			}
+		}
+		@kit.TD(kit.TDProps{Class: "text-right"}) {
+			@kit.LocalTime(kit.LocalTimeProps{At: rt.Reported})
+		}
+	}
+	if rt.Error != "" {
+		<tr>
+			<td colspan="4" class="px-3 pb-2 text-xs break-words text-destructive">{ rt.Error }</td>
+		</tr>
+	}
+}
+
+// ── failures ───────────────────────────────────────────────────────────
+templ ingFailuresPanel(v ingFailuresView) {
+	<div id={ ingFailuresID } class="flex flex-col gap-3">
+		if v.Keep {
+			@kit.Alert(kit.AlertProps{ID: "ing-keep-notice", Icon: "info", Title: "Failures are kept for 30 days, with the start of the payload each one failed on."})
+		} else {
+			@kit.Alert(kit.AlertProps{ID: "ing-keep-notice", Icon: "info", Title: "Failures are kept for 30 days, without payloads.", Description: "Turn on \"Keep failed payloads\" in the definition to keep the start of the payload each failure happened on."})
+		}
+		if len(v.Rows) == 0 {
+			<p class="text-sm text-muted-foreground" id="ing-no-failures" role="status">Nothing has failed in the last 30 days.</p>
+		}
+		<ul id={ ingFailuresList } class="flex flex-col gap-3" data-testid="failures">
+			@ingFailureItems(v.Rows)
+		</ul>
+		@ingFailuresMore(v)
+	</div>
+}
+
+templ ingFailureItems(rows []ingFailureRow) {
+	for _, f := range rows {
+		<li id={ "ing-failure-" + f.ID } class="border-t border-border pt-2 text-sm">
+			<div class="flex flex-wrap items-center gap-2">
+				@kit.Tag(kit.TagProps{Severity: f.Severity, Label: f.Kind})
+				<span class="text-xs text-muted-foreground">
+					@kit.LocalTime(kit.LocalTimeProps{At: f.At})
+				</span>
+				if f.Runtime != "" {
+					<span class="text-xs text-muted-foreground">
+						{ f.Runtime }
+						if f.Version != "" {
+							, version { f.Version }
+						}
+					</span>
+				}
+			</div>
+			<p class="mt-1 break-words">{ f.Message }</p>
+			if f.After != "" {
+				<p class="text-xs text-muted-foreground">{ f.After }</p>
+			}
+			if f.Excerpt != "" {
+				<div class="mt-2">
+					@kit.CodeBlock(kit.CodeBlockProps{Label: "The start of the payload"}) {
+						{ f.Excerpt }
+					}
+				</div>
+			}
+		</li>
+	}
+}
+
+templ ingFailuresMore(v ingFailuresView) {
+	<div id="ing-failures-more" class="flex justify-center">
+		if v.Next != "" {
+			<a
+				href={ templ.SafeURL(v.moreURL()) }
+				class={ kit.ButtonClasses(kit.ButtonOutline, kit.ButtonSm) }
+				data-more={ v.moreURL() }
+				data-on:click__prevent="@get(el.dataset.more)"
+			>Older</a>
+		}
+	</div>
+}
+
+// ── history ────────────────────────────────────────────────────────────
+templ ingHistoryPanel(v ingHistoryView) {
+	<div id={ ingHistoryID } class="flex flex-col gap-3">
+		if len(v.Rows) == 0 {
+			<p class="text-sm text-muted-foreground" id="ing-no-history" role="status">No changes recorded.</p>
+		}
+		<ul id={ ingHistoryList } class="flex flex-col gap-2" data-testid="history">
+			@ingHistoryItems(v.Rows)
+		</ul>
+		@ingHistoryMore(v)
+	</div>
+}
+
+templ ingHistoryItems(rows []ingHistoryRow) {
+	for _, e := range rows {
+		<li class="border-t border-border pt-2 text-sm">
+			<div class="flex flex-wrap items-baseline gap-x-2">
+				<span><span class="font-medium">{ e.Verb }</span> by { e.Who }</span>
+				<span class="text-xs text-muted-foreground">
+					@kit.LocalTime(kit.LocalTimeProps{At: e.At})
+				</span>
+			</div>
+			if e.Changed != "" {
+				<p class="text-xs text-muted-foreground">Changed: { e.Changed }</p>
+			}
+			if e.Note != "" {
+				<p class="text-xs text-muted-foreground">Note: { e.Note }</p>
+			}
+		</li>
+	}
+}
+
+templ ingHistoryMore(v ingHistoryView) {
+	<div id="ing-history-more" class="flex justify-center">
+		if v.More {
+			<a
+				href={ templ.SafeURL(v.moreURL()) }
+				class={ kit.ButtonClasses(kit.ButtonOutline, kit.ButtonSm) }
+				data-more={ v.moreURL() }
+				data-on:click__prevent="@get(el.dataset.more)"
+			>Older</a>
+		}
+	</div>
+}

@@ -31,6 +31,9 @@ type Shell struct {
 	// CookieSecure is the Secure flag of the UI's own cookies (the flash
 	// cookie), matching the session cookie's.
 	CookieSecure bool
+	// Features are the platform features that are on; the sidebar shows an
+	// entry that needs one only then.
+	Features Features
 }
 
 // Page describes the page being rendered.
@@ -60,7 +63,7 @@ func (s *Shell) render(w http.ResponseWriter, r *http.Request, status int, page 
 	ac := auth.FromContext(r.Context())
 	props := kit.AppShellProps{
 		LogoHref:      "/ui/",
-		Nav:           Navigation(ac, page.Path),
+		Nav:           NavigationWith(ac, page.Path, s.Features),
 		User:          s.user(r.Context(), ac),
 		Version:       orDev(s.Version),
 		ProfileHref:   "/profile",

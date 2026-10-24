@@ -1,0 +1,92 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+// ingTestSavedExpr and ingTestFormExpr start a test. A saved ingestion needs
+// no body; the unsaved definition rides in the form the button is in. The URL
+// is read from a data attribute, not put in the expression.
+const (
+	ingTestSavedExpr = "@post(el.dataset.action, {retryMaxCount: 0})"
+	ingTestFormExpr  = "@post(el.dataset.action, {contentType: 'form', retryMaxCount: 0})"
+)
+
+// IngestionTestPanel is "test connection": the button and the place its
+// outcome appears. action is the URL the button posts to: for a saved
+// ingestion /ui/ingestions/{id}/test, for the definition a form holds (fromForm,
+// the button posts the form it is in) /ui/ingestions/test. Offer it only to a
+// caller who holds the test permission; the server asks again.
+templ IngestionTestPanel(action string, fromForm bool) {
+	<div id="ing-test" class="flex flex-col gap-2 rounded-lg border border-border p-3">
+		<div class="flex flex-wrap items-center gap-2">
+			@kit.Button(kit.ButtonProps{
+				Variant: kit.ButtonOutline, Size: kit.ButtonSm, Type: "button", Icon: "play",
+				Attrs: templ.Attributes{"data-action": action, "data-on:click": ingTestExpr(fromForm), "id": "ing-test-start"},
+			}) {
+				Test connection
+			}
+			<span class="text-xs text-muted-foreground">A runtime logs in and asks once; nothing is dispatched or saved.</span>
+		</div>
+		<div id={ ingTestResultID } aria-live="polite"></div>
+	</div>
+}
+
+// ingTestBox is one test's state. It has its own id, so the stream of an
+// earlier test whose box was replaced patches nothing.
+templ ingTestBox(v ingTestView) {
+	<div
+		id={ "ing-test-" + v.ID }
+		class="flex flex-col gap-2 text-sm"
+		if v.Follow {
+			data-url={ v.StreamURL }
+			data-init="@get(el.dataset.url)"
+		}
+	>
+		switch v.Status {
+			case ingestion.TestDone:
+				@ingTestOutcome(v)
+			case ingestion.TestExpired:
+				@kit.Alert(kit.AlertProps{
+					ID: "ing-test-expired", Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "No runtime answered in time.",
+					Description: "A test waits two minutes for a runtime to take it. Nothing was tried.",
+				})
+			case ingestion.TestRunning:
+				<p class="flex items-center gap-2" id="ing-test-running">
+					@kit.Spinner(kit.SpinnerProps{Size: "size-4", Decorative: true})
+					Runtime <code class="fc-mono-chip">{ v.Runtime }</code> is trying the source…
+				</p>
+			default:
+				<p class="flex items-center gap-2" id="ing-test-waiting">
+					@kit.Spinner(kit.SpinnerProps{Size: "size-4", Decorative: true})
+					Waiting for a runtime to take the test…
+				</p>
+				if v.Notice != "" {
+					@kit.Alert(kit.AlertProps{ID: "ing-test-notice", Icon: "info", Title: v.Notice})
+				}
+		}
+	</div>
+}
+
+templ ingTestOutcome(v ingTestView) {
+	<div class="flex flex-wrap items-center gap-2">
+		@kit.Tag(kit.TagProps{Severity: v.Severity, Label: v.Label})
+		if v.Runtime != "" {
+			<span class="text-xs text-muted-foreground">on { v.Runtime }</span>
+		}
+	</div>
+	if len(v.Steps) > 0 {
+		<ol class="list-decimal space-y-0.5 pl-5" id="ing-test-steps">
+			for _, step := range v.Steps {
+				<li>{ step }</li>
+			}
+		</ol>
+	}
+	if v.Records != "" {
+		<p class="text-xs text-muted-foreground">The split makes { v.Records } record(s) of the answer.</p>
+	}
+	if v.Excerpt != "" {
+		@kit.CodeBlock(kit.CodeBlockProps{Label: "The start of the answer"}) {
+			{ v.Excerpt }
+		}
+	}
+}

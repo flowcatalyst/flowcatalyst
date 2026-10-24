@@ -161,24 +161,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			UoW:              uow,
 		})
 
-		principalapi.Register(humaAPI, &principalapi.State{
-			Repo:              repos.principalRepo,
-			Versions:          svcs.principalVersions,
-			GrantRepo:         repos.principalGrantRepo,
-			Roles:             repos.roleRepo,
-			Applications:      repos.applicationRepo,
-			ClientConfigs:     repos.applicationClientConfigRepo,
-			Clients:           repos.clientRepo,
-			Mappings:          repos.edmRepo,
-			IdentityProviders: repos.idpRepo,
-			AnchorDomains:     repos.authRepo.AnchorDomains,
-			PasswordEmailer:   principalResetEmailer,
-			InviteEmailer:     principalResetEmailer,
-			Notifier:          svcs.notifier,
-			MFA:               svcs.mfaSvc,
-			Audit:             repos.auditRepo,
-			UoW:               uow,
-		})
+		principalapi.Register(humaAPI, principalAPIState(cfg, repos, svcs, uow))
 
 		// An application's own users and invitations, as its service account (F20).
 		appusers.Register(humaAPI, &appusers.State{
@@ -348,8 +331,13 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 				SetArchive: svcs.functionArtifacts,
 			})
 			ingestionruntimeapi.Register(humaAPI, &ingestionruntimeapi.State{
-				Repo:  ingestion.NewRepository(pool),
-				Lease: cfg.IngestionLease,
+				Repo: ingestion.NewRepository(pool),
+				Jobs: repos.dispatchJobRepo,
+				Resolver: ingestion.NewResolver(repos.applicationRepo, repos.clientRepo,
+					repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, nil),
+				Connections: repos.connectionRepo,
+				Config:      platformConfigService(repos, uow),
+				Lease:       cfg.IngestionLease,
 			})
 		}
 

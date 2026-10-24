@@ -694,3 +694,20 @@ func appendPerm(out []bffPermissionResponse, app, ctx, agg, action, desc string)
 		Description: desc,
 	})
 }
+
+// ── Server-rendered UI ───────────────────────────────────────────────────
+
+// PermissionEntry is one row of the permission catalogue (the wire shape of
+// GET /bff/roles/permissions).
+type PermissionEntry = bffPermissionResponse
+
+// PermissionCatalog is what GET /bff/roles/permissions answers for an
+// application code ("" for every application), for the server-rendered UI,
+// which shows the same catalogue without the HTTP hop.
+func PermissionCatalog(ctx context.Context, roles *role.Repository, perms *role.PermissionRepo, app string) ([]PermissionEntry, error) {
+	return (&RolesState{Roles: roles, Permissions: perms}).permissionCatalog(ctx, app)
+}
+
+// ValidPermissionSegment reports whether s is a well-formed segment of a
+// permission code to define (POST /bff/roles/permissions).
+func ValidPermissionSegment(s string) bool { return permSegment.MatchString(s) }

@@ -1,0 +1,277 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// rolesFacetLabels are the SPA's filter labels: field label, placeholder,
+// selectedItemsLabel.
+var rolesFacetLabels = map[string][3]string{
+	rolesFacetApp:    {"Application", "All applications", "{0} applications selected"},
+	rolesFacetSource: {"Source", "All sources", "{0} sources selected"},
+}
+
+func (v rolesView) facetProps(name string) kit.MultiSelectProps {
+	l := rolesFacetLabels[name]
+	return kit.MultiSelectProps{
+		ID:          "role-filter-" + name,
+		Name:        name,
+		Label:       l[0],
+		Options:     v.Facets[name],
+		Selected:    v.Query.facet(name),
+		Placeholder: l[1],
+		ManyLabel:   l[2],
+		EmptyText:   "No options",
+		Search:      name == rolesFacetApp,
+		Signal:      "rolesAppSearch",
+		OptionAttrs: templ.Attributes{"data-on:change": rolesLiveGet},
+	}
+}
+
+func (v rolesView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID:                rolesForm,
+		Action:            rolesPath,
+		SearchPlaceholder: "Search roles...",
+		SearchValue:       v.Query.Q,
+		ClearHref:         clear,
+		ClearAttrs:        templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: len(v.Query.Facets),
+		Hidden:            v.Query.hidden(),
+		SearchAttrs:       templ.Attributes{"data-on:input__debounce.300ms": rolesLiveGet},
+		FormAttrs:         templ.Attributes{"data-on:submit": rolesLiveGet},
+		Filters:           rolesFilters(v),
+	}
+}
+
+func (v rolesView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "role-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows,
+		RowsOptions: rolesList.rows, Noun: "roles", HrefPattern: v.Query.pagePattern(), FormID: rolesForm,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func (v rolesView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No roles found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = v.Query.clearURL()
+	}
+	return e
+}
+
+func (v rolesView) drawerSignals() string {
+	if v.Drawer == nil {
+		return "{" + rolesDrawerSig + ": ''}"
+	}
+	return "{" + rolesDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "'}"
+}
+
+templ rolesPage(v rolesView) {
+	<div data-signals={ v.drawerSignals() }>
+		@kit.PageHeader(kit.PageHeaderProps{
+			Title:    "Roles",
+			Subtitle: "Manage roles and their permissions",
+			Actions:  rolesActions(v),
+		})
+		@kit.Alert(kit.AlertProps{
+			Icon:        "info",
+			Title:       "New UI preview",
+			Description: "This page is served by the new server-rendered UI. The current UI has the same page under Roles.",
+			Class:       "mb-4",
+		})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@rolesTable(v)
+			@kit.Paginator(v.pager())
+		</div>
+		<div id={ rolesDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		if v.Perms.Delete {
+			@kit.ConfirmDialog(rolesConfirm(rolesDeleteDlg, "Delete Role", "Delete this role? This cannot be undone.", "Delete", kit.ToneDanger))
+		}
+		@rolesDrawer(v.Drawer)
+	</div>
+}
+
+// rolesActions are the header buttons, each shown only to a user who may use
+// it: the platform sync (the SPA has it on the dashboard) and Create Role.
+templ rolesActions(v rolesView) {
+	<div id="role-actions" class="flex flex-wrap items-center gap-2">
+		if v.Perms.Sync {
+			// The SPA syncs at once (no confirmation), showing the button busy.
+			<form method="post" action={ rolesPath + "/sync-platform" } data-on:submit={ kit.SubmitForm } data-indicator="rolesSyncBusy">
+				@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: kit.LegacySecondary, Icon: "refresh-cw", Attrs: templ.Attributes{"data-attr:disabled": "$rolesSyncBusy", "data-attr:aria-busy": "$rolesSyncBusy ? 'true' : 'false'"}}) {
+					Sync Platform Roles
+				}
+			</form>
+		}
+		if v.Perms.Create {
+			@kit.LegacyButton(kit.LegacyButtonProps{Href: rolesPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+				Create Role
+			}
+		}
+	</div>
+}
+
+templ rolesFilters(v rolesView) {
+	@kit.MultiSelect(v.facetProps(rolesFacetApp))
+	@kit.MultiSelect(v.facetProps(rolesFacetSource))
+}
+
+func rolesColumns() []kit.DataColumn {
+	return []kit.DataColumn{
+		{Label: "Role"},
+		{Label: "Description"},
+		{Label: "Permissions"},
+		{Label: "Application"},
+		{Label: "Source"},
+		{Label: "Actions", Class: "w-px"},
+	}
+}
+
+templ rolesTable(v rolesView) {
+	@kit.DataTable(kit.DataTableProps{ID: rolesTableID, BodyID: "role-rows", Columns: rolesColumns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "role-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="flex flex-col gap-0.5 no-underline" data-on:click__prevent={ liveLink } aria-label={ "View " + row.DisplayName }>
+						<span class="font-medium text-foreground">{ row.DisplayName }</span>
+						<span class="font-mono text-xs text-muted-foreground">{ row.Name }</span>
+					</a>
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+					if row.Description != "" {
+						<span class="block max-w-[300px] truncate" title={ row.Description }>{ row.Description }</span>
+					} else {
+						—
+					}
+				}
+				@kit.TD(kit.TDProps{Class: "font-medium"}) {
+					{ strconv.Itoa(row.Permissions) }
+				}
+				@kit.TD(kit.TDProps{}) {
+					@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: row.Application})
+				}
+				@kit.TD(kit.TDProps{}) {
+					@kit.Tag(kit.TagProps{Severity: row.SourceSeverity, Label: row.SourceLabel})
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+}
+
+templ rolesDrawer(d *rolesDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@rolesDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: rolesDrawerID, Signal: rolesDrawerSig, Label: "Role", Size: kit.DrawerWide})
+	}
+}
+
+templ rolesDrawerContent(d rolesDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@rolesDrawerBody(d)
+	}
+}
+
+// rolesDrawerBody mirrors the SPA's RoleDetailDrawer: the role's details (with
+// Edit for an admin-created role, to those who may update) and its
+// permissions.
+templ rolesDrawerBody(d rolesDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Role Details", Actions: rolesEditButton(d)}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Role Name"}) {
+				<code>{ d.Name }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Display Name", Value: cmpOrString(d.DisplayName, "—")})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Application"}) {
+				@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: d.Application})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Source"}) {
+				@kit.Tag(kit.TagProps{Severity: d.SourceSeverity, Label: d.SourceLabel})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Description", Value: cmpOrString(d.Description, "No description provided"), Span: true})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created"}) {
+				@d.Created
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Updated"}) {
+				@d.Updated
+			}
+		</div>
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Permissions (" + strconv.Itoa(len(d.Permissions)) + ")"}) {
+		if len(d.Permissions) == 0 {
+			<div class="fc-empty">
+				@kit.Icon(kit.IconProps{Name: "lock", Class: "size-8"})
+				<span>This role has no permissions assigned</span>
+			</div>
+		} else {
+			@kit.Table(kit.TableProps{Dense: true}) {
+				@kit.THead(kit.THeadProps{Caps: true}) {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TH(kit.THProps{}) {
+							Permission
+						}
+						@kit.TH(kit.THProps{}) {
+							Application
+						}
+						@kit.TH(kit.THProps{}) {
+							Context
+						}
+						@kit.TH(kit.THProps{}) {
+							Aggregate
+						}
+						@kit.TH(kit.THProps{}) {
+							Action
+						}
+					}
+				}
+				@kit.TBody(kit.TBodyProps{}) {
+					for _, p := range d.Permissions {
+						@kit.TR(kit.TRProps{Static: true}) {
+							@kit.TD(kit.TDProps{Class: "font-mono text-[13px] text-subtle-foreground"}) {
+								{ p.Code }
+							}
+							@kit.TD(kit.TDProps{}) {
+								@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: p.Application})
+							}
+							@kit.TD(kit.TDProps{}) {
+								{ p.Context }
+							}
+							@kit.TD(kit.TDProps{}) {
+								{ p.Aggregate }
+							}
+							@kit.TD(kit.TDProps{}) {
+								@kit.Tag(kit.TagProps{Severity: p.Severity, Label: p.Action})
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+templ rolesEditButton(d rolesDetail) {
+	if d.CanEdit {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil"}) {
+			Edit
+		}
+	}
+}

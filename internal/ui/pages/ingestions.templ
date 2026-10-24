@@ -1,0 +1,562 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// ── list ───────────────────────────────────────────────────────────────
+
+func (v ingsView) filterSelect(name, label, all string, opts []kit.Option, selected string) kit.FilterSelectProps {
+	return kit.FilterSelectProps{Name: name, Label: label, Placeholder: all, Options: opts, Selected: selected, Attrs: templ.Attributes{"data-on:change": ingsLiveGet}}
+}
+
+func (v ingsView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: ingsFormID, Action: ingsPath, SearchPlaceholder: "Search code or name...", SearchValue: v.Query.Q,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: len(v.Query.Facets) + v.statusCount(), Hidden: v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": ingsLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": ingsLiveGet},
+		Filters:     ingsFilters(v),
+	}
+}
+
+func (v ingsView) statusCount() int {
+	if v.Query.Status != "" {
+		return 1
+	}
+	return 0
+}
+
+func (v ingsView) pager() kit.CursorPagerProps {
+	p := kit.CursorPagerProps{
+		ID: "ings-pager", Summary: "Showing " + strconv.Itoa(len(v.Rows)) + " ingestions, in the order they were created",
+		OlderHref: v.OlderHref, LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+	if v.Query.After != "" {
+		p.NewestHref = v.Query.first().URL()
+	}
+	return p
+}
+
+func ingsColumns() []kit.DataColumn {
+	return []kit.DataColumn{
+		{Label: "Code"}, {Label: "Application"}, {Label: "Client"}, {Label: "Source"}, {Label: "Status"}, {Label: "Version"}, {Label: "Updated"},
+		{Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v ingsView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No ingestions found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = v.Query.clearURL()
+	}
+	return e
+}
+
+// signals declares the page's signals: the record the drawer opens with (a
+// navigation to /ui/ingestions/{id}) or none, and the drawer's tab. The id is
+// checked by kit.ID, so it is safe inside the expression.
+func (v ingsView) signals() string {
+	if v.Drawer == nil {
+		return "{" + ingsDrawerSig + ": '', " + ingsTabSig + ": '" + ingsTabOverview + "'}"
+	}
+	return "{" + ingsDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "', " + ingsTabSig + ": '" + kit.ID(v.Drawer.Tab) + "'}"
+}
+
+// ingsStateTags are the status chips beside a code: whether it runs, that it
+// has no live version yet, and the set that owns it.
+templ ingsStateTags(active, draft bool, set string) {
+	if active {
+		@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSuccess}) {
+			Active
+		}
+	} else {
+		@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSecondary}) {
+			Paused
+		}
+	}
+	if draft {
+		@kit.Badge(kit.BadgeProps{Variant: kit.BadgeWarn}) {
+			No live version
+		}
+	}
+	if set != "" {
+		@kit.Badge(kit.BadgeProps{Variant: kit.BadgeInfo}) {
+			Set
+		}
+	}
+}
+
+templ ingsPage(v ingsView) {
+	<div data-signals={ v.signals() }>
+		<script defer src={ assets.URL("fc-code-editor.js") }></script>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Ingestions", Subtitle: "Where each client's data comes from, how it is split, and the dispatch job each record becomes", Actions: ingsActions(v)})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@ingsTable(v)
+			@kit.CursorPager(v.pager())
+		</div>
+		<div id={ ingsDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		@ingsConfirmDialogs(v.Perms)
+		@ingsDrawer(v.Drawer)
+	</div>
+}
+
+templ ingsActions(v ingsView) {
+	if v.Perms.Create {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: ingsPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			New ingestion
+		}
+	}
+}
+
+templ ingsFilters(v ingsView) {
+	@kit.FilterSelect(v.filterSelect(ingsFacetApp, "Application", "All applications", v.Apps, v.Query.one(ingsFacetApp)))
+	@kit.FilterSelect(v.filterSelect(ingsFacetClient, "Client", "All clients", v.Clients, v.Query.one(ingsFacetClient)))
+	@kit.FilterSelect(v.filterSelect(ingsFacetKind, "Source", "All sources", v.Kinds, v.Query.one(ingsFacetKind)))
+	@kit.FilterSelect(v.filterSelect("status", "Status", "All statuses", ingsStatusOptions, v.Query.Status))
+}
+
+// ingsTable is the patch target for live updates.
+templ ingsTable(v ingsView) {
+	@kit.DataTable(kit.DataTableProps{ID: "ings-table", BodyID: "ings-rows", Columns: ingsColumns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "ings-" + row.ID}) {
+				@kit.TD(kit.TDProps{Class: "whitespace-normal"}) {
+					<a href={ row.DetailHref } class="no-underline" data-on:click__prevent={ liveLink }><code class="fc-mono-chip">{ row.Code }</code></a>
+					<div class="text-[13px] text-muted-foreground">{ row.Name }</div>
+				}
+				@kit.TD(kit.TDProps{}) {
+					<code class="fc-mono-chip">{ row.Application }</code>
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+					{ row.Client }
+				}
+				@kit.TD(kit.TDProps{Class: "whitespace-normal"}) {
+					<div>{ row.Kind }</div>
+					<div class="max-w-[22rem] truncate text-xs text-muted-foreground" title={ row.Where }>{ row.Where }</div>
+				}
+				@kit.TD(kit.TDProps{Class: "whitespace-normal"}) {
+					<div class="flex flex-wrap items-center gap-1">
+						@ingsStateTags(row.Active, row.Draft, row.Set)
+					</div>
+					if row.Notice {
+						<div class="mt-1 text-xs text-warning">No runtime carries this kind</div>
+					}
+				}
+				@kit.TD(kit.TDProps{Class: "tabular-nums"}) {
+					if row.Version > 0 {
+						{ strconv.Itoa(row.Version) }
+					} else {
+						<span class="text-muted-foreground">—</span>
+					}
+					if row.Latest > row.Version {
+						<span class="text-xs text-muted-foreground" title="The newest saved version">/ { strconv.Itoa(row.Latest) }</span>
+					}
+				}
+				@kit.TD(kit.TDProps{}) {
+					<time datetime={ row.UpdatedISO }>{ row.Updated }</time>
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+}
+
+// ── the drawer ─────────────────────────────────────────────────────────
+
+// ingsDrawer is the drawer frame, rendered with the page: empty (closed), or
+// with the record a navigation to /ui/ingestions/{id} opens.
+templ ingsDrawer(d *ingsDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@ingsDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: ingsDrawerID, Signal: ingsDrawerSig, Label: "Ingestion", Size: kit.DrawerWide})
+	}
+}
+
+// ingsDrawerContent is the drawer's content for one ingestion, patched into
+// the frame (mode inner) when a row opens it or an action changes it.
+templ ingsDrawerContent(d ingsDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@ingsDrawerBody(d)
+	}
+}
+
+templ ingsDrawerBody(d ingsDetail) {
+	@kit.TabList(kit.TabListProps{
+		ID: "ings-tabs", Signal: ingsTabSig, Label: "Ingestion sections", Tabs: ingsTabs, Selected: d.Tab,
+		Panels: map[string]templ.Component{
+			ingsTabOverview: ingsOverview(d),
+			"definition":    ingsDefinition(d),
+			"versions":      ingsVersions(d),
+			"activity":      ingsLazyTab(d, "activity"),
+			"failures":      ingsLazyTab(d, "failures"),
+			"history":       ingsLazyTab(d, "history"),
+		},
+	})
+}
+
+// ingsLazyTab is the placeholder of a tab IngestionTabs fills: it asks for the
+// tab once it is on show (an element that is not displayed is not
+// intersecting), so a tab that is never opened is never read.
+templ ingsLazyTab(d ingsDetail, tab string) {
+	<div id={ ingsSlotID(tab) } data-url={ d.Base + "/tabs/" + tab } data-on-intersect__once="@get(el.dataset.url)" role="status" class="text-sm text-muted-foreground">Opening…</div>
+}
+
+// ingsLazyContent is what the slot receives: the tab's own placeholder.
+templ ingsLazyContent(id, tab string) {
+	switch tab {
+		case "activity":
+			@IngestionActivityTab(id)
+		case "failures":
+			@IngestionFailuresTab(id)
+		case "history":
+			@IngestionHistoryTab(id)
+	}
+}
+
+// ingsLink fetches a dialog through Datastar instead of navigating.
+func ingsLink() templ.Attributes {
+	return templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}
+}
+
+templ ingsChangeButton(d ingsDetail) {
+	if d.CanChange {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.Base + "/edit", Icon: "pencil", Attrs: ingsLink()}) {
+			Change…
+		}
+	} else if d.Perms.Update && d.EditBlock != "" {
+		<span class="text-xs text-muted-foreground">{ d.EditBlock }</span>
+	}
+}
+
+// ingsOverview is the Nuxt drawer's ingestion, source, split and dispatch
+// sections, and its actions.
+templ ingsOverview(d ingsDetail) {
+	if d.Set != "" {
+		@kit.Alert(kit.AlertProps{ID: "ings-managed", Icon: "info", Title: "Managed by a set", Description: "Its definition is kept in files and applied as a set. To change or remove it, change the set's files and apply them again, or release the set. Pausing and resuming still work.", Class: "mb-4"})
+	}
+	if d.Notice {
+		@kit.Alert(kit.AlertProps{ID: "ings-notice", Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "No runtime carries this kind", Description: "Nothing has failed: no live runtime reports the kind yet, so nobody is there to run it.", Class: "mb-4"})
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Ingestion", Actions: ingsChangeButton(d)}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Id"}) {
+				<code>{ d.ID }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Application", Value: d.Application})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Client"}) {
+				{ d.Client } <code class="fc-mono-chip">{ d.ClientIdentifier }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
+				<div class="flex flex-wrap items-center gap-1">
+					@ingsStateTags(d.Active, d.Draft, d.Set)
+				</div>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Live version", Value: ingsLiveText(d.Version)})
+			if d.Latest > d.Version {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Newest version"}) {
+					<span class="text-warning" id="ings-unreleased">{ strconv.Itoa(d.Latest) }, saved and not live</span>
+				}
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Failed payloads"}) {
+				{ ingsKeepText(d.KeepPayloads) }
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created", Value: d.Created})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Changed", Value: d.Updated})
+		</div>
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Source"}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Kind", Value: d.Kind})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Where", Value: d.Where, Span: true})
+			if d.Endpoint != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Endpoint", Value: d.Endpoint, Span: true})
+			}
+		</div>
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Split and dispatch"}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Split", Value: d.Split, Span: true})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Dispatch code"}) {
+				<code>{ d.Target.Code }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Target URL", Value: d.Target.TargetURL, Span: true})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Dispatch pool"}) {
+				<code>{ d.Target.Pool }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Signed by", Value: ingsSignedText(d)})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Mode", Value: d.Target.Mode})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Batch size", Value: strconv.Itoa(d.Target.BatchSize)})
+		</div>
+	}
+	if d.Perms.Update || d.CanRemove {
+		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
+			<div class="flex flex-wrap gap-2">
+				if d.Perms.Update {
+					if d.Active {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Icon: "pause", Attrs: confirmTrigger(ingsPauseDialog, d.Base+"/pause")}) {
+							Pause…
+						}
+					} else {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Icon: "play", Attrs: confirmTrigger(ingsResumeDialog, d.Base+"/resume")}) {
+							Resume…
+						}
+					}
+				}
+				if d.CanRemove {
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Attrs: confirmTrigger(ingsDeleteDialog, d.Base+"/delete")}) {
+						Remove…
+					}
+				}
+			</div>
+		}
+	}
+}
+
+func ingsLiveText(version int) string {
+	if version == 0 {
+		return "None yet"
+	}
+	return strconv.Itoa(version)
+}
+
+func ingsKeepText(keep bool) string {
+	if keep {
+		return "The start of each failure's payload is kept"
+	}
+	return "Not kept"
+}
+
+// ingsSignedText says who signs the deliveries: the connection's service
+// account, a service account of its own, or nobody.
+func ingsSignedText(d ingsDetail) string {
+	switch {
+	case d.Target.Connection != nil:
+		return "The connection " + *d.Target.Connection + "'s service account"
+	case d.Target.ServiceAccount != nil:
+		return *d.Target.ServiceAccount
+	}
+	return "Unsigned"
+}
+
+// ── definition ─────────────────────────────────────────────────────────
+templ ingsDefinition(d ingsDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Definition", Description: "The definition file fcdev ingest apply reads. Secrets stay named; the client is written by its identifier.", Actions: ingsExportButton(d)}) {
+		@kit.CodeEditor(kit.CodeEditorProps{ID: "ings-definition", Value: d.YAML, Language: "yaml", ReadOnly: true, Label: "Definition (YAML)", Rows: 24})
+	}
+}
+
+templ ingsExportButton(d ingsDetail) {
+	@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Small: true, Href: d.Base + "/definition.yaml", Icon: "download", Attrs: templ.Attributes{"download": d.Code + ".yaml"}}) {
+		Export YAML
+	}
+}
+
+// ── versions ───────────────────────────────────────────────────────────
+
+func (d ingsDetail) compareExpr() string {
+	return "@get('" + ingsPath + "/" + kit.ID(d.ID) + "/compare', {contentType: 'form'})"
+}
+
+templ ingsNewVersionButton(d ingsDetail) {
+	if d.CanChange {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.Base + "/edit", Icon: "plus", Attrs: ingsLink()}) {
+			New version…
+		}
+	}
+}
+
+templ ingsVersions(d ingsDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Versions", Description: "The live one is what runtimes run. Making one live, newer or older, is what they run next.", Actions: ingsNewVersionButton(d)}) {
+		if len(d.Versions) == 0 {
+			<p class="text-muted-foreground">No versions saved.</p>
+		} else {
+			@kit.Table(kit.TableProps{ID: "ings-versions", Dense: true}) {
+				@kit.THead(kit.THeadProps{Caps: true}) {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TH(kit.THProps{}) {
+							#
+						}
+						@kit.TH(kit.THProps{}) {
+							Note
+						}
+						@kit.TH(kit.THProps{}) {
+							Saved
+						}
+						@kit.TH(kit.THProps{}) {
+							Actions
+						}
+					}
+				}
+				@kit.TBody(kit.TBodyProps{Striped: true}) {
+					for _, v := range d.Versions {
+						@kit.TR(kit.TRProps{ID: "ings-version-" + strconv.Itoa(v.Number), Static: true}) {
+							@kit.TD(kit.TDProps{}) {
+								{ strconv.Itoa(v.Number) }
+								if v.Live {
+									@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSuccess}) {
+										live
+									}
+								}
+							}
+							@kit.TD(kit.TDProps{Class: "whitespace-normal"}) {
+								if v.Note != "" {
+									{ v.Note }
+								} else {
+									<span class="text-muted-foreground">—</span>
+								}
+								if v.Applied != "" {
+									<div class="text-xs text-muted-foreground">Applied from a set</div>
+								}
+							}
+							@kit.TD(kit.TDProps{Class: "whitespace-normal"}) {
+								<time datetime={ v.CreatedISO }>{ v.Created }</time>
+								if v.By != "" {
+									<div class="text-xs text-muted-foreground"><code>{ v.By }</code></div>
+								}
+							}
+							@kit.TD(kit.TDProps{}) {
+								<div class="flex flex-wrap items-center gap-1">
+									if v.MakeLive {
+										@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Small: true, Icon: "arrow-up", Attrs: confirmTrigger(ingsLiveDialog, d.Base+"/versions/"+strconv.Itoa(v.Number)+"/live")}) {
+											Make live…
+										}
+									}
+									if v.EditHref != "" {
+										@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Small: true, Href: v.EditHref, Attrs: ingsLink()}) {
+											Change from this
+										}
+									}
+								</div>
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if len(d.Versions) > 1 {
+		@kit.FormSection(kit.FormSectionProps{Title: "Compare", Description: "Two saved versions, side by side."}) {
+			<form id="ings-compare-form" method="get" action={ d.Base } class="flex flex-wrap items-end gap-3" data-on:submit__prevent={ d.compareExpr() }>
+				<input type="hidden" name="tab" value="versions"/>
+				@kit.Field(kit.FieldProps{Label: "Version", For: "ings-compare-a"}) {
+					@kit.Select(kit.SelectProps{ID: "ings-compare-a", Name: "a", Options: ingsVersionOptions(d), Selected: ingsCompareChoice(d, true)})
+				}
+				@kit.Field(kit.FieldProps{Label: "Against", For: "ings-compare-b"}) {
+					@kit.Select(kit.SelectProps{ID: "ings-compare-b", Name: "b", Options: ingsVersionOptions(d), Selected: ingsCompareChoice(d, false)})
+				}
+				@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: kit.LegacyOutline}) {
+					Compare
+				}
+			</form>
+			@ingsCompareC(d)
+		}
+	}
+}
+
+func ingsVersionOptions(d ingsDetail) []kit.Option {
+	opts := make([]kit.Option, 0, len(d.Versions))
+	for _, v := range d.Versions {
+		label := "Version " + strconv.Itoa(v.Number)
+		if v.Live {
+			label += " (live)"
+		}
+		opts = append(opts, kit.Option{Value: strconv.Itoa(v.Number), Label: label})
+	}
+	return opts
+}
+
+// ingsCompareChoice preselects the pair shown, else the newest against the
+// live (or the one before it).
+func ingsCompareChoice(d ingsDetail, first bool) string {
+	if d.Compare != nil {
+		if first {
+			return strconv.Itoa(d.Compare.A)
+		}
+		return strconv.Itoa(d.Compare.B)
+	}
+	if first {
+		return strconv.Itoa(d.Versions[0].Number)
+	}
+	for _, v := range d.Versions {
+		if v.Live && v.Number != d.Versions[0].Number {
+			return strconv.Itoa(v.Number)
+		}
+	}
+	return strconv.Itoa(d.Versions[1].Number)
+}
+
+// ingsCompareC is the comparison, the patch target of the compare form.
+templ ingsCompareC(d ingsDetail) {
+	<div id="ings-compare" class="mt-4 flex flex-col gap-3">
+		if d.Compare != nil {
+			if d.Compare.Same {
+				@kit.Alert(kit.AlertProps{Icon: "info", Title: "Both versions hold the same definition."})
+			}
+			<div class="grid gap-4 lg:grid-cols-2">
+				<div>
+					<h4 class="fc-field-label mb-1">{ ingsVersionTitle(d.Compare.A, d.Compare.ALive) }</h4>
+					@kit.CodeEditor(kit.CodeEditorProps{ID: "ings-compare-yaml-a", Value: d.Compare.AYAML, Language: "yaml", ReadOnly: true, Label: ingsVersionTitle(d.Compare.A, d.Compare.ALive), Rows: 22})
+				</div>
+				<div>
+					<h4 class="fc-field-label mb-1">{ ingsVersionTitle(d.Compare.B, d.Compare.BLive) }</h4>
+					@kit.CodeEditor(kit.CodeEditorProps{ID: "ings-compare-yaml-b", Value: d.Compare.BYAML, Language: "yaml", ReadOnly: true, Label: ingsVersionTitle(d.Compare.B, d.Compare.BLive), Rows: 22})
+				</div>
+			</div>
+		}
+	</div>
+}
+
+func ingsVersionTitle(number int, live bool) string {
+	if live {
+		return "Version " + strconv.Itoa(number) + " (live)"
+	}
+	return "Version " + strconv.Itoa(number)
+}
+
+// ── confirmations ──────────────────────────────────────────────────────
+
+// ingsConfirm is one shared confirm dialog. Its rendered action is the list
+// (which accepts no POST); the trigger sets the record's action.
+func ingsConfirm(id, title, message, label string, tone kit.ConfirmTone) kit.ConfirmDialogProps {
+	return kit.ConfirmDialogProps{
+		ID: id, Action: ingsPath, Title: title, Message: message, ConfirmLabel: label, Tone: tone,
+		Hidden:    ingsHidden(),
+		FormAttrs: templ.Attributes{"data-on:submit": kit.SubmitConfirm},
+	}
+}
+
+// ingsConfirmDialogs are the confirmations, one per action, shared by the rows
+// and the drawer. Only the actions the user may run are rendered.
+templ ingsConfirmDialogs(perms ingsPerms) {
+	if perms.Update {
+		@kit.ConfirmDialog(ingsConfirm(ingsPauseDialog, "Pause this ingestion?", "Runtimes stop running it on their next poll. Its definition and versions stay, and it can be resumed.", "Pause", kit.ToneWarn))
+		@kit.ConfirmDialog(ingsConfirm(ingsResumeDialog, "Resume this ingestion?", "Runtimes run its live version again from their next poll.", "Resume", kit.ToneDefault))
+	}
+	if perms.Delete {
+		@kit.ConfirmDialog(ingsConfirm(ingsDeleteDialog, "Remove this ingestion?", "Runtimes stop it on their next poll. Its versions, and what it kept between polls (watermarks), are removed with it. This cannot be undone.", "Remove", kit.ToneDanger))
+	}
+	if perms.Promote {
+		@kit.ConfirmDialog(ingsConfirm(ingsLiveDialog, "Make this version live?", "Runtimes run it from their next poll, in place of the version that runs now.", "Make live", kit.ToneDefault))
+	}
+}

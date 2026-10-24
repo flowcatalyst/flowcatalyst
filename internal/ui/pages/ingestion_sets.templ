@@ -1,0 +1,208 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+// ingSetsPage is /ui/ingestion-sets and /ui/ingestion-sets/{name}: the sets
+// and, for the one named, its applies. Reading only: a set is applied with
+// `fcdev ingest apply`.
+templ ingSetsPage(v ingSetsView) {
+	<div>
+		<header class="fc-page-header">
+			<div>
+				<h1 class="fc-page-title">Ingestion sets</h1>
+				<p class="fc-page-subtitle">Definitions kept in files and applied as a whole, and each apply that changed something, with what it was given.</p>
+			</div>
+		</header>
+		<div class="flex flex-col gap-3">
+			@kit.Alert(kit.AlertProps{
+				ID: "ing-sets-readonly", Icon: "info", Title: "Sets are applied from their files with fcdev ingest apply.",
+				Description: "This page shows what each apply did. You can go back to an earlier apply or release a set here, not apply one.",
+			})
+			@ingSetsList(v)
+			@ingSetDetail(v)
+		</div>
+		<div id={ ingSetDialogBox }></div>
+		if v.Selected != "" && v.CanApply {
+			@kit.ConfirmDialog(ingSetConfirm(v.Selected))
+		}
+	</div>
+}
+
+templ ingSetsList(v ingSetsView) {
+	<section id={ ingSetsListID } class="fc-card flex flex-col gap-3" aria-labelledby="ing-sets-title">
+		<h2 id="ing-sets-title" class="text-[13px] font-semibold tracking-wide text-muted-foreground uppercase">Sets</h2>
+		if len(v.Sets) == 0 {
+			<p class="text-sm text-muted-foreground" id="ing-no-sets" role="status">No set manages an ingestion yet.</p>
+		} else {
+			@kit.Table(kit.TableProps{Dense: true, Attrs: templ.Attributes{"aria-labelledby": "ing-sets-title"}}) {
+				@kit.THead(kit.THeadProps{}) {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TH(kit.THProps{}) {
+							Set
+						}
+						@kit.TH(kit.THProps{Class: "text-right"}) {
+							Ingestions
+						}
+						@kit.TH(kit.THProps{}) {
+							Last applied
+						}
+					}
+				}
+				@kit.TBody(kit.TBodyProps{}) {
+					for _, s := range v.Sets {
+						@kit.TR(kit.TRProps{}) {
+							@kit.TD(kit.TDProps{}) {
+								<a
+									href={ templ.SafeURL(ingSetURL(s.Name)) }
+									class="font-medium underline-offset-2 hover:underline"
+									if s.Current {
+										aria-current="page"
+									}
+								>{ s.Name }</a>
+							}
+							@kit.TD(kit.TDProps{Class: "text-right tabular-nums"}) {
+								{ ingInt(s.Ingestions) }
+							}
+							@kit.TD(kit.TDProps{}) {
+								@kit.LocalTime(kit.LocalTimeProps{At: s.Updated})
+							}
+						}
+					}
+				}
+			}
+		}
+	</section>
+}
+
+templ ingSetDetail(v ingSetsView) {
+	<div id={ ingSetDetailID }>
+		if v.Selected != "" {
+			@kit.FormSection(kit.FormSectionProps{
+				Title:       "Applies of " + v.Selected,
+				Description: "Each apply that changed something, the newest ten, with the files it was given. Going back to one applies the set again as it was.",
+				Card:        true,
+				Actions:     ingSetActions(v),
+			}) {
+				if len(v.Applies) == 0 {
+					<p class="text-sm text-muted-foreground" id="ing-no-applies" role="status">No apply of this set is kept.</p>
+				}
+				<ul class="flex flex-col gap-3" data-testid="applies">
+					for _, a := range v.Applies {
+						@ingApplyItem(a)
+					}
+				</ul>
+			}
+		}
+	</div>
+}
+
+templ ingSetActions(v ingSetsView) {
+	if v.CanApply && v.Owned > 0 {
+		@kit.Button(kit.ButtonProps{Variant: kit.ButtonOutline, Size: kit.ButtonSm, Attrs: confirmTrigger(ingSetRelease, ingSetURL(v.Selected)+"/release")}) {
+			Release the set
+		}
+	}
+}
+
+templ ingApplyItem(a ingApplyRow) {
+	<li id={ "ing-apply-" + a.ID } class="border-t border-border pt-3 text-sm">
+		<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+			<span class="font-medium">Apply <code class="fc-mono-chip">{ a.ID }</code></span>
+			if a.Newest {
+				@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Newest"})
+			}
+			if a.GoingBack != "" {
+				<span class="text-xs text-warning">going back to apply { a.GoingBack }</span>
+			}
+			<span class="text-muted-foreground">by { a.By }</span>
+			<span class="text-xs text-muted-foreground">
+				@kit.LocalTime(kit.LocalTimeProps{At: a.At})
+			</span>
+			<span class="text-xs text-muted-foreground">{ ingInt(a.Items) } definition(s), { ingInt(a.Files) } file(s)</span>
+		</div>
+		<ul class="mt-1 flex flex-wrap items-center gap-1">
+			for _, c := range a.Changes {
+				<li class="inline-flex items-center gap-1">
+					@kit.Tag(kit.TagProps{Severity: c.Severity, Label: c.Action})
+					if c.Href != "" {
+						<a href={ templ.SafeURL(c.Href) } class="font-mono text-xs underline">{ c.Label }</a>
+					} else {
+						<span class="font-mono text-xs">{ c.Label }</span>
+					}
+				</li>
+			}
+		</ul>
+		if a.GoBack != "" {
+			<div class="mt-2">
+				@kit.Button(kit.ButtonProps{
+					Variant: kit.ButtonOutline, Size: kit.ButtonSm, Href: a.GoBack, Icon: "rotate-ccw",
+					Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"},
+				}) {
+					Go back to this
+				}
+			</div>
+		}
+		<details class="mt-2" data-url={ a.FilesURL } data-on:toggle__once="@get(el.dataset.url)">
+			<summary class="cursor-pointer text-xs text-muted-foreground">Show files</summary>
+			<div id={ "apply-files-" + a.ID } class="mt-2 text-xs text-muted-foreground" role="status">Reading the files…</div>
+		</details>
+	</li>
+}
+
+// ingApplyFilesC is the files of one apply, patched into its row.
+templ ingApplyFilesC(id string, files []ingestion.SetFile) {
+	<div id={ "apply-files-" + id } class="mt-2 flex flex-col gap-2">
+		if len(files) == 0 {
+			<p class="text-xs text-muted-foreground">No files were sent with this apply; its definitions are kept.</p>
+		}
+		for _, f := range files {
+			<div>
+				<p class="mb-1 font-mono text-xs text-muted-foreground">{ f.Path }</p>
+				@kit.CodeBlock(kit.CodeBlockProps{Label: f.Path}) {
+					{ f.Content }
+				}
+			</div>
+		}
+	</div>
+}
+
+// ingReapplyDialog is the confirmation for going back to an apply: the plan a
+// dry run made, and that it lasts until the set is applied again.
+templ ingReapplyDialog(v ingReapplyView) {
+	@kit.Dialog(kit.DialogProps{
+		ID: ingSetDialogName, Title: "Go back to apply " + v.ApplyID + " of " + v.Name + "?", Width: kit.WidthWide,
+		Attrs: templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"},
+	}) {
+		<form method="post" action={ v.Action } data-on:submit={ kit.SubmitConfirm } class="flex flex-col gap-4">
+			if v.Nothing {
+				<p class="text-sm" id="ing-reapply-nothing">Set { v.Name } already is as apply { v.ApplyID } left it: nothing would change.</p>
+			} else {
+				<div class="flex flex-col gap-2 text-sm">
+					<p>Applied again as it was, this would:</p>
+					<ul class="flex flex-wrap items-center gap-1" id="ing-reapply-plan">
+						for _, c := range v.Changes {
+							<li class="inline-flex items-center gap-1">
+								@kit.Tag(kit.TagProps{Severity: c.Severity, Label: c.Action})
+								<span class="font-mono text-xs">{ c.Label }</span>
+							</li>
+						}
+					</ul>
+					<p class="text-muted-foreground">This lasts until the set is applied again; to keep it, change the set's files back too.</p>
+				</div>
+			}
+			<div class="flex flex-wrap items-center justify-end gap-2">
+				<button type="button" class="fc-btn fc-btn-text" autofocus data-on:click={ kit.CloseDialog }>
+					if v.Nothing {
+						Close
+					} else {
+						Cancel
+					}
+				</button>
+				if !v.Nothing {
+					<button type="submit" class="fc-btn fc-btn-primary">Go back</button>
+				}
+			</div>
+		</form>
+	}
+}

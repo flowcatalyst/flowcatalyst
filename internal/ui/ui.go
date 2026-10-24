@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/compress"
@@ -95,11 +96,66 @@ type Config struct {
 	Functions     pages.FunctionStore
 	FunctionOps   pages.FunctionCommands
 	FunctionZones pages.FunctionZones
+
+	// IngestionEnabled is FC_INGESTION_ENABLED: only then are the ingestion
+	// pages mounted and linked from the sidebar. Ingestions and IngestionOps
+	// back the ingestions page; its pickers read ApplicationStore, Clients and
+	// ClientStore.
+	IngestionEnabled bool
+	Ingestions       pages.IngestionStore
+	IngestionOps     pages.IngestionCommands
+	// IngestionTabs and IngestionAudit back the drawer's activity, failures
+	// and history panels; IngestionSets and IngestionSetOps the sets pages
+	// (who applied is named with DisplayName); IngestionTests and IngestionResolver
+	// test connection (IngestionTestSubject reads the form of an unsaved
+	// definition: nil leaves that route out).
+	IngestionTabs        pages.IngestionTabStore
+	IngestionAudit       pages.IngestionAudit
+	IngestionSets        pages.IngestionSetStore
+	IngestionSetOps      pages.IngestionSetCommands
+	IngestionTests       pages.IngestionTestStore
+	IngestionResolver    ingestion.Resolver
+	IngestionTestSubject func(r *http.Request) (pages.IngestionTestSubject, error)
+
+	// The developer portal reads the applications, their OpenAPI documents and
+	// event types; its processes tab reads Processes above. The Developer Users
+	// page reads and changes principals (DeveloperUsers, DeveloperUserOps).
+	DeveloperApps       pages.DeveloperApps
+	DeveloperSpecs      pages.DeveloperSpecs
+	DeveloperEventTypes pages.DeveloperEventTypes
+	DeveloperUsers      pages.DeveloperUserStore
+	DeveloperUserOps    pages.DeveloperUserCommands
+
+	// Users backs the users page (the principal API's handlers); the role
+	// picker and the roles filter read UserRoles, the client names and selects
+	// ClientStore.
+	Users     pages.UserService
+	UserRoles pages.UserRoles
+
+	// The service accounts page reads the clients, applications and
+	// connections through ClientStore, ApplicationStore, Connections and
+	// ConnectionOps above.
+	ServiceAccountStore pages.ServiceAccountStore
+	ServiceAccountOps   pages.ServiceAccountCommands
+	ServicePrincipals   pages.ServicePrincipals
+	ServiceOAuthClients pages.ServiceOAuthClients
+	ServiceAccountRoles pages.ServiceAccountRoles
+
+	// Roles, RoleOps and Permissions back the roles and permissions pages; their
+	// application filters and selects read Applications.
+	Roles       pages.RolesStore
+	RoleOps     pages.RolesCommands
+	Permissions pages.PermissionCatalogue
+
+	// Portal and PortalOps back the portal apps and portal users pages; their
+	// client select reads ClientStore.
+	Portal    pages.PortalStore
+	PortalOps pages.PortalCommands
 }
 
 // Mount registers /ui and everything under it on r.
 func Mount(r chi.Router, cfg Config) error {
-	sh := &shell.Shell{DisplayName: cfg.DisplayName, Version: cfg.Version, Flashes: pages.FlashMessages, CookieSecure: cfg.CookieSecure}
+	sh := &shell.Shell{DisplayName: cfg.DisplayName, Version: cfg.Version, Flashes: pages.FlashMessages, CookieSecure: cfg.CookieSecure, Features: shell.Features{Ingestion: cfg.IngestionEnabled}}
 	csrf, err := guard.CSRF(cfg.TrustedOrigins, sh.Deny)
 	if err != nil {
 		return err
@@ -141,6 +197,20 @@ func Mount(r chi.Router, cfg Config) error {
 			trace := &pages.FunctionTrace{Store: cfg.FunctionTrace, Ops: cfg.FunctionTraceOps, Shell: sh}
 			trace.Mount(r)
 			(&pages.Functions{Functions: cfg.Functions, Ops: cfg.FunctionOps, Zones: cfg.FunctionZones, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Apps: cfg.ApplicationStore, ServiceAccounts: cfg.ServiceAccounts, Trace: trace, Shell: sh}).Mount(r)
+			(&pages.PortalApps{Store: cfg.Portal, Ops: cfg.PortalOps, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
+			(&pages.PortalUsers{Store: cfg.Portal, Ops: cfg.PortalOps, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
+			(&pages.RolesPage{Store: cfg.Roles, Ops: cfg.RoleOps, Permissions: cfg.Permissions, Apps: cfg.Applications, Shell: sh}).Mount(r)
+			(&pages.PermissionsPage{Catalogue: cfg.Permissions, Apps: cfg.Applications, Shell: sh}).Mount(r)
+			(&pages.ServiceAccounts{Accounts: cfg.ServiceAccountStore, Ops: cfg.ServiceAccountOps, Principals: cfg.ServicePrincipals, OAuthClients: cfg.ServiceOAuthClients, Roles: cfg.ServiceAccountRoles, Clients: cfg.ClientStore, Apps: cfg.ApplicationStore, Connections: cfg.Connections, ConnectionOps: cfg.ConnectionOps, Shell: sh}).Mount(r)
+			(&pages.Users{Users: cfg.Users, Roles: cfg.UserRoles, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
+			(&pages.Developer{Apps: cfg.DeveloperApps, Specs: cfg.DeveloperSpecs, EventTypes: cfg.DeveloperEventTypes, Processes: cfg.Processes, Shell: sh}).Mount(r)
+			(&pages.DeveloperUsers{Store: cfg.DeveloperUsers, Ops: cfg.DeveloperUserOps, Shell: sh}).Mount(r)
+			if cfg.IngestionEnabled {
+				(&pages.Ingestions{Store: cfg.Ingestions, Ops: cfg.IngestionOps, Apps: cfg.ApplicationStore, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Shell: sh}).Mount(r)
+				(&pages.IngestionTabs{Store: cfg.IngestionTabs, Audit: cfg.IngestionAudit, Shell: sh}).Mount(r)
+				(&pages.IngestionSets{Sets: cfg.IngestionSets, Ops: cfg.IngestionSetOps, Names: cfg.DisplayName, Shell: sh}).Mount(r)
+				(&pages.IngestionTests{Store: cfg.IngestionTests, Resolver: cfg.IngestionResolver, Subject: cfg.IngestionTestSubject, Shell: sh}).Mount(r)
+			}
 			(&pages.ClientOptions{Clients: cfg.Clients, Shell: sh}).Mount(r)
 		})
 

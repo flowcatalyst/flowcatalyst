@@ -1,0 +1,636 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// ── list ───────────────────────────────────────────────────────────────
+
+var usrStatusOptions = []kit.Option{
+	{Value: "active", Label: "Active"},
+	{Value: "inactive", Label: "Inactive"},
+}
+
+func (v usrView) filterCount() int {
+	n := len(v.Query.Facets)
+	if v.Query.Status != "" {
+		n++
+	}
+	return n
+}
+
+func (v usrView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: usrFormID, Action: usersPath, SearchPlaceholder: "Search by name or email...", SearchValue: v.Query.Q,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.filterCount(), Hidden: v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": usrLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": usrLiveGet},
+		Filters:     usrFilters(v),
+	}
+}
+
+func (v usrView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "usr-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: usrList.rows,
+		Noun: "users", HrefPattern: v.Query.pagePattern(), FormID: usrFormID,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+// clientFilter is the client filter's select: a platform administrator's
+// always, a client administrator's when it can act in several clients.
+func (v usrView) clientFilter() (kit.FilterSelectProps, bool) {
+	selected := ""
+	if vals := v.Query.facet(usrFacetClient); len(vals) > 0 {
+		selected = vals[0]
+	}
+	show := v.Perms.Anchor || len(v.Clients) > 1
+	return kit.FilterSelectProps{Name: usrFacetClient, Label: "Client", Placeholder: "All Clients", Options: v.Clients, Selected: selected, Attrs: templ.Attributes{"data-on:change": usrLiveGet}}, show
+}
+
+func (v usrView) rolesFilter() kit.MultiSelectProps {
+	return kit.MultiSelectProps{
+		ID: "usr-filter-roles", Name: usrFacetRoles, Label: "Roles", Options: v.Roles, Selected: v.Query.facet(usrFacetRoles),
+		Placeholder: "All roles", ManyLabel: "{0} roles selected", EmptyText: "No roles", Search: true, Signal: "usrRoleFilterQ", Chips: true,
+		OptionAttrs: templ.Attributes{"data-on:change": usrLiveGet},
+	}
+}
+
+templ usrFilters(v usrView) {
+	if p, ok := v.clientFilter(); ok {
+		@kit.FilterSelect(p)
+	}
+	@kit.FilterSelect(kit.FilterSelectProps{Name: "status", Label: "Status", Placeholder: "All statuses", Options: usrStatusOptions, Selected: v.Query.Status, Attrs: templ.Attributes{"data-on:change": usrLiveGet}})
+	if len(v.Roles) > 0 {
+		@kit.MultiSelect(v.rolesFilter())
+	}
+}
+
+func (v usrView) columns() []kit.DataColumn {
+	sortable := func(label, key string) kit.DataColumn {
+		return kit.DataColumn{Label: label, Href: v.Query.sortURL(key), Direction: v.Query.direction(key), LinkAttrs: templ.Attributes{"data-on:click__prevent": sortClick}}
+	}
+	cols := []kit.DataColumn{sortable("Name", "name"), sortable("Email", "email")}
+	if v.Perms.Anchor {
+		cols = append(cols, kit.DataColumn{Label: "Type"})
+	}
+	return append(cols, kit.DataColumn{Label: "Client"}, kit.DataColumn{Label: "Status"}, kit.DataColumn{Label: "Roles"}, sortable("Created", "created"), kit.DataColumn{Label: "Actions", Class: "w-px"})
+}
+
+func (v usrView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No users found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = v.Query.clearURL()
+	}
+	return e
+}
+
+// signals declares the page's signals: the record the drawer opens with (a
+// navigation to /ui/users/{id}) or none. The id is checked by kit.ID, so it
+// is safe inside the expression.
+func (v usrView) signals() string {
+	if v.Drawer == nil {
+		return "{" + usrDrawerSig + ": ''}"
+	}
+	return "{" + usrDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "'}"
+}
+
+func (v usrView) title() string {
+	if v.Perms.ClientAdmin {
+		return "User Management"
+	}
+	return "Users"
+}
+
+func (v usrView) subtitle() string {
+	if v.Perms.ClientAdmin {
+		return "Manage users for your client"
+	}
+	return "Manage platform users and their access"
+}
+
+templ usrPage(v usrView) {
+	<div data-signals={ v.signals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: v.title(), Subtitle: v.subtitle(), Actions: usrActions(v)})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under " + v.title() + ".", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@usrTable(v)
+			@kit.Paginator(v.pager())
+		</div>
+		<div id={ usrDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		<div id={ usrSecretSlot }>
+			if v.Secret != nil {
+				@v.Secret
+			}
+		</div>
+		@usrConfirmDialogs(v.Perms)
+		@usrDrawer(v.Drawer)
+	</div>
+}
+
+templ usrActions(v usrView) {
+	if v.Perms.Create {
+		<div class="flex flex-wrap items-center gap-2">
+			@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Href: usersPath + "/import", Icon: "upload", Attrs: usrLink()}) {
+				Import CSV
+			}
+			@kit.LegacyButton(kit.LegacyButtonProps{Href: usersPath + "/new", Icon: "user-plus", Attrs: usrLink()}) {
+				Add User
+			}
+		</div>
+	}
+}
+
+// usrLink fetches a dialog through Datastar instead of navigating.
+func usrLink() templ.Attributes {
+	return templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}
+}
+
+templ usrActiveBadge(active bool) {
+	if active {
+		@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSuccess}) {
+			Active
+		}
+	} else {
+		@kit.Badge(kit.BadgeProps{Variant: kit.BadgeDestructive}) {
+			Inactive
+		}
+	}
+}
+
+templ usrTypeBadge(label string, variant kit.BadgeVariant, star bool, tip string) {
+	@kit.Badge(kit.BadgeProps{Variant: variant, Attrs: templ.Attributes{"title": tip}}) {
+		if star {
+			@kit.Icon(kit.IconProps{Name: "star", Class: "size-3"})
+		}
+		{ label }
+	}
+}
+
+templ usrClientCellC(c usrCell) {
+	<div class="flex flex-col gap-0.5 text-[13px]">
+		if c.All {
+			<span class="font-medium text-amber-600">All Clients</span>
+		} else if c.Name != "" {
+			<span>{ c.Name }</span>
+			if c.More > 0 {
+				<span class="text-xs text-muted-foreground">+{ strconv.Itoa(c.More) } more</span>
+			}
+		} else {
+			<span class="text-muted-foreground italic">No Client</span>
+		}
+	</div>
+}
+
+// usrTable is the patch target for live updates.
+templ usrTable(v usrView) {
+	@kit.DataTable(kit.DataTableProps{ID: "usr-table", BodyID: "usr-rows", Columns: v.columns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "usr-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }>{ row.Name }</a>
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+					if row.Email != "" {
+						{ row.Email }
+					} else {
+						—
+					}
+				}
+				if v.Perms.Anchor {
+					@kit.TD(kit.TDProps{}) {
+						@usrTypeBadge(row.TypeLabel, row.TypeBadge, row.Anchor, row.TypeTip)
+					}
+				}
+				@kit.TD(kit.TDProps{}) {
+					@usrClientCellC(row.Client)
+				}
+				@kit.TD(kit.TDProps{}) {
+					@usrActiveBadge(row.Active)
+				}
+				@kit.TD(kit.TDProps{}) {
+					<div class="flex flex-wrap items-center gap-1">
+						for _, role := range row.Roles {
+							@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSecondary}) {
+								{ role }
+							}
+						}
+						if row.MoreRoles > 0 {
+							<span class="text-xs text-muted-foreground">+{ strconv.Itoa(row.MoreRoles) } more</span>
+						}
+					</div>
+				}
+				@kit.TD(kit.TDProps{}) {
+					<time datetime={ row.CreatedISO }>{ row.Created }</time>
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+}
+
+// ── the drawer ─────────────────────────────────────────────────────────
+
+// usrDrawer is the drawer frame, rendered with the page: empty (closed), or
+// with the record a navigation to /ui/users/{id} opens.
+templ usrDrawer(d *usrDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@usrDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: usrDrawerID, Signal: usrDrawerSig, Label: "User", Size: kit.DrawerWide})
+	}
+}
+
+// usrDrawerContent is the drawer's content for one user, patched into the
+// frame (mode inner) when a row opens it or an action changes the user.
+templ usrDrawerContent(d usrDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@usrDrawerBody(d)
+	}
+}
+
+// usrTags are the status tags beside the title: the type (the platform
+// administrator's drawer) and Active.
+templ usrTags(d usrDetail) {
+	if d.Perms.Anchor && d.TypeLabel != "" {
+		@usrTypeBadge(d.TypeLabel, d.TypeBadge, d.TypeStar, "")
+	}
+	@usrActiveBadge(d.Active)
+}
+
+// usrPostButton is an immediate action (no confirmation): a form that posts
+// through Datastar, carrying the drawer field.
+templ usrPostButton(action, label string, p kit.LegacyButtonProps) {
+	<form method="post" action={ action } data-on:submit={ kit.SubmitForm } class="inline">
+		for _, h := range usrHidden() {
+			<input type="hidden" name={ h.Name } value={ h.Value } { h.Attrs... }/>
+		}
+		@kit.LegacyButton(withType(p, "submit")) {
+			{ label }
+		}
+	</form>
+}
+
+// usrDrawerBody mirrors the SPA's UserDetailBody.
+templ usrDrawerBody(d usrDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "User Information", Actions: usrEditButton(d)}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Name", Value: d.Name})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Email", Value: d.Email})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Authentication", Value: d.Auth})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Type"}) {
+				if d.TypeLabel != "" {
+					@usrTypeBadge(d.TypeLabel, d.TypeBadge, d.TypeStar, "")
+				} else {
+					—
+				}
+			}
+			if d.ShowClient {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Client", Value: d.ClientName})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created", Value: d.Created})
+		</div>
+	}
+	if d.Perms.Anchor {
+		@usrClientAccess(d)
+	}
+	@usrRolesSection(d)
+	@usrAppsSection(d)
+	@usrAccountActions(d)
+}
+
+templ usrEditButton(d usrDetail) {
+	if d.Perms.Update || d.Perms.Anchor {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.Base + "/edit", Icon: "pencil", Attrs: usrLink()}) {
+			Edit
+		}
+	}
+}
+
+// ── client access (platform administrator) ─────────────────────────────
+templ usrAddClientButton(d usrDetail) {
+	if !d.AnchorUser {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.Base + "/clients/new", Icon: "plus", Attrs: usrLink()}) {
+			Add Client
+		}
+	}
+}
+
+templ usrClientAccess(d usrDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Client Access", Actions: usrAddClientButton(d)}) {
+		if d.AnchorUser {
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "star", Title: "This user has an anchor domain email and automatically has access to all clients."})
+		} else {
+			if d.Home != nil {
+				<h3 class="mb-2 text-[13px] font-semibold text-muted-foreground">Home Client</h3>
+				<div class="mb-5 flex items-center justify-between rounded-md border border-border bg-muted/40 p-3">
+					<div class="flex flex-col gap-0.5">
+						<span class="font-medium">{ d.Home.Name }</span>
+						<code class="text-xs text-muted-foreground">{ d.Home.Identifier }</code>
+					</div>
+					@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSecondary}) {
+						Home
+					}
+				</div>
+			}
+			if d.Home == nil && len(d.Granted) == 0 {
+				<p class="text-muted-foreground">This user has no client access configured.</p>
+			}
+			if len(d.Granted) > 0 {
+				<h3 class="mb-2 text-[13px] font-semibold text-muted-foreground">Granted Access</h3>
+				@kit.Table(kit.TableProps{ID: "usr-grants", Dense: true}) {
+					@kit.THead(kit.THeadProps{Caps: true}) {
+						@kit.TR(kit.TRProps{Static: true}) {
+							@kit.TH(kit.THProps{}) {
+								Client
+							}
+							@kit.TH(kit.THProps{}) {
+								Granted
+							}
+							@kit.TH(kit.THProps{}) {
+								Actions
+							}
+						}
+					}
+					@kit.TBody(kit.TBodyProps{Striped: true}) {
+						for _, g := range d.Granted {
+							@kit.TR(kit.TRProps{ID: "usr-grant-" + g.ClientID, Static: true}) {
+								@kit.TD(kit.TDProps{}) {
+									<div class="flex flex-col gap-0.5">
+										<span class="font-medium">{ g.Name }</span>
+										<code class="text-xs text-muted-foreground">{ g.Identifier }</code>
+									</div>
+								}
+								@kit.TD(kit.TDProps{}) {
+									{ g.Granted }
+								}
+								@kit.TD(kit.TDProps{}) {
+									@kit.IconButton(kit.IconButtonProps{Icon: "trash-2", Label: "Revoke access to " + g.Name, Attrs: confirmTrigger(usrRevokeDialog, d.Base+"/clients/"+g.ClientID+"/revoke")})
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// ── roles ──────────────────────────────────────────────────────────────
+templ usrManageRolesButton(d usrDetail) {
+	if d.Perms.AssignRoles && d.Perms.ReadRoles {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.Base + "/roles", Icon: "pencil", Attrs: usrLink()}) {
+			Manage Roles
+		}
+	}
+}
+
+templ usrRolesSection(d usrDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Roles", Actions: usrManageRolesButton(d)}) {
+		if len(d.Roles) == 0 {
+			<p class="text-muted-foreground">No roles assigned to this user.</p>
+		} else {
+			@kit.Table(kit.TableProps{ID: "usr-roles", Dense: true}) {
+				@kit.THead(kit.THeadProps{Caps: true}) {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TH(kit.THProps{}) {
+							Role
+						}
+						@kit.TH(kit.THProps{}) {
+							Source
+						}
+						@kit.TH(kit.THProps{}) {
+							Assigned
+						}
+					}
+				}
+				@kit.TBody(kit.TBodyProps{Striped: true}) {
+					for _, role := range d.Roles {
+						@kit.TR(kit.TRProps{Static: true}) {
+							@kit.TD(kit.TDProps{}) {
+								<div class="flex flex-col gap-0.5">
+									<span class="font-medium">{ role.Short }</span>
+									<code class="text-xs text-muted-foreground">{ role.Name }</code>
+								</div>
+							}
+							@kit.TD(kit.TDProps{}) {
+								if role.Source == "MANUAL" {
+									@kit.Badge(kit.BadgeProps{Variant: kit.BadgeInfo}) {
+										{ role.Source }
+									}
+								} else {
+									@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSecondary}) {
+										{ role.Source }
+									}
+								}
+							}
+							@kit.TD(kit.TDProps{}) {
+								{ role.Assigned }
+							}
+						}
+					}
+				}
+			}
+		}
+		if d.Perms.AssignRoles && !d.Perms.ReadRoles {
+			<p class="mt-2 text-sm text-muted-foreground">Changing roles needs permission to view roles.</p>
+		}
+	}
+}
+
+// ── application access ─────────────────────────────────────────────────
+templ usrManageAppsButton(d usrDetail) {
+	if d.Perms.Update && !d.AllApps {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.Base + "/applications", Icon: "pencil", Attrs: usrLink()}) {
+			Manage Applications
+		}
+	}
+}
+
+templ usrAppsSection(d usrDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Application Access", Actions: usrManageAppsButton(d)}) {
+		if d.Perms.Anchor && d.Perms.Update {
+			// The application-axis analogue of an anchor: only an
+			// all-applications administrator may grant it (the API refuses
+			// anyone else).
+			<div class="fc-danger-item mb-4">
+				<div>
+					<strong>Access to all applications</strong>
+					<p>This user can access every application, present and future.</p>
+					if !d.AllApps && !d.Perms.GrantAllApps {
+						<p class="text-xs text-muted-foreground">Only an all-applications administrator can grant this.</p>
+					}
+				</div>
+				if d.AllApps {
+					if d.Self {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyWarnOutline, Icon: "shield", Attrs: confirmTrigger(usrSelfDialog, d.Base+"/all-applications/restrict")}) {
+							Restrict
+						}
+					} else {
+						@usrPostButton(d.Base+"/all-applications/restrict", "Restrict", kit.LegacyButtonProps{Variant: kit.LegacyWarnOutline, Icon: "shield"})
+					}
+				} else {
+					@usrPostButton(d.Base+"/all-applications/grant", "Grant", kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Icon: "shield-check", Disabled: !d.Perms.GrantAllApps})
+				}
+			</div>
+		}
+		if d.AllApps {
+			<p class="text-sm text-muted-foreground">This user has access to every application.</p>
+		} else if len(d.Apps) == 0 {
+			<p class="text-muted-foreground">No application access granted to this user.</p>
+		} else {
+			@kit.Table(kit.TableProps{ID: "usr-apps", Dense: true}) {
+				@kit.THead(kit.THeadProps{Caps: true}) {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TH(kit.THProps{}) {
+							Application
+						}
+					}
+				}
+				@kit.TBody(kit.TBodyProps{Striped: true}) {
+					for _, a := range d.Apps {
+						@kit.TR(kit.TRProps{Static: true}) {
+							@kit.TD(kit.TDProps{}) {
+								<div class="flex flex-col gap-0.5">
+									<span class="font-medium">{ a.Name }</span>
+									<code class="text-xs text-muted-foreground">{ a.Code }</code>
+								</div>
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// ── account actions ────────────────────────────────────────────────────
+templ usrAccountActions(d usrDetail) {
+	if d.Perms.Update || (d.Perms.Delete && d.Perms.Anchor) {
+		@kit.FormSection(kit.FormSectionProps{Title: "Account Actions"}) {
+			<div class="flex flex-col gap-4">
+				if d.Perms.Update && d.Internal && d.HasEmail {
+					@poolActionItem("Send Password Reset", "Email the user a single-use link to set a new password.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Icon: "mail", Attrs: confirmTrigger(usrSendResetDialog, d.Base+"/send-reset")}) {
+							Send Email
+						}
+					}
+				}
+				if d.Perms.Update && d.Internal {
+					@poolActionItem("Reset Password", "Set a new password directly (use when the user can't receive email).") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Href: d.Base + "/reset-password", Icon: "key-round", Attrs: usrLink()}) {
+							Reset Password
+						}
+					}
+				}
+				if d.Perms.Update && d.Internal {
+					<div class="fc-danger-item">
+						<div>
+							<strong>
+								Two-Factor Authentication
+								<span class="ml-2">
+									if d.HasTwoFactor {
+										@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSuccess}) {
+											{ d.TwoFactor }
+										}
+									} else {
+										@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSecondary}) {
+											{ d.TwoFactor }
+										}
+									}
+								</span>
+							</strong>
+							if d.HasTwoFactor {
+								<p>Enrolled factors, recovery codes and trusted devices — reset to clear them and re-trigger 2FA onboarding at next sign-in.</p>
+							} else {
+								<p>No second factor enrolled. Without an authenticator app, a self-service "Forgot password" is diverted to admin approval instead of emailing a reset link.</p>
+							}
+						</div>
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Icon: "shield-check", Disabled: !d.HasTwoFactor, Attrs: usrConfirmAttrs(d.HasTwoFactor, usrReset2FADialog, d.Base+"/reset-2fa")}) {
+							Reset 2FA
+						}
+					</div>
+				}
+				if d.Perms.Update {
+					if d.Active {
+						@poolActionItem("Deactivate User", "Prevent this user from signing in.") {
+							@usrPostButton(d.Base+"/deactivate", "Deactivate", kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "ban"})
+						}
+					} else {
+						@poolActionItem("Activate User", "Allow this user to sign in again.") {
+							@usrPostButton(d.Base+"/activate", "Activate", kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Icon: "circle-check"})
+						}
+					}
+				}
+				if d.Perms.Delete && d.Perms.Anchor {
+					@poolActionItem("Delete User", usrDeleteText(d)) {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Attrs: confirmTrigger(usrDeleteDialog, d.Base+"/delete")}) {
+							Delete
+						}
+					}
+				}
+			</div>
+		}
+	}
+}
+
+func usrDeleteText(d usrDetail) string {
+	if d.LastAdminRisk {
+		return "Permanently remove this user. Cannot be undone. This user is an all-applications administrator: the last one cannot be deleted."
+	}
+	return "Permanently remove this user. Cannot be undone."
+}
+
+// usrConfirmAttrs opens a confirmation, or does nothing for an action that is
+// not available.
+func usrConfirmAttrs(ok bool, dialog, action string) templ.Attributes {
+	if !ok {
+		return nil
+	}
+	return confirmTrigger(dialog, action)
+}
+
+// ── confirmations ──────────────────────────────────────────────────────
+
+// usrConfirm is one shared confirm dialog. Its rendered action is the list
+// (which accepts no POST); the trigger sets the record's action.
+func usrConfirm(id, title, message, label string, tone kit.ConfirmTone, extra ...kit.HiddenField) kit.ConfirmDialogProps {
+	return kit.ConfirmDialogProps{
+		ID: id, Action: usersPath, Title: title, Message: message, ConfirmLabel: label, Tone: tone,
+		Hidden:    append(usrHidden(), extra...),
+		FormAttrs: templ.Attributes{"data-on:submit": kit.SubmitConfirm},
+	}
+}
+
+// usrConfirmDialogs are the SPA's confirmations, one per action, shared by the
+// drawer. Only the actions the user may run are rendered.
+templ usrConfirmDialogs(perms usrPerms) {
+	if perms.Update {
+		@kit.ConfirmDialog(usrConfirm(usrSendResetDialog, "Send Password Reset Email", "Send a password reset email to this user? They will receive a single-use link valid for 15 minutes and set their own password. Any previously-issued reset tokens for this user will be invalidated.", "Send Email", kit.ToneDefault))
+		@kit.ConfirmDialog(usrConfirm(usrReset2FADialog, "Reset Two-Factor", "Reset two-factor authentication for this user? Enrolled factors, recovery codes and trusted devices are cleared; 2FA onboarding re-triggers at their next sign-in.", "Reset 2FA", kit.ToneDanger))
+		@kit.ConfirmDialog(usrConfirm(usrSelfDialog, "Restrict your own access", "You are removing your own access to all applications. You will no longer be able to grant all-applications access to anyone, including yourself, and only another all-applications administrator can restore it. Continue?", "Restrict my access", kit.ToneDanger, kit.HiddenField{Name: "confirmSelf", Value: "1"}))
+	}
+	if perms.Delete && perms.Anchor {
+		@kit.ConfirmDialog(usrConfirm(usrDeleteDialog, "Delete User", "Are you sure you want to delete this user? This action cannot be undone. The user will be permanently removed.", "Delete", kit.ToneDanger))
+	}
+	if perms.Anchor {
+		@kit.ConfirmDialog(usrConfirm(usrRevokeDialog, "Revoke Client Access", "Revoke this user's access to the client?", "Revoke", kit.ToneDanger))
+	}
+}

@@ -1210,3 +1210,433 @@ drawer, forged posts for every write with and without the permission, dialogs re
 bodies, promote/demote/retire, settings, routes, typed-address delete, native fallbacks) and `functions_pg_test.go`
 (`-tags=integration`: the whole life of a function against the real use cases with encryption and audit checks, and client scope).
 The sidebar's Functions entry links to `/ui/functions`; two shell tests that used it as the example of an unported entry now use Audit Log.
+
+## Portal: apps and users (wave 4)
+
+Mirrors `PortalAppsPage` and `PortalUsersPage` (sidebar Portal, shown with `platform:iam:portal-user:view`). Routes:
+`/ui/portal-apps?client=` (the list), `/portal-apps/new?client=` and `/portal-apps/{id}/edit?client=` (the dialogs), POSTs
+`/portal-apps/new`, `/{id}/edit`, `/{id}/delete`, `/{id}/assign-unassigned`; `/ui/portal-users?client=&app=&q=&page=&rows=`,
+`/portal-users/{id}/grant?client=` (the dialog), POSTs `/{id}/grant`, `/{id}/suspend`, `/{id}/reactivate`, `/{id}/delete`
+and `/{id}/apps/{code}/revoke`. The client is the page's scope: a native select above the table (a change is a
+navigation, so every confirmation and dialog of a page carries the one client it was rendered for as a hidden field).
+
+- **Permissions are the API's.** A read is `auth.CanReadPortalUsers(ac, client)` (an anchor, or access to the client plus
+  the view or the manage permission); every change is `auth.CanManagePortalUsers(ac, client)` (an anchor, or access to the
+  client plus the manage permission). The check runs in the handler on the client the post names (`manageView`), before
+  anything is read, as in `internal/platform/portalidentity/api`; the portal use cases are Authorize-Public by design, so the
+  page is the gate here as the API handler is. A viewer sees no action column, no New, no dialogs; a forged post from a viewer,
+  from a manager of another client, or from a caller with no permission is refused and runs nothing. An app or identity of
+  another client is "not found" under the client named (the use cases scope by client as well).
+- **Client select.** An anchor with the view-clients permission picks from every client (the SPA's `clientsApi.list`); an
+  anchor without it gets an empty select but may still open `?client=<id>`; a client-scoped caller is offered the clients it can
+  access (named, or by id when it cannot read them) and lands on its first one.
+- **Apps.** Name and description, code, the OAuth clients fronting the app (link to the SPA's OAuth client page, copy
+  `client_id`), user count, status. The warning banner counts users with no portal app. Assign unassigned users is a menu
+  action, disabled with the reason when nobody is unassigned or the app is inactive (the SPA disabled it silently); Delete
+  explains that the app's OAuth clients go with it. Both ask first.
+- **Create** runs `CreateAppWithOAuthClient` as the API: code (lower-cased), name, description, callback URLs one per line,
+  client type. **The credentials dialog is the one place the secret exists**: client secret (confidential only), client id,
+  the four endpoints and the Laravel environment snippet, each with a copy button, in the create response only
+  (`Cache-Control: no-store`, also for a native post, which gets the page itself instead of post/redirect/get). It cannot be
+  dismissed by Escape or the mask, and "Done" removes it from the page, so the plaintext does not stay in the DOM. It is in no
+  URL, flash, signal or table patch, and the later list does not have it. A missing callback URL is warned about with a link to
+  the OAuth client. The endpoints use the origin the browser addressed (its `Origin` header on the post).
+- **Edit** has name, description and the active switch (the code is fixed); a blank description clears it.
+- **Users.** The API's prefix search on email and name (debounced), the app filter (one of the client's apps, or "No portal app"),
+  25/50/100 rows, newest first. State tag with the SPA's hover detail, app chips with the grant's source and date, source
+  (Invite or SSO sign-in), last login, created. Row actions: Grant portal app (disabled with the reason when no active app is
+  left to grant), Suspend or Reactivate, Delete; each chip has a remove button. Grant resolves the app by code among the
+  client's, refuses an inactive app, as the API.
+- Errors follow "Datastar errors": a refusal of the form is its error region (the code and the callbacks land on their
+  fields), a refused action an error flash.
+
+Differences from the SPA: dialogs instead of PrimeVue dialogs; Suspend and Reactivate ask first (the SPA toggled at once);
+the confirmations have one message per action without the app or user named; the SPA showed the row actions of Portal Users to
+every viewer (the API refused them), here they need the manage permission; the app filter is hidden for a client without apps
+(the SPA disabled it); an app filter that is not one of the client's apps is dropped from the URL.
+
+SPA behaviours that were bugs, not copied: the row actions of Portal Users were offered without the manage permission;
+Assign unassigned users was disabled without saying why.
+
+Not verified in a browser: the pages have not been opened in light, dark and narrow widths, and the credentials dialog's
+self-removal and copy buttons are covered by the rendered markup in tests only. Tests: `portal_apps_test.go` and
+`portal_users_test.go` (permission matrix, forged posts from a viewer, another client's manager and a caller without the
+permission for every write, the credentials shown once with no-store, create and edit bodies, filters and paging, grant and
+revoke rules, escaping) and `portal_pg_test.go` (`-tags=integration`: the whole life of an app, its OAuth client and its users
+against the real use cases, the secret stored hashed and in no later answer, audit rows, refused posts writing nothing).
+The sidebar's Portal Apps and Portal Users entries link to `/ui/portal-apps` and `/ui/portal-users`.
+
+## Service accounts (`/ui/service-accounts`)
+
+Mirrors `ServiceAccountListPage`, `ServiceAccountCreateDrawer` and `ServiceAccountDetailDrawer`. Routes: the list
+(`?q&client&status&sort&dir&page&rows`), `/new`, `/{id}` (drawer), `/{id}/edit`, `/{id}/roles` (GET: the dialogs; POST: the
+save), and POST-only `/{id}/{regenerate-token,regenerate-secret,token,delete,applications,all-applications}` and
+`/{id}/connections/{connectionId}/{pause,activate}`.
+
+- **Gates** are the API's, the same code (`serviceaccount/operations/gate.go`: `RequireAnchorWriter`, `RequireApplicationReach`,
+  `AuthorizeWrite`, `AuthorizeCreate`; the API handlers call them too). Reads need `service-account:view`. Every write needs the
+  permission for the operation **and anchor scope** (owner decision #19): create `create`; edit, roles, both regenerations, the
+  mint, application access `update`; delete `delete`. An application-scoped caller (no all-applications access) reaches only the
+  accounts bound to its applications, and creates none (the form has no application). Controls are hidden without the gate, and
+  every route makes the check itself before it loads anything, so a forged post is refused without telling a real id from an
+  invented one. The role ceiling (F8) is the use case's: `AssignRolesToServiceAccount` and `MintAdminToken` (moved out of the API
+  handler into `operations`, `MintDeps`) refuse a role above the caller, 403 `ROLE_ABOVE_CALLER`, shown in the dialog or as a flash.
+- **Shown once.** Create (OAuth client id and secret, webhook auth token and signing secret), Regenerate Token, Regenerate Secret
+  and Generate Token answer with a dialog in that response only: `Cache-Control: no-store` (also stamped over the stream
+  helper's `no-cache`, `noStore`), a copy button per value, in no URL, flash, signal, table or drawer patch; a native post gets
+  the page itself (post/redirect/get would lose the values). The create dialog cannot be dismissed by Escape or the mask (the
+  SPA's `closable=false`; the same reopen-on-close trick as the applications page); the other three can, and every way of closing
+  removes the dialog from the page, so the plaintext does not stay in the DOM. The stored webhook secrets are encrypted at rest and
+  never rendered; the drawer shows the public OAuth client id only.
+- **Confirmations** are the SPA's `credentialConfirm` texts (regenerate token and secret: danger, the old value stops working at
+  once and receivers still holding it reject deliveries; mint: warn, a live bearer for one hour, earlier tokens are not revoked,
+  recorded in the audit log) and the delete dialog's list of what goes with the account. The SPA has no typed confirmation here.
+  The regenerations have **no overlap window** (the 24-hour previous-secret overlap belongs to OAuth client secret rotation, in
+  the OAuth Clients area, not in this drawer).
+- **List.** Search (name, code), the single Client filter (needs the client list: anchor with `client:view`; without it the column
+  shows ids and the filter is left out), Status, sort by name, code or created, 100-row pages. Clients column: none = "All", one or
+  two by name, more as "first +N more".
+- **Drawer.** Information (Edit), Webhook Credentials, API Access (the mint, disabled with the reason while the account is
+  inactive), Roles (Manage Roles), Application Access, Connections, Danger Zone.
+- **Roles dialog.** A kit multi-select with chips and search (role names contain a colon, which the pick list's ids do not allow).
+  Roles holding platform permissions the user lacks are **locked** as in the SPA: not offered, and the ones the account holds are
+  listed with a lock and posted back unchanged so saving does not remove them. Needs `role:view` for the role list.
+- **Application access** is the linked SERVICE principal's, which the SPA drives through the principal API: reading needs
+  `user:view`, writing `user:update` and, here, also the account gate above (stricter than the SPA: its drawer is anchor-only, so the
+  client-administrator bounding of the principal API never applies). The all-applications switch (immediate, keeps the explicit
+  grants) can be turned on only by a caller holding all-applications access; turning off one's own is refused (the principal API
+  asks for a confirmation the switch never sends). The pick list saves the explicit grants.
+- **Connections** are those whose service account this is (visible under the connections API's client scoping), Pause (asks) and
+  Activate with `connection:update`; a connection of another account is not found. New Connection links to `/ui/connections/new`.
+
+Differences from the SPA: dialogs for create and edit (the SPA uses the drawer); the edit form starts from the tier the client
+links give when no scope is stored (the SPA started from ANCHOR, and saving cleared the links); an anchor account is created and
+saved without clients (the SPA sent a stale selection, which the platform refused); the list has no Roles column (the list API
+does not carry roles, so the SPA's column was always empty) and the connections table no Endpoint column (the field does not
+exist); flash texts do not count roles or applications (a flash key carries no request data); the pick list replaces the
+move-between-lists dialogs.
+
+Not in the SPA, so not here: **Activate and Deactivate** (the drawer has neither; the API has a deactivate use case but no
+activate, so a deactivated account could never come back, and the page does not offer a one-way button), and application
+provisioning (the Applications page offers it).
+
+Not verified in a browser: the pages have not been opened in light, dark and narrow widths; the credentials dialog's
+self-removal, the code suggested from the name, the scope-driven client field and the copy buttons are covered by the rendered
+markup in tests only. Tests: `service_accounts_test.go` (permission matrix with forged posts from a viewer, a non-anchor holder of
+every permission and an application-scoped caller on every route, the controls per permission, the list filters, create and edit
+command bodies, the shown-once dialogs with no-store and no secret in a signal, the roles lock, application access rules,
+connections) and `service_accounts_pg_test.go` (`-tags=integration`: create with the stored credentials shown, edit and the
+principal's reach following the links, the role ceiling, regeneration, the audited mint, application access, forged posts by a
+non-anchor caller writing nothing, delete). Mutation checks: dropping the permission-and-anchor gate from the shared write gate
+fails the matrix test (a forged edit and application-access post reach the use case), and dropping the `noStore` stamp fails the
+three tests of the shown-once dialogs.
+The sidebar's Service Accounts entry links to `/ui/service-accounts`.
+
+## Ingestion: tabs, sets and test connection (wave 3, second half)
+
+Mirrors the Nuxt control plane's drawer sections (`IngestionDrawer`, `IngestionFailures`, `IngestionHistory`), `SetsPage` and
+`ConnectionTestPanel`. All of it is mounted only with `FC_INGESTION_ENABLED` (`ui.Config.IngestionEnabled`); with the flag off
+the routes do not exist and answer 404. Files: `ingestion_tabs*`, `ingestion_sets*`, `ingestion_testrun*` in `internal/ui/pages`.
+
+**Drawer panels** (`IngestionTabs`). The drawer embeds `IngestionActivityTab(id)`, `IngestionFailuresTab(id)` and
+`IngestionHistoryTab(id)`: a placeholder with `data-init="@get(el.dataset.url)"`, which asks for its panel at
+`GET /ui/ingestions/{id}/activity|failures|history` (a tab that is never opened is never read; a navigation to a panel goes to
+the ingestion's own page). Every route makes the by-id checks of `GET /api/ingestions/{id}/...`: `CanReadIngestions`, the
+ingestion exists, `ingestion.CheckReach` (client and application).
+
+- **Activity**: the route state each runtime last reported (status tag, the version it runs, warned when it is not the live one,
+  the reported time, the error), then the exchanges (completed, failed, records, jobs) over the last 24 hours and 7 days, the
+  last exchange and the last failure. These are new reads: `Repository.ListRouteStates` and `Repository.ActivityOf`
+  (`internal/platform/ingestion/activity.go`, queries in `ingestion_reads.sql`); a metric window counts in the period its start
+  falls in.
+- **Failures**: newest first by id, 20 a page, `?after=<id>` appends the next page under the ones shown. The kind as people say it
+  (Payload rejected, Not dispatched, Source error, Login refused), the runtime and version, the message, "After N records".
+  A notice says whether payloads are kept. **The excerpt is shown only while the ingestion keeps failed payloads**, even if an
+  older row still holds one. The cursor must look like an id; anything else is refused before the store is asked.
+- **History**: the audit rows of the ingestion (the API's `.../history`), newest first, 20 a page by offset. The audit log names an
+  operation by its command's type (`UpdateCommand`, `SaveVersionCommand`, ...), which is what the verbs map from. The rows hold the
+  command, not the state before it, so "Changed: name, source" is computed by comparing the definition a command carried with the
+  newest older command that carried one; **only field names are ever printed, never definition content** (a definition holds
+  secret references and addresses). A create has no changed list.
+
+**Sets** (`IngestionSets`, `/ui/ingestion-sets` and `/ui/ingestion-sets/{name}`). Reading is the API's `canReadSets`: the view
+permission **and** a caller that reaches every client and application (a client-tier or application-scoped caller is refused with
+`INGESTION_SET_ANCHOR_ONLY`; the sidebar offers the entry to anchor-tier callers with the view permission). The list has the owner counts and last-applied
+time; a set's page lists its kept applies newest first (who, when, items and files, going back marks, the changes that did
+something as tags that open the ingestion, a removed one has no link) and loads **the files** of an apply on first open
+(`.../applies/{id}/files`, from the archive; an archive no longer kept is "the set does not keep apply"). A read-only note says
+applying is done with `fcdev ingest apply`; there is no apply here.
+
+- **Go back to this** (on every apply but the newest; needs `platform:ingestion:set:apply`): the button opens a confirmation whose
+  plan is a **dry run** of the same use case (`GET .../reapply`, nothing is written), with the SPA's wording that it lasts until the
+  set is applied again. Confirming posts `.../reapply`: a new apply with `goingBackTo`, the lists patched, a flash naming the apply
+  ("already is as ... left it" when nothing changed). **Release the set** (the same permission, shown while the set owns
+  ingestions) asks first and posts `.../release`. The POSTs make the API's check (the apply permission; the use cases check reach
+  per ingestion), so they answer a caller that may not list sets with the message only, never with the sets.
+- Native posts redirect to the set with a fixed flash key (`ingestion-set-reapplied`, `ingestion-set-released`).
+
+**Test connection** (`IngestionTests`, needs `platform:ingestion:ingestion:test`). `IngestionTestPanel(action, fromForm)` is the
+button and the place the outcome goes (`#ing-test-result`). `POST /ui/ingestions/{id}/test` tests a saved ingestion's live
+definition; `POST /ui/ingestions/test` tests the definition a form holds and exists only when `ui.Config.IngestionTestSubject`
+(reads the form into application, client and definition) is set. The unsaved path makes the checks of a save and of
+`POST /api/ingestion-tests`: the definition validates, the client's scope, the application's reach, and **the permission a custom
+kind declares** (`camel-route` needs `platform:ingestion:ingestion:route`). The POST queues the test and answers with a box that
+asks for `GET /ui/ingestion-tests/{id}/stream`, which polls the row every second and patches the box when something changed:
+waiting (with "no runtime carries this kind" **at once** when none does), a runtime is trying, the outcome with its steps, records
+and excerpt, or **expired** once the two minutes are up; it ends when the test does or the viewer leaves. A new test's box has its
+own id, so the stream of an earlier test patches nothing. The stream makes `GET /api/ingestion-tests/{id}`'s checks (test
+permission, the test's client and application reach). The excerpt is the one the platform kept when the runtime answered (none
+unless the ingestion keeps payloads). A native post queues nothing and goes back to the list.
+
+Differences from the Nuxt pages: the audit-based history has no version column (the audit row does not hold the version); failures
+are kept 30 days here (`FailuresRetention`), the Nuxt page said 14; the unsaved test needs the form's reader (below); the Nuxt "Show
+files" button is a `<details>` that loads on first open.
+
+Not verified in a browser: the pages have not been opened in light, dark and narrow widths, and the streamed test has been
+exercised against Postgres through `httptest`, not with a running runtime. Hand-offs: the drawer (the other half) must embed
+`IngestionTestPanel("/ui/ingestions/"+id+"/test", false)` for a saved ingestion (offered with the test permission) and, for the form,
+`IngestionTestPanel("/ui/ingestions/test", true)` together with a `Subject` that parses its form.
+
+Tests: `ingestion_tabs_test.go`, `ingestion_sets_test.go` and `ingestion_testrun_test.go` (permission matrices with client-tier and
+application-scoped callers, forged ids and cursors, forged posts that must run nothing, escaping, paging, the plan being a dry run,
+the stream's states in order, expiry, the kind permission) and the `*_pg_test.go` files (`-tags=integration`: the new reads with real
+windows, failures paged by cursor, the history from real audit rows, sets applied through the use case with the real archive, going
+back and releasing, test connection with the real poll and report, the required permission read from the kinds a runtime reported).
+Mutation checks: showing the excerpt without the keep-payloads condition fails `TestIngestionFailuresShowAnExcerptOnlyWhilePayloadsAreKept`;
+dropping the custom-kind permission check from the unsaved test fails `TestIngestionTestOfAKindThatNeedsAPermission`; dropping the
+set-apply permission from going back fails `TestIngestionSetForgedPostsChangeNothing`.
+
+## Authorization: roles and permissions (wave 4)
+
+Pages: `roles.go|templ` (list, drawer, delete, platform sync), `roles_form.go|templ` (create dialog, editor page, the
+new-permission builder), `roles_ops.go` (`RolesCommands`, `RolesOps`: the use cases; `PermissionCatalogue`, `PermissionStore`:
+the catalogue), `roles_flash.go` (flash keys, registered in `init` so the shared flash table is not edited),
+`permissions.go|templ` (list and create dialog). Spec: the SPA's `RoleListPage.vue`, `RoleDetailDrawer.vue`,
+`RoleEditPage.vue`, `PermissionListPage.vue`, `admin-permissions.ts` and the BFF handlers `internal/platform/shared/bff/roles.go`
+(the SPA calls `/bff/roles`, so its gates are the spec, not `/api/roles`'s read confinement).
+
+| URL | GET | POST |
+|---|---|---|
+| `/ui/roles?q&app&source&page&rows` | the list (search over name, display name, description; 100 rows by default) | - |
+| `/ui/roles/new` | the create dialog | create |
+| `/ui/roles/{name}` | the list with the drawer open; a Datastar GET patches the drawer | - |
+| `/ui/roles/{name}/edit` | the editor page (a role that cannot be edited returns to its drawer with a warning) | save |
+| `/ui/roles/{name}/edit/add-permission` | - | adds a new permission to the editor (writes nothing) |
+| `/ui/roles/{name}/delete` | - | delete (confirmation dialog) |
+| `/ui/roles/sync-platform` | - | the platform role sync (no confirmation, as the SPA's dashboard button) |
+| `/ui/permissions?q&app&ctx&action&page&rows` | the list | - |
+| `/ui/permissions/new` | the create dialog | define a permission |
+
+Role names contain `:`, so they are the path segment as they are (the SPA encoded them); a segment that is not a canonical role name
+(`role.ValidateName`) is a 404 and never reaches a query or an attribute.
+
+- **Gates** are the BFF's, checked again on every post: reads need `role:view` (a 403 page without); create (`POST /bff/roles`, defining
+  a permission) `role:create`, edit `role:update`, delete `role:delete`, the platform sync all three, each **with anchor scope on top**
+  (`RequireAnchor`), so a client user holding the permissions sees no write control and a forged post is refused. The controls follow the
+  same functions (`rolesPermsFor`). The use cases then apply what the page cannot: the permission ceiling (F10, `PERMISSION_ABOVE_CALLER`),
+  the application confinement (F12, `PERMISSION_OUTSIDE_APPLICATION`), the code-role refusal, and the name rules (F18).
+- **Only admin-created roles** (source `DATABASE`) are edited or deleted: the SPA offers neither for code-defined or SDK-registered roles,
+  and the page refuses the posts too (`409 ROLE_NOT_ADMIN_CREATED`; the use cases refuse a code-defined role only). The editor GET for such
+  a role, or without `role:update`, returns to the drawer with the SPA's "Not Editable" warning.
+- **Locks.** A role holding a platform permission the caller lacks (`role.PermissionsAboveCaller`, the SPA's `isRoleAboveUser`) shows a
+  disabled Delete with the SPA's reason instead of the trash. In the editor, every platform permission the caller lacks is locked: not in the
+  multi-select, listed under "N locked permissions" with the SPA's explanation; the ones the role holds are posted back as hidden fields so
+  saving keeps them. A forged post that drops or adds one is refused by the use case and its message lands on the permissions field
+  (tested with and without the lock). A super-admin has no locks.
+- **The permission picker** is the kit multi-select with search and chips (`kit.MultiSelect`, one value per checked permission) with
+  Select all and Clear. The offered list is the application's catalogue (`bff.PermissionCatalog`, exported from the BFF for this: the platform
+  builtins, the permissions declared by roles and the `iam_permissions` table), plus what the role holds and what was added in this editing.
+  A role holds only its own application's permissions (F12), so there is one group; the SPA's per-application grid and checkbox collapse into it.
+- **New permission** (non-platform roles only): application code, three segments (lowercased and slugified when an input loses focus, the SPA's
+  `slugifySegment`) and Add. The SPA adds it to the list client-side; here Add posts the form to `add-permission`, which answers with the picker and
+  the builder again (the new permission checked). It reaches the role only with Save. Enter in the builder presses Add, Enter in the picker's
+  search does nothing, so neither saves the role. Without script, Add is a native submit that re-renders the page.
+- **Create permission** (the permissions page): the four segments must be lowercase tokens (`bff.ValidPermissionSegment`, the BFF's rule) and the
+  code new (the SPA keeps Create disabled for an existing one; here the field says so); the write is the BFF's `PermissionRepo.Upsert`, no use case,
+  no event, as the BFF does it. An application code with an underscore fails the rule, as it does at the BFF.
+- **Credentials and secrets:** this area has none. Nothing here is shown once or kept in page state.
+- **Kit:** no new part and no kit change; `make ui-kit-sync` was run for the new classes. Exported from the BFF for the catalogue and the segment rule:
+  `bff.PermissionEntry`, `bff.PermissionCatalog`, `bff.ValidPermissionSegment` (append-only in `roles.go`).
+
+Differences from the SPA: the delete confirmation is the shared dialog ("Delete this role?"), not one that names the role; the drawer lists every
+permission (the SPA paged by 10); the application and source filters are multi-selects; the picker shows the permission code only (descriptions are
+on the permissions page); Save is not disabled while nothing changed; "Sync Platform Roles" is on the roles page (the SPA has it on the dashboard);
+the permissions list keeps the catalogue's order.
+
+SPA behaviours that were bugs, not copied: the editor sent a blank description as "unchanged", so a description could never be cleared; a blank display
+name was sent as "unchanged" and silently kept, here it is a field error.
+
+Tests: `roles_test.go` and `permissions_test.go` (permission matrix incl. the anchor gate and a client user, forged posts for every write with and without
+the permission, locks and the retained locked fields, create/edit/delete/sync bodies and error mapping, the add-permission rules, the page contract,
+native fallbacks) and `roles_pg_test.go` (`-tags=integration`: the real use cases, the ceiling and confinement refusals through the page, audit counts,
+the platform sync, the catalogue). Mutation checks: with `RequireAnchor` removed from `rolesWrite`, four tests fail (the matrix, the forged posts, the
+refusal redirects, the permissions matrix); with the hidden locked fields removed from the editor, `TestRolesEditPage` and the Postgres test fail.
+Not verified in a browser: the area has not been opened in light, dark and narrow widths, and the Datastar expressions (Select all, the Enter guard, the
+slug on blur, the picker patch) are covered by the rendered markup only.
+
+## Developer portal and Developer Users (wave 4)
+
+Pages: `developer.go|templ` (applications list, application page with its three tabs, API versions, the OpenAPI download),
+`developer_docs.go` (the OpenAPI reader behind the API docs tab: operations grouped by tag, `$ref` resolution, one operation's parameters,
+body and responses), `developer_users.go|templ` (`DeveloperUsers`, `DeveloperUserOps`: the use cases). Spec: the SPA's
+`frontend/src/pages/developer/*` and the BFF handlers `internal/platform/shared/bff/developer.go`; the Developer Users page's endpoints are
+`internal/platform/principal/api` (`/api/principals/developer-users`, `.../{id}/developer-credential`, `.../{id}/roles`).
+
+| URL | GET | POST |
+|---|---|---|
+| `/ui/developer` | the applications | - |
+| `/ui/developer/applications/{id}?tab=api-docs\|event-types\|processes` | the application, the chosen tab rendered in place, the others as placeholders | - |
+| `/ui/developer/applications/{id}/tabs/{tab}` | a tab's content: the lazy load and every filter or selection change (Datastar patches the panel and the address; without script it redirects to the page) | - |
+| `/ui/developer/applications/{id}/operation?m&p&n` | one operation's detail (Datastar patches its row; without script a page of its own) | - |
+| `/ui/developer/applications/{id}/openapi.json` | the current document as a download | - |
+| `/ui/developer/applications/{id}/versions` | the API versions | - |
+| `/ui/developer-users?q&sort&dir&page&rows` | the developer users | - |
+| `/ui/developer-users/grant`, `.../grant/search?q` | the Grant Developer Role dialog; its search | - |
+| `/ui/developer-users/{id}/confirm/{rotate\|revoke\|remove}` | the confirmation dialog, naming the user | - |
+| `/ui/developer-users/{id}/{grant\|remove-role\|credential\|revoke}` | - | the action |
+
+- **Gates** are the BFF's and the principal API's, made again on every request (the portal is read-only, so there is nothing to post): every portal route
+  needs `CanReadDeveloperPortal` (anchor scope and `application-openapi:view`); the processes tab also needs the process list's own `process:view`, which
+  the portal's permission does not imply, and says so in the tab when it is missing (no process data is read). Developer Users: the list `user:view`
+  (`CanReadPrincipals`), like the principal list restricted for a non-anchor caller to the principals of the clients they reach; setting, rotating and revoking a
+  credential is `requireDeveloperCredentialAccess` (the caller's own record needs `api-credential:manage`, anyone else's `user:update`, then the use case checks the
+  target is a developer in scope); granting and removing the role need `user:assign-roles` **and anchor scope** (see the differences). The SPA shows every control;
+  here a control the caller cannot use is left out, and the handler refuses its post and its confirmation dialog anyway.
+- **API docs without Swagger UI.** Swagger UI is not vendored. The tab lists the current document's operations grouped by tag (the document's tag order, then the
+  rest; method, path, summary, deprecated), each row a closed `<details>` that loads its detail the first time it is opened (a path from the document is a plain
+  attribute, never in an expression): parameters (path-level and operation-level merged), request body, responses, and each media type's schema as JSON in the
+  event type viewer's code block, local `$ref`s inlined (a recursive reference is left as `{"$ref": ...}` where it recurses, depth and expansions are capped). Descriptions
+  are rendered Markdown (sanitised). Download OpenAPI is a link to the formatted document under the SPA's file name. What this loses against Swagger UI: the models
+  section and the schema tree (collapsible types with required marks and constraints; the JSON is the resolved schema, in key order of the encoder, not the document's),
+  generated example values, the servers and security-scheme display, anchor links per operation, and in-page search of operations (the SPA's Swagger UI had its filter off too).
+  "Try it out" is off in the SPA and absent here.
+- **Tabs load when shown.** The tab bar is `kit.TabList` (`?tab=` keeps the tab in the address). The chosen tab is rendered with the page; the others are placeholders with
+  `data-on-intersect__once` that fetch `.../tabs/{tab}` the first time the tab becomes visible, so a large OpenAPI document is not read for someone who looks at event types.
+  Event types and processes keep their filters and selection in the query (`etsub`, `etagg`, `etstatus`, `et`; `psub`, `pstatus`, `proc`); status defaults to CURRENT and
+  an empty `etstatus=` means every status, as the SPA's cleared select.
+- **Event types tab:** the SPA's master-detail: the table (code chips, name, description, status; the first row selected), and under it the selected event type's viewer, which is the event
+  types area's schema viewer (`toETViewer`: schema, example, TypeScript, PHP, Python, Java from `schemacodegen`, with the copy button), opening the CURRENT version, else FINALISING, else the first.
+- **Processes tab:** the SPA's row opened the process page. Here a row selects the process and its diagram is drawn under the table by the Mermaid island (other diagram types show the source), with
+  Open process (to `/ui/processes/{id}`) and, for a caller with `process:update` and a process that is not archived, Edit; the row's pencil is the same link. The diagram is not drawn until the
+  island's script has loaded (the page loads it).
+- **Developer Users.** The role changes run `AssignRoles` with the user's roles plus (or minus) `platform:developer`, as the SPA's replace-the-set call does, from the principal as loaded now. The
+  credential is `SetDeveloperCredential` / `RevokeDeveloperCredential`. Removing the role also revokes the credential, best effort, as the SPA does (so re-granting does not bring the old secret
+  back); a failure of the revoke is logged and does not undo the removal. Confirmations are the SPA's wording and name the user, so they are dialogs fetched per user (`.../confirm/...`), not the
+  shared confirm dialog; setting a first secret asks nothing; rotating, revoking and removing the role confirm.
+- **Credentials and secrets.** A new developer secret is shown once: the credential action answers with the dialog in that response, which is `Cache-Control: no-store`, with a Copy button, the
+  `client_id`, and "Copy this secret now. It will not be shown again."; the value is in no URL, flash, signal or redirect (a native post gets the page itself, as post/redirect/get would lose it), and
+  the dialog removes itself from the page however it is closed (Done, Escape). Nothing else renders it: not the list, the confirmations, the search or a later response. The stash that hands the
+  plaintext over is the use case's (`PopDevClientSecret`, two minutes, once).
+- **Kit:** no new part and no kit change (the tab list, Mermaid island, Markdown renderer and code block are used as they are); every class used is already in `kit.css`. Shared files touched, appended or
+  anchored only: `internal/ui/ui.go` (Config fields and the two Mount lines), `internal/server/wire_ui.go`, `internal/ui/shell/nav.go` (the Applications and Developer Users entries now point to `/ui`),
+  `internal/ui/pages/flash.go` (three keys for the native fallbacks).
+
+Differences from the SPA: the API docs tab as above; a processes row selects instead of navigating; the event type filters are in the toolbar's popover; the Developer Users controls follow the caller's
+permissions; the grant, remove and revoke toasts name the user on a Datastar answer and not after a native post; the list is paged and searched on the server; the Developer Users entry in the sidebar is
+`/ui/developer-users` (not under `/ui/developer`, which would mark two entries current). **Role changes are anchor only**: the principal API lets a non-anchor administrator with `user:assign-roles` assign
+application-scoped roles of reachable applications and refuses `platform:developer` to them (`operations.RequireAssignableRoles`, a platform role), a bound the handler applies and `AssignRoles` does not, so the page,
+which runs the use case, requires anchor scope instead of repeating the bound: it refuses what the API refuses for this one role. The portal pages are not filtered by the application access of the principal (`iam_principal_application_access`) because the BFF does not
+filter either, whatever its comment says. Sync Platform OpenAPI (`POST /bff/developer/sync-platform-openapi`) is not on these SPA pages (the SPA's dashboard calls it) and is not ported here.
+
+Tests: `developer_test.go` (permission matrix over every route for a caller without the permission and a non-anchor, the tabs and their state in the URL, the processes tab without `process:view`, the
+docs rendering, `$ref` handling and the recursion cut, the download name, versions), `developer_users_test.go` (list, search, sort and scope; the controls per caller; forged posts for all four actions
+by callers without the permission, including `user:update` for a role change and a client administrator holding `user:assign-roles`; the confirmations; the secret shown once, `no-store`, in no other
+response) and `developer_pg_test.go` (`-tags=integration`: the portal over a synced and re-synced document, an event type and a process; the users flow through the real use cases with the secret
+returned once and only its keyed hash stored, the role removal taking the credential, audit rows). Mutation checks: removing the anchor requirement from the role-change gate fails
+`TestDeveloperUsersControls`, `TestDeveloperUsersForgedPosts` and `TestDeveloperUsersGrantDialog`; removing the `no-store` wrapper from the credential action fails
+`TestDeveloperUsersSecretShownOnce`; removing the process list's permission check from the processes tab fails `TestDeveloperProcessesTab`.
+Not verified in a browser: the area has not been opened in light, dark and narrow widths, and the Datastar expressions (`data-on-intersect__once` on the placeholders, `data-on:toggle__once` on the
+operation rows, the dialogs' `data-on:close`) are covered by the rendered markup only.
+
+## Ingestions: list, form and drawer (wave 3, part 1)
+
+`/ui/ingestions`, mounted and linked from the sidebar (Platform: Ingestions, Ingestion sets) **only when
+`FC_INGESTION_ENABLED` is on** (`ui.Config.IngestionEnabled`, `shell.Features`); off, every route here is a 404. The
+Nuxt control plane (`inhance/mono-repo/apps/ingest-control-plane/web`) was the specification. Files:
+`internal/ui/pages/ingestions*.go|templ`.
+
+| URL | GET (navigation) | GET (Datastar) | POST |
+|---|---|---|---|
+| `/ui/ingestions` (`?q&application&client&kind&status&after`) | the list | table, pager, toolbar state, URL | - |
+| `/ui/ingestions/new` | list + create dialog | the dialog | create |
+| `/ui/ingestions/{id}` (`?tab&a&b`) | list + drawer | drawer content | - |
+| `/ui/ingestions/{id}/edit` (`?from=N`) | list + drawer + dialog | the dialog | save a version |
+| `/ui/ingestions/{id}/{pause,resume,delete}`, `/versions/{n}/live` | - | - | the action |
+| `/ui/ingestions/{id}/compare?a&b` | the drawer on Versions | both definitions | - |
+| `/ui/ingestions/{id}/definition.yaml` | the definition file download | - | - |
+| `/ui/ingestions/{id}/tabs/{activity,failures,history}` | redirect to the drawer | the tab's placeholder | - |
+
+- **Checks are the API's**: view `GET /api/ingestions` (reach in SQL through `ingestion.ListReach`: a client user its
+  clients, an application's account its application; by id `ingestion.CheckReach`); create `CanCreateIngestions`;
+  a change `CanUpdateIngestions`, and `CanPromoteIngestions` for "make live when saved"; pause and resume update;
+  remove delete; make live promote. Controls are left out without the permission, the server decides again on every
+  post, and the use case owns reach, the set that owns an ingestion (`INGESTION_SET_OWNED`) and the kind's permission.
+- **The form is drawn from data** (`ingestions_kinds.go`): each source kind is a list of fields (text, number,
+  duration, secret NAME, choice, switch, lines, code, name: value lines), each with its JSON path in the definition and
+  a condition. One reader makes the definition JSON from the post (`ingsBuildDefinition`, then the strict
+  `ingestion.ParseDefinition`), one reads a stored definition back (`ingsValuesOf`; a round-trip test covers every
+  kind), and a validation error's path (`source.auth.password`, `...password.name`, `source.headers.1.name`) finds
+  its control. Durations are written `30s`, `5m`, `2h`, `1d` or ISO and stored ISO. A secret field holds a name
+  (`kit.SecretRefInput`), never a value. Pool, connection and service account are codes, checked by the API's resolver
+  at save (`INGESTION_TARGET_INVALID` lands on the field it names).
+- **Conditional fields**: every kind is a `<fieldset>`, and so is every branch (auth kind, track, results, rate limit,
+  cursor, own access key). `data-show` shows it and `data-attr:disabled` disables the rest, so what is not chosen is
+  neither posted nor checked by the browser (a hidden control with a pattern would otherwise block the submit
+  without a message). No kind field carries the HTML `required` attribute for that reason; the server asks.
+  A database poll has no split (each row is a record) and is saved with `none`.
+- **Kinds runtimes report** come from `ingestion.Repository.LiveKinds`, as the API's source-kinds list. A kind that
+  declares a required permission (camel-route: `platform:ingestion:ingestion:route`) is **not offered** without it, and
+  changing such an ingestion is shown disabled with the reason; the use case refuses it again. An extension's
+  `settings` are read as the Nuxt `SourceKind` field list (`[{name,label,description,type,required,defaultValue,
+  choices,min}]`, or `{"fields": [...]}`; types TEXT, MULTILINE, INTEGER, BOOLEAN, DURATION, URL, SECRET, CHOICE,
+  LIST), because the platform passes `settings` through untouched and the runtime contract does not fix its shape.
+  Field names that are not a setting name are skipped. A kind with no description is edited as a JSON object
+  (camel-route's is its route, in the YAML editor). A stored ingestion of a kind no runtime reports is still editable.
+- **Drawer**: Overview (set notice, "no runtime carries this kind" notice, details, actions), Definition (the
+  definition file in the read-only editor, Export YAML), Versions (live badge, notes, who and when, Make live,
+  Change from this version, New version, Compare: both definitions side by side), and Activity, Failures and History,
+  which are `IngestionTabs`' (`IngestionActivityTab` and its siblings). Those three are empty slots until the tab is
+  on show (`data-on-intersect__once`): the slot asks `/tabs/{tab}`, which makes the drawer's checks and patches the
+  tab's own placeholder in, and the placeholder asks for its panel. A set's ingestions are read-only (no change,
+  new version, make live or remove); pause and resume still work.
+- **A change is a saved version** (`POST /api/ingestions/{id}/versions`): the live one keeps running until a version
+  is made live, here with the switch (promote) or from the Versions tab. The dialog says which number it will be.
+- **Not built here**: test connection (`ingestion_testrun*`) and the sets pages (`ingestion_sets*`) belong to the other
+  half; the Nuxt "Keep payloads" toggle is the form's switch (it is part of a version).
+
+Tests: `ingestions_test.go` (fakes: list, filters, cursor paging, reach, drawer, permission matrix, set-owned,
+kind permission, form rendering, create and save with field errors, forged posts, every kind's round trip),
+`ingestions_pg_test.go` (tag `integration`: the real use cases, reach, set ownership, camel-route and the route
+permission), `ingestions_flag_test.go` (flag off is a 404, the sidebar entries) and `shell/nav_ingestion_test.go`.
+Mutation checks (run, seen to fail, restored): skipping the permission check of `runAction` fails
+`TestIngestionForgedPostsAreRefused`; dropping `ListReach` from the list fails `TestIngestionsListPermissions`.
+
+## Users (wave 4)
+
+Pages: `users.go|templ` (list, filters, drawer frame), `users_detail.go` (the drawer's view model, the shared "after a change" answer, the assignable roles), `users_form.go` (create, email check, edit), `users_actions.go` (state and account actions, password, roles, application and client access, CSV import), `users_dialogs.templ`. Spec: the SPA's `UserListPage`, `UserCreateDrawer`, `UserDetailDrawer`/`UserDetailBody`, and for a client administrator `ClientUsersPage`, `ClientUserCreateDrawer`, `ClientUserDetailDrawer` and `UserImportDialog`.
+
+| URL | GET | POST |
+|---|---|---|
+| `/ui/users?q&status&client&roles&sort&dir&page&rows` | the list (100 rows; 50/100/250/500) | - |
+| `/ui/users/new` | the create dialog | create |
+| `/ui/users/check-email?email=` | Datastar: the email's domain check, patched into `#usr-form-domain` | - |
+| `/ui/users/{id}` | the list with the drawer open; Datastar patches the drawer | - |
+| `/ui/users/{id}/edit` | the edit dialog | name, and for an anchor the type and client |
+| `/ui/users/{id}/{activate,deactivate,delete,send-reset,reset-2fa}` | - | the action |
+| `/ui/users/{id}/reset-password` | the dialog | set the password |
+| `/ui/users/{id}/roles`, `/applications` | the picker dialogs | replace the set |
+| `/ui/users/{id}/all-applications/{grant,restrict}` | - | the all-applications flag |
+| `/ui/users/{id}/clients/new`, `.../clients`, `.../clients/{clientId}/revoke` | the grant dialog | grant, revoke |
+| `/ui/users/import`, `/import/template.csv` | the import dialog, the template | the import (multipart) |
+
+- **One rule set with the API.** The principal API's handler bodies hold the gates (client scoping, `blockNonClientTarget`, a client administrator's role and application bounds, the all-applications and self-restriction rules, the role ceiling) and the use cases hold the rest (the password policy, the last-administrator guard). Rather than copy them, `principalapi.State` has exported in-process entry points (`internal/platform/principal/api/ui_entry.go`) that run each handler unchanged with the caller on the context; the page calls those (`pages.UserService`). `internal/server/wire_ui_users.go` builds the state for the routes and the page alike. The page also makes the coarse permission check itself first, so a control that is hidden is never the only guard, and a forged post by a caller without the permission is refused before the service is asked (and again by it).
+- **Two audiences.** A platform administrator (anchor) gets the SPA's platform page. Anyone else gets the client administrator's: its title, no Type column, the client filter only with several clients, the create form with an optional password (CLIENT users only, the client implicit with one), and a drawer without client access, the all-applications switch or delete, as the SPA. Both sidebar entries (User Management, Client Administration) link to `/ui/users`.
+- **Controls by permission.** Create and import `user:create`; Edit (name), applications, password, send reset, reset 2FA, activate and deactivate `user:update` (Edit is also offered to an anchor, who may change the type and client); roles `user:assign-roles` plus `role:view` for the list; delete `user:delete`, anchor only; client access, type and client anchor scope; granting all-applications access only to a caller holding it.
+- **Roles.** A multi-select with search and chips, as the SPA's `assignableRoles`: every role for an anchor-scope user or one with all applications, else the roles of the applications the user can access plus those already assigned. Roles whose platform permissions the caller lacks (the ceiling, `ROLE_ABOVE_CALLER`) are not offered; the ones the user already holds are listed as kept and posted back unchanged.
+- **Credentials.** No page or answer carries a password or a stored hash: the password fields have no value to echo and a failed save re-renders them empty (`TestUserPagesNeverCarryCredentials`, the integration test searches every answer for the passwords and the stored hash). The **sign-in link** is minted only when the create form's switch is on ("Show the link instead of emailing it", INTERNAL users who set their own password); then nothing is emailed and the link is shown once, in a dialog patched into the create answer, `Cache-Control: no-store`, with a Copy button; the dialog removes itself however it is closed, and the link is in no signal, URL or flash. A native post gets the page itself, since a redirect would lose the link.
+- **Edit** compares against the stored user: the name is sent when it changed, the association when the type or client did (`ANCHOR` is `*`, `CLIENT` changes the home client, `PARTNER` promotes), and a CLIENT or PARTNER without a client is refused before anything is written (the SPA saved the name first).
+- **Import.** A dialog with its own multipart form (a file must reach the server from a post without script): client, CSV file of Full Name, Email and pipe-separated Roles (a header row is skipped; at most 1000 rows). The report lists the rows not created.
+
+Differences from the SPA: dialogs instead of drawer forms; the drawer is one column as in the SPA but the pickers are multi-selects, not dual panes; revoking client access asks first (the SPA revokes at once); the all-applications switch is a Grant/Restrict button, and restricting your own flag asks (as the SPA); the sign-in link switch is new (the API's `returnInviteLink`); the confirmations name no user (shared dialogs). Passkey administration: the SPA's users pages have none. The permission-denied dialog was not needed (a refusal is the flash).
+
+Not verified in a browser: the area has not been opened in light, dark and narrow widths, the email check's round trip, the scope/client swap in the edit dialog, the chips in the dialogs and the file upload through Datastar are covered by rendered markup and the multipart tests only. Tests: `users_test.go` (permission matrix of the drawer, forged posts for every write, dialogs refused, sign-in link on request only, credentials never in a response, list URL state, edit mapping, import) and `users_pg_test.go` (`-tags=integration`: the real API handlers: create with and without the link, edit and association modes, roles, applications, password, delete and the last-administrator guard, a client administrator confined to its client and bounded in roles, view-only forged posts, the role ceiling).

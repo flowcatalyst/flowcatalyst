@@ -1,0 +1,209 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// rolesCreateDialog is the create dialog (kit form-dialog.md).
+templ rolesCreateDialog(f rolesCreateForm) {
+	@kit.FormDialog(f.dialog()) {
+		@rolesCreateField(f, "application")
+		@rolesCreateField(f, "roleName")
+		@rolesCreateField(f, "displayName")
+		@rolesCreateField(f, "description")
+	}
+}
+
+// rolesCreateField renders one field of the dialog; a failed submit patches
+// each one by its id ("{control}-field").
+templ rolesCreateField(f rolesCreateForm, key string) {
+	switch key {
+		case "application":
+			@kit.Field(f.fieldProps(key, "Application", "", true)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Apps, Selected: f.Application, Placeholder: "Select application", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "roleName":
+			@kit.Field(f.fieldProps(key, "Role Name", `Will be prefixed with application code (e.g., "myapp:admin")`, true)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Name, Placeholder: "e.g., admin, viewer, manager", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off", "autofocus": true}})
+			}
+		case "displayName":
+			@kit.Field(f.fieldProps(key, "Display Name", "", false)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.DisplayName, Placeholder: "e.g., Administrator", Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description", "", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Description, Placeholder: "What this role grants access to", Rows: 3, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+	}
+}
+
+// rolesEditPage is the SPA's RoleEditPage: basic information and the
+// permission picker for one admin-created role.
+templ rolesEditPage(f rolesEditForm) {
+	<div class="max-w-[1000px]">
+		<header class="mb-6 flex flex-wrap items-start justify-between gap-4">
+			<div class="flex items-start gap-4">
+				<a href={ templ.SafeURL(rolesURL(f.Name)) } class="fc-icon-btn" title="Back to role" aria-label="Back to role">
+					@kit.Icon(kit.IconProps{Name: "arrow-left", Class: "size-[1rem]"})
+				</a>
+				<div>
+					<h1 class="fc-page-title">Edit Role</h1>
+					<p class="fc-page-subtitle">{ f.Name }</p>
+				</div>
+			</div>
+			<div class="flex items-center gap-3">
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyText, Href: rolesURL(f.Name)}) {
+					Cancel
+				}
+				@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Icon: "check", Attrs: templ.Attributes{"form": rolesEditFormID + "-form", "data-attr:disabled": "$rolesEditBusy"}}) {
+					Save Changes
+				}
+			</div>
+		</header>
+		<form
+			id={ rolesEditFormID + "-form" }
+			method="post"
+			action={ f.action() }
+			class="flex flex-col gap-6"
+			data-indicator="rolesEditBusy"
+			data-on:submit={ kit.SubmitForm }
+			data-on:keydown={ rolesEnterGuard }
+		>
+			@kit.FormDialogError(rolesEditFormID, f.Errs.Form)
+			<div class="fc-card flex flex-col gap-4 p-6">
+				<h2 class="text-base font-semibold">Basic Information</h2>
+				@rolesEditField(f, "displayName")
+				@rolesEditField(f, "description")
+				@rolesEditField(f, "clientManaged")
+			</div>
+			<div class="fc-card flex flex-col gap-4 p-6">
+				<h2 class="text-base font-semibold">Permissions</h2>
+				if !f.isPlatform() {
+					// Platform permissions are code-defined, so only another
+					// application's role can define a new one.
+					@rolesNewPermission(f)
+				}
+				@rolesEditField(f, "permissions")
+			</div>
+		</form>
+	</div>
+}
+
+// rolesEnterGuard keeps Enter in the picker's search and the new-permission
+// builder from saving the role: in the builder it presses Add.
+const rolesEnterGuard = "if (evt.key === 'Enter' && evt.target.matches('input[type=search], [data-newperm] input')) { evt.preventDefault(); const b = evt.target.closest('[data-newperm]'); if (b) b.querySelector('button').click() }"
+
+// rolesSlug is the SPA's slugifySegment, run when a builder input loses focus.
+const rolesSlug = "el.value = el.value.toLowerCase().replace(/\\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '')"
+
+// rolesPickAll checks or clears every toggleable permission (the SPA's
+// application checkbox), then lets the multi-select refresh its summary and
+// chips.
+func rolesPickAll(checked bool) string {
+	return "const d = document.getElementById('" + rolesPickerID + "-field').querySelector('details'); d.querySelectorAll('input[type=checkbox]').forEach(i => { i.checked = " + strconv.FormatBool(checked) + " }); d.dispatchEvent(new Event('change', { bubbles: true }))"
+}
+
+templ rolesEditField(f rolesEditForm, key string) {
+	switch key {
+		case "displayName":
+			@kit.Field(f.fieldProps(key, "Display Name", "", true)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.DisplayName, Placeholder: "e.g., Tenant Administrator", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off"}})
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description", "", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Description, Placeholder: "Describe what this role grants access to...", Rows: 3, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "clientManaged":
+			<div id={ f.id(key) + "-field" } class="flex flex-col gap-1">
+				@kit.Switch(kit.SwitchProps{ID: f.id(key), Name: key, Value: "true", Checked: f.ClientManaged, Label: "Client Managed", Attrs: templ.Attributes{"aria-describedby": f.id(key) + "-help"}})
+				<p id={ f.id(key) + "-help" } class="text-sm text-muted-foreground">Sync this role to client-managed identity providers</p>
+			</div>
+		case "permissions":
+			@kit.Field(kit.FieldProps{For: rolesPickerID, Error: f.fieldError(key), Attrs: templ.Attributes{"id": rolesPickerField}}) {
+				<div class="flex flex-col gap-3">
+					<div class="flex flex-wrap items-center gap-2">
+						@kit.LegacyButton(kit.LegacyButtonProps{Type: "button", Variant: kit.LegacyOutline, Small: true, Attrs: templ.Attributes{"data-on:click": rolesPickAll(true)}}) {
+							Select all
+						}
+						@kit.LegacyButton(kit.LegacyButtonProps{Type: "button", Variant: kit.LegacyOutline, Small: true, Attrs: templ.Attributes{"data-on:click": rolesPickAll(false)}}) {
+							Clear
+						}
+					</div>
+					@kit.MultiSelect(kit.MultiSelectProps{
+						ID:          rolesPickerID,
+						Name:        "permission",
+						Label:       "Permissions",
+						Options:     f.Picker.Options,
+						Selected:    f.Picker.Selected,
+						Placeholder: "No permissions selected",
+						MaxLabels:   1,
+						ManyLabel:   "{0} permissions selected",
+						Chips:       true,
+						Search:      true,
+						Signal:      "rolesPermSearch",
+						EmptyText:   "No permissions available",
+						DescribedBy: f.describedBy(key),
+					})
+					@rolesLocked(f)
+				</div>
+			}
+	}
+}
+
+// rolesLocked lists the locked permissions: the SPA shows them disabled in the
+// list. The ones the role holds are posted back unchanged.
+templ rolesLocked(f rolesEditForm) {
+	if len(f.Picker.Locked) > 0 {
+		<details class="rounded-lg border border-border p-3">
+			<summary class="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+				@kit.Icon(kit.IconProps{Name: "lock", Class: "size-[1rem]"})
+				{ strconv.Itoa(len(f.Picker.Locked)) } locked permissions
+			</summary>
+			<p class="mt-2 text-sm text-muted-foreground">Locked permissions are ones you do not hold: you cannot add them to this role or remove them from it.</p>
+			<ul class="mt-2 flex flex-col gap-1">
+				for _, l := range f.Picker.Locked {
+					<li class="flex items-center gap-2 font-mono text-[13px]" title="You do not hold this permission, so you cannot add it to or remove it from a role.">
+						@kit.Icon(kit.IconProps{Name: "lock", Class: "size-[0.9rem] text-muted-foreground"})
+						<span>{ l.Code }</span>
+						if l.Held {
+							@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "on this role"})
+							<input type="hidden" name="permission" value={ l.Code }/>
+						}
+					</li>
+				}
+			</ul>
+		</details>
+	}
+}
+
+// rolesNewPermission is the SPA's "New permission": the application's code,
+// three segments and Add. Add posts the form to the add-permission route, which
+// answers with the picker and this builder again.
+templ rolesNewPermission(f rolesEditForm) {
+	<div id={ rolesNewPermID } data-newperm class="flex flex-col gap-2">
+		<span class="fc-field-label">New permission</span>
+		<div class="flex flex-wrap items-center gap-2">
+			@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: f.Application})
+			<span aria-hidden="true">:</span>
+			@kit.Input(kit.InputProps{ID: rolesNewPermID + "-context", Name: "newContext", Value: f.NewContext, Placeholder: "context", Class: "w-36", Attrs: templ.Attributes{"aria-label": "Context", "autocomplete": "off", "data-on:blur": rolesSlug}})
+			<span aria-hidden="true">:</span>
+			@kit.Input(kit.InputProps{ID: rolesNewPermID + "-aggregate", Name: "newAggregate", Value: f.NewAggregate, Placeholder: "aggregate", Class: "w-36", Attrs: templ.Attributes{"aria-label": "Aggregate", "autocomplete": "off", "data-on:blur": rolesSlug}})
+			<span aria-hidden="true">:</span>
+			@kit.Input(kit.InputProps{ID: rolesNewPermID + "-action", Name: "newAction", Value: f.NewAction, Placeholder: "action", Class: "w-36", Attrs: templ.Attributes{"aria-label": "Action", "autocomplete": "off", "data-on:blur": rolesSlug}})
+			@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Small: true, Icon: "plus", Attrs: templ.Attributes{"formaction": f.addAction(), "data-on:click__prevent": "@post(el.formAction, {contentType: 'form', retryMaxCount: 0})"}}) {
+				Add
+			}
+		</div>
+		if f.AddNote != "" {
+			<small class="text-sm text-amber-600" role="status">{ f.AddNote }</small>
+		} else {
+			<small class="text-sm text-muted-foreground">Auto-formatted to lowercase letters, numbers and hyphens. Saved onto this role.</small>
+		}
+	</div>
+}
+
+templ rolesTag(label string, severity kit.TagSeverity) {
+	@kit.Tag(kit.TagProps{Severity: severity, Label: label})
+}

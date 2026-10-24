@@ -13,6 +13,9 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui"
@@ -28,6 +31,9 @@ import (
 // repositories directly, with the API handlers' permission checks.
 func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.UnitOfWork, repos *repoSet, svcs *serviceSet) error {
 	sjInstances := scheduledjob.NewInstanceRepository(pool)
+	ingestionRepo := ingestion.NewRepository(pool)
+	ingestionResolver := ingestion.NewResolver(repos.applicationRepo, repos.clientRepo,
+		repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, nil)
 	return ui.Mount(r, ui.Config{
 		Authenticate: platformmw.Authenticator(platformmw.AuthConfig{
 			Provider:         svcs.authProvider,
@@ -86,6 +92,11 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 		Events:                repos.eventRepo,
 		Processes:             repos.processRepo,
 		ProcessOps:            pages.ProcessOps{Repo: repos.processRepo, UoW: uow},
+		DeveloperApps:         repos.applicationRepo,
+		DeveloperSpecs:        openapispecs.NewRepository(pool),
+		DeveloperEventTypes:   repos.eventTypeRepo,
+		DeveloperUsers:        repos.principalRepo,
+		DeveloperUserOps:      pages.DeveloperUserOps{Repo: repos.principalRepo, Roles: repos.roleRepo, UoW: uow},
 		PlatformConfig:        platformConfigService(repos, uow),
 		PlatformConfigOps:     pages.ConfigOps{Repo: repos.platformConfigRepo, UoW: uow},
 		Functions:             repos.functionRepo,
@@ -96,6 +107,36 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 		},
 		FunctionTrace:    pages.TraceReader{Repository: repos.functionRepo, Limits: cfg.FunctionsTrace},
 		FunctionTraceOps: pages.TraceOps{Repo: repos.functionRepo, UoW: uow, Limits: cfg.FunctionsTrace},
+
+		IngestionEnabled:  cfg.IngestionEnabled,
+		Ingestions:        ingestionRepo,
+		IngestionOps:      pages.IngestionOps{Repo: ingestionRepo, Resolver: ingestionResolver, UoW: uow},
+		IngestionTabs:     ingestionRepo,
+		IngestionAudit:    repos.auditRepo,
+		IngestionSets:     pages.IngestionSetReader{Repository: ingestionRepo, Archive: svcs.functionArtifacts},
+		IngestionSetOps:   pages.IngestionSetOps{Repo: ingestionRepo, Resolver: ingestionResolver, Archive: svcs.functionArtifacts, UoW: uow},
+		IngestionTests:    ingestionRepo,
+		IngestionResolver: ingestionResolver,
+
+		Users:     principalAPIState(cfg, repos, svcs, uow),
+		UserRoles: repos.roleRepo,
+
+		ServiceAccountStore: repos.serviceAccountRepo,
+		ServiceAccountOps: pages.ServiceAccountOps{
+			Repo: repos.serviceAccountRepo, Principals: repos.principalRepo, OAuthClients: repos.authRepo.OAuthClients,
+			Clients: repos.clientRepo, Grants: repos.principalGrantRepo, Roles: repos.roleRepo, Applications: repos.applicationRepo, UoW: uow,
+			Auth: svcs.authSvc, FlattenPermissions: svcs.oauthTokenEP.FlattenPermissions, Audit: repos.auditRepo,
+		},
+		ServicePrincipals:   repos.principalRepo,
+		ServiceOAuthClients: repos.authRepo.OAuthClients,
+		ServiceAccountRoles: repos.roleRepo,
+
+		Roles:       repos.roleRepo,
+		RoleOps:     pages.RolesOps{Repo: repos.roleRepo, UoW: uow},
+		Permissions: pages.PermissionStore{Roles: repos.roleRepo, Catalog: role.NewPermissionRepo(pool)},
+
+		Portal:    pages.PortalReader{Identities: repos.portalIdentityRepo, PortalApps: repos.portalAppRepo},
+		PortalOps: pages.PortalOps{Identities: repos.portalIdentityRepo, Apps: repos.portalAppRepo, Clients: repos.clientRepo, OAuthClients: repos.authRepo.OAuthClients, UoW: uow},
 	})
 }
 

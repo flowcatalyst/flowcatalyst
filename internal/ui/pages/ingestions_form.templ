@@ -1,0 +1,195 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+// ingsFormDialogC is the create or change dialog (kit form-dialog.md).
+templ ingsFormDialogC(f ingsForm) {
+	@kit.FormDialog(f.dialogProps()) {
+		@ingsFormBody(f)
+	}
+}
+
+// ingsFormBody is the whole form, the patch target of a failed submit: every
+// control again with the values posted and the errors found.
+templ ingsFormBody(f ingsForm) {
+	<div id={ ingsBodyID } class="flex flex-col gap-6" data-signals={ f.signals() }>
+		@kit.FormSection(kit.FormSectionProps{Title: "Ingestion"}) {
+			<div class="flex flex-col gap-4">
+				if !f.Edit {
+					@ingsApplicationField(f)
+					@ingsClientField(f)
+					@kit.Field(kit.FieldProps{Label: "Code", For: f.id("code"), Required: true, Description: "Lower-case letters, digits and dashes; unique within the application and client. Fixed once created.", Error: f.fieldError("code"), ErrorID: f.id("code") + "-err", Attrs: templ.Attributes{"id": f.id("code") + "-field"}}) {
+						@kit.Input(kit.InputProps{ID: f.id("code"), Name: "code", Value: f.Values["code"], Required: true, Invalid: f.fieldError("code") != "", DescribedBy: f.describedBy("code"), Attrs: templ.Attributes{"maxlength": "64", "autocomplete": "off", "spellcheck": "false", "autofocus": true}})
+					}
+				}
+				@kit.Field(kit.FieldProps{Label: "Name", For: f.id("name"), Required: true, Error: f.fieldError("name"), ErrorID: f.id("name") + "-err", Attrs: templ.Attributes{"id": f.id("name") + "-field"}}) {
+					@kit.Input(kit.InputProps{ID: f.id("name"), Name: "name", Value: f.Values["name"], Required: true, Invalid: f.fieldError("name") != "", DescribedBy: f.describedBy("name"), Attrs: templ.Attributes{"maxlength": "200", "autocomplete": "off"}})
+				}
+				@kit.Field(kit.FieldProps{Description: "Up to 2 KB, shown to those who may view ingestions. Payloads may hold personal data: turn this on only where the client has agreed to it. Turning it off removes the ones kept.", Attrs: templ.Attributes{"id": f.id("keepFailedPayloads") + "-field"}}) {
+					@kit.Switch(kit.SwitchProps{ID: f.id("keepFailedPayloads"), Name: "keepFailedPayloads", Value: ingsOn, Checked: f.Values["keepFailedPayloads"] == ingsOn, Label: "Keep the start of the payload each failure happened on"})
+				}
+			</div>
+		}
+		@kit.FormSection(kit.FormSectionProps{Title: "Source", Description: "Where the data comes from. Secrets are named, never written here."}) {
+			<div class="flex flex-col gap-4">
+				@kit.Field(kit.FieldProps{Label: "Source", For: f.id("kind"), Required: true, Error: f.fieldError("kind"), ErrorID: f.id("kind") + "-err", Attrs: templ.Attributes{"id": f.id("kind") + "-field"}}) {
+					@kit.Select(kit.SelectProps{ID: f.id("kind"), Name: "kind", Options: f.KindOptions, Selected: f.Values["kind"], Invalid: f.fieldError("kind") != "", DescribedBy: f.describedBy("kind"), Attrs: templ.Attributes{"data-bind:" + kit.SignalAttr(ingsKindSig): true}})
+				}
+				for _, k := range f.Cat {
+					if k.Name != "custom" {
+						@ingsKindFields(f, k)
+					}
+				}
+			</div>
+		}
+		@kit.FormSection(kit.FormSectionProps{Title: "Split", Description: "How one payload becomes records; each record is one dispatch job."}) {
+			<fieldset class="m-0 flex min-w-0 flex-col gap-4 border-0 p-0" { f.splitGate()... }>
+				for _, fld := range ingsSplitFields {
+					@ingsGated(f, fld)
+				}
+			</fieldset>
+			<p class="text-sm text-muted-foreground" data-show={ "$" + ingsKindSig + " === 'database-poll'" } style={ ingsHiddenUnless(f.Values["kind"] == "database-poll") }>A database poll's records are its rows, so it has no split to choose.</p>
+		}
+		@kit.FormSection(kit.FormSectionProps{Title: "Dispatch", Description: "The dispatch job created for each record."}) {
+			<div class="flex flex-col gap-4">
+				for _, fld := range ingsTargetFields {
+					@ingsFieldC(f, fld)
+				}
+			</div>
+		}
+		@kit.FormSection(kit.FormSectionProps{Title: "Version", Description: "Kept with who saved it and when."}) {
+			<div class="flex flex-col gap-4">
+				@kit.Field(kit.FieldProps{Label: "Note", For: f.id("note"), Description: "Optional: why this version, for whoever reads the versions later."}) {
+					@kit.Textarea(kit.TextareaProps{ID: f.id("note"), Name: "note", Value: f.Values["note"], Rows: 2, Attrs: templ.Attributes{"maxlength": "500"}})
+				}
+				if !f.Edit || f.CanPromote {
+					@kit.Field(kit.FieldProps{Description: ingsLiveHelp(f), Attrs: templ.Attributes{"id": f.id("live") + "-field"}}) {
+						@kit.Switch(kit.SwitchProps{ID: f.id("live"), Name: "live", Value: ingsOn, Checked: f.Values["live"] == ingsOn, Label: "Make live when saved"})
+					}
+				}
+			</div>
+		}
+	</div>
+}
+
+func ingsHiddenUnless(show bool) string {
+	if show {
+		return ""
+	}
+	return "display: none"
+}
+
+func ingsLiveHelp(f ingsForm) string {
+	if f.Edit {
+		return "Off, it is saved and the live version keeps running until you make this one live."
+	}
+	return "Off, it is saved and waits to be made live from the Versions tab."
+}
+
+templ ingsApplicationField(f ingsForm) {
+	@kit.Field(kit.FieldProps{Label: "Application", For: f.id("application"), Required: true, Description: "The owning application: an integration application, by its code.", Error: f.fieldError("application"), ErrorID: f.id("application") + "-err", Attrs: templ.Attributes{"id": f.id("application") + "-field"}}) {
+		if f.CanPickApp {
+			@kit.Select(kit.SelectProps{ID: f.id("application"), Name: "application", Options: f.Apps, Selected: f.Values["application"], Placeholder: "Select an application", Required: true, Invalid: f.fieldError("application") != "", DescribedBy: f.describedBy("application")})
+		} else {
+			@kit.Input(kit.InputProps{ID: f.id("application"), Name: "application", Value: f.Values["application"], Required: true, Invalid: f.fieldError("application") != "", DescribedBy: f.describedBy("application"), Attrs: templ.Attributes{"autocomplete": "off", "spellcheck": "false"}})
+		}
+	}
+}
+
+templ ingsClientField(f ingsForm) {
+	@kit.Field(kit.FieldProps{Label: "Client", For: f.id("client"), Required: true, Description: "The client the records belong to. Fixed once created.", Error: f.fieldError("client"), ErrorID: f.id("client") + "-err", Attrs: templ.Attributes{"id": f.id("client") + "-field"}}) {
+		if f.CanPickClient {
+			@kit.Autocomplete(kit.AutocompleteProps{ID: f.id("client"), Name: "client", Value: f.Values["client"], Placeholder: "Search for a client", Source: clientOptionsPath, Options: f.ClientOptions, Invalid: f.fieldError("client") != "", DescribedBy: f.describedBy("client")})
+		} else {
+			@kit.Input(kit.InputProps{ID: f.id("client"), Name: "client", Value: f.Values["client"], Required: true, Placeholder: "client identifier or id", Invalid: f.fieldError("client") != "", DescribedBy: f.describedBy("client"), Attrs: templ.Attributes{"autocomplete": "off", "spellcheck": "false"}})
+		}
+	}
+}
+
+// ingsKindFields are the controls of one source kind: shown, posted and
+// checked only while the kind is chosen.
+templ ingsKindFields(f ingsForm, k ingsKind) {
+	<fieldset id={ "ings-kind-" + k.Name } class="m-0 flex min-w-0 flex-col gap-4 border-0 p-0" { f.kindGate(k)... }>
+		if k.Description != "" {
+			<p class="text-sm text-muted-foreground">{ k.Description }</p>
+		}
+		if k.SingleOwner {
+			<p class="text-sm text-muted-foreground">A polled source: one runtime reads it at a time.</p>
+		}
+		if k.Perm != "" {
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "shield", Title: "Needs a permission", Description: "Creating or changing an ingestion of this kind needs " + k.Perm + "."})
+		}
+		if !k.Reported && !k.BuiltIn {
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "No runtime reports this kind", Description: "It can be saved, but nothing runs it until a runtime that carries it is live."})
+		}
+		for _, fld := range k.Fields {
+			@ingsGated(f, fld)
+		}
+	</fieldset>
+}
+
+// ingsGated is a field that applies only while another control holds a value.
+templ ingsGated(f ingsForm, fld ingsField) {
+	if fld.When != nil {
+		<fieldset class="m-0 flex min-w-0 flex-col gap-4 border-0 p-0" { f.fieldGate(fld)... }>
+			@ingsFieldC(f, fld)
+		</fieldset>
+	} else {
+		@ingsFieldC(f, fld)
+	}
+}
+
+// ingsFieldC is one field: its label, control, help and error.
+templ ingsFieldC(f ingsForm, fld ingsField) {
+	if fld.Type == ingsSwitch {
+		@kit.Field(kit.FieldProps{Description: fld.Help, Error: f.fieldError(fld.Name), ErrorID: f.id(fld.Name) + "-err", Attrs: templ.Attributes{"id": f.id(fld.Name) + "-field"}}) {
+			@kit.Switch(kit.SwitchProps{ID: f.id(fld.Name), Name: fld.Name, Value: ingsOn, Checked: f.Values[fld.Name] == ingsOn, Label: fld.Label, Attrs: f.controlAttrs(fld, nil)})
+		}
+	} else {
+		@kit.Field(f.fieldProps(fld)) {
+			@ingsControl(f, fld)
+		}
+	}
+}
+
+func (f ingsForm) text(fld ingsField) string { return f.Values[fld.Name] }
+
+// choice is the value a choice shows: the one posted or stored, else the
+// field's default.
+func (f ingsForm) choice(fld ingsField) string {
+	if v := f.Values[fld.Name]; v != "" {
+		return v
+	}
+	return fld.Default
+}
+
+func ingsTextAttrs(fld ingsField) templ.Attributes {
+	return templ.Attributes{"autocomplete": "off", "autocapitalize": "off", "spellcheck": "false"}
+}
+
+func ingsNumberAttrs(fld ingsField) templ.Attributes {
+	a := templ.Attributes{"step": "1", "inputmode": "numeric"}
+	if fld.Min != "" {
+		a["min"] = fld.Min
+	}
+	return a
+}
+
+templ ingsControl(f ingsForm, fld ingsField) {
+	switch fld.Type {
+		case ingsText:
+			@kit.Input(kit.InputProps{ID: f.id(fld.Name), Name: fld.Name, Value: f.text(fld), Placeholder: fld.Placeholder, Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name), Attrs: ingsTextAttrs(fld)})
+		case ingsNumber:
+			@kit.Input(kit.InputProps{ID: f.id(fld.Name), Name: fld.Name, Type: "number", Value: f.text(fld), Placeholder: fld.Placeholder, Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name), Attrs: ingsNumberAttrs(fld)})
+		case ingsDuration:
+			@kit.Input(kit.InputProps{ID: f.id(fld.Name), Name: fld.Name, Value: f.text(fld), Placeholder: "5m", Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name), Attrs: ingsTextAttrs(fld)})
+		case ingsSecret:
+			@kit.SecretRefInput(kit.SecretRefInputProps{ID: f.id(fld.Name), Name: fld.Name, Value: f.text(fld), Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name)})
+		case ingsChoice:
+			@kit.Select(kit.SelectProps{ID: f.id(fld.Name), Name: fld.Name, Options: fld.Options, Selected: f.choice(fld), Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name), Attrs: f.controlAttrs(fld, nil)})
+		case ingsArea, ingsList, ingsPairs:
+			@kit.Textarea(kit.TextareaProps{ID: f.id(fld.Name), Name: fld.Name, Value: f.text(fld), Placeholder: fld.Placeholder, Rows: 3, Class: "font-mono", Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name)})
+		case ingsCode, ingsJSON:
+			@kit.CodeEditor(kit.CodeEditorProps{ID: f.id(fld.Name), Name: fld.Name, Value: f.text(fld), Language: fld.Lang, Label: fld.Label, Rows: 12, Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name)})
+	}
+}

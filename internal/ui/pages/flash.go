@@ -82,11 +82,64 @@ const (
 	flashFnSettingRemoved = "function-setting-removed"
 	flashFnRouteSaved     = "function-route-saved"
 	flashFnRouteRemoved   = "function-route-removed"
+
+	flashUsrCreated        = "user-created"
+	flashUsrUpdated        = "user-updated"
+	flashUsrActivated      = "user-activated"
+	flashUsrDeactivated    = "user-deactivated"
+	flashUsrDeleted        = "user-deleted"
+	flashUsrResetSent      = "user-reset-sent"
+	flashUsrPasswordReset  = "user-password-reset"
+	flashUsrTwoFactorReset = "user-2fa-reset"
+	flashUsrRoles          = "user-roles-updated"
+	flashUsrApps           = "user-apps-updated"
+	flashUsrAllApps        = "user-all-apps-granted"
+	flashUsrRestricted     = "user-apps-restricted"
+	flashUsrClientGranted  = "user-client-granted"
+	flashUsrClientRevoked  = "user-client-revoked"
+	flashUsrImported       = "users-imported"
+
+	flashDevGranted = "developer-role-granted"
+	flashDevRemoved = "developer-role-removed"
+	flashDevRevoked = "developer-credential-revoked"
+
+	flashPortalAppCreated      = "portal-app-created"
+	flashPortalAppUpdated      = "portal-app-updated"
+	flashPortalAppDeleted      = "portal-app-deleted"
+	flashPortalAppAssigned     = "portal-app-assigned"
+	flashPortalUserSuspended   = "portal-user-suspended"
+	flashPortalUserReactivated = "portal-user-reactivated"
+	flashPortalUserDeleted     = "portal-user-deleted"
+	flashPortalAppGranted      = "portal-app-granted"
+	flashPortalAccessRevoked   = "portal-access-revoked"
+
+	flashIngSetReapplied = "ingestion-set-reapplied"
+	flashIngSetReleased  = "ingestion-set-released"
+)
+
+// The ingestions page's keys.
+const (
+	flashIngCreated      = "ingestion-created"
+	flashIngVersionSaved = "ingestion-version-saved"
+	flashIngVersionLive  = "ingestion-version-live"
+	flashIngPaused       = "ingestion-paused"
+	flashIngResumed      = "ingestion-resumed"
+	flashIngDeleted      = "ingestion-deleted"
 )
 
 // FlashMessages is the table the shell maps flash keys through
 // (shell.Shell.Flashes). A key not listed here is never rendered.
 var FlashMessages = map[string]kit.FlashMessageProps{
+	// The Nuxt control plane's ingestion toasts name the code; a Datastar
+	// answer gets the same from the table, a flash key after a native post
+	// carries no request text.
+	flashIngCreated:      success("Ingestion created"),
+	flashIngVersionSaved: {Kind: kit.FlashSuccess, Summary: "Version saved", Detail: "It is not live: make it live from the Versions tab"},
+	flashIngVersionLive:  {Kind: kit.FlashSuccess, Summary: "Version live", Detail: "Runtimes run it on their next poll"},
+	flashIngPaused:       success("Ingestion paused"),
+	flashIngResumed:      success("Ingestion resumed"),
+	flashIngDeleted:      success("Ingestion removed"),
+
 	flashPoolCreated:   success("Dispatch pool created"),
 	flashPoolUpdated:   success("Pool updated"),
 	flashPoolSuspended: success("Pool suspended"),
@@ -173,6 +226,48 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashFnSettingRemoved: success("Setting removed"),
 	flashFnRouteSaved:     success("Route saved"),
 	flashFnRouteRemoved:   success("Route removed"),
+
+	// The SPA's user toasts. A Datastar answer replaces the detail with text
+	// the server built (the roles added, the user's name); a flash key after a
+	// native post carries none.
+	flashUsrCreated:        {Kind: kit.FlashSuccess, Summary: "User created", Detail: "The user was added"},
+	flashUsrUpdated:        success("User updated successfully"),
+	flashUsrActivated:      success("User activated"),
+	flashUsrDeactivated:    success("User deactivated"),
+	flashUsrDeleted:        success("User deleted"),
+	flashUsrResetSent:      {Kind: kit.FlashSuccess, Summary: "Reset email sent", Detail: "Password reset email sent"},
+	flashUsrPasswordReset:  {Kind: kit.FlashSuccess, Summary: "Password reset", Detail: "Password reset successfully"},
+	flashUsrTwoFactorReset: {Kind: kit.FlashSuccess, Summary: "2FA reset", Detail: "Two-factor authentication reset"},
+	flashUsrRoles:          success("Roles updated"),
+	flashUsrApps:           success("Application access updated"),
+	flashUsrAllApps:        success("Granted access to all applications"),
+	flashUsrRestricted:     success("Restricted to specific applications"),
+	flashUsrClientGranted:  success("Client access granted"),
+	flashUsrClientRevoked:  success("Client access revoked"),
+	flashUsrImported:       {Kind: kit.FlashSuccess, Summary: "Import complete", Detail: "The import finished"},
+
+	// The SPA's developer user toasts name the user; a Datastar answer does
+	// too, a flash key after a native post carries no request text.
+	flashDevGranted: {Kind: kit.FlashSuccess, Summary: "Granted", Detail: "Developer role granted"},
+	flashDevRemoved: {Kind: kit.FlashSuccess, Summary: "Removed", Detail: "Developer role removed"},
+	flashDevRevoked: {Kind: kit.FlashSuccess, Summary: "Revoked", Detail: "Developer credential revoked"},
+
+	// The SPA's portal toasts name the app or the user; a Datastar answer does
+	// too, a flash key after a native post carries no request text.
+	flashPortalAppCreated:      success("Portal app created"),
+	flashPortalAppUpdated:      success("Portal app updated"),
+	flashPortalAppDeleted:      success("Portal app deleted"),
+	flashPortalAppAssigned:     success("Portal users assigned"),
+	flashPortalUserSuspended:   success("Portal user suspended"),
+	flashPortalUserReactivated: success("Portal user reactivated"),
+	flashPortalUserDeleted:     success("Portal user deleted"),
+	flashPortalAppGranted:      success("Portal app access granted"),
+	flashPortalAccessRevoked:   success("Portal app access removed"),
+
+	// The Datastar answers of the sets name the set and the apply; a flash key
+	// after a native post carries no request text.
+	flashIngSetReapplied: {Kind: kit.FlashSuccess, Summary: "Success", Detail: "The set was applied again as the earlier apply left it"},
+	flashIngSetReleased:  {Kind: kit.FlashSuccess, Summary: "Success", Detail: "The set was released; its ingestions can be edited one at a time again"},
 }
 
 // success is the SPA's toast.success("Success", detail).

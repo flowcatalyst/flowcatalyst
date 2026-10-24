@@ -1,0 +1,659 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// devStatusTag shows a status the way the SPA's tables do: CURRENT green,
+// anything else grey.
+templ devStatusTag(status string) {
+	if status == "CURRENT" {
+		@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: status})
+	} else {
+		@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: status})
+	}
+}
+
+templ devPreviewNote() {
+	@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Developer.", Class: "mb-4"})
+}
+
+// ── applications list ──────────────────────────────────────────────────
+templ devListPage(rows []devAppRow) {
+	@kit.PageHeader(kit.PageHeaderProps{Title: "Developer Portal", Subtitle: "API documentation and event types for the applications you have access to."})
+	@devPreviewNote()
+	<div class="fc-card-flush">
+		@kit.DataTable(kit.DataTableProps{
+			ID: "dev-apps-table", BodyID: "dev-apps-rows",
+			Columns: []kit.DataColumn{{Label: "Code"}, {Label: "Application"}, {Label: "Description"}, {Label: "API Version"}, {Label: "Last Synced"}},
+			Empty:   devAppsEmpty(rows),
+		}) {
+			for _, row := range rows {
+				@kit.TR(kit.TRProps{ID: "dev-app-" + row.ID}) {
+					@kit.TD(kit.TDProps{Class: "font-mono text-[13px]"}) {
+						<a href={ row.Href } class="text-foreground no-underline hover:underline">{ row.Code }</a>
+					}
+					@kit.TD(kit.TDProps{}) {
+						<span class="inline-flex items-center gap-2">
+							if row.Platform {
+								<span title="This platform">
+									@kit.Icon(kit.IconProps{Name: "star", Class: "size-[1rem] text-amber-500"})
+								</span>
+							}
+							<a href={ row.Href } class="font-medium text-foreground no-underline hover:underline">{ row.Name }</a>
+						</span>
+					}
+					@kit.TD(kit.TDProps{Class: "text-muted-foreground"}) {
+						@devOrDash(row.Description)
+					}
+					@kit.TD(kit.TDProps{}) {
+						if row.Version != "" {
+							@kit.Tag(kit.TagProps{Severity: kit.TagInfo, Label: row.Version})
+						} else {
+							<span class="text-muted-foreground">—</span>
+						}
+					}
+					@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: row.Synced, Empty: "—"})
+					}
+				}
+			}
+		}
+	</div>
+}
+
+func devAppsEmpty(rows []devAppRow) *kit.EmptyStateProps {
+	if len(rows) > 0 {
+		return nil
+	}
+	return &kit.EmptyStateProps{Message: "No applications visible. Ask an admin to grant access to one."}
+}
+
+templ devOrDash(s string) {
+	if s == "" {
+		<span class="text-muted-foreground">—</span>
+	} else {
+		{ s }
+	}
+}
+
+// ── application page ───────────────────────────────────────────────────
+templ devDetailPage(v devDetailView) {
+	<script type="module" src={ assets.URL("fc-diagram.js") }></script>
+	@kit.PageHeader(kit.PageHeaderProps{Title: v.App.Name, Subtitle: v.App.subtitle(), Actions: devDetailActions(v.App)})
+	@devPreviewNote()
+	@kit.TabList(kit.TabListProps{
+		ID: "dev-tabs", Signal: devTabSig, Label: "Developer portal sections", Tabs: devTabs, Selected: v.Tab,
+		Panels: map[string]templ.Component{
+			devTabDocs: devTabPanel(v, devTabDocs, devDocsID),
+			devTabET:   devTabPanel(v, devTabET, devETID),
+			devTabProc: devTabPanel(v, devTabProc, devProcID),
+		},
+	})
+}
+
+// devTabPanel is the selected tab's content, or a placeholder that loads it
+// when the tab is first shown (the SPA loads a tab when it is opened).
+templ devTabPanel(v devDetailView, tab, id string) {
+	if v.Tab == tab {
+		@v.Panel
+	} else {
+		<div id={ kit.ID(id) } data-src={ devTabURL(v.App.ID, tab) } data-on-intersect__once="@get(el.dataset.src)">
+			<p class="text-sm text-muted-foreground" role="status">Loading…</p>
+		</div>
+	}
+}
+
+templ devDetailActions(app devApp) {
+	<div class="flex flex-wrap items-center gap-2">
+		if app.Version != "" {
+			@kit.Tag(kit.TagProps{Severity: kit.TagInfo, Label: "API v" + app.Version})
+		}
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Href: devPath, Icon: "arrow-left"}) {
+			All applications
+		}
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Href: app.href() + "/versions", Icon: "history"}) {
+			Versions
+		}
+	</div>
+}
+
+// ── event types tab ────────────────────────────────────────────────────
+
+func devLiveGet(appID, tab string) string {
+	return "@get('" + devAppsPath + "/" + kit.ID(appID) + "/tabs/" + tab + "', {contentType: 'form'})"
+}
+
+func (v devETView) filterCount() int {
+	n := 0
+	if v.Sub != "" {
+		n++
+	}
+	if v.Agg != "" {
+		n++
+	}
+	if v.Status != "CURRENT" {
+		n++
+	}
+	return n
+}
+
+func (v devETView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.filtered() {
+		clear = v.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: devETFormID, Action: devTabURL(v.App.ID, devTabET), HideSearch: true, HideRefresh: true,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+		ActiveFilterCount: v.filterCount(), Hidden: []kit.HiddenField{{Name: devETSel, Value: v.SelectedID}},
+		FormAttrs: templ.Attributes{"data-on:submit": devLiveGet(v.App.ID, devTabET)},
+		Filters:   devETFilters(v),
+	}
+}
+
+templ devETFilters(v devETView) {
+	@kit.FilterSelect(kit.FilterSelectProps{Name: devETSub, Label: "Subdomain", Placeholder: "All subdomains", Options: v.SubOptions, Selected: v.Sub, Attrs: templ.Attributes{"data-on:change": devLiveGet(v.App.ID, devTabET)}})
+	@kit.FilterSelect(kit.FilterSelectProps{Name: devETAgg, Label: "Aggregate", Placeholder: "All aggregates", Options: v.AggOpts, Selected: v.Agg, Attrs: templ.Attributes{"data-on:change": devLiveGet(v.App.ID, devTabET)}})
+	@kit.FilterSelect(kit.FilterSelectProps{Name: devETStatus, Label: "Status", Placeholder: "All statuses", Options: devStatusOptions, Selected: v.Status, Attrs: templ.Attributes{"data-on:change": devLiveGet(v.App.ID, devTabET)}})
+}
+
+func (v devETView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	if v.filtered() {
+		return &kit.EmptyStateProps{Message: "No event types match the current filters.", Status: true, ClearHref: v.clearURL()}
+	}
+	return &kit.EmptyStateProps{Message: "No event types defined for this application yet.", Status: true}
+}
+
+templ devETPanel(v devETView) {
+	<div id={ devETID } class="flex flex-col gap-4">
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			<div class="max-h-80 overflow-y-auto">
+				@kit.DataTable(kit.DataTableProps{
+					ID: "dev-et-table", BodyID: "dev-et-rows",
+					Columns: []kit.DataColumn{{Label: "Code"}, {Label: "Name"}, {Label: "Description"}, {Label: "Status"}},
+					Empty:   v.empty(),
+				}) {
+					for _, row := range v.Rows {
+						@kit.TR(kit.TRProps{ID: "dev-et-" + row.ID, Class: devSelectedClass(row.Selected)}) {
+							@kit.TD(kit.TDProps{}) {
+								<a href={ row.Href } class="no-underline" data-on:click__prevent={ liveLink } aria-current={ devCurrent(row.Selected) }>
+									@kit.CodeChips(kit.CodeChipsProps{Code: row.Code})
+								</a>
+							}
+							@kit.TD(kit.TDProps{Class: "font-medium"}) {
+								{ row.Name }
+							}
+							@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+								@devOrDash(row.Description)
+							}
+							@kit.TD(kit.TDProps{}) {
+								@devStatusTag(row.Status)
+							}
+						}
+					}
+				}
+			</div>
+		</div>
+		<div class="fc-card-flush p-3" id="dev-et-viewer">
+			if v.Viewer != nil {
+				@devViewer(*v.Viewer)
+			} else {
+				<div class="fc-empty">
+					@kit.Icon(kit.IconProps{Name: "info", Class: "size-8"})
+					<p>{ v.Why }</p>
+				</div>
+			}
+		</div>
+	</div>
+}
+
+// devCurrent is the aria-current of a row's link: only the selected row has it.
+func devCurrent(selected bool) string {
+	if selected {
+		return "true"
+	}
+	return "false"
+}
+
+func devSelectedClass(selected bool) string {
+	if selected {
+		return "bg-foreground/5"
+	}
+	return ""
+}
+
+// devViewer is the selected event type's schema viewer (the SPA's
+// SchemaViewerInline, the schema dialog's tabs without the dialog).
+templ devViewer(v etViewer) {
+	<div class="flex flex-col gap-3" data-signals="{etCopied: false}">
+		<div class="flex flex-wrap items-center justify-end gap-2">
+			@etTag(v.Status, v.StatusSeverity)
+			<span class="text-xs text-muted-foreground" role="status" data-show="$etCopied" style="display: none">Copied</span>
+			@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy", Attrs: templ.Attributes{"title": "Copy", "data-on:click": etCopyExpr}})
+		</div>
+		@kit.Tabs(v.tabsWithPanels())
+	</div>
+}
+
+// ── processes tab ──────────────────────────────────────────────────────
+
+func (v devProcView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.filtered() {
+		clear = v.clearURL()
+	}
+	n := 0
+	if v.Sub != "" {
+		n++
+	}
+	if v.Status != "CURRENT" {
+		n++
+	}
+	return kit.TableToolbarProps{
+		ID: devProcFormID, Action: devTabURL(v.App.ID, devTabProc), HideSearch: true, HideRefresh: true,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+		ActiveFilterCount: n, Hidden: []kit.HiddenField{{Name: devProcSel, Value: v.SelectedID}},
+		FormAttrs: templ.Attributes{"data-on:submit": devLiveGet(v.App.ID, devTabProc)},
+		Filters:   devProcFilters(v),
+	}
+}
+
+templ devProcFilters(v devProcView) {
+	@kit.FilterSelect(kit.FilterSelectProps{Name: devProcSub, Label: "Subdomain", Placeholder: "All subdomains", Options: v.SubOptions, Selected: v.Sub, Attrs: templ.Attributes{"data-on:change": devLiveGet(v.App.ID, devTabProc)}})
+	@kit.FilterSelect(kit.FilterSelectProps{Name: devProcStatus, Label: "Status", Placeholder: "All statuses", Options: devStatusOptions, Selected: v.Status, Attrs: templ.Attributes{"data-on:change": devLiveGet(v.App.ID, devTabProc)}})
+}
+
+func (v devProcView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	if v.filtered() {
+		return &kit.EmptyStateProps{Message: "No processes match the current filters.", Status: true, ClearHref: v.clearURL()}
+	}
+	return &kit.EmptyStateProps{Message: "No processes defined for this application yet.", Status: true}
+}
+
+// rowActions is the SPA's pencil: edit the process (here only with the
+// permission to, and disabled for an archived process, as in the processes
+// area).
+func (v devProcView) rowActions(row devProcRow) kit.RowActionsProps {
+	p := kit.RowActionsProps{ID: "dev-proc-" + row.ID + "-actions", RowLabel: row.Name}
+	if v.CanEdit {
+		edit := kit.RowAction{Icon: "pencil", Label: "Edit", Href: row.EditHref}
+		if row.Archived {
+			edit.Href, edit.DisabledReason = "", procArchivedNoEdit
+		}
+		p.Actions = append(p.Actions, edit)
+	}
+	return p
+}
+
+templ devProcDenied() {
+	<div id={ devProcID }>
+		@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "Processes are not available to you", Description: "Listing processes needs its own permission, which your account does not have."})
+	</div>
+}
+
+templ devProcPanel(v devProcView) {
+	<div id={ devProcID } class="flex flex-col gap-4">
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@kit.DataTable(kit.DataTableProps{
+				ID: "dev-proc-table", BodyID: "dev-proc-rows",
+				Columns: []kit.DataColumn{{Label: "Code"}, {Label: "Name"}, {Label: "Description"}, {Label: "Tags"}, {Label: "Status"}, {Label: "Actions", Class: "w-px"}},
+				Empty:   v.empty(),
+			}) {
+				for _, row := range v.Rows {
+					@kit.TR(kit.TRProps{ID: "dev-proc-" + row.ID, Class: devSelectedClass(row.Selected)}) {
+						@kit.TD(kit.TDProps{}) {
+							<a href={ row.Href } class="no-underline" data-on:click__prevent={ liveLink } aria-current={ devCurrent(row.Selected) }>
+								@kit.CodeChips(kit.CodeChipsProps{Code: row.Code})
+							</a>
+						}
+						@kit.TD(kit.TDProps{Class: "font-medium"}) {
+							{ row.Name }
+						}
+						@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+							if row.Description != "" {
+								<span class="block max-w-[320px] truncate" title={ row.Description }>{ row.Description }</span>
+							} else {
+								—
+							}
+						}
+						@kit.TD(kit.TDProps{}) {
+							@procTagList(row.Tags)
+						}
+						@kit.TD(kit.TDProps{}) {
+							@procStatusTag(row.Archived)
+						}
+						@kit.RowActions(v.rowActions(row))
+					}
+				}
+			}
+		</div>
+		if v.Selected != nil {
+			@devProcSelected(v)
+		}
+	</div>
+}
+
+// devProcSelected shows the chosen process's diagram under the table. The
+// SPA's row opens the process page; the link below does the same.
+templ devProcSelected(v devProcView) {
+	<div class="fc-card-flush flex flex-col gap-4 p-3" id="dev-proc-selected">
+		<div class="flex flex-wrap items-center gap-2">
+			<h2 class="m-0 text-base font-semibold">{ v.Selected.Name }</h2>
+			@procStatusTag(v.SelectedArchived)
+			<span class="ml-auto flex gap-2">
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Href: v.SelectedOpenHref, Icon: "eye"}) {
+					Open process
+				}
+				if v.SelectedCanEdit {
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Href: v.SelectedEditHref, Icon: "pencil"}) {
+						Edit
+					}
+				}
+			</span>
+		</div>
+		if v.Selected.Description != nil && *v.Selected.Description != "" {
+			<p class="text-muted-foreground">{ *v.Selected.Description }</p>
+		}
+		if v.Selected.Body == "" {
+			<div class="fc-empty">
+				@kit.Icon(kit.IconProps{Name: "network", Class: "size-8"})
+				<p>No diagram body yet.</p>
+			</div>
+		} else if v.Selected.DiagramType == "mermaid" {
+			@kit.Diagram(kit.DiagramProps{Label: "Diagram of " + v.Selected.Name, Bundle: assets.URL("mermaid.min.js")}) {
+				{ v.Selected.Body }
+			}
+		} else {
+			@kit.CodeBlock(kit.CodeBlockProps{ID: "dev-proc-source", Label: "Diagram source (" + v.Selected.DiagramType + ")"}) {
+				{ v.Selected.Body }
+			}
+		}
+	</div>
+}
+
+// ── API docs tab ───────────────────────────────────────────────────────
+templ devDocsMissing() {
+	<div id={ devDocsID }>
+		<div class="fc-empty">
+			@kit.Icon(kit.IconProps{Name: "info", Class: "size-8"})
+			<h3 class="m-0 text-base font-semibold">API documentation not available</h3>
+			<p>This application has not yet published an OpenAPI document. Use the SDK's sync flow to upload one, or click <strong>Sync All</strong> on the dashboard to publish the platform's own spec.</p>
+		</div>
+	</div>
+}
+
+templ devDocsUnreadable() {
+	<div id={ devDocsID }>
+		@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "The OpenAPI document could not be read", Description: "It is stored, but it is not valid JSON of an OpenAPI document. Download it from the versions page or publish it again."})
+	</div>
+}
+
+templ devDocsPanel(v devDocsView) {
+	<div id={ devDocsID } class="flex flex-col gap-4">
+		<div class="flex flex-wrap items-center gap-2">
+			<div class="flex min-w-0 flex-col">
+				<span class="font-semibold">
+					if v.Doc.Title != "" {
+						{ v.Doc.Title }
+					} else {
+						{ v.App.Name }
+					}
+				</span>
+				<span class="text-xs text-muted-foreground">
+					Version { v.Version }, synced
+					@kit.LocalTime(kit.LocalTimeProps{At: v.Synced, Empty: "—"})
+					· { strconv.Itoa(v.Doc.Total) } operations
+				</span>
+			</div>
+			<span class="ml-auto">
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Small: true, Href: v.DownloadHref, Icon: "download", Attrs: templ.Attributes{"download": ""}}) {
+					Download OpenAPI
+				}
+			</span>
+		</div>
+		if v.Doc.Description != "" {
+			@kit.Markdown(kit.MarkdownProps{Source: v.Doc.Description})
+		}
+		if v.Doc.Total == 0 {
+			<div class="fc-empty">
+				@kit.Icon(kit.IconProps{Name: "inbox", Class: "size-8"})
+				<p>This document describes no operations.</p>
+			</div>
+		}
+		for _, g := range v.Doc.Groups {
+			<details class="fc-card-flush" open?={ v.OpenAll }>
+				<summary class="flex cursor-pointer items-center gap-2 p-3 font-semibold">
+					{ g.Name }
+					<span class="text-xs font-normal text-muted-foreground">{ strconv.Itoa(len(g.Ops)) }</span>
+				</summary>
+				if g.Description != "" {
+					<div class="px-3 text-muted-foreground">
+						@kit.Markdown(kit.MarkdownProps{Source: g.Description})
+					</div>
+				}
+				<div class="flex flex-col">
+					for _, op := range g.Ops {
+						@devOpRow(v, op)
+					}
+				</div>
+			</details>
+		}
+	</div>
+}
+
+func devMethodSeverity(m string) kit.TagSeverity {
+	switch m {
+	case "get":
+		return kit.TagInfo
+	case "post":
+		return kit.TagSuccess
+	case "put", "patch":
+		return kit.TagWarn
+	case "delete":
+		return kit.TagDanger
+	}
+	return kit.TagSecondary
+}
+
+// devOpRow is one operation: a closed row that loads its detail the first
+// time it is opened. The detail's address is a plain attribute (a path from
+// the document never goes into an expression); without scripts the link in
+// the row opens the detail as a page.
+templ devOpRow(v devDocsView, op oaOp) {
+	<details id={ "dev-op-" + strconv.Itoa(op.N) } class="border-t border-border" data-detail-url={ v.opHref(op) } data-on:toggle__once="@get(el.dataset.detailUrl)">
+		<summary class="flex cursor-pointer flex-wrap items-center gap-2 px-3 py-2">
+			@kit.Tag(kit.TagProps{Severity: devMethodSeverity(op.Method), Label: devUpper(op.Method)})
+			<span class="font-mono text-[13px] break-all">{ op.Path }</span>
+			if op.Deprecated {
+				@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "deprecated"})
+			}
+			<span class="text-muted-foreground">{ op.Summary }</span>
+		</summary>
+		<div id={ "dev-op-" + strconv.Itoa(op.N) + "-body" } class="px-3 pb-3">
+			<a href={ v.opHref(op) } class="text-sm text-primary">Open this operation on its own page</a>
+		</div>
+	</details>
+}
+
+// devOpBody is an operation's detail, patched into its row.
+templ devOpBody(n int, op oaOpView) {
+	<div id={ "dev-op-" + strconv.Itoa(n) + "-body" } class="flex flex-col gap-4 px-3 pb-3">
+		@devOpContent(op)
+	</div>
+}
+
+templ devOpPage(app devApp, op oaOpView) {
+	@kit.PageHeader(kit.PageHeaderProps{Title: devUpper(op.Method) + " " + op.Path, Subtitle: app.Name + " · " + app.Code, Actions: devOpBack(app)})
+	<div class="flex flex-col gap-4">
+		@devOpContent(op)
+	</div>
+}
+
+templ devOpBack(app devApp) {
+	@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Href: devDetailURL(app.ID, devTabDocs, nil), Icon: "arrow-left"}) {
+		API docs
+	}
+}
+
+templ devOpContent(op oaOpView) {
+	if op.Summary != "" {
+		<p class="m-0 font-medium">{ op.Summary }</p>
+	}
+	if op.OperationID != "" {
+		<p class="m-0 text-xs text-muted-foreground">Operation id <code class="fc-mono-chip">{ op.OperationID }</code></p>
+	}
+	if op.Description != "" {
+		@kit.Markdown(kit.MarkdownProps{Source: op.Description})
+	}
+	if len(op.Params) > 0 {
+		<h3 class="m-0 text-sm font-semibold">Parameters</h3>
+		@kit.DataTable(kit.DataTableProps{
+			Columns: []kit.DataColumn{{Label: "Name"}, {Label: "In"}, {Label: "Type"}, {Label: "Description"}},
+		}) {
+			for _, p := range op.Params {
+				@kit.TR(kit.TRProps{}) {
+					@kit.TD(kit.TDProps{Class: "font-mono text-[13px]"}) {
+						{ p.Name }
+						if p.Required {
+							<span class="text-red-600" title="required">*</span>
+						}
+					}
+					@kit.TD(kit.TDProps{}) {
+						{ p.In }
+					}
+					@kit.TD(kit.TDProps{Class: "font-mono text-[13px]"}) {
+						@devOrDash(p.Type)
+					}
+					@kit.TD(kit.TDProps{Class: "text-muted-foreground"}) {
+						@devOrDash(p.Description)
+					}
+				}
+			}
+		}
+	}
+	if op.Body != nil {
+		<h3 class="m-0 text-sm font-semibold">
+			Request body
+			if op.Body.Required {
+				<span class="text-red-600" title="required">*</span>
+			}
+		</h3>
+		if op.Body.Description != "" {
+			<p class="m-0 text-muted-foreground">{ op.Body.Description }</p>
+		}
+		@devContents(op.Body.Content)
+	}
+	if len(op.Responses) > 0 {
+		<h3 class="m-0 text-sm font-semibold">Responses</h3>
+		for _, r := range op.Responses {
+			<div class="flex flex-col gap-2">
+				<div class="flex flex-wrap items-center gap-2">
+					@kit.Tag(kit.TagProps{Severity: devStatusSeverity(r.Status), Label: r.Status})
+					<span class="text-muted-foreground">{ r.Description }</span>
+				</div>
+				@devContents(r.Content)
+			</div>
+		}
+	}
+}
+
+func devStatusSeverity(status string) kit.TagSeverity {
+	switch {
+	case len(status) > 0 && status[0] == '2':
+		return kit.TagSuccess
+	case len(status) > 0 && status[0] == '3':
+		return kit.TagInfo
+	case len(status) > 0 && status[0] == '4':
+		return kit.TagWarn
+	case len(status) > 0 && status[0] == '5':
+		return kit.TagDanger
+	}
+	return kit.TagSecondary
+}
+
+// devContents shows a body's media types, each with its schema as
+// highlighted JSON (the same code block the event type viewer uses).
+templ devContents(content []oaContent) {
+	for _, c := range content {
+		<div class="flex flex-col gap-1">
+			<span class="font-mono text-xs text-muted-foreground">{ c.MediaType }</span>
+			if c.SchemaHTML != "" {
+				@kit.CodeBlock(kit.CodeBlockProps{Label: "Schema of " + c.MediaType, Class: "max-h-80"}) {
+					@templ.Raw(c.SchemaHTML)
+				}
+			}
+		</div>
+	}
+}
+
+// ── API versions ───────────────────────────────────────────────────────
+templ devVersionsPage(app devApp, rows []devVersionRow) {
+	@kit.PageHeader(kit.PageHeaderProps{Title: "API Versions", Subtitle: app.Code + " · Every sync that introduces a change creates a new row.", Actions: devVersionsBack(app)})
+	@devPreviewNote()
+	<div class="fc-card-flush">
+		@kit.DataTable(kit.DataTableProps{
+			ID: "dev-versions-table", BodyID: "dev-versions-rows",
+			Columns: []kit.DataColumn{{Label: "Version"}, {Label: "Status"}, {Label: "Breaking"}, {Label: "Changes"}, {Label: "Synced"}},
+			Empty:   devVersionsEmpty(rows),
+		}) {
+			for _, row := range rows {
+				@kit.TR(kit.TRProps{}) {
+					@kit.TD(kit.TDProps{}) {
+						@devStatusTagFor(row.Version, row.Current)
+					}
+					@kit.TD(kit.TDProps{}) {
+						{ row.Status }
+					}
+					@kit.TD(kit.TDProps{}) {
+						if row.Breaking {
+							<span title="Removed paths, schemas, or operations">
+								@kit.Tag(kit.TagProps{Severity: kit.TagDanger, Label: "breaking"})
+							</span>
+						} else {
+							<span class="text-muted-foreground">—</span>
+						}
+					}
+					@kit.TD(kit.TDProps{}) {
+						{ row.Changes }
+					}
+					@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: row.Synced, Empty: "—"})
+					}
+				}
+			}
+		}
+	</div>
+}
+
+func devVersionsEmpty(rows []devVersionRow) *kit.EmptyStateProps {
+	if len(rows) > 0 {
+		return nil
+	}
+	return &kit.EmptyStateProps{Message: "No OpenAPI versions yet."}
+}
+
+templ devStatusTagFor(label string, current bool) {
+	if current {
+		@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: label})
+	} else {
+		@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: label})
+	}
+}
+
+templ devVersionsBack(app devApp) {
+	@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Href: app.href(), Icon: "arrow-left"}) {
+		Back
+	}
+}

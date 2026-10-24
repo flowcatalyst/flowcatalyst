@@ -1,0 +1,171 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+func (v portalUsersView) columns() []kit.DataColumn {
+	cols := []kit.DataColumn{
+		{Label: "Email"}, {Label: "Name"}, {Label: "Status"}, {Label: "Portal Apps"}, {Label: "Source"}, {Label: "Last Login"}, {Label: "Created"},
+	}
+	if v.CanManage {
+		cols = append(cols, kit.DataColumn{Label: "Actions", Class: "w-px"})
+	}
+	return cols
+}
+
+func (v portalUsersView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	switch {
+	case v.Client == "":
+		return &kit.EmptyStateProps{Message: "Select a client to view its portal users."}
+	case v.Query.Q != "" || v.App != "":
+		return &kit.EmptyStateProps{Message: "No portal users match.", Status: true, ClearHref: v.clearURL()}
+	}
+	return &kit.EmptyStateProps{Message: "No portal users for this client yet."}
+}
+
+func (v portalUsersView) clientSelect() kit.FilterSelectProps {
+	return kit.FilterSelectProps{Name: portalClientParam, Label: "Client", Placeholder: "Select a client", Options: v.ClientOptions, Selected: v.Client, AutoSubmit: true}
+}
+
+func (v portalUsersView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.Q != "" || v.App != "" {
+		clear = v.clearURL()
+	}
+	hidden := append(v.Query.hidden(), kit.HiddenField{Name: portalClientParam, Value: v.Client})
+	return kit.TableToolbarProps{
+		ID: portalUsersForm, Action: portalUsersPath, SearchPlaceholder: "Search email or name (starts with)", SearchValue: v.Query.Q,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.filterCount(), Hidden: hidden,
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": portalUsersLive},
+		FormAttrs:   templ.Attributes{"data-on:submit": portalUsersLive},
+		Filters:     portalUsersFilters(v),
+	}
+}
+
+func (v portalUsersView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "portal-users-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: portalUserList.rows,
+		Noun: "portal users", HrefPattern: v.Query.pagePattern(), FormID: portalUsersForm,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+templ portalUsersPage(v portalUsersView) {
+	<div>
+		@kit.PageHeader(kit.PageHeaderProps{
+			Title:    "Portal Users",
+			Subtitle: "The end users of a client's portals — separate identities from platform users. Portals invite their own users; manage access here.",
+		})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Portal → Portal Users.", Class: "mb-4"})
+		<form id="portal-users-client" method="get" action={ portalUsersPath } class="mb-4 flex flex-wrap items-end gap-3">
+			@kit.FilterSelect(v.clientSelect())
+			<noscript>
+				@kit.Button(kit.ButtonProps{Type: "submit"}) {
+					Show
+				}
+			</noscript>
+		</form>
+		<div class="fc-card-flush">
+			if v.Client != "" {
+				@kit.TableToolbar(v.toolbar())
+			}
+			@portalUsersRegion(v)
+			if v.Client != "" {
+				@kit.Paginator(v.pager())
+			}
+		</div>
+		<div id={ portalUserDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		if v.CanManage {
+			@kit.ConfirmDialog(v.confirm(portalUserSuspendID, "Suspend portal user", "Suspend this portal user? They cannot sign in to any of this client's portals until they are reactivated.", "Suspend", kit.ToneWarn))
+			@kit.ConfirmDialog(v.confirm(portalUserReviveID, "Reactivate portal user", "Reactivate this portal user? They can sign in to the portals they are granted again.", "Reactivate", kit.ToneDefault))
+			@kit.ConfirmDialog(v.confirm(portalUserRevokeID, "Remove portal access", "Remove this portal user's access to the portal app? Their access to this client's other portals is unaffected.", "Remove", kit.ToneDanger))
+			@kit.ConfirmDialog(v.confirm(portalUserDeleteID, "Delete portal user", "Delete this portal user? They will no longer be able to sign in to ANY of this client's portals. This cannot be undone.", "Delete", kit.ToneDanger))
+		}
+	</div>
+}
+
+templ portalUsersFilters(v portalUsersView) {
+	if len(v.AppOptions) > 0 {
+		@kit.FilterSelect(kit.FilterSelectProps{Name: portalAppFacet, Label: "Portal app", Placeholder: "All portal apps", Options: v.AppOptions, Selected: v.App, Attrs: templ.Attributes{"data-on:change": portalUsersLive}})
+	}
+}
+
+// portalUsersRegion is the table, what every change patches.
+templ portalUsersRegion(v portalUsersView) {
+	<div id={ portalUsersTable }>
+		@kit.DataTable(kit.DataTableProps{ID: "portal-users-table", BodyID: "portal-users-rows", Columns: v.columns(), Empty: v.empty()}) {
+			for _, row := range v.Rows {
+				@kit.TR(kit.TRProps{ID: "portal-user-" + row.ID}) {
+					@kit.TD(kit.TDProps{}) {
+						<span class="font-medium text-foreground">{ row.Email }</span>
+					}
+					@kit.TD(kit.TDProps{}) {
+						if row.Name != "" {
+							{ row.Name }
+						} else {
+							—
+						}
+					}
+					@kit.TD(kit.TDProps{}) {
+						<span title={ row.StateTitle }>
+							@kit.Tag(kit.TagProps{Severity: row.StateSeverity, Label: row.State})
+						</span>
+					}
+					@kit.TD(kit.TDProps{}) {
+						@portalGrants(v, row)
+					}
+					@kit.TD(kit.TDProps{Class: "text-muted-foreground"}) {
+						{ row.Source }
+					}
+					@kit.TD(kit.TDProps{}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: row.LastLogin, Empty: "—"})
+					}
+					@kit.TD(kit.TDProps{}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: row.Created, Empty: "—"})
+					}
+					if v.CanManage {
+						@kit.RowActions(v.rowActions(row))
+					}
+				}
+			}
+		}
+	</div>
+}
+
+templ portalGrants(v portalUsersView, row portalUserRow) {
+	if len(row.Grants) > 0 {
+		<div class="flex flex-wrap gap-1">
+			for _, g := range row.Grants {
+				<span class="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs" title={ g.Title }>
+					{ g.Name }
+					if v.CanManage {
+						@kit.IconButton(kit.IconButtonProps{Icon: "x", Label: "Remove " + g.Name + " access of " + row.Email, Attrs: confirmTrigger(portalUserRevokeID, g.RevokeAction)})
+					}
+				</span>
+			}
+		</div>
+	} else {
+		<span title="Can't sign in through any app-linked portal — grant a portal app">
+			@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "No portal app"})
+		</span>
+	}
+}
+
+templ portalGrantField(f portalGrantForm) {
+	@kit.Field(kit.FieldProps{Label: "Portal app", For: f.id("app"), Required: true, Error: f.Errs.Fields["app"], Attrs: templ.Attributes{"id": f.id("app") + "-field"}}) {
+		@kit.Select(kit.SelectProps{ID: f.id("app"), Name: "app", Options: f.Apps, Selected: f.App, Required: true, Invalid: f.Errs.Fields["app"] != "", DescribedBy: portalGrantDescribedBy(f)})
+	}
+}
+
+templ portalGrantDialogC(f portalGrantForm) {
+	@kit.FormDialog(f.dialog()) {
+		@portalGrantField(f)
+	}
+}

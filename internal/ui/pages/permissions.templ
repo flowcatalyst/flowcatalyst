@@ -1,0 +1,210 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+// permsFacetLabels are the SPA's filter labels: field label, placeholder,
+// selectedItemsLabel.
+var permsFacetLabels = map[string][3]string{
+	permsFacetApp:    {"Application", "All Applications", "{0} applications selected"},
+	permsFacetCtx:    {"Context", "All Contexts", "{0} contexts selected"},
+	permsFacetAction: {"Action", "All Actions", "{0} actions selected"},
+}
+
+func (v permsView) facetProps(name string) kit.MultiSelectProps {
+	l := permsFacetLabels[name]
+	return kit.MultiSelectProps{
+		ID:          "perm-filter-" + name,
+		Name:        name,
+		Label:       l[0],
+		Options:     v.Facets[name],
+		Selected:    v.Query.facet(name),
+		Placeholder: l[1],
+		ManyLabel:   l[2],
+		EmptyText:   "No options",
+		OptionAttrs: templ.Attributes{"data-on:change": permsLiveGet},
+	}
+}
+
+func (v permsView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID:                permsForm,
+		Action:            permsPath,
+		SearchPlaceholder: "Search permissions...",
+		SearchValue:       v.Query.Q,
+		ClearHref:         clear,
+		ClearAttrs:        templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: len(v.Query.Facets),
+		Hidden:            v.Query.hidden(),
+		SearchAttrs:       templ.Attributes{"data-on:input__debounce.300ms": permsLiveGet},
+		FormAttrs:         templ.Attributes{"data-on:submit": permsLiveGet},
+		Filters:           permsFilters(v),
+	}
+}
+
+func (v permsView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "perm-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows,
+		RowsOptions: permsList.rows, Noun: "permissions", HrefPattern: v.Query.pagePattern(), FormID: permsForm,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func (v permsView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No permissions found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = v.Query.clearURL()
+	}
+	return e
+}
+
+templ permsPage(v permsView) {
+	<div>
+		@kit.PageHeader(kit.PageHeaderProps{
+			Title:    "Permissions",
+			Subtitle: "View all available permissions in the system",
+			Actions:  permsActionsBar(v),
+		})
+		@kit.Alert(kit.AlertProps{
+			Icon:        "info",
+			Title:       "New UI preview",
+			Description: "This page is served by the new server-rendered UI. The current UI has the same page under Permissions.",
+			Class:       "mb-4",
+		})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@permsTable(v)
+			@kit.Paginator(v.pager())
+		</div>
+		<div id={ permsDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+	</div>
+}
+
+templ permsActionsBar(v permsView) {
+	<div id="perm-actions" class="flex flex-wrap items-center gap-2">
+		if v.Create {
+			@kit.LegacyButton(kit.LegacyButtonProps{Href: permsPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+				Create Permission
+			}
+		}
+	</div>
+}
+
+templ permsFilters(v permsView) {
+	@kit.MultiSelect(v.facetProps(permsFacetApp))
+	@kit.MultiSelect(v.facetProps(permsFacetCtx))
+	@kit.MultiSelect(v.facetProps(permsFacetAction))
+}
+
+func permsColumns() []kit.DataColumn {
+	return []kit.DataColumn{
+		{Label: "Permission"},
+		{Label: "Application"},
+		{Label: "Context"},
+		{Label: "Aggregate"},
+		{Label: "Action"},
+		{Label: "Description"},
+	}
+}
+
+templ permsTable(v permsView) {
+	@kit.DataTable(kit.DataTableProps{ID: "perms-table", BodyID: "perm-rows", Columns: permsColumns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{Static: true}) {
+				@kit.TD(kit.TDProps{Class: "font-mono text-[13px] text-subtle-foreground"}) {
+					{ row.Code }
+				}
+				@kit.TD(kit.TDProps{}) {
+					@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: row.Application})
+				}
+				@kit.TD(kit.TDProps{}) {
+					{ row.Context }
+				}
+				@kit.TD(kit.TDProps{}) {
+					{ row.Aggregate }
+				}
+				@kit.TD(kit.TDProps{}) {
+					@kit.Tag(kit.TagProps{Severity: row.Severity, Label: row.Action})
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+					if row.Description != "" {
+						<span class="block max-w-[300px] truncate" title={ row.Description }>{ row.Description }</span>
+					} else {
+						—
+					}
+				}
+			}
+		}
+	}
+}
+
+// permsSlug is the SPA's slugifySegment, run when a segment input loses focus.
+func permsSlug(signal string) string {
+	return "$" + signal + " = $" + signal + ".toLowerCase().replace(/\\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '')"
+}
+
+// permsCreateDialog is the create dialog (the SPA's Create Permission dialog):
+// the four parts of the code, a description and a live preview of the code.
+templ permsCreateDialog(f permsCreateForm) {
+	@kit.FormDialog(f.dialog()) {
+		<div class="flex flex-col gap-4" data-signals={ f.signals() }>
+			@permsCreateField(f, "application")
+			<div class="grid gap-4 sm:grid-cols-3">
+				@permsCreateField(f, "context")
+				@permsCreateField(f, "aggregate")
+				@permsCreateField(f, "action")
+			</div>
+			@permsCreateField(f, "description")
+			<div class="rounded-lg border border-border bg-subtle p-4">
+				<span class="mb-2 block text-xs font-medium text-muted-foreground uppercase">Permission code</span>
+				<code class="font-mono" data-text="($permApp || 'application') + ':' + ($permCtx.trim() || 'context') + ':' + ($permAgg.trim() || 'aggregate') + ':' + ($permAct.trim() || 'action')">{ permsPreview(f) }</code>
+			</div>
+			<small class="text-sm text-muted-foreground">Each segment is auto-formatted to lowercase letters, numbers and hyphens.</small>
+		</div>
+	}
+}
+
+func permsPreview(f permsCreateForm) string {
+	or := func(v, def string) string {
+		if v == "" {
+			return def
+		}
+		return v
+	}
+	return or(f.Application, "application") + ":" + or(f.Context, "context") + ":" + or(f.Aggregate, "aggregate") + ":" + or(f.Action, "action")
+}
+
+templ permsCreateField(f permsCreateForm, key string) {
+	switch key {
+		case "application":
+			@kit.Field(f.fieldProps(key, "Application", true)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Apps, Selected: f.Application, Placeholder: "Select application", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:perm-app": true}})
+			}
+		case "context":
+			@kit.Field(f.fieldProps(key, "Context", true)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Context, Placeholder: "e.g. billing", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off", "data-bind:perm-ctx": true, "data-on:blur": permsSlug("permCtx")}})
+			}
+		case "aggregate":
+			@kit.Field(f.fieldProps(key, "Aggregate", true)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Aggregate, Placeholder: "e.g. invoice", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off", "data-bind:perm-agg": true, "data-on:blur": permsSlug("permAgg")}})
+			}
+		case "action":
+			@kit.Field(f.fieldProps(key, "Action", true)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Action, Placeholder: "e.g. approve", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off", "data-bind:perm-act": true, "data-on:blur": permsSlug("permAct")}})
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description", false)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Description, Placeholder: "What this permission grants", Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+	}
+}

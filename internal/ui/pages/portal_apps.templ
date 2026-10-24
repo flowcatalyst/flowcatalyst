@@ -1,0 +1,245 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+func (v portalAppsView) columns() []kit.DataColumn {
+	cols := []kit.DataColumn{{Label: "Name"}, {Label: "Code"}, {Label: "OAuth Clients"}, {Label: "Users"}, {Label: "Status"}}
+	if v.CanManage {
+		cols = append(cols, kit.DataColumn{Label: "Actions", Class: "w-px"})
+	}
+	return cols
+}
+
+func (v portalAppsView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	if v.Client == "" {
+		return &kit.EmptyStateProps{Message: "Select a client to view its portal apps."}
+	}
+	return &kit.EmptyStateProps{Message: "No portal apps for this client yet."}
+}
+
+func (v portalAppsView) clientSelect() kit.FilterSelectProps {
+	return kit.FilterSelectProps{Name: portalClientParam, Label: "Client", Placeholder: "Select a client", Options: v.ClientOptions, Selected: v.Client, AutoSubmit: true}
+}
+
+func (v portalAppsView) assignHref() string {
+	return portalUsersPath + "?" + portalClientParam + "=" + v.Client + "&app=" + portalUnassigned
+}
+
+templ portalAppsPage(v portalAppsView) {
+	<div data-signals="{portalCopied: ''}">
+		@kit.PageHeader(kit.PageHeaderProps{
+			Title:    "Portal Apps",
+			Subtitle: "The portals a client runs for its customers. A portal sends its code when inviting users; users sign in only to portals they are granted.",
+			Actions:  portalAppsActions(v),
+		})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Portal → Portal Apps.", Class: "mb-4"})
+		<form id={ portalAppsClientForm } method="get" action={ portalAppsPath } class="mb-4 flex flex-wrap items-end gap-3">
+			@kit.FilterSelect(v.clientSelect())
+			<noscript>
+				@kit.Button(kit.ButtonProps{Type: "submit"}) {
+					Show
+				}
+			</noscript>
+		</form>
+		@portalAppsRegion(v)
+		<p class="mt-2 text-xs text-muted-foreground" role="status" data-text="$portalCopied"></p>
+		<div id={ portalAppDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		if v.CanManage {
+			@kit.ConfirmDialog(v.confirm(portalAppAssignID, "Assign unassigned users", "Grant this portal app to the portal users who have no portal app? Users who already have an app are not changed.", "Assign", kit.ToneDefault))
+			@kit.ConfirmDialog(v.confirm(portalAppDeleteID, "Delete portal app", "Delete this portal app? Its OAuth clients are deleted too, so the portal can no longer sign anyone in, and its users lose their access to it (their identities and access to other portals stay).", "Delete", kit.ToneDanger))
+		}
+	</div>
+}
+
+templ portalAppsActions(v portalAppsView) {
+	if v.CanManage {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: v.newHref(), Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			New Portal App
+		}
+	}
+}
+
+// portalAppsRegion is what an action patches: the banner about users with no
+// portal app and the table.
+templ portalAppsRegion(v portalAppsView) {
+	<div id={ portalAppsRegionID }>
+		if v.Client != "" && v.Unassigned > 0 {
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Class: "mb-4", Description: strconv.FormatInt(v.Unassigned, 10) + " portal user(s) have no portal app, so they can't sign in through any app-linked portal."}) {
+				if v.CanManage {
+					<span>Use “Assign unassigned users” on an app to assign them, or grant apps one by one under <a href={ templ.SafeURL(v.assignHref()) }>Portal Users</a>.</span>
+				}
+			}
+		}
+		<div class="fc-card-flush">
+			@kit.DataTable(kit.DataTableProps{ID: "portal-apps-table", BodyID: "portal-apps-rows", Columns: v.columns(), Empty: v.empty()}) {
+				for _, row := range v.Rows {
+					@kit.TR(kit.TRProps{ID: "portal-app-" + row.ID}) {
+						@kit.TD(kit.TDProps{}) {
+							<span class="font-medium text-foreground">{ row.Name }</span>
+							if row.Description != "" {
+								<small class="block text-muted-foreground">{ row.Description }</small>
+							}
+						}
+						@kit.TD(kit.TDProps{}) {
+							<code class="font-mono text-[13px]">{ row.Code }</code>
+						}
+						@kit.TD(kit.TDProps{}) {
+							@portalOAuthClients(row)
+						}
+						@kit.TD(kit.TDProps{}) {
+							{ strconv.Itoa(row.Users) }
+						}
+						@kit.TD(kit.TDProps{}) {
+							if row.Active {
+								@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Active"})
+							} else {
+								@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "Inactive"})
+							}
+						}
+						if v.CanManage {
+							@kit.RowActions(v.rowActions(row))
+						}
+					}
+				}
+			}
+		</div>
+	</div>
+}
+
+templ portalOAuthClients(row portalAppRow) {
+	if len(row.OAuth) > 0 {
+		<div class="flex flex-wrap gap-1">
+			for _, oc := range row.OAuth {
+				<span class="inline-flex items-center gap-1">
+					<a href={ templ.SafeURL("/authentication/oauth-clients/" + oc.ID) } title={ oc.Name }><code class="font-mono text-[13px]" id={ "portal-oc-" + oc.ID }>{ oc.ClientID }</code></a>
+					@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy client_id of " + oc.Name, Attrs: templ.Attributes{"title": "Copy client_id", "data-on:click": portalCopyExpr("portal-oc-"+oc.ID, "Client ID")}})
+				</span>
+			}
+		</div>
+	} else {
+		<span class="text-muted-foreground" title="Link an OAuth client under Identity & Access → OAuth Clients">Not linked — no login entry yet</span>
+	}
+}
+
+// portalAppField renders one field of the create or edit dialog, for the
+// dialog and for the error patch.
+templ portalAppField(f portalAppForm, key string) {
+	switch key {
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", "", true)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Name, Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"maxlength": "100", "autocomplete": "off", "autofocus": true}})
+			}
+		case "code":
+			if f.Edit {
+				@kit.Field(f.fieldProps(key, "Code", "The code is fixed — the portal is configured with it.", false)) {
+					@kit.Input(kit.InputProps{ID: f.id(key), Value: f.Code, Disabled: true})
+				}
+			} else {
+				@kit.Field(f.fieldProps(key, "Code", "The portalAppCode the portal sends. Lower-case letters, digits, - and _. Cannot be changed later.", true)) {
+					@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Code, Placeholder: "customer-portal", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"pattern": "[a-zA-Z0-9][a-zA-Z0-9_\\-]{0,99}", "maxlength": "100", "autocomplete": "off"}})
+				}
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description (optional)", "", false)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Description, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off"}})
+			}
+		case "redirectUris":
+			@kit.Field(f.fieldProps(key, "Callback URL(s)", "One per line — the portal's OAuth callback, registered on the OAuth client this creates. You can add more later under Identity & Access → OAuth Clients. Each must be an absolute http(s) URL without wildcards.", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.RedirectURIs, Placeholder: "https://portal.example.com/flowcatalyst/callback", Rows: 2, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Class: "font-mono text-[13px]", Attrs: templ.Attributes{"spellcheck": "false"}})
+			}
+		case "clientType":
+			@kit.Field(f.fieldProps(key, "OAuth client type", "", false)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: portalClientTypes, Selected: cmpOrString(f.ClientType, "CONFIDENTIAL"), Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "active":
+			<div id={ f.id(key) + "-field" }>
+				@kit.Switch(kit.SwitchProps{ID: f.id(key), Name: key, Value: "true", Checked: f.Active, Label: "Active — inactive portals refuse sign-ins and new grants"})
+			</div>
+	}
+}
+
+templ portalAppFormDialogC(f portalAppForm) {
+	@kit.FormDialog(f.dialog()) {
+		<div class="flex flex-col gap-4">
+			for _, k := range f.keys() {
+				@portalAppField(f, k)
+			}
+		</div>
+	}
+}
+
+// portalAppCredentialsDialog shows the new portal app's OAuth client once. It
+// cannot be dismissed by Escape or the mask (the SPA's dialog is not
+// dismissable by accident either): a close that was not the button reopens
+// it. The button closes it and removes it from the page, so the secret does
+// not linger.
+templ portalAppCredentialsDialog(c portalAppCredentials) {
+	@kit.Dialog(kit.DialogProps{
+		ID:         portalAppCredsID,
+		Title:      "Portal app created",
+		Persistent: true,
+		Width:      kit.WidthWide,
+		Attrs:      templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()"},
+		Footer:     portalAppCredentialsFooter(),
+	}) {
+		<div class="flex flex-col gap-3">
+			<p class="m-0 text-sm">
+				<strong>{ c.AppName }</strong> is ready. Configure the portal with these values.
+				if c.ClientSecret != "" {
+					The client secret is shown <strong>only once</strong>: store it now.
+				}
+			</p>
+			@portalCredential("portal-cred-code", "Portal app code", c.AppCode)
+			@portalCredential("portal-cred-client-id", "Client ID", c.ClientID)
+			if c.ClientSecret != "" {
+				@portalCredential("portal-cred-secret", "Client secret", c.ClientSecret)
+			} else {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Client secret", Value: "None — public client (PKCE only)"})
+			}
+			for i, ep := range c.endpoints() {
+				@portalCredential("portal-cred-endpoint-"+strconv.Itoa(i), ep.Label, ep.Value)
+			}
+			<div class="fc-detail-field">
+				<span class="fc-field-label">Laravel SDK environment</span>
+				<pre id="portal-cred-env" class="fc-mono-chip overflow-x-auto text-[13px]">{ c.envSnippet() }</pre>
+				<div>
+					@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Icon: "copy", Attrs: templ.Attributes{"type": "button", "data-on:click": portalCopyExpr("portal-cred-env", "Environment")}}) {
+						Copy environment
+					}
+				</div>
+			</div>
+			if c.NoCallback {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "No callback URL registered yet: add one on the OAuth client before anyone can sign in."}) {
+					<a href={ templ.SafeURL(c.oauthClientHref()) }>Open the OAuth client</a>
+				}
+			}
+		</div>
+	}
+}
+
+templ portalCredential(id, label, value string) {
+	<div class="fc-detail-field">
+		<span class="fc-field-label">{ label }</span>
+		<div class="flex items-center gap-2">
+			<code id={ id } class="fc-mono-chip break-all">{ value }</code>
+			@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy " + label, Attrs: templ.Attributes{"title": "Copy", "data-on:click": portalCopyExpr(id, label)}})
+		</div>
+	</div>
+}
+
+templ portalAppCredentialsFooter() {
+	@kit.Button(kit.ButtonProps{Icon: "check", Attrs: templ.Attributes{"data-on:click": "const d = el.closest('dialog'); d.dataset.saved = '1'; d.close(); d.remove()"}}) {
+		Done
+	}
+}

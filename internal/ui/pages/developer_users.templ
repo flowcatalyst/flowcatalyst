@@ -1,0 +1,214 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+const devUsersLiveGet = "@get('" + devUsersPath + "', {contentType: 'form'})"
+
+func (v devUsersView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: devUsersForm, Action: devUsersPath, SearchPlaceholder: "Search by name or email...", SearchValue: v.Query.Q,
+		HideRefresh: true, ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		Hidden:      v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": devUsersLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": devUsersLiveGet},
+	}
+}
+
+func (v devUsersView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "dev-users-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: devUserList.rows,
+		Noun: "developer users", HrefPattern: v.Query.pagePattern(), FormID: devUsersForm,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func (v devUsersView) columns() []kit.DataColumn {
+	sortable := func(label, key string) kit.DataColumn {
+		return kit.DataColumn{Label: label, Href: v.Query.sortURL(key), Direction: v.Query.direction(key), LinkAttrs: templ.Attributes{"data-on:click__prevent": sortClick}}
+	}
+	return []kit.DataColumn{sortable("Name", "name"), sortable("Email", "email"), {Label: "Credential"}, {Label: "Last Rotated"}, {Label: "Actions", Class: "w-px"}}
+}
+
+func (v devUsersView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	if v.Query.filtered() {
+		return &kit.EmptyStateProps{Message: "No developer users found", Status: true, ClearHref: v.Query.clearURL()}
+	}
+	return &kit.EmptyStateProps{Message: "No developer users yet", Icon: "code", Status: true}
+}
+
+templ devUsersPage(v devUsersView) {
+	@kit.PageHeader(kit.PageHeaderProps{
+		Title:    "Developer Users",
+		Subtitle: "Users who can mint a self-service API credential (client_credentials, as themselves) for local testing against a deployed environment",
+		Actions:  devUsersActions(v),
+	})
+	@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Developer Users.", Class: "mb-4"})
+	<div class="fc-card-flush">
+		@kit.TableToolbar(v.toolbar())
+		@devUsersTable(v)
+		@kit.Paginator(v.pager())
+	</div>
+	<div id={ devUsersDialogSlot }>
+		if v.Dialog != nil {
+			@v.Dialog
+		}
+	</div>
+}
+
+templ devUsersActions(v devUsersView) {
+	if v.CanGrant {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: devUsersPath + "/grant", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Grant Developer Role
+		}
+	}
+}
+
+templ devUsersTable(v devUsersView) {
+	@kit.DataTable(kit.DataTableProps{ID: "dev-users-table", BodyID: "dev-users-rows", Columns: v.columns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "dev-user-" + row.ID}) {
+				@kit.TD(kit.TDProps{Class: "font-medium"}) {
+					{ row.Name }
+				}
+				@kit.TD(kit.TDProps{}) {
+					@devOrDash(row.Email)
+				}
+				@kit.TD(kit.TDProps{}) {
+					if row.HasCredential {
+						@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Set"})
+					} else {
+						@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "Not set"})
+					}
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+					@kit.LocalTime(kit.LocalTimeProps{At: row.Rotated, Empty: "—"})
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+	if len(v.Rows) == 0 && !v.Query.filtered() && v.CanGrant {
+		<p id="dev-users-first" class="-mt-6 pb-6 text-center">
+			<a href={ devUsersPath + "/grant" } class="text-sm text-primary" data-on:click__prevent={ liveLink } aria-haspopup="dialog">Grant Developer Role</a>
+		</p>
+	}
+}
+
+// ── dialogs ────────────────────────────────────────────────────────────
+
+// devDialogAttrs open a patched-in dialog as a modal and take it out of the
+// page again however it is closed.
+func devDialogAttrs(extra templ.Attributes) templ.Attributes {
+	a := templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-on:close": "el.remove()"}
+	for k, v := range extra {
+		a[k] = v
+	}
+	return a
+}
+
+// devConfirmDialog confirms one action on one user. The SPA's confirmations
+// open with focus on Cancel; so does this.
+templ devConfirmDialog(c devConfirm) {
+	@kit.Dialog(kit.DialogProps{
+		ID: devUsersDialogID, Title: c.Title, Role: "alertdialog", Persistent: true,
+		Footer: devConfirmFooter(c),
+		Attrs:  devDialogAttrs(nil),
+	}) {
+		<form id="dev-confirm-form" method="post" action={ c.Action } data-on:submit={ kit.SubmitConfirm } class="flex items-start gap-3 text-subtle-foreground">
+			@kit.Icon(kit.IconProps{Name: "triangle-alert", Class: "size-6 mt-0.5 shrink-0 text-red-600"})
+			<p>{ c.Message }</p>
+		</form>
+	}
+}
+
+templ devConfirmFooter(c devConfirm) {
+	<button type="button" class="fc-btn fc-btn-text" autofocus data-on:click={ kit.CloseDialog }>Cancel</button>
+	<button type="submit" form="dev-confirm-form" class="fc-btn fc-btn-danger">{ c.Label }</button>
+}
+
+// devGrantDialog searches users and grants the role to the one chosen
+// (the SPA's Grant Developer Role dialog).
+templ devGrantDialog(v devGrantView) {
+	@kit.Dialog(kit.DialogProps{
+		ID: devUsersDialogID, Title: "Grant Developer Role", Closable: true,
+		Description: "Search for an existing user to grant the developer role. They'll be able to set their own API credential from their Profile page, or you can set one for them in the list.",
+		Footer:      devGrantFooter(),
+		Attrs:       devDialogAttrs(nil),
+	}) {
+		<form id="dev-grant-search" method="get" action={ devUsersPath + "/grant/search" } data-on:submit="@get(el.action, {contentType: 'form'})" class="flex flex-col gap-3">
+			<input type="search" name="q" class="fc-input" placeholder="Search by name or email..." aria-label="Search by name or email" autocomplete="off" autofocus value={ v.Q } data-on:input__debounce.300ms="@get(el.form.action, {contentType: 'form'})"/>
+		</form>
+		@devGrantResults(v)
+	}
+}
+
+templ devGrantFooter() {
+	@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Attrs: templ.Attributes{"data-on:click": kit.CloseDialog}}) {
+		Close
+	}
+}
+
+// devGrantResults is the dialog's patch target.
+templ devGrantResults(v devGrantView) {
+	<div id="dev-grant-results" class="mt-3 flex flex-col gap-1" aria-live="polite">
+		if v.Q == "" {
+			<p class="m-0 text-sm text-muted-foreground">Type a name or an email to find a user.</p>
+		} else if len(v.Results) == 0 {
+			<p class="m-0 text-sm text-muted-foreground">No matching users</p>
+		}
+		for _, res := range v.Results {
+			<form method="post" action={ res.Action } data-on:submit={ kit.SubmitForm }>
+				<button type="submit" class="flex w-full cursor-pointer items-center gap-3 rounded-md p-2 text-left hover:bg-foreground/5">
+					<span class="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-xs font-semibold" aria-hidden="true">{ res.Initials }</span>
+					<span class="flex min-w-0 flex-col">
+						<span class="font-medium">{ res.Name }</span>
+						<span class="truncate text-xs text-muted-foreground">{ res.Email }</span>
+					</span>
+				</button>
+			</form>
+		}
+	</div>
+}
+
+// devSecretDialog shows a new developer secret once. It is in the response
+// that created the secret and nowhere else: the value is in no signal, URL
+// or flash, and the dialog removes itself from the page however it is closed.
+templ devSecretDialog(s devSecret) {
+	@kit.Dialog(kit.DialogProps{
+		ID: devSecretDialogID, Title: "Developer Client Secret", Persistent: true,
+		Footer: devSecretFooter(),
+		Attrs: templ.Attributes{
+			"open": true, "data-init": "el.open && el.close(); el.showModal()",
+			"data-on:cancel": "evt.preventDefault(); el.remove()", "data-signals": "{devCopied: ''}",
+		},
+	}) {
+		<div class="flex flex-col gap-3">
+			<p class="m-0 flex items-center gap-2 text-amber-700">
+				@kit.Icon(kit.IconProps{Name: "triangle-alert", Class: "size-5 shrink-0"})
+				Copy this secret now. It will not be shown again.
+			</p>
+			<code id="dev-secret-value" class="fc-mono-chip block break-all p-3 select-all">{ s.Secret }</code>
+			<p class="m-0 text-xs text-muted-foreground"><code>client_id={ s.ClientID }</code></p>
+			<p class="m-0 text-xs text-muted-foreground" role="status" data-text="$devCopied"></p>
+		</div>
+	}
+}
+
+templ devSecretFooter() {
+	@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Icon: "copy", Attrs: templ.Attributes{"data-on:click": devCopyExpr}}) {
+		Copy
+	}
+	@kit.Button(kit.ButtonProps{Attrs: templ.Attributes{"data-on:click": "const d = el.closest('dialog'); d.close(); d.remove()"}}) {
+		Done
+	}
+}
+
+// devCopyExpr copies the secret and says so in the dialog.
+const devCopyExpr = "navigator.clipboard.writeText(document.getElementById('dev-secret-value').textContent).then(() => $devCopied = 'Client secret copied to clipboard')"
