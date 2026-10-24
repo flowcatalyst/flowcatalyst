@@ -471,5 +471,11 @@ func TestRequeueByFilter_ConcurrentSchedulerClaim(t *testing.T) {
 	var fresh int
 	require.NoError(t, pool.QueryRow(context.Background(),
 		`SELECT count(*) FROM msg_dispatch_jobs WHERE id = ANY($1) AND attempt_count = 0`, ids).Scan(&fresh))
-	assert.GreaterOrEqual(t, int64(fresh), res.Requeued, "a reset job has a fresh attempt budget")
+	// Requeued is an upper bound here, not the exact number reset. The use case
+	// classifies a job from what it read, and the persister's SQL status guard has
+	// the last word: a job the scheduler queues between that read and the write is
+	// refused by the guard (the persister is not strict, so it is silent) and is
+	// still in Requeued. So a job with a fresh budget was certainly reported as
+	// reset, never the reverse. When the scheduler wins every race this is 0.
+	assert.LessOrEqual(t, int64(fresh), res.Requeued, "no job has a fresh attempt budget without having been reported reset")
 }
