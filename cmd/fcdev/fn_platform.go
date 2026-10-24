@@ -147,13 +147,25 @@ func (e *apiError) Error() string {
 }
 
 func (a *fnAPI) do(ctx context.Context, method, path string, body io.Reader, contentType string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, method, a.c.PlatformURL+path, body)
+	raw, err := a.doRaw(ctx, method, path, body, contentType)
 	if err != nil {
 		return err
 	}
+	if out != nil && len(raw) > 0 {
+		return json.Unmarshal(raw, out)
+	}
+	return nil
+}
+
+// doRaw sends a request and returns the body of a 2xx answer as it is.
+func (a *fnAPI) doRaw(ctx context.Context, method, path string, body io.Reader, contentType string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, method, a.c.PlatformURL+path, body)
+	if err != nil {
+		return nil, err
+	}
 	tok, err := a.tokens.Token(ctx)
 	if err != nil {
-		return a.target.wrapAuthErr("sign in to "+redactURL(a.c.PlatformURL), err)
+		return nil, a.target.wrapAuthErr("sign in to "+redactURL(a.c.PlatformURL), err)
 	}
 	req.Header.Set("Authorization", "Bearer "+tok)
 	if contentType != "" {
@@ -161,7 +173,7 @@ func (a *fnAPI) do(ctx context.Context, method, path string, body io.Reader, con
 	}
 	resp, err := a.http.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
@@ -170,12 +182,9 @@ func (a *fnAPI) do(ctx context.Context, method, path string, body io.Reader, con
 		if json.Unmarshal(raw, e) != nil || (e.Code == "" && e.Message == "" && e.Detail == "") {
 			e.Message = strings.TrimSpace(string(raw))
 		}
-		return e
+		return nil, e
 	}
-	if out != nil && len(raw) > 0 {
-		return json.Unmarshal(raw, out)
-	}
-	return nil
+	return raw, nil
 }
 
 func (a *fnAPI) json(ctx context.Context, method, path string, in, out any) error {
