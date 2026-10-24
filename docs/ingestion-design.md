@@ -25,14 +25,14 @@ is the reference for it).
 ## 2. The model
 
 ```
-ingestion = (application, client?, code) + source + split + target + flags
+ingestion = (application, client, code) + source + split + target + flags
 ```
 
 | Field | Meaning |
 |---|---|
 | `application` | The owning application, **required, of type `INTEGRATION`** (owner ruling 2026-10-24). It carries the permissions, the audit scope and the "who owns this" answer, as for connections and event types. A platform installation creates integration applications the usual way |
-| `client` | **Optional.** A client id or identifier (resolved to the id, as in platform config). Absent means an ingestion that is not scoped to a client. Most ingestions have one |
-| `code` | Stable, lowercase, unique within `(application, client)`. A client-less ingestion's code is unique within its application |
+| `client` | **Required** (owner ruling 2026-10-24: it makes the wrong thing hard to do, and it is today's schema). A client id or identifier, resolved to the id as in platform config. Data that is not a particular client's goes under a client the business keeps for that purpose (its own home client); there is no client-less ingestion |
+| `code` | Stable, lowercase, unique within `(application, client)` |
 | `name`, `active`, `keepFailedPayloads` | As today. `keepFailedPayloads` stays off unless the client has agreed (a failure may then carry the start of a payload) |
 | `source` | One of: `http`, `sftp`, `s3`, `sqs`, `rabbitmq`, `database-poll`, `api-poll`, `custom` (kind added by a runtime extension). Settings as in the current contract. Secrets are **names**, never values |
 | `split` | `none`, `csv {header}`, `json {arrayPath}`, `xml {element}` |
@@ -52,13 +52,15 @@ ingestion = (application, client?, code) + source + split + target + flags
   role `platform:ingestion-route-author`), and the Camel runtime reports the kind only when
   `INGEST_CAMEL_ROUTES_ENABLED` is true (default false). The runtime, not the platform, validates the YAML: at "test
   connection" and when it takes the lease, reporting `FAILING` with the reason.
-- **The target refers to platform entities, not strings.** Today it holds a delivery URL, a dispatch pool id and a
-  service account id. In the platform it is
-  `{code, connection, path?, pool, mode, batchSize}`: `connection` and `pool` are codes validated when the ingestion
-  is saved (the code-first connections and pools; same shared namespace and per-application uniqueness rules), the
-  delivery URL is the connection's endpoint plus `path`, and the signature comes from the connection's service
-  account (delivery-credentials ruling 2026-09-22), so the target needs no service account field. A target that does
-  not resolve is a `400`, not a runtime failure later.
+- **The target says where the job goes, and what signs it, in platform terms.** A dispatch job carries its own delivery URL, pool, client and signing service account; a connection has **no URL** (it holds a service account that signs, and pausing it holds its jobs). So the target is
+  `{code, targetUrl, pool, connection?, serviceAccount?, mode, batchSize}`:
+  - `targetUrl`: the delivery URL, checked at save with the platform's outbound-URL guard (no private or metadata addresses);
+  - `pool`: a dispatch pool **code**, resolved and checked at save (it must exist and be usable by the ingestion's client);
+  - `connection`: an **optional** connection code. When set, the connection's service account signs each delivery and pausing the connection holds this ingestion's jobs, as for subscriptions;
+  - `serviceAccount`: an **optional** service account code, for signing without a connection; it may not be set together with `connection` (the connection's account is the signer);
+  - neither set: unsigned delivery;
+  - `code`, `mode` (`IMMEDIATE`, `NEXT_ON_ERROR`, `BLOCK_ON_ERROR`) and `batchSize` as today.
+  The job's **client is the ingestion's client**; it is not a target field. Anything that does not resolve is a `400` at save, not a failure in the runtime later. A runtime creates the jobs through the batch job API, which already takes the client by code; it is extended to take the pool and connection by code too (it takes ids today).
 - Ids are platform TSIDs (`ing_...`), not ULIDs.
 
 ## 3. Tables (Go migrations, from 088)
@@ -68,7 +70,7 @@ table holds a secret value.
 
 | Table | Replaces | Notes |
 |---|---|---|
-| `ing_ingestions` | `ingestions` | `id`, `application_id` (FK), `client_id` (nullable), `code`, `name`, `active`, `version`, `latest_version`, `source/split/target` JSONB, `keep_failed_payloads`, `managed_by` (the owning set), timestamps. Unique `(application_id, client_id, code)` with `NULLS NOT DISTINCT` |
+| `ing_ingestions` | `ingestions` | `id`, `application_id` (FK), `client_id` (**not null**), `code`, `name`, `active`, `version`, `latest_version`, `source/split/target` JSONB, `keep_failed_payloads`, `managed_by` (the owning set), timestamps. Unique `(application_id, client_id, code)` |
 | `ing_versions` | `ingestion_versions` | one row per saved version: definition, `note`, `applied_from` (set apply), who and when. `live` is the version runtimes receive (see section 5) |
 | `ing_runtimes` | `runtimes` | `runtime_id`, `last_seen_at`, `kinds` JSONB, `contract_version`, `url` (informational) |
 | `ing_leases` | `ingestion_leases` | polled sources run on one runtime at a time; `expires_at`, `released` |
@@ -100,13 +102,13 @@ Seeded roles: `platform:ingestion-admin` (all but runtime), `platform:ingestion-
 `platform:ingestion-viewer`, and `platform:ingestion-runtime` for a runtime's service account. Super-admin's wildcard
 covers everything. The role ceiling rules (a caller cannot grant what it does not hold) apply as elsewhere.
 
-**Reach.** A caller below anchor tier sees and changes only ingestions of its own clients; a **client-less** ingestion
-is anchor-only. An application-scoped service account reaches only its own application's ingestions (the existing
-confinement). Per-application and per-client scoping is therefore the same axes as the rest of the platform.
+**Reach.** A caller below anchor tier sees and changes only ingestions of its own clients. An application-scoped service
+account reaches only its own application's ingestions (the existing confinement). Per-application and per-client scoping
+is therefore the same axes as the rest of the platform.
 
 **Secrets.** An ingestion names secrets (`sftp-password`). A runtime reads them as the platform's per-client config
 secrets through the audited reveal call (`platform:application-service:config:reveal` held by the runtime's service
-account; for a client-less ingestion the application's own config). Nothing changes there. The platform may warn at
+account), always at the ingestion's client scope with no global fallback. Nothing changes there. The platform may warn at
 save when a named secret has no value (a masked config listing is enough to know).
 
 ## 5. API (OpenAPI, then SDKs)
@@ -115,7 +117,7 @@ Everything below is huma, in `api/openapi.lock.json`, so the SDKs and the SPA ty
 
 | Operation id | Route | Notes |
 |---|---|---|
-| `listIngestions` | `GET /api/ingestions` | filters: `applicationCode`, `clientId`, `q`, `status`, `kind`; cursor paging (`limit` 1 to 200) |
+| `listIngestions` | `GET /api/ingestions` | filters: `applicationCode`, `clientId` (id or identifier), `q`, `status`, `kind`; cursor paging (`limit` 1 to 200) |
 | `createIngestion`, `getIngestion`, `updateIngestion`, `deleteIngestion` | `/api/ingestions[/{id}]` | `updateIngestion` takes `expectedVersion`; a no-op update answers 200 and writes nothing (platform rule). Create takes `live: true` default |
 | `listIngestionVersions`, `saveIngestionVersion`, `makeIngestionVersionLive` | `/api/ingestions/{id}/versions[/{v}/live]` | a saved version is not run until it is live; `live` moves the pointer |
 | `getIngestionDefinition` | `GET /api/ingestions/{id}/definition` | the file form (YAML) that `fcdev ingest apply` reads back |
@@ -212,12 +214,15 @@ extensions against each new runtime release (a Renovate or Dependabot bump of th
 | 8 | Runtime repository split, contract artifacts, extension directory | 3 |
 | 9 | Cutover tooling (state copy) and the Java platform hand-off | 3 |
 
-## 12. Rulings I need
+## 12. Rulings
 
-1. **Ownership by an `INTEGRATION` application, client optional**: confirmed as written in section 2? (I read "a client
-   integration type application" as: the owning application must be of type `INTEGRATION`; the client is a separate,
-   optional field.)
-2. **Target by connection and pool codes** (section 2) instead of URL, pool id and service account.
-3. **Pull-based test connection** (section 7).
-4. **N-1 contract support** (section 7).
-5. **Names**: the resource is "ingestion", the permission subdomain `ingestion`, the flag `FC_INGESTION_ENABLED`.
+Decided 2026-10-24 (owner):
+
+1. **Ownership:** an application (type `INTEGRATION`) **and** a client, both required.
+2. **Target:** `{code, targetUrl, pool, connection?, serviceAccount?, mode, batchSize}` as in section 2.
+3. **Test connection:** pull-based (section 7).
+4. **Contract:** current and previous version (N-1), section 7.
+5. **`camel-route`:** kept as a runtime-reported kind needing its own permission (section 2).
+
+Assumed unless the owner objects: the resource is "ingestion", the permission subdomain `ingestion`, the flag
+`FC_INGESTION_ENABLED`.
