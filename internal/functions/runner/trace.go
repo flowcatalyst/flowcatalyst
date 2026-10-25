@@ -9,12 +9,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
+
+	"github.com/google/uuid"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
@@ -38,10 +41,12 @@ const (
 	traceBackoffBase       = time.Second
 	traceBackoffMax        = 30 * time.Second
 	traceCloseGrace        = 3 * time.Second
-	// maxInvocationLogRecords bounds the log records one invocation can queue,
-	// so a chatty guest cannot push every other record out of the queue.
-	maxInvocationLogRecords = 500
-	redacted                = "[redacted]"
+	// maxInvocationLogRecords and maxInvocationTraceRecords bound the log and
+	// author trace records one invocation can queue, so a chatty guest cannot
+	// push every other record out of the queue.
+	maxInvocationLogRecords   = 500
+	maxInvocationTraceRecords = 500
+	redacted                  = "[redacted]"
 )
 
 // TraceShipper sends trace batches to the platform (control.Client in
@@ -99,6 +104,8 @@ type invTrace struct {
 	httpLive bool
 	ref      atomic.Pointer[string]
 	logs     atomic.Int32
+	traces   atomic.Int32
+	ended    atomic.Bool
 }
 
 // traceBegin decides, once per invocation, which contexts are live for it. With
@@ -124,21 +131,34 @@ func (r *Runner) traceBegin(fn *function, ver *version, invID, correlation strin
 			tr.httpLive = true
 		}
 	}
+	if tr != nil {
+		r.tracer.begin()
+	}
 	return tr
+}
+
+// end marks the invocation's tracing finished (after its http capture), which
+// a shutdown waits for. Idempotent; nil-safe.
+func (i *invTrace) end() {
+	if i != nil && i.ended.CompareAndSwap(false, true) {
+		i.t.end()
+	}
 }
 
 func (i *invTrace) isLive(context string) bool {
 	return i != nil && slices.Contains(i.live, context)
 }
 
+// setReference remembers the invocation's business key (the trace.reference
+// op): it is stamped on every later record of the call. Empty clears it.
 func (i *invTrace) setReference(ref string) {
-	if i != nil && ref != "" {
+	if i != nil {
 		i.ref.Store(&ref)
 	}
 }
 
-// emit queues a record for the invocation. ref overrides the remembered
-// reference when the call carried one.
+// emit queues a record for the invocation. ref, when the call carried one,
+// is that record's reference only; otherwise the remembered one applies.
 func (i *invTrace) emit(context, kind, level, msg, ref string, data json.RawMessage) {
 	if ref == "" {
 		if p := i.ref.Load(); p != nil {
@@ -146,6 +166,7 @@ func (i *invTrace) emit(context, kind, level, msg, ref string, data json.RawMess
 		}
 	}
 	i.t.add(control.TraceRecord{
+		ID: uuid.NewString(),
 		At: i.t.now().UnixMilli(), Address: i.address, Version: i.version,
 		InvocationID: i.invID, CorrelationID: i.corr, Reference: ref,
 		Context: context, Kind: kind, Level: level, Message: msg, Data: data,
@@ -185,6 +206,14 @@ func (i *invTrace) guestOutput(level string, p []byte) {
 
 func (i *invTrace) takeLogSlot() bool {
 	if i.logs.Add(1) > maxInvocationLogRecords {
+		i.t.m.traceDropped.Inc()
+		return false
+	}
+	return true
+}
+
+func (i *invTrace) takeTraceSlot() bool {
+	if i.traces.Add(1) > maxInvocationTraceRecords {
 		i.t.m.traceDropped.Inc()
 		return false
 	}
@@ -265,7 +294,7 @@ func (i *invTrace) captureHTTP(req *http.Request, path string, body []byte, call
 		sb, senc, strunc := encodeBody(cw.body, cw.size, limit)
 		data := control.TraceHTTPData{
 			Request: control.TraceHTTPRequest{
-				Method: req.Method, Path: path, RawQuery: req.URL.RawQuery,
+				Method: req.Method, Path: path, RawQuery: redactQuery(req.URL.RawQuery),
 				Headers: redactHeaders(req.Header), Body: rb, BodyEncoding: renc,
 				BodyBytes: int64(len(body)), BodyTruncated: rtrunc,
 			},
@@ -336,12 +365,59 @@ func redactHeaders(h http.Header) map[string][]string {
 	return out
 }
 
+// sensitiveNameParts are the substrings that make a header or query
+// parameter name a credential: authorization and proxy-authorization,
+// x-forwarded-authorization, api-key, apikey, x-api-key, x-functions-key,
+// ocp-apim-subscription-key, x-goog-api-key, x-auth-token, cookie and
+// set-cookie, x-flowcatalyst-signature (a reader must not be able to replay a
+// signed delivery), session ids, anything secret or password.
+var sensitiveNameParts = []string{"auth", "key", "token", "secret", "password", "signature", "cookie", "session"}
+
+// sensitiveHeader reports whether a (lower-cased) header name carries a
+// credential.
 func sensitiveHeader(name string) bool {
+	for _, p := range sensitiveNameParts {
+		if strings.Contains(name, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// sensitiveParam reports whether a (lower-cased) query parameter name
+// carries a credential: the header patterns, OAuth's code, signed-URL
+// signatures (sig, X-Amz-*), and the usual key and password names.
+func sensitiveParam(name string) bool {
 	switch name {
-	case "authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key", "x-auth-token":
+	case "code", "sig", "access_token", "token", "signature", "key", "apikey", "api_key", "password", "secret":
 		return true
 	}
-	return strings.Contains(name, "secret") || strings.Contains(name, "token") || strings.Contains(name, "password")
+	return strings.HasPrefix(name, "x-amz-") || sensitiveHeader(name)
+}
+
+// redactQuery replaces the values of credential-like parameters in a raw
+// query string with "[redacted]", keeping the rest (and the order) as sent.
+func redactQuery(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	parts := strings.Split(raw, "&")
+	changed := false
+	for i, p := range parts {
+		name, _, hasValue := strings.Cut(p, "=")
+		decoded, err := url.QueryUnescape(name)
+		if err != nil {
+			decoded = name
+		}
+		if sensitiveParam(strings.ToLower(decoded)) && hasValue {
+			parts[i] = name + "=" + redacted
+			changed = true
+		}
+	}
+	if !changed {
+		return raw
+	}
+	return strings.Join(parts, "&")
 }
 
 // encodeBody renders at most limit bytes of b (total is the real size). The
@@ -368,7 +444,11 @@ func encodeBody(b []byte, total int64, limit int) (*string, string, bool) {
 	return &s, "base64", truncated
 }
 
-// tracer is the runner's bounded record queue and its batcher.
+// tracer is the runner's bounded record queue and its batcher. The queue is
+// one FIFO per function address: a full queue drops the oldest record of the
+// function with the most queued, so one chatty function cannot push every
+// other function's records out, and a batch takes records from the functions
+// in turn.
 type tracer struct {
 	ship        TraceShipper
 	m           *metrics
@@ -384,11 +464,17 @@ type tracer struct {
 	closeGrace  time.Duration
 
 	mu       sync.Mutex
-	buf      []control.TraceRecord // ring
-	head     int
+	queues   map[string]*traceQueue // by function address
+	order    []string               // the addresses with queued records, round-robin order
+	next     int                    // where the next take starts in order
 	n        int
-	bytes    int // estimated size of the queued records
+	cap      int
+	bytes    int // encoded size of the queued records
 	maxBytes int
+
+	// active counts the invocations whose capture is still to come; close
+	// waits (bounded) for it to reach zero before the final flush.
+	active atomic.Int64
 
 	wake      chan struct{}
 	stop      chan struct{}
@@ -397,40 +483,111 @@ type tracer struct {
 	stopOnce  sync.Once
 }
 
+// queuedRecord is a record with its encoded JSON size, measured once.
+type queuedRecord struct {
+	rec  control.TraceRecord
+	size int
+}
+
+// traceQueue is one function's FIFO.
+type traceQueue struct {
+	items []queuedRecord
+	head  int
+}
+
+func (q *traceQueue) len() int { return len(q.items) - q.head }
+
+func (q *traceQueue) push(r queuedRecord) { q.items = append(q.items, r) }
+
+func (q *traceQueue) pop() queuedRecord {
+	r := q.items[q.head]
+	q.items[q.head] = queuedRecord{}
+	q.head++
+	if q.head == len(q.items) {
+		q.items, q.head = q.items[:0], 0
+	} else if q.head > 64 && q.head*2 > len(q.items) {
+		q.items = append(q.items[:0], q.items[q.head:]...)
+		q.head = 0
+	}
+	return r
+}
+
 func newTracer(ship TraceShipper, m *metrics, log *slog.Logger, runnerID, pool string, queue, bodyBytes int, now func() time.Time) *tracer {
 	return &tracer{
 		ship: ship, m: m, log: log, runnerID: runnerID, pool: pool, now: now,
 		bodyBytes: bodyBytes, flushEvery: traceFlushEvery, batchAt: traceBatchAt,
 		backoffBase: traceBackoffBase, backoffMax: traceBackoffMax, closeGrace: traceCloseGrace,
-		buf: make([]control.TraceRecord, queue), maxBytes: defaultTraceQueueBytes,
+		queues: map[string]*traceQueue{}, cap: max(queue, 1), maxBytes: defaultTraceQueueBytes,
 		wake: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{}),
 	}
 }
 
-// recordSize estimates a record's size in the queue and on the wire (JSON
-// escaping can inflate a message).
-func recordSize(rec control.TraceRecord) int {
-	return 512 + len(rec.Data) + 2*len(rec.Message) + len(rec.Reference) + len(rec.CorrelationID)
+// encodedSize is the record's size as it goes on the wire (the same encoder
+// the control client uses, so JSON escaping is counted exactly).
+func encodedSize(rec control.TraceRecord) int {
+	b, err := json.Marshal(rec)
+	if err != nil {
+		return 512 + len(rec.Data) + 6*len(rec.Message)
+	}
+	return len(b)
 }
 
-// dropOldest removes the oldest queued record and counts it dropped. The lock is held.
-func (t *tracer) dropOldest() {
-	t.bytes -= recordSize(t.buf[t.head])
-	t.buf[t.head] = control.TraceRecord{}
-	t.head = (t.head + 1) % len(t.buf)
+// traceBatchBudget is the encoded size a batch's records may take: the
+// platform's MaxTraceBatchBytes less room for the envelope (runner id, pool,
+// the record separators).
+const traceBatchBudget = control.MaxTraceBatchBytes - 16<<10
+
+// dropOldestFromLargest removes the oldest record of the function with the
+// most queued records and counts it dropped. The lock is held.
+func (t *tracer) dropOldestFromLargest() {
+	var (
+		victim string
+		most   int
+	)
+	for addr, q := range t.queues {
+		if l := q.len(); l > most || (l == most && addr < victim) {
+			victim, most = addr, l
+		}
+	}
+	if most == 0 {
+		return
+	}
+	q := t.queues[victim]
+	r := q.pop()
+	t.bytes -= r.size
 	t.n--
+	if q.len() == 0 {
+		t.forget(victim)
+	}
 	t.m.traceDropped.Inc()
 }
 
-// add queues a record. It never blocks: a full queue (by count or by bytes)
-// drops its oldest records.
-func (t *tracer) add(rec control.TraceRecord) {
-	size := recordSize(rec)
-	t.mu.Lock()
-	for t.n > 0 && (t.n == len(t.buf) || t.bytes+size > t.maxBytes) {
-		t.dropOldest()
+// forget removes an emptied function queue. The lock is held.
+func (t *tracer) forget(addr string) {
+	delete(t.queues, addr)
+	if i := slices.Index(t.order, addr); i >= 0 {
+		t.order = slices.Delete(t.order, i, i+1)
+		if t.next > i {
+			t.next--
+		}
 	}
-	t.buf[(t.head+t.n)%len(t.buf)] = rec
+}
+
+// add queues a record. It never blocks: a full queue (by count or by bytes)
+// drops the oldest records of the function with the most queued.
+func (t *tracer) add(rec control.TraceRecord) {
+	size := encodedSize(rec)
+	t.mu.Lock()
+	for t.n > 0 && (t.n >= t.cap || t.bytes+size > t.maxBytes) {
+		t.dropOldestFromLargest()
+	}
+	q := t.queues[rec.Address]
+	if q == nil {
+		q = &traceQueue{}
+		t.queues[rec.Address] = q
+		t.order = append(t.order, rec.Address)
+	}
+	q.push(queuedRecord{rec: rec, size: size})
 	t.n++
 	t.bytes += size
 	full := t.n >= t.batchAt
@@ -444,26 +601,34 @@ func (t *tracer) add(rec control.TraceRecord) {
 	}
 }
 
-// take removes the oldest records for one request: at most MaxTraceBatchRecords
-// and, by a conservative size estimate, half of MaxTraceBatchBytes (JSON
-// escaping can inflate a message).
+// take removes records for one request: at most MaxTraceBatchRecords whose
+// encoded size fits traceBatchBudget, one function at a time in turn (each
+// function's records stay in order).
 func (t *tracer) take() []control.TraceRecord {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	var out []control.TraceRecord
 	size := 0
 	for t.n > 0 && len(out) < control.MaxTraceBatchRecords {
-		rec := t.buf[t.head]
-		est := recordSize(rec)
-		if len(out) > 0 && size+est > control.MaxTraceBatchBytes/2 {
+		if t.next >= len(t.order) {
+			t.next = 0
+		}
+		addr := t.order[t.next]
+		q := t.queues[addr]
+		head := q.items[q.head]
+		if len(out) > 0 && size+head.size+1 > traceBatchBudget {
 			break
 		}
-		size += est
-		t.bytes -= est
-		t.buf[t.head] = control.TraceRecord{}
-		t.head = (t.head + 1) % len(t.buf)
+		q.pop()
+		size += head.size + 1
+		t.bytes -= head.size
 		t.n--
-		out = append(out, rec)
+		out = append(out, head.rec)
+		if q.len() == 0 {
+			t.forget(addr) // t.next now points at the following function
+		} else {
+			t.next++
+		}
 	}
 	return out
 }
@@ -474,6 +639,11 @@ func (t *tracer) queued() int {
 	return t.n
 }
 
+// begin and end bracket an invocation that has a live context, so close can
+// wait for its capture (which runs after the call has answered).
+func (t *tracer) begin() { t.active.Add(1) }
+func (t *tracer) end()   { t.active.Add(-1) }
+
 // start runs the batcher (once).
 func (t *tracer) start() {
 	if t == nil {
@@ -483,10 +653,14 @@ func (t *tracer) start() {
 }
 
 // close stops the batcher after it has made one bounded attempt to ship what
-// is queued. Call it once calls have drained.
+// is queued. Call it once calls have drained: it first waits (up to the grace)
+// for the captures of invocations still finishing.
 func (t *tracer) close() {
 	if t == nil {
 		return
+	}
+	for deadline := time.Now().Add(t.closeGrace); t.active.Load() > 0 && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
 	}
 	t.startOnce.Do(func() { close(t.done) }) // never started: nothing to wait for
 	t.stopOnce.Do(func() { close(t.stop) })
@@ -500,7 +674,9 @@ func (t *tracer) run() {
 	defer close(t.done)
 	tick := time.NewTicker(t.flushEvery)
 	defer tick.Stop()
-	var pending []control.TraceRecord
+	// pending are batches taken and not yet done with, first one next; a
+	// batch the platform finds too large is split into two in its place.
+	var pending [][]control.TraceRecord
 	delay := time.Duration(0)
 	for {
 		select {
@@ -511,14 +687,21 @@ func (t *tracer) run() {
 		case <-t.wake:
 		}
 		for {
-			if pending == nil {
-				if pending = t.take(); pending == nil {
+			if len(pending) == 0 {
+				b := t.take()
+				if len(b) == 0 {
 					break
 				}
+				pending = append(pending, b)
 			}
-			if t.send(pending, traceShipTimeout) {
-				pending, delay = nil, 0
+			switch res, halves := t.send(pending[0], traceShipTimeout); res {
+			case sendDone:
+				pending, delay = pending[1:], 0
 				continue
+			case sendSplit:
+				pending = append(halves, pending[1:]...)
+				continue
+			case sendRetry:
 			}
 			// Keep the batch and retry after a growing pause; callers go on
 			// queueing (dropping the oldest when full) in the meantime.
@@ -534,49 +717,88 @@ func (t *tracer) run() {
 }
 
 // finalFlush makes one bounded attempt to ship pending and the queue.
-func (t *tracer) finalFlush(pending []control.TraceRecord) {
+func (t *tracer) finalFlush(pending [][]control.TraceRecord) {
 	deadline := time.Now().Add(t.closeGrace)
 	for {
-		if pending == nil {
-			if pending = t.take(); pending == nil {
+		if len(pending) == 0 {
+			b := t.take()
+			if len(b) == 0 {
 				return
 			}
+			pending = append(pending, b)
 		}
 		left := time.Until(deadline)
-		if left <= 0 || !t.send(pending, left) {
-			t.m.traceDropped.Add(float64(len(pending) + t.queued()))
-			return
+		if left <= 0 {
+			break
 		}
-		pending = nil
+		res, halves := t.send(pending[0], left)
+		switch res {
+		case sendDone:
+			pending = pending[1:]
+			continue
+		case sendSplit:
+			pending = append(halves, pending[1:]...)
+			continue
+		case sendRetry:
+		}
+		break
 	}
+	n := t.queued()
+	for _, b := range pending {
+		n += len(b)
+	}
+	t.m.traceDropped.Add(float64(n))
 }
 
-// send ships one batch and reports whether the batch is done with (shipped, or
-// refused for good). A panic is treated as a refusal.
-func (t *tracer) send(batch []control.TraceRecord, timeout time.Duration) (done bool) {
+// sendResult is what became of one shipping attempt.
+type sendResult int
+
+const (
+	sendDone  sendResult = iota // shipped, or refused for good (counted dropped)
+	sendRetry                   // keep the batch and try again later
+	sendSplit                   // too large: ship the two halves instead
+)
+
+// send ships one batch. A panic is treated as a refusal. A 413 splits the
+// batch (a single record the platform will not take is dropped); 401 and 403
+// are retried (the control client has already refreshed its token once, and a
+// grant may be restored), as are 408, 429, 5xx and transport errors; any
+// other 4xx is final, since retrying would wedge the queue.
+func (t *tracer) send(batch []control.TraceRecord, timeout time.Duration) (res sendResult, halves [][]control.TraceRecord) {
 	defer func() {
 		if p := recover(); p != nil {
 			t.log.Error("trace shipping panicked", "panic", p)
 			t.m.traceFlushFailures.Inc()
 			t.m.traceDropped.Add(float64(len(batch)))
-			done = true
+			res, halves = sendDone, nil
 		}
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	_, err := t.ship.TraceLog(ctx, control.TraceBatch{RunnerID: t.runnerID, Pool: t.pool, Records: batch})
 	if err == nil {
-		return true
+		return sendDone, nil
 	}
 	t.m.traceFlushFailures.Inc()
-	if se, ok := errors.AsType[*control.ErrStatus](err); ok && se.Status >= 400 && se.Status < 500 && se.Status != http.StatusRequestTimeout && se.Status != http.StatusTooManyRequests {
-		// The platform will never take this batch; retrying would wedge the queue.
-		t.log.Warn("trace batch refused; dropping it", "records", len(batch), "err", err)
-		t.m.traceDropped.Add(float64(len(batch)))
-		return true
+	if se, ok := errors.AsType[*control.ErrStatus](err); ok && se.Status >= 400 && se.Status < 500 {
+		switch se.Status {
+		case http.StatusRequestEntityTooLarge:
+			if len(batch) > 1 {
+				h := len(batch) / 2
+				return sendSplit, [][]control.TraceRecord{batch[:h:h], batch[h:]}
+			}
+			t.log.Warn("trace record too large for the platform; dropping it", "err", err)
+			t.m.traceDropped.Inc()
+			return sendDone, nil
+		case http.StatusUnauthorized, http.StatusForbidden, http.StatusRequestTimeout, http.StatusTooManyRequests:
+		default:
+			t.log.Warn("trace batch refused; dropping it", "records", len(batch), "err", err)
+			t.m.traceDropped.Add(float64(len(batch)))
+			return sendDone, nil
+		}
 	}
 	t.log.Warn("trace batch not shipped; will retry", "records", len(batch), "err", err)
-	return false
+	return sendRetry, nil
 }
 
 // traceOp serves the trace op: validation first (so a typo is found while the
@@ -620,10 +842,26 @@ func (c *capabilities) traceOp(meta []byte) ([]byte, []byte, *abi.Error) {
 	if tr == nil {
 		return nil, nil, nil
 	}
-	tr.setReference(m.Reference)
-	if tr.isLive(m.Context) {
+	// A reference on the call is this record's only; the invocation's own is
+	// set with the trace.reference op.
+	if tr.isLive(m.Context) && tr.takeTraceSlot() {
 		tr.emit(m.Context, control.TraceKindTrace, m.Level, m.Msg, m.Reference, m.Data)
 	}
+	return nil, nil, nil
+}
+
+// traceReferenceOp serves the trace.reference op: the invocation's business
+// key, stamped on its later trace, http and log records. A no-op while no
+// context is live for the call.
+func (c *capabilities) traceReferenceOp(meta []byte) ([]byte, []byte, *abi.Error) {
+	q, aerr := decode[abi.TraceReferenceCall](meta)
+	if aerr != nil {
+		return nil, nil, aerr
+	}
+	if utf8.RuneCountInString(q.Reference) > abi.TraceMaxReference {
+		return nil, nil, abi.Errorf(abi.CodeTooLarge, fmt.Sprintf("reference is over %d characters", abi.TraceMaxReference))
+	}
+	c.trace.setReference(q.Reference)
 	return nil, nil, nil
 }
 

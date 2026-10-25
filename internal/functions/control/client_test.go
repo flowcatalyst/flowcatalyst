@@ -106,3 +106,32 @@ func TestClientDesiredSendsRuntimesFilterOnlyWhenSet(t *testing.T) {
 		t.Fatalf("set: err=%v runtimes=%q", err, q)
 	}
 }
+
+// TraceLog retries a 401/403 once with a fresh token when the token source
+// can be invalidated; without it the refusal is returned.
+func TestClientTraceLogRefreshesTokenOnAuthRefusal(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		token := "old"
+		calls := 0
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			if r.Header.Get("Authorization") != "Bearer new" {
+				w.WriteHeader(status)
+				return
+			}
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"accepted":1}`))
+		}))
+		c := NewClient(srv.URL, func(context.Context) (string, error) { return token, nil }, nil)
+		if _, err := c.TraceLog(t.Context(), TraceBatch{RunnerID: "r"}); err == nil {
+			t.Fatalf("%d without InvalidateToken: want the refusal", status)
+		}
+		calls = 0
+		c.InvalidateToken = func() { token = "new" }
+		ack, err := c.TraceLog(t.Context(), TraceBatch{RunnerID: "r"})
+		srv.Close()
+		if err != nil || ack.Accepted != 1 || calls != 2 {
+			t.Fatalf("%d: ack %+v err %v calls %d", status, ack, err, calls)
+		}
+	}
+}

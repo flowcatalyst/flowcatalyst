@@ -70,6 +70,8 @@ func (c *capabilities) Call(ctx context.Context, op abi.Op, meta, body []byte) (
 		return c.traceOp(meta)
 	case abi.OpTracing:
 		return c.tracingOp(meta)
+	case abi.OpTraceReference:
+		return c.traceReferenceOp(meta)
 	case abi.OpDBQuery, abi.OpDBExec, abi.OpDBBegin, abi.OpDBCommit, abi.OpDBRollback:
 		return c.dbCall(ctx, op, meta)
 	}

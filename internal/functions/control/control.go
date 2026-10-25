@@ -251,6 +251,10 @@ const (
 // TraceRecord is one captured record, as a runner ships it and as the
 // platform reads it back (the platform adds the id and creation time).
 type TraceRecord struct {
+	// ID is the runner's id for the record (a random UUID), the same on every
+	// retry of its batch, so the platform stores it once. Optional: a record
+	// without one (an older runner) is given a platform id.
+	ID            string          `json:"id,omitempty"`
 	At            int64           `json:"at"` // unix milliseconds, the runner's clock
 	Address       string          `json:"address"`
 	Version       int             `json:"version"`
@@ -285,7 +289,7 @@ const (
 	MaxTraceMessage        = 4096  // characters; longer is cut
 	MaxTraceHTTPData       = 65536 // bytes of a http record's data
 	MaxTraceData           = 32768 // bytes of a trace record's data
-	MaxTraceRecordsPerSec  = 200   // per function, platform side
+	MaxTraceRecordsPerSec  = 200   // per function, per platform process (an in-memory bucket each)
 	TraceAcceptSlackMillis = 10_000
 )
 

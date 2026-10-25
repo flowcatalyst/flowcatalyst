@@ -97,6 +97,10 @@ const (
 	// UNKNOWN_OP and every SDK treats that as "not tracing").
 	OpTrace   Op = 12
 	OpTracing Op = 13
+	// OpTraceReference sets the invocation's business key on the host, which
+	// stamps it on every later record of the call (trace, http and log). Additive
+	// like OpTrace: an older runner answers UNKNOWN_OP and the SDKs ignore it.
+	OpTraceReference Op = 14
 )
 
 func (o Op) String() string {
@@ -127,6 +131,8 @@ func (o Op) String() string {
 		return "trace"
 	case OpTracing:
 		return "tracing"
+	case OpTraceReference:
+		return "trace.reference"
 	}
 	return "unknown"
 }
@@ -310,6 +316,13 @@ type TraceCall struct {
 	Msg       string         `json:"msg"`
 	Data      map[string]any `json:"data,omitempty"`
 	Reference string         `json:"reference,omitempty"`
+}
+
+// TraceReferenceCall is the meta of an OpTraceReference call: the business key
+// stamped on the invocation's later records (empty clears it). The result is an
+// empty success. TOO_LARGE when over TraceMaxReference characters.
+type TraceReferenceCall struct {
+	Reference string `json:"reference"`
 }
 
 // TracingCall is the meta of an OpTracing call.

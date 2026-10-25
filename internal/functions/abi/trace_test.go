@@ -41,7 +41,10 @@ func TestTraceOpsAreNamed(t *testing.T) {
 	if OpTrace.String() != "trace" || OpTracing.String() != "tracing" {
 		t.Fatalf("names: %s %s", OpTrace, OpTracing)
 	}
-	if OpTrace != 12 || OpTracing != 13 {
+	if OpTrace != 12 || OpTracing != 13 || OpTraceReference != 14 {
 		t.Fatal("op numbers are part of the ABI")
+	}
+	if OpTraceReference.String() != "trace.reference" {
+		t.Fatalf("name: %s", OpTraceReference)
 	}
 }
