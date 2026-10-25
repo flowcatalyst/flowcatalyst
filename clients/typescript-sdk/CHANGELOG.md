@@ -27,6 +27,9 @@ Additive: no signature breaks (new parameters are optional).
 - Typed `SftpIngestionSource`, with the new optional `acceptAnyHostKey`.
 
 ### Platform config
+- `ConfigResponse` (list rows and get/set answers) gains optional
+  `clientIdentifier`, the client's identifier beside the stored `clientId`, so
+  a caller holding either can match a row.
 - `set`, `delete` and `revealSecret` take an optional `onBehalfOf`
   (`PlatformConfigActorOptions`), sent as `X-On-Behalf-Of`: who a service
   account acts for, recorded in the audit row (honoured only from a service

@@ -859,6 +859,9 @@
           "clientId": {
             "type": "string"
           },
+          "clientIdentifier": {
+            "type": "string"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"

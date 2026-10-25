@@ -715,6 +715,7 @@ export type ConfigResponse = {
     readonly $schema?: string;
     applicationCode: string;
     clientId?: string;
+    clientIdentifier?: string;
     createdAt: string;
     description?: string;
     id: string;
@@ -5417,6 +5418,7 @@ export type ConfigListResponseWritable = {
 export type ConfigResponseWritable = {
     applicationCode: string;
     clientId?: string;
+    clientIdentifier?: string;
     createdAt: string;
     description?: string;
     id: string;
