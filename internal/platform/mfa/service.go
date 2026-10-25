@@ -21,7 +21,21 @@ var (
 	// ErrNoPendingEnrollment is returned when confirming a factor that was never
 	// begun (or already confirmed).
 	ErrNoPendingEnrollment = errors.New("mfa: no pending enrollment")
+	// ErrCodeRecentlySent is returned (inside a *ResendError) when a sign-in
+	// email code is asked for again before the resend interval has passed.
+	ErrCodeRecentlySent = errors.New("mfa: a code was sent recently")
 )
+
+// ResendError refuses a sign-in email code asked for within the resend
+// interval of the previous one. Wait is how long until another may be sent.
+type ResendError struct{ Wait time.Duration }
+
+func (e *ResendError) Error() string {
+	return fmt.Sprintf("%s; another may be sent in %s", ErrCodeRecentlySent, e.Wait.Round(time.Second))
+}
+
+// Is makes errors.Is(err, ErrCodeRecentlySent) hold.
+func (e *ResendError) Is(target error) bool { return target == ErrCodeRecentlySent }
 
 // Config tunes the service. Use DefaultConfig and override as needed.
 type Config struct {
@@ -37,6 +51,10 @@ type Config struct {
 	EmailPinTTL time.Duration
 	// EmailPinMaxAttempts is the wrong-guess ceiling before a PIN is burned.
 	EmailPinMaxAttempts int
+	// EmailPinResendInterval is the least time between two sign-in email codes
+	// for one user (zero: no cooldown). It stops the email challenge from being
+	// used to flood an inbox; a code that was used or burnt does not count.
+	EmailPinResendInterval time.Duration
 	// RecoveryCodeCount is how many backup codes a batch contains.
 	RecoveryCodeCount int
 	// TrustedDeviceTTL is the default remember-device lifetime when a domain
@@ -51,8 +69,10 @@ func DefaultConfig() Config {
 		EmailPinLength:      6,
 		EmailPinTTL:         10 * time.Minute,
 		EmailPinMaxAttempts: 5,
-		RecoveryCodeCount:   10,
-		TrustedDeviceTTL:    30 * 24 * time.Hour,
+		// One sign-in code per minute per user.
+		EmailPinResendInterval: time.Minute,
+		RecoveryCodeCount:      10,
+		TrustedDeviceTTL:       30 * 24 * time.Hour,
 	}
 }
 
@@ -243,8 +263,21 @@ func (s *Service) ConfirmEmailEnrollment(ctx context.Context, principalID, code 
 
 // ── login challenge ──────────────────────────────────────────────────────
 
-// SendLoginEmailPin issues and emails a login-challenge PIN.
+// SendLoginEmailPin issues and emails a login-challenge PIN. Within the resend
+// interval of an outstanding one it sends nothing and returns a *ResendError
+// (errors.Is ErrCodeRecentlySent).
 func (s *Service) SendLoginEmailPin(ctx context.Context, principalID, emailAddr string) error {
+	if s.cfg.EmailPinResendInterval > 0 {
+		last, err := s.repo.FindLatestEmailPin(ctx, principalID, EmailPinLogin)
+		if err != nil {
+			return err
+		}
+		if last != nil {
+			if wait := s.cfg.EmailPinResendInterval - time.Since(last.CreatedAt); wait > 0 {
+				return &ResendError{Wait: wait}
+			}
+		}
+	}
 	return s.issueEmailPin(ctx, principalID, emailAddr, EmailPinLogin)
 }
 

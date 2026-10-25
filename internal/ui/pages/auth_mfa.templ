@@ -99,7 +99,7 @@ templ mfaChallenge(v mfaChallengeView) {
 		if v.has("EMAIL_PIN") && v.Active != "EMAIL_PIN" {
 			<a href={ templ.SafeURL(challengeHref(v.Next, "EMAIL_PIN")) }>Use an email code</a>
 		}
-		if v.Active != "RECOVERY_CODE" {
+		if v.Recovery && v.Active != "RECOVERY_CODE" {
 			<a href={ templ.SafeURL(challengeHref(v.Next, "RECOVERY_CODE")) }>Use a recovery code</a>
 		}
 	</div>
@@ -202,17 +202,8 @@ templ mfaCodesPanel(v mfaCodesView) {
 		@kit.Button(kit.ButtonProps{Variant: kit.ButtonOutline, Icon: "copy", Class: "w-full", Attrs: templ.Attributes{"data-on:click": mfaCopyExpr}}) {
 			Copy codes
 		}
-		if v.Action != "" {
-			<form method="post" action={ v.Action }>
-				@authHidden(v.Next)
-				@kit.Button(kit.ButtonProps{Type: "submit", Class: "w-full"}) {
-					I've saved them — continue
-				}
-			</form>
-		} else {
-			@kit.Button(kit.ButtonProps{Href: v.Href, Class: "w-full"}) {
-				I've saved them — continue
-			}
+		@kit.Button(kit.ButtonProps{Href: v.Href, Class: "w-full"}) {
+			I've saved them — continue
 		}
 	</div>
 }

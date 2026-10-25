@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/mfatoken"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
@@ -96,10 +97,13 @@ func newPGRig(t *testing.T, tag string) *pgRig {
 		ann:   mk("prn_"+tag+"ann", "ann"), bob: mk("prn_"+tag+"bob", "bob"),
 	}
 	r.page = &AuthMFA{
-		MFA: r.mfa, Tokens: r.issuer, Policy: fakePolicy{ev: mfaRequired(true, "TOTP", "EMAIL_PIN")}, Principals: principals,
-		Attempts: r.attempts, Backoff: loginbackoff.Policy{FreeAttempts: 1, BaseDelaySecs: 60, MaxDelaySecs: 60, GlobalWindowSecs: 3600, GlobalCeiling: 100, GlobalLockSecs: 900},
-		Sessions: prov, SessionTTL: time.Hour,
-		Passkeys: r.creds, PasskeyOps: PasskeyOps{Repo: r.creds, UoW: testpg.NewUoW(t)}, Shell: shellForTest(),
+		Flow: &login.TwoFactor{
+			MFA: r.mfa, Tokens: r.issuer, Policy: fakePolicy{ev: mfaRequired(true, "TOTP", "EMAIL_PIN")}, Principals: principals,
+			Attempts: r.attempts, Backoff: loginbackoff.Policy{FreeAttempts: 1, BaseDelaySecs: 60, MaxDelaySecs: 60, GlobalWindowSecs: 3600, GlobalCeiling: 100, GlobalLockSecs: 900},
+			Sessions: prov, SessionTTL: time.Hour,
+		},
+		Principals: principals,
+		Passkeys:   r.creds, PasskeyOps: PasskeyOps{Repo: r.creds, UoW: testpg.NewUoW(t)}, Shell: shellForTest(),
 	}
 	mux := chi.NewRouter()
 	mux.Route("/ui", func(rt chi.Router) {
@@ -169,10 +173,9 @@ func TestEnrollThenChallengeAgainstPostgres(t *testing.T) {
 	r := newPGRig(t, "pgenr")
 	enroll := r.token(r.ann, mfatoken.PurposeEnroll)
 
-	// Done before enrolling: nothing.
+	// There is no step past the enrolment without a confirmed factor.
 	rec := r.do(http.MethodPost, "/ui/auth/2fa/enroll/done", url.Values{}, "", enroll)
-	require.Equal(t, http.StatusSeeOther, rec.Code)
-	assert.Contains(t, rec.Header().Get("Location"), "/ui/auth/2fa/enroll")
+	assert.GreaterOrEqual(t, rec.Code, 400)
 	assert.Nil(t, mfaCookie(rec, "fc_session"))
 
 	// Begin: the key and a QR code for it, in this response.
@@ -191,20 +194,29 @@ func TestEnrollThenChallengeAgainstPostgres(t *testing.T) {
 	assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	assert.Nil(t, mfaCookie(rec, "fc_session"))
 
-	// The right code: recovery codes, once; still no session until Continue.
+	// The right code: the session, with the recovery codes once.
 	code, err := totp.GenerateCode(secret[1], time.Now())
 	require.NoError(t, err)
 	rec = r.do(http.MethodPost, "/ui/auth/2fa/enroll/totp/confirm", url.Values{"code": {code}, "uri": {htmlUnescape(uri[1])}, "next": {"/ui/users"}}, "", enroll)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	recovery := codeOnPage.FindAllStringSubmatch(rec.Body.String(), -1)
 	require.Len(t, recovery, 10, rec.Body.String())
-	assert.Nil(t, mfaCookie(rec, "fc_session"))
 	assert.NotContains(t, rec.Body.String(), secret[1])
-	rec = r.do(http.MethodPost, "/ui/auth/2fa/enroll/done", url.Values{"next": {"/ui/users"}}, "", enroll)
-	mfaWantRedirect(t, rec, "/ui/users")
+	assert.Contains(t, rec.Body.String(), `href="/ui/users"`)
 	session := mfaCookie(rec, "fc_session")
 	require.NotNil(t, session)
 	assert.NotEmpty(t, session.Value)
+
+	// The enroll token is spent: with a usable factor it enrols nothing more
+	// and signs nobody in, even with a factor of its own.
+	for _, step := range []string{"/ui/auth/2fa/enroll/totp", "/ui/auth/2fa/enroll/email"} {
+		rec = r.do(http.MethodPost, step, url.Values{}, "", enroll)
+		mfaWantRedirect(t, rec, guard.LoginPath)
+		assert.Nil(t, mfaCookie(rec, "fc_session"))
+	}
+	methods, err := r.mfa.ConfirmedMethods(context.Background(), r.ann)
+	require.NoError(t, err)
+	assert.Equal(t, []mfa.MethodType{mfa.MethodTOTP}, methods)
 
 	// The same recovery codes are on no later page.
 	rec = r.do(http.MethodGet, "/ui/auth/security", nil, r.ann)
@@ -227,7 +239,7 @@ func TestEnrollThenChallengeAgainstPostgres(t *testing.T) {
 	rec = r.do(http.MethodPost, "/ui/auth/2fa/verify", url.Values{"method": {"TOTP"}, "code": {next}, "remember": {"1"}}, "", pending)
 	mfaWantRedirect(t, rec, "/ui/")
 	assert.NotNil(t, mfaCookie(rec, "fc_session"))
-	device := mfaCookie(rec, trustedDeviceCookieDev)
+	device := mfaCookie(rec, testTrustedDeviceCookie)
 	require.NotNil(t, device, "the domain allows remembering and the box was ticked")
 
 	// A recovery code works once.
@@ -289,10 +301,11 @@ func TestEmailChallengeAgainstPostgres(t *testing.T) {
 	mailer := &pgMailer{}
 	key, _ := encryption.GenerateKey()
 	enc, _ := encryption.New(key)
-	r.page.MFA = mfa.NewService(mfa.NewRepository(testpg.Pool(t)), enc, mailer, mfa.DefaultConfig())
-	require.NoError(t, r.page.MFA.BeginEmailEnrollment(ctx, r.ann, "ann@pgeml.test"))
+	svc := mfa.NewService(mfa.NewRepository(testpg.Pool(t)), enc, mailer, mfa.DefaultConfig())
+	r.page.Flow.MFA = svc
+	require.NoError(t, svc.BeginEmailEnrollment(ctx, r.ann, "ann@pgeml.test"))
 	pin := regexp.MustCompile(`\d{6}`).FindString(mailer.last.HTMLBody)
-	ok, err := r.page.MFA.ConfirmEmailEnrollment(ctx, r.ann, pin)
+	ok, err := svc.ConfirmEmailEnrollment(ctx, r.ann, pin)
 	require.NoError(t, err)
 	require.True(t, ok)
 
@@ -302,6 +315,13 @@ func TestEmailChallengeAgainstPostgres(t *testing.T) {
 	assert.Equal(t, "ann@pgeml.test", mailer.last.To)
 	pin = regexp.MustCompile(`\d{6}`).FindString(mailer.last.HTMLBody)
 	require.NotEmpty(t, pin)
+	// Asking again at once sends nothing: the code just sent is the one to use.
+	mailer.last = email.Message{}
+	rec = r.do(http.MethodPost, "/ui/auth/2fa/email", url.Values{}, "", pending)
+	assert.Equal(t, http.StatusTooManyRequests, rec.Code, rec.Body.String())
+	assert.NotEmpty(t, rec.Header().Get("Retry-After"))
+	assert.Contains(t, rec.Body.String(), "A code was sent recently.")
+	assert.Empty(t, mailer.last.To, "a second code was emailed within the resend interval")
 	rec = r.do(http.MethodPost, "/ui/auth/2fa/verify", url.Values{"method": {"EMAIL_PIN"}, "code": {"000000"}}, "", pending)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	rec = r.do(http.MethodPost, "/ui/auth/2fa/verify", url.Values{"method": {"EMAIL_PIN"}, "code": {pin}}, "", pending)
@@ -329,7 +349,7 @@ func TestPasskeyCeremonyAndSecurityPageAgainstPostgres(t *testing.T) {
 	svc, err := webauthn.NewService(webauthn.Config{RPDisplayName: "FC", RPID: testRPID, RPOrigins: []string{testOrigin}},
 		r.creds, webauthn.NewCeremonyRepository(pool))
 	require.NoError(t, err)
-	prov := r.page.Sessions.(*provider.Provider)
+	prov := r.page.Flow.Sessions.(*provider.Provider)
 
 	api := chi.NewRouter()
 	api.Use(func(next http.Handler) http.Handler {

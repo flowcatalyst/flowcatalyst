@@ -2,6 +2,7 @@ package mfa
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -131,6 +132,23 @@ func TestServicePG(t *testing.T) {
 	// A consumed PIN can't be reused.
 	if ok, _ := svc.VerifyLoginEmailPin(ctx, pid, loginPin); ok {
 		t.Fatal("a consumed PIN should not verify again")
+	}
+
+	// ── resend cooldown: one outstanding sign-in code per interval ────────
+	if err := svc.SendLoginEmailPin(ctx, pid, addr); err != nil {
+		t.Fatalf("send after the last code was used: %v", err)
+	}
+	first := mailer.pin(t)
+	err = svc.SendLoginEmailPin(ctx, pid, addr)
+	var resend *ResendError
+	if !errors.Is(err, ErrCodeRecentlySent) || !errors.As(err, &resend) || resend.Wait <= 0 || resend.Wait > time.Minute {
+		t.Fatalf("a second code within the interval: err=%v", err)
+	}
+	if mailer.pin(t) != first {
+		t.Fatal("a refused resend still sent an email")
+	}
+	if ok, err := svc.VerifyLoginEmailPin(ctx, pid, first); err != nil || !ok {
+		t.Fatalf("the outstanding code still verifies: ok=%v err=%v", ok, err)
 	}
 
 	// ── recovery codes (single-use) ────────────────────────────────────────

@@ -57,7 +57,7 @@ func TestTwoFactorPagesMount(t *testing.T) {
 		t.Errorf("security post without a session: status %d", rec.Code)
 	}
 	// A form on another site cannot post a code or start an enrolment.
-	for _, target := range []string{"/ui/auth/2fa/verify", "/ui/auth/2fa/start", "/ui/auth/2fa/enroll/start", "/ui/auth/2fa/enroll/done", "/ui/auth/security/2fa/totp"} {
+	for _, target := range []string{"/ui/auth/2fa/verify", "/ui/auth/2fa/start", "/ui/auth/2fa/enroll/start", "/ui/auth/2fa/enroll/totp/confirm", "/ui/auth/security/2fa/totp"} {
 		rec = do(t, on, req{method: http.MethodPost, target: target, session: "admin", headers: map[string]string{"Sec-Fetch-Site": "cross-site"}})
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("cross-site %s: status %d", target, rec.Code)

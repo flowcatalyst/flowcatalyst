@@ -12,8 +12,6 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/docsapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
@@ -42,14 +40,10 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 		// this same router in-process.
 		SignInUpstream: r,
 
-		// The two-factor and passkey pages use the services the login endpoint
-		// does: the same MFA service, token issuer, domain policy, backoff store
-		// and session JWT.
+		// The two-factor pages are the HTML of the login endpoint's own
+		// second-factor flow (the rules, the cookies and the session are its).
 		TwoFactor: &pages.AuthMFA{
-			MFA: svcs.mfaSvc, Tokens: svcs.mfaTokens, Policy: svcs.twofaPolicy, Principals: repos.principalRepo,
-			Attempts: repos.loginAttemptRepo, Backoff: loginbackoff.PolicyFromEnv(),
-			Notifier: svcs.notifier, Audit: repos.auditRepo, CookieSecure: !cfg.AuthAllowTestHeaders,
-			Sessions: svcs.authProvider, SessionTTL: login.SessionTTL,
+			Flow: svcs.loginEP.TwoFactor(), Principals: repos.principalRepo,
 			Passkeys: repos.webauthnCredRepo, PasskeyOps: pages.PasskeyOps{Repo: repos.webauthnCredRepo, UoW: uow},
 		},
 

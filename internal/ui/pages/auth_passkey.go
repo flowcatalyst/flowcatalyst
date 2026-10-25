@@ -3,6 +3,7 @@ package pages
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -58,6 +59,9 @@ type AuthPasskeys struct{}
 // Mount registers the page; mount it in a group without the session guard.
 func (h *AuthPasskeys) Mount(r chi.Router) {
 	r.Get("/auth/passkey", h.page)
+	// The sign-in page's "Sign in with a passkey" posts the typed address, so
+	// it is in no URL.
+	r.With(parseForm).Post("/auth/passkey", h.page)
 }
 
 type passkeySignInView struct {
@@ -67,7 +71,9 @@ type passkeySignInView struct {
 }
 
 func (h *AuthPasskeys) page(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	v := passkeySignInView{Next: authNext(q.Get("next")), Email: q.Get("email")}
+	v := passkeySignInView{Next: authNext(r.FormValue("next")), Email: strings.TrimSpace(r.FormValue("email"))}
+	if len(v.Email) > 320 {
+		v.Email = ""
+	}
 	renderAuthPage(w, r, http.StatusOK, "Sign in with a passkey", []string{webauthnScript}, passkeySignIn(v))
 }

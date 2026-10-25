@@ -1,30 +1,27 @@
 package login
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
-	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
-
 	"github.com/go-chi/chi/v5"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/mfatoken"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/twofa"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/mfa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
+
+// The /auth/2fa/* JSON endpoints of a password sign-in. The rules are
+// TwoFactor's (twofactor_flow.go); these handlers decode, call and answer.
 
 // Token TTL fallbacks (overridable via Config).
 const (
@@ -59,7 +56,7 @@ type twoFactorResponse struct {
 // RegisterTwoFactorRoutes mounts the /auth/2fa/* endpoints. No-op when MFA
 // isn't wired, so callers can register unconditionally.
 func (e *Endpoint) RegisterTwoFactorRoutes(r chi.Router) {
-	if e.cfg.MFA == nil || e.cfg.MFATokens == nil {
+	if e.tf == nil || e.cfg.MFATokens == nil {
 		return
 	}
 	r.Post("/auth/2fa/verify", e.handle2FAVerify)
@@ -70,82 +67,35 @@ func (e *Endpoint) RegisterTwoFactorRoutes(r chi.Router) {
 	r.Post("/auth/2fa/enroll/email/confirm", e.handle2FAEnrollEmailConfirm)
 }
 
+// TwoFactor is the endpoint's second-factor flow (nil when MFA isn't wired),
+// for the server-rendered sign-in pages to share.
+func (e *Endpoint) TwoFactor() *TwoFactor { return e.tf }
+
 // ── decision (called from handleLogin after the password verifies) ─────────
 
-// maybeChallenge2FA decides whether this just-authenticated user needs a second
-// factor. It writes the mfa_required / enrollment_required response and returns
-// handled=true when a challenge is owed; returns handled=false to let the
-// caller complete the login normally. A non-nil error means "couldn't decide"
-// and the caller fails closed.
+// maybeChallenge2FA writes the mfa_required / enrollment_required answer and
+// returns handled=true when a second factor is owed; handled=false lets the
+// caller complete the login. A non-nil error means "couldn't decide" and the
+// caller fails closed.
 func (e *Endpoint) maybeChallenge2FA(w http.ResponseWriter, r *http.Request, p *principal.Principal) (bool, error) {
-	// Federated users never carry a password, so this is defensive: no 2FA for
-	// external identities.
-	if p.ExternalIdentity != nil {
-		return false, nil
-	}
-	email := ""
-	if p.UserIdentity != nil {
-		email = p.UserIdentity.Email
-	}
-	mapping, internalDomain := e.domainPolicy(r.Context(), email)
-	domainRequires := mapping != nil && mapping.Require2FA && internalDomain
-	rememberAllowed := mapping != nil && mapping.RememberDeviceEnabled
-
-	confirmed, err := e.cfg.MFA.ConfirmedMethods(r.Context(), string(p.ID))
+	d, err := e.tf.Decide(r, p)
 	if err != nil {
 		return false, err
 	}
-
-	// Methods the user can actually challenge with: their confirmed factors,
-	// narrowed to the domain's allowed set when the domain enforces 2FA.
-	usable := methodStrings(confirmed)
-	if domainRequires {
-		usable = intersect(usable, mapping.Allowed2FAMethods)
-	}
-
-	if len(usable) > 0 {
-		// A remembered device skips the challenge for this browser.
-		if rememberAllowed {
-			if raw := e.readTrustedDeviceCookie(r); raw != "" {
-				ok, verr := e.cfg.MFA.VerifyTrustedDevice(r.Context(), string(p.ID), raw)
-				if verr != nil {
-					return false, verr
-				}
-				if ok {
-					return false, nil // satisfied → proceed
-				}
-			}
-		}
-		tok, err := e.cfg.MFATokens.Mint(string(p.ID), mfatoken.PurposePending, e.pendingTTL())
-		if err != nil {
-			return false, err
-		}
+	switch d.Kind {
+	case ChallengeOwed:
 		writeJSON(w, http.StatusOK, twoFactorResponse{
-			Status:                "mfa_required",
-			MFAToken:              tok,
-			Methods:               usable,
-			RememberDeviceAllowed: rememberAllowed,
+			Status: "mfa_required", MFAToken: d.Token, Methods: d.Methods, RememberDeviceAllowed: d.RememberAllowed,
 		})
 		return true, nil
+	case EnrollmentOwed:
+		writeJSON(w, http.StatusOK, twoFactorResponse{
+			Status: "enrollment_required", EnrollToken: d.Token, AllowedMethods: d.AllowedMethods,
+		})
+		return true, nil
+	case NoSecondFactor:
 	}
-
-	// No usable factor. Only the domain can compel enrollment. A passkey does
-	// NOT exempt the password path: a passkey holder who chooses to sign in
-	// with a password must still complete 2FA — and therefore enroll a factor.
-	// (Signing in WITH the passkey skips all of this on its own route.)
-	if !domainRequires {
-		return false, nil
-	}
-	tok, err := e.cfg.MFATokens.Mint(string(p.ID), mfatoken.PurposeEnroll, e.enrollTTL())
-	if err != nil {
-		return false, err
-	}
-	writeJSON(w, http.StatusOK, twoFactorResponse{
-		Status:         "enrollment_required",
-		EnrollToken:    tok,
-		AllowedMethods: mapping.Allowed2FAMethods,
-	})
-	return true, nil
+	return false, nil
 }
 
 // ── challenge / verify ─────────────────────────────────────────────────────
@@ -162,57 +112,16 @@ func (e *Endpoint) handle2FAVerify(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	p := e.principalFromToken(w, r, req.MFAToken, mfatoken.PurposePending)
-	if p == nil {
-		return
-	}
-
-	// Brute-force backoff on the second factor, keyed per (email, IP) — same
-	// store + policy as the password step. Failed verifies are recorded below,
-	// so repeated wrong codes throttle just like wrong passwords.
-	ip := clientIP(r)
-	email := emailOf(p)
-	if e.cfg.LoginAttempts != nil {
-		if d, derr := loginbackoff.Check(r.Context(), e.cfg.LoginAttempts, e.cfg.BackoffPolicy, email, ip); derr == nil && !d.Allowed {
-			writeTooManyRequests(w, d.RetryAfterSecs)
+	p, err := e.tf.Verify(w, r, req.MFAToken, req.Method, req.Code, req.RememberDevice)
+	if err != nil {
+		if errors.Is(err, ErrInvalidCode) {
+			writeUnauthorized(w, "Invalid or expired code")
 			return
 		}
-	}
-
-	var ok bool
-	var err error
-	method := strings.ToUpper(strings.TrimSpace(req.Method))
-	switch method {
-	case string(mfa.MethodTOTP):
-		ok, err = e.cfg.MFA.VerifyTOTP(r.Context(), string(p.ID), req.Code)
-	case string(mfa.MethodEmailPin):
-		ok, err = e.cfg.MFA.VerifyLoginEmailPin(r.Context(), string(p.ID), req.Code)
-	case "RECOVERY_CODE":
-		ok, err = e.cfg.MFA.VerifyRecoveryCode(r.Context(), string(p.ID), req.Code)
-	default:
-		writeJSON(w, http.StatusBadRequest, map[string]any{"code": "INVALID_METHOD", "message": "unknown 2FA method"})
+		e.write2FAErr(w, err)
 		return
 	}
-	if err != nil {
-		slog.Error("2FA verify failed", "principal", p.ID, "err", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"code": "VERIFY_FAILED", "message": "could not verify code"})
-		return
-	}
-	if !ok {
-		e.recordAttempt(r.Context(), loginattempt.OutcomeFailure, email, ids.StringPtr(&p.ID), ip, "Invalid 2FA code")
-		writeUnauthorized(w, "Invalid or expired code")
-		return
-	}
-
-	// A recovery code just got burned — let the user know out-of-band.
-	if method == "RECOVERY_CODE" {
-		e.cfg.Notifier.RecoveryCodeUsed(r.Context(), emailOf(p))
-	}
-	// Optional remember-this-device (only when the domain allows it).
-	if req.RememberDevice {
-		e.rememberDevice(w, r, p)
-	}
-	e.completeLogin(w, r, p, nil)
+	e.writeLoginOK(w, r, p, nil)
 }
 
 type challengeEmailRequest struct {
@@ -224,18 +133,8 @@ func (e *Endpoint) handle2FAChallengeEmail(w http.ResponseWriter, r *http.Reques
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	p := e.principalFromToken(w, r, req.MFAToken, mfatoken.PurposePending)
-	if p == nil {
-		return
-	}
-	email := emailOf(p)
-	if email == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"code": "NO_EMAIL", "message": "account has no email"})
-		return
-	}
-	if err := e.cfg.MFA.SendLoginEmailPin(r.Context(), string(p.ID), email); err != nil {
-		slog.Error("send email pin failed", "principal", p.ID, "err", err)
-		writeJSON(w, http.StatusBadGateway, map[string]any{"code": "EMAIL_SEND_FAILED", "message": "could not send code"})
+	if err := e.tf.SendChallengeEmail(r.Context(), req.MFAToken); err != nil {
+		e.write2FAErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"message": "A verification code has been sent to your email."})
@@ -257,43 +156,16 @@ func (e *Endpoint) handle2FAEnrollTOTPBegin(w http.ResponseWriter, r *http.Reque
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	p := e.principalFromToken(w, r, req.EnrollToken, mfatoken.PurposeEnroll)
-	if p == nil {
-		return
-	}
-	if !e.methodAllowed(r.Context(), p, mfa.MethodTOTP) {
-		writeJSON(w, http.StatusForbidden, map[string]any{"code": "METHOD_NOT_ALLOWED", "message": "authenticator app is not permitted for this domain"})
-		return
-	}
-	enr, err := e.cfg.MFA.BeginTOTPEnrollment(r.Context(), string(p.ID), emailOf(p))
+	enr, err := e.tf.BeginEnrollment(r.Context(), req.EnrollToken, mfa.MethodTOTP)
 	if err != nil {
-		e.writeEnrollErr(w, err)
+		e.writeEnrollErr(w, mfa.MethodTOTP, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"secret": enr.Secret, "uri": enr.URI, "qr": enr.QR})
 }
 
 func (e *Endpoint) handle2FAEnrollTOTPConfirm(w http.ResponseWriter, r *http.Request) {
-	var req enrollConfirmRequest
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	p := e.principalFromToken(w, r, req.EnrollToken, mfatoken.PurposeEnroll)
-	if p == nil {
-		return
-	}
-	ok, err := e.cfg.MFA.ConfirmTOTPEnrollment(r.Context(), string(p.ID), req.Code)
-	if err != nil {
-		e.writeEnrollErr(w, err)
-		return
-	}
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"code": "INVALID_CODE", "message": "that code didn't match — try again"})
-		return
-	}
-	e.cfg.Notifier.TwoFactorEnrolled(r.Context(), emailOf(p), string(mfa.MethodTOTP))
-	e.auditMFA(r.Context(), string(p.ID), "2FA_TOTP_ENROLLED")
-	e.completeEnrollment(w, r, p)
+	e.enrollConfirm(w, r, mfa.MethodTOTP)
 }
 
 func (e *Endpoint) handle2FAEnrollEmailBegin(w http.ResponseWriter, r *http.Request) {
@@ -301,157 +173,101 @@ func (e *Endpoint) handle2FAEnrollEmailBegin(w http.ResponseWriter, r *http.Requ
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	p := e.principalFromToken(w, r, req.EnrollToken, mfatoken.PurposeEnroll)
-	if p == nil {
-		return
-	}
-	if !e.methodAllowed(r.Context(), p, mfa.MethodEmailPin) {
-		writeJSON(w, http.StatusForbidden, map[string]any{"code": "METHOD_NOT_ALLOWED", "message": "email codes are not permitted for this domain"})
-		return
-	}
-	email := emailOf(p)
-	if email == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"code": "NO_EMAIL", "message": "account has no email"})
-		return
-	}
-	if err := e.cfg.MFA.BeginEmailEnrollment(r.Context(), string(p.ID), email); err != nil {
-		e.writeEnrollErr(w, err)
+	if _, err := e.tf.BeginEnrollment(r.Context(), req.EnrollToken, mfa.MethodEmailPin); err != nil {
+		e.writeEnrollErr(w, mfa.MethodEmailPin, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"message": "A verification code has been sent to your email."})
 }
 
 func (e *Endpoint) handle2FAEnrollEmailConfirm(w http.ResponseWriter, r *http.Request) {
+	e.enrollConfirm(w, r, mfa.MethodEmailPin)
+}
+
+// enrollConfirm confirms the enrolment and completes the login, returning the
+// first recovery codes once.
+func (e *Endpoint) enrollConfirm(w http.ResponseWriter, r *http.Request, method mfa.MethodType) {
 	var req enrollConfirmRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	p := e.principalFromToken(w, r, req.EnrollToken, mfatoken.PurposeEnroll)
-	if p == nil {
-		return
-	}
-	ok, err := e.cfg.MFA.ConfirmEmailEnrollment(r.Context(), string(p.ID), req.Code)
+	p, codes, err := e.tf.CompleteEnrollment(w, r, req.EnrollToken, method, req.Code)
 	if err != nil {
-		e.writeEnrollErr(w, err)
+		e.writeEnrollErr(w, method, err)
 		return
 	}
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"code": "INVALID_CODE", "message": "that code didn't match — try again"})
-		return
-	}
-	e.cfg.Notifier.TwoFactorEnrolled(r.Context(), emailOf(p), string(mfa.MethodEmailPin))
-	e.auditMFA(r.Context(), string(p.ID), "2FA_EMAIL_ENROLLED")
-	e.completeEnrollment(w, r, p)
+	e.writeLoginOK(w, r, p, codes)
 }
 
-// completeEnrollment generates a first recovery-code set (only if the user has
-// none yet) and completes the login, returning the codes once.
-func (e *Endpoint) completeEnrollment(w http.ResponseWriter, r *http.Request, p *principal.Principal) {
-	e.completeLogin(w, r, p, e.ensureRecoveryCodes(r.Context(), p))
+// ── answers ───────────────────────────────────────────────────────────────
+
+// write2FAErr answers a refusal of the flow.
+func (e *Endpoint) write2FAErr(w http.ResponseWriter, err error) {
+	var throttled *ThrottledError
+	var resend *mfa.ResendError
+	switch {
+	case errors.Is(err, ErrInvalidToken):
+		writeUnauthorized(w, "Invalid or expired session")
+	case errors.As(err, &throttled):
+		writeTooManyRequests(w, throttled.RetryAfterSecs)
+	case errors.As(err, &resend):
+		secs := int(math.Ceil(resend.Wait.Seconds()))
+		w.Header().Set("Retry-After", strconv.Itoa(secs))
+		writeJSON(w, http.StatusTooManyRequests, errBody("CODE_RECENTLY_SENT",
+			"A code was sent recently. Wait "+strconv.Itoa(secs)+" seconds before asking for another."))
+	case errors.Is(err, ErrInvalidMethod):
+		writeJSON(w, http.StatusBadRequest, errBody("INVALID_METHOD", "unknown 2FA method"))
+	case errors.Is(err, ErrMethodNotUsable):
+		writeJSON(w, http.StatusBadRequest, errBody("METHOD_NOT_ALLOWED", "that method is not available for this account"))
+	case errors.Is(err, ErrNoEmail):
+		writeJSON(w, http.StatusBadRequest, errBody("NO_EMAIL", "account has no email"))
+	case errors.Is(err, ErrSessionNotIssued):
+		// The factor passed; a mint failure is a server-side fault (signing key
+		// missing or unreadable). Internal keeps the cause off the wire.
+		httperror.Write(w, usecase.Internal("MINT_FAILED", "failed to mint session token", err))
+	case errors.Is(err, ErrEmailNotSent):
+		slog.Error("send email pin failed", "err", err)
+		writeJSON(w, http.StatusBadGateway, errBody("EMAIL_SEND_FAILED", "could not send code"))
+	default:
+		slog.Error("2FA verify failed", "err", err)
+		writeJSON(w, http.StatusInternalServerError, errBody("VERIFY_FAILED", "could not verify code"))
+	}
 }
 
-// auditMFA records a 2FA state change to the audit trail (best-effort).
-func (e *Endpoint) auditMFA(ctx context.Context, principalID, operation string) {
-	if e.cfg.Audit == nil {
-		return
+// writeEnrollErr answers a refused enrolment step of method.
+func (e *Endpoint) writeEnrollErr(w http.ResponseWriter, method mfa.MethodType, err error) {
+	switch {
+	case errors.Is(err, ErrInvalidToken):
+		writeUnauthorized(w, "Invalid or expired session")
+	case errors.Is(err, ErrEnrollmentNotOwed):
+		writeJSON(w, http.StatusConflict, errBody("ENROLLMENT_NOT_REQUIRED", "a second factor is already set up for this account; sign in again"))
+	case errors.Is(err, ErrInvalidCode):
+		writeJSON(w, http.StatusBadRequest, errBody("INVALID_CODE", "that code didn't match — try again"))
+	case errors.Is(err, ErrMethodNotAllowed):
+		msg := "email codes are not permitted for this domain"
+		if method == mfa.MethodTOTP {
+			msg = "authenticator app is not permitted for this domain"
+		}
+		writeJSON(w, http.StatusForbidden, errBody("METHOD_NOT_ALLOWED", msg))
+	case errors.Is(err, ErrInvalidMethod):
+		writeJSON(w, http.StatusBadRequest, errBody("INVALID_METHOD", "unknown 2FA method"))
+	case errors.Is(err, ErrNoEmail):
+		writeJSON(w, http.StatusBadRequest, errBody("NO_EMAIL", "account has no email"))
+	case errors.Is(err, ErrSessionNotIssued):
+		httperror.Write(w, usecase.Internal("MINT_FAILED", "failed to mint session token", err))
+	case errors.Is(err, mfa.ErrAlreadyEnrolled):
+		writeJSON(w, http.StatusConflict, errBody("ALREADY_ENROLLED", "that method is already set up"))
+	case errors.Is(err, mfa.ErrEncryptionUnavailable):
+		writeJSON(w, http.StatusServiceUnavailable, errBody("TOTP_UNAVAILABLE", "authenticator-app 2FA is not available"))
+	case errors.Is(err, mfa.ErrNoPendingEnrollment):
+		writeJSON(w, http.StatusBadRequest, errBody("NO_PENDING_ENROLLMENT", "start enrollment first"))
+	default:
+		slog.Error("2FA enrollment error", "err", err)
+		writeJSON(w, http.StatusInternalServerError, errBody("ENROLL_FAILED", "could not complete enrollment"))
 	}
-	pid := principalID
-	_ = e.cfg.Audit.Insert(ctx, &audit.Log{
-		ID:          tsid.Generate(tsid.AuditLog),
-		EntityType:  "PRINCIPAL",
-		EntityID:    principalID,
-		Operation:   operation,
-		PrincipalID: &pid,
-		PerformedAt: time.Now().UTC(),
-	})
-}
-
-// ensureRecoveryCodes generates a first recovery-code set only when the user
-// has none, returning the plaintext codes (shown once) or nil. Notifies on
-// generation. Recovery codes only back authenticator-app (TOTP) 2FA — email is
-// its own recovery channel, so an email-only user never gets them.
-func (e *Endpoint) ensureRecoveryCodes(ctx context.Context, p *principal.Principal) []string {
-	confirmed, err := e.cfg.MFA.ConfirmedMethods(ctx, string(p.ID))
-	if err != nil || !slices.Contains(confirmed, mfa.MethodTOTP) {
-		return nil
-	}
-	n, err := e.cfg.MFA.RemainingRecoveryCodes(ctx, string(p.ID))
-	if err != nil || n > 0 {
-		return nil
-	}
-	codes, gerr := e.cfg.MFA.GenerateRecoveryCodes(ctx, string(p.ID))
-	if gerr != nil {
-		slog.Error("recovery code generation failed", "principal", p.ID, "err", gerr)
-		return nil
-	}
-	e.cfg.Notifier.RecoveryCodesRegenerated(ctx, emailOf(p))
-	return codes
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
-
-// principalFromToken parses tok for the wanted purpose, loads the active
-// principal, and writes a 401 (returning nil) on any failure.
-func (e *Endpoint) principalFromToken(w http.ResponseWriter, r *http.Request, tok string, purpose mfatoken.Purpose) *principal.Principal {
-	claims, err := e.cfg.MFATokens.Parse(tok, purpose)
-	if err != nil {
-		writeUnauthorized(w, "Invalid or expired session")
-		return nil
-	}
-	p, err := e.cfg.Principals.FindByID(r.Context(), ids.PrincipalID(claims.Subject))
-	if err != nil || p == nil || !p.Active {
-		writeUnauthorized(w, "Invalid or expired session")
-		return nil
-	}
-	return p
-}
-
-// domainPolicy returns the email-domain mapping for the address and whether the
-// domain authenticates internally (no mapping → internal, no policy). Delegates
-// to the shared twofa.Policy so login and password-reset agree.
-func (e *Endpoint) domainPolicy(ctx context.Context, email string) (*emaildomainmapping.EmailDomainMapping, bool) {
-	ev := twofa.Policy{Mappings: e.cfg.Mappings, IDPs: e.cfg.IdentityProviders}.Evaluate(ctx, email)
-	return ev.Mapping, ev.Internal
-}
-
-// methodAllowed reports whether the user may enroll method t — always true
-// unless the domain enforces 2FA with a restricted allow-list.
-func (e *Endpoint) methodAllowed(ctx context.Context, p *principal.Principal, t mfa.MethodType) bool {
-	mapping, internal := e.domainPolicy(ctx, emailOf(p))
-	if mapping == nil || !mapping.Require2FA || !internal {
-		return true
-	}
-	return slices.Contains(mapping.Allowed2FAMethods, string(t))
-}
-
-// rememberDevice issues a trusted-device token and sets the cookie, honouring
-// the domain's remember-device policy (no-op when the domain disallows it).
-func (e *Endpoint) rememberDevice(w http.ResponseWriter, r *http.Request, p *principal.Principal) {
-	mapping, internal := e.domainPolicy(r.Context(), emailOf(p))
-	if mapping == nil || !mapping.RememberDeviceEnabled || !internal {
-		return
-	}
-	days := mapping.RememberDeviceDays
-	if days <= 0 {
-		days = 30
-	}
-	ttl := time.Duration(days) * 24 * time.Hour
-	label := userAgentLabel(r)
-	raw, err := e.cfg.MFA.IssueTrustedDevice(r.Context(), string(p.ID), label, ttl)
-	if err != nil {
-		slog.Error("issue trusted device failed", "principal", p.ID, "err", err)
-		return
-	}
-	http.SetCookie(w, platformmw.NewCookie(platformmw.CookieSpec{
-		Name: e.trustedDeviceCookieName(), Value: raw, Secure: e.cfg.CookieSecure,
-		SameSite: http.SameSiteStrictMode, TTL: ttl, SetExpires: true,
-	}))
-	labelStr := ""
-	if label != nil {
-		labelStr = *label
-	}
-	e.cfg.Notifier.NewTrustedDevice(r.Context(), emailOf(p), labelStr)
-}
 
 // clearTrustedDeviceCookie expires the browser's trusted-device cookie. The
 // server-side revocation is what actually invalidates the device; this just
@@ -465,47 +281,14 @@ func (e *Endpoint) clearTrustedDeviceCookie(w http.ResponseWriter) {
 }
 
 func (e *Endpoint) trustedDeviceCookieName() string {
-	if e.cfg.CookieSecure {
+	return trustedDeviceCookieName(e.cfg.CookieSecure)
+}
+
+func trustedDeviceCookieName(secure bool) string {
+	if secure {
 		return trustedDeviceCookieProd
 	}
 	return trustedDeviceCookieDev
-}
-
-func (e *Endpoint) readTrustedDeviceCookie(r *http.Request) string {
-	c, err := r.Cookie(e.trustedDeviceCookieName())
-	if err != nil {
-		return ""
-	}
-	return c.Value
-}
-
-func (e *Endpoint) pendingTTL() time.Duration {
-	if e.cfg.PendingTokenTTL > 0 {
-		return e.cfg.PendingTokenTTL
-	}
-	return defaultPendingTokenTTL
-}
-
-func (e *Endpoint) enrollTTL() time.Duration {
-	if e.cfg.EnrollTokenTTL > 0 {
-		return e.cfg.EnrollTokenTTL
-	}
-	return defaultEnrollTokenTTL
-}
-
-// writeEnrollErr maps the mfa service's sentinel errors to HTTP statuses.
-func (e *Endpoint) writeEnrollErr(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, mfa.ErrAlreadyEnrolled):
-		writeJSON(w, http.StatusConflict, map[string]any{"code": "ALREADY_ENROLLED", "message": "that method is already set up"})
-	case errors.Is(err, mfa.ErrEncryptionUnavailable):
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"code": "TOTP_UNAVAILABLE", "message": "authenticator-app 2FA is not available"})
-	case errors.Is(err, mfa.ErrNoPendingEnrollment):
-		writeJSON(w, http.StatusBadRequest, map[string]any{"code": "NO_PENDING_ENROLLMENT", "message": "start enrollment first"})
-	default:
-		slog.Error("2FA enrollment error", "err", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"code": "ENROLL_FAILED", "message": "could not complete enrollment"})
-	}
 }
 
 // ── small pure helpers ─────────────────────────────────────────────────────

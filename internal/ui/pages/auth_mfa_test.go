@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/mfatoken"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/twofa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
@@ -39,7 +40,9 @@ type fakeMFA struct {
 	// pendingSecret is what an enrollment hands out; totpConfirm what confirms it.
 	pendingURI  string
 	totpConfirm string
-	calls       []string
+	// sendErr is what sending a sign-in email code answers (nil: sent).
+	sendErr error
+	calls   []string
 }
 
 const (
@@ -78,6 +81,9 @@ func (f *fakeMFA) VerifyLoginEmailPin(_ context.Context, pid, code string) (bool
 }
 
 func (f *fakeMFA) SendLoginEmailPin(_ context.Context, pid, addr string) error {
+	if f.sendErr != nil {
+		return f.sendErr
+	}
 	f.call("send-pin:" + pid + ":" + addr)
 	return nil
 }
@@ -154,8 +160,12 @@ func (f *fakeMFA) RevokeTrustedDevice(_ context.Context, pid, id string) error {
 	return nil
 }
 
-// fakeTokens accepts "pending:<id>" and "enroll:<id>" tokens.
+// fakeTokens accepts (and mints) "pending:<id>" and "enroll:<id>" tokens.
 type fakeTokens struct{}
+
+func (fakeTokens) Mint(subject string, purpose mfatoken.Purpose, _ time.Duration) (string, error) {
+	return map[mfatoken.Purpose]string{mfatoken.PurposePending: "pending:", mfatoken.PurposeEnroll: "enroll:"}[purpose] + subject, nil
+}
 
 func (fakeTokens) Parse(token string, want mfatoken.Purpose) (*mfatoken.Claims, error) {
 	prefix := map[mfatoken.Purpose]string{mfatoken.PurposePending: "pending:", mfatoken.PurposeEnroll: "enroll:"}[want]
@@ -199,6 +209,10 @@ func (f *fakePasskeys) Revoke(_ context.Context, id string) error {
 	return nil
 }
 
+// testTrustedDeviceCookie is the trusted-device cookie over plain HTTP (the
+// login flow's name; __Host-fc_td when Secure).
+const testTrustedDeviceCookie = "fc_td"
+
 func mfaUser(id, email string) *principal.Principal {
 	return &principal.Principal{
 		ID: ids.PrincipalID(id), Type: principal.TypeUser, Scope: principal.ScopeAnchor, Name: id, Active: true,
@@ -236,8 +250,8 @@ func newMFAHarness() *mfaHarness {
 // build wires the page from the current fakes (call after changing them).
 func (h *mfaHarness) build() *AuthMFA {
 	h.page = &AuthMFA{
-		MFA: h.mfa, Tokens: fakeTokens{}, Policy: h.policy, Principals: h.users, Sessions: h.sessions,
-		Passkeys: h.keys, PasskeyOps: h.keys, Shell: shellForTest(),
+		Flow:       &login.TwoFactor{MFA: h.mfa, Tokens: fakeTokens{}, Policy: h.policy, Principals: h.users, Sessions: h.sessions},
+		Principals: h.users, Passkeys: h.keys, PasskeyOps: h.keys, Shell: shellForTest(),
 	}
 	return h.page
 }
@@ -408,7 +422,7 @@ func TestVerifyCompletesTheSignIn(t *testing.T) {
 	if c := mfaCookie(rec, authChallengeCookie); c == nil || c.MaxAge >= 0 {
 		t.Fatalf("the challenge cookie was not ended: %v", c)
 	}
-	if mfaCookie(rec, trustedDeviceCookieDev) != nil {
+	if mfaCookie(rec, testTrustedDeviceCookie) != nil {
 		t.Error("a device was remembered without being asked")
 	}
 
@@ -442,6 +456,55 @@ func TestVerifyRefusesAWrongCode(t *testing.T) {
 	mfaWantNoSession(t, rec, h)
 }
 
+// The domain's allowed set is enforced when the code is checked, not only when
+// the methods are offered: a factor the domain no longer allows is dead, and
+// recovery codes need a usable authenticator app.
+func TestVerifyEnforcesTheDomainsMethods(t *testing.T) {
+	h := newMFAHarness()
+	h.mfa.confirmed["prn_ann"] = []mfa.MethodType{mfa.MethodTOTP, mfa.MethodEmailPin}
+	h.policy.ev = mfaRequired(false, "TOTP")
+	h.build()
+	rec := h.serve(t, nil, mfaPost("/ui/auth/2fa/verify", url.Values{"method": {"EMAIL_PIN"}, "code": {"654321"}}, pendingCk("prn_ann")))
+	if rec.Code != http.StatusBadRequest || h.mfa.called("verify-email:") {
+		t.Fatalf("an email code on a TOTP-only domain: status %d, calls %v", rec.Code, h.mfa.calls)
+	}
+	mfaWantNoSession(t, rec, h)
+	rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/email", nil, pendingCk("prn_ann")))
+	if rec.Code != http.StatusUnprocessableEntity || h.mfa.called("send-pin:") {
+		t.Fatalf("an email code sent on a TOTP-only domain: status %d, calls %v", rec.Code, h.mfa.calls)
+	}
+
+	// An email-only user (or one whose TOTP the domain no longer allows) has no
+	// recovery codes to use, whatever is left in the store.
+	h.mfa.confirmed["prn_ann"] = []mfa.MethodType{mfa.MethodEmailPin}
+	h.policy.ev = mfaRequired(false, "EMAIL_PIN")
+	h.build()
+	rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/verify", url.Values{"method": {"RECOVERY_CODE"}, "code": {"AAAAA-BBBBB"}}, pendingCk("prn_ann")))
+	if rec.Code != http.StatusBadRequest || h.mfa.called("verify-recovery:") {
+		t.Fatalf("a recovery code without TOTP: status %d, calls %v", rec.Code, h.mfa.calls)
+	}
+	mfaWantNoSession(t, rec, h)
+	mustNotContain(t, h.serve(t, nil, req{target: "/ui/auth/2fa", cookie: pendingCk("prn_ann")}).Body.String(), "Use a recovery code")
+	h.mfa.confirmed["prn_ann"] = []mfa.MethodType{mfa.MethodTOTP, mfa.MethodEmailPin}
+	rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/verify", url.Values{"method": {"RECOVERY_CODE"}, "code": {"AAAAA-BBBBB"}}, pendingCk("prn_ann")))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("a recovery code with a TOTP factor the domain does not allow: status %d", rec.Code)
+	}
+}
+
+// Asking for another email code within the resend interval sends none; the
+// code already sent is still the one to enter.
+func TestEmailChallengeCooldown(t *testing.T) {
+	h := newMFAHarness()
+	h.mfa.confirmed["prn_ann"] = []mfa.MethodType{mfa.MethodEmailPin}
+	h.mfa.sendErr = &mfa.ResendError{Wait: 42 * time.Second}
+	rec := h.serve(t, nil, mfaPost("/ui/auth/2fa/email", nil, pendingCk("prn_ann")))
+	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") != "42" {
+		t.Fatalf("status %d, Retry-After %q", rec.Code, rec.Header().Get("Retry-After"))
+	}
+	mustContain(t, rec.Body.String(), "A code was sent recently. Wait 42 seconds", `name="code"`)
+}
+
 func TestVerifyIsPerUserAndRecoveryCodesBurn(t *testing.T) {
 	h := newMFAHarness()
 	h.mfa.confirmed["prn_ann"] = []mfa.MethodType{mfa.MethodTOTP}
@@ -464,14 +527,14 @@ func TestVerifyRemembersTheDeviceOnlyWhenTheDomainAllows(t *testing.T) {
 
 	rec := h.serve(t, nil, mfaPost("/ui/auth/2fa/verify", form, pendingCk("prn_ann")))
 	mfaWantRedirect(t, rec, "/ui/")
-	if mfaCookie(rec, trustedDeviceCookieDev) != nil || h.mfa.called("trust:") {
+	if mfaCookie(rec, testTrustedDeviceCookie) != nil || h.mfa.called("trust:") {
 		t.Error("the domain does not allow remembering, a device was remembered")
 	}
 
 	h.policy.ev = mfaRequired(true, "TOTP")
 	h.build()
 	rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/verify", form, pendingCk("prn_ann")))
-	c := mfaCookie(rec, trustedDeviceCookieDev)
+	c := mfaCookie(rec, testTrustedDeviceCookie)
 	if c == nil || c.Value != "TRUSTED-RAW" || !c.HttpOnly || c.SameSite != http.SameSiteStrictMode || c.MaxAge != 7*24*3600 {
 		t.Fatalf("trusted device cookie = %+v", c)
 	}
@@ -514,13 +577,17 @@ func TestStartHandsOverTheToken(t *testing.T) {
 	if c == nil || c.Value != "pending:prn_ann" || !c.HttpOnly || c.Path != "/ui/auth" || c.MaxAge != 600 {
 		t.Fatalf("challenge cookie = %+v", c)
 	}
-	rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/start", url.Values{"token": {"enroll:prn_ann"}}, nil))
+	rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/start", url.Values{"token": {"enroll:prn_bob"}}, nil))
 	mfaWantRedirect(t, rec, "/ui/auth/2fa/enroll?next=%2Fui%2F")
 	if c := mfaCookie(rec, authChallengeCookie); c == nil || c.MaxAge != 1800 {
 		t.Fatalf("enroll cookie = %+v", c)
 	}
-	// A token of the other purpose, a bad one or one of an inactive user starts nothing.
-	for _, tok := range []string{"enroll:prn_ann", "garbage", "", "pending:prn_off", "pending:prn_nobody"} {
+	// An enroll token of a user who has a factor by now starts nothing: the
+	// challenge is their way in.
+	mfaWantRedirect(t, h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/start", url.Values{"token": {"enroll:prn_ann"}}, nil)), guard.LoginPath)
+	// A token of the other purpose, a bad one, one of an inactive user or of a
+	// user without a factor to challenge starts nothing.
+	for _, tok := range []string{"enroll:prn_ann", "garbage", "", "pending:prn_off", "pending:prn_nobody", "pending:prn_bob"} {
 		rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/start", url.Values{"token": {tok}}, nil))
 		mfaWantRedirect(t, rec, guard.LoginPath)
 		if c := mfaCookie(rec, authChallengeCookie); c != nil && c.MaxAge >= 0 {
@@ -585,15 +652,17 @@ func TestEnrollTOTPShowsTheKeyAndAQRCodeOnce(t *testing.T) {
 	mustNotContain(t, h.serve(t, nil, req{target: "/ui/auth/2fa/enroll", cookie: enrollCk("prn_ann")}).Body.String(), testTOTPSecret)
 }
 
-// The enroll token alone is no session: only a confirmed factor (and the
-// Continue step) ends in one.
+// The enroll token alone is no session: only a factor confirmed in this flow
+// ends in one, and only while the account still owes a factor.
 func TestEnrollmentIsTheOnlyWayPastTheEnrollToken(t *testing.T) {
 	h := newMFAHarness()
 	h.policy.ev = mfaRequired(false, "TOTP", "EMAIL_PIN")
 
-	// Done without a factor: back to the enrollment, no session.
+	// There is no "done" step to post past the enrolment.
 	rec := h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/done", url.Values{"next": {"/ui/users"}}, enrollCk("prn_ann")))
-	mfaWantRedirect(t, rec, "/ui/auth/2fa/enroll?next=%2Fui%2Fusers")
+	if rec.Code < 400 {
+		t.Errorf("enroll/done: status %d", rec.Code)
+	}
 	mfaWantNoSession(t, rec, h)
 
 	// A wrong code: the form again, the QR code still there to retry with.
@@ -608,27 +677,56 @@ func TestEnrollmentIsTheOnlyWayPastTheEnrollToken(t *testing.T) {
 	rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/totp/confirm", url.Values{"code": {"999999"}, "uri": {"javascript:alert(1)"}}, enrollCk("prn_ann")))
 	mustNotContain(t, rec.Body.String(), "javascript:", `aria-label="Authenticator QR code"`)
 	mfaWantNoSession(t, rec, h)
-	rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/done", nil, enrollCk("prn_ann")))
-	mfaWantNoSession(t, rec, h)
 
-	// The right code: the recovery codes, once, and still no session.
+	// A factor that was not enrolled in this flow: the user (or an admin
+	// widening the allowed methods) gave the account one elsewhere. The enroll
+	// token now buys nothing: no menu, no setup, no confirm, no session, and
+	// the factor is not enrolled over.
+	h.mfa.confirmed["prn_ann"] = []mfa.MethodType{mfa.MethodEmailPin}
+	h.mfa.calls = nil
+	for _, q := range []req{
+		{target: "/ui/auth/2fa/enroll", cookie: enrollCk("prn_ann")},
+		mfaPost("/ui/auth/2fa/enroll/totp", nil, enrollCk("prn_ann")),
+		mfaPost("/ui/auth/2fa/enroll/totp/confirm", url.Values{"code": {"111111"}, "uri": {testTOTPURI}}, enrollCk("prn_ann")),
+		mfaPost("/ui/auth/2fa/enroll/email", nil, enrollCk("prn_ann")),
+		mfaPost("/ui/auth/2fa/enroll/email/confirm", url.Values{"code": {"654321"}}, enrollCk("prn_ann")),
+		mfaPost("/ui/auth/2fa/enroll/done", nil, enrollCk("prn_ann")),
+	} {
+		rec = h.serve(t, nil, q)
+		mfaWantNoSession(t, rec, h)
+		if rec.Code == http.StatusOK {
+			t.Errorf("%s %s with a factor already set up: status %d", q.method, q.target, rec.Code)
+		}
+	}
+	if h.mfa.called("begin-") || h.mfa.called("confirm-") {
+		t.Errorf("the enroll token still enrolled: %v", h.mfa.calls)
+	}
+	// A factor the domain does not allow does not count: the enrolment is still owed.
+	h.policy.ev = mfaRequired(false, "TOTP")
+	h.build()
+
+	// The right code: the session, and the recovery codes, once.
 	rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/totp/confirm", url.Values{"code": {"111111"}, "uri": {testTOTPURI}, "next": {"/ui/users"}}, enrollCk("prn_ann")))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("right code: status %d\n%s", rec.Code, rec.Body.String())
 	}
-	mustContain(t, rec.Body.String(), "Recovery codes", "NEWCD-00001", "NEWCD-00002", `action="/ui/auth/2fa/enroll/done"`)
+	mustContain(t, rec.Body.String(), "Recovery codes", "NEWCD-00001", "NEWCD-00002", `href="/ui/users"`)
 	mustNotContain(t, rec.Body.String(), testTOTPSecret)
-	mfaWantNoSession(t, rec, h)
+	if c := mfaCookie(rec, "fc_session"); c == nil || c.Value != "SESSION-JWT-prn_ann" {
+		t.Fatalf("session cookie = %v", c)
+	}
+	if c := mfaCookie(rec, authChallengeCookie); c == nil || c.MaxAge >= 0 {
+		t.Fatalf("the challenge cookie was not ended: %v", c)
+	}
 	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
 		t.Errorf("Cache-Control = %q", cc)
 	}
 
-	// Continue: now the session, and the enrollment is over.
-	rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/done", url.Values{"next": {"/ui/users"}}, enrollCk("prn_ann")))
-	mfaWantRedirect(t, rec, "/ui/users")
-	if c := mfaCookie(rec, "fc_session"); c == nil || c.Value != "SESSION-JWT-prn_ann" {
-		t.Fatalf("session cookie = %v", c)
-	}
+	// The enrolment is over: the same token enrols nothing more.
+	h.sessions.minted = nil
+	rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/totp/confirm", url.Values{"code": {"111111"}}, enrollCk("prn_ann")))
+	mfaWantRedirect(t, rec, guard.LoginPath)
+	mfaWantNoSession(t, rec, h)
 }
 
 func TestEnrollEmailCompletesAtOnce(t *testing.T) {
@@ -872,4 +970,13 @@ func TestPasskeySignInPage(t *testing.T) {
 	// Only the pages that use it load the bundle.
 	h.mfa.confirmed["prn_ann"] = []mfa.MethodType{mfa.MethodTOTP}
 	mustNotContain(t, h.serve(t, nil, req{target: "/ui/auth/2fa", cookie: pendingCk("prn_ann")}).Body.String(), "fc-webauthn")
+}
+
+func TestPasskeySignInPageByPost(t *testing.T) {
+	h := newMFAHarness()
+	rec := h.serve(t, nil, mfaPost("/ui/auth/passkey", url.Values{"next": {"/ui/users"}, "email": {"ann@x.test"}}, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	mustContain(t, rec.Body.String(), "data-fc-passkey-signin", `data-next="/ui/users"`, `value="ann@x.test"`)
 }
