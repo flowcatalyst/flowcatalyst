@@ -139,7 +139,7 @@ func edmPage(v edmView) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.drawerSignals())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 82, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 82, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 		if templ_7745c5c3_Err != nil {
@@ -180,7 +180,7 @@ func edmPage(v edmView) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(edmDialogSlot)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 90, Col: 25}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 90, Col: 25}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 		if templ_7745c5c3_Err != nil {
@@ -383,7 +383,7 @@ func edmTable(v edmView) templ.Component {
 						var templ_7745c5c3_Var13 templ.SafeURL
 						templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(row.DetailHref)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 122, Col: 29}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 122, Col: 29}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 						if templ_7745c5c3_Err != nil {
@@ -396,7 +396,7 @@ func edmTable(v edmView) templ.Component {
 						var templ_7745c5c3_Var14 string
 						templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(liveLink)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 122, Col: 130}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 122, Col: 130}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 						if templ_7745c5c3_Err != nil {
@@ -409,7 +409,7 @@ func edmTable(v edmView) templ.Component {
 						var templ_7745c5c3_Var15 string
 						templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(row.Domain)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 122, Col: 145}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 122, Col: 145}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 						if templ_7745c5c3_Err != nil {
@@ -444,7 +444,7 @@ func edmTable(v edmView) templ.Component {
 						var templ_7745c5c3_Var17 string
 						templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(row.Provider)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 125, Col: 19}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 125, Col: 19}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 						if templ_7745c5c3_Err != nil {
@@ -502,7 +502,7 @@ func edmTable(v edmView) templ.Component {
 							var templ_7745c5c3_Var20 string
 							templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(row.Client)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 132, Col: 18}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 132, Col: 18}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 							if templ_7745c5c3_Err != nil {
@@ -543,7 +543,7 @@ func edmTable(v edmView) templ.Component {
 						var templ_7745c5c3_Var22 string
 						templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.CreatedISO)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 138, Col: 36}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 138, Col: 36}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 						if templ_7745c5c3_Err != nil {
@@ -556,7 +556,7 @@ func edmTable(v edmView) templ.Component {
 						var templ_7745c5c3_Var23 string
 						templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(row.Created)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 138, Col: 52}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 138, Col: 52}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 						if templ_7745c5c3_Err != nil {
@@ -775,7 +775,7 @@ func edmDrawerBody(d edmDetail) templ.Component {
 						var templ_7745c5c3_Var31 string
 						templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(d.Tenant)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 175, Col: 22}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 175, Col: 22}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 						if templ_7745c5c3_Err != nil {
@@ -1071,7 +1071,7 @@ func edmFormDialogC(f edmForm) templ.Component {
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.signals())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 232, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 232, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
 			if templ_7745c5c3_Err != nil {
@@ -1117,7 +1117,7 @@ func edmFormDialogC(f edmForm) templ.Component {
 						var templ_7745c5c3_Var45 string
 						templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(f.Domain)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 237, Col: 43}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 237, Col: 43}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 						if templ_7745c5c3_Err != nil {
@@ -1199,7 +1199,7 @@ func edmFormDialogC(f edmForm) templ.Component {
 				var templ_7745c5c3_Var47 string
 				templ_7745c5c3_Var47, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.Scope == "ANCHOR"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 255, Col: 90}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 255, Col: 90}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 				if templ_7745c5c3_Err != nil {
@@ -1220,7 +1220,7 @@ func edmFormDialogC(f edmForm) templ.Component {
 				var templ_7745c5c3_Var48 string
 				templ_7745c5c3_Var48, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.Scope == "PARTNER"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 258, Col: 92}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 258, Col: 92}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 				if templ_7745c5c3_Err != nil {
@@ -1251,7 +1251,7 @@ func edmFormDialogC(f edmForm) templ.Component {
 			var templ_7745c5c3_Var49 string
 			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id("twofactor"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 263, Col: 30}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 263, Col: 30}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var49)
 			if templ_7745c5c3_Err != nil {
@@ -1264,7 +1264,7 @@ func edmFormDialogC(f edmForm) templ.Component {
 			var templ_7745c5c3_Var50 string
 			templ_7745c5c3_Var50, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.show2FA()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 263, Col: 136}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 263, Col: 136}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 			if templ_7745c5c3_Err != nil {
@@ -1434,7 +1434,7 @@ func edmField(f edmForm, key string) templ.Component {
 			var templ_7745c5c3_Var56 string
 			templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-wrap")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 294, Col: 32}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 294, Col: 32}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var56)
 			if templ_7745c5c3_Err != nil {
@@ -1447,7 +1447,7 @@ func edmField(f edmForm, key string) templ.Component {
 			var templ_7745c5c3_Var57 string
 			templ_7745c5c3_Var57, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.clientShown()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 294, Col: 111}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 294, Col: 111}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 			if templ_7745c5c3_Err != nil {
@@ -1494,7 +1494,7 @@ func edmField(f edmForm, key string) templ.Component {
 			var templ_7745c5c3_Var59 string
 			templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-wrap")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 303, Col: 32}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 303, Col: 32}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var59)
 			if templ_7745c5c3_Err != nil {
@@ -1507,7 +1507,7 @@ func edmField(f edmForm, key string) templ.Component {
 			var templ_7745c5c3_Var60 string
 			templ_7745c5c3_Var60, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.showTenant()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 303, Col: 116}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 303, Col: 116}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
 			if templ_7745c5c3_Err != nil {
@@ -1551,7 +1551,7 @@ func edmField(f edmForm, key string) templ.Component {
 			var templ_7745c5c3_Var62 string
 			templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-field")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 309, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 309, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var62)
 			if templ_7745c5c3_Err != nil {
@@ -1577,7 +1577,7 @@ func edmField(f edmForm, key string) templ.Component {
 			var templ_7745c5c3_Var63 string
 			templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-field")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 314, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 314, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var63)
 			if templ_7745c5c3_Err != nil {
@@ -1590,7 +1590,7 @@ func edmField(f edmForm, key string) templ.Component {
 			var templ_7745c5c3_Var64 string
 			templ_7745c5c3_Var64, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.Require2FA))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 314, Col: 94}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 314, Col: 94}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
 			if templ_7745c5c3_Err != nil {
@@ -1603,7 +1603,7 @@ func edmField(f edmForm, key string) templ.Component {
 			var templ_7745c5c3_Var65 string
 			templ_7745c5c3_Var65, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.describedBy(key))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 315, Col: 79}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 315, Col: 79}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var65)
 			if templ_7745c5c3_Err != nil {
@@ -1631,7 +1631,7 @@ func edmField(f edmForm, key string) templ.Component {
 				var templ_7745c5c3_Var66 string
 				templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-err")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 322, Col: 32}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 322, Col: 32}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var66)
 				if templ_7745c5c3_Err != nil {
@@ -1644,7 +1644,7 @@ func edmField(f edmForm, key string) templ.Component {
 				var templ_7745c5c3_Var67 string
 				templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.JoinStringErrs(f.fieldError(key))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 322, Col: 100}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 322, Col: 100}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var67))
 				if templ_7745c5c3_Err != nil {
@@ -1667,7 +1667,7 @@ func edmField(f edmForm, key string) templ.Component {
 			var templ_7745c5c3_Var68 string
 			templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-field")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 327, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 327, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var68)
 			if templ_7745c5c3_Err != nil {
@@ -1680,7 +1680,7 @@ func edmField(f edmForm, key string) templ.Component {
 			var templ_7745c5c3_Var69 string
 			templ_7745c5c3_Var69, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.Require2FA))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 327, Col: 94}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 327, Col: 94}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var69))
 			if templ_7745c5c3_Err != nil {
@@ -1706,7 +1706,7 @@ func edmField(f edmForm, key string) templ.Component {
 			var templ_7745c5c3_Var70 string
 			templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-field-wrap")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 331, Col: 38}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 331, Col: 38}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var70)
 			if templ_7745c5c3_Err != nil {
@@ -1719,7 +1719,7 @@ func edmField(f edmForm, key string) templ.Component {
 			var templ_7745c5c3_Var71 string
 			templ_7745c5c3_Var71, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.Require2FA && f.Remember))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 331, Col: 128}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 331, Col: 128}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var71))
 			if templ_7745c5c3_Err != nil {
@@ -1798,7 +1798,7 @@ func edmMoveNotice(f edmForm) templ.Component {
 		var templ_7745c5c3_Var74 string
 		templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id("move-field"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `email_domains.templ`, Line: 350, Col: 29}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/email_domains.templ`, Line: 350, Col: 29}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var74)
 		if templ_7745c5c3_Err != nil {

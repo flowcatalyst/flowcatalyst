@@ -57,8 +57,10 @@ func (p FormDialogProps) dialogAttrs() templ.Attributes {
 	if p.Open {
 		a["open"] = true
 		// A dialog rendered open is non-modal; reopen it as a modal (focus
-		// trap, Escape, inert page) once Datastar processes it.
-		a["data-init"] = "el.open && el.close(); el.showModal()"
+		// trap, Escape, inert page) once Datastar processes it. Removing the
+		// attribute rather than calling close() fires no close event, so a
+		// dialog that removes itself on close survives start-up.
+		a["data-init"] = "el.removeAttribute('open'); el.showModal()"
 	}
 	return a
 }

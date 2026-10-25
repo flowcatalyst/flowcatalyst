@@ -80,7 +80,9 @@ func newProcHarness() *procHarness {
 	ship := proc("prc_1", "orders:fulfilment:shipment-flow", "Shipment Flow", process.StatusCurrent)
 	ship.Description = &desc
 	ship.Tags = []string{"fulfilment", "billing"}
-	ship.Body = "graph TD\n  A[Start] --> B{<script>alert(1)</script>}"
+	// A label carrying a Datastar attribute: the drawing's view is data-ignore
+	// and fc-diagram.js strips Datastar attributes (see the kit's diagram.md).
+	ship.Body = "graph TD\n  A[Start] --> B{<script>alert(1)</script>}\n  B --> C[\"<span data-init='alert(2)'>x</span>\"]"
 	refund := proc("prc_2", "orders:billing:refunds", "Refunds", process.StatusArchived)
 	onboard := proc("prc_3", "crm:accounts:onboarding", "Onboarding", process.StatusCurrent)
 	onboard.DiagramType = "plantuml"
@@ -168,8 +170,9 @@ func TestProcessDrawer(t *testing.T) {
 	cur := h.do(t, anchorAdmin(), req{target: "/ui/processes/prc_1", datastar: true})
 	mustContain(t, cur, `"selProc":"prc_1"`, "Ships &lt;orders&gt;", `href="/ui/processes/prc_1/edit"`, `data-action="/ui/processes/prc_1/archive"`,
 		`<fc-diagram class="block" data-bundle="/ui/assets/mermaid.`, `class="fc-code-block mt-2"`,
-		"B{&lt;script&gt;alert(1)&lt;/script&gt;}", `role="img" aria-label="Diagram of `, ">fulfilment<")
-	mustNotContain(t, cur, "<script>alert", `/ui/processes/prc_1/delete`, "current UI")
+		"B{&lt;script&gt;alert(1)&lt;/script&gt;}", `role="img" aria-label="Diagram of `, ">fulfilment<",
+		"&lt;span data-init=&#39;alert(2)&#39;&gt;x&lt;/span&gt;", ` hidden data-ignore></div>`)
+	mustNotContain(t, cur, "<script>alert", "<span data-init", `/ui/processes/prc_1/delete`, "current UI")
 
 	arch := h.do(t, anchorAdmin(), req{target: "/ui/processes/prc_2", datastar: true})
 	mustContain(t, arch, `data-action="/ui/processes/prc_2/delete"`, "No diagram body yet.", ">ARCHIVED<")

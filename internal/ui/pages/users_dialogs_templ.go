@@ -136,7 +136,7 @@ func usrDomainRegion(f usrCreateForm) templ.Component {
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(*f.Check.Warning)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 36, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 36, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -154,7 +154,7 @@ func usrDomainRegion(f usrCreateForm) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(*f.Check.Info)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 38, Col: 59}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 38, Col: 59}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -429,7 +429,7 @@ func usrLinkDialogC(link string) templ.Component {
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(link)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 123, Col: 87}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 123, Col: 87}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -582,7 +582,7 @@ func usrEditDialogC(f usrEditForm) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.scopeSignals())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 152, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 152, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 			if templ_7745c5c3_Err != nil {
@@ -682,7 +682,7 @@ func usrEditField(f usrEditForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: usrScopeOptions, Selected: f.Scope, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:usr-scope": true}}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.scopeOptions(), Selected: f.Scope, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:usr-scope": true}}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -726,7 +726,7 @@ func usrClientFieldProps(f usrEditForm, key string) kit.FieldProps {
 	if !f.CanPickClient {
 		p.Description = "Choosing a client needs permission to view clients."
 	}
-	p.Attrs["data-show"] = "$usrScope !== 'ANCHOR'"
+	p.Attrs["data-show"] = "$usrScope === 'CLIENT' || $usrScope === 'PARTNER'"
 	return p
 }
 
@@ -929,7 +929,7 @@ func usrRolesDialogC(f usrRolesForm) templ.Component {
 				var templ_7745c5c3_Var33 string
 				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(f.Choices.Hidden))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 234, Col: 36}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 232, Col: 36}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 				if templ_7745c5c3_Err != nil {
@@ -1008,7 +1008,7 @@ func usrAppsDialogC(f usrAppsForm) templ.Component {
 					var templ_7745c5c3_Var36 string
 					templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(a.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 254, Col: 40}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 251, Col: 40}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 					if templ_7745c5c3_Err != nil {
@@ -1021,7 +1021,7 @@ func usrAppsDialogC(f usrAppsForm) templ.Component {
 					var templ_7745c5c3_Var37 string
 					templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(a.Code)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 255, Col: 58}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 252, Col: 58}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 					if templ_7745c5c3_Err != nil {
@@ -1034,7 +1034,7 @@ func usrAppsDialogC(f usrAppsForm) templ.Component {
 					var templ_7745c5c3_Var38 string
 					templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.ResolveAttributeValue(a.ID)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 256, Col: 61}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 253, Col: 61}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
 					if templ_7745c5c3_Err != nil {
@@ -1213,7 +1213,7 @@ func usrImportDialogC(f usrImportForm) templ.Component {
 			var templ_7745c5c3_Var45 string
 			templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.ResolveAttributeValue(usrImportDialog + "-form")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 300, Col: 38}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 296, Col: 38}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var45)
 			if templ_7745c5c3_Err != nil {
@@ -1226,7 +1226,7 @@ func usrImportDialogC(f usrImportForm) templ.Component {
 			var templ_7745c5c3_Var46 templ.SafeURL
 			templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinURLErrs(usersPath + "/import")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 300, Col: 85}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 296, Col: 85}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 			if templ_7745c5c3_Err != nil {
@@ -1239,7 +1239,7 @@ func usrImportDialogC(f usrImportForm) templ.Component {
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.ResolveAttributeValue(kit.SubmitForm)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 300, Col: 246}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 296, Col: 246}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var47)
 			if templ_7745c5c3_Err != nil {
@@ -1274,7 +1274,7 @@ func usrImportDialogC(f usrImportForm) templ.Component {
 			var templ_7745c5c3_Var48 templ.SafeURL
 			templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(usersPath + "/import/template.csv"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 307, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 303, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 			if templ_7745c5c3_Err != nil {
@@ -1399,7 +1399,7 @@ func usrImportField(f usrImportForm, key string) templ.Component {
 				var templ_7745c5c3_Var53 string
 				templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.ClientID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 325, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 321, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var53)
 				if templ_7745c5c3_Err != nil {
@@ -1695,7 +1695,7 @@ func usrImportReportC(res api.BulkImportResponse) templ.Component {
 										var templ_7745c5c3_Var68 string
 										templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(row.Row))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 372, Col: 32}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 368, Col: 32}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var68))
 										if templ_7745c5c3_Err != nil {
@@ -1726,7 +1726,7 @@ func usrImportReportC(res api.BulkImportResponse) templ.Component {
 										var templ_7745c5c3_Var70 string
 										templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinStringErrs(row.Email)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 375, Col: 20}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 371, Col: 20}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
 										if templ_7745c5c3_Err != nil {
@@ -1769,7 +1769,7 @@ func usrImportReportC(res api.BulkImportResponse) templ.Component {
 											var templ_7745c5c3_Var73 string
 											templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(row.Status)
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 379, Col: 22}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 375, Col: 22}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 											if templ_7745c5c3_Err != nil {
@@ -1806,7 +1806,7 @@ func usrImportReportC(res api.BulkImportResponse) templ.Component {
 										var templ_7745c5c3_Var75 string
 										templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.JoinStringErrs(row.Message)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `users_dialogs.templ`, Line: 383, Col: 22}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/users_dialogs.templ`, Line: 379, Col: 22}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
 										if templ_7745c5c3_Err != nil {

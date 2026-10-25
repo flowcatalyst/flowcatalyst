@@ -245,7 +245,8 @@ func (n fnsNames) label(clientID *string) string {
 	return cmp.Or(n[*clientID], *clientID)
 }
 
-// filterOptions are the SPA's: every application (applicationsApi.list()),
+// filterOptions are the SPA's: the applications (applicationsApi.list(), here
+// narrowed to the caller's reach),
 // and the active clients the caller can access.
 func (h *Functions) filterOptions(ctx context.Context, ac *auth.AuthContext) (apps, clients []kit.Option, err error) {
 	if h.Apps != nil && auth.CanReadApplications(ac) == nil {
@@ -253,7 +254,7 @@ func (h *Functions) filterOptions(ctx context.Context, ac *auth.AuthContext) (ap
 		if err != nil {
 			return nil, nil, usecase.Internal("REPO", "find applications failed", err)
 		}
-		apps = fnsApplicationOptions(as)
+		apps = fnsApplicationOptions(ac, as)
 	}
 	if h.ClientNames != nil {
 		cs, err := h.ClientNames.FindAll(ctx)
@@ -270,9 +271,16 @@ func (h *Functions) filterOptions(ctx context.Context, ac *auth.AuthContext) (ap
 	return apps, clients, nil
 }
 
-func fnsApplicationOptions(as []application.Application) []kit.Option {
+// fnsApplicationOptions offers the applications the caller may see: every
+// one to a holder of the admin application view (CanReadAllApplications),
+// else only the applications it reaches (all-applications access or its
+// granted ones), the platform config page's rule.
+func fnsApplicationOptions(ac *auth.AuthContext, as []application.Application) []kit.Option {
 	opts := make([]kit.Option, 0, len(as))
 	for _, a := range as {
+		if !auth.CanReadAllApplications(ac) && !ac.CanAccessApplication(string(a.ID)) {
+			continue
+		}
 		opts = append(opts, kit.Option{Value: string(a.ID), Label: a.Name + " (" + a.Code + ")"})
 	}
 	slices.SortFunc(opts, func(a, b kit.Option) int { return strings.Compare(a.Label, b.Label) })

@@ -36,6 +36,12 @@ func TestHTMLSanitises(t *testing.T) {
 		"id attr on para":   {`<p id="x" onmouseover="a()">t</p>`, []string{"onmouseover"}},
 		"autolink js":       {"<javascript:alert(1)>", []string{"href=\"javascript"}},
 		"code class inject": {"<code class=\"x\" onmouseover=\"a()\">c</code>", []string{"onmouseover"}},
+		// Datastar evaluates these on any node added to a page (data-init runs
+		// on insert), so a doc page must never carry one through.
+		"datastar data-init":    {`<div data-init="alert(1)">x</div>`, []string{"data-init", "alert(1)"}},
+		"datastar data-on":      {`<span data-on:click="alert(1)">x</span>`, []string{"data-on", "alert(1)"}},
+		"datastar data-signals": {`<p data-signals='{"x":1}' data-effect="alert(1)">x</p>`, []string{"data-signals", "data-effect", "alert(1)"}},
+		"datastar in a link":    {`<a href="/x" data-init="alert(1)">x</a>`, []string{"data-init"}},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

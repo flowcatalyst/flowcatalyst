@@ -59,6 +59,15 @@ func requireUserAdmin(ctx context.Context, p *principal.Principal) error {
 	return nil
 }
 
+// authorizeAccessChange is the Authorize of every operation that changes
+// which clients a user reaches (SetClientAssociation, GrantClientAccess,
+// RevokeClientAccess): anchor tier and user:manage-access (owner ruling
+// 2026-10-25). The controllers check the same first; this keeps the rule in
+// the use case for every caller.
+func authorizeAccessChange[C any](ctx context.Context, _ C) error {
+	return auth.CanManagePrincipalAccess(auth.FromContext(ctx))
+}
+
 // requireRoleAssigner is requireUserAdmin for a change to the user's role set:
 // the same scope rules, then user:assign-roles itself (owner ruling
 // 2026-10-11). Holding user:update, create or delete does not let a caller

@@ -666,7 +666,7 @@ Two parts need real client code and are web elements loaded by a script tag **on
 
 | Part | Files | Page loads |
 |---|---|---|
-| `kit.Diagram` (`<fc-diagram>`) | `fc-diagram.js` (ours, 1.9 kB) and `mermaid.min.js` (unmodified `dist/mermaid.min.js` of npm `mermaid@12.1.0`, sha256 `6484afc3...18b2`, `assets.MermaidSHA256`) | `<script type="module" src={ assets.URL("fc-diagram.js") }>`; the element fetches the Mermaid bundle itself, once, on the first diagram |
+| `kit.Diagram` (`<fc-diagram>`) | `fc-diagram.js` (ours, 4.2 kB) and `mermaid.min.js` (unmodified `dist/mermaid.min.js` of npm `mermaid@12.1.0`, sha256 `6484afc3...18b2`, `assets.MermaidSHA256`) | `<script type="module" src={ assets.URL("fc-diagram.js") }>`; the element fetches the Mermaid bundle itself, once, on the first diagram |
 | `kit.CodeEditor` (`<fc-code-editor>`) | `fc-code-editor.js` (CodeMirror 6 with JSON and YAML, built by `tools/vendor-codemirror`, `assets.CodeEditorSHA256`) | `<script defer src={ assets.URL("fc-code-editor.js") }>` |
 
 Both render the server's text as the fallback (a `<pre>` source, a `<textarea>`), so a page without script is
@@ -675,7 +675,11 @@ A page that patches such a part in (a drawer, a dialog) must carry the script in
 patched fragment.
 
 Mermaid runs with `securityLevel: "strict"` and `suppressErrorRendering`; a source it rejects leaves the drawing
-hidden and the source open. **The CSP is unchanged**: the bundle is a same-origin script (`script-src 'self'`),
+hidden and the source open. The drawing never carries a Datastar attribute (labels are author-controlled HTML, and
+Datastar evaluates `data-init`/`data-effect`/`data-on:*` on any node added to the page, with `'unsafe-eval'`): the
+view is `data-ignore`, Mermaid renders into a scratch node inside it (never `document.body`) with
+`dompurifyConfig: { ALLOW_DATA_ATTR: false, FORBID_ATTR: [data-<datastar plugin>...] }`, and the finished SVG is
+scrubbed of Datastar attributes in an inert `<template>` before it is moved in (kit `diagram.md`, Behaviour). **The CSP is unchanged**: the bundle is a same-origin script (`script-src 'self'`),
 Mermaid's inline `<style>` and `style=""` fit the existing `style-src 'unsafe-inline'`, and it does not use
 `eval` (`'unsafe-eval'` stays only for Datastar). Checked in headless Chrome under the exact policy.
 Transfer sizes (Brotli, best): `mermaid.min.js` 5.49 MB raw, 1.18 MB; `fc-code-editor.js` 340 kB, 97 kB;
@@ -1621,7 +1625,7 @@ Pages: `users.go|templ` (list, filters, drawer frame), `users_detail.go` (the dr
 | `/ui/users/new` | the create dialog | create |
 | `/ui/users/check-email?email=` | Datastar: the email's domain check, patched into `#usr-form-domain` | - |
 | `/ui/users/{id}` | the list with the drawer open; Datastar patches the drawer | - |
-| `/ui/users/{id}/edit` | the edit dialog | name, and for an anchor the type and client |
+| `/ui/users/{id}/edit` | the edit dialog | name, and with `user:manage-access` the type and client |
 | `/ui/users/{id}/{activate,deactivate,delete,send-reset,reset-2fa}` | - | the action |
 | `/ui/users/{id}/reset-password` | the dialog | set the password |
 | `/ui/users/{id}/roles`, `/applications` | the picker dialogs | replace the set |
@@ -1631,7 +1635,7 @@ Pages: `users.go|templ` (list, filters, drawer frame), `users_detail.go` (the dr
 
 - **One rule set with the API.** The principal API's handler bodies hold the gates (client scoping, `blockNonClientTarget`, a client administrator's role and application bounds, the all-applications and self-restriction rules, the role ceiling) and the use cases hold the rest (the password policy, the last-administrator guard). Rather than copy them, `principalapi.State` has exported in-process entry points (`internal/platform/principal/api/ui_entry.go`) that run each handler unchanged with the caller on the context; the page calls those (`pages.UserService`). `internal/server/wire_ui_users.go` builds the state for the routes and the page alike. The page also makes the coarse permission check itself first, so a control that is hidden is never the only guard, and a forged post by a caller without the permission is refused before the service is asked (and again by it).
 - **Two audiences.** A platform administrator (anchor) gets the SPA's platform page. Anyone else gets the client administrator's: its title, no Type column, the client filter only with several clients, the create form with an optional password (CLIENT users only, the client implicit with one), and a drawer without client access, the all-applications switch or delete, as the SPA. Both sidebar entries (User Management, Client Administration) link to `/ui/users`.
-- **Controls by permission.** Create and import `user:create`; Edit (name), applications, password, send reset, reset 2FA, activate and deactivate `user:update` (Edit is also offered to an anchor, who may change the type and client); roles `user:assign-roles` plus `role:view` for the list; delete `user:delete`, anchor only; client access, type and client anchor scope; granting all-applications access only to a caller holding it.
+- **Controls by permission.** Create and import `user:create`; Edit (name), applications, password, send reset, reset 2FA, activate and deactivate `user:update` (Edit is also offered to a caller who may change the type and client); roles `user:assign-roles` plus `role:view` for the list; delete `user:delete`, anchor only; the type, the client and client access (Add Client, Revoke) anchor tier **and** `user:manage-access` (owner ruling 2026-10-25; without it the drawer still lists the client access, read-only, and a forged post is refused before anything is written, by the page and again by the API and the use cases); a user whose type was never set gets a "Not set (unchanged)" choice, so a rename never sends an association; granting all-applications access only to a caller holding it.
 - **Roles.** A multi-select with search and chips, as the SPA's `assignableRoles`: every role for an anchor-scope user or one with all applications, else the roles of the applications the user can access plus those already assigned. Roles whose platform permissions the caller lacks (the ceiling, `ROLE_ABOVE_CALLER`) are not offered; the ones the user already holds are listed as kept and posted back unchanged.
 - **Credentials.** No page or answer carries a password or a stored hash: the password fields have no value to echo and a failed save re-renders them empty (`TestUserPagesNeverCarryCredentials`, the integration test searches every answer for the passwords and the stored hash). The **sign-in link** is minted only when the create form's switch is on ("Show the link instead of emailing it", INTERNAL users who set their own password); then nothing is emailed and the link is shown once, in a dialog patched into the create answer, `Cache-Control: no-store`, with a Copy button; the dialog removes itself however it is closed, and the link is in no signal, URL or flash. A native post gets the page itself, since a redirect would lose the link.
 - **Edit** compares against the stored user: the name is sent when it changed, the association when the type or client did (`ANCHOR` is `*`, `CLIENT` changes the home client, `PARTNER` promotes), and a CLIENT or PARTNER without a client is refused before anything is written (the SPA saved the name first).
@@ -1757,12 +1761,17 @@ pages, added beside the SPA (nothing of it is touched; the sidebar entries link 
 - **Live preview that runs nothing.** The preview is rendered by the server (`POST .../preview`, debounced on form
   input; nothing is read or saved) from values it vouches for: colours and the gradient are validated and fall back to
   the built-in look, text is escaped, an inline SVG logo is shown as an `<img src="data:image/svg+xml;base64,...">` (an
-  image cannot run script; the SPA injects it with `v-html`), an SVG with script or handlers is not shown, a logo
+  image cannot run script; the SPA shows it the same way since 2026-10-25, it used `v-html`), an SVG the logo rule
+  refuses is not shown, a logo
   address is named, not loaded (the admin CSP is `img-src 'self' data:`), and **custom CSS is never applied** to the admin
   page. Only the preview's own stylesheet-free inline styles are used, so no kit stylesheet rebuild was needed.
 - **Validation on save** (field errors, nothing stored): colours must be hex or `rgb()`/`rgba()` (the rule `branding`
-  uses for emails), the gradient a CSS gradient of colours and stops, the logo URL http(s), the inline SVG an `<svg>`
-  element of at most 64 kB without `<script>`, `foreignObject`, `iframe`, `embed`, `object`, `on*=` or `javascript:`, the
+  uses for emails), the gradient a CSS gradient of colours and stops, the logo URL http(s), the inline SVG must pass
+  `branding.CheckLogoSVG` (parsed as XML, not matched by pattern: one `<svg>` root of at most 64 kB, no `script`,
+  `foreignObject`, `iframe`, `embed`, `object` or similar element, no `on*` attribute or animation of one, no
+  `javascript:`/`vbscript:`/`data:text/html` in any attribute value after entity decoding, no DOCTYPE entity
+  definitions; the public login-theme endpoint and the email theme drop a stored logo that fails it, since the generic
+  config API can store one), the
   logo height a whole number from 20 to 120 (the field's own range), text fields at most 500 characters, custom CSS
   at most 64 kB. The SPA's editor enforces none of this beyond the height's input attributes.
 - **Names.** One field; empty is "Platform name cannot be empty." (the SPA's message), at most 200 characters; the

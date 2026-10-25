@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -60,8 +61,8 @@ func (f *testFunctionFixture) versionNumbers() []int32 {
 	vs, err := f.repo.ListVersionsByFunction(context.Background(), f.fn.ID)
 	require.NoError(f.t, err)
 	out := make([]int32, 0, len(vs))
-	for i := len(vs) - 1; i >= 0; i-- { // oldest first
-		out = append(out, vs[i].Number)
+	for _, v := range slices.Backward(vs) { // oldest first
+		out = append(out, v.Number)
 	}
 	return out
 }
@@ -256,16 +257,14 @@ func TestPrune_ConcurrentCallsPruneEachVersionOnce(t *testing.T) {
 	var mu sync.Mutex
 	total := 0
 	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			res, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PruneVersions(f.repo),
 				operations.PruneCommand{FunctionID: f.fn.ID, Keep: 20}, testpg.TestEC())
 			assert.NoError(t, err)
 			mu.Lock()
 			total += len(res.Pruned)
 			mu.Unlock()
-		}()
+		})
 	}
 	wg.Wait()
 	assert.Equal(t, 20, total, "20 excess versions, each pruned by exactly one caller")

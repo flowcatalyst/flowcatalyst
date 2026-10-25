@@ -166,10 +166,15 @@ func TestThemeSettingsSave(t *testing.T) {
 			"svg script":     {"logoSvg", `<svg><script>alert(1)</script></svg>`, "without scripts or event handlers"},
 			"svg handler":    {"logoSvg", `<svg onload="alert(1)"></svg>`, "without scripts or event handlers"},
 			"svg not an svg": {"logoSvg", `<img src=x onerror=alert(1)>`, "Paste an &lt;svg&gt; element"},
-			"height low":     {"logoHeight", "5", "from 20 to 120"},
-			"height high":    {"logoHeight", "500", "from 20 to 120"},
-			"height text":    {"logoHeight", "tall", "from 20 to 120"},
-			"css size":       {"customCss", strings.Repeat("a", thmMaxBlob+1), "too large"},
+			// What the old pattern check let through.
+			"svg slash onload":   {"logoSvg", `<svg/onload=alert(1)>`, "without scripts or event handlers"},
+			"svg image onerror":  {"logoSvg", `<svg><image/href=x/onerror=alert(1)></svg>`, "without scripts or event handlers"},
+			"svg entity js url":  {"logoSvg", `<svg><a href="javascript&#58;alert(1)"><text>x</text></a></svg>`, "without scripts or event handlers"},
+			"svg style breakout": {"logoSvg", `<svg><style><img src=x onerror=alert(1)></style></svg>`, "without scripts or event handlers"},
+			"height low":         {"logoHeight", "5", "from 20 to 120"},
+			"height high":        {"logoHeight", "500", "from 20 to 120"},
+			"height text":        {"logoHeight", "tall", "from 20 to 120"},
+			"css size":           {"customCss", strings.Repeat("a", thmMaxBlob+1), "too large"},
 		} {
 			t.Run(name, func(t *testing.T) {
 				h := newThemeHarness()

@@ -614,7 +614,7 @@ func TestPoolCreateDialog(t *testing.T) {
 		body := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-pools/new", datastar: true}).Body.String()
 		mustContain(t, body,
 			"data: mode replace\n", `data: elements <div id="pool-dialog-slot"><dialog id="pool-form"`,
-			`<dialog id="pool-form"`, ` open>`, `data-init="el.open &amp;&amp; el.close(); el.showModal()"`,
+			`<dialog id="pool-form"`, ` open>`, `data-init="el.removeAttribute(&#39;open&#39;); el.showModal()"`,
 			`<form id="pool-form-form" method="post" action="/ui/dispatch-pools/new"`,
 			`id="pool-form-code-field"`, `id="pool-form-concurrency" name="concurrency" value="10"`,
 			`<option value="acme">Acme Corp</option>`, `<option value="globex">Globex &lt;Inc&gt;</option>`,

@@ -50,7 +50,7 @@ func newFakeDocSource() fakeDocSource {
 		pages: map[string]docsapi.DocResponse{
 			"platform/overview": {Slug: "overview", Title: "Overview", Content: "# Overview\n\nSee [events](./02-events.md#flow) and [the site](https://example.com/x?a=1&b=2).\n\n" +
 				"<script>alert('raw')</script>\n\n[bad](javascript:alert(1)) <img src=x onerror=alert(2)>\n\n" +
-				"```mermaid\ngraph TD\n  A[<b>Start</b>] --> B\n```\n\nAfter. A literal `<a href=\"https://evil.example\">` in code.\n\n```go\n// ```mermaid\nfmt.Println(\"in a go fence\")\n```\n"},
+				"```mermaid\ngraph TD\n  A[<b>Start</b>] --> B\n  B --> C[\"<i data-init='alert(2)'>x</i>\"]\n```\n\nAfter. A literal `<a href=\"https://evil.example\">` in code.\n\n```go\n// ```mermaid\nfmt.Println(\"in a go fence\")\n```\n"},
 			"platform/events": {Slug: "events", Title: "Events", Content: "# Events\n\nbody"},
 			"orders/intro":    {Slug: "intro", Title: "Orders intro", Content: "# Orders\n\nsee [next](next-page.md) and [billing](../billing.md)"},
 		},
@@ -101,7 +101,8 @@ func TestDocsPage(t *testing.T) {
 	})
 	t.Run("a mermaid fence is a diagram with its source escaped; another fence stays code", func(t *testing.T) {
 		mustContain(t, body, "<fc-diagram", `data-bundle="`+assets.URL("mermaid.min.js")+`"`, "A[&lt;b&gt;Start&lt;/b&gt;] --&gt; B", assets.URL("fc-diagram.js"), "in a go fence")
-		mustNotContain(t, body, "language-mermaid", "<b>Start")
+		mustContain(t, body, "&lt;i data-init=&#39;alert(2)&#39;&gt;x&lt;/i&gt;", ` hidden data-ignore></div>`)
+		mustNotContain(t, body, "language-mermaid", "<b>Start", "<i data-init")
 		if strings.Count(body, "<fc-diagram") != 1 {
 			t.Errorf("diagrams: %d", strings.Count(body, "<fc-diagram"))
 		}

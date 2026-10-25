@@ -135,7 +135,7 @@ func raRegion(v raView) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(raRegionID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `reset_approvals.templ`, Line: 25, Col: 21}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/reset_approvals.templ`, Line: 25, Col: 21}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 		if templ_7745c5c3_Err != nil {
@@ -347,7 +347,7 @@ func raRegion(v raView) templ.Component {
 								var templ_7745c5c3_Var16 string
 								templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(row.Name)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `reset_approvals.templ`, Line: 50, Col: 50}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/reset_approvals.templ`, Line: 50, Col: 50}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 								if templ_7745c5c3_Err != nil {
@@ -360,7 +360,7 @@ func raRegion(v raView) templ.Component {
 								var templ_7745c5c3_Var17 string
 								templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(row.Email)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `reset_approvals.templ`, Line: 51, Col: 73}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/reset_approvals.templ`, Line: 51, Col: 73}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 								if templ_7745c5c3_Err != nil {
@@ -451,7 +451,7 @@ func raRegion(v raView) templ.Component {
 								var templ_7745c5c3_Var21 templ.SafeURL
 								templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinURLErrs(row.ActionBase + "/approve")
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `reset_approvals.templ`, Line: 61, Col: 65}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/reset_approvals.templ`, Line: 61, Col: 65}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 								if templ_7745c5c3_Err != nil {
@@ -464,7 +464,7 @@ func raRegion(v raView) templ.Component {
 								var templ_7745c5c3_Var22 string
 								templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(kit.SubmitForm)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `reset_approvals.templ`, Line: 61, Col: 99}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/reset_approvals.templ`, Line: 61, Col: 99}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 								if templ_7745c5c3_Err != nil {
@@ -503,7 +503,7 @@ func raRegion(v raView) templ.Component {
 								var templ_7745c5c3_Var24 templ.SafeURL
 								templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinURLErrs(row.ActionBase + "/deny")
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `reset_approvals.templ`, Line: 66, Col: 62}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/reset_approvals.templ`, Line: 66, Col: 62}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 								if templ_7745c5c3_Err != nil {
@@ -516,7 +516,7 @@ func raRegion(v raView) templ.Component {
 								var templ_7745c5c3_Var25 string
 								templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(kit.SubmitForm)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `reset_approvals.templ`, Line: 66, Col: 96}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/reset_approvals.templ`, Line: 66, Col: 96}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 								if templ_7745c5c3_Err != nil {

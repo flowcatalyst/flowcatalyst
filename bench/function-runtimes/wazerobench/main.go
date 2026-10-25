@@ -149,13 +149,13 @@ func main() {
 		ctx = context.Background()
 	}
 	var list []artifact
-	for _, it := range strings.Split(*arts, ",") {
+	for it := range strings.SplitSeq(*arts, ",") {
 		p := strings.SplitN(it, "=", 3)
 		list = append(list, artifact{p[0], p[1], p[2]})
 	}
 	inputs := loadInputs()
 	var ws []int
-	for _, s := range strings.Split(*only, ",") {
+	for s := range strings.SplitSeq(*only, ",") {
 		n, _ := strconv.Atoi(s)
 		ws = append(ws, n)
 	}
@@ -179,7 +179,7 @@ func main() {
 
 func lat(ctx context.Context, a artifact, inputs map[int]input, ws []int) {
 	e := newEngine(ctx, "")
-	defer e.Close(ctx)
+	defer func() { _ = e.Close(ctx) }()
 	l := runtimes.NewLoader(e)
 	p := prepare(ctx, l, a)
 	for _, w := range ws {
@@ -192,7 +192,7 @@ func lat(ctx context.Context, a artifact, inputs map[int]input, ws []int) {
 		}
 		var p50s, p99s, means []float64
 		var total int
-		for r := 0; r < *runs; r++ {
+		for range *runs {
 			var ds []time.Duration
 			t0 := time.Now()
 			for time.Since(t0) < *dur {
@@ -212,10 +212,10 @@ func lat(ctx context.Context, a artifact, inputs map[int]input, ws []int) {
 		_ = i.Close(ctx)
 		fmt.Printf("RESULT rt=%s w=%d metric=lat p50_us=%.2f p50_min=%.2f p50_max=%.2f p99_us=%.2f p99_min=%.2f p99_max=%.2f mean_us=%.2f calls=%d runs=%d\n",
 			a.label, w, median(p50s), slices.Min(p50s), slices.Max(p50s), median(p99s), slices.Min(p99s), slices.Max(p99s), median(means), total, *runs)
-		for _, cs := range strings.Split(*concs, ",") {
+		for cs := range strings.SplitSeq(*concs, ",") {
 			c, _ := strconv.Atoi(cs)
 			var rates []float64
-			for r := 0; r < 3; r++ {
+			for range 3 {
 				rates = append(rates, throughput(ctx, p, in, c))
 			}
 			fmt.Printf("RESULT rt=%s w=%d metric=tput c=%d rps=%.0f rps_min=%.0f rps_max=%.0f\n", a.label, w, c, median(rates), slices.Min(rates), slices.Max(rates))
@@ -235,17 +235,15 @@ func throughput(ctx context.Context, p *runtimes.Prepared, in input, c int) floa
 	var stop atomic.Bool
 	var wg sync.WaitGroup
 	start := time.Now()
-	for k := 0; k < c; k++ {
-		wg.Add(1)
-		go func(i *engine.Instance) {
-			defer wg.Done()
+	for _, i := range insts {
+		wg.Go(func() {
 			var local int64
 			for !stop.Load() {
 				callOnce(ctx, i, in, false)
 				local++
 			}
 			n.Add(local)
-		}(insts[k])
+		})
 	}
 	time.Sleep(*tdur)
 	stop.Store(true)
@@ -262,7 +260,7 @@ func cold(ctx context.Context, a artifact, inputs map[int]input) {
 	var coldC, cachedC, inst, first, loadTotal []float64
 	wasmBytes, _ := os.ReadFile(a.path)
 	// shared JS engine compile is reported separately for js artifacts
-	for r := 0; r < reps; r++ {
+	for r := range reps {
 		e := newEngine(ctx, "")
 		l := runtimes.NewLoader(e)
 		s := time.Now()
@@ -279,12 +277,12 @@ func cold(ctx context.Context, a artifact, inputs map[int]input) {
 		_ = e.Close(ctx)
 	}
 	dir, _ := os.MkdirTemp("", "wzcache")
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	e := newEngine(ctx, dir)
 	prepare(ctx, runtimes.NewLoader(e), a)
 	_ = e.Close(ctx)
 	var cachedInst, cachedTotal []float64
-	for r := 0; r < reps; r++ {
+	for range reps {
 		e := newEngine(ctx, dir)
 		l := runtimes.NewLoader(e)
 		s := time.Now()
@@ -307,7 +305,7 @@ func cold(ctx context.Context, a artifact, inputs map[int]input) {
 		e := newEngine(ctx, "")
 		l := runtimes.NewLoader(e)
 		p := prepare(ctx, l, a)
-		for r := 0; r < 50; r++ {
+		for range 50 {
 			s := time.Now()
 			i := instantiate(ctx, p)
 			callOnce(ctx, i, inputs[1], false)
@@ -328,7 +326,8 @@ func rssMB() float64 {
 	runtime.GC()
 	debug.FreeOSMemory()
 	time.Sleep(200 * time.Millisecond)
-	out, _ := exec.Command("ps", "-o", "rss=", "-p", strconv.Itoa(os.Getpid())).Output()
+	out, _ := exec.Command("ps", "-o", "rss=", "-p", strconv.Itoa(os.Getpid())).Output() //nolint:gosec // G204 false positive: fixed binary, the only variable argument is this process's own pid
+
 	k, _ := strconv.Atoi(strings.TrimSpace(string(out)))
 	return float64(k) / 1024
 }
@@ -374,7 +373,7 @@ func (logHost) Call(_ context.Context, op abi.Op, meta, body []byte) ([]byte, []
 // answered. -body file -path /deliver -method POST -caller webhook.
 func smoke(ctx context.Context, a artifact) {
 	e := newEngine(ctx, "")
-	defer e.Close(ctx)
+	defer func() { _ = e.Close(ctx) }()
 	p := prepare(ctx, runtimes.NewLoader(e), a)
 	i := instantiate(ctx, p)
 	d, err := i.Describe(ctx)

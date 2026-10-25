@@ -1199,6 +1199,9 @@ func verifyCommand(headers map[string]string) string {
 func (h *DispatchJobs) sign(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
+	// The answer carries a live signature (and the body): no-store, not the
+	// stream helper's no-cache.
+	w = noStore{w}
 	if err := auth.CanWritePermission(ac, djRawPerm); err != nil {
 		h.Shell.Fail(w, r, err)
 		return

@@ -164,12 +164,42 @@ func (e *Endpoint) decodeThemeInto(ctx context.Context, dst *loginThemeResponse,
 	}
 	// Decode into a copy so a malformed blob can't leave dst holding the
 	// half-applied fields json.Unmarshal had already written before failing.
-	merged := *dst
+	// The copy's pointers are fresh: json.Unmarshal writes through a non-nil
+	// pointer, so a shallow copy would let the blob rewrite dst's values.
+	merged := dst.clone()
 	if err := json.Unmarshal([]byte(cfg.Value), &merged); err != nil {
 		slog.Warn("public login-theme: stored value is not valid JSON", "scope", scope, "err", err)
 		return
 	}
+	// The SPA shows logoSvg; a stored one the platform's rule refuses (it can be
+	// written through the generic config API, which does not know the theme)
+	// is never served.
+	if merged.LogoSVG != nil && *merged.LogoSVG != "" {
+		if err := branding.CheckLogoSVG(*merged.LogoSVG); err != nil {
+			slog.Warn("public login-theme: stored logo SVG refused", "scope", scope, "err", err)
+			merged.LogoSVG = dst.LogoSVG // what the wider scope had, if anything
+		}
+	}
 	*dst = merged
+}
+
+// clone copies r with every field in a pointer of its own.
+func (r loginThemeResponse) clone() loginThemeResponse {
+	return loginThemeResponse{
+		BrandName: clonePtr(r.BrandName), BrandSubtitle: clonePtr(r.BrandSubtitle),
+		LogoURL: clonePtr(r.LogoURL), LogoSVG: clonePtr(r.LogoSVG), LogoHeight: clonePtr(r.LogoHeight),
+		PrimaryColor: clonePtr(r.PrimaryColor), AccentColor: clonePtr(r.AccentColor),
+		BackgroundColor: clonePtr(r.BackgroundColor), BackgroundGradient: clonePtr(r.BackgroundGradient),
+		FooterText: clonePtr(r.FooterText), CustomCSS: clonePtr(r.CustomCSS),
+	}
+}
+
+func clonePtr[T any](p *T) *T {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -504,7 +504,7 @@ func etDrawerBody(d etDetail) templ.Component {
 									var templ_7745c5c3_Var22 string
 									templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(sv.Version)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_detail.templ`, Line: 76, Col: 56}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_detail.templ`, Line: 76, Col: 56}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 									if templ_7745c5c3_Err != nil {
@@ -543,7 +543,7 @@ func etDrawerBody(d etDetail) templ.Component {
 									var templ_7745c5c3_Var24 string
 									templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(sv.MimeType)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_detail.templ`, Line: 79, Col: 48}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_detail.templ`, Line: 79, Col: 48}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 									if templ_7745c5c3_Err != nil {
@@ -578,7 +578,7 @@ func etDrawerBody(d etDetail) templ.Component {
 									var templ_7745c5c3_Var26 string
 									templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(sv.SchemaType)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_detail.templ`, Line: 82, Col: 23}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_detail.templ`, Line: 82, Col: 23}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 									if templ_7745c5c3_Err != nil {
@@ -644,7 +644,7 @@ func etDrawerBody(d etDetail) templ.Component {
 										var templ_7745c5c3_Var29 templ.SafeURL
 										templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinURLErrs(sv.ViewHref)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_detail.templ`, Line: 90, Col: 31}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_detail.templ`, Line: 90, Col: 31}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 										if templ_7745c5c3_Err != nil {
@@ -657,7 +657,7 @@ func etDrawerBody(d etDetail) templ.Component {
 										var templ_7745c5c3_Var30 string
 										templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue("View schema " + sv.Version)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_detail.templ`, Line: 90, Col: 114}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_detail.templ`, Line: 90, Col: 114}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var30)
 										if templ_7745c5c3_Err != nil {
@@ -670,7 +670,7 @@ func etDrawerBody(d etDetail) templ.Component {
 										var templ_7745c5c3_Var31 string
 										templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(liveLink)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_detail.templ`, Line: 90, Col: 173}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_detail.templ`, Line: 90, Col: 173}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 										if templ_7745c5c3_Err != nil {
@@ -697,7 +697,7 @@ func etDrawerBody(d etDetail) templ.Component {
 										var templ_7745c5c3_Var32 string
 										templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.ResolveAttributeValue("Finalise schema " + sv.Version)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_detail.templ`, Line: 95, Col: 128}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_detail.templ`, Line: 95, Col: 128}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 										if templ_7745c5c3_Err != nil {
@@ -732,7 +732,7 @@ func etDrawerBody(d etDetail) templ.Component {
 										var templ_7745c5c3_Var33 string
 										templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.ResolveAttributeValue("Deprecate schema " + sv.Version)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_detail.templ`, Line: 100, Col: 131}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_detail.templ`, Line: 100, Col: 131}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
 										if templ_7745c5c3_Err != nil {
@@ -1199,7 +1199,7 @@ func etDangerItem(title, text, why, whyID string) templ.Component {
 		var templ_7745c5c3_Var48 string
 		templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_detail.templ`, Line: 196, Col: 18}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_detail.templ`, Line: 196, Col: 18}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 		if templ_7745c5c3_Err != nil {
@@ -1212,7 +1212,7 @@ func etDangerItem(title, text, why, whyID string) templ.Component {
 		var templ_7745c5c3_Var49 string
 		templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(text)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_detail.templ`, Line: 197, Col: 12}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_detail.templ`, Line: 197, Col: 12}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 		if templ_7745c5c3_Err != nil {
@@ -1230,7 +1230,7 @@ func etDangerItem(title, text, why, whyID string) templ.Component {
 			var templ_7745c5c3_Var50 string
 			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.ResolveAttributeValue(whyID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_detail.templ`, Line: 199, Col: 17}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_detail.templ`, Line: 199, Col: 17}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var50)
 			if templ_7745c5c3_Err != nil {
@@ -1243,7 +1243,7 @@ func etDangerItem(title, text, why, whyID string) templ.Component {
 			var templ_7745c5c3_Var51 string
 			templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(why)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_detail.templ`, Line: 199, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_detail.templ`, Line: 199, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 			if templ_7745c5c3_Err != nil {

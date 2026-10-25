@@ -111,7 +111,7 @@ func newDevHarness() *devHarness {
 		et("evt_9", "crm:accounts:account:created", "Account created", eventtype.StatusCurrent),
 	}}
 	ship := proc("prc_1", "orders:fulfilment:shipment-flow", "Shipment Flow", process.StatusCurrent)
-	ship.Body = "graph TD\n  A[Start] --> B{<script>alert(1)</script>}"
+	ship.Body = "graph TD\n  A[Start] --> B{<script>alert(1)</script>}\n  B --> C[\"<span data-init='alert(2)'>x</span>\"]"
 	ship.Tags = []string{"fulfilment"}
 	old := proc("prc_2", "orders:billing:refunds", "Refunds", process.StatusArchived)
 	other := proc("prc_3", "crm:accounts:onboarding", "Onboarding", process.StatusCurrent)
@@ -268,8 +268,9 @@ func TestDeveloperProcessesTab(t *testing.T) {
 	// Selecting a process draws its diagram (the Mermaid island) with the source escaped.
 	sel := h.do(t, devPortalUser(), req{target: devOrdersURL + "/tabs/processes?proc=prc_1", datastar: true})
 	mustContain(t, sel, `<fc-diagram class="block" data-bundle="/ui/assets/mermaid.`, "B{&lt;script&gt;alert(1)&lt;/script&gt;}",
+		"&lt;span data-init=&#39;alert(2)&#39;&gt;x&lt;/span&gt;", ` hidden data-ignore></div>`,
 		`href="/ui/processes/prc_1"`, "Open process")
-	mustNotContain(t, sel, "<script>alert", "/ui/processes/prc_1/edit")
+	mustNotContain(t, sel, "<script>alert", "<span data-init", "/ui/processes/prc_1/edit")
 
 	// Edit appears with the process area's permission; an archived process cannot be edited.
 	editor := connUser(devViewPerm, procViewPerm, "platform:messaging:process:update")

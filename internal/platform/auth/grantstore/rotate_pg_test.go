@@ -150,9 +150,7 @@ func TestRotate_ConcurrentPresentationsExactlyOneWins(t *testing.T) {
 	start := make(chan struct{})
 	var wg sync.WaitGroup
 	for range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 			res, err := grantstore.Rotate(ctx, repo, raw, nil)
 			if err != nil {
@@ -165,7 +163,7 @@ func TestRotate_ConcurrentPresentationsExactlyOneWins(t *testing.T) {
 			} else {
 				losses.Add(1)
 			}
-		}()
+		})
 	}
 	close(start)
 	wg.Wait()
@@ -202,9 +200,7 @@ func TestRotate_ConcurrentPresentationsWithinLeewayAllGetATokenAndFamilySurvives
 	var wg sync.WaitGroup
 	start := make(chan struct{})
 	for range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 			res, err := grantstore.Rotate(ctx, repo, raw, nil)
 			if err != nil || res.New == nil {
@@ -212,7 +208,7 @@ func TestRotate_ConcurrentPresentationsWithinLeewayAllGetATokenAndFamilySurvives
 				return
 			}
 			raws.Store(res.NewRaw, res.New)
-		}()
+		})
 	}
 	close(start)
 	wg.Wait()

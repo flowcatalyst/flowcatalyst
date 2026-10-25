@@ -52,14 +52,12 @@ func TestVerifyTOTP_ConcurrentReplayExactlyOnePasses(t *testing.T) {
 	start := make(chan struct{})
 	var wg sync.WaitGroup
 	for range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 			if ok, err := svc.VerifyTOTP(ctx, pid, code); err == nil && ok {
 				passed.Add(1)
 			}
-		}()
+		})
 	}
 	close(start)
 	wg.Wait()

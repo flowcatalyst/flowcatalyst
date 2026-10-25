@@ -222,7 +222,7 @@ func submittedEdmForm(r *http.Request, edit bool) edmForm {
 		Tenant:      strings.TrimSpace(r.PostFormValue("tenant")),
 		Require2FA:  r.PostFormValue("require2fa") == "true",
 		Remember:    r.PostFormValue("remember") == "true",
-		Methods:     facetValues(r.PostForm["methods"]),
+		Methods:     formSet(r.PostForm["methods"]),
 		Days:        strings.TrimSpace(r.PostFormValue("days")),
 	}
 }

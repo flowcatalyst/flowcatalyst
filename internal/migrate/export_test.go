@@ -24,7 +24,8 @@ func UpTo(ctx context.Context, pool *pgxpool.Pool, v int64) error {
 func ProbeResults(ctx context.Context, t interface {
 	Helper()
 	Fatalf(string, ...any)
-}, pool *pgxpool.Pool) map[int64]bool {
+}, pool *pgxpool.Pool,
+) map[int64]bool {
 	t.Helper()
 	db := stdlib.OpenDBFromPool(pool)
 	defer db.Close()

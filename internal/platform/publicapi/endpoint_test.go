@@ -192,6 +192,34 @@ func TestLoginTheme_LookupFailureStillServes200(t *testing.T) {
 	}
 }
 
+// A stored logo SVG the platform's rule refuses is never served (it could be
+// written through the generic config API); a client's hostile one falls back
+// to the platform's.
+func TestLoginTheme_HostileLogoSVGIsNotServed(t *testing.T) {
+	const safe = `<svg xmlns=\"http://www.w3.org/2000/svg\"><circle r=\"4\"/></svg>`
+	for name, hostile := range map[string]string{
+		"svg/onload":         `<svg/onload=alert(1)>`,
+		"image/href/onerror": `<svg><image/href=x/onerror=alert(1)></svg>`,
+		"javascript entity":  `<svg><a href=\"javascript&#58;alert(1)\"><text>x</text></a></svg>`,
+		"script":             `<svg><script>alert(1)</script></svg>`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := getTheme(t, New(fakeConfigs{global: `{"brandName":"Acme","logoSvg":"` + hostile + `"}`}), "")
+			if got.LogoSVG != nil {
+				t.Errorf("served %q", *got.LogoSVG)
+			}
+			if str(got.BrandName) != "Acme" {
+				t.Errorf("the rest of the theme was dropped too: %+v", got)
+			}
+			e := New(fakeConfigs{global: `{"logoSvg":"` + safe + `"}`, client: map[string]string{"clt_1": `{"logoSvg":"` + hostile + `"}`}})
+			got = getTheme(t, e, "?clientId=clt_1")
+			if str(got.LogoSVG) != `<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>` {
+				t.Errorf("client override: served %s, want the platform's logo", str(got.LogoSVG))
+			}
+		})
+	}
+}
+
 func TestLoginTheme_NilConfigsServesEmptyTheme(t *testing.T) {
 	got := getTheme(t, New(nil), "")
 

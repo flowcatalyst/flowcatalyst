@@ -128,7 +128,7 @@ func idpPage(v idpView) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.drawerSignals())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 71, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 71, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 		if templ_7745c5c3_Err != nil {
@@ -169,7 +169,7 @@ func idpPage(v idpView) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(idpDialogSlot)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 79, Col: 25}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 79, Col: 25}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 		if templ_7745c5c3_Err != nil {
@@ -321,7 +321,7 @@ func idpTable(v idpView) templ.Component {
 						var templ_7745c5c3_Var11 templ.SafeURL
 						templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinURLErrs(row.DetailHref)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 104, Col: 29}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 104, Col: 29}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 						if templ_7745c5c3_Err != nil {
@@ -334,7 +334,7 @@ func idpTable(v idpView) templ.Component {
 						var templ_7745c5c3_Var12 string
 						templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(liveLink)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 104, Col: 130}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 104, Col: 130}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 						if templ_7745c5c3_Err != nil {
@@ -347,7 +347,7 @@ func idpTable(v idpView) templ.Component {
 						var templ_7745c5c3_Var13 string
 						templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(row.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 104, Col: 143}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 104, Col: 143}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 						if templ_7745c5c3_Err != nil {
@@ -386,7 +386,7 @@ func idpTable(v idpView) templ.Component {
 						var templ_7745c5c3_Var15 string
 						templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(row.Code)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 107, Col: 51}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 107, Col: 51}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 						if templ_7745c5c3_Err != nil {
@@ -448,7 +448,7 @@ func idpTable(v idpView) templ.Component {
 							var templ_7745c5c3_Var18 string
 							templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(row.Issuer)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 114, Col: 18}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 114, Col: 18}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 							if templ_7745c5c3_Err != nil {
@@ -503,7 +503,7 @@ func idpTable(v idpView) templ.Component {
 								var templ_7745c5c3_Var20 string
 								templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(idpMoreDomains(row.Domains))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 128, Col: 85}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 128, Col: 85}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 								if templ_7745c5c3_Err != nil {
@@ -553,7 +553,7 @@ func idpTable(v idpView) templ.Component {
 						var templ_7745c5c3_Var22 string
 						templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.CreatedISO)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 136, Col: 36}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 136, Col: 36}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 						if templ_7745c5c3_Err != nil {
@@ -566,7 +566,7 @@ func idpTable(v idpView) templ.Component {
 						var templ_7745c5c3_Var23 string
 						templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(row.Created)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 136, Col: 52}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 136, Col: 52}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 						if templ_7745c5c3_Err != nil {
@@ -821,7 +821,7 @@ func idpDrawerBody(d idpDetail) templ.Component {
 				var templ_7745c5c3_Var32 string
 				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(d.Code)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 180, Col: 18}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 180, Col: 18}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 				if templ_7745c5c3_Err != nil {
@@ -927,7 +927,7 @@ func idpDrawerBody(d idpDetail) templ.Component {
 					var templ_7745c5c3_Var36 string
 					templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(d.ClientID)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 198, Col: 23}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 198, Col: 23}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 					if templ_7745c5c3_Err != nil {
@@ -1319,7 +1319,7 @@ func idpFormDialogC(f idpForm) templ.Component {
 			var templ_7745c5c3_Var50 string
 			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.signals())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 281, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 281, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var50)
 			if templ_7745c5c3_Err != nil {
@@ -1378,7 +1378,7 @@ func idpFormDialogC(f idpForm) templ.Component {
 			var templ_7745c5c3_Var52 string
 			templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id("oidc"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 293, Col: 25}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 293, Col: 25}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var52)
 			if templ_7745c5c3_Err != nil {
@@ -1391,7 +1391,7 @@ func idpFormDialogC(f idpForm) templ.Component {
 			var templ_7745c5c3_Var53 string
 			templ_7745c5c3_Var53, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.oidc()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 293, Col: 94}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 293, Col: 94}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 			if templ_7745c5c3_Err != nil {
@@ -1502,7 +1502,7 @@ func idpFormDialogC(f idpForm) templ.Component {
 			var templ_7745c5c3_Var56 string
 			templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id("sync-section"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 314, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 314, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var56)
 			if templ_7745c5c3_Err != nil {
@@ -1515,7 +1515,7 @@ func idpFormDialogC(f idpForm) templ.Component {
 			var templ_7745c5c3_Var57 string
 			templ_7745c5c3_Var57, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.oidc()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 314, Col: 102}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 314, Col: 102}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 			if templ_7745c5c3_Err != nil {
@@ -1633,7 +1633,7 @@ func idpSecret(f idpForm) templ.Component {
 			var templ_7745c5c3_Var61 string
 			templ_7745c5c3_Var61, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.secretKindValue() == "encrypt"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 342, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 342, Col: 107}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 			if templ_7745c5c3_Err != nil {
@@ -1654,7 +1654,7 @@ func idpSecret(f idpForm) templ.Component {
 			var templ_7745c5c3_Var62 string
 			templ_7745c5c3_Var62, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.secretKindValue() != "encrypt"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 346, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 346, Col: 107}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var62))
 			if templ_7745c5c3_Err != nil {
@@ -1781,7 +1781,7 @@ func idpField(f idpForm, key string) templ.Component {
 			var templ_7745c5c3_Var67 string
 			templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-field")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 369, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 369, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var67)
 			if templ_7745c5c3_Err != nil {
@@ -1830,7 +1830,7 @@ func idpField(f idpForm, key string) templ.Component {
 			var templ_7745c5c3_Var69 string
 			templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-wrap")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 378, Col: 32}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 378, Col: 32}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var69)
 			if templ_7745c5c3_Err != nil {
@@ -1843,7 +1843,7 @@ func idpField(f idpForm, key string) templ.Component {
 			var templ_7745c5c3_Var70 string
 			templ_7745c5c3_Var70, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.MultiTenant))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 378, Col: 93}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 378, Col: 93}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
 			if templ_7745c5c3_Err != nil {
@@ -1933,7 +1933,7 @@ func idpField(f idpForm, key string) templ.Component {
 			var templ_7745c5c3_Var74 string
 			templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-wrap")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 392, Col: 32}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 392, Col: 32}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var74)
 			if templ_7745c5c3_Err != nil {
@@ -1946,7 +1946,7 @@ func idpField(f idpForm, key string) templ.Component {
 			var templ_7745c5c3_Var75 string
 			templ_7745c5c3_Var75, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.hasDomains()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 392, Col: 102}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 392, Col: 102}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
 			if templ_7745c5c3_Err != nil {
@@ -1990,7 +1990,7 @@ func idpField(f idpForm, key string) templ.Component {
 			var templ_7745c5c3_Var77 string
 			templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-wrap")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 398, Col: 32}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 398, Col: 32}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var77)
 			if templ_7745c5c3_Err != nil {
@@ -2003,7 +2003,7 @@ func idpField(f idpForm, key string) templ.Component {
 			var templ_7745c5c3_Var78 string
 			templ_7745c5c3_Var78, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.Scope == "CLIENT"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 398, Col: 115}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 398, Col: 115}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var78))
 			if templ_7745c5c3_Err != nil {
@@ -2060,7 +2060,7 @@ func idpField(f idpForm, key string) templ.Component {
 			var templ_7745c5c3_Var80 string
 			templ_7745c5c3_Var80, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-field")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 411, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 411, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var80)
 			if templ_7745c5c3_Err != nil {
@@ -2086,7 +2086,7 @@ func idpField(f idpForm, key string) templ.Component {
 			var templ_7745c5c3_Var81 string
 			templ_7745c5c3_Var81, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-field")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 416, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 416, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var81)
 			if templ_7745c5c3_Err != nil {
@@ -2099,7 +2099,7 @@ func idpField(f idpForm, key string) templ.Component {
 			var templ_7745c5c3_Var82 string
 			templ_7745c5c3_Var82, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(hiddenUnless(f.Sync))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 416, Col: 89}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 416, Col: 89}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var82))
 			if templ_7745c5c3_Err != nil {
@@ -2130,7 +2130,7 @@ func idpField(f idpForm, key string) templ.Component {
 					var templ_7745c5c3_Var83 string
 					templ_7745c5c3_Var83, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-err")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 425, Col: 32}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 425, Col: 32}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var83)
 					if templ_7745c5c3_Err != nil {
@@ -2143,7 +2143,7 @@ func idpField(f idpForm, key string) templ.Component {
 					var templ_7745c5c3_Var84 string
 					templ_7745c5c3_Var84, templ_7745c5c3_Err = templ.JoinStringErrs(f.fieldError(key))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 425, Col: 100}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 425, Col: 100}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var84))
 					if templ_7745c5c3_Err != nil {
@@ -2199,7 +2199,7 @@ func idpRelease(f idpForm) templ.Component {
 		var templ_7745c5c3_Var86 string
 		templ_7745c5c3_Var86, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id("release-field"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `identity_providers.templ`, Line: 437, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 437, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var86)
 		if templ_7745c5c3_Err != nil {

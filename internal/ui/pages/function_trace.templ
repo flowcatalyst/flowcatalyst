@@ -26,8 +26,8 @@ func traceTickAttrs(fnID string, c traceCard, onPage bool) templ.Attributes {
 		refresh += "?page=traces"
 	}
 	return templ.Attributes{
-		"data-until":                   c.UntilMs,
-		"data-refresh":                 refresh,
+		"data-until":                    c.UntilMs,
+		"data-refresh":                  refresh,
 		"data-on-interval__duration.1s": traceTickExpr,
 	}
 }
@@ -152,7 +152,6 @@ templ traceCardC(fnID string, v TraceSwitchesView, c traceCard) {
 }
 
 // ── the enable dialog ──────────────────────────────────────────────────
-
 templ traceFormDialogC(f traceForm) {
 	@kit.FormDialog(f.dialog()) {
 		<div class="flex flex-col gap-4" data-signals={ f.signals() }>
@@ -215,7 +214,6 @@ templ traceField(f traceForm, key string) {
 }
 
 // ── the log page ───────────────────────────────────────────────────────
-
 templ traceLogPage(v traceLogView) {
 	<div>
 		<header class="fc-page-header">

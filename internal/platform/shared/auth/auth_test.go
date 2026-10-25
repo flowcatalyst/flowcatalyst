@@ -117,6 +117,21 @@ func TestCanAssignPrincipalRoles_NeedsAssignRoles(t *testing.T) {
 	assert.NoError(t, CanAssignPrincipalRoles(wildcard))
 }
 
+// Changing a user's scope or client access needs anchor tier AND
+// user:manage-access (owner ruling 2026-10-25).
+func TestCanManagePrincipalAccess_NeedsAnchorAndManageAccess(t *testing.T) {
+	const perm = "platform:iam:user:manage-access"
+	assert.Error(t, CanManagePrincipalAccess(nil))
+	assert.Error(t, CanManagePrincipalAccess(&AuthContext{Scope: ScopeAnchor}), "anchor tier alone")
+	assert.Error(t, CanManagePrincipalAccess(&AuthContext{Scope: ScopeAnchor, Permissions: []string{
+		"platform:iam:user:update", "platform:iam:user:assign-roles", "platform:iam:client-access:grant",
+	}}), "other IAM permissions")
+	assert.Error(t, CanManagePrincipalAccess(&AuthContext{Scope: ScopeClient, Permissions: []string{perm}}), "a client administrator never passes")
+	assert.Error(t, CanManagePrincipalAccess(&AuthContext{Scope: ScopePartner, Permissions: []string{perm}}), "nor a partner")
+	assert.NoError(t, CanManagePrincipalAccess(&AuthContext{Scope: ScopeAnchor, Permissions: []string{perm}}))
+	assert.NoError(t, CanManagePrincipalAccess(&AuthContext{Scope: ScopeAnchor, Permissions: []string{"platform:*:*:*"}}), "super-admin")
+}
+
 func TestCanProvisionApplicationServiceAccount_NeedsAnchorAndBothPermissions(t *testing.T) {
 	both := []string{"platform:iam:service-account:create", "platform:admin:application:update"}
 	assert.Error(t, CanProvisionApplicationServiceAccount(&AuthContext{Scope: ScopeAnchor}), "anchor reach alone")

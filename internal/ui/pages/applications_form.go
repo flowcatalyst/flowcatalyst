@@ -397,6 +397,9 @@ func (h *Applications) provisionLoginClient(w http.ResponseWriter, r *http.Reque
 // post/redirect/get, which would lose the secret; responses are no-store).
 func (h *Applications) showCredentials(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, id string, c appCredentials) {
 	ctx := r.Context()
+	// The secret is in this answer: no-store (the stream helper would leave
+	// it no-cache).
+	w = noStore{w}
 	if !ds.IsDatastar(r) {
 		h.renderWithDrawer(w, r, ac, id, nil, appCredentialsDialog(c), http.StatusOK)
 		return

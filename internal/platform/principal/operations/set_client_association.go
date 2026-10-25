@@ -43,9 +43,8 @@ type SetClientAssociationCommand struct {
 // client (and the new one) as PARTNER access grants, atomically with the scope
 // change, via ClientAssociationPersister.
 //
-// Authorize is intentionally Public: the only caller is the admin endpoint,
-// gated by auth.RequireAnchor at the controller — scope/client changes are
-// anchor-only, so there is no per-resource dimension for the use case to add.
+// Authorize: anchor tier and user:manage-access (authorizeAccessChange,
+// owner ruling 2026-10-25); promoting to ANCHOR needs the same.
 func SetClientAssociation(repo *principal.Repository, clients *client.Repository, grants *principal.ClientAccessGrantRepo) usecaseop.Operation[SetClientAssociationCommand, UserUpdated] {
 	return usecaseop.Operation[SetClientAssociationCommand, UserUpdated]{
 		Name: "SetClientAssociation",
@@ -58,7 +57,7 @@ func SetClientAssociation(repo *principal.Repository, clients *client.Repository
 			}
 			return nil
 		},
-		Authorize: usecaseop.Public[SetClientAssociationCommand],
+		Authorize: authorizeAccessChange[SetClientAssociationCommand],
 		Execute: func(ctx context.Context, cmd SetClientAssociationCommand, ec usecase.ExecutionContext) (usecaseop.Plan[UserUpdated], error) {
 			clientID := strings.TrimSpace(cmd.ClientID)
 

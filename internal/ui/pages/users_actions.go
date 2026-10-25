@@ -276,7 +276,7 @@ func (h *Users) saveRoles(w http.ResponseWriter, r *http.Request) {
 		h.formFailed(w, r, ac, id, f)
 		return
 	}
-	roles := facetValues(r.PostForm["roles"])
+	roles := formSet(r.PostForm["roles"])
 	res, err := h.Users.AssignPrincipalRoles(ctx, id, roles)
 	if err != nil {
 		f.Errs.apply(r, err, nil)
@@ -387,7 +387,7 @@ func (h *Users) saveApps(w http.ResponseWriter, r *http.Request) {
 		h.formFailed(w, r, ac, id, f)
 		return
 	}
-	res, err := h.Users.AssignPrincipalApplicationAccess(ctx, id, principalapi.AssignApplicationAccessRequest{ApplicationIDs: facetValues(r.PostForm["applicationIds"])})
+	res, err := h.Users.AssignPrincipalApplicationAccess(ctx, id, principalapi.AssignApplicationAccessRequest{ApplicationIDs: formSet(r.PostForm["applicationIds"])})
 	if err != nil {
 		f.Errs.apply(r, err, nil)
 		h.formFailed(w, r, ac, id, f)
@@ -496,8 +496,8 @@ func (h *Users) grantChoices(ctx context.Context, ac *auth.AuthContext, id strin
 func (h *Users) grantForm(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
-	// The client-access routes are anchor-only.
-	if err := firstError(auth.CanReadPrincipals(ac), auth.RequireAnchor(ac)); err != nil {
+	// The client-access routes need anchor tier and user:manage-access.
+	if err := firstError(auth.CanReadPrincipals(ac), auth.CanManagePrincipalAccess(ac)); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
@@ -530,7 +530,7 @@ func (h *Users) grantClient(w http.ResponseWriter, r *http.Request) {
 		}
 		h.formFailed(w, r, ac, id, f)
 	}
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanManagePrincipalAccess(ac); err != nil {
 		f.Errs.apply(r, err, nil)
 		fail()
 		return
@@ -551,7 +551,7 @@ func (h *Users) grantClient(w http.ResponseWriter, r *http.Request) {
 func (h *Users) revokeClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanManagePrincipalAccess(ac); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}

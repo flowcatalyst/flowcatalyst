@@ -387,9 +387,14 @@ func (h *CorsOrigins) delete(w http.ResponseWriter, r *http.Request) {
 
 // ── shared ─────────────────────────────────────────────────────────────
 
-// afterChange re-renders the table the user is on.
+// afterChange re-renders the table the user is on, when they may view it: a
+// caller allowed to add or remove but not to view gets only the flash, never
+// the list.
 func (h *CorsOrigins) afterChange(sse *ds.SSE, r *http.Request, ac *auth.AuthContext) {
 	ctx := r.Context()
+	if auth.CanReadCorsOrigins(ac) != nil {
+		return
+	}
 	view, err := h.listView(ctx, ac, refererList(r, corsList))
 	if err != nil {
 		h.Shell.FailSSE(sse, r, err)
@@ -416,6 +421,11 @@ func (h *CorsOrigins) showDialogStatus(w http.ResponseWriter, r *http.Request, a
 		if err := patchDialogSlot(ds.NewSSE(w, r), corsDialogSlot, dialog); err != nil {
 			slog.DebugContext(r.Context(), "ui: cors origins dialog patch not delivered", "err", err)
 		}
+		return
+	}
+	// The native page around the dialog is the list: the view permission's.
+	if err := auth.CanReadCorsOrigins(ac); err != nil {
+		h.Shell.Fail(w, r, err)
 		return
 	}
 	view, err := h.listView(r.Context(), ac, parseListQuery(nil, corsList))
