@@ -4,10 +4,11 @@
 -- so are the retention deletes (chunked, as for the function trace log).
 
 -- name: IngestionRuntimeUpsert :exec
-INSERT INTO ing_runtimes (runtime_id, kinds, contract_version, url, first_seen_at, last_seen_at)
-VALUES (@runtime_id, @kinds, @contract_version, @url, @now, @now)
+INSERT INTO ing_runtimes (runtime_id, kinds, builtin_kinds, contract_version, url, first_seen_at, last_seen_at)
+VALUES (@runtime_id, @kinds, @builtin_kinds, @contract_version, @url, @now, @now)
 ON CONFLICT (runtime_id) DO UPDATE SET
     kinds = EXCLUDED.kinds,
+    builtin_kinds = EXCLUDED.builtin_kinds,
     contract_version = EXCLUDED.contract_version,
     url = EXCLUDED.url,
     last_seen_at = EXCLUDED.last_seen_at;
@@ -45,6 +46,35 @@ SELECT ingestion_id FROM ing_leases
 WHERE ingestion_id = @ingestion_id AND runtime_id = @runtime_id AND expires_at > @now
 FOR UPDATE;
 
+-- The jobs call holds the lease row while it creates the jobs: a share lock,
+-- so the holder's own concurrent requests do not wait on each other, while a
+-- claim by another runtime (an UPDATE) waits until they have committed.
+-- name: IngestionLeaseShareHeld :one
+SELECT ingestion_id FROM ing_leases
+WHERE ingestion_id = @ingestion_id AND runtime_id = @runtime_id AND expires_at > @now
+FOR SHARE;
+
+-- The database's clock, read once per transaction (now() is the
+-- transaction's start), so every replica times leases by the same clock.
+-- name: IngestionDBNow :one
+SELECT now()::timestamptz AS now;
+
+-- A suspended or deactivated client's ingestions take no jobs.
+-- name: IngestionClientStatus :one
+SELECT status FROM tnt_clients WHERE id = $1;
+
+-- The permission a runtime-reported kind declared in its last report.
+-- name: IngestionKindRequirementUpsert :exec
+INSERT INTO ing_kind_requirements (kind, required_permission, runtime_id, updated_at)
+VALUES (@kind, @required_permission, @runtime_id, @updated_at)
+ON CONFLICT (kind) DO UPDATE SET
+    required_permission = EXCLUDED.required_permission,
+    runtime_id = EXCLUDED.runtime_id,
+    updated_at = EXCLUDED.updated_at;
+
+-- name: IngestionKindRequirementFind :one
+SELECT required_permission FROM ing_kind_requirements WHERE kind = $1;
+
 -- name: IngestionStateGet :one
 SELECT value FROM ing_state WHERE ingestion_id = $1 AND key = $2;
 
@@ -62,17 +92,18 @@ VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (ingestion_id, runtime_id) DO UPDATE SET
     version = EXCLUDED.version, status = EXCLUDED.status, error = EXCLUDED.error, updated_at = EXCLUDED.updated_at;
 
--- A window re-sent replaces the counts: it never adds to them.
+-- A window re-sent replaces the counts: it never adds to them. created_at is
+-- when the platform first wrote the window (retention prunes by it).
 -- name: IngestionMetricUpsert :exec
-INSERT INTO ing_exchange_metrics (ingestion_id, runtime_id, window_start, window_secs, completed, failed, records, jobs)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO ing_exchange_metrics (ingestion_id, runtime_id, window_start, window_secs, completed, failed, records, jobs, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (ingestion_id, runtime_id, window_start) DO UPDATE SET
     window_secs = EXCLUDED.window_secs, completed = EXCLUDED.completed, failed = EXCLUDED.failed,
     records = EXCLUDED.records, jobs = EXCLUDED.jobs;
 
 -- name: IngestionFailureInsert :exec
-INSERT INTO ing_failures (id, ingestion_id, runtime_id, version, kind, message, after_records, excerpt, occurred_at, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+INSERT INTO ing_failures (id, ingestion_id, runtime_id, version, kind, category, message, after_records, excerpt, occurred_at, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
 
 -- name: IngestionTestInsert :exec
 INSERT INTO ing_test_requests
@@ -113,7 +144,7 @@ LEFT JOIN ing_ingestions i ON i.id = t.ingestion_id
 WHERE t.id = ANY(@ids::text[]);
 
 -- name: IngestionRuntimeKinds :one
-SELECT kinds FROM ing_runtimes WHERE runtime_id = $1;
+SELECT kinds, builtin_kinds FROM ing_runtimes WHERE runtime_id = $1;
 
 -- The first request to name a key wins it; the caller reads back who did.
 -- name: IngestionJobKeyClaim :execrows

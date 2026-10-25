@@ -196,18 +196,20 @@ func TestFunctionTracePermissionsInBuiltInRoles(t *testing.T) {
 // holds the runtime API.
 func TestIngestionRoles(t *testing.T) {
 	const (
-		view    = "platform:ingestion:ingestion:view"
-		create  = "platform:ingestion:ingestion:create"
-		update  = "platform:ingestion:ingestion:update"
-		del     = "platform:ingestion:ingestion:delete"
-		promote = "platform:ingestion:ingestion:promote"
-		test    = "platform:ingestion:ingestion:test"
-		route   = "platform:ingestion:ingestion:route"
-		apply   = "platform:ingestion:set:apply"
-		operate = "platform:ingestion:runtime:operate"
+		view     = "platform:ingestion:ingestion:view"
+		create   = "platform:ingestion:ingestion:create"
+		update   = "platform:ingestion:ingestion:update"
+		del      = "platform:ingestion:ingestion:delete"
+		promote  = "platform:ingestion:ingestion:promote"
+		test     = "platform:ingestion:ingestion:test"
+		route    = "platform:ingestion:ingestion:route"
+		apply    = "platform:ingestion:set:apply"
+		operate  = "platform:ingestion:runtime:operate"
+		identity = "platform:ingestion:ingestion:runtime-identity"
+		secrets  = "platform:ingestion:ingestion:bind-secrets"
 	)
 	want := map[string][]string{
-		"platform:ingestion-admin":        {view, create, update, del, promote, test, apply},
+		"platform:ingestion-admin":        {view, create, update, del, promote, test, apply, identity, secrets},
 		"platform:ingestion-operator":     {view, update, test},
 		"platform:ingestion-viewer":       {view},
 		"platform:ingestion-route-author": {view, create, update, route},

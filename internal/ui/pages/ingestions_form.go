@@ -264,7 +264,7 @@ func (h *Ingestions) withChoices(r *http.Request, ac *auth.AuthContext, f *ingsF
 		}
 		// A kind that declares a permission is offered to those who hold it,
 		// and kept when it is the one an ingestion already has.
-		if perm := kinds.of(k.Name); k.BuiltIn || perm == "" || ac.HasPermission(perm) || k.Name == f.Values["kind"] {
+		if perm := kinds.of(k.Name); k.BuiltIn || ingestion.HoldsKindPermission(ac, perm) || k.Name == f.Values["kind"] {
 			f.KindOptions = append(f.KindOptions, kit.Option{Value: k.Name, Label: k.Label})
 		}
 	}

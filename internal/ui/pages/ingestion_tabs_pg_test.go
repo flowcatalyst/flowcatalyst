@@ -74,7 +74,10 @@ func newUitPG(t *testing.T) *uitPG {
 func (e *uitPG) admin() *auth.AuthContext {
 	return &auth.AuthContext{
 		PrincipalID: "prn_uiingtester01", Email: "t@x.y", Scope: auth.ScopeAnchor, Roles: []string{"r"}, AllApplications: true,
-		Permissions:   []string{uitPermView, uitPermTest, uitPermApply, "platform:ingestion:ingestion:create", "platform:ingestion:ingestion:update"},
+		Permissions: []string{
+			uitPermView, uitPermTest, uitPermApply, "platform:ingestion:ingestion:create", "platform:ingestion:ingestion:update",
+			"platform:ingestion:ingestion:promote", "platform:ingestion:ingestion:runtime-identity", "platform:ingestion:ingestion:bind-secrets",
+		},
 		PrincipalType: auth.PrincipalTypeUser,
 	}
 }
@@ -84,7 +87,7 @@ func (e *uitPG) ctx() context.Context { return testpg.WithAuth(context.Backgroun
 func (e *uitPG) def(queue string) ingestion.Definition {
 	return ingestion.Definition{
 		Name: "Orders " + queue, Source: ingestion.Sqs{Region: "eu-west-1", Queue: queue}, Split: ingestion.None{},
-		Target: ingestion.Target{Code: "acme:orders:order:received", TargetURL: "https://hooks.example.com/orders", Pool: e.poolCode, Mode: ingestion.ModeImmediate, BatchSize: 100},
+		Target: ingestion.Target{Code: e.app.Code + ":orders:order:received", TargetURL: "https://hooks.example.com/orders", Pool: e.poolCode, Mode: ingestion.ModeImmediate, BatchSize: 100},
 	}
 }
 

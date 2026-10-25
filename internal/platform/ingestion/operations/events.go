@@ -159,6 +159,30 @@ func (e IngestionVersionLive) ToDataJSON() ([]byte, error) {
 	}{e.IngestionID, e.Code, e.Version})
 }
 
+// IngestionFailureDismissedType is emitted when someone dismisses a failure a
+// runtime reported, a notice included. It is the ingestion's event (its
+// subject is the ingestion), so the dismissal reads in the ingestion's
+// history.
+const IngestionFailureDismissedType = "platform:ingestion:ingestion:failure-dismissed"
+
+// IngestionFailureDismissed is emitted when a failure is dismissed.
+type IngestionFailureDismissed struct {
+	ingestionEvent
+	Code      string
+	FailureID string
+	Category  string
+}
+
+func (IngestionFailureDismissed) EventType() string { return IngestionFailureDismissedType }
+func (e IngestionFailureDismissed) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		IngestionID string `json:"ingestionId"`
+		Code        string `json:"code"`
+		FailureID   string `json:"failureId"`
+		Category    string `json:"category"`
+	}{e.IngestionID, e.Code, e.FailureID, e.Category})
+}
+
 const (
 	IngestionManagedType     = "platform:ingestion:ingestion:managed"
 	IngestionSetAppliedType  = "platform:ingestion:set:applied"

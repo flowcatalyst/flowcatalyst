@@ -55,10 +55,14 @@ const (
 	base        = "/api/ingestion-runtime/v1"
 )
 
-const goodTarget = `{"code":"acme:orders:order:received","targetUrl":"https://hooks.example.com/orders","pool":"orders","mode":"IMMEDIATE","batchSize":100}`
+// goodTarget is a target of the application app: its job code names it, as
+// a target's must.
+func goodTarget(app string) string {
+	return `{"code":"` + app + `:orders:order:received","targetUrl":"https://hooks.example.com/orders","pool":"orders","mode":"IMMEDIATE","batchSize":100}`
+}
 
-func definitionJSON(source string) string {
-	return `{"name":"Orders","source":` + source + `,"split":{"kind":"none"},"target":` + goodTarget + `}`
+func (e *env) definitionJSON(source string) string {
+	return `{"name":"Orders","source":` + source + `,"split":{"kind":"none"},"target":` + goodTarget(e.app.Code) + `}`
 }
 
 func unique() string { return strings.ToLower(tsid.GenerateUntyped()) }
@@ -123,11 +127,21 @@ func newEnv(t *testing.T) *env {
 	return e
 }
 
+// principal is a runtime's service account as the runtime API requires one
+// (anchor tier, bound to no application), also holding whatever operator
+// permissions a test needs for the operator routes it calls.
 func (e *env) principal(perms ...string) *auth.AuthContext {
 	return &auth.AuthContext{
-		PrincipalID: "prn_ingrtester001", Scope: auth.ScopeClient, Clients: []string{string(e.client.ID)},
-		AllApplications: true, Permissions: perms,
+		PrincipalID: "prn_ingrtester001", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: perms,
+		PrincipalType: auth.PrincipalTypeService,
 	}
+}
+
+// clientTier narrows a principal to one client, as a person or an operator
+// account below anchor tier is.
+func clientTier(a *auth.AuthContext, client string) *auth.AuthContext {
+	a.Scope, a.Clients = auth.ScopeClient, []string{client}
+	return a
 }
 
 func (e *env) persist(uow *usecasepgx.UnitOfWork, fn func(context.Context, *usecasepgx.DbTx) error) {
@@ -145,7 +159,7 @@ func (e *env) persist(uow *usecasepgx.UnitOfWork, fn func(context.Context, *usec
 // save stores an ingestion of the source JSON and returns it.
 func (e *env) save(code, source string, live bool) *ingestion.Ingestion {
 	e.t.Helper()
-	def, err := ingestion.ParseDefinition([]byte(definitionJSON(source)))
+	def, err := ingestion.ParseDefinition([]byte(e.definitionJSON(source)))
 	require.NoError(e.t, err)
 	i := ingestion.New(e.app.ID, e.client.ID, code, def, live, nil, nil)
 	e.persist(testpg.NewUoW(e.t), func(ctx context.Context, tx *usecasepgx.DbTx) error { return e.repo.Persist(ctx, i, tx) })
@@ -267,7 +281,7 @@ func TestPoll_ServesCurrentAndPreviousContract(t *testing.T) {
 func TestPoll_LiveVersionOnly(t *testing.T) {
 	e := newEnv(t)
 	i := e.save("versions", sqsSource, true)
-	next, err := ingestion.ParseDefinition([]byte(definitionJSON(`{"kind":"sqs","region":"eu-west-1","queue":"orders-v2"}`)))
+	next, err := ingestion.ParseDefinition([]byte(e.definitionJSON(`{"kind":"sqs","region":"eu-west-1","queue":"orders-v2"}`)))
 	require.NoError(t, err)
 	i, err = e.repo.FindByID(context.Background(), i.ID)
 	require.NoError(t, err)
@@ -392,7 +406,7 @@ func TestIngestionTest_Lifecycle(t *testing.T) {
 	// A definition that is not saved yet is tried the same way, as ing_test.
 	unsaved := e.do(http.MethodPost, "/api/ingestion-tests", map[string]any{
 		"application": e.app.Code, "client": e.client.Identifier,
-		"definition": json.RawMessage(definitionJSON(`{"kind":"custom","type":"` + kind + `","settings":{}}`)),
+		"definition": json.RawMessage(e.definitionJSON(`{"kind":"custom","type":"` + kind + `","settings":{}}`)),
 	})
 	require.Equal(t, http.StatusAccepted, unsaved.code, unsaved.raw)
 	tests = e.poll(rt, ingestion.ContractVersion, map[string]any{"kind": kind}).list("tests")
@@ -420,8 +434,7 @@ func TestIngestionTest_PermissionAndReach(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, e.do(http.MethodPost, "/api/ingestion-tests", map[string]any{"ingestionId": i.ID}).code)
 	assert.Equal(t, http.StatusForbidden, e.do(http.MethodGet, "/api/ingestion-tests/"+id, nil).code)
 
-	e.who = e.principal(permTest)
-	e.who.Clients = []string{"clt_someoneelse0"}
+	e.who = clientTier(e.principal(permTest), "clt_someoneelse0")
 	assert.Equal(t, http.StatusForbidden, e.do(http.MethodPost, "/api/ingestion-tests", map[string]any{"ingestionId": i.ID}).code, "another client's ingestion")
 	assert.Equal(t, http.StatusForbidden, e.do(http.MethodGet, "/api/ingestion-tests/"+id, nil).code)
 
@@ -432,18 +445,26 @@ func TestIngestionTest_PermissionAndReach(t *testing.T) {
 		map[string]any{"ingestionId": i.ID, "application": e.app.Code}).code, "names both")
 }
 
-// A runtime sees only what its service account reaches: a client-tier
-// account never receives another client's ingestions.
-// The runtime role is platform-wide: how the account was provisioned, or the clients
-// it is confined to as a person, does not decide which ingestions a runtime runs.
+// The runtime role is platform-wide: a runtime's account (anchor tier, bound to
+// no application) runs every client's and every application's ingestions. An
+// account that is narrower (client tier, or an application's) is not a
+// runtime's and is refused (owner ruling R1), never confined to its reach.
 func TestPoll_ReachIsPlatformWide(t *testing.T) {
 	e := newEnv(t)
 	i := e.save("mine", sqsSource, true)
 	e.who = e.principal(permRuntime)
-	e.who.Clients = []string{"clt_someoneelse0"}
-	e.who.AllApplications = false
-	e.who.Applications = []string{"app_someoneelse0"}
 	got := e.poll("rt-"+unique(), ingestion.ContractVersion).list("ingestions")
 	require.Len(t, got, 1)
 	assert.Equal(t, i.ID, got[0]["id"])
+
+	e.who = clientTier(e.principal(permRuntime), string(e.client.ID))
+	r := e.poll("rt-"+unique(), ingestion.ContractVersion)
+	assert.Equal(t, http.StatusForbidden, r.code, r.raw)
+	assert.Equal(t, "INGESTION_RUNTIME_ANCHOR_REQUIRED", r.errCode())
+
+	e.who = e.principal(permRuntime)
+	e.who.AllApplications, e.who.Applications = false, []string{string(e.app.ID)}
+	r = e.poll("rt-"+unique(), ingestion.ContractVersion)
+	assert.Equal(t, http.StatusForbidden, r.code, r.raw)
+	assert.Equal(t, "INGESTION_RUNTIME_APPLICATION_BOUND", r.errCode(), "even bound to the very application whose ingestions it would run")
 }

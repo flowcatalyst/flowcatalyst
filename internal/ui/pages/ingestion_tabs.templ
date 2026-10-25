@@ -122,6 +122,15 @@ templ ingFailureItems(rows []ingFailureRow) {
 		<li id={ "ing-failure-" + f.ID } class="border-t border-border pt-2 text-sm">
 			<div class="flex flex-wrap items-center gap-2">
 				@kit.Tag(kit.TagProps{Severity: f.Severity, Label: f.Kind})
+				if f.Notice {
+					@kit.Tag(kit.TagProps{Severity: kit.TagDanger, Label: "Notice"})
+				}
+				if f.Dismissed != "" {
+					<span class="text-xs text-muted-foreground" data-testid="ing-failure-dismissed">
+						Dismissed by { f.Dismissed },
+						@kit.LocalTime(kit.LocalTimeProps{At: f.DismissedAt})
+					</span>
+				}
 				<span class="text-xs text-muted-foreground">
 					@kit.LocalTime(kit.LocalTimeProps{At: f.At})
 				</span>
@@ -142,6 +151,13 @@ templ ingFailureItems(rows []ingFailureRow) {
 				<div class="mt-2">
 					@kit.CodeBlock(kit.CodeBlockProps{Label: "The start of the payload"}) {
 						{ f.Excerpt }
+					}
+				</div>
+			}
+			if f.DismissAction != "" {
+				<div class="mt-2">
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Small: true, Icon: "check", Attrs: confirmTrigger(ingsDismissDialog, f.DismissAction)}) {
+						Dismiss…
 					}
 				</div>
 			}

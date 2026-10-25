@@ -2,15 +2,37 @@
 -- tab and the source kinds the live runtimes report.
 
 -- The failures tab pages by id, newest first (idx_ing_failures_ingestion).
+-- undismissed keeps only the failures nobody has dismissed; category '' is
+-- every category.
 -- name: IngestionFailureList :many
 SELECT * FROM ing_failures
 WHERE ingestion_id = @ingestion_id
   AND (@after::text = '' OR id < @after::text)
+  AND (NOT @undismissed::bool OR dismissed_at IS NULL)
+  AND (@category::text = '' OR category = @category::text)
 ORDER BY id DESC
 LIMIT @lim;
 
+-- name: IngestionFailureFind :one
+SELECT * FROM ing_failures WHERE ingestion_id = @ingestion_id AND id = @id;
+
+-- Dismissing is once: a failure already dismissed is not touched again.
+-- name: IngestionFailureDismiss :execrows
+UPDATE ing_failures SET dismissed_at = @dismissed_at, dismissed_by = @dismissed_by
+WHERE ingestion_id = @ingestion_id AND id = @id AND dismissed_at IS NULL;
+
+-- The undismissed notices ("rejected" failures) of the ingestions shown:
+-- how many, and the newest one's message (idx_ing_failures_notices).
+-- name: IngestionNotices :many
+SELECT ingestion_id, count(*)::bigint AS notices,
+       (array_agg(message ORDER BY id DESC))[1]::text AS latest_message,
+       max(created_at)::timestamptz AS latest_at
+FROM ing_failures
+WHERE ingestion_id = ANY(@ids::text[]) AND category = 'rejected' AND dismissed_at IS NULL
+GROUP BY ingestion_id;
+
 -- name: IngestionRuntimeKindsSeenSince :many
-SELECT kinds FROM ing_runtimes WHERE last_seen_at >= $1;
+SELECT kinds, builtin_kinds FROM ing_runtimes WHERE last_seen_at >= $1;
 
 -- The activity tab: what each runtime last said about the ingestion.
 -- name: IngestionRouteStateList :many

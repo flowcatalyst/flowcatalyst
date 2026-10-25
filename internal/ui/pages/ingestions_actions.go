@@ -11,6 +11,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
 )
 
@@ -114,4 +115,41 @@ func (h *Ingestions) makeLive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.done(w, r, ac, id, flashIngVersionLive, "Version "+strconv.Itoa(number)+" is live: runtimes run it on their next poll", false)
+}
+
+// dismissFailure dismisses one of the ingestion's failures (POST
+// /api/ingestions/{id}/failures/{failureId}/dismiss: the update permission);
+// a notice then stops showing on the list and the drawer. The drawer is
+// redrawn on the tab it is on, so an open Failures tab reads again.
+func (h *Ingestions) dismissFailure(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ac := auth.FromContext(ctx)
+	if err := auth.CanUpdateIngestions(ac); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	id, err := ingsID(r)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	failureID := chi.URLParam(r, "failureId")
+	if !kit.ValidID(failureID) {
+		h.Shell.Fail(w, r, httperror.NotFound("IngestionFailure", failureID))
+		return
+	}
+	if err := h.Ops.DismissFailure(ctx, id, failureID); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if !ds.IsDatastar(r) {
+		// The path is under /ui and the id passed kit.ValidID.
+		http.Redirect(w, r, ingsURL(id)+"?tab="+ingsTabFailures, http.StatusSeeOther) //nolint:gosec // G710: a /ui path built from a validated id
+		return
+	}
+	sse := ds.NewSSE(w, r)
+	h.afterChange(sse, r, ac, id, false)
+	if err := shell.Flash(sse, success("Failure dismissed")); err != nil {
+		slog.DebugContext(ctx, "ui: ingestion flash not delivered", "err", err)
+	}
 }

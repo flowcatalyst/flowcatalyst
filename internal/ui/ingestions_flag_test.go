@@ -26,6 +26,10 @@ func (noIngestions) ListVersions(context.Context, string) ([]ingestion.Version, 
 
 func (noIngestions) LiveKinds(context.Context) ([]ingestion.RuntimeKind, error) { return nil, nil }
 
+func (noIngestions) NoticesOf(context.Context, []string) (map[string]ingestion.Notices, error) {
+	return map[string]ingestion.Notices{}, nil
+}
+
 func (noIngestions) AnyLiveRuntimeCarries(context.Context) (func(string) bool, error) {
 	return func(string) bool { return true }, nil
 }

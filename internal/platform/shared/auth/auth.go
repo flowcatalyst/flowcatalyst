@@ -237,6 +237,14 @@ const (
 	PermIngestionRoute       = "platform:ingestion:ingestion:route"
 	permIngestionSetApply    = "platform:ingestion:set:apply"
 	permIngestionRuntimeOper = "platform:ingestion:runtime:operate"
+	// PermIngestionRuntimeIdentity gates saving an SQS or S3 source without
+	// a credential, which the runtime fleet then reads with its own AWS
+	// identity. Exported: the ingestion operations apply it per source.
+	PermIngestionRuntimeIdentity = "platform:ingestion:ingestion:runtime-identity"
+	// PermIngestionBindSecrets gates saving a definition that names secrets
+	// and points them somewhere new (another host, other secrets): naming a
+	// secret makes the runtime present it to the host the definition names.
+	PermIngestionBindSecrets = "platform:ingestion:ingestion:bind-secrets"
 	// Super-admin wildcard.
 	permSuperAdmin = "platform:*:*:*"
 )
@@ -273,6 +281,9 @@ type AuthContext struct {
 
 // PrincipalTypeUser marks an interactive human principal.
 const PrincipalTypeUser = "USER"
+
+// PrincipalTypeService marks a service account's principal.
+const PrincipalTypeService = "SERVICE"
 
 // IsRoleless reports a USER principal holding no platform role and no
 // permission — someone who authenticated (an SSO JIT provision, a revoked
@@ -1307,4 +1318,42 @@ func CanApplyIngestionSets(a *AuthContext) error { return requirePermission(a, p
 // service account calls.
 func CanOperateIngestionRuntime(a *AuthContext) error {
 	return requirePermission(a, permIngestionRuntimeOper)
+}
+
+// RequireIngestionRuntime is the runtime API's whole caller check (owner
+// ruling 2026-10-25): the permission, and a principal that is a runtime and
+// nothing else. That is a service account (no person runs a runtime), at
+// anchor tier (the runtime serves every client, so a client-tier token is a
+// forged or mis-provisioned one), and not bound to any application (one fleet
+// serves every application's ingestions; an application's own service
+// account, or one confined to a list of applications, is not a runtime's).
+// An account with access to every application is not bound to one.
+func RequireIngestionRuntime(a *AuthContext) error {
+	if err := requirePermission(a, permIngestionRuntimeOper); err != nil {
+		return err
+	}
+	switch {
+	case a.PrincipalType != PrincipalTypeService:
+		return usecase.Authorization("INGESTION_RUNTIME_SERVICE_ACCOUNT_REQUIRED",
+			"the ingestion runtime API is for a runtime's service account; this principal is not a service account")
+	case !a.IsAnchor():
+		return usecase.Authorization("INGESTION_RUNTIME_ANCHOR_REQUIRED",
+			"the ingestion runtime API needs an anchor-tier service account; this one is linked to clients")
+	case !a.AllApplications && len(a.Applications) > 0:
+		return usecase.Authorization("INGESTION_RUNTIME_APPLICATION_BOUND",
+			"the ingestion runtime API needs a service account that belongs to no application; this one is bound to one")
+	}
+	return nil
+}
+
+// CanIngestionRuntimeIdentity gates a source the runtime reads with its own
+// cloud identity (PermIngestionRuntimeIdentity).
+func CanIngestionRuntimeIdentity(a *AuthContext) error {
+	return requirePermission(a, PermIngestionRuntimeIdentity)
+}
+
+// CanBindIngestionSecrets gates pointing named secrets at a source
+// (PermIngestionBindSecrets).
+func CanBindIngestionSecrets(a *AuthContext) error {
+	return requirePermission(a, PermIngestionBindSecrets)
 }

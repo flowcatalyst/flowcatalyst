@@ -96,6 +96,8 @@ func (p *ingPG) form(code string) url.Values {
 	f.Set("client", p.client.Identifier)
 	f.Set("code", code)
 	f.Set("target.pool", p.poolRef)
+	// A target's job code names the ingestion's own application.
+	f.Set("target.code", p.app.Code+":sync:order:received")
 	return f
 }
 
@@ -114,7 +116,7 @@ func ingAnchor(perms ...string) *auth.AuthContext {
 
 func TestIngestionsPageAgainstPostgres(t *testing.T) {
 	p := newIngPG(t)
-	admin := ingAnchor(ingPermView, ingPermCreate, ingPermUpdate, ingPermDelete, ingPermPromote)
+	admin := ingAnchor(ingPermView, ingPermCreate, ingPermUpdate, ingPermDelete, ingPermPromote, ingPermSecrets, ingPermIdentity)
 	code := "feed-" + ingUnique()
 
 	// Create through the form: the stored definition is what the form said.
@@ -185,7 +187,7 @@ func TestIngestionsPageAgainstPostgres(t *testing.T) {
 
 func TestIngestionsPageEnforcesThePermissionsAndReach(t *testing.T) {
 	p := newIngPG(t)
-	admin := ingAnchor(ingPermView, ingPermCreate, ingPermUpdate, ingPermDelete, ingPermPromote)
+	admin := ingAnchor(ingPermView, ingPermCreate, ingPermUpdate, ingPermDelete, ingPermPromote, ingPermSecrets, ingPermIdentity)
 	code := "reach-" + ingUnique()
 	require.Equal(t, http.StatusOK, p.post(admin, "/ui/ingestions/new", p.form(code)).code)
 	i := p.find(code)
@@ -226,7 +228,7 @@ func TestIngestionsPageEnforcesThePermissionsAndReach(t *testing.T) {
 func TestIngestionsOfASetAreReadOnlyAndAKindNeedsItsPermission(t *testing.T) {
 	p := newIngPG(t)
 	ctx := context.Background()
-	admin := ingAnchor(ingPermView, ingPermCreate, ingPermUpdate, ingPermDelete, ingPermPromote)
+	admin := ingAnchor(ingPermView, ingPermCreate, ingPermUpdate, ingPermDelete, ingPermPromote, ingPermSecrets, ingPermIdentity)
 	code := "owned-" + ingUnique()
 	require.Equal(t, http.StatusOK, p.post(admin, "/ui/ingestions/new", p.form(code)).code)
 	i := p.find(code)
@@ -273,7 +275,7 @@ func TestIngestionsOfASetAreReadOnlyAndAKindNeedsItsPermission(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, none)
 
-	router := ingAnchor(ingPermView, ingPermCreate, ingPermUpdate, ingPermDelete, ingPermPromote, ingPermRoute)
+	router := ingAnchor(ingPermView, ingPermCreate, ingPermUpdate, ingPermDelete, ingPermPromote, ingPermRoute, ingPermSecrets, ingPermIdentity)
 	assert.Contains(t, p.do(router, req{target: "/ui/ingestions/new", datastar: true}).body, `<option value="camel-route"`)
 	created := p.post(router, "/ui/ingestions/new", route)
 	assert.Contains(t, created.body, "Ingestion created")

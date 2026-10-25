@@ -455,8 +455,11 @@ func (r *resolverEnv) makePool(t *testing.T, code string, clientID *ids.ClientID
 	return p
 }
 
+// serviceAccount saves an account of the environment's application (mutate
+// may unbind it or bind it elsewhere).
 func (r *resolverEnv) serviceAccount(t *testing.T, mutate func(*serviceaccount.ServiceAccount)) *serviceaccount.ServiceAccount {
 	sa := serviceaccount.New("sa-"+unique(), "Signer")
+	sa.ApplicationID = &r.app.ID
 	if mutate != nil {
 		mutate(sa)
 	}
@@ -479,9 +482,11 @@ func (r *resolverEnv) connection(t *testing.T, code string, appCode, clientID *s
 	return c
 }
 
-func target(pool string) ingestion.Target {
+// target is a target of the environment's application: its job code names
+// that application, as a target's must.
+func (r *resolverEnv) target(pool string) ingestion.Target {
 	return ingestion.Target{
-		Code: "acme:orders:order:received", TargetURL: "https://hooks.example.com/orders",
+		Code: r.app.Code + ":orders:order:received", TargetURL: "https://hooks.example.com/orders",
 		Pool: pool, Mode: ingestion.ModeImmediate, BatchSize: 100,
 	}
 }
@@ -538,7 +543,7 @@ func TestResolver_TargetResolvesCodesToIds(t *testing.T) {
 	sa := r.serviceAccount(t, nil)
 	conn := r.connection(t, "conn-"+unique(), &r.app.Code, nil, sa.ID)
 
-	tg := target(pool.Code)
+	tg := r.target(pool.Code)
 	got, err := r.resolver.Target(ctx, r.app.Code, r.client.ID, tg)
 	require.NoError(t, err)
 	assert.Equal(t, pool.ID, got.PoolID)
@@ -561,7 +566,7 @@ func TestResolver_TargetResolvesCodesToIds(t *testing.T) {
 func TestResolver_PoolOfNoClientServesEveryClient(t *testing.T) {
 	r := newResolverEnv(t)
 	shared := r.makePool(t, "shared-"+unique(), nil, nil)
-	got, err := r.resolver.Target(context.Background(), r.app.Code, r.client.ID, target(shared.Code))
+	got, err := r.resolver.Target(context.Background(), r.app.Code, r.client.ID, r.target(shared.Code))
 	require.NoError(t, err)
 	assert.Equal(t, shared.ID, got.PoolID)
 }
@@ -570,17 +575,17 @@ func TestResolver_PoolErrors(t *testing.T) {
 	ctx := context.Background()
 	r := newResolverEnv(t)
 
-	_, err := r.resolver.Target(ctx, r.app.Code, r.client.ID, target("no-such-pool-"+unique()))
+	_, err := r.resolver.Target(ctx, r.app.Code, r.client.ID, r.target("no-such-pool-"+unique()))
 	invalidTarget(t, err, "no dispatch pool with code")
 
 	other := newEnv(t)
 	theirs := r.makePool(t, "theirs-"+unique(), &other.client.ID, nil)
-	_, err = r.resolver.Target(ctx, r.app.Code, r.client.ID, target(theirs.Code))
+	_, err = r.resolver.Target(ctx, r.app.Code, r.client.ID, r.target(theirs.Code))
 	invalidTarget(t, err, "no dispatch pool with code")
 
 	cid := r.client.ID
 	suspended := r.makePool(t, "susp-"+unique(), &cid, func(p *dispatchpool.DispatchPool) { p.Suspend() })
-	_, err = r.resolver.Target(ctx, r.app.Code, r.client.ID, target(suspended.Code))
+	_, err = r.resolver.Target(ctx, r.app.Code, r.client.ID, r.target(suspended.Code))
 	invalidTarget(t, err, "suspended")
 }
 
@@ -591,7 +596,7 @@ func TestResolver_ConnectionAndServiceAccountTogether(t *testing.T) {
 	sa := r.serviceAccount(t, nil)
 	conn := r.connection(t, "conn-"+unique(), nil, nil, sa.ID)
 
-	tg := target(pool.Code)
+	tg := r.target(pool.Code)
 	tg.Connection, tg.ServiceAccount = &conn.Code, &sa.Code
 	_, err := r.resolver.Target(context.Background(), r.app.Code, r.client.ID, tg)
 	invalidTarget(t, err, "may not be set with a connection")
@@ -611,7 +616,7 @@ func TestResolver_BadURLs(t *testing.T) {
 		"not a url",
 	} {
 		t.Run(url, func(t *testing.T) {
-			tg := target(pool.Code)
+			tg := r.target(pool.Code)
 			tg.TargetURL = url
 			_, err := r.resolver.Target(context.Background(), r.app.Code, r.client.ID, tg)
 			invalidTarget(t, err, "target.targetUrl")
@@ -626,7 +631,7 @@ func TestResolver_ConnectionLookup(t *testing.T) {
 	pool := r.makePool(t, "pool-"+unique(), &cid, nil)
 	sa := r.serviceAccount(t, nil)
 
-	tg := target(pool.Code)
+	tg := r.target(pool.Code)
 	missing := "no-such-conn-" + unique()
 	tg.Connection = &missing
 	_, err := r.resolver.Target(ctx, r.app.Code, r.client.ID, tg)
@@ -656,7 +661,7 @@ func TestResolver_ServiceAccountErrors(t *testing.T) {
 	r := newResolverEnv(t)
 	cid := r.client.ID
 	pool := r.makePool(t, "pool-"+unique(), &cid, nil)
-	tg := target(pool.Code)
+	tg := r.target(pool.Code)
 
 	missing := "no-such-sa-" + unique()
 	tg.ServiceAccount = &missing
@@ -678,4 +683,57 @@ func TestResolver_ServiceAccountErrors(t *testing.T) {
 	tg.ServiceAccount = &reaching.Code
 	_, err = r.resolver.Target(ctx, r.app.Code, r.client.ID, tg)
 	require.NoError(t, err)
+}
+
+// The account that signs an ingestion's jobs is one of the ingestion's own
+// application's (owner ruling R4c): a platform account (bound to no
+// application) and another application's are refused, whatever clients they
+// reach; one of this application linked to no client reaches every one of its
+// clients.
+func TestResolver_ServiceAccountBelongsToTheApplication(t *testing.T) {
+	ctx := context.Background()
+	r := newResolverEnv(t)
+	cid := r.client.ID
+	pool := r.makePool(t, "pool-"+unique(), &cid, nil)
+	tg := r.target(pool.Code)
+
+	platform := r.serviceAccount(t, func(sa *serviceaccount.ServiceAccount) { sa.ApplicationID = nil })
+	tg.ServiceAccount = &platform.Code
+	_, err := r.resolver.Target(ctx, r.app.Code, r.client.ID, tg)
+	invalidTarget(t, err, "belongs to no application")
+
+	elsewhere := newEnv(t)
+	theirs := r.serviceAccount(t, func(sa *serviceaccount.ServiceAccount) {
+		sa.ApplicationID = &elsewhere.app.ID
+		sa.ClientIDs = []string{string(r.client.ID)}
+	})
+	tg.ServiceAccount = &theirs.Code
+	_, err = r.resolver.Target(ctx, r.app.Code, r.client.ID, tg)
+	invalidTarget(t, err, "belongs to another application")
+
+	everyClient := r.serviceAccount(t, nil)
+	tg.ServiceAccount = &everyClient.Code
+	got, err := r.resolver.Target(ctx, r.app.Code, r.client.ID, tg)
+	require.NoError(t, err, "bound to this application and linked to no client: all its clients")
+	assert.Equal(t, everyClient.ID, *got.ServiceAccountID)
+}
+
+// A target's job code names the ingestion's own application (owner ruling
+// R4e), as the batch dispatch API requires of an application's credential.
+func TestResolver_JobCodeBelongsToTheApplication(t *testing.T) {
+	ctx := context.Background()
+	r := newResolverEnv(t)
+	cid := r.client.ID
+	pool := r.makePool(t, "pool-"+unique(), &cid, nil)
+	tg := r.target(pool.Code)
+	other := newEnv(t)
+	tg.Code = other.app.Code + ":orders:order:received"
+	_, err := r.resolver.Target(ctx, r.app.Code, r.client.ID, tg)
+	invalidTarget(t, err, "target.code")
+	tg.Code = "platform:ingestion:ingestion:created"
+	_, err = r.resolver.Target(ctx, r.app.Code, r.client.ID, tg)
+	invalidTarget(t, err, "makes jobs of its own application only")
+	tg.Code = strings.ToUpper(r.app.Code[:1]) + r.app.Code[1:] + ":orders:order:received"
+	_, err = r.resolver.Target(ctx, r.app.Code, r.client.ID, tg)
+	require.NoError(t, err, "an application's code matches whatever its case")
 }

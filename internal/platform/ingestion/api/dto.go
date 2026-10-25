@@ -56,13 +56,14 @@ type CreateIngestionRequest struct {
 	Application string  `json:"application" doc:"Code of the owning application, which must be of type INTEGRATION"`
 	Client      string  `json:"client" doc:"The client's id (clt_...) or identifier"`
 	Code        string  `json:"code" doc:"Lowercase letters, digits and hyphens, unique within the application and client"`
-	Live        *bool   `json:"live,omitempty" doc:"Make the first version live. Default true; false saves it to be made live later."`
+	Live        *bool   `json:"live,omitempty" doc:"Make the first version live. Default true, which needs the promote permission (403 INGESTION_PROMOTE_REQUIRED without it); false saves it to be made live later."`
 	Note        *string `json:"note,omitempty"`
 	IngestionDefinition
 }
 
 // UpdateIngestionRequest is the wire body for PUT /api/ingestions/{id}: the
-// definition saved as the next version and made live.
+// definition saved as the next version and made live, which needs the promote
+// permission as well as update (without it: POST .../versions, live false).
 type UpdateIngestionRequest struct {
 	ExpectedVersion int     `json:"expectedVersion" doc:"The live version the caller read (0 when none is live); a different current version is a 409"`
 	Note            *string `json:"note,omitempty"`
@@ -94,9 +95,28 @@ type IngestionResponse struct {
 	ManagedBy *string `json:"managedBy,omitempty" doc:"Id of the set that owns the ingestion; it is read-only until the set is released"`
 	// RuntimeNotice is set while a running ingestion's kind is carried by no
 	// live runtime: nothing has failed, nobody is there to run it yet.
-	RuntimeNotice *string         `json:"runtimeNotice,omitempty"`
-	CreatedAt     httpcompat.Time `json:"createdAt"`
-	UpdatedAt     httpcompat.Time `json:"updatedAt"`
+	RuntimeNotice *string `json:"runtimeNotice,omitempty"`
+	// Warnings are what the definition says that saves but will not run as
+	// meant (an sftp source that checks no host key).
+	Warnings []string `json:"warnings,omitempty" doc:"What the definition says that will not run as meant, such as an sftp source that neither names the server's host key nor accepts any"`
+	// Notices counts the failures of category rejected nobody has dismissed:
+	// the platform refused the runtime's jobs permanently, and nothing more
+	// is made until someone acts and dismisses them.
+	Notices        int              `json:"notices" doc:"Undismissed notices: rejected failures (GET .../failures?category=rejected&undismissed=true)"`
+	LatestNotice   *string          `json:"latestNotice,omitempty" doc:"The newest undismissed notice's message"`
+	LatestNoticeAt *httpcompat.Time `json:"latestNoticeAt,omitempty"`
+	CreatedAt      httpcompat.Time  `json:"createdAt"`
+	UpdatedAt      httpcompat.Time  `json:"updatedAt"`
+}
+
+// withNotices adds what the ingestion's undismissed notices add up to. A
+// function, not a method, as parseDefinition.
+func withNotices(r *IngestionResponse, n ingestion.Notices) {
+	r.Notices = n.Count
+	if n.Count > 0 {
+		r.LatestNotice = &n.LatestMessage
+		r.LatestNoticeAt = new(jsontime.New(n.LatestAt))
+	}
 }
 
 func fromEntity(i *ingestion.Ingestion, applicationCode, clientIdentifier string) (IngestionResponse, error) {
@@ -120,6 +140,7 @@ func fromEntity(i *ingestion.Ingestion, applicationCode, clientIdentifier string
 		LatestVersion:       i.LatestVersion,
 		IngestionDefinition: body,
 		ManagedBy:           i.ManagedBy,
+		Warnings:            i.Definition.Warnings(),
 		CreatedAt:           jsontime.New(i.CreatedAt),
 		UpdatedAt:           jsontime.New(i.UpdatedAt),
 	}, nil
@@ -185,10 +206,15 @@ type IngestionFailureResponse struct {
 	RuntimeID    *string         `json:"runtimeId,omitempty"`
 	Version      *int            `json:"version,omitempty"`
 	Kind         string          `json:"kind"`
+	Category     string          `json:"category" enum:"payload,rejected" doc:"payload: a record or payload the runtime could not take. rejected: a notice, the platform refused the runtime's jobs permanently"`
 	Message      string          `json:"message"`
 	AfterRecords int64           `json:"afterRecords"`
 	Excerpt      *string         `json:"excerpt,omitempty" doc:"The start of the payload, only for an ingestion that keeps failed payloads"`
 	OccurredAt   httpcompat.Time `json:"occurredAt"`
+	// CreatedAt is when the platform recorded it; retention counts from it.
+	CreatedAt   httpcompat.Time  `json:"createdAt"`
+	DismissedAt *httpcompat.Time `json:"dismissedAt,omitempty"`
+	DismissedBy *string          `json:"dismissedBy,omitempty" doc:"The principal who dismissed it"`
 }
 
 // IngestionFailureListResponse is the wire shape for GET /api/ingestions/{id}/failures,

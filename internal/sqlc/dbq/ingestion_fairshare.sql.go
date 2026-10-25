@@ -7,6 +7,7 @@ package dbq
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -41,21 +42,55 @@ func (q *Queries) IngestionLeasesHeldBy(ctx context.Context, arg IngestionLeases
 	return items, nil
 }
 
-const ingestionRuntimesLive = `-- name: IngestionRuntimesLive :one
-SELECT count(*)::bigint FROM ing_runtimes WHERE last_seen_at > $1 AND last_seen_at <= $2
+const ingestionLeasesLock = `-- name: IngestionLeasesLock :exec
+SELECT pg_advisory_xact_lock(hashtext('ingestion-leases'))
 `
 
-type IngestionRuntimesLiveParams struct {
+// Serialises the lease section of concurrent polls: each poll renews what it
+// holds and then claims what is free, and two polls doing that in different
+// row orders would deadlock.
+func (q *Queries) IngestionLeasesLock(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, ingestionLeasesLock)
+	return err
+}
+
+const ingestionRuntimesLiveKinds = `-- name: IngestionRuntimesLiveKinds :many
+SELECT runtime_id, kinds, builtin_kinds FROM ing_runtimes
+WHERE last_seen_at > $1 AND last_seen_at <= $2
+ORDER BY runtime_id
+`
+
+type IngestionRuntimesLiveKindsParams struct {
 	Since time.Time `db:"since"`
 	Until time.Time `db:"until"`
 }
 
-// The runtimes that polled within the lease window: the denominator of a
-// runtime's fair share of the polled ingestions (the asking runtime has just
-// been upserted, so it counts itself).
-func (q *Queries) IngestionRuntimesLive(ctx context.Context, arg IngestionRuntimesLiveParams) (int64, error) {
-	row := q.db.QueryRow(ctx, ingestionRuntimesLive, arg.Since, arg.Until)
-	var column_1 int64
-	err := row.Scan(&column_1)
-	return column_1, err
+type IngestionRuntimesLiveKindsRow struct {
+	RuntimeID    string          `db:"runtime_id"`
+	Kinds        json.RawMessage `db:"kinds"`
+	BuiltinKinds json.RawMessage `db:"builtin_kinds"`
+}
+
+// The runtimes that polled within the lease window, with what they carry: a
+// runtime's fair share of the polled ingestions of a kind is counted over the
+// live runtimes that carry that kind (the asking runtime has just been
+// upserted, so it counts itself).
+func (q *Queries) IngestionRuntimesLiveKinds(ctx context.Context, arg IngestionRuntimesLiveKindsParams) ([]IngestionRuntimesLiveKindsRow, error) {
+	rows, err := q.db.Query(ctx, ingestionRuntimesLiveKinds, arg.Since, arg.Until)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IngestionRuntimesLiveKindsRow{}
+	for rows.Next() {
+		var i IngestionRuntimesLiveKindsRow
+		if err := rows.Scan(&i.RuntimeID, &i.Kinds, &i.BuiltinKinds); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

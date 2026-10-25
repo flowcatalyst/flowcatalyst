@@ -21,6 +21,9 @@ type IngestionCommands interface {
 	Pause(ctx context.Context, id string) error
 	Resume(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
+	// DismissFailure dismisses one of the ingestion's failures (a notice
+	// stops showing).
+	DismissFailure(ctx context.Context, id, failureID string) error
 }
 
 // IngestionOps runs the ingestion use cases through the unit of work, exactly
@@ -75,5 +78,12 @@ func (o IngestionOps) Resume(ctx context.Context, id string) error {
 // Delete runs DeleteIngestion.
 func (o IngestionOps) Delete(ctx context.Context, id string) error {
 	_, err := usecaseop.Run(ctx, o.UoW, ingops.DeleteIngestion(o.Repo), ingops.DeleteCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// DismissFailure runs DismissIngestionFailure.
+func (o IngestionOps) DismissFailure(ctx context.Context, id, failureID string) error {
+	cmd := ingops.DismissFailureCommand{IngestionID: id, FailureID: failureID}
+	_, err := usecaseop.RunTx(ctx, o.UoW, ingops.DismissFailure(o.Repo), cmd, auth.NewExecutionContext(ctx))
 	return err
 }

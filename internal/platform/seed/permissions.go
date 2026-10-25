@@ -197,6 +197,13 @@ const (
 	permIngestionRoute          = "platform:ingestion:ingestion:route"
 	permIngestionSetApply       = "platform:ingestion:set:apply"
 	permIngestionRuntimeOperate = "platform:ingestion:runtime:operate"
+	// runtime-identity gates an SQS or S3 source without a credential (the
+	// runtime fleet reads it with its own AWS identity); bind-secrets gates a
+	// definition that names secrets and points them somewhere new. Both are
+	// read paths into what the runtime holds, so only the admin role (and
+	// super-admin's wildcard) has them, never the operator or route author.
+	permIngestionRuntimeIdentity = "platform:ingestion:ingestion:runtime-identity"
+	permIngestionBindSecrets     = "platform:ingestion:ingestion:bind-secrets"
 )
 
 // IAM context — users, roles, access control.

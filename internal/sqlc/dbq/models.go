@@ -437,27 +437,31 @@ type IamUserMfaRecoveryCode struct {
 }
 
 type IngExchangeMetric struct {
-	IngestionID string    `db:"ingestion_id"`
-	RuntimeID   string    `db:"runtime_id"`
-	WindowStart time.Time `db:"window_start"`
-	WindowSecs  int32     `db:"window_secs"`
-	Completed   int64     `db:"completed"`
-	Failed      int64     `db:"failed"`
-	Records     int64     `db:"records"`
-	Jobs        int64     `db:"jobs"`
+	IngestionID string     `db:"ingestion_id"`
+	RuntimeID   string     `db:"runtime_id"`
+	WindowStart time.Time  `db:"window_start"`
+	WindowSecs  int32      `db:"window_secs"`
+	Completed   int64      `db:"completed"`
+	Failed      int64      `db:"failed"`
+	Records     int64      `db:"records"`
+	Jobs        int64      `db:"jobs"`
+	CreatedAt   *time.Time `db:"created_at"`
 }
 
 type IngFailure struct {
-	ID           string    `db:"id"`
-	IngestionID  string    `db:"ingestion_id"`
-	RuntimeID    *string   `db:"runtime_id"`
-	Version      *int32    `db:"version"`
-	Kind         string    `db:"kind"`
-	Message      string    `db:"message"`
-	AfterRecords int64     `db:"after_records"`
-	Excerpt      *string   `db:"excerpt"`
-	OccurredAt   time.Time `db:"occurred_at"`
-	CreatedAt    time.Time `db:"created_at"`
+	ID           string     `db:"id"`
+	IngestionID  string     `db:"ingestion_id"`
+	RuntimeID    *string    `db:"runtime_id"`
+	Version      *int32     `db:"version"`
+	Kind         string     `db:"kind"`
+	Message      string     `db:"message"`
+	AfterRecords int64      `db:"after_records"`
+	Excerpt      *string    `db:"excerpt"`
+	OccurredAt   time.Time  `db:"occurred_at"`
+	CreatedAt    time.Time  `db:"created_at"`
+	Category     string     `db:"category"`
+	DismissedAt  *time.Time `db:"dismissed_at"`
+	DismissedBy  *string    `db:"dismissed_by"`
 }
 
 type IngIngestion struct {
@@ -485,6 +489,13 @@ type IngJobKey struct {
 	CreatedAt   time.Time `db:"created_at"`
 }
 
+type IngKindRequirement struct {
+	Kind               string    `db:"kind"`
+	RequiredPermission string    `db:"required_permission"`
+	RuntimeID          string    `db:"runtime_id"`
+	UpdatedAt          time.Time `db:"updated_at"`
+}
+
 type IngLease struct {
 	IngestionID string    `db:"ingestion_id"`
 	RuntimeID   string    `db:"runtime_id"`
@@ -509,6 +520,7 @@ type IngRuntime struct {
 	Url             *string         `db:"url"`
 	FirstSeenAt     time.Time       `db:"first_seen_at"`
 	LastSeenAt      time.Time       `db:"last_seen_at"`
+	BuiltinKinds    json.RawMessage `db:"builtin_kinds"`
 }
 
 type IngSet struct {

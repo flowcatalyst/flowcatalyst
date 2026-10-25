@@ -36,8 +36,10 @@ type FailureReport struct {
 	Version     int
 	At          time.Time
 	// Kind is REJECTED, NOT_DISPATCHED, SOURCE or AUTH.
-	Kind    string
-	Message string
+	Kind string
+	// Category is FailurePayload (also when empty) or FailureRejected.
+	Category string
+	Message  string
 	// AfterRecords is how many of the payload's records were read before it failed.
 	AfterRecords *int64
 	// Excerpt is the start of what it failed on; kept only for an ingestion
@@ -60,7 +62,23 @@ type Report struct {
 	Tests     []TestAnswer
 	// Caller bounds the report to the ingestions the runtime's service account reaches.
 	Caller *auth.AuthContext
-	Now    time.Time
+	// Now is when the platform records the report; zero is the database's
+	// clock. Timestamps the runtime sends are clamped to it (ClockSkew).
+	Now time.Time
+}
+
+// ClockSkew is how far ahead of the platform's clock a runtime-supplied time
+// may be: a failure or a window dated later than that is recorded as of now,
+// so a runtime with a wrong clock cannot write rows from the future that
+// read as the newest for weeks.
+const ClockSkew = 5 * time.Minute
+
+// clampFuture is t, or now when t is more than ClockSkew ahead of it.
+func clampFuture(t, now time.Time) time.Time {
+	if t.After(now.Add(ClockSkew)) {
+		return now
+	}
+	return t
 }
 
 // ReportSummary counts the entries of a report that were recorded and those
@@ -77,6 +95,11 @@ func (r *Repository) Record(ctx context.Context, rep Report) (ReportSummary, err
 	var sum ReportSummary
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		q := r.q.WithTx(tx)
+		now, err := clock(ctx, q, rep.Now)
+		if err != nil {
+			return err
+		}
+		rep.Now = now
 		accepted, err := r.acceptable(ctx, q, rep)
 		if err != nil {
 			return err
@@ -96,7 +119,7 @@ func (r *Repository) Record(ctx context.Context, rep Report) (ReportSummary, err
 			}
 			if err := q.IngestionRouteStateUpsert(ctx, dbq.IngestionRouteStateUpsertParams{
 				IngestionID: route.IngestionID, RuntimeID: rep.RuntimeID, Version: int32(route.Version),
-				Status: route.Status, Error: route.Error, UpdatedAt: rep.Now,
+				Status: route.Status, Error: StripNULPtr(route.Error), UpdatedAt: rep.Now,
 			}); err != nil {
 				return fmt.Errorf("route state: %w", err)
 			}
@@ -106,9 +129,10 @@ func (r *Repository) Record(ctx context.Context, rep Report) (ReportSummary, err
 				continue
 			}
 			if err := q.IngestionMetricUpsert(ctx, dbq.IngestionMetricUpsertParams{
-				IngestionID: w.IngestionID, RuntimeID: rep.RuntimeID, WindowStart: w.From,
+				IngestionID: w.IngestionID, RuntimeID: rep.RuntimeID, WindowStart: clampFuture(w.From, rep.Now),
 				WindowSecs: int32(w.To.Sub(w.From) / time.Second),
 				Completed:  w.Completed, Failed: w.Failed, Records: w.Records, Jobs: w.Dispatch,
+				CreatedAt: &rep.Now,
 			}); err != nil {
 				return fmt.Errorf("exchange metric: %w", err)
 			}
@@ -119,7 +143,7 @@ func (r *Repository) Record(ctx context.Context, rep Report) (ReportSummary, err
 				continue
 			}
 			// A payload is kept only for an ingestion whose client has agreed.
-			excerpt := f.Excerpt
+			excerpt := StripNULPtr(f.Excerpt)
 			if !ing.Definition.KeepFailedPayloads {
 				excerpt = nil
 			}
@@ -127,10 +151,15 @@ func (r *Repository) Record(ctx context.Context, rep Report) (ReportSummary, err
 			if f.AfterRecords != nil {
 				after = *f.AfterRecords
 			}
+			category := f.Category
+			if category == "" {
+				category = FailurePayload
+			}
 			version := int32(f.Version)
 			if err := q.IngestionFailureInsert(ctx, dbq.IngestionFailureInsertParams{
 				ID: tsid.Generate(tsid.IngestionFailure), IngestionID: f.IngestionID, RuntimeID: &rep.RuntimeID, Version: &version,
-				Kind: f.Kind, Message: f.Message, AfterRecords: after, Excerpt: excerpt, OccurredAt: f.At, CreatedAt: rep.Now,
+				Kind: StripNUL(f.Kind), Category: category, Message: StripNUL(f.Message), AfterRecords: after, Excerpt: excerpt,
+				OccurredAt: clampFuture(f.At, rep.Now), CreatedAt: rep.Now,
 			}); err != nil {
 				return fmt.Errorf("failure: %w", err)
 			}
@@ -217,6 +246,13 @@ func answerTest(ctx context.Context, q *dbq.Queries, rep Report, a TestAnswer) e
 	if !t.Definition.KeepFailedPayloads {
 		a.Result.Excerpt = nil
 	}
+	// JSONB refuses a NUL as firmly as text does.
+	a.Result.Excerpt = StripNULPtr(a.Result.Excerpt)
+	steps := make([]string, len(a.Result.Steps))
+	for n, step := range a.Result.Steps {
+		steps[n] = StripNUL(step)
+	}
+	a.Result.Steps = steps
 	_, err = completeTest(ctx, q, a.TestID, rep.RuntimeID, a.Result, rep.Now)
 	return err
 }

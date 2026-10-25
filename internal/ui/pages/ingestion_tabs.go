@@ -1,10 +1,12 @@
 package pages
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -218,6 +220,15 @@ type ingFailureRow struct {
 	// Excerpt is the start of the payload: only for an ingestion that keeps
 	// failed payloads.
 	Excerpt string
+	// Notice: a rejected failure (the platform refused the runtime's jobs)
+	// nobody has dismissed yet.
+	Notice bool
+	// Dismissed says who dismissed it, "" while nobody has; DismissedAt when.
+	Dismissed   string
+	DismissedAt time.Time
+	// DismissAction is the dismiss route, "" when the viewer may not dismiss
+	// it or it is dismissed already.
+	DismissAction string
 }
 
 type ingFailuresView struct {
@@ -232,12 +243,19 @@ func (v ingFailuresView) moreURL() string {
 	return ingTabURL(v.ID) + "/failures?after=" + v.Next
 }
 
-func ingFailureRows(i *ingestion.Ingestion, fs []ingestion.Failure) []ingFailureRow {
+// ingFailureRows shapes the failures; canDismiss offers Dismiss on the ones
+// nobody has dismissed (the update permission).
+func ingFailureRows(i *ingestion.Ingestion, fs []ingestion.Failure, canDismiss bool) []ingFailureRow {
 	rows := make([]ingFailureRow, 0, len(fs))
 	for _, f := range fs {
 		row := ingFailureRow{
 			ID: f.ID, Kind: f.Kind, Message: f.Message, Runtime: deref(f.RuntimeID), At: f.OccurredAt,
-			Severity: ingFailureSeverity[f.Kind],
+			Severity: ingFailureSeverity[f.Kind], Notice: f.Notice(),
+		}
+		if f.Dismissed() {
+			row.Dismissed, row.DismissedAt = cmp.Or(deref(f.DismissedBy), "someone"), *f.DismissedAt
+		} else if canDismiss {
+			row.DismissAction = ingsURL(i.ID) + "/failures/" + url.PathEscape(f.ID) + "/dismiss"
 		}
 		if label, known := ingFailureLabels[f.Kind]; known {
 			row.Kind = label
@@ -282,7 +300,8 @@ func (h *IngestionTabs) failures(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, usecase.Internal("REPO", "list_failures failed", err))
 		return
 	}
-	v := ingFailuresView{ID: i.ID, Keep: i.Definition.KeepFailedPayloads, Rows: ingFailureRows(i, page.Items), Next: page.Next, Appended: after != ""}
+	canDismiss := auth.CanUpdateIngestions(auth.FromContext(ctx)) == nil
+	v := ingFailuresView{ID: i.ID, Keep: i.Definition.KeepFailedPayloads, Rows: ingFailureRows(i, page.Items, canDismiss), Next: page.Next, Appended: after != ""}
 	sse := ds.NewSSE(w, r)
 	var perr error
 	if v.Appended {

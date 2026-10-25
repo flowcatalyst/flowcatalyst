@@ -32,15 +32,21 @@ func SaveVersion(repo *ingestion.Repository, resolver ingestion.Resolver) usecas
 			}
 			return validateDefinition(cmd.Definition)
 		},
-		// Per-resource authz runs post-load in Execute; the coarse permissions
-		// (update, plus promote when Live) are the controller's.
-		Authorize: usecaseop.Public[SaveVersionCommand],
+		// Promote when the version is saved live (the controller checks it too);
+		// per-resource authz runs post-load in Execute; the coarse update
+		// permission is the controller's.
+		Authorize: func(ctx context.Context, cmd SaveVersionCommand) error {
+			if cmd.Live {
+				return requirePromote(ctx, promoteVersion)
+			}
+			return nil
+		},
 		Execute: func(ctx context.Context, cmd SaveVersionCommand, ec usecase.ExecutionContext) (usecaseop.Plan[IngestionVersionSaved], error) {
 			i, err := loadEditable(ctx, repo, cmd.ID)
 			if err != nil {
 				return nil, err
 			}
-			if err := requireKindPermission(ctx, repo, cmd.Definition.Source); err != nil {
+			if err := checkAuthor(ctx, repo, i, cmd.Definition); err != nil {
 				return nil, err
 			}
 			if err := checkTarget(ctx, resolver, i, cmd.Definition); err != nil {

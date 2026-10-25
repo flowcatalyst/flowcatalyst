@@ -194,14 +194,24 @@ type Querier interface {
 	IdpRoleMappingFindByID(ctx context.Context, id string) (OauthIdpRoleMapping, error)
 	IdpRoleMappingFindByIdpRole(ctx context.Context, idpRoleName string) ([]OauthIdpRoleMapping, error)
 	IdpRoleMappingUpsert(ctx context.Context, arg IdpRoleMappingUpsertParams) error
+	// A suspended or deactivated client's ingestions take no jobs.
+	IngestionClientStatus(ctx context.Context, id ids.ClientID) (string, error)
+	// The database's clock, read once per transaction (now() is the
+	// transaction's start), so every replica times leases by the same clock.
+	IngestionDBNow(ctx context.Context) (time.Time, error)
 	IngestionDelete(ctx context.Context, id string) error
 	// Exchange counts over the last day and the last week, from the windows the
 	// runtimes reported. A window counts in the period its start falls in.
 	IngestionExchangeTotals(ctx context.Context, arg IngestionExchangeTotalsParams) (IngestionExchangeTotalsRow, error)
+	// Dismissing is once: a failure already dismissed is not touched again.
+	IngestionFailureDismiss(ctx context.Context, arg IngestionFailureDismissParams) (int64, error)
+	IngestionFailureFind(ctx context.Context, arg IngestionFailureFindParams) (IngFailure, error)
 	IngestionFailureInsert(ctx context.Context, arg IngestionFailureInsertParams) error
 	// Reads the operator API makes beside the ingestion aggregate: the failures
 	// tab and the source kinds the live runtimes report.
 	// The failures tab pages by id, newest first (idx_ing_failures_ingestion).
+	// undismissed keeps only the failures nobody has dismissed; category '' is
+	// every category.
 	IngestionFailureList(ctx context.Context, arg IngestionFailureListParams) ([]IngFailure, error)
 	IngestionFindByCode(ctx context.Context, arg IngestionFindByCodeParams) (IngIngestion, error)
 	// Queries for ing_ingestions and ing_versions. The filtered, paged list is a
@@ -212,6 +222,9 @@ type Querier interface {
 	// The first request to name a key wins it; the caller reads back who did.
 	IngestionJobKeyClaim(ctx context.Context, arg IngestionJobKeyClaimParams) (int64, error)
 	IngestionJobKeysFind(ctx context.Context, arg IngestionJobKeysFindParams) ([]IngestionJobKeysFindRow, error)
+	IngestionKindRequirementFind(ctx context.Context, kind string) (string, error)
+	// The permission a runtime-reported kind declared in its last report.
+	IngestionKindRequirementUpsert(ctx context.Context, arg IngestionKindRequirementUpsertParams) error
 	IngestionLastExchange(ctx context.Context, arg IngestionLastExchangeParams) (time.Time, error)
 	IngestionLastFailure(ctx context.Context, ingestionID string) (time.Time, error)
 	// The lease is taken in one statement: a conflicting row is taken over only by
@@ -225,25 +238,38 @@ type Querier interface {
 	// A runtime that stops running an ingestion marks its lease released; nobody
 	// else takes it before it expires, because the holder may be finishing a batch.
 	IngestionLeaseReleaseExcept(ctx context.Context, arg IngestionLeaseReleaseExceptParams) (int64, error)
+	// The jobs call holds the lease row while it creates the jobs: a share lock,
+	// so the holder's own concurrent requests do not wait on each other, while a
+	// claim by another runtime (an UPDATE) waits until they have committed.
+	IngestionLeaseShareHeld(ctx context.Context, arg IngestionLeaseShareHeldParams) (string, error)
 	// The leases a runtime holds and has not released, to be renewed first.
 	IngestionLeasesHeldBy(ctx context.Context, arg IngestionLeasesHeldByParams) ([]string, error)
+	// Serialises the lease section of concurrent polls: each poll renews what it
+	// holds and then claims what is free, and two polls doing that in different
+	// row orders would deadlock.
+	IngestionLeasesLock(ctx context.Context) error
 	IngestionListManagedBy(ctx context.Context, managedBy *string) ([]IngIngestion, error)
-	// A window re-sent replaces the counts: it never adds to them.
+	// A window re-sent replaces the counts: it never adds to them. created_at is
+	// when the platform first wrote the window (retention prunes by it).
 	IngestionMetricUpsert(ctx context.Context, arg IngestionMetricUpsertParams) error
+	// The undismissed notices ("rejected" failures) of the ingestions shown:
+	// how many, and the newest one's message (idx_ing_failures_notices).
+	IngestionNotices(ctx context.Context, argIds []string) ([]IngestionNoticesRow, error)
 	// The activity tab: what each runtime last said about the ingestion.
 	IngestionRouteStateList(ctx context.Context, ingestionID string) ([]IngRouteState, error)
 	IngestionRouteStateUpsert(ctx context.Context, arg IngestionRouteStateUpsertParams) error
-	IngestionRuntimeKinds(ctx context.Context, runtimeID string) (json.RawMessage, error)
-	IngestionRuntimeKindsSeenSince(ctx context.Context, lastSeenAt time.Time) ([]json.RawMessage, error)
+	IngestionRuntimeKinds(ctx context.Context, runtimeID string) (IngestionRuntimeKindsRow, error)
+	IngestionRuntimeKindsSeenSince(ctx context.Context, lastSeenAt time.Time) ([]IngestionRuntimeKindsSeenSinceRow, error)
 	// Queries for the runtime API (docs/ingestion-design.md section 7): runtimes,
 	// leases, state, reports and test requests. The live-ingestion read the poll
 	// makes is hand-rolled in the repository (it shares the list's row type), and
 	// so are the retention deletes (chunked, as for the function trace log).
 	IngestionRuntimeUpsert(ctx context.Context, arg IngestionRuntimeUpsertParams) error
-	// The runtimes that polled within the lease window: the denominator of a
-	// runtime's fair share of the polled ingestions (the asking runtime has just
-	// been upserted, so it counts itself).
-	IngestionRuntimesLive(ctx context.Context, arg IngestionRuntimesLiveParams) (int64, error)
+	// The runtimes that polled within the lease window, with what they carry: a
+	// runtime's fair share of the polled ingestions of a kind is counted over the
+	// live runtimes that carry that kind (the asking runtime has just been
+	// upserted, so it counts itself).
+	IngestionRuntimesLiveKinds(ctx context.Context, arg IngestionRuntimesLiveKindsParams) ([]IngestionRuntimesLiveKindsRow, error)
 	IngestionSetApplyFind(ctx context.Context, arg IngestionSetApplyFindParams) (IngSetApply, error)
 	// Forgets the applies beyond the newest @keep of a set, returning where their
 	// archives were kept.

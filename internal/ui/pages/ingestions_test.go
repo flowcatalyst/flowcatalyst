@@ -30,6 +30,8 @@ type fakeIngStore struct {
 	kinds    []ingestion.RuntimeKind
 	// carried are the kinds some live runtime carries.
 	carried []string
+	// notices are the undismissed notices by ingestion id.
+	notices map[string]ingestion.Notices
 	err     error
 	// lastFilter is the filter the last list asked for.
 	lastFilter ingestion.ListFilter
@@ -89,6 +91,16 @@ func (f *fakeIngStore) AnyLiveRuntimeCarries(context.Context) (func(string) bool
 	return func(kind string) bool { return slices.Contains(f.carried, kind) }, f.err
 }
 
+func (f *fakeIngStore) NoticesOf(_ context.Context, ids []string) (map[string]ingestion.Notices, error) {
+	out := map[string]ingestion.Notices{}
+	for _, id := range ids {
+		if n, ok := f.notices[id]; ok {
+			out[id] = n
+		}
+	}
+	return out, f.err
+}
+
 // fakeIngOps records what the page runs. It checks a definition as the use
 // cases do before anything else (Validate), so a page test sees the API's field
 // errors.
@@ -136,6 +148,11 @@ func (o *fakeIngOps) Resume(_ context.Context, id string) error { o.rec("resume:
 
 func (o *fakeIngOps) Delete(_ context.Context, id string) error { o.rec("delete:" + id); return o.err }
 
+func (o *fakeIngOps) DismissFailure(_ context.Context, id, failureID string) error {
+	o.rec("dismiss:" + id + ":" + failureID)
+	return o.err
+}
+
 // ── fixtures ───────────────────────────────────────────────────────────
 
 const (
@@ -145,6 +162,10 @@ const (
 	ingPermDelete  = "platform:ingestion:ingestion:delete"
 	ingPermPromote = "platform:ingestion:ingestion:promote"
 	ingPermRoute   = "platform:ingestion:ingestion:route"
+	// ingPermSecrets: a definition that names secrets (the create form's
+	// bearer token); ingPermIdentity: an SQS or S3 source without a key.
+	ingPermSecrets  = "platform:ingestion:ingestion:bind-secrets"
+	ingPermIdentity = "platform:ingestion:ingestion:runtime-identity"
 )
 
 var ingAllPerms = []string{ingPermView, ingPermCreate, ingPermUpdate, ingPermDelete, ingPermPromote, ingPermRoute}

@@ -60,26 +60,94 @@ func (q *Queries) IngestionExchangeTotals(ctx context.Context, arg IngestionExch
 	return i, err
 }
 
+const ingestionFailureDismiss = `-- name: IngestionFailureDismiss :execrows
+UPDATE ing_failures SET dismissed_at = $1, dismissed_by = $2
+WHERE ingestion_id = $3 AND id = $4 AND dismissed_at IS NULL
+`
+
+type IngestionFailureDismissParams struct {
+	DismissedAt *time.Time `db:"dismissed_at"`
+	DismissedBy *string    `db:"dismissed_by"`
+	IngestionID string     `db:"ingestion_id"`
+	ID          string     `db:"id"`
+}
+
+// Dismissing is once: a failure already dismissed is not touched again.
+func (q *Queries) IngestionFailureDismiss(ctx context.Context, arg IngestionFailureDismissParams) (int64, error) {
+	result, err := q.db.Exec(ctx, ingestionFailureDismiss,
+		arg.DismissedAt,
+		arg.DismissedBy,
+		arg.IngestionID,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const ingestionFailureFind = `-- name: IngestionFailureFind :one
+SELECT id, ingestion_id, runtime_id, version, kind, message, after_records, excerpt, occurred_at, created_at, category, dismissed_at, dismissed_by FROM ing_failures WHERE ingestion_id = $1 AND id = $2
+`
+
+type IngestionFailureFindParams struct {
+	IngestionID string `db:"ingestion_id"`
+	ID          string `db:"id"`
+}
+
+func (q *Queries) IngestionFailureFind(ctx context.Context, arg IngestionFailureFindParams) (IngFailure, error) {
+	row := q.db.QueryRow(ctx, ingestionFailureFind, arg.IngestionID, arg.ID)
+	var i IngFailure
+	err := row.Scan(
+		&i.ID,
+		&i.IngestionID,
+		&i.RuntimeID,
+		&i.Version,
+		&i.Kind,
+		&i.Message,
+		&i.AfterRecords,
+		&i.Excerpt,
+		&i.OccurredAt,
+		&i.CreatedAt,
+		&i.Category,
+		&i.DismissedAt,
+		&i.DismissedBy,
+	)
+	return i, err
+}
+
 const ingestionFailureList = `-- name: IngestionFailureList :many
 
-SELECT id, ingestion_id, runtime_id, version, kind, message, after_records, excerpt, occurred_at, created_at FROM ing_failures
+SELECT id, ingestion_id, runtime_id, version, kind, message, after_records, excerpt, occurred_at, created_at, category, dismissed_at, dismissed_by FROM ing_failures
 WHERE ingestion_id = $1
   AND ($2::text = '' OR id < $2::text)
+  AND (NOT $3::bool OR dismissed_at IS NULL)
+  AND ($4::text = '' OR category = $4::text)
 ORDER BY id DESC
-LIMIT $3
+LIMIT $5
 `
 
 type IngestionFailureListParams struct {
 	IngestionID string `db:"ingestion_id"`
 	After       string `db:"after"`
+	Undismissed bool   `db:"undismissed"`
+	Category    string `db:"category"`
 	Lim         int32  `db:"lim"`
 }
 
 // Reads the operator API makes beside the ingestion aggregate: the failures
 // tab and the source kinds the live runtimes report.
 // The failures tab pages by id, newest first (idx_ing_failures_ingestion).
+// undismissed keeps only the failures nobody has dismissed; category ” is
+// every category.
 func (q *Queries) IngestionFailureList(ctx context.Context, arg IngestionFailureListParams) ([]IngFailure, error) {
-	rows, err := q.db.Query(ctx, ingestionFailureList, arg.IngestionID, arg.After, arg.Lim)
+	rows, err := q.db.Query(ctx, ingestionFailureList,
+		arg.IngestionID,
+		arg.After,
+		arg.Undismissed,
+		arg.Category,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +166,9 @@ func (q *Queries) IngestionFailureList(ctx context.Context, arg IngestionFailure
 			&i.Excerpt,
 			&i.OccurredAt,
 			&i.CreatedAt,
+			&i.Category,
+			&i.DismissedAt,
+			&i.DismissedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -138,6 +209,49 @@ func (q *Queries) IngestionLastFailure(ctx context.Context, ingestionID string) 
 	return occurred_at, err
 }
 
+const ingestionNotices = `-- name: IngestionNotices :many
+SELECT ingestion_id, count(*)::bigint AS notices,
+       (array_agg(message ORDER BY id DESC))[1]::text AS latest_message,
+       max(created_at)::timestamptz AS latest_at
+FROM ing_failures
+WHERE ingestion_id = ANY($1::text[]) AND category = 'rejected' AND dismissed_at IS NULL
+GROUP BY ingestion_id
+`
+
+type IngestionNoticesRow struct {
+	IngestionID   string    `db:"ingestion_id"`
+	Notices       int64     `db:"notices"`
+	LatestMessage string    `db:"latest_message"`
+	LatestAt      time.Time `db:"latest_at"`
+}
+
+// The undismissed notices ("rejected" failures) of the ingestions shown:
+// how many, and the newest one's message (idx_ing_failures_notices).
+func (q *Queries) IngestionNotices(ctx context.Context, ids []string) ([]IngestionNoticesRow, error) {
+	rows, err := q.db.Query(ctx, ingestionNotices, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IngestionNoticesRow{}
+	for rows.Next() {
+		var i IngestionNoticesRow
+		if err := rows.Scan(
+			&i.IngestionID,
+			&i.Notices,
+			&i.LatestMessage,
+			&i.LatestAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ingestionRouteStateList = `-- name: IngestionRouteStateList :many
 SELECT ingestion_id, runtime_id, version, status, error, updated_at FROM ing_route_states WHERE ingestion_id = $1 ORDER BY runtime_id
 `
@@ -171,22 +285,27 @@ func (q *Queries) IngestionRouteStateList(ctx context.Context, ingestionID strin
 }
 
 const ingestionRuntimeKindsSeenSince = `-- name: IngestionRuntimeKindsSeenSince :many
-SELECT kinds FROM ing_runtimes WHERE last_seen_at >= $1
+SELECT kinds, builtin_kinds FROM ing_runtimes WHERE last_seen_at >= $1
 `
 
-func (q *Queries) IngestionRuntimeKindsSeenSince(ctx context.Context, lastSeenAt time.Time) ([]json.RawMessage, error) {
+type IngestionRuntimeKindsSeenSinceRow struct {
+	Kinds        json.RawMessage `db:"kinds"`
+	BuiltinKinds json.RawMessage `db:"builtin_kinds"`
+}
+
+func (q *Queries) IngestionRuntimeKindsSeenSince(ctx context.Context, lastSeenAt time.Time) ([]IngestionRuntimeKindsSeenSinceRow, error) {
 	rows, err := q.db.Query(ctx, ingestionRuntimeKindsSeenSince, lastSeenAt)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []json.RawMessage{}
+	items := []IngestionRuntimeKindsSeenSinceRow{}
 	for rows.Next() {
-		var kinds json.RawMessage
-		if err := rows.Scan(&kinds); err != nil {
+		var i IngestionRuntimeKindsSeenSinceRow
+		if err := rows.Scan(&i.Kinds, &i.BuiltinKinds); err != nil {
 			return nil, err
 		}
-		items = append(items, kinds)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

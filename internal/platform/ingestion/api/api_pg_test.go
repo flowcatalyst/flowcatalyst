@@ -54,10 +54,15 @@ const (
 	permDelete  = "platform:ingestion:ingestion:delete"
 	permPromote = "platform:ingestion:ingestion:promote"
 	permRoute   = "platform:ingestion:ingestion:route"
+	// permIdentity: an SQS or S3 source without a credential (every body
+	// here is one); permSecrets: a definition that names secrets.
+	permIdentity = "platform:ingestion:ingestion:runtime-identity"
+	permSecrets  = "platform:ingestion:ingestion:bind-secrets"
 )
 
-// ingestionPerms are the grants the ingestion routes check, route aside.
-var ingestionPerms = []string{permView, permCreate, permUpdate, permDelete, permPromote}
+// ingestionPerms are the grants the ingestion routes check, route aside: the
+// ingestion admin's.
+var ingestionPerms = []string{permView, permCreate, permUpdate, permDelete, permPromote, permIdentity, permSecrets}
 
 func without(perms []string, drop string) []string {
 	var out []string
@@ -166,7 +171,7 @@ func (e *env) body(app *application.Application, clientRef, code string) map[str
 		"source": map[string]any{"kind": "sqs", "region": "eu-west-1", "queue": "q-" + code},
 		"split":  map[string]any{"kind": "none"},
 		"target": map[string]any{
-			"code": "acme:orders:order:received", "targetUrl": "https://hooks.example.com/orders",
+			"code": app.Code + ":orders:order:received", "targetUrl": "https://hooks.example.com/orders",
 			"pool": e.poolCode, "mode": "IMMEDIATE", "batchSize": 100,
 		},
 	}
@@ -241,25 +246,30 @@ func TestPermissionMatrix(t *testing.T) {
 	e := newEnv(t)
 	id := e.create("matrix-" + unique())
 
+	// also is what the route needs on top of its own permission for these
+	// bodies: a create is live by default (promote), an update makes its
+	// version live (promote), and every body is an SQS source without a
+	// credential that changes the queue (runtime identity).
 	routes := []struct {
 		name, method, path string
 		body               any
 		perm               string
+		also               []string
 	}{
-		{"list", http.MethodGet, "/api/ingestions", nil, permView},
-		{"get", http.MethodGet, "/api/ingestions/" + id, nil, permView},
-		{"create", http.MethodPost, "/api/ingestions", e.body(e.appA, e.clientA.Identifier, "m-"+unique()), permCreate},
-		{"update", http.MethodPut, "/api/ingestions/" + id, nil, permUpdate},
-		{"pause", http.MethodPost, "/api/ingestions/" + id + "/pause", nil, permUpdate},
-		{"resume", http.MethodPost, "/api/ingestions/" + id + "/resume", nil, permUpdate},
-		{"save version", http.MethodPost, "/api/ingestions/" + id + "/versions", e.definitionOf("c", "q-save"), permUpdate},
-		{"list versions", http.MethodGet, "/api/ingestions/" + id + "/versions", nil, permView},
-		{"make live", http.MethodPost, "/api/ingestions/" + id + "/versions/1/live", nil, permPromote},
-		{"definition", http.MethodGet, "/api/ingestions/" + id + "/definition", nil, permView},
-		{"history", http.MethodGet, "/api/ingestions/" + id + "/history", nil, permView},
-		{"failures", http.MethodGet, "/api/ingestions/" + id + "/failures", nil, permView},
-		{"source kinds", http.MethodGet, "/api/ingestion-source-kinds", nil, permView},
-		{"delete", http.MethodDelete, "/api/ingestions/" + id, nil, permDelete},
+		{"list", http.MethodGet, "/api/ingestions", nil, permView, nil},
+		{"get", http.MethodGet, "/api/ingestions/" + id, nil, permView, nil},
+		{"create", http.MethodPost, "/api/ingestions", e.body(e.appA, e.clientA.Identifier, "m-"+unique()), permCreate, []string{permPromote, permIdentity}},
+		{"update", http.MethodPut, "/api/ingestions/" + id, nil, permUpdate, []string{permPromote, permIdentity}},
+		{"pause", http.MethodPost, "/api/ingestions/" + id + "/pause", nil, permUpdate, nil},
+		{"resume", http.MethodPost, "/api/ingestions/" + id + "/resume", nil, permUpdate, nil},
+		{"save version", http.MethodPost, "/api/ingestions/" + id + "/versions", e.definitionOf("c", "q-save"), permUpdate, []string{permIdentity}},
+		{"list versions", http.MethodGet, "/api/ingestions/" + id + "/versions", nil, permView, nil},
+		{"make live", http.MethodPost, "/api/ingestions/" + id + "/versions/1/live", nil, permPromote, nil},
+		{"definition", http.MethodGet, "/api/ingestions/" + id + "/definition", nil, permView, nil},
+		{"history", http.MethodGet, "/api/ingestions/" + id + "/history", nil, permView, nil},
+		{"failures", http.MethodGet, "/api/ingestions/" + id + "/failures", nil, permView, nil},
+		{"source kinds", http.MethodGet, "/api/ingestion-source-kinds", nil, permView, nil},
+		{"delete", http.MethodDelete, "/api/ingestions/" + id, nil, permDelete, nil},
 	}
 	for _, rt := range routes {
 		body := rt.body
@@ -276,7 +286,7 @@ func TestPermissionMatrix(t *testing.T) {
 		e.as(anchor())
 		assert.Equal(t, http.StatusForbidden, e.do(rt.method, rt.path, body).code, "%s: an anchor holding no permission is refused", rt.name)
 
-		e.as(anchor(rt.perm))
+		e.as(anchor(append([]string{rt.perm}, rt.also...)...))
 		r = e.do(rt.method, rt.path, body)
 		assert.NotEqual(t, http.StatusForbidden, r.code, "%s with %s: %s", rt.name, rt.perm, r.raw)
 		assert.Less(t, r.code, 500, "%s: %s", rt.name, r.raw)
@@ -287,10 +297,10 @@ func TestPermissionMatrix(t *testing.T) {
 	id = e.create("matrix-live-" + unique())
 	live := e.definitionOf("c", "q-live")
 	live["live"] = true
-	e.as(anchor(permUpdate))
+	e.as(anchor(permUpdate, permIdentity))
 	r := e.do(http.MethodPost, "/api/ingestions/"+id+"/versions", live)
 	assert.Equal(t, http.StatusForbidden, r.code, r.raw)
-	e.as(anchor(permUpdate, permPromote))
+	e.as(anchor(permUpdate, permPromote, permIdentity))
 	assert.Equal(t, http.StatusCreated, e.do(http.MethodPost, "/api/ingestions/"+id+"/versions", live).code)
 }
 

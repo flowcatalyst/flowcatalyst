@@ -123,6 +123,14 @@ func (r *RepoResolver) Target(ctx context.Context, applicationCode string, clien
 	if err := r.guard.ValidateURL(t.TargetURL); err != nil {
 		return out, invalid("target.targetUrl %s", err)
 	}
+	// The job's code names the application it belongs to, which must be the
+	// ingestion's own: the batch dispatch API's rule for an application's
+	// credential (checkJobApplication, rule 1), so an ingestion cannot make
+	// jobs that read as another application's.
+	if owner, _, _ := strings.Cut(t.Code, ":"); !strings.EqualFold(owner, applicationCode) {
+		return out, invalid("target.code: %q belongs to application %q; an ingestion of %q makes jobs of its own application only",
+			t.Code, owner, applicationCode)
+	}
 	if t.Connection != nil && t.ServiceAccount != nil {
 		return out, invalid("target.serviceAccount may not be set with a connection: the connection's service account signs")
 	}
@@ -156,21 +164,49 @@ func (r *RepoResolver) Target(ctx context.Context, applicationCode string, clien
 	}
 
 	if t.ServiceAccount != nil {
-		sa, err := r.serviceAccounts.FindByCode(ctx, *t.ServiceAccount)
+		id, err := r.signer(ctx, *t.ServiceAccount, applicationCode, cid)
 		if err != nil {
-			return out, usecase.Internal("REPO", "service account lookup failed", err)
+			return out, err
 		}
-		switch {
-		case sa == nil:
-			return out, invalid("target.serviceAccount: no service account with code %q", *t.ServiceAccount)
-		case !sa.Active:
-			return out, invalid("target.serviceAccount: service account %q is not active", *t.ServiceAccount)
-		case len(sa.ClientIDs) > 0 && !slices.Contains(sa.ClientIDs, cid):
-			return out, invalid("target.serviceAccount: service account %q does not reach this client", *t.ServiceAccount)
-		}
-		out.ServiceAccountID = &sa.ID
+		out.ServiceAccountID = &id
 	}
 	return out, nil
+}
+
+// signer resolves a target's explicit service account: it signs the jobs, so
+// it must be one of the ingestion's application's own accounts (bound to that
+// application) and reach the ingestion's client. An account linked to no
+// client reaches all of its application's clients, which is acceptable only
+// because it is bound to this application. A platform account (bound to no
+// application) or another application's is refused: signing as either would
+// let an ingestion speak for something it does not own.
+func (r *RepoResolver) signer(ctx context.Context, code, applicationCode, clientID string) (string, error) {
+	invalid := func(format string, args ...any) error {
+		return usecase.Validation("INGESTION_TARGET_INVALID", fmt.Sprintf(format, args...))
+	}
+	sa, err := r.serviceAccounts.FindByCode(ctx, code)
+	if err != nil {
+		return "", usecase.Internal("REPO", "service account lookup failed", err)
+	}
+	switch {
+	case sa == nil:
+		return "", invalid("target.serviceAccount: no service account with code %q", code)
+	case !sa.Active:
+		return "", invalid("target.serviceAccount: service account %q is not active", code)
+	case sa.ApplicationID == nil:
+		return "", invalid("target.serviceAccount: service account %q belongs to no application; use one of application %q's", code, applicationCode)
+	}
+	app, err := r.applications.FindByCode(ctx, applicationCode)
+	if err != nil {
+		return "", usecase.Internal("REPO", "application lookup failed", err)
+	}
+	switch {
+	case app == nil || *sa.ApplicationID != app.ID:
+		return "", invalid("target.serviceAccount: service account %q belongs to another application; use one of application %q's", code, applicationCode)
+	case len(sa.ClientIDs) > 0 && !slices.Contains(sa.ClientIDs, clientID):
+		return "", invalid("target.serviceAccount: service account %q does not reach this client", code)
+	}
+	return sa.ID, nil
 }
 
 // findConnection looks for the connection by code from the most specific scope

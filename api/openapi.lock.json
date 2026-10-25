@@ -3182,7 +3182,7 @@
             "type": "boolean"
           },
           "live": {
-            "description": "Make the first version live. Default true; false saves it to be made live later.",
+            "description": "Make the first version live. Default true, which needs the promote permission (403 INGESTION_PROMOTE_REQUIRED without it); false saves it to be made live later.",
             "type": "boolean"
           },
           "name": {
@@ -5449,6 +5449,14 @@
             "format": "date-time",
             "type": "string"
           },
+          "category": {
+            "description": "payload (the default): a record or payload the runtime could not take. rejected: the platform refused the runtime's jobs request permanently; the ingestion shows it as a notice until someone dismisses it.",
+            "enum": [
+              "payload",
+              "rejected"
+            ],
+            "type": "string"
+          },
           "excerpt": {
             "description": "The start of what it failed on; the platform keeps it only for an ingestion that keeps failed payloads",
             "maxLength": 2048,
@@ -6015,9 +6023,38 @@
       "IngestionFailureResponse": {
         "additionalProperties": false,
         "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionFailureResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
           "afterRecords": {
             "format": "int64",
             "type": "integer"
+          },
+          "category": {
+            "description": "payload: a record or payload the runtime could not take. rejected: a notice, the platform refused the runtime's jobs permanently",
+            "enum": [
+              "payload",
+              "rejected"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "dismissedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "dismissedBy": {
+            "description": "The principal who dismissed it",
+            "type": "string"
           },
           "excerpt": {
             "description": "The start of the payload, only for an ingestion that keeps failed payloads",
@@ -6047,9 +6084,11 @@
         "required": [
           "id",
           "kind",
+          "category",
           "message",
           "afterRecords",
-          "occurredAt"
+          "occurredAt",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -6181,6 +6220,14 @@
             "description": "Keep the first 2 KB of a payload that failed. Off unless the client has agreed.",
             "type": "boolean"
           },
+          "latestNotice": {
+            "description": "The newest undismissed notice's message",
+            "type": "string"
+          },
+          "latestNoticeAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "latestVersion": {
             "format": "int64",
             "type": "integer"
@@ -6191,6 +6238,11 @@
           },
           "name": {
             "type": "string"
+          },
+          "notices": {
+            "description": "Undismissed notices: rejected failures (GET .../failures?category=rejected\u0026undismissed=true)",
+            "format": "int64",
+            "type": "integer"
           },
           "runtimeNotice": {
             "type": "string"
@@ -6218,6 +6270,13 @@
           "version": {
             "format": "int64",
             "type": "integer"
+          },
+          "warnings": {
+            "description": "What the definition says that will not run as meant, such as an sftp source that neither names the server's host key nor accepts any",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -6230,6 +6289,7 @@
           "status",
           "version",
           "latestVersion",
+          "notices",
           "createdAt",
           "updatedAt",
           "name",
@@ -6945,7 +7005,7 @@
             "type": "string"
           },
           "externalId": {
-            "description": "The record's idempotency key within the ingestion, at most 100 characters: sending it again answers the job it made first",
+            "description": "The record's idempotency key within the ingestion, at most 100 characters (the runtime sends the sha256 hex of the record's source identity, 64): sending it again answers the job it made first, and of two records in one request with the same key the first makes the job",
             "type": "string"
           },
           "messageGroup": {
@@ -8057,6 +8117,14 @@
             "readOnly": true,
             "type": "string"
           },
+          "builtinKinds": {
+            "description": "The built-in source kinds the runtime carries (http, sftp, s3, sqs, rabbitmq, database-poll, api-poll); absent is all of them. Only ingestions of a kind the runtime carries are listed to it, and a polled kind's fair share counts only the runtimes that carry it.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
           "contractVersion": {
             "description": "The contract version the runtime speaks; the platform serves the current one and the one before it",
             "format": "int64",
@@ -8064,7 +8132,7 @@
             "type": "integer"
           },
           "kinds": {
-            "description": "The kinds the runtime's extensions add (and camel-route); built-in kinds are all carried unless some are named here",
+            "description": "The kinds the runtime's extensions add (and camel-route)",
             "items": {
               "$ref": "#/components/schemas/RuntimeKind"
             },
@@ -24675,7 +24743,7 @@
             "description": "Error"
           }
         },
-        "summary": "Save a definition as the next version and make it live",
+        "summary": "Save a definition as the next version and make it live (needs update and promote)",
         "tags": [
           "ingestions"
         ],
@@ -24765,6 +24833,30 @@
               "minimum": 0,
               "type": "integer"
             }
+          },
+          {
+            "description": "Only the failures nobody has dismissed",
+            "explode": false,
+            "in": "query",
+            "name": "undismissed",
+            "schema": {
+              "description": "Only the failures nobody has dismissed",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only this category; rejected is the notices",
+            "explode": false,
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "description": "Only this category; rejected is the notices",
+              "enum": [
+                "payload",
+                "rejected"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -24790,6 +24882,56 @@
           }
         },
         "summary": "List the failures runtimes reported for an ingestion",
+        "tags": [
+          "ingestions"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/ingestions/{id}/failures/{failureId}/dismiss": {
+      "post": {
+        "operationId": "dismissIngestionFailure",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "failureId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionFailureResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Dismiss a failure (a notice stops showing on the ingestion)",
         "tags": [
           "ingestions"
         ],

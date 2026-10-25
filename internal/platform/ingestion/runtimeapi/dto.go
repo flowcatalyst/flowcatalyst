@@ -12,8 +12,12 @@ import (
 type PollRequest struct {
 	RuntimeID       string                  `json:"runtimeId" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The asking runtime; unique among running runtimes"`
 	ContractVersion int                     `json:"contractVersion" minimum:"0" doc:"The contract version the runtime speaks; the platform serves the current one and the one before it"`
-	Kinds           []ingestion.RuntimeKind `json:"kinds,omitempty" maxItems:"100" doc:"The kinds the runtime's extensions add (and camel-route); built-in kinds are all carried unless some are named here"`
-	URL             *string                 `json:"url,omitempty" pattern:"^https?://[^\\s]+$" maxLength:"500" doc:"Where the runtime can be reached; informational, the platform never calls it"`
+	Kinds           []ingestion.RuntimeKind `json:"kinds,omitempty" maxItems:"100" doc:"The kinds the runtime's extensions add (and camel-route)"`
+	// BuiltinKinds is additive within contract version 2: a runtime that does
+	// not send it carries the v2 baseline (or, as before, exactly the built-in
+	// kinds it names in kinds).
+	BuiltinKinds []string `json:"builtinKinds,omitempty" maxItems:"50" doc:"The built-in source kinds the runtime carries (http, sftp, s3, sqs, rabbitmq, database-poll, api-poll); absent is all of them. Only ingestions of a kind the runtime carries are listed to it, and a polled kind's fair share counts only the runtimes that carry it."`
+	URL          *string  `json:"url,omitempty" pattern:"^https?://[^\\s]+$" maxLength:"500" doc:"Where the runtime can be reached; informational, the platform never calls it"`
 }
 
 // RuntimeIngestion is an ingestion in the contract's form: what a runtime
@@ -83,13 +87,15 @@ type ExchangeWindow struct {
 // Failure is one thing that went wrong with an ingestion. The message never
 // holds a secret.
 type Failure struct {
-	IngestionID  string          `json:"ingestionId"`
-	Version      int             `json:"version" minimum:"0"`
-	At           httpcompat.Time `json:"at"`
-	Kind         string          `json:"kind" enum:"REJECTED,NOT_DISPATCHED,SOURCE,AUTH"`
-	Message      string          `json:"message" maxLength:"2000"`
-	AfterRecords *int64          `json:"afterRecords,omitempty" minimum:"0" doc:"How many of the payload's records were read before it failed"`
-	Excerpt      *string         `json:"excerpt,omitempty" maxLength:"2048" doc:"The start of what it failed on; the platform keeps it only for an ingestion that keeps failed payloads"`
+	IngestionID string          `json:"ingestionId"`
+	Version     int             `json:"version" minimum:"0"`
+	At          httpcompat.Time `json:"at"`
+	Kind        string          `json:"kind" enum:"REJECTED,NOT_DISPATCHED,SOURCE,AUTH"`
+	// Category is additive within contract version 2: absent is payload.
+	Category     string  `json:"category,omitempty" enum:"payload,rejected" doc:"payload (the default): a record or payload the runtime could not take. rejected: the platform refused the runtime's jobs request permanently; the ingestion shows it as a notice until someone dismisses it."`
+	Message      string  `json:"message" maxLength:"2000"`
+	AfterRecords *int64  `json:"afterRecords,omitempty" minimum:"0" doc:"How many of the payload's records were read before it failed"`
+	Excerpt      *string `json:"excerpt,omitempty" maxLength:"2048" doc:"The start of what it failed on; the platform keeps it only for an ingestion that keeps failed payloads"`
 }
 
 // TestAnswer is a runtime's answer to a test request from its poll.
@@ -122,7 +128,7 @@ type JobRecord struct {
 	Payload            string  `json:"payload" doc:"The record, as text"`
 	PayloadContentType string  `json:"payloadContentType,omitempty" doc:"Defaults to application/json; at most 100 characters"`
 	MessageGroup       *string `json:"messageGroup,omitempty" doc:"Orders the jobs of a group within the target's mode; at most 200 characters"`
-	ExternalID         *string `json:"externalId,omitempty" doc:"The record's idempotency key within the ingestion, at most 100 characters: sending it again answers the job it made first"`
+	ExternalID         *string `json:"externalId,omitempty" doc:"The record's idempotency key within the ingestion, at most 100 characters (the runtime sends the sha256 hex of the record's source identity, 64): sending it again answers the job it made first, and of two records in one request with the same key the first makes the job"`
 	CorrelationID      *string `json:"correlationId,omitempty" doc:"At most 100 characters"`
 	Subject            *string `json:"subject,omitempty" doc:"At most 500 characters"`
 }

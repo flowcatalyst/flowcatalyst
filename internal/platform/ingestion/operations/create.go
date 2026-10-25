@@ -37,11 +37,18 @@ func CreateIngestion(repo *ingestion.Repository, resolver ingestion.Resolver) us
 			}
 			return problems.Err()
 		},
-		// Resource-level authorization: the caller must reach the client. The
-		// application's reach is checked once it is resolved, in Execute; the
-		// coarse "may create ingestions" permission is the controller's.
+		// Resource-level authorization: the caller must reach the client, and
+		// hold promote when the first version is live. The application's reach
+		// is checked once it is resolved, in Execute; the coarse "may create
+		// ingestions" permission is the controller's.
 		Authorize: func(ctx context.Context, cmd CreateCommand) error {
-			return auth.CheckScopeAccess(auth.FromContext(ctx), new(string(cmd.ClientID)))
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), new(string(cmd.ClientID))); err != nil {
+				return err
+			}
+			if cmd.Live {
+				return requirePromote(ctx, promoteCreate)
+			}
+			return nil
 		},
 		Execute: func(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[IngestionCreated], error) {
 			ac := auth.FromContext(ctx)
@@ -52,7 +59,7 @@ func CreateIngestion(repo *ingestion.Repository, resolver ingestion.Resolver) us
 			if err := ingestion.CheckApplicationReach(ac, string(app.ID)); err != nil {
 				return nil, err
 			}
-			if err := requireKindPermission(ctx, repo, cmd.Definition.Source); err != nil {
+			if err := checkAuthor(ctx, repo, nil, cmd.Definition); err != nil {
 				return nil, err
 			}
 			if _, err := resolver.Target(ctx, app.Code, cmd.ClientID, cmd.Definition.Target); err != nil {

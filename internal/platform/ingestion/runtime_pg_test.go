@@ -420,11 +420,23 @@ func TestPrune(t *testing.T) {
 		_, err := e.pool.Exec(ctx, q, args...)
 		require.NoError(t, err)
 	}
+	// Retention reads created_at, the time the platform wrote the row, never
+	// the runtime's own timestamps: each row's runtime time is the opposite of
+	// its server time, so a sweep that read the wrong column keeps the wrong one.
 	for _, at := range []time.Time{old, fresh} {
-		exec(`INSERT INTO ing_exchange_metrics (ingestion_id, runtime_id, window_start, window_secs) VALUES ($1, $2, $3, 60)`, ing.ID, rt, at)
-		exec(`INSERT INTO ing_failures (id, ingestion_id, runtime_id, kind, message, occurred_at, created_at) VALUES ($1, $2, $3, 'SOURCE', 'x', $4, $4)`,
-			"ingf"+unique()[:12], ing.ID, rt, at)
+		runtimeTime := fresh
+		if at.Equal(fresh) {
+			runtimeTime = old
+		}
+		exec(`INSERT INTO ing_exchange_metrics (ingestion_id, runtime_id, window_start, window_secs, created_at) VALUES ($1, $2, $3, 60, $4)`, ing.ID, rt, runtimeTime, at)
+		exec(`INSERT INTO ing_failures (id, ingestion_id, runtime_id, kind, message, occurred_at, created_at) VALUES ($1, $2, $3, 'SOURCE', 'x', $4, $5)`,
+			"ingf"+unique()[:12], ing.ID, rt, runtimeTime, at)
 	}
+	// Route states: one of a runtime seen lately, one of a runtime unseen for
+	// longer than RuntimeUnseenFor, one of a runtime long since forgotten.
+	exec(`INSERT INTO ing_route_states (ingestion_id, runtime_id, version, status, updated_at) VALUES ($1, $2, 1, 'STARTED', $3)`, ing.ID, rt+"-new", now)
+	exec(`INSERT INTO ing_route_states (ingestion_id, runtime_id, version, status, updated_at) VALUES ($1, $2, 1, 'STARTED', $3)`, ing.ID, rt+"-old", old)
+	exec(`INSERT INTO ing_route_states (ingestion_id, runtime_id, version, status, updated_at) VALUES ($1, $2, 1, 'STARTED', $3)`, ing.ID, rt+"-gone", old)
 	for _, at := range []time.Time{now.Add(-48 * time.Hour), now.Add(-time.Hour)} {
 		exec(`INSERT INTO ing_test_requests (id, application_id, client_id, kind, definition, status, created_at, expires_at)
 			VALUES ($1, $2, $3, 'sftp', '{}', 'PENDING', $4, $4)`, "ingt"+unique()[:12], e.app.ID, e.client.ID, at)
@@ -456,4 +468,53 @@ func TestPrune(t *testing.T) {
 	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_leases WHERE ingestion_id = $1`, live.ID), "the live lease stays")
 	assert.Equal(t, 0, e.count(t, `SELECT count(*) FROM ing_runtimes WHERE runtime_id = $1`, rt+"-old"))
 	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_runtimes WHERE runtime_id = $1`, rt+"-new"))
+	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_exchange_metrics WHERE runtime_id = $1 AND created_at = $2`, rt, fresh), "kept by the server's time")
+	assert.Equal(t, []string{rt + "-new"}, e.strings(t, `SELECT runtime_id FROM ing_route_states WHERE ingestion_id = $1`, ing.ID),
+		"route states of runtimes unseen for a week, or forgotten, go")
+	assert.GreaterOrEqual(t, pruned.RouteStates, int64(2))
+}
+
+// A sweep deletes at most its budget of chunks a table, and the next sweep
+// carries on: a backlog drains across sweeps.
+func TestPrune_BudgetIsBounded(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	now := time.Now().UTC()
+	ing := e.live(t, "budget", e.sftp(t))
+	// More than one chunk (10,000) of old keys.
+	_, err := e.pool.Exec(ctx, `INSERT INTO ing_job_keys (ingestion_id, external_id, job_id, created_at)
+		SELECT $1, 'k' || n, 'job' || n, $2 FROM generate_series(1, 10050) AS n`, ing.ID, now.Add(-30*24*time.Hour))
+	require.NoError(t, err)
+	first, err := e.repo.PruneWith(ctx, now, 1)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, first.JobKeys, int64(10_000), "one chunk")
+	assert.Positive(t, e.count(t, `SELECT count(*) FROM ing_job_keys WHERE ingestion_id = $1`, ing.ID), "a budget of one chunk leaves the rest")
+	_, err = e.repo.PruneWith(ctx, now, 1)
+	require.NoError(t, err)
+	assert.Equal(t, 0, e.count(t, `SELECT count(*) FROM ing_job_keys WHERE ingestion_id = $1`, ing.ID), "the next sweep finishes")
+}
+
+// The chunk count is FC_INGESTION_RETENTION_MAX_CHUNKS, the default when unset
+// or not positive.
+func TestRetentionMaxChunks(t *testing.T) {
+	t.Setenv("FC_INGESTION_RETENTION_MAX_CHUNKS", "")
+	assert.Equal(t, ingestion.DefaultRetentionMaxChunks, ingestion.RetentionMaxChunks())
+	t.Setenv("FC_INGESTION_RETENTION_MAX_CHUNKS", "2000")
+	assert.Equal(t, 2000, ingestion.RetentionMaxChunks())
+	t.Setenv("FC_INGESTION_RETENTION_MAX_CHUNKS", "-3")
+	assert.Equal(t, ingestion.DefaultRetentionMaxChunks, ingestion.RetentionMaxChunks())
+}
+
+func (e *env) strings(t *testing.T, query string, args ...any) []string {
+	t.Helper()
+	rows, err := e.pool.Query(context.Background(), query, args...)
+	require.NoError(t, err)
+	var out []string
+	for rows.Next() {
+		var s string
+		require.NoError(t, rows.Scan(&s))
+		out = append(out, s)
+	}
+	require.NoError(t, rows.Err())
+	return out
 }
