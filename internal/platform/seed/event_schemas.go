@@ -128,7 +128,8 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:iam:application:updated"] = obj(reqStr("applicationId"), reqStr("name"))
 	m["platform:iam:application:activated"] = obj(reqStr("applicationId"))
 	m["platform:iam:application:deactivated"] = obj(reqStr("applicationId"))
-	m["platform:iam:application:deleted"] = obj(reqStr("applicationId"), reqStr("code"))
+	m["platform:iam:application:deleted"] = obj(reqStr("applicationId"), reqStr("code"),
+		reqU32("platformConfigPropertiesDeleted"), reqU32("platformConfigGrantsDeleted"))
 	m["platform:iam:application:service-account-provisioned"] = obj(
 		reqStr("applicationId"), reqStr("applicationCode"),
 		reqStr("serviceAccountId"), reqStr("serviceAccountCode"),
@@ -282,6 +283,9 @@ func platformEventSchemas() map[string]json.RawMessage {
 	// ── platform:admin:platform-config ──────────────────────────────────
 	m["platform:admin:platform-config:property-set"] = obj(
 		reqStr("configId"), reqStr("applicationCode"), reqStr("section"), reqStr("property"),
+	)
+	m["platform:admin:platform-config:property-deleted"] = obj(
+		reqStr("configId"), reqStr("applicationCode"), reqStr("section"), reqStr("property"), optStr("clientId"),
 	)
 	m["platform:admin:platform-config:access-granted"] = obj(
 		reqStr("accessId"), reqStr("applicationCode"), reqStr("roleCode"), reqBool("canWrite"),

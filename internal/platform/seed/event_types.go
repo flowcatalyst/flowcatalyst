@@ -111,7 +111,7 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	push("platform:admin:roles:synced", "Roles Synced")
 	group("platform:admin:passkey", "registered", "authenticated", "revoked")
 
-	group("platform:admin:platform-config", "property-set", "access-granted", "access-revoked")
+	group("platform:admin:platform-config", "property-set", "property-deleted", "access-granted", "access-revoked")
 
 	group("platform:admin:process", "created", "updated", "archived", "deleted")
 	push("platform:admin:processes:synced", "Processes Synced")

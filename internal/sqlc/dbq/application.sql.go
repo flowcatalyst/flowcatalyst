@@ -93,21 +93,54 @@ func (q *Queries) ApplicationFindByID(ctx context.Context, id ids.ApplicationID)
 	return i, err
 }
 
+const applicationPlatformConfigAccessDelete = `-- name: ApplicationPlatformConfigAccessDelete :exec
+DELETE FROM app_platform_config_access WHERE application_code = $1
+`
+
+// Removes an application's platform-config access grants, with the
+// application (see ApplicationPlatformConfigDelete).
+func (q *Queries) ApplicationPlatformConfigAccessDelete(ctx context.Context, applicationCode string) error {
+	_, err := q.db.Exec(ctx, applicationPlatformConfigAccessDelete, applicationCode)
+	return err
+}
+
+const applicationPlatformConfigDelete = `-- name: ApplicationPlatformConfigDelete :exec
+DELETE FROM app_platform_configs WHERE application_code = $1
+`
+
+// Removes an application's platform configuration (app_platform_configs,
+// keyed by application code without a foreign key), in the application
+// delete's transaction, so a later application with the same code does not
+// inherit its values or secrets.
+func (q *Queries) ApplicationPlatformConfigDelete(ctx context.Context, applicationCode string) error {
+	_, err := q.db.Exec(ctx, applicationPlatformConfigDelete, applicationCode)
+	return err
+}
+
 const applicationReferenceCounts = `-- name: ApplicationReferenceCounts :one
 SELECT
     (SELECT COUNT(*) FROM iam_principal_application_access pa WHERE pa.application_id = $1)::bigint AS access_grants,
     (SELECT COUNT(*) FROM app_client_configs cc WHERE cc.application_id = $1 AND cc.enabled)::bigint AS client_configs,
     (SELECT COUNT(*) FROM iam_service_accounts sa WHERE sa.application_id = $1)::bigint AS service_accounts,
     (SELECT COUNT(*) FROM iam_roles r WHERE r.application_id = $1)::bigint AS roles,
-    (SELECT COUNT(*) FROM iam_principals p WHERE p.application_id = $1)::bigint AS principal_refs
+    (SELECT COUNT(*) FROM iam_principals p WHERE p.application_id = $1)::bigint AS principal_refs,
+    -- Not blockers: the application's platform configuration and its access
+    -- grants are deleted with it (ApplicationPlatformConfigDelete), counted
+    -- here for the deletion's event.
+    (SELECT COUNT(*) FROM app_platform_configs pc
+      WHERE pc.application_code = (SELECT a.code FROM app_applications a WHERE a.id = $1))::bigint AS platform_configs,
+    (SELECT COUNT(*) FROM app_platform_config_access pca
+      WHERE pca.application_code = (SELECT a.code FROM app_applications a WHERE a.id = $1))::bigint AS platform_config_grants
 `
 
 type ApplicationReferenceCountsRow struct {
-	AccessGrants    int64 `db:"access_grants"`
-	ClientConfigs   int64 `db:"client_configs"`
-	ServiceAccounts int64 `db:"service_accounts"`
-	Roles           int64 `db:"roles"`
-	PrincipalRefs   int64 `db:"principal_refs"`
+	AccessGrants         int64 `db:"access_grants"`
+	ClientConfigs        int64 `db:"client_configs"`
+	ServiceAccounts      int64 `db:"service_accounts"`
+	Roles                int64 `db:"roles"`
+	PrincipalRefs        int64 `db:"principal_refs"`
+	PlatformConfigs      int64 `db:"platform_configs"`
+	PlatformConfigGrants int64 `db:"platform_config_grants"`
 }
 
 // The delete guard's inputs (owner decision #53, matching Rust): every
@@ -125,6 +158,8 @@ func (q *Queries) ApplicationReferenceCounts(ctx context.Context, applicationID 
 		&i.ServiceAccounts,
 		&i.Roles,
 		&i.PrincipalRefs,
+		&i.PlatformConfigs,
+		&i.PlatformConfigGrants,
 	)
 	return i, err
 }

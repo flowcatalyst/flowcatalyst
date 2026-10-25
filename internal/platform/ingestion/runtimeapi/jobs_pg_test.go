@@ -19,6 +19,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	platformconfigops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
@@ -394,7 +395,12 @@ const secretsSection = "secrets"
 func (e *env) setSecret(name, value string, clientID *string) {
 	e.t.Helper()
 	secret := "SECRET"
-	_, err := usecaseop.Run(testpg.AnchorCtx(), testpg.NewUoW(e.t), platformconfigops.SetProperty(e.config.Repo), platformconfigops.SetPropertyCommand{
+	// Setting platform config confines the caller to its applications, so the
+	// administrator here reaches every application.
+	admin := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_optestrunner1", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:*:*:*"},
+	})
+	_, err := usecaseop.Run(admin, testpg.NewUoW(e.t), platformconfigops.SetProperty(e.config.Repo), platformconfigops.SetPropertyCommand{
 		ApplicationCode: e.app.Code, Section: secretsSection, Property: name, Value: value, ValueType: &secret, ClientID: clientID,
 	}, testpg.TestEC())
 	require.NoError(e.t, err)

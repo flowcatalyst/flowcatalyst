@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
 
 const (
@@ -32,6 +33,8 @@ type fakeConfig struct {
 	reveals  []string
 	deleted  []string
 	revealed int
+	// reach overrides ReachFor (nil: the tier's default).
+	reach *platformconfig.Reach
 }
 
 func cfgRowFixture(id, section, property string, vt platformconfig.ValueType, value string) platformconfig.Config {
@@ -53,13 +56,14 @@ func newFakeConfig() *fakeConfig {
 	}}
 }
 
-func (f *fakeConfig) List(_ context.Context, ac *auth.AuthContext, app string) ([]platformconfig.Config, error) {
+func (f *fakeConfig) List(ctx context.Context, ac *auth.AuthContext, app string) ([]platformconfig.Config, error) {
 	if err := auth.RequireConfigView(ac); err != nil {
 		return nil, err
 	}
+	reach, _ := f.ReachFor(ctx, ac, app)
 	var out []platformconfig.Config
 	for _, r := range f.rows {
-		if app == "platform" {
+		if app == "platform" && reach.CanRead(deref(ids.StringPtr(r.ClientID))) {
 			out = append(out, r)
 		}
 	}
@@ -79,6 +83,31 @@ func (f *fakeConfig) AuthorizeRevealApp(_ context.Context, ac *auth.AuthContext,
 		return nil
 	}
 	return httperror.Forbidden("no reveal permission")
+}
+
+// ReachFor is the platform's shape of the rule without the service-account
+// lookup: anchor tier reaches every client (unless the test sets reach),
+// below anchor tier its own clients, never the global value for writing.
+func (f *fakeConfig) ReachFor(_ context.Context, ac *auth.AuthContext, _ string) (platformconfig.Reach, error) {
+	if f.reach != nil {
+		return *f.reach, nil
+	}
+	if ac.IsAnchor() {
+		return platformconfig.Reach{All: true}, nil
+	}
+	set := map[string]bool{}
+	for _, c := range ac.Clients {
+		set[c] = true
+	}
+	return platformconfig.Reach{Clients: set}, nil
+}
+
+func (f *fakeConfig) AuthorizeClientWrite(ctx context.Context, ac *auth.AuthContext, app, clientID string) error {
+	reach, _ := f.ReachFor(ctx, ac, app)
+	if !reach.CanWrite(clientID) {
+		return httperror.Forbidden("Not authorised for client '" + clientID + "'")
+	}
+	return nil
 }
 
 func (f *fakeConfig) ResolveClientID(_ context.Context, ref string) (string, error) {
@@ -420,4 +449,34 @@ func TestConfigDelete(t *testing.T) {
 	if strings.Join(h.cfg.deleted, ",") != "branding/name" {
 		t.Errorf("deleted = %v", h.cfg.deleted)
 	}
+}
+
+// The client confinement (platformconfig.Service.ReachFor) decides which rows
+// the page lists and which it offers to edit: an application's service account
+// sees only its linked clients' values, and a caller below anchor tier may
+// edit its own clients' values but not the application-wide one.
+func TestConfigClientConfinement(t *testing.T) {
+	t.Run("rows of clients outside the reach are not listed", func(t *testing.T) {
+		h := newCfgHarness()
+		h.cfg.reach = &platformconfig.Reach{Clients: map[string]bool{"clt_other": true}, GlobalWrite: true}
+		body := h.do(t, cfgUser(permCfgView, permCfgUpdate), req{target: "/ui/platform/config"})
+		mustContain(t, body, `id="cfg-pfc_1"`, `id="cfg-pfc_2"`)
+		mustNotContain(t, body, `id="cfg-pfc_3"`)
+	})
+	t.Run("below anchor tier: the client's value is editable, the global one is not", func(t *testing.T) {
+		h := newCfgHarness()
+		tenant := &auth.AuthContext{PrincipalID: "prn_t", Scope: auth.ScopeClient, Clients: []string{"clt_acme"}, Roles: []string{"r"}, PrincipalType: auth.PrincipalTypeUser}
+		body := h.do(t, tenant, req{target: "/ui/platform/config"})
+		mustContain(t, menuOrActions(t, body, "pfc_3"), `aria-label="Edit mail/smtp-password"`)
+		mustNotContain(t, menuOrActions(t, body, "pfc_1"), "Edit")
+		out := h.do(t, tenant, req{target: "/ui/platform/config/edit?app=platform&section=branding&property=name", datastar: true})
+		mustContain(t, out, "fc-flash-error")
+		mustNotContain(t, out, "Edit property")
+	})
+	t.Run("a secret written back as the mask is refused on its field", func(t *testing.T) {
+		h := newCfgHarness()
+		h.ops.err = usecase.Validation("SECRET_VALUE_MASKED", `"***" is the mask a read returns for a secret, not its value`)
+		body := h.do(t, cfgAdmin(), req{method: http.MethodPost, target: "/ui/platform/config/save", datastar: true, form: cfgSaveForm("valueType", "SECRET", "secretValue", "***")})
+		mustContain(t, body, `id="cfg-form-value-err"`, "is the mask a read returns")
+	})
 }

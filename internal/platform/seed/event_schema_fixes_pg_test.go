@@ -39,8 +39,15 @@ func TestMigration072_ReplacesTheSeededSchemas(t *testing.T) {
 	}
 	require.Len(t, fixes, 28)
 	schemas := platformEventSchemas()
+	// Codes whose seeded schema a later migration amended again (091: the
+	// application deletion's platform-config counts); their seed is that
+	// migration's, not 072's.
+	amendedLater := map[string]bool{"platform:iam:application:deleted": true}
 	for code, f := range fixes {
 		require.Contains(t, schemas, code)
+		if amendedLater[code] {
+			continue
+		}
 		assert.JSONEq(t, string(schemas[code]), f.new, code)
 	}
 	// Two seeded schemas spelled out, as every seed before this one wrote them.
@@ -85,12 +92,12 @@ func TestMigration072_ReplacesTheSeededSchemas(t *testing.T) {
 	for range 2 { // the second run changes nothing
 		_, err = pool.Exec(ctx, up)
 		require.NoError(t, err)
-		for code := range fixes {
+		for code, f := range fixes {
 			if code == "platform:admin:dispatch-pool:deleted" {
 				assert.JSONEq(t, edited, schemaOf(code))
 				continue
 			}
-			assert.JSONEq(t, string(schemas[code]), schemaOf(code), code)
+			assert.JSONEq(t, f.new, schemaOf(code), code)
 		}
 	}
 

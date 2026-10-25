@@ -44,7 +44,9 @@ func TestMain(m *testing.M) {
 func runAuthorized[C any, E usecase.DomainEvent](
 	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
 ) (E, error) {
-	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+	return usecaseop.Run(testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_optestrunner1", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:*:*:*"},
+	}), uow, op, cmd, testpg.TestEC())
 }
 
 // mustGrant seeds an access grant through the public operation — the same
@@ -63,6 +65,7 @@ func mustGrant(t *testing.T, repo *platformconfig.Repository, uow *usecasepgx.Un
 
 func TestSetProperty_HappyPath_CreateNew(t *testing.T) {
 	t.Parallel()
+	testpg.EnsureApplication(t, "pcset-new")
 	ctx := context.Background()
 	repo := platformconfig.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
@@ -97,6 +100,7 @@ func TestSetProperty_HappyPath_CreateNew(t *testing.T) {
 // coordinate must UPDATE the existing row, not mint a new one.
 func TestSetProperty_Upsert_OverwriteExisting(t *testing.T) {
 	t.Parallel()
+	testpg.EnsureApplication(t, "pcset-upsert")
 	ctx := context.Background()
 	repo := platformconfig.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
@@ -153,6 +157,7 @@ func TestSetProperty_Validation(t *testing.T) {
 
 func TestGrantAccess_HappyPath(t *testing.T) {
 	t.Parallel()
+	testpg.EnsureApplication(t, "pcgrant-happy")
 	ctx := context.Background()
 	repo := platformconfig.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
@@ -178,6 +183,7 @@ func TestGrantAccess_HappyPath(t *testing.T) {
 // place — same id, flipped canWrite — not create a duplicate.
 func TestGrantAccess_Upsert_DoubleGrant(t *testing.T) {
 	t.Parallel()
+	testpg.EnsureApplication(t, "pcgrant-upsert")
 	ctx := context.Background()
 	repo := platformconfig.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
@@ -216,6 +222,7 @@ func TestGrantAccess_Validation(t *testing.T) {
 
 func TestRevokeAccess_HappyPath(t *testing.T) {
 	t.Parallel()
+	testpg.EnsureApplication(t, "pcrevoke-happy")
 	ctx := context.Background()
 	repo := platformconfig.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
@@ -280,6 +287,7 @@ func TestPlatformConfigWrites_RequireAnchor(t *testing.T) {
 
 func TestSecret_StoredEncrypted_RevealedOnlyThroughRevealValue(t *testing.T) {
 	t.Parallel()
+	testpg.EnsureApplication(t, "secretapp")
 	pool := testpg.Pool(t)
 	key, err := encryption.GenerateKey()
 	require.NoError(t, err)
@@ -316,6 +324,7 @@ func TestSecret_StoredEncrypted_RevealedOnlyThroughRevealValue(t *testing.T) {
 
 func TestSecret_NoKey_FailsClosedInsteadOfStoringPlaintext(t *testing.T) {
 	t.Parallel()
+	testpg.EnsureApplication(t, "nokeyapp")
 	pool := testpg.Pool(t)
 	repo := platformconfig.NewRepository(pool).WithEncryption(nil)
 	uow := testpg.NewUoW(t)
@@ -372,6 +381,7 @@ func TestSetProperty_AnchorNeedsConfigUpdate(t *testing.T) {
 	t.Parallel()
 	repo := platformconfig.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
+	gateID := testpg.EnsureApplication(t, "gateapp")
 	cmd := operations.SetPropertyCommand{ApplicationCode: "gateapp", Section: "s", Property: "p", Value: "v"}
 
 	for name, perms := range map[string][]string{
@@ -394,7 +404,7 @@ func TestSetProperty_AnchorNeedsConfigUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	appCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
-		PrincipalID: "prn_gatetest00002", Scope: auth.ScopeAnchor, Applications: []string{"app_gate"},
+		PrincipalID: "prn_gatetest00002", Scope: auth.ScopeAnchor, Applications: []string{gateID},
 		Permissions: []string{"platform:application-service:config:update"},
 	})
 	_, err = usecaseop.Run(appCtx, uow, operations.SetProperty(repo), cmd, testpg.TestEC())

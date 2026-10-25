@@ -110,11 +110,21 @@ func (r *Repository) Persist(ctx context.Context, a *Application, tx *usecasepgx
 }
 
 // Delete removes the row together with the application's disabled client
-// configs (owner decision #55). Enabled configs block the delete in the use
+// configs (owner decision #55) and its platform configuration: the
+// app_platform_configs values (secrets included) and the
+// app_platform_config_access grants, which are keyed by the application's code
+// without a foreign key, so a later application created with the same code
+// does not inherit them. Enabled client configs block the delete in the use
 // case, so after the guard passes the disabled ones are all that remain.
 func (r *Repository) Delete(ctx context.Context, a *Application, tx *usecasepgx.DbTx) error {
 	q := r.q.WithTx(tx.Inner())
 	if err := q.ApplicationDisabledClientConfigsDelete(ctx, a.ID); err != nil {
+		return err
+	}
+	if err := q.ApplicationPlatformConfigDelete(ctx, a.Code); err != nil {
+		return err
+	}
+	if err := q.ApplicationPlatformConfigAccessDelete(ctx, a.Code); err != nil {
 		return err
 	}
 	return q.ApplicationDelete(ctx, a.ID)
@@ -124,13 +134,19 @@ func (r *Repository) Delete(ctx context.Context, a *Application, tx *usecasepgx.
 // access grants, enabled per-client configs, service accounts, application-scoped
 // roles and principals whose application ref names it. None of those
 // columns has a foreign key, so the delete use case refuses while any is
-// non-zero rather than leave them dangling.
+// non-zero rather than leave them dangling. PlatformConfigs and
+// PlatformConfigGrants are not blockers: they are deleted with the
+// application (Delete) and counted for the deletion's event.
 type References struct {
 	AccessGrants    int64
 	ClientConfigs   int64
 	ServiceAccounts int64
 	Roles           int64
 	PrincipalRefs   int64
+	// PlatformConfigs is the application's platform-config values.
+	PlatformConfigs int64
+	// PlatformConfigGrants is the application's platform-config access grants.
+	PlatformConfigGrants int64
 }
 
 // CountReferences loads [References] for an application in one query.
@@ -140,11 +156,13 @@ func (r *Repository) CountReferences(ctx context.Context, id ids.ApplicationID) 
 		return References{}, err
 	}
 	return References{
-		AccessGrants:    row.AccessGrants,
-		ClientConfigs:   row.ClientConfigs,
-		ServiceAccounts: row.ServiceAccounts,
-		Roles:           row.Roles,
-		PrincipalRefs:   row.PrincipalRefs,
+		AccessGrants:         row.AccessGrants,
+		ClientConfigs:        row.ClientConfigs,
+		ServiceAccounts:      row.ServiceAccounts,
+		Roles:                row.Roles,
+		PrincipalRefs:        row.PrincipalRefs,
+		PlatformConfigs:      row.PlatformConfigs,
+		PlatformConfigGrants: row.PlatformConfigGrants,
 	}, nil
 }
 

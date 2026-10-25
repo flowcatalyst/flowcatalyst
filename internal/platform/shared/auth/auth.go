@@ -274,6 +274,10 @@ type AuthContext struct {
 // PrincipalTypeUser marks an interactive human principal.
 const PrincipalTypeUser = "USER"
 
+// PrincipalTypeService marks a service account's principal (a bearer token
+// minted by client_credentials for a service account).
+const PrincipalTypeService = "SERVICE"
+
 // IsRoleless reports a USER principal holding no platform role and no
 // permission — someone who authenticated (an SSO JIT provision, a revoked
 // admin) but was never given platform access. Such users may reach only

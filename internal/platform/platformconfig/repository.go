@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
@@ -47,9 +48,27 @@ func (r *Repository) WithEncryption(enc *encryption.Service) *Repository {
 	return r
 }
 
+// secretAAD is the additional authenticated data a SECRET's ciphertext is
+// bound to: its application, section, property and client (empty for the
+// application-wide value), NUL-separated after a fixed label. A ciphertext
+// copied to another row (another application's, another client's) does not
+// open there.
+func secretAAD(app, section, property string, clientID *ids.ClientID) []byte {
+	var client string
+	if clientID != nil {
+		client = string(*clientID)
+	}
+	return []byte("fc:platform-config:v1\x00" + app + "\x00" + section + "\x00" + property + "\x00" + client)
+}
+
+func configAAD(c *Config) []byte {
+	return secretAAD(c.ApplicationCode, c.Section, c.Property, c.ClientID)
+}
+
 // storedValue is the representation written to the value column: SECRET
-// values are AES-256-GCM encrypted and carry the "encrypted:" marker, so a
-// legacy plaintext row (no marker) is distinguishable from ciphertext.
+// values are AES-256-GCM encrypted, bound to their coordinate (secretAAD), and
+// carry the "encrypted:" marker, so a legacy plaintext row (no marker) is
+// distinguishable from ciphertext.
 func (r *Repository) storedValue(c *Config) (string, error) {
 	if c.ValueType != ValueSecret {
 		return c.Value, nil
@@ -57,7 +76,7 @@ func (r *Repository) storedValue(c *Config) (string, error) {
 	if r.enc == nil {
 		return "", ErrNoEncryptionKey
 	}
-	ct, err := r.enc.Encrypt(c.Value)
+	ct, err := r.enc.EncryptBound(c.Value, configAAD(c))
 	if err != nil {
 		return "", err
 	}
@@ -65,42 +84,160 @@ func (r *Repository) storedValue(c *Config) (string, error) {
 }
 
 // RevealValue returns the plaintext of a SECRET config as stored (c comes from
-// a Find*, so c.Value is the stored representation). A row without the
-// "encrypted:" marker is a legacy plaintext secret and is returned as is
-// (EncryptLegacySecrets removes them at start-up).
+// a Find*, so c.Value is the stored representation). Without a key it refuses
+// every SECRET, legacy plaintext rows included (fail closed). A row without
+// the "encrypted:" marker is a legacy plaintext secret and is returned as is
+// (EncryptLegacySecrets removes them at start-up). It never writes; Reveal is
+// RevealValue plus the read repair.
 func (r *Repository) RevealValue(c *Config) (string, error) {
-	if c.ValueType != ValueSecret {
-		return "", errors.New("platform config: not a secret")
-	}
-	if !strings.HasPrefix(c.Value, EncryptedPrefix) {
-		return c.Value, nil
-	}
-	if r.enc == nil {
-		return "", ErrNoEncryptionKey
-	}
-	return r.enc.Decrypt(c.Value)
+	pt, _, err := r.revealValue(c)
+	return pt, err
 }
 
-// EncryptLegacySecrets encrypts SECRET rows still stored as plaintext and
-// returns how many it converted. Idempotent; safe to run on every start.
+// revealValue is RevealValue, also reporting whether the stored value is
+// current: encrypted and bound to its row.
+func (r *Repository) revealValue(c *Config) (plaintext string, current bool, err error) {
+	if c.ValueType != ValueSecret {
+		return "", false, errors.New("platform config: not a secret")
+	}
+	if r.enc == nil {
+		return "", false, ErrNoEncryptionKey
+	}
+	if !strings.HasPrefix(c.Value, EncryptedPrefix) {
+		return c.Value, false, nil
+	}
+	return r.enc.DecryptBound(c.Value, configAAD(c))
+}
+
+// Reveal is RevealValue with read repair: a SECRET still stored as plaintext
+// or sealed without its row binding is re-encrypted bound to its row, by a
+// compare-and-set on the value that was read (a value changed meanwhile is
+// left alone). A failed repair is logged, never the reveal's failure.
+func (r *Repository) Reveal(ctx context.Context, c *Config) (string, error) {
+	pt, current, err := r.revealValue(c)
+	if err != nil {
+		return "", err
+	}
+	if !current {
+		if _, err := r.rebind(ctx, c.ID, c.ApplicationCode, c.Section, c.Property, c.ClientID, c.Value, pt); err != nil {
+			slog.WarnContext(ctx, "platform config: secret read repair failed", "id", c.ID, "err", err)
+		}
+	}
+	return pt, nil
+}
+
+// rebind stores plaintext encrypted and bound to its row, replacing old only
+// while it is still the stored value (compare-and-set). It reports whether the
+// row was changed.
+func (r *Repository) rebind(ctx context.Context, id, app, section, property string, clientID *ids.ClientID, old, plaintext string) (bool, error) {
+	ct, err := r.enc.EncryptBound(plaintext, secretAAD(app, section, property, clientID))
+	if err != nil {
+		return false, err
+	}
+	n, err := r.q.PlatformConfigCompareAndSetStoredValue(ctx, dbq.PlatformConfigCompareAndSetStoredValueParams{
+		ID: id, OldValue: old, NewValue: EncryptedPrefix + ct,
+	})
+	return n == 1, err
+}
+
+// EncryptLegacySecrets brings every SECRET row to the current storage: rows
+// still stored as plaintext are encrypted, and encrypted rows sealed before
+// the ciphertext was bound to its row are re-encrypted bound (secretAAD). It
+// returns how many rows it changed. Each row is replaced by a compare-and-set
+// on the value it read, so a conversion running at one replica's start-up
+// cannot undo a value set meanwhile. Idempotent; safe to run on every start.
+//
+// Without a key nothing can be converted or read: the rows are counted and
+// logged, SECRET reads and writes fail closed (ErrNoEncryptionKey), and the
+// platform still starts. A row that no configured key opens is counted, logged
+// and left as it is.
 func (r *Repository) EncryptLegacySecrets(ctx context.Context) (int, error) {
-	rows, err := r.q.PlatformConfigListPlaintextSecrets(ctx)
+	plain, err := r.q.PlatformConfigListPlaintextSecrets(ctx)
 	if err != nil {
 		return 0, err
 	}
-	if len(rows) > 0 && r.enc == nil {
-		return 0, ErrNoEncryptionKey
+	sealed, err := r.q.PlatformConfigListEncryptedSecrets(ctx)
+	if err != nil {
+		return 0, err
 	}
-	for _, row := range rows {
-		ct, err := r.enc.Encrypt(row.Value)
+	if r.enc == nil {
+		if len(plain)+len(sealed) > 0 {
+			slog.ErrorContext(ctx, "platform config: FLOWCATALYST_APP_KEY is not set; SECRET values cannot be read or written until it is",
+				"plaintextSecrets", len(plain), "encryptedSecrets", len(sealed))
+		}
+		return 0, nil
+	}
+	changed := 0
+	for _, row := range plain {
+		ok, err := r.rebind(ctx, row.ID, row.ApplicationCode, row.Section, row.Property, row.ClientID, row.Value, row.Value)
 		if err != nil {
-			return 0, err
+			return changed, err
 		}
-		if err := r.q.PlatformConfigSetStoredValue(ctx, dbq.PlatformConfigSetStoredValueParams{ID: row.ID, Value: EncryptedPrefix + ct}); err != nil {
-			return 0, err
+		if ok {
+			changed++
 		}
 	}
-	return len(rows), nil
+	unreadable := 0
+	for _, row := range sealed {
+		pt, bound, err := r.enc.DecryptBound(row.Value, secretAAD(row.ApplicationCode, row.Section, row.Property, row.ClientID))
+		if err != nil {
+			unreadable++
+			continue
+		}
+		if bound {
+			continue
+		}
+		ok, err := r.rebind(ctx, row.ID, row.ApplicationCode, row.Section, row.Property, row.ClientID, row.Value, pt)
+		if err != nil {
+			return changed, err
+		}
+		if ok {
+			changed++
+		}
+	}
+	if unreadable > 0 {
+		slog.WarnContext(ctx, "platform config: SECRET values that no configured key opens were left as they are (after a key rotation, set FLOWCATALYST_APP_KEY_PREVIOUS)",
+			"count", unreadable)
+	}
+	return changed, nil
+}
+
+// ApplicationIDByCode is the id of the application with code, "" when there
+// is none (config rows are keyed by code, without a foreign key).
+func (r *Repository) ApplicationIDByCode(ctx context.Context, code string) (string, error) {
+	row, err := r.q.PlatformConfigApplicationByCode(ctx, code)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return string(row.ID), nil
+}
+
+// ServiceAccountClients implements ClientLinks.
+func (r *Repository) ServiceAccountClients(ctx context.Context, principalID string) ([]string, bool, error) {
+	clients, err := r.q.PlatformConfigServiceAccountClientIDs(ctx, ids.PrincipalID(principalID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return clients, true, nil
+}
+
+// ApplicationEnabledClients implements ClientLinks.
+func (r *Repository) ApplicationEnabledClients(ctx context.Context, applicationID string) ([]string, error) {
+	rows, err := r.q.PlatformConfigApplicationEnabledClientIDs(ctx, ids.ApplicationID(applicationID))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(rows))
+	for i, c := range rows {
+		out[i] = string(c)
+	}
+	return out, nil
 }
 
 // FindByID loads a config row by id.

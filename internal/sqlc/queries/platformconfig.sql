@@ -88,11 +88,42 @@ SELECT EXISTS(
 -- name: PlatformConfigListPlaintextSecrets :many
 -- SECRET rows written before values were encrypted at rest (no "encrypted:"
 -- marker). Drained by Repository.EncryptLegacySecrets at start-up.
-SELECT id, value
+SELECT id, application_code, section, property, client_id, value
 FROM app_platform_configs
 WHERE value_type = 'SECRET' AND value NOT LIKE 'encrypted:%';
 
--- name: PlatformConfigSetStoredValue :exec
--- Replaces only the stored value (no updated_at bump: the value did not
--- change, only its representation).
-UPDATE app_platform_configs SET value = $2 WHERE id = $1 AND value_type = 'SECRET';
+-- name: PlatformConfigListEncryptedSecrets :many
+-- SECRET rows stored encrypted, with the coordinate their ciphertext is bound
+-- to. Repository.EncryptLegacySecrets re-encrypts the ones sealed before the
+-- ciphertext carried its row's coordinate (no additional authenticated data).
+SELECT id, application_code, section, property, client_id, value
+FROM app_platform_configs
+WHERE value_type = 'SECRET' AND value LIKE 'encrypted:%';
+
+-- name: PlatformConfigCompareAndSetStoredValue :execrows
+-- Replaces a SECRET's stored representation only while it is still the one
+-- that was read (compare-and-set), so a conversion running on one replica
+-- cannot undo a value another request set meanwhile. No updated_at bump: the
+-- value did not change, only how it is stored.
+UPDATE app_platform_configs
+   SET value = sqlc.arg(new_value)
+ WHERE id = sqlc.arg(id) AND value_type = 'SECRET' AND value = sqlc.arg(old_value);
+
+-- name: PlatformConfigApplicationByCode :one
+-- The application a config row would belong to (config rows are keyed by
+-- application code, without a foreign key).
+SELECT id, code FROM app_applications WHERE code = $1;
+
+-- name: PlatformConfigServiceAccountClientIDs :one
+-- The explicit client ids of the service account behind a principal. No row:
+-- the principal is not a service account.
+SELECT sa.client_ids
+FROM iam_principals p
+JOIN iam_service_accounts sa ON sa.id = p.service_account_id
+WHERE p.id = $1;
+
+-- name: PlatformConfigApplicationEnabledClientIDs :many
+-- The clients an application is enabled for.
+SELECT client_id FROM app_client_configs
+WHERE application_id = $1 AND enabled
+ORDER BY client_id;

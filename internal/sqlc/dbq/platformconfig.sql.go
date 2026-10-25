@@ -172,6 +172,75 @@ func (q *Queries) PlatformConfigAccessUpsert(ctx context.Context, arg PlatformCo
 	return err
 }
 
+const platformConfigApplicationByCode = `-- name: PlatformConfigApplicationByCode :one
+SELECT id, code FROM app_applications WHERE code = $1
+`
+
+type PlatformConfigApplicationByCodeRow struct {
+	ID   ids.ApplicationID `db:"id"`
+	Code string            `db:"code"`
+}
+
+// The application a config row would belong to (config rows are keyed by
+// application code, without a foreign key).
+func (q *Queries) PlatformConfigApplicationByCode(ctx context.Context, code string) (PlatformConfigApplicationByCodeRow, error) {
+	row := q.db.QueryRow(ctx, platformConfigApplicationByCode, code)
+	var i PlatformConfigApplicationByCodeRow
+	err := row.Scan(&i.ID, &i.Code)
+	return i, err
+}
+
+const platformConfigApplicationEnabledClientIDs = `-- name: PlatformConfigApplicationEnabledClientIDs :many
+SELECT client_id FROM app_client_configs
+WHERE application_id = $1 AND enabled
+ORDER BY client_id
+`
+
+// The clients an application is enabled for.
+func (q *Queries) PlatformConfigApplicationEnabledClientIDs(ctx context.Context, applicationID ids.ApplicationID) ([]ids.ClientID, error) {
+	rows, err := q.db.Query(ctx, platformConfigApplicationEnabledClientIDs, applicationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ids.ClientID{}
+	for rows.Next() {
+		var client_id ids.ClientID
+		if err := rows.Scan(&client_id); err != nil {
+			return nil, err
+		}
+		items = append(items, client_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const platformConfigCompareAndSetStoredValue = `-- name: PlatformConfigCompareAndSetStoredValue :execrows
+UPDATE app_platform_configs
+   SET value = $1
+ WHERE id = $2 AND value_type = 'SECRET' AND value = $3
+`
+
+type PlatformConfigCompareAndSetStoredValueParams struct {
+	NewValue string `db:"new_value"`
+	ID       string `db:"id"`
+	OldValue string `db:"old_value"`
+}
+
+// Replaces a SECRET's stored representation only while it is still the one
+// that was read (compare-and-set), so a conversion running on one replica
+// cannot undo a value another request set meanwhile. No updated_at bump: the
+// value did not change, only how it is stored.
+func (q *Queries) PlatformConfigCompareAndSetStoredValue(ctx context.Context, arg PlatformConfigCompareAndSetStoredValueParams) (int64, error) {
+	result, err := q.db.Exec(ctx, platformConfigCompareAndSetStoredValue, arg.NewValue, arg.ID, arg.OldValue)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const platformConfigDelete = `-- name: PlatformConfigDelete :exec
 DELETE FROM app_platform_configs WHERE id = $1
 `
@@ -330,15 +399,64 @@ func (q *Queries) PlatformConfigFindByID(ctx context.Context, id string) (AppPla
 	return i, err
 }
 
+const platformConfigListEncryptedSecrets = `-- name: PlatformConfigListEncryptedSecrets :many
+SELECT id, application_code, section, property, client_id, value
+FROM app_platform_configs
+WHERE value_type = 'SECRET' AND value LIKE 'encrypted:%'
+`
+
+type PlatformConfigListEncryptedSecretsRow struct {
+	ID              string        `db:"id"`
+	ApplicationCode string        `db:"application_code"`
+	Section         string        `db:"section"`
+	Property        string        `db:"property"`
+	ClientID        *ids.ClientID `db:"client_id"`
+	Value           string        `db:"value"`
+}
+
+// SECRET rows stored encrypted, with the coordinate their ciphertext is bound
+// to. Repository.EncryptLegacySecrets re-encrypts the ones sealed before the
+// ciphertext carried its row's coordinate (no additional authenticated data).
+func (q *Queries) PlatformConfigListEncryptedSecrets(ctx context.Context) ([]PlatformConfigListEncryptedSecretsRow, error) {
+	rows, err := q.db.Query(ctx, platformConfigListEncryptedSecrets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PlatformConfigListEncryptedSecretsRow{}
+	for rows.Next() {
+		var i PlatformConfigListEncryptedSecretsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ApplicationCode,
+			&i.Section,
+			&i.Property,
+			&i.ClientID,
+			&i.Value,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const platformConfigListPlaintextSecrets = `-- name: PlatformConfigListPlaintextSecrets :many
-SELECT id, value
+SELECT id, application_code, section, property, client_id, value
 FROM app_platform_configs
 WHERE value_type = 'SECRET' AND value NOT LIKE 'encrypted:%'
 `
 
 type PlatformConfigListPlaintextSecretsRow struct {
-	ID    string `db:"id"`
-	Value string `db:"value"`
+	ID              string        `db:"id"`
+	ApplicationCode string        `db:"application_code"`
+	Section         string        `db:"section"`
+	Property        string        `db:"property"`
+	ClientID        *ids.ClientID `db:"client_id"`
+	Value           string        `db:"value"`
 }
 
 // SECRET rows written before values were encrypted at rest (no "encrypted:"
@@ -352,7 +470,14 @@ func (q *Queries) PlatformConfigListPlaintextSecrets(ctx context.Context) ([]Pla
 	items := []PlatformConfigListPlaintextSecretsRow{}
 	for rows.Next() {
 		var i PlatformConfigListPlaintextSecretsRow
-		if err := rows.Scan(&i.ID, &i.Value); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.ApplicationCode,
+			&i.Section,
+			&i.Property,
+			&i.ClientID,
+			&i.Value,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -363,20 +488,20 @@ func (q *Queries) PlatformConfigListPlaintextSecrets(ctx context.Context) ([]Pla
 	return items, nil
 }
 
-const platformConfigSetStoredValue = `-- name: PlatformConfigSetStoredValue :exec
-UPDATE app_platform_configs SET value = $2 WHERE id = $1 AND value_type = 'SECRET'
+const platformConfigServiceAccountClientIDs = `-- name: PlatformConfigServiceAccountClientIDs :one
+SELECT sa.client_ids
+FROM iam_principals p
+JOIN iam_service_accounts sa ON sa.id = p.service_account_id
+WHERE p.id = $1
 `
 
-type PlatformConfigSetStoredValueParams struct {
-	ID    string `db:"id"`
-	Value string `db:"value"`
-}
-
-// Replaces only the stored value (no updated_at bump: the value did not
-// change, only its representation).
-func (q *Queries) PlatformConfigSetStoredValue(ctx context.Context, arg PlatformConfigSetStoredValueParams) error {
-	_, err := q.db.Exec(ctx, platformConfigSetStoredValue, arg.ID, arg.Value)
-	return err
+// The explicit client ids of the service account behind a principal. No row:
+// the principal is not a service account.
+func (q *Queries) PlatformConfigServiceAccountClientIDs(ctx context.Context, id ids.PrincipalID) ([]string, error) {
+	row := q.db.QueryRow(ctx, platformConfigServiceAccountClientIDs, id)
+	var client_ids []string
+	err := row.Scan(&client_ids)
+	return client_ids, err
 }
 
 const platformConfigUpsert = `-- name: PlatformConfigUpsert :exec
