@@ -526,11 +526,11 @@ type usrEditForm struct {
 	Scope, ClientID string
 	// StoredScope is the scope as stored. "" (never set) adds a "Not set
 	// (unchanged)" choice, selected, so a name-only edit posts no scope.
-	StoredScope string
-	CanScope    bool
-	Clients         []kit.Option
-	CanPickClient   bool
-	Open            bool
+	StoredScope   string
+	CanScope      bool
+	Clients       []kit.Option
+	CanPickClient bool
+	Open          bool
 }
 
 func newUsrEditForm(canScope bool) usrEditForm {

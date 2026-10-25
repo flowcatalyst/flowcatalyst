@@ -76,8 +76,6 @@ func (f accessFixture) grantCount(t *testing.T) int {
 	return len(gs)
 }
 
-func modePtr(m string) *string { return &m }
-
 // Everything an IAM administrator holds except manage-access: still refused.
 func TestAccessChanges_RefusedWithoutManageAccess(t *testing.T) {
 	f := newAccessFixture(t, "nomanage")
@@ -85,11 +83,11 @@ func TestAccessChanges_RefusedWithoutManageAccess(t *testing.T) {
 		"platform:iam:user:view", "platform:iam:user:create", "platform:iam:user:update",
 		"platform:iam:user:assign-roles", "platform:iam:client-access:grant", "platform:iam:client-access:revoke")
 
-	_, err := f.s.setClientAssociation(caller, &setClientAssociationInput{ID: f.target, Body: ClientAssociationRequest{ClientID: f.clientB, Mode: modePtr("TO_PARTNER")}})
+	_, err := f.s.setClientAssociation(caller, &setClientAssociationInput{ID: f.target, Body: ClientAssociationRequest{ClientID: f.clientB, Mode: new("TO_PARTNER")}})
 	requirePermissionRequired(t, err, "to partner")
 	_, err = f.s.setClientAssociation(caller, &setClientAssociationInput{ID: f.target, Body: ClientAssociationRequest{ClientID: "*"}})
 	requirePermissionRequired(t, err, "promote to anchor")
-	_, err = f.s.setClientAssociation(caller, &setClientAssociationInput{ID: f.target, Body: ClientAssociationRequest{ClientID: f.clientB, Mode: modePtr("CHANGE_CLIENT")}})
+	_, err = f.s.setClientAssociation(caller, &setClientAssociationInput{ID: f.target, Body: ClientAssociationRequest{ClientID: f.clientB, Mode: new("CHANGE_CLIENT")}})
 	requirePermissionRequired(t, err, "change client")
 	_, err = f.s.grantClientAccess(caller, &grantClientAccessInput{ID: f.target, Body: GrantClientAccessRequest{ClientID: f.clientB}})
 	requirePermissionRequired(t, err, "grant")
@@ -112,7 +110,7 @@ func TestAccessChanges_ClientAdminNeverPasses(t *testing.T) {
 	})
 	for name, call := range map[string]func() error{
 		"to partner": func() error {
-			_, err := f.s.setClientAssociation(caller, &setClientAssociationInput{ID: f.target, Body: ClientAssociationRequest{ClientID: f.clientB, Mode: modePtr("TO_PARTNER")}})
+			_, err := f.s.setClientAssociation(caller, &setClientAssociationInput{ID: f.target, Body: ClientAssociationRequest{ClientID: f.clientB, Mode: new("TO_PARTNER")}})
 			return err
 		},
 		"promote to anchor": func() error {
@@ -142,7 +140,7 @@ func TestAccessChanges_AllowedWithManageAccess(t *testing.T) {
 	f := newAccessFixture(t, "manage")
 	caller := anchorHolding("USER", "platform:iam:user:view", permManageAccess)
 
-	_, err := f.s.setClientAssociation(caller, &setClientAssociationInput{ID: f.target, Body: ClientAssociationRequest{ClientID: f.clientB, Mode: modePtr("TO_PARTNER")}})
+	_, err := f.s.setClientAssociation(caller, &setClientAssociationInput{ID: f.target, Body: ClientAssociationRequest{ClientID: f.clientB, Mode: new("TO_PARTNER")}})
 	require.NoError(t, err)
 	scope, _ := f.scopeOf(t)
 	assert.Equal(t, "PARTNER", scope)
