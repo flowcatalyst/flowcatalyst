@@ -41,6 +41,8 @@ type startOpts struct {
 	FunctionsPort       int
 	FunctionsPublicPort int
 	FunctionsMemoryMB   int
+	IngestorEnabled     bool
+	IngestorPort        int
 }
 
 func newStartCmd() *cobra.Command {
@@ -71,6 +73,8 @@ func addStartFlags(cmd *cobra.Command) {
 	cmd.Flags().Int("functions-port", envIntDefault("FC_FUNCTIONS_PORT", server.DefaultFunctionRunnerPort), "function runner private entry port (/fn/…)")
 	cmd.Flags().Int("functions-public-port", envIntDefault("FC_FUNCTIONS_PUBLIC_PORT", 8096), "function runner public entry port (Host routing); 0 = off")
 	cmd.Flags().Int("functions-memory-mb", envIntDefault("FC_FUNCTIONS_MEMORY_LIMIT_MB", 256), "memory the function runner may use (fcdev shares the process with everything else)")
+	cmd.Flags().Bool("ingestor", envBoolDefault("FC_INGESTOR_ENABLED", true), "run the ingestor runtime (its own Java is installed on first use); only when ingestion is enabled")
+	cmd.Flags().Int("ingestor-port", envIntDefault("FC_INGESTOR_PORT", defaultIngestorPort), "ingestor runtime HTTP port (HTTP ingestions, /health/ready)")
 	cmd.Flags().String("pid-file", envStrDefault("FC_DEV_PID_FILE", pidFilePath()), "PID file written while running; used by `fcdev stop`")
 }
 
@@ -96,6 +100,8 @@ func optsFromFlags(cmd *cobra.Command) startOpts {
 		FunctionsPort:       getInt("functions-port"),
 		FunctionsPublicPort: getInt("functions-public-port"),
 		FunctionsMemoryMB:   getInt("functions-memory-mb"),
+		IngestorEnabled:     getBool("ingestor"),
+		IngestorPort:        getInt("ingestor-port"),
 	}
 }
 
@@ -266,6 +272,20 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	// The ingestor runtime authenticates to this platform like a deployed one,
+	// with a credential minted here. A failure only means no ingestor.
+	var ingestorCreds routerCredentials
+	runIngestorChild := opts.IngestorEnabled && devIngestionEnabled() && opts.APIPort > 0
+	if runIngestorChild {
+		if creds, err := bootstrapLocalCredentials(rootCtx, pool, ingestorLocalClientID, "fcdev ingestor runtime",
+			"FlowCatalyst Ingestor Runtime (local dev)", ingestorRole); err != nil {
+			slog.Warn("ingestor credential bootstrap failed; the ingestor runtime will not start", "err", err)
+			runIngestorChild = false
+		} else {
+			ingestorCreds = creds
+		}
+	}
+
 	// ── Delegate to the shared run-loop ────────────────────────────────
 	cfg := devEnvCfg(opts, databaseURL, routerCreds)
 	runOpts := server.RunOptions{}
@@ -278,6 +298,15 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	}
 	runOpts.ExtraAPIRoutes = func(_ chi.Router) {} // no extras today
 	runOpts.FunctionRunner = devFunctionRunner(opts, functionCreds)
+	if runIngestorChild {
+		// The child is stopped before the pool and Postgres go away.
+		ingCtx, ingCancel := context.WithCancel(rootCtx)
+		waitIngestor := startIngestor(ingCtx, ingestorConfigFromOpts(opts, ingestorCreds))
+		defer func() {
+			ingCancel()
+			waitIngestor()
+		}()
+	}
 	return server.Run(rootCtx, pool, cfg, runOpts)
 }
 
@@ -295,6 +324,7 @@ func banner(opts startOpts) {
 		"router", opts.RouterEnabled,
 		"mcp", opts.MCPEnabled,
 		"functions", opts.FunctionsEnabled,
+		"ingestor", opts.IngestorEnabled && devIngestionEnabled(),
 	)
 }
 
