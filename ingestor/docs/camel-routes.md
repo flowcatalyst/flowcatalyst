@@ -20,7 +20,10 @@ A route runs with the runtime's own identity, network and environment, so it can
 can, other clients' secrets in its environment included. The platform therefore refuses to create or change
 a camel-route ingestion unless the caller holds `platform:ingestion:ingestion:route` (role
 `platform:ingestion-route-author`); removing one needs only `delete`. The runtime sends this requirement with
-the kind. The ingestion's own secrets are not handed to a route.
+the kind. **The permission is anchor-only on the platform**: only an anchor user (the platform's own operators)
+can hold it; a client's or a partner's user cannot be given it, whatever role they are assigned. The
+ingestion's own secrets are not handed to a route, and the runtime's outbound address checks (see the README)
+do not apply to a route's own steps.
 
 ## The shape
 
@@ -48,6 +51,17 @@ it cannot use is reported `FAILED` with why) and at "test connection", which che
 The body the last step leaves is the payload, handed to the ingestion's split. A step that throws is a
 `SOURCE` failure: the exchange fails, the route shows `FAILING` until a payload gets through, and a `from`
 component that can offer the message again does. A route runs on one runtime at a time, under a lease.
+
+A route's jobs carry no idempotency key unless a step says where the payload came from, in the exchange
+property `ingestPayloadIdentity`: something that names the payload and is the same each time it is read (a
+file's path and time, a message's id, the page asked for), never its content alone. Each record's key is then
+the SHA-256 of that identity and the record's position:
+
+```yaml
+    - setProperty:
+        name: ingestPayloadIdentity
+        simple: "prices.example.org/v2/latest@${header[Last-Modified]}"
+```
 
 ## What it can use
 
