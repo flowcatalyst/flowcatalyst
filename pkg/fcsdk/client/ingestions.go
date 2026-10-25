@@ -151,6 +151,25 @@ type IngestionResponse struct {
 	KeepFailedPayloads bool            `json:"keepFailedPayloads,omitempty"`
 	ManagedBy          string          `json:"managedBy,omitempty"`
 	RuntimeNotice      string          `json:"runtimeNotice,omitempty"`
+	// Notices counts undismissed notices (failures the platform refused,
+	// category "rejected"); LatestNotice is the newest one's message.
+	Notices        int64  `json:"notices,omitempty"`
+	LatestNotice   string `json:"latestNotice,omitempty"`
+	LatestNoticeAt string `json:"latestNoticeAt,omitempty"`
+	// Warnings names what the definition says that will not run as meant.
+	Warnings []string `json:"warnings,omitempty"`
+	// Save is what a create or update did (set on those answers only).
+	Save *IngestionSaveOutcome `json:"save,omitempty"`
+}
+
+// IngestionSaveOutcome is what a create, update or version save did. Outcome
+// is SAVED, MADE_LIVE, DRAFT, DRAFT_EXISTS or UNCHANGED; AwaitingPromote is
+// true for a draft that someone with promote must make live.
+type IngestionSaveOutcome struct {
+	Outcome         string `json:"outcome"`
+	Version         int64  `json:"version"`
+	AwaitingPromote bool   `json:"awaitingPromote"`
+	Message         string `json:"message,omitempty"`
 }
 
 // UnmarshalJSON reads the source and split as their typed members.
@@ -195,6 +214,11 @@ type IngestionVersionResponse struct {
 	Split              IngestionSplit  `json:"split"`
 	Target             IngestionTarget `json:"target"`
 	KeepFailedPayloads bool            `json:"keepFailedPayloads,omitempty"`
+	// Draft is a version saved but not live; Digest identifies its
+	// definition (equal definitions have equal digests).
+	Draft  bool                  `json:"draft,omitempty"`
+	Digest string                `json:"digest,omitempty"`
+	Save   *IngestionSaveOutcome `json:"save,omitempty"`
 }
 
 // UnmarshalJSON reads the source and split as their typed members.
@@ -270,6 +294,13 @@ type IngestionFailureResponse struct {
 	Excerpt      string `json:"excerpt,omitempty"`
 	RuntimeID    string `json:"runtimeId,omitempty"`
 	Version      int64  `json:"version,omitempty"`
+	// Category is "payload" (the source's data was at fault) or "rejected"
+	// (the platform refused the runtime's jobs permanently: a notice);
+	// empty for other failures.
+	Category    string `json:"category,omitempty"`
+	CreatedAt   string `json:"createdAt,omitempty"`
+	DismissedAt string `json:"dismissedAt,omitempty"`
+	DismissedBy string `json:"dismissedBy,omitempty"`
 }
 
 // IngestionFailureListResponse — GET /api/ingestions/{id}/failures,
@@ -551,12 +582,67 @@ func (r *IngestionsResource) History(ctx context.Context, id string, limit, offs
 	return &out, nil
 }
 
-// Failures — GET /api/ingestions/{id}/failures, cursor-paged: pass the
-// previous page's NextCursor as after. Empty after and nil limit are omitted.
-func (r *IngestionsResource) Failures(ctx context.Context, id, after string, limit *uint32) (*IngestionFailureListResponse, error) {
-	q := NewQuery().String("after", after).Uint32("limit", limit).Encode()
+// IngestionFailureFilters narrows Failures. Category is "payload" or
+// "rejected"; Undismissed keeps only failures nobody has dismissed (with
+// Category "rejected": the ingestion's open notices).
+type IngestionFailureFilters struct {
+	After       string
+	Limit       *uint32
+	Category    string
+	Undismissed bool
+}
+
+// Failures — GET /api/ingestions/{id}/failures, newest first, cursor-paged:
+// pass the previous page's NextCursor as After. Empty fields are omitted.
+func (r *IngestionsResource) Failures(ctx context.Context, id string, f IngestionFailureFilters) (*IngestionFailureListResponse, error) {
+	q := NewQuery().String("after", f.After).Uint32("limit", f.Limit).String("category", f.Category)
+	if f.Undismissed {
+		q = q.String("undismissed", "true")
+	}
 	var out IngestionFailureListResponse
-	if err := r.c.Get(ctx, ingestionPath(id, "failures")+q, &out); err != nil {
+	if err := r.c.Get(ctx, ingestionPath(id, "failures")+q.Encode(), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DismissFailure — POST /api/ingestions/{id}/failures/{failureId}/dismiss:
+// marks a failure (a notice) dismissed; it stays in the history.
+func (r *IngestionsResource) DismissFailure(ctx context.Context, id, failureID string) (*IngestionFailureResponse, error) {
+	var out IngestionFailureResponse
+	if err := r.c.Post(ctx, ingestionPath(id, "failures", failureID, "dismiss"), nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// IngestionSecretFetch is when a runtime last fetched a bound secret.
+type IngestionSecretFetch struct {
+	RuntimeID     string `json:"runtimeId"`
+	Version       int64  `json:"version,omitempty"`
+	PrincipalID   string `json:"principalId,omitempty"`
+	LastFetchedAt string `json:"lastFetchedAt"`
+	FetchCount    int64  `json:"fetchCount"`
+}
+
+// IngestionSecretResponse is a secret name the ingestion binds (or bound),
+// with the runtimes' last fetches of it. Values are never returned.
+type IngestionSecretResponse struct {
+	Name    string                 `json:"name"`
+	Bound   bool                   `json:"bound"`
+	Fetches []IngestionSecretFetch `json:"fetches"`
+}
+
+// IngestionSecretListResponse — GET /api/ingestions/{id}/secrets.
+type IngestionSecretListResponse struct {
+	Secrets []IngestionSecretResponse `json:"secrets"`
+}
+
+// Secrets — GET /api/ingestions/{id}/secrets: the secret names the live
+// definition binds and when each runtime last fetched them.
+func (r *IngestionsResource) Secrets(ctx context.Context, id string) (*IngestionSecretListResponse, error) {
+	var out IngestionSecretListResponse
+	if err := r.c.Get(ctx, ingestionPath(id, "secrets"), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

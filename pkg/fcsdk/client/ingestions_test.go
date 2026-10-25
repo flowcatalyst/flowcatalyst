@@ -54,7 +54,7 @@ func TestIngestionsListCursor(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "c2", seen.query.Get("after"))
 
-	fails, err := c.Ingestions().Failures(context.Background(), "ing_1", "f1", nil)
+	fails, err := c.Ingestions().Failures(context.Background(), "ing_1", client.IngestionFailureFilters{After: "f1"})
 	require.NoError(t, err)
 	assert.True(t, fails.HasMore)
 	assert.Equal(t, "/api/ingestions/ing_1/failures", seen.path)

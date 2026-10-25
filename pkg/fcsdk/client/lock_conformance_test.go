@@ -204,7 +204,13 @@ func lockCases() []lockCase {
 			return c.Ingestions().History(ctx, "ing_1", new(uint32(10)), new(uint32(20)))
 		}},
 		{name: "Ingestions.Failures", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
-			return c.Ingestions().Failures(ctx, "ing_1", "cur", new(uint32(10)))
+			return c.Ingestions().Failures(ctx, "ing_1", client.IngestionFailureFilters{After: "cur", Limit: new(uint32(10)), Category: "rejected", Undismissed: true})
+		}},
+		{name: "Ingestions.DismissFailure", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().DismissFailure(ctx, "ing_1", "igf_1")
+		}},
+		{name: "Ingestions.Secrets", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Ingestions().Secrets(ctx, "ing_1")
 		}},
 		{name: "Ingestions.SourceKinds", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.Ingestions().SourceKinds(ctx)
