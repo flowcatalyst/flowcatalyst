@@ -170,6 +170,7 @@ type FngTraceContext struct {
 	SampleRate   int32      `db:"sample_rate"`
 	EnabledBy    *string    `db:"enabled_by"`
 	UpdatedAt    time.Time  `db:"updated_at"`
+	Indefinite   bool       `db:"indefinite"`
 }
 
 type FngTraceLog struct {
