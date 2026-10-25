@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 
 	principalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
@@ -355,6 +356,9 @@ type usrRoleChoices struct {
 	Selected []string
 	// Locked are the assigned roles above the caller: kept as they are.
 	Locked []usrRoleRow
+	// Items are the same roles as the picker's entries, grouped by
+	// application; the assigned roles above the caller are locked in them.
+	Items []kit.PickItem
 	// Hidden counts roles left out because their application is not enabled
 	// for the user.
 	Hidden int
@@ -379,6 +383,9 @@ func (h *Users) roleChoices(ctx context.Context, ac *auth.AuthContext, d usrDeta
 		names = append(names, n)
 	}
 	slices.SortFunc(names, func(a, b string) int {
+		if c := strings.Compare(strings.ToLower(all[a].ApplicationCode), strings.ToLower(all[b].ApplicationCode)); c != 0 {
+			return c
+		}
 		return strings.Compare(strings.ToLower(cmp.Or(all[a].DisplayName, a)), strings.ToLower(cmp.Or(all[b].DisplayName, b)))
 	})
 	for _, n := range names {
@@ -387,12 +394,22 @@ func (h *Users) roleChoices(ctx context.Context, ac *auth.AuthContext, d usrDeta
 			c.Hidden++
 			continue
 		}
+		item := kit.PickItem{
+			Value: n, Key: "r" + strconv.Itoa(len(c.Items)), Name: cmp.Or(rl.DisplayName, roleShort(n)), Code: n,
+			Group: cmp.Or(rl.ApplicationCode, "other"), Checked: assigned[n],
+		}
+		if rl.Description != nil {
+			item.Description = *rl.Description
+		}
 		if len(role.PermissionsAboveCaller(ac, rl.Permissions)) > 0 {
 			if assigned[n] {
 				c.Locked = append(c.Locked, usrRoleRow{Name: n, Short: roleShort(n), Display: cmp.Or(rl.DisplayName, roleShort(n))})
+				item.Locked, item.Note = true, "Above your access"
+				c.Items = append(c.Items, item)
 			}
 			continue
 		}
+		c.Items = append(c.Items, item)
 		label := cmp.Or(rl.DisplayName, n)
 		if label != n {
 			label += " (" + n + ")"
@@ -403,4 +420,14 @@ func (h *Users) roleChoices(ctx context.Context, ac *auth.AuthContext, d usrDeta
 		}
 	}
 	return c, nil
+}
+
+// picker is the role picker: the roles grouped by application with their
+// descriptions, the ones above the caller locked (kept and posted back).
+func (c usrRoleChoices) picker() kit.PickListProps {
+	return kit.PickListProps{
+		ID: "usr-roles-pick", Signal: "usrRolesPicked", FilterSignal: "usrRoleQ", Name: "roles", ItemIDPrefix: "usr-role-",
+		Items: c.Items, AvailableTitle: "Available roles (" + strconv.Itoa(len(c.Items)) + ")", SelectedTitle: "Selected",
+		FilterPlaceholder: "Filter roles", EmptyText: "No roles selected", Bulk: true,
+	}
 }

@@ -340,7 +340,7 @@ func TestUsersPageForgedPostsAgainstPostgres(t *testing.T) {
 	p.post(usrSuper(), id+"/roles", url.Values{"roles": {p.platAdm}})
 	require.Equal(t, []string{p.platAdm}, usrRoleNames(p.user(target)))
 	dialog := p.get(assigner, id+"/roles")
-	assert.Contains(t, dialog, "Kept as they are")
+	assert.Contains(t, dialog, "Above your access")
 	assert.Contains(t, dialog, `name="roles" value="`+p.platAdm+`"`)
 	body = p.post(assigner, id+"/roles", url.Values{"roles": {p.clerk}})
 	assert.Contains(t, body, "You may only assign or remove roles")

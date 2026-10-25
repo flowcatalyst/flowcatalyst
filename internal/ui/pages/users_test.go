@@ -1013,11 +1013,11 @@ func TestUserRolesDialogCeilingAndBounds(t *testing.T) {
 	h.users.roles["prn_2"] = append(h.users.roles["prn_2"], principalapi.PrincipalRoleAssignmentDTO{ID: "r9", RoleName: "platform:super-admin", AssignmentSource: "MANUAL"})
 	ac := usrAnchor(usrPermView, usrPermAssign, usrPermRoles, "platform:iam:user:delete")
 	body := usrBody(t, h.do(t, ac, req{target: "/ui/users/prn_2/roles", datastar: true}))
-	mustContain(t, body, "Manage Roles", `value="orders:viewer" checked`, `value="orders:editor" checked`, "Orders Approver (orders:approver)",
+	mustContain(t, body, "Manage Roles", `value="orders:viewer" checked`, `value="orders:editor" checked`, "Orders Approver", "orders:approver",
 		// Roles of an application the user cannot access are left out, with a note.
 		"2 role(s) hidden because their application isn't enabled",
-		// The role above the caller is kept as it is.
-		"Kept as they are", `<input type="hidden" name="roles" value="platform:super-admin">`)
+		// The role above the caller is locked and kept as it is.
+		"Above your access", `<input type="hidden" name="roles" value="platform:super-admin">`)
 	mustNotContain(t, body, "billing:clerk", `value="platform:user-admin"`) // user-admin is within the caller's delete permission... but not assigned
 	// The user-admin role (delete only) is within the caller: offered unchecked
 	// to an anchor user, whose roles are never filtered by application.

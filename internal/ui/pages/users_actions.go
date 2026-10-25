@@ -756,3 +756,17 @@ func importStatusBadge(status string) kit.BadgeVariant {
 	}
 	return kit.BadgeDestructive
 }
+
+// picker is the application picker: the offered applications, the granted
+// ones ticked.
+func (f usrAppsForm) picker() kit.PickListProps {
+	items := make([]kit.PickItem, 0, len(f.Options))
+	for i, o := range f.Options {
+		items = append(items, kit.PickItem{Value: o.Value, Key: "a" + strconv.Itoa(i), Name: o.Label, Checked: slices.Contains(f.Selected, o.Value)})
+	}
+	return kit.PickListProps{
+		ID: "usr-apps-pick", Signal: "usrAppsPicked", FilterSignal: "usrAppQ", Name: "applicationIds", ItemIDPrefix: "usr-app-",
+		Items: items, AvailableTitle: "Available applications (" + strconv.Itoa(len(items)) + ")", SelectedTitle: "Selected",
+		FilterPlaceholder: "Filter applications", EmptyText: "No applications selected", Bulk: true,
+	}
+}

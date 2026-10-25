@@ -228,25 +228,7 @@ templ usrRolesDialogC(f usrRolesForm) {
 		ID: usrRolesDialog, Signal: "usrRoles", Action: usrURL(f.UserID) + "/roles", Open: f.Open, Error: f.Errs.Form,
 		Title: "Manage Roles", Description: f.Name, SubmitLabel: "Save Roles", Width: kit.WidthWide, Hidden: usrHidden(),
 	}) {
-		@kit.MultiSelect(kit.MultiSelectProps{
-			ID: "usr-roles-select", Name: "roles", Label: "Roles", Options: f.Choices.Options, Selected: f.Choices.Selected,
-			Placeholder: "No roles selected", ManyLabel: "{0} roles selected", EmptyText: "No roles found",
-			Chips: true, Search: true, Signal: "usrRoleQ", Open: true, MaxLabels: 1,
-		})
-		if len(f.Choices.Locked) > 0 {
-			<div class="flex flex-col gap-1 text-sm">
-				<span class="fc-field-label">Kept as they are</span>
-				<p class="text-muted-foreground">These roles hold permissions you do not have, so you cannot add or remove them.</p>
-				for _, r := range f.Choices.Locked {
-					<div class="flex items-center gap-2">
-						@kit.Icon(kit.IconProps{Name: "lock", Class: "size-4 text-muted-foreground"})
-						<span class="font-medium">{ r.Display }</span>
-						<code class="text-xs text-muted-foreground">{ r.Name }</code>
-						<input type="hidden" name="roles" value={ r.Name }/>
-					</div>
-				}
-			</div>
-		}
+		@kit.PickListFields(f.Choices.picker())
 		if f.Choices.Hidden > 0 {
 			<p class="text-sm text-muted-foreground">
 				{ strconv.Itoa(f.Choices.Hidden) } role(s) hidden because their application isn't enabled for this user. Add the application under Application Access to make them available here.
@@ -262,11 +244,7 @@ templ usrAppsDialogC(f usrAppsForm) {
 		ID: usrAppsDialog, Signal: "usrApps", Action: usrURL(f.UserID) + "/applications", Open: f.Open, Error: f.Errs.Form,
 		Title: "Manage Application Access", Description: f.Name, SubmitLabel: "Save Application Access", Width: kit.WidthWide, Hidden: usrHidden(),
 	}) {
-		@kit.MultiSelect(kit.MultiSelectProps{
-			ID: "usr-apps-select", Name: "applicationIds", Label: "Applications", Options: f.Options, Selected: f.Selected,
-			Placeholder: "No applications selected", ManyLabel: "{0} applications selected", EmptyText: "No applications found",
-			Chips: true, Search: true, Signal: "usrAppQ", Open: true, MaxLabels: 1,
-		})
+		@kit.PickListFields(f.picker())
 		if len(f.Kept) > 0 {
 			<div class="flex flex-col gap-1 text-sm">
 				<span class="fc-field-label">Kept as they are</span>
