@@ -186,9 +186,12 @@ caller that reaches every client and application, because a set spans them.
 
 A definition names secrets and never holds one. A runtime reads a named secret as
 the ingestion's **client's** value in the platform's configuration (see
-"Platform configuration"), through the audited reveal call, with
-`platform:application-service:config:reveal` held by the runtime's service
-account. It always reads at the ingestion's own client, with no fall-back to a
+"Platform configuration"), through the runtime API's own secrets call
+(`GET /api/ingestion-runtime/v1/ingestions/{id}/secrets/{name}`). That call
+reveals only the secrets the ingestion's live definition names, and every read
+is audited (refused if the audit cannot be written). The runtime's service
+account needs `platform:ingestion-runtime` and nothing else: no config-reveal
+permission. It always reads at the ingestion's own client, with no fall-back to a
 global value, so one client's ingestion cannot read another's. Set the secret
 for each client that needs it before the ingestion runs.
 
