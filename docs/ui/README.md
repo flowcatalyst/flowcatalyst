@@ -666,7 +666,7 @@ Two parts need real client code and are web elements loaded by a script tag **on
 
 | Part | Files | Page loads |
 |---|---|---|
-| `kit.Diagram` (`<fc-diagram>`) | `fc-diagram.js` (ours, 1.9 kB) and `mermaid.min.js` (unmodified `dist/mermaid.min.js` of npm `mermaid@12.1.0`, sha256 `6484afc3...18b2`, `assets.MermaidSHA256`) | `<script type="module" src={ assets.URL("fc-diagram.js") }>`; the element fetches the Mermaid bundle itself, once, on the first diagram |
+| `kit.Diagram` (`<fc-diagram>`) | `fc-diagram.js` (ours, 4.2 kB) and `mermaid.min.js` (unmodified `dist/mermaid.min.js` of npm `mermaid@12.1.0`, sha256 `6484afc3...18b2`, `assets.MermaidSHA256`) | `<script type="module" src={ assets.URL("fc-diagram.js") }>`; the element fetches the Mermaid bundle itself, once, on the first diagram |
 | `kit.CodeEditor` (`<fc-code-editor>`) | `fc-code-editor.js` (CodeMirror 6 with JSON and YAML, built by `tools/vendor-codemirror`, `assets.CodeEditorSHA256`) | `<script defer src={ assets.URL("fc-code-editor.js") }>` |
 
 Both render the server's text as the fallback (a `<pre>` source, a `<textarea>`), so a page without script is
@@ -675,7 +675,11 @@ A page that patches such a part in (a drawer, a dialog) must carry the script in
 patched fragment.
 
 Mermaid runs with `securityLevel: "strict"` and `suppressErrorRendering`; a source it rejects leaves the drawing
-hidden and the source open. **The CSP is unchanged**: the bundle is a same-origin script (`script-src 'self'`),
+hidden and the source open. The drawing never carries a Datastar attribute (labels are author-controlled HTML, and
+Datastar evaluates `data-init`/`data-effect`/`data-on:*` on any node added to the page, with `'unsafe-eval'`): the
+view is `data-ignore`, Mermaid renders into a scratch node inside it (never `document.body`) with
+`dompurifyConfig: { ALLOW_DATA_ATTR: false, FORBID_ATTR: [data-<datastar plugin>...] }`, and the finished SVG is
+scrubbed of Datastar attributes in an inert `<template>` before it is moved in (kit `diagram.md`, Behaviour). **The CSP is unchanged**: the bundle is a same-origin script (`script-src 'self'`),
 Mermaid's inline `<style>` and `style=""` fit the existing `style-src 'unsafe-inline'`, and it does not use
 `eval` (`'unsafe-eval'` stays only for Datastar). Checked in headless Chrome under the exact policy.
 Transfer sizes (Brotli, best): `mermaid.min.js` 5.49 MB raw, 1.18 MB; `fc-code-editor.js` 340 kB, 97 kB;
