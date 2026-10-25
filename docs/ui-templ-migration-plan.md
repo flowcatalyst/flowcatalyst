@@ -1,6 +1,7 @@
 # Platform UI: finishing the move off PrimeVue (templ + Datastar)
 
-Status: plan, 2026-10-24. Companion to `docs/ui/README.md` (what is built and how pages are made) and
+Status: plan, 2026-10-24; every wave's pages were built on 2026-10-24 (section 2), none is the default yet; switch-over
+ruling 2026-10-25 (section 8). Companion to `docs/ui/README.md` (what is built and how pages are made) and
 `flowcatalyst-framework/docs/ui-dogfood-plan.md` (why).
 
 ## 1. Decisions (owner, 2026-10-24)
@@ -13,26 +14,32 @@ Status: plan, 2026-10-24. Companion to `docs/ui/README.md` (what is built and ho
    in wave 2.)
 3. New features are built in templ from the start (the ingestion pages, wave 3).
 4. As today, `/ui` replaces an SPA area only when the owner approves that area; the SPA stays the default until then.
-   When every area is switched, PrimeVue, Node and `frontend/` are removed from the build.
+   When every area is switched, PrimeVue, Node and `frontend/` are removed from the build. (Refined 2026-10-25,
+   section 8: the switch happens only when the owner asks, and the losing implementation goes about a month later.)
 5. **Islands** are allowed where a page needs real client code, as web components or a script on a server-rendered page
    (never a second SPA inside `/ui`): code, JSON and YAML editing; diagrams; WebAuthn; the Swagger viewer.
 
 ## 2. Inventory (SPA lines are the Vue single-file components per area)
 
-| Area | SPA lines | In `/ui` today | Remaining work |
-|---|---|---|---|
-| dispatch pools, connections, events, processes, clients, event types, subscriptions, applications, scheduled jobs | 10,781 | at parity as of 2026-10-10 | none known; **re-check applications** (one SPA commit since) |
-| dispatch jobs | 2,370 | ported 2026-10-10; the SPA gained operator tooling on 2026-10-19 (time window, filters, quick lenses, edit payload, requeue by filter, redrive confirmation, split write permissions) | **catch up**, then re-verify |
-| functions (incl. trace switches and log) | 2,917 | no | wave 2 |
-| platform: Configuration, audit log, CORS, login attempts, docs, theme, names, debug | 3,212 | no | waves 2 and 4 |
-| service accounts | 2,578 | no | wave 4 |
-| users | 3,594 | no | wave 4 |
-| authorization (roles, permissions) | 2,114 | no (the nav links to the SPA) | wave 4 |
-| developer portal | 2,103 | no | wave 4 |
-| portal (portal users and apps) | 1,104 | no | wave 4 |
-| authentication (identity providers, OAuth clients, email domains, reset approvals) | 5,725 | no | wave 5 |
-| auth (login, callback, forgot and reset password, logout, passkeys, 2FA) | 2,356 | no | wave 5, last |
-| **Total** | **40,210** | about a third, the simpler third | |
+Refreshed 2026-10-25. Every area now has a `/ui` page (built 2026-10-10 and 2026-10-24, commits `9b7fa0e0` to `14489a7d`,
+each with its verification section in `docs/ui/README.md`). **None is the default**: the SPA is what users get until the
+owner switches an area (section 8). The sign-in pages are additive and nothing links to them.
+
+| Area | SPA lines | In `/ui` | Default | Remaining work |
+|---|---|---|---|---|
+| dispatch pools, connections, events, processes, clients, event types, subscriptions, applications, scheduled jobs | 10,781 | at parity 2026-10-10; wave 1 parity pass 2026-10-24 | SPA | owner review, then switch |
+| dispatch jobs | 2,370 | ported 2026-10-10, caught up with the operator tooling 2026-10-24 | SPA | owner review, then switch |
+| functions (incl. trace switches and log) | 2,917 | built 2026-10-24 (wave 2) | SPA | owner review, then switch |
+| platform: Configuration, audit log, CORS, login attempts, docs, theme, names, debug | 3,212 | built 2026-10-24 (waves 2, 4, 5) | SPA | owner review, then switch |
+| service accounts | 2,578 | built 2026-10-24 (wave 4) | SPA | owner review, then switch |
+| users | 3,594 | built 2026-10-24 (wave 4); dual-pane pickers 2026-10-25 | SPA | owner review, then switch |
+| authorization (roles, permissions) | 2,114 | built 2026-10-24 (wave 4) | SPA | owner review, then switch |
+| developer portal | 2,103 | built 2026-10-24 (wave 4) | SPA | owner review, then switch |
+| portal (portal users and apps) | 1,104 | built 2026-10-24 (wave 4) | SPA | owner review, then switch |
+| authentication (identity providers, OAuth clients, email domains, reset approvals) | 5,725 | built 2026-10-24 (wave 5) | SPA | owner review, then switch |
+| auth (login, callback, forgot and reset password, logout, passkeys, 2FA) | 2,356 | built 2026-10-24 (wave 5), additive, not linked | SPA | owner review, then switch last |
+| ingestion (new, templ only) | - | built 2026-10-24 (wave 3) | `/ui` (no SPA page) | - |
+| **Total** | **40,210** | every area | SPA everywhere it has a page | the switch-overs, then removal |
 
 ## 3. Waves
 
@@ -96,7 +103,7 @@ verification section, as for the earlier areas.
 | The remaining two thirds contain the hardest areas | They come last; the SPA remains the fallback until each area is approved |
 | Parity drift while the SPA is frozen but the platform changes | Backend changes that alter an SPA area's behaviour are reviewed against the `/ui` page in the same change |
 | Passkey and 2FA flows need client code | One small WebAuthn island, tested with a virtual authenticator |
-| Two component families (kit and `@flowcatalyst/ui`) | Shared tokens; the boundary is platform admin (kit) versus business applications (Nuxt UI) |
+| Three component families: the templ kit (this repo's `internal/ui/kit`, the platform admin), the same kit's JTE templates in the Java framework, and Nuxt UI (`@flowcatalyst/ui`, business applications) | One language-neutral kit (`flowcatalyst-framework/ui-kit`: specs, fixtures and goldens that the templ and JTE implementations both pass) and shared tokens with Nuxt UI; the boundary is platform admin and server-rendered framework pages (kit) versus business applications (Nuxt UI) |
 
 ## 7. Rulings (owner, 2026-10-24)
 
@@ -107,3 +114,15 @@ verification section, as for the earlier areas.
 3. **Code editor island: CodeMirror 6, vendored.** It has no official single-file bundle, so a small pinned script
    (`tools/`, esbuild) builds one custom bundle (JSON, YAML, basic editing) that is committed with its licence. The script runs
    only when upgrading, never in the normal build.
+
+## 8. Switch-over and removal (owner ruling, 2026-10-25)
+
+1. **An area becomes primary only when the owner asks.** Building, verifying or reaching parity does not switch an area;
+   until the owner asks for a given area, the SPA stays its default (links, redirects, the sign-in path and emailed links
+   keep pointing at the SPA).
+2. **About a month after a switch, the losing implementation is removed.** Normally that is the area's SPA code (its Vue
+   pages, routes and the parts only they use). If in that month the new implementation proves inferior, the decision
+   reverses: **the old one stays and the new one is removed** instead. Either way only one implementation of an area
+   survives; wave 6 (removing `frontend/`, PrimeVue and Node from the build) happens once every area has been decided.
+3. While both exist (before the switch and during the month after it), fixes follow section 5: the default gets the fix,
+   and the other copy gets the same fix when the defect is in both.
