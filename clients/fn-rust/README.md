@@ -175,8 +175,10 @@ whether or not a given build uses all of it.
 `App::trace_context("orders", "what it records")` declares a named trace context (describe key
 `traceContexts`; a bad declaration panics at registration). `Context::trace("orders", msg, Some(&data),
 TraceOpts::new().level(TraceLevel::Warn).reference(trip))` (host op 12) records, `Context::tracing("orders")`
-(op 13) says whether the context is live for this invocation, and `Context::set_reference(trip)` stamps the
-invocation's later records. A no-op unless an operator switches the context on for a limited time; none of
+(op 13) says whether the context is live for this invocation, and `Context::set_reference(trip)` (op 14)
+stamps the business key on every later record of the invocation, including the runner's built-in http and log
+records (this needs a runner that knows op 14; an older runner stamps only trace records). A per-call
+`TraceOpts::reference` applies to that record only. A context description is at most 200 bytes of UTF-8. A no-op unless an operator switches the context on for a limited time; none of
 these can fail: an older runner's `UNKNOWN_OP`, `NOT_DECLARED` (one warning per context; on
 `wasm32-unknown-unknown` there is no stderr, so it goes out as a WARN log record) and `TOO_LARGE` are
 swallowed. See `docs/published/60-functions.md`.

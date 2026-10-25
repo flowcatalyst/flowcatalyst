@@ -340,11 +340,23 @@ impl Context {
         }
     }
 
-    /// Stamps later `trace` calls of this invocation with `reference` (the
-    /// author's business key: trip number, order number), unless a call passes
-    /// its own in `TraceOpts`.
+    /// Stamps every later record of this invocation with `reference` (the
+    /// author's business key: trip number, order number): the author's `trace`
+    /// records and, on a runner that knows host op 14, the built-in http and
+    /// log records too. The value is also remembered here so `trace` still
+    /// carries it to an older runner. A call's own `TraceOpts::reference`
+    /// applies to that record only. Never fails: every host error (UNKNOWN_OP,
+    /// TOO_LARGE, ...) is swallowed.
     pub fn set_reference(&self, reference: &str) {
         *self.reference.borrow_mut() = reference.to_string();
+        #[derive(serde::Serialize)]
+        struct ReferenceMeta<'a> {
+            reference: &'a str,
+        }
+        let reference = clip_chars(reference, TRACE_MAX_REFERENCE);
+        if let Ok(mb) = serde_json::to_vec(&ReferenceMeta { reference }) {
+            let _ = host_call(op::TRACE_REFERENCE, &mb, &[]);
+        }
     }
 
     /// Writes the NOT_DECLARED warning once per context; returns whether it
@@ -1021,6 +1033,7 @@ mod tests {
         let calls = crate::host::fake_host_calls();
         let refs: Vec<serde_json::Value> = calls
             .iter()
+            .filter(|(o, _, _)| *o == op::TRACE)
             .map(|(_, m, _)| serde_json::from_slice::<serde_json::Value>(m).unwrap()["reference"].clone())
             .collect();
         assert_eq!(refs, vec![serde_json::Value::Null, "ORD-9".into(), "ORD-10".into()]);
@@ -1089,5 +1102,53 @@ mod tests {
         assert!(c.tracing("orders"));
         assert!(ctx().tracing("orders"));
         assert_eq!(crate::host::fake_host_calls().len(), 3);
+    }
+
+    #[test]
+    fn set_reference_sends_op14() {
+        set_fake_host(|_o, _m, _b| Ok((Vec::new(), Vec::new())));
+        ctx().set_reference("TRIP-123");
+        let calls = crate::host::fake_host_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, op::TRACE_REFERENCE);
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&calls[0].1).unwrap(), serde_json::json!({"reference": "TRIP-123"}));
+        // Cut to 200 code points.
+        ctx().set_reference(&"é".repeat(300));
+        let calls = crate::host::fake_host_calls();
+        let m: serde_json::Value = serde_json::from_slice(&calls.last().unwrap().1).unwrap();
+        assert_eq!(m["reference"].as_str().unwrap().chars().count(), TRACE_MAX_REFERENCE);
+    }
+
+    #[test]
+    fn set_reference_swallows_every_host_error() {
+        for code in ["UNKNOWN_OP", "TOO_LARGE", "BAD_REQUEST"] {
+            set_fake_host(move |_o, _m, _b| host_err(code));
+            let c = ctx();
+            c.set_reference("R"); // must not panic
+            c.trace("orders", "m", None, TraceOpts::new());
+            assert_eq!(last_trace_meta()["reference"], "R");
+        }
+        set_fake_host(|_o, _m, _b| Err(HostOutcome::Transport(crate::host::TransportError("bad frame".into()))));
+        ctx().set_reference("R");
+    }
+
+    #[test]
+    fn a_per_call_reference_does_not_stick() {
+        set_fake_host(|_o, _m, _b| Ok((Vec::new(), Vec::new())));
+        let c = ctx();
+        c.trace("orders", "one", None, TraceOpts::new().reference("ONE"));
+        c.trace("orders", "two", None, TraceOpts::new());
+        c.set_reference("SET");
+        c.trace("orders", "three", None, TraceOpts::new().reference("THREE"));
+        c.trace("orders", "four", None, TraceOpts::new());
+        let refs: Vec<serde_json::Value> = crate::host::fake_host_calls()
+            .iter()
+            .filter(|(o, _, _)| *o == op::TRACE)
+            .map(|(_, m, _)| serde_json::from_slice::<serde_json::Value>(m).unwrap()["reference"].clone())
+            .collect();
+        assert_eq!(
+            refs,
+            vec![serde_json::json!("ONE"), serde_json::Value::Null, serde_json::json!("THREE"), serde_json::json!("SET")]
+        );
     }
 }

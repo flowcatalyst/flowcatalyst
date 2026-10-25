@@ -6,19 +6,20 @@ import "fmt"
 type opCode int32
 
 const (
-	opLog        opCode = 1
-	opConfigGet  opCode = 2
-	opSecretGet  opCode = 3
-	opHTTPFetch  opCode = 4
-	opEventEmit  opCode = 5
-	opDBQuery    opCode = 6
-	opDBExec     opCode = 7
-	opDBBegin    opCode = 8
-	opDBCommit   opCode = 9
-	opDBRollback opCode = 10
-	opDispatch   opCode = 11
-	opTrace      opCode = 12
-	opTracing    opCode = 13
+	opLog            opCode = 1
+	opConfigGet      opCode = 2
+	opSecretGet      opCode = 3
+	opHTTPFetch      opCode = 4
+	opEventEmit      opCode = 5
+	opDBQuery        opCode = 6
+	opDBExec         opCode = 7
+	opDBBegin        opCode = 8
+	opDBCommit       opCode = 9
+	opDBRollback     opCode = 10
+	opDispatch       opCode = 11
+	opTrace          opCode = 12
+	opTracing        opCode = 13
+	opTraceReference opCode = 14
 )
 
 // Error codes shared across host ops (plan §5.3).

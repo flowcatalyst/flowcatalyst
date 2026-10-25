@@ -677,10 +677,29 @@ protocol. Additions for runners of runtimes beyond the built-in `wasm` and
 - `POST /control/functions/trace-log` — a runner ships trace records
   (`{runnerId, pool, records[]}`; `docs/function-trace-design.md` section 5):
   `202 {accepted, dropped}`. At most 500 records and 1 MiB per batch, per
-  function 200 records/second, a record is taken only while its
-  `(function, context)` window is live (plus 10 s). Unknown fields are accepted
-  at every depth (a newer runner may add them). The desired document's
-  function entry carries `trace` (the live windows).
+  function 200 records/second per platform process (an in-memory bucket each,
+  so N replicas take up to N times that), a record is taken only while its
+  `(function, context)` window is live (plus 10 s); switching off sets the
+  window's end to the switch-off time, so records captured just before are
+  still taken. A record's `at` more than a minute ahead of arrival is clamped to
+  arrival, one more than an hour behind is dropped; retention counts from the
+  platform's `created_at`. A record may carry `id` (the runner's UUID, the same
+  on every retry): the platform stores it once (`ftl_r<id>`); without one
+  (an older runner) it assigns an id. Unknown fields are accepted at every
+  depth (a newer runner may add them). The desired document's function entry
+  carries `trace` (the live windows). Host op 14 `trace.reference`
+  (`{reference}`) sets the invocation's business key on the runner.
+- Function trace API: `PUT /api/functions/{id}/trace/{context}` with
+  `indefinite: true` needs `platform:function:trace:indefinite`, is refused
+  `400 TRACE_INDEFINITE_NOT_ALLOWED` for `http`, and opens a window ending
+  `indefiniteMaxDays` (default 7) days later; context state carries
+  `indefiniteMaxDays` (0 for `http`). `DELETE` leaves `enabledUntil` at the
+  switch-off time. `GET .../trace-log` without
+  `platform:function:trace:view-bodies` returns records with `redacted: true`:
+  an http record's data keeps only method, path, status, durationMs, outcome
+  and body sizes (bodies null, `bodiesRedacted: true`), a log record has an
+  empty message and null data, a trace record null data. The
+  `platform:function:trace:enabled` event always carries `indefinite`.
 - Delivery URLs for subscriptions, scheduled jobs and function dispatch use
   `FC_FUNCTIONS_RUNNER_URL_<RT>` when set for the version's runtime (see
   `docs/environment-variables.md`).

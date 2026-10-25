@@ -182,6 +182,9 @@ const (
 	permFunctionTraceManage     = "platform:function:trace:manage"
 	permFunctionTraceView       = "platform:function:trace:view"
 	permFunctionTraceViewBodies = "platform:function:trace:view-bodies"
+	// permFunctionTraceIndefinite switches a declared context on "until
+	// switched off" (capped at FC_FUNCTIONS_TRACE_INDEFINITE_MAX_DAYS).
+	permFunctionTraceIndefinite = "platform:function:trace:indefinite"
 
 	// Ingestion (docs/ingestion-design.md section 4): the ingestion subdomain,
 	// four segments like every platform permission. update includes pause and

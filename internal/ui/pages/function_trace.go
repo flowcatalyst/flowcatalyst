@@ -87,6 +87,11 @@ type FunctionTrace struct {
 	Store TraceStore
 	Ops   TraceCommands
 	Shell *shell.Shell
+	// Reauth resolves the request's caller again (ReauthWith over the UI's
+	// authenticator): the follow stream asks it on every tick, so a session
+	// that ended or lost the permission stops receiving records. Nil keeps the
+	// caller of the stream's first request (tests).
+	Reauth func(*http.Request) *auth.AuthContext
 
 	// refresh, maxStream and now are the clock of the tests; zero values are
 	// the defaults (5 s, 30 min, the wall clock).
@@ -196,14 +201,15 @@ func (h *FunctionTrace) function(ctx context.Context, ac *auth.AuthContext, id s
 // traceGates are what the viewer is offered; the server decides again on
 // every request.
 type traceGates struct {
-	View, Manage, Bodies bool
+	View, Manage, Bodies, Indefinite bool
 }
 
 func traceGatesOf(ac *auth.AuthContext) traceGates {
 	return traceGates{
-		View:   auth.CanViewFunctionTrace(ac) == nil,
-		Manage: auth.CanManageFunctionTrace(ac) == nil,
-		Bodies: auth.CanViewFunctionTraceBodies(ac),
+		View:       auth.CanViewFunctionTrace(ac) == nil,
+		Manage:     auth.CanManageFunctionTrace(ac) == nil,
+		Bodies:     auth.CanViewFunctionTraceBodies(ac),
+		Indefinite: auth.CanEnableFunctionTraceIndefinite(ac) == nil,
 	}
 }
 
@@ -258,9 +264,13 @@ func (h *FunctionTrace) cardsOf(states []operations.TraceContextState, gates tra
 		}
 		if st.EnabledUntil != nil {
 			c.UntilMs, c.UntilISO = st.EnabledUntil.UnixMilli(), st.EnabledUntil.UTC().Format(time.RFC3339)
-			c.Indefinite = st.Indefinite
-			c.Live = st.Indefinite || st.EnabledUntil.After(now)
-			if c.Live && !c.Indefinite {
+			c.Live = st.EnabledUntil.After(now)
+			c.Indefinite = st.Indefinite && c.Live
+			switch {
+			case c.Indefinite:
+				// "until switched off", with the ceiling it switches off at by itself.
+				c.Label = st.EnabledUntil.UTC().Format("2 Jan 15:04 UTC")
+			case c.Live:
 				c.Label = traceCountdown(st.EnabledUntil.Sub(now))
 			}
 		}
@@ -493,6 +503,18 @@ func (h *FunctionTrace) follow(r *http.Request, sse *ds.SSE, ac *auth.AuthContex
 			return
 		case <-tick.C:
 		}
+		// The caller's access is checked again every tick: a session that
+		// ended or a permission withdrawn stops the stream (and the fresh
+		// grant decides what of each record is shown).
+		if h.Reauth != nil {
+			ac = h.Reauth(r)
+			if err := firstError(auth.CanViewFunctionTrace(ac), auth.CheckScopeAccess(ac, f.ClientID)); err != nil {
+				last.Q.Paused = true
+				last.Err = "Your access to these trace logs has ended; reload the page."
+				_ = errors.Join(sse.Patch(traceStatus(last)), sse.Patch(traceError(last.Err)))
+				return
+			}
+		}
 		v, err := h.logView(ctx, ac, f, q, "")
 		if err != nil {
 			// A failed read keeps the rows on screen and says so; the next tick tries again.
@@ -512,6 +534,30 @@ func (h *FunctionTrace) follow(r *http.Request, sse *ds.SSE, ac *auth.AuthContex
 		}
 	}
 }
+
+// ReauthWith resolves a request's caller again through authenticate (the UI's
+// authenticator middleware): it runs the middleware over the request with the
+// caller of its first pass removed and returns what it attached, nil when the
+// session no longer authenticates. A session cookie's roles and permissions
+// are read fresh from the database on each pass.
+func ReauthWith(authenticate func(http.Handler) http.Handler) func(*http.Request) *auth.AuthContext {
+	if authenticate == nil {
+		return nil
+	}
+	return func(r *http.Request) *auth.AuthContext {
+		var got *auth.AuthContext
+		next := http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) { got = auth.FromContext(req.Context()) })
+		authenticate(next).ServeHTTP(discardResponse{h: http.Header{}}, r.WithContext(auth.WithContext(r.Context(), nil)))
+		return got
+	}
+}
+
+// discardResponse swallows whatever the authenticator would answer.
+type discardResponse struct{ h http.Header }
+
+func (d discardResponse) Header() http.Header         { return d.h }
+func (d discardResponse) Write(p []byte) (int, error) { return len(p), nil }
+func (d discardResponse) WriteHeader(int)             {}
 
 // patch sends the regions a log change touches: the status line, the context
 // options, the error line, the records and the load-more button, then the

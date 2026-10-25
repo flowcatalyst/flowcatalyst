@@ -147,6 +147,7 @@ func StartFunctionRunner(ctx context.Context, c FunctionRunnerConfig) {
 	})
 	client := control.NewClient(c.PlatformURL, tokens.Token, nil)
 	client.Runtimes = runner.SupportedRuntimes()
+	client.InvalidateToken = tokens.Invalidate // trace shipping retries a 401/403 with a fresh token
 	r, err := runner.New(ctx, runner.Config{
 		Pool:           c.Pool,
 		ControlPlane:   client,

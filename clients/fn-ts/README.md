@@ -84,7 +84,10 @@ system does not have.
 - `src/trace.ts` — trace logs (host ops 12/13): `fn.traceContexts({ name, description? })` declares named
   contexts (describe key `traceContexts`; a bad declaration throws at registration), and each request carries
   `req.trace(context, message, data?, { level?, reference? })`, `req.tracing(context)` and
-  `req.setReference(ref)`. A no-op unless an operator switches the context on for a limited time; none of
+  `req.setReference(ref)` (host op 14) stamps the business key on every later record of the invocation,
+  including the runner's built-in http and log records (this needs a runner that knows op 14; an older runner
+  stamps only trace records); a per-call `reference` applies to that record only. A context description is at
+  most 200 bytes of UTF-8. A no-op unless an operator switches the context on for a limited time; none of
   these can throw (an older runner's `UNKNOWN_OP`, `NOT_DECLARED` — one warning per context — and `TOO_LARGE`
   are swallowed, and `tracing` answers false). See `docs/published/60-functions.md`.
 - `src/describe.ts` — builds the `fc_describe` JSON document (plan §5.4)

@@ -194,7 +194,7 @@ impl App {
     /// can switch on for a limited time. `name` is a lowercase letter first,
     /// then lowercase letters, digits or `-`, at most 40 characters, and not
     /// `http` (the built-in capture context); `description` (at most 200
-    /// characters, may be empty) tells operators what it records. A bad
+    /// bytes of UTF-8, may be empty) tells operators what it records. A bad
     /// declaration panics at registration, so build, describe and deploy all
     /// fail with the message.
     pub fn trace_context(&mut self, name: &str, description: &str) -> &mut Self {
@@ -210,8 +210,8 @@ impl App {
         if !valid_name {
             panic!("fn: {at}: {name:?} is not a valid context name (lowercase letter first, then lowercase letters, digits or -; at most 40 characters)");
         }
-        if description.chars().count() > 200 {
-            panic!("fn: {at}: description is over 200 characters");
+        if description.len() > 200 {
+            panic!("fn: {at}: description is over 200 bytes");
         }
         if self.trace_contexts.iter().any(|(n, _)| n == name) {
             panic!("fn: {at}: {name:?} is declared twice");
@@ -413,13 +413,15 @@ mod tests {
     fn trace_context_rejects_bad_declarations() {
         let long_name = "a".repeat(41);
         let long_desc = "d".repeat(201);
+        let long_desc_multibyte = "é".repeat(101); // 202 bytes
         for (name, desc, want) in [
             ("http", "", "built-in capture context"),
             ("Orders", "", "not a valid context name"),
             ("1x", "", "not a valid context name"),
             ("", "", "not a valid context name"),
             (long_name.as_str(), "", "not a valid context name"),
-            ("ok", long_desc.as_str(), "description is over 200"),
+            ("ok", long_desc.as_str(), "description is over 200 bytes"),
+            ("ok", long_desc_multibyte.as_str(), "description is over 200 bytes"),
         ] {
             let msg = panic_message(|| {
                 App::new().trace_context(name, desc);
@@ -437,6 +439,13 @@ mod tests {
             }
         });
         assert!(msg.contains("at most 20"), "{msg}");
+    }
+
+    #[test]
+    fn trace_context_description_counts_bytes() {
+        let mut app = App::new();
+        app.trace_context("ok", &"é".repeat(100)); // 200 bytes: accepted
+        assert_eq!(app.trace_contexts.len(), 1);
     }
 
     #[test]

@@ -24,6 +24,7 @@ const (
 	permTraceView   = "platform:function:trace:view"
 	permTraceManage = "platform:function:trace:manage"
 	permTraceBodies = "platform:function:trace:view-bodies"
+	permTraceIndef  = "platform:function:trace:indefinite"
 
 	traceSecretBody = "SECRET-BODY-hunter2"
 )
@@ -107,7 +108,7 @@ func traceStates(liveHTTP bool) []operations.TraceContextState {
 	}
 	return []operations.TraceContextState{
 		http,
-		{Name: "orders", Description: "What the mapping decided.", SampleRate: 1, MaxMinutes: 60},
+		{Name: "orders", Description: "What the mapping decided.", SampleRate: 1, MaxMinutes: 60, IndefiniteMaxDays: 7},
 	}
 }
 
@@ -169,25 +170,28 @@ func TestTraceLogPage(t *testing.T) {
 		`<title>Trace logs · FlowCatalyst</title>`, `<h1 class="fc-page-title">Trace logs</h1>`, "billing.invoice-pdf",
 		`href="/ui/functions/fn_one"`, "Back to function",
 		`id="trace-filters"`, `<option value="orders">orders</option>`, `<option value="http">http</option>`,
-		`id="trace-rec-ftl_3"`, `data-ignore-morph`, "mapped &lt;b&gt;3&lt;/b&gt; lines", "POST /orders?a=1 → 200 · 12 ms · ok",
+		`id="trace-rec-ftl_3"`, `data-ignore-morph`, "mapped &lt;b&gt;3&lt;/b&gt; lines", "POST /orders → 200 · 12 ms · ok",
 		`data-field="reference" data-value="TRIP-1"`, "corr-123…345", `id="trace-more"`,
 		"2 records in this view", "Tracing switches",
 	)
 	mustNotContain(t, body, "mapped <b>3</b>", "Auto refresh every 5 s", `data-init="@get(el.action`)
 	// A viewer without the function view permission is not shown the address.
 	mustNotContain(t, h.body(t, traceUser(permTraceView), req{target: traceLog}), "billing.invoice-pdf")
+	// With view-bodies the (runner-redacted) query string is part of the line.
+	mustContain(t, h.body(t, traceUser(permTraceView, permTraceBodies), req{target: traceLog}), "POST /orders?a=1 → 200 · 12 ms · ok")
 }
 
 func TestTraceLogHidesBodiesWithoutPermission(t *testing.T) {
 	h := newTraceHarness()
 	for _, q := range []req{{target: traceLog}, {target: traceLog, datastar: true}} {
 		body := h.body(t, traceUser(permTraceView), q)
-		mustNotContain(t, body, traceSecretBody, "hunter2")
-		mustContain(t, body, "Bodies hidden: you do not have permission to view request and response bodies")
+		// trace:view alone: no bodies, headers, query string, log line or trace data.
+		mustNotContain(t, body, traceSecretBody, "hunter2", "authorization", "content-type", "a=1", "boom", "&#34;lines&#34;", `"lines"`)
+		mustContain(t, body, "Bodies, headers and query string hidden", "Details hidden", "(hidden)", "mapped &lt;b&gt;3&lt;/b&gt; lines")
 	}
 	body := h.body(t, traceUser(permTraceView, permTraceBodies), req{target: traceLog})
-	mustContain(t, body, traceSecretBody, "JSON", "authorization", "[redacted]")
-	mustNotContain(t, body, "Bodies hidden")
+	mustContain(t, body, traceSecretBody, "JSON", "authorization", "[redacted]", "boom")
+	mustNotContain(t, body, "Bodies, headers and query string hidden", "Details hidden")
 }
 
 func TestTraceLogNeedsView(t *testing.T) {
@@ -287,6 +291,31 @@ func TestTraceLogStreamsWhileLive(t *testing.T) {
 	mustContain(t, body, "Auto refresh paused", "Resume")
 	if paused.store.reads != 1 {
 		t.Fatalf("a paused page read %d times", paused.store.reads)
+	}
+}
+
+// The stream asks for the caller again every tick and stops when access is gone.
+func TestTraceStreamStopsWhenAccessEnds(t *testing.T) {
+	h := newTraceHarness()
+	h.page.refresh = 5 * time.Millisecond
+	h.store.states = traceStates(true)
+	var calls int
+	var mu sync.Mutex
+	h.page.Reauth = func(*http.Request) *auth.AuthContext {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		if calls >= 3 {
+			return traceUser() // the permission was withdrawn
+		}
+		return traceUser(permTraceView)
+	}
+	body := h.streamed(t, traceUser(permTraceView), traceLog, 5*time.Second).Body.String()
+	mustContain(t, body, "Your access to these trace logs has ended", "Auto refresh paused")
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 3 {
+		t.Fatalf("reauth asked %d times", calls)
 	}
 }
 
@@ -439,11 +468,21 @@ func TestTraceEnableDialog(t *testing.T) {
 	mgr := traceUser(permTraceView, permTraceManage, permTraceBodies)
 	out := h.body(t, mgr, req{target: "/ui/functions/fn_one/trace/http/enable?page=traces", datastar: true})
 	mustContain(t, out, `id="trace-enable"`, "Enable tracing: http", "This records request and response bodies",
-		`<option value="5"`, `<option value="15"`, "At most 15 minutes", `name="page" value="traces"`, `name="sampleRate"`, "No time limit")
-	mustNotContain(t, out, `<option value="30"`)
+		`<option value="5"`, `<option value="15"`, "At most 15 minutes", `name="page" value="traces"`, `name="sampleRate"`)
+	mustNotContain(t, out, `<option value="30"`, "Until switched off", `name="indefinite"`)
 
-	h.store.states[1].Indefinite, h.store.states[1].EnabledUntil = true, &function.TraceIndefiniteUntil
-	mustContain(t, h.body(t, mgr, req{target: "/ui/functions/fn_one/trace/orders/enable", datastar: true}), `<option value="60"`, "traceIndef: true")
+	// A declared context offers "until switched off" with its ceiling and the
+	// confirmation, only with the indefinite permission.
+	orders := h.body(t, mgr, req{target: "/ui/functions/fn_one/trace/orders/enable", datastar: true})
+	mustNotContain(t, orders, "Until switched off", `name="indefinite"`)
+	indef := traceUser(permTraceView, permTraceManage, permTraceIndef)
+	orders = h.body(t, indef, req{target: "/ui/functions/fn_one/trace/orders/enable", datastar: true})
+	mustContain(t, orders, "Until switched off (max 7 days)", `name="indefiniteConfirm"`, "I understand, keep it on", "for at most 7 days", "traceIndef: false")
+
+	until := traceNow.Add(3 * 24 * time.Hour)
+	h.store.states[1].Indefinite, h.store.states[1].EnabledUntil, h.store.states[1].Live = true, &until, true
+	mustContain(t, h.body(t, indef, req{target: "/ui/functions/fn_one/trace/orders/enable", datastar: true}), `<option value="60"`, "traceIndef: true")
+	mustContain(t, h.body(t, indef, req{target: traceLog}), "until switched off", "ends by itself", "27 Oct 12:00 UTC")
 
 	// Without the permissions the dialog is refused, and so is a context that does not exist.
 	for _, ac := range []*auth.AuthContext{traceUser(permTraceView), traceUser(permTraceManage), traceUser(permTraceView, permTraceManage)} {
@@ -477,13 +516,37 @@ func TestTraceEnable(t *testing.T) {
 		}
 		mustContain(t, out, "orders is live for 30 minutes", `id="fn-trace-switches"`, "requestSubmit", `.close()`)
 	})
-	t.Run("no time limit", func(t *testing.T) {
+	t.Run("until switched off", func(t *testing.T) {
+		indef := traceUser(permTraceView, permTraceManage, permTraceIndef)
 		h := newTraceHarness()
-		out := enable(h, mgr, "orders", "indefinite", "1", "minutes", "")
+		out := enable(h, indef, "orders", "indefinite", "1", "indefiniteConfirm", "1", "minutes", "")
+		if len(h.ops.enabled) != 1 {
+			t.Fatalf("enabled = %+v (%s)", h.ops.enabled, out)
+		}
 		if c := h.ops.enabled[0]; !c.Indefinite || c.Minutes != 0 {
 			t.Fatalf("command = %+v", c)
 		}
-		mustContain(t, out, "orders is on until you switch it off")
+		mustContain(t, out, "orders is on until it is switched off (at most 7 days)")
+
+		// Unconfirmed, without the permission, or for http: refused before the use case.
+		for name, c := range map[string]struct {
+			ac   *auth.AuthContext
+			ctx  string
+			kv   []string
+			want string
+		}{
+			"unconfirmed":   {indef, "orders", []string{"indefinite", "1"}, "Confirm that it stays on until it is switched off."},
+			"no permission": {mgr, "orders", []string{"indefinite", "1", "indefiniteConfirm", "1"}, "You do not have permission to leave tracing on"},
+			"http": {traceUser(permTraceView, permTraceManage, permTraceBodies, permTraceIndef), "http",
+				[]string{"indefinite", "1", "indefiniteConfirm", "1"}, "The http context always turns itself off"},
+		} {
+			h := newTraceHarness()
+			out := enable(h, c.ac, c.ctx, c.kv...)
+			mustContain(t, out, c.want)
+			if len(h.ops.enabled) != 0 {
+				t.Errorf("%s: the use case ran", name)
+			}
+		}
 	})
 	t.Run("drawer does not restart a stream", func(t *testing.T) {
 		h := newTraceHarness()

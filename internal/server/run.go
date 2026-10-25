@@ -219,14 +219,15 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 		go dispatchjob.RunReaper(ctx, dispatchjob.NewRepository(pool),
 			dispatchjob.DefaultReaperInterval, dispatchjob.DefaultProcessingLiveAfter)
 
-		// Function trace-log retention backstop (docs/function-trace-design.md
-		// section 1, decision 8): a daily sweep of records past
-		// FC_FUNCTIONS_TRACE_RETENTION_DAYS across all functions. Not
-		// leader-gated: it is a bounded DELETE of rows that are past
-		// retention, idempotent under concurrent replicas (the same posture
-		// as the reaper above).
+		// Function trace-log retention (docs/function-trace-design.md section
+		// 1, decision 8): a sweep of records past
+		// FC_FUNCTIONS_TRACE_RETENTION_DAYS across all functions every
+		// FC_FUNCTIONS_TRACE_PRUNE_INTERVAL_MINUTES, and of each function with
+		// a live window every 10 minutes. Not leader-gated: bounded DELETEs of
+		// rows that are past retention, idempotent under concurrent replicas
+		// (the same posture as the reaper above).
 		go function.RunTraceRetention(ctx, function.NewRepository(pool), cfg.FunctionsTrace,
-			function.DefaultTracePruneDelay, function.DefaultTracePruneInterval)
+			function.DefaultTracePruneDelay, cfg.FunctionsTrace.PruneInterval)
 
 		// Ingestion runtime records past retention (metrics and failures 30
 		// days, test requests a day, expired leases, runtimes unseen for 7

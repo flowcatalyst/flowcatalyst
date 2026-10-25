@@ -241,17 +241,6 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 		}
 	}
 
-	invID := tsid.GenerateUntyped()
-	correlation := strings.TrimSpace(req.Header.Get("X-Correlation-Id"))
-	tr := r.traceBegin(fn, ver, invID, correlation)
-	if tr != nil && tr.httpLive {
-		// Capture the answer whatever it is (including the refusals below that
-		// follow the function being resolved); the outcome is final when this runs.
-		cw := &captureWriter{ResponseWriter: w, limit: r.tracer.bodyBytes}
-		w = cw
-		defer func() { tr.captureHTTP(req, path, body, caller, cw, outcome, start) }()
-	}
-
 	release, ok := fn.tryAcquire()
 	if !ok {
 		outcome = "busy"
@@ -259,6 +248,22 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 		return
 	}
 	defer release()
+
+	// Tracing starts once the call has a concurrency slot: a 429 "busy"
+	// refusal is not captured and takes no sampling turn.
+	invID := tsid.GenerateUntyped()
+	correlation := strings.TrimSpace(req.Header.Get("X-Correlation-Id"))
+	tr := r.traceBegin(fn, ver, invID, correlation)
+	if tr != nil {
+		defer tr.end() // after the capture below: a shutdown waits for it
+	}
+	if tr != nil && tr.httpLive {
+		// Capture the answer whatever it is (including the refusals below);
+		// the outcome is final when this runs.
+		cw := &captureWriter{ResponseWriter: w, limit: r.tracer.bodyBytes}
+		w = cw
+		defer func() { tr.captureHTTP(req, path, body, caller, cw, outcome, start) }()
+	}
 	if !ver.enter() {
 		// Retired by a promotion between resolve and here.
 		outcome = "unavailable"

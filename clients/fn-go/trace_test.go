@@ -78,6 +78,9 @@ func TestSetReferenceStampsLaterCalls(t *testing.T) {
 
 	refs := make([]string, 0, 3)
 	for _, c := range fake.Calls {
+		if c.Op != int32(opTrace) {
+			continue
+		}
 		var m traceMeta
 		_ = json.Unmarshal(c.Meta, &m)
 		refs = append(refs, m.Reference)
@@ -200,7 +203,8 @@ func TestTraceContextsRejectBadDeclarations(t *testing.T) {
 		"uppercase":   {TraceContext{Name: "Orders"}, "not a valid context name"},
 		"digit first": {TraceContext{Name: "1x"}, "not a valid context name"},
 		"too long":    {TraceContext{Name: strings.Repeat("a", 41)}, "not a valid context name"},
-		"description": {TraceContext{Name: "ok", Description: strings.Repeat("d", 201)}, "description is over 200"},
+		"description": {TraceContext{Name: "ok", Description: strings.Repeat("d", 201)}, "description is over 200 bytes"},
+		"description multibyte": {TraceContext{Name: "ok", Description: strings.Repeat("é", 101)}, "description is over 200 bytes"},
 	}
 	for name, tc := range cases {
 		resetRegistry()
@@ -241,4 +245,87 @@ func TestTraceContextsRejectBadDeclarations(t *testing.T) {
 		}()
 		TraceContexts(TraceContext{Name: "one-more"})
 	}()
+}
+
+func TestSetReferenceMakesOp14Call(t *testing.T) {
+	fake := &FakeHost{}
+	defer SetHost(fake)()
+	ctx := context.WithValue(context.Background(), ctxKeyTrace, &traceState{})
+
+	SetReference(ctx, "TRIP-123")
+	SetReference(ctx, strings.Repeat("é", 300))
+
+	if len(fake.Calls) != 2 || fake.Calls[0].Op != int32(opTraceReference) {
+		t.Fatalf("calls = %+v", fake.Calls)
+	}
+	if got := string(fake.Calls[0].Meta); got != `{"reference":"TRIP-123"}` {
+		t.Fatalf("meta = %s", got)
+	}
+	var m traceReferenceMeta
+	_ = json.Unmarshal(fake.Calls[1].Meta, &m)
+	if utf8.RuneCountInString(m.Reference) != traceMaxReference {
+		t.Fatalf("reference = %d chars", utf8.RuneCountInString(m.Reference))
+	}
+}
+
+func TestSetReferenceSwallowsHostErrors(t *testing.T) {
+	ctx := context.WithValue(context.Background(), ctxKeyTrace, &traceState{})
+	for _, code := range []string{"UNKNOWN_OP", ErrCodeTooLarge, ErrCodeBadRequest} {
+		restore := SetHost(traceErrHost(code))
+		SetReference(ctx, "R") // must not panic
+		restore()
+	}
+	restore := SetHost(&FakeHost{Handler: func(int32, []byte, []byte) ([]byte, []byte, *Error, error) {
+		return nil, nil, nil, context.Canceled
+	}})
+	SetReference(ctx, "R")
+	restore()
+	fake := &FakeHost{}
+	defer SetHost(fake)()
+	Trace(ctx, "orders", "m", nil)
+	if lastTraceMeta(t, fake).Reference != "R" {
+		t.Fatal("remembered value lost after a host error")
+	}
+}
+
+func TestSetReferenceOutsideInvocationMakesNoHostCall(t *testing.T) {
+	fake := &FakeHost{}
+	defer SetHost(fake)()
+	SetReference(context.Background(), "x")
+	if len(fake.Calls) != 0 {
+		t.Fatalf("host calls = %d, want 0", len(fake.Calls))
+	}
+}
+
+func TestPerCallReferenceDoesNotStick(t *testing.T) {
+	fake := &FakeHost{}
+	defer SetHost(fake)()
+	ctx := context.WithValue(context.Background(), ctxKeyTrace, &traceState{})
+
+	Trace(ctx, "orders", "one", nil, WithReference("ONE"))
+	Trace(ctx, "orders", "two", nil)
+	SetReference(ctx, "SET")
+	Trace(ctx, "orders", "three", nil, WithReference("THREE"))
+	Trace(ctx, "orders", "four", nil)
+
+	var refs []string
+	for _, c := range fake.Calls {
+		if c.Op != int32(opTrace) {
+			continue
+		}
+		var m traceMeta
+		_ = json.Unmarshal(c.Meta, &m)
+		refs = append(refs, m.Reference)
+	}
+	if len(refs) != 4 || refs[0] != "ONE" || refs[1] != "" || refs[2] != "THREE" || refs[3] != "SET" {
+		t.Fatalf("references = %q", refs)
+	}
+}
+
+func TestTraceContextDescriptionCountsBytes(t *testing.T) {
+	resetRegistry()
+	TraceContexts(TraceContext{Name: "ok", Description: strings.Repeat("é", 100)}) // 200 bytes
+	if len(reg.traceCtxs) != 1 {
+		t.Fatal("200-byte description rejected")
+	}
 }

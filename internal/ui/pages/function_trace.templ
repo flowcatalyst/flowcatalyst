@@ -105,7 +105,7 @@ templ traceCardC(fnID string, v TraceSwitchesView, c traceCard) {
 				if c.Live {
 					@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Live"})
 					if c.Indefinite {
-						<span>until switched off</span>
+						<span>until switched off <span class="text-muted-foreground">(ends by itself <time datetime={ c.UntilISO }>{ c.Label }</time>)</span></span>
 					} else {
 						<span>
 							<time class="tabular-nums" datetime={ c.UntilISO } { traceTickAttrs(fnID, c, !v.showLogLink)... }>{ c.Label }</time>
@@ -159,9 +159,9 @@ templ traceFormDialogC(f traceForm) {
 			if f.Context == "http" {
 				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "This records request and response bodies, which can hold sensitive data."})
 			}
-			@traceField(f, "minutes")
-			@traceField(f, "indefinite")
-			@traceField(f, "sampleRate")
+			for _, key := range f.keys() {
+				@traceField(f, key)
+			}
 		</div>
 	}
 }
@@ -183,11 +183,24 @@ templ traceField(f traceForm, key string) {
 			@kit.Field(kit.FieldProps{For: f.id(key), Error: f.Errs.Fields[key], ErrorID: f.id(key) + "-err", Attrs: templ.Attributes{"id": f.id(key) + "-field"}}) {
 				<div class="flex items-center gap-2">
 					@kit.Checkbox(kit.CheckboxProps{
-						ID: f.id(key), Name: key, Value: "1", Checked: f.Indefinite, Label: "No time limit: keep it on until I switch it off",
-						Attrs: templ.Attributes{"data-on:change": "$" + traceIndefSignal + " = el.checked"},
+						ID: f.id(key), Name: key, Value: "1", Checked: f.Indefinite, Label: f.indefiniteLabel(),
+						Attrs: f.checkboxAttrs(key, templ.Attributes{"data-on:change": "$" + traceIndefSignal + " = el.checked"}),
 					})
 				</div>
 			}
+		case "indefiniteConfirm":
+			// Shown while "until switched off" is ticked; the server requires it.
+			<div id={ f.id(key) + "-wrap" } data-show={ "$" + traceIndefSignal } style={ f.confirmStyle() }>
+				@kit.Field(kit.FieldProps{For: f.id(key), Error: f.Errs.Fields[key], ErrorID: f.id(key) + "-err", Attrs: templ.Attributes{"id": f.id(key) + "-field"}}) {
+					@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Title: f.confirmWarning()})
+					<div class="mt-2 flex items-center gap-2">
+						@kit.Checkbox(kit.CheckboxProps{
+							ID: f.id(key), Name: key, Value: "1", Checked: f.Confirm, Label: "I understand, keep it on",
+							Attrs: f.checkboxAttrs(key, templ.Attributes{}),
+						})
+					</div>
+				}
+			</div>
 		case "sampleRate":
 			@kit.Field(kit.FieldProps{
 				Label: "Sample rate (1 in N)", For: f.id(key), Description: "1 captures every invocation; 10 captures one in ten.",
@@ -433,7 +446,12 @@ templ traceExpansion(rec traceRec) {
 				</div>
 			}
 		} else {
-			<p class="font-medium break-words">{ rec.Message }</p>
+			if rec.Message != "" {
+				<p class="font-medium break-words">{ rec.Message }</p>
+			}
+			if rec.Redacted {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "lock", Title: traceDetailHidden})
+			}
 			if rec.Data != "" {
 				@traceBlock("data", "data", rec.dataID(), rec.Data, "")
 			}

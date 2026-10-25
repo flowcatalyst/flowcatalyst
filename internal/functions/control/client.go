@@ -28,6 +28,10 @@ type Client struct {
 	// Runtimes, when set, is sent as the desired-state `runtimes` filter. Nil
 	// sends nothing, which the platform reads as DefaultRuntimes.
 	Runtimes []string
+	// InvalidateToken, when set, drops the token source's cached token, so the
+	// next call mints a fresh one. TraceLog calls it on a 401 or 403 and
+	// retries once (a token minted before a grant changed, or one revoked).
+	InvalidateToken func()
 }
 
 // NewClient builds a client for the platform at baseURL. httpClient may be
@@ -136,11 +140,20 @@ func (c *Client) Heartbeat(ctx context.Context, hb Heartbeat) error {
 
 // TraceLog ships a batch of trace records. A non-2xx answer is an error the
 // caller retries with backoff; a 2xx answer means the platform took the batch
-// (some records may be counted dropped in the TraceAck).
+// (some records may be counted dropped in the TraceAck). A 401 or 403 is
+// retried once with a fresh token when InvalidateToken is set.
 func (c *Client) TraceLog(ctx context.Context, b TraceBatch) (*TraceAck, error) {
 	resp, err := c.do(ctx, http.MethodPost, PathTraceLog, b, nil)
 	if err != nil {
 		return nil, err
+	}
+	if (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) && c.InvalidateToken != nil {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+		resp.Body.Close()
+		c.InvalidateToken()
+		if resp, err = c.do(ctx, http.MethodPost, PathTraceLog, b, nil); err != nil {
+			return nil, err
+		}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {

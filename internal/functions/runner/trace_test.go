@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -385,15 +386,21 @@ func TestTracingHTTPLiveAndSampled(t *testing.T) {
 	}
 }
 
-// A reference given on a trace call is stamped on the invocation's later
-// records (driven at the capabilities level: one op per HTTP call in the
-// fixture).
+// The trace.reference op stamps the invocation's later records (trace, log
+// and http); a reference on a single trace call is that record's only
+// (driven at the capabilities level: one op per HTTP call in the fixture).
 func TestTraceReferenceStamped(t *testing.T) {
 	tr := newTestTracer(&fakeTraceSink{}, 100, 1024)
 	inv := &invTrace{t: tr, address: "app.hello", version: 1, invID: "inv1", live: []string{"http", "orders"}, httpLive: true}
 	c := &capabilities{trace: inv, ver: &version{describe: &abi.Describe{TraceContexts: []abi.TraceContext{{Name: "orders"}}}}, log: slog.New(slog.NewTextHandler(io.Discard, nil)), invID: "inv1"}
-	if _, _, aerr := c.Call(t.Context(), abi.OpTrace, encode(abi.TraceCall{Context: "orders", Msg: "a", Reference: "TRIP-9"}), nil); aerr != nil {
+	if _, _, aerr := c.Call(t.Context(), abi.OpTrace, encode(abi.TraceCall{Context: "orders", Msg: "own", Reference: "ORD-1"}), nil); aerr != nil {
 		t.Fatal(aerr)
+	}
+	if _, _, aerr := c.Call(t.Context(), abi.OpTraceReference, encode(abi.TraceReferenceCall{Reference: "TRIP-9"}), nil); aerr != nil {
+		t.Fatal(aerr)
+	}
+	if _, _, aerr := c.Call(t.Context(), abi.OpTraceReference, encode(abi.TraceReferenceCall{Reference: strings.Repeat("é", abi.TraceMaxReference+1)}), nil); aerr == nil || aerr.Code != abi.CodeTooLarge {
+		t.Fatalf("over-long reference: %v", aerr)
 	}
 	if _, _, aerr := c.Call(t.Context(), abi.OpTrace, encode(abi.TraceCall{Context: "orders", Msg: "b"}), nil); aerr != nil {
 		t.Fatal(aerr)
@@ -413,10 +420,20 @@ func TestTraceReferenceStamped(t *testing.T) {
 	if len(got) != 4 {
 		t.Fatalf("records = %d", len(got))
 	}
-	for _, r := range got {
+	if got[0].Message != "own" || got[0].Reference != "ORD-1" {
+		t.Errorf("first record %+v", got[0])
+	}
+	for _, r := range got[1:] {
 		if r.Reference != "TRIP-9" {
 			t.Errorf("%s/%s %q has reference %q", r.Kind, r.Context, r.Message, r.Reference)
 		}
+	}
+	ids := map[string]bool{}
+	for _, r := range got {
+		if len(r.ID) != 36 || ids[r.ID] {
+			t.Errorf("record id %q (want a fresh uuid)", r.ID)
+		}
+		ids[r.ID] = true
 	}
 	if got[2].Kind != control.TraceKindLog || got[2].Level != "warn" || got[2].Message != "c" || string(got[2].Data) != `{"k":"v"}` || got[2].Context != "http" {
 		t.Errorf("log record: %+v", got[2])
@@ -492,14 +509,12 @@ func TestTraceHTTPOutcomes(t *testing.T) {
 	if busy.Code != 429 {
 		t.Fatalf("never saw a busy refusal: %d", busy.Code)
 	}
-	var sawBusy bool
+	// A busy refusal is not captured: tracing starts once the call holds a
+	// concurrency slot.
 	for _, r := range h.drainTrace() {
-		if d := httpData(t, r); d.Outcome == control.TraceOutcomeBusy {
-			sawBusy = d.Response.Status == 429 && r.Level == "error"
+		if d := httpData(t, r); d.Outcome == control.TraceOutcomeBusy || d.Response.Status == 429 {
+			t.Errorf("a busy refusal was captured: %+v", d)
 		}
-	}
-	if !sawBusy {
-		t.Error("no busy http record")
 	}
 }
 
@@ -532,22 +547,32 @@ func TestTraceOutcomeMapping(t *testing.T) {
 
 func TestTraceHTTPRedactionAndBodies(t *testing.T) {
 	h, _, _ := startTrace(t, func(c *Config) { c.TraceBodyBytes = 10 }, nil, traceFn(httpWindow(time.Hour, 1)))
-	call(h, "POST", "/fn/app.hello/echo?a=1", []byte(strings.Repeat("é", 10)), map[string]string{
+	call(h, "POST", "/fn/app.hello/echo?a=1&access_token=AT&code=C&X-Amz-Signature=S&sig=G&api_key=K&b=2&my_session=Z", []byte(strings.Repeat("é", 10)), map[string]string{
 		"Authorization": "Bearer abc", "Cookie": "s=1", "X-Api-Key": "k", "X-My-Token": "t", "X-Client-Secret": "s",
 		"X-Db-Password": "p", "Content-Type": "text/plain",
+		"Api-Key": "1", "Apikey": "2", "X-Functions-Key": "3", "Ocp-Apim-Subscription-Key": "4", "X-Goog-Api-Key": "5",
+		"X-Forwarded-Authorization": "6", "X-Flowcatalyst-Signature": "7", "X-Session-Id": "8",
 	})
 	recs := h.drainTrace()
 	if len(recs) != 1 {
 		t.Fatalf("records: %+v", recs)
 	}
 	d := httpData(t, recs[0])
-	for _, name := range []string{"authorization", "cookie", "x-api-key", "x-my-token", "x-client-secret", "x-db-password"} {
+	for _, name := range []string{
+		"authorization", "cookie", "x-api-key", "x-my-token", "x-client-secret", "x-db-password",
+		"api-key", "apikey", "x-functions-key", "ocp-apim-subscription-key", "x-goog-api-key",
+		"x-forwarded-authorization", "x-flowcatalyst-signature", "x-session-id",
+	} {
 		if v := d.Request.Headers[name]; len(v) != 1 || v[0] != redacted {
 			t.Errorf("header %s = %v", name, v)
 		}
 	}
-	if d.Request.Headers["content-type"][0] != "text/plain" || d.Request.RawQuery != "a=1" {
+	wantQuery := "a=1&access_token=[redacted]&code=[redacted]&X-Amz-Signature=[redacted]&sig=[redacted]&api_key=[redacted]&b=2&my_session=[redacted]"
+	if d.Request.Headers["content-type"][0] != "text/plain" || d.Request.RawQuery != wantQuery {
 		t.Errorf("request: %+v", d.Request)
+	}
+	if strings.Contains(recs[0].Message, "?") {
+		t.Errorf("the summary line carries the query: %q", recs[0].Message)
 	}
 	// 20 bytes cut at 10: five whole characters, the text stays utf8.
 	if d.Request.BodyBytes != 20 || !d.Request.BodyTruncated || d.Request.BodyEncoding != "utf8" || *d.Request.Body != strings.Repeat("é", 5) {
@@ -771,7 +796,7 @@ func TestTracerRetriesAfterFailure(t *testing.T) {
 }
 
 func TestTracerDropsBatchThePlatformRefuses(t *testing.T) {
-	sink := &fakeTraceSink{err: &control.ErrStatus{Status: 403, Code: "FORBIDDEN", Message: "no"}}
+	sink := &fakeTraceSink{err: &control.ErrStatus{Status: 400, Code: "BAD", Message: "no"}}
 	tr := newTestTracer(sink, 100, 10)
 	tr.flushEvery = 10 * time.Millisecond
 	tr.add(rec(1))
@@ -785,6 +810,184 @@ func TestTracerDropsBatchThePlatformRefuses(t *testing.T) {
 	if sink.calls != 1 {
 		t.Fatalf("calls = %d", sink.calls)
 	}
+}
+
+// 401 and 403 are retried (after the control client refreshed its token),
+// not dropped.
+func TestTracerRetriesAuthRefusals(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		sink := &statusSink{fails: []int{status, status}, tooLargeOver: 1000}
+		tr := newTestTracer(sink, 100, 10)
+		tr.flushEvery, tr.backoffBase, tr.backoffMax = 10*time.Millisecond, 5*time.Millisecond, 10*time.Millisecond
+		tr.add(rec(1))
+		tr.start()
+		waitFor(t, "shipped", func() bool { return len(sink.shipped()) == 1 })
+		tr.close()
+		if d := counterVal(tr.m.traceDropped); d != 0 {
+			t.Fatalf("%d: dropped %v", status, d)
+		}
+	}
+}
+
+// A 413 splits the batch in two; a single record that is still too large is
+// dropped alone.
+func TestTracerSplitsOnTooLarge(t *testing.T) {
+	sink := &statusSink{tooLargeOver: 2}
+	tr := newTestTracer(sink, 100, 10)
+	tr.flushEvery = 10 * time.Millisecond
+	for i := range 7 {
+		tr.add(rec(i))
+	}
+	tr.start()
+	waitFor(t, "all shipped", func() bool { return len(sink.shipped()) == 7 })
+	tr.close()
+	got := sink.shipped()
+	for i, r := range got {
+		if r.Message != strconv.Itoa(i) {
+			t.Fatalf("order after split: %v", got)
+		}
+	}
+	if d := counterVal(tr.m.traceDropped); d != 0 {
+		t.Fatalf("dropped %v", d)
+	}
+
+	one := &statusSink{tooLargeOver: 0}
+	tr = newTestTracer(one, 100, 10)
+	tr.flushEvery = 10 * time.Millisecond
+	tr.add(rec(1))
+	tr.start()
+	waitFor(t, "dropped", func() bool { return counterVal(tr.m.traceDropped) == 1 })
+	tr.close()
+}
+
+// The batch budget is the records' real encoded size: messages that JSON
+// escapes six-fold (control characters) never make a batch over the
+// platform's byte cap.
+func TestTracerBatchBytesAreEncodedBytes(t *testing.T) {
+	tr := newTestTracer(&fakeTraceSink{}, 1000, 10)
+	tr.maxBytes = 64 << 20
+	r := rec(1)
+	r.Message = strings.Repeat("\x01", 4000) // 6 bytes each once encoded
+	for range 200 {
+		tr.add(r)
+	}
+	for tr.queued() > 0 {
+		b := tr.take()
+		enc, err := json.Marshal(control.TraceBatch{RunnerID: "run1", Pool: "default", Records: b})
+		if err != nil || len(b) == 0 || len(enc) > control.MaxTraceBatchBytes {
+			t.Fatalf("batch of %d records encodes to %d bytes", len(b), len(enc))
+		}
+	}
+	if tr.bytes != 0 {
+		t.Fatalf("queued bytes left %d", tr.bytes)
+	}
+}
+
+// A full queue drops the oldest record of the function with the most queued,
+// and a batch takes the functions in turn.
+func TestTracerFairAcrossFunctions(t *testing.T) {
+	tr := newTestTracer(&fakeTraceSink{}, 10, 10)
+	for i := range 8 {
+		r := rec(i)
+		r.Address = "noisy"
+		tr.add(r)
+	}
+	for i := range 2 {
+		r := rec(100 + i)
+		r.Address = "quiet"
+		tr.add(r)
+	}
+	for i := range 5 { // queue full: each add drops the oldest noisy record
+		r := rec(200 + i)
+		r.Address = "noisy"
+		tr.add(r)
+	}
+	if d := counterVal(tr.m.traceDropped); d != 5 {
+		t.Fatalf("dropped %v", d)
+	}
+	got := tr.take()
+	var quiet, noisy []string
+	for _, r := range got {
+		if r.Address == "quiet" {
+			quiet = append(quiet, r.Message)
+		} else {
+			noisy = append(noisy, r.Message)
+		}
+	}
+	if strings.Join(quiet, ",") != "100,101" || len(noisy) != 8 || noisy[0] != "5" || noisy[7] != "204" {
+		t.Fatalf("quiet %v noisy %v", quiet, noisy)
+	}
+	if got[0].Address == got[1].Address {
+		t.Fatalf("a batch should alternate functions: %v %v", got[0].Address, got[1].Address)
+	}
+}
+
+// One invocation's author trace records are capped like its log records.
+func TestTraceInvocationTraceCap(t *testing.T) {
+	tr := newTestTracer(&fakeTraceSink{}, 2000, 10)
+	inv := &invTrace{t: tr, address: "app.hello", version: 1, invID: "inv1", live: []string{"orders"}}
+	c := &capabilities{trace: inv, ver: &version{describe: &abi.Describe{TraceContexts: []abi.TraceContext{{Name: "orders"}}}}, invID: "inv1"}
+	for range maxInvocationTraceRecords + 7 {
+		if _, _, aerr := c.Call(t.Context(), abi.OpTrace, encode(abi.TraceCall{Context: "orders", Msg: "x"}), nil); aerr != nil {
+			t.Fatal(aerr)
+		}
+	}
+	if tr.queued() != maxInvocationTraceRecords || counterVal(tr.m.traceDropped) != 7 {
+		t.Fatalf("queued %d dropped %v", tr.queued(), counterVal(tr.m.traceDropped))
+	}
+}
+
+// close waits (bounded) for invocations whose capture is still to come.
+func TestTracerCloseWaitsForCaptures(t *testing.T) {
+	sink := &fakeTraceSink{}
+	tr := newTestTracer(sink, 100, 10)
+	tr.flushEvery = time.Hour
+	tr.start()
+	inv := &invTrace{t: tr, address: "a", invID: "i", live: []string{"orders"}}
+	tr.begin()
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		inv.emit("orders", control.TraceKindTrace, "info", "late", "", nil)
+		inv.end()
+		inv.end() // idempotent
+	}()
+	tr.close()
+	if got := sink.all(); len(got) != 1 || got[0].Message != "late" {
+		t.Fatalf("shipped %+v", got)
+	}
+	if tr.active.Load() != 0 {
+		t.Fatalf("active %d", tr.active.Load())
+	}
+}
+
+// statusSink answers scripted statuses: fails in order, then (tooLargeOver)
+// 413 for any batch of more than that many records.
+type statusSink struct {
+	mu           sync.Mutex
+	fails        []int
+	tooLargeOver int
+	got          []control.TraceRecord
+}
+
+func (s *statusSink) TraceLog(_ context.Context, b control.TraceBatch) (*control.TraceAck, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.fails) > 0 {
+		st := s.fails[0]
+		s.fails = s.fails[1:]
+		return nil, &control.ErrStatus{Status: st}
+	}
+	if len(b.Records) > s.tooLargeOver {
+		return nil, &control.ErrStatus{Status: http.StatusRequestEntityTooLarge}
+	}
+	s.got = append(s.got, b.Records...)
+	return &control.TraceAck{Accepted: len(b.Records)}, nil
+}
+
+func (s *statusSink) shipped() []control.TraceRecord {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.got)
 }
 
 func TestTracerShutdownFlush(t *testing.T) {

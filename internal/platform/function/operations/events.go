@@ -639,14 +639,16 @@ func nonNil(s []string) []string {
 }
 
 // TraceEnabled is emitted when a trace context is switched on:
-// {functionId, address, context, enabledUntil, sampleRate}.
+// {functionId, address, context, enabledUntil, indefinite, sampleRate}.
+// indefinite is always present: true for a window switched on "until switched
+// off", whose enabledUntil is then its hard ceiling.
 type TraceEnabled struct {
 	Metadata     usecase.EventMetadata
 	FunctionID   string
 	Address      string
 	Context      string
 	EnabledUntil time.Time
-	Indefinite   bool // no time limit: enabledUntil is left out of the event data
+	Indefinite   bool
 	SampleRate   int
 }
 
@@ -662,18 +664,14 @@ func (e TraceEnabled) CausationID() string   { return e.Metadata.CausationID }
 func (e TraceEnabled) ExecutionID() string   { return e.Metadata.ExecutionID }
 func (e TraceEnabled) MessageGroup() string  { return groupFor(e.FunctionID) }
 func (e TraceEnabled) ToDataJSON() ([]byte, error) {
-	var until *time.Time
-	if !e.Indefinite {
-		u := e.EnabledUntil.UTC()
-		until = &u
-	}
 	return json.Marshal(struct {
-		FunctionID   string     `json:"functionId"`
-		Address      string     `json:"address"`
-		Context      string     `json:"context"`
-		EnabledUntil *time.Time `json:"enabledUntil,omitempty"`
-		SampleRate   int        `json:"sampleRate"`
-	}{e.FunctionID, e.Address, e.Context, until, e.SampleRate})
+		FunctionID   string    `json:"functionId"`
+		Address      string    `json:"address"`
+		Context      string    `json:"context"`
+		EnabledUntil time.Time `json:"enabledUntil"`
+		Indefinite   bool      `json:"indefinite"`
+		SampleRate   int       `json:"sampleRate"`
+	}{e.FunctionID, e.Address, e.Context, e.EnabledUntil.UTC(), e.Indefinite, e.SampleRate})
 }
 
 // TraceDisabled is emitted when a trace context is switched off:

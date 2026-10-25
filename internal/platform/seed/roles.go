@@ -154,6 +154,7 @@ func PlatformRoles() []role.Role {
 				permFunctionView, permFunctionManage,
 				permFunctionDomainManage, permFunctionRouteManage,
 				permFunctionTraceView, permFunctionTraceManage, permFunctionTraceViewBodies,
+				permFunctionTraceIndefinite,
 			}),
 
 		// platform:viewer
@@ -173,7 +174,10 @@ func PlatformRoles() []role.Role {
 				permAdminScheduledJobRead,
 				permAdminScheduledJobInstanceRead,
 				permAdminProcessRead,
-				permFunctionView, permFunctionTraceView,
+				// Not platform:function:trace:view: trace records hold what a
+				// function printed and its business keys; the roles that
+				// operate functions read them (docs/function-trace-design.md).
+				permFunctionView,
 				permAdminAuditLogRead,
 				permAdminLoginAttemptRead,
 				permAdminIdentityProviderRead,

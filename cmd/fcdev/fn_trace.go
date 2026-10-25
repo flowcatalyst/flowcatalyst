@@ -57,8 +57,10 @@ built in: while it is on, every call also records its request, response and timi
   fcdev fn trace run <address> <context> [--for 5m]   (on, then follow, then off)
 
 Switching needs platform:function:trace:manage, reading records needs
-platform:function:trace:view, and bodies (and switching http on) need
-platform:function:trace:view-bodies.`,
+platform:function:trace:view, and bodies, headers, query strings and log lines
+(and switching http on) need platform:function:trace:view-bodies. Leaving a
+declared context on until it is switched off (--no-limit) needs
+platform:function:trace:indefinite.`,
 	}
 	cmd.AddCommand(newFnTraceOnCmd(), newFnTraceOffCmd(), newFnTraceStatusCmd(), newFnTraceLogCmd(), newFnTraceRunCmd())
 	return cmd
@@ -75,6 +77,8 @@ type traceState struct {
 	Indefinite   bool    `json:"indefinite"`
 	Live         bool    `json:"live"`
 	MaxMinutes   int     `json:"maxMinutes"`
+	// IndefiniteMaxDays is the ceiling of a --no-limit window (0 for http).
+	IndefiniteMaxDays int `json:"indefiniteMaxDays"`
 }
 
 func (s traceState) until() (time.Time, bool) {
@@ -101,6 +105,7 @@ type traceRecord struct {
 	Data           json.RawMessage `json:"data"`
 	RunnerID       *string         `json:"runnerId"`
 	BodiesRedacted bool            `json:"bodiesRedacted"`
+	Redacted       bool            `json:"redacted"`
 	Raw            json.RawMessage `json:"-"`
 }
 
@@ -251,7 +256,10 @@ func enableTrace(ctx context.Context, api *fnAPI, fn *fnFunction, name string, d
 	}
 	line := fmt.Sprintf("%s on %s", name, fn.Address)
 	if forever {
-		line += ": live until you switch it off (fcdev fn trace off)"
+		line += ": live until switched off (fcdev fn trace off)"
+		if until, ok := st.until(); ok {
+			line += fmt.Sprintf(", at most until %s, when it switches off by itself", until.Local().Format("2 Jan 15:04"))
+		}
 	} else if until, ok := st.until(); ok {
 		line += fmt.Sprintf(": live until %s (%dm)", until.Local().Format("15:04:05"), minutes)
 	} else {
@@ -262,7 +270,7 @@ func enableTrace(ctx context.Context, api *fnAPI, fn *fnFunction, name string, d
 	}
 	fmt.Fprintln(out, line)
 	if name == "http" {
-		fmt.Fprintln(out, "note: http records request and response bodies (sensitive; authorization, cookie and secret-like headers are redacted)")
+		fmt.Fprintln(out, "note: http records request and response bodies (sensitive; credential-like headers and query parameters are redacted)")
 	}
 	return st, nil
 }
@@ -284,12 +292,14 @@ func newFnTraceOnCmd() *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
 		Use:   "on <address> <context>",
-		Short: "Switch a trace context on, for a time or until you switch it off",
+		Short: "Switch a trace context on, for a time or until it is switched off",
 		Long: `Switches a function's trace context on. By default it turns itself off when the
 time is up: --for takes a Go duration (5m, 1h), rounded up to whole minutes, and
-the platform caps it (60 minutes, 15 for http). --no-limit keeps it on until
-"fcdev fn trace off". --sample N records one call in N. Takes effect within
-about a second.`,
+the platform caps it (60 minutes, 15 for http). --no-limit keeps a declared
+context on until "fcdev fn trace off", at most the platform's ceiling (7 days by
+default), then it switches off by itself; never for http, and it needs
+platform:function:trace:indefinite. --sample N records one call in N. Takes
+effect within about a second.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			api, err := newFnAPI(cmd, &pf)
@@ -301,7 +311,11 @@ about a second.`,
 			if err != nil {
 				return err
 			}
-			if err := api.confirm(fmt.Sprintf("switch trace context %s on for %s", args[1], fn.Address), yes); err != nil {
+			what := fmt.Sprintf("switch trace context %s on for %s", args[1], fn.Address)
+			if noLimit {
+				what += " until it is switched off (at most the platform's ceiling, 7 days by default)"
+			}
+			if err := api.confirm(what, yes); err != nil {
 				return err
 			}
 			_, err = enableTrace(ctx, api, fn, args[1], forD, noLimit, sample, cmd.OutOrStdout())
@@ -310,7 +324,7 @@ about a second.`,
 	}
 	pf.add(cmd)
 	cmd.Flags().DurationVar(&forD, "for", 5*time.Minute, "how long to keep it on (rounded up to whole minutes)")
-	cmd.Flags().BoolVar(&noLimit, "no-limit", false, "no time limit: stay on until switched off (--for is ignored)")
+	cmd.Flags().BoolVar(&noLimit, "no-limit", false, "stay on until switched off, at most the platform's ceiling (--for is ignored; not for http)")
 	cmd.Flags().IntVar(&sample, "sample", 1, "record one call in N")
 	addYesFlag(cmd, &yes)
 	return cmd
@@ -361,25 +375,23 @@ func newFnTraceStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var res struct {
-				Contexts []traceState `json:"contexts"`
-			}
-			if err := api.json(ctx, http.MethodGet, "/api/functions/"+fn.ID+"/trace", nil, &res); err != nil {
-				return traceError(err, "no trace contexts for "+fn.Address)
+			contexts, err := traceStates(ctx, api, fn)
+			if err != nil {
+				return err
 			}
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "%s (%s)\n", fn.Address, fn.ID)
 			tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "CONTEXT\tBUILT-IN\tSTATE\tUNTIL\tSAMPLE\tDESCRIPTION")
 			now := fnTraceNow()
-			for _, c := range res.Contexts {
+			for _, c := range contexts {
 				state, until := "off", "-"
 				if c.Live {
 					state = "live"
 				}
-				if c.Live && c.Indefinite {
-					until = "until switched off"
-				} else if t, ok := c.until(); ok && c.Live {
+				if t, ok := c.until(); ok && c.Live && c.Indefinite {
+					until = "until switched off (at most " + t.Local().Format("2 Jan 15:04") + ")"
+				} else if ok && c.Live {
 					until = t.Local().Format("15:04:05")
 					if left := t.Sub(now); left > 0 {
 						until += " (" + left.Round(time.Second).String() + " left)"
@@ -396,6 +408,83 @@ func newFnTraceStatusCmd() *cobra.Command {
 	}
 	pf.add(cmd)
 	return cmd
+}
+
+// traceStates reads the function's trace contexts.
+func traceStates(ctx context.Context, api *fnAPI, fn *fnFunction) ([]traceState, error) {
+	var res struct {
+		Contexts []traceState `json:"contexts"`
+	}
+	if err := api.json(ctx, http.MethodGet, "/api/functions/"+fn.ID+"/trace", nil, &res); err != nil {
+		return nil, traceError(err, "no trace contexts for "+fn.Address)
+	}
+	return res.Contexts, nil
+}
+
+// traceStateOf is one context's state, ok false when the function has no such
+// context.
+func traceStateOf(ctx context.Context, api *fnAPI, fn *fnFunction, name string) (traceState, bool, error) {
+	contexts, err := traceStates(ctx, api, fn)
+	if err != nil {
+		return traceState{}, false, err
+	}
+	for _, c := range contexts {
+		if c.Name == name {
+			return c, true, nil
+		}
+	}
+	return traceState{}, false, nil
+}
+
+// covers reports whether a live window st lasts at least until t.
+func (s traceState) covers(t time.Time) bool {
+	if !s.Live {
+		return false
+	}
+	if s.Indefinite {
+		return true
+	}
+	until, ok := s.until()
+	return ok && !until.Before(t)
+}
+
+// restoreTrace puts a context back the way `trace run` found it, unless
+// someone changed it during the run (then it is theirs): ours is the window
+// this run opened. A window that was live before and has time left is
+// re-opened for that time with its sample rate; otherwise the context is
+// switched off.
+func restoreTrace(ctx context.Context, api *fnAPI, fn *fnFunction, name string, prev, ours traceState, out, errW io.Writer) {
+	cur, ok, err := traceStateOf(ctx, api, fn, name)
+	if err != nil {
+		fmt.Fprintf(errW, "fcdev: could not read %s to restore it (it expires on its own): %v\n", name, err)
+		return
+	}
+	if !ok || !cur.Live || ptrString(cur.EnabledUntil) != ptrString(ours.EnabledUntil) || cur.SampleRate != ours.SampleRate {
+		fmt.Fprintf(out, "%s on %s was changed during the run; left as it is\n", name, fn.Address)
+		return
+	}
+	if until, ok := prev.until(); ok && prev.Live {
+		if left := time.Until(until); left >= time.Minute {
+			minutes := min(int(left/time.Minute), max(prev.MaxMinutes, 1))
+			body := map[string]any{"minutes": minutes, "sampleRate": max(prev.SampleRate, 1)}
+			if err := api.json(ctx, http.MethodPut, "/api/functions/"+fn.ID+"/trace/"+url.PathEscape(name), body, nil); err != nil {
+				fmt.Fprintf(errW, "fcdev: could not restore %s (it expires on its own): %v\n", name, traceError(err, name))
+				return
+			}
+			fmt.Fprintf(out, "%s on %s restored: live for %dm more, as before the run\n", name, fn.Address, minutes)
+			return
+		}
+	}
+	if err := disableTrace(ctx, api, fn, name, out); err != nil {
+		fmt.Fprintf(errW, "fcdev: could not switch %s off (it expires on its own): %v\n", name, err)
+	}
+}
+
+func ptrString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 // fetchTrace reads up to total records (newest first), paging with the
@@ -590,11 +679,14 @@ func newFnTraceRunCmd() *cobra.Command {
 	var keep, yes bool
 	cmd := &cobra.Command{
 		Use:   "run <address> <context>",
-		Short: "Switch a context on, follow its records, and switch it off again on exit",
+		Short: "Switch a context on, follow its records, and put it back as it was on exit",
 		Long: `The dev loop in one command: switches the context on (see "trace on"), follows
-the function's records for it, and switches the context off again when you press
-Ctrl-C or the window ends, unless --keep. Only records from now on are shown
-unless --since says otherwise. Takes the same filters as "trace log".`,
+the function's records for it, and on Ctrl-C or when the window ends puts the
+context back as it found it, unless --keep: off if it was off, or the window it
+had (with its time left). If the context is already on for at least as long as
+--for, the run leaves it alone and only follows it. A window someone else
+changes during the run is left as they set it. Only records from now on are
+shown unless --since says otherwise. Takes the same filters as "trace log".`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			now := fnTraceNow()
@@ -619,19 +711,35 @@ unless --since says otherwise. Takes the same filters as "trace log".`,
 				return err
 			}
 			out := cmd.OutOrStdout()
-			st, err := enableTrace(ctx, api, fn, args[1], forD, false, sample, out)
+			if forD <= 0 {
+				return errors.New("--for must be positive (for example 5m)")
+			}
+			prev, _, err := traceStateOf(ctx, api, fn, args[1])
 			if err != nil {
 				return err
 			}
-			// Leave the context off however the follow ends.
-			if !keep {
-				defer func() {
-					offCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
-					defer cancel()
-					if err := disableTrace(offCtx, api, fn, args[1], out); err != nil {
-						fmt.Fprintf(cmd.ErrOrStderr(), "fcdev: could not switch %s off (it expires on its own): %v\n", args[1], err)
-					}
-				}()
+			var st traceState
+			if prev.covers(fnTraceNow().Add(forD)) {
+				// Someone's window already covers the run: follow it, never touch it.
+				st = prev
+				line := fmt.Sprintf("%s is already on for %s", args[1], fn.Address)
+				if until, ok := prev.until(); ok {
+					line += " until " + until.Local().Format("2 Jan 15:04:05")
+				}
+				fmt.Fprintln(out, line+"; following it, and leaving it on")
+			} else {
+				st, err = enableTrace(ctx, api, fn, args[1], forD, false, sample, out)
+				if err != nil {
+					return err
+				}
+				// Put the context back as it was however the follow ends.
+				if !keep {
+					defer func() {
+						bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+						defer cancel()
+						restoreTrace(bg, api, fn, args[1], prev, st, out, cmd.ErrOrStderr())
+					}()
+				}
 			}
 			// Follow until Ctrl-C, or shortly after the window closes.
 			followCtx := ctx
@@ -653,7 +761,7 @@ unless --since says otherwise. Takes the same filters as "trace log".`,
 	v.add(cmd)
 	cmd.Flags().DurationVar(&forD, "for", 5*time.Minute, "how long to keep it on (rounded up to whole minutes)")
 	cmd.Flags().IntVar(&sample, "sample", 1, "record one call in N")
-	cmd.Flags().BoolVar(&keep, "keep", false, "leave the context on when this command exits")
+	cmd.Flags().BoolVar(&keep, "keep", false, "leave the context on when this command exits (do not put it back)")
 	addYesFlag(cmd, &yes)
 	return cmd
 }
@@ -701,6 +809,8 @@ func printTraceRecord(w io.Writer, r traceRecord, v traceView) {
 		}
 	}
 	switch {
+	case r.Redacted && r.Kind == "log":
+		msg = "(log line hidden: no view-bodies permission)"
 	case h != nil:
 		path := h.Request.Path
 		if h.Request.RawQuery != "" {
@@ -722,8 +832,8 @@ func printTraceRecord(w io.Writer, r traceRecord, v traceView) {
 	}
 	fmt.Fprintf(w, "%s  %s\n", line, msg)
 	if h != nil && v.bodies {
-		if r.BodiesRedacted {
-			fmt.Fprintln(w, "    (bodies hidden: no view-bodies permission)")
+		if r.BodiesRedacted || r.Redacted {
+			fmt.Fprintln(w, "    (bodies, headers and query string hidden: no view-bodies permission)")
 			return
 		}
 		printTraceBody(w, "request", h.Request.Body, h.Request.BodyEncoding, h.Request.BodyBytes, h.Request.Truncated)

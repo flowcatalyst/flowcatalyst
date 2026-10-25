@@ -137,6 +137,88 @@ func TestTraceLog_AcceptanceRule(t *testing.T) {
 	assert.Len(t, stored(t, s, fn.ID), 3)
 }
 
+// The runner's `at` is bounded by the arrival time: a clock running ahead is
+// clamped to now (so it can neither sit in the future nor slip past a closed
+// window), one far behind is dropped.
+func TestTraceLog_AtIsBoundedByArrival(t *testing.T) {
+	t.Parallel()
+	s := newTestState(t)
+	fn, _ := traceFn(t, s)
+	setWindow(t, s, fn.ID, "live", inFuture(time.Minute), 1)
+	until := time.Now().Add(-time.Minute)
+	setWindow(t, s, fn.ID, "closed", &until, 1)
+
+	ahead := rec(fn, "live", "trace", time.Now().Add(48*time.Hour))
+	ahead.InvocationID = "ahead"
+	slightlyAhead := rec(fn, "live", "trace", time.Now().Add(20*time.Second))
+	slightlyAhead.InvocationID = "slightly"
+	before := time.Now()
+	ack, err := ship(t, s,
+		ahead,         // accepted, at clamped to arrival
+		slightlyAhead, // accepted as stamped (within the skew)
+		rec(fn, "live", "trace", time.Now().Add(-2*time.Hour)),    // dropped: far behind
+		rec(fn, "closed", "trace", time.Now().Add(365*24*time.Hour)), // dropped: clamped to now, after the window
+	)
+	require.NoError(t, err)
+	assert.Equal(t, fncontrol.TraceAck{Accepted: 2, Dropped: 2}, ack)
+	for _, r := range stored(t, s, fn.ID) {
+		switch r.InvocationID {
+		case "ahead":
+			assert.WithinDuration(t, before, r.At, 5*time.Second, "clamped to arrival")
+		case "slightly":
+			assert.True(t, r.At.After(before.Add(10*time.Second)), "kept as stamped")
+		}
+	}
+}
+
+// A runner-supplied record id makes a retried batch idempotent; a record
+// without one (an older runner) still gets a platform id.
+func TestTraceLog_RunnerRecordIDDeduplicates(t *testing.T) {
+	t.Parallel()
+	s := newTestState(t)
+	fn, _ := traceFn(t, s)
+	setWindow(t, s, fn.ID, "orders", inFuture(time.Minute), 1)
+	a := rec(fn, "orders", "trace", time.Now())
+	a.ID = "0b8f9f5e-7f0e-4c1e-9d55-6a9f0d0d1a01"
+	b := rec(fn, "orders", "trace", time.Now())
+	b.ID = "0b8f9f5e-7f0e-4c1e-9d55-6a9f0d0d1a02"
+	old := rec(fn, "orders", "trace", time.Now()) // no id
+	bad := rec(fn, "orders", "trace", time.Now())
+	bad.ID = "x y" // not a usable id: a platform id instead
+
+	_, err := ship(t, s, a, b, old, bad)
+	require.NoError(t, err)
+	_, err = ship(t, s, a, b) // the runner retries after a lost answer
+	require.NoError(t, err)
+	got := stored(t, s, fn.ID)
+	assert.Len(t, got, 4, "the retried records are stored once")
+	ids := map[string]bool{}
+	for _, r := range got {
+		ids[r.ID] = true
+	}
+	assert.True(t, ids["ftl_r"+a.ID])
+	assert.True(t, ids["ftl_r"+b.ID])
+}
+
+// Switching off ends the window at the switch-off time, so records the
+// runner captured just before and ships a little later are still accepted.
+func TestTraceLog_AcceptsQueuedRecordsAfterSwitchOff(t *testing.T) {
+	t.Parallel()
+	s := newTestState(t)
+	fn, _ := traceFn(t, s)
+	setWindow(t, s, fn.ID, "orders", inFuture(time.Hour), 1)
+	captured := time.Now()
+	withRawTx(t, testpg.Pool(t), func(tx pgx.Tx) error {
+		return s.Repo.DisableTraceContextTx(context.Background(), fn.ID, "orders", time.Now().UTC(), tx)
+	})
+	ack, err := ship(t, s,
+		rec(fn, "orders", "trace", captured),                     // accepted
+		rec(fn, "orders", "trace", time.Now().Add(30*time.Second)), // dropped: after the grace
+	)
+	require.NoError(t, err)
+	assert.Equal(t, fncontrol.TraceAck{Accepted: 1, Dropped: 1}, ack)
+}
+
 func TestTraceLog_Truncation(t *testing.T) {
 	t.Parallel()
 	s := newTestState(t)

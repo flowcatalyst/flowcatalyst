@@ -156,9 +156,14 @@ type traceRec struct {
 	// pretty-printed data of any other record.
 	HTTP *traceHTTP
 	Data string
-	// Redacted is an http record whose bodies the viewer may not see.
+	// Redacted is a record whose sensitive parts (an http record's headers,
+	// query string and bodies, a log record's line, a trace record's data)
+	// the viewer may not see.
 	Redacted bool
 }
+
+// traceDetailHidden is shown on a redacted log or trace record.
+const traceDetailHidden = "Details hidden: you do not have permission to view what the function logged (platform:function:trace:view-bodies)"
 
 type traceHTTP struct {
 	Summary string
@@ -180,7 +185,7 @@ type traceBody struct {
 }
 
 // traceBodiesHidden is the SPA's BODIES_HIDDEN_MESSAGE.
-const traceBodiesHidden = "Bodies hidden: you do not have permission to view request and response bodies"
+const traceBodiesHidden = "Bodies, headers and query string hidden: you do not have permission to view them"
 
 func traceRecords(recs []function.TraceLogRecord, bodies bool) []traceRec {
 	counts := map[string]int{}
@@ -201,9 +206,15 @@ func traceRecOf(r function.TraceLogRecord, bodies bool, count int) traceRec {
 		CorrelationID: deref(r.CorrelationID), InvocationID: r.InvocationID, Count: count,
 	}
 	rec.CorrelationText, rec.InvocationText = traceShortID(rec.CorrelationID), traceShortID(r.InvocationID)
+	if !bodies {
+		// The API's rule: without view-bodies an http record keeps only its
+		// method, path, status, timings and sizes, a log record only its
+		// metadata, a trace record its message (function.WithholdTraceDetail).
+		rec.Redacted = function.WithholdTraceDetail(&r)
+		rec.Message = r.Message
+	}
 	if r.Kind == "http" {
 		// An http record is never printed raw: its data holds the bodies.
-		rec.Redacted = !bodies
 		if h := parseTraceHTTP(r.Data, r.ID, bodies); h != nil {
 			rec.HTTP = h
 		}
@@ -397,6 +408,9 @@ func traceLevelSeverity(level string) kit.TagSeverity {
 func (r traceRec) headline() string {
 	if r.HTTP != nil {
 		return r.HTTP.Summary
+	}
+	if r.Message == "" && r.Redacted {
+		return "(hidden)"
 	}
 	return r.Message
 }
