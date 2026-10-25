@@ -132,10 +132,14 @@ func (r *PlatformConfigResource) Delete(ctx context.Context, app, section, prope
 // The only way to read a SECRET property's plaintext; every other read
 // returns "***". Empty clientID is omitted.
 //
-// Errors are *APIError: 403 when the caller lacks permission
-// platform:admin:config:reveal and is not the application's own service
-// account; 404 when the property does not exist; 400 with Code()
-// "NOT_A_SECRET" when the property is PLAIN (use Get).
+// Errors are *APIError: 403 when the caller holds neither
+// platform:admin:config:reveal nor (for an application's service account)
+// platform:application-service:config:reveal, or names a client it is not
+// linked to (an application's account reaches its own client ids, else the
+// clients its application is enabled for); 404 when the property does not
+// exist; 400 with Code() "NOT_A_SECRET" when the property is PLAIN (use Get).
+// To have the audit row name the person a service account acts for, call it
+// with a context from WithOnBehalfOf.
 //
 // Every reveal is audited by the platform. The result is deliberately not
 // cached by the SDK (wrap the call in your own TTL cache if you need one),

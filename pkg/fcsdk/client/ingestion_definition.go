@@ -70,9 +70,12 @@ type SFTPSource struct {
 	Directory  string    `json:"directory"`
 	Username   string    `json:"username"`
 	Credential SecretRef `json:"credential"`
-	// KnownHosts is the server's host key as a known_hosts line; nil connects
-	// without checking who the server is.
+	// KnownHosts is the server's host key as a known_hosts line. The runtime
+	// refuses to connect without it unless AcceptAnyHostKey is set.
 	KnownHosts *string `json:"knownHosts,omitempty"`
+	// AcceptAnyHostKey connects without checking who the server is (not with
+	// KnownHosts). Setting it needs platform:ingestion:ingestion:bind-secrets.
+	AcceptAnyHostKey bool `json:"acceptAnyHostKey,omitempty"`
 	// Include is a file name pattern such as *.csv; nil takes every file.
 	Include *string `json:"include,omitempty"`
 	Every   string  `json:"every"`

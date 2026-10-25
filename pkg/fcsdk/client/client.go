@@ -233,6 +233,11 @@ func (c *FlowCatalystClient) do(ctx context.Context, method, fullURL string, bod
 		}
 	}
 
+	onBehalfOf, err := onBehalfOfFrom(ctx)
+	if err != nil {
+		return err
+	}
+
 	var lastErr error
 	delay := c.retryDelay
 	for attempt := 0; attempt < c.retryAttempts; attempt++ {
@@ -244,6 +249,9 @@ func (c *FlowCatalystClient) do(ctx context.Context, method, fullURL string, bod
 		req.Header.Set("Accept", "application/json")
 		if _, ok := out.(*yamlBody); ok {
 			req.Header.Set("Accept", "application/yaml")
+		}
+		if onBehalfOf != "" {
+			req.Header.Set(OnBehalfOfHeader, onBehalfOf)
 		}
 		if c.tokenProvider != nil {
 			token, err := c.tokenProvider(ctx)

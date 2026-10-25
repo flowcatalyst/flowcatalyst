@@ -314,6 +314,12 @@ it. Errors are
 value and does not log it; `SecretResponse` redacts the value under
 `%v`/`%+v`/`%#v` and `slog`.
 
+A service account acting for a person can have the platform's audit row name
+them: call `Set`, `Delete` or `RevealSecret` with
+`client.WithOnBehalfOf(ctx, personID)` (sent as `X-On-Behalf-Of`, at most 256
+characters, no control characters; the platform honours it only from service
+accounts).
+
 ## Packages
 
 | Package | Purpose |
