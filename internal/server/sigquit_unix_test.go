@@ -46,7 +46,10 @@ func TestSIGQUITWritesTheDumpAndKeepsRunning(t *testing.T) {
 	defer stop()
 
 	require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGQUIT))
-	assert.Eventually(t, func() bool { return strings.Contains(out.String(), "== Goroutines") },
-		2*time.Second, 10*time.Millisecond, "the dump is written")
-	assert.Contains(t, out.String(), "goroutine ")
+	// The heading is written before the stacks, so wait for the stacks
+	// themselves rather than read between the two writes.
+	assert.Eventually(t, func() bool {
+		s := out.String()
+		return strings.Contains(s, "== Goroutines") && strings.Contains(s, "goroutine ")
+	}, 2*time.Second, 10*time.Millisecond, "the dump is written, goroutine stacks included")
 }
