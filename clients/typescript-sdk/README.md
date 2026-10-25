@@ -128,9 +128,9 @@ typed client with auth, retries, and neverthrow results:
 - `client.eventTypes()` — `list()`, `get(id)`, `getByCode(code)`, `create(...)`, `update(...)`, `addSchemaVersion(...)`, `archive(id)`, `sync(...)`
 - `client.subscriptions()`, `client.dispatchPools()`, `client.connections()`, `client.processes()`
 - `client.roles()`, `client.permissions()`, `client.applications()`, `client.clients()`, `client.principals()`, `client.me()`
-- `client.ingestions()` — CRUD, `pause`/`resume`, versions (`saveVersion`, `makeVersionLive`), `getDefinition` (YAML), `listHistory`, `listFailures`, `listSourceKinds`, `testConnection`/`getTest`, and sets (`applySet(name, req, dryRun?)`, `reapplySet`, `releaseSet`, ...). Secrets in a definition are names, never values; the runtime API is not part of this SDK
+- `client.ingestions()` — CRUD, `pause`/`resume`, versions (`saveVersion`, `makeVersionLive`), `getDefinition` (YAML), `listHistory`, `listFailures({category?, undismissed?, after?, limit?})`, `dismissFailure(id, failureId)`, `listSecrets(id)`, `listSourceKinds`, `testConnection`/`getTest`, and sets (`applySet(name, req, dryRun?)`, `reapplySet`, `releaseSet`, ...). Secrets in a definition are names, never values; the runtime API is not part of this SDK (see [Ingestions](#ingestions))
 - `client.scheduledJobs()`, `client.auditLogs()`, `client.router()`, `client.definitions()`
-- `client.platformConfig()` — `list(app)`, `get(app, section, property, {clientId}?)`, `set(...)`, `delete(...)`, `revealSecret(app, section, property, clientId?)`
+- `client.platformConfig()` — `list(app)`, `get(app, section, property, {clientId}?)`, `set(..., {onBehalfOf}?)`, `delete(..., {clientId?, onBehalfOf?})`, `revealSecret(app, section, property, clientId?, {onBehalfOf}?)`
 
 Anything not covered by a resource class is available through the generated
 functions (importable from the package root or the `api` namespace), passed
@@ -155,12 +155,57 @@ const r = await client.platformConfig().revealSecret('my-app', 'smtp', 'password
 if (r.isOk()) use(r.value.value); // r.value.updatedAt changes when the secret is rotated
 ```
 
-Requires `platform:admin:config:reveal`, or the application's own service
-account for its own application. Errors: `forbidden` (403), `not_found` (404),
-`http_error` with `status: 400` / `body.error === 'NOT_A_SECRET'` for a PLAIN
-property (use `get`). The call is never cached by the SDK. The returned `value`
-is a non-enumerable property, so it does not appear in `console.log`,
-spread copies or `JSON.stringify` (rendered as `[REDACTED]`); never log it.
+Reveal is always a permission, never implied by being the application's
+service account: `platform:admin:config:reveal` (a platform administrator) or
+`platform:application-service:config:reveal` (an application's service
+account; the `platform:application-service` role carries it). The platform
+confines an application's service account to its own applications and to the
+clients it is linked to (its own client list, else the clients its application
+is enabled for), plus the application-wide value. Errors: `forbidden` (403),
+`not_found` (404), `http_error` with `status: 400` / `body.error ===
+'NOT_A_SECRET'` for a PLAIN property (use `get`). The call is never cached by
+the SDK. The returned `value` is a non-enumerable property, so it does not
+appear in `console.log`, spread copies or `JSON.stringify` (rendered as
+`[REDACTED]`); never log it.
+
+Writing a SECRET: the mask is not a value. Setting a secret to `"***"` is
+refused (`400 SECRET_VALUE_MASKED`), as is an empty secret (`400
+SECRET_VALUE_REQUIRED`); to leave a secret unchanged, do not set it.
+
+Acting for a person: a service account that changes or reveals configuration
+for one of its application's signed-in users passes `{ onBehalfOf: '<who>' }`
+to `set`, `delete` or `revealSecret`. It is sent as `X-On-Behalf-Of` and
+recorded in the audit row; the platform honours it only from a service account
+(ignored from anyone else) and refuses more than 256 characters or a control
+character (`400 INVALID_ON_BEHALF_OF`).
+
+```typescript
+await client.platformConfig().set('my-app', 'smtp', 'password',
+  { value: newPassword, valueType: 'SECRET' }, { onBehalfOf: 'alice@example.com' });
+```
+
+### Ingestions
+
+Without the promote permission, `create`, `update` and `saveVersion` save the
+definition as a **draft**: the answer's `save.outcome` is `DRAFT` and
+`save.awaitingPromote` is true until someone who holds promote makes it live
+(`makeVersionLive`). A definition an existing version already says is not saved
+again (`UNCHANGED`, `MADE_LIVE`, `DRAFT_EXISTS`). Versions carry `draft` and a
+`digest` of the definition. `warnings` names what the definition says that will
+not run as meant (for example an sftp source with neither `knownHosts` nor
+`acceptAnyHostKey`).
+
+Notices are failures the platform refused (category `rejected`); the ingestion
+counts the open ones (`notices`, `latestNotice`). List and dismiss them:
+
+```typescript
+const open = await client.ingestions().listFailures(id, { category: 'rejected', undismissed: true });
+await client.ingestions().dismissFailure(id, failureId); // stays in the list, stops counting
+```
+
+`listSecrets(id)` lists the secret names the live definition binds and, per
+runtime, when it last fetched each one (`fetchCount`, `lastFetchedAt`). Names
+only: no call here ever returns a secret value.
 
 ## Syncing Definitions
 
