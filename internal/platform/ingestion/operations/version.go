@@ -7,6 +7,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
 
 // SaveVersionCommand is the input DTO.
@@ -19,12 +20,16 @@ type SaveVersionCommand struct {
 	Note *string `json:"note,omitempty"`
 }
 
-// SaveVersion records the definition as the ingestion's next version and
-// emits [IngestionVersionSaved]. Unlike UpdateIngestion it does not need the
-// live version to be unchanged, and a version that is not made live runs
-// nowhere.
-func SaveVersion(repo *ingestion.Repository, resolver ingestion.Resolver) usecaseop.Operation[SaveVersionCommand, IngestionVersionSaved] {
-	return usecaseop.Operation[SaveVersionCommand, IngestionVersionSaved]{
+// SaveVersion records the definition as the ingestion's next version,
+// deduplicated by digest as UpdateIngestion is: a definition the live version
+// already says writes nothing (UNCHANGED); one a saved version that is not
+// live says is made live when Live (MADE_LIVE) and otherwise answered as that
+// draft (DRAFT_EXISTS); anything else is saved, live (SAVED, emitting
+// [IngestionVersionSaved] with live true) or as a draft (DRAFT). Unlike
+// UpdateIngestion it does not need the live version to be unchanged, and a
+// version that is not made live runs nowhere.
+func SaveVersion(repo *ingestion.Repository, resolver ingestion.Resolver) usecaseop.TxOperation[SaveVersionCommand, SaveResult] {
+	return usecaseop.TxOperation[SaveVersionCommand, SaveResult]{
 		Name: "SaveIngestionVersion",
 		Validate: func(_ context.Context, cmd SaveVersionCommand) error {
 			if err := requireID(cmd.ID); err != nil {
@@ -41,25 +46,35 @@ func SaveVersion(repo *ingestion.Repository, resolver ingestion.Resolver) usecas
 			}
 			return nil
 		},
-		Execute: func(ctx context.Context, cmd SaveVersionCommand, ec usecase.ExecutionContext) (usecaseop.Plan[IngestionVersionSaved], error) {
+		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd SaveVersionCommand, ec usecase.ExecutionContext) (SaveResult, error) {
+			var zero SaveResult
 			i, err := loadEditable(ctx, repo, cmd.ID)
 			if err != nil {
-				return nil, err
+				return zero, err
+			}
+			if i.Version > 0 && cmd.Definition.Equal(i.Definition) {
+				return SaveResult{Ingestion: i, Outcome: OutcomeUnchanged, Version: i.Version}, nil
 			}
 			if err := checkAuthor(ctx, repo, i, cmd.Definition); err != nil {
-				return nil, err
+				return zero, err
 			}
 			if err := checkTarget(ctx, resolver, i, cmd.Definition); err != nil {
-				return nil, err
+				return zero, err
 			}
-			v := i.SaveVersion(cmd.Definition, cmd.Live, cmd.Note, new(ec.PrincipalID))
+			if res, done, err := reuseOrDraft(ctx, s, repo, i, cmd.Definition, cmd.Live, cmd.Note, ec); done || err != nil {
+				return res, err
+			}
+			v := i.SaveVersion(cmd.Definition, true, cmd.Note, new(ec.PrincipalID))
 			event := IngestionVersionSaved{
 				ingestionEvent: newEvent(ec, IngestionVersionSavedType, i.ID),
 				Code:           i.Code,
 				Version:        v.Number,
-				Live:           cmd.Live,
+				Live:           true,
 			}
-			return usecaseop.Save(i, repo, event), nil
+			if _, err := usecase.Into(usecasepgx.CommitScoped(ctx, s, i, repo, event, cmd)); err != nil {
+				return zero, err
+			}
+			return SaveResult{Ingestion: i, Outcome: OutcomeSaved, Version: v.Number}, nil
 		},
 	}
 }

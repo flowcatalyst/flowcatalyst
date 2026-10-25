@@ -160,8 +160,8 @@ func TestSteersSecrets_ExtensionSettings(t *testing.T) {
 // The route permission counts only at anchor tier (owner ruling R2); any
 // other declared permission counts at any tier.
 func TestRequireKindPermission_RouteNeedsAnchor(t *testing.T) {
-	anchor := &auth.AuthContext{Scope: auth.ScopeAnchor, Permissions: []string{auth.PermIngestionRoute, "x:y:z:w"}}
-	client := &auth.AuthContext{Scope: auth.ScopeClient, Clients: []string{"clt_1"}, Permissions: []string{auth.PermIngestionRoute, "x:y:z:w"}}
+	anchor := &auth.AuthContext{Scope: auth.ScopeAnchor, PrincipalType: auth.PrincipalTypeService, Permissions: []string{auth.PermIngestionRoute, "x:y:z:w"}}
+	client := &auth.AuthContext{Scope: auth.ScopeClient, Clients: []string{"clt_1"}, PrincipalType: auth.PrincipalTypeService, Permissions: []string{auth.PermIngestionRoute, "x:y:z:w"}}
 	require.NoError(t, ingestion.RequireKindPermission(anchor, "camel-route", auth.PermIngestionRoute))
 	err := ingestion.RequireKindPermission(client, "camel-route", auth.PermIngestionRoute)
 	require.Error(t, err)
@@ -170,6 +170,52 @@ func TestRequireKindPermission_RouteNeedsAnchor(t *testing.T) {
 	require.NoError(t, ingestion.RequireKindPermission(client, "mix", "x:y:z:w"), "an extension's own permission is not tier-bound")
 	assert.Equal(t, "INGESTION_KIND_PERMISSION_REQUIRED", usecase.AsError(ingestion.RequireKindPermission(&auth.AuthContext{Scope: auth.ScopeAnchor}, "camel-route", auth.PermIngestionRoute)).Code)
 	require.NoError(t, ingestion.RequireKindPermission(client, "plain", ""))
+}
+
+// Camel routes are written by a pipeline or an ingestion administrator (owner
+// ruling 2026-10-25): at anchor tier with the route permission, a SERVICE
+// principal (the pipeline's account holding the route-author role) may write
+// one, and so may an administrator (who holds delete); a user who holds the
+// route permission without being an administrator may not, nor may an
+// operator, who holds no route.
+func TestRequireKindPermission_RoutesArePipelineOrAdmin(t *testing.T) {
+	const (
+		del     = "platform:ingestion:ingestion:delete"
+		create  = "platform:ingestion:ingestion:create"
+		update  = "platform:ingestion:ingestion:update"
+		view    = "platform:ingestion:ingestion:view"
+		test    = "platform:ingestion:ingestion:test"
+		secrets = "platform:ingestion:ingestion:bind-secrets"
+	)
+	routeAuthor := []string{view, create, update, auth.PermIngestionRoute, secrets}
+	cases := []struct {
+		name  string
+		ac    *auth.AuthContext
+		wants string // "" allowed
+	}{
+		{"a user with the route-author role", &auth.AuthContext{Scope: auth.ScopeAnchor, PrincipalType: auth.PrincipalTypeUser, Permissions: routeAuthor}, "INGESTION_ROUTE_PIPELINE_REQUIRED"},
+		{"a user with route only", &auth.AuthContext{Scope: auth.ScopeAnchor, PrincipalType: auth.PrincipalTypeUser, Permissions: []string{auth.PermIngestionRoute}}, "INGESTION_ROUTE_PIPELINE_REQUIRED"},
+		{"a pipeline's service account with the route-author role", &auth.AuthContext{Scope: auth.ScopeAnchor, PrincipalType: auth.PrincipalTypeService, Permissions: routeAuthor}, ""},
+		{"an ingestion administrator (a user)", &auth.AuthContext{Scope: auth.ScopeAnchor, PrincipalType: auth.PrincipalTypeUser, Permissions: append([]string{del, "platform:ingestion:ingestion:promote"}, routeAuthor...)}, ""},
+		{"super-admin's wildcard", &auth.AuthContext{Scope: auth.ScopeAnchor, PrincipalType: auth.PrincipalTypeUser, Permissions: []string{"platform:*:*:*"}}, ""},
+		{"an operator", &auth.AuthContext{Scope: auth.ScopeAnchor, PrincipalType: auth.PrincipalTypeUser, Permissions: []string{view, update, test}}, "INGESTION_KIND_PERMISSION_REQUIRED"},
+		{"a pipeline below anchor tier", &auth.AuthContext{Scope: auth.ScopeClient, Clients: []string{"clt_1"}, PrincipalType: auth.PrincipalTypeService, Permissions: routeAuthor}, "INGESTION_ROUTE_ANCHOR_REQUIRED"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := ingestion.RequireKindPermission(c.ac, "camel-route", auth.PermIngestionRoute)
+			if c.wants == "" {
+				require.NoError(t, err)
+				assert.True(t, ingestion.HoldsKindPermission(c.ac, auth.PermIngestionRoute))
+				return
+			}
+			require.Error(t, err)
+			assert.Equal(t, c.wants, usecase.AsError(err).Code)
+			assert.False(t, ingestion.HoldsKindPermission(c.ac, auth.PermIngestionRoute))
+		})
+	}
+	// Another kind's declared permission is not a route: a user may hold it.
+	require.NoError(t, ingestion.RequireKindPermission(&auth.AuthContext{Scope: auth.ScopeAnchor, PrincipalType: auth.PrincipalTypeUser, Permissions: []string{"x:y:z:w"}}, "mix", "x:y:z:w"))
 }
 
 // builtinKinds (C1): a runtime that declares them carries exactly those

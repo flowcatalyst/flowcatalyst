@@ -134,9 +134,12 @@ const (
 	flashIngCreated      = "ingestion-created"
 	flashIngVersionSaved = "ingestion-version-saved"
 	flashIngVersionLive  = "ingestion-version-live"
-	flashIngPaused       = "ingestion-paused"
-	flashIngResumed      = "ingestion-resumed"
-	flashIngDeleted      = "ingestion-deleted"
+	// A save that matched a version already saved: nothing new was written.
+	flashIngDraftExists = "ingestion-draft-exists"
+	flashIngUnchanged   = "ingestion-unchanged"
+	flashIngPaused      = "ingestion-paused"
+	flashIngResumed     = "ingestion-resumed"
+	flashIngDeleted     = "ingestion-deleted"
 )
 
 // The platform settings pages' keys (theme, client login branding, names).
@@ -160,7 +163,9 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	// answer gets the same from the table, a flash key after a native post
 	// carries no request text.
 	flashIngCreated:      success("Ingestion created"),
-	flashIngVersionSaved: {Kind: kit.FlashSuccess, Summary: "Version saved", Detail: "It is not live: make it live from the Versions tab"},
+	flashIngVersionSaved: {Kind: kit.FlashSuccess, Summary: "Saved as a draft", Detail: "Someone with promote makes it live from the Versions tab"},
+	flashIngDraftExists:  {Kind: kit.FlashInfo, Summary: "Nothing saved", Detail: "A draft already says this; someone with promote makes it live"},
+	flashIngUnchanged:    {Kind: kit.FlashInfo, Summary: "Nothing changed", Detail: "The live version already says this"},
 	flashIngVersionLive:  {Kind: kit.FlashSuccess, Summary: "Version live", Detail: "Runtimes run it on their next poll"},
 	flashIngPaused:       success("Ingestion paused"),
 	flashIngResumed:      success("Ingestion resumed"),

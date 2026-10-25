@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,6 +85,37 @@ func TestIngestionSftpHostKeyWarning(t *testing.T) {
 	mustContain(t, form, `Accept any host key`)
 }
 
+// Without promote the change form says the change is saved as a draft
+// (owner ruling 2026-10-25); the Versions tab marks a version saved after the
+// live one as a draft awaiting promote.
+func TestIngestionDraftsAreShownAsDrafts(t *testing.T) {
+	h := newIngHarness()
+	edit := ingBody(t, h.do(t, ingWithout(ingPermPromote), req{target: "/ui/ingestions/ing_1/edit", datastar: true}))
+	mustContain(t, edit, `Saved as a draft; someone with promote makes it live.`)
+	mustNotContain(t, edit, `Make live when saved`)
+	versions := ingBody(t, h.do(t, ingAdmin(), req{target: "/ui/ingestions/ing_1?tab=versions"}))
+	mustContain(t, versions, `id="ings-version-3"`, `draft, awaiting promote`)
+	if strings.Count(versions, `draft, awaiting promote`) != 1 {
+		t.Errorf("only version 3 (after the live 2) is a draft")
+	}
+}
+
+// The drawer's Secrets section names each secret the live definition binds
+// and which runtime last fetched it and when; never a value.
+func TestIngestionDrawerShowsSecretFetches(t *testing.T) {
+	h := newIngHarness()
+	at := time.Date(2026, 10, 25, 9, 30, 0, 0, time.UTC)
+	h.store.fetches = map[string][]ingestion.SecretFetch{"ing_2": {
+		{IngestionID: "ing_2", SecretName: "sftp-password", RuntimeID: "rt-camel-1", Version: 1, LastFetchedAt: at, FetchCount: 42},
+		{IngestionID: "ing_2", SecretName: "old-password", RuntimeID: "rt-camel-0", Version: 1, LastFetchedAt: at, FetchCount: 3},
+	}}
+	drawer := ingBody(t, h.do(t, ingAdmin(), req{target: "/ui/ingestions/ing_2", datastar: true}))
+	mustContain(t, drawer, `id="ings-secrets"`, `sftp-password`, `last fetched by <code>rt-camel-1</code>`, `2026-10-25 09:30:00 UTC`, `42 fetches`,
+		`old-password`, `no longer bound`)
+	plain := ingBody(t, h.do(t, ingAdmin(), req{target: "/ui/ingestions/ing_1", datastar: true}))
+	mustContain(t, plain, `id="ings-secrets"`, `not fetched yet`)
+}
+
 // Without promote the create form offers no live switch and says the
 // ingestion is saved as a draft (R3); with it, the switch is offered.
 func TestIngestionCreateFormLiveNeedsPromote(t *testing.T) {
@@ -106,5 +138,5 @@ func TestIngestionRouteKindNeedsAnchorTier(t *testing.T) {
 	body := ingBody(t, h.do(t, clientTier, req{target: "/ui/ingestions/new", datastar: true}))
 	mustNotContain(t, body, `<option value="camel-route"`)
 	drawer := ingBody(t, h.do(t, clientTier, req{target: "/ui/ingestions/ing_4", datastar: true}))
-	mustContain(t, drawer, `needs an anchor-tier account as well as platform:ingestion:ingestion:route`)
+	mustContain(t, drawer, `written by a pipeline service account or by an ingestion administrator, at anchor tier`)
 }

@@ -3182,7 +3182,7 @@
             "type": "boolean"
           },
           "live": {
-            "description": "Make the first version live. Default true, which needs the promote permission (403 INGESTION_PROMOTE_REQUIRED without it); false saves it to be made live later.",
+            "description": "Make the first version live. Default true; without the promote permission the first version is saved as a draft whatever this says (the answer's save says so), and someone who holds promote makes it live. false always saves a draft.",
             "type": "boolean"
           },
           "name": {
@@ -6247,6 +6247,10 @@
           "runtimeNotice": {
             "type": "string"
           },
+          "save": {
+            "$ref": "#/components/schemas/IngestionSaveOutcome",
+            "description": "What this create or update did: saved and made live, made an existing version live, saved as a draft awaiting promote, matched an existing draft, or changed nothing"
+          },
           "source": {
             "description": "Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}"
           },
@@ -6296,6 +6300,123 @@
           "source",
           "split",
           "target"
+        ],
+        "type": "object"
+      },
+      "IngestionSaveOutcome": {
+        "additionalProperties": false,
+        "properties": {
+          "awaitingPromote": {
+            "description": "The definition is in a version that is not live; someone who holds platform:ingestion:ingestion:promote makes it live",
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "description": "UNCHANGED: the live version already says it, nothing written. SAVED: saved as a new version and made live. MADE_LIVE: a saved version that was not live already says it and was made live, nothing new saved. DRAFT: saved as a new version that is not live. DRAFT_EXISTS: a saved version that is not live already says it, nothing saved",
+            "enum": [
+              "UNCHANGED",
+              "SAVED",
+              "MADE_LIVE",
+              "DRAFT",
+              "DRAFT_EXISTS"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "The live version (UNCHANGED, SAVED, MADE_LIVE) or the draft (DRAFT, DRAFT_EXISTS)",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "outcome",
+          "version",
+          "awaitingPromote",
+          "message"
+        ],
+        "type": "object"
+      },
+      "IngestionSecretFetchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "fetchCount": {
+            "description": "How many times this runtime has fetched it",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lastFetchedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "principalId": {
+            "description": "The runtime's service account that made it",
+            "type": "string"
+          },
+          "runtimeId": {
+            "type": "string"
+          },
+          "version": {
+            "description": "The live version the last fetch was made under",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runtimeId",
+          "version",
+          "lastFetchedAt",
+          "fetchCount"
+        ],
+        "type": "object"
+      },
+      "IngestionSecretListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionSecretListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "secrets": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionSecretResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "secrets"
+        ],
+        "type": "object"
+      },
+      "IngestionSecretResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bound": {
+            "description": "The live definition names it, so its runtime may fetch it; false for a name only fetched under an earlier live version",
+            "type": "boolean"
+          },
+          "fetches": {
+            "description": "Per runtime, newest first; empty when no runtime has fetched it",
+            "items": {
+              "$ref": "#/components/schemas/IngestionSecretFetchResponse"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "bound",
+          "fetches"
         ],
         "type": "object"
       },
@@ -6772,6 +6893,14 @@
           "createdBy": {
             "type": "string"
           },
+          "digest": {
+            "description": "sha256 (hex) of the definition's canonical form; a save whose definition has the digest of a saved version reuses that version",
+            "type": "string"
+          },
+          "draft": {
+            "description": "A version saved after the live one (or while none is live) that is not live: it waits for someone who holds promote to make it live",
+            "type": "boolean"
+          },
           "id": {
             "type": "string"
           },
@@ -6787,6 +6916,10 @@
           },
           "note": {
             "type": "string"
+          },
+          "save": {
+            "$ref": "#/components/schemas/IngestionSaveOutcome",
+            "description": "What this save did (the answer of POST .../versions only)"
           },
           "source": {
             "description": "Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}"
@@ -6806,6 +6939,7 @@
           "id",
           "version",
           "live",
+          "draft",
           "createdAt",
           "name",
           "source",
@@ -23880,7 +24014,7 @@
             "description": "Error"
           }
         },
-        "summary": "Reveal a secret the ingestion names (ingestion runtime only)",
+        "summary": "Fetch a secret the ingestion's live definition binds (ingestion runtime only; security telemetry, not an audited reveal)",
         "tags": [
           "ingestion-runtime"
         ]
@@ -24783,7 +24917,7 @@
             "description": "Error"
           }
         },
-        "summary": "Save a definition as the next version and make it live (needs update and promote)",
+        "summary": "Save a definition as the next version: made live with promote, a draft awaiting promote without it; a definition an existing version says is not saved again",
         "tags": [
           "ingestions"
         ],
@@ -25127,6 +25261,48 @@
         "x-sdk": "admin"
       }
     },
+    "/api/ingestions/{id}/secrets": {
+      "get": {
+        "operationId": "listIngestionSecrets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionSecretListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the secrets the live definition binds and when each runtime last fetched them (names only, never values)",
+        "tags": [
+          "ingestions"
+        ],
+        "x-sdk": "admin"
+      }
+    },
     "/api/ingestions/{id}/versions": {
       "get": {
         "operationId": "listIngestionVersions",
@@ -25212,7 +25388,7 @@
             "description": "Error"
           }
         },
-        "summary": "Save a definition as the next version",
+        "summary": "Save a definition as the next version (a definition an existing version says is not saved again)",
         "tags": [
           "ingestions"
         ],

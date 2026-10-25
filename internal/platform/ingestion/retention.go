@@ -55,7 +55,7 @@ func RetentionMaxChunks() int {
 }
 
 // Pruned counts the rows one retention sweep deleted.
-type Pruned struct{ Metrics, Failures, TestRequests, JobKeys, Leases, RouteStates, Runtimes int64 }
+type Pruned struct{ Metrics, Failures, TestRequests, JobKeys, Leases, RouteStates, SecretFetches, Runtimes int64 }
 
 // Prune deletes the records past retention as of now, with the chunk budget
 // RetentionMaxChunks.
@@ -65,8 +65,8 @@ func (r *Repository) Prune(ctx context.Context, now time.Time) (Pruned, error) {
 
 // PruneWith deletes the records past retention as of now: exchange metrics
 // and failures after 30 days, test requests after a day, job keys after a
-// week, leases that have expired, and the route states and rows of runtimes
-// unseen for 7 days. Each is judged by created_at, the time the platform
+// week, leases that have expired, and the route states, secret fetch records
+// and rows of runtimes unseen for 7 days. Each is judged by created_at, the time the platform
 // wrote the row, never by a time the runtime supplied. The high-volume tables
 // go in chunks of retentionChunk, at most maxChunks of them a table; every
 // delete is idempotent, so concurrent sweeps on several replicas are safe.
@@ -103,6 +103,13 @@ func (r *Repository) PruneWith(ctx context.Context, now time.Time, maxChunks int
 		return p, fmt.Errorf("ingestion repo: prune route states: %w", err)
 	}
 	p.RouteStates = ct.RowsAffected()
+	// The same for the record of which runtime last fetched which secret.
+	ct, err = r.pool.Exec(ctx, `DELETE FROM ing_secret_fetches sf WHERE NOT EXISTS (
+		SELECT 1 FROM ing_runtimes rt WHERE rt.runtime_id = sf.runtime_id AND rt.last_seen_at >= $1)`, unseen)
+	if err != nil {
+		return p, fmt.Errorf("ingestion repo: prune secret fetches: %w", err)
+	}
+	p.SecretFetches = ct.RowsAffected()
 	ct, err = r.pool.Exec(ctx, `DELETE FROM ing_runtimes WHERE last_seen_at < $1`, unseen)
 	if err != nil {
 		return p, fmt.Errorf("ingestion repo: prune runtimes: %w", err)
@@ -153,7 +160,7 @@ func RunRetention(ctx context.Context, repo *Repository, delay, interval time.Du
 		case p != Pruned{}:
 			slog.Info("ingestion retention sweep", "metrics", p.Metrics, "failures", p.Failures,
 				"test_requests", p.TestRequests, "job_keys", p.JobKeys, "leases", p.Leases,
-				"route_states", p.RouteStates, "runtimes", p.Runtimes)
+				"route_states", p.RouteStates, "secret_fetches", p.SecretFetches, "runtimes", p.Runtimes)
 		}
 		timer.Reset(interval)
 	}

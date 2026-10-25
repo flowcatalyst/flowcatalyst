@@ -252,6 +252,23 @@ func (r *Repository) FindVersion(ctx context.Context, ingestionID string, number
 	return rowToVersion(*row)
 }
 
+// FindVersionByDefinition loads the newest saved version of the ingestion
+// whose definition says what def says (the same digest of the canonical form,
+// see migration 093), nil when none does. A save that matches one reuses it
+// instead of saving a duplicate.
+func (r *Repository) FindVersionByDefinition(ctx context.Context, ingestionID string, def Definition) (*Version, error) {
+	raw, err := json.Marshal(def)
+	if err != nil {
+		return nil, fmt.Errorf("ingestion repo: marshal definition: %w", err)
+	}
+	res, err := r.q.IngestionVersionFindByDigest(ctx, dbq.IngestionVersionFindByDigestParams{IngestionID: ingestionID, Definition: raw})
+	row, err := repocommon.One(res, err, "ingestion repo")
+	if row == nil || err != nil {
+		return nil, err
+	}
+	return rowToVersion(*row)
+}
+
 // ListVersions returns every saved version, newest first.
 func (r *Repository) ListVersions(ctx context.Context, ingestionID string) ([]Version, error) {
 	rows, err := r.q.IngestionVersionList(ctx, ingestionID)
@@ -331,9 +348,17 @@ func rowToVersion(row dbq.IngVersion) (*Version, error) {
 		IngestionID: row.IngestionID,
 		Number:      int(row.Version),
 		Definition:  def,
+		Digest:      deref(row.DefinitionDigest),
 		Note:        row.Note,
 		AppliedFrom: row.AppliedFrom,
 		CreatedBy:   row.CreatedBy,
 		CreatedAt:   row.CreatedAt,
 	}, nil
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

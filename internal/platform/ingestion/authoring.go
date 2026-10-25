@@ -86,8 +86,18 @@ func (r *Repository) CheckAuthor(ctx context.Context, ac *auth.AuthContext, c Ch
 }
 
 // RequireKindPermission refuses a caller who lacks perm, the permission the
-// source kind kind declares ("" for none). The route permission counts only
-// for a caller at anchor tier.
+// source kind kind declares ("" for none).
+//
+// The route permission (camel-route's) counts only for an anchor-tier caller
+// (ruling R2), and only for a pipeline or an ingestion administrator (owner
+// ruling 2026-10-25): a route is written by a pipeline's service account
+// holding the route-author role, or by an ingestion administrator (through
+// fcdev ingest apply, say), never by a person who holds only the route
+// permission. The role assignment has no hook to keep the route-author role
+// off users, so the rule is enforced here, at use: writing a route needs
+// anchor tier and the route permission and either a SERVICE principal or
+// platform:ingestion:ingestion:delete, which only the administrator role
+// holds among the ingestion roles.
 func RequireKindPermission(ac *auth.AuthContext, kind, perm string) error {
 	if perm == "" {
 		return nil
@@ -96,9 +106,17 @@ func RequireKindPermission(ac *auth.AuthContext, kind, perm string) error {
 		return usecase.Authorization("INGESTION_KIND_PERMISSION_REQUIRED",
 			"permission required for source kind "+kind+": "+perm)
 	}
-	if perm == auth.PermIngestionRoute && !ac.IsAnchor() {
+	if perm != auth.PermIngestionRoute {
+		return nil
+	}
+	if !ac.IsAnchor() {
 		return usecase.Authorization("INGESTION_ROUTE_ANCHOR_REQUIRED",
 			"a "+kind+" ingestion runs a route with the runtime's network and identity, so only an anchor-tier caller may write one, "+perm+" or not")
+	}
+	if ac.PrincipalType != auth.PrincipalTypeService && auth.CanDeleteIngestions(ac) != nil {
+		return usecase.Authorization("INGESTION_ROUTE_PIPELINE_REQUIRED",
+			"a "+kind+" ingestion is written by a pipeline's service account that holds "+perm+
+				", or by an ingestion administrator; a person who holds only "+perm+" may not write one")
 	}
 	return nil
 }

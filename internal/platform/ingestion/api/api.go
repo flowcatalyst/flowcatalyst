@@ -58,15 +58,16 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "listIngestions", "/api/ingestions", "List ingestions", s.list)
 	apiroute.Post(g, "createIngestion", "/api/ingestions", "Create an ingestion", http.StatusCreated, s.create)
 	apiroute.Get(g, "getIngestion", "/api/ingestions/{id}", "Get an ingestion by id", s.getByID)
-	apiroute.Put(g, "updateIngestion", "/api/ingestions/{id}", "Save a definition as the next version and make it live (needs update and promote)", http.StatusOK, s.update)
+	apiroute.Put(g, "updateIngestion", "/api/ingestions/{id}", "Save a definition as the next version: made live with promote, a draft awaiting promote without it; a definition an existing version says is not saved again", http.StatusOK, s.update)
 	apiroute.Delete(g, "deleteIngestion", "/api/ingestions/{id}", "Delete an ingestion", http.StatusNoContent, s.delete)
 	apiroute.Post(g, "pauseIngestion", "/api/ingestions/{id}/pause", "Pause an ingestion", http.StatusOK, s.pause)
 	apiroute.Post(g, "resumeIngestion", "/api/ingestions/{id}/resume", "Resume a paused ingestion", http.StatusOK, s.resume)
 	apiroute.Get(g, "listIngestionVersions", "/api/ingestions/{id}/versions", "List an ingestion's saved versions", s.listVersions)
-	apiroute.Post(g, "saveIngestionVersion", "/api/ingestions/{id}/versions", "Save a definition as the next version", http.StatusCreated, s.saveVersion)
+	apiroute.Post(g, "saveIngestionVersion", "/api/ingestions/{id}/versions", "Save a definition as the next version (a definition an existing version says is not saved again)", http.StatusCreated, s.saveVersion)
 	apiroute.Post(g, "makeIngestionVersionLive", "/api/ingestions/{id}/versions/{version}/live", "Make a saved version the live one", http.StatusOK, s.makeLive)
 	registerDefinition(g, s)
 	apiroute.Get(g, "listIngestionHistory", "/api/ingestions/{id}/history", "List the audit history of an ingestion", s.history)
+	apiroute.Get(g, "listIngestionSecrets", "/api/ingestions/{id}/secrets", "List the secrets the live definition binds and when each runtime last fetched them (names only, never values)", s.secrets)
 	apiroute.Get(g, "listIngestionFailures", "/api/ingestions/{id}/failures", "List the failures runtimes reported for an ingestion", s.failures)
 	apiroute.Post(g, "dismissIngestionFailure", "/api/ingestions/{id}/failures/{failureId}/dismiss", "Dismiss a failure (a notice stops showing on the ingestion)", http.StatusOK, s.dismissFailure)
 	apiroute.Get(g, "listIngestionSourceKinds", "/api/ingestion-source-kinds", "List the source kinds a definition can use", s.sourceKinds)
@@ -249,14 +250,25 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateIngestionRequ
 		ClientID:    cid,
 		Code:        in.Body.Code,
 		Definition:  def,
-		Live:        in.Body.Live == nil || *in.Body.Live,
-		Note:        in.Body.Note,
+		// Live by default; without promote the first version is a draft
+		// (owner ruling 2026-10-25), whatever the request asked.
+		Live: operations.LiveIfPermitted(ctx, in.Body.Live == nil || *in.Body.Live),
+		Note: in.Body.Note,
 	}
 	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateIngestion(s.Repo, s.Resolver), cmd, auth.NewExecutionContext(ctx))
 	if err != nil {
 		return nil, err
 	}
-	return s.reload(ctx, event.IngestionID)
+	out, err := s.reload(ctx, event.IngestionID)
+	if err != nil {
+		return nil, err
+	}
+	res := operations.SaveResult{Outcome: operations.OutcomeSaved, Version: event.Version}
+	if !cmd.Live {
+		res.Outcome = operations.OutcomeDraft
+	}
+	out.Body.Save = saveOutcome(res)
+	return out, nil
 }
 
 type updateInput struct {
@@ -273,12 +285,18 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[Ing
 		return nil, err
 	}
 	cmd := operations.UpdateCommand{ID: in.ID, ExpectedVersion: in.Body.ExpectedVersion, Definition: def, Note: in.Body.Note}
-	// An update that changes nothing answers 200 with the ingestion as it is.
+	// An update that changes nothing answers 200 with the ingestion as it is;
+	// save says what the update did (a draft without promote).
 	res, err := usecaseop.RunTx(ctx, s.UoW, operations.UpdateIngestion(s.Repo, s.Resolver), cmd, auth.NewExecutionContext(ctx))
 	if err != nil {
 		return nil, err
 	}
-	return s.reload(ctx, res.Ingestion.ID)
+	out, err := s.reload(ctx, res.Ingestion.ID)
+	if err != nil {
+		return nil, err
+	}
+	out.Body.Save = saveOutcome(res)
+	return out, nil
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
@@ -325,7 +343,7 @@ func (s *State) listVersions(ctx context.Context, in *apicommon.IDInput) (*apico
 	}
 	body := IngestionVersionListResponse{Versions: make([]IngestionVersionResponse, 0, len(versions))}
 	for _, v := range versions {
-		r, err := fromVersion(v, v.Number == i.Version)
+		r, err := fromVersion(v, i.Version)
 		if err != nil {
 			return nil, usecase.Internal("MARSHAL", "version does not render", err)
 		}
@@ -355,18 +373,19 @@ func (s *State) saveVersion(ctx context.Context, in *saveVersionInput) (*apicomm
 		return nil, err
 	}
 	cmd := operations.SaveVersionCommand{ID: in.ID, Definition: def, Live: live, Note: in.Body.Note}
-	event, err := usecaseop.Run(ctx, s.UoW, operations.SaveVersion(s.Repo, s.Resolver), cmd, auth.NewExecutionContext(ctx))
+	res, err := usecaseop.RunTx(ctx, s.UoW, operations.SaveVersion(s.Repo, s.Resolver), cmd, auth.NewExecutionContext(ctx))
 	if err != nil {
 		return nil, err
 	}
-	v, err := s.Repo.FindVersion(ctx, in.ID, event.Version)
+	v, err := s.Repo.FindVersion(ctx, in.ID, res.Version)
 	if err != nil || v == nil {
 		return nil, usecase.Internal("REPO", "post-save version reload failed", err)
 	}
-	body, err := fromVersion(*v, live)
+	body, err := fromVersion(*v, res.Ingestion.Version)
 	if err != nil {
 		return nil, usecase.Internal("MARSHAL", "version does not render", err)
 	}
+	body.Save = saveOutcome(res)
 	return &apicommon.Out[IngestionVersionResponse]{Body: body}, nil
 }
 

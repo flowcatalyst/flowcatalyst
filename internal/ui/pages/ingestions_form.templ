@@ -69,7 +69,9 @@ templ ingsFormBody(f ingsForm) {
 					@kit.Field(kit.FieldProps{Description: ingsLiveHelp(f), Attrs: templ.Attributes{"id": f.id("live") + "-field"}}) {
 						@kit.Switch(kit.SwitchProps{ID: f.id("live"), Name: "live", Value: ingsOn, Checked: f.Values["live"] == ingsOn, Label: "Make live when saved"})
 					}
-				} else if !f.Edit {
+				} else if f.Edit {
+					<p id={ f.id("live") + "-field" } class="text-sm text-muted-foreground">Saved as a draft; someone with promote makes it live. (A change that an existing draft already says saves nothing new.)</p>
+				} else {
 					<p id={ f.id("live") + "-field" } class="text-sm text-muted-foreground">It is saved as a draft: making a version live needs platform:ingestion:ingestion:promote, so someone who holds it makes it live from the Versions tab.</p>
 				}
 			</div>

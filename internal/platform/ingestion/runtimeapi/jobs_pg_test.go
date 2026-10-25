@@ -3,20 +3,25 @@
 package runtimeapi_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/runtimeapi"
 	platformconfigops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -422,10 +427,81 @@ func secretPath(id, name, runtime string) string {
 	return base + "/ingestions/" + id + "/secrets/" + name + "?runtimeId=" + runtime
 }
 
-// A runtime reads the secrets its ingestion names, at the ingestion's client,
-// audited under the runtime's principal and the ingestion; the answer is not
-// cached.
-func TestSecrets_ReferencedNameIsRevealedAndAudited(t *testing.T) {
+// captureLogs sends slog's default logger to a JSON buffer for the test and
+// returns the records written, one map per line.
+func captureLogs(t *testing.T) func() []map[string]any {
+	t.Helper()
+	var mu sync.Mutex
+	var buf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&lockedWriter{mu: &mu, w: &buf}, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	return func() []map[string]any {
+		mu.Lock()
+		defer mu.Unlock()
+		var out []map[string]any
+		for line := range bytes.SplitSeq(buf.Bytes(), []byte("\n")) {
+			var rec map[string]any
+			if json.Unmarshal(line, &rec) == nil {
+				out = append(out, rec)
+			}
+		}
+		return out
+	}
+}
+
+type lockedWriter struct {
+	mu *sync.Mutex
+	w  *bytes.Buffer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
+}
+
+// securityLines are the records of the secret fetch security event.
+func securityLines(records []map[string]any) []map[string]any {
+	var out []map[string]any
+	for _, r := range records {
+		if r["msg"] == runtimeapi.SecretFetchEvent {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// fetchCounter is fc_ingestion_secret_fetch_total{outcome}.
+func fetchCounter(t *testing.T, outcome string) float64 {
+	t.Helper()
+	families, err := ingestion.MetricsRegistry.Gather()
+	require.NoError(t, err)
+	for _, f := range families {
+		if f.GetName() != "fc_ingestion_secret_fetch_total" {
+			continue
+		}
+		for _, m := range f.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "outcome" && l.GetValue() == outcome {
+					return m.GetCounter().GetValue()
+				}
+			}
+		}
+	}
+	t.Fatalf("no fc_ingestion_secret_fetch_total{outcome=%q}", outcome)
+	return 0
+}
+
+// A runtime reads the secrets its ingestion's live definition binds, at the
+// ingestion's client; the answer is not cached. The fetch is security
+// telemetry, not a config reveal (owner ruling 2026-10-25): no aud_logs row,
+// one INFO line "security.ingestion_secret_fetch" naming the ingestion, the
+// application, the client, the secret, the runtime, the principal and the
+// version (never the value), the counter's success series, and the
+// (ingestion, secret, runtime) last-fetched record, which the ingestion's API
+// shows.
+func TestSecrets_FetchIsSecurityTelemetryNotAnAuditRow(t *testing.T) {
 	e := newEnv(t)
 	tg := e.makeTargets()
 	i := e.saveTarget("secrets", sftpSource, tg.viaAccount(), true)
@@ -433,6 +509,9 @@ func TestSecrets_ReferencedNameIsRevealedAndAudited(t *testing.T) {
 	e.setSecret("sftp-password", "s3cr3t-pw", &cid)
 	holder := "rt-" + unique()
 	require.Len(t, e.poll(holder, ingestion.ContractVersion).list("ingestions"), 1)
+	audits := e.count(`SELECT count(*) FROM aud_logs WHERE principal_id = $1`, e.who.PrincipalID)
+	successes := fetchCounter(t, ingestion.SecretFetchSuccess)
+	logs := captureLogs(t)
 
 	rec := e.api.Get(secretPath(i.ID, "sftp-password", holder))
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -441,10 +520,59 @@ func TestSecrets_ReferencedNameIsRevealedAndAudited(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	assert.Equal(t, "s3cr3t-pw", got.Value)
 	assert.NotEmpty(t, got.UpdatedAt)
+	require.Equal(t, http.StatusOK, e.api.Get(secretPath(i.ID, "sftp-password", holder)).Code)
 
-	assert.Equal(t, 1, e.count(`SELECT count(*) FROM aud_logs WHERE operation = 'SECRET_REVEALED' AND principal_id = $1
-		AND operation_json->>'ingestionId' = $2 AND operation_json->>'runtimeId' = $3 AND operation_json->>'property' = 'sftp-password'`,
-		e.who.PrincipalID, i.ID, holder))
+	assert.Equal(t, audits, e.count(`SELECT count(*) FROM aud_logs WHERE principal_id = $1`, e.who.PrincipalID), "no audit row per fetch")
+	assert.Equal(t, 0, e.count(`SELECT count(*) FROM aud_logs WHERE operation = 'SECRET_REVEALED' AND operation_json->>'ingestionId' = $1`, i.ID))
+	assert.Equal(t, successes+2, fetchCounter(t, ingestion.SecretFetchSuccess))
+
+	lines := securityLines(logs())
+	require.Len(t, lines, 2)
+	line := lines[0]
+	assert.Equal(t, "INFO", line["level"])
+	assert.Equal(t, runtimeapi.SecretFetchEvent, line["event"])
+	assert.Equal(t, "success", line["outcome"])
+	assert.Equal(t, i.ID, line["ingestionId"])
+	assert.Equal(t, e.app.Code, line["applicationCode"])
+	assert.Equal(t, cid, line["clientId"])
+	assert.Equal(t, "sftp-password", line["secretName"])
+	assert.Equal(t, holder, line["runtimeId"])
+	assert.Equal(t, e.who.PrincipalID, line["principalId"])
+	assert.Equal(t, float64(1), line["version"])
+	raw, _ := json.Marshal(logs())
+	assert.NotContains(t, string(raw), "s3cr3t-pw", "the value is never logged")
+
+	assert.Equal(t, 1, e.count(`SELECT count(*) FROM ing_secret_fetches WHERE ingestion_id = $1 AND secret_name = 'sftp-password'
+		AND runtime_id = $2 AND fetch_count = 2 AND version = 1 AND principal_id = $3`, i.ID, holder, e.who.PrincipalID), "upserted, counted")
+
+	listed := e.do(http.MethodGet, "/api/ingestions/"+i.ID+"/secrets", nil)
+	require.Equal(t, http.StatusOK, listed.code, listed.raw)
+	assert.NotContains(t, listed.raw, "s3cr3t-pw")
+	var body struct {
+		Secrets []struct {
+			Name    string
+			Bound   bool
+			Fetches []struct {
+				RuntimeID  string
+				FetchCount int
+			}
+		}
+	}
+	require.NoError(t, json.Unmarshal([]byte(listed.raw), &body))
+	require.Len(t, body.Secrets, 1)
+	assert.Equal(t, "sftp-password", body.Secrets[0].Name)
+	assert.True(t, body.Secrets[0].Bound)
+	require.Len(t, body.Secrets[0].Fetches, 1)
+	assert.Equal(t, holder, body.Secrets[0].Fetches[0].RuntimeID)
+	assert.Equal(t, 2, body.Secrets[0].Fetches[0].FetchCount)
+
+	// The record goes with the runtime: pruned once it is unseen for 7 days.
+	_, err := e.pool.Exec(context.Background(), `UPDATE ing_runtimes SET last_seen_at = now() - interval '8 days' WHERE runtime_id = $1`, holder)
+	require.NoError(t, err)
+	p, err := e.repo.Prune(context.Background(), time.Now().UTC())
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, p.SecretFetches, int64(1))
+	assert.Equal(t, 0, e.count(`SELECT count(*) FROM ing_secret_fetches WHERE runtime_id = $1`, holder))
 }
 
 // Only a name the live definition references is read; the platform config is
@@ -499,23 +627,64 @@ func TestSecrets_RuntimeMustCarryTheKindAndHoldTheLease(t *testing.T) {
 	assert.Equal(t, "INGESTION_NOT_LIVE", e.do(http.MethodGet, secretPath(shared.ID, "mq-password", other), nil).errCode())
 }
 
-// A reveal that cannot be audited is refused, and answers no value.
-func TestSecrets_RefusedWhenTheAuditRowCannotBeWritten(t *testing.T) {
+// A refused fetch is audited (SECRET_FETCH_REFUSED, on the ingestion, so it
+// reads in its history), logged at WARN with the reason and counted as
+// refused: a name the live definition does not bind, no lease where one is
+// needed, a client that is not active. No value is in any of them, and the
+// fetch record is not touched.
+func TestSecrets_RefusalIsAuditedAndLogged(t *testing.T) {
 	e := newEnv(t)
 	tg := e.makeTargets()
 	i := e.saveTarget("secrets", sftpSource, tg.viaAccount(), true)
 	cid := string(e.client.ID)
 	e.setSecret("sftp-password", "s3cr3t-pw", &cid)
-	holder := "rt-" + unique()
+	e.setSecret("other-secret", "not-yours", &cid)
+	holder, other := "rt-h-"+unique(), "rt-o-"+unique()
 	require.Len(t, e.poll(holder, ingestion.ContractVersion).list("ingestions"), 1)
+	require.Equal(t, http.StatusOK, e.poll(other, ingestion.ContractVersion).code)
+	refusals := func(reason string) int {
+		return e.count(`SELECT count(*) FROM aud_logs WHERE entity_type = 'Ingestion' AND entity_id = $1
+			AND operation = 'SECRET_FETCH_REFUSED' AND principal_id = $2 AND client_id = $3
+			AND operation_json->>'reason' = $4 AND operation_json->>'runtimeId' IS NOT NULL`, i.ID, e.who.PrincipalID, cid, reason)
+	}
+	refused := fetchCounter(t, ingestion.SecretFetchRefused)
+	logs := captureLogs(t)
 
-	audit := e.config.Audit
-	e.config.Audit = nil
-	r := e.do(http.MethodGet, secretPath(i.ID, "sftp-password", holder), nil)
-	e.config.Audit = audit
-	assert.Equal(t, http.StatusInternalServerError, r.code, r.raw)
-	assert.NotContains(t, r.raw, "s3cr3t-pw")
-	assert.Equal(t, http.StatusOK, e.do(http.MethodGet, secretPath(i.ID, "sftp-password", holder), nil).code, "audited again")
+	r := e.do(http.MethodGet, secretPath(i.ID, "other-secret", holder), nil)
+	assert.Equal(t, http.StatusNotFound, r.code, r.raw)
+	assert.Equal(t, "SECRET_NOT_FOUND", r.errCode())
+	assert.Equal(t, 1, refusals("SECRET_NOT_FOUND"), "a name the live definition does not bind")
+
+	r = e.do(http.MethodGet, secretPath(i.ID, "sftp-password", other), nil)
+	assert.Equal(t, "LEASE_NOT_HELD", r.errCode())
+	assert.Equal(t, 1, refusals("LEASE_NOT_HELD"), "no lease where one is needed")
+
+	e.client.SetStatus(client.StatusSuspended, nil)
+	e.persist(testpg.NewUoW(t), func(ctx context.Context, tx *usecasepgx.DbTx) error {
+		return client.NewRepository(e.pool).Persist(ctx, e.client, tx)
+	})
+	r = e.do(http.MethodGet, secretPath(i.ID, "sftp-password", holder), nil)
+	assert.Equal(t, "CLIENT_NOT_ACTIVE", r.errCode())
+	assert.Equal(t, 1, refusals("CLIENT_NOT_ACTIVE"), "an inactive client")
+
+	assert.Equal(t, refused+3, fetchCounter(t, ingestion.SecretFetchRefused))
+	lines := securityLines(logs())
+	require.Len(t, lines, 3)
+	for _, l := range lines {
+		assert.Equal(t, "WARN", l["level"])
+		assert.Equal(t, "refused", l["outcome"])
+		assert.Equal(t, i.ID, l["ingestionId"])
+		assert.NotEmpty(t, l["reason"])
+	}
+	raw, _ := json.Marshal(logs())
+	assert.NotContains(t, string(raw), "s3cr3t-pw")
+	assert.NotContains(t, string(raw), "not-yours")
+	assert.Equal(t, 0, e.count(`SELECT count(*) FROM ing_secret_fetches WHERE ingestion_id = $1`, i.ID), "a refusal is no fetch")
+
+	// The refusal reads in the ingestion's history.
+	h := e.do(http.MethodGet, "/api/ingestions/"+i.ID+"/history", nil)
+	require.Equal(t, http.StatusOK, h.code, h.raw)
+	assert.Contains(t, h.raw, "SECRET_FETCH_REFUSED")
 }
 
 // Reach and the runtime permission apply to secrets as to everything else.

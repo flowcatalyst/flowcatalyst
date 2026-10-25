@@ -113,7 +113,7 @@ func newEnv(t *testing.T) *env {
 	}
 	runtimeapi.Register(api, &runtimeapi.State{
 		Repo: e.repo, Jobs: dispatchjob.NewRepository(e.pool), Resolver: resolver,
-		Connections: connection.NewRepository(e.pool), Config: e.config, Now: func() time.Time { return e.now },
+		Connections: connection.NewRepository(e.pool), Config: e.config, Audit: audit.NewRepository(e.pool), Now: func() time.Time { return e.now },
 	})
 	ingestionapi.Register(api, &ingestionapi.State{
 		Repo:     e.repo,

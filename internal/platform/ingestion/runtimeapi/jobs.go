@@ -3,7 +3,6 @@ package runtimeapi
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -12,8 +11,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/sdk"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
@@ -35,13 +32,15 @@ type createJobsInput struct {
 // the runtime holds the lease (ingestion.CheckRuntime) and that the client is
 // active: the secrets call; the jobs call checks both again inside the
 // transaction that makes the jobs, where they cannot change underneath it.
+// On a refusal the ingestion is still returned once it was found (the
+// secrets call records whose fetch was refused); a caller checks err first.
 func (s *State) requireRuntimeIngestion(ctx context.Context, id, runtimeID string, withLease bool) (*ingestion.Ingestion, error) {
 	i, err := s.requireIngestion(ctx, id)
 	if err != nil {
-		return nil, err
+		return i, err
 	}
 	if !i.Live() {
-		return nil, usecase.Conflict("INGESTION_NOT_LIVE", "ingestion "+id+" is paused or has no live version")
+		return i, usecase.Conflict("INGESTION_NOT_LIVE", "ingestion "+id+" is paused or has no live version")
 	}
 	if withLease {
 		err = s.Repo.CheckRuntime(ctx, i, runtimeID, s.now())
@@ -50,17 +49,17 @@ func (s *State) requireRuntimeIngestion(ctx context.Context, id, runtimeID strin
 	}
 	if err != nil {
 		if usecase.AsError(err) != nil {
-			return nil, err
+			return i, err
 		}
-		return nil, usecase.Internal("REPO", "runtime check failed", err)
+		return i, usecase.Internal("REPO", "runtime check failed", err)
 	}
 	if withLease {
 		c, err := s.Resolver.Client(ctx, string(i.ClientID))
 		if err != nil {
-			return nil, err
+			return i, err
 		}
 		if err := ingestion.ClientActive(string(c.Status), c.ID); err != nil {
-			return nil, err
+			return i, err
 		}
 	}
 	return i, nil
@@ -221,43 +220,3 @@ func tooLong(field string, max int) string {
 }
 
 func tooLongPtr(s *string, max int) bool { return s != nil && utf8.RuneCountInString(*s) > max }
-
-type getSecretInput struct {
-	ID        string `path:"id"`
-	Name      string `path:"name" pattern:"^[A-Za-z0-9._:-]{1,201}$" doc:"A secret the ingestion's live definition names"`
-	RuntimeID string `query:"runtimeId" required:"true" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The asking runtime, which must carry the ingestion's kind and for a polled source hold its lease"`
-}
-
-type secretOutput struct {
-	// CacheControl keeps the plaintext out of every shared or browser cache.
-	CacheControl string `header:"Cache-Control"`
-	Body         SecretValue
-}
-
-// getSecret reveals a secret the ingestion names, from the ingestion's
-// application, section "secrets" and client with no global fallback, through
-// the audited reveal of platform config. The runtime holds no reveal
-// permission: it may read what the ingestion's own definition names, and
-// nothing else.
-func (s *State) getSecret(ctx context.Context, in *getSecretInput) (*secretOutput, error) {
-	i, err := s.requireRuntimeIngestion(ctx, in.ID, in.RuntimeID, true)
-	if err != nil {
-		return nil, err
-	}
-	if !slices.Contains(ingestion.SecretNames(i.Definition.Source), in.Name) {
-		return nil, usecase.NotFound("SECRET_NOT_FOUND", "the ingestion names no secret "+in.Name)
-	}
-	app, err := s.Resolver.ApplicationByID(ctx, string(i.ApplicationID))
-	if err != nil {
-		return nil, err
-	}
-	if app == nil {
-		return nil, usecase.Internal("REPO", "ingestion's application not found", nil)
-	}
-	r, err := s.Config.RevealAuthorised(ctx, auth.FromContext(ctx), app.Code, "secrets", in.Name, string(i.ClientID),
-		map[string]string{"ingestionId": i.ID, "ingestionCode": i.Code, "runtimeId": in.RuntimeID})
-	if err != nil {
-		return nil, err
-	}
-	return &secretOutput{CacheControl: "no-store", Body: SecretValue{Value: r.Value, UpdatedAt: jsontime.New(r.Config.UpdatedAt)}}, nil
-}

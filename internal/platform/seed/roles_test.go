@@ -194,8 +194,9 @@ func TestFunctionTracePermissionsInBuiltInRoles(t *testing.T) {
 }
 
 // TestIngestionRoles pins who holds the ingestion permissions
-// (docs/ingestion-design.md section 4): the admin holds every human grant but
-// route, route authoring is a role of its own, and only the runtime's role
+// (docs/ingestion-design.md section 4): the admin holds every human grant,
+// route included; route authoring is the pipeline's role of its own (with
+// bind-secrets, so a pipeline can save a route); and only the runtime's role
 // holds the runtime API.
 func TestIngestionRoles(t *testing.T) {
 	const (
@@ -212,10 +213,10 @@ func TestIngestionRoles(t *testing.T) {
 		secrets  = "platform:ingestion:ingestion:bind-secrets"
 	)
 	want := map[string][]string{
-		"platform:ingestion-admin":        {view, create, update, del, promote, test, apply, identity, secrets},
+		"platform:ingestion-admin":        {view, create, update, del, promote, test, apply, route, identity, secrets},
 		"platform:ingestion-operator":     {view, update, test},
 		"platform:ingestion-viewer":       {view},
-		"platform:ingestion-route-author": {view, create, update, route},
+		"platform:ingestion-route-author": {view, create, update, route, secrets},
 		"platform:ingestion-runtime":      {operate},
 	}
 	got := map[string][]string{}

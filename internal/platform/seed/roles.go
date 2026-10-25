@@ -264,15 +264,17 @@ func PlatformRoles() []role.Role {
 			[]string{permFunctionRunnerControl}),
 
 		// The ingestion roles (docs/ingestion-design.md section 4). Admin holds
-		// every human grant but route and the runtime's: a source kind that
-		// runs a route the operator wrote is a separate, deliberate grant.
+		// every human grant but the runtime's, route included (owner ruling
+		// 2026-10-25: camel routes are written by a pipeline or by an
+		// ingestion administrator, who pushes them with fcdev ingest apply).
 		// runtime-identity and bind-secrets (what the runtime reads with its
-		// own identity, where named secrets are sent) are the admin's alone.
+		// own identity, where named secrets are sent) are held by the admin
+		// and, for the routes a pipeline writes, the route author.
 		mk("ingestion-admin", "Ingestion Administrator",
-			"Manages ingestions: create, change, delete, make versions live, test connections and apply sets",
+			"Manages ingestions: create, change, delete, make versions live, test connections, apply sets and write camel routes",
 			[]string{
 				permIngestionView, permIngestionCreate, permIngestionUpdate, permIngestionDelete,
-				permIngestionPromote, permIngestionTest, permIngestionSetApply,
+				permIngestionPromote, permIngestionTest, permIngestionSetApply, permIngestionRoute,
 				permIngestionRuntimeIdentity, permIngestionBindSecrets,
 			}),
 
@@ -284,16 +286,19 @@ func PlatformRoles() []role.Role {
 			"View-only access to ingestions, their versions, history and failures",
 			[]string{permIngestionView}),
 
-		// Route authoring runs code on the runtime's network and identity, so
-		// it is its own role, and the route permission counts only for an
-		// anchor-tier holder. It writes drafts: it creates ingestions with
-		// live false and saves versions that are not live, and someone who
-		// holds promote (the admin) makes them live; it cannot delete them.
-		// It holds no bind-secrets, so a route that names secrets (every text
-		// setting of an extension kind counts as one) is saved by the admin.
-		mk("ingestion-route-author", "Ingestion Route Author",
-			"Creates and changes ingestions of source kinds that run a route (camel-route)",
-			[]string{permIngestionView, permIngestionCreate, permIngestionUpdate, permIngestionRoute}),
+		// The pipeline role (owner ruling 2026-10-25): route authoring runs
+		// code on the runtime's network and identity, so it is held by a
+		// pipeline's service account. The route permission counts only for an
+		// anchor-tier SERVICE principal (or an ingestion administrator, who
+		// holds delete): a user given this role cannot write a route
+		// (ingestion.RequireKindPermission). It writes drafts: without promote
+		// a create or an update is saved as a version that is not live, and
+		// someone who holds promote (the admin) makes it live; it cannot
+		// delete. bind-secrets lets it save a route, every text setting of
+		// which counts as a secret name.
+		mk("ingestion-route-author", "Ingestion Route Author (pipeline)",
+			"For a pipeline's service account: writes ingestions of source kinds that run a route (camel-route) as drafts an administrator makes live; refused to users",
+			[]string{permIngestionView, permIngestionCreate, permIngestionUpdate, permIngestionRoute, permIngestionBindSecrets}),
 
 		// The ingestion runtime's own role: same posture as platform:router
 		// and platform:function-runner, one permission and nothing else.

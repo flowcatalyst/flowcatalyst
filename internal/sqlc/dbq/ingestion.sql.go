@@ -190,7 +190,7 @@ func (q *Queries) IngestionUpdate(ctx context.Context, arg IngestionUpdateParams
 }
 
 const ingestionVersionFind = `-- name: IngestionVersionFind :one
-SELECT id, ingestion_id, version, definition, note, applied_from, created_by, created_at FROM ing_versions WHERE ingestion_id = $1 AND version = $2
+SELECT id, ingestion_id, version, definition, note, applied_from, created_by, created_at, definition_digest FROM ing_versions WHERE ingestion_id = $1 AND version = $2
 `
 
 type IngestionVersionFindParams struct {
@@ -210,14 +210,50 @@ func (q *Queries) IngestionVersionFind(ctx context.Context, arg IngestionVersion
 		&i.AppliedFrom,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.DefinitionDigest,
+	)
+	return i, err
+}
+
+const ingestionVersionFindByDigest = `-- name: IngestionVersionFindByDigest :one
+SELECT id, ingestion_id, version, definition, note, applied_from, created_by, created_at, definition_digest FROM ing_versions
+WHERE ingestion_id = $1
+  AND definition_digest = encode(sha256(convert_to(($2::jsonb)::text, 'UTF8')), 'hex')
+  AND definition = $2::jsonb
+ORDER BY version DESC
+LIMIT 1
+`
+
+type IngestionVersionFindByDigestParams struct {
+	IngestionID string          `db:"ingestion_id"`
+	Definition  json.RawMessage `db:"definition"`
+}
+
+// The newest saved version of the ingestion whose definition says what this
+// one says (same digest, and the same jsonb, so a collision cannot match).
+func (q *Queries) IngestionVersionFindByDigest(ctx context.Context, arg IngestionVersionFindByDigestParams) (IngVersion, error) {
+	row := q.db.QueryRow(ctx, ingestionVersionFindByDigest, arg.IngestionID, arg.Definition)
+	var i IngVersion
+	err := row.Scan(
+		&i.ID,
+		&i.IngestionID,
+		&i.Version,
+		&i.Definition,
+		&i.Note,
+		&i.AppliedFrom,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.DefinitionDigest,
 	)
 	return i, err
 }
 
 const ingestionVersionInsert = `-- name: IngestionVersionInsert :exec
 INSERT INTO ing_versions
-    (id, ingestion_id, version, definition, note, applied_from, created_by, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    (id, ingestion_id, version, definition, definition_digest, note, applied_from, created_by, created_at)
+VALUES ($1, $2, $3, $4,
+    encode(sha256(convert_to(($4::jsonb)::text, 'UTF8')), 'hex'),
+    $5, $6, $7, $8)
 `
 
 type IngestionVersionInsertParams struct {
@@ -231,6 +267,10 @@ type IngestionVersionInsertParams struct {
 	CreatedAt   time.Time       `db:"created_at"`
 }
 
+// definition_digest is computed by the database from the definition's jsonb
+// text (Postgres's canonical form: keys sorted, no insignificant whitespace),
+// the same expression migration 093 backfilled with and
+// IngestionVersionFindByDigest looks up by: one canonicalisation.
 func (q *Queries) IngestionVersionInsert(ctx context.Context, arg IngestionVersionInsertParams) error {
 	_, err := q.db.Exec(ctx, ingestionVersionInsert,
 		arg.ID,
@@ -246,7 +286,7 @@ func (q *Queries) IngestionVersionInsert(ctx context.Context, arg IngestionVersi
 }
 
 const ingestionVersionList = `-- name: IngestionVersionList :many
-SELECT id, ingestion_id, version, definition, note, applied_from, created_by, created_at FROM ing_versions WHERE ingestion_id = $1 ORDER BY version DESC
+SELECT id, ingestion_id, version, definition, note, applied_from, created_by, created_at, definition_digest FROM ing_versions WHERE ingestion_id = $1 ORDER BY version DESC
 `
 
 func (q *Queries) IngestionVersionList(ctx context.Context, ingestionID string) ([]IngVersion, error) {
@@ -267,6 +307,7 @@ func (q *Queries) IngestionVersionList(ctx context.Context, ingestionID string) 
 			&i.AppliedFrom,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.DefinitionDigest,
 		); err != nil {
 			return nil, err
 		}

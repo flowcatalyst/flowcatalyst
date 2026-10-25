@@ -344,8 +344,21 @@ func TestIngestionHistoryNeverPrintsADefinition(t *testing.T) {
 		uitLog("SaveVersionCommand", uitCmd(t, uitDef("A", uitSecretNote+"-1", "t"), ""), 2),
 	)
 	_, body := uitGet(t, page, uitUser(uitPermView), "/ui/ingestions/ing_one/history", true)
-	mustContain(t, body, "Version saved, not live,", "Changed: source")
+	mustContain(t, body, "Saved as a draft, not live,", "Changed: source")
 	mustNotContain(t, body, uitSecretNote)
+}
+
+// Drafts read as drafts in the history, a version saved live as live, and a
+// refused secret fetch names the secret, the runtime and the reason.
+func TestIngestionHistoryShowsDraftsAndRefusedFetches(t *testing.T) {
+	page := uitTabsPage(uitTabsStore(false),
+		uitLog("SECRET_FETCH_REFUSED", `{"secretName":"sftp-password","runtimeId":"rt-1","reason":"LEASE_NOT_HELD"}`, 1),
+		uitLog("SaveVersionCommand", `{"id":"ing_one","live":true}`, 2),
+		uitLog("CreateCommand", `{"id":"ing_one","live":false}`, 3),
+	)
+	_, body := uitGet(t, page, uitUser(uitPermView), "/ui/ingestions/ing_one/history", true)
+	mustContain(t, body, "Secret fetch refused", "Secret sftp-password, runtime rt-1: LEASE_NOT_HELD",
+		"Version saved and made live", "Created as a draft, not live,")
 }
 
 func TestIngestionHistoryPagesByOffset(t *testing.T) {

@@ -524,6 +524,16 @@ type IngRuntime struct {
 	BuiltinKinds    json.RawMessage `db:"builtin_kinds"`
 }
 
+type IngSecretFetch struct {
+	IngestionID   string    `db:"ingestion_id"`
+	SecretName    string    `db:"secret_name"`
+	RuntimeID     string    `db:"runtime_id"`
+	Version       int32     `db:"version"`
+	PrincipalID   *string   `db:"principal_id"`
+	LastFetchedAt time.Time `db:"last_fetched_at"`
+	FetchCount    int64     `db:"fetch_count"`
+}
+
 type IngSet struct {
 	ID        string    `db:"id"`
 	Name      string    `db:"name"`
@@ -564,14 +574,15 @@ type IngTestRequest struct {
 }
 
 type IngVersion struct {
-	ID          string          `db:"id"`
-	IngestionID string          `db:"ingestion_id"`
-	Version     int32           `db:"version"`
-	Definition  json.RawMessage `db:"definition"`
-	Note        *string         `db:"note"`
-	AppliedFrom *string         `db:"applied_from"`
-	CreatedBy   *string         `db:"created_by"`
-	CreatedAt   time.Time       `db:"created_at"`
+	ID               string          `db:"id"`
+	IngestionID      string          `db:"ingestion_id"`
+	Version          int32           `db:"version"`
+	Definition       json.RawMessage `db:"definition"`
+	Note             *string         `db:"note"`
+	AppliedFrom      *string         `db:"applied_from"`
+	CreatedBy        *string         `db:"created_by"`
+	CreatedAt        time.Time       `db:"created_at"`
+	DefinitionDigest *string         `db:"definition_digest"`
 }
 
 type MsgConnection struct {

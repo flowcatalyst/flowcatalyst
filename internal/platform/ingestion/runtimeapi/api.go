@@ -17,6 +17,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
@@ -41,8 +42,13 @@ type State struct {
 	// Connections finds the service account of the target's connection, which
 	// signs the jobs.
 	Connections *connection.Repository
-	// Config reveals the secrets an ingestion names, audited.
+	// Config reads the secrets an ingestion's live definition binds
+	// (FetchBoundSecretForIngestionRuntime: not a reveal, not audited per
+	// read).
 	Config *platformconfig.Service
+	// Audit records each refused secret fetch (SECRET_FETCH_REFUSED). A
+	// successful fetch is security telemetry, not an audit row.
+	Audit *audit.Repository
 	// Lease is how long a lease lasts without being renewed; zero is
 	// ingestion.DefaultLease.
 	Lease time.Duration
@@ -122,7 +128,7 @@ func Register(api huma.API, s *State) {
 		DefaultStatus: http.StatusOK,
 		MaxBodyBytes:  bodyLimit(s.JobsMaxBytes, "FC_INGESTION_JOBS_MAX_BYTES", DefaultJobsMaxBytes),
 	}, s.createJobs)
-	apiroute.Get(g, GetSecretOperationID, "/api/ingestion-runtime/v1/ingestions/{id}/secrets/{name}", "Reveal a secret the ingestion names (ingestion runtime only)", s.getSecret)
+	apiroute.Get(g, GetSecretOperationID, "/api/ingestion-runtime/v1/ingestions/{id}/secrets/{name}", "Fetch a secret the ingestion's live definition binds (ingestion runtime only; security telemetry, not an audited reveal)", s.getSecret)
 	apiroute.Put(g, "ingestionRuntimePutState", "/api/ingestion-runtime/v1/state/{ingestionId}/{key}", "Store a value a polled source keeps (lease holder only)", http.StatusNoContent, s.putState)
 }
 

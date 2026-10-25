@@ -337,7 +337,10 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 					repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, nil),
 				Connections: repos.connectionRepo,
 				Config:      platformConfigService(repos, uow),
-				Lease:       cfg.IngestionLease,
+				// Refused secret fetches are audited; successful ones are
+				// security telemetry (owner ruling 2026-10-25).
+				Audit: repos.auditRepo,
+				Lease: cfg.IngestionLease,
 			})
 		}
 

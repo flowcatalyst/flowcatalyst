@@ -204,7 +204,9 @@ const (
 	// runtime fleet reads it with its own AWS identity); bind-secrets gates a
 	// definition that names secrets and points them somewhere new. Both are
 	// read paths into what the runtime holds, so only the admin role (and
-	// super-admin's wildcard) has them, never the operator or route author.
+	// super-admin's wildcard) has runtime-identity, and bind-secrets is the
+	// admin's and the route author's (a pipeline's role: every text setting
+	// of a route counts as a secret name), never the operator's.
 	permIngestionRuntimeIdentity = "platform:ingestion:ingestion:runtime-identity"
 	permIngestionBindSecrets     = "platform:ingestion:ingestion:bind-secrets"
 )

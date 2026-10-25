@@ -35,10 +35,26 @@ WHERE id = @id
 -- name: IngestionDelete :exec
 DELETE FROM ing_ingestions WHERE id = $1;
 
+-- definition_digest is computed by the database from the definition's jsonb
+-- text (Postgres's canonical form: keys sorted, no insignificant whitespace),
+-- the same expression migration 093 backfilled with and
+-- IngestionVersionFindByDigest looks up by: one canonicalisation.
 -- name: IngestionVersionInsert :exec
 INSERT INTO ing_versions
-    (id, ingestion_id, version, definition, note, applied_from, created_by, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+    (id, ingestion_id, version, definition, definition_digest, note, applied_from, created_by, created_at)
+VALUES (@id, @ingestion_id, @version, @definition,
+    encode(sha256(convert_to((@definition::jsonb)::text, 'UTF8')), 'hex'),
+    @note, @applied_from, @created_by, @created_at);
+
+-- The newest saved version of the ingestion whose definition says what this
+-- one says (same digest, and the same jsonb, so a collision cannot match).
+-- name: IngestionVersionFindByDigest :one
+SELECT * FROM ing_versions
+WHERE ingestion_id = @ingestion_id
+  AND definition_digest = encode(sha256(convert_to((@definition::jsonb)::text, 'UTF8')), 'hex')
+  AND definition = @definition::jsonb
+ORDER BY version DESC
+LIMIT 1;
 
 -- name: IngestionVersionFind :one
 SELECT * FROM ing_versions WHERE ingestion_id = $1 AND version = $2;

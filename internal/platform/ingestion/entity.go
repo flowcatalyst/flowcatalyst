@@ -50,7 +50,11 @@ type Version struct {
 	IngestionID string     `json:"ingestionId"`
 	Number      int        `json:"version"`
 	Definition  Definition `json:"definition"`
-	Note        *string    `json:"note,omitempty"`
+	// Digest is the sha256 (hex) of the definition's canonical form, computed
+	// by the database when the version is written; two versions with the same
+	// digest say the same thing.
+	Digest string  `json:"digest,omitempty"`
+	Note   *string `json:"note,omitempty"`
 	// AppliedFrom is the id of the set apply that produced it.
 	AppliedFrom *string   `json:"appliedFrom,omitempty"`
 	CreatedBy   *string   `json:"createdBy,omitempty"`
