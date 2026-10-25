@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -96,8 +97,17 @@ final class DatabasePollEndpoint extends DefaultEndpoint {
     this.pollStrategy = strategy;
   }
 
-  /** The rows of one poll, and what marks them as read. */
-  private record Batch(List<String> rows, List<Object> keys, @Nullable String watermark) {}
+  /**
+   * The most rows one poll holds while it reads past {@code maxRows} to the end of the rows that
+   * share the last watermark value, and the most bytes of them: beyond either the poll fails, saying
+   * why, instead of holding a table's worth of rows.
+   */
+  static final int MAX_TIED_ROWS = 50_000;
+
+  static final long MAX_POLL_BYTES = 256L * 1024 * 1024;
+
+  /** The rows of one poll, what marks them as read, and each row's identity. */
+  private record Batch(List<String> rows, List<Object> keys, @Nullable String watermark, List<String> identities) {}
 
   private final class TablePoller extends ScheduledPollConsumer {
 
@@ -107,6 +117,7 @@ final class DatabasePollEndpoint extends DefaultEndpoint {
 
     @Override
     protected int poll() throws Exception {
+      // The strategy checked the host before this poll (OutboundGuard).
       Properties login = new Properties();
       login.setProperty("user", source.username());
       login.setProperty("password", password.reveal());
@@ -142,6 +153,7 @@ final class DatabasePollEndpoint extends DefaultEndpoint {
       Exchange exchange = createExchange(false);
       try {
         exchange.getMessage().setBody(batch.rows());
+        exchange.setProperty(IngestionRoute.ROW_IDENTITIES, batch.identities());
         try {
           getProcessor().process(exchange);
         } catch (Exception e) {
@@ -162,6 +174,13 @@ final class DatabasePollEndpoint extends DefaultEndpoint {
      * only where the column's value changes, so rows that share a value are never split between
      * two polls and the "greater than" of the next poll skips none of them.
      */
+    /**
+     * Rows past the stored watermark, in the column's order. Reading stops after {@code maxRows}
+     * only where the column's value changes, so rows that share a value are never split between two
+     * polls and the "greater than" of the next poll skips none of them; more than {@link
+     * #MAX_TIED_ROWS} (or {@link #MAX_POLL_BYTES}) fail the poll. A row's identity is its watermark
+     * value and its place among the rows of that value.
+     */
     private Batch readPast(Connection connection, Track.Watermark watermark) throws Exception {
       String column = watermark.column();
       @Nullable String stored = state.get(ingestionId, WATERMARK).orElse(null);
@@ -175,26 +194,40 @@ final class DatabasePollEndpoint extends DefaultEndpoint {
         if (stored != null) {
           switch (watermark.type()) {
             case NUMBER -> statement.setBigDecimal(1, new BigDecimal(stored));
-            case TIMESTAMP -> statement.setTimestamp(1, Timestamp.valueOf(stored));
+            case TIMESTAMP -> bindTimestamp(statement, stored);
           }
         }
         List<String> rows = new ArrayList<>();
+        List<String> identities = new ArrayList<>();
         @Nullable String last = null;
+        int tied = 0;
+        long bytes = 0;
         try (ResultSet results = statement.executeQuery()) {
+          int at = results.findColumn(column);
           while (results.next()) {
             String value =
                 switch (watermark.type()) {
-                  case NUMBER -> results.getBigDecimal(column).toPlainString();
-                  case TIMESTAMP -> results.getTimestamp(column).toString();
+                  case NUMBER -> results.getBigDecimal(at).toPlainString();
+                  case TIMESTAMP -> timestamp(results, at);
                 };
-            if (rows.size() >= source.maxRows() && !value.equals(last)) {
+            boolean same = value.equals(last);
+            if (rows.size() >= source.maxRows() && !same) {
               break;
             }
-            rows.add(json(results));
+            tied = same ? tied + 1 : 0;
+            String row = json(results);
+            bytes += row.length();
+            if (rows.size() >= MAX_TIED_ROWS || bytes > MAX_POLL_BYTES) {
+              throw new SQLException(
+                  "more than " + Math.min(rows.size(), MAX_TIED_ROWS) + " rows (or " + MAX_POLL_BYTES / (1024 * 1024) + " MB) share the "
+                      + column + " value " + value + ", and rows of one value are read in one poll; use a column whose values are finer");
+            }
+            rows.add(row);
+            identities.add(ingestionId + "|" + column + "=" + value + "/" + tied);
             last = value;
           }
         }
-        return new Batch(rows, List.of(), last);
+        return new Batch(rows, List.of(), last, identities);
       }
     }
 
@@ -207,13 +240,16 @@ final class DatabasePollEndpoint extends DefaultEndpoint {
         bind(statement, 1, status.pending());
         List<String> rows = new ArrayList<>();
         List<Object> keys = new ArrayList<>();
+        List<String> identities = new ArrayList<>();
         try (ResultSet results = statement.executeQuery()) {
           while (results.next()) {
             rows.add(json(results));
-            keys.add(results.getObject(status.keyColumn()));
+            Object key = results.getObject(status.keyColumn());
+            keys.add(key);
+            identities.add(ingestionId + "|" + status.keyColumn() + "=" + key);
           }
         }
-        return new Batch(rows, keys, null);
+        return new Batch(rows, keys, null, identities);
       }
     }
 
@@ -231,6 +267,41 @@ final class DatabasePollEndpoint extends DefaultEndpoint {
         }
         statement.executeBatch();
       }
+    }
+  }
+
+  /**
+   * A timestamp watermark as text that says what it is, whatever the JVM's time zone: a column with
+   * a time zone as the UTC instant ({@code 2026-10-25T08:00:00.123456Z}), one without as the
+   * date and time it holds ({@code 2026-10-25T10:00:00.123456}), as the database compares them.
+   */
+  static String timestamp(ResultSet results, int column) throws SQLException {
+    ResultSetMetaData meta = results.getMetaData();
+    int type = meta.getColumnType(column);
+    if (type == Types.TIMESTAMP_WITH_TIMEZONE || "timestamptz".equalsIgnoreCase(meta.getColumnTypeName(column))) {
+      OffsetDateTime at = results.getObject(column, OffsetDateTime.class);
+      return at.toInstant().toString();
+    }
+    LocalDateTime at = results.getObject(column, LocalDateTime.class);
+    return at.toString();
+  }
+
+  /**
+   * Binds a stored timestamp watermark: an instant (ending in {@code Z} or an offset) as a time
+   * with its zone, a date and time without one as it is. A value stored by an earlier runtime
+   * ({@code 2026-10-25 10:00:00.123}, written in the JVM's time zone) is bound as it was then.
+   */
+  static void bindTimestamp(PreparedStatement statement, String stored) throws SQLException {
+    if (stored.indexOf('T') < 0) {
+      statement.setTimestamp(1, Timestamp.valueOf(stored));
+      return;
+    }
+    char last = stored.charAt(stored.length() - 1);
+    boolean zoned = last == 'Z' || stored.lastIndexOf('+') > stored.indexOf('T') || stored.lastIndexOf('-') > stored.indexOf('T');
+    if (zoned) {
+      statement.setObject(1, OffsetDateTime.parse(stored).withOffsetSameInstant(ZoneOffset.UTC));
+    } else {
+      statement.setObject(1, LocalDateTime.parse(stored));
     }
   }
 

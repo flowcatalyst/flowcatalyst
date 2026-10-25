@@ -58,6 +58,7 @@ final class CamelSourceEndpoints implements SourceEndpoints {
   private final @Nullable URI awsEndpoint;
   private final @Nullable ServiceClients http;
   private final Extensions extensions;
+  private final OutboundGuard guard;
 
   /**
    * Creates the endpoints.
@@ -93,11 +94,41 @@ final class CamelSourceEndpoints implements SourceEndpoints {
    */
   CamelSourceEndpoints(
       Secrets secrets, StateStore state, @Nullable URI awsEndpoint, @Nullable ServiceClients http, Extensions extensions) {
+    this(secrets, state, awsEndpoint, http, extensions, OutboundGuard.allowingLoopback());
+  }
+
+  /**
+   * Creates the endpoints, refusing the hosts the guard refuses.
+   *
+   * @param secrets resolves the secrets ingestions name
+   * @param state where polls keep what they have read
+   * @param awsEndpoint where SQS and S3 are, or null for AWS itself
+   * @param http the framework's HTTP engine, or null when API polls are not run
+   * @param extensions the extensions built into the runtime
+   * @param guard what a host a definition names may resolve to
+   */
+  CamelSourceEndpoints(
+      Secrets secrets,
+      StateStore state,
+      @Nullable URI awsEndpoint,
+      @Nullable ServiceClients http,
+      Extensions extensions,
+      OutboundGuard guard) {
     this.secrets = secrets;
     this.state = state;
     this.awsEndpoint = awsEndpoint;
     this.http = http;
     this.extensions = extensions;
+    this.guard = guard;
+  }
+
+  @Override
+  public Runnable guard(Ingestion ingestion) {
+    return switch (ingestion.source()) {
+      case Source.Sftp sftp -> () -> guard.check(sftp.host(), "the sftp host");
+      case Source.DatabasePoll poll -> () -> guard.checkJdbc(poll.jdbcUrl());
+      default -> () -> {};
+    };
   }
 
   @Override
@@ -138,7 +169,9 @@ final class CamelSourceEndpoints implements SourceEndpoints {
   private Endpoint apiPoll(CamelContext camel, Ingestion ingestion, Source.ApiPoll api) {
     ServiceClients engine = engine();
     require(api.every().compareTo(FASTEST_POLL) >= 0 && api.idleDelay().compareTo(FASTEST_POLL) >= 0, "an API is polled at most once a second");
-    return new ApiPollEndpoint(camel, ingestion, api, new ApiPollClient(ingestion, api, secrets, ApiPollClient.name("api-poll", ingestion.id(), "v" + ingestion.version()), engine, System::nanoTime), state);
+    ApiPollClient client = new ApiPollClient(ingestion, api, secrets, ApiPollClient.name("api-poll", ingestion.id(), "v" + ingestion.version()), engine, System::nanoTime, guard);
+    client.checkHosts();
+    return new ApiPollEndpoint(camel, ingestion, api, client, state);
   }
 
   private static void require(boolean valid, String otherwise) {
@@ -183,7 +216,8 @@ final class CamelSourceEndpoints implements SourceEndpoints {
         "the rabbitmq uri must be amqp://host or amqps://host");
     require(uri.getUserInfo() == null, "the rabbitmq uri must not carry a login; use the username and password fields");
     require(!rabbit.queue().isBlank(), "the rabbitmq queue is not set");
-    return new RabbitMqEndpoint(camel, ingestion.id(), rabbit, secret(ingestion, rabbit.password()));
+    guard.check(uri.getHost(), "the rabbitmq host");
+    return new RabbitMqEndpoint(camel, ingestion.id(), rabbit, secret(ingestion, rabbit.password()), guard);
   }
 
   /**
@@ -278,6 +312,7 @@ final class CamelSourceEndpoints implements SourceEndpoints {
     }
     require(poll.maxRows() >= 1 && poll.maxRows() <= 10_000, "a poll reads between 1 and 10000 rows");
     require(poll.every().compareTo(FASTEST_POLL) >= 0, "a table is polled at most once a second");
+    guard.checkJdbc(poll.jdbcUrl());
     return new DatabasePollEndpoint(camel, ingestion.id(), poll, secret(ingestion, poll.password()), state);
   }
 
@@ -285,7 +320,9 @@ final class CamelSourceEndpoints implements SourceEndpoints {
    * A directory polled over SFTP. A file is taken once it has stopped growing, read as a stream,
    * and then moved into a folder beside it: {@code .done} when its records became dispatch jobs,
    * {@code .rejected} when it could not be read. A file the platform would not take jobs for stays
-   * where it is and is read again on the next poll.
+   * where it is and is read again on the next poll. The server's host key is checked against
+   * {@code knownHosts}; without one the route does not start unless the definition says {@code
+   * acceptAnyHostKey}.
    */
   private Endpoint sftp(CamelContext camel, Ingestion ingestion, Source.Sftp sftp) {
     if (!HOST.matcher(sftp.host()).matches() || sftp.port() < 1 || sftp.port() > 65535) {
@@ -297,6 +334,12 @@ final class CamelSourceEndpoints implements SourceEndpoints {
     if (sftp.every().compareTo(FASTEST_POLL) < 0) {
       throw new UnsupportedIngestionException("an sftp directory is polled at most once a second");
     }
+    if (sftp.knownHosts() == null && !sftp.acceptsAnyHostKey()) {
+      // Without the server's key anyone who can intercept the connection is sent the login.
+      throw new UnsupportedIngestionException(
+          "the sftp source has no known host key: set knownHosts to the server's key, or acceptAnyHostKey to true to connect without checking who the server is");
+    }
+    guard.check(sftp.host(), "the sftp host");
     Secret credential = secret(ingestion, sftp.credential());
 
     // A leading slash is a path from the server's root; Camel writes that as a double slash.
@@ -325,7 +368,7 @@ final class CamelSourceEndpoints implements SourceEndpoints {
       configuration.setKnownHosts(sftp.knownHosts().getBytes(StandardCharsets.UTF_8));
       configuration.setStrictHostKeyChecking("yes");
     } else {
-      LOG.warn("sftp host {} has no known host key configured; its identity is not checked", sftp.host());
+      LOG.warn("ingestion {}: sftp host {} is connected to without checking its host key (acceptAnyHostKey)", ingestion.id(), sftp.host());
       configuration.setStrictHostKeyChecking("no");
     }
     return endpoint;

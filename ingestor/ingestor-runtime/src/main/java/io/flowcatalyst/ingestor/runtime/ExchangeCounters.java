@@ -3,6 +3,7 @@ package io.flowcatalyst.ingestor.runtime;
 import io.flowcatalyst.ingestor.contract.Ingestion;
 import io.flowcatalyst.ingestor.contract.RuntimeReport.ExchangeWindow;
 import io.flowcatalyst.ingestor.contract.RuntimeReport.Failure;
+import io.flowcatalyst.ingestor.contract.Text;
 import java.time.Instant;
 import java.time.InstantSource;
 import java.util.ArrayList;
@@ -82,6 +83,27 @@ final class ExchangeCounters {
    * @param excerpt the payload, record or answer it failed on, or null
    */
   void failure(Ingestion ingestion, Failure.Kind kind, @Nullable String message, @Nullable Long afterRecords, @Nullable String excerpt) {
+    failure(ingestion, kind, message, afterRecords, excerpt, null);
+  }
+
+  /**
+   * Keeps what went wrong, as {@link #failure(Ingestion, Failure.Kind, String, Long, String)}, with
+   * whose fault a rejected payload was.
+   *
+   * @param ingestion the ingestion
+   * @param kind what went wrong
+   * @param message why
+   * @param afterRecords how many records were read before it failed, or null
+   * @param excerpt the payload, record or answer it failed on, or null
+   * @param category the payload's fault or the platform's refusal, or null
+   */
+  void failure(
+      Ingestion ingestion,
+      Failure.Kind kind,
+      @Nullable String message,
+      @Nullable Long afterRecords,
+      @Nullable String excerpt,
+      Failure.@Nullable Category category) {
     Failure failure =
         new Failure(
             ingestion.id(),
@@ -90,7 +112,8 @@ final class ExchangeCounters {
             kind,
             clean(message),
             afterRecords,
-            ingestion.keepFailedPayloads() && excerpt != null ? excerpt(excerpt) : null);
+            ingestion.keepFailedPayloads() && excerpt != null ? excerpt(excerpt) : null,
+            category);
     synchronized (lock) {
       List<Failure> kept = tally(ingestion).failures;
       if (kept.size() < FAILURES_PER_INGESTION) {
@@ -137,14 +160,15 @@ final class ExchangeCounters {
     if (message == null || message.isBlank()) {
       return "no reason was given";
     }
-    String text = USER_INFO.matcher(message).replaceAll("//***@");
+    String text = USER_INFO.matcher(Text.withoutNul(message)).replaceAll("//***@");
     text = SECRET_PARAMETER.matcher(text).replaceAll("$1=***");
     // The platform takes a message of at most MESSAGE characters, the ellipsis included.
-    return text.length() > MESSAGE ? text.substring(0, MESSAGE - 3) + "..." : text;
+    return text.length() > MESSAGE ? Text.cut(text, MESSAGE - 3) + "..." : text;
   }
 
-  private static String excerpt(String text) {
-    return text.length() > EXCERPT ? text.substring(0, EXCERPT) : text;
+  /** The start of a payload or record, without the NUL characters the platform cannot store. */
+  static String excerpt(String text) {
+    return Text.cut(Text.withoutNul(text), EXCERPT);
   }
 
   private Tally tally(Ingestion ingestion) {

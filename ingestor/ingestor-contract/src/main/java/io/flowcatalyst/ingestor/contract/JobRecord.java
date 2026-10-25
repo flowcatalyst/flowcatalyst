@@ -27,4 +27,13 @@ public record JobRecord(
 
   /** The most records one jobs request carries. */
   public static final int MAX_PER_REQUEST = 1000;
+
+  /** The largest jobs request body the platform takes, in bytes of its JSON. */
+  public static final int MAX_REQUEST_BYTES = 10 * 1024 * 1024;
+
+  /**
+   * The size a runtime keeps a jobs request under, in bytes of its JSON, leaving room below {@link
+   * #MAX_REQUEST_BYTES}; a single record larger than this is sent on its own.
+   */
+  public static final int TARGET_REQUEST_BYTES = 8 * 1024 * 1024;
 }

@@ -89,8 +89,10 @@ class WireContractTest {
             mapper.writeValueAsString(
                 new RuntimePoll("runtime-a", List.of(RuntimeKind.of(generator, null), CamelRoutes.kind()), "http://runtime-a:8091")));
 
-    assertThat(poll.propertyNames()).containsExactlyInAnyOrder("runtimeId", "contractVersion", "kinds", "url");
+    assertThat(poll.propertyNames()).containsExactlyInAnyOrder("runtimeId", "contractVersion", "kinds", "url", "builtinKinds");
     assertThat(poll.get("contractVersion").asInt()).isEqualTo(2);
+    assertThat(poll.get("builtinKinds").valueStream().map(JsonNode::asString).toList())
+        .containsExactlyInAnyOrder("sftp", "http", "rabbitmq", "sqs", "s3", "database-poll", "api-poll");
     JsonNode first = poll.get("kinds").get(0);
     assertThat(first.get("kind").asString()).isEqualTo("generator");
     assertThat(first.has("requiredPermission")).isFalse();
@@ -123,6 +125,37 @@ class WireContractTest {
     assertThat(propertyNames(json.get("failures").get(0)))
         .containsExactlyInAnyOrder("ingestionId", "version", "at", "kind", "message", "afterRecords");
     assertThat(propertyNames(json.get("tests").get(0))).containsExactlyInAnyOrder("id", "outcome", "steps", "records");
+  }
+
+  @Test
+  void aRejectedPayloadSaysWhoseFaultItWasAndNoTextCarriesANul() {
+    Instant at = Instant.parse("2026-10-24T10:00:00Z");
+    RuntimeReport.Failure refused =
+        new RuntimeReport.Failure(
+            "ing_1", 4, at, RuntimeReport.Failure.Kind.REJECTED, "the platform refused\u0000 it", 0L, "a\u0000b", RuntimeReport.Failure.Category.REJECTED);
+
+    JsonNode json = mapper.readTree(mapper.writeValueAsString(refused));
+
+    assertThat(json.get("category").asString()).isEqualTo("rejected");
+    assertThat(json.get("message").asString()).isEqualTo("the platform refused it");
+    assertThat(json.get("excerpt").asString()).isEqualTo("ab");
+    assertThat(mapper.readTree(mapper.writeValueAsString(new RuntimeReport.Failure("ing_1", 4, at, RuntimeReport.Failure.Kind.REJECTED, "x", 0L, null, RuntimeReport.Failure.Category.PAYLOAD))).get("category").asString())
+        .isEqualTo("payload");
+    assertThat(new RuntimeReport.RouteState("ing_1", 1, RuntimeReport.RouteState.Status.FAILED, "bad\u0000").error()).isEqualTo("bad");
+    assertThat(new ConnectionTest("t", ConnectionTest.Outcome.FAILED, List.of("s\u0000tep"), null, "e\u0000x").steps()).containsExactly("step");
+  }
+
+  @Test
+  void anSftpSourceWithoutAHostKeyAcceptsAnyOnlyWhenItSaysSo() {
+    Source.Sftp plain = mapper.readValue(
+        "{\"kind\":\"sftp\",\"host\":\"h\",\"port\":22,\"directory\":\"/d\",\"username\":\"u\",\"credential\":{\"name\":\"c\"},\"every\":\"PT1M\"}",
+        Source.Sftp.class);
+    Source.Sftp open = mapper.readValue(
+        "{\"kind\":\"sftp\",\"host\":\"h\",\"port\":22,\"directory\":\"/d\",\"username\":\"u\",\"credential\":{\"name\":\"c\"},\"every\":\"PT1M\",\"acceptAnyHostKey\":true}",
+        Source.Sftp.class);
+
+    assertThat(plain.acceptsAnyHostKey()).isFalse();
+    assertThat(open.acceptsAnyHostKey()).isTrue();
   }
 
   @Test

@@ -109,22 +109,34 @@ final class ApiPollEndpoint extends DefaultEndpoint {
       super.doStop();
     }
 
+    /** One poll, and the next one scheduled whatever it threw: an {@code Error} fails that poll, not the source. */
     private void run() {
-      Duration next;
+      Duration next = source.idleDelay();
       try {
         next = pollOnce();
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         return;
-      } catch (Exception e) {
+      } catch (Throwable e) {
         LOG.warn("ingestion {} could not poll its API", ingestion.id(), e);
         String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
         failure(Failure.Kind.SOURCE, message, null);
-        next = source.idleDelay();
+        if (e instanceof OutOfMemoryError oom) {
+          schedule(next);
+          throw oom;
+        }
       }
+      schedule(next);
+    }
+
+    private void schedule(Duration next) {
       ScheduledExecutorService running = executor;
       if (running != null && isRunAllowed() && !running.isShutdown()) {
-        running.schedule(this::run, Math.max(next.toMillis(), 1), TimeUnit.MILLISECONDS);
+        try {
+          running.schedule(this::run, Math.max(next.toMillis(), 1), TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+          // Stopping.
+        }
       }
     }
 
@@ -161,6 +173,10 @@ final class ApiPollEndpoint extends DefaultEndpoint {
       boolean taken;
       try {
         exchange.getMessage().setBody(answer.body());
+        String identity = identity(cursor);
+        if (identity != null) {
+          exchange.setProperty(IngestionRoute.IDENTITY, identity);
+        }
         getProcessor().process(exchange);
         taken = exchange.getException() == null;
         Long counted = exchange.getProperty(IngestionRoute.RECORDS, Long.class);
@@ -178,6 +194,20 @@ final class ApiPollEndpoint extends DefaultEndpoint {
       }
       boolean results = answer.hasResults() != null ? answer.hasResults() : records > 0;
       return results ? source.every() : source.idleDelay();
+    }
+
+    /**
+     * The request an answer was given to, when it names a page: the address with the cursor sent.
+     * Without a cursor every poll asks the same address for something new, which says nothing
+     * about which records came back, so there is none and the jobs carry no key.
+     */
+    private @Nullable String identity(@Nullable String cursor) {
+      Source.ApiPoll.Cursor configured = source.cursor();
+      if (configured == null) {
+        return null;
+      }
+      String sent = cursor != null ? cursor : configured.initial();
+      return sent == null ? null : source.url() + (source.url().contains("?") ? "&" : "?") + configured.param() + "=" + sent;
     }
 
     private void failure(Failure.Kind kind, String message, @Nullable String body) {

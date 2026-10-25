@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.flowcatalyst.ingestor.contract.JobRecord;
 import io.flowcatalyst.ingestor.contract.Target;
 import io.flowcatalyst.ingestor.contract.Ingestion;
+import io.flowcatalyst.ingestor.contract.RuntimeReport;
 import io.flowcatalyst.ingestor.contract.RuntimeReport.RouteState;
 import io.flowcatalyst.ingestor.contract.SecretRef;
 import io.flowcatalyst.ingestor.contract.Source;
@@ -49,6 +50,7 @@ class SftpIngestTest {
 
   final List<List<JobRecord>> batches = new CopyOnWriteArrayList<>();
   volatile boolean platformDown;
+  volatile boolean refuse;
   final ExchangeCounters counters = new ExchangeCounters(InstantSource.system());
   CamelContext camel;
   Reconciler reconciler;
@@ -62,6 +64,9 @@ class SftpIngestTest {
         (ingestion, jobs) -> {
           if (platformDown) {
             throw new IOException("platform unavailable");
+          }
+          if (refuse) {
+            throw new RejectedException("POST /jobs answered 400: VALIDATION, payload is not valid", 400);
           }
           batches.add(jobs);
         };
@@ -79,7 +84,7 @@ class SftpIngestTest {
     return SourceHarness.ingestion(
         id, 1,
         new Source.Sftp(
-            SFTP.getHost(), SFTP.getMappedPort(22), "upload", "ingest", new SecretRef(secret), null, include, Duration.ofSeconds(1)),
+            SFTP.getHost(), SFTP.getMappedPort(22), "upload", "ingest", new SecretRef(secret), null, include, Duration.ofSeconds(1), true),
         split,
         SourceHarness.target(Target.Mode.BLOCK_ON_ERROR, 2),
         false);
@@ -119,8 +124,44 @@ class SftpIngestTest {
     await(() -> listed(".done", "orders.csv"));
 
     assertThat(batches).hasSize(2);
-    assertThat(batches.stream().flatMap(List::stream).map(JobRecord::payload)).containsExactly("1,A", "2,B", "3,C");
+    List<JobRecord> jobs = batches.stream().flatMap(List::stream).toList();
+    assertThat(jobs).extracting(JobRecord::payload).containsExactly("1,A", "2,B", "3,C");
     assertThat(list("")).contains("notes.txt").doesNotContain("orders.csv");
+    // Keyed by the file (host, path, time, size) and the record's place in it; one group for the file.
+    assertThat(jobs).extracting(JobRecord::externalId).doesNotContainNull().doesNotHaveDuplicates().allSatisfy(id -> assertThat(id).hasSize(64));
+    assertThat(jobs).extracting(JobRecord::messageGroup).containsOnly(jobs.getFirst().messageGroup());
+  }
+
+  @Test
+  void aFileWhoseJobsThePlatformRefusesForGoodIsMovedToRejectedAndReportedAsRefused() throws Exception {
+    refuse = true;
+    put("orders.csv", "1,A\n2,B\n");
+    reconciler.reconcile(List.of(files("files", "sftp", null, new Split.Csv(false))));
+
+    await(() -> listed(".rejected", "orders.csv"));
+
+    assertThat(list("")).doesNotContain("orders.csv");
+    assertThat(counters.drain(InstantSource.system().instant()).failures()).singleElement().satisfies(f -> {
+      assertThat(f.kind()).isEqualTo(RuntimeReport.Failure.Kind.REJECTED);
+      assertThat(f.category()).isEqualTo(RuntimeReport.Failure.Category.REJECTED);
+      assertThat(f.message()).contains("VALIDATION");
+    });
+  }
+
+  @Test
+  void aServerWithoutAKnownHostKeyIsNotConnectedToUnlessTheDefinitionAcceptsAnyKey() {
+    Ingestion strict =
+        SourceHarness.ingestion(
+            "strict", 1,
+            new Source.Sftp(SFTP.getHost(), SFTP.getMappedPort(22), "upload", "ingest", new SecretRef("sftp"), null, null, Duration.ofSeconds(1)),
+            new Split.None(), SourceHarness.target(Target.Mode.BLOCK_ON_ERROR, 2), false);
+
+    reconciler.reconcile(List.of(strict));
+
+    assertThat(reconciler.states()).singleElement().satisfies(state -> {
+      assertThat(state.status()).isEqualTo(RouteState.Status.FAILED);
+      assertThat(state.error()).contains("no known host key").contains("acceptAnyHostKey");
+    });
   }
 
   @Test

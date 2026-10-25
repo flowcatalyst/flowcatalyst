@@ -1,6 +1,8 @@
 package io.flowcatalyst.ingestor.runtime;
 
 import io.flowcatalyst.ingestor.contract.Source;
+import com.rabbitmq.client.Address;
+import com.rabbitmq.client.AddressResolver;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
@@ -9,6 +11,7 @@ import io.flowcatalyst.framework.config.Secret;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -47,12 +50,36 @@ final class RabbitMqEndpoint extends DefaultEndpoint {
   private final String ingestionId;
   private final Source.RabbitMq source;
   private final Secret password;
+  private final OutboundGuard guard;
 
   RabbitMqEndpoint(CamelContext camel, String ingestionId, Source.RabbitMq source, Secret password) {
+    this(camel, ingestionId, source, password, OutboundGuard.allowingLoopback());
+  }
+
+  RabbitMqEndpoint(CamelContext camel, String ingestionId, Source.RabbitMq source, Secret password, OutboundGuard guard) {
     this.ingestionId = ingestionId;
     this.source = source;
     this.password = password;
+    this.guard = guard;
     setCamelContext(camel);
+  }
+
+  /**
+   * The broker's address, its host checked each time the client connects, the first time and on
+   * every recovery: the name is resolved and checked, and the client connects to what it resolved to.
+   */
+  private AddressResolver resolver(URI uri) {
+    boolean tls = "amqps".equalsIgnoreCase(uri.getScheme());
+    int port = uri.getPort() > 0 ? uri.getPort() : tls ? ConnectionFactory.DEFAULT_AMQP_OVER_SSL_PORT : ConnectionFactory.DEFAULT_AMQP_PORT;
+    String host = uri.getHost();
+    return () -> {
+      try {
+        guard.check(host, "the rabbitmq host");
+      } catch (UnsupportedIngestionException e) {
+        throw new IOException(e.getMessage(), e);
+      }
+      return List.of(new Address(host, port));
+    };
   }
 
   @Override
@@ -107,7 +134,7 @@ final class RabbitMqEndpoint extends DefaultEndpoint {
       ExecutorService deliveries = Executors.newVirtualThreadPerTaskExecutor();
       executor = deliveries;
       try {
-        Connection opened = factory().newConnection(deliveries, "ingest-" + ingestionId);
+        Connection opened = factory().newConnection(deliveries, resolver(URI.create(source.uri())), "ingest-" + ingestionId);
         connection = opened;
         Channel channel = opened.createChannel();
         channel.basicQos(PREFETCH);
@@ -150,6 +177,11 @@ final class RabbitMqEndpoint extends DefaultEndpoint {
       Exchange exchange = createExchange(false);
       try {
         exchange.getMessage().setBody(delivery.getBody());
+        String messageId = delivery.getProperties() == null ? null : delivery.getProperties().getMessageId();
+        if (messageId != null && !messageId.isBlank()) {
+          // Only a message the publisher named: a delivery tag or a redelivery says nothing stable.
+          exchange.setProperty(IngestionRoute.IDENTITY, source.queue() + "|" + messageId);
+        }
         try {
           getProcessor().process(exchange);
         } catch (Exception e) {

@@ -16,4 +16,15 @@ public interface SourceEndpoints {
    * @throws UnsupportedIngestionException when the runtime cannot run this source
    */
   Endpoint endpoint(CamelContext camel, Ingestion ingestion);
+
+  /**
+   * What is checked before each poll of a polled Camel component (an SFTP directory): that the
+   * hosts the source names still resolve to addresses a source may reach.
+   *
+   * @param ingestion the ingestion
+   * @return the check, which throws {@link UnsupportedIngestionException} to refuse the poll; none by default
+   */
+  default Runnable guard(Ingestion ingestion) {
+    return () -> {};
+  }
 }

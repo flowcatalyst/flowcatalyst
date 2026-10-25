@@ -4,6 +4,7 @@ import static io.flowcatalyst.ingestor.runtime.SourceHarness.await;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.flowcatalyst.ingestor.contract.Ingestion;
+import io.flowcatalyst.ingestor.contract.JobRecord;
 import io.flowcatalyst.ingestor.contract.RuntimeReport.RouteState;
 import io.flowcatalyst.ingestor.contract.SecretRef;
 import io.flowcatalyst.ingestor.contract.Source;
@@ -107,9 +108,42 @@ class DatabasePollTest {
     await(() -> harness.payloads().size() == 5);
 
     assertThat(ids()).containsExactlyInAnyOrder(1, 2, 3, 4, 5);
-    await(() -> "2026-10-09 10:00:03.0".equals(harness.state.values.get("orders/watermark")));
+    // The date and time the column holds, in ISO form whatever the JVM's zone.
+    await(() -> "2026-10-09T10:00:03".equals(harness.state.values.get("orders/watermark")));
     Thread.sleep(2500);
     assertThat(harness.payloads()).hasSize(5);
+    // Each row keyed by its watermark value and its place among the rows of that value.
+    List<JobRecord> jobs = harness.batches.stream().flatMap(List::stream).toList();
+    assertThat(jobs).extracting(JobRecord::externalId).doesNotContainNull().doesNotHaveDuplicates();
+  }
+
+  @Test
+  void aWatermarkStoredByAnEarlierRuntimeIsStillReadAndATimestampWithAZoneIsKeptInUtc() throws Exception {
+    pg.execute("CREATE TABLE events (id BIGINT PRIMARY KEY, at TIMESTAMPTZ NOT NULL)");
+    pg.execute("INSERT INTO events VALUES (1, '2026-10-09 10:00:01+02'), (2, '2026-10-09 10:00:02+02')");
+    harness.state.values.put("events/watermark", "2026-10-09 08:00:01.0");
+    Ingestion events =
+        SourceHarness.ingestion(
+            "events",
+            new Source.DatabasePoll(pg.jdbcUrl(), pg.username(), new SecretRef("db"), "events", new Track.Watermark("at", Track.Watermark.Type.TIMESTAMP), 10, Duration.ofSeconds(1)),
+            new Split.None());
+
+    harness.reconciler.reconcile(List.of(events));
+
+    await(() -> "2026-10-09T08:00:02Z".equals(harness.state.values.get("events/watermark")));
+  }
+
+  @Test
+  void rowsWithAStatusAreKeyedByTheirKeyColumn() throws Exception {
+    insert(1, "2026-10-09 10:00:01");
+    insert(2, "2026-10-09 10:00:02");
+    harness.reconciler.reconcile(List.of(table(new Track.Status("processed", "id", "0", "1"))));
+
+    await(() -> harness.payloads().size() == 2);
+
+    List<JobRecord> jobs = harness.batches.stream().flatMap(List::stream).toList();
+    assertThat(jobs).extracting(JobRecord::externalId)
+        .containsExactly(Identities.externalId("orders|id=1", 0), Identities.externalId("orders|id=2", 0));
   }
 
   @Test

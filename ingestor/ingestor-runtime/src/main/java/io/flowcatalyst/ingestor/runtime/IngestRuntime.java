@@ -33,6 +33,11 @@ public final class IngestRuntime {
    * @param args passed to the framework
    */
   public static void main(String[] args) {
+    // A resolved name is kept this long, so the address a source's host is checked at is the one
+    // the client connects to (OutboundGuard). Set before any name is resolved; 30 s is also the JDK's default.
+    if (java.security.Security.getProperty("networkaddress.cache.ttl") == null) {
+      java.security.Security.setProperty("networkaddress.cache.ttl", "30");
+    }
     switch (builder().shutdownHook(true).launch(args)) {
       case Launch.Ran ran -> System.exit(ran.exitCode());
       case Launch.Started started -> {}

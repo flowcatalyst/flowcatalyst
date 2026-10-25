@@ -26,13 +26,18 @@ public record ConnectionTest(String id, Outcome outcome, List<String> steps, @Nu
   /** The longest step the platform takes, in characters. */
   public static final int MAX_STEP = 500;
 
-  /** Copies the list, within what the platform takes: it refuses the whole report otherwise. */
+  /**
+   * Copies the list, within what the platform takes: it refuses the whole report otherwise. A NUL
+   * character, which the platform cannot store, is taken out of the steps and the excerpt.
+   */
   public ConnectionTest {
     List<String> kept = new ArrayList<>();
     for (String step : steps.subList(0, Math.min(steps.size(), MAX_STEPS))) {
-      kept.add(step.length() > MAX_STEP ? step.substring(0, MAX_STEP - 3) + "..." : step);
+      String clean = Text.withoutNul(step);
+      kept.add(clean.length() > MAX_STEP ? Text.cut(clean, MAX_STEP - 3) + "..." : clean);
     }
     steps = List.copyOf(kept);
+    excerpt = excerpt == null ? null : Text.withoutNul(excerpt);
   }
 
   /** How a test went. */

@@ -131,6 +131,10 @@ class AwsIngestTest {
     assertThat(harness.payloads()).containsExactly("{\"id\":1}", "{\"id\":2}", "{\"id\":3}");
     Thread.sleep(3000);
     assertThat(harness.payloads()).hasSize(3);
+    // Keyed by the queue and the message's id, so a message delivered twice makes its jobs once.
+    assertThat(harness.batches.stream().flatMap(List::stream).map(io.flowcatalyst.ingestor.contract.JobRecord::externalId))
+        .doesNotContainNull()
+        .doesNotHaveDuplicates();
   }
 
   @Test
@@ -169,6 +173,10 @@ class AwsIngestTest {
     assertThat(keys()).containsExactly(".done/in/orders.csv", "elsewhere.csv", "in/archive/old.csv");
     Thread.sleep(2500);
     assertThat(harness.payloads()).hasSize(3);
+    // Keyed by the bucket, the key and the ETag.
+    assertThat(harness.batches.stream().flatMap(List::stream).map(io.flowcatalyst.ingestor.contract.JobRecord::externalId))
+        .doesNotContainNull()
+        .doesNotHaveDuplicates();
   }
 
   @Test

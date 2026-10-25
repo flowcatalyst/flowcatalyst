@@ -32,9 +32,15 @@ final class TestRunner implements Function<TestRequest, ConnectionTest> {
   private final Extensions extensions;
   private final CamelContext camel;
   private final LongSupplier nanos;
+  private final OutboundGuard guard;
   private final AtomicLong tests = new AtomicLong();
 
   TestRunner(Secrets secrets, ServiceClients http, Extensions extensions, CamelContext camel, LongSupplier nanos) {
+    this(secrets, http, extensions, camel, nanos, OutboundGuard.allowingLoopback());
+  }
+
+  TestRunner(Secrets secrets, ServiceClients http, Extensions extensions, CamelContext camel, LongSupplier nanos, OutboundGuard guard) {
+    this.guard = guard;
     this.secrets = secrets;
     this.http = http;
     this.extensions = extensions;
@@ -109,7 +115,7 @@ final class TestRunner implements Function<TestRequest, ConnectionTest> {
     ApiPollClient client;
     try {
       // Its own clients, apart from the route's when the ingestion is running too.
-      client = new ApiPollClient(ingestion, api, secrets, ApiPollClient.name("api-test", tests.incrementAndGet()), http, nanos);
+      client = new ApiPollClient(ingestion, api, secrets, ApiPollClient.name("api-test", tests.incrementAndGet()), http, nanos, guard);
     } catch (UnsupportedIngestionException e) {
       return result(id, ConnectionTest.Outcome.FAILED, List.of(ExchangeCounters.clean(e.getMessage()) + "."), null, null);
     }
@@ -145,6 +151,6 @@ final class TestRunner implements Function<TestRequest, ConnectionTest> {
     if (!ingestion.keepFailedPayloads() || body == null || body.isEmpty()) {
       return null;
     }
-    return body.length() > ExchangeCounters.EXCERPT ? body.substring(0, ExchangeCounters.EXCERPT) : body;
+    return ExchangeCounters.excerpt(body);
   }
 }

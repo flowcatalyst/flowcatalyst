@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.flowcatalyst.framework.http.Json;
 import io.flowcatalyst.ingestor.contract.ConnectionTest;
 import io.flowcatalyst.ingestor.contract.JobRecord;
 import io.flowcatalyst.ingestor.contract.Target;
@@ -43,19 +44,26 @@ class RuntimeLoopTest {
     boolean reportDown;
     @Nullable String rejects;
     Duration lease = Duration.ofMinutes(3);
+    List<RuntimeApi.Unreadable> unreadable = List.of();
+    List<Duration> timeouts = new ArrayList<>();
+    @Nullable String failReportWith;
 
     @Override
-    public PollAnswer poll() throws IOException {
+    public Polled poll(Duration timeout) throws IOException {
+      timeouts.add(timeout);
       if (down) {
         throw new IOException("connection refused");
       }
-      return new PollAnswer(Instant.EPOCH, lease, active, tests);
+      return new Polled(new PollAnswer(Instant.EPOCH, lease, active, tests), unreadable, List.of());
     }
 
     @Override
-    public void report(RuntimeReport report) throws IOException {
+    public void report(RuntimeReport report, Duration timeout) throws IOException {
       if (down || reportDown) {
         throw new IOException("connection refused");
+      }
+      if (failReportWith != null && report.failures().stream().anyMatch(f -> f.message().contains(failReportWith))) {
+        throw new IOException("500 from the platform");
       }
       if (rejects != null) {
         throw new RejectedException(rejects, 422);
@@ -68,6 +76,8 @@ class RuntimeLoopTest {
   final List<TestRequest> tested = new ArrayList<>();
   final List<List<JobRecord>> batches = new ArrayList<>();
   boolean platformDown;
+  boolean refuseJobs;
+  int failNext;
   final InstantSource clock = InstantSource.system();
   final ExchangeCounters counters = new ExchangeCounters(clock);
   final SourceHealth health = new SourceHealth();
@@ -84,6 +94,13 @@ class RuntimeLoopTest {
         (ingestion, jobs) -> {
           if (platformDown) {
             throw new IOException("platform unavailable");
+          }
+          if (refuseJobs) {
+            throw new RejectedException("POST /jobs answered 400: VALIDATION, records[0].payload is not valid", 400);
+          }
+          if (failNext > 0) {
+            failNext--;
+            throw new IOException("connection reset");
           }
           batches.add(jobs);
         };
@@ -471,5 +488,289 @@ class RuntimeLoopTest {
 
     loop.tick();
     assertThat(lastReport().metrics()).hasSize(5);
+  }
+
+  @Test
+  void anIngestionWhoseDefinitionCannotBeReadIsReportedFailedAndItsOlderRouteStopped() throws Exception {
+    controlPlane.active = List.of(ingestion("ing_1", 1, new Split.None(), 1), ingestion("ing_2", 1, new Split.None(), 1));
+    loop.tick();
+    assertThat(camel.getRoute("ing_2")).isNotNull();
+
+    controlPlane.active = List.of(ingestion("ing_1", 1, new Split.None(), 1));
+    controlPlane.unreadable = List.of(new RuntimeApi.Unreadable("ing_2", 2, PlatformApi.NOT_SUPPORTED));
+    loop.tick();
+    loop.tick();
+
+    assertThat(camel.getRoute("ing_2")).isNull();
+    assertThat(lastReport().routes())
+        .containsExactly(
+            new RouteState("ing_1", 1, RouteState.Status.STARTED, null),
+            new RouteState("ing_2", 2, RouteState.Status.FAILED, PlatformApi.NOT_SUPPORTED));
+  }
+
+  @Test
+  void theWatchdogStopsASingleOwnerRouteBeforeTheLeaseEndsWhileTheRoundIsStuck() throws Exception {
+    controlPlane.active = List.of(polled("files"), ingestion("queue", 1, new Split.None(), 1));
+    loop.tick();
+    assertThat(loop.margin()).isEqualTo(Duration.ofMinutes(1));
+
+    // No round renews it: the watchdog alone, a minute before the three-minute lease ends.
+    monotonicNanos += Duration.ofMinutes(2).minusSeconds(1).toNanos();
+    loop.watch();
+    assertThat(camel.getRoute("files")).isNotNull();
+
+    monotonicNanos += Duration.ofSeconds(2).toNanos();
+    loop.watch();
+    assertThat(camel.getRoute("files")).isNull();
+    assertThat(camel.getRoute("queue")).isNotNull();
+  }
+
+  @Test
+  void thePollAndTheReportWaitAtMostASixthOfTheLease() throws Exception {
+    controlPlane.lease = Duration.ofSeconds(30);
+    loop.tick();
+    loop.tick();
+
+    assertThat(controlPlane.timeouts).containsExactly(Duration.ofSeconds(30), Duration.ofSeconds(5));
+    assertThat(loop.margin()).isEqualTo(Duration.ofSeconds(15));
+  }
+
+  @Test
+  void aRoundThatThrowsAnErrorIsLoggedAndTheNextRoundRuns() throws Exception {
+    RuntimeApi broken =
+        new RuntimeApi() {
+          int polls;
+
+          @Override
+          public Polled poll(Duration timeout) {
+            if (polls++ == 0) {
+              throw new NoClassDefFoundError("io/example/Missing");
+            }
+            return new Polled(new PollAnswer(Instant.EPOCH, Duration.ofMinutes(3), List.of()));
+          }
+
+          @Override
+          public void report(RuntimeReport report, Duration timeout) {}
+        };
+    RuntimeLoop other =
+        new RuntimeLoop("runtime-1", Duration.ofMinutes(1), broken, new Reconciler(camel, i -> null), counters, r -> null, clock, () -> monotonicNanos);
+
+    assertThatCode(other::tick).doesNotThrowAnyException();
+    assertThatThrownBy(other::requireRecentPoll).isInstanceOf(IllegalStateException.class);
+    other.tick();
+    assertThatCode(other::requireRecentPoll).doesNotThrowAnyException();
+  }
+
+  @Test
+  void aReportStaysUnderThePlatformsSizeAndTheRestFollowsOldestFirst() throws Exception {
+    String wide = "€".repeat(2048);
+    int ingestions = 30;
+    for (int i = 0; i < ingestions; i++) {
+      Ingestion each = keepingPayloads(ingestion("ing_" + i, 1, new Split.None(), 1));
+      for (int f = 0; f < ExchangeCounters.FAILURES_PER_INGESTION; f++) {
+        counters.failure(each, RuntimeReport.Failure.Kind.REJECTED, wide, 0L, wide);
+      }
+    }
+
+    loop.tick();
+    RuntimeReport first = lastReport();
+    assertThat(Json.mapper().writeValueAsBytes(first).length).isLessThan(RuntimeReport.MAX_BYTES);
+    assertThat(first.failures()).hasSizeLessThan(RuntimeReport.MAX_FAILURES);
+    assertThat(first.failures().getFirst().ingestionId()).isEqualTo("ing_0");
+
+    int sent = first.failures().size();
+    for (int i = 0; i < 3; i++) {
+      loop.tick();
+      sent += lastReport().failures().size();
+    }
+    assertThat(sent).isEqualTo(ingestions * ExchangeCounters.FAILURES_PER_INGESTION);
+  }
+
+  @Test
+  void aReportThatKeepsFailingWhileThePlatformAnswersDropsItsFailuresSoReportingGoesOn() throws Exception {
+    Ingestion one = ingestion("ing_1", 1, new Split.None(), 1);
+    controlPlane.active = List.of(one);
+    loop.tick();
+    controlPlane.failReportWith = "poison";
+    counters.failure(one, RuntimeReport.Failure.Kind.SOURCE, "poison", null, null);
+
+    int before = controlPlane.reports.size();
+    for (int i = 0; i < RuntimeLoop.WEDGED_REPORTS; i++) {
+      loop.tick();
+    }
+    assertThat(controlPlane.reports).hasSize(before);
+
+    loop.tick();
+    assertThat(controlPlane.reports).hasSize(before + 1);
+    assertThat(lastReport().failures()).isEmpty();
+  }
+
+  @Test
+  void aSlowTestDoesNotHoldUpTheRoundAndIsAnsweredAsFailedAtItsDeadline() throws Exception {
+    java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+    RuntimeLoop slow =
+        new RuntimeLoop(
+            "runtime-1",
+            Duration.ofSeconds(2),
+            controlPlane,
+            new Reconciler(camel, i -> null),
+            counters,
+            request -> {
+              try {
+                release.await();
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+              return new ConnectionTest(request.id(), ConnectionTest.Outcome.RESULTS, List.of("late"), null, null);
+            },
+            clock,
+            () -> monotonicNanos);
+    controlPlane.tests = List.of(new TestRequest("tst_slow", Instant.now().plusSeconds(300), ingestion("ing_test", 0, new Split.None(), 1)));
+
+    long started = System.nanoTime();
+    slow.tick();
+    assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(5));
+    assertThat(lastReport().tests()).isEmpty();
+
+    // Handed again while it runs: not started twice. Past its deadline: answered as failed, once.
+    monotonicNanos += RuntimeLoop.MAX_TEST.plusSeconds(1).toNanos();
+    slow.tick();
+    assertThat(lastReport().tests()).singleElement().satisfies(t -> {
+      assertThat(t.id()).isEqualTo("tst_slow");
+      assertThat(t.outcome()).isEqualTo(ConnectionTest.Outcome.FAILED);
+    });
+    release.countDown();
+    slow.close();
+  }
+
+  @Test
+  void jobsThePlatformRefusesForGoodRejectThePayloadSoTheSourceMovesOnAndSayWhy() throws Exception {
+    controlPlane.active = List.of(ingestion("ing_1", 1, new Split.Csv(false), 10));
+    loop.tick();
+    refuseJobs = true;
+
+    // The exchange ends: the source lets go of the payload instead of offering it forever.
+    assertThatCode(() -> send("ing_1", "A\nB\n")).doesNotThrowAnyException();
+    loop.tick();
+
+    assertThat(lastReport().failures()).singleElement().satisfies(f -> {
+      assertThat(f.kind()).isEqualTo(RuntimeReport.Failure.Kind.REJECTED);
+      assertThat(f.category()).isEqualTo(RuntimeReport.Failure.Category.REJECTED);
+      assertThat(f.message()).contains("the platform refused the dispatch jobs").contains("VALIDATION");
+    });
+  }
+
+  @Test
+  void aBatchThePlatformDidNotTakeIsSentAgainBeforeTheExchangeFails() throws Exception {
+    controlPlane.active = List.of(ingestion("ing_1", 1, new Split.Csv(false), 10));
+    loop.tick();
+    failNext = IngestionRoute.ATTEMPTS - 1;
+
+    send("ing_1", "A\nB\n");
+    loop.tick();
+
+    assertThat(batches).singleElement().satisfies(b -> assertThat(b).hasSize(2));
+    assertThat(lastReport().failures()).isEmpty();
+  }
+
+  @Test
+  void aBatchIsCutBySizeAsWellAsByCount() throws Exception {
+    controlPlane.active = List.of(ingestion("ing_1", 1, new Split.Csv(false), 10));
+    loop.tick();
+    String line = "x".repeat(3 * 1024 * 1024);
+
+    send("ing_1", String.join("\n", line, line, line, line, line));
+
+    assertThat(batches).extracting(List::size).containsExactly(2, 2, 1);
+    for (List<JobRecord> batch : batches) {
+      assertThat(Json.mapper().writeValueAsBytes(Map.of("records", batch)).length).isLessThanOrEqualTo(JobRecord.TARGET_REQUEST_BYTES);
+    }
+  }
+
+  @Test
+  void aPayloadWithAnIdentityHasKeysFromItAndItsGroupIsTheSameEveryTimeItIsRead() throws Exception {
+    controlPlane.active = List.of(ingestion("ing_1", 1, new Split.Csv(false), 10));
+    loop.tick();
+
+    for (int i = 0; i < 2; i++) {
+      try (var producer = camel.createProducerTemplate()) {
+        producer.send("direct:ing_1", e -> {
+          e.getMessage().setBody("A\nB\n");
+          io.flowcatalyst.ingestor.extension.PayloadIdentity.set(e, "sftp.example:/out/a.csv@1|4");
+        });
+      }
+    }
+
+    assertThat(batches).hasSize(2);
+    assertThat(batches.get(0)).extracting(JobRecord::externalId)
+        .containsExactly(Identities.externalId("sftp.example:/out/a.csv@1|4", 0), Identities.externalId("sftp.example:/out/a.csv@1|4", 1));
+    assertThat(batches.get(1)).isEqualTo(batches.get(0));
+
+    // Without one: no key, and the group still follows the payload, not the exchange.
+    send("ing_1", "C\n");
+    send("ing_1", "C\n");
+    assertThat(batches.get(2).getFirst().externalId()).isNull();
+    assertThat(batches.get(3).getFirst().messageGroup()).isEqualTo(batches.get(2).getFirst().messageGroup());
+  }
+
+  @Test
+  void aConnectionThatBreaksWhileThePayloadIsReadKeepsThePayloadInsteadOfRejectingIt() throws Exception {
+    controlPlane.active = List.of(ingestion("ing_1", 1, new Split.Json("$"), 10));
+    loop.tick();
+    java.io.InputStream cut =
+        new java.io.SequenceInputStream(
+            new java.io.ByteArrayInputStream("[{\"id\":1},".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+            new java.io.InputStream() {
+              @Override
+              public int read() throws IOException {
+                throw new java.net.SocketException("Connection reset");
+              }
+            });
+
+    try (var producer = camel.createProducerTemplate()) {
+      org.apache.camel.Exchange done = producer.send("direct:ing_1", e -> e.getMessage().setBody(cut));
+      assertThat(done.isFailed()).isTrue();
+      assertThat(done.getProperty(IngestionRoute.REJECTED)).isNull();
+    }
+    loop.tick();
+    assertThat(lastReport().failures()).singleElement().satisfies(f -> assertThat(f.kind()).isEqualTo(RuntimeReport.Failure.Kind.SOURCE));
+  }
+
+  @Test
+  void anHttpIngestionIsFoundWhileAnotherRouteIsBeingStopped() throws Exception {
+    Ingestion http = SourceHarness.ingestion("hook", 1, new Source.Http(new io.flowcatalyst.ingestor.contract.HttpAuth.Bearer(new SecretRef("t")), null), new Split.None(), SourceHarness.target(Target.Mode.IMMEDIATE, 1), false);
+    controlPlane.active = List.of(http, ingestion("ing_1", 1, new Split.None(), 1));
+    loop.tick();
+    Reconciler reconciler = reconcilerOf(loop);
+
+    java.util.concurrent.CountDownLatch inside = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch leave = new java.util.concurrent.CountDownLatch(1);
+    // Another thread holds the reconciler's lock, as a reconcile stopping a slow route does.
+    Thread holder =
+        Thread.ofPlatform().start(() -> {
+          synchronized (reconciler) {
+            inside.countDown();
+            try {
+              leave.await();
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+            }
+          }
+        });
+    inside.await();
+    try {
+      java.util.concurrent.CompletableFuture<List<Ingestion>> found =
+          java.util.concurrent.CompletableFuture.supplyAsync(() -> reconciler.find(null, "acme", "hook"));
+      assertThat(found.get(2, java.util.concurrent.TimeUnit.SECONDS)).extracting(Ingestion::id).containsExactly("hook");
+    } finally {
+      leave.countDown();
+      holder.join();
+    }
+  }
+
+  private Reconciler reconcilerOf(RuntimeLoop of) throws Exception {
+    java.lang.reflect.Field field = RuntimeLoop.class.getDeclaredField("reconciler");
+    field.setAccessible(true);
+    return (Reconciler) field.get(of);
   }
 }
