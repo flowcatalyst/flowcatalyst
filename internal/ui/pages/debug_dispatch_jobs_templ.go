@@ -42,7 +42,7 @@ func dbgDjPage(v dbgDjView) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.signals())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 10, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 10, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
@@ -136,7 +136,7 @@ func dbgDjSummary(v dbgDjView) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(thousands(int64(len(v.Rows))))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 36, Col: 121}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 36, Col: 121}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
@@ -477,7 +477,7 @@ func dbgDjTable(v dbgDjView) templ.Component {
 							var templ_7745c5c3_Var20 templ.SafeURL
 							templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(row.Href))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 76, Col: 39}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 76, Col: 39}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 							if templ_7745c5c3_Err != nil {
@@ -490,7 +490,7 @@ func dbgDjTable(v dbgDjView) templ.Component {
 							var templ_7745c5c3_Var21 string
 							templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.ID)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 76, Col: 82}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 76, Col: 82}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 							if templ_7745c5c3_Err != nil {
@@ -503,7 +503,7 @@ func dbgDjTable(v dbgDjView) templ.Component {
 							var templ_7745c5c3_Var22 string
 							templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(liveLink)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 76, Col: 118}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 76, Col: 118}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 							if templ_7745c5c3_Err != nil {
@@ -516,7 +516,7 @@ func dbgDjTable(v dbgDjView) templ.Component {
 							var templ_7745c5c3_Var23 string
 							templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(row.ShortID)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 76, Col: 134}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 76, Col: 134}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 							if templ_7745c5c3_Err != nil {
@@ -577,7 +577,7 @@ func dbgDjTable(v dbgDjView) templ.Component {
 							var templ_7745c5c3_Var26 string
 							templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(row.Kind)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 82, Col: 16}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 82, Col: 16}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 							if templ_7745c5c3_Err != nil {
@@ -634,7 +634,7 @@ func dbgDjTable(v dbgDjView) templ.Component {
 							var templ_7745c5c3_Var29 string
 							templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(row.Attempts)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 88, Col: 20}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 88, Col: 20}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 							if templ_7745c5c3_Err != nil {
@@ -665,7 +665,7 @@ func dbgDjTable(v dbgDjView) templ.Component {
 							var templ_7745c5c3_Var31 string
 							templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(row.Payload)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 91, Col: 19}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 91, Col: 19}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 							if templ_7745c5c3_Err != nil {
@@ -700,7 +700,7 @@ func dbgDjTable(v dbgDjView) templ.Component {
 							var templ_7745c5c3_Var33 string
 							templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.Key)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 94, Col: 53}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 94, Col: 53}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
 							if templ_7745c5c3_Err != nil {
@@ -713,7 +713,7 @@ func dbgDjTable(v dbgDjView) templ.Component {
 							var templ_7745c5c3_Var34 string
 							templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(row.KeyShort)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 94, Col: 70}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 94, Col: 70}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 							if templ_7745c5c3_Err != nil {
@@ -908,7 +908,7 @@ func dbgDjDrawerBody(d dbgDjDetail) templ.Component {
 		var templ_7745c5c3_Var41 string
 		templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.ResolveAttributeValue(dbgDjDrawerID + "-body")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 123, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 123, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 		if templ_7745c5c3_Err != nil {
@@ -937,7 +937,7 @@ func dbgDjDrawerBody(d dbgDjDetail) templ.Component {
 			var templ_7745c5c3_Var43 string
 			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(d.ID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 126, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 126, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 			if templ_7745c5c3_Err != nil {
@@ -1024,7 +1024,7 @@ func dbgDjDrawerBody(d dbgDjDetail) templ.Component {
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(d.TargetURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 137, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 137, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 			if templ_7745c5c3_Err != nil {
@@ -1059,7 +1059,7 @@ func dbgDjDrawerBody(d dbgDjDetail) templ.Component {
 			var templ_7745c5c3_Var49 string
 			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(d.ClientID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 140, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 140, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 			if templ_7745c5c3_Err != nil {
@@ -1094,7 +1094,7 @@ func dbgDjDrawerBody(d dbgDjDetail) templ.Component {
 			var templ_7745c5c3_Var51 string
 			templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(d.SubscriptionID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 143, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 143, Col: 46}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 			if templ_7745c5c3_Err != nil {
@@ -1137,7 +1137,7 @@ func dbgDjDrawerBody(d dbgDjDetail) templ.Component {
 			var templ_7745c5c3_Var53 string
 			templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(d.LastError)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 148, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 148, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 			if templ_7745c5c3_Err != nil {
@@ -1172,7 +1172,7 @@ func dbgDjDrawerBody(d dbgDjDetail) templ.Component {
 			var templ_7745c5c3_Var55 string
 			templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(d.Key)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 151, Col: 49}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 151, Col: 49}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
 			if templ_7745c5c3_Err != nil {
@@ -1207,7 +1207,7 @@ func dbgDjDrawerBody(d dbgDjDetail) templ.Component {
 			var templ_7745c5c3_Var57 string
 			templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(d.Correlation)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 154, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 154, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 			if templ_7745c5c3_Err != nil {
@@ -1242,7 +1242,7 @@ func dbgDjDrawerBody(d dbgDjDetail) templ.Component {
 			var templ_7745c5c3_Var59 string
 			templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.JoinStringErrs(d.EventID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `debug_dispatch_jobs.templ`, Line: 157, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/debug_dispatch_jobs.templ`, Line: 157, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var59))
 			if templ_7745c5c3_Err != nil {

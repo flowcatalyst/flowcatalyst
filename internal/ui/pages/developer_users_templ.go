@@ -107,7 +107,7 @@ func devUsersPage(v devUsersView) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(devUsersDialogSlot)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 58, Col: 29}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 58, Col: 29}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
@@ -241,7 +241,7 @@ func devUsersTable(v devUsersView) templ.Component {
 						var templ_7745c5c3_Var9 string
 						templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(row.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 78, Col: 15}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 78, Col: 15}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 						if templ_7745c5c3_Err != nil {
@@ -367,7 +367,7 @@ func devUsersTable(v devUsersView) templ.Component {
 			var templ_7745c5c3_Var13 templ.SafeURL
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(devUsersPath + "/grant")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 99, Col: 36}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 99, Col: 36}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -380,7 +380,7 @@ func devUsersTable(v devUsersView) templ.Component {
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(liveLink)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 99, Col: 101}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 99, Col: 101}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 			if templ_7745c5c3_Err != nil {
@@ -449,7 +449,7 @@ func devConfirmDialog(c devConfirm) templ.Component {
 			var templ_7745c5c3_Var17 templ.SafeURL
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinURLErrs(c.Action)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 124, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 124, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
@@ -462,7 +462,7 @@ func devConfirmDialog(c devConfirm) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(kit.SubmitConfirm)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 124, Col: 98}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 124, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 			if templ_7745c5c3_Err != nil {
@@ -483,7 +483,7 @@ func devConfirmDialog(c devConfirm) templ.Component {
 			var templ_7745c5c3_Var19 string
 			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(c.Message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 126, Col: 17}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 126, Col: 17}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 			if templ_7745c5c3_Err != nil {
@@ -535,7 +535,7 @@ func devConfirmFooter(c devConfirm) templ.Component {
 		var templ_7745c5c3_Var21 string
 		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(kit.CloseDialog)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 132, Col: 91}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 132, Col: 91}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 		if templ_7745c5c3_Err != nil {
@@ -548,7 +548,7 @@ func devConfirmFooter(c devConfirm) templ.Component {
 		var templ_7745c5c3_Var22 string
 		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(c.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 133, Col: 85}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 133, Col: 85}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 		if templ_7745c5c3_Err != nil {
@@ -604,7 +604,7 @@ func devGrantDialog(v devGrantView) templ.Component {
 			var templ_7745c5c3_Var25 templ.SafeURL
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinURLErrs(devUsersPath + "/grant/search")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 145, Col: 82}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 145, Col: 82}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -617,7 +617,7 @@ func devGrantDialog(v devGrantView) templ.Component {
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.Q)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 146, Col: 168}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 146, Col: 168}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 			if templ_7745c5c3_Err != nil {
@@ -738,7 +738,7 @@ func devGrantResults(v devGrantView) templ.Component {
 			var templ_7745c5c3_Var30 templ.SafeURL
 			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinURLErrs(res.Action)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 167, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 167, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
@@ -751,7 +751,7 @@ func devGrantResults(v devGrantView) templ.Component {
 			var templ_7745c5c3_Var31 string
 			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(kit.SubmitForm)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 167, Col: 76}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 167, Col: 76}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 			if templ_7745c5c3_Err != nil {
@@ -764,7 +764,7 @@ func devGrantResults(v devGrantView) templ.Component {
 			var templ_7745c5c3_Var32 string
 			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(res.Initials)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 169, Col: 160}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 169, Col: 160}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 			if templ_7745c5c3_Err != nil {
@@ -777,7 +777,7 @@ func devGrantResults(v devGrantView) templ.Component {
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(res.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 171, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 171, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
@@ -790,7 +790,7 @@ func devGrantResults(v devGrantView) templ.Component {
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(res.Email)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 172, Col: 70}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 172, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -860,7 +860,7 @@ func devSecretDialog(s devSecret) templ.Component {
 			var templ_7745c5c3_Var37 string
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(s.Secret)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 197, Col: 93}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 197, Col: 93}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
@@ -873,7 +873,7 @@ func devSecretDialog(s devSecret) templ.Component {
 			var templ_7745c5c3_Var38 string
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(s.ClientID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `developer_users.templ`, Line: 198, Col: 76}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/developer_users.templ`, Line: 198, Col: 76}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 			if templ_7745c5c3_Err != nil {

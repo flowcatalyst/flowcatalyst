@@ -182,7 +182,7 @@ func procsPage(v procsView) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.drawerSignals())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 88, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 88, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 		if templ_7745c5c3_Err != nil {
@@ -195,7 +195,7 @@ func procsPage(v procsView) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(assets.URL("fc-diagram.js"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 89, Col: 57}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 89, Col: 57}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 		if templ_7745c5c3_Err != nil {
@@ -236,7 +236,7 @@ func procsPage(v procsView) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(procDialogSlot)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 97, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 97, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 		if templ_7745c5c3_Err != nil {
@@ -425,7 +425,7 @@ func procSubdomainFilter(v procsView) templ.Component {
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(procSubdomainSlot)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 130, Col: 28}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 130, Col: 28}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 		if templ_7745c5c3_Err != nil {
@@ -512,7 +512,7 @@ func procsTable(v procsView) templ.Component {
 						var templ_7745c5c3_Var17 templ.SafeURL
 						templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinURLErrs(row.DetailHref)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 140, Col: 29}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 140, Col: 29}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 						if templ_7745c5c3_Err != nil {
@@ -525,7 +525,7 @@ func procsTable(v procsView) templ.Component {
 						var templ_7745c5c3_Var18 string
 						templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(liveLink)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 140, Col: 86}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 140, Col: 86}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 						if templ_7745c5c3_Err != nil {
@@ -572,7 +572,7 @@ func procsTable(v procsView) templ.Component {
 						var templ_7745c5c3_Var20 templ.SafeURL
 						templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinURLErrs(row.DetailHref)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 145, Col: 29}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 145, Col: 29}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 						if templ_7745c5c3_Err != nil {
@@ -585,7 +585,7 @@ func procsTable(v procsView) templ.Component {
 						var templ_7745c5c3_Var21 string
 						templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(liveLink)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 145, Col: 130}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 145, Col: 130}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 						if templ_7745c5c3_Err != nil {
@@ -598,7 +598,7 @@ func procsTable(v procsView) templ.Component {
 						var templ_7745c5c3_Var22 string
 						templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(row.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 145, Col: 143}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 145, Col: 143}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 						if templ_7745c5c3_Err != nil {
@@ -638,7 +638,7 @@ func procsTable(v procsView) templ.Component {
 							var templ_7745c5c3_Var24 string
 							templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.Description)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 149, Col: 72}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 149, Col: 72}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 							if templ_7745c5c3_Err != nil {
@@ -651,7 +651,7 @@ func procsTable(v procsView) templ.Component {
 							var templ_7745c5c3_Var25 string
 							templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(row.Description)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 149, Col: 92}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 149, Col: 92}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 							if templ_7745c5c3_Err != nil {
@@ -754,7 +754,7 @@ func procsTable(v procsView) templ.Component {
 			var templ_7745c5c3_Var28 templ.SafeURL
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinURLErrs(procsPath + "/new")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 166, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 166, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
@@ -767,7 +767,7 @@ func procsTable(v procsView) templ.Component {
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(liveLink)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 166, Col: 96}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 166, Col: 96}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
 			if templ_7745c5c3_Err != nil {
@@ -918,7 +918,7 @@ func procDrawerBody(d procDetail) templ.Component {
 			var templ_7745c5c3_Var35 string
 			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(d.Description)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 192, Col: 51}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 192, Col: 51}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 			if templ_7745c5c3_Err != nil {
@@ -1046,7 +1046,7 @@ func procDrawerBody(d procDetail) templ.Component {
 				var templ_7745c5c3_Var40 string
 				templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(d.Body)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 223, Col: 12}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 223, Col: 12}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 				if templ_7745c5c3_Err != nil {
@@ -1082,7 +1082,7 @@ func procDrawerBody(d procDetail) templ.Component {
 				var templ_7745c5c3_Var42 string
 				templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(d.Body)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `processes.templ`, Line: 228, Col: 12}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/processes.templ`, Line: 228, Col: 12}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 				if templ_7745c5c3_Err != nil {

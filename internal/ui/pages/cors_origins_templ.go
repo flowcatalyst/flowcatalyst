@@ -112,7 +112,7 @@ func corsPage(v corsView) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(corsDialogSlot)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cors_origins.templ`, Line: 60, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/cors_origins.templ`, Line: 60, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
@@ -250,7 +250,7 @@ func corsTable(v corsView) templ.Component {
 						var templ_7745c5c3_Var9 string
 						templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(row.Origin)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `cors_origins.templ`, Line: 81, Col: 53}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/cors_origins.templ`, Line: 81, Col: 53}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 						if templ_7745c5c3_Err != nil {
@@ -286,7 +286,7 @@ func corsTable(v corsView) templ.Component {
 							var templ_7745c5c3_Var11 string
 							templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(row.Description)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `cors_origins.templ`, Line: 85, Col: 23}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/cors_origins.templ`, Line: 85, Col: 23}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 							if templ_7745c5c3_Err != nil {
@@ -534,7 +534,7 @@ func corsDeleteDialogC(id, origin string) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(corsDelDialog + "-form")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cors_origins.templ`, Line: 134, Col: 36}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/cors_origins.templ`, Line: 134, Col: 36}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 			if templ_7745c5c3_Err != nil {
@@ -547,7 +547,7 @@ func corsDeleteDialogC(id, origin string) templ.Component {
 			var templ_7745c5c3_Var21 templ.SafeURL
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinURLErrs(corsDeleteURL(id))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cors_origins.templ`, Line: 134, Col: 79}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/cors_origins.templ`, Line: 134, Col: 79}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
@@ -560,7 +560,7 @@ func corsDeleteDialogC(id, origin string) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(kit.SubmitConfirm)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cors_origins.templ`, Line: 134, Col: 144}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/cors_origins.templ`, Line: 134, Col: 144}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 			if templ_7745c5c3_Err != nil {
@@ -573,7 +573,7 @@ func corsDeleteDialogC(id, origin string) templ.Component {
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(origin)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cors_origins.templ`, Line: 136, Col: 93}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/cors_origins.templ`, Line: 136, Col: 93}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
@@ -633,7 +633,7 @@ func corsDeleteFooter(id string) templ.Component {
 		var templ_7745c5c3_Var25 string
 		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(kit.CloseDialog)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cors_origins.templ`, Line: 143, Col: 91}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/cors_origins.templ`, Line: 143, Col: 91}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 		if templ_7745c5c3_Err != nil {
@@ -646,7 +646,7 @@ func corsDeleteFooter(id string) templ.Component {
 		var templ_7745c5c3_Var26 string
 		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(corsDelDialog + "-form")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cors_origins.templ`, Line: 144, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/cors_origins.templ`, Line: 144, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 		if templ_7745c5c3_Err != nil {

@@ -59,7 +59,7 @@ func etFormDialogC(f etForm) templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.signals())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_form.templ`, Line: 16, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_form.templ`, Line: 16, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
@@ -190,7 +190,7 @@ func etSegment(f etForm, key, label, placeholder, signal string, value string) t
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_form.templ`, Line: 38, Col: 24}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_form.templ`, Line: 38, Col: 24}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 		if templ_7745c5c3_Err != nil {
@@ -203,7 +203,7 @@ func etSegment(f etForm, key, label, placeholder, signal string, value string) t
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_form.templ`, Line: 38, Col: 89}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_form.templ`, Line: 38, Col: 89}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
@@ -296,7 +296,7 @@ func etField(f etForm, key string) templ.Component {
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id("application"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_form.templ`, Line: 54, Col: 39}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_form.templ`, Line: 54, Col: 39}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 				if templ_7745c5c3_Err != nil {
@@ -397,7 +397,7 @@ func etField(f etForm, key string) templ.Component {
 				var templ_7745c5c3_Var14 string
 				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(etCount(f.Name, 100))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_form.templ`, Line: 90, Col: 145}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_form.templ`, Line: 90, Col: 145}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 				if templ_7745c5c3_Err != nil {
@@ -437,7 +437,7 @@ func etField(f etForm, key string) templ.Component {
 				var templ_7745c5c3_Var16 string
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(etCount(f.Description, 255))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_form.templ`, Line: 95, Col: 152}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_form.templ`, Line: 95, Col: 152}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 				if templ_7745c5c3_Err != nil {
@@ -461,7 +461,7 @@ func etField(f etForm, key string) templ.Component {
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-field")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_form.templ`, Line: 98, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_form.templ`, Line: 98, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 			if templ_7745c5c3_Err != nil {
@@ -482,7 +482,7 @@ func etField(f etForm, key string) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-help")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_form.templ`, Line: 102, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_form.templ`, Line: 102, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 			if templ_7745c5c3_Err != nil {
@@ -526,7 +526,7 @@ func etSchemaPage(f etSchemaForm) templ.Component {
 		var templ_7745c5c3_Var20 templ.SafeURL
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinURLErrs(etURL(f.ETID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_form.templ`, Line: 111, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_form.templ`, Line: 111, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 		if templ_7745c5c3_Err != nil {
@@ -547,7 +547,7 @@ func etSchemaPage(f etSchemaForm) templ.Component {
 		var templ_7745c5c3_Var21 string
 		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(f.ETName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_form.templ`, Line: 116, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_form.templ`, Line: 116, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 		if templ_7745c5c3_Err != nil {
@@ -560,7 +560,7 @@ func etSchemaPage(f etSchemaForm) templ.Component {
 		var templ_7745c5c3_Var22 string
 		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(etSchemaFormID + "-form")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_form.templ`, Line: 120, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_form.templ`, Line: 120, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 		if templ_7745c5c3_Err != nil {
@@ -573,7 +573,7 @@ func etSchemaPage(f etSchemaForm) templ.Component {
 		var templ_7745c5c3_Var23 templ.SafeURL
 		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinURLErrs(f.action())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_form.templ`, Line: 122, Col: 22}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_form.templ`, Line: 122, Col: 22}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 		if templ_7745c5c3_Err != nil {
@@ -586,7 +586,7 @@ func etSchemaPage(f etSchemaForm) templ.Component {
 		var templ_7745c5c3_Var24 string
 		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(kit.SubmitForm)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `event_types_form.templ`, Line: 125, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/event_types_form.templ`, Line: 125, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 		if templ_7745c5c3_Err != nil {

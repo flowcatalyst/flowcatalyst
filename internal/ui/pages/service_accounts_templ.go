@@ -145,7 +145,7 @@ func saPage(v saView) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.drawerSignals())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 85, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 85, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 		if templ_7745c5c3_Err != nil {
@@ -186,7 +186,7 @@ func saPage(v saView) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(saDialogSlot)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 93, Col: 24}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 93, Col: 24}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 		if templ_7745c5c3_Err != nil {
@@ -371,7 +371,7 @@ func saTable(v saView) templ.Component {
 						var templ_7745c5c3_Var12 templ.SafeURL
 						templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinURLErrs(row.DetailHref)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 123, Col: 29}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 123, Col: 29}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 						if templ_7745c5c3_Err != nil {
@@ -384,7 +384,7 @@ func saTable(v saView) templ.Component {
 						var templ_7745c5c3_Var13 string
 						templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(liveLink)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 123, Col: 130}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 123, Col: 130}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 						if templ_7745c5c3_Err != nil {
@@ -397,7 +397,7 @@ func saTable(v saView) templ.Component {
 						var templ_7745c5c3_Var14 string
 						templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(row.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 123, Col: 143}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 123, Col: 143}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 						if templ_7745c5c3_Err != nil {
@@ -436,7 +436,7 @@ func saTable(v saView) templ.Component {
 						var templ_7745c5c3_Var16 string
 						templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(row.Code)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 126, Col: 51}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 126, Col: 51}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 						if templ_7745c5c3_Err != nil {
@@ -497,7 +497,7 @@ func saTable(v saView) templ.Component {
 						var templ_7745c5c3_Var19 string
 						templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(row.ClientsText)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 132, Col: 22}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 132, Col: 22}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 						if templ_7745c5c3_Err != nil {
@@ -558,7 +558,7 @@ func saTable(v saView) templ.Component {
 						var templ_7745c5c3_Var22 string
 						templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.CreatedISO)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 138, Col: 36}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 138, Col: 36}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 						if templ_7745c5c3_Err != nil {
@@ -571,7 +571,7 @@ func saTable(v saView) templ.Component {
 						var templ_7745c5c3_Var23 string
 						templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(row.Created)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 138, Col: 52}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 138, Col: 52}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 						if templ_7745c5c3_Err != nil {
@@ -776,7 +776,7 @@ func saDrawerBody(d saDetail) templ.Component {
 				var templ_7745c5c3_Var31 string
 				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(d.Code)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 170, Col: 18}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 170, Col: 18}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 				if templ_7745c5c3_Err != nil {
@@ -812,7 +812,7 @@ func saDrawerBody(d saDetail) templ.Component {
 					var templ_7745c5c3_Var33 string
 					templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(d.PrincipalID)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 174, Col: 26}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 174, Col: 26}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 					if templ_7745c5c3_Err != nil {
@@ -849,7 +849,7 @@ func saDrawerBody(d saDetail) templ.Component {
 					var templ_7745c5c3_Var35 string
 					templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(d.OAuthClientID)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 179, Col: 28}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 179, Col: 28}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 					if templ_7745c5c3_Err != nil {
@@ -1320,7 +1320,7 @@ func saDrawerBody(d saDetail) templ.Component {
 									var templ_7745c5c3_Var56 string
 									templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(r.Short)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 251, Col: 49}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 251, Col: 49}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 									if templ_7745c5c3_Err != nil {
@@ -1333,7 +1333,7 @@ func saDrawerBody(d saDetail) templ.Component {
 									var templ_7745c5c3_Var57 string
 									templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(r.Full)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 252, Col: 80}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 252, Col: 80}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 									if templ_7745c5c3_Err != nil {
@@ -1396,7 +1396,7 @@ func saDrawerBody(d saDetail) templ.Component {
 									var templ_7745c5c3_Var60 string
 									templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(r.Assigned)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 260, Col: 20}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 260, Col: 20}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
 									if templ_7745c5c3_Err != nil {
@@ -1440,7 +1440,7 @@ func saDrawerBody(d saDetail) templ.Component {
 				var templ_7745c5c3_Var61 string
 				templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(d.RolesNote)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 268, Col: 62}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 268, Col: 62}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 				if templ_7745c5c3_Err != nil {
@@ -1707,7 +1707,7 @@ func saAppAccess(d saDetail) templ.Component {
 			var templ_7745c5c3_Var72 string
 			templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs(d.AppsNote)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 318, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 318, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
 			if templ_7745c5c3_Err != nil {
@@ -1726,7 +1726,7 @@ func saAppAccess(d saDetail) templ.Component {
 				var templ_7745c5c3_Var73 templ.SafeURL
 				templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinURLErrs(d.ActionBase + "/all-applications")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 321, Col: 66}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 321, Col: 66}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 				if templ_7745c5c3_Err != nil {
@@ -1739,7 +1739,7 @@ func saAppAccess(d saDetail) templ.Component {
 				var templ_7745c5c3_Var74 string
 				templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.ResolveAttributeValue(kit.SubmitForm)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 321, Col: 128}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 321, Col: 128}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var74)
 				if templ_7745c5c3_Err != nil {
@@ -1752,7 +1752,7 @@ func saAppAccess(d saDetail) templ.Component {
 				var templ_7745c5c3_Var75 string
 				templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.ResolveAttributeValue("$" + saDrawerSig)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 322, Col: 74}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 322, Col: 74}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var75)
 				if templ_7745c5c3_Err != nil {
@@ -1848,7 +1848,7 @@ func saAppAccess(d saDetail) templ.Component {
 						var templ_7745c5c3_Var77 string
 						templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinStringErrs(a.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 347, Col: 44}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 347, Col: 44}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var77))
 						if templ_7745c5c3_Err != nil {
@@ -1861,7 +1861,7 @@ func saAppAccess(d saDetail) templ.Component {
 						var templ_7745c5c3_Var78 string
 						templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.JoinStringErrs(a.Code)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 347, Col: 110}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 347, Col: 110}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var78))
 						if templ_7745c5c3_Err != nil {
@@ -2164,7 +2164,7 @@ func saConnections(d saDetail) templ.Component {
 								var templ_7745c5c3_Var92 templ.SafeURL
 								templ_7745c5c3_Var92, templ_7745c5c3_Err = templ.JoinURLErrs(c.Href)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 394, Col: 23}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 394, Col: 23}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var92))
 								if templ_7745c5c3_Err != nil {
@@ -2177,7 +2177,7 @@ func saConnections(d saDetail) templ.Component {
 								var templ_7745c5c3_Var93 string
 								templ_7745c5c3_Var93, templ_7745c5c3_Err = templ.JoinStringErrs(c.Code)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 394, Col: 64}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 394, Col: 64}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var93))
 								if templ_7745c5c3_Err != nil {
@@ -2212,7 +2212,7 @@ func saConnections(d saDetail) templ.Component {
 								var templ_7745c5c3_Var95 string
 								templ_7745c5c3_Var95, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 397, Col: 15}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 397, Col: 15}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var95))
 								if templ_7745c5c3_Err != nil {
@@ -2305,7 +2305,7 @@ func saConnections(d saDetail) templ.Component {
 										var templ_7745c5c3_Var99 templ.SafeURL
 										templ_7745c5c3_Var99, templ_7745c5c3_Err = templ.JoinURLErrs(c.ActionBase + "/activate")
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 413, Col: 64}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 413, Col: 64}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var99))
 										if templ_7745c5c3_Err != nil {
@@ -2318,7 +2318,7 @@ func saConnections(d saDetail) templ.Component {
 										var templ_7745c5c3_Var100 string
 										templ_7745c5c3_Var100, templ_7745c5c3_Err = templ.ResolveAttributeValue(kit.SubmitForm)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 413, Col: 98}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 413, Col: 98}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var100)
 										if templ_7745c5c3_Err != nil {
@@ -2331,7 +2331,7 @@ func saConnections(d saDetail) templ.Component {
 										var templ_7745c5c3_Var101 string
 										templ_7745c5c3_Var101, templ_7745c5c3_Err = templ.ResolveAttributeValue("$" + saDrawerSig)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 414, Col: 80}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 414, Col: 80}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var101)
 										if templ_7745c5c3_Err != nil {
@@ -2520,7 +2520,7 @@ func saCredentialsDialog(c saCredentials) templ.Component {
 					var templ_7745c5c3_Var106 string
 					templ_7745c5c3_Var106, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 465, Col: 38}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 465, Col: 38}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var106))
 					if templ_7745c5c3_Err != nil {
@@ -2533,7 +2533,7 @@ func saCredentialsDialog(c saCredentials) templ.Component {
 					var templ_7745c5c3_Var107 string
 					templ_7745c5c3_Var107, templ_7745c5c3_Err = templ.JoinStringErrs(g.Description)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 466, Col: 63}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 466, Col: 63}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var107))
 					if templ_7745c5c3_Err != nil {
@@ -2603,7 +2603,7 @@ func saCredential(id string, it saCredItem) templ.Component {
 		var templ_7745c5c3_Var109 string
 		templ_7745c5c3_Var109, templ_7745c5c3_Err = templ.JoinStringErrs(it.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 481, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 481, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var109))
 		if templ_7745c5c3_Err != nil {
@@ -2616,7 +2616,7 @@ func saCredential(id string, it saCredItem) templ.Component {
 		var templ_7745c5c3_Var110 string
 		templ_7745c5c3_Var110, templ_7745c5c3_Err = templ.ResolveAttributeValue(id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 483, Col: 16}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 483, Col: 16}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var110)
 		if templ_7745c5c3_Err != nil {
@@ -2629,7 +2629,7 @@ func saCredential(id string, it saCredItem) templ.Component {
 		var templ_7745c5c3_Var111 string
 		templ_7745c5c3_Var111, templ_7745c5c3_Err = templ.JoinStringErrs(it.Value)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 483, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 483, Col: 60}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var111))
 		if templ_7745c5c3_Err != nil {
@@ -2655,7 +2655,7 @@ func saCredential(id string, it saCredItem) templ.Component {
 			var templ_7745c5c3_Var112 string
 			templ_7745c5c3_Var112, templ_7745c5c3_Err = templ.JoinStringErrs(it.Help)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 487, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 487, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var112))
 			if templ_7745c5c3_Err != nil {
@@ -2762,7 +2762,7 @@ func saFormDialogC(f saForm) templ.Component {
 			var templ_7745c5c3_Var117 string
 			templ_7745c5c3_Var117, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.signals())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 501, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 501, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var117)
 			if templ_7745c5c3_Err != nil {
@@ -2943,7 +2943,7 @@ func saField(f saForm, key string) templ.Component {
 			var templ_7745c5c3_Var123 string
 			templ_7745c5c3_Var123, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-wrap")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 540, Col: 28}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 540, Col: 28}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var123)
 			if templ_7745c5c3_Err != nil {
@@ -2978,7 +2978,7 @@ func saField(f saForm, key string) templ.Component {
 			var templ_7745c5c3_Var124 string
 			templ_7745c5c3_Var124, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-help")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 552, Col: 32}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 552, Col: 32}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var124)
 			if templ_7745c5c3_Err != nil {
@@ -3006,7 +3006,7 @@ func saField(f saForm, key string) templ.Component {
 				var templ_7745c5c3_Var125 string
 				templ_7745c5c3_Var125, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-err")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 559, Col: 32}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 559, Col: 32}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var125)
 				if templ_7745c5c3_Err != nil {
@@ -3019,7 +3019,7 @@ func saField(f saForm, key string) templ.Component {
 				var templ_7745c5c3_Var126 string
 				templ_7745c5c3_Var126, templ_7745c5c3_Err = templ.JoinStringErrs(f.fieldError(key))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 559, Col: 100}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 559, Col: 100}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var126))
 				if templ_7745c5c3_Err != nil {
@@ -3042,7 +3042,7 @@ func saField(f saForm, key string) templ.Component {
 			var templ_7745c5c3_Var127 string
 			templ_7745c5c3_Var127, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-field")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 564, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 564, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var127)
 			if templ_7745c5c3_Err != nil {
@@ -3118,7 +3118,7 @@ func saRolesDialogC(f saRolesForm) templ.Component {
 				var templ_7745c5c3_Var130 string
 				templ_7745c5c3_Var130, templ_7745c5c3_Err = templ.ResolveAttributeValue(name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 579, Col: 49}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 579, Col: 49}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var130)
 				if templ_7745c5c3_Err != nil {
@@ -3165,7 +3165,7 @@ func saRolesDialogC(f saRolesForm) templ.Component {
 					var templ_7745c5c3_Var131 string
 					templ_7745c5c3_Var131, templ_7745c5c3_Err = templ.JoinStringErrs(name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `service_accounts.templ`, Line: 592, Col: 39}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 592, Col: 39}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var131))
 					if templ_7745c5c3_Err != nil {

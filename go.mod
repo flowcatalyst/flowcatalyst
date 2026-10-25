@@ -13,6 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.9
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.27
 	github.com/aws/smithy-go v1.28.1
+	github.com/boombuler/barcode v1.1.0
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/danielgtaylor/huma/v2 v2.38.0
 	github.com/fergusstrange/embedded-postgres v1.34.0
@@ -74,7 +75,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/boombuler/barcode v1.1.0
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cli/browser v1.3.0 // indirect

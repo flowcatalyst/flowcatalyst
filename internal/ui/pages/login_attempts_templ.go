@@ -88,7 +88,7 @@ func loginPage(v loginView) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.signals())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `login_attempts.templ`, Line: 56, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/login_attempts.templ`, Line: 56, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
@@ -212,7 +212,7 @@ func loginMuted(text string) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(text)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `login_attempts.templ`, Line: 81, Col: 30}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/login_attempts.templ`, Line: 81, Col: 30}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -611,7 +611,7 @@ func loginTable(v loginView) templ.Component {
 							var templ_7745c5c3_Var23 string
 							templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(row.Identifier)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `login_attempts.templ`, Line: 130, Col: 54}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/login_attempts.templ`, Line: 130, Col: 54}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 							if templ_7745c5c3_Err != nil {
@@ -677,7 +677,7 @@ func loginTable(v loginView) templ.Component {
 								var templ_7745c5c3_Var26 string
 								templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(row.IP)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `login_attempts.templ`, Line: 137, Col: 47}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/login_attempts.templ`, Line: 137, Col: 47}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 								if templ_7745c5c3_Err != nil {
@@ -863,7 +863,7 @@ func loginLinked(text, href string) templ.Component {
 			var templ_7745c5c3_Var32 templ.SafeURL
 			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(href))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `login_attempts.templ`, Line: 170, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/login_attempts.templ`, Line: 170, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 			if templ_7745c5c3_Err != nil {
@@ -876,7 +876,7 @@ func loginLinked(text, href string) templ.Component {
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(text)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `login_attempts.templ`, Line: 170, Col: 85}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/login_attempts.templ`, Line: 170, Col: 85}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
@@ -894,7 +894,7 @@ func loginLinked(text, href string) templ.Component {
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(text)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `login_attempts.templ`, Line: 172, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/login_attempts.templ`, Line: 172, Col: 46}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -1073,7 +1073,7 @@ func loginDrawerBody(d loginDetail) templ.Component {
 				var templ_7745c5c3_Var42 string
 				templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(d.IP)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `login_attempts.templ`, Line: 202, Col: 35}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/login_attempts.templ`, Line: 202, Col: 35}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 				if templ_7745c5c3_Err != nil {
@@ -1110,7 +1110,7 @@ func loginDrawerBody(d loginDetail) templ.Component {
 				var templ_7745c5c3_Var44 string
 				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(d.UserAgent)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `login_attempts.templ`, Line: 207, Col: 46}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/login_attempts.templ`, Line: 207, Col: 46}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 				if templ_7745c5c3_Err != nil {

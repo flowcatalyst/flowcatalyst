@@ -81,7 +81,7 @@ func IngestionTestPanel(action string, fromForm bool) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(ingTestResultID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `ingestion_testrun.templ`, Line: 30, Col: 27}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestion_testrun.templ`, Line: 30, Col: 27}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 		if templ_7745c5c3_Err != nil {
@@ -125,7 +125,7 @@ func ingTestBox(v ingTestView) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue("ing-test-" + v.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `ingestion_testrun.templ`, Line: 38, Col: 25}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestion_testrun.templ`, Line: 38, Col: 25}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 		if templ_7745c5c3_Err != nil {
@@ -143,7 +143,7 @@ func ingTestBox(v ingTestView) templ.Component {
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.StreamURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ingestion_testrun.templ`, Line: 41, Col: 25}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestion_testrun.templ`, Line: 41, Col: 25}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 			if templ_7745c5c3_Err != nil {
@@ -188,7 +188,7 @@ func ingTestBox(v ingTestView) templ.Component {
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(v.Runtime)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ingestion_testrun.templ`, Line: 56, Col: 51}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestion_testrun.templ`, Line: 56, Col: 51}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -263,7 +263,7 @@ func ingTestOutcome(v ingTestView) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(v.Runtime)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ingestion_testrun.templ`, Line: 74, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestion_testrun.templ`, Line: 74, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -291,7 +291,7 @@ func ingTestOutcome(v ingTestView) templ.Component {
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(step)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ingestion_testrun.templ`, Line: 80, Col: 14}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestion_testrun.templ`, Line: 80, Col: 14}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -315,7 +315,7 @@ func ingTestOutcome(v ingTestView) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(v.Records)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ingestion_testrun.templ`, Line: 85, Col: 70}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestion_testrun.templ`, Line: 85, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -342,7 +342,7 @@ func ingTestOutcome(v ingTestView) templ.Component {
 				var templ_7745c5c3_Var13 string
 				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(v.Excerpt)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ingestion_testrun.templ`, Line: 89, Col: 14}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestion_testrun.templ`, Line: 89, Col: 14}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {

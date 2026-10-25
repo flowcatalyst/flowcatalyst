@@ -151,7 +151,7 @@ func thmForm(v thmView) templ.Component {
 		var templ_7745c5c3_Var4 templ.SafeURL
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(v.Action)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 61, Col: 19}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 61, Col: 19}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
@@ -164,7 +164,7 @@ func thmForm(v thmView) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(kit.SubmitForm)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 63, Col: 33}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 63, Col: 33}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 		if templ_7745c5c3_Err != nil {
@@ -177,7 +177,7 @@ func thmForm(v thmView) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.previewExpr())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 64, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 64, Col: 49}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 		if templ_7745c5c3_Err != nil {
@@ -612,7 +612,7 @@ func thmColor(v thmView, key, label, help, value string, gradient bool) templ.Co
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(thmPickerValue(value))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 176, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 176, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 			if templ_7745c5c3_Err != nil {
@@ -625,7 +625,7 @@ func thmColor(v thmView, key, label, help, value string, gradient bool) templ.Co
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(label + " picker")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 177, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 177, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 			if templ_7745c5c3_Err != nil {
@@ -648,7 +648,7 @@ func thmColor(v thmView, key, label, help, value string, gradient bool) templ.Co
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(thmPickerExpr(key, gradient))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 179, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 179, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 			if templ_7745c5c3_Err != nil {
@@ -710,7 +710,7 @@ func thmPreviewPanel(p thmPreview) templ.Component {
 		var templ_7745c5c3_Var24 string
 		templ_7745c5c3_Var24, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues("background:" + p.Background + ";border-radius:0.75rem;padding:2rem 1.5rem;min-height:30rem;display:flex;align-items:center;justify-content:center")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 193, Col: 178}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 193, Col: 178}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 		if templ_7745c5c3_Err != nil {
@@ -728,7 +728,7 @@ func thmPreviewPanel(p thmPreview) templ.Component {
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.SafeURL(p.LogoSrc))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 196, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 196, Col: 39}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 			if templ_7745c5c3_Err != nil {
@@ -746,7 +746,7 @@ func thmPreviewPanel(p thmPreview) templ.Component {
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(p.LogoURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 198, Col: 104}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 198, Col: 104}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
@@ -777,7 +777,7 @@ func thmPreviewPanel(p thmPreview) templ.Component {
 		var templ_7745c5c3_Var27 string
 		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(p.BrandName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 204, Col: 83}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 204, Col: 83}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 		if templ_7745c5c3_Err != nil {
@@ -790,7 +790,7 @@ func thmPreviewPanel(p thmPreview) templ.Component {
 		var templ_7745c5c3_Var28 string
 		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(p.Subtitle)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 205, Col: 85}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 205, Col: 85}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 		if templ_7745c5c3_Err != nil {
@@ -803,7 +803,7 @@ func thmPreviewPanel(p thmPreview) templ.Component {
 		var templ_7745c5c3_Var29 string
 		templ_7745c5c3_Var29, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues("height:2.25rem;border-radius:0.375rem;color:#fff;font-weight:500;font-size:0.8125rem;display:flex;align-items:center;justify-content:center;background-color:" + p.Accent)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 209, Col: 187}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 209, Col: 187}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 		if templ_7745c5c3_Err != nil {
@@ -816,7 +816,7 @@ func thmPreviewPanel(p thmPreview) templ.Component {
 		var templ_7745c5c3_Var30 string
 		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(p.Footer)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 211, Col: 74}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 211, Col: 74}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 		if templ_7745c5c3_Err != nil {
@@ -860,7 +860,7 @@ func thmClientSwitch(v thmView) templ.Component {
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.ResolveAttributeValue(thmEnabledSignal(v.Client.Enabled))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 219, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 219, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 		if templ_7745c5c3_Err != nil {
@@ -937,7 +937,7 @@ func thmClientPage(v thmView) templ.Component {
 		var templ_7745c5c3_Var34 string
 		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs("/oauth/authorize?…&client=" + v.Client.Identifier)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `theme_settings.templ`, Line: 251, Col: 62}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/theme_settings.templ`, Line: 251, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {
