@@ -14,7 +14,8 @@
 //     (principal.Principal -> PrincipalID, and so on).
 //
 // It also keeps entity ids out of infrastructure: outside internal/platform,
-// internal/server and cmd (the layers that read and write entities), any
+// internal/server, internal/ui/pages and cmd (the layers that read and write
+// entities; the /ui pages are handlers like internal/server's), any
 // conversion is reported, since the router, queues and stream code have no
 // business minting them.
 //
@@ -55,6 +56,10 @@ var allowedLayers = []string{
 	modulePath + "internal/ids",
 	modulePath + "internal/platform",
 	modulePath + "internal/server",
+	// The server-rendered UI's pages read and write entities through the
+	// repositories and use cases, turning a URL's id into the typed one as an
+	// API handler does. The kind-to-kind and ID-field rules still apply.
+	modulePath + "internal/ui/pages",
 	modulePath + "cmd/",
 }
 
