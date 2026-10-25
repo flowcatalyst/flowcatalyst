@@ -224,6 +224,9 @@ const (
 	permFunctionTraceManage     = "platform:function:trace:manage"
 	permFunctionTraceView       = "platform:function:trace:view"
 	permFunctionTraceViewBodies = "platform:function:trace:view-bodies"
+	// permFunctionTraceIndefinite switches a declared context on "until
+	// switched off" (still capped at FC_FUNCTIONS_TRACE_INDEFINITE_MAX_DAYS).
+	permFunctionTraceIndefinite = "platform:function:trace:indefinite"
 	// Ingestion (docs/ingestion-design.md section 4): the ingestion
 	// subdomain, four segments like every platform permission.
 	permIngestionView    = "platform:ingestion:ingestion:view"
@@ -1266,9 +1269,17 @@ func CanViewFunctionTrace(a *AuthContext) error {
 	return requirePermission(a, permFunctionTraceView)
 }
 
-// CanViewFunctionTraceBodies reports whether a may read captured request and
-// response bodies (and enable the `http` context). Not an error-returning
-// gate: a viewer without it still reads the records, bodies withheld.
+// CanEnableFunctionTraceIndefinite gates switching a declared trace context on
+// "until switched off" (in addition to CanManageFunctionTrace).
+func CanEnableFunctionTraceIndefinite(a *AuthContext) error {
+	return requirePermission(a, permFunctionTraceIndefinite)
+}
+
+// CanViewFunctionTraceBodies reports whether a may read the sensitive parts of
+// trace records: captured request and response bodies, headers and query
+// strings, log lines and the data of author trace records (and enable the
+// `http` context). Not an error-returning gate: a viewer without it still
+// reads the records' metadata, the sensitive parts withheld.
 func CanViewFunctionTraceBodies(a *AuthContext) bool {
 	return requirePermission(a, permFunctionTraceViewBodies) == nil
 }

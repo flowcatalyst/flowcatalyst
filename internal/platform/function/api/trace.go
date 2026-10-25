@@ -30,18 +30,21 @@ type TraceContextResponse struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	BuiltIn     bool   `json:"builtIn" doc:"True for the built-in http context"`
-	// EnabledUntil is when the window closes; null when it was never switched on or was switched off.
+	// EnabledUntil is when the window closes (or closed: switching off sets it to the switch-off time); null when it was never switched on.
 	EnabledUntil *httpcompat.Time `json:"enabledUntil" nullable:"true"`
-	Indefinite   bool             `json:"indefinite" doc:"Switched on with no time limit; it stays on until switched off (enabledUntil is then far in the future)"`
+	Indefinite   bool             `json:"indefinite" doc:"Live and switched on until switched off; enabledUntil is then its hard ceiling (indefiniteMaxDays after it was switched on), when it closes by itself"`
 	SampleRate   int              `json:"sampleRate" doc:"One invocation in N is captured; 1 = all"`
 	Live         bool             `json:"live" doc:"The window is open now (enabledUntil is in the future)"`
-	MaxMinutes   int              `json:"maxMinutes" doc:"The longest window this context may be enabled for"`
+	MaxMinutes   int              `json:"maxMinutes" doc:"The longest timed window this context may be enabled for"`
+	// IndefiniteMaxDays is the ceiling of an "until switched off" window; 0 for http, which never takes one.
+	IndefiniteMaxDays int `json:"indefiniteMaxDays" doc:"The ceiling, in days, of an until-switched-off window for this context; 0 when the context cannot take one (http)"`
 }
 
 func traceContextResponse(st operations.TraceContextState) TraceContextResponse {
 	out := TraceContextResponse{
 		Name: st.Name, Description: st.Description, BuiltIn: st.BuiltIn,
 		SampleRate: st.SampleRate, Live: st.Live, MaxMinutes: st.MaxMinutes, Indefinite: st.Indefinite,
+		IndefiniteMaxDays: st.IndefiniteMaxDays,
 	}
 	if st.EnabledUntil != nil {
 		t := jsontime.New(st.EnabledUntil.UTC())
@@ -58,7 +61,7 @@ type TraceContextsResponse struct {
 // EnableTraceRequest is the wire body for PUT …/trace/{context}.
 type EnableTraceRequest struct {
 	Minutes    int  `json:"minutes,omitempty" doc:"How long the window stays open, from 1 up to the context's maxMinutes. Required unless indefinite."`
-	Indefinite bool `json:"indefinite,omitempty" doc:"Stay on until switched off, with no time limit (minutes is ignored)"`
+	Indefinite bool `json:"indefinite,omitempty" doc:"Stay on until switched off, at most the context's indefiniteMaxDays (then it closes by itself); minutes is ignored. Needs platform:function:trace:indefinite; never for http (400 TRACE_INDEFINITE_NOT_ALLOWED)"`
 	SampleRate int  `json:"sampleRate,omitempty" doc:"Capture one invocation in N (1 to 1000). Default 1: all."`
 }
 
@@ -79,6 +82,9 @@ type TraceRecordResponse struct {
 	// BodiesRedacted is true on an http record whose request and response bodies
 	// were withheld because the caller lacks platform:function:trace:view-bodies.
 	BodiesRedacted bool `json:"bodiesRedacted,omitempty"`
+	// Redacted is true on a record whose sensitive parts were withheld because
+	// the caller lacks platform:function:trace:view-bodies.
+	Redacted bool `json:"redacted,omitempty" doc:"Sensitive parts withheld (no platform:function:trace:view-bodies): an http record keeps only method, path without query, status, duration, outcome and body sizes; a log record its metadata (message empty, no data); a trace record its message (no data)"`
 }
 
 // TraceLogResponse is the body of GET /api/functions/{id}/trace-log.
@@ -133,7 +139,8 @@ func (s *State) putTrace(ctx context.Context, in *putTraceInput) (*apicommon.Out
 	if err != nil {
 		return nil, err
 	}
-	// The enable has committed. Pruning old records is housekeeping after it.
+	// The enable has committed. Pruning old records is housekeeping after it,
+	// in the background so a large delete cannot hold the request.
 	operations.PruneTraceAfterEnable(ctx, s.Repo, limits, in.ID)
 	return &apicommon.Out[TraceContextResponse]{Body: traceContextResponse(st)}, nil
 }
@@ -227,49 +234,25 @@ func (s *State) getTraceLog(ctx context.Context, in *traceLogInput) (*apicommon.
 	return &apicommon.Out[TraceLogResponse]{Body: TraceLogResponse{Records: out, NextCursor: next}}, nil
 }
 
+// traceRecordResponse renders a record. Without view-bodies the sensitive
+// parts are withheld (function.WithholdTraceDetail): trace:view alone shows an
+// http record's method, path, status, timings and sizes, and every record's
+// metadata.
 func traceRecordResponse(r function.TraceLogRecord, withBodies bool) TraceRecordResponse {
+	redacted := false
+	if !withBodies {
+		redacted = function.WithholdTraceDetail(&r)
+	}
 	out := TraceRecordResponse{
 		ID: r.ID, At: jsontime.New(r.At.UTC()), Version: r.Version, InvocationID: r.InvocationID,
 		CorrelationID: r.CorrelationID, Reference: r.Reference, Context: r.Context, Kind: r.Kind,
 		Level: r.Level, Message: r.Message, Data: json.RawMessage(r.Data), RunnerID: r.RunnerID,
+		Redacted: redacted, BodiesRedacted: redacted && r.Kind == function.TraceKindHTTP,
 	}
 	if len(out.Data) == 0 {
 		out.Data = json.RawMessage("null")
 	}
-	if r.Kind == "http" && !withBodies {
-		out.Data = redactTraceBodies(out.Data)
-		out.BodiesRedacted = true
-	}
 	return out
-}
-
-// redactTraceBodies nulls data.request.body and data.response.body of an http
-// record; everything else in the record (headers, sizes, status, outcome)
-// stays readable.
-func redactTraceBodies(data json.RawMessage) json.RawMessage {
-	var doc map[string]json.RawMessage
-	if err := json.Unmarshal(data, &doc); err != nil || doc == nil {
-		return data
-	}
-	for _, side := range []string{"request", "response"} {
-		raw, ok := doc[side]
-		if !ok {
-			continue
-		}
-		var part map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &part); err != nil || part == nil {
-			continue
-		}
-		part["body"] = json.RawMessage("null")
-		if b, err := json.Marshal(part); err == nil {
-			doc[side] = b
-		}
-	}
-	b, err := json.Marshal(doc)
-	if err != nil {
-		return json.RawMessage("null")
-	}
-	return b
 }
 
 // parseTraceTime accepts RFC 3339 or unix milliseconds; empty is no bound.

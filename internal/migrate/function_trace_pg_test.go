@@ -30,7 +30,9 @@ func TestMigration087_FunctionTraceTablesAndGrants(t *testing.T) {
 	}
 	for _, idx := range []string{
 		"idx_fng_trace_log_function_at", "idx_fng_trace_log_function_reference", "idx_fng_trace_log_function_correlation",
-		"idx_fng_trace_log_function_invocation", "idx_fng_trace_log_function_context", "idx_fng_trace_log_at",
+		"idx_fng_trace_log_function_invocation", "idx_fng_trace_log_function_context",
+		// 092 swapped the (at) retention index for created_at ones.
+		"idx_fng_trace_log_created_at", "idx_fng_trace_log_function_created_at",
 	} {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM pg_indexes WHERE indexname = $1`, idx).Scan(&n))

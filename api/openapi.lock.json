@@ -4999,7 +4999,7 @@
             "type": "string"
           },
           "indefinite": {
-            "description": "Stay on until switched off, with no time limit (minutes is ignored)",
+            "description": "Stay on until switched off, at most the context's indefiniteMaxDays (then it closes by itself); minutes is ignored. Needs platform:function:trace:indefinite; never for http (400 TRACE_INDEFINITE_NOT_ALLOWED)",
             "type": "boolean"
           },
           "minutes": {
@@ -12885,15 +12885,20 @@
             ]
           },
           "indefinite": {
-            "description": "Switched on with no time limit; it stays on until switched off (enabledUntil is then far in the future)",
+            "description": "Live and switched on until switched off; enabledUntil is then its hard ceiling (indefiniteMaxDays after it was switched on), when it closes by itself",
             "type": "boolean"
+          },
+          "indefiniteMaxDays": {
+            "description": "The ceiling, in days, of an until-switched-off window for this context; 0 when the context cannot take one (http)",
+            "format": "int64",
+            "type": "integer"
           },
           "live": {
             "description": "The window is open now (enabledUntil is in the future)",
             "type": "boolean"
           },
           "maxMinutes": {
-            "description": "The longest window this context may be enabled for",
+            "description": "The longest timed window this context may be enabled for",
             "format": "int64",
             "type": "integer"
           },
@@ -12914,7 +12919,8 @@
           "indefinite",
           "sampleRate",
           "live",
-          "maxMinutes"
+          "maxMinutes",
+          "indefiniteMaxDays"
         ],
         "type": "object"
       },
@@ -12991,6 +12997,9 @@
             "type": "string"
           },
           "data": {},
+          "id": {
+            "type": "string"
+          },
           "invocationId": {
             "type": "string"
           },
@@ -13064,6 +13073,10 @@
           },
           "message": {
             "type": "string"
+          },
+          "redacted": {
+            "description": "Sensitive parts withheld (no platform:function:trace:view-bodies): an http record keeps only method, path without query, status, duration, outcome and body sizes; a log record its metadata (message empty, no data); a trace record its message (no data)",
+            "type": "boolean"
           },
           "reference": {
             "type": [

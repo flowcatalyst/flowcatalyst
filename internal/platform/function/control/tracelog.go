@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -111,7 +112,11 @@ func (s *State) traceLog(ctx context.Context, in *traceLogInput) (*apicommon.Out
 			dropped++
 			continue
 		}
-		at := time.UnixMilli(r.At).UTC()
+		at, ok := traceRecordAt(r.At, now)
+		if !ok {
+			dropped++
+			continue
+		}
 		enabledUntil, ok := until[[2]string{fid, r.Context}]
 		if !ok || at.After(enabledUntil.Add(slack)) {
 			dropped++
@@ -166,6 +171,36 @@ func validTraceLevel(l string) bool {
 	return false
 }
 
+// traceRecordAt bounds a record's runner-supplied time (unix ms) against the
+// arrival time now: later than now+TraceAtFutureSkew is clamped to now (a
+// runner clock running ahead must not place records in the future, nor pass
+// the acceptance gate after a window closed); older than now-TraceAtMaxAge is
+// refused (false). Retention reads created_at, never this.
+func traceRecordAt(ms int64, now time.Time) (time.Time, bool) {
+	at := time.UnixMilli(ms).UTC()
+	switch {
+	case at.After(now.Add(function.TraceAtFutureSkew)):
+		return now, true
+	case at.Before(now.Add(-function.TraceAtMaxAge)):
+		return time.Time{}, false
+	}
+	return at, true
+}
+
+// traceRecordIDPattern is what a runner-supplied record id may look like (a
+// UUID or ULID, or any similar opaque token).
+var traceRecordIDPattern = regexp.MustCompile(`^[0-9A-Za-z_-]{16,64}$`)
+
+// traceRecordID is the stored id: derived from the runner's id when it sent a
+// usable one (so a retried batch is stored once: the insert skips an id it
+// already holds), else a fresh platform id (an older runner).
+func traceRecordID(runnerRecordID string) string {
+	if traceRecordIDPattern.MatchString(runnerRecordID) {
+		return traceIDPrefix + "_r" + runnerRecordID
+	}
+	return tsid.GenerateWithPrefix(traceIDPrefix)
+}
+
 // newTraceRecord applies the truncations of design section 5 and assigns the id.
 func (s *State) newTraceRecord(functionID, runnerID string, r fncontrol.TraceRecord, at, now time.Time) function.TraceLogRecord {
 	level := r.Level
@@ -177,7 +212,7 @@ func (s *State) newTraceRecord(functionID, runnerID string, r fncontrol.TraceRec
 		maxData = fncontrol.MaxTraceData
 	}
 	rec := function.TraceLogRecord{
-		ID:           tsid.GenerateWithPrefix(traceIDPrefix),
+		ID:           traceRecordID(r.ID),
 		FunctionID:   functionID,
 		Version:      int32(r.Version), //nolint:gosec // a version number
 		InvocationID: cleanText(r.InvocationID),
@@ -244,6 +279,9 @@ func cutRunes(s string, n int) string {
 
 // traceRateLimiter is the per-function token bucket (design section 5): 200
 // records a second, burst one second's worth, in memory per platform process.
+// Deliberately not shared: with N platform replicas behind the load balancer
+// a function can store up to N*200 records a second. It bounds a runaway, it
+// is not a quota.
 type traceRateLimiter struct {
 	mu      sync.Mutex
 	buckets map[string]*traceBucket

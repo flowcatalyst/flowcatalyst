@@ -292,8 +292,10 @@ type EnvCfg struct {
 
 	// FunctionsTrace holds the function trace-log settings
 	// (FC_FUNCTIONS_TRACE_MAX_MINUTES, FC_FUNCTIONS_TRACE_HTTP_MAX_MINUTES,
-	// FC_FUNCTIONS_TRACE_RETENTION_DAYS; non-positive or unparseable = the
-	// function.DefaultTrace* defaults, 60 / 15 / 30).
+	// FC_FUNCTIONS_TRACE_RETENTION_DAYS, FC_FUNCTIONS_TRACE_INDEFINITE_MAX_DAYS,
+	// FC_FUNCTIONS_TRACE_PRUNE_MAX_ROWS, FC_FUNCTIONS_TRACE_PRUNE_INTERVAL_MINUTES;
+	// non-positive or unparseable = the function.DefaultTrace* defaults,
+	// 60 / 15 / 30 / 7 / 5,000,000 / 60).
 	FunctionsTrace function.TraceLimits
 
 	// DispatchJobMaxWindowDays is the widest created_at window a dispatch-job
@@ -490,6 +492,11 @@ func LoadEnv() EnvCfg {
 			MaxMinutes:     positiveOr(envInt("FC_FUNCTIONS_TRACE_MAX_MINUTES", 0), function.DefaultTraceMaxMinutes),
 			HTTPMaxMinutes: positiveOr(envInt("FC_FUNCTIONS_TRACE_HTTP_MAX_MINUTES", 0), function.DefaultTraceHTTPMaxMinutes),
 			RetentionDays:  positiveOr(envInt("FC_FUNCTIONS_TRACE_RETENTION_DAYS", 0), function.DefaultTraceRetentionDays),
+
+			IndefiniteMaxDays: positiveOr(envInt("FC_FUNCTIONS_TRACE_INDEFINITE_MAX_DAYS", 0), function.DefaultTraceIndefiniteMaxDays),
+			PruneMaxRows:      positiveOr(envInt("FC_FUNCTIONS_TRACE_PRUNE_MAX_ROWS", 0), function.DefaultTracePruneMaxRows),
+			PruneInterval: time.Duration(positiveOr(envInt("FC_FUNCTIONS_TRACE_PRUNE_INTERVAL_MINUTES", 0),
+				int(function.DefaultTracePruneInterval/time.Minute))) * time.Minute,
 		},
 
 		FunctionsRunnerURLByRuntime: loadRunnerURLsByRuntime(os.Environ()),

@@ -367,7 +367,7 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:function:secret:set"] = obj(reqStr("functionId"), reqStr("address"), reqStr("key"))
 	m["platform:function:secret:deleted"] = obj(reqStr("functionId"), reqStr("address"), reqStr("key"))
 	m["platform:function:trace:enabled"] = obj(
-		reqStr("functionId"), reqStr("address"), reqStr("context"), optDateTime("enabledUntil"), reqU32("sampleRate"),
+		reqStr("functionId"), reqStr("address"), reqStr("context"), optDateTime("enabledUntil"), reqBool("indefinite"), reqU32("sampleRate"),
 	)
 	m["platform:function:trace:disabled"] = obj(reqStr("functionId"), reqStr("address"), reqStr("context"))
 	// owner is "platform" or the owning client's id.

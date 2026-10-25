@@ -147,8 +147,43 @@ func TestTraceAPI_EnableAndDisable_Permissions(t *testing.T) {
 	list, err := f.s.getTrace(ctxWith(permView), &getTraceInput{ID: f.fn.ID})
 	require.NoError(t, err)
 	assert.False(t, list.Body.Contexts[0].Live)
-	assert.Nil(t, list.Body.Contexts[0].EnabledUntil, "closed")
+	require.NotNil(t, list.Body.Contexts[0].EnabledUntil, "closed at the switch-off time")
+	assert.False(t, list.Body.Contexts[0].EnabledUntil.Underlying().After(time.Now()))
 	assert.True(t, list.Body.Contexts[1].Live, "orders is still on")
+}
+
+func TestTraceAPI_Enable_Indefinite(t *testing.T) {
+	t.Parallel()
+	f := newTraceFixture(t, "indef001")
+	const permIndefinite = "platform:function:trace:indefinite"
+	put := func(ctx context.Context, name string) (*TraceContextResponse, error) {
+		out, err := f.s.putTrace(ctx, &putTraceInput{ID: f.fn.ID, Context: name, Body: EnableTraceRequest{Indefinite: true}})
+		if err != nil {
+			return nil, err
+		}
+		return &out.Body, nil
+	}
+
+	_, err := put(ctxWith(permManage), "orders")
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "PERMISSION_REQUIRED")
+	_, err = put(ctxWith(permManage, permBodies, permIndefinite), "http")
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "TRACE_INDEFINITE_NOT_ALLOWED")
+
+	f.s.Trace = function.TraceLimits{IndefiniteMaxDays: 2}
+	before := time.Now()
+	out, err := put(ctxWith(permManage, permIndefinite), "orders")
+	require.NoError(t, err)
+	assert.True(t, out.Indefinite)
+	assert.True(t, out.Live)
+	assert.Equal(t, 2, out.IndefiniteMaxDays)
+	require.NotNil(t, out.EnabledUntil)
+	assert.WithinDuration(t, before.Add(48*time.Hour), out.EnabledUntil.Underlying(), 10*time.Second, "the configured ceiling")
+
+	list, err := f.s.getTrace(ctxWith(permView), &getTraceInput{ID: f.fn.ID})
+	require.NoError(t, err)
+	assert.Equal(t, 0, list.Body.Contexts[0].IndefiniteMaxDays, "http never takes one")
+	assert.Equal(t, 2, list.Body.Contexts[1].IndefiniteMaxDays)
+	assert.True(t, list.Body.Contexts[1].Indefinite)
 }
 
 func TestTraceAPI_Enable_Errors(t *testing.T) {
@@ -177,20 +212,22 @@ func TestTraceAPI_Enable_PrunesOldRecords(t *testing.T) {
 	f := newTraceFixture(t, "prune001")
 	now := time.Now().UTC()
 	require.NoError(t, f.s.Repo.InsertTraceRecords(context.Background(), []function.TraceLogRecord{
-		{ID: tsid.GenerateWithPrefix("ftl"), FunctionID: f.fn.ID, Version: 1, InvocationID: "old", Context: "http", Kind: "log", Level: "info", Message: "old", At: now.Add(-31 * 24 * time.Hour), CreatedAt: now},
-		{ID: tsid.GenerateWithPrefix("ftl"), FunctionID: f.fn.ID, Version: 1, InvocationID: "new", Context: "http", Kind: "log", Level: "info", Message: "new", At: now.Add(-time.Hour), CreatedAt: now},
+		{ID: tsid.GenerateWithPrefix("ftl"), FunctionID: f.fn.ID, Version: 1, InvocationID: "old", Context: "http", Kind: "log", Level: "info", Message: "old", At: now, CreatedAt: now.Add(-31 * 24 * time.Hour)},
+		{ID: tsid.GenerateWithPrefix("ftl"), FunctionID: f.fn.ID, Version: 1, InvocationID: "new", Context: "http", Kind: "log", Level: "info", Message: "new", At: now.Add(-40 * 24 * time.Hour), CreatedAt: now.Add(-time.Hour)},
 	}))
 	_, err := f.put(ctxWith(permManage, permBodies), "http", 5, 1)
 	require.NoError(t, err)
-	n, err := f.s.Repo.CountTraceLog(context.Background(), f.fn.ID)
-	require.NoError(t, err)
-	assert.EqualValues(t, 1, n, "an enable prunes the function's records past retention")
+	// The prune runs in the background after the request.
+	assert.Eventually(t, func() bool {
+		n, err := f.s.Repo.CountTraceLog(context.Background(), f.fn.ID)
+		return err == nil && n == 1
+	}, 30*time.Second, 20*time.Millisecond, "an enable prunes the function's records stored past retention")
 }
 
 func (f *traceFixture) seedRecords() {
 	f.t.Helper()
 	base := time.Now().UTC().Add(-time.Hour).Truncate(time.Millisecond)
-	httpData := `{"request":{"method":"POST","path":"/orders","headers":{"content-type":["application/json"],"authorization":["[redacted]"]},"body":"{\"secret\":1}","bodyEncoding":"utf8","bodyBytes":12,"bodyTruncated":false},` +
+	httpData := `{"request":{"method":"POST","path":"/orders","rawQuery":"tenant=acme","caller":{"kind":"principal","id":"prn_x"},"headers":{"content-type":["application/json"],"authorization":["[redacted]"]},"body":"{\"secret\":1}","bodyEncoding":"utf8","bodyBytes":12,"bodyTruncated":false},` +
 		`"response":{"status":200,"headers":{},"body":"ok","bodyEncoding":"utf8","bodyBytes":2,"bodyTruncated":false},"durationMs":12,"outcome":"ok"}`
 	corr, ref, runner := "corr-1", "TRIP-1", "runner-1"
 	var recs []function.TraceLogRecord
@@ -330,30 +367,39 @@ func TestTraceAPI_Log_KeysetCursorPagesWithoutSkippingOrRepeating(t *testing.T) 
 	assert.Len(t, f.log(v, func(in *traceLogInput) { in.Limit = 100000 }).Records, 9, "limit is capped, not an error")
 }
 
-func TestTraceAPI_Log_RedactsBodiesWithoutViewBodies(t *testing.T) {
+func TestTraceAPI_Log_WithholdsSensitiveDetailWithoutViewBodies(t *testing.T) {
 	t.Parallel()
 	f := newTraceFixture(t, "logred01")
 	f.seedRecords()
+	require.NoError(t, f.s.Repo.InsertTraceRecords(context.Background(), []function.TraceLogRecord{{
+		ID: tsid.GenerateWithPrefix("ftl"), FunctionID: f.fn.ID, Version: 1, InvocationID: "inv-log", Context: "http",
+		Kind: "log", Level: "warn", Message: "card 4111-1111", Data: []byte(`{"user":"u1"}`),
+		At: time.Now().UTC().Add(-time.Minute), CreatedAt: time.Now().UTC(),
+	}}))
 
-	find := func(r *TraceLogResponse) TraceRecordResponse {
+	find := func(r *TraceLogResponse, kind string) TraceRecordResponse {
 		for _, rec := range r.Records {
-			if rec.Kind == "http" {
+			if rec.Kind == kind {
 				return rec
 			}
 		}
-		t.Fatal("no http record")
+		t.Fatal("no " + kind + " record")
 		return TraceRecordResponse{}
 	}
 
-	full := find(f.log(ctxWith(permView, permBodies), func(in *traceLogInput) { in.Kind = "http" }))
+	full := find(f.log(ctxWith(permView, permBodies), func(in *traceLogInput) { in.Kind = "http" }), "http")
 	assert.False(t, full.BodiesRedacted)
+	assert.False(t, full.Redacted)
 	var fd map[string]any
 	require.NoError(t, json.Unmarshal(full.Data, &fd))
 	assert.Equal(t, `{"secret":1}`, fd["request"].(map[string]any)["body"])
+	assert.Equal(t, "tenant=acme", fd["request"].(map[string]any)["rawQuery"])
 	assert.Equal(t, "ok", fd["response"].(map[string]any)["body"])
+	assert.Equal(t, "card 4111-1111", find(f.log(ctxWith(permView, permBodies), nil), "log").Message)
 
-	red := find(f.log(ctxWith(permView), func(in *traceLogInput) { in.Kind = "http" }))
+	red := find(f.log(ctxWith(permView), func(in *traceLogInput) { in.Kind = "http" }), "http")
 	assert.True(t, red.BodiesRedacted)
+	assert.True(t, red.Redacted)
 	var rd map[string]any
 	require.NoError(t, json.Unmarshal(red.Data, &rd))
 	req := rd["request"].(map[string]any)
@@ -361,29 +407,37 @@ func TestTraceAPI_Log_RedactsBodiesWithoutViewBodies(t *testing.T) {
 	assert.Nil(t, req["body"])
 	assert.Nil(t, resp["body"])
 	assert.Contains(t, req, "body", "the key stays, its value is null")
-	assert.Equal(t, "POST", req["method"], "everything but the bodies stays readable")
+	for _, k := range []string{"headers", "rawQuery", "caller", "bodyEncoding"} {
+		assert.NotContains(t, req, k, "withheld from trace:view alone")
+	}
+	assert.NotContains(t, resp, "headers")
+	assert.Equal(t, "POST", req["method"])
+	assert.Equal(t, "/orders", req["path"])
 	assert.EqualValues(t, 12, req["bodyBytes"])
 	assert.EqualValues(t, 200, resp["status"])
+	assert.EqualValues(t, 2, resp["bodyBytes"])
+	assert.EqualValues(t, 12, rd["durationMs"])
 	assert.Equal(t, "ok", rd["outcome"])
 
-	// Non-http records are not touched and not flagged.
-	for _, rec := range f.log(ctxWith(permView), nil).Records {
-		if rec.Kind != "http" {
-			assert.False(t, rec.BodiesRedacted, rec.Message)
-		}
+	// A log record keeps its metadata, not the printed line; an author trace
+	// record keeps its message, not its data.
+	logRec := find(f.log(ctxWith(permView), nil), "log")
+	assert.True(t, logRec.Redacted)
+	assert.False(t, logRec.BodiesRedacted)
+	assert.Empty(t, logRec.Message)
+	assert.JSONEq(t, "null", string(logRec.Data))
+	assert.Equal(t, "warn", logRec.Level)
+	assert.Equal(t, "inv-log", logRec.InvocationID)
+	for _, rec := range f.log(ctxWith(permView), func(in *traceLogInput) { in.Kind = "trace" }).Records {
+		assert.NotEmpty(t, rec.Message)
+		assert.JSONEq(t, "null", string(rec.Data), rec.Message)
+		assert.False(t, rec.BodiesRedacted, rec.Message)
 	}
-	// A bare record with no data still serialises as null.
+	// A bare record with no data has nothing to withhold.
 	for _, rec := range f.log(ctxWith(permView), func(in *traceLogInput) { in.InvocationID = "tie" }).Records {
 		assert.JSONEq(t, "null", string(rec.Data))
+		assert.False(t, rec.Redacted)
 	}
-}
-
-func TestRedactTraceBodies_Unit(t *testing.T) {
-	assert.JSONEq(t, `{"request":{"body":null,"x":1},"outcome":"ok"}`,
-		string(redactTraceBodies(json.RawMessage(`{"request":{"body":"secret","x":1},"outcome":"ok"}`))))
-	assert.JSONEq(t, `{"response":{"body":null}}`, string(redactTraceBodies(json.RawMessage(`{"response":{}}`))))
-	assert.JSONEq(t, `{"a":1}`, string(redactTraceBodies(json.RawMessage(`{"a":1}`))))
-	assert.JSONEq(t, `[1]`, string(redactTraceBodies(json.RawMessage(`[1]`))), "not an object: left as is")
 }
 
 // ── Over HTTP ───────────────────────────────────────────────────────────

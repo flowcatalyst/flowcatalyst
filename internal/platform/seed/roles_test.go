@@ -159,12 +159,15 @@ func TestDispatchJobWritePermissionsInBuiltInRoles(t *testing.T) {
 // TestFunctionTracePermissionsInBuiltInRoles pins who holds the trace
 // permissions (docs/function-trace-design.md section 1): operators switch
 // tracing on and read bodies, readers read records with bodies withheld, the
-// CI deployer role stays minimal. Existing deployments get the same from
-// migration 087.
+// CI deployer role stays minimal, and the read-only platform:viewer reads no
+// trace records. Existing deployments get the same from migrations 087 and 092.
 func TestFunctionTracePermissionsInBuiltInRoles(t *testing.T) {
 	want := map[string][]string{
-		"platform:messaging-admin":     {"platform:function:trace:view", "platform:function:trace:manage", "platform:function:trace:view-bodies"},
-		"platform:viewer":              {"platform:function:trace:view"},
+		"platform:messaging-admin": {
+			"platform:function:trace:view", "platform:function:trace:manage", "platform:function:trace:view-bodies",
+			"platform:function:trace:indefinite",
+		},
+		"platform:viewer":              nil,
 		"platform:function-publisher":  {"platform:function:trace:view"},
 		"platform:function-deployer":   nil,
 		"platform:admin":               nil,

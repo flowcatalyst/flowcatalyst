@@ -19,6 +19,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
@@ -97,6 +98,7 @@ func TestEnableTrace_DeclaredContext_OpensWindowBumpsRevisionAndEmitsEvent(t *te
 	assert.Equal(t, "orders", evs[0].Data["context"])
 	assert.EqualValues(t, 10, evs[0].Data["sampleRate"])
 	assert.NotEmpty(t, evs[0].Data["enabledUntil"])
+	assert.Equal(t, false, evs[0].Data["indefinite"], "indefinite is always present")
 }
 
 func TestEnableTrace_SampleRateDefaultsToOne(t *testing.T) {
@@ -179,12 +181,15 @@ func TestDisableTrace_ClosesWindowIsIdempotentAndEmitsEvent(t *testing.T) {
 	revAfterEnable := f.poolRevision()
 	eventsBefore := len(f.functionEvents())
 
+	offAt := time.Now()
 	require.NoError(t, f.disableTrace("http"))
 	row, err := f.repo.GetTraceContext(context.Background(), f.fn.ID, "http")
 	require.NoError(t, err)
 	require.NotNil(t, row)
-	assert.Nil(t, row.EnabledUntil)
-	assert.False(t, row.Live(time.Now()))
+	require.NotNil(t, row.EnabledUntil, "switching off ends the window now, so queued records are still accepted")
+	assert.WithinDuration(t, offAt, *row.EnabledUntil, 5*time.Second)
+	assert.False(t, row.Indefinite)
+	assert.False(t, row.Live(time.Now().Add(time.Second)))
 	assert.Greater(t, f.poolRevision(), revAfterEnable, "a disable must bump the pool revision")
 
 	evs := f.eventsSince(eventsBefore)
@@ -193,6 +198,9 @@ func TestDisableTrace_ClosesWindowIsIdempotentAndEmitsEvent(t *testing.T) {
 	assert.Equal(t, "http", evs[0].Data["context"])
 
 	require.NoError(t, f.disableTrace("http"), "a second disable is fine")
+	again, err := f.repo.GetTraceContext(context.Background(), f.fn.ID, "http")
+	require.NoError(t, err)
+	assert.Equal(t, row.EnabledUntil.UnixMicro(), again.EnabledUntil.UnixMicro(), "a second disable keeps the first end")
 	require.NoError(t, f.disableTrace("orders"), "a context that was never on is fine")
 	none, err := f.repo.GetTraceContext(context.Background(), f.fn.ID, "orders")
 	require.NoError(t, err)
@@ -256,18 +264,20 @@ func TestPruneTraceLog_DeletesOnlyOldRecordsOfTheFunctionInChunks(t *testing.T) 
 	f := newTestFunctionFixture(t, "app_optrace0011a", "optraceapp11", "trace-fn")
 	other := newTestFunctionFixture(t, "app_optrace0012a", "optraceapp12", "trace-fn")
 	now := time.Now().UTC()
+	// Age is the platform's created_at; the runner-supplied at is the
+	// opposite on purpose, to prove retention never reads it.
 	insert := func(fnID string, age time.Duration, n int) {
 		recs := make([]function.TraceLogRecord, n)
 		for i := range recs {
 			recs[i] = function.TraceLogRecord{
 				ID: tsid.GenerateWithPrefix("ftl"), FunctionID: fnID, Version: 1, InvocationID: "inv",
-				Context: "http", Kind: "log", Level: "info", Message: "m", At: now.Add(-age), CreatedAt: now,
+				Context: "http", Kind: "log", Level: "info", Message: "m", At: now.Add(age - 41*24*time.Hour), CreatedAt: now.Add(-age),
 			}
 		}
 		require.NoError(t, f.repo.InsertTraceRecords(context.Background(), recs))
 	}
-	insert(f.fn.ID, 40*24*time.Hour, 25) // old
-	insert(f.fn.ID, 1*time.Hour, 3)      // fresh
+	insert(f.fn.ID, 40*24*time.Hour, 25) // old (stored 40 days ago, at "fresh")
+	insert(f.fn.ID, 1*time.Hour, 3)      // fresh (stored an hour ago, at 40 days back)
 	insert(other.fn.ID, 40*24*time.Hour, 4)
 
 	// Chunk of 10 and enough chunks: the 25 old rows go in three statements.
@@ -302,36 +312,99 @@ func TestPruneTraceAfterEnable_NeverFails(t *testing.T) {
 	now := time.Now().UTC()
 	require.NoError(t, f.repo.InsertTraceRecords(context.Background(), []function.TraceLogRecord{{
 		ID: tsid.GenerateWithPrefix("ftl"), FunctionID: f.fn.ID, Version: 1, InvocationID: "i", Context: "http",
-		Kind: "log", Level: "info", Message: "old", At: now.Add(-31 * 24 * time.Hour), CreatedAt: now,
+		Kind: "log", Level: "info", Message: "old", At: now, CreatedAt: now.Add(-31 * 24 * time.Hour),
 	}}))
-	operations.PruneTraceAfterEnable(context.Background(), f.repo, traceLimits, f.fn.ID)
+	// Detached from the caller: a cancelled request does not stop it.
+	reqCtx, cancel := context.WithCancel(context.Background())
+	done := operations.PruneTraceAfterEnable(reqCtx, f.repo, traceLimits, f.fn.ID)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("background prune did not finish")
+	}
 	n, err := f.repo.CountTraceLog(context.Background(), f.fn.ID)
 	require.NoError(t, err)
 	assert.Zero(t, n)
 }
 
-func TestEnableTrace_Indefinite_NoCapAndStaysLive(t *testing.T) {
+// The live prune visits only functions with an open window.
+func TestPruneLiveTraceFunctions(t *testing.T) {
+	t.Parallel()
+	live := newTestFunctionFixture(t, "app_optrace0014a", "optraceapp14", "trace-fn")
+	idle := newTestFunctionFixture(t, "app_optrace0015a", "optraceapp15", "trace-fn")
+	now := time.Now().UTC()
+	for _, fx := range []*testFunctionFixture{live, idle} {
+		require.NoError(t, fx.repo.InsertTraceRecords(context.Background(), []function.TraceLogRecord{{
+			ID: tsid.GenerateWithPrefix("ftl"), FunctionID: fx.fn.ID, Version: 1, InvocationID: "i", Context: "http",
+			Kind: "log", Level: "info", Message: "old", At: now, CreatedAt: now.Add(-31 * 24 * time.Hour),
+		}}))
+	}
+	_, err := live.enableTrace("http", 5, 1)
+	require.NoError(t, err)
+	ids, err := live.repo.ListLiveTraceFunctionIDs(context.Background(), time.Now())
+	require.NoError(t, err)
+	assert.Contains(t, ids, live.fn.ID)
+	assert.NotContains(t, ids, idle.fn.ID)
+
+	function.PruneLiveTraceFunctions(context.Background(), live.repo, traceLimits)
+	n, err := live.repo.CountTraceLog(context.Background(), live.fn.ID)
+	require.NoError(t, err)
+	assert.Zero(t, n)
+	n, err = idle.repo.CountTraceLog(context.Background(), idle.fn.ID)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, n, "a function without a live window is left to the sweep")
+}
+
+func TestEnableTrace_Indefinite_CeilingPermissionAndNeverHTTP(t *testing.T) {
 	t.Parallel()
 	f := newTestFunctionFixture(t, "app_optrace0020a", "optraceapp20", "trace-fn")
 	f.seedTraceVersion(1, function.VersionReady, "orders")
+	eventsBefore := len(f.functionEvents())
+	enable := func(ctx context.Context, context_ string) (operations.TraceContextState, error) {
+		return usecaseop.RunTx(ctx, f.uow, operations.EnableTraceContext(f.repo, traceLimits),
+			operations.EnableTraceCommand{FunctionID: f.fn.ID, Context: context_, Indefinite: true}, testpg.TestEC())
+	}
 
-	// No time limit: minutes is ignored, so neither the cap nor the minimum applies.
-	st, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.EnableTraceContext(f.repo, traceLimits),
-		operations.EnableTraceCommand{FunctionID: f.fn.ID, Context: "http", Indefinite: true}, testpg.TestEC())
+	// http never stays on until switched off: its minute cap always applies.
+	_, err := enable(testpg.AnchorCtx(), "http")
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, operations.TraceIndefiniteNotAllowed)
+
+	// It needs platform:function:trace:indefinite, beyond trace:manage.
+	manager := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_optracemgr01", Scope: auth.ScopeAnchor,
+		Permissions: []string{"platform:function:trace:manage", "platform:function:trace:view"},
+	})
+	_, err = enable(manager, "orders")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "platform:function:trace:indefinite")
+
+	// Granted: minutes is ignored, and the window has the hard ceiling.
+	before := time.Now()
+	st, err := enable(testpg.AnchorCtx(), "orders")
 	require.NoError(t, err)
 	assert.True(t, st.Live)
 	assert.True(t, st.Indefinite)
-	assert.True(t, function.IsIndefiniteUntil(st.EnabledUntil))
+	assert.Equal(t, function.DefaultTraceIndefiniteMaxDays, st.IndefiniteMaxDays)
+	require.NotNil(t, st.EnabledUntil)
+	assert.WithinDuration(t, before.Add(7*24*time.Hour), *st.EnabledUntil, 10*time.Second)
+	evs := f.eventsSince(eventsBefore)
+	require.Len(t, evs, 1)
+	assert.Equal(t, true, evs[0].Data["indefinite"])
+	assert.NotEmpty(t, evs[0].Data["enabledUntil"], "the ceiling is in the event")
 
 	// Re-enabling with a time limit replaces it.
-	timed, err := f.enableTrace("http", 5, 1)
+	timed, err := f.enableTrace("orders", 5, 1)
 	require.NoError(t, err)
 	assert.False(t, timed.Indefinite)
 	assert.True(t, timed.EnabledUntil.Before(time.Now().Add(time.Hour)))
 
 	// Disabling ends an indefinite window like any other.
-	_, err = usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.EnableTraceContext(f.repo, traceLimits),
-		operations.EnableTraceCommand{FunctionID: f.fn.ID, Context: "orders", Indefinite: true}, testpg.TestEC())
+	_, err = enable(testpg.AnchorCtx(), "orders")
 	require.NoError(t, err)
 	require.NoError(t, f.disableTrace("orders"))
+	row, err := f.repo.GetTraceContext(context.Background(), f.fn.ID, "orders")
+	require.NoError(t, err)
+	assert.False(t, row.Indefinite)
+	assert.False(t, row.Live(time.Now().Add(time.Second)))
 }
