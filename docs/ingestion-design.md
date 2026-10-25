@@ -1,9 +1,12 @@
 # Ingestion in the platform: design
 
-Status: design, 2026-10-24. Nothing is built. Source of the behaviour described here: the ingest control plane in
-`inhance/mono-repo` (`apps/ingest-control-plane`, `libs/java/ingest-contract`, `docs/ingest`), read on 2026-10-24.
-Owner direction (2026-10-24): ingestion is a platform capability for "building business event driven business
-services and applications", not a feature of one organisation's mono-repo.
+Status: built, 2026-10-25. Sections 2 to 7 are built in the Go platform (`internal/platform/ingestion`: model,
+validation, tables 088 to 090, operations and API, sets, the runtime API, retention), `fcdev ingest` and the pages
+(server-rendered templ under `/ui/ingestions`, section 9). The hardening rulings of 2026-10-25 (section 12) are in.
+Not built: the cutover tooling (section 8) and the Java platform mirror. Source of the behaviour described here: the
+ingest control plane in `inhance/mono-repo` (`apps/ingest-control-plane`, `libs/java/ingest-contract`, `docs/ingest`),
+read on 2026-10-24. Owner direction (2026-10-24): ingestion is a platform capability for "building business event
+driven business services and applications", not a feature of one organisation's mono-repo.
 
 ## 1. What it is and what moves
 
@@ -14,7 +17,7 @@ It is the inbound twin of subscriptions.
 | Piece | Where it lives after this work |
 |---|---|
 | Definitions, versions, sets, leases, state, failure and metric records, operator API, permissions, audit | **The Go platform** (this document) |
-| Operator pages | The platform SPA (section 9) |
+| Operator pages | The platform's server-rendered pages (templ and Datastar under `/ui/ingestions`, section 9) |
 | Definition files (`ingest-cli apply/export`) | `fcdev ingest ...` and the SDKs, over the platform API |
 | The runtime that actually reads sources (Camel today) | **Outside the platform**: its own repository and release, talking to the platform's runtime API (section 7). Optional; an installation without it simply has no ingestions running |
 | Inhance's own extensions (MiX, WebIQ) and its definition files | Stay in `mono-repo`, built on the released runtime |
@@ -51,15 +54,50 @@ ingestion = (application, client, code) + source + split + target + flags
   refuses to create or change an ingestion of that kind unless the caller holds it (`platform:ingestion:ingestion:route`,
   role `platform:ingestion-route-author`), and the Camel runtime reports the kind only when
   `INGEST_CAMEL_ROUTES_ENABLED` is true (default false). The runtime, not the platform, validates the YAML: at "test
-  connection" and when it takes the lease, reporting `FAILING` with the reason.
+  connection" and when it takes the lease, reporting `FAILING` with the reason. **The route permission counts only for
+  an anchor-tier caller** (ruling R2): below anchor tier a `camel-route` save is `403 INGESTION_ROUTE_ANCHOR_REQUIRED`
+  whatever it holds. The permission a runtime declares for any of its kinds is **remembered** (`ing_kind_requirements`,
+  the last report wins) and enforced while no runtime that reports the kind is live (ruling R4f); `camel-route`'s is
+  built in.
+- **Where a source points is guarded** (ruling R4b). Every outbound address of a source (an `api-poll` URL, its
+  login and token URLs, an `sftp` host, a RabbitMQ URI, a database's JDBC URL, an absolute URL in an extension's
+  settings) passes an outbound guard at save (in `Definition.Validate`, so every save path and the test of an unsaved
+  definition) and when a saved ingestion is tested. It is `netguard`'s address check with private networks allowed (an
+  on-premises source is the normal case): loopback and `localhost`, link-local (169.254.0.0/16, fe80::/10, so the
+  metadata services), unspecified and multicast addresses, the metadata addresses outside link-local (`fd00:ec2::254`,
+  `100.100.100.200`), the metadata host names (`metadata.google.internal`, `metadata`, `instance-data`...) and hosts
+  written as bare numbers (`2130706433`, `0x7f.1`) are refused. Host names are not resolved at save (the runtime
+  checks the address it connects to). A JDBC URL must name its server (`//host:port`, several hosts, `[v6]`, SQL
+  Server `\instance` and `serverName=`, MySQL `address=(host=)`, Oracle `@host:port`, `@//host` and `(HOST=)`); one
+  with no host to read (an embedded database, a file, an Oracle TNS alias) is refused, and so are driver properties
+  that load classes or touch files on the runtime (`socketFactory`, `sslfactory`, `allowLoadLocalInfile`,
+  `autoDeserialize`, the `*Interceptors`, `loggerFile`, H2's `INIT` and the like).
+- **The runtime's own identity and named secrets are read paths** and have their own permissions (rulings R4a and
+  R4d, `Repository.CheckAuthor`): an `sqs` or `s3` source **without a credential** is read with the runtime fleet's
+  own AWS identity, so saving one that is new or whose source differs from the live version needs
+  `platform:ingestion:ingestion:runtime-identity`; and a definition that **names secrets** makes the runtime present
+  them to the host it names, so saving one that is new, or that differs from the live version in an outbound address or
+  in the set of secret names, needs `platform:ingestion:ingestion:bind-secrets`. For an extension kind every text setting
+  counts as a secret name, so any change of its settings counts. Both are judged against the live version (a draft
+  saved over nothing live is judged as a create); a change that touches neither (a directory, a name, the target)
+  needs neither. Both hold for create, update, save version, set apply (per item) and the test of an unsaved
+  definition.
+- **An sftp source checks the server's host key** (2026-10-25, with the runtime): `knownHosts` (the server's
+  known_hosts line) or `acceptAnyHostKey: true` (default false; not both). The runtime refuses to start an sftp route
+  with neither and reports it `FAILED`; the platform still saves one (a definition from before saves unchanged) and
+  answers it with a `warnings` entry, shown in the drawer. Accepting any key sends the credential to whoever answers at
+  the address, so turning it on (new, or off in the live version) needs `bind-secrets`, as pointing a secret at a new
+  host does.
 - **The target says where the job goes, and what signs it, in platform terms.** A dispatch job carries its own delivery URL, pool, client and signing service account; a connection has **no URL** (it holds a service account that signs, and pausing it holds its jobs). So the target is
   `{code, targetUrl, pool, connection?, serviceAccount?, mode, batchSize}`:
   - `targetUrl`: the delivery URL, checked at save with the platform's outbound-URL guard (no private or metadata addresses);
   - `pool`: a dispatch pool **code**, resolved and checked at save (it must exist and be usable by the ingestion's client);
   - `connection`: an **optional** connection code. When set, the connection's service account signs each delivery and pausing the connection holds this ingestion's jobs, as for subscriptions;
-  - `serviceAccount`: an **optional** service account code, for signing without a connection; it may not be set together with `connection` (the connection's account is the signer);
+  - `serviceAccount`: an **optional** service account code, for signing without a connection; it may not be set together with `connection` (the connection's account is the signer). It must be **one of the ingestion's application's own accounts** (`applicationId` is the ingestion's application) and reach the ingestion's client; one linked to no client reaches all of its application's clients, which is acceptable only because it is bound to this application. A platform account (bound to no application) or another application's is refused (ruling R4c);
   - neither set: unsigned delivery;
-  - `code`, `mode` (`IMMEDIATE`, `NEXT_ON_ERROR`, `BLOCK_ON_ERROR`) and `batchSize` as today.
+  - `code`: the job's code, whose first segment must be the **ingestion's own application** (matched without regard to case), the batch dispatch API's `checkJobApplication` rule 1 (ruling R4e);
+  - `mode` (`IMMEDIATE`, `NEXT_ON_ERROR`, `BLOCK_ON_ERROR`) and `batchSize` as today.
+  The target is resolved again when a runtime creates jobs, so an ingestion saved before these rules is `409 INGESTION_TARGET_INVALID` there.
   The job's **client is the ingestion's client**; it is not a target field. Anything that does not resolve is a `400` at save, not a failure in the runtime later. A runtime creates the jobs through its own runtime call (section 7), which builds them from this target.
 - Ids are platform TSIDs (`ing_...`), not ULIDs.
 
@@ -72,13 +110,21 @@ table holds a secret value.
 |---|---|---|
 | `ing_ingestions` | `ingestions` | `id`, `application_id` (FK), `client_id` (**not null**), `code`, `name`, `active`, `version`, `latest_version`, `source/split/target` JSONB, `keep_failed_payloads`, `managed_by` (the owning set), timestamps. Unique `(application_id, client_id, code)` |
 | `ing_versions` | `ingestion_versions` | one row per saved version: definition, `note`, `applied_from` (set apply), who and when. `live` is the version runtimes receive (see section 5) |
-| `ing_runtimes` | `runtimes` | `runtime_id`, `last_seen_at`, `kinds` JSONB, `contract_version`, `url` (informational) |
-| `ing_leases` | `ingestion_leases` | polled sources run on one runtime at a time; `expires_at`, `released` |
+| `ing_runtimes` | `runtimes` | `runtime_id`, `last_seen_at`, `kinds` JSONB (extension kinds), `builtin_kinds` JSONB (090; NULL is the v2 baseline), `contract_version`, `url` (informational); pruned 7 days unseen |
+| `ing_kind_requirements` | (new, 090) | per runtime-reported kind, the permission the last report declared; enforced while no runtime that reports the kind is live |
+| `ing_leases` | `ingestion_leases` | polled sources run on one runtime at a time; `expires_at`, `released`; timed by the database's clock |
 | `ing_job_keys` | (new) | the idempotency key (`externalId`) of each job a runtime created, per ingestion; written with the job, **pruned** after 7 days |
 | `ing_state` | `ingestion_state` | small values a polled source keeps (watermark, cursor); only the lease holder writes |
-| `ing_route_states` | `ingestion_route_states` | per runtime: version, status, error |
-| `ing_exchange_metrics` | `ingestion_exchange_metrics` | per window: completed, failed, records, jobs; **pruned** after 30 days (a partition-or-delete job like the other high-volume tables) |
-| `ing_failures` | `ingestion_failures` | kind, message, `after_records`, optional `excerpt` (only with `keepFailedPayloads`); pruned |
+| `ing_route_states` | `ingestion_route_states` | per runtime: version, status, error; a runtime's rows are pruned once it is unseen for 7 days (or forgotten) |
+| `ing_exchange_metrics` | `ingestion_exchange_metrics` | per window: completed, failed, records, jobs, `created_at` (090, server-written); **pruned** after 30 days |
+| `ing_failures` | `ingestion_failures` | kind, `category` (090: `payload` or `rejected`), message, `after_records`, optional `excerpt` (only with `keepFailedPayloads`), `dismissed_at`/`dismissed_by` (090); pruned after 30 days |
+
+**Retention** (`retention.go`, hourly on every replica, idempotent) prunes failures, metrics, job keys and test
+requests by `created_at`, the time the platform wrote the row, never by a time the runtime sent (ruling R5). Each
+high-volume table gets up to `FC_INGESTION_RETENTION_MAX_CHUNKS` (default 500) chunks of 10,000 rows a sweep, 5 million
+rows a table an hour: steady state for about 1,400 records a second carrying an `externalId`, where the first budget
+(100,000 rows an hour) fell behind at 28 a second and never caught up. A runtime-supplied time more than five minutes
+in the future (a failure's `at`, a window's `from`) is recorded as the platform's now.
 | `ing_sets`, `ing_set_applies` | `ingestion_set_applies` | named sets of definition files and their apply history; the archive of applied files goes in the platform's artifact store (`file://` or `s3://`, as function artifacts) |
 | `ing_test_requests` | (new) | pending "test connection" requests and their results (section 7) |
 
@@ -93,15 +139,37 @@ Subdomain `ingestion` (four segments, like every platform permission):
 |---|---|
 | `platform:ingestion:ingestion:view` | list, read, versions, history, failures, definition export, source kinds |
 | `platform:ingestion:ingestion:create` / `update` / `delete` | change definitions; `update` includes pause and resume |
-| `platform:ingestion:ingestion:promote` | make a version live (section 5) |
+| `platform:ingestion:ingestion:promote` | make a version live (section 5): a create that is live, an update, a version saved live, make live |
 | `platform:ingestion:ingestion:test` | run "test connection" (it makes a real outbound call from a runtime, so it is its own grant) |
-| `platform:ingestion:ingestion:route` | create or change an ingestion of a kind that declares it needs this (`camel-route`); removing one needs only `delete` |
+| `platform:ingestion:ingestion:route` | create or change an ingestion of a kind that declares it needs this (`camel-route`), and only at anchor tier; removing one needs only `delete` |
+| `platform:ingestion:ingestion:runtime-identity` | save an `sqs` or `s3` source without a credential (the fleet's own AWS identity reads it), section 2 |
+| `platform:ingestion:ingestion:bind-secrets` | save a definition that names secrets and points them somewhere new, section 2 |
 | `platform:ingestion:set:apply` | apply or release a set |
 | `platform:ingestion:runtime:operate` | the runtime API: poll, report, state, jobs, secrets |
 
-Seeded roles: `platform:ingestion-admin` (all but runtime), `platform:ingestion-operator` (view, update, test),
-`platform:ingestion-viewer`, and `platform:ingestion-runtime` for a runtime's service account. Super-admin's wildcard
-covers everything. The role ceiling rules (a caller cannot grant what it does not hold) apply as elsewhere.
+Seeded roles: `platform:ingestion-admin` (all but route and runtime; the only role with `runtime-identity` and
+`bind-secrets`), `platform:ingestion-operator` (view, update, test), `platform:ingestion-viewer`,
+`platform:ingestion-route-author` (view, create, update, route: it writes drafts, created with `live: false` and saved
+as versions that are not live, which a holder of promote makes live; it holds no `bind-secrets`, and every text
+setting of a route counts as a secret name, so a route is saved by an admin unless it is given that too) and
+`platform:ingestion-runtime` for a runtime's service account. Super-admin's wildcard covers everything. The role
+ceiling rules (a caller cannot grant what it does not hold) apply as elsewhere.
+
+**Promote** (ruling R3). Making a version live needs `promote` whichever call does it. A create is live by default,
+so a create without promote that does not say `live: false` is `403 INGESTION_PROMOTE_REQUIRED` with a message that
+says to send `live: false`; `PUT /api/ingestions/{id}` makes its version live, so without promote it is refused
+(never quietly saved as a draft) and the message names `POST .../versions` with `live: false`. The pages offer the
+"make live" switch only to a holder of promote; without it the create form saves a draft and says so. A set apply
+makes its versions live under `set:apply`, which only the admin role holds.
+
+**The runtime's account** (ruling R1). The runtime API (`auth.RequireIngestionRuntime`) needs
+`platform:ingestion:runtime:operate` **and** a principal that is a runtime's: a service account
+(`INGESTION_RUNTIME_SERVICE_ACCOUNT_REQUIRED` otherwise), at anchor tier (`INGESTION_RUNTIME_ANCHOR_REQUIRED`: a
+client-tier token is forged or mis-provisioned) and bound to no application (`INGESTION_RUNTIME_APPLICATION_BOUND`: an
+application's own account, or one confined to a list of applications, is not a runtime's), all `403` on every runtime
+route. An account with access to every application is not bound to one. The iac runbook's account (made without
+`applicationId`, linked to no client) and fcdev's `fcdev-ingestor` (an anchor `SERVICE` principal with every
+application) both pass.
 
 **Reach.** A caller below anchor tier sees and changes only ingestions of its own clients. An application-scoped service
 account reaches only its own application's ingestions (the existing confinement). Per-application and per-client scoping
@@ -122,10 +190,11 @@ Everything below is huma, in `api/openapi.lock.json`, so the SDKs and the SPA ty
 | Operation id | Route | Notes |
 |---|---|---|
 | `listIngestions` | `GET /api/ingestions` | filters: `applicationCode`, `clientId` (id or identifier), `q`, `status`, `kind`; cursor paging (`limit` 1 to 200) |
-| `createIngestion`, `getIngestion`, `updateIngestion`, `deleteIngestion` | `/api/ingestions[/{id}]` | `updateIngestion` takes `expectedVersion`; a no-op update answers 200 and writes nothing (platform rule). Create takes `live: true` default |
+| `createIngestion`, `getIngestion`, `updateIngestion`, `deleteIngestion` | `/api/ingestions[/{id}]` | `updateIngestion` takes `expectedVersion`; a no-op update answers 200 and writes nothing (platform rule). Create takes `live: true` default. Both need promote when the result is live (section 4). A response carries `notices`, `latestNotice` and `latestNoticeAt`: the undismissed `rejected` failures |
 | `listIngestionVersions`, `saveIngestionVersion`, `makeIngestionVersionLive` | `/api/ingestions/{id}/versions[/{v}/live]` | a saved version is not run until it is live; `live` moves the pointer |
 | `getIngestionDefinition` | `GET /api/ingestions/{id}/definition` | the file form (YAML) that `fcdev ingest apply` reads back |
-| `listIngestionHistory`, `listIngestionFailures` | `/api/ingestions/{id}/history\|failures` | history from `aud_logs`; failures paged by id |
+| `listIngestionHistory`, `listIngestionFailures` | `/api/ingestions/{id}/history\|failures` | history from `aud_logs`; failures paged by id, filtered by `category` and `undismissed`, each with `category`, `createdAt`, `dismissedAt`, `dismissedBy` |
+| `dismissIngestionFailure` | `POST /api/ingestions/{id}/failures/{failureId}/dismiss` | `update` and the ingestion's reach; once (again answers it as it is and writes nothing); emits `platform:ingestion:ingestion:failure-dismissed` on the ingestion's subject, so it reads in its history. Any failure can be dismissed; a `rejected` one is a notice the list and the drawer show until it is |
 | `listIngestionSourceKinds` | `GET /api/ingestion-source-kinds` | built-in kinds plus the kinds the live runtimes report; the form is drawn from this |
 | `testIngestionConnection` | `POST /api/ingestion-tests` | queues a test (section 7); `GET /api/ingestion-tests/{id}` for the result |
 | `applyIngestionSet`, `listIngestionSets`, `listIngestionSetApplies`, `reapplyIngestionSet`, `releaseIngestionSet` | `/api/ingestion-sets...` | as today: a set owns its ingestions (read-only in the pages) until released |
@@ -168,31 +237,52 @@ the flag is on.
 ## 7. The runtime contract
 
 The JSON of `ingest-contract` carries over with the changes in section 2, under `/api/ingestion-runtime/v1`, authenticated
-as the runtime's service account (`platform:ingestion:runtime:operate`).
+as the runtime's service account (`platform:ingestion:runtime:operate`, and an anchor-tier service account bound to no
+application: section 4).
 
-- **Poll** (every minute): the runtime sends `{runtimeId, contractVersion, kinds, url?}`; the answer is the ingestions it
-  should run (live version only), the lease length, and pending test requests. Leased sources (`sftp`, `s3`,
-  `database-poll`, `api-poll`, `custom`) are given to one runtime holding a lease in `ing_leases` (a runtime that cannot
-  renew stops before the lease ends); `http`, `sqs` and `rabbitmq` go to every runtime that carries them. An ingestion
-  of a kind no live runtime reports shows as **"no runtime carries this kind"**, not as a failure.
-  **Fair share (built 2026-10-24, ported from the Java control plane):** the leased ingestions spread evenly over the live
-  runtimes (those that polled within one lease window, counting the asker): a runtime may hold ceil(leased / live). It renews
-  what it already holds up to its share, claims unleased ones to fill it, and stops listing the surplus, marking those
-  leases released. A lease is never handed over directly: the surplus is claimed by another runtime only after it has expired,
-  by which time the first runtime has stopped it. A runtime that goes silent drops out of the count after a window and the
-  survivors take its share. The share counts every leased ingestion whichever runtime can run it, so a runtime that
-  carries fewer kinds simply holds what it can.
+**Additions within contract version 2 (2026-10-25).** All additive: the version stays 2, and a runtime that sends none
+of them (N-1, or a v2 runtime from before) is served as before.
+
+| | Field | Meaning |
+|---|---|---|
+| C1 | poll `builtinKinds: [string]` | The built-in kinds the runtime carries. Absent: the v2 baseline (`http`, `sftp`, `s3`, `sqs`, `rabbitmq`, `database-poll`, `api-poll`), or, as before, exactly the built-in kinds it names among `kinds`. A runtime is listed only ingestions of a kind it carries (`builtinKinds`, its extension kinds, `camel-route` when it reports it), and the notice and the per-kind fair share use the same set. A name the platform does not know is ignored |
+| C2 | (behaviour) | Fair share per kind; the lease section serialised; leases timed by the database's clock (below) |
+| C3 | report failure `category` | `payload` (the default: a record or payload it could not take) or `rejected` (the platform refused its jobs request permanently: a `409 INGESTION_TARGET_INVALID`, `CLIENT_NOT_ACTIVE` and the like). The Java runtime sends it, lower case, on `REJECTED`-kind failures only; a failure without one is `payload`. Stored; a `rejected` failure is a notice until someone dismisses it (section 5) |
+| C4 | (limits) | The jobs call takes bodies up to 10 MiB (`FC_INGESTION_JOBS_MAX_BYTES`), the report up to 4 MiB (`FC_INGESTION_REPORT_MAX_BYTES`), the rest huma's 1 MiB. NUL characters in report text (failure messages and excerpts, route errors, test steps and excerpts) are dropped before storing: Postgres refused the whole report over one |
+| C5 | jobs `externalId` | The runtime sends the sha256 hex (64 characters, within the 100 allowed) of each record's source identity when it has one. Of two records of one request with the same key the earlier makes the job and the later answers it, every time (the keys are claimed in a stable order) |
+
+- **Poll** (every minute): the runtime sends `{runtimeId, contractVersion, kinds, builtinKinds?, url?}`; the answer is the
+  ingestions it should run (live version only, of an **active** client: a suspended or deactivated client's run
+  nowhere), the lease length, and pending test requests. Leased sources (`sftp`, `s3`, `database-poll`, `api-poll`,
+  `custom`) are given to one runtime holding a lease in `ing_leases` (a runtime that cannot renew stops before the lease
+  ends); `http`, `sqs` and `rabbitmq` go to every runtime that carries them. An ingestion of a kind no live runtime
+  reports shows as **"no runtime carries this kind"**, not as a failure.
+  **Fair share, per kind (C2, 2026-10-25):** for each kind, a runtime may hold ceil(polled ingestions of the kind / live
+  runtimes that carry the kind), the live runtimes being those that polled within one lease window, the asker included.
+  It renews what it already holds of the kind up to that share, claims unleased ones to fill it, and stops listing the
+  surplus, marking those leases released. A lease is never handed over directly: the surplus is claimed by another
+  runtime only after it has expired, by which time the first runtime has stopped it. A runtime that goes silent drops
+  out of the count after a window and the survivors take its share. (The first version, ported from the Java control
+  plane, counted every polled ingestion over every live runtime, so the only carrier of a kind in a mixed fleet was
+  capped below what the kind needed and the rest never ran.) The lease section of a poll runs under
+  `pg_advisory_xact_lock`: each poll renews its own leases and then claims in id order, and two polls interleaved
+  locked rows in different orders and deadlocked. Leases are taken, renewed, checked and expired by the **database's
+  clock** (`now()` read once per transaction), so replicas whose clocks disagree agree on who holds what; `asOf` in the
+  answer is that time.
 - **The runtime's account.** A runtime holds the role `platform:ingestion-runtime`, and that role is **platform-wide**
   (owner 2026-10-24: one fleet serves every application's ingestions, no fleet per application): the runtime routes
-  (poll, report, state, jobs, secrets) reach every client and every application whatever way the account was provisioned,
-  and the permission is the gate. The fair share spreads the ingestions over the instances of the fleet.
-- **Report:** route states, exchange windows, failures (with the lease checked), idempotent per window.
+  (poll, report, state, jobs, secrets) reach every client and every application. Because of that the account must be
+  a runtime's and nothing narrower (ruling R1, section 4): a client-tier or application-bound account is refused, never
+  widened. The fair share spreads the ingestions over the instances of the fleet.
+- **Report:** route states, exchange windows, failures (with the lease checked; `category`, C3), idempotent per window.
+  Up to 4 MiB. Times more than five minutes ahead of the platform's are recorded as its now; rows are kept by the time
+  the platform wrote them.
 - **State:** `GET/PUT /state/{ingestionId}/{key}`; a write from a runtime without the lease is `409 LEASE_NOT_HELD`.
 - **Test connection** is pull-based: the pages queue a request (`ing_test_requests`); a runtime that carries the kind
   receives it in its next poll, runs it without dispatching anything, and posts the result. This replaces the control
   plane calling the runtime's address, which does not work from a platform behind a firewall.
 - **Jobs:** `POST /api/ingestion-runtime/v1/ingestions/{id}/jobs?runtimeId=` takes `{records: [{payload, payloadContentType?,
-  messageGroup?, externalId?, correlationId?, subject?}]}`, at most 1000 per request, and answers
+  messageGroup?, externalId?, correlationId?, subject?}]}`, at most 1000 per request and 10 MiB, and answers
   `{created, results: [{index, id} | {index, error}]}`. A runtime does **not** use the batch dispatch-job API: that takes ids,
   has no connection field, and an application-confined service account cannot create jobs for another application's
   ingestion. The platform builds every job from the **ingestion's own target**, resolved as at save: the target's `code` and
@@ -203,37 +293,81 @@ as the runtime's service account (`platform:ingestion:runtime:operate`).
   Job creation is the batch API's own (`sdk.NewJobFromItem`), so a job persists identically whichever way it was made. Only a
   **live, active** ingestion takes jobs (`404` unknown, `409 INGESTION_NOT_LIVE` paused or no live version, `409
   INGESTION_TARGET_INVALID` when the target no longer resolves); the runtime must have polled and carry the ingestion's kind
-  (`409 RUNTIME_KIND_NOT_CARRIED`) and, for a polled source, hold its lease (`409 LEASE_NOT_HELD`). A record that cannot be a
-  job (no payload, a field over its length) is answered with its `error`; the rest are made. An `externalId` is the
-  record's idempotency key **within the ingestion**: sending it again answers the job it made first (`existing: true`), also
-  within one request. Keys live in `ing_job_keys`, written in the transaction that creates the job and pruned after 7 days.
+  (`409 RUNTIME_KIND_NOT_CARRIED`) and, for a polled source, hold its lease (`409 LEASE_NOT_HELD`), checked **in the
+  transaction that makes the jobs** with the lease row held (`FOR SHARE`) until it commits (ruling R6), so the lease
+  cannot pass to another runtime in between; the client must be active (`409 CLIENT_NOT_ACTIVE`, checked there too).
+  A record that cannot be a job (no payload, a field over its length) is answered with its `error`; the rest are
+  made. An `externalId` is the record's idempotency key **within the ingestion**: sending it again answers the job it
+  made first (`existing: true`), also within one request, where the earlier record wins (C5). Keys live in
+  `ing_job_keys`, written in the transaction that creates the job and pruned after 7 days.
 - **Secrets:** `GET /api/ingestion-runtime/v1/ingestions/{id}/secrets/{name}?runtimeId=` answers `{value, updatedAt}` for a
   secret the ingestion's **live definition names** (found by walking the typed source model: source credentials, http auth
   tokens, api-poll auth, database and queue passwords; for an extension kind, its text settings), read from the
   ingestion's application, section `secrets`, at the ingestion's client with no global fallback. A name the definition does
-  not reference, or that has no value, is `404 SECRET_NOT_FOUND`. The same kind, lease and liveness checks as the jobs call
-  apply. It is the audited reveal of platform config (`platformconfig.Service`): refused if the audit row cannot be written,
+  not reference, or that has no value, is `404 SECRET_NOT_FOUND`. The same kind, lease, liveness and client-status checks
+  as the jobs call apply. It is the audited reveal of platform config (`platformconfig.Service`): refused if the audit row cannot be written,
   `Cache-Control: no-store`, and the audit row names the runtime's principal, the ingestion and the runtime id. The runtime's
-  service account holds no config-reveal permission and needs none.
+  service account holds no config-reveal permission and needs none. The Java runtime re-reads each secret every
+  `INGEST_SECRETS_CACHE_TTL` per non-HTTP route, so expect about one audit row per secret, per route, per minute at its
+  default: a thousand routes with one secret each is about 1.4 million `aud_logs` rows a day (open: section 12).
 - **Versioning:** the contract is a public API. Poll carries `contractVersion`; the platform serves the current version
   and the one before (N-1) and answers `426` with the supported range otherwise. Additive changes do not bump it.
 
 ## 8. Cutover for Inhance
 
-1. Create the integration application(s) and the runtime's service account with the `platform:ingestion-runtime` role.
-2. Export every ingestion (`ingest-cli export`) and apply the files as a set against the platform. Ids change.
-3. **Copy `ingestion_state`** (watermarks and cursors) into `ing_state` keyed by `(client, code)`, **before** the runtime
-   is pointed at the platform, or every polled source reads from its beginning and dispatches duplicates. A one-off script
-   in the runtime repository does this and is idempotent.
-4. Point the runtime at the platform (base URL and token); the contract is the same apart from section 2.
-5. Retire the old control plane after one clean day.
+Not built yet (the state-copy script is work package 9). The order matters: two runtimes reading the same source, or a
+runtime starting without the old watermark, dispatch the same records twice, and the platform cannot tell (below).
+
+1. **Prepare, with nothing running against the platform.** Create the integration application(s), the client(s), the
+   dispatch pools and connections the targets name, and the runtime's service account: anchor tier, bound to no
+   application, holding `platform:ingestion-runtime` (section 4). Set every secret the definitions name at the
+   ingestion's client (`secrets` section).
+2. **Export and apply as drafts.** Export every ingestion (`ingest-cli export`), add the `application` each belongs to,
+   rewrite each target's `code` to begin with that application (section 2) and its `serviceAccount` to one of that
+   application's own, give every sftp source its server's `knownHosts` line (or, deliberately, `acceptAnyHostKey:
+   true`: the new runtime refuses an sftp source with neither and reports it `FAILED`; the old one connected without
+   checking), and apply the files as a set with every ingestion **paused** (`active: false`), dry run first.
+   Ids change (`ing_...` TSIDs); nothing runs yet. The apply is the check that every reference resolves.
+3. **Freeze the old side.** Stop the old runtime (every instance) and wait for its in-flight batches to finish, then put
+   the old control plane in read-only mode (no edits, no new leases). From here until step 6 nothing ingests: keep the
+   window short, and do it when the sources can wait (a polled source loses nothing; an HTTP push source returns errors
+   its sender must retry; a queue keeps its messages).
+4. **Copy the state** (watermarks and cursors) from `ingestion_state` into `ing_state`, mapping each row by
+   **`(application, client, code)`** to the new ingestion id (the old key is `(client, code)`; the application is the one
+   step 2 assigned). The script must be idempotent and refuse to run while an old runtime is polling or a new one holds
+   a lease. Without this every polled source reads from its beginning and dispatches everything again.
+5. **Idempotency keys do not carry over.** The old control plane's dedup (whatever it kept per record) is not migrated:
+   `ing_job_keys` starts empty, and a key names a job in the new platform, which an old job is not. A record the old
+   runtime already dispatched and the new one reads again is a **new job**. The only protection is order: the old
+   runtime stopped in step 3, after its last batch, and the copied watermark tells the new one where that batch ended.
+   Never run both runtimes at once against the same sources, not even briefly.
+6. **Start.** Point the runtime at the platform (base URL and the account's credentials; the contract is the same apart
+   from sections 2 and 7), let it poll once, then resume the ingestions (one set apply with `active: true`). Watch the
+   Activity and Failures tabs; a `rejected` notice means a target does not resolve.
+7. **Rollback** (keep the old control plane read-only, not deleted, for 14 days). To go back: pause the ingestions on the
+   platform and wait until no lease is held, stop the new runtime, copy `ing_state` back into `ingestion_state` by the
+   same `(application, client, code)` mapping (the same script, reversed: the platform's watermarks are newer), take the
+   old control plane out of read-only and start the old runtime. Records dispatched by the new platform are not undone;
+   the copied watermark stops them being read again.
+8. **Retire** the old control plane once the 14 days pass with no rollback.
+
+**What is not migrated:** versions and their notes (the platform's history starts at the apply; the old version list
+stays readable in the old control plane while it is kept), the old audit log, route states, exchange counts, failures,
+test results and leases. **The job `source` changes:** jobs the platform makes carry `ingestion:<application>:<code>`
+(section 7) where the old ones carried the old control plane's; a dashboard, a dispatch-job filter or a consumer that
+reads `source` must accept both until the old jobs age out.
 
 ## 9. Pages
 
-Stack-neutral here. The current pages (`apps/ingest-control-plane/web`, about 7,400 lines, Nuxt UI on Vue 3 and Vite) are the
-specification: list with filters, a form drawn from the source kinds, drawer tabs (activity, failures, history,
-versions, definition), "Export YAML", test connection, sets and their applies, pause and resume, and read-only state for
-ingestions a set owns. **Which UI stack the platform uses is decided separately** (`flowcatalyst-framework/docs/go/ui.md` section 16 and the
+Built: server-rendered templ pages with Datastar under `/ui/ingestions` and `/ui/ingestion-sets`
+(`internal/ui/pages/ingestion*`), on the same use cases as the API. The pages of the old control plane
+(`apps/ingest-control-plane/web`, about 7,400 lines, Nuxt UI on Vue 3 and Vite) were the specification: list with
+filters, a form drawn from the source kinds, drawer tabs (activity, failures, history, versions, definition), "Export
+YAML", test connection, sets and their applies, pause and resume, and read-only state for ingestions a set owns. Since
+2026-10-25 the list rows and the drawer show undismissed notices (count and newest message), the Failures tab tags
+notices, says who dismissed what and offers Dismiss to a holder of `update`, the create form offers "make live" only to a
+holder of `promote`, and a `camel-route` is offered only at anchor tier. The paragraph below is the history of the
+decision. **Which UI stack the platform uses is decided separately** (`flowcatalyst-framework/docs/go/ui.md` section 16 and the
 owner's 2026-10-24 question about moving to Nuxt UI); the work package for the pages waits on it.
 
 ## 10. The runtime repository: consumed, not embedded (separate document to follow)
@@ -280,3 +414,35 @@ Decided 2026-10-24 (owner):
 
 Assumed unless the owner objects: the resource is "ingestion", the permission subdomain `ingestion`, the flag
 `FC_INGESTION_ENABLED`.
+
+Decided 2026-10-25 (owner), with the runtime contract additions C1 to C5 (section 7):
+
+- **R1, the runtime's identity:** the runtime API needs `runtime:operate` and an anchor-tier service account bound to
+  no application; anything narrower is a `403` with a code that says which (section 4).
+- **R2, route authors:** the route permission counts only at anchor tier (section 2).
+- **R3, promote:** a save whose result is live needs promote: a create without it must say `live: false`, an update
+  without it is refused (section 4). The route-author role writes drafts.
+- **R4, authoring reach:** (a) `runtime-identity` for an SQS or S3 source without a credential; (b) the outbound guard
+  on source addresses, private networks allowed; (c) `target.serviceAccount` confined to the ingestion's application
+  and client; (d) `bind-secrets` for a definition that names secrets and points them somewhere new; (e) the target's
+  job code belongs to the ingestion's application; (f) a kind's declared permission is remembered and enforced while
+  no runtime reports it (sections 2 and 3). `runtime-identity` and `bind-secrets` are seeded to the admin role only.
+- **R5, retention:** by the server-written `created_at`, a budget that converges (configurable), runtime times clamped,
+  route states of gone runtimes pruned (section 3).
+- **R6, lease checks and client status:** the jobs call holds the lease row in the transaction that makes the jobs; a
+  suspended or deactivated client's ingestions are listed to no runtime and take no jobs (section 7).
+- **R7:** this document and the published guide brought up to date, the cutover plan rewritten (section 8).
+
+Choices made where a ruling left one (2026-10-25): an update without promote is refused rather than saved as a
+draft (the call says it makes the version live; doing something else quietly would surprise), the create form
+without promote saves a draft; `runtime-identity` and `bind-secrets` are judged against the **live** version, so
+renaming or retargeting an ingestion that already reads with the fleet's identity or already sends its secrets to the
+same host needs neither; a set apply checks both per item against what exists; the test of an unsaved definition
+needs what creating it would; the JDBC check also refuses a URL with no host to read and driver properties that load
+code or touch files; the job-code check ignores case (an application code may hold capitals, a job code may not);
+`builtinKinds` names the platform does not know are dropped, not stored; turning on an sftp source's
+`acceptAnyHostKey` needs `bind-secrets` (not anchor tier: it is a secret-steering switch, and the admin role holds it).
+
+Open: the secret-reveal audit volume (section 7, about one row per secret per route per minute). Either a longer
+`INGEST_SECRETS_CACHE_TTL` in the runtime, or an audit that records a reveal once per (runtime, ingestion, secret,
+updated value) within a window, is for the owner to decide.
