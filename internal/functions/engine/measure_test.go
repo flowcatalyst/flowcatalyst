@@ -35,7 +35,7 @@ func TestMeasureGuests(t *testing.T) {
 	}
 	fmt.Println("| guest | scenario | size | compile cold | compile cached | instantiate p50 / p99 | first call | warm p50 / p99 | min mem | mem after 5000 calls |")
 	fmt.Println("|---|---|---|---|---|---|---|---|---|---|")
-	for _, item := range strings.Split(spec, ",") {
+	for item := range strings.SplitSeq(spec, ",") {
 		parts := strings.SplitN(item, "=", 3)
 		if len(parts) != 3 {
 			t.Fatalf("bad FN_MEASURE item %q", item)
@@ -60,12 +60,18 @@ func scenarioFor(t *testing.T, name string) scenario {
 		body := []byte(`{"order":42,"note":"hello","lines":[{"sku":"a1","qty":2},{"sku":"b7","qty":1}]}`)
 		mac := hmac.New(sha256.New, []byte(measureSecret))
 		mac.Write(body)
-		return scenario{req: abi.Request{Method: "POST", Path: "/ingest",
-			Headers: map[string][]string{"X-Signature": {"sha256=" + hex.EncodeToString(mac.Sum(nil))}}}, body: body, status: 202}
+		return scenario{req: abi.Request{
+			Method: "POST", Path: "/ingest",
+			Headers: map[string][]string{"X-Signature": {"sha256=" + hex.EncodeToString(mac.Sum(nil))}},
+		}, body: body, status: 202}
 	case "creator":
-		return scenario{req: abi.Request{Method: "POST", Path: "/dispatch",
-			Caller: abi.Caller{Kind: abi.CallerPrincipal, ID: "prn_1", Permissions: []string{"dispatchdemo:dispatch:job:create"}}},
-			body: []byte(`{"order":42,"note":"hello"}`), status: 202}
+		return scenario{
+			req: abi.Request{
+				Method: "POST", Path: "/dispatch",
+				Caller: abi.Caller{Kind: abi.CallerPrincipal, ID: "prn_1", Permissions: []string{"dispatchdemo:dispatch:job:create"}},
+			},
+			body: []byte(`{"order":42,"note":"hello"}`), status: 202,
+		}
 	}
 	t.Fatalf("unknown scenario %q", name)
 	return scenario{}
@@ -79,6 +85,10 @@ func (fakeHost) Call(_ context.Context, op abi.Op, _, _ []byte) ([]byte, []byte,
 		return []byte(`{"found":true}`), []byte(measureSecret), nil
 	case abi.OpDispatch:
 		return []byte(`{"jobId":"djob_1"}`), nil, nil
+	case abi.OpLog, abi.OpConfigGet, abi.OpHTTPFetch, abi.OpEventEmit,
+		abi.OpDBQuery, abi.OpDBExec, abi.OpDBBegin, abi.OpDBCommit, abi.OpDBRollback,
+		abi.OpTrace, abi.OpTracing:
+		// The measured fixtures do not need these answered.
 	}
 	return nil, nil, nil
 }

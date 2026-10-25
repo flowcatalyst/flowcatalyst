@@ -70,12 +70,14 @@ type deepBody struct {
 	List  []deepInner          `json:"list"`
 	Map   map[string]deepInner `json:"map,omitempty"`
 }
-type deepIn struct{ Body deepBody }
-type deepOut struct {
-	Body struct {
-		OK bool `json:"ok"`
+type (
+	deepIn  struct{ Body deepBody }
+	deepOut struct {
+		Body struct {
+			OK bool `json:"ok"`
+		}
 	}
-}
+)
 
 // RelaxRequestBodies loosens the top level only; the deep version loosens
 // nested objects, list items and typed maps too, for the named operations.

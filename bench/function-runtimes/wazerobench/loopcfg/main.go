@@ -40,11 +40,15 @@ func main() {
 		for _, cod := range []bool{true, false} {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 			rt := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfig().WithCloseOnContextDone(cod))
-			wasi_snapshot_preview1.Instantiate(ctx, rt)
-			rt.NewHostModuleBuilder("fc").
+			if _, err := wasi_snapshot_preview1.Instantiate(ctx, rt); err != nil {
+				panic(err)
+			}
+			if _, err := rt.NewHostModuleBuilder("fc").
 				NewFunctionBuilder().WithGoModuleFunction(api.GoModuleFunc(func(_ context.Context, _ api.Module, s []uint64) { s[0] = 0 }), []api.ValueType{api.ValueTypeI32, api.ValueTypeI32, api.ValueTypeI32}, []api.ValueType{api.ValueTypeI64}).Export("call").
 				NewFunctionBuilder().WithGoModuleFunction(api.GoModuleFunc(func(_ context.Context, _ api.Module, s []uint64) {}), []api.ValueType{api.ValueTypeI32}, nil).Export("take").
-				Instantiate(ctx)
+				Instantiate(ctx); err != nil {
+				panic(err)
+			}
 			m, err := rt.Instantiate(ctx, wasm)
 			if err != nil {
 				panic(err)
@@ -80,14 +84,14 @@ func main() {
 				slices.Sort(ds)
 				fmt.Printf("RESULT rt=%s w=%d closeOnContextDone=%v p50_us=%.2f min_us=%.2f max_us=%.2f calls=%d\n", label, w, cod, float64(ds[len(ds)/2])/1e3, float64(ds[0])/1e3, float64(ds[len(ds)-1])/1e3, len(ds))
 			}
-			rt.Close(ctx)
+			_ = rt.Close(ctx)
 			cancel()
 		}
 	}
 }
 
 func rd2(p string) []byte {
-	b, err := os.ReadFile(p)
+	b, err := os.ReadFile(p) //nolint:gosec // G703 false positive: a local bench reads the module paths its operator names on the command line
 	if err != nil {
 		panic(err)
 	}

@@ -65,7 +65,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 //  2. `_schema_migrations` (another implementation's tracker, `migration_id`)
 //     or a populated schema with no tracker (`tnt_clients` exists). The
 //     tracker's NUMBERS are not used: the implementations number identically
-//     only through maxSharedVersion and differently after, so seeding by
+//     only through 030 and differently after, so seeding by
 //     number marked our 059 (functions) applied because their 034 was. Seed
 //     only versions whose effect is visible (effectProbes); everything else is
 //     left for goose, which runs it (every migration from 031 is re-runnable).
@@ -126,10 +126,6 @@ func bootstrap(ctx context.Context, db *sql.DB) error {
 		"foreignTracker", foreign, "seeded", len(versions), "shipped", len(shipped))
 	return seedGoose(ctx, db, versions, "")
 }
-
-// maxSharedVersion is the last migration number the platform implementations
-// number identically; from the next one on, numbers mean different things.
-const maxSharedVersion = 30
 
 // withEvidence keeps the versions whose effect is visible in the database. A
 // version with no probe and no implication is kept only when trustUnprobed

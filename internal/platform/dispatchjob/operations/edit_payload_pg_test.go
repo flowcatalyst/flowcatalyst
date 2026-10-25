@@ -20,8 +20,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 )
 
-func sp(s string) *string { return &s }
-
 func TestEditDispatchJobPayload_EditableStatuses(t *testing.T) {
 	t.Parallel()
 	repo := dispatchjob.NewRepository(testpg.Pool(t))
@@ -30,7 +28,7 @@ func TestEditDispatchJobPayload_EditableStatuses(t *testing.T) {
 	for _, st := range []common.DispatchStatus{common.DispatchPending, common.DispatchFailed, "ERROR"} {
 		t.Run("edits "+string(st), func(t *testing.T) {
 			t.Parallel()
-			j := seedJob(t, repo, "opstest:edit:ok:"+string(st), st, seedOpts{AttemptCount: 2, LastError: sp("boom")})
+			j := seedJob(t, repo, "opstest:edit:ok:"+string(st), st, seedOpts{AttemptCount: 2, LastError: new("boom")})
 			ev, err := runAuthorized(uow, operations.EditDispatchJobPayload(repo), operations.EditPayloadCommand{ID: j.ID, Payload: `{"fixed":true}`})
 			require.NoError(t, err)
 			assert.Equal(t, j.ID, ev.DispatchJobID)
@@ -87,10 +85,10 @@ func TestEditDispatchJobPayload_Validation(t *testing.T) {
 	// JSON content type (the job's own) refuses invalid JSON.
 	testpg.RequireUsecaseError(t, run(operations.EditPayloadCommand{Payload: `{not json`}), usecase.KindValidation, "PAYLOAD_NOT_JSON")
 	testpg.RequireUsecaseError(t, run(operations.EditPayloadCommand{Payload: strings.Repeat("a", operations.MaxEditedPayloadBytes+1)}), usecase.KindValidation, "PAYLOAD_TOO_LARGE")
-	testpg.RequireUsecaseError(t, run(operations.EditPayloadCommand{Payload: "a\xffb", PayloadContentType: sp("text/plain")}), usecase.KindValidation, "PAYLOAD_NOT_UTF8")
+	testpg.RequireUsecaseError(t, run(operations.EditPayloadCommand{Payload: "a\xffb", PayloadContentType: new("text/plain")}), usecase.KindValidation, "PAYLOAD_NOT_UTF8")
 
 	// Changing the content type to XML makes a non-JSON payload valid, and is persisted.
-	require.NoError(t, run(operations.EditPayloadCommand{Payload: `<order id="1"/>`, PayloadContentType: sp("application/xml")}))
+	require.NoError(t, run(operations.EditPayloadCommand{Payload: `<order id="1"/>`, PayloadContentType: new("application/xml")}))
 	got, err := repo.FindByID(context.Background(), j.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "application/xml", got.PayloadContentType)
@@ -98,7 +96,7 @@ func TestEditDispatchJobPayload_Validation(t *testing.T) {
 
 	// An XML job takes XML as it is; a switch back to JSON validates against JSON.
 	require.NoError(t, run(operations.EditPayloadCommand{Payload: `<order id="2"/>`}))
-	testpg.RequireUsecaseError(t, run(operations.EditPayloadCommand{Payload: `<order/>`, PayloadContentType: sp("application/json")}), usecase.KindValidation, "PAYLOAD_NOT_JSON")
+	testpg.RequireUsecaseError(t, run(operations.EditPayloadCommand{Payload: `<order/>`, PayloadContentType: new("application/json")}), usecase.KindValidation, "PAYLOAD_NOT_JSON")
 }
 
 func TestEditDispatchJobPayload_ResourceScope(t *testing.T) {

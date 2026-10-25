@@ -467,10 +467,13 @@ func (i *Instance) run(ctx context.Context, fn api.Function, params ...uint64) (
 		n := i.e.stuck.Add(1)
 		i.e.log.Error("function call did not stop at its deadline and was abandoned; its thread keeps running until it returns",
 			"stuck_calls", n, "limit", StuckLimit)
+		// The close outlives the call (whose context is past its deadline by
+		// now), so it keeps the context's values but not its cancellation.
+		closeCtx := context.WithoutCancel(ctx)
 		go func() {
 			<-done
 			i.e.stuck.Add(-1)
-			_ = i.mod.Close(context.Background())
+			_ = i.mod.Close(closeCtx)
 		}()
 		return nil, ErrStuck
 	}
