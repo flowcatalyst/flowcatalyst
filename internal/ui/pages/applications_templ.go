@@ -1775,7 +1775,7 @@ func appCredentialsDialog(c appCredentials) templ.Component {
 			ID:         appCredsID,
 			Title:      c.Title,
 			Persistent: true,
-			Attrs:      templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()", "data-signals": "{appCopied: ''}"},
+			Attrs:      templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()", "data-signals": "{appCopied: ''}"},
 			Footer:     appCredentialsFooter(),
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var70), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {

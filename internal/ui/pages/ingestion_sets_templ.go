@@ -1109,7 +1109,7 @@ func ingReapplyDialog(v ingReapplyView) templ.Component {
 		})
 		templ_7745c5c3_Err = kit.Dialog(kit.DialogProps{
 			ID: ingSetDialogName, Title: "Go back to apply " + v.ApplyID + " of " + v.Name + "?", Width: kit.WidthWide,
-			Attrs: templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"},
+			Attrs: templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()"},
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var43), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

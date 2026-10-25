@@ -701,7 +701,7 @@ func ocCopyExpr(id, label string) string {
 // modal and removes itself when it closes; the create dialog also reopens
 // when closed by anything but its button.
 func ocCredentialsAttrs(persistent bool) templ.Attributes {
-	a := templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"}
+	a := templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()"}
 	if persistent {
 		a["data-on:cancel"] = "evt.preventDefault()"
 		a["data-on:close"] = "el.dataset.saved || el.showModal()"

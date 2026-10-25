@@ -1160,7 +1160,7 @@ func etViewerDialog(v etViewer) templ.Component {
 			Title:    v.Title,
 			Width:    kit.WidthWide,
 			Closable: true,
-			Attrs:    templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-signals": "{etCopied: false}"},
+			Attrs:    templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()", "data-signals": "{etCopied: false}"},
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var46), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

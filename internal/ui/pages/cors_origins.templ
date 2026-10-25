@@ -128,7 +128,7 @@ templ corsField(f corsForm, key string) {
 templ corsDeleteDialogC(id, origin string) {
 	@kit.Dialog(kit.DialogProps{
 		ID: corsDelDialog, Title: "Remove CORS Origin", Width: kit.WidthNarrow, Role: "alertdialog",
-		Attrs:  templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"},
+		Attrs:  templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()"},
 		Footer: corsDeleteFooter(id),
 	}) {
 		<form id={ corsDelDialog + "-form" } method="post" action={ corsDeleteURL(id) } class="flex flex-col gap-3" data-on:submit={ kit.SubmitConfirm }>

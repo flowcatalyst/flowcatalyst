@@ -400,7 +400,7 @@ func devUsersTable(v devUsersView) templ.Component {
 // devDialogAttrs open a patched-in dialog as a modal and take it out of the
 // page again however it is closed.
 func devDialogAttrs(extra templ.Attributes) templ.Attributes {
-	a := templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-on:close": "el.remove()"}
+	a := templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()", "data-on:close": "el.remove()"}
 	for k, v := range extra {
 		a[k] = v
 	}
@@ -889,7 +889,7 @@ func devSecretDialog(s devSecret) templ.Component {
 			ID: devSecretDialogID, Title: "Developer Client Secret", Persistent: true,
 			Footer: devSecretFooter(),
 			Attrs: templ.Attributes{
-				"open": true, "data-init": "el.open && el.close(); el.showModal()",
+				"open": true, "data-init": "el.removeAttribute('open'); el.showModal()",
 				"data-on:cancel": "evt.preventDefault(); el.remove()", "data-signals": "{devCopied: ''}",
 			},
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var36), templ_7745c5c3_Buffer)

@@ -668,7 +668,7 @@ func saCopyExpr(id, label string) string {
 // modal, removes itself when it closes, and the create dialog also reopens
 // when closed by anything but its button (see saCredentialsDialog).
 func saCredentialsAttrs(persistent bool) templ.Attributes {
-	a := templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-signals": "{saCopied: ''}"}
+	a := templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()", "data-signals": "{saCopied: ''}"}
 	if persistent {
 		a["data-on:cancel"] = "evt.preventDefault()"
 		a["data-on:close"] = "el.dataset.saved || el.showModal()"

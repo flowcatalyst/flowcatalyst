@@ -449,7 +449,7 @@ func usrLinkDialogC(link string) templ.Component {
 			Footer:      usrLinkFooter(),
 			Attrs: templ.Attributes{
 				"open":           true,
-				"data-init":      "el.open && el.close(); el.showModal()",
+				"data-init":      "el.removeAttribute('open'); el.showModal()",
 				"data-on:cancel": "evt.preventDefault(); el.remove()",
 				"data-signals":   "{usrLinkCopied: ''}",
 			},
@@ -1365,7 +1365,7 @@ func usrImportDialogC(f usrImportForm) templ.Component {
 			ID: usrImportDialog, Title: "Import users from CSV", Width: kit.WidthWide, Persistent: true,
 			Description: "Upload a CSV with columns Full Name, Email and Roles (pipe-separated, e.g. role-one|role-two). New users are created and emailed an invite to set their password. Existing users, and users whose email domain belongs to another client, are skipped and listed afterwards.",
 			Footer:      usrImportFooter(),
-			Attrs:       templ.Attributes{"open": f.Open, "data-init": "el.open && el.close(); el.showModal()"},
+			Attrs:       templ.Attributes{"open": f.Open, "data-init": "el.removeAttribute('open'); el.showModal()"},
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var47), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -1920,7 +1920,7 @@ func usrImportReportC(res api.BulkImportResponse) templ.Component {
 			ID: "usr-import-report", Title: "Import complete", Width: kit.WidthWide, Closable: true,
 			Description: strconv.Itoa(res.Created) + " created, " + strconv.Itoa(res.Skipped) + " skipped, " + strconv.Itoa(res.Failed) + " failed.",
 			Footer:      usrReportFooter(),
-			Attrs:       templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-on:close": "el.remove()"},
+			Attrs:       templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()", "data-on:close": "el.remove()"},
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var60), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

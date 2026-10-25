@@ -175,7 +175,7 @@ templ etViewerDialog(v etViewer) {
 		Title:    v.Title,
 		Width:    kit.WidthWide,
 		Closable: true,
-		Attrs:    templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-signals": "{etCopied: false}"},
+		Attrs:    templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()", "data-signals": "{etCopied: false}"},
 	}) {
 		<div class="flex flex-col gap-3">
 			<div class="flex flex-wrap items-center justify-end gap-2">

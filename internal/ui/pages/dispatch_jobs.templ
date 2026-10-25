@@ -685,7 +685,7 @@ templ djPlanSection(p djPlan) {
 templ djRequeueDialog(p djPreview) {
 	@kit.Dialog(kit.DialogProps{
 		ID: djRBFDialog, Title: p.title(), Width: kit.WidthWide, Closable: true,
-		Attrs:  templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"},
+		Attrs:  templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()"},
 		Footer: djRequeueFooter(p),
 	}) {
 		<form id={ djRBFDialog + "-form" } method="post" action={ p.Action } class="flex flex-col gap-4" data-on:submit={ kit.SubmitForm }>
@@ -815,7 +815,7 @@ const djSelForm = djSelDialog + "-form"
 templ djSelectionDialog(s djSelection) {
 	@kit.Dialog(kit.DialogProps{
 		ID: djSelDialog, Title: djSelTitle(s), Width: kit.WidthDefault, Closable: true,
-		Attrs:  templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"},
+		Attrs:  templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()"},
 		Footer: djSelectionFooter(s),
 	}) {
 		<form id={ djSelForm } method="post" action={ djPath + "/requeue" } class="flex flex-col gap-4" data-on:submit={ kit.SubmitForm }>

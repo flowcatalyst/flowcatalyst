@@ -3548,7 +3548,7 @@ func djRequeueDialog(p djPreview) templ.Component {
 		})
 		templ_7745c5c3_Err = kit.Dialog(kit.DialogProps{
 			ID: djRBFDialog, Title: p.title(), Width: kit.WidthWide, Closable: true,
-			Attrs:  templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"},
+			Attrs:  templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()"},
 			Footer: djRequeueFooter(p),
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var156), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
@@ -4289,7 +4289,7 @@ func djSelectionDialog(s djSelection) templ.Component {
 		})
 		templ_7745c5c3_Err = kit.Dialog(kit.DialogProps{
 			ID: djSelDialog, Title: djSelTitle(s), Width: kit.WidthDefault, Closable: true,
-			Attrs:  templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"},
+			Attrs:  templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()"},
 			Footer: djSelectionFooter(s),
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var188), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {

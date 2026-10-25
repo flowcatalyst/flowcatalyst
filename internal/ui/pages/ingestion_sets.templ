@@ -172,7 +172,7 @@ templ ingApplyFilesC(id string, files []ingestion.SetFile) {
 templ ingReapplyDialog(v ingReapplyView) {
 	@kit.Dialog(kit.DialogProps{
 		ID: ingSetDialogName, Title: "Go back to apply " + v.ApplyID + " of " + v.Name + "?", Width: kit.WidthWide,
-		Attrs: templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"},
+		Attrs: templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()"},
 	}) {
 		<form method="post" action={ v.Action } data-on:submit={ kit.SubmitConfirm } class="flex flex-col gap-4">
 			if v.Nothing {

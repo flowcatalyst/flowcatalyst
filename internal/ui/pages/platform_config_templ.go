@@ -820,7 +820,7 @@ func cfgRevealDialogC(r cfgRevealed) templ.Component {
 			Footer:      cfgRevealFooter(),
 			Attrs: templ.Attributes{
 				"open":           true,
-				"data-init":      "el.open && el.close(); el.showModal()",
+				"data-init":      "el.removeAttribute('open'); el.showModal()",
 				"data-on:cancel": "evt.preventDefault(); el.remove()",
 				"data-signals":   "{cfgCopied: ''}",
 			},

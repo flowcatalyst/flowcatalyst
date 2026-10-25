@@ -190,7 +190,7 @@ templ portalAppCredentialsDialog(c portalAppCredentials) {
 		Title:      "Portal app created",
 		Persistent: true,
 		Width:      kit.WidthWide,
-		Attrs:      templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()"},
+		Attrs:      templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()"},
 		Footer:     portalAppCredentialsFooter(),
 	}) {
 		<div class="flex flex-col gap-3">

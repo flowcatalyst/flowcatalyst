@@ -595,7 +595,7 @@ func corsDeleteDialogC(id, origin string) templ.Component {
 		})
 		templ_7745c5c3_Err = kit.Dialog(kit.DialogProps{
 			ID: corsDelDialog, Title: "Remove CORS Origin", Width: kit.WidthNarrow, Role: "alertdialog",
-			Attrs:  templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"},
+			Attrs:  templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()"},
 			Footer: corsDeleteFooter(id),
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var19), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {

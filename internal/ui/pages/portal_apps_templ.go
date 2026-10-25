@@ -1104,7 +1104,7 @@ func portalAppCredentialsDialog(c portalAppCredentials) templ.Component {
 			Title:      "Portal app created",
 			Persistent: true,
 			Width:      kit.WidthWide,
-			Attrs:      templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()"},
+			Attrs:      templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()"},
 			Footer:     portalAppCredentialsFooter(),
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var39), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {

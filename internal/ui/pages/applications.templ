@@ -318,7 +318,7 @@ templ appCredentialsDialog(c appCredentials) {
 		ID:         appCredsID,
 		Title:      c.Title,
 		Persistent: true,
-		Attrs:      templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()", "data-signals": "{appCopied: ''}"},
+		Attrs:      templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()", "data-signals": "{appCopied: ''}"},
 		Footer:     appCredentialsFooter(),
 	}) {
 		<div class="flex flex-col gap-4">
