@@ -172,9 +172,13 @@ export class PlatformConfigResource {
 	 *
 	 * `GET /api/config/{app}/{section}/{property}/secret[?clientId=]`
 	 *
-	 * Requires the `platform:admin:config:reveal` permission, or being the
-	 * application's own service account for its own application. Every call is
-	 * audited server-side.
+	 * Always a permission: `platform:admin:config:reveal` (a platform
+	 * administrator), or `platform:application-service:config:reveal` (an
+	 * application's service account; the `platform:application-service` role
+	 * carries it). The platform confines a service account to its own
+	 * applications and to the clients it is linked to (its explicit clients,
+	 * else the clients its application is enabled for), plus the
+	 * application-wide value. Every call is audited server-side.
 	 *
 	 * Errors: `forbidden` (403), `not_found` (404), and `http_error` with
 	 * `status: 400` and `body.error === "NOT_A_SECRET"` when the property is

@@ -30,7 +30,9 @@ const (
 )
 
 var cfgFieldCodes = map[string]string{
-	"INVALID_VALUE_TYPE": "valueType",
+	"INVALID_VALUE_TYPE":    "valueType",
+	"SECRET_VALUE_MASKED":   "value",
+	"SECRET_VALUE_REQUIRED": "value",
 }
 
 // cfgForm is the add or edit form (the SPA's dialog). It never holds a
@@ -140,6 +142,10 @@ func (h *PlatformConfig) editForm(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, err)
 		return
 	}
+	if err := h.Config.AuthorizeClientWrite(ctx, ac, app, cid); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
 	rows, err := h.Config.List(ctx, ac, app)
 	if err != nil {
 		h.Shell.Fail(w, r, err)
@@ -180,10 +186,11 @@ func (h *PlatformConfig) save(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
 	f := submittedCfgForm(r)
-	// PUT /api/config/...: the confinement and the update gate come first, so
-	// an unauthorised caller learns nothing about clients; the use case
-	// decides for callers below anchor tier by their access grants.
-	if err := h.Config.AuthorizeUpdate(ctx, ac, f.App); err != nil {
+	// PUT /api/config/...: the whole application rule (confinement, the
+	// permission, below anchor tier the write grant) comes first, so a caller
+	// without write access learns nothing about clients; the use case checks
+	// again with the client confinement.
+	if err := h.Config.AuthorizeWrite(ctx, ac, f.App); err != nil {
 		f.Errs.apply(r, err, nil)
 		h.formFailed(w, r, ac, f)
 		return

@@ -27,8 +27,9 @@ func newServiceFixture(t *testing.T, app string) *platformconfig.Service {
 	pool := testpg.Pool(t)
 	repo := platformconfig.NewRepository(pool).WithEncryption(enc)
 	uow := testpg.NewUoW(t)
+	testpg.EnsureApplication(t, app)
 	secret := "SECRET"
-	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SetProperty(repo), operations.SetPropertyCommand{
+	_, err = usecaseop.Run(adminCtx(), uow, operations.SetProperty(repo), operations.SetPropertyCommand{
 		ApplicationCode: app, Section: "sftp", Property: "password", Value: "s3cr3t-pw", ValueType: &secret,
 	}, testpg.TestEC())
 	require.NoError(t, err)

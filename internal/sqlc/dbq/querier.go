@@ -27,6 +27,14 @@ type Querier interface {
 	ApplicationFindByCode(ctx context.Context, code string) (AppApplication, error)
 	// Queries for app_applications.
 	ApplicationFindByID(ctx context.Context, id ids.ApplicationID) (AppApplication, error)
+	// Removes an application's platform-config access grants, with the
+	// application (see ApplicationPlatformConfigDelete).
+	ApplicationPlatformConfigAccessDelete(ctx context.Context, applicationCode string) error
+	// Removes an application's platform configuration (app_platform_configs,
+	// keyed by application code without a foreign key), in the application
+	// delete's transaction, so a later application with the same code does not
+	// inherit its values or secrets.
+	ApplicationPlatformConfigDelete(ctx context.Context, applicationCode string) error
 	// The delete guard's inputs (owner decision #53, matching Rust): every
 	// code-enforced reference to an application. None of these columns has a
 	// foreign key, so each is a place the application must be unwired from
@@ -361,6 +369,16 @@ type Querier interface {
 	PlatformConfigAccessHasReadByRoles(ctx context.Context, arg PlatformConfigAccessHasReadByRolesParams) (bool, error)
 	PlatformConfigAccessHasWriteByRoles(ctx context.Context, arg PlatformConfigAccessHasWriteByRolesParams) (bool, error)
 	PlatformConfigAccessUpsert(ctx context.Context, arg PlatformConfigAccessUpsertParams) error
+	// The application a config row would belong to (config rows are keyed by
+	// application code, without a foreign key).
+	PlatformConfigApplicationByCode(ctx context.Context, code string) (PlatformConfigApplicationByCodeRow, error)
+	// The clients an application is enabled for.
+	PlatformConfigApplicationEnabledClientIDs(ctx context.Context, applicationID ids.ApplicationID) ([]ids.ClientID, error)
+	// Replaces a SECRET's stored representation only while it is still the one
+	// that was read (compare-and-set), so a conversion running on one replica
+	// cannot undo a value another request set meanwhile. No updated_at bump: the
+	// value did not change, only how it is stored.
+	PlatformConfigCompareAndSetStoredValue(ctx context.Context, arg PlatformConfigCompareAndSetStoredValueParams) (int64, error)
 	PlatformConfigDelete(ctx context.Context, id string) error
 	PlatformConfigFindByApplication(ctx context.Context, applicationCode string) ([]AppPlatformConfig, error)
 	PlatformConfigFindByCoordinateAnchor(ctx context.Context, arg PlatformConfigFindByCoordinateAnchorParams) (AppPlatformConfig, error)
@@ -368,12 +386,16 @@ type Querier interface {
 	// Queries for app_platform_configs + app_platform_config_access. Two
 	// entity types, one repo (mirroring the legacy-platform shape).
 	PlatformConfigFindByID(ctx context.Context, id string) (AppPlatformConfig, error)
+	// SECRET rows stored encrypted, with the coordinate their ciphertext is bound
+	// to. Repository.EncryptLegacySecrets re-encrypts the ones sealed before the
+	// ciphertext carried its row's coordinate (no additional authenticated data).
+	PlatformConfigListEncryptedSecrets(ctx context.Context) ([]PlatformConfigListEncryptedSecretsRow, error)
 	// SECRET rows written before values were encrypted at rest (no "encrypted:"
 	// marker). Drained by Repository.EncryptLegacySecrets at start-up.
 	PlatformConfigListPlaintextSecrets(ctx context.Context) ([]PlatformConfigListPlaintextSecretsRow, error)
-	// Replaces only the stored value (no updated_at bump: the value did not
-	// change, only its representation).
-	PlatformConfigSetStoredValue(ctx context.Context, arg PlatformConfigSetStoredValueParams) error
+	// The explicit client ids of the service account behind a principal. No row:
+	// the principal is not a service account.
+	PlatformConfigServiceAccountClientIDs(ctx context.Context, id ids.PrincipalID) ([]string, error)
 	PlatformConfigUpsert(ctx context.Context, arg PlatformConfigUpsertParams) error
 	// iam_principal_application_access + iam_client_access_grants do NOT have
 	// FK ON DELETE CASCADE on principal_id (only iam_principal_roles does), so

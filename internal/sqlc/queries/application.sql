@@ -39,6 +39,18 @@ DELETE FROM app_applications WHERE id = $1;
 -- delete instead (ApplicationReferenceCounts), so none is left behind.
 DELETE FROM app_client_configs WHERE application_id = $1 AND NOT enabled;
 
+-- name: ApplicationPlatformConfigDelete :exec
+-- Removes an application's platform configuration (app_platform_configs,
+-- keyed by application code without a foreign key), in the application
+-- delete's transaction, so a later application with the same code does not
+-- inherit its values or secrets.
+DELETE FROM app_platform_configs WHERE application_code = $1;
+
+-- name: ApplicationPlatformConfigAccessDelete :exec
+-- Removes an application's platform-config access grants, with the
+-- application (see ApplicationPlatformConfigDelete).
+DELETE FROM app_platform_config_access WHERE application_code = $1;
+
 -- name: ApplicationReferenceCounts :one
 -- The delete guard's inputs (owner decision #53, matching Rust): every
 -- code-enforced reference to an application. None of these columns has a
@@ -51,7 +63,14 @@ SELECT
     (SELECT COUNT(*) FROM app_client_configs cc WHERE cc.application_id = sqlc.arg(application_id) AND cc.enabled)::bigint AS client_configs,
     (SELECT COUNT(*) FROM iam_service_accounts sa WHERE sa.application_id = sqlc.arg(application_id))::bigint AS service_accounts,
     (SELECT COUNT(*) FROM iam_roles r WHERE r.application_id = sqlc.arg(application_id))::bigint AS roles,
-    (SELECT COUNT(*) FROM iam_principals p WHERE p.application_id = sqlc.arg(application_id))::bigint AS principal_refs;
+    (SELECT COUNT(*) FROM iam_principals p WHERE p.application_id = sqlc.arg(application_id))::bigint AS principal_refs,
+    -- Not blockers: the application's platform configuration and its access
+    -- grants are deleted with it (ApplicationPlatformConfigDelete), counted
+    -- here for the deletion's event.
+    (SELECT COUNT(*) FROM app_platform_configs pc
+      WHERE pc.application_code = (SELECT a.code FROM app_applications a WHERE a.id = sqlc.arg(application_id)))::bigint AS platform_configs,
+    (SELECT COUNT(*) FROM app_platform_config_access pca
+      WHERE pca.application_code = (SELECT a.code FROM app_applications a WHERE a.id = sqlc.arg(application_id)))::bigint AS platform_config_grants;
 
 -- name: ClientConfigFindByAppAndClient :one
 SELECT id, application_id, client_id, enabled, created_at, updated_at

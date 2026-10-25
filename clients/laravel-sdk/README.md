@@ -488,8 +488,10 @@ FlowCatalyst::platformConfig()->delete('rfp', 'mail', 'from');              // i
 $rows = FlowCatalyst::platformConfig()->list('rfp');                         // listRaw() for the body as-is
 
 // SECRET properties come back from get()/list() as the literal "***" for every caller.
-// The only way to read the plaintext is the audited reveal call (needs the
-// platform:admin:config:reveal permission, or the application's own service account):
+// The only way to read the plaintext is the audited reveal call. It needs a reveal permission:
+// platform:admin:config:reveal (a platform administrator), or platform:application-service:config:reveal
+// (an application's service account, confined to its own applications and to the clients it is linked
+// to: its explicit clients, else the clients its application is enabled for, plus the global value):
 $secret = FlowCatalyst::platformConfig()->revealSecret('rfp', 'mail', 'smtp_password'); // ?clientId= via 4th arg
 $secret->value;   // plaintext; var_dump/json_encode/toArray() show "***". Uncached, never logged.
 // 403 not authorised, 404 no such property, 400 NOT_A_SECRET (PLAIN: use get()) -> FlowCatalystException

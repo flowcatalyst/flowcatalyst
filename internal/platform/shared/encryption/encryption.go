@@ -214,6 +214,62 @@ func (s *Service) tryDecrypt(nonce, ciphertext []byte) (string, error) {
 	return "", errors.New("encryption: decryption failed with all available keys")
 }
 
+// boundVersion marks a v2 envelope: sealed with additional authenticated data
+// (AAD) that names what the value belongs to, so the ciphertext cannot be
+// copied to another row and read there.
+//
+//	base64(0x02 || nonce(12) || ciphertext+tag), sealed with aad
+const boundVersion byte = 2
+
+// EncryptBound encrypts plaintext under the current key, binding the
+// ciphertext to aad: DecryptBound opens it only with the same aad.
+func (s *Service) EncryptBound(plaintext string, aad []byte) (string, error) {
+	nonce := make([]byte, s.current.NonceSize())
+	if _, err := cryptorand.Read(nonce); err != nil {
+		return "", fmt.Errorf("encryption: read nonce: %w", err)
+	}
+	ciphertext := s.current.Seal(nil, nonce, []byte(plaintext), aad)
+	out := make([]byte, 0, 1+len(nonce)+len(ciphertext))
+	out = append(out, boundVersion)
+	out = append(out, nonce...)
+	out = append(out, ciphertext...)
+	return base64.StdEncoding.EncodeToString(out), nil
+}
+
+// DecryptBound opens a value written by EncryptBound with the same aad
+// (current key, then each previous key). A value sealed before binding (a v1
+// or v0 envelope, without aad) is still read, by Decrypt, and reported with
+// bound=false so the caller can re-encrypt it with EncryptBound. A bound value
+// opened with another aad fails: it is not retried without one in a way that
+// could succeed, because GCM authenticates the aad.
+func (s *Service) DecryptBound(encrypted string, aad []byte) (plaintext string, bound bool, err error) {
+	raw := strings.TrimPrefix(encrypted, "encrypted:")
+	data, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return "", false, fmt.Errorf("encryption: invalid base64: %w", err)
+	}
+	nonceSize := s.current.NonceSize()
+	if len(data) >= 1+nonceSize+1 && data[0] == boundVersion {
+		nonce, ct := data[1:1+nonceSize], data[1+nonceSize:]
+		if pt, err := s.current.Open(nil, nonce, ct, aad); err == nil {
+			return string(pt), true, nil
+		}
+		for _, prev := range s.previous {
+			if pt, err := prev.Open(nil, nonce, ct, aad); err == nil {
+				return string(pt), true, nil
+			}
+		}
+		// A v0 envelope whose random nonce begins 0x02 reads as bound and
+		// fails: fall through to the unbound layouts (safe for the reason
+		// Decrypt gives for v1).
+	}
+	pt, err := s.Decrypt(encrypted)
+	if err != nil {
+		return "", false, err
+	}
+	return pt, false, nil
+}
+
 // ReEncrypt decrypts encrypted (with any available key) and re-encrypts
 // using the current key. Used by the rotation migration job.
 func (s *Service) ReEncrypt(encrypted string) (string, error) {

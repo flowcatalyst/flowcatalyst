@@ -45,6 +45,12 @@ func GrantAccess(repo *platformconfig.Repository) usecaseop.Operation[GrantAcces
 				a.CanRead = true
 				a.CanWrite = cmd.CanWrite
 			} else {
+				// A grant, like a value, is keyed by application code without a
+				// foreign key: one for a code that names no application would be
+				// inherited by a future application with that code.
+				if err := (&platformconfig.Service{Repo: repo}).RequireApplication(ctx, cmd.ApplicationCode); err != nil {
+					return nil, err
+				}
 				a = platformconfig.NewAccess(cmd.ApplicationCode, cmd.RoleCode)
 				a.CanWrite = cmd.CanWrite
 			}

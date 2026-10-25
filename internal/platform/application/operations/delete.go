@@ -31,7 +31,11 @@ type DeleteCommand struct {
 // None of those columns has a foreign key, so deleting would leave them
 // dangling (owner decision #53, matching Rust). A disabled client config does
 // not block the delete; the repository removes it in the same transaction as
-// the application row (owner decision #55).
+// the application row (owner decision #55). The application's platform
+// configuration (values, secrets included, and access grants, keyed by its
+// code) does not block either: it is deleted in the same transaction, so a
+// later application with the same code does not inherit it, and the event
+// records how many values and grants went with it.
 func DeleteApplication(repo *application.Repository) usecaseop.Operation[DeleteCommand, ApplicationDeleted] {
 	return usecaseop.Operation[DeleteCommand, ApplicationDeleted]{
 		Name: "DeleteApplication",
@@ -66,6 +70,10 @@ func DeleteApplication(repo *application.Repository) usecaseop.Operation[DeleteC
 				Metadata:      usecase.NewEventMetadata(ec, ApplicationDeletedType, Source, subjectFor(string(a.ID))),
 				ApplicationID: string(a.ID),
 				Code:          a.Code,
+				// Deleted with the application, in its transaction (the
+				// repository's Delete): counted here for the record.
+				PlatformConfigPropertiesDeleted: refs.PlatformConfigs,
+				PlatformConfigGrantsDeleted:     refs.PlatformConfigGrants,
 			}
 			return usecaseop.Delete(a, repo, event), nil
 		},

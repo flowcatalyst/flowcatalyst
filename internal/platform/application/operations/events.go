@@ -121,6 +121,10 @@ type ApplicationDeleted struct {
 	Metadata      usecase.EventMetadata
 	ApplicationID string
 	Code          string
+	// PlatformConfigPropertiesDeleted and PlatformConfigGrantsDeleted are the
+	// application's platform-config values and access grants deleted with it.
+	PlatformConfigPropertiesDeleted int64
+	PlatformConfigGrantsDeleted     int64
 }
 
 func (e ApplicationDeleted) EventID() string       { return e.Metadata.EventID }
@@ -136,9 +140,11 @@ func (e ApplicationDeleted) ExecutionID() string   { return e.Metadata.Execution
 func (e ApplicationDeleted) MessageGroup() string  { return groupFor(e.ApplicationID) }
 func (e ApplicationDeleted) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		ApplicationID string `json:"applicationId"`
-		Code          string `json:"code"`
-	}{e.ApplicationID, e.Code})
+		ApplicationID                   string `json:"applicationId"`
+		Code                            string `json:"code"`
+		PlatformConfigPropertiesDeleted int64  `json:"platformConfigPropertiesDeleted"`
+		PlatformConfigGrantsDeleted     int64  `json:"platformConfigGrantsDeleted"`
+	}{e.ApplicationID, e.Code, e.PlatformConfigPropertiesDeleted, e.PlatformConfigGrantsDeleted})
 }
 
 // ApplicationServiceAccountProvisionedEvent — emitted when an

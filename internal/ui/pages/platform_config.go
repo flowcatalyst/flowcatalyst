@@ -27,12 +27,15 @@ import (
 )
 
 // ConfigService is the slice of platformconfig.Service the page uses: the
-// access rules the HTTP API runs (list, update and write gates, client
-// resolution, delete and the audited reveal), so the two cannot drift.
+// access rules the HTTP API runs (list, update and write gates, the client
+// confinement, client resolution, delete and the audited reveal), so the two
+// cannot drift.
 type ConfigService interface {
 	List(ctx context.Context, ac *auth.AuthContext, app string) ([]platformconfig.Config, error)
 	AuthorizeUpdate(ctx context.Context, ac *auth.AuthContext, app string) error
 	AuthorizeWrite(ctx context.Context, ac *auth.AuthContext, app string) error
+	ReachFor(ctx context.Context, ac *auth.AuthContext, app string) (platformconfig.Reach, error)
+	AuthorizeClientWrite(ctx context.Context, ac *auth.AuthContext, app, clientID string) error
 	AuthorizeRevealApp(ctx context.Context, ac *auth.AuthContext, app string) error
 	ResolveClientID(ctx context.Context, ref string) (string, error)
 	Delete(ctx context.Context, ac *auth.AuthContext, app, section, property, clientRef string) error
@@ -151,13 +154,16 @@ type cfgRow struct {
 	ID, Section, Property string
 	// Client is the client-scoped value's client (identifier when known);
 	// empty for the application-wide value.
-	Client                string
-	Secret                bool
-	Value, ValueFull      string
-	Description           string
-	Updated, UpdatedISO   string
-	EditHref, Query       string
-	CanReveal             bool
+	Client              string
+	Secret              bool
+	Value, ValueFull    string
+	Description         string
+	Updated, UpdatedISO string
+	EditHref, Query     string
+	CanReveal           bool
+	// CanEdit: the viewer may write the application and this row's client
+	// (or, for the application-wide value, that value).
+	CanEdit               bool
 	updatedAt             int64
 	sortSection, sortProp string
 	sortClient            string
@@ -200,10 +206,15 @@ func (h *PlatformConfig) listView(ctx context.Context, ac *auth.AuthContext, q l
 	v := cfgView{Query: q, App: app, Apps: opts}
 	v.Perms.Edit = h.Config.AuthorizeWrite(ctx, ac, app) == nil
 	v.Perms.Reveal = h.Config.AuthorizeRevealApp(ctx, ac, app) == nil
+	reach, err := h.Config.ReachFor(ctx, ac, app)
+	if err != nil {
+		return cfgView{}, err
+	}
 	needle := strings.ToLower(q.Q)
 	matched := make([]cfgRow, 0, len(rows))
 	for i := range rows {
 		row := h.toRow(ctx, ac, &rows[i], v.Perms)
+		row.CanEdit = v.Perms.Edit && reach.CanWrite(deref(ids.StringPtr(rows[i].ClientID)))
 		// The SPA's quick filter: section, property, description.
 		if needle == "" || strings.Contains(strings.ToLower(row.Section+" "+row.Property+" "+row.Description), needle) {
 			matched = append(matched, row)
@@ -341,7 +352,7 @@ func (v cfgView) rowActions(row cfgRow) kit.RowActionsProps {
 	if row.CanReveal {
 		p.Actions = append(p.Actions, kit.RowAction{Icon: "eye", Label: "Reveal…", Attrs: confirmTrigger(cfgRevealDialog, cfgPath+"/reveal?"+row.Query)})
 	}
-	if v.Perms.Edit {
+	if row.CanEdit {
 		p.Actions = append(p.Actions, kit.RowAction{Icon: "pencil", Label: "Edit", Href: row.EditHref, Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}})
 		p.Menu = append(p.Menu, kit.RowAction{Icon: "trash-2", Label: "Delete…", Destructive: true, Attrs: confirmTrigger(cfgDeleteDialog, cfgPath+"/delete?"+row.Query)})
 	}

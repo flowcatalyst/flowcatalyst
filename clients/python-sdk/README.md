@@ -50,8 +50,10 @@ and `reveal_secret(app, section, property, client_id=None)`.
 * `list`/`get`/`set` always return the literal `"***"` as `value` for `value_type == "SECRET"`
   properties, for every caller. `reveal_secret` is the only way to read the plaintext
   (`GET /api/config/{app}/{section}/{property}/secret`); every call is audited server-side.
-* Needs `platform:admin:config:reveal`, or the application's own service account for its own
-  application. Errors: `ForbiddenError` (403), `NotFoundError` (404), `ValidationError` with
+* Needs a reveal permission: `platform:admin:config:reveal` (a platform administrator), or
+  `platform:application-service:config:reveal` (an application's service account, confined by the
+  platform to its own applications and the clients it is linked to: its explicit clients, else the
+  clients its application is enabled for, plus the application-wide value). Errors: `ForbiddenError` (403), `NotFoundError` (404), `ValidationError` with
   `code == "NOT_A_SECRET"` (400, property is PLAIN: use `get`).
 * The result's `value` is a pydantic `SecretStr` (redacted in `repr`/`str`/JSON); read it with
   `result.value.get_secret_value()`. The SDK never caches or logs it; add your own TTL cache if needed.
