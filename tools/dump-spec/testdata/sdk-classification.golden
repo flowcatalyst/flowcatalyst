@@ -81,6 +81,7 @@ admin	GET /api/ingestions/{id}	getIngestion
 admin	GET /api/ingestions/{id}/definition	getIngestionDefinition
 admin	GET /api/ingestions/{id}/failures	listIngestionFailures
 admin	GET /api/ingestions/{id}/history	listIngestionHistory
+admin	GET /api/ingestions/{id}/secrets	listIngestionSecrets
 admin	GET /api/ingestions/{id}/versions	listIngestionVersions
 admin	GET /api/login-attempts	listLoginAttempts
 admin	GET /api/oauth-clients	listOAuthClients
