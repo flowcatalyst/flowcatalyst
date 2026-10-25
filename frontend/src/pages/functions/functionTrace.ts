@@ -12,6 +12,7 @@ import type { TraceContext, TraceLogQuery, TraceLogRecord } from "@/api/function
 export const FUNCTION_TRACE_VIEW = "platform:function:trace:view";
 export const FUNCTION_TRACE_MANAGE = "platform:function:trace:manage";
 export const FUNCTION_TRACE_VIEW_BODIES = "platform:function:trace:view-bodies";
+export const FUNCTION_TRACE_INDEFINITE = "platform:function:trace:indefinite";
 
 /** The built-in context: request/response capture, always listed first. */
 export const HTTP_CONTEXT = "http";
@@ -20,6 +21,8 @@ export interface TraceGates {
 	view: boolean;
 	manage: boolean;
 	viewBodies: boolean;
+	/** May leave a declared context on until it is switched off. */
+	indefinite: boolean;
 }
 
 export function traceGates(has: (permission: string) => boolean): TraceGates {
@@ -27,7 +30,27 @@ export function traceGates(has: (permission: string) => boolean): TraceGates {
 		view: has(FUNCTION_TRACE_VIEW),
 		manage: has(FUNCTION_TRACE_MANAGE),
 		viewBodies: has(FUNCTION_TRACE_VIEW_BODIES),
+		indefinite: has(FUNCTION_TRACE_INDEFINITE),
 	};
+}
+
+/**
+ * Whether the enable dialog offers "until switched off" for a context: it has a
+ * ceiling (never http, whose minute cap always applies) and the viewer holds
+ * platform:function:trace:indefinite.
+ */
+export function indefiniteAllowed(c: Pick<TraceContext, "indefiniteMaxDays">, gates: TraceGates): boolean {
+	return gates.indefinite && (c.indefiniteMaxDays ?? 0) > 0;
+}
+
+/** The choice's label: "Until switched off (max 7 days)". */
+export function indefiniteLabel(maxDays: number): string {
+	return `Until switched off (max ${maxDays} days)`;
+}
+
+/** What the confirmation asks the operator to accept. */
+export function indefiniteWarning(maxDays: number): string {
+	return `This keeps recording every sampled call until someone switches it off, for at most ${maxDays} days; then it switches off by itself.`;
 }
 
 /**
@@ -95,14 +118,15 @@ export function sampleLabel(sampleRate: number): string {
 export interface ContextState {
 	live: boolean;
 	indefinite: boolean;
-	/** Countdown text; empty when indefinite or off. */
+	/** Countdown text; for an indefinite window, when it switches off by itself; empty when off. */
 	label: string;
 }
 
 export function contextState(c: TraceContext, nowMs: number): ContextState {
-	if (c.indefinite && c.enabledUntil) return { live: true, indefinite: true, label: "" };
 	const cd = countdown(c.enabledUntil, nowMs);
-	return { live: cd.live, indefinite: false, label: cd.label };
+	if (!cd.live) return { live: false, indefinite: false, label: "" };
+	if (c.indefinite) return { live: true, indefinite: true, label: localTime(c.enabledUntil ?? "") };
+	return { live: true, indefinite: false, label: cd.label };
 }
 
 export function anyLive(contexts: TraceContext[], nowMs: number): boolean {
@@ -244,8 +268,16 @@ export interface BodyView {
 	note: string;
 }
 
-export const BODIES_HIDDEN_MESSAGE =
-	"Bodies hidden: you do not have permission to view request and response bodies";
+export const BODIES_HIDDEN_MESSAGE = "Bodies, headers and query string hidden: you do not have permission to view them";
+
+/** Shown on a log or trace record whose line or data was withheld (no view-bodies). */
+export const DETAIL_HIDDEN_MESSAGE =
+	"Details hidden: you do not have permission to view what the function logged (platform:function:trace:view-bodies)";
+
+/** A record's headline in the table; "(hidden)" for a log line withheld from the viewer. */
+export function recordMessage(r: Pick<TraceLogRecord, "message" | "redacted">): string {
+	return !r.message && r.redacted ? "(hidden)" : r.message;
+}
 
 /** How a request or response body is displayed (pretty JSON, labelled base64, truncation note, redaction). */
 export function bodyView(part: HttpBodyData | undefined, redacted: boolean): BodyView {

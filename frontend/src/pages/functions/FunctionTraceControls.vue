@@ -15,6 +15,9 @@ import {
 	contextState,
 	durationChoices,
 	enableBlockedReason,
+	indefiniteAllowed,
+	indefiniteLabel,
+	indefiniteWarning,
 	isValidSampleRate,
 	sampleLabel,
 	traceGates,
@@ -69,6 +72,8 @@ const enableVisible = ref(false);
 const enableTarget = ref<TraceContext | null>(null);
 const enableMinutes = ref(5);
 const enableIndefinite = ref(false);
+// "Until switched off" must be confirmed before Enable is offered.
+const enableIndefiniteConfirmed = ref(false);
 const enableSampleRate = ref<number | null>(1);
 const enableSubmitting = ref(false);
 const enableError = ref<string | null>(null);
@@ -81,11 +86,17 @@ const enableDurations = computed(() =>
 	})),
 );
 const enableSampleValid = computed(() => isValidSampleRate(enableSampleRate.value));
+const enableIndefiniteOffered = computed(() => (enableTarget.value ? indefiniteAllowed(enableTarget.value, gates.value) : false));
+const enableReady = computed(() => enableSampleValid.value && (!enableIndefinite.value || enableIndefiniteConfirmed.value));
+watch(enableIndefinite, () => {
+	enableIndefiniteConfirmed.value = false;
+});
 
 function openEnable(ctx: TraceContext) {
 	enableTarget.value = ctx;
 	enableMinutes.value = durationChoices(ctx.maxMinutes)[0] ?? 5;
-	enableIndefinite.value = ctx.indefinite === true;
+	enableIndefinite.value = ctx.indefinite === true && indefiniteAllowed(ctx, gates.value);
+	enableIndefiniteConfirmed.value = false;
 	enableSampleRate.value = 1;
 	enableError.value = null;
 	enableVisible.value = true;
@@ -94,6 +105,7 @@ function openEnable(ctx: TraceContext) {
 async function submitEnable() {
 	const ctx = enableTarget.value;
 	if (!ctx || !isValidSampleRate(enableSampleRate.value)) return;
+	if (enableIndefinite.value && !enableIndefiniteConfirmed.value) return;
 	enableSubmitting.value = true;
 	enableError.value = null;
 	try {
@@ -109,12 +121,12 @@ async function submitEnable() {
 		toast.success(
 			"Tracing on",
 			enableIndefinite.value
-				? `${ctx.name} is on until you switch it off`
+				? `${ctx.name} is on until it is switched off (at most ${ctx.indefiniteMaxDays} days)`
 				: `${ctx.name} is live for ${enableMinutes.value} minutes`,
 		);
 		await loadContexts();
 	} catch (e) {
-		// TRACE_WINDOW_TOO_LONG / TRACE_CONTEXT_UNKNOWN / TRACE_SAMPLE_RATE_INVALID / TRACE_MINUTES_INVALID
+		// TRACE_WINDOW_TOO_LONG / TRACE_CONTEXT_UNKNOWN / TRACE_SAMPLE_RATE_INVALID / TRACE_MINUTES_INVALID / TRACE_INDEFINITE_NOT_ALLOWED
 		enableError.value = e instanceof ApiError || e instanceof Error ? e.message : "Failed to enable tracing";
 	} finally {
 		enableSubmitting.value = false;
@@ -140,9 +152,10 @@ async function disable(ctx: TraceContext) {
 
     <template v-else>
       <p class="intro">
-        Tracing is <strong>off by default</strong>. Switch a context on for a set time, or until you
-        switch it off. The built-in <code>http</code> context captures request and response
-        <strong>bodies</strong>, which can hold sensitive data.
+        Tracing is <strong>off by default</strong>. Switch a context on for a set time (or, with the
+        permission, a declared context until it is switched off, for a few days at most). The built-in
+        <code>http</code> context captures request and response <strong>bodies</strong>, which can
+        hold sensitive data, and always turns itself off.
       </p>
 
       <Message v-if="contextsError" severity="error" :closable="false">{{ contextsError }}</Message>
@@ -158,7 +171,9 @@ async function disable(ctx: TraceContext) {
             <p class="context-state">
               <template v-if="contextState(c, now).live">
                 <Tag value="Live" severity="success" />
-                <span v-if="contextState(c, now).indefinite" class="countdown">until switched off</span>
+                <span v-if="contextState(c, now).indefinite" class="countdown" :title="`Switches off by itself at ${c.enabledUntil}`">
+                  until switched off <span class="sample">(ends by itself {{ contextState(c, now).label }})</span>
+                </span>
                 <span v-else class="countdown" :title="`Until ${c.enabledUntil}`">{{ contextState(c, now).label }} left</span>
                 <span class="sample">{{ sampleLabel(c.sampleRate) }}</span>
               </template>
@@ -225,8 +240,8 @@ async function disable(ctx: TraceContext) {
     >
       <div class="dialog-form">
         <Message v-if="enableTarget?.name === HTTP_CONTEXT" severity="warn" :closable="false">
-          This records request and response bodies, which can hold sensitive data.
-          {{ enableIndefinite ? "It stays on until you switch it off." : "It turns itself off when the time is up." }}
+          This records request and response bodies, which can hold sensitive data. It turns itself off
+          when the time is up.
         </Message>
         <div class="form-field">
           <label for="trace-minutes">Stay on for</label>
@@ -241,9 +256,16 @@ async function disable(ctx: TraceContext) {
           />
           <small v-if="!enableIndefinite" class="hint">At most {{ enableTarget?.maxMinutes }} minutes for this context.</small>
         </div>
-        <div class="form-field check">
+        <div v-if="enableIndefiniteOffered" class="form-field check">
           <Checkbox v-model="enableIndefinite" input-id="trace-indefinite" binary data-testid="trace-indefinite" />
-          <label for="trace-indefinite">No time limit: keep it on until I switch it off</label>
+          <label for="trace-indefinite">{{ indefiniteLabel(enableTarget?.indefiniteMaxDays ?? 0) }}</label>
+        </div>
+        <div v-if="enableIndefiniteOffered && enableIndefinite" class="form-field" data-testid="trace-indefinite-confirm">
+          <Message severity="warn" :closable="false">{{ indefiniteWarning(enableTarget?.indefiniteMaxDays ?? 0) }}</Message>
+          <div class="check confirm">
+            <Checkbox v-model="enableIndefiniteConfirmed" input-id="trace-indefinite-confirm" binary data-testid="trace-indefinite-confirmed" />
+            <label for="trace-indefinite-confirm">I understand, keep it on</label>
+          </div>
         </div>
         <div class="form-field">
           <label for="trace-sample">Sample rate (1 in N)</label>
@@ -261,7 +283,7 @@ async function disable(ctx: TraceContext) {
       </div>
       <template #footer>
         <Button label="Cancel" severity="secondary" outlined :disabled="enableSubmitting" @click="enableVisible = false" />
-        <Button label="Enable" :loading="enableSubmitting" :disabled="!enableSampleValid" @click="submitEnable" />
+        <Button label="Enable" :loading="enableSubmitting" :disabled="!enableReady" data-testid="trace-enable-submit" @click="submitEnable" />
       </template>
     </Dialog>
   </div>
@@ -373,9 +395,17 @@ async function disable(ctx: TraceContext) {
   gap: 8px;
 }
 
-.form-field.check label {
+.form-field.check label,
+.check.confirm label {
   margin: 0;
   font-weight: 400;
+}
+
+.check.confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .full-width {

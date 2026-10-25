@@ -11,6 +11,13 @@ import { describe, expect, it } from "vitest";
 import { userHasPermission } from "@/stores/permissions";
 import {
 	BODIES_HIDDEN_MESSAGE,
+	DETAIL_HIDDEN_MESSAGE,
+	FUNCTION_TRACE_INDEFINITE,
+	indefiniteAllowed,
+	indefiniteLabel,
+	indefiniteWarning,
+	localTime,
+	recordMessage,
 	FUNCTION_TRACE_MANAGE,
 	FUNCTION_TRACE_VIEW,
 	FUNCTION_TRACE_VIEW_BODIES,
@@ -158,13 +165,19 @@ describe("body display", () => {
 	});
 
 	it("explains redaction in the UI", () => {
-		expect(BODIES_HIDDEN_MESSAGE).toBe(
-			"Bodies hidden: you do not have permission to view request and response bodies",
-		);
+		expect(BODIES_HIDDEN_MESSAGE).toBe("Bodies, headers and query string hidden: you do not have permission to view them");
 		const sfc = src("FunctionTraceLogPage.vue");
-		expect(sfc).toMatch(/v-if="data\.bodiesRedacted"[^>]*>\s*\{\{ BODIES_HIDDEN_MESSAGE \}\}/);
+		expect(sfc).toMatch(/v-if="data\.bodiesRedacted \|\| data\.redacted"[^>]*>\s*\{\{ BODIES_HIDDEN_MESSAGE \}\}/);
+		expect(sfc).toMatch(/v-if="data\.redacted"[^>]*>\s*\{\{ DETAIL_HIDDEN_MESSAGE \}\}/);
 		expect(sfc).toContain("bodyView(d.request, redacted)");
-		expect(sfc).toContain("r.bodiesRedacted === true");
+		expect(sfc).toContain("r.bodiesRedacted === true || r.redacted === true");
+	});
+
+	it("a withheld log line reads as hidden", () => {
+		expect(recordMessage({ message: "", redacted: true })).toBe("(hidden)");
+		expect(recordMessage({ message: "mapped", redacted: true })).toBe("mapped");
+		expect(recordMessage({ message: "" })).toBe("");
+		expect(DETAIL_HIDDEN_MESSAGE).toMatch(/view-bodies/);
 	});
 });
 
@@ -192,16 +205,19 @@ describe("http record data", () => {
 });
 
 describe("context state", () => {
-	const base = { name: "orders", description: "", builtIn: false, sampleRate: 1, maxMinutes: 60 };
+	const base = { name: "orders", description: "", builtIn: false, sampleRate: 1, maxMinutes: 60, indefiniteMaxDays: 7 };
 	const now = Date.parse("2026-10-21T12:00:00Z");
 
-	it("a timed window counts down, an indefinite one has no countdown, off is off", () => {
+	it("a timed window counts down, an indefinite one shows its ceiling, off is off", () => {
 		const timed = contextState({ ...base, live: true, indefinite: false, enabledUntil: "2026-10-21T12:05:00Z" }, now);
 		expect(timed).toEqual({ live: true, indefinite: false, label: "5:00" });
-		const forever = contextState({ ...base, live: true, indefinite: true, enabledUntil: "9999-12-31T23:59:59Z" }, now);
-		expect(forever).toEqual({ live: true, indefinite: true, label: "" });
+		const ceiling = "2026-10-28T12:00:00Z";
+		const forever = contextState({ ...base, live: true, indefinite: true, enabledUntil: ceiling }, now);
+		expect(forever).toEqual({ live: true, indefinite: true, label: localTime(ceiling) });
 		expect(contextState({ ...base, live: false, indefinite: false, enabledUntil: null }, now).live).toBe(false);
-		expect(anyLive([{ ...base, live: true, indefinite: true, enabledUntil: "9999-12-31T23:59:59Z" }], now)).toBe(true);
+		expect(anyLive([{ ...base, live: true, indefinite: true, enabledUntil: ceiling }], now)).toBe(true);
+		// Past its ceiling an indefinite window is off: it switched off by itself.
+		expect(contextState({ ...base, live: true, indefinite: true, enabledUntil: "2026-10-21T11:00:00Z" }, now).live).toBe(false);
 	});
 });
 
@@ -216,7 +232,7 @@ describe("permission gating", () => {
 
 	it("view alone cannot change tracing", () => {
 		const g = gatesFor([FUNCTION_TRACE_VIEW]);
-		expect(g).toEqual({ view: true, manage: false, viewBodies: false });
+		expect(g).toEqual({ view: true, manage: false, viewBodies: false, indefinite: false });
 		expect(enableBlockedReason("orders", g)).not.toBeNull();
 	});
 
@@ -240,9 +256,20 @@ describe("permission gating", () => {
 		expect(sfc).toContain("name: 'function-traces'");
 	});
 
-	it("a context can be switched on with no time limit", () => {
+	it("a declared context can stay on until switched off, with the permission and a confirmation", () => {
+		expect(FUNCTION_TRACE_INDEFINITE).toBe("platform:function:trace:indefinite");
+		const manager = gatesFor([FUNCTION_TRACE_VIEW, FUNCTION_TRACE_MANAGE]);
+		const indef = gatesFor([FUNCTION_TRACE_VIEW, FUNCTION_TRACE_MANAGE, FUNCTION_TRACE_INDEFINITE]);
+		expect(indefiniteAllowed({ indefiniteMaxDays: 7 }, manager)).toBe(false);
+		expect(indefiniteAllowed({ indefiniteMaxDays: 7 }, indef)).toBe(true);
+		expect(indefiniteAllowed({ indefiniteMaxDays: 0 }, indef)).toBe(false); // http
+		expect(indefiniteLabel(7)).toBe("Until switched off (max 7 days)");
+		expect(indefiniteWarning(7)).toMatch(/at most 7 days/);
 		const sfc = src("FunctionTraceControls.vue");
-		expect(sfc).toContain('data-testid="trace-indefinite"');
+		expect(sfc).toContain('v-if="enableIndefiniteOffered" class="form-field check"');
+		expect(sfc).toContain('data-testid="trace-indefinite-confirmed"');
+		expect(sfc).toContain(':disabled="!enableReady"');
+		expect(sfc).toContain("(!enableIndefinite.value || enableIndefiniteConfirmed.value)");
 		expect(sfc).toContain("{ indefinite: true, sampleRate: enableSampleRate.value }");
 	});
 });

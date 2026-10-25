@@ -10,6 +10,7 @@ import { useAuthStore } from "@/stores/auth";
 import { userHasPermission } from "@/stores/permissions";
 import {
 	BODIES_HIDDEN_MESSAGE,
+	DETAIL_HIDDEN_MESSAGE,
 	KIND_CHOICES,
 	LEVEL_CHOICES,
 	SINCE_CHOICES,
@@ -25,6 +26,7 @@ import {
 	levelSeverity,
 	localTime,
 	parseHttpData,
+	recordMessage,
 	shortId,
 	traceGates,
 	type BodyView,
@@ -203,7 +205,7 @@ interface Panel {
 function panelsOf(r: TraceLogRecord): Panel[] {
 	const d = httpOf(r);
 	if (!d) return [];
-	const redacted = r.bodiesRedacted === true;
+	const redacted = r.bodiesRedacted === true || r.redacted === true;
 	const req = bodyView(d.request, redacted);
 	const res = bodyView(d.response, redacted);
 	return [
@@ -311,7 +313,7 @@ function panelsOf(r: TraceLogRecord): Panel[] {
           <Column header="Message">
             <template #body="{ data }">
               <span v-if="httpOf(data)">{{ httpSummary(httpOf(data)!) }}</span>
-              <span v-else>{{ data.message }}</span>
+              <span v-else>{{ recordMessage(data) }}</span>
             </template>
           </Column>
           <Column header="Reference" style="width: 130px">
@@ -340,7 +342,7 @@ function panelsOf(r: TraceLogRecord): Panel[] {
 
               <template v-if="httpOf(data)">
                 <p class="http-line" data-testid="trace-http-line">{{ httpSummary(httpOf(data)!) }}</p>
-                <Message v-if="data.bodiesRedacted" severity="warn" :closable="false" data-testid="trace-bodies-hidden">
+                <Message v-if="data.bodiesRedacted || data.redacted" severity="warn" :closable="false" data-testid="trace-bodies-hidden">
                   {{ BODIES_HIDDEN_MESSAGE }}
                 </Message>
                 <div class="panels">
@@ -370,7 +372,10 @@ function panelsOf(r: TraceLogRecord): Panel[] {
               </template>
 
               <template v-else>
-                <p class="message">{{ data.message }}</p>
+                <p v-if="data.message" class="message">{{ data.message }}</p>
+                <Message v-if="data.redacted" severity="warn" :closable="false" data-testid="trace-detail-hidden">
+                  {{ DETAIL_HIDDEN_MESSAGE }}
+                </Message>
                 <div v-if="dataText(data.data) !== null" class="body-block">
                   <div class="body-head">
                     <Tag value="data" severity="secondary" />

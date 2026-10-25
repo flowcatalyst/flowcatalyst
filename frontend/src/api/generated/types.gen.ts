@@ -1836,7 +1836,7 @@ export type EnableTraceRequest = {
      */
     readonly $schema?: string;
     /**
-     * Stay on until switched off, with no time limit (minutes is ignored)
+     * Stay on until switched off, at most the context's indefiniteMaxDays (then it closes by itself); minutes is ignored. Needs platform:function:trace:indefinite; never for http (400 TRACE_INDEFINITE_NOT_ALLOWED)
      */
     indefinite?: boolean;
     /**
@@ -4752,15 +4752,19 @@ export type TraceContextResponse = {
     description: string;
     enabledUntil: string | null;
     /**
-     * Switched on with no time limit; it stays on until switched off (enabledUntil is then far in the future)
+     * Live and switched on until switched off; enabledUntil is then its hard ceiling (indefiniteMaxDays after it was switched on), when it closes by itself
      */
     indefinite: boolean;
+    /**
+     * The ceiling, in days, of an until-switched-off window for this context; 0 when the context cannot take one (http)
+     */
+    indefiniteMaxDays: number;
     /**
      * The window is open now (enabledUntil is in the future)
      */
     live: boolean;
     /**
-     * The longest window this context may be enabled for
+     * The longest timed window this context may be enabled for
      */
     maxMinutes: number;
     name: string;
@@ -4796,6 +4800,7 @@ export type TraceRecord = {
     context: string;
     correlationId?: string;
     data?: unknown;
+    id?: string;
     invocationId: string;
     kind: string;
     level: string;
@@ -4819,6 +4824,10 @@ export type TraceRecordResponse = {
     kind: 'trace' | 'http' | 'log';
     level: string;
     message: string;
+    /**
+     * Sensitive parts withheld (no platform:function:trace:view-bodies): an http record keeps only method, path without query, status, duration, outcome and body sizes; a log record its metadata (message empty, no data); a trace record its message (no data)
+     */
+    redacted?: boolean;
     reference: string | null;
     runnerId: string | null;
     version: number;
@@ -6414,7 +6423,7 @@ export type EmitResponseWritable = {
 
 export type EnableTraceRequestWritable = {
     /**
-     * Stay on until switched off, with no time limit (minutes is ignored)
+     * Stay on until switched off, at most the context's indefiniteMaxDays (then it closes by itself); minutes is ignored. Needs platform:function:trace:indefinite; never for http (400 TRACE_INDEFINITE_NOT_ALLOWED)
      */
     indefinite?: boolean;
     /**
@@ -8005,15 +8014,19 @@ export type TraceContextResponseWritable = {
     description: string;
     enabledUntil: string | null;
     /**
-     * Switched on with no time limit; it stays on until switched off (enabledUntil is then far in the future)
+     * Live and switched on until switched off; enabledUntil is then its hard ceiling (indefiniteMaxDays after it was switched on), when it closes by itself
      */
     indefinite: boolean;
+    /**
+     * The ceiling, in days, of an until-switched-off window for this context; 0 when the context cannot take one (http)
+     */
+    indefiniteMaxDays: number;
     /**
      * The window is open now (enabledUntil is in the future)
      */
     live: boolean;
     /**
-     * The longest window this context may be enabled for
+     * The longest timed window this context may be enabled for
      */
     maxMinutes: number;
     name: string;
