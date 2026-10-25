@@ -17,21 +17,23 @@ import (
 )
 
 // The enable dialog (the SPA's "Enable tracing" dialog of
-// FunctionTraceControls): how long to stay on, or no time limit, and the
-// sample rate.
+// FunctionTraceControls): how long to stay on, or until switched off (a
+// declared context, with platform:function:trace:indefinite, at most the
+// configured number of days, confirmed), and the sample rate.
 
 const (
 	traceEnableDialog = "trace-enable"
 	traceEnableSignal = "traceEnable"
-	// traceIndefSignal is the "no time limit" checkbox, which disables the
-	// duration select.
+	// traceIndefSignal is the "until switched off" checkbox, which disables
+	// the duration select and shows the confirmation.
 	traceIndefSignal = "traceIndef"
 )
 
 // traceFieldCodes map the enable use case's error codes to the dialog's
 // fields; the rest goes to the form-level region.
 var traceFieldCodes = map[string]string{
-	operations.TraceWindowTooLong: "minutes",
+	operations.TraceWindowTooLong:        "minutes",
+	operations.TraceIndefiniteNotAllowed: "indefinite",
 	"TRACE_MINUTES_INVALID":       "minutes",
 	"TRACE_SAMPLE_RATE_INVALID":   "sampleRate",
 }
@@ -56,7 +58,14 @@ type traceForm struct {
 	MaxMinutes    int
 	Minutes       string
 	Indefinite    bool
-	SampleRate    string
+	// IndefiniteMaxDays is the ceiling of an "until switched off" window for
+	// the context (0 for http); AllowIndefinite offers the choice (a ceiling
+	// and the viewer's platform:function:trace:indefinite). Confirm is the
+	// "I understand" checkbox the choice needs.
+	IndefiniteMaxDays int
+	AllowIndefinite   bool
+	Confirm           bool
+	SampleRate        string
 	// OnPage is the log page (not the drawer) the dialog was opened on.
 	OnPage bool
 	Errs   formErrors
@@ -65,14 +74,14 @@ type traceForm struct {
 
 func (f traceForm) id(key string) string { return fieldID(traceEnableDialog, key) }
 
-func (f traceForm) keys() []string { return []string{"minutes", "indefinite", "sampleRate"} }
-
-func (f traceForm) focusID(key string) string {
-	if key == "indefinite" {
-		return f.id("indefinite")
+func (f traceForm) keys() []string {
+	if f.AllowIndefinite {
+		return []string{"minutes", "indefinite", "indefiniteConfirm", "sampleRate"}
 	}
-	return f.id(key)
+	return []string{"minutes", "sampleRate"}
 }
+
+func (f traceForm) focusID(key string) string { return f.id(key) }
 
 func (f traceForm) firstInvalid() string {
 	for _, k := range f.keys() {
@@ -119,6 +128,35 @@ func (f traceForm) describedBy(key string) string {
 	return ""
 }
 
+// indefiniteLabel is the choice as the SPA words it.
+func (f traceForm) indefiniteLabel() string {
+	return "Until switched off (max " + strconv.Itoa(f.IndefiniteMaxDays) + " days)"
+}
+
+// confirmWarning is what the confirmation asks the operator to accept.
+func (f traceForm) confirmWarning() string {
+	return "This keeps recording every sampled call until someone switches it off, for at most " +
+		strconv.Itoa(f.IndefiniteMaxDays) + " days; then it switches off by itself."
+}
+
+// checkboxAttrs adds the field's error wiring to a checkbox's attributes.
+func (f traceForm) checkboxAttrs(key string, a templ.Attributes) templ.Attributes {
+	if f.Errs.Fields[key] != "" {
+		a["aria-invalid"] = "true"
+		a["aria-describedby"] = f.describedBy(key)
+	}
+	return a
+}
+
+// confirmStyle hides the confirmation until "until switched off" is ticked
+// (data-show takes over once the page's script runs).
+func (f traceForm) confirmStyle() string {
+	if f.Indefinite {
+		return ""
+	}
+	return "display: none"
+}
+
 func (f traceForm) signals() string {
 	return "{" + traceIndefSignal + ": " + strconv.FormatBool(f.Indefinite) + "}"
 }
@@ -127,6 +165,7 @@ func (f traceForm) signals() string {
 func submittedTraceForm(r *http.Request, fnID, name string) traceForm {
 	return traceForm{
 		FnID: fnID, Context: name, Minutes: r.PostFormValue("minutes"), Indefinite: r.PostFormValue("indefinite") != "",
+		Confirm: r.PostFormValue("indefiniteConfirm") != "",
 		SampleRate: strings.TrimSpace(r.PostFormValue("sampleRate")), OnPage: r.PostFormValue("page") == "traces",
 	}
 }
@@ -143,8 +182,9 @@ func mayEnable(ac *auth.AuthContext, name string) error {
 	return nil
 }
 
-// withContext sets the context's cap on the form (it is the dialog's duration
-// choices) and returns its state; an unknown context is not found.
+// withContext sets the context's caps on the form (they are the dialog's
+// duration choices and whether "until switched off" is offered) and returns
+// its state; an unknown context is not found.
 func (h *FunctionTrace) withContext(r *http.Request, f *traceForm) (operations.TraceContextState, error) {
 	states, err := h.Store.Contexts(r.Context(), f.FnID)
 	if err != nil {
@@ -152,7 +192,8 @@ func (h *FunctionTrace) withContext(r *http.Request, f *traceForm) (operations.T
 	}
 	for _, st := range states {
 		if st.Name == f.Context {
-			f.MaxMinutes = st.MaxMinutes
+			f.MaxMinutes, f.IndefiniteMaxDays = st.MaxMinutes, st.IndefiniteMaxDays
+			f.AllowIndefinite = st.IndefiniteMaxDays > 0 && traceGatesOf(auth.FromContext(r.Context())).Indefinite
 			return st, nil
 		}
 	}
@@ -180,8 +221,9 @@ func (h *FunctionTrace) enableForm(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	// The SPA opens on the context's first duration, or on no limit when it already is.
-	f.Minutes, f.Indefinite = strconv.Itoa(traceDurations(f.MaxMinutes)[0]), st.Indefinite
+	// The SPA opens on the context's first duration, or on "until switched
+	// off" when it already is (still to be confirmed).
+	f.Minutes, f.Indefinite = strconv.Itoa(traceDurations(f.MaxMinutes)[0]), st.Indefinite && f.AllowIndefinite
 	h.showForm(w, r, ac, f)
 }
 
@@ -250,6 +292,16 @@ func (h *FunctionTrace) enable(w http.ResponseWriter, r *http.Request) {
 	} else {
 		cmd.SampleRate = rate
 	}
+	switch {
+	// The choice is not on the dialog in these two cases (a forged post), so
+	// the refusal is the form's.
+	case f.Indefinite && !f.AllowIndefinite && f.IndefiniteMaxDays == 0:
+		f.Errs.Form, f.Errs.Status = "The "+name+" context always turns itself off; choose how long to stay on.", http.StatusUnprocessableEntity
+	case f.Indefinite && !f.AllowIndefinite:
+		f.Errs.Form, f.Errs.Status = "You do not have permission to leave tracing on until it is switched off.", http.StatusForbidden
+	case f.Indefinite && !f.Confirm:
+		f.Errs.field("indefiniteConfirm", "Confirm that it stays on until it is switched off.")
+	}
 	if !f.Indefinite {
 		if mins, perr := strconv.Atoi(f.Minutes); perr != nil || mins < 1 {
 			f.Errs.field("minutes", "Choose how long to stay on.")
@@ -268,7 +320,7 @@ func (h *FunctionTrace) enable(w http.ResponseWriter, r *http.Request) {
 	}
 	detail := name + " is live for " + strconv.Itoa(cmd.Minutes) + " minutes"
 	if f.Indefinite {
-		detail = name + " is on until you switch it off"
+		detail = name + " is on until it is switched off (at most " + strconv.Itoa(f.IndefiniteMaxDays) + " days)"
 	}
 	msg := FlashMessages[flashTraceOn]
 	msg.Detail = detail

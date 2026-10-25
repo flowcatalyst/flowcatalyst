@@ -68,11 +68,11 @@ func TestFunctionTraceAgainstPostgres(t *testing.T) {
 	}
 
 	// The log: http is the one context (no version declares others), the
-	// viewer's bodies are withheld and the admin's are shown.
+	// viewer's bodies and log lines are withheld and the admin's are shown.
 	code, body := as(viewer, req{target: logPath})
 	require.Equal(t, http.StatusOK, code, body)
-	mustContain(t, body, "pg-log-line", "POST /p → 201", "Bodies hidden", `<option value="http">http</option>`)
-	mustNotContain(t, body, secret)
+	mustContain(t, body, "POST /p → 201", "Bodies, headers and query string hidden", "Details hidden", `<option value="http">http</option>`)
+	mustNotContain(t, body, secret, "pg-log-line")
 	_, body = as(viewer, req{target: logPath, datastar: true})
 	mustNotContain(t, body, secret)
 	_, body = as(admin, req{target: logPath})
@@ -106,25 +106,26 @@ func TestFunctionTraceAgainstPostgres(t *testing.T) {
 	require.NotNil(t, w)
 	require.NotNil(t, w.EnabledUntil)
 	assert.True(t, w.Live(time.Now()))
-	assert.False(t, function.IsIndefiniteUntil(w.EnabledUntil))
+	assert.False(t, w.Indefinite)
 	assert.EqualValues(t, 3, w.SampleRate)
 	_, body = as(viewer, req{target: logPath})
 	mustContain(t, body, "Live", "1 in 3", "Auto refresh every 5 s", "Pause")
 
-	// No time limit replaces the window.
-	_, body = as(admin, tracePost(enablePath, url.Values{"indefinite": {"1"}, "sampleRate": {"1"}}))
-	mustContain(t, body, "http is on until you switch it off")
-	assert.True(t, function.IsIndefiniteUntil(window().EnabledUntil))
-	_, body = as(viewer, req{target: logPath})
-	mustContain(t, body, "until switched off")
+	// http never stays on until switched off, even for the super-admin.
+	_, body = as(admin, tracePost(enablePath, url.Values{"indefinite": {"1"}, "indefiniteConfirm": {"1"}, "sampleRate": {"1"}}))
+	mustContain(t, body, "The http context always turns itself off")
+	assert.False(t, window().Indefinite)
+	assert.EqualValues(t, 3, window().SampleRate, "the window is unchanged")
 
-	// A view-only caller cannot disable; the manager can.
+	// A view-only caller cannot disable; the manager can, and the window then
+	// ends at the switch-off time.
 	disablePath := "/ui/functions/" + f.ID + "/trace/http/disable"
 	as(viewer, tracePost(disablePath, nil))
-	assert.True(t, function.IsIndefiniteUntil(window().EnabledUntil))
+	assert.True(t, window().Live(time.Now()))
 	_, body = as(manager, tracePost(disablePath, nil))
 	mustContain(t, body, "http is off")
-	assert.Nil(t, window().EnabledUntil)
+	require.NotNil(t, window().EnabledUntil)
+	assert.False(t, window().Live(time.Now().Add(time.Second)))
 	_, body = as(viewer, req{target: logPath})
 	mustNotContain(t, body, "Auto refresh")
 }

@@ -267,7 +267,7 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.DebugEvents{Events: cfg.DebugEvents, Shell: sh}).Mount(r)
 			(&pages.DebugDispatchJobs{Jobs: cfg.DebugDispatchJobs, Shell: sh}).Mount(r)
 			// The functions area embeds the switches (trace.Switches) in its drawer.
-			trace := &pages.FunctionTrace{Store: cfg.FunctionTrace, Ops: cfg.FunctionTraceOps, Shell: sh}
+			trace := &pages.FunctionTrace{Store: cfg.FunctionTrace, Ops: cfg.FunctionTraceOps, Shell: sh, Reauth: pages.ReauthWith(cfg.Authenticate)}
 			trace.Mount(r)
 			(&pages.Functions{Functions: cfg.Functions, Ops: cfg.FunctionOps, Zones: cfg.FunctionZones, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Apps: cfg.ApplicationStore, ServiceAccounts: cfg.ServiceAccounts, Trace: trace, Shell: sh}).Mount(r)
 			(&pages.PortalApps{Store: cfg.Portal, Ops: cfg.PortalOps, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
