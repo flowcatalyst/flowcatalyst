@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -63,6 +64,9 @@ type Engine struct {
 	budget *budget.Budget
 	log    *slog.Logger
 	stuck  atomic.Int64
+	// abandoned tracks the goroutines of abandoned calls: their guest is still
+	// running on a runtime's memory, so Close must not free it under them.
+	abandoned sync.WaitGroup
 }
 
 // ExportJSDeadline is the export a cooperative module must have: (ms i64) arms
@@ -119,8 +123,35 @@ func New(ctx context.Context, cfg Config) (*Engine, error) {
 	return e, nil
 }
 
-// Close releases the runtimes and every module compiled on them.
+// closeWait bounds how long Close waits for abandoned calls when ctx has no
+// earlier deadline.
+const closeWait = 10 * time.Second
+
+// ErrCloseStuck is returned by Close when abandoned calls were still running
+// at its deadline: the runtimes are then left open (their memory is still in
+// use by those calls), and the process should exit rather than reuse them.
+var ErrCloseStuck = errors.New("engine: abandoned calls still running; runtimes left open")
+
+// Close releases the runtimes and every module compiled on them. It first
+// waits (up to ctx's deadline, else closeWait) for calls that were abandoned
+// at their deadline to return: freeing a runtime's memory under a guest that
+// is still running would be a use-after-free. If they do not return in time,
+// nothing is freed and ErrCloseStuck is returned.
 func (e *Engine) Close(ctx context.Context) error {
+	waited := make(chan struct{})
+	go func() {
+		e.abandoned.Wait()
+		close(waited)
+	}()
+	limit := time.NewTimer(closeWait)
+	defer limit.Stop()
+	select {
+	case <-waited:
+	case <-ctx.Done():
+		return ErrCloseStuck
+	case <-limit.C:
+		return ErrCloseStuck
+	}
 	return errors.Join(e.rt.Close(ctx), e.coop.Close(ctx), e.cache.Close(ctx))
 }
 
@@ -470,11 +501,11 @@ func (i *Instance) run(ctx context.Context, fn api.Function, params ...uint64) (
 		// The close outlives the call (whose context is past its deadline by
 		// now), so it keeps the context's values but not its cancellation.
 		closeCtx := context.WithoutCancel(ctx)
-		go func() {
+		i.e.abandoned.Go(func() {
 			<-done
 			i.e.stuck.Add(-1)
 			_ = i.mod.Close(closeCtx)
-		}()
+		})
 		return nil, ErrStuck
 	}
 }

@@ -183,10 +183,19 @@ func TestHTTP2WithoutHealthCheckWaitsForTheDeadline(t *testing.T) {
 	off.HTTP2PingTimeout = 0
 	peer := startStalledH2Peer(t, nil)
 
+	// Sample the pings while the request is still waiting: once the deadline
+	// cancels it, x/net's transport sends one PING to learn whether the
+	// connection survived the reset (not a health check), so counting after
+	// the deadline would race with that.
+	var beforeDeadline atomic.Int32
+	beforeDeadline.Store(-1)
+	sample := time.AfterFunc(1300*time.Millisecond, func() { beforeDeadline.Store(peer.pings.Load()) })
+	defer sample.Stop()
+
 	took, err := deliverTo(t, off, "http://"+peer.addr+"/deliver", 1500*time.Millisecond)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.GreaterOrEqual(t, took, 1400*time.Millisecond)
-	assert.Zero(t, peer.pings.Load())
+	assert.Zero(t, beforeDeadline.Load(), "no health-check ping while the request waits")
 }
 
 // TestMediatorHTTP2HealthCheckDefaultsAndOverrides pins the defaults and the
