@@ -41,7 +41,7 @@ type fakeTracePlatform struct {
 
 func newFakeTracePlatform(t *testing.T) *fakeTracePlatform {
 	p := &fakeTracePlatform{state: map[string]map[string]any{
-		"http": {"name": "http", "description": "Request and response of every call.", "builtIn": true, "enabledUntil": "2026-10-21T12:20:45Z", "sampleRate": 1, "live": true, "maxMinutes": 15, "indefiniteMaxDays": 0},
+		"http":   {"name": "http", "description": "Request and response of every call.", "builtIn": true, "enabledUntil": "2026-10-21T12:20:45Z", "sampleRate": 1, "live": true, "maxMinutes": 15, "indefiniteMaxDays": 0},
 		"orders": {"name": "orders", "description": "Order mapping.", "builtIn": false, "enabledUntil": nil, "sampleRate": 1, "live": false, "maxMinutes": 60, "indefiniteMaxDays": 7},
 	}}
 	p.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -75,8 +75,10 @@ func newFakeTracePlatform(t *testing.T) *fakeTracePlatform {
 			_ = json.NewDecoder(r.Body).Decode(&p.putBody)
 			minutes, _ := p.putBody["minutes"].(float64)
 			until := time.Now().Add(time.Duration(max(minutes, 5)) * time.Minute).UTC().Format(time.RFC3339)
-			st := map[string]any{"name": name, "builtIn": name == "http", "enabledUntil": until, "sampleRate": p.putBody["sampleRate"],
-				"live": true, "maxMinutes": 60, "indefinite": p.putBody["indefinite"] == true}
+			st := map[string]any{
+				"name": name, "builtIn": name == "http", "enabledUntil": until, "sampleRate": p.putBody["sampleRate"],
+				"live": true, "maxMinutes": 60, "indefinite": p.putBody["indefinite"] == true,
+			}
 			p.state[name] = st
 			_ = json.NewEncoder(w).Encode(st)
 		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/functions/fn_1/trace/"):

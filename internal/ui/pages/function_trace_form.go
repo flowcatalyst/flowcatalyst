@@ -34,8 +34,8 @@ const (
 var traceFieldCodes = map[string]string{
 	operations.TraceWindowTooLong:        "minutes",
 	operations.TraceIndefiniteNotAllowed: "indefinite",
-	"TRACE_MINUTES_INVALID":       "minutes",
-	"TRACE_SAMPLE_RATE_INVALID":   "sampleRate",
+	"TRACE_MINUTES_INVALID":              "minutes",
+	"TRACE_SAMPLE_RATE_INVALID":          "sampleRate",
 }
 
 // traceDurations is the SPA's 5, 15, 30 and 60 minutes limited to the
@@ -165,7 +165,7 @@ func (f traceForm) signals() string {
 func submittedTraceForm(r *http.Request, fnID, name string) traceForm {
 	return traceForm{
 		FnID: fnID, Context: name, Minutes: r.PostFormValue("minutes"), Indefinite: r.PostFormValue("indefinite") != "",
-		Confirm: r.PostFormValue("indefiniteConfirm") != "",
+		Confirm:    r.PostFormValue("indefiniteConfirm") != "",
 		SampleRate: strings.TrimSpace(r.PostFormValue("sampleRate")), OnPage: r.PostFormValue("page") == "traces",
 	}
 }

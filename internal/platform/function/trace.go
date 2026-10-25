@@ -155,10 +155,10 @@ type TraceContext struct {
 	EnabledUntil *time.Time
 	// Indefinite marks a window switched on "until switched off"; EnabledUntil
 	// is then its hard ceiling (TraceLimits.IndefiniteMaxDays).
-	Indefinite   bool
-	SampleRate   int32
-	EnabledBy    *string
-	UpdatedAt    time.Time
+	Indefinite bool
+	SampleRate int32
+	EnabledBy  *string
+	UpdatedAt  time.Time
 }
 
 // Live reports whether the window is open at now. Compared when read: an

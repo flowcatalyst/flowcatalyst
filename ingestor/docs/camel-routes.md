@@ -18,10 +18,12 @@ ingestion of the kind is shown as "no runtime carries this kind".
 
 A route runs with the runtime's own identity, network and environment, so it can reach anything the runtime
 can, other clients' secrets in its environment included. The platform therefore refuses to create or change
-a camel-route ingestion unless the caller holds `platform:ingestion:ingestion:route` (role
-`platform:ingestion-route-author`); removing one needs only `delete`. The runtime sends this requirement with
-the kind. **The permission is anchor-only on the platform**: only an anchor user (the platform's own operators)
-can hold it; a client's or a partner's user cannot be given it, whatever role they are assigned. The
+a camel-route ingestion unless the caller is anchor tier, holds `platform:ingestion:ingestion:route`, and is
+either a **pipeline** (a service account holding the role `platform:ingestion-route-author`, which also carries
+`bind-secrets`) or an **ingestion administrator** (role `platform:ingestion-admin`, for example pushing with
+`fcdev ingest apply`). Any other caller, an operator included, is refused with `INGESTION_ROUTE_PIPELINE_REQUIRED`.
+Removing a route ingestion needs only `delete`. The runtime sends this requirement with the kind. A
+client's or a partner's user can never write a route, whatever role they are assigned. The
 ingestion's own secrets are not handed to a route, and the runtime's outbound address checks (see the README)
 do not apply to a route's own steps.
 

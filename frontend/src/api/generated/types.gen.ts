@@ -1193,7 +1193,7 @@ export type CreateIngestionRequest = {
      */
     keepFailedPayloads?: boolean;
     /**
-     * Make the first version live. Default true; false saves it to be made live later.
+     * Make the first version live. Default true; without the promote permission the first version is saved as a draft whatever this says (the answer's save says so), and someone who holds promote makes it live. false always saves a draft.
      */
     live?: boolean;
     name: string;
@@ -1983,6 +1983,10 @@ export type Failure = {
     afterRecords?: number;
     at: string;
     /**
+     * payload (the default): a record or payload the runtime could not take. rejected: the platform refused the runtime's jobs request permanently; the ingestion shows it as a notice until someone dismisses it.
+     */
+    category?: 'payload' | 'rejected';
+    /**
      * The start of what it failed on; the platform keeps it only for an ingestion that keeps failed payloads
      */
     excerpt?: string;
@@ -2179,7 +2183,21 @@ export type IngestionFailureListResponse = {
 };
 
 export type IngestionFailureResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
     afterRecords: number;
+    /**
+     * payload: a record or payload the runtime could not take. rejected: a notice, the platform refused the runtime's jobs permanently
+     */
+    category: 'payload' | 'rejected';
+    createdAt: string;
+    dismissedAt?: string;
+    /**
+     * The principal who dismissed it
+     */
+    dismissedBy?: string;
     /**
      * The start of the payload, only for an ingestion that keeps failed payloads
      */
@@ -2242,13 +2260,26 @@ export type IngestionResponse = {
      * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
      */
     keepFailedPayloads?: boolean;
+    /**
+     * The newest undismissed notice's message
+     */
+    latestNotice?: string;
+    latestNoticeAt?: string;
     latestVersion: number;
     /**
      * Id of the set that owns the ingestion; it is read-only until the set is released
      */
     managedBy?: string;
     name: string;
+    /**
+     * Undismissed notices: rejected failures (GET .../failures?category=rejected&undismissed=true)
+     */
+    notices: number;
     runtimeNotice?: string;
+    /**
+     * What this create or update did: saved and made live, made an existing version live, saved as a draft awaiting promote, matched an existing draft, or changed nothing
+     */
+    save?: IngestionSaveOutcome;
     /**
      * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
      */
@@ -2261,6 +2292,63 @@ export type IngestionResponse = {
     target: Target;
     updatedAt: string;
     version: number;
+    /**
+     * What the definition says that will not run as meant, such as an sftp source that neither names the server's host key nor accepts any
+     */
+    warnings?: Array<string>;
+};
+
+export type IngestionSaveOutcome = {
+    /**
+     * The definition is in a version that is not live; someone who holds platform:ingestion:ingestion:promote makes it live
+     */
+    awaitingPromote: boolean;
+    message: string;
+    /**
+     * UNCHANGED: the live version already says it, nothing written. SAVED: saved as a new version and made live. MADE_LIVE: a saved version that was not live already says it and was made live, nothing new saved. DRAFT: saved as a new version that is not live. DRAFT_EXISTS: a saved version that is not live already says it, nothing saved
+     */
+    outcome: 'UNCHANGED' | 'SAVED' | 'MADE_LIVE' | 'DRAFT' | 'DRAFT_EXISTS';
+    /**
+     * The live version (UNCHANGED, SAVED, MADE_LIVE) or the draft (DRAFT, DRAFT_EXISTS)
+     */
+    version: number;
+};
+
+export type IngestionSecretFetchResponse = {
+    /**
+     * How many times this runtime has fetched it
+     */
+    fetchCount: number;
+    lastFetchedAt: string;
+    /**
+     * The runtime's service account that made it
+     */
+    principalId?: string;
+    runtimeId: string;
+    /**
+     * The live version the last fetch was made under
+     */
+    version: number;
+};
+
+export type IngestionSecretListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    secrets: Array<IngestionSecretResponse>;
+};
+
+export type IngestionSecretResponse = {
+    /**
+     * The live definition names it, so its runtime may fetch it; false for a name only fetched under an earlier live version
+     */
+    bound: boolean;
+    /**
+     * Per runtime, newest first; empty when no runtime has fetched it
+     */
+    fetches: Array<IngestionSecretFetchResponse>;
+    name: string;
 };
 
 export type IngestionSetApplyListResponse = {
@@ -2454,6 +2542,14 @@ export type IngestionVersionResponse = {
     appliedFrom?: string;
     createdAt: string;
     createdBy?: string;
+    /**
+     * sha256 (hex) of the definition's canonical form; a save whose definition has the digest of a saved version reuses that version
+     */
+    digest?: string;
+    /**
+     * A version saved after the live one (or while none is live) that is not live: it waits for someone who holds promote to make it live
+     */
+    draft: boolean;
     id: string;
     /**
      * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
@@ -2462,6 +2558,10 @@ export type IngestionVersionResponse = {
     live: boolean;
     name: string;
     note?: string;
+    /**
+     * What this save did (the answer of POST .../versions only)
+     */
+    save?: IngestionSaveOutcome;
     /**
      * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
      */
@@ -2541,7 +2641,7 @@ export type JobRecord = {
      */
     correlationId?: string;
     /**
-     * The record's idempotency key within the ingestion, at most 100 characters: sending it again answers the job it made first
+     * The record's idempotency key within the ingestion, at most 100 characters (the runtime sends the sha256 hex of the record's source identity, 64): sending it again answers the job it made first, and of two records in one request with the same key the first makes the job
      */
     externalId?: string;
     /**
@@ -2879,11 +2979,15 @@ export type PollRequest = {
      */
     readonly $schema?: string;
     /**
+     * The built-in source kinds the runtime carries (http, sftp, s3, sqs, rabbitmq, database-poll, api-poll); absent is all of them. Only ingestions of a kind the runtime carries are listed to it, and a polled kind's fair share counts only the runtimes that carry it.
+     */
+    builtinKinds?: Array<string>;
+    /**
      * The contract version the runtime speaks; the platform serves the current one and the one before it
      */
     contractVersion: number;
     /**
-     * The kinds the runtime's extensions add (and camel-route); built-in kinds are all carried unless some are named here
+     * The kinds the runtime's extensions add (and camel-route)
      */
     kinds?: Array<RuntimeKind>;
     /**
@@ -6008,7 +6112,7 @@ export type CreateIngestionRequestWritable = {
      */
     keepFailedPayloads?: boolean;
     /**
-     * Make the first version live. Default true; false saves it to be made live later.
+     * Make the first version live. Default true; without the promote permission the first version is saved as a draft whatever this says (the answer's save says so), and someone who holds promote makes it live. false always saves a draft.
      */
     live?: boolean;
     name: string;
@@ -6580,12 +6684,36 @@ export type IdpRoleMappingListResponseWritable = {
 };
 
 export type IngestionFailureListResponseWritable = {
-    failures: Array<IngestionFailureResponse>;
+    failures: Array<IngestionFailureResponseWritable>;
     hasMore: boolean;
     /**
      * Pass as after to read the next page; absent on the last
      */
     nextCursor?: string;
+};
+
+export type IngestionFailureResponseWritable = {
+    afterRecords: number;
+    /**
+     * payload: a record or payload the runtime could not take. rejected: a notice, the platform refused the runtime's jobs permanently
+     */
+    category: 'payload' | 'rejected';
+    createdAt: string;
+    dismissedAt?: string;
+    /**
+     * The principal who dismissed it
+     */
+    dismissedBy?: string;
+    /**
+     * The start of the payload, only for an ingestion that keeps failed payloads
+     */
+    excerpt?: string;
+    id: string;
+    kind: string;
+    message: string;
+    occurredAt: string;
+    runtimeId?: string;
+    version?: number;
 };
 
 export type IngestionHistoryResponseWritable = {
@@ -6614,13 +6742,26 @@ export type IngestionResponseWritable = {
      * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
      */
     keepFailedPayloads?: boolean;
+    /**
+     * The newest undismissed notice's message
+     */
+    latestNotice?: string;
+    latestNoticeAt?: string;
     latestVersion: number;
     /**
      * Id of the set that owns the ingestion; it is read-only until the set is released
      */
     managedBy?: string;
     name: string;
+    /**
+     * Undismissed notices: rejected failures (GET .../failures?category=rejected&undismissed=true)
+     */
+    notices: number;
     runtimeNotice?: string;
+    /**
+     * What this create or update did: saved and made live, made an existing version live, saved as a draft awaiting promote, matched an existing draft, or changed nothing
+     */
+    save?: IngestionSaveOutcome;
     /**
      * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
      */
@@ -6633,6 +6774,14 @@ export type IngestionResponseWritable = {
     target: Target;
     updatedAt: string;
     version: number;
+    /**
+     * What the definition says that will not run as meant, such as an sftp source that neither names the server's host key nor accepts any
+     */
+    warnings?: Array<string>;
+};
+
+export type IngestionSecretListResponseWritable = {
+    secrets: Array<IngestionSecretResponse>;
 };
 
 export type IngestionSetApplyListResponseWritable = {
@@ -6717,6 +6866,14 @@ export type IngestionVersionResponseWritable = {
     appliedFrom?: string;
     createdAt: string;
     createdBy?: string;
+    /**
+     * sha256 (hex) of the definition's canonical form; a save whose definition has the digest of a saved version reuses that version
+     */
+    digest?: string;
+    /**
+     * A version saved after the live one (or while none is live) that is not live: it waits for someone who holds promote to make it live
+     */
+    draft: boolean;
     id: string;
     /**
      * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
@@ -6725,6 +6882,10 @@ export type IngestionVersionResponseWritable = {
     live: boolean;
     name: string;
     note?: string;
+    /**
+     * What this save did (the answer of POST .../versions only)
+     */
+    save?: IngestionSaveOutcome;
     /**
      * Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}
      */
@@ -6937,11 +7098,15 @@ export type PermissionResponseWritable = {
 
 export type PollRequestWritable = {
     /**
+     * The built-in source kinds the runtime carries (http, sftp, s3, sqs, rabbitmq, database-poll, api-poll); absent is all of them. Only ingestions of a kind the runtime carries are listed to it, and a polled kind's fair share counts only the runtimes that carry it.
+     */
+    builtinKinds?: Array<string>;
+    /**
      * The contract version the runtime speaks; the platform serves the current one and the one before it
      */
     contractVersion: number;
     /**
-     * The kinds the runtime's extensions add (and camel-route); built-in kinds are all carried unless some are named here
+     * The kinds the runtime's extensions add (and camel-route)
      */
     kinds?: Array<RuntimeKind>;
     /**
@@ -10359,6 +10524,12 @@ export type SuspendClientResponse = SuspendClientResponses[keyof SuspendClientRe
 
 export type DeletePlatformConfigPropertyData = {
     body?: never;
+    headers?: {
+        /**
+         * Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters.
+         */
+        'X-On-Behalf-Of'?: string;
+    };
     path: {
         app: string;
         section: string;
@@ -10427,6 +10598,12 @@ export type GetPlatformConfigPropertyResponse = GetPlatformConfigPropertyRespons
 
 export type SetPlatformConfigPropertyData = {
     body: SetPropertyRequestWritable;
+    headers?: {
+        /**
+         * Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters.
+         */
+        'X-On-Behalf-Of'?: string;
+    };
     path: {
         app: string;
         section: string;
@@ -10461,6 +10638,12 @@ export type SetPlatformConfigPropertyResponse = SetPlatformConfigPropertyRespons
 
 export type RevealPlatformConfigSecretData = {
     body?: never;
+    headers?: {
+        /**
+         * Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters.
+         */
+        'X-On-Behalf-Of'?: string;
+    };
     path: {
         app: string;
         section: string;
@@ -14265,6 +14448,14 @@ export type ListIngestionFailuresData = {
          * Page size (default 50, at most 200)
          */
         limit?: number;
+        /**
+         * Only the failures nobody has dismissed
+         */
+        undismissed?: boolean;
+        /**
+         * Only this category; rejected is the notices
+         */
+        category?: 'payload' | 'rejected';
     };
     url: '/api/ingestions/{id}/failures';
 };
@@ -14286,6 +14477,34 @@ export type ListIngestionFailuresResponses = {
 };
 
 export type ListIngestionFailuresResponse = ListIngestionFailuresResponses[keyof ListIngestionFailuresResponses];
+
+export type DismissIngestionFailureData = {
+    body?: never;
+    path: {
+        id: string;
+        failureId: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/failures/{failureId}/dismiss';
+};
+
+export type DismissIngestionFailureErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DismissIngestionFailureError = DismissIngestionFailureErrors[keyof DismissIngestionFailureErrors];
+
+export type DismissIngestionFailureResponses = {
+    /**
+     * OK
+     */
+    200: IngestionFailureResponse;
+};
+
+export type DismissIngestionFailureResponse = DismissIngestionFailureResponses[keyof DismissIngestionFailureResponses];
 
 export type ListIngestionHistoryData = {
     body?: never;
@@ -14373,6 +14592,33 @@ export type ResumeIngestionResponses = {
 };
 
 export type ResumeIngestionResponse = ResumeIngestionResponses[keyof ResumeIngestionResponses];
+
+export type ListIngestionSecretsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/secrets';
+};
+
+export type ListIngestionSecretsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListIngestionSecretsError = ListIngestionSecretsErrors[keyof ListIngestionSecretsErrors];
+
+export type ListIngestionSecretsResponses = {
+    /**
+     * OK
+     */
+    200: IngestionSecretListResponse;
+};
+
+export type ListIngestionSecretsResponse = ListIngestionSecretsResponses[keyof ListIngestionSecretsResponses];
 
 export type ListIngestionVersionsData = {
     body?: never;

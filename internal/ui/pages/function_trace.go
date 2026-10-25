@@ -438,6 +438,9 @@ func (h *FunctionTrace) records(ctx context.Context, fnID string, q traceQuery, 
 // page) gets the log patched and, while a window is live and the page is not
 // paused, the stream stays open and patches it again every few seconds.
 func (h *FunctionTrace) log(w http.ResponseWriter, r *http.Request) {
+	// Trace records can carry request and response bodies: never stored by
+	// a cache (the stream helper would otherwise answer no-cache).
+	w = noStore{w}
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
 	id, err := traceFunctionID(r)
@@ -577,6 +580,9 @@ func (v traceLogView) patch(sse *ds.SSE, mode ds.Mode) error {
 
 // more appends the next (older) page to the list: the SPA's "Load more".
 func (h *FunctionTrace) more(w http.ResponseWriter, r *http.Request) {
+	// Trace records can carry request and response bodies: never stored by
+	// a cache (the stream helper would otherwise answer no-cache).
+	w = noStore{w}
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
 	id, err := traceFunctionID(r)

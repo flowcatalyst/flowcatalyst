@@ -156,7 +156,7 @@ func TestTraceLog_AtIsBoundedByArrival(t *testing.T) {
 	ack, err := ship(t, s,
 		ahead,         // accepted, at clamped to arrival
 		slightlyAhead, // accepted as stamped (within the skew)
-		rec(fn, "live", "trace", time.Now().Add(-2*time.Hour)),    // dropped: far behind
+		rec(fn, "live", "trace", time.Now().Add(-2*time.Hour)),       // dropped: far behind
 		rec(fn, "closed", "trace", time.Now().Add(365*24*time.Hour)), // dropped: clamped to now, after the window
 	)
 	require.NoError(t, err)
@@ -212,7 +212,7 @@ func TestTraceLog_AcceptsQueuedRecordsAfterSwitchOff(t *testing.T) {
 		return s.Repo.DisableTraceContextTx(context.Background(), fn.ID, "orders", time.Now().UTC(), tx)
 	})
 	ack, err := ship(t, s,
-		rec(fn, "orders", "trace", captured),                     // accepted
+		rec(fn, "orders", "trace", captured),                       // accepted
 		rec(fn, "orders", "trace", time.Now().Add(30*time.Second)), // dropped: after the grace
 	)
 	require.NoError(t, err)

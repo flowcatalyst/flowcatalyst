@@ -537,8 +537,11 @@ func TestTraceEnable(t *testing.T) {
 		}{
 			"unconfirmed":   {indef, "orders", []string{"indefinite", "1"}, "Confirm that it stays on until it is switched off."},
 			"no permission": {mgr, "orders", []string{"indefinite", "1", "indefiniteConfirm", "1"}, "You do not have permission to leave tracing on"},
-			"http": {traceUser(permTraceView, permTraceManage, permTraceBodies, permTraceIndef), "http",
-				[]string{"indefinite", "1", "indefiniteConfirm", "1"}, "The http context always turns itself off"},
+			"http": {
+				traceUser(permTraceView, permTraceManage, permTraceBodies, permTraceIndef), "http",
+				[]string{"indefinite", "1", "indefiniteConfirm", "1"},
+				"The http context always turns itself off",
+			},
 		} {
 			h := newTraceHarness()
 			out := enable(h, c.ac, c.ctx, c.kv...)

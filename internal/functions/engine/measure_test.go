@@ -87,7 +87,7 @@ func (fakeHost) Call(_ context.Context, op abi.Op, _, _ []byte) ([]byte, []byte,
 		return []byte(`{"jobId":"djob_1"}`), nil, nil
 	case abi.OpLog, abi.OpConfigGet, abi.OpHTTPFetch, abi.OpEventEmit,
 		abi.OpDBQuery, abi.OpDBExec, abi.OpDBBegin, abi.OpDBCommit, abi.OpDBRollback,
-		abi.OpTrace, abi.OpTracing:
+		abi.OpTrace, abi.OpTracing, abi.OpTraceReference:
 		// The measured fixtures do not need these answered.
 	}
 	return nil, nil, nil
