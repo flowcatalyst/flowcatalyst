@@ -19,6 +19,7 @@ from flowcatalyst.models.ingestion import (
     IngestionFailurePage,
     IngestionHistoryPage,
     IngestionPage,
+    IngestionSecretList,
     IngestionSet,
     IngestionSetApply,
     IngestionSetArchive,
@@ -55,6 +56,10 @@ OPERATIONS = (
     Operation("GET", "/api/ingestions/{id}/definition", "getIngestionDefinition"),
     Operation("GET", "/api/ingestions/{id}/history", "listIngestionHistory"),
     Operation("GET", "/api/ingestions/{id}/failures", "listIngestionFailures"),
+    Operation(
+        "POST", "/api/ingestions/{id}/failures/{failureId}/dismiss", "dismissIngestionFailure"
+    ),
+    Operation("GET", "/api/ingestions/{id}/secrets", "listIngestionSecrets"),
     Operation("GET", "/api/ingestion-source-kinds", "listIngestionSourceKinds"),
     Operation("POST", "/api/ingestion-tests", "testIngestionConnection"),
     Operation("GET", "/api/ingestion-tests/{id}", "getIngestionTest"),
@@ -165,8 +170,10 @@ class IngestionsResource:
     ) -> Ingestion:
         """Create an ingestion. ``application`` is the code of an INTEGRATION application,
         ``client`` a client id or identifier, ``code`` lowercase letters, digits and hyphens,
-        unique within the two. ``live=False`` saves the first version without running it.
-        A taken code is a :class:`ConflictError` with ``code == "INGESTION_CODE_EXISTS"``."""
+        unique within the two. ``live=False`` saves the first version without running it, and
+        so does a caller without the promote permission whatever ``live`` says: the answer's
+        ``save.outcome`` is ``"DRAFT"`` and ``save.awaiting_promote`` is true. A taken code is
+        a :class:`ConflictError` with ``code == "INGESTION_CODE_EXISTS"``."""
         response = await self._transport.request(
             "POST",
             _path("createIngestion"),
@@ -188,9 +195,11 @@ class IngestionsResource:
         expected_version: int,
         note: str | None = None,
     ) -> Ingestion:
-        """Save ``definition`` as the next live version. ``expected_version`` is the live
-        version the caller read (0 when none is live); a different current one is a
-        :class:`ConflictError`. An unchanged definition writes nothing."""
+        """Save ``definition`` as the next version: made live with the promote permission
+        (``save.outcome == "SAVED"``), a draft awaiting promote without it (``"DRAFT"``).
+        ``expected_version`` is the live version the caller read (0 when none is live); a
+        different current one is a :class:`ConflictError`. A definition an existing version
+        already says is not saved again (``UNCHANGED``, ``MADE_LIVE``, ``DRAFT_EXISTS``)."""
         response = await self._transport.request(
             "PUT",
             _path("updateIngestion", id=id),
@@ -227,7 +236,8 @@ class IngestionsResource:
         note: str | None = None,
     ) -> IngestionVersion:
         """Save a version without running it; ``live=True`` also makes it live (needs the
-        promote permission)."""
+        promote permission; without it the save is a draft). A definition an existing version
+        already says is not saved again; ``save`` on the answer says what happened."""
         response = await self._transport.request(
             "POST",
             _path("saveIngestionVersion", id=id),
@@ -261,28 +271,62 @@ class IngestionsResource:
         return IngestionHistoryPage.model_validate(response.json())
 
     async def failures(
-        self, id: str, *, after: str | None = None, limit: int | None = None
+        self,
+        id: str,
+        *,
+        after: str | None = None,
+        limit: int | None = None,
+        category: str | None = None,
+        undismissed: bool = False,
     ) -> IngestionFailurePage:
-        """One page of failures; pass ``next_cursor`` back as ``after``."""
+        """One page of failures, newest first; pass ``next_cursor`` back as ``after``.
+        ``category`` is ``"payload"`` or ``"rejected"`` (the notices); ``undismissed=True``
+        keeps only the failures nobody has dismissed. ``category="rejected",
+        undismissed=True`` is the ingestion's open notices (what ``notices`` counts)."""
         response = await self._transport.request(
             "GET",
             _path("listIngestionFailures", id=id),
-            params=_query(after=after, limit=limit),
+            params=_query(
+                after=after,
+                limit=limit,
+                category=category,
+                undismissed=True if undismissed else None,
+            ),
         )
         return IngestionFailurePage.model_validate(response.json())
 
     async def iter_failures(
-        self, id: str, *, limit: int | None = None
+        self,
+        id: str,
+        *,
+        limit: int | None = None,
+        category: str | None = None,
+        undismissed: bool = False,
     ) -> AsyncIterator[IngestionFailure]:
-        """Every failure of an ingestion, following the cursor page by page."""
+        """Every (matching) failure of an ingestion, following the cursor page by page."""
         after: str | None = None
         while True:
-            page = await self.failures(id, after=after, limit=limit)
+            page = await self.failures(
+                id, after=after, limit=limit, category=category, undismissed=undismissed
+            )
             for failure in page.failures:
                 yield failure
             if not page.has_more or page.next_cursor is None:
                 return
             after = page.next_cursor
+
+    async def dismiss_failure(self, id: str, failure_id: str) -> IngestionFailure:
+        """Dismiss a failure: a notice stops showing on the ingestion; it stays listed."""
+        response = await self._transport.request(
+            "POST", _path("dismissIngestionFailure", id=id, failureId=failure_id)
+        )
+        return IngestionFailure.model_validate(response.json())
+
+    async def secrets(self, id: str) -> IngestionSecretList:
+        """The secret names the live definition binds and, per runtime, when it last fetched
+        each one. Names only: no secret value is ever returned."""
+        response = await self._transport.request("GET", _path("listIngestionSecrets", id=id))
+        return IngestionSecretList.model_validate(response.json())
 
     async def source_kinds(self) -> builtins.list[IngestionSourceKind]:
         """The built-in kinds plus the kinds the live runtimes report."""

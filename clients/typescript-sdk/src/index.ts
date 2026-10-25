@@ -105,6 +105,10 @@ export {
 	type SaveIngestionVersionRequest,
 	type ApplyIngestionSetRequest,
 	type TestIngestionRequest,
+	type IngestionFailure,
+	type IngestionSaveOutcome,
+	type IngestionSecretList,
+	type FailureFilters,
 } from "./resources/index.js";
 
 // Scheduled-job runner (handler registration + lock + completion callback).

@@ -7,6 +7,11 @@ namespace FlowCatalyst\DTOs\Ingestion;
 /**
  * Where an ingestion's data comes from: `{kind: ..., <settings>}`.
  *
+ * An sftp source without `knownHosts` (the server's host key as a known_hosts
+ * line) is refused by the runtime unless it sets `acceptAnyHostKey: true`,
+ * which connects without checking who the server is (whoever answers receives
+ * the credential), so turning it on needs the bind-secrets permission.
+ *
  * The settings differ by kind and are validated by the platform, so they are
  * carried as an array. Secrets in settings are the secret's NAME
  * (`['password' => ['name' => 'sftp-password']]`), never a value. A kind

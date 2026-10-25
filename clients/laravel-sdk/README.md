@@ -496,6 +496,15 @@ $secret = FlowCatalyst::platformConfig()->revealSecret('rfp', 'mail', 'smtp_pass
 $secret->value;   // plaintext; var_dump/json_encode/toArray() show "***". Uncached, never logged.
 // 403 not authorised, 404 no such property, 400 NOT_A_SECRET (PLAIN: use get()) -> FlowCatalystException
 
+// Writing "***" or an empty value to a SECRET is refused (400 SECRET_VALUE_MASKED / SECRET_VALUE_REQUIRED,
+// PlatformConfig::ERROR_SECRET_VALUE_MASKED / ERROR_SECRET_VALUE_REQUIRED); to keep a secret, do not set it.
+
+// Acting for a signed-in user: set/delete/revealSecret take onBehalfOf, sent as X-On-Behalf-Of and recorded
+// in the audit row (service accounts only; at most 256 printable characters, else 400 INVALID_ON_BEHALF_OF).
+FlowCatalyst::platformConfig()->set('rfp', 'mail', 'from', 'a@b.c', onBehalfOf: $user->email);
+$secret = FlowCatalyst::platformConfig()->revealSecret('rfp', 'mail', 'smtp_password', onBehalfOf: $user->email);
+// List rows carry clientIdentifier (e.g. "acme") beside the stored clientId.
+
 // Email-domain mapping by domain (404 FlowCatalystException when unmapped)
 $mapping = FlowCatalyst::emailDomainMappings()->getByDomain('example.com');
 
@@ -600,11 +609,27 @@ $definition = new IngestionDefinition(
 
 $ing = FlowCatalyst::ingestions()->create('edi', 'acme', 'orders', $definition);
 FlowCatalyst::ingestions()->update($ing->id, $definition, expectedVersion: $ing->version);
+
+$ing->save?->outcome;        // SAVED, MADE_LIVE, DRAFT, DRAFT_EXISTS or UNCHANGED
+$ing->save?->awaitingPromote; // true for a draft someone with promote must make live
+
+// Notices: failures the platform refused (category "rejected"); $ing->notices counts the open ones
+$open = FlowCatalyst::ingestions()->failures($ing->id, category: 'rejected', undismissed: true);
+FlowCatalyst::ingestions()->dismissFailure($ing->id, $open['failures'][0]['id']); // stays listed
+
+// The secret names the live definition binds, with each runtime's last fetch (never a value)
+$secrets = FlowCatalyst::ingestions()->secrets($ing->id);
 ```
 
 An ingestion has an INTEGRATION application (code) and a client (id or identifier). Secrets are referenced by
 name, never passed as values. A runtime-supplied source kind is `IngestionSource::custom($type, $settings)`.
 `ingestionSets()->apply($name, $items, dryRun: true)` plans a set apply without writing.
+
+Without the promote permission a create or update saves the definition as a **draft** (`save->outcome` is
+`DRAFT`), never a refusal; someone who holds promote makes it live with `makeVersionLive()`. A definition an
+existing version already says is not saved again; versions carry `draft` and `digest`. `$ing->warnings` names
+what will not run as meant, for example an sftp source with neither `knownHosts` nor `acceptAnyHostKey`
+(`acceptAnyHostKey: true` connects without checking the host key and needs the bind-secrets permission).
 
 ## Portal identities
 

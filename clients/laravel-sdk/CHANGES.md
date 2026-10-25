@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Ingestions: `Ingestion` gains `notices`, `latestNotice`, `latestNoticeAt`, `warnings` and `save`
+  (new `IngestionSaveOutcome`: `outcome` SAVED | MADE_LIVE | DRAFT | DRAFT_EXISTS | UNCHANGED,
+  `version`, `awaitingPromote`, `message`); `IngestionVersion` gains `draft`, `digest` and `save`.
+  Without the promote permission a create or update saves a draft (`save->outcome === 'DRAFT'`).
+  `failures()` takes `category` (payload | rejected) and `undismissed` (failure rows now carry
+  `category`, `createdAt`, `dismissedAt`, `dismissedBy`); new `dismissFailure($id, $failureId)` and
+  `secrets($id)` (bound names and each runtime's last fetch, never a value). sftp sources may set
+  `acceptAnyHostKey`. All additive (new trailing optional parameters and constructor arguments).
+- Platform config: `set()`, `delete()` and `revealSecret()` take a trailing `?string $onBehalfOf`, sent as
+  `X-On-Behalf-Of` (`PlatformConfig::ON_BEHALF_OF_HEADER`) and recorded in the audit row.
+  `PlatformConfigProperty` gains `clientIdentifier`. New constants `PlatformConfig::ERROR_SECRET_VALUE_MASKED`
+  and `ERROR_SECRET_VALUE_REQUIRED` (writing `***` or an empty value to a SECRET is refused).
+- Generated client regenerated from the refreshed spec (`make sdk-spec`, `prepare-openapi.php`, `jane-openapi
+  generate`): adds the ingestion, ingestion-set and ingestion-runtime endpoints and models, the
+  `X-On-Behalf-Of` header parameter on the platform-config endpoints, `ConfigResponse::clientIdentifier`, and
+  the function-trace fields already in the spec.
 - Docs: `platformConfig()->revealSecret()` needs a reveal permission; being the application's own
   service account is not enough. The account needs `platform:application-service:config:reveal`
   (carried by the `platform:application-service` role), and the platform confines it to its own

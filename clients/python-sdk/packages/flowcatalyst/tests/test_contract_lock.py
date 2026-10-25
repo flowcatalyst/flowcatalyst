@@ -104,13 +104,30 @@ def test_ingestion_operations_exist_with_their_parameters(lock: dict[str, Any]) 
         p["name"] for p in lock["paths"]["/api/ingestion-sets/{name}"]["put"]["parameters"]
     }
     assert "dryRun" in apply_params
+    failure_params = {
+        p["name"] for p in lock["paths"]["/api/ingestions/{id}/failures"]["get"]["parameters"]
+    }
+    assert {"after", "limit", "category", "undismissed"} <= failure_params
+
+
+def test_platform_config_writes_take_the_on_behalf_of_header(lock: dict[str, Any]) -> None:
+    from flowcatalyst.resources import platform_config as pc
+
+    for op in (pc.SET_OPERATION, pc.DELETE_OPERATION, pc.REVEAL_OPERATION):
+        params = lock["paths"][op.path][op.method.lower()]["parameters"]
+        assert ("header", pc.ON_BEHALF_OF_HEADER) in {(p["in"], p["name"]) for p in params}, op
 
 
 def test_ingestion_definition_models_are_subsets_of_the_lock(lock: dict[str, Any]) -> None:
     from flowcatalyst.models.ingestion import (
         Ingestion,
         IngestionDefinition,
+        IngestionFailure,
+        IngestionSaveOutcome,
+        IngestionSecret,
+        IngestionSecretFetch,
         IngestionTest,
+        IngestionVersion,
         Target,
     )
 
@@ -121,6 +138,14 @@ def test_ingestion_definition_models_are_subsets_of_the_lock(lock: dict[str, Any
 
     assert fields(Target) == set(schemas["Target"]["properties"])
     assert fields(IngestionDefinition) == set(schemas["IngestionDefinition"]["properties"])
-    for model, name in ((Ingestion, "IngestionResponse"), (IngestionTest, "IngestionTestResponse")):
+    for model, name in (
+        (Ingestion, "IngestionResponse"),
+        (IngestionTest, "IngestionTestResponse"),
+        (IngestionVersion, "IngestionVersionResponse"),
+        (IngestionFailure, "IngestionFailureResponse"),
+        (IngestionSaveOutcome, "IngestionSaveOutcome"),
+        (IngestionSecret, "IngestionSecretResponse"),
+        (IngestionSecretFetch, "IngestionSecretFetchResponse"),
+    ):
         assert set(schemas[name]["required"]) <= fields(model), name
         assert fields(model) <= set(schemas[name]["properties"]), name

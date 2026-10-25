@@ -25,6 +25,8 @@ class PlatformConfigProperty
         public readonly ?string $description,
         public readonly string $createdAt,
         public readonly string $updatedAt,
+        /** The client's identifier (e.g. `acme`) beside the stored `clientId`. */
+        public readonly ?string $clientIdentifier = null,
     ) {}
 
     public static function fromArray(array $data): self
@@ -41,6 +43,7 @@ class PlatformConfigProperty
             description: isset($data['description']) ? (string) $data['description'] : null,
             createdAt: (string) ($data['createdAt'] ?? ''),
             updatedAt: (string) ($data['updatedAt'] ?? ''),
+            clientIdentifier: isset($data['clientIdentifier']) ? (string) $data['clientIdentifier'] : null,
         );
     }
 
@@ -55,6 +58,7 @@ class PlatformConfigProperty
             'valueType' => $this->valueType,
             'value' => $this->value,
             'clientId' => $this->clientId,
+            'clientIdentifier' => $this->clientIdentifier,
             'description' => $this->description,
             'createdAt' => $this->createdAt,
             'updatedAt' => $this->updatedAt,

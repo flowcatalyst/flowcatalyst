@@ -19,7 +19,7 @@ class EnableTraceRequest extends \ArrayObject
      */
     protected $dollarSchema;
     /**
-     * Stay on until switched off, with no time limit (minutes is ignored)
+     * Stay on until switched off, at most the context's indefiniteMaxDays (then it closes by itself); minutes is ignored. Needs platform:function:trace:indefinite; never for http (400 TRACE_INDEFINITE_NOT_ALLOWED)
      *
      * @var bool|null
      */
@@ -59,7 +59,7 @@ class EnableTraceRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Stay on until switched off, with no time limit (minutes is ignored)
+     * Stay on until switched off, at most the context's indefiniteMaxDays (then it closes by itself); minutes is ignored. Needs platform:function:trace:indefinite; never for http (400 TRACE_INDEFINITE_NOT_ALLOWED)
      *
      * @return bool|null
      */
@@ -68,7 +68,7 @@ class EnableTraceRequest extends \ArrayObject
         return $this->indefinite;
     }
     /**
-     * Stay on until switched off, with no time limit (minutes is ignored)
+     * Stay on until switched off, at most the context's indefiniteMaxDays (then it closes by itself); minutes is ignored. Needs platform:function:trace:indefinite; never for http (400 TRACE_INDEFINITE_NOT_ALLOWED)
      *
      * @param bool|null $indefinite
      *

@@ -88,6 +88,38 @@ final class RawRouteResourcesTest extends TestCase
         );
     }
 
+    public function test_platform_config_writes_send_on_behalf_of_only_when_given(): void
+    {
+        $cfg = new PlatformConfig($this->client($this->configRow()));
+
+        $cfg->set('rfp', 'mail', 'from', 'v', onBehalfOf: 'usr:alice@example.com');
+        $cfg->delete('rfp', 'mail', 'from', 'clt_1', 'bob');
+        $cfg->delete('rfp', 'mail', 'from', onBehalfOf: '  ');
+
+        $this->assertSame(
+            ['json' => ['value' => 'v', 'valueType' => 'PLAIN'], 'headers' => ['X-On-Behalf-Of' => 'usr:alice@example.com']],
+            $this->calls[0][2],
+        );
+        $this->assertSame(
+            ['DELETE', '/api/config/rfp/mail/from?clientId=clt_1', ['headers' => [PlatformConfig::ON_BEHALF_OF_HEADER => 'bob']]],
+            $this->calls[1],
+        );
+        $this->assertSame(['DELETE', '/api/config/rfp/mail/from', []], $this->calls[2]);
+    }
+
+    public function test_platform_config_rows_carry_the_client_identifier(): void
+    {
+        $cfg = new PlatformConfig($this->client(['items' => [
+            $this->configRow() + ['clientId' => 'clt_1', 'clientIdentifier' => 'acme'],
+        ]]));
+
+        $row = $cfg->list('rfp')[0];
+
+        $this->assertSame('clt_1', $row->clientId);
+        $this->assertSame('acme', $row->clientIdentifier);
+        $this->assertSame('acme', $row->toArray()['clientIdentifier']);
+    }
+
     public function test_platform_config_delete_and_list(): void
     {
         $cfg = new PlatformConfig($this->client(['items' => [$this->configRow()]]));

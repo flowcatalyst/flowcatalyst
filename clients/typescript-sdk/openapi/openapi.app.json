@@ -859,6 +859,9 @@
           "clientId": {
             "type": "string"
           },
+          "clientIdentifier": {
+            "type": "string"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -6211,10 +6214,21 @@
             }
           },
           {
+            "description": "Scope to one client: the client's id (clt_...) or its identifier (e.g. acme). The platform stores the id, so both name the same value. Omit for the application's global value. An unknown client is 404.",
             "explode": false,
             "in": "query",
             "name": "clientId",
             "schema": {
+              "description": "Scope to one client: the client's id (clt_...) or its identifier (e.g. acme). The platform stores the id, so both name the same value. Omit for the application's global value. An unknown client is 404.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters.",
+            "in": "header",
+            "name": "X-On-Behalf-Of",
+            "schema": {
+              "description": "Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters.",
               "type": "string"
             }
           }
@@ -6268,10 +6282,12 @@
             }
           },
           {
+            "description": "Scope to one client: the client's id (clt_...) or its identifier (e.g. acme). The platform stores the id, so both name the same value. Omit for the application's global value. An unknown client is 404.",
             "explode": false,
             "in": "query",
             "name": "clientId",
             "schema": {
+              "description": "Scope to one client: the client's id (clt_...) or its identifier (e.g. acme). The platform stores the id, so both name the same value. Omit for the application's global value. An unknown client is 404.",
               "type": "string"
             }
           }
@@ -6332,10 +6348,21 @@
             }
           },
           {
+            "description": "Scope to one client: the client's id (clt_...) or its identifier (e.g. acme); the platform stores the id. Omit for the application's global value. An unknown client is 404.",
             "explode": false,
             "in": "query",
             "name": "clientId",
             "schema": {
+              "description": "Scope to one client: the client's id (clt_...) or its identifier (e.g. acme); the platform stores the id. Omit for the application's global value. An unknown client is 404.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters.",
+            "in": "header",
+            "name": "X-On-Behalf-Of",
+            "schema": {
+              "description": "Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters.",
               "type": "string"
             }
           }

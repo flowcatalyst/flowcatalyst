@@ -118,4 +118,45 @@ class PlatformConfigResourceTest {
         assertEquals("/api/config/orders/smtp/password?clientId=clt_1", lastPath());
         assertEquals(1, cfg.list("orders").getItems().size());
     }
+
+    @Test
+    void listRowsCarryTheClientIdentifier() {
+        String item = "{\"id\":\"c1\",\"applicationCode\":\"orders\",\"section\":\"smtp\",\"property\":\"host\","
+                + "\"scope\":\"CLIENT\",\"clientId\":\"clt_1\",\"clientIdentifier\":\"acme\","
+                + "\"value\":\"h\",\"valueType\":\"PLAIN\"}";
+        server.on("GET", "/api/platform-config/orders", 200, "{\"items\":[" + item + "]}");
+
+        var row = client().platformConfig().list("orders").getItems().getFirst();
+        assertEquals("clt_1", row.getClientId());
+        assertEquals("acme", row.getClientIdentifier());
+    }
+
+    @Test
+    void setDeleteAndRevealSendOnBehalfOfOnlyWhenGiven() {
+        String item = "{\"id\":\"c1\",\"applicationCode\":\"orders\",\"section\":\"smtp\",\"property\":\"password\","
+                + "\"scope\":\"GLOBAL\",\"value\":\"***\",\"valueType\":\"SECRET\"}";
+        server.on("PUT", "/api/config/orders/smtp/password", 200, item);
+        server.on("DELETE", "/api/config/orders/smtp/password", 204, null);
+        server.on("GET", "/api/config/orders/smtp/password/secret", 200, secretBody());
+
+        var cfg = client().platformConfig();
+        var req = new io.flowcatalyst.sdk.generated.model.SetPropertyRequest().value("v").valueType("SECRET");
+        cfg.set("orders", "smtp", "password", req, "usr:alice@example.com");
+        assertEquals("PUT", server.requests.getLast().method());
+        assertEquals("usr:alice@example.com", server.requests.getLast().onBehalfOf());
+        cfg.set("orders", "smtp", "password", req);
+        assertEquals(null, server.requests.getLast().onBehalfOf());
+
+        cfg.delete("orders", "smtp", "password", "clt_1", "bob");
+        assertEquals("DELETE", server.requests.getLast().method());
+        assertEquals("/api/config/orders/smtp/password?clientId=clt_1", lastPath());
+        assertEquals("bob", server.requests.getLast().onBehalfOf());
+        cfg.delete("orders", "smtp", "password", null, "  ");
+        assertEquals("/api/config/orders/smtp/password", lastPath());
+        assertEquals(null, server.requests.getLast().onBehalfOf());
+
+        cfg.revealSecret("orders", "smtp", "password", null, "carol");
+        assertEquals("carol", server.requests.getLast().onBehalfOf());
+        assertEquals(PlatformConfigResource.ON_BEHALF_OF, "X-On-Behalf-Of");
+    }
 }

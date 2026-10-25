@@ -76,6 +76,12 @@ class TraceContextResponseNormalizer implements DenormalizerInterface, Normalize
         elseif (\array_key_exists('indefinite', $data) && $data['indefinite'] === null) {
             $object->setIndefinite(null);
         }
+        if (\array_key_exists('indefiniteMaxDays', $data) && $data['indefiniteMaxDays'] !== null) {
+            $object->setIndefiniteMaxDays($data['indefiniteMaxDays']);
+        }
+        elseif (\array_key_exists('indefiniteMaxDays', $data) && $data['indefiniteMaxDays'] === null) {
+            $object->setIndefiniteMaxDays(null);
+        }
         if (\array_key_exists('live', $data) && $data['live'] !== null) {
             $object->setLive($data['live']);
         }
@@ -109,6 +115,7 @@ class TraceContextResponseNormalizer implements DenormalizerInterface, Normalize
         $dataArray['description'] = $data->getDescription();
         $dataArray['enabledUntil'] = $data->getEnabledUntil()?->format('Y-m-d\TH:i:sP');
         $dataArray['indefinite'] = $data->getIndefinite();
+        $dataArray['indefiniteMaxDays'] = $data->getIndefiniteMaxDays();
         $dataArray['live'] = $data->getLive();
         $dataArray['maxMinutes'] = $data->getMaxMinutes();
         $dataArray['name'] = $data->getName();

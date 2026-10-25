@@ -20,6 +20,21 @@ fc-sdk and the wire-contract ambiguities found. Summary:
   are tagged enums on `kind`; a runtime extension's kind (and `camel-route`) is
   `Source::Custom { kind_type, settings }`. Secrets are `SecretRef` names only.
 - The runtime operations (`/api/ingestion-runtime/v1/*`) are not in this SDK.
+- Drafts, notices and secrets: `IngestionResponse` gains `notices`,
+  `latest_notice`, `latest_notice_at`, `warnings` and `save`
+  (`IngestionSaveOutcome`: `outcome` SAVED | MADE_LIVE | DRAFT | DRAFT_EXISTS
+  | UNCHANGED, `version`, `awaiting_promote`, `message`);
+  `IngestionVersionResponse` gains `draft`, `digest` and `save`;
+  `IngestionFailureResponse` gains `category` (payload | rejected),
+  `created_at`, `dismissed_at` and `dismissed_by`. New `dismiss_failure(id,
+  failure_id)` and `list_secrets(id)` (names and each runtime's last fetch,
+  never a value). Without promote a create or update saves a draft.
+- **Breaking** (against the earlier draft of this version):
+  `list_failures(id, after, limit)` is now `list_failures(id,
+  &ListIngestionFailuresQuery)` (`after`, `limit`, `category`, `undismissed`;
+  `Default` for none), as the Go SDK's `Failures` takes filters; and
+  `Source::Sftp` gains `accept_any_host_key: bool` (struct literals must name
+  it; it is omitted from the wire when false).
 
 ### Platform config
 - `platform_config()` resource: `list`, `get`, `set`, `delete` and
@@ -28,7 +43,17 @@ fc-sdk and the wire-contract ambiguities found. Summary:
   /api/config/{app}/{section}/{property}/secret`) is the only way to read the
   plaintext. It is audited server-side, never cached by the SDK, and returns a
   `SecretValue` that prints `***` in `Debug`/`Display` (`expose()` reads it).
-  Errors: 403, 404, 400 `NOT_A_SECRET`.
+  Errors: 403, 404, 400 `NOT_A_SECRET`. Reveal needs
+  `platform:admin:config:reveal` or `platform:application-service:config:reveal`
+  (an application's service account is confined to its own applications and
+  the clients it is linked to); being the application's own service account
+  is not enough.
+- `platform_config().on_behalf_of(who)` makes set, delete and reveal send
+  `X-On-Behalf-Of` (`ON_BEHALF_OF_HEADER`), recorded in the audit row; a value
+  that cannot be a header is `ClientError::InvalidHeader` (new variant) before
+  anything is sent. `ConfigResponse` gains `client_identifier`. Writing `***`
+  or an empty value to a SECRET is refused (`400 SECRET_VALUE_MASKED` /
+  `SECRET_VALUE_REQUIRED`).
 
 ### Outbox
 - `outbox_messages` DDL is the Java SDK's migration byte for byte (PostgreSQL

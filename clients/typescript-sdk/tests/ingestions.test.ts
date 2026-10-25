@@ -237,3 +237,109 @@ test("error statuses map to typed errors", async () => {
 		},
 	);
 });
+
+test("listFailures sends category and undismissed only when given", async () => {
+	await withServer(200, { failures: [], hasMore: false }, async (client, seen) => {
+		const r = client.ingestions();
+		await r.listFailures("ing_1");
+		assert.equal(seen.url, "/api/ingestions/ing_1/failures");
+		await r.listFailures("ing_1", { category: "rejected", undismissed: true, after: "c", limit: 10 });
+		assert.equal(
+			seen.url,
+			"/api/ingestions/ing_1/failures?category=rejected&after=c&limit=10&undismissed=true",
+		);
+		await r.listFailures("ing_1", { undismissed: false });
+		assert.equal(seen.url, "/api/ingestions/ing_1/failures");
+	});
+});
+
+test("dismissFailure POSTs the dismiss route and returns the failure", async () => {
+	const failure = {
+		id: "igf_1",
+		kind: "JOBS_REJECTED",
+		category: "rejected",
+		message: "refused",
+		afterRecords: 0,
+		occurredAt: "2026-10-25T00:00:00Z",
+		createdAt: "2026-10-25T00:00:01Z",
+		dismissedAt: "2026-10-25T01:00:00Z",
+		dismissedBy: "prn_1",
+	};
+	await withServer(200, failure, async (client, seen) => {
+		const res = await client.ingestions().dismissFailure("ing/1", "igf/1");
+		assert.equal(seen.method, "POST");
+		assert.equal(seen.url, "/api/ingestions/ing%2F1/failures/igf%2F1/dismiss");
+		assert.equal(seen.body, undefined);
+		const f = res._unsafeUnwrap();
+		assert.equal(f.category, "rejected");
+		assert.equal(f.dismissedBy, "prn_1");
+	});
+});
+
+test("listSecrets GETs names and fetches, never values", async () => {
+	const body = {
+		secrets: [
+			{
+				name: "ORDERS_SFTP_PASSWORD",
+				bound: true,
+				fetches: [
+					{
+						runtimeId: "rt-1",
+						version: 3,
+						principalId: "prn_rt",
+						lastFetchedAt: "2026-10-25T00:00:00Z",
+						fetchCount: 7,
+					},
+				],
+			},
+		],
+	};
+	await withServer(200, body, async (client, seen) => {
+		const res = await client.ingestions().listSecrets("ing_1");
+		assert.equal(seen.method, "GET");
+		assert.equal(seen.url, "/api/ingestions/ing_1/secrets");
+		const list = res._unsafeUnwrap();
+		assert.equal(list.secrets[0]?.fetches[0]?.fetchCount, 7);
+		assert.equal(list.secrets[0]?.bound, true);
+	});
+});
+
+test("create answers a draft with its save outcome, notices and warnings", async () => {
+	const answer = {
+		id: "ing_1",
+		...definition,
+		notices: 2,
+		latestNotice: "jobs refused",
+		latestNoticeAt: "2026-10-25T00:00:00Z",
+		warnings: ["sftp source names no host key"],
+		save: { outcome: "DRAFT", version: 1, awaitingPromote: true, message: "saved as a draft" },
+	};
+	await withServer(201, answer, async (client) => {
+		const ing = (await client.ingestions().create({ ...create, live: true }))._unsafeUnwrap();
+		assert.equal(ing.save?.outcome, "DRAFT");
+		assert.equal(ing.save?.awaitingPromote, true);
+		assert.equal(ing.notices, 2);
+		assert.deepEqual(ing.warnings, ["sftp source names no host key"]);
+	});
+});
+
+test("an sftp source carries acceptAnyHostKey", async () => {
+	const sftp: CreateIngestionRequest = {
+		...create,
+		source: {
+			kind: "sftp",
+			host: "sftp.example.com",
+			port: 22,
+			directory: "/in",
+			username: "u",
+			credential: { name: "ORDERS_SFTP_PASSWORD" },
+			acceptAnyHostKey: true,
+			every: "PT5M",
+		},
+	};
+	await withServer(201, { id: "ing_1", ...sftp }, async (client, seen) => {
+		await client.ingestions().create(sftp);
+		const sent = seen.body as { source: { acceptAnyHostKey?: boolean } };
+		assert.equal(sent.source.acceptAnyHostKey, true);
+	});
+});

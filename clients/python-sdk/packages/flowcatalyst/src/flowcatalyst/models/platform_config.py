@@ -32,6 +32,9 @@ class ConfigProperty(BaseModel):
     created_at: datetime
     updated_at: datetime
     client_id: str | None = None
+    #: The client's identifier (e.g. ``acme``) beside the stored ``client_id``, so a caller
+    #: holding either can match the row.
+    client_identifier: str | None = None
     description: str | None = None
 
 

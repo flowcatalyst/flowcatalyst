@@ -19,9 +19,11 @@ from flowcatalyst.models.ingestion import (
     ApplyIngestionSetItem,
     Ingestion,
     IngestionDefinition,
+    IngestionFailure,
     IngestionFailurePage,
     IngestionHistoryPage,
     IngestionPage,
+    IngestionSecretList,
     IngestionSet,
     IngestionSetApply,
     IngestionSetArchive,
@@ -217,6 +219,7 @@ class _SyncPlatformConfigResource:
         value_type: str | None = None,
         description: str | None = None,
         client_id: str | None = None,
+        on_behalf_of: str | None = None,
     ) -> ConfigProperty:
         return self._runner.run(
             self._inner.set(
@@ -227,19 +230,38 @@ class _SyncPlatformConfigResource:
                 value_type=value_type,
                 description=description,
                 client_id=client_id,
+                on_behalf_of=on_behalf_of,
             )
         )
 
     def delete(
-        self, app: str, section: str, property: str, *, client_id: str | None = None
+        self,
+        app: str,
+        section: str,
+        property: str,
+        *,
+        client_id: str | None = None,
+        on_behalf_of: str | None = None,
     ) -> None:
-        return self._runner.run(self._inner.delete(app, section, property, client_id=client_id))
+        return self._runner.run(
+            self._inner.delete(
+                app, section, property, client_id=client_id, on_behalf_of=on_behalf_of
+            )
+        )
 
     def reveal_secret(
-        self, app: str, section: str, property: str, *, client_id: str | None = None
+        self,
+        app: str,
+        section: str,
+        property: str,
+        *,
+        client_id: str | None = None,
+        on_behalf_of: str | None = None,
     ) -> SecretResponse:
         return self._runner.run(
-            self._inner.reveal_secret(app, section, property, client_id=client_id)
+            self._inner.reveal_secret(
+                app, section, property, client_id=client_id, on_behalf_of=on_behalf_of
+            )
         )
 
 
@@ -344,9 +366,25 @@ class _SyncIngestionsResource:
         return self._runner.run(self._inner.history(id, limit=limit, offset=offset))
 
     def failures(
-        self, id: str, *, after: str | None = None, limit: int | None = None
+        self,
+        id: str,
+        *,
+        after: str | None = None,
+        limit: int | None = None,
+        category: str | None = None,
+        undismissed: bool = False,
     ) -> IngestionFailurePage:
-        return self._runner.run(self._inner.failures(id, after=after, limit=limit))
+        return self._runner.run(
+            self._inner.failures(
+                id, after=after, limit=limit, category=category, undismissed=undismissed
+            )
+        )
+
+    def dismiss_failure(self, id: str, failure_id: str) -> IngestionFailure:
+        return self._runner.run(self._inner.dismiss_failure(id, failure_id))
+
+    def secrets(self, id: str) -> IngestionSecretList:
+        return self._runner.run(self._inner.secrets(id))
 
     def source_kinds(self) -> builtins.list[IngestionSourceKind]:
         return self._runner.run(self._inner.source_kinds())

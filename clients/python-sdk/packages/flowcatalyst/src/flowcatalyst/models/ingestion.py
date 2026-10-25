@@ -40,6 +40,10 @@ __all__ = [
     "IngestionHistoryEntry",
     "IngestionHistoryPage",
     "IngestionPage",
+    "IngestionSaveOutcome",
+    "IngestionSecret",
+    "IngestionSecretFetch",
+    "IngestionSecretList",
     "IngestionSet",
     "IngestionSetApply",
     "IngestionSetArchive",
@@ -244,7 +248,12 @@ class SftpSource(_Part):
     directory: str
     username: str
     credential: SecretRef
+    #: The server's host key as a known_hosts line. Without it the runtime refuses to start the
+    #: source unless ``accept_any_host_key`` is set.
     known_hosts: str | None = None
+    #: Connect without checking who the server is (whoever answers receives the credential);
+    #: turning it on needs the bind-secrets permission.
+    accept_any_host_key: bool | None = None
     include: str | None = None
     every: str
 
@@ -370,6 +379,29 @@ class IngestionDefinition(_Part):
 
 # --- responses ----------------------------------------------------------------------------------
 
+#: What a create, update or version save did.
+SaveOutcome = Literal["UNCHANGED", "SAVED", "MADE_LIVE", "DRAFT", "DRAFT_EXISTS"]
+
+#: ``payload``: a record or payload the runtime could not take. ``rejected``: the platform
+#: refused the runtime's jobs permanently, shown on the ingestion as a notice until dismissed.
+FailureCategory = Literal["payload", "rejected"]
+
+
+class IngestionSaveOutcome(BaseModel):
+    """What a create, update or version save did. ``UNCHANGED``: the live version already says
+    it, nothing written. ``SAVED``: saved as a new version and made live. ``MADE_LIVE``: a saved
+    version that was not live already says it and was made live. ``DRAFT``: saved as a new
+    version that is not live (no promote permission, or not asked to be live). ``DRAFT_EXISTS``:
+    a saved draft already says it, nothing saved. ``version`` is the live version or the draft;
+    ``awaiting_promote`` is true while someone who holds promote must make it live."""
+
+    model_config = _RESPONSE
+
+    outcome: SaveOutcome | str
+    version: int
+    awaiting_promote: bool
+    message: str = ""
+
 
 class Ingestion(BaseModel):
     model_config = _RESPONSE
@@ -392,6 +424,14 @@ class Ingestion(BaseModel):
     keep_failed_payloads: bool | None = None
     managed_by: str | None = None
     runtime_notice: str | None = None
+    #: Undismissed notices: failures the platform refused (category ``rejected``).
+    notices: int = 0
+    latest_notice: str | None = None
+    latest_notice_at: datetime | None = None
+    #: What the definition says that will not run as meant.
+    warnings: list[str] | None = None
+    #: What this create or update did (set on those answers only).
+    save: IngestionSaveOutcome | None = None
 
     @property
     def definition(self) -> IngestionDefinition:
@@ -421,6 +461,8 @@ class IngestionVersion(BaseModel):
     id: str
     version: int
     live: bool
+    #: Saved but not live: waits for someone who holds promote to make it live.
+    draft: bool = False
     created_at: datetime
     name: str
     source: Source
@@ -430,6 +472,10 @@ class IngestionVersion(BaseModel):
     note: str | None = None
     created_by: str | None = None
     applied_from: str | None = None
+    #: sha256 (hex) of the definition's canonical form; equal definitions have equal digests.
+    digest: str | None = None
+    #: What this save did (the answer of ``save_version`` only).
+    save: IngestionSaveOutcome | None = None
 
 
 class IngestionFailure(BaseModel):
@@ -437,12 +483,17 @@ class IngestionFailure(BaseModel):
 
     id: str
     kind: str
+    category: FailureCategory | str = "payload"
     message: str
     after_records: int
     occurred_at: datetime
+    created_at: datetime | None = None
     excerpt: str | None = None
     runtime_id: str | None = None
     version: int | None = None
+    dismissed_at: datetime | None = None
+    #: The principal who dismissed it.
+    dismissed_by: str | None = None
 
 
 class IngestionFailurePage(BaseModel):
@@ -451,6 +502,35 @@ class IngestionFailurePage(BaseModel):
     failures: list[IngestionFailure]
     has_more: bool
     next_cursor: str | None = None
+
+
+class IngestionSecretFetch(BaseModel):
+    """When a runtime last fetched a bound secret."""
+
+    model_config = _RESPONSE
+
+    runtime_id: str
+    version: int
+    last_fetched_at: datetime
+    fetch_count: int
+    principal_id: str | None = None
+
+
+class IngestionSecret(BaseModel):
+    """A secret *name* the ingestion binds (``bound``) or bound under an earlier live version;
+    never its value. ``fetches`` is per runtime, newest first."""
+
+    model_config = _RESPONSE
+
+    name: str
+    bound: bool
+    fetches: list[IngestionSecretFetch]
+
+
+class IngestionSecretList(BaseModel):
+    model_config = _RESPONSE
+
+    secrets: list[IngestionSecret]
 
 
 class IngestionHistoryEntry(BaseModel):

@@ -40,6 +40,9 @@ class TraceRecordResponseNormalizer implements DenormalizerInterface, Normalizer
         if (\array_key_exists('bodiesRedacted', $data) && \is_int($data['bodiesRedacted'])) {
             $data['bodiesRedacted'] = (bool) $data['bodiesRedacted'];
         }
+        if (\array_key_exists('redacted', $data) && \is_int($data['redacted'])) {
+            $data['redacted'] = (bool) $data['redacted'];
+        }
         if (\array_key_exists('at', $data) && $data['at'] !== null) {
             $object->setAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['at']));
         }
@@ -100,6 +103,12 @@ class TraceRecordResponseNormalizer implements DenormalizerInterface, Normalizer
         elseif (\array_key_exists('message', $data) && $data['message'] === null) {
             $object->setMessage(null);
         }
+        if (\array_key_exists('redacted', $data) && $data['redacted'] !== null) {
+            $object->setRedacted($data['redacted']);
+        }
+        elseif (\array_key_exists('redacted', $data) && $data['redacted'] === null) {
+            $object->setRedacted(null);
+        }
         if (\array_key_exists('reference', $data) && $data['reference'] !== null) {
             $object->setReference($data['reference']);
         }
@@ -135,6 +144,9 @@ class TraceRecordResponseNormalizer implements DenormalizerInterface, Normalizer
         $dataArray['kind'] = $data->getKind();
         $dataArray['level'] = $data->getLevel();
         $dataArray['message'] = $data->getMessage();
+        if ($data->isInitialized('redacted') && null !== $data->getRedacted()) {
+            $dataArray['redacted'] = $data->getRedacted();
+        }
         $dataArray['reference'] = $data->getReference();
         $dataArray['runnerId'] = $data->getRunnerId();
         $dataArray['version'] = $data->getVersion();

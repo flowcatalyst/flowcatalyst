@@ -158,3 +158,40 @@ def test_sync_facade_reveal_secret() -> None:
                 fc.platform_config.reveal_secret("app", "smtp", "password").value.get_secret_value()
                 == "hunter2-plaintext"
             )
+
+
+@respx.mock
+async def test_set_delete_and_reveal_send_on_behalf_of_only_when_given() -> None:
+    respx.post(f"{BASE}/oauth/token").respond(200, json=token_body())
+    put = respx.put(f"{BASE}/api/config/app/smtp/host").respond(200, json=PLAIN)
+    dele = respx.delete(f"{BASE}/api/config/app/smtp/host").respond(204)
+    reveal = respx.get(f"{BASE}/api/config/app/smtp/password/secret").respond(200, json=SECRET)
+    async with client() as fc:
+        pc = fc.platform_config
+        await pc.set("app", "smtp", "host", "v", on_behalf_of="usr:alice")
+        await pc.set("app", "smtp", "host", "v")
+        await pc.delete("app", "smtp", "host", client_id="clt_1", on_behalf_of="bob")
+        await pc.delete("app", "smtp", "host", on_behalf_of="  ")
+        await pc.reveal_secret("app", "smtp", "password", on_behalf_of="carol")
+    assert _req(put, 0).headers["x-on-behalf-of"] == "usr:alice"
+    assert "x-on-behalf-of" not in _req(put, 1).headers
+    assert _req(dele, 0).headers["x-on-behalf-of"] == "bob"
+    assert _req(dele, 0).url.params["clientId"] == "clt_1"
+    assert "x-on-behalf-of" not in _req(dele, 1).headers
+    assert reveal.calls.last.request.headers["x-on-behalf-of"] == "carol"
+    assert reveal.calls.last.request.headers["authorization"].startswith("Bearer ")
+
+
+@respx.mock
+async def test_list_rows_carry_the_client_identifier() -> None:
+    respx.post(f"{BASE}/oauth/token").respond(200, json=token_body())
+    row = PLAIN | {"scope": "CLIENT", "clientId": "clt_1", "clientIdentifier": "acme"}
+    respx.get(f"{BASE}/api/platform-config/app").respond(200, json={"items": [row]})
+    async with client() as fc:
+        (prop,) = await fc.platform_config.list("app")
+    assert prop.client_id == "clt_1" and prop.client_identifier == "acme"
+
+
+def _req(route: respx.Route, index: int) -> httpx.Request:
+    request: httpx.Request = route.calls[index].request  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    return request  # pyright: ignore[reportUnknownVariableType]

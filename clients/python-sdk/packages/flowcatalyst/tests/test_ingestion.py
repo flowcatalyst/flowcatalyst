@@ -606,9 +606,133 @@ def test_sync_facade_covers_ingestions() -> None:
         token()
         respx.get(f"{BASE}/api/ingestions/ing_1").respond(200, json=INGESTION)
         respx.put(f"{BASE}/api/ingestion-sets/erp").respond(200, json=PLAN)
+        respx.get(f"{BASE}/api/ingestions/ing_1/secrets").respond(200, json={"secrets": []})
+        respx.post(f"{BASE}/api/ingestions/ing_1/failures/f1/dismiss").respond(200, json=FAILURE)
         with FlowCatalystSync(BASE, credentials=ClientCredentials("sa", "secret")) as fc:
             assert fc.ingestions.get("ing_1").code == "orders"
             assert fc.ingestion_sets.apply("erp", [], dry_run=True).name == "erp"
+            assert fc.ingestions.secrets("ing_1").secrets == []
+            assert fc.ingestions.dismiss_failure("ing_1", "f1").category == "rejected"
+
+
+# --- drafts, notices, secrets ------------------------------------------------------------------
+
+FAILURE: dict[str, Any] = {
+    "id": "f1",
+    "kind": "JOBS_REJECTED",
+    "category": "rejected",
+    "message": "refused",
+    "afterRecords": 0,
+    "occurredAt": "2026-10-25T10:00:00Z",
+    "createdAt": "2026-10-25T10:00:01Z",
+    "dismissedAt": "2026-10-25T11:00:00Z",
+    "dismissedBy": "prn_1",
+}
+
+
+@respx.mock
+async def test_failures_send_category_and_undismissed_only_when_given() -> None:
+    token()
+    route = respx.get(f"{BASE}/api/ingestions/ing_1/failures").respond(
+        200, json={"failures": [], "hasMore": False}
+    )
+    async with client() as fc:
+        await fc.ingestions.failures("ing_1")
+        await fc.ingestions.failures("ing_1", category="rejected", undismissed=True)
+        await fc.ingestions.failures("ing_1", category="payload", undismissed=False)
+    assert _req(route, 0).url.query == b""
+    assert dict(_req(route, 1).url.params) == {"category": "rejected", "undismissed": "true"}
+    assert dict(_req(route, 2).url.params) == {"category": "payload"}
+
+
+@respx.mock
+async def test_dismiss_failure_posts_and_returns_the_failure() -> None:
+    token()
+    route = respx.post(f"{BASE}/api/ingestions/ing_1/failures/f%2F1/dismiss").respond(
+        200, json=FAILURE
+    )
+    async with client() as fc:
+        failure = await fc.ingestions.dismiss_failure("ing_1", "f/1")
+    assert route.called and _req(route).content == b""
+    assert failure.category == "rejected" and failure.dismissed_by == "prn_1"
+    assert failure.dismissed_at is not None and failure.created_at is not None
+
+
+@respx.mock
+async def test_secrets_are_names_and_fetches() -> None:
+    token()
+    respx.get(f"{BASE}/api/ingestions/ing_1/secrets").respond(
+        200,
+        json={
+            "secrets": [
+                {
+                    "name": "orders-token",
+                    "bound": True,
+                    "fetches": [
+                        {
+                            "runtimeId": "rt-1",
+                            "version": 3,
+                            "principalId": "prn_rt",
+                            "lastFetchedAt": "2026-10-25T10:00:00Z",
+                            "fetchCount": 7,
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+    async with client() as fc:
+        listing = await fc.ingestions.secrets("ing_1")
+    secret = listing.secrets[0]
+    assert secret.name == "orders-token" and secret.bound
+    assert secret.fetches[0].fetch_count == 7 and secret.fetches[0].runtime_id == "rt-1"
+
+
+@respx.mock
+async def test_a_create_without_promote_answers_a_draft() -> None:
+    token()
+    answer = INGESTION | {
+        "notices": 2,
+        "latestNotice": "jobs refused",
+        "latestNoticeAt": "2026-10-25T10:00:00Z",
+        "warnings": ["no host key"],
+        "save": {
+            "outcome": "DRAFT",
+            "version": 1,
+            "awaitingPromote": True,
+            "message": "saved as a draft",
+        },
+    }
+    respx.post(f"{BASE}/api/ingestions").respond(201, json=answer)
+    respx.get(f"{BASE}/api/ingestions/ing_1/versions").respond(
+        200, json={"versions": [VERSION | {"draft": True, "digest": "ab12"}]}
+    )
+    async with client() as fc:
+        created = await fc.ingestions.create(
+            application="erp", client="acme", code="orders", definition=definition()
+        )
+        versions = await fc.ingestions.versions("ing_1")
+    assert created.save is not None and created.save.outcome == "DRAFT"
+    assert created.save.awaiting_promote and created.notices == 2
+    assert created.latest_notice == "jobs refused" and created.warnings == ["no host key"]
+    assert versions[0].draft and versions[0].digest == "ab12"
+    assert Ingestion.model_validate(INGESTION).notices == 0  # an older answer still reads
+
+
+def test_sftp_accept_any_host_key_round_trips() -> None:
+    wire: dict[str, Any] = {
+        "kind": "sftp",
+        "host": "h",
+        "port": 22,
+        "directory": "/in",
+        "username": "u",
+        "credential": {"name": "sftp-key"},
+        "acceptAnyHostKey": True,
+        "every": "PT5M",
+    }
+    body = {"name": "N", "source": wire, "split": {"kind": "none"}, "target": TARGET}
+    parsed = IngestionDefinition.model_validate(body)
+    assert parsed.model_dump(by_alias=True, exclude_none=True, mode="json") == body
 
 
 def _req(route: respx.Route, index: int = -1) -> httpx.Request:

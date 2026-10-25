@@ -27,6 +27,10 @@ class ConfigResponse
      */
     protected $clientId;
     /**
+     * @var string|null
+     */
+    protected $clientIdentifier;
+    /**
      * @var \DateTime|null
      */
     protected $createdAt;
@@ -118,6 +122,24 @@ class ConfigResponse
     {
         $this->initialized['clientId'] = true;
         $this->clientId = $clientId;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getClientIdentifier(): ?string
+    {
+        return $this->clientIdentifier;
+    }
+    /**
+     * @param string|null $clientIdentifier
+     *
+     * @return self
+     */
+    public function setClientIdentifier(?string $clientIdentifier): self
+    {
+        $this->initialized['clientIdentifier'] = true;
+        $this->clientIdentifier = $clientIdentifier;
         return $this;
     }
     /**

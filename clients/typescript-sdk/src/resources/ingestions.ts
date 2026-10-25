@@ -44,7 +44,33 @@ export interface CustomIngestionSource {
 	settings?: Record<string, unknown>;
 }
 
-export type IngestionSource = BuiltInIngestionSource | CustomIngestionSource;
+/**
+ * An sftp source, typed. Without `knownHosts` (the server's host key as a
+ * known_hosts line) the runtime refuses to start it unless
+ * `acceptAnyHostKey` is set, which connects without checking who the server
+ * is (whoever answers receives the credential), so turning it on needs the
+ * bind-secrets permission.
+ */
+export interface SftpIngestionSource {
+	kind: "sftp";
+	host: string;
+	port: number;
+	directory: string;
+	username: string;
+	/** Secret NAME of the password or private key. */
+	credential: { name: string };
+	knownHosts?: string;
+	acceptAnyHostKey?: boolean;
+	/** File name pattern such as `*.csv`; absent takes every file. */
+	include?: string;
+	/** ISO-8601 duration between polls, e.g. `PT5M`. */
+	every: string;
+}
+
+export type IngestionSource =
+	| SftpIngestionSource
+	| BuiltInIngestionSource
+	| CustomIngestionSource;
 
 /** How a payload becomes records. */
 export type IngestionSplit =
@@ -78,6 +104,30 @@ export interface IngestionDefinition {
 
 // ── Responses ───────────────────────────────────────────────────────────────
 
+/**
+ * What a create, update or version save did. `UNCHANGED`: the live version
+ * already says it, nothing written. `SAVED`: saved as a new version and made
+ * live. `MADE_LIVE`: a saved version that was not live already says it and was
+ * made live. `DRAFT`: saved as a new version that is not live (no promote
+ * permission, or `live: false`). `DRAFT_EXISTS`: a saved draft already says
+ * it, nothing saved.
+ */
+export type IngestionSaveOutcomeKind =
+	| "UNCHANGED"
+	| "SAVED"
+	| "MADE_LIVE"
+	| "DRAFT"
+	| "DRAFT_EXISTS";
+
+export interface IngestionSaveOutcome {
+	outcome: IngestionSaveOutcomeKind;
+	/** The live version (UNCHANGED, SAVED, MADE_LIVE) or the draft (DRAFT, DRAFT_EXISTS). */
+	version: number;
+	/** The definition is in a version that is not live; someone who holds promote makes it live. */
+	awaitingPromote: boolean;
+	message: string;
+}
+
 export interface Ingestion extends IngestionDefinition {
 	id: string;
 	applicationId: string;
@@ -91,6 +141,15 @@ export interface Ingestion extends IngestionDefinition {
 	/** Id of the set that owns the ingestion; read-only until the set is released. */
 	managedBy?: string;
 	runtimeNotice?: string;
+	/** Undismissed notices: failures the platform refused (category `rejected`). */
+	notices: number;
+	/** The newest undismissed notice's message. */
+	latestNotice?: string;
+	latestNoticeAt?: string;
+	/** What the definition says that will not run as meant. */
+	warnings?: string[];
+	/** What this create or update did (set on those answers only). */
+	save?: IngestionSaveOutcome;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -106,10 +165,16 @@ export interface IngestionVersion extends IngestionDefinition {
 	id: string;
 	version: number;
 	live: boolean;
+	/** Saved but not live: waits for someone who holds promote to make it live. */
+	draft: boolean;
+	/** sha256 (hex) of the definition's canonical form; equal definitions have equal digests. */
+	digest?: string;
 	note?: string;
 	appliedFrom?: string;
 	createdAt: string;
 	createdBy?: string;
+	/** What this save did (the answer of `saveVersion` only). */
+	save?: IngestionSaveOutcome;
 }
 
 export interface IngestionHistoryEntry {
@@ -126,9 +191,17 @@ export interface IngestionHistory {
 	hasMore: boolean;
 }
 
+/**
+ * `payload`: a record or payload the runtime could not take. `rejected`: the
+ * platform refused the runtime's jobs permanently, shown on the ingestion as a
+ * notice until someone dismisses it.
+ */
+export type IngestionFailureCategory = "payload" | "rejected";
+
 export interface IngestionFailure {
 	id: string;
 	kind: string;
+	category: IngestionFailureCategory;
 	message: string;
 	afterRecords: number;
 	occurredAt: string;
@@ -136,12 +209,40 @@ export interface IngestionFailure {
 	version?: number;
 	/** Only for an ingestion that keeps failed payloads. */
 	excerpt?: string;
+	createdAt: string;
+	dismissedAt?: string;
+	/** The principal who dismissed it. */
+	dismissedBy?: string;
 }
 
 export interface IngestionFailureList {
 	failures: IngestionFailure[];
 	hasMore: boolean;
 	nextCursor?: string;
+}
+
+/** When a runtime last fetched a bound secret. */
+export interface IngestionSecretFetch {
+	runtimeId: string;
+	/** The live version the last fetch was made under. */
+	version: number;
+	/** The runtime's service account. */
+	principalId?: string;
+	lastFetchedAt: string;
+	fetchCount: number;
+}
+
+/** A secret NAME the ingestion binds (or bound); never its value. */
+export interface IngestionSecret {
+	name: string;
+	/** The live definition names it; false for a name only fetched under an earlier live version. */
+	bound: boolean;
+	/** Per runtime, newest first; empty when no runtime has fetched it. */
+	fetches: IngestionSecretFetch[];
+}
+
+export interface IngestionSecretList {
+	secrets: IngestionSecret[];
 }
 
 export interface IngestionSourceKind {
@@ -264,7 +365,11 @@ export interface CreateIngestionRequest extends IngestionDefinition {
 	/** Lowercase letters, digits and hyphens, unique within the application and client. */
 	code: string;
 	note?: string;
-	/** Make the first version live. Default true. */
+	/**
+	 * Make the first version live. Default true; without the promote
+	 * permission the first version is saved as a draft whatever this says
+	 * (`save.outcome` is `DRAFT`). false always saves a draft.
+	 */
 	live?: boolean;
 }
 
@@ -294,6 +399,14 @@ export interface ListIngestionsFilters {
 export interface CursorPage {
 	after?: string;
 	limit?: number;
+}
+
+/** Filters for `listFailures` (newest first, cursor-paged). */
+export interface FailureFilters extends CursorPage {
+	/** Only this category; `rejected` is the notices. */
+	category?: IngestionFailureCategory;
+	/** Only the failures nobody has dismissed. */
+	undismissed?: boolean;
 }
 
 export interface HistoryPage {
@@ -328,6 +441,11 @@ export class IngestionsResource {
 		return this.json("GET", `${PATH}${qs({ ...filters })}`);
 	}
 
+	/**
+	 * Create an ingestion. Without the promote permission (or with
+	 * `live: false`) the first version is saved as a draft: `save.outcome` is
+	 * `DRAFT` and `save.awaitingPromote` is true.
+	 */
 	create(req: CreateIngestionRequest): ResultAsync<Ingestion, SdkError> {
 		return this.json("POST", PATH, req);
 	}
@@ -336,6 +454,12 @@ export class IngestionsResource {
 		return this.json("GET", `${PATH}/${enc(id)}`);
 	}
 
+	/**
+	 * Save a new definition. With promote it is made live (`SAVED`); without,
+	 * it is a draft awaiting promote (`DRAFT`). A definition an existing
+	 * version already says is not saved again (`UNCHANGED`, `MADE_LIVE`,
+	 * `DRAFT_EXISTS`); `save` on the answer says which.
+	 */
 	update(id: string, req: UpdateIngestionRequest): ResultAsync<Ingestion, SdkError> {
 		return this.json("PUT", `${PATH}/${enc(id)}`, req);
 	}
@@ -379,11 +503,32 @@ export class IngestionsResource {
 		return this.json("GET", `${PATH}/${enc(id)}/history${qs({ ...page })}`);
 	}
 
+	/**
+	 * Failures, newest first. `{ category: "rejected", undismissed: true }`
+	 * lists the ingestion's open notices (what `notices` counts).
+	 */
 	listFailures(
 		id: string,
-		page: CursorPage = {},
+		filters: FailureFilters = {},
 	): ResultAsync<IngestionFailureList, SdkError> {
-		return this.json("GET", `${PATH}/${enc(id)}/failures${qs({ ...page })}`);
+		const { undismissed, ...rest } = filters;
+		return this.json(
+			"GET",
+			`${PATH}/${enc(id)}/failures${qs({ ...rest, undismissed: undismissed ? true : undefined })}`,
+		);
+	}
+
+	/** Dismiss a failure: a notice stops showing on the ingestion; it stays in the list. */
+	dismissFailure(id: string, failureId: string): ResultAsync<IngestionFailure, SdkError> {
+		return this.json("POST", `${PATH}/${enc(id)}/failures/${enc(failureId)}/dismiss`);
+	}
+
+	/**
+	 * The secret names the live definition binds and when each runtime last
+	 * fetched them. Names only, never values.
+	 */
+	listSecrets(id: string): ResultAsync<IngestionSecretList, SdkError> {
+		return this.json("GET", `${PATH}/${enc(id)}/secrets`);
 	}
 
 	listSourceKinds(): ResultAsync<{ kinds: IngestionSourceKind[] }, SdkError> {

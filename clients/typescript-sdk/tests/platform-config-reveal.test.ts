@@ -71,6 +71,29 @@ test("revealSecret GETs the secret path, URL-encodes segments, sends clientId on
 	});
 });
 
+test("set, delete and revealSecret send X-On-Behalf-Of only when given", async () => {
+	const prop = { applicationCode: "app", section: "s", property: "p", value: "v", valueType: "PLAIN" };
+	await withServer(200, prop, async (client, seen) => {
+		const pc = client.platformConfig();
+		await pc.set("app", "s", "p", { value: "v" }, { onBehalfOf: "usr:alice@example.com" });
+		assert.equal(seen.method, "PUT");
+		assert.equal(seen.headers?.["x-on-behalf-of"], "usr:alice@example.com");
+		await pc.set("app", "s", "p", { value: "v" });
+		assert.equal(seen.headers?.["x-on-behalf-of"], undefined);
+		await pc.delete("app", "s", "p", { clientId: "clt_1", onBehalfOf: "bob" });
+		assert.equal(seen.method, "DELETE");
+		assert.equal(seen.url, "/api/config/app/s/p?clientId=clt_1");
+		assert.equal(seen.headers?.["x-on-behalf-of"], "bob");
+		await pc.delete("app", "s", "p", { onBehalfOf: "   " });
+		assert.equal(seen.headers?.["x-on-behalf-of"], undefined);
+	});
+	await withServer(200, okBody, async (client, seen) => {
+		await client.platformConfig().revealSecret("a", "b", "c", undefined, { onBehalfOf: "carol" });
+		assert.equal(seen.url, "/api/config/a/b/c/secret");
+		assert.equal(seen.headers?.["x-on-behalf-of"], "carol");
+	});
+});
+
 test("revealSecret value is redacted in JSON, string and inspect output", async () => {
 	await withServer(200, okBody, async (client) => {
 		const s = (await client.platformConfig().revealSecret("a", "b", "c"))._unsafeUnwrap();

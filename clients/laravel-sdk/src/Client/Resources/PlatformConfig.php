@@ -24,6 +24,21 @@ class PlatformConfig
     public const VALUE_TYPE_PLAIN = 'PLAIN';
     public const VALUE_TYPE_SECRET = 'SECRET';
 
+    /**
+     * Who a calling service account acts for (for example the application's
+     * signed-in user) on set, delete and reveal; the platform records it in
+     * the audit row beside the service account. Honoured only from a service
+     * account and ignored from anyone else; at most 256 printable characters
+     * (no control characters), else `400 INVALID_ON_BEHALF_OF`.
+     */
+    public const ON_BEHALF_OF_HEADER = 'X-On-Behalf-Of';
+
+    /** Writing `***` (the mask) as a SECRET's value is refused with this code (400). */
+    public const ERROR_SECRET_VALUE_MASKED = 'SECRET_VALUE_MASKED';
+
+    /** Writing an empty SECRET is refused with this code (400). */
+    public const ERROR_SECRET_VALUE_REQUIRED = 'SECRET_VALUE_REQUIRED';
+
     public function __construct(
         private readonly FlowCatalystClient $client
     ) {}
@@ -99,9 +114,11 @@ class PlatformConfig
      * (an application's service account, which the platform confines to its
      * own applications and to the clients it is linked to: its explicit
      * clients, else the clients its application is enabled for, plus the
-     * application-wide value). Every call is audited by the platform. Errors: 403 not authorised, 404 no such
-     * property, 400 `NOT_A_SECRET` (the property is PLAIN; use `get`) - all
-     * surfaced as the SDK's normal exceptions.
+     * application-wide value). Every call is audited by the platform (with
+     * `$onBehalfOf`, sent as {@see self::ON_BEHALF_OF_HEADER}, when given).
+     * Errors: 403 not authorised, 404 no such property, 400 `NOT_A_SECRET`
+     * (the property is PLAIN; use `get`) - all surfaced as the SDK's normal
+     * exceptions.
      *
      * The call is deliberately uncached and the response is never logged;
      * the returned DTO redacts `value` in var_dump/print_r/JSON/toArray()
@@ -113,11 +130,13 @@ class PlatformConfig
         string $section,
         string $property,
         ?string $clientId = null,
+        ?string $onBehalfOf = null,
     ): PlatformConfigSecret {
         return PlatformConfigSecret::fromArray(
             $this->client->request(
                 'GET',
                 $this->path($application, $section, $property, null, '/secret', $clientId),
+                $this->actor($onBehalfOf),
             )
         );
     }
@@ -125,7 +144,14 @@ class PlatformConfig
     /**
      * Create or overwrite a property and return the stored record.
      *
+     * A SECRET's value is required and the mask is not a value: `***` is
+     * refused ({@see self::ERROR_SECRET_VALUE_MASKED}), as is an empty secret
+     * ({@see self::ERROR_SECRET_VALUE_REQUIRED}); to leave a secret
+     * unchanged, do not set it.
+     *
      * @param string $valueType PLAIN or SECRET
+     * @param string|null $onBehalfOf who the calling service account acts for,
+     *                                sent as {@see self::ON_BEHALF_OF_HEADER}
      */
     public function set(
         string $application,
@@ -135,6 +161,7 @@ class PlatformConfig
         string $valueType = self::VALUE_TYPE_PLAIN,
         ?string $description = null,
         ?string $clientId = null,
+        ?string $onBehalfOf = null,
     ): PlatformConfigProperty {
         $body = ['value' => $value, 'valueType' => $valueType];
         if ($description !== null) {
@@ -144,26 +171,42 @@ class PlatformConfig
         $response = $this->client->request(
             'PUT',
             $this->path($application, $section, $property, $clientId),
-            ['json' => $body],
+            ['json' => $body] + $this->actor($onBehalfOf),
         );
 
         return PlatformConfigProperty::fromArray($response);
     }
 
     /**
-     * Delete a property. Idempotent on the platform: deleting a property that
-     * does not exist succeeds (204).
+     * Delete a property (audited). Idempotent on the platform: deleting a
+     * property that does not exist succeeds (204). `$onBehalfOf` is sent as
+     * {@see self::ON_BEHALF_OF_HEADER}.
      */
     public function delete(
         string $application,
         string $section,
         string $property,
         ?string $clientId = null,
+        ?string $onBehalfOf = null,
     ): void {
         $this->client->request(
             'DELETE',
             $this->path($application, $section, $property, $clientId),
+            $this->actor($onBehalfOf),
         );
+    }
+
+    /**
+     * The request options that carry the on-behalf-of header; none for a
+     * null or blank value.
+     *
+     * @return array<string, mixed>
+     */
+    private function actor(?string $onBehalfOf): array
+    {
+        $who = $onBehalfOf === null ? '' : trim($onBehalfOf);
+
+        return $who === '' ? [] : ['headers' => [self::ON_BEHALF_OF_HEADER => $who]];
     }
 
     private function path(string $application, string $section, string $property, ?string $clientId, string $suffix = '', ?string $clientIdOverride = null): string

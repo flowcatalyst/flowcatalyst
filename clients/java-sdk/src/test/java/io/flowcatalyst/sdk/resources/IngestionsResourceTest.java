@@ -241,6 +241,73 @@ class IngestionsResourceTest {
         assertEquals(3L, done.getRecords());
     }
 
+    @Test
+    void failuresFilterByCategoryAndUndismissedOnlyWhenGiven() {
+        server.on("GET", "/api/ingestions/ing_1/failures", 200, "{\"failures\":[],\"hasMore\":false}");
+
+        var ingestions = client().ingestions();
+        ingestions.listFailures("ing_1", IngestionsResource.FailureFilters.none());
+        assertEquals("/api/ingestions/ing_1/failures", last().pathAndQuery());
+        ingestions.listFailures("ing_1", IngestionsResource.FailureFilters.openNotices());
+        assertEquals("/api/ingestions/ing_1/failures?category=rejected&undismissed=true", last().pathAndQuery());
+        ingestions.listFailures("ing_1", new IngestionsResource.FailureFilters("c1", 5, "payload", false));
+        assertEquals("/api/ingestions/ing_1/failures?after=c1&limit=5&category=payload", last().pathAndQuery());
+    }
+
+    @Test
+    void dismissFailureReturnsTheDismissedFailure() {
+        server.on("POST", "/api/ingestions/ing_1/failures/igf_1/dismiss", 200,
+                "{\"id\":\"igf_1\",\"kind\":\"JOBS_REJECTED\",\"category\":\"rejected\",\"message\":\"refused\","
+                        + "\"afterRecords\":0,\"occurredAt\":\"2026-10-25T10:00:00Z\",\"createdAt\":\"2026-10-25T10:00:01Z\","
+                        + "\"dismissedAt\":\"2026-10-25T11:00:00Z\",\"dismissedBy\":\"prn_1\"}");
+
+        var failure = client().ingestions().dismissFailure("ing_1", "igf_1");
+        assertEquals("POST", last().method());
+        assertEquals("/api/ingestions/ing_1/failures/igf_1/dismiss", last().pathAndQuery());
+        assertEquals("rejected", failure.getCategory().getValue());
+        assertEquals("prn_1", failure.getDismissedBy());
+        assertEquals(11, failure.getDismissedAt().getHour());
+    }
+
+    @Test
+    void secretsAreNamesAndFetchesOnly() {
+        server.on("GET", "/api/ingestions/ing_1/secrets", 200,
+                "{\"secrets\":[{\"name\":\"feed-token\",\"bound\":true,\"fetches\":[{\"runtimeId\":\"rt-1\","
+                        + "\"version\":3,\"principalId\":\"prn_rt\",\"lastFetchedAt\":\"2026-10-25T10:00:00Z\","
+                        + "\"fetchCount\":7}]}]}");
+
+        var secrets = client().ingestions().listSecrets("ing_1");
+        assertEquals("/api/ingestions/ing_1/secrets", last().pathAndQuery());
+        var secret = secrets.getSecrets().getFirst();
+        assertEquals("feed-token", secret.getName());
+        assertTrue(secret.getBound());
+        assertEquals(7L, secret.getFetches().getFirst().getFetchCount());
+    }
+
+    @Test
+    void aCreateWithoutPromoteAnswersADraftWithNoticesAndWarnings() {
+        String answer = INGESTION.substring(0, INGESTION.length() - 1)
+                + ",\"notices\":2,\"latestNotice\":\"jobs refused\",\"latestNoticeAt\":\"2026-10-25T10:00:00Z\","
+                + "\"warnings\":[\"no host key\"],"
+                + "\"save\":{\"outcome\":\"DRAFT\",\"version\":1,\"awaitingPromote\":true,\"message\":\"saved as a draft\"}}";
+        server.on("POST", "/api/ingestions", 201, answer);
+        server.on("GET", "/api/ingestions/ing_1/versions", 200,
+                "{\"versions\":[{\"id\":\"igv_1\",\"version\":1,\"live\":false,\"draft\":true,\"digest\":\"ab12\","
+                        + "\"createdAt\":\"2026-10-25T10:00:00Z\",\"name\":\"Feed\",\"source\":{\"kind\":\"http\"},"
+                        + "\"split\":{\"kind\":\"none\"},\"target\":" + TARGET + "}]}");
+
+        var ing = client().ingestions().create(new CreateIngestionRequest().code("feed"));
+        assertEquals("DRAFT", ing.getSave().getOutcome().getValue());
+        assertTrue(ing.getSave().getAwaitingPromote());
+        assertEquals(2L, ing.getNotices());
+        assertEquals("jobs refused", ing.getLatestNotice());
+        assertEquals(List.of("no host key"), ing.getWarnings());
+
+        var version = client().ingestions().listVersions("ing_1").getVersions().getFirst();
+        assertTrue(version.getDraft());
+        assertEquals("ab12", version.getDigest());
+    }
+
     // ── Errors ──────────────────────────────────────────────────────
 
     @Test
@@ -347,6 +414,9 @@ class IngestionsResourceTest {
         roundTrips(new Source.Sftp("h", 22, "/in", "u", new SecretRef("s"), null, "*.csv", Duration.ofSeconds(30)),
                 "{\"kind\":\"sftp\",\"host\":\"h\",\"port\":22,\"directory\":\"/in\",\"username\":\"u\","
                         + "\"credential\":" + secret + ",\"include\":\"*.csv\",\"every\":\"PT30S\"}", Source.class);
+        roundTrips(new Source.Sftp("h", 22, "/in", "u", new SecretRef("s"), null, true, null, Duration.ofMinutes(5)),
+                "{\"kind\":\"sftp\",\"host\":\"h\",\"port\":22,\"directory\":\"/in\",\"username\":\"u\","
+                        + "\"credential\":" + secret + ",\"acceptAnyHostKey\":true,\"every\":\"PT5M\"}", Source.class);
         roundTrips(new Source.S3("eu-west-1", "b", "in/", Duration.ofMinutes(5), null),
                 "{\"kind\":\"s3\",\"region\":\"eu-west-1\",\"bucket\":\"b\",\"prefix\":\"in/\",\"every\":\"PT5M\"}",
                 Source.class);

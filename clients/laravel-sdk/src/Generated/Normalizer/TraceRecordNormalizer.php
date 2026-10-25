@@ -72,6 +72,13 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         elseif (\array_key_exists('data', $data) && $data['data'] === null) {
             $object->setData(null);
         }
+        if (\array_key_exists('id', $data) && $data['id'] !== null) {
+            $object->setId($data['id']);
+            unset($data['id']);
+        }
+        elseif (\array_key_exists('id', $data) && $data['id'] === null) {
+            $object->setId(null);
+        }
         if (\array_key_exists('invocationId', $data) && $data['invocationId'] !== null) {
             $object->setInvocationId($data['invocationId']);
             unset($data['invocationId']);
@@ -132,6 +139,9 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         if ($data->isInitialized('data') && null !== $data->getData()) {
             $dataArray['data'] = $data->getData();
+        }
+        if ($data->isInitialized('id') && null !== $data->getId()) {
+            $dataArray['id'] = $data->getId();
         }
         $dataArray['invocationId'] = $data->getInvocationId();
         $dataArray['kind'] = $data->getKind();
