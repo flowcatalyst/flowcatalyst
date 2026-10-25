@@ -669,15 +669,13 @@ func (h *Ingestions) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cmd := ingops.SaveVersionCommand{ID: id, Definition: def, Live: live, Note: optionalText(f.Values["note"])}
-	if err := h.Ops.SaveVersion(ctx, cmd); err != nil {
+	res, err := h.Ops.SaveVersion(ctx, cmd)
+	if err != nil {
 		f.applyError(r, err, built)
 		fail()
 		return
 	}
-	flash := flashIngVersionSaved
-	if live {
-		flash = flashIngVersionLive
-	}
+	flash := ingsSaveFlash(res.Outcome)
 	if !ds.IsDatastar(r) {
 		h.nativeDone(w, r, id, flash, false)
 		return
@@ -690,4 +688,20 @@ func (h *Ingestions) update(w http.ResponseWriter, r *http.Request) {
 	if err := flashKey(sse, flash); err != nil {
 		slog.DebugContext(ctx, "ui: ingestion flash not delivered", "err", err)
 	}
+}
+
+// ingsSaveFlash is the flash of a saved change, by what the save did: a new
+// draft, a draft that already said it, a version made live, or nothing.
+func ingsSaveFlash(o ingops.Outcome) string {
+	switch o {
+	case ingops.OutcomeSaved, ingops.OutcomeMadeLive:
+		return flashIngVersionLive
+	case ingops.OutcomeDraftExists:
+		return flashIngDraftExists
+	case ingops.OutcomeUnchanged:
+		return flashIngUnchanged
+	case ingops.OutcomeDraft:
+		return flashIngVersionSaved
+	}
+	return flashIngVersionSaved
 }

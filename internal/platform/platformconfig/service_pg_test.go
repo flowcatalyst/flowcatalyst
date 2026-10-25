@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 )
 
@@ -89,6 +90,42 @@ func TestServiceListAndDelete(t *testing.T) {
 	rows, err = svc.List(ctx, revealer(), "svcdelete")
 	require.NoError(t, err)
 	assert.Empty(t, rows)
+}
+
+// The ingestion runtime's fetch of a bound secret is not a reveal (owner
+// ruling 2026-10-25): it answers the plaintext without an audit log (it works
+// with none wired) and writes no aud_logs row; it reads only the scope it is
+// given (no global fallback for a client) and only a SECRET.
+func TestServiceFetchBoundSecretForIngestionRuntime_NotAudited(t *testing.T) {
+	ctx := context.Background()
+	svc := newServiceFixture(t, "svcboundfetch")
+	svc.Audit = nil
+
+	audits := func() int {
+		var n int
+		require.NoError(t, testpg.Pool(t).QueryRow(ctx, `SELECT count(*) FROM aud_logs a JOIN app_platform_configs c ON c.id = a.entity_id
+			WHERE c.application_code = 'svcboundfetch'`).Scan(&n))
+		return n
+	}
+	before := audits()
+	r, err := svc.FetchBoundSecretForIngestionRuntime(ctx, "svcboundfetch", "sftp", "password", "")
+	require.NoError(t, err)
+	assert.Equal(t, "s3cr3t-pw", r.Value)
+	assert.Equal(t, before, audits(), "no audit row per fetch")
+
+	_, err = svc.FetchBoundSecretForIngestionRuntime(ctx, "svcboundfetch", "sftp", "password", "clt_0000000000000")
+	require.Error(t, err, "set only globally: no fallback for a client's scope")
+	assert.Equal(t, usecase.KindNotFound, usecase.AsError(err).Kind)
+	_, err = svc.FetchBoundSecretForIngestionRuntime(ctx, "svcboundfetch", "sftp", "missing", "")
+	assert.Equal(t, usecase.KindNotFound, usecase.AsError(err).Kind)
+
+	plain := "PLAIN"
+	_, err = usecaseop.Run(adminCtx(), svc.UoW, operations.SetProperty(svc.Repo), operations.SetPropertyCommand{
+		ApplicationCode: "svcboundfetch", Section: "sftp", Property: "host", Value: "sftp.example.com", ValueType: &plain,
+	}, testpg.TestEC())
+	require.NoError(t, err)
+	_, err = svc.FetchBoundSecretForIngestionRuntime(ctx, "svcboundfetch", "sftp", "host", "")
+	assert.Equal(t, "NOT_A_SECRET", usecase.AsError(err).Code)
 }
 
 // RevealAuthorised is Reveal for a caller authorised some other way: it needs

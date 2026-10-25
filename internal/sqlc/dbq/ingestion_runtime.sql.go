@@ -450,6 +450,68 @@ func (q *Queries) IngestionRuntimeUpsert(ctx context.Context, arg IngestionRunti
 	return err
 }
 
+const ingestionSecretFetchList = `-- name: IngestionSecretFetchList :many
+SELECT ingestion_id, secret_name, runtime_id, version, principal_id, last_fetched_at, fetch_count FROM ing_secret_fetches WHERE ingestion_id = $1 ORDER BY secret_name, last_fetched_at DESC, runtime_id
+`
+
+func (q *Queries) IngestionSecretFetchList(ctx context.Context, ingestionID string) ([]IngSecretFetch, error) {
+	rows, err := q.db.Query(ctx, ingestionSecretFetchList, ingestionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IngSecretFetch{}
+	for rows.Next() {
+		var i IngSecretFetch
+		if err := rows.Scan(
+			&i.IngestionID,
+			&i.SecretName,
+			&i.RuntimeID,
+			&i.Version,
+			&i.PrincipalID,
+			&i.LastFetchedAt,
+			&i.FetchCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const ingestionSecretFetchRecord = `-- name: IngestionSecretFetchRecord :exec
+INSERT INTO ing_secret_fetches (ingestion_id, secret_name, runtime_id, version, principal_id, last_fetched_at, fetch_count)
+VALUES ($1, $2, $3, $4, $5, now(), 1)
+ON CONFLICT (ingestion_id, secret_name, runtime_id) DO UPDATE SET
+    version = EXCLUDED.version, principal_id = EXCLUDED.principal_id,
+    last_fetched_at = EXCLUDED.last_fetched_at, fetch_count = ing_secret_fetches.fetch_count + 1
+`
+
+type IngestionSecretFetchRecordParams struct {
+	IngestionID string  `db:"ingestion_id"`
+	SecretName  string  `db:"secret_name"`
+	RuntimeID   string  `db:"runtime_id"`
+	Version     int32   `db:"version"`
+	PrincipalID *string `db:"principal_id"`
+}
+
+// One row per (ingestion, secret, runtime): when the runtime last fetched the
+// secret, under which live version and principal, and how often. Written on
+// every successful fetch, by the database's clock.
+func (q *Queries) IngestionSecretFetchRecord(ctx context.Context, arg IngestionSecretFetchRecordParams) error {
+	_, err := q.db.Exec(ctx, ingestionSecretFetchRecord,
+		arg.IngestionID,
+		arg.SecretName,
+		arg.RuntimeID,
+		arg.Version,
+		arg.PrincipalID,
+	)
+	return err
+}
+
 const ingestionStateGet = `-- name: IngestionStateGet :one
 SELECT value FROM ing_state WHERE ingestion_id = $1 AND key = $2
 `

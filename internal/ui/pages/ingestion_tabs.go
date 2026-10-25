@@ -324,14 +324,25 @@ func (h *IngestionTabs) failures(w http.ResponseWriter, r *http.Request) {
 // command's type.
 var ingOperationVerbs = map[string]string{
 	"CreateCommand":          "Created",
-	"UpdateCommand":          "Changed",
-	"SaveVersionCommand":     "Version saved, not live,",
+	"UpdateCommand":          "Changed and made live",
+	"SaveVersionCommand":     "Saved as a draft, not live,",
 	"MakeVersionLiveCommand": "Made live",
 	"PauseCommand":           "Paused",
 	"ResumeCommand":          "Resumed",
 	"DeleteCommand":          "Removed",
 	"setAuditCommand":        "Applied from a set",
 	"ReleaseSetCommand":      "Released from its set",
+	// A runtime's secret fetch that was refused (a successful one is
+	// security telemetry, not an audit row).
+	"SECRET_FETCH_REFUSED": "Secret fetch refused",
+}
+
+// ingLiveVerbs are the verbs of the commands that carry live, when it is the
+// other way from ingOperationVerbs': a create that was a draft, a version
+// saved live.
+var ingLiveVerbs = map[string]map[bool]string{
+	"CreateCommand":      {false: "Created as a draft, not live,"},
+	"SaveVersionCommand": {true: "Version saved and made live"},
 }
 
 type ingHistoryRow struct {
@@ -341,6 +352,9 @@ type ingHistoryRow struct {
 	// definition the previous change carried.
 	Changed string
 	Note    string
+	// Detail is what a refused secret fetch asked for and why it was
+	// refused (names and a reason code, never a value).
+	Detail string
 }
 
 type ingHistoryView struct {
@@ -360,6 +374,11 @@ func (v ingHistoryView) moreURL() string {
 type ingAuditCommand struct {
 	Definition json.RawMessage `json:"definition"`
 	Note       *string         `json:"note"`
+	Live       *bool           `json:"live"`
+	// A refused secret fetch's row.
+	SecretName string `json:"secretName"`
+	RuntimeID  string `json:"runtimeId"`
+	Reason     string `json:"reason"`
 }
 
 func (c ingAuditCommand) definition() (ingestion.Definition, bool) {
@@ -393,6 +412,12 @@ func ingHistoryRows(logs []audit.Log, n int) []ingHistoryRow {
 		var cmd ingAuditCommand
 		if len(l.OperationJSON) > 0 && json.Unmarshal(l.OperationJSON, &cmd) == nil {
 			row.Note = deref(cmd.Note)
+			if v, ok := ingLiveVerbs[l.Operation][cmd.Live != nil && *cmd.Live]; ok {
+				row.Verb = v
+			}
+			if l.Operation == "SECRET_FETCH_REFUSED" {
+				row.Detail = "Secret " + cmd.SecretName + ", runtime " + cmd.RuntimeID + ": " + cmd.Reason
+			}
 			if def, ok := cmd.definition(); ok && l.Operation != "CreateCommand" {
 				row.Changed = ingChangedAgainstOlder(def, logs[k+1:])
 			}

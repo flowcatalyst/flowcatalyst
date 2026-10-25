@@ -19,7 +19,10 @@ type CreateCommand struct {
 	Code        string               `json:"code"`
 	Definition  ingestion.Definition `json:"definition"`
 	// Live makes the first version the one runtimes receive; otherwise it
-	// waits to be made live.
+	// waits to be made live (a draft). Live needs promote; a caller that asks
+	// for live on someone's behalf passes LiveIfPermitted, so a create
+	// without promote is a draft rather than a refusal (owner ruling
+	// 2026-10-25), and the audit row records the draft.
 	Live bool    `json:"live"`
 	Note *string `json:"note,omitempty"`
 }

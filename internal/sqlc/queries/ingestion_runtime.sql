@@ -155,3 +155,16 @@ ON CONFLICT (ingestion_id, external_id) DO NOTHING;
 -- name: IngestionJobKeysFind :many
 SELECT external_id, job_id FROM ing_job_keys
 WHERE ingestion_id = @ingestion_id AND external_id = ANY(@external_ids::text[]);
+
+-- One row per (ingestion, secret, runtime): when the runtime last fetched the
+-- secret, under which live version and principal, and how often. Written on
+-- every successful fetch, by the database's clock.
+-- name: IngestionSecretFetchRecord :exec
+INSERT INTO ing_secret_fetches (ingestion_id, secret_name, runtime_id, version, principal_id, last_fetched_at, fetch_count)
+VALUES (@ingestion_id, @secret_name, @runtime_id, @version, @principal_id, now(), 1)
+ON CONFLICT (ingestion_id, secret_name, runtime_id) DO UPDATE SET
+    version = EXCLUDED.version, principal_id = EXCLUDED.principal_id,
+    last_fetched_at = EXCLUDED.last_fetched_at, fetch_count = ing_secret_fetches.fetch_count + 1;
+
+-- name: IngestionSecretFetchList :many
+SELECT * FROM ing_secret_fetches WHERE ingestion_id = $1 ORDER BY secret_name, last_fetched_at DESC, runtime_id;

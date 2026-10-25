@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	schedulerpkg "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
 )
 
@@ -107,7 +108,9 @@ func runtimeMetricsHandler(scheduler bool) http.Handler {
 	// The dispatch-job lifecycle's counters: every process that can write a
 	// dispatch job (ingest, the delivery callback, fan-out, recovery) owns them,
 	// scheduler or not.
-	gatherers := prometheus.Gatherers{reg, dispatchjob.MetricsRegistry}
+	// The ingestion runtime's secret-fetch counter (security telemetry): its
+	// series exist whether or not ingestion is enabled, zero when it is off.
+	gatherers := prometheus.Gatherers{reg, dispatchjob.MetricsRegistry, ingestion.MetricsRegistry}
 	if scheduler {
 		gatherers = append(gatherers, schedulerpkg.MetricsRegistry)
 	}

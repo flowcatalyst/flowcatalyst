@@ -2,7 +2,8 @@
 
 Status: built, 2026-10-25. Sections 2 to 7 are built in the Go platform (`internal/platform/ingestion`: model,
 validation, tables 088 to 090, operations and API, sets, the runtime API, retention), `fcdev ingest` and the pages
-(server-rendered templ under `/ui/ingestions`, section 9). The hardening rulings of 2026-10-25 (section 12) are in.
+(server-rendered templ under `/ui/ingestions`, section 9). The hardening rulings of 2026-10-25 and the three later
+rulings of that day (drafts, route authors, secret fetches; section 12) are in.
 Not built: the cutover tooling (section 8) and the Java platform mirror. Source of the behaviour described here: the
 ingest control plane in `inhance/mono-repo` (`apps/ingest-control-plane`, `libs/java/ingest-contract`, `docs/ingest`),
 read on 2026-10-24. Owner direction (2026-10-24): ingestion is a platform capability for "building business event
@@ -56,7 +57,11 @@ ingestion = (application, client, code) + source + split + target + flags
   `INGEST_CAMEL_ROUTES_ENABLED` is true (default false). The runtime, not the platform, validates the YAML: at "test
   connection" and when it takes the lease, reporting `FAILING` with the reason. **The route permission counts only for
   an anchor-tier caller** (ruling R2): below anchor tier a `camel-route` save is `403 INGESTION_ROUTE_ANCHOR_REQUIRED`
-  whatever it holds. The permission a runtime declares for any of its kinds is **remembered** (`ing_kind_requirements`,
+  whatever it holds. **Routes are written by a pipeline or an ingestion administrator** (ruling R9): the permission
+  counts only for a `SERVICE` principal (a pipeline's account holding the route-author role) or for a caller who also
+  holds `platform:ingestion:ingestion:delete` (the administrator); a user holding only the route permission is `403
+  INGESTION_ROUTE_PIPELINE_REQUIRED`. Role assignment has no hook to keep a role off users, so the rule is enforced at
+  use (`ingestion.RequireKindPermission`). Operators hold no route and cannot write routes. The permission a runtime declares for any of its kinds is **remembered** (`ing_kind_requirements`,
   the last report wins) and enforced while no runtime that reports the kind is live (ruling R4f); `camel-route`'s is
   built in.
 - **Where a source points is guarded** (ruling R4b). Every outbound address of a source (an `api-poll` URL, its
@@ -109,13 +114,14 @@ table holds a secret value.
 | Table | Replaces | Notes |
 |---|---|---|
 | `ing_ingestions` | `ingestions` | `id`, `application_id` (FK), `client_id` (**not null**), `code`, `name`, `active`, `version`, `latest_version`, `source/split/target` JSONB, `keep_failed_payloads`, `managed_by` (the owning set), timestamps. Unique `(application_id, client_id, code)` |
-| `ing_versions` | `ingestion_versions` | one row per saved version: definition, `note`, `applied_from` (set apply), who and when. `live` is the version runtimes receive (see section 5) |
+| `ing_versions` | `ingestion_versions` | one row per saved version: definition, `definition_digest` (093: sha256 hex of the definition's canonical form, computed by the database from the jsonb text, indexed with the ingestion id; a save that matches a version reuses it), `note`, `applied_from` (set apply), who and when. `live` is the version runtimes receive (see section 5) |
 | `ing_runtimes` | `runtimes` | `runtime_id`, `last_seen_at`, `kinds` JSONB (extension kinds), `builtin_kinds` JSONB (090; NULL is the v2 baseline), `contract_version`, `url` (informational); pruned 7 days unseen |
 | `ing_kind_requirements` | (new, 090) | per runtime-reported kind, the permission the last report declared; enforced while no runtime that reports the kind is live |
 | `ing_leases` | `ingestion_leases` | polled sources run on one runtime at a time; `expires_at`, `released`; timed by the database's clock |
 | `ing_job_keys` | (new) | the idempotency key (`externalId`) of each job a runtime created, per ingestion; written with the job, **pruned** after 7 days |
 | `ing_state` | `ingestion_state` | small values a polled source keeps (watermark, cursor); only the lease holder writes |
 | `ing_route_states` | `ingestion_route_states` | per runtime: version, status, error; a runtime's rows are pruned once it is unseen for 7 days (or forgotten) |
+| `ing_secret_fetches` | (new, 093) | per (ingestion, secret name, runtime): `last_fetched_at` (database clock), `fetch_count`, the live `version` and the `principal_id` of the last fetch; upserted on each successful secret fetch, pruned with a runtime's route states, cascade-deleted with the ingestion. No value |
 | `ing_exchange_metrics` | `ingestion_exchange_metrics` | per window: completed, failed, records, jobs, `created_at` (090, server-written); **pruned** after 30 days |
 | `ing_failures` | `ingestion_failures` | kind, `category` (090: `payload` or `rejected`), message, `after_records`, optional `excerpt` (only with `keepFailedPayloads`), `dismissed_at`/`dismissed_by` (090); pruned after 30 days |
 
@@ -137,30 +143,44 @@ Subdomain `ingestion` (four segments, like every platform permission):
 
 | Permission | Grants |
 |---|---|
-| `platform:ingestion:ingestion:view` | list, read, versions, history, failures, definition export, source kinds |
+| `platform:ingestion:ingestion:view` | list, read, versions, history, failures, definition export, source kinds, the secrets an ingestion binds and their fetches (`GET /api/ingestions/{id}/secrets`) |
 | `platform:ingestion:ingestion:create` / `update` / `delete` | change definitions; `update` includes pause and resume |
-| `platform:ingestion:ingestion:promote` | make a version live (section 5): a create that is live, an update, a version saved live, make live |
+| `platform:ingestion:ingestion:promote` | make a version live (section 5): a create that is live, an update that is live, a version saved live, make live. Without it a create or update is saved as a draft |
 | `platform:ingestion:ingestion:test` | run "test connection" (it makes a real outbound call from a runtime, so it is its own grant) |
-| `platform:ingestion:ingestion:route` | create or change an ingestion of a kind that declares it needs this (`camel-route`), and only at anchor tier; removing one needs only `delete` |
+| `platform:ingestion:ingestion:route` | create or change an ingestion of a kind that declares it needs this (`camel-route`), only at anchor tier and only for a `SERVICE` principal or an ingestion administrator; removing one needs only `delete` |
 | `platform:ingestion:ingestion:runtime-identity` | save an `sqs` or `s3` source without a credential (the fleet's own AWS identity reads it), section 2 |
 | `platform:ingestion:ingestion:bind-secrets` | save a definition that names secrets and points them somewhere new, section 2 |
 | `platform:ingestion:set:apply` | apply or release a set |
 | `platform:ingestion:runtime:operate` | the runtime API: poll, report, state, jobs, secrets |
 
-Seeded roles: `platform:ingestion-admin` (all but route and runtime; the only role with `runtime-identity` and
-`bind-secrets`), `platform:ingestion-operator` (view, update, test), `platform:ingestion-viewer`,
-`platform:ingestion-route-author` (view, create, update, route: it writes drafts, created with `live: false` and saved
-as versions that are not live, which a holder of promote makes live; it holds no `bind-secrets`, and every text
-setting of a route counts as a secret name, so a route is saved by an admin unless it is given that too) and
-`platform:ingestion-runtime` for a runtime's service account. Super-admin's wildcard covers everything. The role
+Seeded roles: `platform:ingestion-admin` (all but the runtime's, route included, so an administrator pushes routes
+with `fcdev ingest apply`; the only role with `runtime-identity`), `platform:ingestion-operator` (view, update, test;
+no route), `platform:ingestion-viewer`, `platform:ingestion-route-author`, **the pipeline role** (view, create, update,
+route, bind-secrets: held by a pipeline's service account, which pushes routes as drafts an administrator makes live;
+`bind-secrets` because every text setting of a route counts as a secret name; given to a user it writes no route,
+section 2) and `platform:ingestion-runtime` for a runtime's service account. Super-admin's wildcard covers everything. The role
 ceiling rules (a caller cannot grant what it does not hold) apply as elsewhere.
 
-**Promote** (ruling R3). Making a version live needs `promote` whichever call does it. A create is live by default,
-so a create without promote that does not say `live: false` is `403 INGESTION_PROMOTE_REQUIRED` with a message that
-says to send `live: false`; `PUT /api/ingestions/{id}` makes its version live, so without promote it is refused
-(never quietly saved as a draft) and the message names `POST .../versions` with `live: false`. The pages offer the
-"make live" switch only to a holder of promote; without it the create form saves a draft and says so. A set apply
-makes its versions live under `set:apply`, which only the admin role holds.
+**Promote and drafts** (rulings R3 and R8). Making a version live needs `promote` whichever call does it, but a save
+without it is **a draft, never a refusal** (R8 replaced R3's refusal): a create without promote makes an ingestion
+whose first version is not live, whatever `live` says (the API passes `operations.LiveIfPermitted`, so the audited
+command records `live: false`); `PUT /api/ingestions/{id}` without promote saves a version that is not live. A version
+saved after the live one (or while none is live) and not live is a **draft**. Every save is **deduplicated by
+digest** (`ing_versions.definition_digest`, the sha256 of Postgres's jsonb text of the definition: keys sorted,
+duplicates dropped, no insignificant whitespace; the database computes it at insert, at lookup and in the 093
+backfill, so there is one canonical form):
+
+| The definition | Without promote | With promote |
+|---|---|---|
+| is the live version's | nothing written (`UNCHANGED`) | the same |
+| is a saved version's that is not live | nothing written, that draft answered (`DRAFT_EXISTS`) | that version made live, nothing saved (`MADE_LIVE`, audited as `MakeVersionLiveCommand`) |
+| is new | saved as a draft (`DRAFT`, audited as `SaveVersionCommand` with `live: false`) | saved and made live (`SAVED`) |
+
+`POST .../versions` follows the same table with `live` deciding (live needs promote, else `403`). A create or update
+answer carries `save: {outcome, version, awaitingPromote, message}`; a version carries `draft` and `digest`. The pages
+offer the "make live" switch only to a holder of promote; without it the forms say "Saved as a draft; someone with
+promote makes it live", the Versions tab badges drafts, and the History tab reads drafts as drafts. A set apply makes
+its versions live under `set:apply`, which only the admin role holds, unchanged (not deduplicated against drafts).
 
 **The runtime's account** (ruling R1). The runtime API (`auth.RequireIngestionRuntime`) needs
 `platform:ingestion:runtime:operate` **and** a principal that is a runtime's: a service account
@@ -176,9 +196,9 @@ account reaches only its own application's ingestions (the existing confinement)
 is therefore the same axes as the rest of the platform.
 
 **Secrets.** An ingestion names secrets (`sftp-password`). A runtime reads them through the runtime API's secrets call
-(section 7), not through the config reveal: the call reveals only the secrets the ingestion's live definition names, at the
-ingestion's client, only to a runtime that carries the kind and (for a polled source) holds the lease, and audits each
-reveal under the runtime's principal and the ingestion. The runtime's service account therefore holds no
+(section 7), not through the config reveal: the call answers only the secrets the ingestion's live definition binds, at
+the ingestion's client, only to a runtime that carries the kind and (for a polled source) holds the lease. It is security
+telemetry, not an audited reveal (ruling R10, section 7). The runtime's service account therefore holds no
 `platform:application-service:config:reveal`, and `platform:ingestion-runtime` gains nothing beyond
 `platform:ingestion:runtime:operate`: the jobs and secrets calls are authorised by it plus those checks. The platform may
 warn at save when a named secret has no value (a masked config listing is enough to know).
@@ -190,9 +210,10 @@ Everything below is huma, in `api/openapi.lock.json`, so the SDKs and the SPA ty
 | Operation id | Route | Notes |
 |---|---|---|
 | `listIngestions` | `GET /api/ingestions` | filters: `applicationCode`, `clientId` (id or identifier), `q`, `status`, `kind`; cursor paging (`limit` 1 to 200) |
-| `createIngestion`, `getIngestion`, `updateIngestion`, `deleteIngestion` | `/api/ingestions[/{id}]` | `updateIngestion` takes `expectedVersion`; a no-op update answers 200 and writes nothing (platform rule). Create takes `live: true` default. Both need promote when the result is live (section 4). A response carries `notices`, `latestNotice` and `latestNoticeAt`: the undismissed `rejected` failures |
+| `createIngestion`, `getIngestion`, `updateIngestion`, `deleteIngestion` | `/api/ingestions[/{id}]` | `updateIngestion` takes `expectedVersion`; a no-op update answers 200 and writes nothing (platform rule). Create takes `live: true` default. Without promote both save a draft; both are deduplicated by digest and answer `save` (section 4). A response carries `notices`, `latestNotice` and `latestNoticeAt`: the undismissed `rejected` failures |
 | `listIngestionVersions`, `saveIngestionVersion`, `makeIngestionVersionLive` | `/api/ingestions/{id}/versions[/{v}/live]` | a saved version is not run until it is live; `live` moves the pointer |
 | `getIngestionDefinition` | `GET /api/ingestions/{id}/definition` | the file form (YAML) that `fcdev ingest apply` reads back |
+| `listIngestionSecrets` | `GET /api/ingestions/{id}/secrets` | `view` and the ingestion's reach: each secret name the live definition binds (and names fetched under an earlier live version, `bound: false`), with per runtime `lastFetchedAt`, `fetchCount`, `version`, `principalId`. Never a value |
 | `listIngestionHistory`, `listIngestionFailures` | `/api/ingestions/{id}/history\|failures` | history from `aud_logs`; failures paged by id, filtered by `category` and `undismissed`, each with `category`, `createdAt`, `dismissedAt`, `dismissedBy` |
 | `dismissIngestionFailure` | `POST /api/ingestions/{id}/failures/{failureId}/dismiss` | `update` and the ingestion's reach; once (again answers it as it is and writes nothing); emits `platform:ingestion:ingestion:failure-dismissed` on the ingestion's subject, so it reads in its history. Any failure can be dismissed; a `rejected` one is a notice the list and the drawer show until it is |
 | `listIngestionSourceKinds` | `GET /api/ingestion-source-kinds` | built-in kinds plus the kinds the live runtimes report; the form is drawn from this |
@@ -305,11 +326,20 @@ of them (N-1, or a v2 runtime from before) is served as before.
   tokens, api-poll auth, database and queue passwords; for an extension kind, its text settings), read from the
   ingestion's application, section `secrets`, at the ingestion's client with no global fallback. A name the definition does
   not reference, or that has no value, is `404 SECRET_NOT_FOUND`. The same kind, lease, liveness and client-status checks
-  as the jobs call apply. It is the audited reveal of platform config (`platformconfig.Service`): refused if the audit row cannot be written,
-  `Cache-Control: no-store`, and the audit row names the runtime's principal, the ingestion and the runtime id. The runtime's
-  service account holds no config-reveal permission and needs none. The Java runtime re-reads each secret every
-  `INGEST_SECRETS_CACHE_TTL` per non-HTTP route, so expect about one audit row per secret, per route, per minute at its
-  default: a thousand routes with one secret each is about 1.4 million `aud_logs` rows a day (open: section 12).
+  as the jobs call apply. `Cache-Control: no-store`. The runtime's service account holds no config-reveal permission and
+  needs none. **It is not a config reveal** (ruling R10): the value is read with
+  `platformconfig.Service.FetchBoundSecretForIngestionRuntime` (one caller by convention: this call; no reveal
+  permission, no audit row) and every successful fetch is **security telemetry**: an INFO log line
+  `security.ingestion_secret_fetch` (fields `event`, `outcome`, `ingestionId`, `applicationCode`, `clientId`,
+  `secretName`, `runtimeId`, `principalId`, `version`; never the value), the counter
+  `fc_ingestion_secret_fetch_total{outcome=success|refused|error}` (`ingestion.MetricsRegistry`, on the metrics
+  listener), and an upsert of `ing_secret_fetches` (shown in the drawer's Secrets section and by
+  `listIngestionSecrets`). A **refused** fetch (a name the live definition does not bind, no value at the client, no
+  lease, the kind not carried, a paused ingestion, an inactive client, a caller that is not a runtime) writes an
+  `aud_logs` row `SECRET_FETCH_REFUSED` on the ingestion (`entity_type` `Ingestion`, so the history shows it; detail:
+  secret name, runtime id, reason code) and the same log line at WARN with `reason`. The Java runtime re-reads each
+  secret every `INGEST_SECRETS_CACHE_TTL` per non-HTTP route; that volume now lands in logs and one row per
+  (ingestion, secret, runtime), not in `aud_logs`.
 - **Versioning:** the contract is a public API. Poll carries `contractVersion`; the platform serves the current version
   and the one before (N-1) and answers `426` with the supported range otherwise. Additive changes do not bump it.
 
@@ -366,7 +396,7 @@ filters, a form drawn from the source kinds, drawer tabs (activity, failures, hi
 YAML", test connection, sets and their applies, pause and resume, and read-only state for ingestions a set owns. Since
 2026-10-25 the list rows and the drawer show undismissed notices (count and newest message), the Failures tab tags
 notices, says who dismissed what and offers Dismiss to a holder of `update`, the create form offers "make live" only to a
-holder of `promote`, and a `camel-route` is offered only at anchor tier. The paragraph below is the history of the
+holder of `promote`, a `camel-route` is offered only to a pipeline or an administrator at anchor tier (R9), the change form says a save without promote is a draft, the Versions tab badges drafts, and the drawer has a Secrets section (names, which runtime last fetched each and when; R10). The paragraph below is the history of the
 decision. **Which UI stack the platform uses is decided separately** (`flowcatalyst-framework/docs/go/ui.md` section 16 and the
 owner's 2026-10-24 question about moving to Nuxt UI); the work package for the pages waits on it.
 
@@ -421,19 +451,19 @@ Decided 2026-10-25 (owner), with the runtime contract additions C1 to C5 (sectio
   no application; anything narrower is a `403` with a code that says which (section 4).
 - **R2, route authors:** the route permission counts only at anchor tier (section 2).
 - **R3, promote:** a save whose result is live needs promote: a create without it must say `live: false`, an update
-  without it is refused (section 4). The route-author role writes drafts.
+  without it is refused (section 4); superseded by R8: it is now saved as a draft. The route-author role writes drafts.
 - **R4, authoring reach:** (a) `runtime-identity` for an SQS or S3 source without a credential; (b) the outbound guard
   on source addresses, private networks allowed; (c) `target.serviceAccount` confined to the ingestion's application
   and client; (d) `bind-secrets` for a definition that names secrets and points them somewhere new; (e) the target's
   job code belongs to the ingestion's application; (f) a kind's declared permission is remembered and enforced while
-  no runtime reports it (sections 2 and 3). `runtime-identity` and `bind-secrets` are seeded to the admin role only.
+  no runtime reports it (sections 2 and 3). `runtime-identity` and `bind-secrets` are seeded to the admin role only (R9 later gave `bind-secrets` to the route-author pipeline role).
 - **R5, retention:** by the server-written `created_at`, a budget that converges (configurable), runtime times clamped,
   route states of gone runtimes pruned (section 3).
 - **R6, lease checks and client status:** the jobs call holds the lease row in the transaction that makes the jobs; a
   suspended or deactivated client's ingestions are listed to no runtime and take no jobs (section 7).
 - **R7:** this document and the published guide brought up to date, the cutover plan rewritten (section 8).
 
-Choices made where a ruling left one (2026-10-25): an update without promote is refused rather than saved as a
+Choices made where a ruling left one (2026-10-25): (superseded by R8) an update without promote is refused rather than saved as a
 draft (the call says it makes the version live; doing something else quietly would surprise), the create form
 without promote saves a draft; `runtime-identity` and `bind-secrets` are judged against the **live** version, so
 renaming or retargeting an ingestion that already reads with the fleet's identity or already sends its secrets to the
@@ -443,6 +473,21 @@ code or touch files; the job-code check ignores case (an application code may ho
 `builtinKinds` names the platform does not know are dropped, not stored; turning on an sftp source's
 `acceptAnyHostKey` needs `bind-secrets` (not anchor tier: it is a secret-steering switch, and the admin role holds it).
 
-Open: the secret-reveal audit volume (section 7, about one row per secret per route per minute). Either a longer
-`INGEST_SECRETS_CACHE_TTL` in the runtime, or an audit that records a reveal once per (runtime, ingestion, secret,
-updated value) within a window, is for the owner to decide.
+Decided 2026-10-25 (owner), later the same day:
+
+- **R8, drafts:** an update (and a create) without promote becomes a draft instead of a refusal, and every save is
+  deduplicated by the digest of the definition (section 4). Set apply is unchanged.
+- **R9, route authors:** camel routes are written by a pipeline (a `SERVICE` principal holding the route-author role,
+  which gains `bind-secrets`) or by an ingestion administrator (whose role gains `route`, for `fcdev ingest apply`);
+  operators cannot write routes (section 2).
+- **R10, secret fetches:** the runtime fetching its ingestion's bound secrets is not a config reveal and is not written
+  to `aud_logs` per read; it is security telemetry (log line, counter, last-fetched record), and a refused fetch is
+  audited (section 7). This closes the open item on the secret-reveal audit volume.
+
+Choices made where these rulings left one: the digest is computed by the database from the jsonb text (one
+canonicalisation shared by the backfill, the insert and the lookup) rather than in Go; `POST .../versions` is
+deduplicated by the same table as the update; a create's explicit `live: true` without promote is a draft too; the
+audit row of a deduplicated or draft update names what was written (`SaveVersionCommand`, `MakeVersionLiveCommand`), so
+the history reads it as it happened; refusals are audited on the ingestion (not the config row, which may not exist);
+a failure to write the last-fetched record or a refusal's audit row is logged and does not change the answer; the
+secret fetch record is per runtime id and goes with the runtime's route states after 7 days unseen.

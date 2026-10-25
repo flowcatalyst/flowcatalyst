@@ -63,8 +63,13 @@ property it belongs to (its application, section, property and client), so a
 stored value copied to another property does not decrypt there. It is **never
 returned** by the ordinary calls. Listing an application's configuration, reading
 a property and setting one all return the literal `***` for a secret, for every
-caller, administrators included. The only way to read a secret's value is the
-**reveal** call:
+caller, administrators included. For a person or an application, the only way
+to read a secret's value is the **reveal** call below. (The one other reader is
+the ingestion runtime, which fetches the secrets its ingestion's live definition
+binds through its own runtime operation, at the ingestion's client only. That
+fetch is logged as security telemetry, a log line, a counter and a "last
+fetched" record on the ingestion, not audited per read; a refused fetch is
+audited. See "Ingestion", Secrets.)
 
 ```
 GET /api/config/{app}/{section}/{property}/secret            (global value)
@@ -101,7 +106,8 @@ Viewing or editing configuration does not imply reveal.
 
 **Every reveal is audited** (who, which property, when, and on whose behalf when
 the application said so; never the value), and a reveal that cannot be recorded is
-refused.
+refused. (The ingestion runtime's fetches are not reveals and are not audited per
+read, see above.)
 
 Errors: `403` not authorised, `404` no such property (`Config_NOT_FOUND`) or no
 such client (`Client_NOT_FOUND`), `400 NOT_A_SECRET` when the property is plain

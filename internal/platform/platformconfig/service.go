@@ -585,13 +585,12 @@ func (s *Service) RevealFor(ctx context.Context, ac *auth.AuthContext, app, sect
 // (httperror.NotFound("Config", ...)).
 const configNotFoundCode = "Config_NOT_FOUND"
 
-// RevealAuthorised is Reveal for a caller whose right to this value is decided
-// by something other than the reveal permission (the ingestion runtime API
-// reveals only the secrets an ingestion names, to the runtime that runs it):
-// the caller has done that check, and clientID is the canonical client id of
-// the value's scope ("" for the global value). The lookup, the plaintext and
-// the audit-or-refuse rule are Reveal's own; detail is added to the audit row
-// to say on whose behalf the value was read.
+// RevealAuthorised is Reveal for a caller whose right to this value has been
+// decided (RevealFor, after AuthorizeReveal): clientID is the canonical client
+// id of the value's scope ("" for the global value). The lookup, the plaintext
+// and the audit-or-refuse rule are Reveal's own; detail is added to the audit
+// row to say on whose behalf the value was read. (The ingestion runtime does
+// not use it: its fetches are FetchBoundSecretForIngestionRuntime.)
 func (s *Service) RevealAuthorised(ctx context.Context, ac *auth.AuthContext, app, section, property, clientID string, detail map[string]string) (*Revealed, error) {
 	scope, scopeClient := ScopeFor(clientID)
 	c, err := s.Repo.FindByCoordinate(ctx, app, section, property, scope, scopeClient)
@@ -626,6 +625,42 @@ func (s *Service) RevealAuthorised(ctx context.Context, ac *auth.AuthContext, ap
 		PerformedAt:   time.Now().UTC(),
 	}); err != nil {
 		return nil, usecase.Internal("AUDIT", "secret reveal could not be audited", err)
+	}
+	return &Revealed{Config: c, Value: value}, nil
+}
+
+// FetchBoundSecretForIngestionRuntime returns the plaintext of a SECRET for
+// the ingestion runtime, which fetches the secrets its ingestion's live
+// definition binds (owner ruling 2026-10-25). It is NOT a reveal: no reveal
+// permission is asked and no aud_logs row is written. A runtime re-reads each
+// bound secret about once a minute per route, and an audit row per read
+// buried the audit log; that read is security telemetry instead (a log line,
+// a counter and a last-fetched record, written by the caller).
+//
+// One caller, by convention: the ingestion runtime API's secrets call
+// (internal/platform/ingestion/runtimeapi), which has already decided the
+// caller's right to this value: the runtime's identity, the lease, the live
+// definition naming the secret, the client being active. Nothing else may
+// call it; a person or an application reads a secret's value only through
+// Reveal, which is audited. clientID is the canonical client id of the
+// value's scope; there is no global fallback (the lookup is at that scope
+// only). Not found is httperror.NotFound("Config", ...); a property that is
+// not a SECRET is NOT_A_SECRET.
+func (s *Service) FetchBoundSecretForIngestionRuntime(ctx context.Context, app, section, property, clientID string) (*Revealed, error) {
+	scope, scopeClient := ScopeFor(clientID)
+	c, err := s.Repo.FindByCoordinate(ctx, app, section, property, scope, scopeClient)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_coordinate failed", err)
+	}
+	if c == nil {
+		return nil, httperror.NotFound("Config", app+"/"+section+"/"+property)
+	}
+	if c.ValueType != ValueSecret {
+		return nil, usecase.Validation("NOT_A_SECRET", "this property is not a SECRET")
+	}
+	value, err := s.Repo.Reveal(ctx, c)
+	if err != nil {
+		return nil, usecase.Internal("REVEAL", "secret could not be decrypted", err)
 	}
 	return &Revealed{Config: c, Value: value}, nil
 }

@@ -80,12 +80,12 @@ func requirePromote(ctx context.Context, message string) error {
 	return usecase.Authorization("INGESTION_PROMOTE_REQUIRED", message)
 }
 
-// The refusals requirePromote gives each save.
+// The refusals requirePromote gives each save that names live explicitly.
+// Create and update do not refuse a caller without promote: their callers
+// ask for live through LiveIfPermitted, and without it the save is a draft.
 const (
-	promoteCreate = "creating a live ingestion needs platform:ingestion:ingestion:promote (live is true unless the request says false); " +
-		"send live: false to save it as a draft that someone who holds the permission makes live"
-	promoteUpdate = "an update saves the definition as the live version, which needs platform:ingestion:ingestion:promote; " +
-		"save it with POST /api/ingestions/{id}/versions (live: false) for someone who holds the permission to make live"
+	promoteCreate = "creating a live ingestion needs platform:ingestion:ingestion:promote; " +
+		"without it the ingestion is created as a draft that someone who holds the permission makes live"
 	promoteVersion = "saving a version as live needs platform:ingestion:ingestion:promote; save it with live: false"
 )
 

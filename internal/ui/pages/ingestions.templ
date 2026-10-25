@@ -286,7 +286,7 @@ templ ingsOverview(d ingsDetail) {
 			@kit.DetailField(kit.DetailFieldProps{Label: "Live version", Value: ingsLiveText(d.Version)})
 			if d.Latest > d.Version {
 				@kit.DetailField(kit.DetailFieldProps{Label: "Newest version"}) {
-					<span class="text-warning" id="ings-unreleased">{ strconv.Itoa(d.Latest) }, saved and not live</span>
+					<span class="text-warning" id="ings-unreleased">{ strconv.Itoa(d.Latest) }, saved and not live: a draft awaiting someone with promote</span>
 				}
 			}
 			@kit.DetailField(kit.DetailFieldProps{Label: "Failed payloads"}) {
@@ -319,6 +319,9 @@ templ ingsOverview(d ingsDetail) {
 			@kit.DetailField(kit.DetailFieldProps{Label: "Mode", Value: d.Target.Mode})
 			@kit.DetailField(kit.DetailFieldProps{Label: "Batch size", Value: strconv.Itoa(d.Target.BatchSize)})
 		</div>
+	}
+	if len(d.Secrets) > 0 {
+		@ingsSecrets(d)
 	}
 	if d.Perms.Update || d.CanRemove {
 		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
@@ -427,6 +430,11 @@ templ ingsVersions(d ingsDetail) {
 								if v.Live {
 									@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSuccess}) {
 										live
+									}
+								}
+								if v.Draft {
+									@kit.Badge(kit.BadgeProps{Variant: kit.BadgeWarn}) {
+										draft, awaiting promote
 									}
 								}
 							}
@@ -554,6 +562,36 @@ func ingsConfirm(id, title, message, label string, tone kit.ConfirmTone) kit.Con
 		ID: id, Action: ingsPath, Title: title, Message: message, ConfirmLabel: label, Tone: tone,
 		Hidden:    ingsHidden(),
 		FormAttrs: templ.Attributes{"data-on:submit": kit.SubmitConfirm},
+	}
+}
+
+// ingsSecrets is the drawer's Secrets section: each secret name the live
+// definition binds (never a value), and which runtime last fetched it and
+// when. A runtime's fetch is security telemetry, not an audited reveal; a
+// refused fetch is in the history.
+templ ingsSecrets(d ingsDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Secrets", Description: "The secret names the live definition binds and when each runtime last fetched them. Values are never shown; a refused fetch is in the history."}) {
+		<ul id="ings-secrets" class="flex flex-col gap-2 text-sm">
+			for _, sec := range d.Secrets {
+				<li id={ "ings-secret-" + sec.Name }>
+					<code>{ sec.Name }</code>
+					if !sec.Bound {
+						@kit.Badge(kit.BadgeProps{Variant: kit.BadgeOutline}) {
+							no longer bound
+						}
+					}
+					if len(sec.Fetches) == 0 {
+						<span class="text-muted-foreground">: not fetched yet</span>
+					} else {
+						<ul class="ml-4 text-xs text-muted-foreground">
+							for _, f := range sec.Fetches {
+								<li>last fetched by <code>{ f.RuntimeID }</code> at <time datetime={ f.AtISO }>{ f.At }</time> (version { strconv.Itoa(f.Version) }, { strconv.FormatInt(f.Count, 10) } fetches)</li>
+							}
+						</ul>
+					}
+				</li>
+			}
+		</ul>
 	}
 }
 

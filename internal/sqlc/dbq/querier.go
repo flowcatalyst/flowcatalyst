@@ -278,6 +278,11 @@ type Querier interface {
 	// live runtimes that carry that kind (the asking runtime has just been
 	// upserted, so it counts itself).
 	IngestionRuntimesLiveKinds(ctx context.Context, arg IngestionRuntimesLiveKindsParams) ([]IngestionRuntimesLiveKindsRow, error)
+	IngestionSecretFetchList(ctx context.Context, ingestionID string) ([]IngSecretFetch, error)
+	// One row per (ingestion, secret, runtime): when the runtime last fetched the
+	// secret, under which live version and principal, and how often. Written on
+	// every successful fetch, by the database's clock.
+	IngestionSecretFetchRecord(ctx context.Context, arg IngestionSecretFetchRecordParams) error
 	IngestionSetApplyFind(ctx context.Context, arg IngestionSetApplyFindParams) (IngSetApply, error)
 	// Forgets the applies beyond the newest @keep of a set, returning where their
 	// archives were kept.
@@ -308,6 +313,13 @@ type Querier interface {
 	// concurrent save or promote moves one of them and this updates no row.
 	IngestionUpdate(ctx context.Context, arg IngestionUpdateParams) (int64, error)
 	IngestionVersionFind(ctx context.Context, arg IngestionVersionFindParams) (IngVersion, error)
+	// The newest saved version of the ingestion whose definition says what this
+	// one says (same digest, and the same jsonb, so a collision cannot match).
+	IngestionVersionFindByDigest(ctx context.Context, arg IngestionVersionFindByDigestParams) (IngVersion, error)
+	// definition_digest is computed by the database from the definition's jsonb
+	// text (Postgres's canonical form: keys sorted, no insignificant whitespace),
+	// the same expression migration 093 backfilled with and
+	// IngestionVersionFindByDigest looks up by: one canonicalisation.
 	IngestionVersionInsert(ctx context.Context, arg IngestionVersionInsertParams) error
 	IngestionVersionList(ctx context.Context, ingestionID string) ([]IngVersion, error)
 	OAuthClientDelete(ctx context.Context, id string) error

@@ -16,7 +16,9 @@ import (
 // owns an ingestion are the use case's.
 type IngestionCommands interface {
 	Create(ctx context.Context, clientRef string, cmd ingops.CreateCommand) (string, error)
-	SaveVersion(ctx context.Context, cmd ingops.SaveVersionCommand) error
+	// SaveVersion saves a version, deduplicated by digest: the result says
+	// whether it was saved, made an existing version live, or matched a draft.
+	SaveVersion(ctx context.Context, cmd ingops.SaveVersionCommand) (ingops.SaveResult, error)
 	MakeLive(ctx context.Context, id string, version int) error
 	Pause(ctx context.Context, id string) error
 	Resume(ctx context.Context, id string) error
@@ -52,9 +54,8 @@ func (o IngestionOps) Create(ctx context.Context, clientRef string, cmd ingops.C
 }
 
 // SaveVersion runs SaveIngestionVersion.
-func (o IngestionOps) SaveVersion(ctx context.Context, cmd ingops.SaveVersionCommand) error {
-	_, err := usecaseop.Run(ctx, o.UoW, ingops.SaveVersion(o.Repo, o.Resolver), cmd, auth.NewExecutionContext(ctx))
-	return err
+func (o IngestionOps) SaveVersion(ctx context.Context, cmd ingops.SaveVersionCommand) (ingops.SaveResult, error) {
+	return usecaseop.RunTx(ctx, o.UoW, ingops.SaveVersion(o.Repo, o.Resolver), cmd, auth.NewExecutionContext(ctx))
 }
 
 // MakeLive runs MakeIngestionVersionLive.

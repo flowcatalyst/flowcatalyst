@@ -32,6 +32,8 @@ type fakeIngStore struct {
 	carried []string
 	// notices are the undismissed notices by ingestion id.
 	notices map[string]ingestion.Notices
+	// fetches are the secret fetch records by ingestion id.
+	fetches map[string][]ingestion.SecretFetch
 	err     error
 	// lastFilter is the filter the last list asked for.
 	lastFilter ingestion.ListFilter
@@ -91,6 +93,10 @@ func (f *fakeIngStore) AnyLiveRuntimeCarries(context.Context) (func(string) bool
 	return func(kind string) bool { return slices.Contains(f.carried, kind) }, f.err
 }
 
+func (f *fakeIngStore) ListSecretFetches(_ context.Context, id string) ([]ingestion.SecretFetch, error) {
+	return f.fetches[id], f.err
+}
+
 func (f *fakeIngStore) NoticesOf(_ context.Context, ids []string) (map[string]ingestion.Notices, error) {
 	out := map[string]ingestion.Notices{}
 	for _, id := range ids {
@@ -109,8 +115,11 @@ type fakeIngOps struct {
 	created  []ingops.CreateCommand
 	clients  []string
 	versions []ingops.SaveVersionCommand
-	err      error
-	newID    string
+	// saved is what SaveVersion answers; zero is a new version (a draft, or
+	// saved live when asked).
+	saved ingops.SaveResult
+	err   error
+	newID string
 }
 
 func (o *fakeIngOps) rec(call string) { o.calls = append(o.calls, call) }
@@ -128,13 +137,17 @@ func (o *fakeIngOps) Create(_ context.Context, clientRef string, cmd ingops.Crea
 	return cmp.Or(o.newID, "ing_1"), nil
 }
 
-func (o *fakeIngOps) SaveVersion(_ context.Context, cmd ingops.SaveVersionCommand) error {
+func (o *fakeIngOps) SaveVersion(_ context.Context, cmd ingops.SaveVersionCommand) (ingops.SaveResult, error) {
 	o.rec("save:" + cmd.ID)
 	o.versions = append(o.versions, cmd)
 	if err := cmd.Definition.Validate().Err(); err != nil {
-		return err
+		return ingops.SaveResult{}, err
 	}
-	return o.err
+	res := cmp.Or(o.saved, ingops.SaveResult{Outcome: ingops.OutcomeDraft, Version: 1})
+	if cmd.Live && o.saved.Outcome == "" {
+		res.Outcome = ingops.OutcomeSaved
+	}
+	return res, o.err
 }
 
 func (o *fakeIngOps) MakeLive(_ context.Context, id string, v int) error {
@@ -751,7 +764,7 @@ func TestIngestionSaveVersionRunsTheUseCase(t *testing.T) {
 	if cmd.ID != "ing_1" || cmd.Live || deref(cmd.Note) != "why <this>" || cmd.Definition.Name != "Orders in, changed" {
 		t.Errorf("command = %+v", cmd)
 	}
-	mustContain(t, body, `Version saved`)
+	mustContain(t, body, `Saved as a draft`)
 	// Make live when saved is a promote.
 	form.Set("live", "on")
 	ingBody(t, ingPost(h, t, ingAdmin(), "/ui/ingestions/ing_1/edit", form))

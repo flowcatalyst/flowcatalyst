@@ -45,10 +45,22 @@ An ingestion is addressed as **`application/client/code`** (for example
 runtimes report. A kind that needs a special permission (a Camel route is one)
 declares it, and saving an ingestion of that kind needs it (`platform:ingestion:ingestion:route`).
 The platform remembers what a runtime last declared for its kind, so the
-permission still applies while no runtime that reports the kind is running. The
-route permission counts **only for an anchor-tier caller**: below anchor tier a
-`camel-route` ingestion is refused (`INGESTION_ROUTE_ANCHOR_REQUIRED`) even with
-the permission, because a route runs with the runtime's network and identity.
+permission still applies while no runtime that reports the kind is running.
+
+**Camel routes are written by a pipeline or by an ingestion administrator.** A
+route runs with the runtime's network, identity and environment, so the route
+permission counts only for an anchor-tier caller (below it a `camel-route`
+ingestion is refused, `INGESTION_ROUTE_ANCHOR_REQUIRED`), and only for:
+
+- a **pipeline's service account** holding `platform:ingestion-route-author`,
+  which pushes routes through the API as drafts (it holds no promote) that an
+  administrator makes live; or
+- an **ingestion administrator** (`platform:ingestion-admin`), who pushes routes
+  with `fcdev ingest apply` or the API.
+
+A person who holds the route permission without being an administrator is
+refused (`INGESTION_ROUTE_PIPELINE_REQUIRED`), and an operator, who holds no
+route permission, cannot write or change a route at all.
 
 A source never holds a secret, only its **name** (`credential: {name: sftp-password}`).
 
@@ -175,17 +187,31 @@ newest 10 per set. Re-applying one goes back to it as a new apply.
 ## Versions, live, pause and resume
 
 Every change saves a **version**. The **live** version is the one runtimes
-receive: a saved version does not run until it is made live. Saving through
-the API's update or through a set apply makes the new version live; saving a
-version on its own does not.
+receive: a saved version does not run until it is made live. A version that is
+not live and was saved after the live one (or while nothing is live) is a
+**draft**: it waits for someone who holds `platform:ingestion:ingestion:promote`
+to make it live.
 
-Making a version live needs `platform:ingestion:ingestion:promote`, however it
-happens. A create is live unless it says `live: false`, so a create without
-promote that does not say so is refused (`INGESTION_PROMOTE_REQUIRED`); the
-pages save it as a draft. An update (`PUT /api/ingestions/{id}`) makes its
-version live, so without promote it is refused too: save the version with
-`POST /api/ingestions/{id}/versions` (`live: false`) for someone who holds
-promote to make live.
+Making a version live needs promote, however it happens. Without it a save is
+**a draft, never a refusal**:
+
+- a create (`POST /api/ingestions`) without promote makes an ingestion whose
+  first version is a draft, so nothing runs until it is made live, whatever
+  `live` says;
+- an update (`PUT /api/ingestions/{id}`) without promote saves the definition
+  as a draft; with promote it is saved and made live;
+- `POST /api/ingestions/{id}/versions` saves a draft, or a live version when it
+  says `live: true` (which needs promote).
+
+A save is **deduplicated by the digest** of the definition (sha256 of its
+canonical form, shown on each version as `digest`): a definition the live
+version already says changes nothing; one a draft already says saves nothing
+new and answers that draft (or, with promote, makes that draft live instead of
+saving a copy). The answer of a create or update carries `save`: what it did
+(`SAVED`, `MADE_LIVE`, `DRAFT`, `DRAFT_EXISTS` or `UNCHANGED`), the version, and
+whether it awaits promote. The pages say "Saved as a draft; someone with promote
+makes it live", mark drafts on the Versions tab, and the history shows a draft
+as a draft. A set apply makes its versions live under `set:apply`, as before.
 
 **Pause** stops an ingestion running; **resume** starts it again. Both need
 `update`. A paused ingestion keeps its versions and state.
@@ -237,23 +263,23 @@ real outbound call.
 
 | Permission | Grants |
 |---|---|
-| `platform:ingestion:ingestion:view` | List, read, versions, history, failures, definition export, source kinds |
+| `platform:ingestion:ingestion:view` | List, read, versions, history, failures, definition export, source kinds, and the secret names an ingestion binds with when each runtime last fetched them (never a value) |
 | `platform:ingestion:ingestion:create`, `update`, `delete` | Change definitions; `update` includes pause and resume |
-| `platform:ingestion:ingestion:promote` | Make a version live: a create that is live, an update, a version saved live, make live |
+| `platform:ingestion:ingestion:promote` | Make a version live: a create that is live, an update that is live, a version saved live, make live. Without it those saves are drafts |
 | `platform:ingestion:ingestion:test` | Run test connection |
-| `platform:ingestion:ingestion:route` | Create or change an ingestion of a kind that declares it needs this (`camel-route`), at anchor tier only; removing one needs only `delete` |
+| `platform:ingestion:ingestion:route` | Create or change an ingestion of a kind that declares it needs this (`camel-route`): at anchor tier, from a pipeline's service account or an ingestion administrator only; removing one needs only `delete` |
 | `platform:ingestion:ingestion:runtime-identity` | Save an `sqs` or `s3` source the runtime reads with its own AWS identity |
 | `platform:ingestion:ingestion:bind-secrets` | Save a definition that names secrets and points them somewhere new |
 | `platform:ingestion:set:apply` | Apply or release a set |
 | `platform:ingestion:runtime:operate` | The runtime API: poll, report, state, jobs, secrets |
 
-Seeded roles: `platform:ingestion-admin` (everything but route and the runtime,
-and the only role with `runtime-identity` and `bind-secrets`),
-`platform:ingestion-operator` (view, update, test), `platform:ingestion-viewer`,
-`platform:ingestion-route-author` (view, create, update, route: it writes drafts,
-created with `live: false` and saved as versions, which someone with promote
-makes live; a route that names secrets is saved by an admin), and
-`platform:ingestion-runtime` for a runtime's service account.
+Seeded roles: `platform:ingestion-admin` (everything but the runtime's, route
+included, and the only role with `runtime-identity`),
+`platform:ingestion-operator` (view, update, test: it cannot write routes),
+`platform:ingestion-viewer`, `platform:ingestion-route-author` (the **pipeline**
+role, for a service account: view, create, update, route and bind-secrets; it
+writes drafts that an administrator makes live, and a user given it cannot write
+a route), and `platform:ingestion-runtime` for a runtime's service account.
 
 **Reach.** A caller below anchor tier sees and changes only the ingestions of its
 own clients. An application-scoped service account reaches only its own
@@ -266,12 +292,32 @@ A definition names secrets and never holds one. A runtime reads a named secret a
 the ingestion's **client's** value in the platform's configuration (see
 "Platform configuration"), through the runtime API's own secrets call
 (`GET /api/ingestion-runtime/v1/ingestions/{id}/secrets/{name}`). That call
-reveals only the secrets the ingestion's live definition names, and every read
-is audited (refused if the audit cannot be written). The runtime's service
-account needs `platform:ingestion-runtime` and nothing else: no config-reveal
-permission. It always reads at the ingestion's own client, with no fall-back to a
-global value, so one client's ingestion cannot read another's. Set the secret
-for each client that needs it before the ingestion runs.
+answers only the secrets the ingestion's live definition binds, to a runtime
+that carries the kind and, for a polled source, holds the lease, for a live
+ingestion of an active client. The runtime's service account needs
+`platform:ingestion-runtime` and nothing else: no config-reveal permission. It
+always reads at the ingestion's own client, with no fall-back to a global value,
+so one client's ingestion cannot read another's. Set the secret for each client
+that needs it before the ingestion runs.
+
+**A runtime's fetch is not a config reveal and is not audited per read.** A
+runtime re-reads each secret about once a minute per route, so a fetch is
+recorded as **security telemetry** instead:
+
+- a structured log line at INFO, `security.ingestion_secret_fetch`, with
+  `ingestionId`, `applicationCode`, `clientId`, `secretName`, `runtimeId`,
+  `principalId` and `version` (never the value);
+- the counter `fc_ingestion_secret_fetch_total{outcome}` (`success`, `refused`,
+  `error`) on the metrics endpoint;
+- a **last fetched** record per ingestion, secret and runtime (when, under which
+  version, how many times), shown in the ingestion's drawer (Secrets) and by
+  `GET /api/ingestions/{id}/secrets`; it goes once the runtime has been gone for
+  7 days.
+
+A **refused** fetch (a name the live definition does not bind, no value at the
+ingestion's client, no lease where one is needed, an inactive client, a paused
+ingestion) is still audited, as `SECRET_FETCH_REFUSED` on the ingestion (it
+reads in the ingestion's history), and logged at WARN with the reason.
 
 ## Runtimes
 

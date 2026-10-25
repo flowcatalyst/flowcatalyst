@@ -206,6 +206,9 @@ templ ingHistoryItems(rows []ingHistoryRow) {
 			if e.Note != "" {
 				<p class="text-xs text-muted-foreground">Note: { e.Note }</p>
 			}
+			if e.Detail != "" {
+				<p class="text-xs text-muted-foreground">{ e.Detail }</p>
+			}
 		</li>
 	}
 }

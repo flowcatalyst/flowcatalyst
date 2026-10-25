@@ -30,6 +30,10 @@ func (noIngestions) NoticesOf(context.Context, []string) (map[string]ingestion.N
 	return map[string]ingestion.Notices{}, nil
 }
 
+func (noIngestions) ListSecretFetches(context.Context, string) ([]ingestion.SecretFetch, error) {
+	return nil, nil
+}
+
 func (noIngestions) AnyLiveRuntimeCarries(context.Context) (func(string) bool, error) {
 	return func(string) bool { return true }, nil
 }

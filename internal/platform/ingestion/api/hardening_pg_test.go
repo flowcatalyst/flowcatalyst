@@ -12,50 +12,157 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
 const permTest = "platform:ingestion:ingestion:test"
 
-// Making a version live needs promote, a create's (live by default) and an
-// update's (which makes its version live) as much as a make-live's (owner
-// ruling R3). Without it a create must say live false and an update is
-// refused, pointing at saving a version that is not live.
-func TestPromoteIsNeededToMakeAVersionLive(t *testing.T) {
+// A save without promote is a draft, never a refusal (owner ruling
+// 2026-10-25): a create without promote makes an ingestion whose first
+// version is not live, whatever live says, and an update without it saves a
+// version that is not live. Making a version live (make live, a version saved
+// live) still needs promote.
+func TestWithoutPromoteASaveIsADraft(t *testing.T) {
 	e := newEnv(t)
 	author := without(ingestionPerms, permPromote)
 	e.as(anchor(author...))
 
 	r := e.do(http.MethodPost, "/api/ingestions", e.body(e.appA, e.clientA.Identifier, "live-"+unique()))
-	assert.Equal(t, http.StatusForbidden, r.code, r.raw)
-	assert.Equal(t, "INGESTION_PROMOTE_REQUIRED", r.errCode())
-	assert.Contains(t, r.str("message"), "live: false")
+	require.Equal(t, http.StatusCreated, r.code, r.raw)
+	assert.Equal(t, 0, r.num("version"), "a draft: nothing live")
+	assert.Equal(t, 1, r.num("latestVersion"))
+	save := r.json["save"].(map[string]any)
+	assert.Equal(t, "DRAFT", save["outcome"])
+	assert.Equal(t, true, save["awaitingPromote"])
+	assert.Contains(t, save["message"], "someone with promote makes it live")
 	explicit := e.body(e.appA, e.clientA.Identifier, "live-"+unique())
 	explicit["live"] = true
-	assert.Equal(t, "INGESTION_PROMOTE_REQUIRED", e.do(http.MethodPost, "/api/ingestions", explicit).errCode())
-
-	draft := e.body(e.appA, e.clientA.Identifier, "draft-"+unique())
-	draft["live"] = false
-	r = e.do(http.MethodPost, "/api/ingestions", draft)
+	r = e.do(http.MethodPost, "/api/ingestions", explicit)
 	require.Equal(t, http.StatusCreated, r.code, r.raw)
-	assert.Equal(t, 0, r.num("version"), "a draft")
+	assert.Equal(t, 0, r.num("version"), "live: true without promote is a draft too")
 	id := r.str("id")
+	assert.Equal(t, 1, e.count(`SELECT count(*) FROM aud_logs WHERE entity_id = $1 AND operation = 'CreateCommand'
+		AND (operation_json->>'live')::boolean = false`, id), "the audit row records the draft")
 
 	upd := e.definitionOf("c", "q-upd")
 	upd["expectedVersion"] = 0
 	r = e.do(http.MethodPut, "/api/ingestions/"+id, upd)
-	assert.Equal(t, http.StatusForbidden, r.code, r.raw)
-	assert.Equal(t, "INGESTION_PROMOTE_REQUIRED", r.errCode())
-	assert.Contains(t, r.str("message"), "/versions")
+	require.Equal(t, http.StatusOK, r.code, r.raw)
+	assert.Equal(t, 0, r.num("version"))
+	assert.Equal(t, 2, r.num("latestVersion"))
+	assert.Equal(t, "DRAFT", r.json["save"].(map[string]any)["outcome"])
 
 	saved := e.definitionOf("c", "q-saved")
 	r = e.do(http.MethodPost, "/api/ingestions/"+id+"/versions", saved)
 	require.Equal(t, http.StatusCreated, r.code, "a version that is not live needs no promote: %s", r.raw)
+	assert.Equal(t, true, r.json["draft"])
 	saved["live"] = true
 	assert.Equal(t, http.StatusForbidden, e.do(http.MethodPost, "/api/ingestions/"+id+"/versions", saved).code)
+	assert.Equal(t, http.StatusForbidden, e.do(http.MethodPost, "/api/ingestions/"+id+"/versions/2/live", nil).code)
 
 	e.as(anchor(ingestionPerms...))
-	assert.Equal(t, http.StatusOK, e.do(http.MethodPut, "/api/ingestions/"+id, upd).code, "with promote")
+	r = e.do(http.MethodPut, "/api/ingestions/"+id, upd)
+	require.Equal(t, http.StatusOK, r.code, "with promote: %s", r.raw)
+	assert.Equal(t, "MADE_LIVE", r.json["save"].(map[string]any)["outcome"], "version 2 already said it")
+	assert.Equal(t, 2, r.num("version"))
+}
+
+// A save is deduplicated by the digest of its definition (owner ruling
+// 2026-10-25), with promote and without: the live version's definition
+// changes nothing; a draft's is not saved again (without promote it is
+// answered, with promote that draft is made live); a new one is saved, as a
+// draft without promote and live with it.
+func TestSavesAreDeduplicatedByDigest(t *testing.T) {
+	e := newEnv(t)
+	code := "dedupe-" + unique()
+	id := e.create(code) // version 1, live
+	versions := func() int { return e.count(`SELECT count(*) FROM ing_versions WHERE ingestion_id = $1`, id) }
+	update := func(queue string, expected int) response {
+		e.t.Helper()
+		b := e.definitionOf(code, queue)
+		b["expectedVersion"] = expected
+		return e.do(http.MethodPut, "/api/ingestions/"+id, b)
+	}
+	outcome := func(r response) string {
+		s, _ := r.json["save"].(map[string]any)
+		o, _ := s["outcome"].(string)
+		return o
+	}
+	liveQueue := "q-" + code
+
+	t.Run("without promote", func(t *testing.T) {
+		e.as(anchor(without(ingestionPerms, permPromote)...))
+		audits := e.auditRows(id)
+		r := update(liveQueue, 1)
+		require.Equal(t, http.StatusOK, r.code, r.raw)
+		assert.Equal(t, "UNCHANGED", outcome(r), "the live version's definition")
+		assert.Equal(t, 1, versions())
+		assert.Equal(t, audits, e.auditRows(id), "nothing written")
+
+		r = update("q-draft", 1)
+		require.Equal(t, http.StatusOK, r.code, r.raw)
+		assert.Equal(t, "DRAFT", outcome(r))
+		assert.Equal(t, 2.0, r.json["save"].(map[string]any)["version"])
+		assert.Equal(t, 1, r.num("version"), "the live version stays")
+		assert.Equal(t, 2, versions())
+		assert.Equal(t, 1, e.count(`SELECT count(*) FROM aud_logs WHERE entity_id = $1 AND operation = 'SaveVersionCommand'`, id),
+			"the update is recorded as the draft it saved")
+
+		audits = e.auditRows(id)
+		r = update("q-draft", 1)
+		require.Equal(t, http.StatusOK, r.code, r.raw)
+		assert.Equal(t, "DRAFT_EXISTS", outcome(r), "a draft already says it")
+		assert.Equal(t, 2.0, r.json["save"].(map[string]any)["version"])
+		assert.Equal(t, 2, versions(), "no duplicate")
+		assert.Equal(t, audits, e.auditRows(id))
+
+		// The digest is stored and the same for the same definition.
+		assert.Equal(t, 0, e.count(`SELECT count(*) FROM ing_versions WHERE ingestion_id = $1 AND (definition_digest IS NULL OR length(definition_digest) <> 64)`, id))
+		r = e.do(http.MethodGet, "/api/ingestions/"+id+"/versions", nil)
+		require.Equal(t, http.StatusOK, r.code, r.raw)
+		vs := r.json["versions"].([]any)
+		newest := vs[0].(map[string]any)
+		assert.Equal(t, true, newest["draft"])
+		assert.Equal(t, false, newest["live"])
+		assert.Len(t, newest["digest"], 64)
+		assert.Equal(t, false, vs[1].(map[string]any)["draft"], "the live version is no draft")
+	})
+
+	t.Run("with promote", func(t *testing.T) {
+		e.as(anchor(ingestionPerms...))
+		r := update(liveQueue, 1)
+		require.Equal(t, http.StatusOK, r.code, r.raw)
+		assert.Equal(t, "UNCHANGED", outcome(r))
+
+		r = update("q-draft", 1)
+		require.Equal(t, http.StatusOK, r.code, r.raw)
+		assert.Equal(t, "MADE_LIVE", outcome(r), "the draft that says it is made live")
+		assert.Equal(t, 2, r.num("version"))
+		assert.Equal(t, 2, versions(), "no duplicate")
+		assert.Equal(t, 1, e.count(`SELECT count(*) FROM aud_logs WHERE entity_id = $1 AND operation = 'MakeVersionLiveCommand'`, id))
+
+		r = update("q-new", 2)
+		require.Equal(t, http.StatusOK, r.code, r.raw)
+		assert.Equal(t, "SAVED", outcome(r))
+		assert.Equal(t, 3, r.num("version"))
+		assert.Equal(t, 3, versions())
+
+		// Going back to version 1's definition makes version 1 live again.
+		r = update(liveQueue, 3)
+		require.Equal(t, http.StatusOK, r.code, r.raw)
+		assert.Equal(t, "MADE_LIVE", outcome(r))
+		assert.Equal(t, 1, r.num("version"))
+		assert.Equal(t, 3, versions())
+
+		// POST .../versions dedupes the same way.
+		b := e.definitionOf(code, "q-new")
+		r = e.do(http.MethodPost, "/api/ingestions/"+id+"/versions", b)
+		require.Equal(t, http.StatusCreated, r.code, r.raw)
+		assert.Equal(t, 3.0, r.json["version"])
+		assert.Equal(t, "DRAFT_EXISTS", r.json["save"].(map[string]any)["outcome"])
+		assert.Equal(t, 3, versions())
+	})
 }
 
 // The route permission counts only at anchor tier (owner ruling R2): a caller
@@ -75,6 +182,59 @@ func TestRoutePermissionCountsOnlyAtAnchorTier(t *testing.T) {
 	e.as(anchor(append([]string{permRoute}, ingestionPerms...)...))
 	r = e.do(http.MethodPost, "/api/ingestions", route("route-"+unique()))
 	require.Equal(t, http.StatusCreated, r.code, r.raw)
+}
+
+// Camel routes are written by a pipeline or an ingestion administrator (owner
+// ruling 2026-10-25). The route-author role (view, create, update, route,
+// bind-secrets) writes routes only from a SERVICE principal, and as drafts
+// (it holds no promote); a user holding it is refused; an administrator (who
+// holds route and delete) writes them live; an operator holds no route.
+func TestRoutesAreWrittenByAPipelineOrAnAdministrator(t *testing.T) {
+	e := newEnv(t)
+	route := func(code string) map[string]any {
+		b := e.body(e.appA, e.clientA.Identifier, code)
+		b["source"] = map[string]any{"kind": "custom", "type": "camel-route", "settings": map[string]any{"yaml": "- from: direct:x"}}
+		return b
+	}
+	routeAuthor := []string{permView, permCreate, permUpdate, permRoute, permSecrets}
+
+	user := anchor(routeAuthor...)
+	user.PrincipalType = auth.PrincipalTypeUser
+	e.as(user)
+	r := e.do(http.MethodPost, "/api/ingestions", route("route-"+unique()))
+	assert.Equal(t, http.StatusForbidden, r.code, r.raw)
+	assert.Equal(t, "INGESTION_ROUTE_PIPELINE_REQUIRED", r.errCode())
+
+	pipeline := anchor(routeAuthor...)
+	pipeline.PrincipalType = auth.PrincipalTypeService
+	e.as(pipeline)
+	r = e.do(http.MethodPost, "/api/ingestions", route("route-"+unique()))
+	require.Equal(t, http.StatusCreated, r.code, r.raw)
+	assert.Equal(t, 0, r.num("version"), "a pipeline's route is a draft an administrator makes live")
+	id := r.str("id")
+	upd := route("ignored")
+	delete(upd, "application")
+	delete(upd, "client")
+	delete(upd, "code")
+	upd["source"] = map[string]any{"kind": "custom", "type": "camel-route", "settings": map[string]any{"yaml": "- from: direct:y"}}
+	upd["expectedVersion"] = 0
+	r = e.do(http.MethodPut, "/api/ingestions/"+id, upd)
+	require.Equal(t, http.StatusOK, r.code, r.raw)
+	assert.Equal(t, "DRAFT", r.json["save"].(map[string]any)["outcome"])
+
+	operator := anchor(permView, permUpdate, permTest)
+	operator.PrincipalType = auth.PrincipalTypeUser
+	e.as(operator)
+	r = e.do(http.MethodPut, "/api/ingestions/"+id, upd)
+	assert.Equal(t, http.StatusForbidden, r.code, r.raw)
+	assert.Equal(t, "INGESTION_KIND_PERMISSION_REQUIRED", r.errCode(), "an operator cannot change a route")
+
+	admin := anchor(append([]string{permRoute}, ingestionPerms...)...)
+	admin.PrincipalType = auth.PrincipalTypeUser
+	e.as(admin)
+	r = e.do(http.MethodPut, "/api/ingestions/"+id, upd)
+	require.Equal(t, http.StatusOK, r.code, r.raw)
+	assert.Equal(t, "MADE_LIVE", r.json["save"].(map[string]any)["outcome"], "the administrator makes the pipeline's draft live")
 }
 
 // A source the runtime fleet reads with its own AWS identity needs

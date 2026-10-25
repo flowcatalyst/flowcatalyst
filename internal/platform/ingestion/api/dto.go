@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
@@ -56,14 +57,15 @@ type CreateIngestionRequest struct {
 	Application string  `json:"application" doc:"Code of the owning application, which must be of type INTEGRATION"`
 	Client      string  `json:"client" doc:"The client's id (clt_...) or identifier"`
 	Code        string  `json:"code" doc:"Lowercase letters, digits and hyphens, unique within the application and client"`
-	Live        *bool   `json:"live,omitempty" doc:"Make the first version live. Default true, which needs the promote permission (403 INGESTION_PROMOTE_REQUIRED without it); false saves it to be made live later."`
+	Live        *bool   `json:"live,omitempty" doc:"Make the first version live. Default true; without the promote permission the first version is saved as a draft whatever this says (the answer's save says so), and someone who holds promote makes it live. false always saves a draft."`
 	Note        *string `json:"note,omitempty"`
 	IngestionDefinition
 }
 
 // UpdateIngestionRequest is the wire body for PUT /api/ingestions/{id}: the
-// definition saved as the next version and made live, which needs the promote
-// permission as well as update (without it: POST .../versions, live false).
+// definition saved as the next version, deduplicated by digest. With the
+// promote permission it is made live; without it, it is saved as a draft that
+// someone who holds promote makes live (the answer's save says which).
 type UpdateIngestionRequest struct {
 	ExpectedVersion int     `json:"expectedVersion" doc:"The live version the caller read (0 when none is live); a different current version is a 409"`
 	Note            *string `json:"note,omitempty"`
@@ -96,6 +98,9 @@ type IngestionResponse struct {
 	// RuntimeNotice is set while a running ingestion's kind is carried by no
 	// live runtime: nothing has failed, nobody is there to run it yet.
 	RuntimeNotice *string `json:"runtimeNotice,omitempty"`
+	// Save is what the create or update that answered did; absent from every
+	// other answer.
+	Save *IngestionSaveOutcome `json:"save,omitempty" doc:"What this create or update did: saved and made live, made an existing version live, saved as a draft awaiting promote, matched an existing draft, or changed nothing"`
 	// Warnings are what the definition says that saves but will not run as
 	// meant (an sftp source that checks no host key).
 	Warnings []string `json:"warnings,omitempty" doc:"What the definition says that will not run as meant, such as an sftp source that neither names the server's host key nor accepts any"`
@@ -107,6 +112,22 @@ type IngestionResponse struct {
 	LatestNoticeAt *httpcompat.Time `json:"latestNoticeAt,omitempty"`
 	CreatedAt      httpcompat.Time  `json:"createdAt"`
 	UpdatedAt      httpcompat.Time  `json:"updatedAt"`
+}
+
+// IngestionSaveOutcome is what a save of a definition did. A save is
+// deduplicated by the digest of the definition: what an existing version
+// already says is never saved twice.
+type IngestionSaveOutcome struct {
+	Outcome string `json:"outcome" enum:"UNCHANGED,SAVED,MADE_LIVE,DRAFT,DRAFT_EXISTS" doc:"UNCHANGED: the live version already says it, nothing written. SAVED: saved as a new version and made live. MADE_LIVE: a saved version that was not live already says it and was made live, nothing new saved. DRAFT: saved as a new version that is not live. DRAFT_EXISTS: a saved version that is not live already says it, nothing saved"`
+	// Version is the version the outcome names.
+	Version int `json:"version" doc:"The live version (UNCHANGED, SAVED, MADE_LIVE) or the draft (DRAFT, DRAFT_EXISTS)"`
+	// AwaitingPromote is true for DRAFT and DRAFT_EXISTS.
+	AwaitingPromote bool   `json:"awaitingPromote" doc:"The definition is in a version that is not live; someone who holds platform:ingestion:ingestion:promote makes it live"`
+	Message         string `json:"message"`
+}
+
+func saveOutcome(r operations.SaveResult) *IngestionSaveOutcome {
+	return &IngestionSaveOutcome{Outcome: string(r.Outcome), Version: r.Version, AwaitingPromote: r.AwaitingPromote(), Message: r.Message()}
 }
 
 // withNotices adds what the ingestion's undismissed notices add up to. A
@@ -159,20 +180,29 @@ type IngestionVersionResponse struct {
 	Version int    `json:"version"`
 	// Live is true for the version runtimes receive.
 	Live bool `json:"live"`
+	// Draft is true for a version saved after the live one (or while none is
+	// live) that is not live: it waits for promote.
+	Draft bool `json:"draft" doc:"A version saved after the live one (or while none is live) that is not live: it waits for someone who holds promote to make it live"`
+	// Digest is the sha256 of the definition's canonical form.
+	Digest string `json:"digest,omitempty" doc:"sha256 (hex) of the definition's canonical form; a save whose definition has the digest of a saved version reuses that version"`
 	IngestionDefinition
-	Note        *string         `json:"note,omitempty"`
-	AppliedFrom *string         `json:"appliedFrom,omitempty" doc:"Id of the set apply that produced the version"`
-	CreatedBy   *string         `json:"createdBy,omitempty"`
-	CreatedAt   httpcompat.Time `json:"createdAt"`
+	// Save is what the save that answered did (POST .../versions only).
+	Save        *IngestionSaveOutcome `json:"save,omitempty" doc:"What this save did (the answer of POST .../versions only)"`
+	Note        *string               `json:"note,omitempty"`
+	AppliedFrom *string               `json:"appliedFrom,omitempty" doc:"Id of the set apply that produced the version"`
+	CreatedBy   *string               `json:"createdBy,omitempty"`
+	CreatedAt   httpcompat.Time       `json:"createdAt"`
 }
 
-func fromVersion(v ingestion.Version, live bool) (IngestionVersionResponse, error) {
+// fromVersion renders v of an ingestion whose live version is liveVersion
+// (0 while none is).
+func fromVersion(v ingestion.Version, liveVersion int) (IngestionVersionResponse, error) {
 	body, err := definitionBody(v.Definition)
 	if err != nil {
 		return IngestionVersionResponse{}, err
 	}
 	return IngestionVersionResponse{
-		ID: v.ID, Version: v.Number, Live: live, IngestionDefinition: body,
+		ID: v.ID, Version: v.Number, Live: v.Number == liveVersion, Draft: v.Number > liveVersion, Digest: v.Digest, IngestionDefinition: body,
 		Note: v.Note, AppliedFrom: v.AppliedFrom, CreatedBy: v.CreatedBy, CreatedAt: jsontime.New(v.CreatedAt),
 	}, nil
 }

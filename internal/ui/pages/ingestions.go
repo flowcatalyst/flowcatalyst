@@ -36,6 +36,9 @@ type IngestionStore interface {
 	// NoticesOf is the undismissed notices (rejected failures) of the
 	// ingestions shown.
 	NoticesOf(ctx context.Context, ids []string) (map[string]ingestion.Notices, error)
+	// ListSecretFetches is when each runtime last fetched each of the
+	// ingestion's secrets (GET /api/ingestions/{id}/secrets).
+	ListSecretFetches(ctx context.Context, ingestionID string) ([]ingestion.SecretFetch, error)
 }
 
 // Ingestions is the ingestions page (/ui/ingestions), mirroring the Nuxt
@@ -191,7 +194,7 @@ func ingsEditBlock(ac *auth.AuthContext, i *ingestion.Ingestion, kinds ingsKindP
 	if _, custom := i.Definition.Source.(ingestion.Custom); custom {
 		if perm := kinds.of(kind); !ingestion.HoldsKindPermission(ac, perm) {
 			if perm == auth.PermIngestionRoute && ac.HasPermission(perm) {
-				return "Changing a " + kind + " ingestion needs an anchor-tier account as well as " + perm + "."
+				return "A " + kind + " ingestion is written by a pipeline service account or by an ingestion administrator, at anchor tier."
 			}
 			return "Changing a " + kind + " ingestion needs " + perm + "."
 		}
@@ -553,8 +556,11 @@ func ingsSplitSummary(s ingestion.Split) string {
 // ── drawer ─────────────────────────────────────────────────────────────
 
 type ingsVersionRow struct {
-	Number              int
-	Live                bool
+	Number int
+	Live   bool
+	// Draft: saved after the live version (or while none is live) and not
+	// live, so it waits for someone who holds promote.
+	Draft               bool
 	Note, By, Applied   string
 	Created, CreatedISO string
 	// MakeLive: the Make live action is offered.
@@ -590,8 +596,11 @@ type ingsDetail struct {
 	YAML                  string
 	Versions              []ingsVersionRow
 	Compare               *ingsComparison
-	Tab                   string
-	Perms                 ingsPerms
+	// Secrets: the names the live definition binds and who last fetched
+	// each (names only, never a value).
+	Secrets []ingsSecretRow
+	Tab     string
+	Perms   ingsPerms
 	// CanChange: Change… and New version are offered; EditBlock says why a
 	// caller who may update is not offered them.
 	CanChange bool
@@ -702,6 +711,11 @@ func (h *Ingestions) buildDetail(ctx context.Context, ac *auth.AuthContext, i *i
 		return ingsDetail{}, usecase.Internal("REPO", "notices failed", err)
 	}
 	d.Notices, d.LatestNotice = notices[i.ID].Count, notices[i.ID].LatestMessage
+	fetches, err := h.Store.ListSecretFetches(ctx, i.ID)
+	if err != nil {
+		return ingsDetail{}, usecase.Internal("REPO", "list_secret_fetches failed", err)
+	}
+	d.Secrets = ingsSecretRows(i, fetches)
 	d.Warnings = def.Warnings()
 	d.EditBlock = ingsEditBlock(ac, i, kinds)
 	d.CanChange = perms.Update && d.EditBlock == ""
@@ -721,7 +735,7 @@ func (h *Ingestions) buildDetail(ctx context.Context, ac *auth.AuthContext, i *i
 	for _, v := range versions {
 		byNumber[v.Number] = v
 		row := ingsVersionRow{
-			Number: v.Number, Live: v.Number == i.Version, Note: deref(v.Note), By: deref(v.CreatedBy), Applied: deref(v.AppliedFrom),
+			Number: v.Number, Live: v.Number == i.Version, Draft: v.Number > i.Version, Note: deref(v.Note), By: deref(v.CreatedBy), Applied: deref(v.AppliedFrom),
 			Created: v.CreatedAt.UTC().Format("2006-01-02 15:04"), CreatedISO: v.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 			MakeLive: d.CanLive && v.Number != i.Version,
 		}
@@ -969,4 +983,37 @@ func (h *Ingestions) export(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="`+i.Code+`.yaml"`)
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(yaml)
+}
+
+// ingsSecretRow is one secret the drawer's Secrets section shows: the name,
+// whether the live definition binds it, and which runtime last fetched it and
+// when. A runtime's fetch is security telemetry, not an audited reveal (owner
+// ruling 2026-10-25); this is where it shows.
+type ingsSecretRow struct {
+	Name  string
+	Bound bool
+	// Fetches are the runtimes that fetched it, newest first.
+	Fetches []ingsSecretFetchRow
+}
+
+type ingsSecretFetchRow struct {
+	RuntimeID, At, AtISO string
+	Version              int
+	Count                int64
+}
+
+func ingsSecretRows(i *ingestion.Ingestion, fetches []ingestion.SecretFetch) []ingsSecretRow {
+	bound := ingestion.BoundSecrets(i, fetches)
+	rows := make([]ingsSecretRow, 0, len(bound))
+	for _, b := range bound {
+		row := ingsSecretRow{Name: b.Name, Bound: b.Bound}
+		for _, f := range b.Fetches {
+			row.Fetches = append(row.Fetches, ingsSecretFetchRow{
+				RuntimeID: f.RuntimeID, Version: f.Version, Count: f.FetchCount,
+				At: f.LastFetchedAt.UTC().Format("2006-01-02 15:04:05 UTC"), AtISO: f.LastFetchedAt.UTC().Format("2006-01-02T15:04:05Z"),
+			})
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
