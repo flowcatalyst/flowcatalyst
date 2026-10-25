@@ -46,3 +46,35 @@ func TestSetProperty_NoClientExistenceOracle(t *testing.T) {
 	testpg.RequireUsecaseError(t, put(admin, "pcapi-no-such"), usecase.KindNotFound, "Client_NOT_FOUND")
 	require.NoError(t, put(admin, "pcapi-real"))
 }
+
+// GET /api/platform-config/{app}: a client row names the client both ways
+// (its stored id and its identifier), so a caller holding either can match it.
+func TestListProperties_NamesTheClientIdentifier(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	testpg.EnsureApplication(t, "pcapi-list")
+	cid := tsid.Generate(tsid.Client)
+	_, err := pool.Exec(ctx, `INSERT INTO tnt_clients (id, name, identifier) VALUES ($1, 'Listed', 'pcapi-listed')`, cid)
+	require.NoError(t, err)
+	s := &State{Svc: &platformconfig.Service{
+		Repo: platformconfig.NewRepository(pool), UoW: testpg.NewUoW(t), Clients: client.NewRepository(pool), Audit: audit.NewRepository(pool),
+	}}
+	admin := &auth.AuthContext{PrincipalID: "prn_pcapiadmin02", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:admin:config:update", "platform:admin:config:view"}}
+	actx := testpg.WithAuth(ctx, admin)
+	for _, ref := range []string{"", "pcapi-listed"} {
+		_, err := s.setProperty(actx, &setPropertyInput{App: "pcapi-list", Section: "s", Property: "p", ClientID: ref, Body: SetPropertyRequest{Value: "v"}})
+		require.NoError(t, err)
+	}
+	out, err := s.listProperties(actx, &listPropsInput{App: "pcapi-list"})
+	require.NoError(t, err)
+	require.Len(t, out.Body.Items, 2)
+	for _, r := range out.Body.Items {
+		if r.ClientID == nil {
+			require.Nil(t, r.ClientIdentifier, "the global row names no client")
+			continue
+		}
+		require.Equal(t, cid, *r.ClientID)
+		require.NotNil(t, r.ClientIdentifier)
+		require.Equal(t, "pcapi-listed", *r.ClientIdentifier)
+	}
+}

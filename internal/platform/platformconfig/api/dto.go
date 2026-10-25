@@ -52,7 +52,10 @@ type ConfigResponse struct {
 	Property        string          `json:"property"`
 	Scope           string          `json:"scope"`
 	ClientID        *string         `json:"clientId,omitempty"`
-	ValueType       string          `json:"valueType"`
+	// ClientIdentifier is the client's identifier (e.g. acme) beside its
+	// stored id, on list answers, so a caller holding either can match rows.
+	ClientIdentifier *string `json:"clientIdentifier,omitempty"`
+	ValueType        string  `json:"valueType"`
 	Value           string          `json:"value"`
 	Description     *string         `json:"description,omitempty"`
 	CreatedAt       httpcompat.Time `json:"createdAt"`

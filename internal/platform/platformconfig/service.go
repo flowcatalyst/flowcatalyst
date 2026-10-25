@@ -113,6 +113,29 @@ func ScopeFor(clientID string) (Scope, *string) {
 // unknown client is a 404: it must not create (or read) a row keyed by a
 // string that is no client. Callers authorise the application first, so an
 // unauthorised caller cannot use it to learn which clients exist.
+// ClientIdentifiers maps each client id in ids to its identifier, for
+// answers that name a client both ways. An id with no client (or no client
+// repository) is left out; a lookup failure is an error.
+func (s *Service) ClientIdentifiers(ctx context.Context, ids []string) (map[string]string, error) {
+	out := make(map[string]string, len(ids))
+	if s.Clients == nil {
+		return out, nil
+	}
+	for _, id := range ids {
+		if _, seen := out[id]; seen || id == "" {
+			continue
+		}
+		c, err := s.Clients.FindByID(ctx, id)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "client lookup failed", err)
+		}
+		if c != nil {
+			out[id] = c.Identifier
+		}
+	}
+	return out, nil
+}
+
 func (s *Service) ResolveClientID(ctx context.Context, ref string) (string, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" || s.Clients == nil {

@@ -36,7 +36,10 @@ type ConfigResponse struct {
 	Property        string `json:"property"`
 	Scope           string `json:"scope"`
 	ClientID        string `json:"clientId,omitempty"`
-	ValueType       string `json:"valueType"`
+	// ClientIdentifier is the client's identifier beside its stored id (on
+	// list answers).
+	ClientIdentifier string `json:"clientIdentifier,omitempty"`
+	ValueType        string `json:"valueType"`
 	// Value is "***" for SECRET properties; see RevealSecret.
 	Value       string `json:"value"`
 	Description string `json:"description,omitempty"`

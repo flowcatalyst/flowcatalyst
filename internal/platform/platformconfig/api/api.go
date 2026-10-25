@@ -51,9 +51,25 @@ func (s *State) listProperties(ctx context.Context, in *listPropsInput) (*apicom
 	if err != nil {
 		return nil, err
 	}
+	cids := make([]string, 0, len(rows))
+	for i := range rows {
+		if rows[i].ClientID != nil {
+			cids = append(cids, string(*rows[i].ClientID))
+		}
+	}
+	idents, err := s.Svc.ClientIdentifiers(ctx, cids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]ConfigResponse, 0, len(rows))
 	for i := range rows {
-		out = append(out, configFromEntity(&rows[i]))
+		r := configFromEntity(&rows[i])
+		if r.ClientID != nil {
+			if ident, ok := idents[*r.ClientID]; ok {
+				r.ClientIdentifier = &ident
+			}
+		}
+		out = append(out, r)
 	}
 	return &apicommon.Out[ConfigListResponse]{Body: ConfigListResponse{Items: out}}, nil
 }
