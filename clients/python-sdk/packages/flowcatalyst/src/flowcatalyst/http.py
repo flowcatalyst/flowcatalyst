@@ -69,11 +69,13 @@ class Transport:
         accept: str = "application/json",
         idempotent: bool | None = None,
         timeout: Timeouts | None = None,  # noqa: ASYNC109 - per-call override, not asyncio's
+        headers: Mapping[str, str] | None = None,
     ) -> httpx.Response:
         """Send a request; return the 2xx response or raise a :class:`FlowCatalystError`.
 
         ``idempotent`` overrides the method default (use it for POSTs that are safe to
         repeat, e.g. sync endpoints). It only affects retry after a request was sent.
+        ``headers`` are sent besides the SDK's own (which they cannot replace).
         """
         timeouts = timeout or self._timeouts
         method = method.upper()
@@ -81,7 +83,7 @@ class Transport:
         try:
             async with asyncio.timeout(timeouts.total):
                 return await self._send_loop(
-                    method, path, params, json, data, accept, is_idempotent, timeouts
+                    method, path, params, json, data, accept, is_idempotent, timeouts, headers
                 )
         except TimeoutError as exc:
             raise RequestTimeoutError(
@@ -98,13 +100,14 @@ class Transport:
         accept: str,
         idempotent: bool,
         timeouts: Timeouts,
+        extra_headers: Mapping[str, str] | None = None,
     ) -> httpx.Response:
         attempt = 0
         refreshed = False
         url = f"{self._base}{path}"
         while True:
             attempt += 1
-            headers = {"User-Agent": self._user_agent, "Accept": accept}
+            headers = {**(extra_headers or {}), "User-Agent": self._user_agent, "Accept": accept}
             token: str | None = None
             if self._auth is not None:
                 token = await self._auth.get()

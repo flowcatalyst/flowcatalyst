@@ -57,6 +57,14 @@ and `reveal_secret(app, section, property, client_id=None)`.
   `code == "NOT_A_SECRET"` (400, property is PLAIN: use `get`).
 * The result's `value` is a pydantic `SecretStr` (redacted in `repr`/`str`/JSON); read it with
   `result.value.get_secret_value()`. The SDK never caches or logs it; add your own TTL cache if needed.
+* Writing a SECRET: the mask is not a value. `set(..., "***", value_type="SECRET")` is refused
+  (`ValidationError`, `code == "SECRET_VALUE_MASKED"`), as is an empty secret
+  (`SECRET_VALUE_REQUIRED`); to leave a secret unchanged, do not set it.
+* Acting for a person: `set`, `delete` and `reveal_secret` take `on_behalf_of="<who>"`, sent as
+  `X-On-Behalf-Of` and recorded in the audit row. The platform honours it only from a service
+  account (ignored from anyone else) and refuses more than 256 characters or a control character
+  (`INVALID_ON_BEHALF_OF`).
+* List rows carry `client_identifier` (e.g. `acme`) beside the stored `client_id`.
 
 ## Ingestions
 
@@ -73,6 +81,17 @@ tests and sets (`apply(..., dry_run=True)`, applies, reapply, release). The runt
   client only).
 * `update(id, definition, expected_version=...)`; a stale version or a taken code is a
   `ConflictError` (`code` is `INGESTION_CODE_EXISTS`, `INGESTION_SET_OWNED`, ...).
+* Drafts: without the promote permission `create`/`update`/`save_version` save the definition as a
+  draft, never a refusal: `result.save.outcome == "DRAFT"` and `save.awaiting_promote` is true
+  until someone with promote makes it live (`make_version_live`). A definition an existing version
+  already says is not saved again (`UNCHANGED`, `MADE_LIVE`, `DRAFT_EXISTS`); versions carry
+  `draft` and `digest`. `warnings` names what will not run as meant (for example an `SftpSource`
+  with neither `known_hosts` nor `accept_any_host_key`).
+* Notices are failures the platform refused (`category == "rejected"`); the ingestion counts the
+  open ones (`notices`, `latest_notice`). `failures(id, category="rejected", undismissed=True)`
+  lists them and `dismiss_failure(id, failure_id)` dismisses one (it stays listed).
+* `secrets(id)` lists the secret names the live definition binds and, per runtime, the last fetch
+  (`fetch_count`, `last_fetched_at`). Names only, never values.
 * Hand-written like the other resources (no generator in this SDK);
   `tests/test_contract_lock.py` checks the operations and models against the lock.
 
