@@ -1,17 +1,21 @@
 package kit
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 )
 
 // PickItem is one entry of a PickList.
 type PickItem struct {
-	// Value is submitted. With no Key it is also part of the checkbox id, so
-	// it must then be id-safe ([A-Za-z][A-Za-z0-9_-]*).
+	// Value is submitted, and is data everywhere else (a quoted literal in
+	// the signal, a JSON array element in data-members, an attribute value):
+	// any text is safe. Only when Key is empty is it also the checkbox id's
+	// token, and must then be id-safe ([A-Za-z][A-Za-z0-9_-]*).
 	Value string `json:"value"`
 	// Key is the id-safe token of the checkbox id, for a Value that is not
-	// (a role name such as "yard:dispatcher"). Unique within the list.
+	// (a role name such as "yard:dispatcher"). Unique within the list. With
+	// Key set, Value need not be id-safe.
 	Key     string `json:"key"`
 	Name    string `json:"name"`
 	Code    string `json:"code"`
@@ -32,22 +36,26 @@ type PickItem struct {
 // (checkboxes on the left, filtered as you type; the picked ones mirrored
 // on the right with a count) that posts the picked values under one name.
 type PickListProps struct {
-	ID                string           `json:"id"`
-	Signal            string           `json:"signal"`
-	FilterSignal      string           `json:"filterSignal"`
-	Name              string           `json:"name"`
-	ItemIDPrefix      string           `json:"itemIdPrefix"`
-	Items             []PickItem       `json:"items"`
-	AvailableTitle    string           `json:"availableTitle"`
-	SelectedTitle     string           `json:"selectedTitle"`
-	FilterPlaceholder string           `json:"filterPlaceholder"`
+	ID                string     `json:"id"`
+	Signal            string     `json:"signal"`
+	FilterSignal      string     `json:"filterSignal"`
+	Name              string     `json:"name"`
+	ItemIDPrefix      string     `json:"itemIdPrefix"`
+	Items             []PickItem `json:"items"`
+	AvailableTitle    string     `json:"availableTitle"`
+	SelectedTitle     string     `json:"selectedTitle"`
+	FilterPlaceholder string     `json:"filterPlaceholder"`
 	// Bulk adds "Select shown" (ticks every row the filter shows) and
 	// "Clear" (unticks every unlocked pick) to the left pane.
 	Bulk bool `json:"bulk"`
-	EmptyText         string           `json:"emptyText"`
-	SaveLabel         string           `json:"saveLabel"`
-	Action            string           `json:"action"`
-	FormAttrs         templ.Attributes `json:"formAttrs"`
+	// Embedded renders the panes only (PickListFields): no form, no Save,
+	// for a picker inside a form that already submits (a dialog's). Action,
+	// FormAttrs and SaveLabel do not apply.
+	Embedded  bool             `json:"embedded"`
+	EmptyText string           `json:"emptyText"`
+	SaveLabel string           `json:"saveLabel"`
+	Action    string           `json:"action"`
+	FormAttrs templ.Attributes `json:"formAttrs"`
 }
 
 const (
@@ -66,7 +74,10 @@ func (p PickListProps) itemID(it PickItem) string {
 	return ID(p.ItemIDPrefix + it.Value)
 }
 
-// jsQuote writes v as a single-quoted JavaScript string literal.
+// jsQuote writes v as a single-quoted JavaScript string literal: backslash,
+// quote, CR and LF are escaped, and < is written \x3c so it can never be
+// read as markup in whatever HTML context the literal is copied into
+// (pick-list.md, Behaviour).
 func jsQuote(v string) string {
 	r := strings.NewReplacer(`\`, `\\`, `'`, `\'`, "\n", `\n`, "\r", `\r`, "<", `\x3c`)
 	return "'" + r.Replace(v) + "'"
@@ -154,17 +165,36 @@ func (p PickListProps) startsGroup(i int) bool {
 	return g != "" && (i == 0 || p.Items[i-1].Group != g)
 }
 
-// groupMembers is the values of the group that item i opens, space
-// separated (values are id-safe, so they hold no spaces).
+// groupMembers is the unlocked values of the group that item i opens, as a
+// JSON array (values are any text: with a Key they need not be id-safe, so
+// a separator-joined list could split one). Locked members are left out: a
+// group holding one is always shown (groupHasLocked).
 func (p PickListProps) groupMembers(i int) string {
-	var vs []string
+	vs := []string{}
 	for _, it := range p.Items[i:] {
 		if it.Group != p.Items[i].Group {
 			break
 		}
-		vs = append(vs, it.Value)
+		if !it.Locked {
+			vs = append(vs, it.Value)
+		}
 	}
-	return strings.Join(vs, " ")
+	b, _ := json.Marshal(vs) // a []string always marshals
+	return string(b)
+}
+
+// groupHasLocked reports whether the group opened by item i holds a locked
+// item: always picked, so its right-pane heading always shows.
+func (p PickListProps) groupHasLocked(i int) bool {
+	for _, it := range p.Items[i:] {
+		if it.Group != p.Items[i].Group {
+			break
+		}
+		if it.Locked {
+			return true
+		}
+	}
+	return false
 }
 
 // groupFilterText is what the filter matches a heading against: the text of
@@ -196,24 +226,38 @@ func (p PickListProps) groupHasPick(i int) bool {
 
 // groupPickedExpr shows a right-pane heading while a member is picked.
 func (p PickListProps) groupPickedExpr() string {
-	return "el.dataset.members.split(' ').some(v => $" + Signal(p.Signal) + ".includes(v))"
+	return "JSON.parse(el.dataset.members).some(v => $" + Signal(p.Signal) + ".includes(v))"
 }
+
+// notifyInput tells the surrounding form that its fields changed, so a
+// FormDialog's dirty state (data-on:input) sees a bulk change. Datastar runs
+// a handler in a batch and updates the bound checkboxes when it ends, so the
+// event is queued as a microtask: it fires after the checkboxes are set.
+const pickNotifyInput = "; const f = el.closest('form'); queueMicrotask(() => f && f.dispatchEvent(new Event('input', {bubbles: true})))"
 
 // selectShownExpr ticks every row the filter shows, keeping the others as
 // they are (the signal is positional, one slot per unlocked checkbox).
 func (p PickListProps) selectShownExpr() string {
 	s := "$" + Signal(p.Signal)
-	return "const c = [...el.closest('form').querySelectorAll('input[type=checkbox]:not(:disabled)')]; " +
-		s + " = c.map((x, i) => x.closest('label').style.display === 'none' ? " + s + "[i] : x.value)"
+	return "const c = [...document.getElementById('" + ID(p.ID) + "').querySelectorAll('input[type=checkbox]:not(:disabled)')]; " +
+		s + " = c.map((x, i) => x.closest('label').style.display === 'none' ? " + s + "[i] : x.value)" + pickNotifyInput
 }
 
 func (p PickListProps) clearExpr() string {
 	s := "$" + Signal(p.Signal)
-	return s + " = " + s + ".map(() => '')"
+	return s + " = " + s + ".map(() => '')" + pickNotifyInput
 }
 
-// PickList is pick-list.md.
+// PickList is pick-list.md; with Embedded it is PickListFields.
 templ PickList(p PickListProps) {
+	if p.Embedded {
+		@PickListFields(p)
+	} else {
+		@pickListForm(p)
+	}
+}
+
+templ pickListForm(p PickListProps) {
 	<form id={ ID(p.ID) } class="grid grid-cols-1 gap-4 sm:grid-cols-2" data-signals={ p.signals() } data-init={ "el.dataset.snapshot = JSON.stringify($" + Signal(p.Signal) + ")" } { p.formAttrs()... }>
 		@pickPanes(p)
 		<div class="sm:col-span-2 flex justify-end gap-2">
@@ -235,89 +279,91 @@ templ PickListFields(p PickListProps) {
 }
 
 templ pickPanes(p PickListProps) {
-		<div class={ pickPane }>
-			<div class="flex flex-col gap-2 border-b border-border bg-subtle p-3">
-				<h4 class={ pickHeading }>{ p.AvailableTitle }</h4>
-				<input class={ inputClasses } type="search" placeholder={ p.FilterPlaceholder } aria-label={ p.FilterPlaceholder } { templ.Attributes{"data-bind:" + SignalAttr(p.FilterSignal): true}... }/>
-				if p.Bulk {
-					<div class="flex gap-2">
-						<button type="button" class={ ButtonClasses(ButtonOutline, ButtonSm) } data-on:click={ p.selectShownExpr() }>Select shown</button>
-						<button type="button" class={ ButtonClasses(ButtonGhost, ButtonSm) } data-on:click={ p.clearExpr() }>Clear</button>
+	<div class={ pickPane }>
+		<div class="flex flex-col gap-2 border-b border-border bg-subtle p-3">
+			<h4 class={ pickHeading }>{ p.AvailableTitle }</h4>
+			<input class={ inputClasses } type="search" placeholder={ p.FilterPlaceholder } aria-label={ p.FilterPlaceholder } { templ.Attributes{"data-bind:" + SignalAttr(p.FilterSignal): true}... }/>
+			if p.Bulk {
+				<div class="flex gap-2">
+					<button type="button" class={ ButtonClasses(ButtonOutline, ButtonSm) } data-on:click={ p.selectShownExpr() }>Select shown</button>
+					<button type="button" class={ ButtonClasses(ButtonGhost, ButtonSm) } data-on:click={ p.clearExpr() }>Clear</button>
+				</div>
+			}
+		</div>
+		<div class="h-[200px] overflow-y-auto p-1">
+			for i, it := range p.Items {
+				if p.startsGroup(i) {
+					<div data-show={ p.filterExpr() } data-filter-text={ p.groupFilterText(i) } class={ pickGroup }>{ it.Group }</div>
+				}
+				if it.Locked {
+					<label for={ p.itemID(it) } data-show={ p.filterExpr() } data-filter-text={ pickFilterText(it) } class={ pickRowLeft + " cursor-default opacity-70" }>
+						@pickText(it)
+						<span class={ controlWrapClasses }>
+							<input type="checkbox" class={ checkboxClasses } id={ p.itemID(it) } checked disabled/>
+							@Icon(IconProps{Name: "check", Class: checkboxMarkClass})
+							<input type="hidden" name={ p.Name } value={ it.Value }/>
+						</span>
+					</label>
+				} else {
+					<label for={ p.itemID(it) } data-show={ p.filterExpr() } data-filter-text={ pickFilterText(it) } class={ pickRowLeft }>
+						@pickText(it)
+						<span class={ controlWrapClasses }>
+							<input type="checkbox" class={ checkboxClasses } id={ p.itemID(it) } name={ p.Name } value={ it.Value } checked?={ it.Checked } { templ.Attributes{"data-bind:" + SignalAttr(p.Signal): true}... }/>
+							@Icon(IconProps{Name: "check", Class: checkboxMarkClass})
+						</span>
+					</label>
+				}
+			}
+		</div>
+	</div>
+	<div class={ pickPane }>
+		<div class="border-b border-border bg-subtle p-3"><h4 class={ pickHeading }>{ orDefault(p.SelectedTitle, "Selected") } (<span data-text={ p.count() }>{ strconv.Itoa(p.picked()) }</span>)</h4></div>
+		<div class="h-[200px] overflow-y-auto p-1">
+			for i, it := range p.Items {
+				if p.startsGroup(i) && p.groupHasLocked(i) {
+					<div class={ pickGroup }>{ it.Group }</div>
+				} else if p.startsGroup(i) {
+					<div
+						data-members={ p.groupMembers(i) }
+						data-show={ p.groupPickedExpr() }
+						if !p.groupHasPick(i) {
+							style="display: none"
+						}
+						class={ pickGroup }
+					>{ it.Group }</div>
+				}
+				if it.Locked {
+					<div class={ pickRowRight }>
+						@pickText(it)
+						<span class="inline-flex size-7 shrink-0 items-center justify-center text-muted-foreground" role="img" title="Cannot be changed" aria-label={ it.Name + " cannot be changed" }>
+							@Icon(IconProps{Name: "lock", Class: "size-[0.9rem]"})
+						</span>
+					</div>
+				} else {
+					<div
+						data-value={ it.Value }
+						data-show={ "$" + Signal(p.Signal) + ".includes(el.dataset.value)" }
+						if !it.Checked {
+							style="display: none"
+						}
+						class={ pickRowRight }
+					>
+						@pickText(it)
+						<label for={ p.itemID(it) } title="Remove" aria-label={ "Remove " + it.Name } class={ cx(ButtonClasses(ButtonGhost, ButtonIcon), pickRemoveExt) }>
+							@Icon(IconProps{Name: "x", Class: "size-[0.9rem]"})
+						</label>
 					</div>
 				}
-			</div>
-			<div class="h-[200px] overflow-y-auto p-1">
-				for i, it := range p.Items {
-					if p.startsGroup(i) {
-						<div data-show={ p.filterExpr() } data-filter-text={ p.groupFilterText(i) } class={ pickGroup }>{ it.Group }</div>
-					}
-					if it.Locked {
-						<label for={ p.itemID(it) } data-show={ p.filterExpr() } data-filter-text={ pickFilterText(it) } class={ pickRowLeft + " cursor-default opacity-70" }>
-							@pickText(it)
-							<span class={ controlWrapClasses }>
-								<input type="checkbox" class={ checkboxClasses } id={ p.itemID(it) } checked disabled/>
-								@Icon(IconProps{Name: "check", Class: checkboxMarkClass})
-								<input type="hidden" name={ p.Name } value={ it.Value }/>
-							</span>
-						</label>
-					} else {
-						<label for={ p.itemID(it) } data-show={ p.filterExpr() } data-filter-text={ pickFilterText(it) } class={ pickRowLeft }>
-							@pickText(it)
-							<span class={ controlWrapClasses }>
-								<input type="checkbox" class={ checkboxClasses } id={ p.itemID(it) } name={ p.Name } value={ it.Value } checked?={ it.Checked } { templ.Attributes{"data-bind:" + SignalAttr(p.Signal): true}... }/>
-								@Icon(IconProps{Name: "check", Class: checkboxMarkClass})
-							</span>
-						</label>
-					}
+			}
+			<p
+				data-show={ p.count() + " === 0" }
+				if p.picked() > 0 {
+					style="display: none"
 				}
-			</div>
+				class="p-3 text-center text-muted-foreground"
+			>{ p.EmptyText }</p>
 		</div>
-		<div class={ pickPane }>
-			<div class="border-b border-border bg-subtle p-3"><h4 class={ pickHeading }>{ orDefault(p.SelectedTitle, "Selected") } (<span data-text={ p.count() }>{ strconv.Itoa(p.picked()) }</span>)</h4></div>
-			<div class="h-[200px] overflow-y-auto p-1">
-				for i, it := range p.Items {
-					if p.startsGroup(i) {
-						<div
-							data-members={ p.groupMembers(i) }
-							data-show={ p.groupPickedExpr() }
-							if !p.groupHasPick(i) {
-								style="display: none"
-							}
-							class={ pickGroup }
-						>{ it.Group }</div>
-					}
-					if it.Locked {
-						<div class={ pickRowRight }>
-							@pickText(it)
-							<span class="inline-flex size-7 shrink-0 items-center justify-center text-muted-foreground" title="Cannot be changed" aria-label={ it.Name + " cannot be changed" }>
-								@Icon(IconProps{Name: "lock", Class: "size-[0.9rem]"})
-							</span>
-						</div>
-					} else {
-						<div
-							data-value={ it.Value }
-							data-show={ "$" + Signal(p.Signal) + ".includes(el.dataset.value)" }
-							if !it.Checked {
-								style="display: none"
-							}
-							class={ pickRowRight }
-						>
-							@pickText(it)
-							<label for={ p.itemID(it) } title="Remove" aria-label={ "Remove " + it.Name } class={ cx(ButtonClasses(ButtonGhost, ButtonIcon), pickRemoveExt) }>
-								@Icon(IconProps{Name: "x", Class: "size-[0.9rem]"})
-							</label>
-						</div>
-					}
-				}
-				<p
-					data-show={ p.count() + " === 0" }
-					if p.picked() > 0 {
-						style="display: none"
-					}
-					class="p-3 text-center text-muted-foreground"
-				>{ p.EmptyText }</p>
-			</div>
-		</div>
+	</div>
 }
 
 templ pickText(it PickItem) {
