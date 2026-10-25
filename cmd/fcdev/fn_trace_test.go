@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -33,10 +34,16 @@ type fakeTracePlatform struct {
 	putError string
 	records  []map[string]any
 	queries  []url.Values
+	// state is each context's state as GET /trace reports it; PUT and DELETE
+	// change it.
+	state map[string]map[string]any
 }
 
 func newFakeTracePlatform(t *testing.T) *fakeTracePlatform {
-	p := &fakeTracePlatform{}
+	p := &fakeTracePlatform{state: map[string]map[string]any{
+		"http": {"name": "http", "description": "Request and response of every call.", "builtIn": true, "enabledUntil": "2026-10-21T12:20:45Z", "sampleRate": 1, "live": true, "maxMinutes": 15, "indefiniteMaxDays": 0},
+		"orders": {"name": "orders", "description": "Order mapping.", "builtIn": false, "enabledUntil": nil, "sampleRate": 1, "live": false, "maxMinutes": 60, "indefiniteMaxDays": 7},
+	}}
 	p.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p.mu.Lock()
 		defer p.mu.Unlock()
@@ -61,17 +68,22 @@ func newFakeTracePlatform(t *testing.T) *fakeTracePlatform {
 		}
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/functions/fn_1/trace":
-			_, _ = w.Write([]byte(`{"contexts":[
-				{"name":"http","description":"Request and response of every call.","builtIn":true,"enabledUntil":"2026-10-21T12:20:45Z","sampleRate":1,"live":true,"maxMinutes":15},
-				{"name":"orders","description":"Order mapping.","builtIn":false,"enabledUntil":null,"sampleRate":1,"live":false,"maxMinutes":60}]}`))
+			_ = json.NewEncoder(w).Encode(map[string]any{"contexts": []any{p.state["http"], p.state["orders"]}})
 		case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/api/functions/fn_1/trace/"):
 			name := strings.TrimPrefix(r.URL.Path, "/api/functions/fn_1/trace/")
 			p.putBody = nil
 			_ = json.NewDecoder(r.Body).Decode(&p.putBody)
-			until := time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339)
-			_, _ = fmt.Fprintf(w, `{"name":%q,"builtIn":%v,"enabledUntil":%q,"sampleRate":%v,"live":true,"maxMinutes":60}`,
-				name, name == "http", until, p.putBody["sampleRate"])
+			minutes, _ := p.putBody["minutes"].(float64)
+			until := time.Now().Add(time.Duration(max(minutes, 5)) * time.Minute).UTC().Format(time.RFC3339)
+			st := map[string]any{"name": name, "builtIn": name == "http", "enabledUntil": until, "sampleRate": p.putBody["sampleRate"],
+				"live": true, "maxMinutes": 60, "indefinite": p.putBody["indefinite"] == true}
+			p.state[name] = st
+			_ = json.NewEncoder(w).Encode(st)
 		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/functions/fn_1/trace/"):
+			name := strings.TrimPrefix(r.URL.Path, "/api/functions/fn_1/trace/")
+			if st := p.state[name]; st != nil {
+				st["live"], st["indefinite"], st["enabledUntil"] = false, false, time.Now().UTC().Format(time.RFC3339)
+			}
 			w.WriteHeader(http.StatusNoContent)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/functions/fn_1/trace-log":
 			p.queries = append(p.queries, r.URL.Query())
@@ -360,7 +372,7 @@ func TestFnTraceLogHTTPRecords(t *testing.T) {
 	data["response"].(map[string]any)["body"] = nil
 	out, err = runTrace(t, p, "log", "demo.logger", "--bodies")
 	require.NoError(t, err, out)
-	require.Contains(t, out, "(bodies hidden: no view-bodies permission)")
+	require.Contains(t, out, "(bodies, headers and query string hidden: no view-bodies permission)")
 	require.NotContains(t, out, "request body")
 }
 
@@ -442,6 +454,68 @@ func TestFnTraceRunTurnsContextOffOnCancel(t *testing.T) {
 	p.mu.Lock()
 	require.Equal(t, "orders", p.queries[0].Get("context"))
 	p.mu.Unlock()
+}
+
+// A window that already covers the run (someone else's, or indefinite) is
+// followed and never touched.
+func TestFnTraceRunLeavesALongerWindowAlone(t *testing.T) {
+	shortPoll(t)
+	for name, st := range map[string]map[string]any{
+		"indefinite": {"enabledUntil": time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339), "indefinite": true},
+		"longer":     {"enabledUntil": time.Now().Add(50 * time.Minute).UTC().Format(time.RFC3339)},
+	} {
+		p := newFakeTracePlatform(t)
+		maps.Copy(p.state["orders"], st)
+		p.state["orders"]["live"] = true
+		ctx, cancel := context.WithCancel(context.Background())
+		var out lockedBuffer
+		done := make(chan error, 1)
+		go func() { done <- traceCmd(p, &out, "run", "demo.logger", "orders", "--for", "5m").run(ctx) }()
+		require.Eventually(t, func() bool { return p.count("GET /api/functions/fn_1/trace-log") >= 2 }, 5*time.Second, 5*time.Millisecond)
+		cancel()
+		require.NoError(t, <-done)
+		require.Zero(t, p.count("PUT"), name)
+		require.Zero(t, p.count("DELETE"), name)
+		require.Contains(t, out.String(), "orders is already on for demo.logger", name)
+	}
+}
+
+// A shorter window that was on before the run is restored, not deleted.
+func TestFnTraceRunRestoresAShorterWindow(t *testing.T) {
+	shortPoll(t)
+	p := newFakeTracePlatform(t)
+	p.state["orders"]["live"] = true
+	p.state["orders"]["sampleRate"] = 4
+	p.state["orders"]["enabledUntil"] = time.Now().Add(3*time.Minute + 30*time.Second).UTC().Format(time.RFC3339)
+	ctx, cancel := context.WithCancel(context.Background())
+	var out lockedBuffer
+	done := make(chan error, 1)
+	go func() { done <- traceCmd(p, &out, "run", "demo.logger", "orders", "--for", "10m").run(ctx) }()
+	require.Eventually(t, func() bool { return p.count("PUT") == 1 }, 5*time.Second, 5*time.Millisecond)
+	cancel()
+	require.NoError(t, <-done)
+	require.Equal(t, 2, p.count("PUT"), "the run's window, then the restore")
+	require.Zero(t, p.count("DELETE"))
+	p.mu.Lock()
+	require.EqualValues(t, 3, p.putBody["minutes"], "the time it had left")
+	require.EqualValues(t, 4, p.putBody["sampleRate"])
+	p.mu.Unlock()
+	require.Contains(t, out.String(), "restored")
+
+	// A window someone changed during the run is theirs.
+	p = newFakeTracePlatform(t)
+	ctx, cancel = context.WithCancel(context.Background())
+	var out2 lockedBuffer
+	done = make(chan error, 1)
+	go func() { done <- traceCmd(p, &out2, "run", "demo.logger", "orders").run(ctx) }()
+	require.Eventually(t, func() bool { return p.count("PUT") == 1 }, 5*time.Second, 5*time.Millisecond)
+	p.mu.Lock()
+	p.state["orders"]["enabledUntil"] = time.Now().Add(40 * time.Minute).UTC().Format(time.RFC3339)
+	p.mu.Unlock()
+	cancel()
+	require.NoError(t, <-done)
+	require.Zero(t, p.count("DELETE"))
+	require.Contains(t, out2.String(), "was changed during the run")
 }
 
 func TestFnTraceRunKeepLeavesContextOn(t *testing.T) {
