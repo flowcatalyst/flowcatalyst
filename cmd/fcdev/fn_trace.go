@@ -751,6 +751,12 @@ shown unless --since says otherwise. Takes the same filters as "trace log".`,
 			fmt.Fprintln(cmd.ErrOrStderr(), "following; Ctrl-C to stop")
 			t := newTraceTailer(api, fn, &f, v, out, cmd.ErrOrStderr())
 			if err := t.backlog(followCtx); err != nil {
+				// Stopped (Ctrl-C, or the window ended) while the backlog was
+				// being read: that is the end of the run, not a failure; the
+				// deferred restore still runs.
+				if followCtx.Err() != nil {
+					return nil
+				}
 				return err
 			}
 			return t.follow(followCtx)
