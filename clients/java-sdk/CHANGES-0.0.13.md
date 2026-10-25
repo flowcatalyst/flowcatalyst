@@ -193,7 +193,9 @@ copied across (everything but `openapi/openapi.json`; `VERSION` and `pom.xml` al
 - New `client.platformConfig()` (`PlatformConfigResource`): `list`, `get`, `set`, `delete`, and
   `revealSecret(app, section, property, clientId)` for `GET /api/config/{app}/{section}/{property}/secret`.
 - `get`/`list`/`set` always return `"***"` for `valueType` SECRET; `revealSecret` is the only way to
-  read plaintext. Needs `platform:admin:config:reveal` or the application's own service account.
+  read plaintext. Needs `platform:admin:config:reveal` or the application's own service account
+  (superseded: reveal needs `platform:admin:config:reveal` or
+  `platform:application-service:config:reveal`, confined to the linked clients; see the last entry).
   403 is `SdkError.Forbidden`, 404 `NotFound`, 400 `NOT_A_SECRET` is `HttpStatus` (status 400).
 - Every reveal is audited server-side. The SDK does not cache it or log it, and `RevealedSecret.toString()` masks the value.
 - `openapi/openapi.json` and `openapi.admin.json` refreshed from the current spec (models regenerate at build).

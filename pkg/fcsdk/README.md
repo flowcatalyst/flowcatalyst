@@ -262,7 +262,7 @@ against `api/openapi.lock.json`.
 `c.Ingestions()` covers `/api/ingestions`, source kinds and connection tests
 (`List`, `Create`, `Get`, `Update`, `Delete`, `Pause`, `Resume`, `ListVersions`,
 `SaveVersion`, `MakeVersionLive`, `Definition`, `History`, `Failures`,
-`SourceKinds`, `TestConnection`, `GetTest`); `c.IngestionSets()` covers
+`DismissFailure`, `Secrets`, `SourceKinds`, `TestConnection`, `GetTest`); `c.IngestionSets()` covers
 `/api/ingestion-sets` (`List`, `Apply`, `ListApplies`, `GetApply`, `Reapply`,
 `Release`; `dryRun` is a `*bool`, sent only when given). An ingestion needs an
 `Application` code (an INTEGRATION application) and a `Client` (id or
@@ -275,6 +275,19 @@ answer's `NextCursor` as `After`. `Definition` returns the YAML that
 `fcdev ingest apply` reads. The runtime API (`/api/ingestion-runtime/v1/*`) is
 the runtime's own client and is not in this SDK.
 
+Without the promote permission `Create`, `Update` and `SaveVersion` save the
+definition as a **draft**, never a refusal: the answer's `Save.Outcome` is
+`DRAFT` and `Save.AwaitingPromote` is true until someone who holds promote
+makes it live (`MakeVersionLive`). A definition an existing version already
+says is not saved again (`UNCHANGED`, `MADE_LIVE`, `DRAFT_EXISTS`); versions
+carry `Draft` and `Digest`, and `Warnings` names what will not run as meant.
+Notices are failures the platform refused (`Category` `rejected`); an
+ingestion counts the open ones (`Notices`, `LatestNotice`).
+`Failures(ctx, id, client.IngestionFailureFilters{Category: "rejected",
+Undismissed: true})` lists them and `DismissFailure(ctx, id, failureID)`
+dismisses one (it stays listed). `Secrets(ctx, id)` lists the secret names the
+live definition binds and each runtime's last fetch of them; never a value.
+
 ### Platform config and secrets
 
 `c.PlatformConfig()` has `Get`, `Set`, `Delete` and `RevealSecret`. Ordinary
@@ -286,8 +299,16 @@ caller. The only way to read the plaintext is:
 s, err := c.PlatformConfig().RevealSecret(ctx, "orders", "smtp", "password", "" /* clientID, optional */)
 ```
 
-It needs `platform:admin:config:reveal` (or the application's own service
-account for its own application) and is audited by the platform. Errors are
+It always needs a reveal permission, never implied by being the application's
+service account: `platform:admin:config:reveal` (a platform administrator) or
+`platform:application-service:config:reveal` (an application's service
+account; the `platform:application-service` role carries it). The platform
+confines an application's service account to its own applications and to the
+clients it is linked to (its own client list, else the clients its application
+is enabled for), plus the application-wide value. Every reveal is audited by
+the platform. Writing `"***"` or an empty value to a SECRET is refused (`400
+SECRET_VALUE_MASKED` / `SECRET_VALUE_REQUIRED`): to keep a secret, do not set
+it. Errors are
 `*client.APIError`: 403 not authorised, 404 no such property, 400
 `NOT_A_SECRET` for a PLAIN property (use `Get`). The SDK does not cache the
 value and does not log it; `SecretResponse` redacts the value under
