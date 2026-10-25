@@ -21,9 +21,19 @@ pub(crate) struct Recorded {
     /// Raw query string (after `?`), empty when absent.
     pub query: String,
     pub body: String,
+    /// The request headers, names lower-cased, in order.
+    pub headers: Vec<(String, String)>,
 }
 
 impl Recorded {
+    /// The first value of a header (name in any case), if it was sent.
+    pub fn header(&self, name: &str) -> Option<String> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.clone())
+    }
+
     /// The request body parsed as JSON (`Null` when empty).
     pub fn json(&self) -> serde_json::Value {
         if self.body.is_empty() {
@@ -116,11 +126,20 @@ impl MockPlatform {
                     };
                     let body = String::from_utf8_lossy(&raw[head_end + 4..head_end + 4 + length])
                         .to_string();
+                    let headers = text[..head_end]
+                        .lines()
+                        .skip(1)
+                        .filter_map(|l| {
+                            let (k, v) = l.split_once(':')?;
+                            Some((k.trim().to_ascii_lowercase(), v.trim().to_string()))
+                        })
+                        .collect();
                     log.lock().unwrap().push(Recorded {
                         method: method.clone(),
                         path: path.clone(),
                         query,
                         body,
+                        headers,
                     });
                     let route = routes
                         .iter()

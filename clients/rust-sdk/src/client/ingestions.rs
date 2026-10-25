@@ -7,6 +7,23 @@
 //! are [`SecretRef`] names, never values: nothing here handles a secret value.
 //! The runtime operations (`/api/ingestion-runtime/v1/*`) are the runtime's
 //! own client and are not part of this SDK.
+//!
+//! Without the promote permission a create, update or version save keeps the
+//! definition as a **draft**: the answer's `save.outcome` is `DRAFT` and
+//! `save.awaiting_promote` is true until someone who holds promote makes it
+//! live ([`Ingestions::make_version_live`]). A definition an existing version
+//! already says is not saved again (`UNCHANGED`, `MADE_LIVE`, `DRAFT_EXISTS`);
+//! versions carry `draft` and a `digest`. `warnings` names what will not run
+//! as meant, such as an sftp source with neither `known_hosts` nor
+//! `accept_any_host_key`.
+//!
+//! Notices are failures the platform refused (category `rejected`); an
+//! ingestion counts the open ones (`notices`, `latest_notice`).
+//! [`Ingestions::list_failures`] with `category: Some("rejected")` and
+//! `undismissed: true` lists them, [`Ingestions::dismiss_failure`] dismisses
+//! one (it stays listed), and [`Ingestions::list_secrets`] lists the secret
+//! names the live definition binds with each runtime's last fetch, never a
+//! value.
 
 use super::{ClientError, FlowCatalystClient};
 use crate::client::seg;
@@ -47,9 +64,15 @@ pub enum Source {
         directory: String,
         username: String,
         credential: SecretRef,
-        /// The server's host key as a known_hosts line.
+        /// The server's host key as a known_hosts line. Without it the runtime
+        /// refuses to start the source unless `accept_any_host_key` is set.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         known_hosts: Option<String>,
+        /// Connect without checking who the server is: whoever answers at the
+        /// address receives the credential, so turning it on needs the
+        /// bind-secrets permission.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        accept_any_host_key: bool,
         /// A file name pattern such as `*.csv`; absent takes every file.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         include: Option<String>,
@@ -416,6 +439,38 @@ pub struct IngestionResponse {
     pub managed_by: Option<String>,
     #[serde(default)]
     pub runtime_notice: Option<String>,
+    /// Undismissed notices: failures the platform refused (category `rejected`).
+    #[serde(default)]
+    pub notices: i64,
+    /// The newest undismissed notice's message.
+    #[serde(default)]
+    pub latest_notice: Option<String>,
+    #[serde(default)]
+    pub latest_notice_at: Option<String>,
+    /// What the definition says that will not run as meant.
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    /// What this create or update did (set on those answers only).
+    #[serde(default)]
+    pub save: Option<IngestionSaveOutcome>,
+}
+
+/// What a create, update or version save did. `outcome` is `UNCHANGED` (the
+/// live version already says it, nothing written), `SAVED` (saved and made
+/// live), `MADE_LIVE` (a saved version that was not live already says it and
+/// was made live), `DRAFT` (saved as a version that is not live: no promote
+/// permission, or not asked to be live) or `DRAFT_EXISTS` (a saved draft
+/// already says it, nothing saved). `version` is the live version or the draft.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IngestionSaveOutcome {
+    pub outcome: String,
+    pub version: i64,
+    /// The definition waits in a version that is not live for someone who
+    /// holds promote to make it live.
+    pub awaiting_promote: bool,
+    #[serde(default)]
+    pub message: String,
 }
 
 /// One page of ingestions — `GET /api/ingestions`.
@@ -436,6 +491,9 @@ pub struct IngestionVersionResponse {
     pub id: String,
     pub version: i64,
     pub live: bool,
+    /// Saved but not live: waits for someone who holds promote to make it live.
+    #[serde(default)]
+    pub draft: bool,
     pub created_at: String,
     pub name: String,
     pub source: Source,
@@ -450,6 +508,13 @@ pub struct IngestionVersionResponse {
     pub created_by: Option<String>,
     #[serde(default)]
     pub note: Option<String>,
+    /// sha256 (hex) of the definition's canonical form; equal definitions have
+    /// equal digests.
+    #[serde(default)]
+    pub digest: Option<String>,
+    /// What this save did (the answer of `save_version` only).
+    #[serde(default)]
+    pub save: Option<IngestionSaveOutcome>,
 }
 
 /// Versions of an ingestion — `GET /api/ingestions/{id}/versions`.
@@ -488,9 +553,16 @@ pub struct IngestionHistoryResponse {
 pub struct IngestionFailureResponse {
     pub id: String,
     pub kind: String,
+    /// `payload`: a record or payload the runtime could not take. `rejected`:
+    /// the platform refused the runtime's jobs permanently, shown on the
+    /// ingestion as a notice until someone dismisses it.
+    #[serde(default)]
+    pub category: String,
     pub message: String,
     pub after_records: i64,
     pub occurred_at: String,
+    #[serde(default)]
+    pub created_at: Option<String>,
     /// The start of the payload, only for an ingestion that keeps failed payloads.
     #[serde(default)]
     pub excerpt: Option<String>,
@@ -498,6 +570,55 @@ pub struct IngestionFailureResponse {
     pub runtime_id: Option<String>,
     #[serde(default)]
     pub version: Option<i64>,
+    #[serde(default)]
+    pub dismissed_at: Option<String>,
+    /// The principal who dismissed it.
+    #[serde(default)]
+    pub dismissed_by: Option<String>,
+}
+
+/// Filters for [`Ingestions::list_failures`]; every field is optional.
+#[derive(Debug, Clone, Default)]
+pub struct ListIngestionFailuresQuery {
+    /// The previous page's `next_cursor`.
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    /// `payload` or `rejected` (the notices).
+    pub category: Option<String>,
+    /// Only the failures nobody has dismissed.
+    pub undismissed: bool,
+}
+
+/// When a runtime last fetched a bound secret.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IngestionSecretFetch {
+    pub runtime_id: String,
+    /// The live version the last fetch was made under.
+    pub version: i64,
+    /// The runtime's service account.
+    #[serde(default)]
+    pub principal_id: Option<String>,
+    pub last_fetched_at: String,
+    pub fetch_count: i64,
+}
+
+/// A secret *name* the ingestion binds (`bound`), or bound under an earlier
+/// live version; never its value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IngestionSecretResponse {
+    pub name: String,
+    pub bound: bool,
+    /// Per runtime, newest first; empty when no runtime has fetched it.
+    #[serde(default)]
+    pub fetches: Vec<IngestionSecretFetch>,
+}
+
+/// `GET /api/ingestions/{id}/secrets`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IngestionSecretListResponse {
+    pub secrets: Vec<IngestionSecretResponse>,
 }
 
 /// One page of failures — `GET /api/ingestions/{id}/failures`.
@@ -753,7 +874,9 @@ impl Ingestions<'_> {
         self.client.get(&format!("/api/ingestions{query}")).await
     }
 
-    /// Create an ingestion (`201` with the full record).
+    /// Create an ingestion (`201` with the full record). Without the promote
+    /// permission (or with `live: Some(false)`) the first version is saved as a
+    /// draft: `save.outcome` is `DRAFT` and `save.awaiting_promote` is true.
     pub async fn create(
         &self,
         req: &CreateIngestionRequest,
@@ -768,7 +891,10 @@ impl Ingestions<'_> {
             .await
     }
 
-    /// Update an ingestion; a stale `expected_version` is a 409.
+    /// Save a new definition; a stale `expected_version` is a 409. With promote
+    /// it is made live (`SAVED`); without, it is a draft awaiting promote
+    /// (`DRAFT`). A definition an existing version already says is not saved
+    /// again (`UNCHANGED`, `MADE_LIVE`, `DRAFT_EXISTS`); `save` says which.
     pub async fn update(
         &self,
         id: &str,
@@ -810,7 +936,9 @@ impl Ingestions<'_> {
             .await
     }
 
-    /// Save a version (`201`); it runs only once it is live.
+    /// Save a version (`201`); it runs only once it is live, and making it
+    /// live needs promote. A definition an existing version already says is
+    /// not saved again; `save` on the answer says what happened.
     pub async fn save_version(
         &self,
         id: &str,
@@ -862,23 +990,54 @@ impl Ingestions<'_> {
             .await
     }
 
-    /// One page of the failures runtimes reported; pass `next_cursor` as `after`.
+    /// One page of the failures, newest first; pass `next_cursor` as `after`.
+    /// `category: Some("rejected")` with `undismissed: true` is the
+    /// ingestion's open notices (what `notices` counts).
     pub async fn list_failures(
         &self,
         id: &str,
-        after: Option<&str>,
-        limit: Option<u32>,
+        query: &ListIngestionFailuresQuery,
     ) -> Result<IngestionFailureListResponse, ClientError> {
         let mut params = Vec::new();
-        if let Some(v) = after {
-            params.push(("after", v.to_string()));
+        if let Some(v) = &query.after {
+            params.push(("after", v.clone()));
         }
-        if let Some(v) = limit {
+        if let Some(v) = query.limit {
             params.push(("limit", v.to_string()));
+        }
+        if let Some(v) = &query.category {
+            params.push(("category", v.clone()));
+        }
+        if query.undismissed {
+            params.push(("undismissed", "true".to_string()));
         }
         let query = FlowCatalystClient::query_string(&params);
         self.client
             .get(&format!("/api/ingestions/{}/failures{query}", seg(id)))
+            .await
+    }
+
+    /// Dismiss a failure: a notice stops showing on the ingestion; the failure
+    /// stays listed.
+    pub async fn dismiss_failure(
+        &self,
+        id: &str,
+        failure_id: &str,
+    ) -> Result<IngestionFailureResponse, ClientError> {
+        self.client
+            .post_action(&format!(
+                "/api/ingestions/{}/failures/{}/dismiss",
+                seg(id),
+                seg(failure_id)
+            ))
+            .await
+    }
+
+    /// The secret names the live definition binds and, per runtime, when it
+    /// last fetched each one. Names only: no secret value is ever returned.
+    pub async fn list_secrets(&self, id: &str) -> Result<IngestionSecretListResponse, ClientError> {
+        self.client
+            .get(&format!("/api/ingestions/{}/secrets", seg(id)))
             .await
     }
 
@@ -1229,23 +1388,100 @@ mod tests {
         );
         let f = c
             .ingestions()
-            .list_failures("ing_1", None, None)
+            .list_failures("ing_1", &ListIngestionFailuresQuery::default())
             .await
             .unwrap();
         assert_eq!(f.failures[0].after_records, 3);
         assert_eq!(f.next_cursor.as_deref(), Some("f1"));
         assert_eq!(stub.requests()[2].query, "");
         c.ingestions()
-            .list_failures("ing_1", f.next_cursor.as_deref(), Some(5))
+            .list_failures(
+                "ing_1",
+                &ListIngestionFailuresQuery {
+                    after: f.next_cursor.clone(),
+                    limit: Some(5),
+                    category: Some("rejected".into()),
+                    undismissed: true,
+                },
+            )
             .await
             .unwrap();
         assert_eq!(
             stub.requests()[3].query_pairs(),
             vec![
                 ("after".to_string(), "f1".to_string()),
-                ("limit".to_string(), "5".to_string())
+                ("limit".to_string(), "5".to_string()),
+                ("category".to_string(), "rejected".to_string()),
+                ("undismissed".to_string(), "true".to_string())
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn dismiss_failure_and_secrets() {
+        let failure = r#"{"id":"igf_1","kind":"JOBS_REJECTED","category":"rejected","message":"refused",
+            "afterRecords":0,"occurredAt":"t","createdAt":"t","dismissedAt":"t2","dismissedBy":"prn_1"}"#;
+        let secrets = r#"{"secrets":[{"name":"orders-token","bound":true,"fetches":[{"runtimeId":"rt-1",
+            "version":3,"principalId":"prn_rt","lastFetchedAt":"t","fetchCount":7}]}]}"#;
+        let stub = MockPlatform::start(&[
+            (
+                "POST",
+                "/api/ingestions/ing_1/failures/igf_1/dismiss",
+                200,
+                failure,
+            ),
+            ("GET", "/api/ingestions/ing_1/secrets", 200, secrets),
+        ])
+        .await;
+        let c = stub.client();
+        let f = c
+            .ingestions()
+            .dismiss_failure("ing_1", "igf_1")
+            .await
+            .unwrap();
+        assert_eq!(f.category, "rejected");
+        assert_eq!(f.dismissed_by.as_deref(), Some("prn_1"));
+        assert_eq!(stub.requests()[0].method, "POST");
+        let s = c.ingestions().list_secrets("ing_1").await.unwrap();
+        assert_eq!(s.secrets[0].name, "orders-token");
+        assert!(s.secrets[0].bound);
+        assert_eq!(s.secrets[0].fetches[0].fetch_count, 7);
+    }
+
+    #[tokio::test]
+    async fn a_create_without_promote_answers_a_draft() {
+        let mut answer: Value = serde_json::from_str(&ingestion_json("ing_1")).unwrap();
+        let extra = json!({"notices":2,"latestNotice":"jobs refused","latestNoticeAt":"t",
+            "warnings":["no host key"],
+            "save":{"outcome":"DRAFT","version":1,"awaitingPromote":true,"message":"saved as a draft"}});
+        answer
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        let stub =
+            MockPlatform::start(&[("POST", "/api/ingestions", 201, &answer.to_string())]).await;
+        let created = stub
+            .client()
+            .ingestions()
+            .create(&create_request())
+            .await
+            .unwrap();
+        let save = created.save.unwrap();
+        assert_eq!(save.outcome, "DRAFT");
+        assert!(save.awaiting_promote);
+        assert_eq!(created.notices, 2);
+        assert_eq!(created.warnings, vec!["no host key".to_string()]);
+        // an answer without the new fields still reads
+        let old: IngestionResponse = serde_json::from_str(&ingestion_json("ing_2")).unwrap();
+        assert_eq!(old.notices, 0);
+        assert!(old.save.is_none());
+        let version: IngestionVersionResponse = serde_json::from_value(json!({"id":"igv_1",
+            "version":1,"live":false,"draft":true,"digest":"ab12","createdAt":"t","name":"n",
+            "source":{"kind":"sqs","region":"r","queue":"q"},"split":{"kind":"none"},
+            "target":target_json()}))
+        .unwrap();
+        assert!(version.draft);
+        assert_eq!(version.digest.as_deref(), Some("ab12"));
     }
 
     #[tokio::test]
@@ -1360,6 +1596,8 @@ mod tests {
             json!({"kind":"http","auth":{"kind":"basic","username":"u","password":secret}}),
             json!({"kind":"sftp","host":"h","port":22,"directory":"/in","username":"u","credential":secret,
                 "include":"*.csv","every":"PT5M"}),
+            json!({"kind":"sftp","host":"h","port":22,"directory":"/in","username":"u","credential":secret,
+                "acceptAnyHostKey":true,"every":"PT5M"}),
             json!({"kind":"s3","region":"eu-west-1","bucket":"b","prefix":"in/","every":"PT5M",
                 "credential":{"accessKeyId":"AK","secretAccessKey":secret}}),
             json!({"kind":"sqs","region":"eu-west-1","queue":"q"}),

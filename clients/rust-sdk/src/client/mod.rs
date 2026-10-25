@@ -253,7 +253,10 @@ impl FlowCatalystClient {
 
     /// Platform config properties and secret reveal — `/api/config/*`.
     pub fn platform_config(&self) -> platform_config::PlatformConfig<'_> {
-        platform_config::PlatformConfig { client: self }
+        platform_config::PlatformConfig {
+            client: self,
+            on_behalf_of: None,
+        }
     }
 
     /// Principals (users + service accounts) — `/api/principals/*`.
@@ -326,6 +329,7 @@ impl FlowCatalystClient {
         method: Method,
         url: &str,
         body: Option<&[u8]>,
+        headers: &[(&'static str, HeaderValue)],
     ) -> Result<(StatusCode, bytes_body::Body), ClientError> {
         let mut token = match &self.tokens {
             Some(source) => Some(source.token().await?),
@@ -343,6 +347,9 @@ impl FlowCatalystClient {
                 let value = HeaderValue::from_str(&format!("Bearer {t}"))
                     .map_err(|_| ClientError::InvalidToken)?;
                 req = req.header(AUTHORIZATION, value);
+            }
+            for (name, value) in headers {
+                req = req.header(*name, value.clone());
             }
             if let Some(b) = body {
                 req = req
@@ -397,11 +404,21 @@ impl FlowCatalystClient {
         url: &str,
         body: Option<&B>,
     ) -> Result<T, ClientError> {
+        self.call_with(method, url, body, &[]).await
+    }
+
+    async fn call_with<B: Serialize + ?Sized, T: DeserializeOwned>(
+        &self,
+        method: Method,
+        url: &str,
+        body: Option<&B>,
+        headers: &[(&'static str, HeaderValue)],
+    ) -> Result<T, ClientError> {
         let encoded = body
             .map(serde_json::to_vec)
             .transpose()
             .map_err(ClientError::Encode)?;
-        let (status, body) = self.send(method, url, encoded.as_deref()).await?;
+        let (status, body) = self.send(method, url, encoded.as_deref(), headers).await?;
         body.decode(status)
     }
 
@@ -411,11 +428,54 @@ impl FlowCatalystClient {
         url: &str,
         body: Option<&B>,
     ) -> Result<(), ClientError> {
+        self.call_no_content_with(method, url, body, &[]).await
+    }
+
+    async fn call_no_content_with<B: Serialize + ?Sized>(
+        &self,
+        method: Method,
+        url: &str,
+        body: Option<&B>,
+        headers: &[(&'static str, HeaderValue)],
+    ) -> Result<(), ClientError> {
         let encoded = body
             .map(serde_json::to_vec)
             .transpose()
             .map_err(ClientError::Encode)?;
-        self.send(method, url, encoded.as_deref()).await.map(|_| ())
+        self.send(method, url, encoded.as_deref(), headers)
+            .await
+            .map(|_| ())
+    }
+
+    /// GET that also sends `headers` (for the few operations that read one).
+    pub(crate) async fn get_with<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        headers: &[(&'static str, HeaderValue)],
+    ) -> Result<T, ClientError> {
+        self.call_with::<(), T>(Method::GET, &self.url(path), None, headers)
+            .await
+    }
+
+    /// PUT that also sends `headers`.
+    pub(crate) async fn put_with<B: Serialize + ?Sized, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+        headers: &[(&'static str, HeaderValue)],
+    ) -> Result<T, ClientError> {
+        self.call_with(Method::PUT, &self.url(path), Some(body), headers)
+            .await
+    }
+
+    /// DELETE (no content) that also sends `headers`.
+    pub(crate) async fn delete_with(
+        &self,
+        path: &str,
+        headers: &[(&'static str, HeaderValue)],
+    ) -> Result<(), ClientError> {
+        self.call_no_content_with::<()>(Method::DELETE, &self.url(path), None, headers)
+            .await
     }
 
     pub(crate) async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, ClientError> {
@@ -424,7 +484,7 @@ impl FlowCatalystClient {
 
     /// GET returning the body as text (a YAML file, not JSON).
     pub(crate) async fn get_text(&self, path: &str) -> Result<String, ClientError> {
-        let (_, body) = self.send(Method::GET, &self.url(path), None).await?;
+        let (_, body) = self.send(Method::GET, &self.url(path), None, &[]).await?;
         Ok(String::from_utf8_lossy(&body.0).into_owned())
     }
 
@@ -594,6 +654,11 @@ pub enum ClientError {
     /// The token contains characters not allowed in a header.
     #[error("the bearer token is not a valid header value")]
     InvalidToken,
+
+    /// A value the caller gave for a request header (named) is not a valid
+    /// header value, for example one holding a control character.
+    #[error("the {0} value is not a valid header value")]
+    InvalidHeader(&'static str),
 }
 
 impl ClientError {
@@ -612,7 +677,10 @@ impl ClientError {
         match self {
             ClientError::Api { status, .. } | ClientError::Decode { status, .. } => Some(*status),
             ClientError::Request(e) => e.status().map(|s| s.as_u16()),
-            ClientError::Encode(_) | ClientError::Token(_) | ClientError::InvalidToken => None,
+            ClientError::Encode(_)
+            | ClientError::Token(_)
+            | ClientError::InvalidToken
+            | ClientError::InvalidHeader(_) => None,
         }
     }
 
