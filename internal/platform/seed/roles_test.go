@@ -234,3 +234,29 @@ func TestIngestionRoles(t *testing.T) {
 		t.Errorf("%s must not hold ingestion permissions, has %v", role, perms)
 	}
 }
+
+// TestManageAccessPermissionInBuiltInRoles pins who may change a user's
+// scope or client access (owner ruling 2026-10-25): the IAM administrator
+// role holds platform:iam:user:manage-access, super-admin covers it with its
+// wildcard, and the client administrator never holds it.
+func TestManageAccessPermissionInBuiltInRoles(t *testing.T) {
+	const perm = "platform:iam:user:manage-access"
+	held := map[string]bool{}
+	for _, r := range PlatformRoles() {
+		held[r.Name] = slices.Contains(r.Permissions, perm)
+		if r.Name == "platform:super-admin" && !slices.Contains(r.Permissions, permAdminAll) {
+			t.Errorf("super-admin lost its wildcard, which covers %s", perm)
+		}
+	}
+	if !held["platform:iam-admin"] {
+		t.Errorf("platform:iam-admin must hold %s", perm)
+	}
+	if held["platform:client-admin"] {
+		t.Errorf("platform:client-admin must never hold %s", perm)
+	}
+	for name, has := range held {
+		if has && name != "platform:iam-admin" {
+			t.Errorf("only platform:iam-admin holds %s explicitly; %s does too", perm, name)
+		}
+	}
+}

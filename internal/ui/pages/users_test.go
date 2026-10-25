@@ -34,6 +34,8 @@ const (
 	usrPermAssign = "platform:iam:user:assign-roles"
 	usrPermRoles  = "platform:iam:role:view"
 	usrPermClient = "platform:admin:client:view"
+	// usrPermManageAccess changes a user's type and client access.
+	usrPermManageAccess = "platform:iam:user:manage-access"
 )
 
 // usrInviteLink and usrPasswordValue are values no response may carry unless
@@ -381,7 +383,7 @@ func usrClientAdmin(perms ...string) *auth.AuthContext {
 	return &auth.AuthContext{PrincipalID: "prn_8", Email: "boss@acme.test", Scope: auth.ScopeClient, Clients: []string{"clt_acme"}, Roles: []string{"acme:admin"}, Permissions: perms, PrincipalType: auth.PrincipalTypeUser}
 }
 
-var usrAllPerms = []string{usrPermView, usrPermCreate, usrPermUpdate, usrPermDelete, usrPermAssign, usrPermRoles, usrPermClient}
+var usrAllPerms = []string{usrPermView, usrPermCreate, usrPermUpdate, usrPermDelete, usrPermAssign, usrPermRoles, usrPermClient, usrPermManageAccess}
 
 func usrWithout(perm string) *auth.AuthContext {
 	return usrAnchor(slices.DeleteFunc(slices.Clone(usrAllPerms), func(p string) bool { return p == perm })...)
@@ -517,12 +519,15 @@ func TestUserDrawerPermissionMatrix(t *testing.T) {
 		perms []string
 		want  []string
 	}{
-		// An anchor may always change a user's type and client, so Edit is offered.
-		{"view only", []string{usrPermView}, []string{"edit", "add client"}},
-		{"update", []string{usrPermView, usrPermUpdate}, []string{"edit", "apps", "all apps", "send reset", "password", "deactivate", "actions box", "add client"}},
-		{"assign roles", []string{usrPermView, usrPermAssign, usrPermRoles}, []string{"edit", "roles", "add client"}},
-		{"assign roles without role:view", []string{usrPermView, usrPermAssign}, []string{"edit", "add client"}},
-		{"delete", []string{usrPermView, usrPermDelete}, []string{"edit", "delete", "actions box", "add client"}},
+		// Changing a user's type and client, and client access, needs
+		// user:manage-access (owner ruling 2026-10-25): anchor tier alone no
+		// longer offers Edit or Add Client.
+		{"view only", []string{usrPermView}, nil},
+		{"update", []string{usrPermView, usrPermUpdate}, []string{"edit", "apps", "all apps", "send reset", "password", "deactivate", "actions box"}},
+		{"assign roles", []string{usrPermView, usrPermAssign, usrPermRoles}, []string{"roles"}},
+		{"assign roles without role:view", []string{usrPermView, usrPermAssign}, nil},
+		{"delete", []string{usrPermView, usrPermDelete}, []string{"delete", "actions box"}},
+		{"manage access", []string{usrPermView, usrPermManageAccess}, []string{"edit", "add client"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

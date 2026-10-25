@@ -616,6 +616,14 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 	if !ac.IsAnchor() && scope != "CLIENT" {
 		return nil, httperror.Forbidden("Client administrators can only create client-scope users")
 	}
+	// A PARTNER or ANCHOR user reaches more than one client: creating one is a
+	// change of client reach, so it needs user:manage-access as well (owner
+	// ruling 2026-10-25; the PARTNER grant's use case checks it again).
+	if scope != "CLIENT" {
+		if err := auth.CanManagePrincipalAccess(ac); err != nil {
+			return nil, err
+		}
+	}
 	if err := auth.RequireUserAdmin(ac, clientID, auth.CanCreatePrincipals); err != nil {
 		return nil, err
 	}
@@ -1253,9 +1261,10 @@ type grantClientAccessInput struct {
 }
 
 func (s *State) grantClientAccess(ctx context.Context, in *grantClientAccessInput) (*apicommon.Out[ClientAccessGrantResponse], error) {
-	// Coarse anchor gate at the controller; the use case enforces the domain
-	// invariants (USER/PARTNER, client exists, no duplicate grant).
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	// Anchor tier and user:manage-access, checked here and again by the use
+	// case's Authorize; the use case enforces the domain invariants
+	// (USER/PARTNER, client exists, no duplicate grant).
+	if err := auth.CanManagePrincipalAccess(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -1279,13 +1288,14 @@ type setClientAssociationInput struct {
 }
 
 // setClientAssociation changes a principal's scope + client association with
-// explicit intent (anchor-gated). clientId "*" → ANCHOR; mode CHANGE_CLIENT →
+// explicit intent (anchor tier + user:manage-access). clientId "*" → ANCHOR; mode CHANGE_CLIENT →
 // new home client; mode TO_PARTNER → promote to PARTNER (old + new client).
 // Returns the updated principal.
 func (s *State) setClientAssociation(ctx context.Context, in *setClientAssociationInput) (*apicommon.Out[PrincipalResponse], error) {
-	// Coarse anchor gate at the controller (scope/client changes are anchor-only);
-	// the use case applies the scope change + partner grants atomically.
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	// Anchor tier and user:manage-access (owner ruling 2026-10-25), checked
+	// here and again by the use case's Authorize; the use case applies the
+	// scope change + partner grants atomically.
+	if err := auth.CanManagePrincipalAccess(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -1317,9 +1327,10 @@ type revokeClientAccessInput struct {
 }
 
 func (s *State) revokeClientAccess(ctx context.Context, in *revokeClientAccessInput) (*apicommon.Empty, error) {
-	// Coarse anchor gate at the controller; the use case enforces the domain
-	// invariants (USER type, grant exists).
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	// Anchor tier and user:manage-access, checked here and again by the use
+	// case's Authorize; the use case enforces the domain invariants (USER
+	// type, grant exists).
+	if err := auth.CanManagePrincipalAccess(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)

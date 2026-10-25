@@ -317,7 +317,7 @@ templ usrDrawerBody(d usrDetail) {
 }
 
 templ usrEditButton(d usrDetail) {
-	if d.Perms.Update || d.Perms.Anchor {
+	if d.Perms.Update || d.Perms.ManageAccess {
 		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.Base + "/edit", Icon: "pencil", Attrs: usrLink()}) {
 			Edit
 		}
@@ -326,7 +326,7 @@ templ usrEditButton(d usrDetail) {
 
 // ── client access (platform administrator) ─────────────────────────────
 templ usrAddClientButton(d usrDetail) {
-	if !d.AnchorUser {
+	if !d.AnchorUser && d.Perms.ManageAccess {
 		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.Base + "/clients/new", Icon: "plus", Attrs: usrLink()}) {
 			Add Client
 		}
@@ -364,8 +364,10 @@ templ usrClientAccess(d usrDetail) {
 							@kit.TH(kit.THProps{}) {
 								Granted
 							}
-							@kit.TH(kit.THProps{}) {
-								Actions
+							if d.Perms.ManageAccess {
+								@kit.TH(kit.THProps{}) {
+									Actions
+								}
 							}
 						}
 					}
@@ -381,8 +383,10 @@ templ usrClientAccess(d usrDetail) {
 								@kit.TD(kit.TDProps{}) {
 									{ g.Granted }
 								}
-								@kit.TD(kit.TDProps{}) {
-									@kit.IconButton(kit.IconButtonProps{Icon: "trash-2", Label: "Revoke access to " + g.Name, Attrs: confirmTrigger(usrRevokeDialog, d.Base+"/clients/"+g.ClientID+"/revoke")})
+								if d.Perms.ManageAccess {
+									@kit.TD(kit.TDProps{}) {
+										@kit.IconButton(kit.IconButtonProps{Icon: "trash-2", Label: "Revoke access to " + g.Name, Attrs: confirmTrigger(usrRevokeDialog, d.Base+"/clients/"+g.ClientID+"/revoke")})
+									}
 								}
 							}
 						}

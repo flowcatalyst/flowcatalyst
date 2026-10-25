@@ -67,6 +67,7 @@ func PlatformRoles() []role.Role {
 			[]string{
 				permIAMUserRead, permIAMUserCreate, permIAMUserUpdate, permIAMUserDelete,
 				permIAMUserActivate, permIAMUserDeactivate, permIAMUserAssignRoles,
+				permIAMUserManageAccess,
 				permIAMRoleRead, permIAMRoleCreate, permIAMRoleUpdate, permIAMRoleDelete,
 				permIAMClientAccessGrant, permIAMClientAccessRevoke, permIAMClientAccessRead,
 				permAdminIdentityProviderRead, permAdminIdentityProviderCreate,

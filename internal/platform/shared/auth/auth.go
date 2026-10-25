@@ -189,6 +189,8 @@ const (
 	permUserDelete      = "platform:iam:user:delete"
 	permUserManage      = "platform:iam:user:manage"
 	permUserAssignRoles = "platform:iam:user:assign-roles"
+	// Changing a user's tier or client reach (owner ruling 2026-10-25).
+	permUserManageAccess = "platform:iam:user:manage-access"
 	// ScheduledJob (messaging)
 	permScheduledJobView   = "platform:messaging:scheduled-job:view"
 	permScheduledJobCreate = "platform:messaging:scheduled-job:create"
@@ -1137,6 +1139,16 @@ func CanDeletePrincipals(a *AuthContext) error { return requirePermission(a, per
 // itself, not user:update (owner ruling 2026-10-11).
 func CanAssignPrincipalRoles(a *AuthContext) error {
 	return requirePermission(a, permUserAssignRoles)
+}
+
+// CanManagePrincipalAccess gates every change to which clients a user
+// reaches: the scope (CLIENT/PARTNER/ANCHOR, including creating a user with a
+// non-CLIENT scope), the home-client association, and granting or revoking
+// client access. Anchor tier AND user:manage-access (owner ruling
+// 2026-10-25): anchor tier alone no longer suffices, and a client
+// administrator never passes, whatever it holds.
+func CanManagePrincipalAccess(a *AuthContext) error {
+	return anchorWith(a, permUserManageAccess)
 }
 
 func CanWritePrincipals(a *AuthContext) error {

@@ -151,7 +151,11 @@ func (h *Users) Mount(r chi.Router) {
 // SPA shows them on its platform page and leaves them off the client
 // administrator's.
 type usrPerms struct {
-	Anchor                               bool
+	Anchor bool
+	// ManageAccess: changing a user's scope or client access (anchor tier and
+	// user:manage-access, owner ruling 2026-10-25). Without it the Type and
+	// Client fields, Add Client and Revoke are not offered.
+	ManageAccess                         bool
 	Create, Update, Delete, AssignRoles  bool
 	ReadRoles, ReadClients, GrantAllApps bool
 	ClientAdmin                          bool
@@ -159,14 +163,15 @@ type usrPerms struct {
 
 func usrPermsFor(ac *auth.AuthContext) usrPerms {
 	return usrPerms{
-		Anchor:      ac.IsAnchor(),
-		ClientAdmin: !ac.IsAnchor(),
-		Create:      auth.CanCreatePrincipals(ac) == nil,
-		Update:      auth.CanUpdatePrincipals(ac) == nil,
-		Delete:      auth.CanDeletePrincipals(ac) == nil,
-		AssignRoles: auth.CanAssignPrincipalRoles(ac) == nil,
-		ReadRoles:   auth.CanReadRoles(ac) == nil,
-		ReadClients: auth.CanReadClients(ac) == nil,
+		Anchor:       ac.IsAnchor(),
+		ManageAccess: auth.CanManagePrincipalAccess(ac) == nil,
+		ClientAdmin:  !ac.IsAnchor(),
+		Create:       auth.CanCreatePrincipals(ac) == nil,
+		Update:       auth.CanUpdatePrincipals(ac) == nil,
+		Delete:       auth.CanDeletePrincipals(ac) == nil,
+		AssignRoles:  auth.CanAssignPrincipalRoles(ac) == nil,
+		ReadRoles:    auth.CanReadRoles(ac) == nil,
+		ReadClients:  auth.CanReadClients(ac) == nil,
 		// Only an assigner holding all-applications access may grant it.
 		GrantAllApps: ac != nil && ac.AllApplications,
 	}
@@ -436,7 +441,7 @@ func toUsrRow(u *principalapi.PrincipalResponse, names usrClients) usrRow {
 // details in the menu.
 func (v usrView) rowActions(row usrRow) kit.RowActionsProps {
 	p := kit.RowActionsProps{ID: "usr-" + row.ID + "-actions", RowLabel: row.Name}
-	if v.Perms.Update || v.Perms.Anchor {
+	if v.Perms.Update || v.Perms.ManageAccess {
 		p.Actions = append(p.Actions, kit.RowAction{Icon: "pencil", Label: "Edit", Href: row.EditHref, Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}})
 	}
 	p.Menu = append(p.Menu, kit.RowAction{Icon: "eye", Label: "View details", Href: row.DetailHref, Attrs: templ.Attributes{"data-on:click__prevent": liveLink}})

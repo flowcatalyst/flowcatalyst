@@ -90,6 +90,15 @@ flowchart TD
 Client administrators manage their own users, roles, and portal users
 inside their client boundary — the permission checks confine every
 operation with `CanAccessClient`, so delegation never crosses tenants.
+
+Changing **which clients a user reaches** is reserved: a user's tier
+(`CLIENT`, `PARTNER`, `ANCHOR`, including creating a `PARTNER` or
+`ANCHOR` user), their home client, and granting or revoking client
+access all need `platform:iam:user:manage-access` **and** anchor tier.
+Platform Super Admin and Platform IAM Admin hold it; a client
+administrator never does, and anchor tier alone is not enough. Without
+it, an administrator can still rename a user and see their client
+access, but not change it.
 All administrative identity actions land in the audit log, and every
 authentication attempt (success or failure, human or machine) lands in
 login attempts.

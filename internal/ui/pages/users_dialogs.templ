@@ -167,7 +167,7 @@ templ usrEditField(f usrEditForm, key string) {
 			}
 		case "scope":
 			@kit.Field(f.fieldProps(key, "Type", "Anchor users reach every client; a partner reaches its home client and the clients it is granted; a client user one client.", false)) {
-				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: usrScopeOptions, Selected: f.Scope, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:usr-scope": true}})
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.scopeOptions(), Selected: f.Scope, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:usr-scope": true}})
 			}
 		case "clientId":
 			@kit.Field(usrClientFieldProps(f, key)) {
@@ -182,12 +182,11 @@ func usrClientFieldProps(f usrEditForm, key string) kit.FieldProps {
 	if !f.CanPickClient {
 		p.Description = "Choosing a client needs permission to view clients."
 	}
-	p.Attrs["data-show"] = "$usrScope !== 'ANCHOR'"
+	p.Attrs["data-show"] = "$usrScope === 'CLIENT' || $usrScope === 'PARTNER'"
 	return p
 }
 
 // ── password ───────────────────────────────────────────────────────────
-
 templ usrPasswordDialogC(f usrPasswordForm) {
 	@kit.FormDialog(kit.FormDialogProps{
 		ID: usrPwdDialog, Signal: "usrPwd", Action: usrURL(f.UserID) + "/reset-password", Open: f.Open, Error: f.Errs.Form,
@@ -222,7 +221,6 @@ templ usrPasswordField(f usrPasswordForm, key string) {
 }
 
 // ── roles ──────────────────────────────────────────────────────────────
-
 templ usrRolesDialogC(f usrRolesForm) {
 	@kit.FormDialog(kit.FormDialogProps{
 		ID: usrRolesDialog, Signal: "usrRoles", Action: usrURL(f.UserID) + "/roles", Open: f.Open, Error: f.Errs.Form,
@@ -238,7 +236,6 @@ templ usrRolesDialogC(f usrRolesForm) {
 }
 
 // ── application access ─────────────────────────────────────────────────
-
 templ usrAppsDialogC(f usrAppsForm) {
 	@kit.FormDialog(kit.FormDialogProps{
 		ID: usrAppsDialog, Signal: "usrApps", Action: usrURL(f.UserID) + "/applications", Open: f.Open, Error: f.Errs.Form,
@@ -262,7 +259,6 @@ templ usrAppsDialogC(f usrAppsForm) {
 }
 
 // ── client access ──────────────────────────────────────────────────────
-
 templ usrGrantDialogC(f usrGrantForm) {
 	@kit.FormDialog(kit.FormDialogProps{
 		ID: usrGrantDialog, Signal: "usrGrant", Action: usrURL(f.UserID) + "/clients", Open: f.Open, Error: f.Errs.Form,

@@ -522,9 +522,12 @@ type usrEditForm struct {
 	UserID, Subtitle string
 	Name             string
 	// Scope and ClientID are the association; CanScope whether the form
-	// offers them (anchor only).
+	// offers them (anchor tier and user:manage-access).
 	Scope, ClientID string
-	CanScope        bool
+	// StoredScope is the scope as stored. "" (never set) adds a "Not set
+	// (unchanged)" choice, selected, so a name-only edit posts no scope.
+	StoredScope string
+	CanScope    bool
 	Clients         []kit.Option
 	CanPickClient   bool
 	Open            bool
@@ -551,11 +554,27 @@ func (f usrEditForm) fields() []templ.Component {
 
 func (f usrEditForm) component() templ.Component { return usrEditDialogC(f) }
 
+func isUsrScope(s string) bool { return slices.Contains([]string{"ANCHOR", "PARTNER", "CLIENT"}, s) }
+
+// usrScopeUnchanged is the Type choice of a user whose scope was never set:
+// posting it changes nothing.
+var usrScopeUnchanged = kit.Option{Value: "", Label: "Not set (unchanged)"}
+
+// scopeOptions are the Type choices: the three scopes, after "Not set
+// (unchanged)" when the stored scope is none of them (a select with no
+// matching option would show, and post, the first one: Anchor).
+func (f usrEditForm) scopeOptions() []kit.Option {
+	if isUsrScope(f.StoredScope) {
+		return usrScopeOptions
+	}
+	return append([]kit.Option{usrScopeUnchanged}, usrScopeOptions...)
+}
+
 // scopeSignals declares the type the client field follows. The scope is one of
-// three constants, never request text.
+// three constants or "" (unchanged), never request text.
 func (f usrEditForm) scopeSignals() string {
-	scope := "CLIENT"
-	if slices.Contains([]string{"ANCHOR", "PARTNER", "CLIENT"}, f.Scope) {
+	scope := ""
+	if isUsrScope(f.Scope) {
 		scope = f.Scope
 	}
 	return "{usrScope: '" + scope + "'}"
@@ -568,9 +587,43 @@ func (f usrEditForm) clientLabel() string {
 	return "Client"
 }
 
+// association is the change the posted type and client make to the stored
+// ones, or nil. Only an actual change sends one: "" (not posted, or "Not set
+// (unchanged)") never does; ANCHOR only when the user is not one yet (the
+// client select is hidden for it, so its value is not compared); CLIENT and
+// PARTNER when the type or the home client differs.
+func (f *usrEditForm) association(storedScope, storedClient string) *principalapi.ClientAssociationRequest {
+	switch f.Scope {
+	case "":
+		return nil
+	case "ANCHOR":
+		if storedScope == "ANCHOR" {
+			return nil
+		}
+		return &principalapi.ClientAssociationRequest{ClientID: "*"}
+	case "CLIENT", "PARTNER":
+		if f.Scope == storedScope && f.ClientID == storedClient {
+			return nil
+		}
+		if f.ClientID == "" {
+			f.Errs.field("clientId", "Select a client for CLIENT/PARTNER scope.")
+			return nil
+		}
+		mode := "CHANGE_CLIENT"
+		if f.Scope == "PARTNER" {
+			mode = "TO_PARTNER"
+		}
+		return &principalapi.ClientAssociationRequest{ClientID: f.ClientID, Mode: &mode}
+	default:
+		f.Errs.field("scope", "Choose a type.")
+		return nil
+	}
+}
+
 func (h *Users) editFormFor(r *http.Request, ac *auth.AuthContext, d usrDetail) usrEditForm {
-	f := newUsrEditForm(ac.IsAnchor())
+	f := newUsrEditForm(auth.CanManagePrincipalAccess(ac) == nil)
 	f.UserID, f.Subtitle, f.Name, f.Scope, f.ClientID = d.ID, d.Email, d.Name, d.Scope, d.ClientID
+	f.StoredScope = d.Scope
 	h.editChoices(r, ac, &f)
 	return f
 }
@@ -607,7 +660,7 @@ func (h *Users) editForm(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	if auth.CanUpdatePrincipals(ac) != nil && !ac.IsAnchor() {
+	if auth.CanUpdatePrincipals(ac) != nil && auth.CanManagePrincipalAccess(ac) != nil {
 		h.Shell.Fail(w, r, auth.CanUpdatePrincipals(ac))
 		return
 	}
@@ -626,8 +679,8 @@ func (h *Users) editForm(w http.ResponseWriter, r *http.Request) {
 }
 
 // update saves the name (PUT /api/principals/{id}) and, when the type or the
-// client changed, the association (PUT .../client-association, anchor only),
-// as the SPA does. The association is checked before anything is written, so a
+// client changed, the association (PUT .../client-association, anchor tier
+// and user:manage-access), as the SPA does. The association is checked before anything is written, so a
 // refused combination changes nothing.
 func (h *Users) update(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -636,7 +689,7 @@ func (h *Users) update(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	f := newUsrEditForm(ac.IsAnchor())
+	f := newUsrEditForm(auth.CanManagePrincipalAccess(ac) == nil)
 	f.UserID = id
 	f.Name = strings.TrimSpace(r.PostFormValue("name"))
 	f.Scope, f.ClientID = strings.TrimSpace(r.PostFormValue("scope")), strings.TrimSpace(r.PostFormValue("clientId"))
@@ -654,38 +707,22 @@ func (h *Users) update(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	f.Subtitle = deref(current.Email)
+	f.Subtitle, f.StoredScope = deref(current.Email), current.Scope
 	if f.Name == "" {
 		f.Errs.field("name", "Name is required.")
 	}
-	// The association: a posted type that differs from the stored one, or a
-	// different client.
-	var assoc *principalapi.ClientAssociationRequest
-	if f.CanScope && f.Scope != "" {
-		if scopeChanged, clientChanged := f.Scope != current.Scope, f.ClientID != deref(current.ClientID); scopeChanged || clientChanged {
-			switch {
-			case f.Scope == "ANCHOR":
-				assoc = &principalapi.ClientAssociationRequest{ClientID: "*"}
-			case (f.Scope == "CLIENT" || f.Scope == "PARTNER") && f.ClientID != "":
-				mode := "CHANGE_CLIENT"
-				if f.Scope == "PARTNER" {
-					mode = "TO_PARTNER"
-				}
-				assoc = &principalapi.ClientAssociationRequest{ClientID: f.ClientID, Mode: &mode}
-			case f.Scope == "CLIENT" || f.Scope == "PARTNER":
-				f.Errs.field("clientId", "Select a client for CLIENT/PARTNER scope.")
-			}
-		}
-	}
-	// The name needs user:update, the association anchor scope: the API's
-	// checks, made here first so a refused change writes nothing.
+	assoc := f.association(current.Scope, deref(current.ClientID))
+	// The name needs user:update, the association anchor tier and
+	// user:manage-access: the API's checks, made here first so a refused change
+	// writes nothing. A scope posted by a form that does not offer it (a forged
+	// post) is refused here rather than ignored.
 	if f.Name != current.Name {
 		if err := auth.CanUpdatePrincipals(ac); err != nil {
 			f.Errs.apply(r, err, nil)
 		}
 	}
 	if assoc != nil {
-		if err := auth.RequireAnchor(ac); err != nil {
+		if err := auth.CanManagePrincipalAccess(ac); err != nil {
 			f.Errs.apply(r, err, nil)
 		}
 	}

@@ -201,14 +201,18 @@ const (
 
 // IAM context — users, roles, access control.
 const (
-	permIAMUserRead           = "platform:iam:user:view"
-	permIAMUserCreate         = "platform:iam:user:create"
-	permIAMUserUpdate         = "platform:iam:user:update"
-	permIAMUserDelete         = "platform:iam:user:delete"
-	permIAMUserManage         = "platform:iam:user:manage"
-	permIAMUserActivate       = "platform:iam:user:activate"
-	permIAMUserDeactivate     = "platform:iam:user:deactivate"
-	permIAMUserAssignRoles    = "platform:iam:user:assign-roles"
+	permIAMUserRead        = "platform:iam:user:view"
+	permIAMUserCreate      = "platform:iam:user:create"
+	permIAMUserUpdate      = "platform:iam:user:update"
+	permIAMUserDelete      = "platform:iam:user:delete"
+	permIAMUserManage      = "platform:iam:user:manage"
+	permIAMUserActivate    = "platform:iam:user:activate"
+	permIAMUserDeactivate  = "platform:iam:user:deactivate"
+	permIAMUserAssignRoles = "platform:iam:user:assign-roles"
+	// Changing a user's tier (CLIENT/PARTNER/ANCHOR) or client reach (home
+	// client, client access grants); owner ruling 2026-10-25. Never in
+	// client-admin.
+	permIAMUserManageAccess   = "platform:iam:user:manage-access"
 	permIAMRoleRead           = "platform:iam:role:view"
 	permIAMRoleCreate         = "platform:iam:role:create"
 	permIAMRoleUpdate         = "platform:iam:role:update"

@@ -19,9 +19,9 @@ type RevokeClientAccessCommand struct {
 // RevokeClientAccess removes a PARTNER user's client-access grant and emits
 // [ClientAccessRevoked].
 //
-// Authorize is intentionally Public: the only caller is the admin endpoint,
-// gated by auth.RequireAnchor at the controller. The use case enforces the
-// domain invariants (USER type, grant exists).
+// Authorize: anchor tier and user:manage-access (authorizeAccessChange,
+// owner ruling 2026-10-25). Execute enforces the domain invariants (USER
+// type, grant exists).
 func RevokeClientAccess(repo *principal.Repository, grants *principal.ClientAccessGrantRepo) usecaseop.Operation[RevokeClientAccessCommand, ClientAccessRevoked] {
 	return usecaseop.Operation[RevokeClientAccessCommand, ClientAccessRevoked]{
 		Name: "RevokeClientAccess",
@@ -34,7 +34,7 @@ func RevokeClientAccess(repo *principal.Repository, grants *principal.ClientAcce
 			}
 			return nil
 		},
-		Authorize: usecaseop.Public[RevokeClientAccessCommand],
+		Authorize: authorizeAccessChange[RevokeClientAccessCommand],
 		Execute: func(ctx context.Context, cmd RevokeClientAccessCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ClientAccessRevoked], error) {
 			p, err := repo.FindByID(ctx, cmd.UserID)
 			if err != nil {

@@ -20,12 +20,10 @@ type GrantClientAccessCommand struct {
 // GrantClientAccess records a PARTNER user's access to a specific client and
 // emits [ClientAccessGranted].
 //
-// Authorize is intentionally Public: this op carries no per-resource dimension
-// of its own — every caller is an admin controller that has already gated it
-// (the dedicated endpoint with auth.RequireAnchor; createUser's partner-merge
-// with auth.RequireUserAdmin against the resolved client). The use case enforces
-// only the domain invariants (USER type, PARTNER scope, client exists, no
-// duplicate grant).
+// Authorize: anchor tier and user:manage-access (authorizeAccessChange,
+// owner ruling 2026-10-25), for the dedicated endpoint and createUser's
+// PARTNER paths alike. Execute enforces the domain invariants (USER type,
+// PARTNER scope, client exists, no duplicate grant).
 func GrantClientAccess(repo *principal.Repository, clients *client.Repository, grants *principal.ClientAccessGrantRepo) usecaseop.Operation[GrantClientAccessCommand, ClientAccessGranted] {
 	return usecaseop.Operation[GrantClientAccessCommand, ClientAccessGranted]{
 		Name: "GrantClientAccess",
@@ -38,7 +36,7 @@ func GrantClientAccess(repo *principal.Repository, clients *client.Repository, g
 			}
 			return nil
 		},
-		Authorize: usecaseop.Public[GrantClientAccessCommand],
+		Authorize: authorizeAccessChange[GrantClientAccessCommand],
 		Execute: func(ctx context.Context, cmd GrantClientAccessCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ClientAccessGranted], error) {
 			p, err := repo.FindByID(ctx, cmd.UserID)
 			if err != nil {

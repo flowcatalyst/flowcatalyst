@@ -496,8 +496,8 @@ func (h *Users) grantChoices(ctx context.Context, ac *auth.AuthContext, id strin
 func (h *Users) grantForm(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
-	// The client-access routes are anchor-only.
-	if err := firstError(auth.CanReadPrincipals(ac), auth.RequireAnchor(ac)); err != nil {
+	// The client-access routes need anchor tier and user:manage-access.
+	if err := firstError(auth.CanReadPrincipals(ac), auth.CanManagePrincipalAccess(ac)); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
@@ -530,7 +530,7 @@ func (h *Users) grantClient(w http.ResponseWriter, r *http.Request) {
 		}
 		h.formFailed(w, r, ac, id, f)
 	}
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanManagePrincipalAccess(ac); err != nil {
 		f.Errs.apply(r, err, nil)
 		fail()
 		return
@@ -551,7 +551,7 @@ func (h *Users) grantClient(w http.ResponseWriter, r *http.Request) {
 func (h *Users) revokeClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanManagePrincipalAccess(ac); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
