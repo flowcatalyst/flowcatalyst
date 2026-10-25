@@ -83,7 +83,10 @@ system does not have.
 - `trace.go` — trace logs (host ops 12/13): `TraceContexts` declares named contexts (describe key
   `traceContexts`; a bad declaration panics at registration), `Trace(ctx, "orders", msg, data, fn.WithLevel(..),
   fn.WithReference(..))` records, `Tracing(ctx, "orders")` says whether the context is live for this invocation,
-  `SetReference(ctx, ref)` stamps the invocation's later records. A no-op unless an operator switches the
+  `SetReference(ctx, ref)` (host op 14) stamps the business key on every later record of the invocation,
+  including the runner's built-in http and log records (this needs a runner that knows op 14; an older runner
+  stamps only trace records); a per-call `WithReference` applies to that record only. A context description is
+  at most 200 bytes of UTF-8. A no-op unless an operator switches the
   context on for a limited time; none of these can fail (an older runner's `UNKNOWN_OP`, `NOT_DECLARED` — one
   stderr warning per context — and `TOO_LARGE` are swallowed). See `docs/published/60-functions.md`.
 - `event.go` — `Emit`, wrapping host op 5; `errors.Is(err, ErrRetryable)`

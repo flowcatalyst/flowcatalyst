@@ -35,14 +35,14 @@ const (
 	traceMaxMessage   = 4096
 	traceMaxReference = 200
 	maxTraceContexts  = 20
-	maxTraceDescChars = 200
+	maxTraceDescBytes = 200
 )
 
 var traceContextPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
 
 // TraceContext declares one trace context. Name is a lowercase letter first,
 // then lowercase letters, digits or '-', at most 40 characters, and not "http"
-// (the built-in capture context). Description (at most 200 characters) tells
+// (the built-in capture context). Description (at most 200 bytes of UTF-8) tells
 // operators what the context records.
 type TraceContext struct {
 	Name        string `json:"name"`
@@ -62,8 +62,8 @@ func TraceContexts(contexts ...TraceContext) {
 			panic(fmt.Sprintf("fn: %s: %q is the built-in capture context and cannot be declared", at, c.Name))
 		case !traceContextPattern.MatchString(c.Name):
 			panic(fmt.Sprintf("fn: %s: %q is not a valid context name (lowercase letter first, then lowercase letters, digits or -; at most 40 characters)", at, c.Name))
-		case len(c.Description) > maxTraceDescChars:
-			panic(fmt.Sprintf("fn: %s: description is over %d characters", at, maxTraceDescChars))
+		case len(c.Description) > maxTraceDescBytes:
+			panic(fmt.Sprintf("fn: %s: description is over %d bytes", at, maxTraceDescBytes))
 		case len(reg.traceCtxs) >= maxTraceContexts:
 			panic(fmt.Sprintf("fn: traceContexts: at most %d contexts", maxTraceContexts))
 		}
@@ -88,15 +88,33 @@ func (s *traceState) ref() string {
 	return s.reference
 }
 
-// SetReference stamps later Trace calls of this invocation with ref (the
-// author's business key: trip number, order number), unless a call passes its
-// own WithReference. Outside a dispatched request it does nothing.
+// SetReference stamps every later record of this invocation with ref (the
+// author's business key: trip number, order number): the author's Trace calls
+// and, on a runner that knows host op 14, the built-in http and log records
+// too. The value is also remembered here so Trace calls still carry it to an
+// older runner. A call's own WithReference applies to that record only. It
+// never fails: a host error (UNKNOWN_OP, TOO_LARGE, ...) is swallowed. Outside
+// a dispatched request it does nothing.
 func SetReference(ctx context.Context, ref string) {
-	if s, ok := ctx.Value(ctxKeyTrace).(*traceState); ok {
-		s.mu.Lock()
-		s.reference = ref
-		s.mu.Unlock()
+	s, ok := ctx.Value(ctxKeyTrace).(*traceState)
+	if !ok {
+		return
 	}
+	s.mu.Lock()
+	s.reference = ref
+	s.mu.Unlock()
+	if r := []rune(ref); len(r) > traceMaxReference {
+		ref = string(r[:traceMaxReference])
+	}
+	mb, err := json.Marshal(traceReferenceMeta{Reference: ref})
+	if err != nil {
+		return
+	}
+	_, _, _, _ = currentHost.call(opTraceReference, mb, nil)
+}
+
+type traceReferenceMeta struct {
+	Reference string `json:"reference"`
 }
 
 // TraceOption adjusts one Trace call.

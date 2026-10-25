@@ -53,6 +53,7 @@ pub(crate) mod op {
     pub const DISPATCH: i32 = 11;
     pub const TRACE: i32 = 12;
     pub const TRACING: i32 = 13;
+    pub const TRACE_REFERENCE: i32 = 14;
     pub const DB_QUERY: i32 = 6;
     pub const DB_EXEC: i32 = 7;
     pub const DB_BEGIN: i32 = 8;

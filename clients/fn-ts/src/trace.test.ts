@@ -2,7 +2,7 @@ import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { buildDescribeDoc } from "./describe";
 import { handleRequest } from "./dispatch";
-import { OpTrace, OpTracing } from "./ops";
+import { OpTrace, OpTraceReference, OpTracing } from "./ops";
 import { open } from "./registry";
 import { newTracer, resetTraceWarnings, traceContexts } from "./trace";
 import { installFakeHost, resetRegistry } from "./testing";
@@ -49,9 +49,10 @@ test("setReference stamps later calls; a call's own reference wins", () => {
   t.trace("orders", "after");
   t.trace("orders", "override", undefined, { reference: "ORD-10" });
   fake.restore();
-  assert.equal(fake.calls[0]!.meta.reference, undefined);
-  assert.equal(fake.calls[1]!.meta.reference, "ORD-9");
-  assert.equal(fake.calls[2]!.meta.reference, "ORD-10");
+  const traces = fake.calls.filter((c) => c.op === OpTrace);
+  assert.equal(traces[0]!.meta.reference, undefined);
+  assert.equal(traces[1]!.meta.reference, "ORD-9");
+  assert.equal(traces[2]!.meta.reference, "ORD-10");
 });
 
 test("a reference is per invocation: a fresh tracer starts empty", () => {
@@ -59,7 +60,7 @@ test("a reference is per invocation: a fresh tracer starts empty", () => {
   newTracer().setReference("ORD-9");
   newTracer().trace("orders", "other invocation");
   fake.restore();
-  assert.equal(fake.calls[0]!.meta.reference, undefined);
+  assert.equal(fake.calls.filter((c) => c.op === OpTrace)[0]!.meta.reference, undefined);
 });
 
 test("an over-long reference and message are cut client-side", () => {
@@ -166,13 +167,73 @@ test("traceContexts rejects bad declarations with a clear message", () => {
   assert.throws(() => traceContexts({ name: "Orders" }), /not a valid context name/);
   assert.throws(() => traceContexts({ name: "1x" }), /not a valid context name/);
   assert.throws(() => traceContexts({ name: "a".repeat(41) }), /not a valid context name/);
-  assert.throws(() => traceContexts({ name: "ok", description: "d".repeat(201) }), /description is over 200/);
+  assert.throws(() => traceContexts({ name: "ok", description: "d".repeat(201) }), /description is over 200 bytes/);
+  assert.throws(() => traceContexts({ name: "ok", description: "é".repeat(101) }), /description is over 200 bytes/);
+  traceContexts({ name: "multibyte", description: "é".repeat(100) }); // 200 bytes: accepted
   traceContexts({ name: "dup" });
   assert.throws(() => traceContexts({ name: "dup" }), /declared twice/);
-  assert.equal(buildDescribeDoc().traceContexts!.length, 1);
+  assert.equal(buildDescribeDoc().traceContexts!.length, 2);
 });
 
 test("traceContexts allows at most 20", () => {
   for (let i = 0; i < 20; i++) traceContexts({ name: `c${i}` });
   assert.throws(() => traceContexts({ name: "one-more" }), /at most 20/);
+});
+
+test("setReference makes an op 14 call with the reference", () => {
+  const fake = installFakeHost();
+  newTracer().setReference("TRIP-123");
+  fake.restore();
+  assert.equal(fake.calls.length, 1);
+  assert.equal(fake.calls[0]!.op, OpTraceReference);
+  assert.deepEqual(fake.calls[0]!.meta, { reference: "TRIP-123" });
+});
+
+test("setReference swallows every host error and still remembers the value", () => {
+  for (const code of ["UNKNOWN_OP", "TOO_LARGE", "BAD_REQUEST"]) {
+    const fake = installFakeHost(() => ({ code: 1, meta: { code, message: "x" } }));
+    const t = newTracer();
+    assert.doesNotThrow(() => t.setReference("R"));
+    t.trace("orders", "m");
+    fake.restore();
+    assert.equal(fake.calls.find((c) => c.op === OpTrace)!.meta.reference, "R");
+  }
+  const g = globalThis as unknown as { __fc_call?: unknown };
+  const prev = g.__fc_call;
+  delete g.__fc_call;
+  try {
+    assert.doesNotThrow(() => newTracer().setReference("R"));
+  } finally {
+    g.__fc_call = prev;
+  }
+});
+
+test("a per-call reference applies to that record only", () => {
+  const fake = installFakeHost();
+  const t = newTracer();
+  t.trace("orders", "one", undefined, { reference: "ONE" });
+  t.trace("orders", "two");
+  t.setReference("SET");
+  t.trace("orders", "three", undefined, { reference: "THREE" });
+  t.trace("orders", "four");
+  fake.restore();
+  const refs = fake.calls.filter((c) => c.op === OpTrace).map((c) => c.meta.reference);
+  assert.deepEqual(refs, ["ONE", undefined, "THREE", "SET"]);
+});
+
+test("a reference cut never splits a surrogate pair", () => {
+  const fake = installFakeHost();
+  const ref = "a".repeat(199) + "\u{1F600}" + "bcd";
+  const t = newTracer();
+  t.setReference(ref);
+  t.trace("orders", "m", undefined, { reference: ref });
+  fake.restore();
+  for (const c of fake.calls) {
+    const r = c.meta.reference as string;
+    assert.ok(Array.from(r).length <= 200);
+    assert.equal(r, "a".repeat(199) + "\u{1F600}");
+    const last = r.charCodeAt(r.length - 1);
+    assert.ok(!(last >= 0xd800 && last <= 0xdbff));
+  }
+  assert.equal(fake.calls.length, 2);
 });
