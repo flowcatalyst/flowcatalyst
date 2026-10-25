@@ -116,8 +116,11 @@ class PlatformConfigResource:
     ) -> SecretResponse:
         """Read a SECRET property's plaintext. The only way to do so; every call is audited.
 
-        Needs ``platform:admin:config:reveal``, or the application's own service account for
-        its own application (else :class:`ForbiddenError`). Raises :class:`NotFoundError` for an
+        Needs a reveal permission (else :class:`ForbiddenError`): ``platform:admin:config:reveal``
+        (a platform administrator), or ``platform:application-service:config:reveal`` (an
+        application's service account, which the platform confines to its own applications and to
+        the clients it is linked to: its explicit clients, else the clients its application is
+        enabled for, plus the application-wide value). Raises :class:`NotFoundError` for an
         unknown property and :class:`ValidationError` (``code == "NOT_A_SECRET"``) for a PLAIN
         one (use :meth:`get`). The value is a ``SecretStr`` and is never logged or put in an
         error message by the SDK. It is deliberately **not cached** here; wrap the call in your

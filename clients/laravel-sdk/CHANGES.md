@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Docs: `platformConfig()->revealSecret()` needs a reveal permission; being the application's own
+  service account is not enough. The account needs `platform:application-service:config:reveal`
+  (carried by the `platform:application-service` role), and the platform confines it to its own
+  applications and to the clients it is linked to (its explicit clients, else the clients its
+  application is enabled for, plus the application-wide value). The entry below that says "or the
+  application's own service account" is superseded by this one. Writing `***` back as a SECRET's
+  value is refused by the platform (`400 SECRET_VALUE_MASKED`).
 - New `ingestions()` and `ingestionSets()` resources for the ingestion API: `ingestions()->list/create/get/update/delete/pause/resume`,
   `versions/saveVersion/makeVersionLive`, `definition` (the YAML file as a string), `history`, `failures`, `sourceKinds`,
   `testConnection/getTest`; `ingestionSets()->list/apply/applies/getApply/reapply/release` (`dryRun` on apply and reapply).

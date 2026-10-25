@@ -74,8 +74,12 @@ public final class PlatformConfigResource {
     /**
      * Read a SECRET property's plaintext ({@code GET /api/config/{app}/{section}/{property}/secret}).
      *
-     * <p>Requires the {@code platform:admin:config:reveal} permission, or the application's own
-     * service account for its own application. Every call is audited server-side. Errors: 403
+     * <p>Requires a reveal permission: {@code platform:admin:config:reveal} (a platform
+     * administrator), or {@code platform:application-service:config:reveal} (an application's
+     * service account, which the platform confines to its own applications and to the clients it
+     * is linked to: its explicit clients, else the clients its application is enabled for, plus the
+     * application-wide value). This supersedes the wording in CHANGES-0.0.13.md. Every call is
+     * audited server-side. Errors: 403
      * {@code Forbidden}; 404 {@code NotFound}; 400 code {@code NOT_A_SECRET} (a PLAIN property, use
      * {@link #get}) arrives as {@code HttpStatus} with status 400.
      *

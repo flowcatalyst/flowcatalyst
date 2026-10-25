@@ -94,9 +94,12 @@ class PlatformConfig
      * Reveal the plaintext of a SECRET property
      * (`GET /api/config/{app}/{section}/{property}/secret`).
      *
-     * Requires the `platform:admin:config:reveal` permission, or being the
-     * application's own service account for its own application. Every call
-     * is audited by the platform. Errors: 403 not authorised, 404 no such
+     * Requires a reveal permission: `platform:admin:config:reveal` (a
+     * platform administrator), or `platform:application-service:config:reveal`
+     * (an application's service account, which the platform confines to its
+     * own applications and to the clients it is linked to: its explicit
+     * clients, else the clients its application is enabled for, plus the
+     * application-wide value). Every call is audited by the platform. Errors: 403 not authorised, 404 no such
      * property, 400 `NOT_A_SECRET` (the property is PLAIN; use `get`) - all
      * surfaced as the SDK's normal exceptions.
      *
