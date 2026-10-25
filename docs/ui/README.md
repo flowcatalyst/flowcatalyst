@@ -1760,12 +1760,17 @@ pages, added beside the SPA (nothing of it is touched; the sidebar entries link 
 - **Live preview that runs nothing.** The preview is rendered by the server (`POST .../preview`, debounced on form
   input; nothing is read or saved) from values it vouches for: colours and the gradient are validated and fall back to
   the built-in look, text is escaped, an inline SVG logo is shown as an `<img src="data:image/svg+xml;base64,...">` (an
-  image cannot run script; the SPA injects it with `v-html`), an SVG with script or handlers is not shown, a logo
+  image cannot run script; the SPA shows it the same way since 2026-10-25, it used `v-html`), an SVG the logo rule
+  refuses is not shown, a logo
   address is named, not loaded (the admin CSP is `img-src 'self' data:`), and **custom CSS is never applied** to the admin
   page. Only the preview's own stylesheet-free inline styles are used, so no kit stylesheet rebuild was needed.
 - **Validation on save** (field errors, nothing stored): colours must be hex or `rgb()`/`rgba()` (the rule `branding`
-  uses for emails), the gradient a CSS gradient of colours and stops, the logo URL http(s), the inline SVG an `<svg>`
-  element of at most 64 kB without `<script>`, `foreignObject`, `iframe`, `embed`, `object`, `on*=` or `javascript:`, the
+  uses for emails), the gradient a CSS gradient of colours and stops, the logo URL http(s), the inline SVG must pass
+  `branding.CheckLogoSVG` (parsed as XML, not matched by pattern: one `<svg>` root of at most 64 kB, no `script`,
+  `foreignObject`, `iframe`, `embed`, `object` or similar element, no `on*` attribute or animation of one, no
+  `javascript:`/`vbscript:`/`data:text/html` in any attribute value after entity decoding, no DOCTYPE entity
+  definitions; the public login-theme endpoint and the email theme drop a stored logo that fails it, since the generic
+  config API can store one), the
   logo height a whole number from 20 to 120 (the field's own range), text fields at most 500 characters, custom CSS
   at most 64 kB. The SPA's editor enforces none of this beyond the height's input attributes.
 - **Names.** One field; empty is "Platform name cannot be empty." (the SPA's message), at most 200 characters; the

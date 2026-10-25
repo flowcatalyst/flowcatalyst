@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { svgDataUri } from "@/utils/svg-data-uri";
 import { ref, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { NAVIGATION_CONFIG, type NavItem } from "@/config/navigation";
@@ -131,11 +132,13 @@ function isActive(item: NavItem): boolean {
           alt="Logo"
         />
         <!-- Custom logo SVG -->
-        <div
+        <!-- An image, never v-html: an SVG in <img> runs no script. -->
+        <img
           v-else-if="appThemeStore.logoSvg"
-          class="logo-svg"
+          :src="svgDataUri(appThemeStore.logoSvg)"
+          class="logo-image"
           :style="{ height: `${appThemeStore.logoHeight}px` }"
-          v-html="appThemeStore.logoSvg"
+          alt="Logo"
         />
         <!-- Default logo icon -->
         <div
@@ -296,17 +299,6 @@ function isActive(item: NavItem): boolean {
   width: auto;
   object-fit: contain;
   flex-shrink: 0;
-}
-
-.logo-svg {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-}
-
-.logo-svg :deep(svg) {
-  height: 100%;
-  width: auto;
 }
 
 .collapse-btn {

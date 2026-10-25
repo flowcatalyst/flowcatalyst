@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { svgDataUri } from "@/utils/svg-data-uri";
 import { ref, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import {
@@ -66,10 +67,12 @@ async function onSubmit() {
           class="logo-image"
           alt="Logo"
         />
-        <div
+        <!-- An image, never v-html: an SVG in <img> runs no script. -->
+        <img
           v-else-if="themeStore.theme.logoSvg"
-          class="logo-svg"
-          v-html="themeStore.theme.logoSvg"
+          :src="svgDataUri(themeStore.theme.logoSvg)"
+          class="logo-image"
+          alt="Logo"
         />
         <div v-else class="logo-container">
           <svg class="logo-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -192,15 +195,6 @@ async function onSubmit() {
   max-height: 72px;
   margin-bottom: 16px;
   object-fit: contain;
-}
-
-.logo-svg {
-  margin-bottom: 16px;
-}
-
-.logo-svg :deep(svg) {
-  max-width: 200px;
-  max-height: 72px;
 }
 
 .brand-name {

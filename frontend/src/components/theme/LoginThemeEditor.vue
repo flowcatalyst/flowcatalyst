@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { svgDataUri } from "@/utils/svg-data-uri";
 import { computed, ref, watch } from "vue";
 import type { LoginTheme } from "@/api/config";
 
@@ -249,7 +250,8 @@ function updateGradient() {
             class="preview-logo-img"
             alt="Logo"
           />
-          <div v-else-if="theme.logoSvg" class="preview-logo-svg" v-html="theme.logoSvg" />
+          <!-- An image, never v-html: an SVG in <img> runs no script. -->
+          <img v-else-if="theme.logoSvg" :src="svgDataUri(theme.logoSvg)" class="preview-logo-img" alt="Logo" />
           <div v-else class="preview-logo-default">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -356,15 +358,6 @@ function updateGradient() {
   max-height: 48px;
   object-fit: contain;
   margin-bottom: 12px;
-}
-
-.preview-logo-svg {
-  margin-bottom: 12px;
-}
-
-.preview-logo-svg :deep(svg) {
-  max-width: 120px;
-  max-height: 48px;
 }
 
 .preview-logo-default {

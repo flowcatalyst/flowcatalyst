@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/branding"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
@@ -139,8 +140,6 @@ var (
 	thmColorPattern = regexp.MustCompile(`(?i)^#[0-9a-f]{3,8}$|^rgba?\([0-9.,%\s]+\)$`)
 	// thmGradientPattern is a gradient made of colours, stops and angles only.
 	thmGradientPattern = regexp.MustCompile(`(?i)^(?:repeating-)?(?:linear|radial|conic)-gradient\([#0-9a-z%,.()\s-]{1,400}\)$`)
-	// thmSVGUnsafe finds what makes an inline logo executable on the sign-in page.
-	thmSVGUnsafe = regexp.MustCompile(`(?i)<\s*(?:script|foreignObject|iframe|embed|object)|\son[a-z]+\s*=|javascript:`)
 )
 
 // validate checks the form the way the sign-in pages will use it. The
@@ -171,7 +170,9 @@ func (v themeValues) validate(errs *formErrors) {
 	switch {
 	case len(v.LogoSVG) > thmMaxBlob:
 		errs.field("logoSvg", "The SVG is too large (64 kB at most).")
-	case v.LogoSVG != "" && (!strings.HasPrefix(strings.ToLower(v.LogoSVG), "<svg") || thmSVGUnsafe.MatchString(v.LogoSVG)):
+	// The platform's logo rule (branding.CheckLogoSVG): parsed as XML, one
+	// <svg>, no script, embedding element, event handler or script URL.
+	case v.LogoSVG != "" && branding.CheckLogoSVG(v.LogoSVG) != nil:
 		errs.field("logoSvg", "Paste an <svg> element without scripts or event handlers.")
 	}
 	if v.LogoHeight != "" {
@@ -226,7 +227,7 @@ func (v themeValues) preview() thmPreview {
 		p.Background = colour(v.BackgroundColor, def.BackgroundColor)
 	}
 	switch {
-	case v.LogoSVG != "" && !thmSVGUnsafe.MatchString(v.LogoSVG) && strings.HasPrefix(strings.ToLower(v.LogoSVG), "<svg") && len(v.LogoSVG) <= thmMaxBlob:
+	case v.LogoSVG != "" && branding.CheckLogoSVG(v.LogoSVG) == nil:
 		p.LogoSrc = "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(v.LogoSVG))
 	case v.LogoURL != "" && thmLogoURLOK(v.LogoURL):
 		p.LogoURL = v.LogoURL

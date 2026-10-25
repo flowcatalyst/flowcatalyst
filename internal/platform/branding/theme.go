@@ -94,7 +94,9 @@ func LoadTheme(ctx context.Context, r Reader) Theme {
 	if raw.LogoURL != nil {
 		t.LogoURL = strings.TrimSpace(*raw.LogoURL)
 	}
-	if raw.LogoSVG != nil {
+	// A stored logo the platform's rule refuses is dropped (it may have been
+	// written through the generic config API, which does not know the theme).
+	if raw.LogoSVG != nil && CheckLogoSVG(strings.TrimSpace(*raw.LogoSVG)) == nil {
 		t.LogoSVG = strings.TrimSpace(*raw.LogoSVG)
 	}
 	if raw.FooterText != nil {

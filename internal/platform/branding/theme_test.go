@@ -126,6 +126,18 @@ func TestLoadTheme_AcceptsRGBColour(t *testing.T) {
 	}
 }
 
+// A stored logo SVG the platform's rule refuses is dropped, not mailed.
+func TestLoadTheme_DropsHostileLogoSVG(t *testing.T) {
+	th := LoadTheme(context.Background(), themeReader(`{"logoSvg":"<svg/onload=alert(1)>"}`))
+	if th.LogoSVG != "" || th.LogoSrc() != "" {
+		t.Errorf("hostile SVG kept: %q", th.LogoSVG)
+	}
+	th = LoadTheme(context.Background(), themeReader(`{"logoSvg":"<svg><circle r=\"4\"/></svg>"}`))
+	if th.LogoSVG == "" {
+		t.Error("a safe SVG was dropped")
+	}
+}
+
 func TestLogoSrc_PrefersHostedURL(t *testing.T) {
 	th := Theme{LogoURL: "https://cdn.example.com/logo.png", LogoSVG: "<svg/>"}
 	if got := th.LogoSrc(); got != "https://cdn.example.com/logo.png" {
