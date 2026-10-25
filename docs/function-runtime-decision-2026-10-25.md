@@ -1,7 +1,7 @@
 # Function runtimes: decision and plan (2026-10-25)
 
-Status: **decided by the owner on 2026-10-25**, except the implementation route in section 3, which is
-recommended and awaits confirmation. Evidence: `function-runtime-performance-2026-10-19.md`,
+Status: **decided by the owner on 2026-10-25**, including the implementation route in section 3 (the Go
+engine interface, confirmed the same day). Evidence: `function-runtime-performance-2026-10-19.md`,
 `function-runtime-workerd-spike-2026-10-21.md`, `function-runtime-wasmtime-spike-2026-10-21.md`,
 `function-runtime-scriptc-spike-2026-10-21.md`, `function-runtime-deadlines.md`. Earlier rulings this
 builds on: `runner-plumbing-costing-2026-10-19.md` section 5 (runtime fixed per function, runner-side
@@ -43,9 +43,9 @@ fault isolation, not hostile authors.
 | Limits | Cooperative deadlines; a compiled guest cannot be killed without a costly hook | Epoch interruption, fuel, memory limiter, pooling allocator |
 | Maturity | Good | Bytecode Alliance, security process |
 
-## 3. Implementation route (recommended, to confirm)
+## 3. Implementation route (decided)
 
-**Recommended: an engine interface inside the existing Go runner, with wasmtime through
+**Decided: an engine interface inside the existing Go runner, with wasmtime through
 `wasmtime-go` behind a build tag, used only in the Linux server images.** The Go runner already
 implements the whole ABI v1 host (about 4,400 lines in `internal/functions/{runner,control,abi}`), so
 the ABI exists once and both engines run it. cgo is confined to the Linux amd64/arm64 server image
