@@ -742,22 +742,25 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $section
      * @param string $property
      * @param array{
-     *    "clientId"?: string,
+     *    "clientId"?: string, //Scope to one client: the client's id (clt_...) or its identifier (e.g. acme). The platform stores the id, so both name the same value. Omit for the application's global value. An unknown client is 404.
      * } $queryParameters
+     * @param array{
+     *    "X-On-Behalf-Of"?: string, //Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters.
+     * } $headerParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
      */
-    public function deletePlatformConfigProperty(string $app, string $section, string $property, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    public function deletePlatformConfigProperty(string $app, string $section, string $property, array $queryParameters = [], array $headerParameters = [], string $fetch = self::FETCH_OBJECT)
     {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeletePlatformConfigProperty($app, $section, $property, $queryParameters), $fetch);
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeletePlatformConfigProperty($app, $section, $property, $queryParameters, $headerParameters), $fetch);
     }
     /**
      * @param string $app
      * @param string $section
      * @param string $property
      * @param array{
-     *    "clientId"?: string,
+     *    "clientId"?: string, //Scope to one client: the client's id (clt_...) or its identifier (e.g. acme). The platform stores the id, so both name the same value. Omit for the application's global value. An unknown client is 404.
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -773,30 +776,36 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $property
      * @param null|\FlowCatalyst\Generated\Model\SetPropertyRequest $requestBody
      * @param array{
-     *    "clientId"?: string,
+     *    "clientId"?: string, //Scope to one client: the client's id (clt_...) or its identifier (e.g. acme); the platform stores the id. Omit for the application's global value. An unknown client is 404.
      * } $queryParameters
+     * @param array{
+     *    "X-On-Behalf-Of"?: string, //Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters.
+     * } $headerParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ConfigResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
      */
-    public function setPlatformConfigProperty(string $app, string $section, string $property, ?\FlowCatalyst\Generated\Model\SetPropertyRequest $requestBody = null, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    public function setPlatformConfigProperty(string $app, string $section, string $property, ?\FlowCatalyst\Generated\Model\SetPropertyRequest $requestBody = null, array $queryParameters = [], array $headerParameters = [], string $fetch = self::FETCH_OBJECT)
     {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SetPlatformConfigProperty($app, $section, $property, $requestBody, $queryParameters), $fetch);
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SetPlatformConfigProperty($app, $section, $property, $requestBody, $queryParameters, $headerParameters), $fetch);
     }
     /**
      * @param string $app
      * @param string $section
      * @param string $property
      * @param array{
-     *    "clientId"?: string,
+     *    "clientId"?: string, //Scope to one client: the client's id (clt_...) or its identifier (e.g. acme). The platform stores the id, so both name the same value. Omit for the application's global value. An unknown client is 404.
      * } $queryParameters
+     * @param array{
+     *    "X-On-Behalf-Of"?: string, //Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters.
+     * } $headerParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\SecretResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
      */
-    public function revealPlatformConfigSecret(string $app, string $section, string $property, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    public function revealPlatformConfigSecret(string $app, string $section, string $property, array $queryParameters = [], array $headerParameters = [], string $fetch = self::FETCH_OBJECT)
     {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RevealPlatformConfigSecret($app, $section, $property, $queryParameters), $fetch);
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RevealPlatformConfigSecret($app, $section, $property, $queryParameters, $headerParameters), $fetch);
     }
     /**
      * @param array{
@@ -1971,6 +1980,356 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function deleteIdpRoleMapping(string $id, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteIdpRoleMapping($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\CreateJobsRequest $requestBody
+     * @param array{
+     *    "runtimeId": string, //The sending runtime, which must carry the ingestion's kind and for a polled source hold its lease
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\CreateJobsResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function ingestionRuntimeCreateJobs(string $id, ?\FlowCatalyst\Generated\Model\CreateJobsRequest $requestBody = null, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\IngestionRuntimeCreateJobs($id, $requestBody, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $name A secret the ingestion's live definition names
+     * @param array{
+     *    "runtimeId": string, //The asking runtime, which must carry the ingestion's kind and for a polled source hold its lease
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\SecretValue|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function ingestionRuntimeGetSecret(string $id, string $name, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\IngestionRuntimeGetSecret($id, $name, $queryParameters), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\PollRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollUnprocessableEntityException
+     * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollUpgradeRequiredException
+     * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollInternalServerErrorException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PollResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function ingestionRuntimePoll(?\FlowCatalyst\Generated\Model\PollRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\IngestionRuntimePoll($requestBody), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\ReportRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function ingestionRuntimeReport(?\FlowCatalyst\Generated\Model\ReportRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\IngestionRuntimeReport($requestBody), $fetch);
+    }
+    /**
+     * @param string $ingestionId
+     * @param string $key
+     * @param array{
+     *    "runtimeId": string, //The asking runtime, which must hold the ingestion's lease
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StateValue|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function ingestionRuntimeGetState(string $ingestionId, string $key, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\IngestionRuntimeGetState($ingestionId, $key, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $ingestionId
+     * @param string $key
+     * @param null|\FlowCatalyst\Generated\Model\StateValue $requestBody
+     * @param array{
+     *    "runtimeId": string, //The writing runtime, which must hold the ingestion's lease
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function ingestionRuntimePutState(string $ingestionId, string $key, ?\FlowCatalyst\Generated\Model\StateValue $requestBody = null, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\IngestionRuntimePutState($ingestionId, $key, $requestBody, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionSetListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listIngestionSets(string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListIngestionSets(), $fetch);
+    }
+    /**
+     * @param string $name The set's name: lowercase letters, digits and hyphens
+     * @param null|\FlowCatalyst\Generated\Model\ApplyIngestionSetRequest $requestBody
+     * @param array{
+     *    "dryRun"?: bool, //Do all the checks and say what would be done, writing nothing
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionSetPlanResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function applyIngestionSet(string $name, ?\FlowCatalyst\Generated\Model\ApplyIngestionSetRequest $requestBody = null, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ApplyIngestionSet($name, $requestBody, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $name The set's name: lowercase letters, digits and hyphens
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionSetApplyListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listIngestionSetApplies(string $name, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListIngestionSetApplies($name), $fetch);
+    }
+    /**
+     * @param string $name
+     * @param string $applyId
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionSetArchiveResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getIngestionSetApply(string $name, string $applyId, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetIngestionSetApply($name, $applyId), $fetch);
+    }
+    /**
+     * @param string $name
+     * @param string $applyId
+     * @param array{
+     *    "dryRun"?: bool, //Do all the checks and say what would be done, writing nothing
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionSetPlanResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function reapplyIngestionSet(string $name, string $applyId, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ReapplyIngestionSet($name, $applyId, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $name The set's name: lowercase letters, digits and hyphens
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionSetReleaseResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function releaseIngestionSet(string $name, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ReleaseIngestionSet($name), $fetch);
+    }
+    /**
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionSourceKindListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listIngestionSourceKinds(string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListIngestionSourceKinds(), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\TestIngestionRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionTestResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function testIngestionConnection(?\FlowCatalyst\Generated\Model\TestIngestionRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\TestIngestionConnection($requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionTestResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getIngestionTest(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetIngestionTest($id), $fetch);
+    }
+    /**
+     * @param array{
+     *    "applicationCode"?: string, //Only the ingestions of this application
+     *    "clientId"?: string, //Only the ingestions of this client: its id or identifier
+     *    "q"?: string, //Matches the code or name, ignoring case
+     *    "status"?: string,
+     *    "kind"?: string, //A source kind; for an extension's kind, its type
+     *    "after"?: string, //Cursor from a previous page's nextCursor
+     *    "limit"?: int, //Page size (default 50, at most 200)
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listIngestions(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListIngestions($queryParameters), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\CreateIngestionRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function createIngestion(?\FlowCatalyst\Generated\Model\CreateIngestionRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\CreateIngestion($requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deleteIngestion(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteIngestion($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getIngestion(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetIngestion($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\UpdateIngestionRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function updateIngestion(string $id, ?\FlowCatalyst\Generated\Model\UpdateIngestionRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\UpdateIngestion($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param array $accept Accept content header application/yaml|application/json
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getIngestionDefinition(string $id, string $fetch = self::FETCH_OBJECT, array $accept = [])
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetIngestionDefinition($id, $accept), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param array{
+     *    "after"?: string, //Cursor from a previous page's nextCursor
+     *    "limit"?: int, //Page size (default 50, at most 200)
+     *    "undismissed"?: bool, //Only the failures nobody has dismissed
+     *    "category"?: string, //Only this category; rejected is the notices
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionFailureListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listIngestionFailures(string $id, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListIngestionFailures($id, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $failureId
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionFailureResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function dismissIngestionFailure(string $id, string $failureId, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DismissIngestionFailure($id, $failureId), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param array{
+     *    "limit"?: int, //Page size (default 50, at most 200)
+     *    "offset"?: int,
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionHistoryResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listIngestionHistory(string $id, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListIngestionHistory($id, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function pauseIngestion(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PauseIngestion($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function resumeIngestion(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ResumeIngestion($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionSecretListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listIngestionSecrets(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListIngestionSecrets($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionVersionListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listIngestionVersions(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListIngestionVersions($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\SaveIngestionVersionRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionVersionResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function saveIngestionVersion(string $id, ?\FlowCatalyst\Generated\Model\SaveIngestionVersionRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SaveIngestionVersion($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param int $version
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\IngestionResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function makeIngestionVersionLive(string $id, int $version, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\MakeIngestionVersionLive($id, $version), $fetch);
     }
     /**
      * @param array{

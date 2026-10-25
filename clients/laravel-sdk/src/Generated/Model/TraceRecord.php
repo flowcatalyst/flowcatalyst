@@ -35,6 +35,10 @@ class TraceRecord extends \ArrayObject
     /**
      * @var string|null
      */
+    protected $id;
+    /**
+     * @var string|null
+     */
     protected $invocationId;
     /**
      * @var string|null
@@ -144,6 +148,24 @@ class TraceRecord extends \ArrayObject
     {
         $this->initialized['data'] = true;
         $this->data = $data;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getId(): ?string
+    {
+        return $this->id;
+    }
+    /**
+     * @param string|null $id
+     *
+     * @return self
+     */
+    public function setId(?string $id): self
+    {
+        $this->initialized['id'] = true;
+        $this->id = $id;
         return $this;
     }
     /**

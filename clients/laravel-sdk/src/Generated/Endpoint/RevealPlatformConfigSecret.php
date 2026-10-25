@@ -12,15 +12,19 @@ class RevealPlatformConfigSecret extends \FlowCatalyst\Generated\Runtime\Client\
      * @param string $section
      * @param string $property
      * @param array{
-     *    "clientId"?: string,
+     *    "clientId"?: string, //Scope to one client: the client's id (clt_...) or its identifier (e.g. acme). The platform stores the id, so both name the same value. Omit for the application's global value. An unknown client is 404.
      * } $queryParameters
+     * @param array{
+     *    "X-On-Behalf-Of"?: string, //Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters.
+     * } $headerParameters
      */
-    public function __construct(string $app, string $section, string $property, array $queryParameters = [])
+    public function __construct(string $app, string $section, string $property, array $queryParameters = [], array $headerParameters = [])
     {
         $this->app = $app;
         $this->section = $section;
         $this->property = $property;
         $this->queryParameters = $queryParameters;
+        $this->headerParameters = $headerParameters;
     }
     use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
     public function getMethod(): string
@@ -46,6 +50,15 @@ class RevealPlatformConfigSecret extends \FlowCatalyst\Generated\Runtime\Client\
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
         $optionsResolver->addAllowedTypes('clientId', ['string']);
+        return $optionsResolver;
+    }
+    protected function getHeadersOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
+    {
+        $optionsResolver = parent::getHeadersOptionsResolver();
+        $optionsResolver->setDefined(['X-On-Behalf-Of']);
+        $optionsResolver->setRequired([]);
+        $optionsResolver->setDefaults([]);
+        $optionsResolver->addAllowedTypes('X-On-Behalf-Of', ['string']);
         return $optionsResolver;
     }
     /**

@@ -73,6 +73,17 @@ final class RevealSecretTest extends TestCase
         $this->assertSame('clientId=clt_1', $uri->getQuery());
     }
 
+    public function test_on_behalf_of_goes_out_as_a_header_beside_the_bearer(): void
+    {
+        $pc = $this->client([$this->ok(), $this->ok()])->platformConfig();
+        $pc->revealSecret('rfp', 'mail', 'pw', onBehalfOf: 'usr:alice@example.com');
+        $pc->revealSecret('rfp', 'mail', 'pw');
+
+        $this->assertSame('usr:alice@example.com', $this->request(0)->getHeaderLine('X-On-Behalf-Of'));
+        $this->assertSame('Bearer tok', $this->request(0)->getHeaderLine('Authorization'));
+        $this->assertFalse($this->request(1)->hasHeader('X-On-Behalf-Of'));
+    }
+
     public function test_not_cached_each_call_hits_the_platform(): void
     {
         $pc = $this->client([$this->ok(), $this->ok()])->platformConfig();

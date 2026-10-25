@@ -55,6 +55,12 @@ class TraceRecordResponse
      */
     protected $message;
     /**
+     * Sensitive parts withheld (no platform:function:trace:view-bodies): an http record keeps only method, path without query, status, duration, outcome and body sizes; a log record its metadata (message empty, no data); a trace record its message (no data)
+     *
+     * @var bool|null
+     */
+    protected $redacted;
+    /**
      * @var string|null
      */
     protected $reference;
@@ -248,6 +254,28 @@ class TraceRecordResponse
     {
         $this->initialized['message'] = true;
         $this->message = $message;
+        return $this;
+    }
+    /**
+     * Sensitive parts withheld (no platform:function:trace:view-bodies): an http record keeps only method, path without query, status, duration, outcome and body sizes; a log record its metadata (message empty, no data); a trace record its message (no data)
+     *
+     * @return bool|null
+     */
+    public function getRedacted(): ?bool
+    {
+        return $this->redacted;
+    }
+    /**
+     * Sensitive parts withheld (no platform:function:trace:view-bodies): an http record keeps only method, path without query, status, duration, outcome and body sizes; a log record its metadata (message empty, no data); a trace record its message (no data)
+     *
+     * @param bool|null $redacted
+     *
+     * @return self
+     */
+    public function setRedacted(?bool $redacted): self
+    {
+        $this->initialized['redacted'] = true;
+        $this->redacted = $redacted;
         return $this;
     }
     /**

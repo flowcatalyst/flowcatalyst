@@ -12,7 +12,7 @@ class GetPlatformConfigProperty extends \FlowCatalyst\Generated\Runtime\Client\B
      * @param string $section
      * @param string $property
      * @param array{
-     *    "clientId"?: string,
+     *    "clientId"?: string, //Scope to one client: the client's id (clt_...) or its identifier (e.g. acme). The platform stores the id, so both name the same value. Omit for the application's global value. An unknown client is 404.
      * } $queryParameters
      */
     public function __construct(string $app, string $section, string $property, array $queryParameters = [])

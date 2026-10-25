@@ -33,11 +33,17 @@ class TraceContextResponse
      */
     protected $enabledUntil;
     /**
-     * Switched on with no time limit; it stays on until switched off (enabledUntil is then far in the future)
+     * Live and switched on until switched off; enabledUntil is then its hard ceiling (indefiniteMaxDays after it was switched on), when it closes by itself
      *
      * @var bool|null
      */
     protected $indefinite;
+    /**
+     * The ceiling, in days, of an until-switched-off window for this context; 0 when the context cannot take one (http)
+     *
+     * @var int|null
+     */
+    protected $indefiniteMaxDays;
     /**
      * The window is open now (enabledUntil is in the future)
      *
@@ -45,7 +51,7 @@ class TraceContextResponse
      */
     protected $live;
     /**
-     * The longest window this context may be enabled for
+     * The longest timed window this context may be enabled for
      *
      * @var int|null
      */
@@ -141,7 +147,7 @@ class TraceContextResponse
         return $this;
     }
     /**
-     * Switched on with no time limit; it stays on until switched off (enabledUntil is then far in the future)
+     * Live and switched on until switched off; enabledUntil is then its hard ceiling (indefiniteMaxDays after it was switched on), when it closes by itself
      *
      * @return bool|null
      */
@@ -150,7 +156,7 @@ class TraceContextResponse
         return $this->indefinite;
     }
     /**
-     * Switched on with no time limit; it stays on until switched off (enabledUntil is then far in the future)
+     * Live and switched on until switched off; enabledUntil is then its hard ceiling (indefiniteMaxDays after it was switched on), when it closes by itself
      *
      * @param bool|null $indefinite
      *
@@ -160,6 +166,28 @@ class TraceContextResponse
     {
         $this->initialized['indefinite'] = true;
         $this->indefinite = $indefinite;
+        return $this;
+    }
+    /**
+     * The ceiling, in days, of an until-switched-off window for this context; 0 when the context cannot take one (http)
+     *
+     * @return int|null
+     */
+    public function getIndefiniteMaxDays(): ?int
+    {
+        return $this->indefiniteMaxDays;
+    }
+    /**
+     * The ceiling, in days, of an until-switched-off window for this context; 0 when the context cannot take one (http)
+     *
+     * @param int|null $indefiniteMaxDays
+     *
+     * @return self
+     */
+    public function setIndefiniteMaxDays(?int $indefiniteMaxDays): self
+    {
+        $this->initialized['indefiniteMaxDays'] = true;
+        $this->indefiniteMaxDays = $indefiniteMaxDays;
         return $this;
     }
     /**
@@ -185,7 +213,7 @@ class TraceContextResponse
         return $this;
     }
     /**
-     * The longest window this context may be enabled for
+     * The longest timed window this context may be enabled for
      *
      * @return int|null
      */
@@ -194,7 +222,7 @@ class TraceContextResponse
         return $this->maxMinutes;
     }
     /**
-     * The longest window this context may be enabled for
+     * The longest timed window this context may be enabled for
      *
      * @param int|null $maxMinutes
      *

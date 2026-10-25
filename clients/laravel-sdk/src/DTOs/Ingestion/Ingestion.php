@@ -25,6 +25,15 @@ final class Ingestion
         public readonly string $updatedAt = '',
         public readonly ?string $managedBy = null,
         public readonly ?string $runtimeNotice = null,
+        /** Undismissed notices: failures the platform refused (category `rejected`). */
+        public readonly int $notices = 0,
+        /** The newest undismissed notice's message. */
+        public readonly ?string $latestNotice = null,
+        public readonly ?string $latestNoticeAt = null,
+        /** @var string[] What the definition says that will not run as meant. */
+        public readonly array $warnings = [],
+        /** What this create or update did (set on those answers only). */
+        public readonly ?IngestionSaveOutcome $save = null,
     ) {}
 
     /**
@@ -47,6 +56,11 @@ final class Ingestion
             updatedAt: (string) ($data['updatedAt'] ?? ''),
             managedBy: isset($data['managedBy']) ? (string) $data['managedBy'] : null,
             runtimeNotice: isset($data['runtimeNotice']) ? (string) $data['runtimeNotice'] : null,
+            notices: (int) ($data['notices'] ?? 0),
+            latestNotice: isset($data['latestNotice']) ? (string) $data['latestNotice'] : null,
+            latestNoticeAt: isset($data['latestNoticeAt']) ? (string) $data['latestNoticeAt'] : null,
+            warnings: array_map('strval', (array) ($data['warnings'] ?? [])),
+            save: IngestionSaveOutcome::fromArray(isset($data['save']) && is_array($data['save']) ? $data['save'] : null),
         );
     }
 

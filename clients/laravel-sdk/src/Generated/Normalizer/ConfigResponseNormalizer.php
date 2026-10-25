@@ -55,6 +55,12 @@ class ConfigResponseNormalizer implements DenormalizerInterface, NormalizerInter
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
         }
+        if (\array_key_exists('clientIdentifier', $data) && $data['clientIdentifier'] !== null) {
+            $object->setClientIdentifier($data['clientIdentifier']);
+        }
+        elseif (\array_key_exists('clientIdentifier', $data) && $data['clientIdentifier'] === null) {
+            $object->setClientIdentifier(null);
+        }
         if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
             $object->setCreatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']));
         }
@@ -117,6 +123,9 @@ class ConfigResponseNormalizer implements DenormalizerInterface, NormalizerInter
         $dataArray['applicationCode'] = $data->getApplicationCode();
         if ($data->isInitialized('clientId') && null !== $data->getClientId()) {
             $dataArray['clientId'] = $data->getClientId();
+        }
+        if ($data->isInitialized('clientIdentifier') && null !== $data->getClientIdentifier()) {
+            $dataArray['clientIdentifier'] = $data->getClientIdentifier();
         }
         $dataArray['createdAt'] = $data->getCreatedAt()->format('Y-m-d\TH:i:sP');
         if ($data->isInitialized('description') && null !== $data->getDescription()) {

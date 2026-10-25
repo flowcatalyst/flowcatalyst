@@ -270,6 +270,79 @@ final class IngestionsTest extends TestCase
         $this->assertSame('http', $kinds[0]['kind']);
     }
 
+    public function test_failures_filters_dismiss_and_secrets(): void
+    {
+        $failure = [
+            'id' => 'igf_1', 'kind' => 'JOBS_REJECTED', 'category' => 'rejected', 'message' => 'refused',
+            'afterRecords' => 0, 'occurredAt' => 't', 'createdAt' => 't',
+            'dismissedAt' => 't2', 'dismissedBy' => 'prn_1',
+        ];
+        $client = $this->client([
+            $this->json(200, ['failures' => [], 'hasMore' => false]),
+            $this->json(200, ['failures' => [], 'hasMore' => false]),
+            $this->json(200, $failure),
+            $this->json(200, ['secrets' => [[
+                'name' => 'sftp-password', 'bound' => true,
+                'fetches' => [['runtimeId' => 'rt-1', 'version' => 3, 'lastFetchedAt' => 't', 'fetchCount' => 7]],
+            ]]]),
+        ]);
+
+        $client->ingestions()->failures('ing_1', category: 'rejected', undismissed: true);
+        $client->ingestions()->failures('ing_1', category: 'payload', undismissed: false);
+        $dismissed = $client->ingestions()->dismissFailure('ing_1', 'igf/1');
+        $secrets = $client->ingestions()->secrets('ing_1');
+
+        $this->assertSame('/api/ingestions/ing_1/failures?category=rejected&undismissed=true', $this->sent(0)[1]);
+        $this->assertSame('/api/ingestions/ing_1/failures?category=payload', $this->sent(1)[1]);
+        $this->assertSame(['POST', '/api/ingestions/ing_1/failures/igf%2F1/dismiss', ''], $this->sent(2));
+        $this->assertSame('prn_1', $dismissed['dismissedBy']);
+        $this->assertSame(['GET', '/api/ingestions/ing_1/secrets', ''], $this->sent(3));
+        $this->assertSame(7, $secrets[0]['fetches'][0]['fetchCount']);
+        $this->assertArrayNotHasKey('value', $secrets[0]);
+    }
+
+    public function test_a_create_without_promote_answers_a_draft_with_notices(): void
+    {
+        $client = $this->client([
+            $this->json(201, $this->row([
+                'notices' => 2, 'latestNotice' => 'jobs refused', 'latestNoticeAt' => 't',
+                'warnings' => ['no host key'],
+                'save' => ['outcome' => 'DRAFT', 'version' => 1, 'awaitingPromote' => true, 'message' => 'saved as a draft'],
+            ])),
+            $this->json(200, ['versions' => [$this->definition()->toArray() + [
+                'id' => 'igv_1', 'version' => 1, 'live' => false, 'draft' => true, 'digest' => 'ab12', 'createdAt' => 't',
+            ]]]),
+            $this->json(200, $this->row()),
+        ]);
+
+        $created = $client->ingestions()->create('edi', 'acme', 'orders', $this->definition(), live: true);
+        $versions = $client->ingestions()->versions('ing_1');
+        $older = $client->ingestions()->get('ing_1');
+
+        $this->assertNotNull($created->save);
+        $this->assertSame('DRAFT', $created->save->outcome);
+        $this->assertTrue($created->save->awaitingPromote);
+        $this->assertTrue($created->save->isDraft());
+        $this->assertSame(2, $created->notices);
+        $this->assertSame('jobs refused', $created->latestNotice);
+        $this->assertSame(['no host key'], $created->warnings);
+        $this->assertTrue($versions[0]->draft);
+        $this->assertSame('ab12', $versions[0]->digest);
+        $this->assertSame(0, $older->notices);
+        $this->assertNull($older->save);
+    }
+
+    public function test_sftp_accept_any_host_key_is_sent_as_given(): void
+    {
+        $source = new IngestionSource(IngestionSource::SFTP, [
+            'host' => 'h', 'port' => 22, 'directory' => '/in', 'username' => 'u',
+            'credential' => ['name' => 'sftp-password'], 'acceptAnyHostKey' => true, 'every' => 'PT5M',
+        ]);
+
+        $this->assertTrue($source->toArray()['acceptAnyHostKey']);
+        $this->assertSame($source->toArray(), IngestionSource::fromArray($source->toArray())->toArray());
+    }
+
     public function test_connection_test_by_id_and_by_definition(): void
     {
         $client = $this->client([

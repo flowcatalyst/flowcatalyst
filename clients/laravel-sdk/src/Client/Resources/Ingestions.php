@@ -57,7 +57,9 @@ class Ingestions
 
     /**
      * Create an ingestion. `$live` (platform default true) false saves the
-     * first version without making it live.
+     * first version without making it live, and so does a caller without the
+     * promote permission whatever `$live` says: the answer's `save->outcome`
+     * is `DRAFT` and `save->awaitingPromote` is true.
      */
     public function create(
         string $application,
@@ -83,9 +85,12 @@ class Ingestions
     }
 
     /**
-     * Replace the definition as the next live version. `$expectedVersion` is
-     * the live version the caller read (`Ingestion::$version`, 0 when none is
-     * live); a different current version is a 409.
+     * Save the definition as the next version: made live with the promote
+     * permission (`SAVED`), a draft awaiting promote without it (`DRAFT`).
+     * `$expectedVersion` is the live version the caller read
+     * (`Ingestion::$version`, 0 when none is live); a different current
+     * version is a 409. A definition an existing version already says is not
+     * saved again (`UNCHANGED`, `MADE_LIVE`, `DRAFT_EXISTS`); `save` says which.
      */
     public function update(string $id, IngestionDefinition $definition, int $expectedVersion): Ingestion
     {
@@ -126,7 +131,9 @@ class Ingestions
 
     /**
      * Save a new version. It is not run until it is live: pass `$live = true`
-     * (needs the promote permission) or call {@see makeVersionLive()}.
+     * (needs the promote permission; without it the save is a draft) or call
+     * {@see makeVersionLive()}. A definition an existing version already says
+     * is not saved again; `save` on the answer says what happened.
      */
     public function saveVersion(string $id, IngestionDefinition $definition, ?bool $live = null): IngestionVersion
     {
@@ -170,16 +177,58 @@ class Ingestions
     }
 
     /**
-     * Failures a runtime reported: `{failures, hasMore, nextCursor?}`. Continue
-     * with `$after = $page['nextCursor']`.
+     * Failures, newest first: `{failures, hasMore, nextCursor?}`. Continue
+     * with `$after = $page['nextCursor']`. `$category` is `payload` or
+     * `rejected` (the notices); `$undismissed` keeps only the failures nobody
+     * has dismissed. `category: 'rejected', undismissed: true` lists the
+     * ingestion's open notices (what `Ingestion::$notices` counts).
      *
      * @return array<string, mixed>
      */
-    public function failures(string $id, ?string $after = null, ?int $limit = null): array
-    {
-        $query = $this->query(['after' => $after, 'limit' => $limit]);
+    public function failures(
+        string $id,
+        ?string $after = null,
+        ?int $limit = null,
+        ?string $category = null,
+        bool $undismissed = false,
+    ): array {
+        $query = $this->query([
+            'after' => $after,
+            'limit' => $limit,
+            'category' => $category,
+            'undismissed' => $undismissed ? 'true' : null,
+        ]);
 
         return $this->client->request('GET', $this->path($id, '/failures') . $query);
+    }
+
+    /**
+     * Dismiss a failure: a notice stops showing on the ingestion; the failure
+     * stays listed. Returns the failure (`dismissedAt`, `dismissedBy` set).
+     *
+     * @return array<string, mixed>
+     */
+    public function dismissFailure(string $id, string $failureId): array
+    {
+        return $this->client->request(
+            'POST',
+            $this->path($id, '/failures/' . rawurlencode($failureId) . '/dismiss'),
+        );
+    }
+
+    /**
+     * The secret names the live definition binds and, per runtime, when it
+     * last fetched each one: `{secrets: [{name, bound, fetches: [{runtimeId,
+     * version, principalId?, lastFetchedAt, fetchCount}]}]}`. Names only: no
+     * secret value is ever returned.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function secrets(string $id): array
+    {
+        $response = $this->client->request('GET', $this->path($id, '/secrets'));
+
+        return $response['secrets'] ?? [];
     }
 
     /**
