@@ -22,6 +22,7 @@ import { useConfirm } from "primevue/useconfirm";
 import { useAuthStore } from "@/stores/auth";
 import {
 	canAssignUserRoles,
+	canManageUserAccess,
 	isRoleAboveUser,
 	ROLE_ABOVE_USER_HINT,
 } from "@/utils/admin-permissions";
@@ -158,6 +159,9 @@ const isAnchorUser = computed(() => user.value?.isAnchorUser ?? false);
 // Changing roles needs user:assign-roles (not user:update); without it the
 // roles are shown read-only.
 const canAssignRoles = computed(() => canAssignUserRoles(authStore.user));
+// Scope, home client and client grants need user:manage-access as well as
+// anchor scope; without it the client access is shown read-only.
+const canManageAccess = computed(() => canManageUserAccess(authStore.user));
 
 // Confirmed second factors on the account (from the principal detail read).
 // Empty ⇒ no 2FA enrolled — which is the case that gets a self-service
@@ -970,7 +974,7 @@ function formatDate(dateStr: string | null | undefined) {
              hides both controls (edit is name-only). startEdit still seeds
              editScope/editClientId, so saveUser's no-change comparison holds
              and setClientAssociation is never called. -->
-        <FcFormField v-if="!clientScoped" label="Type">
+        <FcFormField v-if="!clientScoped && canManageAccess" label="Type">
           <template #default="{ id: fieldId }">
             <Select
               :id="fieldId"
@@ -982,7 +986,7 @@ function formatDate(dateStr: string | null | undefined) {
           </template>
         </FcFormField>
         <FcFormField
-          v-if="!clientScoped && (editScope === 'CLIENT' || editScope === 'PARTNER')"
+          v-if="!clientScoped && canManageAccess && (editScope === 'CLIENT' || editScope === 'PARTNER')"
           :label="editScope === 'PARTNER' ? 'Client to grant' : 'Client'"
           span
         >
@@ -1005,7 +1009,7 @@ function formatDate(dateStr: string | null | undefined) {
          anchor-only on the backend and cross-client access is out of a
          client admin's remit) -->
     <FcFormSection v-if="!clientScoped" title="Client Access" flat>
-      <template v-if="!isAnchorUser" #actions>
+      <template v-if="!isAnchorUser && canManageAccess" #actions>
         <Button label="Add Client" icon="pi pi-plus" text @click="showAddClientDialog = true" />
       </template>
 
@@ -1031,6 +1035,7 @@ function formatDate(dateStr: string | null | undefined) {
         <div v-if="!homeClient && grantedClients.length === 0" class="no-clients-notice">
           <p>This user has no client access configured.</p>
           <Button
+            v-if="canManageAccess"
             label="Grant Client Access"
             icon="pi pi-plus"
             text
@@ -1054,7 +1059,7 @@ function formatDate(dateStr: string | null | undefined) {
                 {{ formatDate(data.grantedAt) }}
               </template>
             </Column>
-            <Column header="" style="width: 80px">
+            <Column v-if="canManageAccess" header="" style="width: 80px">
               <template #body="{ data }">
                 <Button
                   v-tooltip.top="'Revoke access'"

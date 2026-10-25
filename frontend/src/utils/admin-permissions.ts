@@ -64,6 +64,18 @@ export function canAssignUserRoles(user: SessionUser): boolean {
 	return userHasPermission(user, USER_ASSIGN_ROLES);
 }
 
+export const USER_MANAGE_ACCESS = "platform:iam:user:manage-access";
+
+/**
+ * PUT /api/principals/{id}/client-association, POST and DELETE
+ * .../client-access, and creating a PARTNER or ANCHOR user: anchor scope and
+ * user:manage-access (owner ruling 2026-10-25). Changing a user's scope or
+ * client reach is separate from editing their profile.
+ */
+export function canManageUserAccess(user: SessionUser): boolean {
+	return isAnchor(user) && userHasPermission(user, USER_MANAGE_ACCESS);
+}
+
 export const SERVICE_ACCOUNT_CREATE = "platform:iam:service-account:create";
 export const APPLICATION_UPDATE = "platform:admin:application:update";
 const SUPER_ADMIN = "platform:*:*:*";

@@ -15,6 +15,7 @@ import {
 	isPermissionAboveUser,
 	isRoleAboveUser,
 	canDeleteRoles,
+	canManageUserAccess,
 	canSyncPlatformEventTypes,
 	canSyncPlatformRoles,
 	canUpdateRoles,
@@ -316,5 +317,22 @@ describe("permission ceiling (F10)", () => {
 		expect(list).toContain(
 			"v-if=\"data.source === 'DATABASE' && canDelete && isDeleteLocked(data)\"",
 		);
+	});
+});
+
+describe("canManageUserAccess (scope and client access need user:manage-access)", () => {
+	it("needs anchor scope and the permission", () => {
+		expect(canManageUserAccess(anchor("platform:iam:user:manage-access"))).toBe(true);
+		expect(canManageUserAccess(anchor("platform:*:*:*"))).toBe(true);
+	});
+	it("refuses an anchor holding only user:update", () => {
+		expect(canManageUserAccess(anchor("platform:iam:user:update"))).toBe(false);
+	});
+	it("refuses a client administrator even with the permission", () => {
+		expect(canManageUserAccess(clientUser("platform:iam:user:manage-access"))).toBe(false);
+	});
+	it("gates the user detail and create pages", () => {
+		expect(source("pages/users/UserDetailBody.vue")).toContain("canManageUserAccess");
+		expect(source("pages/users/UserCreateDrawer.vue")).toContain("canManageUserAccess");
 	});
 });

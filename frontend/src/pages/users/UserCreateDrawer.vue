@@ -3,6 +3,8 @@ import { toast } from "@/utils/errorBus";
 import { ref, computed, onMounted } from "vue";
 import { usersApi, type EmailDomainCheckResponse } from "@/api/users";
 import { clientsApi, type Client } from "@/api/clients";
+import { useAuthStore } from "@/stores/auth";
+import { canManageUserAccess } from "@/utils/admin-permissions";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
 
@@ -35,6 +37,15 @@ const nameError = ref("");
 
 // Email domain check
 const domainCheck = ref<EmailDomainCheckResponse | null>(null);
+
+const authStore = useAuthStore();
+const accessBlocked = computed(() => {
+	const scope = domainCheck.value?.derivedScope;
+	return (
+		(scope === "PARTNER" || scope === "ANCHOR") &&
+		!canManageUserAccess(authStore.user)
+	);
+});
 const checkingDomain = ref(false);
 const lastCheckedEmail = ref("");
 
@@ -99,6 +110,12 @@ const isFormValid = computed(() => {
 
 	// Client picker is required for partner / unmapped-client domains.
 	if (requiresClient.value && !clientId.value) {
+		return false;
+	}
+
+	// A PARTNER or ANCHOR user reaches beyond one client: creating one needs
+	// user:manage-access (the API refuses it otherwise).
+	if (accessBlocked.value) {
 		return false;
 	}
 
@@ -276,6 +293,10 @@ async function createUser() {
             </span>
             <span v-else-if="domainCheck?.warning" class="domain-warning">
               <i class="pi pi-exclamation-triangle"></i> {{ domainCheck.warning }}
+            </span>
+            <span v-else-if="accessBlocked" class="domain-warning">
+              <i class="pi pi-exclamation-triangle"></i>
+              This email makes a {{ domainCheck?.derivedScope }} user, which needs the manage-access permission.
             </span>
             <span v-else-if="domainCheck?.info" class="domain-info">
               <i class="pi pi-info-circle"></i> {{ domainCheck.info }}
