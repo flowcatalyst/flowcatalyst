@@ -123,7 +123,7 @@ func (s *SignIn) portalEmail(w http.ResponseWriter, r *http.Request) {
 	// An organisation-owned domain: hand off to its identity provider through
 	// the portal bridge (the endpoint's own relative URL).
 	if out.Method == "SSO" && strings.HasPrefix(out.RedirectURL, "/portal/auth/oidc/login?") {
-		http.Redirect(w, r, out.RedirectURL, http.StatusSeeOther)
+		s.leave(w, r, out.RedirectURL)
 		return
 	}
 	v.Step = portalStepPassword
@@ -156,7 +156,7 @@ func (s *SignIn) portalPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The portal app's registered redirect URI with the authorization code.
-	http.Redirect(w, r, out.RedirectURL, http.StatusSeeOther)
+	s.leave(w, r, out.RedirectURL)
 }
 
 func (s *SignIn) portalReset(w http.ResponseWriter, r *http.Request) {

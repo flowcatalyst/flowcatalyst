@@ -1,8 +1,8 @@
 package login
 
 import (
+	"errors"
 	"net/http"
-	"slices"
 
 	"github.com/go-chi/chi/v5"
 
@@ -12,15 +12,14 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 )
 
-// allMethods is the menu offered when a domain doesn't restrict 2FA methods
-// (voluntary enrollment).
-var allMethods = []string{string(mfa.MethodTOTP), string(mfa.MethodEmailPin)}
+// The session-gated 2FA management endpoints (Profile screen). The rules are
+// TwoFactor's (twofactor_manage.go); these handlers decode, call and answer.
 
 // RegisterTwoFactorSelfServiceRoutes mounts the session-gated 2FA management
 // endpoints (Profile screen). Mount INSIDE the auth middleware. No-op when MFA
 // isn't wired.
 func (e *Endpoint) RegisterTwoFactorSelfServiceRoutes(r chi.Router) {
-	if e.cfg.MFA == nil {
+	if e.tf == nil {
 		return
 	}
 	r.Get("/auth/2fa/status", e.handle2FAStatus)
@@ -66,30 +65,18 @@ func (e *Endpoint) handle2FAStatus(w http.ResponseWriter, r *http.Request) {
 	if p == nil {
 		return
 	}
-	confirmed, err := e.cfg.MFA.ConfirmedMethods(r.Context(), string(p.ID))
+	s, err := e.tf.Status(r.Context(), p)
 	if err != nil {
 		writeServerError(w, "STATUS_FAILED", "could not load 2FA status")
 		return
 	}
-	mapping, internal := e.domainPolicy(r.Context(), emailOf(p))
-	required := mapping != nil && mapping.Require2FA && internal
-	allowed := allMethods
-	remember := false
-	if required {
-		allowed = mapping.Allowed2FAMethods
-	}
-	if mapping != nil && mapping.RememberDeviceEnabled && internal {
-		remember = true
-	}
-	left, _ := e.cfg.MFA.RemainingRecoveryCodes(r.Context(), string(p.ID))
-	devices, _ := e.cfg.MFA.ListTrustedDevices(r.Context(), string(p.ID))
 	writeJSON(w, http.StatusOK, twoFactorStatusResponse{
-		Methods:               methodStrings(confirmed),
-		Required:              required,
-		AllowedMethods:        allowed,
-		RecoveryCodesLeft:     left,
-		RememberDeviceEnabled: remember,
-		TrustedDeviceCount:    len(devices),
+		Methods:               s.Methods,
+		Required:              s.Required,
+		AllowedMethods:        s.AllowedMethods,
+		RecoveryCodesLeft:     s.RecoveryCodesLeft,
+		RememberDeviceEnabled: s.RememberDeviceEnabled,
+		TrustedDeviceCount:    len(s.TrustedDevices),
 	})
 }
 
@@ -100,41 +87,16 @@ func (e *Endpoint) handle2FASelfTOTPBegin(w http.ResponseWriter, r *http.Request
 	if p == nil {
 		return
 	}
-	if !e.methodAllowed(r.Context(), p, mfa.MethodTOTP) {
-		writeJSON(w, http.StatusForbidden, errBody("METHOD_NOT_ALLOWED", "authenticator app is not permitted for this domain"))
-		return
-	}
-	enr, err := e.cfg.MFA.BeginTOTPEnrollment(r.Context(), string(p.ID), emailOf(p))
+	enr, err := e.tf.BeginMethod(r.Context(), p, mfa.MethodTOTP)
 	if err != nil {
-		e.writeEnrollErr(w, err)
+		e.writeEnrollErr(w, mfa.MethodTOTP, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"secret": enr.Secret, "uri": enr.URI, "qr": enr.QR})
 }
 
 func (e *Endpoint) handle2FASelfTOTPConfirm(w http.ResponseWriter, r *http.Request) {
-	p := e.principalFromSession(w, r)
-	if p == nil {
-		return
-	}
-	var req struct {
-		Code string `json:"code"`
-	}
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	ok, err := e.cfg.MFA.ConfirmTOTPEnrollment(r.Context(), string(p.ID), req.Code)
-	if err != nil {
-		e.writeEnrollErr(w, err)
-		return
-	}
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, errBody("INVALID_CODE", "that code didn't match — try again"))
-		return
-	}
-	e.cfg.Notifier.TwoFactorEnrolled(r.Context(), emailOf(p), string(mfa.MethodTOTP))
-	e.auditMFA(r.Context(), string(p.ID), "2FA_TOTP_ENROLLED")
-	writeJSON(w, http.StatusOK, recoveryCodesBody(e.ensureRecoveryCodes(r.Context(), p)))
+	e.selfConfirm(w, r, mfa.MethodTOTP)
 }
 
 func (e *Endpoint) handle2FASelfEmailBegin(w http.ResponseWriter, r *http.Request) {
@@ -142,23 +104,18 @@ func (e *Endpoint) handle2FASelfEmailBegin(w http.ResponseWriter, r *http.Reques
 	if p == nil {
 		return
 	}
-	if !e.methodAllowed(r.Context(), p, mfa.MethodEmailPin) {
-		writeJSON(w, http.StatusForbidden, errBody("METHOD_NOT_ALLOWED", "email codes are not permitted for this domain"))
-		return
-	}
-	email := emailOf(p)
-	if email == "" {
-		writeJSON(w, http.StatusBadRequest, errBody("NO_EMAIL", "account has no email"))
-		return
-	}
-	if err := e.cfg.MFA.BeginEmailEnrollment(r.Context(), string(p.ID), email); err != nil {
-		e.writeEnrollErr(w, err)
+	if _, err := e.tf.BeginMethod(r.Context(), p, mfa.MethodEmailPin); err != nil {
+		e.writeEnrollErr(w, mfa.MethodEmailPin, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"message": "A verification code has been sent to your email."})
 }
 
 func (e *Endpoint) handle2FASelfEmailConfirm(w http.ResponseWriter, r *http.Request) {
+	e.selfConfirm(w, r, mfa.MethodEmailPin)
+}
+
+func (e *Endpoint) selfConfirm(w http.ResponseWriter, r *http.Request, method mfa.MethodType) {
 	p := e.principalFromSession(w, r)
 	if p == nil {
 		return
@@ -169,18 +126,12 @@ func (e *Endpoint) handle2FASelfEmailConfirm(w http.ResponseWriter, r *http.Requ
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	ok, err := e.cfg.MFA.ConfirmEmailEnrollment(r.Context(), string(p.ID), req.Code)
+	codes, err := e.tf.ConfirmMethod(r.Context(), p, method, req.Code)
 	if err != nil {
-		e.writeEnrollErr(w, err)
+		e.writeEnrollErr(w, method, err)
 		return
 	}
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, errBody("INVALID_CODE", "that code didn't match — try again"))
-		return
-	}
-	e.cfg.Notifier.TwoFactorEnrolled(r.Context(), emailOf(p), string(mfa.MethodEmailPin))
-	e.auditMFA(r.Context(), string(p.ID), "2FA_EMAIL_ENROLLED")
-	writeJSON(w, http.StatusOK, recoveryCodesBody(e.ensureRecoveryCodes(r.Context(), p)))
+	writeJSON(w, http.StatusOK, recoveryCodesBody(codes))
 }
 
 // ── remove / regenerate ────────────────────────────────────────────────────
@@ -190,32 +141,17 @@ func (e *Endpoint) handle2FARemoveMethod(w http.ResponseWriter, r *http.Request)
 	if p == nil {
 		return
 	}
-	method := chi.URLParam(r, "method")
-	if !mfa.ValidMethodType(method) {
+	switch err := e.tf.RemoveMethod(r.Context(), p, chi.URLParam(r, "method")); {
+	case err == nil:
+		writeJSON(w, http.StatusOK, map[string]any{"message": "Two-factor method removed."})
+	case errors.Is(err, ErrInvalidMethod):
 		writeJSON(w, http.StatusBadRequest, errBody("INVALID_METHOD", "unknown 2FA method"))
-		return
-	}
-	// Policy guard: a 2FA-required user can't remove their last confirmed factor
-	// (a passkey does not satisfy the password path).
-	confirmed, err := e.cfg.MFA.ConfirmedMethods(r.Context(), string(p.ID))
-	if err != nil {
-		writeServerError(w, "REMOVE_FAILED", "could not load methods")
-		return
-	}
-	if mapping, internal := e.domainPolicy(r.Context(), emailOf(p)); mapping != nil && mapping.Require2FA && internal {
-		if lastConfirmedFactor(confirmed, method) {
-			writeJSON(w, http.StatusConflict, errBody("LAST_FACTOR",
-				"your organisation requires 2FA — add another method before removing this one"))
-			return
-		}
-	}
-	if err := e.cfg.MFA.RemoveMethod(r.Context(), string(p.ID), mfa.MethodType(method)); err != nil {
+	case errors.Is(err, ErrLastFactor):
+		writeJSON(w, http.StatusConflict, errBody("LAST_FACTOR",
+			"your organisation requires 2FA — add another method before removing this one"))
+	default:
 		writeServerError(w, "REMOVE_FAILED", "could not remove method")
-		return
 	}
-	e.cfg.Notifier.TwoFactorMethodRemoved(r.Context(), emailOf(p), method)
-	e.auditMFA(r.Context(), string(p.ID), "2FA_METHOD_REMOVED")
-	writeJSON(w, http.StatusOK, map[string]any{"message": "Two-factor method removed."})
 }
 
 func (e *Endpoint) handle2FARegenRecovery(w http.ResponseWriter, r *http.Request) {
@@ -223,24 +159,15 @@ func (e *Endpoint) handle2FARegenRecovery(w http.ResponseWriter, r *http.Request
 	if p == nil {
 		return
 	}
-	// Recovery codes only back authenticator-app (TOTP) 2FA.
-	confirmed, err := e.cfg.MFA.ConfirmedMethods(r.Context(), string(p.ID))
-	if err != nil {
-		writeServerError(w, "REGEN_FAILED", "could not load methods")
-		return
-	}
-	if !slices.Contains(confirmed, mfa.MethodTOTP) {
+	codes, err := e.tf.RegenerateRecoveryCodes(r.Context(), p)
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, recoveryCodesBody(codes))
+	case errors.Is(err, ErrNoTOTP):
 		writeJSON(w, http.StatusBadRequest, errBody("NO_TOTP", "recovery codes apply to authenticator-app 2FA"))
-		return
-	}
-	codes, err := e.cfg.MFA.GenerateRecoveryCodes(r.Context(), string(p.ID))
-	if err != nil {
+	default:
 		writeServerError(w, "REGEN_FAILED", "could not generate recovery codes")
-		return
 	}
-	e.cfg.Notifier.RecoveryCodesRegenerated(r.Context(), emailOf(p))
-	e.auditMFA(r.Context(), string(p.ID), "2FA_RECOVERY_REGENERATED")
-	writeJSON(w, http.StatusOK, recoveryCodesBody(codes))
 }
 
 // ── trusted devices ────────────────────────────────────────────────────────
@@ -250,7 +177,7 @@ func (e *Endpoint) handle2FAListTrustedDevices(w http.ResponseWriter, r *http.Re
 	if p == nil {
 		return
 	}
-	devices, err := e.cfg.MFA.ListTrustedDevices(r.Context(), string(p.ID))
+	devices, err := e.tf.TrustedDevices(r.Context(), p)
 	if err != nil {
 		writeServerError(w, "LIST_FAILED", "could not list devices")
 		return
@@ -263,8 +190,7 @@ func (e *Endpoint) handle2FARevokeTrustedDevice(w http.ResponseWriter, r *http.R
 	if p == nil {
 		return
 	}
-	id := chi.URLParam(r, "id")
-	if err := e.cfg.MFA.RevokeTrustedDevice(r.Context(), string(p.ID), id); err != nil {
+	if err := e.tf.RevokeTrustedDevice(r.Context(), p, chi.URLParam(r, "id")); err != nil {
 		writeServerError(w, "REVOKE_FAILED", "could not revoke device")
 		return
 	}
@@ -272,18 +198,6 @@ func (e *Endpoint) handle2FARevokeTrustedDevice(w http.ResponseWriter, r *http.R
 }
 
 // ── small helpers ──────────────────────────────────────────────────────────
-
-// lastConfirmedFactor reports whether removing method would drop the user's
-// last confirmed factor.
-func lastConfirmedFactor(confirmed []mfa.MethodType, method string) bool {
-	remaining := 0
-	for _, m := range confirmed {
-		if string(m) != method {
-			remaining++
-		}
-	}
-	return remaining == 0
-}
 
 func recoveryCodesBody(codes []string) map[string]any {
 	if codes == nil {

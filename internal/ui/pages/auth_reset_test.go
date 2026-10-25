@@ -155,7 +155,7 @@ func TestResetConfirm(t *testing.T) {
 		up := siThemed()
 		up.reply("POST /auth/password-reset/confirm", 200, `{"status":"ok","redirectUri":"https://app.example.com/cb?x=1"}`)
 		rec := siPost("/ui/auth/set-password", confirm()...).do(signInRouter(up, false))
-		assert.Equal(t, "https://app.example.com/cb?x=1", rec.Header().Get("Location"))
+		assert.Equal(t, "https://app.example.com/cb?x=1", leftFor(t, rec))
 
 		up2 := siThemed()
 		up2.reply("POST /auth/password-reset/confirm", 200, `{"status":"ok","redirectUri":"javascript:alert(1)"}`)

@@ -32,6 +32,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/mfatoken"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/twofa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
@@ -98,10 +99,37 @@ type Config struct {
 }
 
 // Endpoint is the bag of HTTP handlers.
-type Endpoint struct{ cfg Config }
+type Endpoint struct {
+	cfg Config
+	// tf is the second-factor flow (nil when MFA isn't wired).
+	tf *TwoFactor
+}
 
 // New builds an Endpoint.
-func New(cfg Config) *Endpoint { return &Endpoint{cfg: cfg} }
+func New(cfg Config) *Endpoint {
+	e := &Endpoint{cfg: cfg}
+	if cfg.MFA != nil {
+		e.tf = &TwoFactor{
+			MFA:      cfg.MFA,
+			Policy:   twofa.Policy{Mappings: cfg.Mappings, IDPs: cfg.IdentityProviders},
+			Attempts: cfg.LoginAttempts, Backoff: cfg.BackoffPolicy,
+			Notifier: cfg.Notifier, Audit: cfg.Audit,
+			CookieSecure:    cfg.CookieSecure,
+			PendingTokenTTL: cfg.PendingTokenTTL, EnrollTokenTTL: cfg.EnrollTokenTTL,
+		}
+		// Interface fields stay nil (not a typed nil) when unwired.
+		if cfg.MFATokens != nil {
+			e.tf.Tokens = cfg.MFATokens
+		}
+		if cfg.Principals != nil {
+			e.tf.Principals = cfg.Principals
+		}
+		if cfg.Provider != nil {
+			e.tf.Sessions = cfg.Provider
+		}
+	}
+	return e
+}
 
 // RegisterRoutes mounts the four endpoints on r. Convenience that calls
 // both RegisterPublicRoutes and RegisterAuthenticatedRoutes on the same
@@ -548,7 +576,7 @@ func (e *Endpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// pending/enrollment challenge instead of a session — the /auth/2fa/* flow
 	// then completes the login (and records the success). We fail CLOSED: an
 	// evaluation error denies rather than silently bypassing 2FA.
-	if e.cfg.MFA != nil && e.cfg.MFATokens != nil {
+	if e.tf != nil && e.cfg.MFATokens != nil {
 		handled, err := e.maybeChallenge2FA(w, r, p)
 		if err != nil {
 			slog.Error("2FA evaluation failed; denying login", "principal", p.ID, "err", err)
@@ -563,32 +591,30 @@ func (e *Endpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	e.completeLogin(w, r, p, nil)
+	e.completeLogin(w, r, p)
 }
 
-// completeLogin mints the session cookie, records the successful attempt, and
-// writes the OK login payload. recoveryCodes is non-nil only on the
-// enroll-and-complete path (the one time a fresh backup-code set is surfaced).
-// Shared by handleLogin and the 2FA verify / enroll-confirm handlers.
-func (e *Endpoint) completeLogin(w http.ResponseWriter, r *http.Request, p *principal.Principal, recoveryCodes []string) {
-	email := ""
-	if p.UserIdentity != nil {
-		email = p.UserIdentity.Email
-	}
-	token, err := e.cfg.Provider.MintSessionToken(r.Context(), string(p.ID), SessionTTL)
-	if err != nil {
+// completeLogin completes a password sign-in that owes no second factor: the
+// session cookie and the success record (issueSession, which the 2FA flow uses
+// too), then the OK login payload.
+func (e *Endpoint) completeLogin(w http.ResponseWriter, r *http.Request, p *principal.Principal) {
+	if err := issueSession(w, r, e.cfg.Provider, e.cfg.LoginAttempts, e.cfg.CookieSecure, SessionTTL, p); err != nil {
 		// The credentials already verified — a mint failure here is a
 		// server-side fault (signing key missing/unreadable), not something the
 		// caller can correct, so it must not be reported as a 400. Internal also
-		// keeps the underlying error off the wire while still logging it;
-		// err.Error() previously leaked key-handling detail to an
-		// unauthenticated-until-now caller. Matches the webauthn login path,
-		// which already classifies this as Internal.
+		// keeps the underlying error off the wire while still logging it.
+		// Matches the webauthn login path, which classifies this as Internal.
 		httperror.Write(w, usecase.Internal("MINT_FAILED", "failed to mint session token", err))
 		return
 	}
-	http.SetCookie(w, platformmw.SessionCookie(token, e.cfg.CookieSecure, SessionTTL, true))
-	e.recordAttempt(r.Context(), loginattempt.OutcomeSuccess, email, ids.StringPtr(&p.ID), clientIP(r), "")
+	e.writeLoginOK(w, r, p, nil)
+}
+
+// writeLoginOK writes the OK login payload for p, whose session cookie is
+// already set. recoveryCodes is non-nil only on the enroll-and-complete path
+// (the one time a freshly-generated backup-code set is surfaced).
+func (e *Endpoint) writeLoginOK(w http.ResponseWriter, r *http.Request, p *principal.Principal, recoveryCodes []string) {
+	email := emailOf(p)
 	claims, err := e.cfg.Provider.ResolveClaims(r.Context(), string(p.ID))
 	if err != nil {
 		// Auth succeeded but we couldn't load roles/permissions — log
@@ -702,23 +728,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // recordAttempt best-effort logs a USER_LOGIN outcome. No-op when the repo
 // is unset; logging failures never fail the request.
 func (e *Endpoint) recordAttempt(ctx context.Context, outcome loginattempt.Outcome, email string, principalID *string, ip, failureReason string) {
-	if e.cfg.LoginAttempts == nil {
-		return
-	}
-	// Normalise the identifier so records and backoff checks always agree
-	// regardless of the casing a caller passed (defense in depth on top of
-	// handleLogin's normalisation).
-	email = strings.ToLower(strings.TrimSpace(email))
-	a := loginattempt.New(loginattempt.AttemptUserLogin, outcome)
-	a.Identifier = &email
-	a.PrincipalID = principalID
-	if ip != "" {
-		a.IPAddress = &ip
-	}
-	if failureReason != "" {
-		a.FailureReason = &failureReason
-	}
-	_ = e.cfg.LoginAttempts.Record(ctx, a)
+	recordLoginAttempt(ctx, e.cfg.LoginAttempts, outcome, email, principalID, ip, failureReason)
 }
 
 // clientIP extracts the best-effort client IP. Delegates to the canonical

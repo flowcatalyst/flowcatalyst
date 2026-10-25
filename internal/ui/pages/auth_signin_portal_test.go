@@ -29,8 +29,7 @@ func TestPortalLogin(t *testing.T) {
 		up := siThemed()
 		up.reply("POST /portal/auth/check-domain", 200, `{"method":"SSO","redirectUrl":"/portal/auth/oidc/login?flow=FLOW1&provider_id=idp_1"}`)
 		rec := siPost("/ui/auth/portal-login/email", "flow", "FLOW1", "email", "a@acme.example").do(signInRouter(up, false))
-		assert.Equal(t, http.StatusSeeOther, rec.Code)
-		assert.Equal(t, "/portal/auth/oidc/login?flow=FLOW1&provider_id=idp_1", rec.Header().Get("Location"))
+		assert.Equal(t, "/portal/auth/oidc/login?flow=FLOW1&provider_id=idp_1", leftFor(t, rec))
 		c := up.callsTo("POST /portal/auth/check-domain")[0].body
 		assert.Equal(t, "FLOW1", c["flowId"])
 		assert.Equal(t, "a@acme.example", c["email"])
@@ -39,6 +38,7 @@ func TestPortalLogin(t *testing.T) {
 		up2.reply("POST /portal/auth/check-domain", 200, `{"method":"SSO","redirectUrl":"https://evil.example/x"}`)
 		rec = siPost("/ui/auth/portal-login/email", "flow", "FLOW1", "email", "a@acme.example").do(signInRouter(up2, false))
 		assert.NotEqual(t, "https://evil.example/x", rec.Header().Get("Location"), "only the bridge's own path is followed")
+		assert.NotContains(t, rec.Body.String(), "evil.example")
 	})
 	t.Run("a password domain gets the password step", func(t *testing.T) {
 		up := siThemed()
@@ -60,8 +60,7 @@ func TestPortalLogin(t *testing.T) {
 		up := siThemed()
 		up.reply("POST /portal/auth/login", 200, `{"redirectUrl":"https://portal.example.com/cb?code=C&state=S"}`)
 		rec := siPost("/ui/auth/portal-login/password", "flow", "FLOW1", "email", "a@b.c", "password", "pw").do(signInRouter(up, false))
-		assert.Equal(t, http.StatusSeeOther, rec.Code)
-		assert.Equal(t, "https://portal.example.com/cb?code=C&state=S", rec.Header().Get("Location"))
+		assert.Equal(t, "https://portal.example.com/cb?code=C&state=S", leftFor(t, rec))
 		assert.Empty(t, rec.Header().Values("Set-Cookie"))
 		assert.Equal(t, "pw", up.callsTo("POST /portal/auth/login")[0].body["password"])
 	})

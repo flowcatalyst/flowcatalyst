@@ -18,6 +18,7 @@ import (
 
 func (s *SignIn) mountReset(r chi.Router) {
 	r.Get("/auth/forgot-password", s.forgotPage)
+	r.Post("/auth/forgot-password/start", s.forgotStart)
 	r.Post("/auth/forgot-password", s.forgot)
 	r.Get("/auth/reset-password", s.resetPage)
 	r.Get("/auth/set-password", s.resetPage)
@@ -48,6 +49,17 @@ func (s *SignIn) renderForgot(w http.ResponseWriter, r *http.Request, status int
 
 func (s *SignIn) forgotPage(w http.ResponseWriter, r *http.Request) {
 	v := forgotView{Ctx: signinContextFrom(r), Email: strings.TrimSpace(r.URL.Query().Get("email"))}
+	if len(v.Email) > 320 {
+		v.Email = ""
+	}
+	s.renderForgot(w, r, http.StatusOK, v)
+}
+
+// forgotStart is the forgot password page with the address the password step
+// posted filled in (the "Forgot password?" button): the address travels in the
+// body, not the URL. Nothing is requested yet.
+func (s *SignIn) forgotStart(w http.ResponseWriter, r *http.Request) {
+	v := forgotView{Ctx: signinContextFrom(r), Email: strings.TrimSpace(r.PostFormValue("email"))}
 	if len(v.Email) > 320 {
 		v.Email = ""
 	}
@@ -140,6 +152,10 @@ func (v resetView) forgotLink() string {
 
 func (s *SignIn) renderReset(w http.ResponseWriter, r *http.Request, status int, v resetView) {
 	v.Theme = s.theme(r, v.Ctx.client())
+	if v.Token != "" {
+		// The reset token rides in a hidden field: no tenant stylesheet.
+		v.Theme = v.Theme.withoutCSS()
+	}
 	s.render(w, r, status, v.title(), v.Theme, v.Portal, resetBody(v))
 }
 
@@ -230,7 +246,7 @@ func (s *SignIn) resetConfirm(w http.ResponseWriter, r *http.Request) {
 		v.State = resetEnroll
 		s.renderReset(w, r, http.StatusOK, v)
 	case out.RedirectURI != nil && safeInviteRedirect(*out.RedirectURI):
-		http.Redirect(w, r, *out.RedirectURI, http.StatusSeeOther)
+		s.leave(w, r, *out.RedirectURI)
 	case out.SessionEstablished:
 		http.Redirect(w, r, "/ui/", http.StatusSeeOther)
 	case out.Portal:
