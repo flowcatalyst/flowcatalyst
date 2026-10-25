@@ -21,7 +21,7 @@ The runtime talks to the platform only through that API, as a service account:
 | `POST /report` | route states, exchange counts, failures and test answers |
 | `GET/PUT /state/{ingestionId}/{key}` | the watermark or cursor of a polled source, kept on the platform so it follows the ingestion to another runtime |
 | `POST /ingestions/{id}/jobs` | the **only** way jobs are created: the runtime sends records, the platform builds each job from the ingestion's own target (URL, pool, connection, signer, client) |
-| `GET /ingestions/{id}/secrets/{name}` | the **only** way secrets are read: audited on the platform, only secrets the ingestion's live definition names |
+| `GET /ingestions/{id}/secrets/{name}` | the **only** way secrets are read: only secrets the ingestion's live definition binds; logged on the platform as security telemetry (not an audit row per read; a refused fetch is audited) |
 
 ### Contract version 2, and what was added to it
 
@@ -171,7 +171,7 @@ Every value is a key in `config/application.yaml` and an environment variable na
 | `INGEST_CAMEL_ROUTES_ENABLED` | `ingest.camel-routes-enabled` | `false` | report and run the `camel-route` kind |
 | `INGEST_POLL_INTERVAL` | `ingest.poll-interval` | `PT1M` | how often to poll and report. The platform's lease is 3 minutes |
 | `INGEST_ADVERTISED_URL` | `ingest.advertised-url` | unset | where this runtime can be reached; shown by the platform for information, never called |
-| `INGEST_SECRETS_CACHE_TTL` | `ingest.secrets-cache-ttl` | `PT1M` | how long a revealed secret is kept, and how often each running route's secrets are read again (each reveal is an audit row on the platform: one per secret per polled or queue route per period) |
+| `INGEST_SECRETS_CACHE_TTL` | `ingest.secrets-cache-ttl` | `PT1M` | how long a fetched secret is kept, and how often each running route's secrets are read again (each fetch is a security log line and a "last fetched" update on the platform, not an audit row) |
 | `FLOWCATALYST_TIMEOUT` | `flowcatalyst.timeout` | `PT30S` | the longest a call to the platform waits; the poll and the report wait at most a sixth of the lease |
 | `INGEST_AWS_ENDPOINT` | `ingest.aws.endpoint` | unset | a stand-in for AWS (LocalStack, an S3-compatible store) |
 | `HTTP_PORT` / `HTTP_HOST` | `http.port` / `http.host` | `8091` / `0.0.0.0` | the listener for HTTP ingestions and `/health/live`, `/health/ready` |
@@ -250,9 +250,12 @@ runtime's user; mount extension jars read-only or build an image of your own tha
 ### Secrets on the platform
 
 A secret is a platform config property of the ingestion's application, section `secrets`, at the ingestion's
-client. The runtime's service account needs no config permission: the platform reveals a secret to a runtime
-only when the ingestion's live definition names it, the runtime carries the kind and (for a polled source)
-holds the lease. A "test connection" of a polled source from a runtime that does not hold the lease cannot read
+client. The runtime's service account needs no config permission: the platform answers a secret to a runtime
+only when the ingestion's live definition binds it, the runtime carries the kind and (for a polled source)
+holds the lease, and the client is active. This fetch is not a config reveal: the platform logs each one as
+security telemetry (a `security.ingestion_secret_fetch` log line, the `fc_ingestion_secret_fetch_total`
+counter and a "last fetched" record per ingestion, secret and runtime, shown on the ingestion) rather than
+writing an audit row per read; a refused fetch is audited. A "test connection" of a polled source from a runtime that does not hold the lease cannot read
 its secrets, and says so. A definition under test that is not saved cannot read secrets at all.
 
 ## Extensions
