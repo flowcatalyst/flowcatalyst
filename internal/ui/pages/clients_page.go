@@ -477,7 +477,7 @@ func (h *ClientsPage) saveApplications(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	if err := h.Ops.UpdateApplications(ctx, id, facetValues(r.PostForm["applicationIds"])); err != nil {
+	if err := h.Ops.UpdateApplications(ctx, id, formSet(r.PostForm["applicationIds"])); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}

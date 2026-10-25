@@ -276,7 +276,7 @@ func (h *Users) saveRoles(w http.ResponseWriter, r *http.Request) {
 		h.formFailed(w, r, ac, id, f)
 		return
 	}
-	roles := facetValues(r.PostForm["roles"])
+	roles := formSet(r.PostForm["roles"])
 	res, err := h.Users.AssignPrincipalRoles(ctx, id, roles)
 	if err != nil {
 		f.Errs.apply(r, err, nil)
@@ -387,7 +387,7 @@ func (h *Users) saveApps(w http.ResponseWriter, r *http.Request) {
 		h.formFailed(w, r, ac, id, f)
 		return
 	}
-	res, err := h.Users.AssignPrincipalApplicationAccess(ctx, id, principalapi.AssignApplicationAccessRequest{ApplicationIDs: facetValues(r.PostForm["applicationIds"])})
+	res, err := h.Users.AssignPrincipalApplicationAccess(ctx, id, principalapi.AssignApplicationAccessRequest{ApplicationIDs: formSet(r.PostForm["applicationIds"])})
 	if err != nil {
 		f.Errs.apply(r, err, nil)
 		h.formFailed(w, r, ac, id, f)

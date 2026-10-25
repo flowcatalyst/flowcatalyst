@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -148,17 +149,59 @@ const maxFormBytes = 1 << 20
 func parseForm(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
-		err := r.ParseMultipartForm(maxFormBytes) //nolint:gosec // G120: the body is capped by the MaxBytesReader above
-		if errors.Is(err, http.ErrNotMultipart) {
+		// Pick the parser by content type. ParseMultipartForm on a urlencoded
+		// body runs ParseForm, drops its error and answers ErrNotMultipart,
+		// and a second ParseForm then succeeds on the half-read form: a bad or
+		// oversized urlencoded body would read as an empty form.
+		var err error
+		if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt == "multipart/form-data" {
+			err = r.ParseMultipartForm(maxFormBytes) //nolint:gosec // G120: the body is capped by the MaxBytesReader above
+		} else {
 			err = r.ParseForm()
 		}
 		if err != nil {
-			// The handler sees an empty form and answers with its usual
-			// validation errors; the cause is logged.
+			// Never run the handler on a form that could not be read: it would
+			// see an empty form, and a set-replacing save (roles, application
+			// access) would write an empty set.
 			slog.InfoContext(r.Context(), "ui: form not read", "path", r.URL.Path, "err", err)
+			refuseUnreadForm(w, r)
+			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+const unreadForm = "The form could not be read. Reload the page and try again."
+
+// refuseUnreadForm answers a POST whose form could not be parsed. A Datastar
+// action gets the error contract's 200 stream with an error flash (a non-200
+// body would be dropped); a native post gets 400.
+func refuseUnreadForm(w http.ResponseWriter, r *http.Request) {
+	if ds.IsDatastar(r) {
+		if err := shell.Flash(ds.NewSSE(w, r), kit.FlashMessageProps{Kind: kit.FlashError, Summary: "Bad Request.", Detail: unreadForm}); err != nil {
+			slog.DebugContext(r.Context(), "ui: failure patch not delivered", "err", err)
+		}
+		return
+	}
+	http.Error(w, unreadForm, http.StatusBadRequest)
+}
+
+// formSet reads a multi-valued field that is saved as a whole set (a user's
+// roles, a client's applications): trimmed, blanks dropped, duplicates
+// dropped, order kept, and never capped (facetValues is for URL filters and
+// caps at maxFacetValues; using it here would silently truncate the set).
+func formSet(raw []string) []string {
+	var out []string
+	seen := make(map[string]bool, len(raw))
+	for _, v := range raw {
+		v = strings.TrimSpace(v)
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
 }
 
 // patchDialogSlot puts a form dialog into its slot by replacing the slot

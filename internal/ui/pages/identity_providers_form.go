@@ -312,7 +312,7 @@ func submittedIdpForm(r *http.Request, edit bool) idpForm {
 		Scope:         r.PostFormValue("scope"),
 		Client:        strings.TrimSpace(r.PostFormValue("client")),
 		Sync:          r.PostFormValue("sync") == "true",
-		Roles:         facetValues(r.PostForm["roles"]),
+		Roles:         formSet(r.PostForm["roles"]),
 	}
 	if f.Type != idpTypeInternal {
 		f.Type = idpTypeOIDC

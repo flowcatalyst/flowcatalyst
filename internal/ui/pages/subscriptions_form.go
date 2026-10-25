@@ -149,7 +149,7 @@ func submittedSubForm(r *http.Request, edit bool) subForm {
 		Sequence:     r.PostFormValue("sequence"),
 		ClientScoped: r.PostFormValue("clientScoped") != "",
 		Client:       strings.TrimSpace(r.PostFormValue("client")),
-		EventTypeIDs: facetValues(r.PostForm["eventTypes"]),
+		EventTypeIDs: formSet(r.PostForm["eventTypes"]),
 	}
 }
 
