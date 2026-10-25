@@ -38,6 +38,11 @@ public final class IngestRuntime {
     if (java.security.Security.getProperty("networkaddress.cache.ttl") == null) {
       java.security.Security.setProperty("networkaddress.cache.ttl", "30");
     }
+    // The framework's HTTP client (Vert.x) has a DNS resolver of its own, which would resolve an API
+    // poll's host apart from that check; with this it resolves through the JVM, and its cache.
+    if (System.getProperty("vertx.disableDnsResolver") == null) {
+      System.setProperty("vertx.disableDnsResolver", "true");
+    }
     switch (builder().shutdownHook(true).launch(args)) {
       case Launch.Ran ran -> System.exit(ran.exitCode());
       case Launch.Started started -> {}

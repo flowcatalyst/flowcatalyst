@@ -22,8 +22,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The name is resolved, and every address it resolves to checked, when the route starts and
  * again before each connection the runtime makes for the source. The JVM keeps a resolved name for
- * {@code networkaddress.cache.ttl} (30 seconds), and the client that connects right after reads the
- * same answer, so a name that resolves elsewhere a moment later (DNS rebinding) does not get past.
+ * {@code networkaddress.cache.ttl} (30 seconds), every client resolves through the JVM (the HTTP
+ * client's own resolver is switched off in {@link IngestRuntime#main}), and the client that connects
+ * right after reads the same answer, so a name that resolves elsewhere a moment later (DNS
+ * rebinding) does not get past.
  * A name that does not resolve is not refused here: the connection fails on its own.
  *
  * <p>Loopback is allowed only where the runtime runs beside its sources on purpose: {@code APP_ENV}

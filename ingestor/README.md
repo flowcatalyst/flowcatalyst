@@ -102,9 +102,10 @@ connect and reconnect). Refused: loopback (`127.0.0.0/8`, `::1`), link-local (`1
 where cloud metadata services answer), unspecified and "this network" (`0.0.0.0/8`, `::`), and the metadata
 addresses `100.100.100.200` and `fd00:ec2::254`, also inside an IPv4-compatible or NAT64 IPv6 address. Private
 ranges (`10/8`, `172.16/12`, `192.168/16`, `fc00::/7`) are allowed. Loopback is allowed only when `APP_ENV` is
-`local` or `test` (fcdev). The JVM keeps a resolved name for 30 s (`networkaddress.cache.ttl`), so the client
-that connects right after the check gets the same answer and a name re-pointed in between (DNS rebinding) does
-not get through. A start that is refused is a `FAILED` route; a poll that is refused is a `SOURCE` failure and
+`local` or `test` (fcdev). The JVM keeps a resolved name for 30 s (`networkaddress.cache.ttl`), and every
+client resolves through the JVM (the HTTP client's own DNS resolver is switched off, `vertx.disableDnsResolver`),
+so the client that connects right after the check gets the same answer and a name re-pointed in between (DNS
+rebinding) does not get through. A start that is refused is a `FAILED` route; a poll that is refused is a `SOURCE` failure and
 the route is `FAILING`. S3 and SQS are not checked (their hosts are AWS's, or `INGEST_AWS_ENDPOINT`), nor are
 extensions' own connections or Camel routes (which run with the runtime's network by design).
 

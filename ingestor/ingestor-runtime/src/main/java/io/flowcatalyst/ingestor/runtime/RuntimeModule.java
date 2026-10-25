@@ -292,12 +292,13 @@ public final class RuntimeModule implements Module {
     // The loop has already been stopped; the Camel context is closed by the application after this.
     ScheduledExecutorService dog = watchdog;
     if (dog != null) {
+      // Booted all the way: the loop and the routes exist.
       dog.shutdownNow();
-    }
-    app.get(RuntimeLoop.class).close();
-    int stopped = app.get(Reconciler.class).stop(ingestion -> true, STOP_WITHIN);
-    if (stopped > 0) {
-      LOG.info("stopped {} ingestion route(s)", stopped);
+      app.get(RuntimeLoop.class).close();
+      int stopped = app.get(Reconciler.class).stop(ingestion -> true, STOP_WITHIN);
+      if (stopped > 0) {
+        LOG.info("stopped {} ingestion route(s)", stopped);
+      }
     }
     ProducerTemplate template = producer;
     if (template != null) {
