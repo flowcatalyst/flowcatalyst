@@ -133,9 +133,12 @@ templ signinEmailStep(v signinView) {
 			})
 		}
 		@signinSubmit("Continue", v.Theme)
-		if v.passkeyLink() != "" {
+		if v.passkeyOffered() {
+			// The passkey page, reached by a POST of this form so the typed
+			// address is in no URL.
+			<input type="hidden" name="next" value={ v.uiNext() }/>
 			<div style="text-align:center;font-size:14px">
-				<a href={ templ.SafeURL(v.passkeyLink()) } style={ "color:" + v.Theme.Accent }>Sign in with a passkey</a>
+				<button type="submit" formaction="/ui/auth/passkey" formnovalidate style={ signinLinkStyle(v.Theme) }>Sign in with a passkey</button>
 			</div>
 		}
 	</form>
@@ -153,9 +156,15 @@ templ signinPasswordStep(v signinView) {
 			})
 		}
 		<div style="text-align:right;font-size:14px">
-			<a href={ templ.SafeURL(v.forgotLink()) } style={ "color:" + v.Theme.Accent }>Forgot password?</a>
+			<button type="submit" form="signin-forgot" formnovalidate style={ signinLinkStyle(v.Theme) }>Forgot password?</button>
 		</div>
 		@signinSubmit("Sign in", v.Theme)
+	</form>
+	// The forgot-password page with the address filled in, reached by a POST
+	// so the address is in no URL (and the password is not sent with it).
+	<form id="signin-forgot" method="post" action="/ui/auth/forgot-password/start" hidden>
+		@signinHidden(v.Ctx)
+		<input type="hidden" name="email" value={ v.Email }/>
 	</form>
 }
 
@@ -227,7 +236,7 @@ templ signinTwoFactorStep(v signinView) {
 			if v.hasMethod("EMAIL_PIN") && v.Method != "EMAIL_PIN" {
 				<button type="submit" name="switch" value="EMAIL_PIN" formnovalidate style={ "background:none;border:0;padding:0;text-align:left;cursor:pointer;color:" + v.Theme.Accent }>Use an email code</button>
 			}
-			if v.Method != "RECOVERY_CODE" {
+			if v.Method != "RECOVERY_CODE" && v.hasMethod("TOTP") {
 				<button type="submit" name="switch" value="RECOVERY_CODE" formnovalidate style={ "background:none;border:0;padding:0;text-align:left;cursor:pointer;color:" + v.Theme.Accent }>Use a recovery code</button>
 			}
 		</div>
@@ -251,6 +260,25 @@ templ signinEnrollStep(v signinView) {
 			}
 		}
 	</div>
+}
+
+// signinContinue is the answer of a form post whose destination may redirect
+// to another origin (see SignIn.leave): it navigates there itself.
+templ signinContinue(target string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="robots" content="noindex"/>
+			<meta http-equiv="refresh" content={ "0;url=" + target }/>
+			<title>Continuing…</title>
+			<link rel="icon" href="data:,"/>
+		</head>
+		<body style="margin:0;padding:48px 16px;font-family:system-ui,sans-serif;text-align:center;color:#102a43">
+			<p style="margin:0">Continuing… <a href={ templ.SafeURL(target) }>Continue</a></p>
+		</body>
+	</html>
 }
 
 templ signinFailureBody(th signinTheme, message string) {

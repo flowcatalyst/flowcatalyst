@@ -153,6 +153,10 @@ func ProfileOnly(deny Denier) func(http.Handler) http.Handler {
 // package's Redirect/ReplaceURL avoid scripts for that reason). Inline
 // style attributes are used by the kit (display:none before Datastar loads,
 // the select checkmark mask), hence 'unsafe-inline' for styles only.
+// form-action 'self' holds for every redirect a form submission follows, so a
+// native form post must not answer 303 to a page that redirects on to another
+// origin; the sign-in pages answer such steps with a page that navigates
+// itself (pages.SignIn.leave) and the directive is never relaxed.
 const ContentSecurityPolicy = "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
 	"img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; " +
 	"form-action 'self'; frame-ancestors 'none'"

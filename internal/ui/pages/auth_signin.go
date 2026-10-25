@@ -452,6 +452,16 @@ func (s *SignIn) theme(r *http.Request, client string) signinTheme {
 }
 
 // safeLogoURL accepts an https URL, a same-site path, or an image data URL.
+// withoutCSS is the theme without the tenant's stylesheet, for the pages that
+// carry a token in a hidden field (the second factor's pending token, the
+// enroll token, the reset token): a stylesheet can read an attribute value
+// (input[value^=...]) and, with img-src https:, send it out as a background
+// image request. The colours, logo and text stay.
+func (t signinTheme) withoutCSS() signinTheme {
+	t.CustomCSS = ""
+	return t
+}
+
 func safeLogoURL(raw string) bool {
 	if raw == "" || len(raw) > 2048 {
 		return false
@@ -474,6 +484,11 @@ func safeLogoURL(raw string) bool {
 func (t signinTheme) pageStyle() string {
 	return "min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;" +
 		"background:" + t.Background + ";--login-accent:" + t.Accent + ";--login-primary:" + t.Primary
+}
+
+// signinLinkStyle draws a submit button as a link in the accent colour.
+func signinLinkStyle(t signinTheme) string {
+	return "background:none;border:0;padding:0;cursor:pointer;font:inherit;color:" + t.Accent
 }
 
 func (t signinTheme) accentStyle() templ.Attributes {
@@ -557,10 +572,6 @@ func (v signinView) loginLink() string {
 	return "/ui/auth/login"
 }
 
-func (v signinView) forgotLink() string {
-	return "/ui/auth/forgot-password?" + v.Ctx.query("email", v.Email)
-}
-
 // legacyLink is the current (SPA) sign-in with the same context, for what the
 // new pages do not cover.
 // uiNext is where this sign-in is going when that is a /ui page, else "".
@@ -571,19 +582,10 @@ func (v signinView) uiNext() string {
 	return ""
 }
 
-// passkeyLink is the passkey sign-in page, offered only for a /ui destination:
-// the passkey page returns to a /ui page.
-func (v signinView) passkeyLink() string {
-	next := v.uiNext()
-	if next == "" {
-		return ""
-	}
-	q := url.Values{"next": {next}}
-	if v.Email != "" {
-		q.Set("email", v.Email)
-	}
-	return "/ui/auth/passkey?" + q.Encode()
-}
+// passkeyOffered reports whether the passkey sign-in is offered: only for a
+// /ui destination (the passkey page returns to a /ui page). The page is
+// reached by a POST that carries the typed email, so the address is in no URL.
+func (v signinView) passkeyOffered() bool { return v.uiNext() != "" }
 
 func (v signinView) legacyLink() string {
 	if q := v.Ctx.query("reset", ""); q != "" {
@@ -601,7 +603,36 @@ func (s *SignIn) render(w http.ResponseWriter, r *http.Request, status int, titl
 
 func (s *SignIn) renderLogin(w http.ResponseWriter, r *http.Request, status int, v signinView) {
 	v.Theme = s.theme(r, v.Ctx.client())
+	if v.Step == stepTwoFactor || v.Step == stepEnroll {
+		v.Theme = v.Theme.withoutCSS()
+	}
 	s.render(w, r, status, v.title(), v.Theme, false, signinLoginBody(v))
+}
+
+// leave ends a native form post by going to target. The pages keep the UI's
+// CSP, whose form-action 'self' a browser applies to every redirect a form
+// submission follows: a 303 to a page that redirects on to another origin (the
+// OIDC bridge to the identity provider, /oauth/authorize or an OIDC
+// interaction to the client's redirect_uri, a portal app, an invite's
+// redirect) would be blocked at that hop. So only a /ui page is answered with a
+// 303; anything else gets a 200 page that navigates there itself (a meta
+// refresh, which is a new navigation rather than part of the submission, with
+// a link as the fallback). form-action stays 'self'.
+func (s *SignIn) leave(w http.ResponseWriter, r *http.Request, target string) {
+	if target != "" && safeUIRedirect(target) == target {
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_ = signinContinue(refreshURL(target)).Render(r.Context(), w)
+}
+
+// refreshURL makes a validated target safe inside a refresh's content: the
+// characters the refresh parser treats as delimiters (quotes, whitespace) are
+// percent-encoded; templ escapes the attribute.
+func refreshURL(target string) string {
+	return strings.NewReplacer(`"`, "%22", "'", "%27", " ", "%20").Replace(target)
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────
@@ -639,7 +670,7 @@ func (s *SignIn) checkEmail(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case cd.AuthMethod == "external" && cd.LoginURL != "":
 		if target := v.Ctx.ssoURL(cd.LoginURL); target != "" {
-			http.Redirect(w, r, target, http.StatusSeeOther)
+			s.leave(w, r, target)
 			return
 		}
 		v.Error = "Could not start your organization's sign-in — please try again."
@@ -708,7 +739,7 @@ func (s *SignIn) afterCredentials(w http.ResponseWriter, r *http.Request, resp u
 			s.renderLogin(w, r, http.StatusOK, v)
 		default:
 			resp.cookies(w)
-			http.Redirect(w, r, v.Ctx.landing(), http.StatusSeeOther)
+			s.leave(w, r, v.Ctx.landing())
 		}
 	case http.StatusTooManyRequests:
 		if n := resp.retryAfter(); n > 0 {
@@ -767,13 +798,24 @@ func (s *SignIn) twoFactor(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.PostFormValue("action") == "send" {
 		resp := s.call(r, http.MethodPost, "/auth/2fa/challenge/email", map[string]string{"mfaToken": v.MFAToken})
-		if resp.Status == http.StatusOK {
+		switch resp.Status {
+		case http.StatusOK:
 			v.EmailSent = true
 			s.renderLogin(w, r, http.StatusOK, v)
-			return
+		case http.StatusTooManyRequests:
+			// A code was sent within the resend interval: that one still works.
+			if n := resp.retryAfter(); n > 0 {
+				w.Header().Set("Retry-After", strconv.Itoa(n))
+			}
+			v.EmailSent, v.Error = true, resp.message("A code was sent recently. Wait a minute before asking for another.")
+			s.renderLogin(w, r, http.StatusTooManyRequests, v)
+		case http.StatusBadRequest:
+			v.Error = "Email codes are not available for your account."
+			s.renderLogin(w, r, http.StatusBadRequest, v)
+		default:
+			v.Error = resp.message("Could not send code")
+			s.renderLogin(w, r, http.StatusBadGateway, v)
 		}
-		v.Error = resp.message("Could not send code")
-		s.renderLogin(w, r, http.StatusBadGateway, v)
 		return
 	}
 	code := strings.TrimSpace(r.PostFormValue("code"))
@@ -788,9 +830,16 @@ func (s *SignIn) twoFactor(w http.ResponseWriter, r *http.Request) {
 		"rememberDevice": v.RememberAllowed && r.PostFormValue("rememberDevice") != "",
 	})
 	v.EmailSent = v.Method == "EMAIL_PIN"
-	if resp.Status == http.StatusUnauthorized {
+	switch resp.Status {
+	case http.StatusUnauthorized:
 		v.Error = "Invalid or expired code"
 		s.renderLogin(w, r, http.StatusUnauthorized, v)
+		return
+	case http.StatusBadRequest:
+		// A method the account cannot use (not held, or not allowed by the
+		// domain; a recovery code without the authenticator app).
+		v.Error = "That method is not available for your account."
+		s.renderLogin(w, r, http.StatusBadRequest, v)
 		return
 	}
 	s.afterCredentials(w, r, resp, v)
@@ -824,11 +873,7 @@ func (s *SignIn) callback(w http.ResponseWriter, r *http.Request) {
 	ctx := signinContextFrom(r)
 	th := s.theme(r, ctx.client())
 	if e := r.URL.Query().Get("error"); e != "" {
-		msg := r.URL.Query().Get("error_description")
-		if msg == "" {
-			msg = e
-		}
-		s.render(w, r, http.StatusUnauthorized, "Authentication failed", th, false, signinFailureBody(th, msg))
+		s.render(w, r, http.StatusUnauthorized, "Authentication failed", th, false, signinFailureBody(th, callbackErrorMessage(e)))
 		return
 	}
 	if signedIn(r) {
@@ -837,6 +882,24 @@ func (s *SignIn) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.render(w, r, http.StatusUnauthorized, "Authentication failed", th, false,
 		signinFailureBody(th, "The sign-in did not complete. Try signing in again."))
+}
+
+// callbackErrorMessage is the sentence shown for an error code the bridge
+// returned with: a fixed one per known OAuth code, else a generic one. The
+// error_description (and an unknown code) is never shown: it is whatever the
+// link says, so it would let anyone put words on this page.
+func callbackErrorMessage(code string) string {
+	switch code {
+	case "access_denied":
+		return "The sign-in was cancelled or refused by your organization's identity provider."
+	case "login_required", "interaction_required", "consent_required", "account_selection_required":
+		return "Your organization's identity provider needs you to sign in again."
+	case "invalid_request", "invalid_scope", "unauthorized_client", "unsupported_response_type", "invalid_client", "invalid_grant":
+		return "The sign-in request was not accepted. Try signing in again."
+	case "server_error", "temporarily_unavailable":
+		return "Your organization's identity provider is unavailable. Try again shortly."
+	}
+	return "The sign-in did not complete. Try signing in again."
 }
 
 func (s *SignIn) logoutPage(w http.ResponseWriter, r *http.Request) {
