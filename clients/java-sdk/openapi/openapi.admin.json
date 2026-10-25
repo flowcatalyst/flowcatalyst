@@ -2136,7 +2136,7 @@
             "type": "boolean"
           },
           "live": {
-            "description": "Make the first version live. Default true; false saves it to be made live later.",
+            "description": "Make the first version live. Default true; without the promote permission the first version is saved as a draft whatever this says (the answer's save says so), and someone who holds promote makes it live. false always saves a draft.",
             "type": "boolean"
           },
           "name": {
@@ -3279,7 +3279,7 @@
             "type": "string"
           },
           "indefinite": {
-            "description": "Stay on until switched off, with no time limit (minutes is ignored)",
+            "description": "Stay on until switched off, at most the context's indefiniteMaxDays (then it closes by itself); minutes is ignored. Needs platform:function:trace:indefinite; never for http (400 TRACE_INDEFINITE_NOT_ALLOWED)",
             "type": "boolean"
           },
           "minutes": {
@@ -3815,9 +3815,38 @@
       "IngestionFailureResponse": {
         "additionalProperties": false,
         "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionFailureResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
           "afterRecords": {
             "format": "int64",
             "type": "integer"
+          },
+          "category": {
+            "description": "payload: a record or payload the runtime could not take. rejected: a notice, the platform refused the runtime's jobs permanently",
+            "enum": [
+              "payload",
+              "rejected"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "dismissedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "dismissedBy": {
+            "description": "The principal who dismissed it",
+            "type": "string"
           },
           "excerpt": {
             "description": "The start of the payload, only for an ingestion that keeps failed payloads",
@@ -3847,9 +3876,11 @@
         "required": [
           "id",
           "kind",
+          "category",
           "message",
           "afterRecords",
-          "occurredAt"
+          "occurredAt",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -3981,6 +4012,14 @@
             "description": "Keep the first 2 KB of a payload that failed. Off unless the client has agreed.",
             "type": "boolean"
           },
+          "latestNotice": {
+            "description": "The newest undismissed notice's message",
+            "type": "string"
+          },
+          "latestNoticeAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "latestVersion": {
             "format": "int64",
             "type": "integer"
@@ -3992,8 +4031,17 @@
           "name": {
             "type": "string"
           },
+          "notices": {
+            "description": "Undismissed notices: rejected failures (GET .../failures?category=rejected\u0026undismissed=true)",
+            "format": "int64",
+            "type": "integer"
+          },
           "runtimeNotice": {
             "type": "string"
+          },
+          "save": {
+            "$ref": "#/components/schemas/IngestionSaveOutcome",
+            "description": "What this create or update did: saved and made live, made an existing version live, saved as a draft awaiting promote, matched an existing draft, or changed nothing"
           },
           "source": {
             "description": "Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}"
@@ -4018,6 +4066,13 @@
           "version": {
             "format": "int64",
             "type": "integer"
+          },
+          "warnings": {
+            "description": "What the definition says that will not run as meant, such as an sftp source that neither names the server's host key nor accepts any",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -4030,12 +4085,130 @@
           "status",
           "version",
           "latestVersion",
+          "notices",
           "createdAt",
           "updatedAt",
           "name",
           "source",
           "split",
           "target"
+        ],
+        "type": "object"
+      },
+      "IngestionSaveOutcome": {
+        "additionalProperties": false,
+        "properties": {
+          "awaitingPromote": {
+            "description": "The definition is in a version that is not live; someone who holds platform:ingestion:ingestion:promote makes it live",
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "description": "UNCHANGED: the live version already says it, nothing written. SAVED: saved as a new version and made live. MADE_LIVE: a saved version that was not live already says it and was made live, nothing new saved. DRAFT: saved as a new version that is not live. DRAFT_EXISTS: a saved version that is not live already says it, nothing saved",
+            "enum": [
+              "UNCHANGED",
+              "SAVED",
+              "MADE_LIVE",
+              "DRAFT",
+              "DRAFT_EXISTS"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "The live version (UNCHANGED, SAVED, MADE_LIVE) or the draft (DRAFT, DRAFT_EXISTS)",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "outcome",
+          "version",
+          "awaitingPromote",
+          "message"
+        ],
+        "type": "object"
+      },
+      "IngestionSecretFetchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "fetchCount": {
+            "description": "How many times this runtime has fetched it",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lastFetchedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "principalId": {
+            "description": "The runtime's service account that made it",
+            "type": "string"
+          },
+          "runtimeId": {
+            "type": "string"
+          },
+          "version": {
+            "description": "The live version the last fetch was made under",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runtimeId",
+          "version",
+          "lastFetchedAt",
+          "fetchCount"
+        ],
+        "type": "object"
+      },
+      "IngestionSecretListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionSecretListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "secrets": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionSecretResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "secrets"
+        ],
+        "type": "object"
+      },
+      "IngestionSecretResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bound": {
+            "description": "The live definition names it, so its runtime may fetch it; false for a name only fetched under an earlier live version",
+            "type": "boolean"
+          },
+          "fetches": {
+            "description": "Per runtime, newest first; empty when no runtime has fetched it",
+            "items": {
+              "$ref": "#/components/schemas/IngestionSecretFetchResponse"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "bound",
+          "fetches"
         ],
         "type": "object"
       },
@@ -4512,6 +4685,14 @@
           "createdBy": {
             "type": "string"
           },
+          "digest": {
+            "description": "sha256 (hex) of the definition's canonical form; a save whose definition has the digest of a saved version reuses that version",
+            "type": "string"
+          },
+          "draft": {
+            "description": "A version saved after the live one (or while none is live) that is not live: it waits for someone who holds promote to make it live",
+            "type": "boolean"
+          },
           "id": {
             "type": "string"
           },
@@ -4527,6 +4708,10 @@
           },
           "note": {
             "type": "string"
+          },
+          "save": {
+            "$ref": "#/components/schemas/IngestionSaveOutcome",
+            "description": "What this save did (the answer of POST .../versions only)"
           },
           "source": {
             "description": "Where the data comes from: {kind: http|sftp|s3|sqs|rabbitmq|database-poll|api-poll|custom, ...}"
@@ -4546,6 +4731,7 @@
           "id",
           "version",
           "live",
+          "draft",
           "createdAt",
           "name",
           "source",
@@ -7588,15 +7774,20 @@
             ]
           },
           "indefinite": {
-            "description": "Switched on with no time limit; it stays on until switched off (enabledUntil is then far in the future)",
+            "description": "Live and switched on until switched off; enabledUntil is then its hard ceiling (indefiniteMaxDays after it was switched on), when it closes by itself",
             "type": "boolean"
+          },
+          "indefiniteMaxDays": {
+            "description": "The ceiling, in days, of an until-switched-off window for this context; 0 when the context cannot take one (http)",
+            "format": "int64",
+            "type": "integer"
           },
           "live": {
             "description": "The window is open now (enabledUntil is in the future)",
             "type": "boolean"
           },
           "maxMinutes": {
-            "description": "The longest window this context may be enabled for",
+            "description": "The longest timed window this context may be enabled for",
             "format": "int64",
             "type": "integer"
           },
@@ -7617,7 +7808,8 @@
           "indefinite",
           "sampleRate",
           "live",
-          "maxMinutes"
+          "maxMinutes",
+          "indefiniteMaxDays"
         ],
         "type": "object"
       },
@@ -7718,6 +7910,10 @@
           },
           "message": {
             "type": "string"
+          },
+          "redacted": {
+            "description": "Sensitive parts withheld (no platform:function:trace:view-bodies): an http record keeps only method, path without query, status, duration, outcome and body sizes; a log record its metadata (message empty, no data); a trace record its message (no data)",
+            "type": "boolean"
           },
           "reference": {
             "type": [
@@ -10513,6 +10709,15 @@
             "name": "clientId",
             "schema": {
               "description": "Scope to one client: the client's id (clt_...) or its identifier (e.g. acme). The platform stores the id, so both name the same value. Omit for the application's global value. An unknown client is 404.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters.",
+            "in": "header",
+            "name": "X-On-Behalf-Of",
+            "schema": {
+              "description": "Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters.",
               "type": "string"
             }
           }
@@ -14517,7 +14722,7 @@
             "description": "Error"
           }
         },
-        "summary": "Save a definition as the next version and make it live",
+        "summary": "Save a definition as the next version: made live with promote, a draft awaiting promote without it; a definition an existing version says is not saved again",
         "tags": [
           "ingestions"
         ],
@@ -14607,6 +14812,30 @@
               "minimum": 0,
               "type": "integer"
             }
+          },
+          {
+            "description": "Only the failures nobody has dismissed",
+            "explode": false,
+            "in": "query",
+            "name": "undismissed",
+            "schema": {
+              "description": "Only the failures nobody has dismissed",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only this category; rejected is the notices",
+            "explode": false,
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "description": "Only this category; rejected is the notices",
+              "enum": [
+                "payload",
+                "rejected"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -14632,6 +14861,56 @@
           }
         },
         "summary": "List the failures runtimes reported for an ingestion",
+        "tags": [
+          "ingestions"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/ingestions/{id}/failures/{failureId}/dismiss": {
+      "post": {
+        "operationId": "dismissIngestionFailure",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "failureId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionFailureResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Dismiss a failure (a notice stops showing on the ingestion)",
         "tags": [
           "ingestions"
         ],
@@ -14787,6 +15066,48 @@
         "x-sdk": "admin"
       }
     },
+    "/api/ingestions/{id}/secrets": {
+      "get": {
+        "operationId": "listIngestionSecrets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionSecretListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the secrets the live definition binds and when each runtime last fetched them (names only, never values)",
+        "tags": [
+          "ingestions"
+        ],
+        "x-sdk": "admin"
+      }
+    },
     "/api/ingestions/{id}/versions": {
       "get": {
         "operationId": "listIngestionVersions",
@@ -14872,7 +15193,7 @@
             "description": "Error"
           }
         },
-        "summary": "Save a definition as the next version",
+        "summary": "Save a definition as the next version (a definition an existing version says is not saved again)",
         "tags": [
           "ingestions"
         ],

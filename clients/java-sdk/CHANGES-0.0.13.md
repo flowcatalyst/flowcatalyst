@@ -208,3 +208,27 @@ typed `Source` / `Split` forms (sealed, tagged by `kind`; `Custom` for extension
 `target(...)`. The runtime operations are not included. `Transport` gained `put` with a query and
 returns a `String` response body as it came. `openapi/*.json` were refreshed with `dump-spec` (the
 rest of their diff is earlier lock changes). Tests: `IngestionsResourceTest`.
+
+## Unreleased (after 0.0.23): ingestion drafts, notices and secrets; config on-behalf-of
+
+Additive; no existing signature changed.
+
+- Models regenerate from the refreshed `openapi/*.json` (`make sdk-spec`): `IngestionResponse`
+  gains `notices`, `latestNotice`, `latestNoticeAt`, `warnings` and `save` (`IngestionSaveOutcome`:
+  `outcome` SAVED | MADE_LIVE | DRAFT | DRAFT_EXISTS | UNCHANGED, `version`, `awaitingPromote`,
+  `message`); `IngestionVersionResponse` gains `draft`, `digest` and `save`;
+  `IngestionFailureResponse` gains `category` (payload | rejected), `createdAt`, `dismissedAt` and
+  `dismissedBy`. Without promote a create or update saves a draft (`save.outcome` DRAFT).
+- `IngestionsResource.listFailures(id, FailureFilters)` (after, limit, category, undismissed;
+  `FailureFilters.openNotices()`); the `(id, after, limit)` form stays. New
+  `dismissFailure(id, failureId)` and `listSecrets(id)` (bound names and each runtime's last fetch,
+  never a value).
+- `IngestionDefinitions.Source.Sftp` gains `Boolean acceptAnyHostKey` (after `knownHosts`); the
+  eight-argument constructor stays and leaves it unset.
+- `PlatformConfigResource.set/delete/revealSecret` overloads take an on-behalf-of principal, sent as
+  `X-On-Behalf-Of` (`ON_BEHALF_OF`); `Transport.exchange` sends extra headers. `ConfigResponse`
+  gains `clientIdentifier` (the spec snapshot carries it from main cf92869f). Docs: reveal needs a
+  reveal permission and linked-client confinement; `***` / empty SECRET writes are refused
+  (`SECRET_VALUE_MASKED` / `SECRET_VALUE_REQUIRED`).
+- Tests: `IngestionsResourceTest`, `PlatformConfigResourceTest` (`StubServer.Recorded` records
+  `X-On-Behalf-Of`).

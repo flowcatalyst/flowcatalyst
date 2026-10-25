@@ -17,7 +17,8 @@ import java.util.function.Function;
  */
 public final class StubServer implements AutoCloseable {
 
-    public record Recorded(String method, String pathAndQuery, String authorization, String body) {}
+    public record Recorded(
+            String method, String pathAndQuery, String authorization, String body, String onBehalfOf) {}
 
     public record Reply(int status, String body) {
         public static Reply json(int status, String body) {
@@ -63,7 +64,8 @@ public final class StubServer implements AutoCloseable {
                 exchange.getRequestMethod(),
                 exchange.getRequestURI().getPath() + (query != null ? "?" + query : ""),
                 exchange.getRequestHeaders().getFirst("Authorization"),
-                body);
+                body,
+                exchange.getRequestHeaders().getFirst("X-On-Behalf-Of"));
         requests.add(recorded);
 
         Reply reply = null;

@@ -218,6 +218,41 @@ answers 409 `INGESTION_CODE_EXISTS`. Sets apply definition files together:
 `ingestionSets().apply(name, request, true)` is a dry run. The runtime operations
 (`/api/ingestion-runtime/v1/*`) are the runtime's own client and are not in this SDK.
 
+Without the promote permission a create or update saves the definition as a **draft**: the
+answer's `getSave().getOutcome()` is `DRAFT` and `getAwaitingPromote()` is true until someone who
+holds promote makes it live (`makeVersionLive`). A definition an existing version already says is
+not saved again (`UNCHANGED`, `MADE_LIVE`, `DRAFT_EXISTS`); versions carry `draft` and a `digest`.
+`getWarnings()` names what will not run as meant, such as an sftp source with neither `knownHosts`
+nor `acceptAnyHostKey` (the `Source.Sftp` component that connects without checking the host key,
+which needs the bind-secrets permission).
+
+Notices are failures the platform refused (category `rejected`); the ingestion counts the open
+ones (`getNotices()`, `getLatestNotice()`):
+
+```java
+var open = client.ingestions().listFailures(id, IngestionsResource.FailureFilters.openNotices());
+client.ingestions().dismissFailure(id, open.getFailures().getFirst().getId()); // stays listed
+var secrets = client.ingestions().listSecrets(id); // bound names and each runtime's last fetch
+```
+
+`listSecrets` returns names, whether the live definition binds them, and per runtime the last
+fetch (`fetchCount`, `lastFetchedAt`); never a value.
+
+## Platform configuration
+
+`client.platformConfig()` lists, reads, sets and deletes an application's properties; a SECRET's
+value is always `***` there, and `revealSecret` is the only way to read it. Reveal is always a
+permission: `platform:admin:config:reveal`, or `platform:application-service:config:reveal` for an
+application's service account, which the platform confines to its own applications and to the
+clients it is linked to (its own client list, else the clients its application is enabled for)
+plus the application-wide value. Setting a secret to `***` is refused (`400
+SECRET_VALUE_MASKED`), as is an empty secret (`400 SECRET_VALUE_REQUIRED`).
+
+A service account acting for one of its signed-in users passes who as the last argument of `set`,
+`delete` or `revealSecret`; it is sent as `X-On-Behalf-Of` (`PlatformConfigResource.ON_BEHALF_OF`)
+and recorded in the audit row (at most 256 printable characters, else `400
+INVALID_ON_BEHALF_OF`; ignored from a caller that is not a service account).
+
 ## Declaring definitions
 
 Programmatically:

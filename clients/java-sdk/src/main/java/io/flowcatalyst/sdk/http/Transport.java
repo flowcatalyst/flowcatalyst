@@ -92,6 +92,20 @@ public final class Transport {
     }
 
     /**
+     * A platform call that also sends {@code headers} (a null value is not sent), for the few
+     * operations that read a request header such as {@code X-On-Behalf-Of}.
+     */
+    public <T> T exchange(
+            String method,
+            String path,
+            Map<String, Object> query,
+            Object body,
+            Map<String, String> headers,
+            Class<T> type) {
+        return execute(method, baseUrl + path, query, body, javaType(type), true, headers);
+    }
+
+    /**
      * Authenticated request against an absolute URL: the message router, a
      * separate process that verifies the same platform bearer token (spec
      * router-api-auth.md rule 8). Same one-shot refresh on 401 as the platform
@@ -121,7 +135,6 @@ public final class Transport {
 
     // ── Core execution ──────────────────────────────────────────────
 
-    @SuppressWarnings("unchecked")
     private <T> T execute(
             String method,
             String url,
@@ -129,6 +142,18 @@ public final class Transport {
             Object body,
             JavaType responseType,
             boolean authenticated) {
+        return execute(method, url, query, body, responseType, authenticated, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T execute(
+            String method,
+            String url,
+            Map<String, Object> query,
+            Object body,
+            JavaType responseType,
+            boolean authenticated,
+            Map<String, String> headers) {
         String fullUrl = url + queryString(query);
         String token = null;
         boolean canRefreshToken = authenticated && tokenManager != null;
@@ -139,7 +164,7 @@ public final class Transport {
 
         int attempt = 0;
         while (true) {
-            HttpResponse<String> response = send(method, fullUrl, body, token);
+            HttpResponse<String> response = send(method, fullUrl, body, token, headers);
             int status = response.statusCode();
 
             if (status >= 200 && status < 300) {
@@ -175,12 +200,18 @@ public final class Transport {
         }
     }
 
-    private HttpResponse<String> send(String method, String url, Object body, String token) {
+    private HttpResponse<String> send(
+            String method, String url, Object body, String token, Map<String, String> headers) {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(timeout)
                 .header("Accept", "application/json");
         if (token != null) {
             builder.header("Authorization", "Bearer " + token);
+        }
+        if (headers != null) {
+            headers.forEach((name, value) -> {
+                if (value != null) builder.header(name, value);
+            });
         }
         if (body != null) {
             builder.header("Content-Type", "application/json");

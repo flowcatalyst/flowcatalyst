@@ -96,7 +96,13 @@ public final class IngestionDefinitions {
         /** JSON posted to the endpoint the runtime exposes; {@code rateLimit} may be null. */
         record Http(HttpAuth auth, RateLimit rateLimit) implements Source {}
 
-        /** Files in a directory; {@code knownHosts} and {@code include} may be null. */
+        /**
+         * Files in a directory; {@code knownHosts}, {@code acceptAnyHostKey} and {@code include} may
+         * be null. Without {@code knownHosts} (the server's host key as a known_hosts line) the
+         * runtime refuses to start the source unless {@code acceptAnyHostKey} is true, which
+         * connects without checking who the server is (whoever answers receives the credential), so
+         * turning it on needs the bind-secrets permission.
+         */
         record Sftp(
                 String host,
                 int port,
@@ -104,9 +110,24 @@ public final class IngestionDefinitions {
                 String username,
                 SecretRef credential,
                 String knownHosts,
+                Boolean acceptAnyHostKey,
                 String include,
                 Duration every)
-                implements Source {}
+                implements Source {
+
+            /** An sftp source that checks the host key ({@code acceptAnyHostKey} not set). */
+            public Sftp(
+                    String host,
+                    int port,
+                    String directory,
+                    String username,
+                    SecretRef credential,
+                    String knownHosts,
+                    String include,
+                    Duration every) {
+                this(host, port, directory, username, credential, knownHosts, null, include, every);
+            }
+        }
 
         /** Objects under a prefix; {@code prefix} and {@code credential} may be null (the runtime's own identity). */
         record S3(String region, String bucket, String prefix, Duration every, AwsCredential credential)

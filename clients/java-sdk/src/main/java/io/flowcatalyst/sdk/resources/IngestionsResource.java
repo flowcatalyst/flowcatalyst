@@ -2,9 +2,11 @@ package io.flowcatalyst.sdk.resources;
 
 import io.flowcatalyst.sdk.generated.model.CreateIngestionRequest;
 import io.flowcatalyst.sdk.generated.model.IngestionFailureListResponse;
+import io.flowcatalyst.sdk.generated.model.IngestionFailureResponse;
 import io.flowcatalyst.sdk.generated.model.IngestionHistoryResponse;
 import io.flowcatalyst.sdk.generated.model.IngestionListResponse;
 import io.flowcatalyst.sdk.generated.model.IngestionResponse;
+import io.flowcatalyst.sdk.generated.model.IngestionSecretListResponse;
 import io.flowcatalyst.sdk.generated.model.IngestionSourceKindListResponse;
 import io.flowcatalyst.sdk.generated.model.IngestionTestResponse;
 import io.flowcatalyst.sdk.generated.model.IngestionVersionListResponse;
@@ -66,6 +68,11 @@ public final class IngestionsResource {
         return transport.get(PATH, query, IngestionListResponse.class);
     }
 
+    /**
+     * Create an ingestion. Without the promote permission (or with {@code live} false) its first
+     * version is saved as a draft: {@code getSave().getOutcome()} is {@code DRAFT} and {@code
+     * getSave().getAwaitingPromote()} is true until someone who holds promote makes it live.
+     */
     public IngestionResponse create(CreateIngestionRequest data) {
         return transport.post(PATH, data, IngestionResponse.class);
     }
@@ -74,7 +81,12 @@ public final class IngestionsResource {
         return transport.get(path(id), null, IngestionResponse.class);
     }
 
-    /** Change the live definition; {@code expectedVersion} is the live version read (0 when none). */
+    /**
+     * Save a new definition; {@code expectedVersion} is the live version read (0 when none). With
+     * promote it is made live ({@code SAVED}); without, it is a draft awaiting promote ({@code
+     * DRAFT}). A definition an existing version already says is not saved again ({@code
+     * UNCHANGED}, {@code MADE_LIVE}, {@code DRAFT_EXISTS}); the answer's {@code save} says which.
+     */
     public IngestionResponse update(String id, UpdateIngestionRequest data) {
         return transport.put(path(id), data, IngestionResponse.class);
     }
@@ -95,7 +107,12 @@ public final class IngestionsResource {
         return transport.get(path(id) + "/versions", null, IngestionVersionListResponse.class);
     }
 
-    /** Save a new version; it runs only once it is live ({@code live} on the request, or {@link #makeVersionLive}). */
+    /**
+     * Save a new version; it runs only once it is live ({@code live} on the request, or {@link
+     * #makeVersionLive}), and making it live needs promote (without it the save is a draft). A
+     * definition an existing version already says is not saved again; the answer's {@code save}
+     * says what happened and {@code digest} identifies the definition.
+     */
     public IngestionVersionResponse saveVersion(String id, SaveIngestionVersionRequest data) {
         return transport.post(path(id) + "/versions", data, IngestionVersionResponse.class);
     }
@@ -119,10 +136,49 @@ public final class IngestionsResource {
 
     /** Failures, cursor paged: pass the previous page's {@code nextCursor} as {@code after}. */
     public IngestionFailureListResponse listFailures(String id, String after, Integer limit) {
+        return listFailures(id, new FailureFilters(after, limit, null, null));
+    }
+
+    /**
+     * Optional filters for {@link #listFailures(String, FailureFilters)}. {@code category} is {@code
+     * payload} or {@code rejected} (the notices); {@code undismissed} true keeps only the failures
+     * nobody has dismissed. Null fields are not sent.
+     */
+    public record FailureFilters(String after, Integer limit, String category, Boolean undismissed) {
+        public static FailureFilters none() {
+            return new FailureFilters(null, null, null, null);
+        }
+
+        /** The ingestion's open notices: {@code category=rejected&undismissed=true}. */
+        public static FailureFilters openNotices() {
+            return new FailureFilters(null, null, "rejected", true);
+        }
+    }
+
+    /** Failures, newest first, cursor paged and filtered. */
+    public IngestionFailureListResponse listFailures(String id, FailureFilters filters) {
         Map<String, Object> query = new LinkedHashMap<>();
-        query.put("after", after);
-        query.put("limit", limit);
+        if (filters != null) {
+            query.put("after", filters.after());
+            query.put("limit", filters.limit());
+            query.put("category", filters.category());
+            query.put("undismissed", Boolean.TRUE.equals(filters.undismissed()) ? "true" : null);
+        }
         return transport.get(path(id) + "/failures", query, IngestionFailureListResponse.class);
+    }
+
+    /** Dismiss a failure: a notice stops showing on the ingestion; the failure stays listed. */
+    public IngestionFailureResponse dismissFailure(String id, String failureId) {
+        return transport.post(
+                path(id) + "/failures/" + Transport.enc(failureId) + "/dismiss", null, IngestionFailureResponse.class);
+    }
+
+    /**
+     * The secret names the live definition binds and, per runtime, when it last fetched each one.
+     * Names only: no secret value is ever returned.
+     */
+    public IngestionSecretListResponse listSecrets(String id) {
+        return transport.get(path(id) + "/secrets", null, IngestionSecretListResponse.class);
     }
 
     /** The source kinds the platform knows plus those the live runtimes report. */
