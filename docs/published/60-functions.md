@@ -175,7 +175,7 @@ for a limited time. The rest of the time a trace call is a cheap no-op.
 
 A **context** is a name (lowercase letter first, then lowercase letters, digits or `-`, at most
 40 characters, at most 20 per function) that you declare in code, with an optional description
-of up to 200 characters that operators see next to the switch. `http` is built in and needs no
+of up to 200 bytes of UTF-8 that operators see next to the switch. `http` is built in and needs no
 declaration: while it is on, every call to the function also records its request, response,
 timing and outcome, together with everything the call printed or logged. A function cannot
 write to `http` itself.
@@ -206,8 +206,11 @@ fn.webhook("POST /events/order-created", (req) => {
 | Business key | `fn.SetReference(ctx, trip)` | `ctx.set_reference(trip)` |
 
 `level` is `debug`, `info` (the default), `warn` or `error`. `data` is an optional JSON object. A
-`reference` is your business key (a trip or order number, at most 200 characters); a call's own
-reference wins over the one set with `setReference`. Tracing never fails a call: trace and tracing
+`reference` is your business key (a trip or order number, at most 200 characters). `setReference`
+tells the runner, which stamps it on every later record of the call, the built-in `http` and `log`
+records included (a runner that predates this stamps only your own trace records). A reference
+passed to a single trace call is that record's only; it does not replace the one set with
+`setReference`. Tracing never fails a call: trace and tracing
 calls never throw or return an error, whatever happens. If the context is off, was not sampled in,
 is not declared (one warning per context is written to the function log) or the runner is an older
 one that does not know trace logs, the call does nothing and `tracing` answers false. Ask `tracing`
@@ -216,13 +219,19 @@ before building anything expensive: its answer depends on the invocation, so do 
 **Turning a context on.** Open the function's *Diagnostics* section (the switches), and its *View trace logs* page for the records, or run `fcdev fn trace on
 <address> <context> --for 5m`. An operator picks how long (at most 60 minutes for your own
 contexts, 15 for `http`, whose bodies can be sensitive) and may sample, recording one call in N. The
-switch takes effect within about a second and turns itself off when the time is up, unless it was switched on
-with *no time limit* (the checkbox in the dialog, or `fcdev fn trace on ... --no-limit`), in which case it stays on until
-someone switches it off; that skips the caps above, so mind the sample rate and the volume. Switching
-contexts needs `platform:function:trace:manage`, reading records needs `platform:function:trace:view`, and
-reading request and response bodies (and switching `http` on) needs `platform:function:trace:view-bodies`;
-without that last permission a viewer sees the records with the bodies hidden. Switching a context
-on or off is recorded in the audit log.
+switch takes effect within about a second and turns itself off when the time is up. One of your own
+contexts can also be left on *until switched off* (the choice in the dialog, which asks for
+confirmation, or `fcdev fn trace on ... --no-limit`); it still switches itself off after at most
+7 days (the platform's `FC_FUNCTIONS_TRACE_INDEFINITE_MAX_DAYS`), and it needs
+`platform:function:trace:indefinite`. `http` never stays on until switched off: its 15-minute cap
+always applies. Switching contexts needs `platform:function:trace:manage` and reading records needs
+`platform:function:trace:view`, which shows each record's time, context, kind, level, invocation,
+correlation id, reference and version, and of an `http` record only its method, path (without the
+query string), status, duration, outcome and body sizes. The rest (request and response headers,
+the query string, the bodies, the lines the call printed or logged, and the `data` of your trace
+records) needs `platform:function:trace:view-bodies`, which switching `http` on needs too. The
+read-only `platform:viewer` role does not read trace records. Switching a context on or off is
+recorded in the audit log.
 
 **From the command line.** `fcdev fn trace` takes the same platform, profile and credential flags
 as the other `fn` commands.
@@ -233,7 +242,7 @@ fcdev fn trace off billing.invoice-pdf orders
 fcdev fn trace status billing.invoice-pdf        # contexts, live or off, time left, sample
 fcdev fn trace log billing.invoice-pdf --reference T-1042 --since 30m
 fcdev fn trace log billing.invoice-pdf --context http --bodies -f
-fcdev fn trace run billing.invoice-pdf orders    # on, follow, and off again on Ctrl-C
+fcdev fn trace run billing.invoice-pdf orders    # on, follow, and back as it was on Ctrl-C
 ```
 
 `--for` takes a duration (`5m`, `1h`) and is rounded up to whole minutes; `--sample N` records one
@@ -244,18 +253,27 @@ record is one line, `POST /orders -> 200 (12ms, ok)`; `--bodies` adds the reques
 bodies (JSON is pretty-printed; base64 and truncation are noted, and bodies are hidden without
 `platform:function:trace:view-bodies`). `-f` keeps polling every 2 seconds and prints only new
 records until Ctrl-C; `--json` prints one raw JSON record per line. `run` shows only records from
-now on (unless `--since` says otherwise), stops when the window ends, and switches the context off
-on exit unless you pass `--keep`. A CI credential with only `platform:function-deployer` may not use
+now on (unless `--since` says otherwise) and stops when the window ends. If the context is already
+on for at least as long as `--for`, `run` only follows it and leaves it on; otherwise it switches it
+on and, on exit, puts it back as it found it (off, or the window it had with its time left) unless
+you pass `--keep`. A window someone else changes while `run` is following is left as they set it. A CI credential with only `platform:function-deployer` may not use
 trace logs.
 
 **Limits.** A message is at most 4096 bytes and `data` at most 32768 bytes (a record over the limit
 is dropped, never an error), and the platform keeps up to 200 records a second per function; the
-excess is counted as dropped. HTTP bodies are cut at 64 KiB, and `authorization`, `cookie`,
-`set-cookie` and any header whose name contains `secret`, `token` or `password` are redacted.
+excess is counted as dropped (the limit is per platform process). One call keeps at most 500 log
+records and 500 trace records. HTTP bodies are cut at 64 KiB. The value of any request or response
+header whose name contains `auth`, `key`, `token`, `secret`, `password`, `signature`, `cookie` or
+`session` is replaced by `[redacted]` (so `authorization`, `x-api-key`, `x-functions-key`,
+`ocp-apim-subscription-key`, `set-cookie` and the delivery signature `x-flowcatalyst-signature`
+are never stored), and so is the value of any query parameter with one of those names or named
+`access_token`, `code`, `token`, `sig`, `signature`, `X-Amz-*`, `key`, `apikey`, `api_key`,
+`password` or `secret`.
 
 **What is stored, and for how long.** Each record has the time, function version, invocation id,
 correlation id (the request's `X-Correlation-Id`), reference, context, kind (`trace`, `http` or
-`log`), level, message and data. Records are kept for 30 days and then deleted. Records are shipped
+`log`), level, message and data. Records are kept for 30 days after they reach the platform and then
+deleted. Records are shipped
 by the runner in the background, so they survive whatever happens to the call itself.
 
 ## What a function can reach

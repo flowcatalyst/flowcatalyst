@@ -228,7 +228,7 @@ version.
 | export `_initialize` | `() -> ()` | Optional wasip1 reactor init, called once before anything else |
 | import `fc.call` | `(op i32, ptr i32, len i32) -> i64` | Returns `code<<32 \| resultLen`; 0 = success |
 | import `fc.take` | `(dst i32) -> ()` | Copies the buffered result into guest memory at `dst`, then clears it |
-| host ops 12 `trace` and 13 `tracing` (through `fc.call`) | see section 2.4 | **Additive, IN FORCE**: the trace-log ops (`docs/function-trace-design.md`). A runner that predates them answers `UNKNOWN_OP`; the SDKs treat that as "not tracing" and never fail the call |
+| host ops 12 `trace`, 13 `tracing` and 14 `trace.reference` (through `fc.call`) | see section 2.4 | **Additive, IN FORCE**: the trace-log ops (`docs/function-trace-design.md`). A runner that predates them answers `UNKNOWN_OP`; the SDKs treat that as "not tracing" and never fail the call |
 | allowed import modules | `fc`, `wasi_snapshot_preview1` | Anything else: `LOAD:IMPORT_NOT_ALLOWED` |
 | WASI environment | no preopens, empty args and env, real clock, crypto random, stdout/stderr to the function log at INFO/WARN | |
 
@@ -314,6 +314,7 @@ that predates them rejects the describe at publish as an unknown key", plan 5.4)
 | 11 | `dispatch.create` | `{target, path, code, subject, metadata[{key,value}], messageGroup, mode, correlationId, causationId, contentType, descriptor, maxRetries, timeoutSeconds, dataOnly}` / payload | `{jobId}` |
 | 12 | `trace` | `{context, level?, msg, data?, reference?}`; `level` is `debug` \| `info` \| `warn` \| `error` (default `info`), `data` a JSON object | none. A silent no-op for a context that is not live. Errors: `NOT_DECLARED` (context neither in `traceContexts` nor `http`), `BAD_REQUEST` (malformed meta; `http` is not writable by functions), `TOO_LARGE` (`msg` over 4096 bytes, `data` over 32768 bytes; the SDKs cut `msg` to 4096 bytes and `reference` to 200 characters before sending) |
 | 13 | `tracing` | `{context}` | `{live}`: true iff the context is switched on for this function now and this invocation was sampled in. `NOT_DECLARED` as above |
+| 14 | `trace.reference` | `{reference}` | none. Sets the invocation's business key, stamped on its later trace, http and log records (empty clears it); a `reference` on a single `trace` call is that record's only. `TOO_LARGE` over 200 characters, `BAD_REQUEST` for malformed meta; the SDKs' `setReference` sends it and swallows every error |
 
 Wire conventions that are frozen with the ops: `db` byte params are base64 strings and
 `Date`/`time.Time` params are ISO-8601 (no per-parameter type tag exists); dispatch `metadata` is
