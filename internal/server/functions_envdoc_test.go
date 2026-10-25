@@ -36,6 +36,9 @@ func TestFunctionsEnvVarsDocumented(t *testing.T) {
 	read["FC_FUNCTIONS_TRACE_MAX_MINUTES"] = true
 	read["FC_FUNCTIONS_TRACE_HTTP_MAX_MINUTES"] = true
 	read["FC_FUNCTIONS_TRACE_RETENTION_DAYS"] = true
+	read["FC_FUNCTIONS_TRACE_INDEFINITE_MAX_DAYS"] = true
+	read["FC_FUNCTIONS_TRACE_PRUNE_MAX_ROWS"] = true
+	read["FC_FUNCTIONS_TRACE_PRUNE_INTERVAL_MINUTES"] = true
 	for name := range documented {
 		if !read[name] {
 			t.Errorf("%s is documented but not read by the code", name)
