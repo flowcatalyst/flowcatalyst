@@ -40,10 +40,14 @@ func UpdateIngestion(repo *ingestion.Repository, resolver ingestion.Resolver) us
 			}
 			return validateDefinition(cmd.Definition)
 		},
-		// Per-resource authz needs the loaded row, so it runs post-load in
-		// Execute; the coarse "may update ingestions" permission is the
-		// controller's.
-		Authorize: usecaseop.Public[UpdateCommand],
+		// An update makes the new version live, so it needs promote too (owner
+		// ruling R3: refused without it, never quietly saved as a draft; the
+		// draft is POST .../versions with live false). Per-resource authz needs
+		// the loaded row, so it runs post-load in Execute; the coarse "may
+		// update ingestions" permission is the controller's.
+		Authorize: func(ctx context.Context, _ UpdateCommand) error {
+			return requirePromote(ctx, promoteUpdate)
+		},
 		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd UpdateCommand, ec usecase.ExecutionContext) (UpdateResult, error) {
 			var zero UpdateResult
 			i, err := loadEditable(ctx, repo, cmd.ID)
@@ -57,7 +61,7 @@ func UpdateIngestion(repo *ingestion.Repository, resolver ingestion.Resolver) us
 			if i.Version > 0 && cmd.Definition.Equal(i.Definition) {
 				return UpdateResult{Ingestion: i}, nil
 			}
-			if err := requireKindPermission(ctx, repo, i.Definition.Source, cmd.Definition.Source); err != nil {
+			if err := checkAuthor(ctx, repo, i, cmd.Definition); err != nil {
 				return zero, err
 			}
 			if err := checkTarget(ctx, resolver, i, cmd.Definition); err != nil {

@@ -24,8 +24,12 @@ func leaseNotHeld(runtimeID, ingestionID string) error {
 
 // GetState reads a value a polled source keeps, for the holder of its lease;
 // found is false when nothing is stored under the key. A released lease still
-// counts until it expires: its holder may be finishing its last batch.
+// counts until it expires: its holder may be finishing its last batch. A zero
+// now is the database's clock (see PollRequest.Now).
 func (r *Repository) GetState(ctx context.Context, ingestionID, runtimeID, key string, now time.Time) (value string, found bool, err error) {
+	if now, err = clock(ctx, r.q, now); err != nil {
+		return "", false, fmt.Errorf("ingestion repo: %w", err)
+	}
 	held, err := r.q.IngestionLeaseHeld(ctx, dbq.IngestionLeaseHeldParams{IngestionID: ingestionID, RuntimeID: runtimeID, Now: now})
 	if err != nil {
 		return "", false, fmt.Errorf("ingestion repo: lease held: %w", err)
@@ -45,10 +49,14 @@ func (r *Repository) GetState(ctx context.Context, ingestionID, runtimeID, key s
 
 // PutState stores a value, if the runtime holds the ingestion's lease. The
 // lease row is locked while the value is written, so the lease cannot run out
-// and pass to another runtime in between.
+// and pass to another runtime in between. A zero now is the database's clock.
 func (r *Repository) PutState(ctx context.Context, ingestionID, runtimeID, key, value string, now time.Time) error {
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		q := r.q.WithTx(tx)
+		now, err := clock(ctx, q, now)
+		if err != nil {
+			return err
+		}
 		if _, err := q.IngestionLeaseLockHeld(ctx, dbq.IngestionLeaseLockHeldParams{IngestionID: ingestionID, RuntimeID: runtimeID, Now: now}); err != nil {
 			return err
 		}

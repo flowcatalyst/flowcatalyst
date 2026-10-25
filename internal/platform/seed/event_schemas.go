@@ -327,6 +327,9 @@ func platformEventSchemas() map[string]json.RawMessage {
 	)
 	m["platform:ingestion:ingestion:version-live"] = obj(reqStr("ingestionId"), reqStr("code"), reqU32("version"))
 	m["platform:ingestion:ingestion:managed"] = obj(reqStr("ingestionId"), reqStr("code"), optStr("managedBy"))
+	m["platform:ingestion:ingestion:failure-dismissed"] = obj(
+		reqStr("ingestionId"), reqStr("code"), reqStr("failureId"), reqStr("category"),
+	)
 	m["platform:ingestion:set:applied"] = obj(
 		reqStr("setId"), reqStr("name"), reqStr("applyId"), optStr("goingBackTo"),
 		reqU32("created"), reqU32("changed"), reqU32("adopted"), reqU32("removed"),

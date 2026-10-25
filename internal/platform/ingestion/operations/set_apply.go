@@ -248,9 +248,6 @@ func planItems(ctx context.Context, repo *ingestion.Repository, resolver ingesti
 		if err := ingestion.CheckApplicationReach(ac, string(app.ID)); err != nil {
 			return nil, at(err)
 		}
-		if err := requireKindPermission(ctx, repo, f.Source); err != nil {
-			return nil, at(err)
-		}
 		if _, err := resolver.Target(ctx, app.Code, c.ID, f.Target); err != nil {
 			return nil, at(err)
 		}
@@ -264,6 +261,11 @@ func planItems(ctx context.Context, repo *ingestion.Repository, resolver ingesti
 		existing, err := repo.FindByCode(ctx, app.ID, c.ID, f.Code)
 		if err != nil {
 			return nil, usecase.Internal("REPO", "find_by_code failed", err)
+		}
+		// What saving the file over what exists asks of the caller: the kind's
+		// permission, the runtime identity, the secrets it points.
+		if err := checkAuthor(ctx, repo, existing, f.Definition); err != nil {
+			return nil, at(err)
 		}
 		p := planned{file: f, app: app, client: c, existing: existing}
 		p.change = ingestion.SetChange{Application: app.Code, Client: c.Identifier, Code: f.Code, Changed: []string{}}

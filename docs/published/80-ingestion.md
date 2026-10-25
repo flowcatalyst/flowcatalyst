@@ -44,8 +44,48 @@ An ingestion is addressed as **`application/client/code`** (for example
 `GET /api/ingestion-source-kinds` lists the built-in kinds and the ones the live
 runtimes report. A kind that needs a special permission (a Camel route is one)
 declares it, and saving an ingestion of that kind needs it (`platform:ingestion:ingestion:route`).
+The platform remembers what a runtime last declared for its kind, so the
+permission still applies while no runtime that reports the kind is running. The
+route permission counts **only for an anchor-tier caller**: below anchor tier a
+`camel-route` ingestion is refused (`INGESTION_ROUTE_ANCHOR_REQUIRED`) even with
+the permission, because a route runs with the runtime's network and identity.
 
 A source never holds a secret, only its **name** (`credential: {name: sftp-password}`).
+
+**What a source may point at.** Every address a source makes the runtime connect
+to (an `api-poll` URL and its login or token URL, an `sftp` host, a RabbitMQ URI,
+a database's JDBC URL, a URL in an extension's settings) is checked when the
+ingestion is saved and when it is tested. Private networks are allowed (an
+on-premises database is the normal case); the runtime's own machine (loopback,
+`localhost`), link-local addresses, the cloud metadata services
+(`169.254.169.254`, `metadata.google.internal` and the like), unspecified and
+multicast addresses, and hosts written as bare numbers (`2130706433`) are not. A
+JDBC URL must name its server (`jdbc:<driver>://host:port/...`, or Oracle's
+`@host:port`); an embedded database, a file or a TNS alias is refused, and so are
+driver properties that load code or read files on the runtime (`socketFactory`,
+`allowLoadLocalInfile` and similar). The runtime checks the address it actually
+connects to as well.
+
+**Two more permissions guard what the runtime holds:**
+
+- An `sqs` or `s3` source without a `credential` is read with the **runtime
+  fleet's own AWS identity**. Saving one (new, or with a different source than
+  the live version) needs `platform:ingestion:ingestion:runtime-identity`. Name an
+  access key in `credential` to read with the client's own.
+- Naming a secret makes the runtime present it to the host the definition names,
+  so naming one is reading it. Saving a definition that names secrets, when it is
+  new or differs from the live version in where it points (a host, a URL, a JDBC
+  URL) or in which secrets it names, needs
+  `platform:ingestion:ingestion:bind-secrets`. For an extension kind every text
+  setting counts as a secret name, so any change of its settings counts. A change
+  elsewhere (a directory, a name, the target) needs neither.
+
+**An sftp source checks who the server is.** Give its `knownHosts` (the server's
+known_hosts line), or set `acceptAnyHostKey: true` (not both). The runtime refuses
+to start an sftp source with neither and reports it `FAILED`; the platform saves
+it but answers with a warning, shown on the ingestion. Accepting any host key
+sends the credential to whoever answers at the address, so turning it on needs
+`platform:ingestion:ingestion:bind-secrets`.
 
 ### Split
 
@@ -60,11 +100,11 @@ A source never holds a secret, only its **name** (`credential: {name: sftp-passw
 
 | Field | Meaning |
 |---|---|
-| `code` | The dispatch job's code |
+| `code` | The dispatch job's code, `application:subdomain:aggregate:action`. Its first part must be the ingestion's own application: an ingestion makes jobs of its application only |
 | `targetUrl` | Where the job is delivered. Checked at save with the platform's outbound-URL guard (no private or metadata addresses) |
 | `pool` | A dispatch pool **code**; it must exist and be usable by the ingestion's client |
 | `connection` | Optional connection code. The connection's service account signs each delivery, and pausing the connection holds this ingestion's jobs |
-| `serviceAccount` | Optional service account code, to sign without a connection. Not together with `connection` |
+| `serviceAccount` | Optional service account code, to sign without a connection. Not together with `connection`. It must be one of the ingestion's application's own accounts and reach the ingestion's client (an account linked to no client reaches all of its application's clients); a platform account, or another application's, is refused |
 | `mode` | `IMMEDIATE`, `NEXT_ON_ERROR` or `BLOCK_ON_ERROR` |
 | `batchSize` | Records per job batch |
 
@@ -89,12 +129,13 @@ source:
   username: feed
   credential:
     name: sftp-password
+  knownHosts: sftp.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
   every: PT5M
 split:
   kind: csv
   header: true
 target:
-  code: acme:orders:order:received
+  code: ingest:orders:order:received
   targetUrl: ${env:ORDERS_HOOK}
   pool: orders
   connection: orders-conn
@@ -138,8 +179,39 @@ receive: a saved version does not run until it is made live. Saving through
 the API's update or through a set apply makes the new version live; saving a
 version on its own does not.
 
+Making a version live needs `platform:ingestion:ingestion:promote`, however it
+happens. A create is live unless it says `live: false`, so a create without
+promote that does not say so is refused (`INGESTION_PROMOTE_REQUIRED`); the
+pages save it as a draft. An update (`PUT /api/ingestions/{id}`) makes its
+version live, so without promote it is refused too: save the version with
+`POST /api/ingestions/{id}/versions` (`live: false`) for someone who holds
+promote to make live.
+
 **Pause** stops an ingestion running; **resume** starts it again. Both need
 `update`. A paused ingestion keeps its versions and state.
+
+## Failures and notices
+
+A runtime reports what went wrong. Each failure has a **category**:
+
+| Category | Means |
+|---|---|
+| `payload` | A record or a payload the runtime could not take (the usual kind) |
+| `rejected` | The platform refused the runtime's jobs for good: the target no longer resolves (a pool suspended, a connection gone), the client is suspended. Nothing more is made until someone puts it right |
+
+A `rejected` failure is a **notice**: the ingestion's row in the list and its
+drawer show how many there are and the newest one's message until someone
+dismisses them. Every failure can be dismissed
+(`POST /api/ingestions/{id}/failures/{failureId}/dismiss`, or Dismiss on the
+Failures tab), which needs `update` and the ingestion's reach and is recorded in
+the ingestion's history. A dismissed failure stays listed, marked, until
+retention removes it. `GET .../failures?undismissed=true&category=rejected`
+lists the open notices.
+
+Failures and exchange counts are kept for 30 days and job idempotency keys for a
+week, counted from when the platform recorded them, not from times the runtime
+sent. A time from a runtime that is more than five minutes in the future is
+recorded as now.
 
 ## Test connection
 
@@ -167,15 +239,21 @@ real outbound call.
 |---|---|
 | `platform:ingestion:ingestion:view` | List, read, versions, history, failures, definition export, source kinds |
 | `platform:ingestion:ingestion:create`, `update`, `delete` | Change definitions; `update` includes pause and resume |
-| `platform:ingestion:ingestion:promote` | Make a version live |
+| `platform:ingestion:ingestion:promote` | Make a version live: a create that is live, an update, a version saved live, make live |
 | `platform:ingestion:ingestion:test` | Run test connection |
-| `platform:ingestion:ingestion:route` | Create or change an ingestion of a kind that declares it needs this (`camel-route`); removing one needs only `delete` |
+| `platform:ingestion:ingestion:route` | Create or change an ingestion of a kind that declares it needs this (`camel-route`), at anchor tier only; removing one needs only `delete` |
+| `platform:ingestion:ingestion:runtime-identity` | Save an `sqs` or `s3` source the runtime reads with its own AWS identity |
+| `platform:ingestion:ingestion:bind-secrets` | Save a definition that names secrets and points them somewhere new |
 | `platform:ingestion:set:apply` | Apply or release a set |
-| `platform:ingestion:runtime:operate` | The runtime API: poll, report, state |
+| `platform:ingestion:runtime:operate` | The runtime API: poll, report, state, jobs, secrets |
 
-Seeded roles: `platform:ingestion-admin` (everything but the runtime),
+Seeded roles: `platform:ingestion-admin` (everything but route and the runtime,
+and the only role with `runtime-identity` and `bind-secrets`),
 `platform:ingestion-operator` (view, update, test), `platform:ingestion-viewer`,
-and `platform:ingestion-runtime` for a runtime's service account.
+`platform:ingestion-route-author` (view, create, update, route: it writes drafts,
+created with `live: false` and saved as versions, which someone with promote
+makes live; a route that names secrets is saved by an admin), and
+`platform:ingestion-runtime` for a runtime's service account.
 
 **Reach.** A caller below anchor tier sees and changes only the ingestions of its
 own clients. An application-scoped service account reaches only its own
@@ -204,12 +282,27 @@ ingestions it is given, reports their state and failures, keeps small values
 dispatch jobs as its service account. The platform never calls it, so a
 runtime can sit behind a firewall.
 
-- A runtime reports the source kinds it carries. An ingestion of a kind no live
-  runtime reports shows as "no runtime carries this kind", which is not a failure.
+- A runtime reports the source kinds it carries: the built-in ones it has
+  (`builtinKinds`; all of them when it does not say) and the kinds its
+  extensions add. It is given only ingestions of those kinds. An ingestion of a
+  kind no live runtime reports shows as "no runtime carries this kind", which is
+  not a failure.
 - Polled sources (`sftp`, `s3`, `database-poll`, `api-poll`, `custom`) run on one
   runtime at a time, under a lease. `http`, `sqs` and `rabbitmq` run on every
-  runtime that carries them.
-- Create the runtime's service account with `platform:ingestion-runtime`.
+  runtime that carries them. The polled ingestions of each kind are shared
+  evenly over the runtimes that carry that kind, so a runtime that alone carries
+  a kind runs all of it.
+- The ingestions of a suspended or deactivated client run nowhere and take no
+  jobs.
+- The runtime's account must be a **service account at anchor tier that belongs
+  to no application** (linked to no client, and not confined to a list of
+  applications, which an application's own account always is), holding
+  `platform:ingestion-runtime`. Anything else is refused
+  on every runtime call, even with the role: a person
+  (`INGESTION_RUNTIME_SERVICE_ACCOUNT_REQUIRED`), a client-tier account
+  (`INGESTION_RUNTIME_ANCHOR_REQUIRED`), an application's account
+  (`INGESTION_RUNTIME_APPLICATION_BOUND`). `fcdev` provisions such an account
+  for its own runtime.
 
 ## Turning it on
 
@@ -217,6 +310,11 @@ runtime can sit behind a firewall.
 ingestion routes are not mounted (`404`), the navigation entry is absent, and the
 tables exist but stay empty. The permissions and roles are seeded either way.
 The runtime API is mounted only when the flag is on.
+
+A runtime's jobs request takes up to 10 MiB (`FC_INGESTION_JOBS_MAX_BYTES`) and
+its report up to 4 MiB (`FC_INGESTION_REPORT_MAX_BYTES`); its other calls take
+1 MiB. The retention sweep deletes up to 500 chunks of 10,000 rows of each
+high-volume table an hour (`FC_INGESTION_RETENTION_MAX_CHUNKS` raises it).
 
 ## fcdev ingest
 

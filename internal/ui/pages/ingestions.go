@@ -33,6 +33,9 @@ type IngestionStore interface {
 	ListVersions(ctx context.Context, ingestionID string) ([]ingestion.Version, error)
 	LiveKinds(ctx context.Context) ([]ingestion.RuntimeKind, error)
 	AnyLiveRuntimeCarries(ctx context.Context) (func(kind string) bool, error)
+	// NoticesOf is the undismissed notices (rejected failures) of the
+	// ingestions shown.
+	NoticesOf(ctx context.Context, ids []string) (map[string]ingestion.Notices, error)
 }
 
 // Ingestions is the ingestions page (/ui/ingestions), mirroring the Nuxt
@@ -70,13 +73,16 @@ const (
 	ingsFacetClient = "client"
 	ingsFacetKind   = "kind"
 
-	ingsPauseDialog  = "ings-pause"
-	ingsResumeDialog = "ings-resume"
-	ingsDeleteDialog = "ings-delete"
-	ingsLiveDialog   = "ings-live"
+	ingsPauseDialog   = "ings-pause"
+	ingsResumeDialog  = "ings-resume"
+	ingsDeleteDialog  = "ings-delete"
+	ingsLiveDialog    = "ings-live"
+	ingsDismissDialog = "ings-dismiss"
 
-	// ingsTabOverview is the drawer's first tab.
+	// ingsTabOverview is the drawer's first tab; ingsTabFailures the one that
+	// lists the failures and dismisses them.
 	ingsTabOverview = "overview"
+	ingsTabFailures = "failures"
 
 	// ingsPageSize is the API's default page.
 	ingsPageSize = 50
@@ -90,7 +96,7 @@ var ingsTabs = []kit.TabItem{
 	{Value: "definition", Label: "Definition"},
 	{Value: "versions", Label: "Versions"},
 	{Value: "activity", Label: "Activity"},
-	{Value: "failures", Label: "Failures"},
+	{Value: ingsTabFailures, Label: "Failures"},
 	{Value: "history", Label: "History"},
 }
 
@@ -126,6 +132,7 @@ func (h *Ingestions) Mount(r chi.Router) {
 	post.Post("/ingestions/{id}/resume", h.resume)
 	post.Post("/ingestions/{id}/delete", h.delete)
 	post.Post("/ingestions/{id}/versions/{number}/live", h.makeLive)
+	post.Post("/ingestions/{id}/failures/{failureId}/dismiss", h.dismissFailure)
 }
 
 // ── permissions ────────────────────────────────────────────────────────
@@ -182,7 +189,10 @@ func ingsEditBlock(ac *auth.AuthContext, i *ingestion.Ingestion, kinds ingsKindP
 	}
 	kind := ingsKindOf(i.Definition.Source)
 	if _, custom := i.Definition.Source.(ingestion.Custom); custom {
-		if perm := kinds.of(kind); perm != "" && !ac.HasPermission(perm) {
+		if perm := kinds.of(kind); !ingestion.HoldsKindPermission(ac, perm) {
+			if perm == auth.PermIngestionRoute && ac.HasPermission(perm) {
+				return "Changing a " + kind + " ingestion needs an anchor-tier account as well as " + perm + "."
+			}
 			return "Changing a " + kind + " ingestion needs " + perm + "."
 		}
 	}
@@ -236,13 +246,17 @@ func (q ingsQuery) one(name string) string {
 // ── list ───────────────────────────────────────────────────────────────
 
 type ingsRow struct {
-	ID, Code, Name       string
-	Application, Client  string
-	Kind, Where          string
-	Active               bool
-	Draft                bool
-	Set                  string
-	Notice               bool
+	ID, Code, Name      string
+	Application, Client string
+	Kind, Where         string
+	Active              bool
+	Draft               bool
+	Set                 string
+	Notice              bool
+	// Notices counts the undismissed rejected failures; LatestNotice is the
+	// newest one's message.
+	Notices              int
+	LatestNotice         string
 	Version, Latest      int
 	Updated, UpdatedISO  string
 	DetailHref, EditHref string
@@ -371,8 +385,19 @@ func (h *Ingestions) listView(ctx context.Context, ac *auth.AuthContext, q ingsQ
 	if err != nil {
 		return ingsView{}, err
 	}
+	shown := make([]string, 0, len(page.Items))
 	for i := range page.Items {
-		v.Rows = append(v.Rows, toIngsRow(ac, &page.Items[i], names, kinds, carries))
+		shown = append(shown, page.Items[i].ID)
+	}
+	notices, err := h.Store.NoticesOf(ctx, shown)
+	if err != nil {
+		return ingsView{}, usecase.Internal("REPO", "notices failed", err)
+	}
+	for i := range page.Items {
+		row := toIngsRow(ac, &page.Items[i], names, kinds, carries)
+		n := notices[page.Items[i].ID]
+		row.Notices, row.LatestNotice = n.Count, n.LatestMessage
+		v.Rows = append(v.Rows, row)
 	}
 	if page.Next != "" {
 		next := q
@@ -396,6 +421,14 @@ func (h *Ingestions) clientNames(ctx context.Context) (fnsNames, error) {
 }
 
 func ingsURL(id string) string { return ingsPath + "/" + url.PathEscape(id) }
+
+// ingsNoticeCount is "1 notice" or "n notices".
+func ingsNoticeCount(n int) string {
+	if n == 1 {
+		return "1 notice"
+	}
+	return strconv.Itoa(n) + " notices"
+}
 
 func toIngsRow(ac *auth.AuthContext, item *ingestion.ListItem, names fnsNames, kinds ingsKindPerms, carries func(string) bool) ingsRow {
 	i := &item.Ingestion
@@ -543,17 +576,22 @@ type ingsDetail struct {
 	ClientIdentifier                    string
 	Active, Draft, Notice               bool
 	Set                                 string
-	Version, Latest                     int
-	Kind, Where, Endpoint               string
-	Split, SourceYAML                   string
-	Target                              ingestion.Target
-	KeepPayloads                        bool
-	Created, Updated                    string
-	YAML                                string
-	Versions                            []ingsVersionRow
-	Compare                             *ingsComparison
-	Tab                                 string
-	Perms                               ingsPerms
+	// Notices and LatestNotice: the undismissed rejected failures.
+	Notices      int
+	LatestNotice string
+	// Warnings: what the live definition says that will not run as meant.
+	Warnings              []string
+	Version, Latest       int
+	Kind, Where, Endpoint string
+	Split, SourceYAML     string
+	Target                ingestion.Target
+	KeepPayloads          bool
+	Created, Updated      string
+	YAML                  string
+	Versions              []ingsVersionRow
+	Compare               *ingsComparison
+	Tab                   string
+	Perms                 ingsPerms
 	// CanChange: Change… and New version are offered; EditBlock says why a
 	// caller who may update is not offered them.
 	CanChange bool
@@ -659,6 +697,12 @@ func (h *Ingestions) buildDetail(ctx context.Context, ac *auth.AuthContext, i *i
 	if _, ok := def.Source.(ingestion.HTTP); ok {
 		d.Endpoint = "POST /ingest/" + clientIdentifier + "/" + i.Code + " on each runtime"
 	}
+	notices, err := h.Store.NoticesOf(ctx, []string{i.ID})
+	if err != nil {
+		return ingsDetail{}, usecase.Internal("REPO", "notices failed", err)
+	}
+	d.Notices, d.LatestNotice = notices[i.ID].Count, notices[i.ID].LatestMessage
+	d.Warnings = def.Warnings()
 	d.EditBlock = ingsEditBlock(ac, i, kinds)
 	d.CanChange = perms.Update && d.EditBlock == ""
 	d.CanRemove = perms.Delete && i.ManagedBy == nil

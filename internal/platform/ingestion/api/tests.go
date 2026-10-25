@@ -42,6 +42,11 @@ func (s *State) queueTest(ctx context.Context, in *apicommon.In[TestIngestionReq
 			return nil, err
 		}
 		ingestionID, applicationID, clientID, def = &i.ID, i.ApplicationID, i.ClientID, i.Definition
+		// A definition saved before the outbound guard existed is held to it
+		// here: a test sends the runtime where the source points.
+		if err := ingestion.CheckSourceAddresses(def.Source).Err(); err != nil {
+			return nil, err
+		}
 	case b.IngestionID == nil && b.Definition != nil:
 		var err error
 		if def, err = parseDefinition(*b.Definition); err != nil {
@@ -65,17 +70,11 @@ func (s *State) queueTest(ctx context.Context, in *apicommon.In[TestIngestionReq
 			return nil, err
 		}
 		applicationID = app.ID
-		// Trying an unsaved extension kind runs it on a runtime, so it needs
-		// what saving one would.
-		if custom, ok := def.Source.(ingestion.Custom); ok {
-			perm, err := s.Repo.RequiredPermission(ctx, custom.Type)
-			if err != nil {
-				return nil, usecase.Internal("REPO", "required permission lookup failed", err)
-			}
-			if perm != "" && !ac.HasPermission(perm) {
-				return nil, usecase.Authorization("INGESTION_KIND_PERMISSION_REQUIRED",
-					"permission required for source kind "+custom.Type+": "+perm)
-			}
+		// Trying an unsaved definition runs it on a runtime, so it needs what
+		// creating it would: the kind's permission, the runtime identity, the
+		// secrets it points (the outbound guard is in Validate, above).
+		if err := s.Repo.CheckAuthor(ctx, ac, ingestion.Change{Next: def}); err != nil {
+			return nil, err
 		}
 	default:
 		return nil, usecase.Validation("INGESTION_TEST_INVALID",

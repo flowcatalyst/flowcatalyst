@@ -95,16 +95,32 @@ func ValidateCode(code string) Problems {
 	return v.problems
 }
 
-// Validate checks the shape of a definition, every problem at once. Whether
-// the pool, connection or service account exists, and whether the target
-// address is allowed, is the Resolver's to say: shape only here.
+// Validate checks the shape of a definition, every problem at once, and the
+// outbound guard on the source's addresses (sourceguard.go). Whether the
+// pool, connection or service account exists, and whether the target address
+// is allowed, is the Resolver's to say.
 func (d Definition) Validate() Problems {
 	var v checker
 	v.require("name", strings.TrimSpace(d.Name) != "" && len(d.Name) <= 200, "must be 1 to 200 characters")
 	v.target(d.Target)
 	v.split(d.Split)
 	v.source(d.Source, d.Split)
+	// Where the source sends the runtime is checked here too, so a save and a
+	// test refuse a loopback, link-local or metadata address the same way.
+	v.addresses(d.Source)
 	return v.problems
+}
+
+// Warnings are what a definition says that saves but will not run as meant:
+// today an sftp source that neither names the server's host key nor accepts
+// any, which the runtime refuses to start (it reports the route FAILED).
+func (d Definition) Warnings() []string {
+	var out []string
+	if s, ok := d.Source.(Sftp); ok && s.KnownHosts == nil && !s.AcceptAnyHostKey {
+		out = append(out, "source.knownHosts is empty and source.acceptAnyHostKey is off: the runtime refuses to start an "+
+			"sftp source that does not check the server's host key; give its known_hosts line, or accept any host key")
+	}
+	return out
 }
 
 type checker struct {
@@ -176,6 +192,8 @@ func (v *checker) source(src Source, split Split) {
 		v.require("source.username", strings.TrimSpace(s.Username) != "", "is required")
 		v.secret("source.credential", s.Credential)
 		v.every("source.every", s.Every)
+		v.require("source.acceptAnyHostKey", !s.AcceptAnyHostKey || s.KnownHosts == nil,
+			"may not be set with knownHosts: the server's key is checked against it")
 	case RabbitMQ:
 		u := parseURL(s.URI)
 		v.require("source.uri", u != nil && (u.Scheme == "amqp" || u.Scheme == "amqps") && u.Host != "" && u.User == nil,

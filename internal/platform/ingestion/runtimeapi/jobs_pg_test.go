@@ -27,6 +27,7 @@ import (
 // targets are the records a target resolves: a pool, a signing service
 // account, and a connection fronting another one.
 type targets struct {
+	app           string // the code of the ingestions' application
 	pool          *dispatchpool.DispatchPool
 	account       *serviceaccount.ServiceAccount
 	connection    *connection.Connection
@@ -35,9 +36,11 @@ type targets struct {
 
 func (e *env) makeTargets() targets {
 	e.t.Helper()
-	var tg targets
+	tg := targets{app: e.app.Code}
 	tg.pool = dispatchpool.New("pool-"+unique(), "Pool")
+	// The signing account is the application's own, as a target's must be.
 	tg.account = serviceaccount.New("sa-"+unique(), "Signer")
+	tg.account.ApplicationID = &e.app.ID
 	tg.connectionAcc = serviceaccount.New("csa-"+unique(), "Connection signer")
 	tg.connection = connection.New("conn-"+unique(), "Connection", tg.connectionAcc.ID)
 	e.persist(testpg.NewUoW(e.t), func(ctx context.Context, tx *usecasepgx.DbTx) error {
@@ -58,8 +61,8 @@ func (e *env) makeTargets() targets {
 
 // target renders the definition's target; extra is spliced in verbatim.
 func (tg targets) target(extra string) string {
-	return fmt.Sprintf(`{"code":"acme:orders:order:received","targetUrl":"https://hooks.example.com/orders","pool":%q,"mode":"NEXT_ON_ERROR","batchSize":100%s}`,
-		tg.pool.Code, extra)
+	return fmt.Sprintf(`{"code":"%s:orders:order:received","targetUrl":"https://hooks.example.com/orders","pool":%q,"mode":"NEXT_ON_ERROR","batchSize":100%s}`,
+		tg.app, tg.pool.Code, extra)
 }
 
 func (tg targets) viaConnection() string {
@@ -147,7 +150,7 @@ func TestJobs_BuiltFromTheIngestionsTarget(t *testing.T) {
 
 	j := e.job(results[0]["id"].(string))
 	assert.Equal(t, "ingestion:"+e.app.Code+":via-connection", j.source)
-	assert.Equal(t, "acme:orders:order:received", j.code)
+	assert.Equal(t, e.app.Code+":orders:order:received", j.code)
 	assert.Equal(t, "https://hooks.example.com/orders", j.targetURL)
 	assert.Equal(t, "NEXT_ON_ERROR", j.mode)
 	assert.Equal(t, tg.pool.ID, deref(j.pool))
@@ -381,10 +384,19 @@ func TestJobs_PermissionAndReach(t *testing.T) {
 
 	e.who = e.principal(permView, permTest)
 	assert.Equal(t, http.StatusForbidden, e.do(http.MethodPost, jobsPath(i.ID, rt), body).code)
+	// A forged or mis-provisioned runtime account (below anchor tier, or an
+	// application's) is refused, even for its own client's ingestion.
+	e.who = clientTier(e.principal(permRuntime), string(e.client.ID))
+	r := e.do(http.MethodPost, jobsPath(i.ID, rt), body)
+	assert.Equal(t, http.StatusForbidden, r.code, r.raw)
+	assert.Equal(t, "INGESTION_RUNTIME_ANCHOR_REQUIRED", r.errCode())
 	e.who = e.principal(permRuntime)
-	e.who.Clients = []string{"clt_someoneelse0"}
-	assert.Equal(t, http.StatusOK, e.do(http.MethodPost, jobsPath(i.ID, rt), body).code,
-		"the runtime role is platform-wide: the client a person's account is confined to does not matter")
+	e.who.AllApplications, e.who.Applications = false, []string{string(e.app.ID)}
+	r = e.do(http.MethodPost, jobsPath(i.ID, rt), body)
+	assert.Equal(t, http.StatusForbidden, r.code, r.raw)
+	assert.Equal(t, "INGESTION_RUNTIME_APPLICATION_BOUND", r.errCode())
+	e.who = e.principal(permRuntime)
+	assert.Equal(t, http.StatusOK, e.do(http.MethodPost, jobsPath(i.ID, rt), body).code, "the runtime role is platform-wide")
 }
 
 const secretsSection = "secrets"
@@ -513,8 +525,11 @@ func TestSecrets_PermissionAndReach(t *testing.T) {
 	e.who = e.principal(permView, "platform:admin:config:reveal", "platform:application-service:config:reveal")
 	assert.Equal(t, http.StatusForbidden, e.do(http.MethodGet, secretPath(i.ID, "sftp-password", holder), nil).code,
 		"the reveal grants of platform config do not open this route")
+	e.who = clientTier(e.principal(permRuntime), string(e.client.ID))
+	assert.Equal(t, "INGESTION_RUNTIME_ANCHOR_REQUIRED", e.do(http.MethodGet, secretPath(i.ID, "sftp-password", holder), nil).errCode())
 	e.who = e.principal(permRuntime)
-	e.who.Clients = []string{"clt_someoneelse0"}
-	assert.Equal(t, http.StatusOK, e.do(http.MethodGet, secretPath(i.ID, "sftp-password", holder), nil).code,
-		"the runtime role is platform-wide: the client a person's account is confined to does not matter")
+	e.who.AllApplications, e.who.Applications = false, []string{string(e.app.ID)}
+	assert.Equal(t, "INGESTION_RUNTIME_APPLICATION_BOUND", e.do(http.MethodGet, secretPath(i.ID, "sftp-password", holder), nil).errCode())
+	e.who = e.principal(permRuntime)
+	assert.Equal(t, http.StatusOK, e.do(http.MethodGet, secretPath(i.ID, "sftp-password", holder), nil).code, "the runtime role is platform-wide")
 }

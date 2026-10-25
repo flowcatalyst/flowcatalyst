@@ -190,7 +190,11 @@ func ingsBuiltinKinds() []ingsKind {
 			ingsSecretField("sftp.credential", "source.credential", "Password or private key (secret name)", "sftp-password", nil),
 			{
 				Name: "sftp.knownHosts", Path: "source.knownHosts", Label: "Server's host key", Type: ingsArea, Optional: true,
-				Help: "Its known_hosts line. Empty connects without checking who the server is.",
+				Help: "Its known_hosts line. Without it the runtime refuses to connect, unless any host key is accepted below.",
+			},
+			{
+				Name: "sftp.acceptAnyHostKey", Path: "source.acceptAnyHostKey", Type: ingsSwitch, Label: "Accept any host key",
+				Help: "Connects without checking who the server is, so whoever answers at the address gets the credential. Needs platform:ingestion:ingestion:bind-secrets; not with a host key.",
 			},
 			ingsEvery("sftp.every", "source.every", "Poll every", "PT1M"),
 		}},

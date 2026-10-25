@@ -9,11 +9,38 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
+const ingestionClientStatus = `-- name: IngestionClientStatus :one
+SELECT status FROM tnt_clients WHERE id = $1
+`
+
+// A suspended or deactivated client's ingestions take no jobs.
+func (q *Queries) IngestionClientStatus(ctx context.Context, id ids.ClientID) (string, error) {
+	row := q.db.QueryRow(ctx, ingestionClientStatus, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
+const ingestionDBNow = `-- name: IngestionDBNow :one
+SELECT now()::timestamptz AS now
+`
+
+// The database's clock, read once per transaction (now() is the
+// transaction's start), so every replica times leases by the same clock.
+func (q *Queries) IngestionDBNow(ctx context.Context) (time.Time, error) {
+	row := q.db.QueryRow(ctx, ingestionDBNow)
+	var now time.Time
+	err := row.Scan(&now)
+	return now, err
+}
+
 const ingestionFailureInsert = `-- name: IngestionFailureInsert :exec
-INSERT INTO ing_failures (id, ingestion_id, runtime_id, version, kind, message, after_records, excerpt, occurred_at, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO ing_failures (id, ingestion_id, runtime_id, version, kind, category, message, after_records, excerpt, occurred_at, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 `
 
 type IngestionFailureInsertParams struct {
@@ -22,6 +49,7 @@ type IngestionFailureInsertParams struct {
 	RuntimeID    *string   `db:"runtime_id"`
 	Version      *int32    `db:"version"`
 	Kind         string    `db:"kind"`
+	Category     string    `db:"category"`
 	Message      string    `db:"message"`
 	AfterRecords int64     `db:"after_records"`
 	Excerpt      *string   `db:"excerpt"`
@@ -36,6 +64,7 @@ func (q *Queries) IngestionFailureInsert(ctx context.Context, arg IngestionFailu
 		arg.RuntimeID,
 		arg.Version,
 		arg.Kind,
+		arg.Category,
 		arg.Message,
 		arg.AfterRecords,
 		arg.Excerpt,
@@ -49,8 +78,8 @@ const ingestionFindByIDs = `-- name: IngestionFindByIDs :many
 SELECT id, application_id, client_id, code, name, active, version, latest_version, source, split, target, keep_failed_payloads, managed_by, created_at, updated_at FROM ing_ingestions WHERE id = ANY($1::text[])
 `
 
-func (q *Queries) IngestionFindByIDs(ctx context.Context, ids []string) ([]IngIngestion, error) {
-	rows, err := q.db.Query(ctx, ingestionFindByIDs, ids)
+func (q *Queries) IngestionFindByIDs(ctx context.Context, argIds []string) ([]IngIngestion, error) {
+	rows, err := q.db.Query(ctx, ingestionFindByIDs, argIds)
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +174,44 @@ func (q *Queries) IngestionJobKeysFind(ctx context.Context, arg IngestionJobKeys
 		return nil, err
 	}
 	return items, nil
+}
+
+const ingestionKindRequirementFind = `-- name: IngestionKindRequirementFind :one
+SELECT required_permission FROM ing_kind_requirements WHERE kind = $1
+`
+
+func (q *Queries) IngestionKindRequirementFind(ctx context.Context, kind string) (string, error) {
+	row := q.db.QueryRow(ctx, ingestionKindRequirementFind, kind)
+	var required_permission string
+	err := row.Scan(&required_permission)
+	return required_permission, err
+}
+
+const ingestionKindRequirementUpsert = `-- name: IngestionKindRequirementUpsert :exec
+INSERT INTO ing_kind_requirements (kind, required_permission, runtime_id, updated_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (kind) DO UPDATE SET
+    required_permission = EXCLUDED.required_permission,
+    runtime_id = EXCLUDED.runtime_id,
+    updated_at = EXCLUDED.updated_at
+`
+
+type IngestionKindRequirementUpsertParams struct {
+	Kind               string    `db:"kind"`
+	RequiredPermission string    `db:"required_permission"`
+	RuntimeID          string    `db:"runtime_id"`
+	UpdatedAt          time.Time `db:"updated_at"`
+}
+
+// The permission a runtime-reported kind declared in its last report.
+func (q *Queries) IngestionKindRequirementUpsert(ctx context.Context, arg IngestionKindRequirementUpsertParams) error {
+	_, err := q.db.Exec(ctx, ingestionKindRequirementUpsert,
+		arg.Kind,
+		arg.RequiredPermission,
+		arg.RuntimeID,
+		arg.UpdatedAt,
+	)
+	return err
 }
 
 const ingestionLeaseClaim = `-- name: IngestionLeaseClaim :execrows
@@ -243,26 +310,50 @@ func (q *Queries) IngestionLeaseReleaseExcept(ctx context.Context, arg Ingestion
 	return result.RowsAffected(), nil
 }
 
+const ingestionLeaseShareHeld = `-- name: IngestionLeaseShareHeld :one
+SELECT ingestion_id FROM ing_leases
+WHERE ingestion_id = $1 AND runtime_id = $2 AND expires_at > $3
+FOR SHARE
+`
+
+type IngestionLeaseShareHeldParams struct {
+	IngestionID string    `db:"ingestion_id"`
+	RuntimeID   string    `db:"runtime_id"`
+	Now         time.Time `db:"now"`
+}
+
+// The jobs call holds the lease row while it creates the jobs: a share lock,
+// so the holder's own concurrent requests do not wait on each other, while a
+// claim by another runtime (an UPDATE) waits until they have committed.
+func (q *Queries) IngestionLeaseShareHeld(ctx context.Context, arg IngestionLeaseShareHeldParams) (string, error) {
+	row := q.db.QueryRow(ctx, ingestionLeaseShareHeld, arg.IngestionID, arg.RuntimeID, arg.Now)
+	var ingestion_id string
+	err := row.Scan(&ingestion_id)
+	return ingestion_id, err
+}
+
 const ingestionMetricUpsert = `-- name: IngestionMetricUpsert :exec
-INSERT INTO ing_exchange_metrics (ingestion_id, runtime_id, window_start, window_secs, completed, failed, records, jobs)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO ing_exchange_metrics (ingestion_id, runtime_id, window_start, window_secs, completed, failed, records, jobs, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (ingestion_id, runtime_id, window_start) DO UPDATE SET
     window_secs = EXCLUDED.window_secs, completed = EXCLUDED.completed, failed = EXCLUDED.failed,
     records = EXCLUDED.records, jobs = EXCLUDED.jobs
 `
 
 type IngestionMetricUpsertParams struct {
-	IngestionID string    `db:"ingestion_id"`
-	RuntimeID   string    `db:"runtime_id"`
-	WindowStart time.Time `db:"window_start"`
-	WindowSecs  int32     `db:"window_secs"`
-	Completed   int64     `db:"completed"`
-	Failed      int64     `db:"failed"`
-	Records     int64     `db:"records"`
-	Jobs        int64     `db:"jobs"`
+	IngestionID string     `db:"ingestion_id"`
+	RuntimeID   string     `db:"runtime_id"`
+	WindowStart time.Time  `db:"window_start"`
+	WindowSecs  int32      `db:"window_secs"`
+	Completed   int64      `db:"completed"`
+	Failed      int64      `db:"failed"`
+	Records     int64      `db:"records"`
+	Jobs        int64      `db:"jobs"`
+	CreatedAt   *time.Time `db:"created_at"`
 }
 
-// A window re-sent replaces the counts: it never adds to them.
+// A window re-sent replaces the counts: it never adds to them. created_at is
+// when the platform first wrote the window (retention prunes by it).
 func (q *Queries) IngestionMetricUpsert(ctx context.Context, arg IngestionMetricUpsertParams) error {
 	_, err := q.db.Exec(ctx, ingestionMetricUpsert,
 		arg.IngestionID,
@@ -273,6 +364,7 @@ func (q *Queries) IngestionMetricUpsert(ctx context.Context, arg IngestionMetric
 		arg.Failed,
 		arg.Records,
 		arg.Jobs,
+		arg.CreatedAt,
 	)
 	return err
 }
@@ -306,22 +398,28 @@ func (q *Queries) IngestionRouteStateUpsert(ctx context.Context, arg IngestionRo
 }
 
 const ingestionRuntimeKinds = `-- name: IngestionRuntimeKinds :one
-SELECT kinds FROM ing_runtimes WHERE runtime_id = $1
+SELECT kinds, builtin_kinds FROM ing_runtimes WHERE runtime_id = $1
 `
 
-func (q *Queries) IngestionRuntimeKinds(ctx context.Context, runtimeID string) (json.RawMessage, error) {
+type IngestionRuntimeKindsRow struct {
+	Kinds        json.RawMessage `db:"kinds"`
+	BuiltinKinds json.RawMessage `db:"builtin_kinds"`
+}
+
+func (q *Queries) IngestionRuntimeKinds(ctx context.Context, runtimeID string) (IngestionRuntimeKindsRow, error) {
 	row := q.db.QueryRow(ctx, ingestionRuntimeKinds, runtimeID)
-	var kinds json.RawMessage
-	err := row.Scan(&kinds)
-	return kinds, err
+	var i IngestionRuntimeKindsRow
+	err := row.Scan(&i.Kinds, &i.BuiltinKinds)
+	return i, err
 }
 
 const ingestionRuntimeUpsert = `-- name: IngestionRuntimeUpsert :exec
 
-INSERT INTO ing_runtimes (runtime_id, kinds, contract_version, url, first_seen_at, last_seen_at)
-VALUES ($1, $2, $3, $4, $5, $5)
+INSERT INTO ing_runtimes (runtime_id, kinds, builtin_kinds, contract_version, url, first_seen_at, last_seen_at)
+VALUES ($1, $2, $3, $4, $5, $6, $6)
 ON CONFLICT (runtime_id) DO UPDATE SET
     kinds = EXCLUDED.kinds,
+    builtin_kinds = EXCLUDED.builtin_kinds,
     contract_version = EXCLUDED.contract_version,
     url = EXCLUDED.url,
     last_seen_at = EXCLUDED.last_seen_at
@@ -330,6 +428,7 @@ ON CONFLICT (runtime_id) DO UPDATE SET
 type IngestionRuntimeUpsertParams struct {
 	RuntimeID       string          `db:"runtime_id"`
 	Kinds           json.RawMessage `db:"kinds"`
+	BuiltinKinds    json.RawMessage `db:"builtin_kinds"`
 	ContractVersion int32           `db:"contract_version"`
 	Url             *string         `db:"url"`
 	Now             time.Time       `db:"now"`
@@ -343,6 +442,7 @@ func (q *Queries) IngestionRuntimeUpsert(ctx context.Context, arg IngestionRunti
 	_, err := q.db.Exec(ctx, ingestionRuntimeUpsert,
 		arg.RuntimeID,
 		arg.Kinds,
+		arg.BuiltinKinds,
 		arg.ContractVersion,
 		arg.Url,
 		arg.Now,
@@ -557,8 +657,8 @@ type IngestionTestRefsRow struct {
 
 // What a claimed request is named by: its application, client and, for a saved
 // ingestion, its code.
-func (q *Queries) IngestionTestRefs(ctx context.Context, ids []string) ([]IngestionTestRefsRow, error) {
-	rows, err := q.db.Query(ctx, ingestionTestRefs, ids)
+func (q *Queries) IngestionTestRefs(ctx context.Context, argIds []string) ([]IngestionTestRefsRow, error) {
+	rows, err := q.db.Query(ctx, ingestionTestRefs, argIds)
 	if err != nil {
 		return nil, err
 	}

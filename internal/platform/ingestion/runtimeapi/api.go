@@ -10,11 +10,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 	"unicode/utf8"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
@@ -44,8 +46,35 @@ type State struct {
 	// Lease is how long a lease lasts without being renewed; zero is
 	// ingestion.DefaultLease.
 	Lease time.Duration
-	// Now is the clock; nil is time.Now in UTC.
+	// Now is a clock for tests. Nil is the database's clock for everything a
+	// lease decides (taking, renewing, holding, expiring), so replicas whose
+	// own clocks disagree still agree on who holds what.
 	Now func() time.Time
+	// JobsMaxBytes and ReportMaxBytes bound the request bodies of the jobs and
+	// report calls; zero reads FC_INGESTION_JOBS_MAX_BYTES and
+	// FC_INGESTION_REPORT_MAX_BYTES (DefaultJobsMaxBytes, DefaultReportMaxBytes).
+	JobsMaxBytes, ReportMaxBytes int64
+}
+
+// The request-body bounds of the two calls that carry payloads. A jobs
+// request holds up to 1,000 records (MaxJobRecords), so the limit is per
+// request, not per record: 10 MiB (owner ruling) is about 10 KB a record at
+// the most. A report holds up to 500 failures with their excerpts and 2,000
+// windows and route states: 4 MiB. Every other runtime call keeps huma's
+// default of 1 MiB.
+const (
+	DefaultJobsMaxBytes   int64 = 10 << 20
+	DefaultReportMaxBytes int64 = 4 << 20
+)
+
+func bodyLimit(set int64, env string, def int64) int64 {
+	if set > 0 {
+		return set
+	}
+	if n := envutil.Int(env, 0); n > 0 {
+		return int64(n)
+	}
+	return def
 }
 
 const tag = "ingestion-runtime"
@@ -72,18 +101,38 @@ func Register(api huma.API, s *State) {
 		DefaultStatus: http.StatusOK,
 		Errors:        []int{http.StatusUpgradeRequired},
 	}, s.poll)
-	apiroute.Post(g, ReportOperationID, "/api/ingestion-runtime/v1/report", "A runtime reports route states, exchange windows, failures and test answers (ingestion runtime only)", http.StatusNoContent, s.report)
+	// The report and jobs calls carry payloads, so they take bigger bodies
+	// than apiroute's default; huma.Register directly sets MaxBodyBytes.
+	huma.Register(api, huma.Operation{
+		OperationID:   ReportOperationID,
+		Method:        http.MethodPost,
+		Path:          "/api/ingestion-runtime/v1/report",
+		Summary:       "A runtime reports route states, exchange windows, failures and test answers (ingestion runtime only)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+		MaxBodyBytes:  bodyLimit(s.ReportMaxBytes, "FC_INGESTION_REPORT_MAX_BYTES", DefaultReportMaxBytes),
+	}, s.report)
 	apiroute.Get(g, "ingestionRuntimeGetState", "/api/ingestion-runtime/v1/state/{ingestionId}/{key}", "Read a value a polled source keeps (lease holder only)", s.getState)
-	apiroute.Post(g, CreateJobsOperationID, "/api/ingestion-runtime/v1/ingestions/{id}/jobs", "Create dispatch jobs from records, under the ingestion's own target (ingestion runtime only)", http.StatusOK, s.createJobs)
+	huma.Register(api, huma.Operation{
+		OperationID:   CreateJobsOperationID,
+		Method:        http.MethodPost,
+		Path:          "/api/ingestion-runtime/v1/ingestions/{id}/jobs",
+		Summary:       "Create dispatch jobs from records, under the ingestion's own target (ingestion runtime only)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+		MaxBodyBytes:  bodyLimit(s.JobsMaxBytes, "FC_INGESTION_JOBS_MAX_BYTES", DefaultJobsMaxBytes),
+	}, s.createJobs)
 	apiroute.Get(g, GetSecretOperationID, "/api/ingestion-runtime/v1/ingestions/{id}/secrets/{name}", "Reveal a secret the ingestion names (ingestion runtime only)", s.getSecret)
 	apiroute.Put(g, "ingestionRuntimePutState", "/api/ingestion-runtime/v1/state/{ingestionId}/{key}", "Store a value a polled source keeps (lease holder only)", http.StatusNoContent, s.putState)
 }
 
+// now is the time the repository decides as of: the test clock, or zero,
+// which the repository reads as the database's clock.
 func (s *State) now() time.Time {
 	if s.Now != nil {
 		return s.Now()
 	}
-	return time.Now().UTC()
+	return time.Time{}
 }
 
 func (s *State) lease() time.Duration {
@@ -119,16 +168,16 @@ type pollInput struct {
 
 func (s *State) poll(ctx context.Context, in *pollInput) (*apicommon.Out[PollResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanOperateIngestionRuntime(ac); err != nil {
+	if err := auth.RequireIngestionRuntime(ac); err != nil {
 		return nil, err
 	}
 	b := in.Body
 	if !ingestion.SupportedContract(b.ContractVersion) {
 		return nil, unsupportedContract(b.ContractVersion)
 	}
-	now := s.now()
 	req := ingestion.PollRequest{
-		RuntimeID: b.RuntimeID, ContractVersion: b.ContractVersion, Kinds: b.Kinds, URL: b.URL, Now: now, Lease: s.lease(),
+		RuntimeID: b.RuntimeID, ContractVersion: b.ContractVersion, Kinds: b.Kinds, BuiltinKinds: knownBuiltins(b.BuiltinKinds),
+		URL: b.URL, Now: s.now(), Lease: s.lease(),
 	}
 	req.Clients, req.Applications = ingestion.ListReach(runtimeReach(ac))
 	res, err := s.Repo.Poll(ctx, req)
@@ -136,7 +185,7 @@ func (s *State) poll(ctx context.Context, in *pollInput) (*apicommon.Out[PollRes
 		return nil, usecase.Internal("REPO", "poll failed", err)
 	}
 	body := PollResponse{
-		AsOf: jsontime.New(now), LeaseFor: ingestion.Duration(s.lease()).String(),
+		AsOf: jsontime.New(res.AsOf), LeaseFor: ingestion.Duration(s.lease()).String(),
 		Ingestions: make([]RuntimeIngestion, 0, len(res.Ingestions)), Tests: make([]RuntimeTest, 0, len(res.Tests)),
 	}
 	for _, item := range res.Ingestions {
@@ -154,6 +203,23 @@ func (s *State) poll(ctx context.Context, in *pollInput) (*apicommon.Out[PollRes
 		body.Tests = append(body.Tests, RuntimeTest{ID: t.ID, ExpiresAt: jsontime.New(t.ExpiresAt), Ingestion: ri})
 	}
 	return &apicommon.Out[PollResponse]{Body: body}, nil
+}
+
+// knownBuiltins keeps the built-in kinds this platform knows from a poll's
+// builtinKinds: a name it does not know (a newer runtime's kind) runs nothing
+// here, so it is not stored. Nil (not declared) stays nil; a declared list
+// stays a list, empty when nothing in it is known.
+func knownBuiltins(declared []string) []string {
+	if declared == nil {
+		return nil
+	}
+	out := []string{}
+	for _, k := range declared {
+		if k != ingestion.KindCustom && ingestion.IsBuiltInKind(k) && !slices.Contains(out, k) {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // fromIngestion renders the live definition in the contract's form.
@@ -193,7 +259,7 @@ type reportInput struct {
 
 func (s *State) report(ctx context.Context, in *reportInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanOperateIngestionRuntime(ac); err != nil {
+	if err := auth.RequireIngestionRuntime(ac); err != nil {
 		return nil, err
 	}
 	b := in.Body
@@ -212,9 +278,19 @@ func (s *State) report(ctx context.Context, in *reportInput) (*apicommon.Empty, 
 		})
 	}
 	for _, f := range b.Failures {
+		category := f.Category
+		if category == "" {
+			category = ingestion.FailurePayload
+		}
+		if !ingestion.ValidFailureCategory(category) {
+			// The schema's enum says so too; this holds when the relaxed body
+			// check lets an unknown value through.
+			return nil, usecase.Validation("REPORT_FAILURE_CATEGORY_INVALID",
+				"a failure's category is payload or rejected: "+f.IngestionID)
+		}
 		rep.Failures = append(rep.Failures, ingestion.FailureReport{
-			IngestionID: f.IngestionID, Version: f.Version, At: f.At.Underlying(), Kind: f.Kind, Message: f.Message,
-			AfterRecords: f.AfterRecords, Excerpt: f.Excerpt,
+			IngestionID: f.IngestionID, Version: f.Version, At: f.At.Underlying(), Kind: f.Kind, Category: category,
+			Message: f.Message, AfterRecords: f.AfterRecords, Excerpt: f.Excerpt,
 		})
 	}
 	for _, t := range b.Tests {
@@ -254,12 +330,14 @@ type putStateInput struct {
 	Body        StateValue
 }
 
-// runtimeReach is the reach of a caller that holds platform:ingestion:runtime:operate:
+// runtimeReach is the reach of a caller that passed auth.RequireIngestionRuntime:
 // every client and every application. A runtime is infrastructure that serves the
 // whole platform, and one fleet runs every application's ingestions (the fair share
-// spreads them over its instances), so how its service account was provisioned (bound
-// to one application or not) must not decide which ingestions it runs. The permission
-// is the gate; it is held by runtime accounts only.
+// spreads them over its instances). The caller is already known to be an anchor-tier
+// service account bound to no application (owner ruling 2026-10-25: a client-tier or
+// application-bound account is refused before this, never silently widened), so this
+// only spells out the reach it has: an account bound to no application holds no
+// application list to confine it by.
 func runtimeReach(ac *auth.AuthContext) *auth.AuthContext {
 	r := *ac
 	r.Scope = auth.ScopeAnchor
@@ -271,7 +349,7 @@ func runtimeReach(ac *auth.AuthContext) *auth.AuthContext {
 // the ingestion, and returns it.
 func (s *State) requireIngestion(ctx context.Context, id string) (*ingestion.Ingestion, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanOperateIngestionRuntime(ac); err != nil {
+	if err := auth.RequireIngestionRuntime(ac); err != nil {
 		return nil, err
 	}
 	i, err := s.Repo.FindByID(ctx, id)

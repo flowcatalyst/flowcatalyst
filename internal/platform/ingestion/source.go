@@ -60,9 +60,13 @@ type Sftp struct {
 	Directory  string    `json:"directory"`
 	Username   string    `json:"username"`
 	Credential SecretRef `json:"credential"`
-	// KnownHosts is the server's host key as a known_hosts line; nil connects
-	// without checking who the server is.
+	// KnownHosts is the server's host key as a known_hosts line. Without it the
+	// runtime refuses to start the source unless AcceptAnyHostKey is set.
 	KnownHosts *string `json:"knownHosts,omitempty"`
+	// AcceptAnyHostKey connects without checking who the server is: whoever
+	// answers at the address receives the credential. It widens where the
+	// secret goes, so turning it on needs bind-secrets (CheckAuthor).
+	AcceptAnyHostKey bool `json:"acceptAnyHostKey,omitempty"`
 	// Include is a file name pattern such as *.csv; nil takes every file.
 	Include *string  `json:"include,omitempty"`
 	Every   Duration `json:"every"`

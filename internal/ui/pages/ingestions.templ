@@ -159,6 +159,11 @@ templ ingsTable(v ingsView) {
 					if row.Notice {
 						<div class="mt-1 text-xs text-warning">No runtime carries this kind</div>
 					}
+					if row.Notices > 0 {
+						<div class="mt-1 max-w-[22rem] truncate text-xs text-destructive" data-testid="ings-notices" title={ row.LatestNotice }>
+							{ ingsNoticeCount(row.Notices) }: { row.LatestNotice }
+						</div>
+					}
 				}
 				@kit.TD(kit.TDProps{Class: "tabular-nums"}) {
 					if row.Version > 0 {
@@ -257,6 +262,12 @@ templ ingsOverview(d ingsDetail) {
 	}
 	if d.Notice {
 		@kit.Alert(kit.AlertProps{ID: "ings-notice", Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "No runtime carries this kind", Description: "Nothing has failed: no live runtime reports the kind yet, so nobody is there to run it.", Class: "mb-4"})
+	}
+	for _, w := range d.Warnings {
+		@kit.Alert(kit.AlertProps{ID: "ings-warning", Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "It will not run as defined", Description: w, Class: "mb-4"})
+	}
+	if d.Notices > 0 {
+		@kit.Alert(kit.AlertProps{ID: "ings-rejected", Variant: kit.AlertDestructive, Icon: "circle-x", Title: ingsNoticeCount(d.Notices) + ": the platform refused this ingestion's jobs", Description: d.LatestNotice + " Nothing more is made until it is put right. Dismiss each notice on the Failures tab once it is.", Class: "mb-4"})
 	}
 	@kit.FormSection(kit.FormSectionProps{Title: "Ingestion", Actions: ingsChangeButton(d)}) {
 		<div class="fc-detail-grid">
@@ -552,6 +563,7 @@ templ ingsConfirmDialogs(perms ingsPerms) {
 	if perms.Update {
 		@kit.ConfirmDialog(ingsConfirm(ingsPauseDialog, "Pause this ingestion?", "Runtimes stop running it on their next poll. Its definition and versions stay, and it can be resumed.", "Pause", kit.ToneWarn))
 		@kit.ConfirmDialog(ingsConfirm(ingsResumeDialog, "Resume this ingestion?", "Runtimes run its live version again from their next poll.", "Resume", kit.ToneDefault))
+		@kit.ConfirmDialog(ingsConfirm(ingsDismissDialog, "Dismiss this failure?", "It stays in the list, marked dismissed, until retention removes it; a notice stops showing on the ingestion. The dismissal is recorded in the history.", "Dismiss", kit.ToneDefault))
 	}
 	if perms.Delete {
 		@kit.ConfirmDialog(ingsConfirm(ingsDeleteDialog, "Remove this ingestion?", "Runtimes stop it on their next poll. Its versions, and what it kept between polls (watermarks), are removed with it. This cannot be undone.", "Remove", kit.ToneDanger))

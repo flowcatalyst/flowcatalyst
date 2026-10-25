@@ -154,6 +154,7 @@ admin	POST /api/ingestion-sets/{name}/applies/{applyId}/reapply	reapplyIngestion
 admin	POST /api/ingestion-sets/{name}/release	releaseIngestionSet
 admin	POST /api/ingestion-tests	testIngestionConnection
 admin	POST /api/ingestions	createIngestion
+admin	POST /api/ingestions/{id}/failures/{failureId}/dismiss	dismissIngestionFailure
 admin	POST /api/ingestions/{id}/pause	pauseIngestion
 admin	POST /api/ingestions/{id}/resume	resumeIngestion
 admin	POST /api/ingestions/{id}/versions	saveIngestionVersion

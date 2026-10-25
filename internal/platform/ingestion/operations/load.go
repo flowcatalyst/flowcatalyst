@@ -51,28 +51,43 @@ func requireID(id string) error {
 	return nil
 }
 
-// requireKindPermission refuses a caller who lacks the permission a custom
-// source kind declares (camel-route runs a route on the runtime, so creating
-// or changing one needs platform:ingestion:ingestion:route). Built-in kinds
-// declare none.
-func requireKindPermission(ctx context.Context, repo *ingestion.Repository, sources ...ingestion.Source) error {
-	ac := auth.FromContext(ctx)
-	for _, src := range sources {
-		custom, ok := src.(ingestion.Custom)
-		if !ok {
-			continue
-		}
-		perm, err := repo.RequiredPermission(ctx, custom.Type)
-		if err != nil {
-			return usecase.Internal("REPO", "required permission lookup failed", err)
-		}
-		if perm != "" && !ac.HasPermission(perm) {
-			return usecase.Authorization("INGESTION_KIND_PERMISSION_REQUIRED",
-				"permission required for source kind "+custom.Type+": "+perm)
+// checkAuthor refuses a caller who may not save next over the ingestion i (nil
+// for a create): the kind's permission, the runtime identity and the secrets
+// it points (ingestion.Repository.CheckAuthor).
+func checkAuthor(ctx context.Context, repo *ingestion.Repository, i *ingestion.Ingestion, next ingestion.Definition) error {
+	return repo.CheckAuthor(ctx, auth.FromContext(ctx), changeOf(i, next))
+}
+
+// changeOf is the change saving next over i makes (i nil: a create).
+func changeOf(i *ingestion.Ingestion, next ingestion.Definition) ingestion.Change {
+	c := ingestion.Change{Next: next}
+	if i != nil {
+		c.Current = &i.Definition
+		if i.Version > 0 {
+			c.Live = &i.Definition
 		}
 	}
-	return nil
+	return c
 }
+
+// requirePromote refuses a save that would make a version live for a caller
+// without platform:ingestion:ingestion:promote (owner ruling R3). message
+// says which save it is and how to make it without the permission.
+func requirePromote(ctx context.Context, message string) error {
+	if auth.CanPromoteIngestions(auth.FromContext(ctx)) == nil {
+		return nil
+	}
+	return usecase.Authorization("INGESTION_PROMOTE_REQUIRED", message)
+}
+
+// The refusals requirePromote gives each save.
+const (
+	promoteCreate = "creating a live ingestion needs platform:ingestion:ingestion:promote (live is true unless the request says false); " +
+		"send live: false to save it as a draft that someone who holds the permission makes live"
+	promoteUpdate = "an update saves the definition as the live version, which needs platform:ingestion:ingestion:promote; " +
+		"save it with POST /api/ingestions/{id}/versions (live: false) for someone who holds the permission to make live"
+	promoteVersion = "saving a version as live needs platform:ingestion:ingestion:promote; save it with live: false"
+)
 
 // validateDefinition is the shape check every operation that takes a
 // definition makes before anything is read.

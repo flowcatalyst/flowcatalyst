@@ -62,10 +62,15 @@ templ ingsFormBody(f ingsForm) {
 				@kit.Field(kit.FieldProps{Label: "Note", For: f.id("note"), Description: "Optional: why this version, for whoever reads the versions later."}) {
 					@kit.Textarea(kit.TextareaProps{ID: f.id("note"), Name: "note", Value: f.Values["note"], Rows: 2, Attrs: templ.Attributes{"maxlength": "500"}})
 				}
-				if !f.Edit || f.CanPromote {
+				// Making a version live needs promote, a create's as an update's
+				// (the use cases refuse it otherwise); without it the form saves
+				// a draft and says so.
+				if f.CanPromote {
 					@kit.Field(kit.FieldProps{Description: ingsLiveHelp(f), Attrs: templ.Attributes{"id": f.id("live") + "-field"}}) {
 						@kit.Switch(kit.SwitchProps{ID: f.id("live"), Name: "live", Value: ingsOn, Checked: f.Values["live"] == ingsOn, Label: "Make live when saved"})
 					}
+				} else if !f.Edit {
+					<p id={ f.id("live") + "-field" } class="text-sm text-muted-foreground">It is saved as a draft: making a version live needs platform:ingestion:ingestion:promote, so someone who holds it makes it live from the Versions tab.</p>
 				}
 			</div>
 		}

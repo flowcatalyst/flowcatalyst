@@ -31,8 +31,11 @@ type createJobsInput struct {
 
 // requireRuntimeIngestion is what both calls need beyond the runtime
 // permission: the ingestion is the caller's to reach, is live, and the
-// runtime may act for it (ingestion.CheckRuntime).
-func (s *State) requireRuntimeIngestion(ctx context.Context, id, runtimeID string) (*ingestion.Ingestion, error) {
+// runtime carries its kind. withLease also checks, for a polled source, that
+// the runtime holds the lease (ingestion.CheckRuntime) and that the client is
+// active: the secrets call; the jobs call checks both again inside the
+// transaction that makes the jobs, where they cannot change underneath it.
+func (s *State) requireRuntimeIngestion(ctx context.Context, id, runtimeID string, withLease bool) (*ingestion.Ingestion, error) {
 	i, err := s.requireIngestion(ctx, id)
 	if err != nil {
 		return nil, err
@@ -40,11 +43,25 @@ func (s *State) requireRuntimeIngestion(ctx context.Context, id, runtimeID strin
 	if !i.Live() {
 		return nil, usecase.Conflict("INGESTION_NOT_LIVE", "ingestion "+id+" is paused or has no live version")
 	}
-	if err := s.Repo.CheckRuntime(ctx, i, runtimeID, s.now()); err != nil {
+	if withLease {
+		err = s.Repo.CheckRuntime(ctx, i, runtimeID, s.now())
+	} else {
+		err = s.Repo.CheckRuntimeKind(ctx, i, runtimeID)
+	}
+	if err != nil {
 		if usecase.AsError(err) != nil {
 			return nil, err
 		}
 		return nil, usecase.Internal("REPO", "runtime check failed", err)
+	}
+	if withLease {
+		c, err := s.Resolver.Client(ctx, string(i.ClientID))
+		if err != nil {
+			return nil, err
+		}
+		if err := ingestion.ClientActive(string(c.Status), c.ID); err != nil {
+			return nil, err
+		}
 	}
 	return i, nil
 }
@@ -54,7 +71,7 @@ func (s *State) requireRuntimeIngestion(ctx context.Context, id, runtimeID strin
 // connection, signer, mode and client are the ingestion's, resolved as at
 // save, so a runtime can neither choose nor alter them.
 func (s *State) createJobs(ctx context.Context, in *createJobsInput) (*apicommon.Out[CreateJobsResponse], error) {
-	i, err := s.requireRuntimeIngestion(ctx, in.ID, in.RuntimeID)
+	i, err := s.requireRuntimeIngestion(ctx, in.ID, in.RuntimeID, false)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +107,9 @@ func (s *State) createJobs(ctx context.Context, in *createJobsInput) (*apicommon
 		}
 	}
 	created := 0
-	err = s.Repo.WithJobKeys(ctx, i.ID, keys, s.now(), func(ctx context.Context, tx pgx.Tx, existing map[string]string) error {
+	// The lease (a polled source) and the client's status are checked in the
+	// transaction that makes the jobs, with the lease row held until it commits.
+	err = s.Repo.WithJobKeys(ctx, i, in.RuntimeID, keys, s.now(), func(ctx context.Context, tx pgx.Tx, existing map[string]string) error {
 		fresh := make([]dispatchjob.DispatchJob, 0, len(jobs))
 		for k, j := range jobs {
 			if id, seen := existing[j.ID]; seen {
@@ -108,6 +127,9 @@ func (s *State) createJobs(ctx context.Context, in *createJobsInput) (*apicommon
 		return err
 	})
 	if err != nil {
+		if usecase.AsError(err) != nil {
+			return nil, err // LEASE_NOT_HELD, CLIENT_NOT_ACTIVE
+		}
 		return nil, usecase.Internal("REPO", "create jobs failed", err)
 	}
 	return &apicommon.Out[CreateJobsResponse]{Body: CreateJobsResponse{Created: created, Results: results}}, nil
@@ -218,7 +240,7 @@ type secretOutput struct {
 // permission: it may read what the ingestion's own definition names, and
 // nothing else.
 func (s *State) getSecret(ctx context.Context, in *getSecretInput) (*secretOutput, error) {
-	i, err := s.requireRuntimeIngestion(ctx, in.ID, in.RuntimeID)
+	i, err := s.requireRuntimeIngestion(ctx, in.ID, in.RuntimeID, true)
 	if err != nil {
 		return nil, err
 	}

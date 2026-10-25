@@ -262,11 +262,14 @@ func PlatformRoles() []role.Role {
 		// The ingestion roles (docs/ingestion-design.md section 4). Admin holds
 		// every human grant but route and the runtime's: a source kind that
 		// runs a route the operator wrote is a separate, deliberate grant.
+		// runtime-identity and bind-secrets (what the runtime reads with its
+		// own identity, where named secrets are sent) are the admin's alone.
 		mk("ingestion-admin", "Ingestion Administrator",
 			"Manages ingestions: create, change, delete, make versions live, test connections and apply sets",
 			[]string{
 				permIngestionView, permIngestionCreate, permIngestionUpdate, permIngestionDelete,
 				permIngestionPromote, permIngestionTest, permIngestionSetApply,
+				permIngestionRuntimeIdentity, permIngestionBindSecrets,
 			}),
 
 		mk("ingestion-operator", "Ingestion Operator",
@@ -278,8 +281,12 @@ func PlatformRoles() []role.Role {
 			[]string{permIngestionView}),
 
 		// Route authoring runs code on the runtime's network and identity, so
-		// it is its own role: it can write ingestions (including route ones)
-		// but not delete them or make them live.
+		// it is its own role, and the route permission counts only for an
+		// anchor-tier holder. It writes drafts: it creates ingestions with
+		// live false and saves versions that are not live, and someone who
+		// holds promote (the admin) makes them live; it cannot delete them.
+		// It holds no bind-secrets, so a route that names secrets (every text
+		// setting of an extension kind counts as one) is saved by the admin.
 		mk("ingestion-route-author", "Ingestion Route Author",
 			"Creates and changes ingestions of source kinds that run a route (camel-route)",
 			[]string{permIngestionView, permIngestionCreate, permIngestionUpdate, permIngestionRoute}),

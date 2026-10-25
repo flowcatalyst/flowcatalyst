@@ -58,7 +58,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "listIngestions", "/api/ingestions", "List ingestions", s.list)
 	apiroute.Post(g, "createIngestion", "/api/ingestions", "Create an ingestion", http.StatusCreated, s.create)
 	apiroute.Get(g, "getIngestion", "/api/ingestions/{id}", "Get an ingestion by id", s.getByID)
-	apiroute.Put(g, "updateIngestion", "/api/ingestions/{id}", "Save a definition as the next version and make it live", http.StatusOK, s.update)
+	apiroute.Put(g, "updateIngestion", "/api/ingestions/{id}", "Save a definition as the next version and make it live (needs update and promote)", http.StatusOK, s.update)
 	apiroute.Delete(g, "deleteIngestion", "/api/ingestions/{id}", "Delete an ingestion", http.StatusNoContent, s.delete)
 	apiroute.Post(g, "pauseIngestion", "/api/ingestions/{id}/pause", "Pause an ingestion", http.StatusOK, s.pause)
 	apiroute.Post(g, "resumeIngestion", "/api/ingestions/{id}/resume", "Resume a paused ingestion", http.StatusOK, s.resume)
@@ -68,6 +68,7 @@ func Register(api huma.API, s *State) {
 	registerDefinition(g, s)
 	apiroute.Get(g, "listIngestionHistory", "/api/ingestions/{id}/history", "List the audit history of an ingestion", s.history)
 	apiroute.Get(g, "listIngestionFailures", "/api/ingestions/{id}/failures", "List the failures runtimes reported for an ingestion", s.failures)
+	apiroute.Post(g, "dismissIngestionFailure", "/api/ingestions/{id}/failures/{failureId}/dismiss", "Dismiss a failure (a notice stops showing on the ingestion)", http.StatusOK, s.dismissFailure)
 	apiroute.Get(g, "listIngestionSourceKinds", "/api/ingestion-source-kinds", "List the source kinds a definition can use", s.sourceKinds)
 	registerTests(g, s)
 	registerSets(g, s)
@@ -133,6 +134,11 @@ func (s *State) respond(ctx context.Context, i *ingestion.Ingestion) (*apicommon
 		return nil, err
 	}
 	body.RuntimeNotice = notice(i)
+	notices, err := s.Repo.NoticesOf(ctx, []string{i.ID})
+	if err != nil {
+		return nil, usecase.Internal("REPO", "notices failed", err)
+	}
+	withNotices(&body, notices[i.ID])
 	return &apicommon.Out[IngestionResponse]{Body: body}, nil
 }
 
@@ -187,6 +193,14 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Ingesti
 	if err != nil {
 		return nil, err
 	}
+	shown := make([]string, 0, len(page.Items))
+	for _, item := range page.Items {
+		shown = append(shown, item.ID)
+	}
+	notices, err := s.Repo.NoticesOf(ctx, shown)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "notices failed", err)
+	}
 	body := IngestionListResponse{Ingestions: make([]IngestionResponse, 0, len(page.Items)), HasMore: page.Next != ""}
 	for _, item := range page.Items {
 		r, err := fromEntity(&item.Ingestion, item.ApplicationCode, item.ClientIdentifier)
@@ -194,6 +208,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Ingesti
 			return nil, usecase.Internal("MARSHAL", "ingestion does not render", err)
 		}
 		r.RuntimeNotice = notice(&item.Ingestion)
+		withNotices(&r, notices[item.ID])
 		body.Ingestions = append(body.Ingestions, r)
 	}
 	if page.Next != "" {
@@ -458,9 +473,11 @@ func (s *State) history(ctx context.Context, in *historyInput) (*apicommon.Out[I
 }
 
 type failuresInput struct {
-	ID    string `path:"id"`
-	After string `query:"after" doc:"Cursor from a previous page's nextCursor"`
-	Limit int    `query:"limit" minimum:"0" maximum:"200" doc:"Page size (default 50, at most 200)"`
+	ID          string `path:"id"`
+	After       string `query:"after" doc:"Cursor from a previous page's nextCursor"`
+	Limit       int    `query:"limit" minimum:"0" maximum:"200" doc:"Page size (default 50, at most 200)"`
+	Undismissed bool   `query:"undismissed" doc:"Only the failures nobody has dismissed"`
+	Category    string `query:"category" enum:"payload,rejected" doc:"Only this category; rejected is the notices"`
 }
 
 func (s *State) failures(ctx context.Context, in *failuresInput) (*apicommon.Out[IngestionFailureListResponse], error) {
@@ -471,7 +488,9 @@ func (s *State) failures(ctx context.Context, in *failuresInput) (*apicommon.Out
 	if err != nil {
 		return nil, err
 	}
-	page, err := s.Repo.ListFailures(ctx, i.ID, in.After, in.Limit)
+	page, err := s.Repo.ListFailuresFiltered(ctx, i.ID, ingestion.FailureFilter{
+		Undismissed: in.Undismissed, Category: in.Category, After: in.After, Limit: in.Limit,
+	})
 	if err != nil {
 		return nil, usecase.Internal("REPO", "list_failures failed", err)
 	}
@@ -517,9 +536,34 @@ func (s *State) sourceKinds(ctx context.Context, _ *apicommon.Empty) (*apicommon
 	return &apicommon.Out[IngestionSourceKindListResponse]{Body: IngestionSourceKindListResponse{Kinds: kinds}}, nil
 }
 
-func fromFailure(f *ingestion.Failure) IngestionFailureResponse {
-	return IngestionFailureResponse{
-		ID: f.ID, RuntimeID: f.RuntimeID, Version: f.Version, Kind: f.Kind, Message: f.Message,
-		AfterRecords: f.AfterRecords, Excerpt: f.Excerpt, OccurredAt: jsontime.New(f.OccurredAt),
+type dismissInput struct {
+	ID        string `path:"id"`
+	FailureID string `path:"failureId"`
+}
+
+// dismissFailure marks a failure as seen and dealt with; a notice stops
+// showing on the ingestion. Dismissing one already dismissed answers it as it
+// is and writes nothing.
+func (s *State) dismissFailure(ctx context.Context, in *dismissInput) (*apicommon.Out[IngestionFailureResponse], error) {
+	if err := auth.CanUpdateIngestions(auth.FromContext(ctx)); err != nil {
+		return nil, err
 	}
+	cmd := operations.DismissFailureCommand{IngestionID: in.ID, FailureID: in.FailureID}
+	res, err := usecaseop.RunTx(ctx, s.UoW, operations.DismissFailure(s.Repo), cmd, auth.NewExecutionContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[IngestionFailureResponse]{Body: fromFailure(res.Failure)}, nil
+}
+
+func fromFailure(f *ingestion.Failure) IngestionFailureResponse {
+	r := IngestionFailureResponse{
+		ID: f.ID, RuntimeID: f.RuntimeID, Version: f.Version, Kind: f.Kind, Category: f.Category, Message: f.Message,
+		AfterRecords: f.AfterRecords, Excerpt: f.Excerpt, OccurredAt: jsontime.New(f.OccurredAt),
+		CreatedAt: jsontime.New(f.CreatedAt), DismissedBy: f.DismissedBy,
+	}
+	if f.DismissedAt != nil {
+		r.DismissedAt = new(jsontime.New(*f.DismissedAt))
+	}
+	return r
 }
