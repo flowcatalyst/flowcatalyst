@@ -285,7 +285,7 @@ func (h *Functions) withChoices(r *http.Request, ac *auth.AuthContext, f *fnsFor
 				slog.WarnContext(ctx, "ui: applications unavailable", "err", err)
 				f.CanPickApp = false
 			} else {
-				f.Apps = fnsApplicationOptions(as)
+				f.Apps = fnsApplicationOptions(ac, as)
 			}
 		}
 		f.CanPickClient = canPickClient(h.Clients, ac)
