@@ -66,6 +66,19 @@ public abstract class PolledSource extends DefaultEndpoint {
      * @throws Exception when the route cannot be run at all
      */
     boolean dispatch(String body) throws Exception;
+
+    /**
+     * Splits and dispatches a payload, saying where it came from ({@link PayloadIdentity}), so its
+     * jobs carry idempotency keys and read again it makes no new jobs.
+     *
+     * @param body the payload
+     * @param identity where it came from, the same each time it is read; null or blank for none
+     * @return whether its jobs were created, as {@link #dispatch(String)}
+     * @throws Exception when the route cannot be run at all
+     */
+    default boolean dispatch(String body, @Nullable String identity) throws Exception {
+      return dispatch(body);
+    }
   }
 
   /** Where the runtime is told of failures; set before the route starts. */
@@ -195,11 +208,15 @@ public abstract class PolledSource extends DefaultEndpoint {
       super.doStop();
     }
 
+    /**
+     * One poll, and the next one scheduled whatever it threw: an extension's {@code Error} (a
+     * missing class, a stack overflow) is a failure of that poll, not the end of the source.
+     */
     private void run() {
-      Duration next;
+      Duration next = FIRST_POLL;
       failedThisPoll = false;
       try {
-        next = poll(this::dispatch);
+        next = poll(payloads);
         Reporter r = reporter;
         if (r != null && !failedThisPoll) {
           r.recovered();
@@ -207,7 +224,7 @@ public abstract class PolledSource extends DefaultEndpoint {
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         return;
-      } catch (Exception e) {
+      } catch (Throwable e) {
         String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
         if (refusedLogin(e)) {
           LOG.warn("ingestion {}: the {} login was refused; trying again in {}", ingestion.id(), kind, authRetry);
@@ -216,24 +233,57 @@ public abstract class PolledSource extends DefaultEndpoint {
         } else {
           LOG.warn("ingestion {} could not poll {}", ingestion.id(), kind, e);
           failure(Failure.Kind.SOURCE, message);
-          next = retryDelay();
+          next = safeRetryDelay();
+        }
+        if (e instanceof OutOfMemoryError oom) {
+          // Nothing is safe after this; the process should end (the image runs with -XX:+ExitOnOutOfMemoryError).
+          schedule(next);
+          throw oom;
         }
       }
-      ScheduledExecutorService running = executor;
-      if (running != null && isRunAllowed() && !running.isShutdown()) {
-        running.schedule(this::run, Math.max(next.toMillis(), 1), TimeUnit.MILLISECONDS);
+      schedule(next);
+    }
+
+    private Duration safeRetryDelay() {
+      try {
+        return retryDelay();
+      } catch (RuntimeException e) {
+        return AUTH_RETRY;
       }
     }
 
-    private boolean dispatch(String body) throws Exception {
-      Exchange exchange = createExchange(true);
-      try {
-        exchange.getMessage().setBody(body);
-        getProcessor().process(exchange);
-        return exchange.getException() == null;
-      } finally {
-        releaseExchange(exchange, false);
+    private void schedule(Duration next) {
+      ScheduledExecutorService running = executor;
+      if (running != null && isRunAllowed() && !running.isShutdown()) {
+        try {
+          running.schedule(this::run, Math.max(next.toMillis(), 1), TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+          // Stopping.
+        }
       }
     }
+
+    private final Payloads payloads =
+        new Payloads() {
+          @Override
+          public boolean dispatch(String body) throws Exception {
+            return dispatch(body, null);
+          }
+
+          @Override
+          public boolean dispatch(String body, @Nullable String identity) throws Exception {
+            Exchange exchange = createExchange(true);
+            try {
+              exchange.getMessage().setBody(body);
+              if (identity != null) {
+                PayloadIdentity.set(exchange, identity);
+              }
+              getProcessor().process(exchange);
+              return exchange.getException() == null;
+            } finally {
+              releaseExchange(exchange, false);
+            }
+          }
+        };
   }
 }

@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Whether a Docker daemon answers, for the tests that start real servers (SFTP, RabbitMQ, a local
@@ -17,13 +18,21 @@ import java.util.concurrent.TimeUnit;
  */
 final class Docker {
 
-  private static final Boolean AVAILABLE = ping();
+  private static @Nullable Boolean available;
 
   private Docker() {}
 
-  /** For {@code @EnabledIf}. */
-  static boolean available() {
-    return AVAILABLE;
+  /**
+   * For {@code @EnabledIf}. Asked on first use, not in the class's initialiser: the ping runs on
+   * another thread, which would wait for this class to finish initialising and time out.
+   */
+  static synchronized boolean available() {
+    Boolean known = available;
+    if (known == null) {
+      known = ping();
+      available = known;
+    }
+    return known;
   }
 
   private static boolean ping() {

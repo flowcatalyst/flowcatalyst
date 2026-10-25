@@ -90,6 +90,20 @@ class RabbitMqIngestTest {
   }
 
   @Test
+  void aMessageWithAMessageIdHasKeysFromItAndOneWithoutHasNone() throws Exception {
+    channel.basicPublish(
+        "", "orders", new com.rabbitmq.client.AMQP.BasicProperties.Builder().messageId("m-1").build(), "[{\"id\":1}]".getBytes(StandardCharsets.UTF_8));
+    publish("[{\"id\":2}]");
+    harness.reconciler.reconcile(List.of(queue("orders", new Split.Json("$"))));
+
+    await(() -> harness.payloads().size() == 2);
+
+    List<io.flowcatalyst.ingestor.contract.JobRecord> jobs = harness.batches.stream().flatMap(List::stream).toList();
+    assertThat(jobs).extracting(io.flowcatalyst.ingestor.contract.JobRecord::externalId)
+        .containsExactly(Identities.externalId("orders|m-1", 0), null);
+  }
+
+  @Test
   void aMessageBecomesJobsAndIsAcknowledged() throws Exception {
     publish("[{\"id\":1},{\"id\":2},{\"id\":3}]");
     publish("[{\"id\":4}]");

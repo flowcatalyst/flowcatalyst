@@ -4,6 +4,7 @@ import io.flowcatalyst.framework.http.Json;
 import io.flowcatalyst.framework.httpclient.ClientResponse;
 import io.flowcatalyst.framework.httpclient.RequestBuilder;
 import io.flowcatalyst.framework.httpclient.ServiceClient;
+import io.flowcatalyst.ingestor.contract.ConnectionTest;
 import io.flowcatalyst.ingestor.contract.Ingestion;
 import io.flowcatalyst.ingestor.contract.JobRecord;
 import io.flowcatalyst.ingestor.contract.JobResult;
@@ -14,11 +15,18 @@ import io.flowcatalyst.ingestor.contract.RuntimePoll;
 import io.flowcatalyst.ingestor.contract.RuntimeReport;
 import io.flowcatalyst.ingestor.contract.SecretValue;
 import io.flowcatalyst.ingestor.contract.StateValue;
+import io.flowcatalyst.ingestor.contract.TestRequest;
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
@@ -31,6 +39,8 @@ import tools.jackson.databind.ObjectMapper;
  * report's retry, and the source keeps what a jobs request did not make.
  */
 final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource {
+
+  private static final Logger LOG = LoggerFactory.getLogger(PlatformApi.class);
 
   private static final String BASE = "/api/ingestion-runtime/v1";
   private static final String POLL = BASE + "/poll";
@@ -48,10 +58,20 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
   /** The longest part of the platform's message repeated in an error. */
   private static final int MESSAGE = 300;
 
+  /** A kind's name as it may be repeated in a reason: nothing else from a definition is. */
+  private static final Pattern KIND_NAME = Pattern.compile("[a-z][a-z0-9-]{0,39}");
+
+  /** The reason an ingestion or test this runtime cannot read is given. */
+  static final String NOT_SUPPORTED = "definition not supported by this runtime version";
+
+  /** The answer's outline: each ingestion and test is read on its own, so one this runtime cannot read fails alone. */
+  private record Outline(Instant asOf, Duration leaseFor, @Nullable List<JsonNode> ingestions, @Nullable List<JsonNode> tests) {}
+
   private final ServiceClient client;
   private final String runtimeId;
   private final @Nullable String url;
   private final List<RuntimeKind> kinds;
+  private final Runnable forgetToken;
 
   /**
    * Creates the client.
@@ -62,21 +82,82 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
    * @param kinds the kinds this runtime adds to the built-in ones
    */
   PlatformApi(ServiceClient client, String runtimeId, @Nullable String url, List<RuntimeKind> kinds) {
+    this(client, runtimeId, url, kinds, () -> {});
+  }
+
+  /**
+   * Creates the client.
+   *
+   * @param client the platform, with the runtime's service-account token
+   * @param runtimeId names this runtime
+   * @param url where this runtime can be reached (informational), or null
+   * @param kinds the kinds this runtime adds to the built-in ones
+   * @param forgetToken drops the token held, so the next call fetches a new one: run after a 401 or
+   *     403 (the client itself repeats a 401 once, with a new token)
+   */
+  PlatformApi(ServiceClient client, String runtimeId, @Nullable String url, List<RuntimeKind> kinds, Runnable forgetToken) {
     this.client = client;
     this.runtimeId = runtimeId;
     this.url = url;
     this.kinds = List.copyOf(kinds);
+    this.forgetToken = forgetToken;
   }
 
   @Override
-  public PollAnswer poll() throws IOException, InterruptedException {
-    ClientResponse response = succeeded(client.post(POLL).json(new RuntimePoll(runtimeId, kinds, url)), "POST " + POLL);
-    return read(response, PollAnswer.class, "the platform's list of ingestions cannot be read");
+  public Polled poll(Duration timeout) throws IOException, InterruptedException {
+    ClientResponse response =
+        succeeded(client.post(POLL).timeout(timeout).json(new RuntimePoll(runtimeId, kinds, url)), "POST " + POLL);
+    Outline outline = read(response, Outline.class, "the platform's list of ingestions cannot be read");
+    if (outline.asOf() == null || outline.leaseFor() == null) {
+      throw new IOException("the platform's list of ingestions cannot be read");
+    }
+    List<Ingestion> ingestions = new ArrayList<>();
+    List<Unreadable> unreadable = new ArrayList<>();
+    for (JsonNode node : outline.ingestions() == null ? List.<JsonNode>of() : outline.ingestions()) {
+      try {
+        ingestions.add(ANSWERS.treeToValue(node, Ingestion.class));
+      } catch (JacksonException | IllegalArgumentException e) {
+        String id = node.path("id").asString("");
+        if (id.isEmpty()) {
+          LOG.warn("the platform listed an ingestion without an id; it is skipped");
+          continue;
+        }
+        // Not e's message: it may quote the definition.
+        unreadable.add(new Unreadable(id, node.path("version").asLong(0), reason(node)));
+      }
+    }
+    List<TestRequest> tests = new ArrayList<>();
+    List<ConnectionTest> unreadableTests = new ArrayList<>();
+    for (JsonNode node : outline.tests() == null ? List.<JsonNode>of() : outline.tests()) {
+      try {
+        tests.add(ANSWERS.treeToValue(node, TestRequest.class));
+      } catch (JacksonException | IllegalArgumentException e) {
+        String id = node.path("id").asString("");
+        if (!id.isEmpty()) {
+          unreadableTests.add(
+              new ConnectionTest(id, ConnectionTest.Outcome.FAILED, List.of("The " + reason(node.path("ingestion")) + "."), null, null));
+        }
+      }
+    }
+    return new Polled(new PollAnswer(outline.asOf(), outline.leaseFor(), ingestions, tests), unreadable, unreadableTests);
+  }
+
+  /** Why a definition cannot be read, naming its source kind when it is one this runtime does not know. */
+  private static String reason(JsonNode ingestion) {
+    JsonNode source = ingestion.path("source");
+    String kind = source.path("kind").asString("");
+    if (kind.equals("custom")) {
+      kind = source.path("type").asString("");
+    }
+    if (KIND_NAME.matcher(kind).matches() && !RuntimePoll.BUILTIN_KINDS.contains(kind) && !kind.equals("custom")) {
+      return NOT_SUPPORTED + " (source kind '" + kind + "')";
+    }
+    return NOT_SUPPORTED;
   }
 
   @Override
-  public void report(RuntimeReport report) throws IOException, InterruptedException {
-    succeeded(client.post(REPORT).json(report), "POST " + REPORT);
+  public void report(RuntimeReport report, Duration timeout) throws IOException, InterruptedException {
+    succeeded(client.post(REPORT).timeout(timeout).json(report), "POST " + REPORT);
   }
 
   @Override
@@ -108,7 +189,8 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
     }
     for (JobResult result : answer.results()) {
       if (result.error() != null) {
-        throw new IOException("the platform refused record " + result.index() + ": " + result.error());
+        // A record the platform finds invalid is refused the same way however often it is sent.
+        throw new RejectedException("the platform refused record " + result.index() + ": " + result.error(), response.status());
       }
     }
   }
@@ -132,19 +214,41 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
     }
   }
 
-  private static ClientResponse succeeded(RequestBuilder request, String what) throws IOException, InterruptedException {
+  private ClientResponse succeeded(RequestBuilder request, String what) throws IOException, InterruptedException {
     return failed(ServiceCalls.send(request), what);
   }
 
+  /**
+   * Whether the platform will answer a request the same way however often it is sent: a client
+   * error other than 401 and 403 (a token to renew), 408 and 429 (try later), 409 (a lease or a
+   * paused target, which change) and 425.
+   *
+   * @param status the HTTP status
+   * @return true for a refusal for good
+   */
+  static boolean permanent(int status) {
+    return status >= 400
+        && status < 500
+        && status != 401
+        && status != 403
+        && status != 408
+        && status != 409
+        && status != 425
+        && status != 429;
+  }
+
   /** The response, or the failure its status is: a client error the platform will repeat is a {@link RejectedException}. */
-  private static ClientResponse failed(ClientResponse response, String what) throws IOException {
+  private ClientResponse failed(ClientResponse response, String what) throws IOException {
     if (response.isSuccess()) {
       return response;
     }
     int status = response.status();
+    if (status == 401 || status == 403) {
+      // The next call fetches a new token; a role granted since, or a rotated secret, is then in it.
+      forgetToken.run();
+    }
     String message = what + " answered " + status + said(response);
-    boolean again = status == 401 || status == 403 || status == 408 || status == 425 || status == 429 || status >= 500;
-    throw status >= 400 && status < 500 && !again ? new RejectedException(message, status) : new IOException(message);
+    throw permanent(status) ? new RejectedException(message, status) : new IOException(message);
   }
 
   /** What the platform said, from its error envelope: {@code : CODE, the message}. */

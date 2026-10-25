@@ -140,6 +140,40 @@ class HttpIngestTest {
   }
 
   @Test
+  void anAddressThatKeepsFailingToLogInWaitsAndIsNotCheckedMeanwhile() {
+    for (int i = 0; i < HttpIngest.AUTH_FAILURES.burst(); i++) {
+      assertThat(post("orders", "Bearer wrong").status()).isEqualTo(401);
+    }
+    TestResponse limited = post("orders", "Bearer wrong");
+    assertThat(limited.status()).isEqualTo(429);
+    assertThat(limited.header("Retry-After")).isNotNull();
+    // Waiting, even with the right credentials; another ingestion is not held up.
+    assertThat(post("orders", "Bearer s3cret").status()).isEqualTo(429);
+    assertThat(post("stock", "Bearer s3cret").status()).isEqualTo(202);
+  }
+
+  @Test
+  void aRequestSentAgainUnderTheSameIdempotencyKeyHasTheSameRecordKeys() {
+    for (int i = 0; i < 2; i++) {
+      assertThat(
+              http.post("/ingest/acme/orders")
+                  .header("Authorization", "Bearer s3cret")
+                  .header(HttpIngest.IDEMPOTENCY_KEY, "order-batch-42")
+                  .body("[{\"id\":1},{\"id\":2}]")
+                  .send()
+                  .status())
+          .isEqualTo(202);
+    }
+    assertThat(post("orders", "Bearer s3cret").status()).isEqualTo(202);
+
+    assertThat(batches).hasSize(3);
+    assertThat(batches.get(0)).extracting(JobRecord::externalId)
+        .containsExactly(Identities.externalId("order-batch-42", 0), Identities.externalId("order-batch-42", 1));
+    assertThat(batches.get(1)).isEqualTo(batches.get(0));
+    assertThat(batches.get(2)).extracting(JobRecord::externalId).containsOnlyNulls();
+  }
+
+  @Test
   void theClientIsNamedByItsIdentifierOrItsPlatformId() {
     assertThat(http.post("/ingest/clt_acme/orders").header("Authorization", "Bearer s3cret").body("[]").send().status()).isEqualTo(202);
     assertThat(http.post("/ingest/other/orders").header("Authorization", "Bearer s3cret").body("[]").send().status()).isEqualTo(404);

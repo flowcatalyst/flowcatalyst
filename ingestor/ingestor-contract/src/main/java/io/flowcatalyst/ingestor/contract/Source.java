@@ -66,10 +66,13 @@ public sealed interface Source {
    * @param directory the directory polled
    * @param username the login
    * @param credential the password or private key
-   * @param knownHosts the server's host key as a {@code known_hosts} line, or null to connect
-   *     without checking who the server is
+   * @param knownHosts the server's host key as a {@code known_hosts} line; without it the runtime
+   *     refuses to connect unless {@code acceptAnyHostKey} is true
    * @param include a file name pattern such as {@code *.csv}, or null for every file
    * @param every how often the directory is polled
+   * @param acceptAnyHostKey true to connect without checking who the server is, when there is no
+   *     {@code knownHosts}: anyone who can intercept the connection then gets the login. Null or
+   *     false refuses
    */
   record Sftp(
       String host,
@@ -79,8 +82,44 @@ public sealed interface Source {
       SecretRef credential,
       @Nullable String knownHosts,
       @Nullable String include,
-      Duration every)
-      implements Source {}
+      Duration every,
+      @Nullable Boolean acceptAnyHostKey)
+      implements Source {
+
+    /**
+     * A source that checks the server's host key when it is given and refuses to connect otherwise.
+     *
+     * @param host the server
+     * @param port the port
+     * @param directory the directory polled
+     * @param username the login
+     * @param credential the password or private key
+     * @param knownHosts the server's host key as a {@code known_hosts} line
+     * @param include a file name pattern, or null for every file
+     * @param every how often the directory is polled
+     */
+    public Sftp(
+        String host,
+        int port,
+        String directory,
+        String username,
+        SecretRef credential,
+        @Nullable String knownHosts,
+        @Nullable String include,
+        Duration every) {
+      this(host, port, directory, username, credential, knownHosts, include, every, null);
+    }
+
+    /**
+     * Whether the definition asked to connect without checking the host key.
+     *
+     * @return true only when {@code acceptAnyHostKey} is true
+     */
+    @JsonIgnore
+    public boolean acceptsAnyHostKey() {
+      return Boolean.TRUE.equals(acceptAnyHostKey);
+    }
+  }
 
   /**
    * JSON posted to the endpoint the runtime exposes for this ingestion:

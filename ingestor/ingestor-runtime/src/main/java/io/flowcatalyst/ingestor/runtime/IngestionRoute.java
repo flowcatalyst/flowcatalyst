@@ -1,14 +1,19 @@
 package io.flowcatalyst.ingestor.runtime;
 
 import io.flowcatalyst.ingestor.contract.CamelRoutes;
-import io.flowcatalyst.ingestor.contract.JobRecord;
 import io.flowcatalyst.ingestor.contract.Ingestion;
+import io.flowcatalyst.ingestor.contract.JobRecord;
+import io.flowcatalyst.ingestor.contract.RuntimeReport.Failure;
 import io.flowcatalyst.ingestor.contract.Source;
 import io.flowcatalyst.ingestor.contract.Split;
 import io.flowcatalyst.ingestor.contract.Target;
-import io.flowcatalyst.ingestor.contract.RuntimeReport.Failure;
+import io.flowcatalyst.ingestor.extension.PayloadIdentity;
 import io.flowcatalyst.ingestor.extension.PolledSource;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.camel.CamelContext;
@@ -16,6 +21,11 @@ import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
 import org.apache.camel.Expression;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.aws2.s3.AWS2S3Constants;
+import org.apache.camel.component.aws2.sqs.Sqs2Constants;
+import org.apache.camel.component.aws2.sqs.Sqs2Endpoint;
+import org.apache.camel.component.file.FileConstants;
+import org.apache.camel.component.file.GenericFileOperationFailedException;
 import org.apache.camel.model.TryDefinition;
 import org.apache.camel.support.PluginHelper;
 import org.apache.camel.support.ResourceHelper;
@@ -24,6 +34,7 @@ import org.apache.camel.support.SynchronizationAdapter;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.core.exception.SdkClientException;
 
 /**
  * The route for one ingestion: consume from its source, split the payload into records, and create
@@ -33,7 +44,13 @@ import org.slf4j.LoggerFactory;
  * <p>Jobs are created on the thread that consumed the payload, so a batch the platform does not
  * take fails the exchange and the source keeps the payload (the file is not moved, the message is
  * not acknowledged). A payload that cannot be read is rejected instead: the exchange ends, and the
- * source lets go of it.
+ * source lets go of it. So is one whose jobs the platform refuses for good (a client error it would
+ * repeat): kept, it would be offered and refused forever, and nothing behind it would move.
+ *
+ * <p>Each record carries an idempotency key made from where its payload came from ({@link
+ * PayloadIdentity}) and its position in the payload, when the source can say where; the jobs of a
+ * payload share a message group made the same way, so a payload read again lands in the same group
+ * and makes no new jobs.
  */
 final class IngestionRoute extends RouteBuilder {
 
@@ -44,11 +61,20 @@ final class IngestionRoute extends RouteBuilder {
   /** Exchange property: why the payload was rejected. Absent when it was not. */
   static final String REJECTED = "ingestRejected";
 
+  /** Exchange property: true when it was rejected because the platform refused its jobs for good. */
+  static final String REFUSED = "ingestRefused";
+
   /** Exchange property: how many records the payload was split into, once it has been. */
   static final String RECORDS = "ingestRecords";
 
   /** Exchange property: the folder a file source moves the file into when the exchange ends. */
   static final String FOLDER = "ingestFolder";
+
+  /** Exchange property: where the payload came from, set by the source ({@link PayloadIdentity#PROPERTY}). */
+  static final String IDENTITY = PayloadIdentity.PROPERTY;
+
+  /** Exchange property: a database poll's rows' identities, one per row in the body's order. */
+  static final String ROW_IDENTITIES = "ingestRowIdentities";
 
   /** A camel-route ingestion's own route: its id is the ingestion's with this after it. */
   static final String SOURCE_ROUTE = "-source";
@@ -56,18 +82,33 @@ final class IngestionRoute extends RouteBuilder {
   /** The route a camel-route ingestion's failing steps go to, to be reported. */
   static final String FAILURES_ROUTE = "-failures";
 
+  /** How often a batch the platform did not take is sent before the exchange fails and the source keeps the payload. */
+  static final int ATTEMPTS = 3;
+
+  /** The wait before the second attempt; it triples before each one after. */
+  static final Duration FIRST_BACKOFF = Duration.ofMillis(500);
+
+  /** The JSON around the records of a jobs request, and the comma between two. */
+  private static final int ENVELOPE = 64;
+
   /** The jobs of one inbound payload not yet sent. Used by one thread at a time. */
   private static final class Pending {
     final String messageGroup;
+    final @Nullable String identity;
+    final @Nullable List<?> rowIdentities;
     final List<JobRecord> jobs = new ArrayList<>();
+    /** The bytes of {@code jobs} as JSON, with a comma each. */
+    long bytes;
     /** How many records have been read, sent or not. */
     int read;
     boolean rejected;
     /** The record last read, kept only when the ingestion keeps failed payloads. */
     @Nullable String lastRecord;
 
-    Pending(String messageGroup) {
+    Pending(String messageGroup, @Nullable String identity, @Nullable List<?> rowIdentities) {
       this.messageGroup = messageGroup;
+      this.identity = identity;
+      this.rowIdentities = rowIdentities;
     }
   }
 
@@ -115,7 +156,7 @@ final class IngestionRoute extends RouteBuilder {
     Endpoint source = endpoints.endpoint(getContext(), ingestion);
     consumed = source;
     boolean route = CamelRoutes.yaml(ingestion.source()) != null;
-    ReportingPollStrategy polls = new ReportingPollStrategy(ingestion, counters, health);
+    ReportingPollStrategy polls = new ReportingPollStrategy(ingestion, counters, health, endpoints.guard(ingestion));
     switch (source) {
       case ScheduledPollEndpoint polled -> polled.setPollStrategy(polls);
       case DatabasePollEndpoint table -> table.pollStrategy(polls);
@@ -205,9 +246,11 @@ final class IngestionRoute extends RouteBuilder {
   }
 
   /**
-   * Whether a failure is the payload's and not the platform's. A payload that cannot be read will
-   * not read better next time, so it is rejected and the source lets go of it; a batch the platform
-   * did not take fails the exchange, and the source keeps the payload to try again.
+   * Whether a failure is the payload's and not the platform's or the connection's. A payload that
+   * cannot be read will not read better next time, so it is rejected and the source lets go of it;
+   * so is one whose jobs the platform refused for good. A batch the platform did not take, or a
+   * connection that broke while the payload was read, fails the exchange, and the source keeps the
+   * payload to try again.
    */
   private static boolean payloadIsAtFault(Exchange exchange) {
     // While the catch is being chosen the exception is still on the exchange; afterwards it is a property.
@@ -216,26 +259,60 @@ final class IngestionRoute extends RouteBuilder {
       thrown = exchange.getProperty(Exchange.EXCEPTION_CAUGHT, Throwable.class);
     }
     for (Throwable t = thrown; t != null; t = t.getCause()) {
-      if (t instanceof DispatchFailedException || t instanceof InterruptedException) {
+      if (t instanceof PlatformRefusedException) {
+        return true;
+      }
+      if (t instanceof DispatchFailedException || t instanceof InterruptedException || transientRead(t)) {
         return false;
       }
     }
     return true;
   }
 
+  /**
+   * A read that failed for the connection's sake, not the content's: an I/O error (a reset, a
+   * timeout, a stream cut off), a remote file operation that failed, an AWS client error. A payload
+   * in an encoding it does not declare is the content's.
+   */
+  static boolean transientRead(Throwable t) {
+    if (t instanceof CharacterCodingException) {
+      return false;
+    }
+    return t instanceof IOException
+        || t instanceof UncheckedIOException
+        || t instanceof GenericFileOperationFailedException
+        || t instanceof SdkClientException;
+  }
+
   /** Jobs already sent for earlier records of the payload stay sent; the rest are dropped. */
   private void reject(Exchange exchange) {
     Throwable cause = exchange.getProperty(Exchange.EXCEPTION_CAUGHT, Throwable.class);
-    String reason = cause == null || cause.getMessage() == null ? "the payload could not be read" : cause.getMessage();
+    PlatformRefusedException refused = null;
+    for (Throwable t = cause; t != null && refused == null; t = t.getCause()) {
+      if (t instanceof PlatformRefusedException p) {
+        refused = p;
+      }
+    }
+    Throwable said = refused != null ? refused : cause;
+    String reason = said == null || said.getMessage() == null ? "the payload could not be read" : said.getMessage();
     Pending pending = pending(exchange);
     pending.rejected = true;
     pending.jobs.clear();
+    pending.bytes = 0;
     exchange.setProperty(RECORDS, (long) pending.read);
     exchange.setProperty(REJECTED, reason);
+    if (refused != null) {
+      exchange.setProperty(REFUSED, true);
+    }
     exchange.setProperty(FOLDER, ".rejected");
     LOG.warn("ingestion {} rejected a payload after {} record(s): {}", ingestion.id(), pending.read, reason);
     counters.failure(
-        ingestion, Failure.Kind.REJECTED, reason, (long) pending.read, excerpt(exchange, pending));
+        ingestion,
+        Failure.Kind.REJECTED,
+        reason,
+        (long) pending.read,
+        excerpt(exchange, pending),
+        refused != null ? Failure.Category.REJECTED : Failure.Category.PAYLOAD);
   }
 
   /** The record read last, or else the payload when it is text; only asked for when payloads are kept. */
@@ -255,7 +332,10 @@ final class IngestionRoute extends RouteBuilder {
   }
 
   private void begin(Exchange exchange) {
-    Pending pending = new Pending(ingestion.id() + ":" + exchange.getExchangeId());
+    String identity = identity(exchange);
+    List<?> rows = exchange.getProperty(ROW_IDENTITIES, List.class);
+    String group = ingestion.id() + ":" + groupOf(exchange, identity, rows);
+    Pending pending = new Pending(group, identity, rows);
     exchange.setProperty(PENDING, pending);
     exchange.setProperty(FOLDER, ".done");
     exchange
@@ -276,20 +356,89 @@ final class IngestionRoute extends RouteBuilder {
                 counters.exchangeFailed(ingestion);
                 // Camel wraps it; the platform's own reason is under the DispatchFailedException.
                 Throwable cause = done.getException();
+                boolean dispatch = false;
                 for (Throwable t = cause; t != null; t = t.getCause()) {
-                  if (t instanceof DispatchFailedException && t.getCause() != null) {
-                    cause = t.getCause();
+                  if (t instanceof DispatchFailedException) {
+                    dispatch = true;
+                    if (t.getCause() != null) {
+                      cause = t.getCause();
+                    }
                     break;
                   }
                 }
                 counters.failure(
                     ingestion,
-                    Failure.Kind.NOT_DISPATCHED,
+                    // Not taken by the platform, or a read cut off: either way the source keeps the payload.
+                    dispatch ? Failure.Kind.NOT_DISPATCHED : Failure.Kind.SOURCE,
                     cause == null ? "the payload was not taken" : cause.getMessage(),
                     (long) pending.read,
                     excerpt(done, pending));
               }
             });
+  }
+
+  /**
+   * Where the exchange's payload came from, as the source says it, or as its headers say for the
+   * Camel components: the same each time the payload is read, or null when the source cannot say.
+   */
+  private @Nullable String identity(Exchange exchange) {
+    String given = exchange.getProperty(IDENTITY, String.class);
+    if (given != null && !given.isBlank()) {
+      return given;
+    }
+    return switch (ingestion.source()) {
+      case Source.Sftp sftp -> {
+        String path = exchange.getMessage().getHeader(FileConstants.FILE_ABSOLUTE_PATH, String.class);
+        Object modified = exchange.getMessage().getHeader(FileConstants.FILE_LAST_MODIFIED);
+        Object length = exchange.getMessage().getHeader(FileConstants.FILE_LENGTH);
+        yield path == null ? null : sftp.host() + ":" + path + "@" + modified + "|" + length;
+      }
+      case Source.S3 _ -> {
+        String bucket = exchange.getMessage().getHeader(AWS2S3Constants.BUCKET_NAME, String.class);
+        String key = exchange.getMessage().getHeader(AWS2S3Constants.KEY, String.class);
+        String etag = exchange.getMessage().getHeader(AWS2S3Constants.E_TAG, String.class);
+        yield key == null ? null : bucket + "/" + key + "@" + etag;
+      }
+      case Source.Sqs sqs -> {
+        String id = exchange.getMessage().getHeader(Sqs2Constants.MESSAGE_ID, String.class);
+        String queue = exchange.getFromEndpoint() instanceof Sqs2Endpoint endpoint ? endpoint.getConfiguration().getQueueUrl() : null;
+        yield id == null ? null : (queue == null ? sqs.region() + "/" + sqs.queue() : queue) + "|" + id;
+      }
+      default -> null;
+    };
+  }
+
+  /**
+   * The message group of the payload's jobs: from where it came from, so it is the same each time
+   * it is read; else from its content when it is held whole (an HTTP body, a message); else the
+   * exchange's, as before.
+   */
+  private static String groupOf(Exchange exchange, @Nullable String identity, @Nullable List<?> rows) {
+    if (identity != null) {
+      return Identities.sha256(identity).substring(0, 32);
+    }
+    if (rows != null && !rows.isEmpty() && rows.getFirst() != null) {
+      return Identities.sha256(String.valueOf(rows.getFirst())).substring(0, 32);
+    }
+    return switch (exchange.getMessage().getBody()) {
+      case byte[] bytes -> "c" + Identities.sha256(bytes).substring(0, 31);
+      case String text -> "c" + Identities.sha256(text).substring(0, 31);
+      case null, default -> exchange.getExchangeId();
+    };
+  }
+
+  /** The record's idempotency key, or null when the source cannot say where its payload came from. */
+  private static @Nullable String externalId(Exchange exchange, Pending pending, int record) {
+    List<?> rows = pending.rowIdentities;
+    if (rows != null) {
+      // A database poll: each row is a payload of one record.
+      Integer index = exchange.getProperty(Exchange.SPLIT_INDEX, Integer.class);
+      if (index == null || index < 0 || index >= rows.size() || rows.get(index) == null) {
+        return null;
+      }
+      return Identities.externalId(String.valueOf(rows.get(index)), 0);
+    }
+    return pending.identity == null ? null : Identities.externalId(pending.identity, record);
   }
 
   private void add(Exchange exchange) throws Exception {
@@ -302,8 +451,21 @@ final class IngestionRoute extends RouteBuilder {
       pending.lastRecord = record;
     }
     Target target = ingestion.target();
+    int position = pending.read;
     pending.read++;
-    pending.jobs.add(new JobRecord(record.strip(), contentType(), pending.messageGroup, null, pending.messageGroup, null));
+    JobRecord job =
+        new JobRecord(record.strip(), contentType(), pending.messageGroup, externalId(exchange, pending, position), pending.messageGroup, null);
+    long size = Identities.encodedSize(job) + 1L;
+    if (size + ENVELOPE > JobRecord.MAX_REQUEST_BYTES) {
+      throw new IllegalArgumentException(
+          "record " + pending.read + " is " + size + " bytes as JSON; the platform takes at most " + JobRecord.MAX_REQUEST_BYTES + " in one request");
+    }
+    // Within the size the platform takes, measured as it is sent; a record past the target goes on its own.
+    if (!pending.jobs.isEmpty() && pending.bytes + size + ENVELOPE > JobRecord.TARGET_REQUEST_BYTES) {
+      flush(pending);
+    }
+    pending.jobs.add(job);
+    pending.bytes += size;
     if (pending.jobs.size() >= Math.clamp(target.batchSize(), 1, JobRecord.MAX_PER_REQUEST)) {
       flush(pending);
     }
@@ -327,18 +489,35 @@ final class IngestionRoute extends RouteBuilder {
     }
   }
 
+  /**
+   * Sends the batch. One the platform did not take is sent again after a pause, {@link #ATTEMPTS}
+   * times in all (its records' keys make that safe where the source gives them); one it refused for
+   * good is not sent again.
+   */
   private void flush(Pending pending) throws Exception {
     if (pending.jobs.isEmpty()) {
       return;
     }
     List<JobRecord> batch = List.copyOf(pending.jobs);
     pending.jobs.clear();
-    try {
-      sink.create(ingestion, batch);
-    } catch (InterruptedException e) {
-      throw e;
-    } catch (Exception e) {
-      throw new DispatchFailedException(e);
+    pending.bytes = 0;
+    Duration wait = FIRST_BACKOFF;
+    for (int attempt = 1; ; attempt++) {
+      try {
+        sink.create(ingestion, batch);
+        break;
+      } catch (InterruptedException e) {
+        throw e;
+      } catch (RejectedException e) {
+        throw new PlatformRefusedException(e);
+      } catch (Exception e) {
+        if (attempt >= ATTEMPTS) {
+          throw new DispatchFailedException(e);
+        }
+        LOG.debug("ingestion {}: the platform did not take {} job(s), sending them again in {}: {}", ingestion.id(), batch.size(), wait, e.getMessage());
+        Thread.sleep(wait);
+        wait = wait.multipliedBy(3);
+      }
     }
     counters.dispatched(ingestion, batch.size());
   }

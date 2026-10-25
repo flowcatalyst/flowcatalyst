@@ -33,6 +33,8 @@ import tools.jackson.databind.JsonNode;
 /** The runtime API calls against a fake platform that records what it is sent and answers as the platform does. */
 class PlatformApiTest {
 
+  static final Duration T = Duration.ofSeconds(5);
+
   /** One request as the fake platform saw it. */
   record Seen(String method, String target, String authorization, String body) {}
 
@@ -89,7 +91,7 @@ class PlatformApiTest {
   void aPollSendsTheRuntimeIdTheContractVersionAndTheKindsAndReadsTheAnswer() throws Exception {
     answer = "{\"asOf\":\"2026-10-24T10:00:00Z\",\"leaseFor\":\"PT3M\",\"ingestions\":[],\"tests\":[]}";
 
-    PollAnswer polled = api.poll();
+    PollAnswer polled = api.poll(T).answer();
 
     assertThat(polled.leaseFor()).isEqualTo(Duration.ofMinutes(3));
     Seen poll = seen.getFirst();
@@ -108,14 +110,14 @@ class PlatformApiTest {
   void aPollAnswerWithMembersTheRuntimeDoesNotKnowIsStillRead() throws Exception {
     answer = "{\"$schema\":\"http://platform/PollResponse.json\",\"asOf\":\"2026-10-24T10:00:00Z\",\"leaseFor\":\"PT3M\",\"ingestions\":[],\"tests\":[],\"later\":1}";
 
-    assertThat(api.poll().leaseFor()).isEqualTo(Duration.ofMinutes(3));
+    assertThat(api.poll(T).answer().leaseFor()).isEqualTo(Duration.ofMinutes(3));
   }
 
   @Test
   void aPollOrAReportThatFailsIsSentOnce() {
     statuses.addAll(List.of(503, 503));
-    assertThatThrownBy(() -> api.poll()).isInstanceOf(IOException.class).hasMessageContaining("503");
-    assertThatThrownBy(() -> api.report(new RuntimeReport("runtime 1", List.of(), List.of())))
+    assertThatThrownBy(() -> api.poll(T).answer()).isInstanceOf(IOException.class).hasMessageContaining("503");
+    assertThatThrownBy(() -> api.report(new RuntimeReport("runtime 1", List.of(), List.of()), T))
         .isInstanceOf(IOException.class)
         .hasMessageContaining("503");
     assertThat(seen).extracting(Seen::target).containsExactly("/api/ingestion-runtime/v1/poll", "/api/ingestion-runtime/v1/report");
@@ -126,7 +128,7 @@ class PlatformApiTest {
     statuses.add(426);
     answer = "{\"error\":\"CONTRACT_VERSION_UNSUPPORTED\",\"message\":\"contract version 2 is not supported; the platform serves 3 to 4\"}";
 
-    assertThatThrownBy(() -> api.poll())
+    assertThatThrownBy(() -> api.poll(T).answer())
         .isInstanceOf(RejectedException.class)
         .hasMessageContaining("426")
         .hasMessageContaining("CONTRACT_VERSION_UNSUPPORTED")
@@ -139,9 +141,9 @@ class PlatformApiTest {
     answer = "{\"error\":\"REPORT_WINDOW_INVALID\",\"message\":\"no\"}";
     RuntimeReport report = new RuntimeReport("runtime 1", List.of(), List.of());
 
-    assertThatThrownBy(() -> api.report(report)).isInstanceOf(RejectedException.class);
-    assertThatThrownBy(() -> api.report(report)).isNotInstanceOf(RejectedException.class).isInstanceOf(IOException.class);
-    assertThatThrownBy(() -> api.report(report)).isNotInstanceOf(RejectedException.class).isInstanceOf(IOException.class);
+    assertThatThrownBy(() -> api.report(report, T)).isInstanceOf(RejectedException.class);
+    assertThatThrownBy(() -> api.report(report, T)).isNotInstanceOf(RejectedException.class).isInstanceOf(IOException.class);
+    assertThatThrownBy(() -> api.report(report, T)).isNotInstanceOf(RejectedException.class).isInstanceOf(IOException.class);
   }
 
   @Test
@@ -227,8 +229,87 @@ class PlatformApiTest {
   }
 
   @Test
+  void aPollNamesTheBuiltInKindsThisRuntimeRuns() throws Exception {
+    answer = "{\"asOf\":\"2026-10-24T10:00:00Z\",\"leaseFor\":\"PT3M\",\"ingestions\":[],\"tests\":[]}";
+
+    api.poll(T);
+
+    JsonNode kinds = Json.mapper().readTree(seen.getFirst().body()).get("builtinKinds");
+    assertThat(kinds.valueStream().map(JsonNode::asString).toList())
+        .containsExactlyInAnyOrder("sftp", "http", "rabbitmq", "sqs", "s3", "database-poll", "api-poll");
+  }
+
+  /** An ingestion as the platform lists it, with the source given. */
+  private static String listed(String id, String source) {
+    return "{\"id\":\"" + id + "\",\"version\":7,\"clientId\":\"clt_1\",\"clientIdentifier\":\"acme\",\"applicationCode\":\"app\","
+        + "\"code\":\"" + id + "\",\"name\":\"\",\"source\":" + source + ",\"split\":{\"kind\":\"none\"},"
+        + "\"target\":{\"code\":\"a:b:c:d\",\"targetUrl\":\"https://f.example\",\"pool\":\"p\",\"mode\":\"IMMEDIATE\",\"batchSize\":1},"
+        + "\"keepFailedPayloads\":false}";
+  }
+
+  @Test
+  void anIngestionOrTestWhoseDefinitionCannotBeReadFailsAloneAndTheRestRun() throws Exception {
+    String sqs = "{\"kind\":\"sqs\",\"region\":\"eu-west-1\",\"queue\":\"q\"}";
+    answer =
+        "{\"asOf\":\"2026-10-24T10:00:00Z\",\"leaseFor\":\"PT3M\",\"ingestions\":["
+            + listed("ing_ok", sqs) + ","
+            + listed("ing_new", "{\"kind\":\"kafka\",\"topic\":\"t\"}") + ","
+            + listed("ing_mode", "{\"kind\":\"sqs\",\"region\":\"eu-west-1\",\"queue\":\"q\",\"mode\":{\"kind\":\"fifo-v9\"}}").replace("IMMEDIATE", "SOMETIMES")
+            + "],\"tests\":[{\"id\":\"tst_1\",\"expiresAt\":\"2026-10-24T10:05:00Z\",\"ingestion\":" + listed("ing_test", "{\"kind\":\"kafka\"}") + "}]}";
+
+    RuntimeApi.Polled polled = api.poll(T);
+
+    assertThat(polled.answer().ingestions()).extracting(Ingestion::id).containsExactly("ing_ok");
+    assertThat(polled.unreadable()).extracting(RuntimeApi.Unreadable::ingestionId).containsExactly("ing_new", "ing_mode");
+    assertThat(polled.unreadable().getFirst().version()).isEqualTo(7);
+    assertThat(polled.unreadable().getFirst().reason()).isEqualTo("definition not supported by this runtime version (source kind 'kafka')");
+    assertThat(polled.unreadable().get(1).reason()).isEqualTo("definition not supported by this runtime version");
+    assertThat(polled.unreadableTests()).singleElement().satisfies(t -> {
+      assertThat(t.id()).isEqualTo("tst_1");
+      assertThat(t.outcome()).isEqualTo(io.flowcatalyst.ingestor.contract.ConnectionTest.Outcome.FAILED);
+      assertThat(t.steps().getFirst()).contains("not supported by this runtime version");
+    });
+  }
+
+  @Test
+  void aJobsRequestRefusedForGoodIsRejectedAndOneRefusedForNowIsNot() {
+    List<JobRecord> one = List.of(new JobRecord("a", "text/plain", null, null, null, null));
+    statuses.addAll(List.of(400, 413, 409, 429, 408));
+    answer = "{\"error\":\"VALIDATION\",\"message\":\"records[0]: too long\"}";
+
+    assertThatThrownBy(() -> api.create(ingestion, one)).isInstanceOf(RejectedException.class).hasMessageContaining("too long");
+    assertThatThrownBy(() -> api.create(ingestion, one)).isInstanceOf(RejectedException.class).hasMessageContaining("413");
+    for (int i = 0; i < 3; i++) {
+      assertThatThrownBy(() -> api.create(ingestion, one)).isNotInstanceOf(RejectedException.class).isInstanceOf(IOException.class);
+    }
+  }
+
+  @Test
+  void aForbiddenAnswerDropsTheTokenSoTheNextCallFetchesAnother() {
+    int[] forgotten = {0};
+    PlatformApi forgetting =
+        new PlatformApi(
+            clients.service(
+                ServiceOptions.builder("platform-2", URI.create("http://127.0.0.1:" + platform.getAddress().getPort()))
+                    .requestTimeout(Duration.ofSeconds(5))
+                    .retry(RetryPolicy.defaults().withBackoff(Duration.ofMillis(1), Duration.ofMillis(1)))
+                    .auth(Auth.bearer(() -> "runtime-token"))
+                    .build()),
+            "runtime 1",
+            null,
+            List.of(),
+            () -> forgotten[0]++);
+    statuses.add(403);
+
+    assertThatThrownBy(() -> forgetting.create(ingestion, List.of(new JobRecord("a", "text/plain", null, null, null, null))))
+        .isNotInstanceOf(RejectedException.class)
+        .isInstanceOf(IOException.class);
+    assertThat(forgotten[0]).isEqualTo(1);
+  }
+
+  @Test
   void aPlatformThatIsNotThereIsAFailure() {
     platform.stop(0);
-    assertThatThrownBy(() -> api.poll()).isInstanceOf(IOException.class);
+    assertThatThrownBy(() -> api.poll(T).answer()).isInstanceOf(IOException.class);
   }
 }

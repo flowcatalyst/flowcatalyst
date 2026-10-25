@@ -135,7 +135,7 @@ instance and asks it for a new endpoint per ingestion and version.
 | `ingestion()` | the ingestion: id, version, client, application, code |
 | `settings()` | its settings, read by the kind's fields |
 | `state()` | small values kept between polls (`get(key)`, `put(key, value)`), such as a watermark or a feed token. The platform keeps them, so they follow the ingestion to whichever runtime runs it next; `put` is refused once this runtime no longer holds the lease |
-| `http()` | the runtime's HTTP clients: register the extension's own (`registerScoped`) so their requests are measured, and close the registration when the endpoint stops |
+| `http()` | the runtime's HTTP clients: register the extension's own (`registerScoped`) so their requests are measured, and close the registration when the endpoint stops. The runtime's checks of the addresses a definition names (loopback, link-local, metadata) do not cover an extension's own connections: an extension that connects to an address from its settings should refuse those itself |
 | `clientName(prefix)` | a name for such a client, unique among the runtime's |
 | `clock()` | the time, which tests set |
 
@@ -160,9 +160,43 @@ moved) should do so on a failed exchange, and commit (store the token, move the 
 
 `PolledSource` fits a source polled with code of its own. `poll(payloads)` hands any number of payloads to the
 route (`payloads.dispatch(body)` answers whether their jobs exist) and says when to poll again; a poll that
-throws is reported (`AUTH` for a refused login, tried again every five minutes, else `SOURCE`) and the
-ingestion is `FAILING` until one gets through. `SeenKeys` remembers what a poll dispatched lately, by key. A
-`ScheduledPollEndpoint` fits too (the generator's). The endpoint never produces (`createProducer` throws).
+throws anything, an `Error` included, is reported (`AUTH` for a refused login, tried again every five minutes,
+else `SOURCE`) and the next poll still comes; the ingestion is `FAILING` until one gets through. `SeenKeys`
+remembers what a poll dispatched lately, by key. A `ScheduledPollEndpoint` fits too (the generator's). The
+endpoint never produces (`createProducer` throws).
+
+### Saying where a payload came from (idempotency keys)
+
+When the source can say where a payload came from, say it, and its jobs carry idempotency keys: the runtime
+makes each record's `externalId` from the payload's identity and the record's position in it (the SHA-256 of
+`<identity>#<index>`), and the platform answers a record sent again under the same key with the job it made
+first. A payload read twice (a page asked for again after its jobs failed, a retry after a timeout, the
+ingestion moving to another runtime) then makes its jobs once, and its jobs share one message group however
+often it is read.
+
+The identity names the payload and is the same every time that payload is read: an asset's id and version, the
+page's token, a file's path, size and time. It must never be the content alone, and two different payloads must
+never share one. Without one (the default) the jobs carry no key, as before.
+
+```java
+@Override
+protected Duration poll(Payloads payloads) throws Exception {
+  Page page = vendor.page(cursor);
+  // The page asked for is what this payload is.
+  if (payloads.dispatch(page.json(), "acme-vendor:orders?page=" + cursor)) {
+    context.state().put("cursor", page.next());
+  }
+  return page.hasMore() ? Duration.ZERO : Duration.ofMinutes(5);
+}
+```
+
+- From a `PolledSource`: `payloads.dispatch(body, identity)` (null or blank for none).
+- From any other endpoint: `PayloadIdentity.set(exchange, identity)` on the exchange it hands the route, which
+  sets the exchange property `PayloadIdentity.PROPERTY` (`ingestPayloadIdentity`).
+
+Both are additions to extension API 1 (`Ingestor-Extension-Api: 1` is unchanged): an extension built against
+the old API keeps working and gives no identity, and one that gives an identity on an older runtime has it
+ignored.
 
 ## Testing
 

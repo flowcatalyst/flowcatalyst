@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.camel.Exchange;
 import org.apache.camel.ProducerTemplate;
 import org.jspecify.annotations.Nullable;
@@ -37,6 +38,11 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The dispatch jobs are created before the answer is sent: {@code 202} means the platform has
  * them, {@code 503} means it has none or only some and the caller should send the payload again.
+ * A caller that sends an {@code Idempotency-Key} header has each record keyed by it and its position,
+ * so sending the same request again (after a {@code 503}, say) makes no new jobs; without one a
+ * request sent again makes them again. An address that fails to log in to an ingestion more than
+ * {@link #AUTH_FAILURES} allows is answered {@code 429} without its credentials being checked, until
+ * its wait is over.
  */
 final class HttpIngest {
 
@@ -53,18 +59,35 @@ final class HttpIngest {
   /** The most ingestions the limiter keeps a bucket for; beyond it, new ones share a bucket. */
   private static final int MAX_INGESTIONS = 100_000;
 
+  /** The request header a caller names a request with, so that sending it again makes no new jobs. */
+  static final String IDEMPOTENCY_KEY = "Idempotency-Key";
+
+  /** Failed logins one address may make to one ingestion before it waits. */
+  static final RateLimitPolicy AUTH_FAILURES = RateLimitPolicy.of(20, Duration.ofMinutes(1));
+
+  /** The most callers kept waiting at once; beyond it, new ones are only counted. */
+  private static final int MAX_BLOCKED = 10_000;
+
   private final Reconciler reconciler;
   private final Secrets secrets;
   private final RateLimiter limiter;
   private final ProducerTemplate producer;
   private final PlatformTokens tokens;
+  private final MonotonicClock clock;
+  private final Map<String, Long> blockedUntil = new ConcurrentHashMap<>();
 
   HttpIngest(Reconciler reconciler, Secrets secrets, RateLimiter limiter, ProducerTemplate producer, PlatformTokens tokens) {
+    this(reconciler, secrets, limiter, producer, tokens, System::nanoTime);
+  }
+
+  HttpIngest(
+      Reconciler reconciler, Secrets secrets, RateLimiter limiter, ProducerTemplate producer, PlatformTokens tokens, MonotonicClock clock) {
     this.tokens = tokens;
     this.reconciler = reconciler;
     this.secrets = secrets;
     this.limiter = limiter;
     this.producer = producer;
+    this.clock = clock;
   }
 
   /**
@@ -104,6 +127,11 @@ final class HttpIngest {
       return HttpErrors.notFound("no such ingestion");
     }
     Ingestion ingestion = found.getFirst();
+    String caller = ingestion.id() + "|" + (request.remoteAddress() == null ? "?" : request.remoteAddress());
+    Response blocked = blocked(caller);
+    if (blocked != null) {
+      return blocked;
+    }
     Response refusal;
     try {
       refusal = refusal(ingestion, http.auth(), request.header("Authorization"));
@@ -112,7 +140,8 @@ final class HttpIngest {
       return HttpErrors.error(503, "UNAVAILABLE", "credentials cannot be checked right now; send it again");
     }
     if (refusal != null) {
-      return refusal;
+      Response limited = refused(caller);
+      return limited != null ? limited : refusal;
     }
     if (http.rateLimit() != null) {
       Response limited = limited(ingestion, http.rateLimit());
@@ -122,15 +151,66 @@ final class HttpIngest {
     }
 
     byte[] body = request.bodyBytes();
-    Exchange exchange = producer.send(endpoint(ingestion), e -> e.getMessage().setBody(body));
+    String key = request.header(IDEMPOTENCY_KEY);
+    Exchange exchange =
+        producer.send(
+            endpoint(ingestion),
+            e -> {
+              e.getMessage().setBody(body);
+              if (key != null && !key.isBlank()) {
+                // The caller's own key: the same request sent again makes no new jobs.
+                e.setProperty(IngestionRoute.IDENTITY, key.strip());
+              }
+            });
     if (exchange.isFailed()) {
       LOG.warn("ingestion {} could not take a payload", ingestion.id(), exchange.getException());
       return HttpErrors.error(503, "UNAVAILABLE", "the payload was not accepted; send it again");
+    }
+    if (Boolean.TRUE.equals(exchange.getProperty(IngestionRoute.REFUSED, Boolean.class))) {
+      return HttpErrors.error(422, "REFUSED", "the platform refused the payload's jobs; do not send it again unchanged");
     }
     if (exchange.getProperty(IngestionRoute.REJECTED) != null) {
       return HttpErrors.error(422, "UNPROCESSABLE", "the payload could not be read; do not send it again unchanged");
     }
     return Response.json(202, Map.of("accepted", true));
+  }
+
+  /**
+   * A caller (an ingestion and an address) that has failed to authenticate too often is refused
+   * without its credentials being checked, until its wait is over; the others are not held up.
+   */
+  private @Nullable Response blocked(String caller) {
+    Long until = blockedUntil.get(caller);
+    if (until == null) {
+      return null;
+    }
+    long left = until - clock.nanos();
+    if (left <= 0) {
+      blockedUntil.remove(caller, until);
+      return null;
+    }
+    return tooManyFailures(Duration.ofNanos(left));
+  }
+
+  /** Counts a failed login; past the limit the caller waits, and is told so instead of 401. */
+  private @Nullable Response refused(String caller) {
+    if (limiter.acquire("auth|" + caller, 1, AUTH_FAILURES) instanceof Decision.Limited over) {
+      if (blockedUntil.size() >= MAX_BLOCKED) {
+        long now = clock.nanos();
+        blockedUntil.values().removeIf(until -> until - now <= 0);
+      }
+      if (blockedUntil.size() < MAX_BLOCKED) {
+        blockedUntil.put(caller, clock.nanos() + over.retryAfter().toNanos());
+      }
+      LOG.warn("too many failed logins to an HTTP ingestion from {}; refusing it for {}", caller, over.retryAfter());
+      return tooManyFailures(over.retryAfter());
+    }
+    return null;
+  }
+
+  private static Response tooManyFailures(Duration wait) {
+    long seconds = Math.max(1, wait.plusMillis(999).toSeconds());
+    return HttpErrors.error(429, "RATE_LIMITED", "too many failed logins; wait before trying again").header("Retry-After", Long.toString(seconds));
   }
 
   /** The answer for a request over the ingestion's limit, or null when it is within it. */

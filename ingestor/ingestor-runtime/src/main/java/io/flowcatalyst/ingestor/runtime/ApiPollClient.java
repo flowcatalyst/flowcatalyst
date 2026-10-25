@@ -106,6 +106,7 @@ final class ApiPollClient implements AutoCloseable {
   private final List<Map.Entry<String, String>> fixedQuery;
   private final @Nullable Secret secret;
   private final String name;
+  private final OutboundGuard guard;
   private @Nullable Token token;
 
   /**
@@ -121,6 +122,30 @@ final class ApiPollClient implements AutoCloseable {
    */
   ApiPollClient(
       Ingestion ingestion, Source.ApiPoll source, Secrets secrets, String name, ServiceClients clients, LongSupplier nanos) {
+    this(ingestion, source, secrets, name, clients, nanos, OutboundGuard.allowingLoopback());
+  }
+
+  /**
+   * A client for one ingestion's API whose every request first checks the host it goes to.
+   *
+   * @param ingestion the ingestion
+   * @param source its source
+   * @param secrets resolves the secrets the login names; an unset one fails here
+   * @param name the start of its clients' names, unique to this client: see {@link #name}
+   * @param clients the framework's registry its HTTP clients are registered in
+   * @param nanos a monotonic clock, for token expiry
+   * @param guard what the API's and the login's hosts may resolve to
+   * @throws UnsupportedIngestionException when the address cannot be used or a secret is not set
+   */
+  ApiPollClient(
+      Ingestion ingestion,
+      Source.ApiPoll source,
+      Secrets secrets,
+      String name,
+      ServiceClients clients,
+      LongSupplier nanos,
+      OutboundGuard guard) {
+    this.guard = guard;
     this.source = source;
     this.clients = clients;
     this.nanos = nanos;
@@ -161,6 +186,21 @@ final class ApiPollClient implements AutoCloseable {
     return name.toString();
   }
 
+  /**
+   * Refuses the API's host, and the token or login endpoint's, when one resolves to an address a
+   * source may not reach.
+   *
+   * @throws UnsupportedIngestionException when one does
+   */
+  void checkHosts() {
+    guard.check(apiUrl.getHost(), "the API host");
+    switch (source.auth()) {
+      case ApiAuth.ClientCredentials cc -> guard.checkUrl(cc.tokenUrl(), "the token endpoint's host");
+      case ApiAuth.Login login -> guard.checkUrl(login.url(), "the login endpoint's host");
+      default -> {}
+    }
+  }
+
   /** Gives back the HTTP clients; the token held is kept. */
   @Override
   public synchronized void close() {
@@ -199,6 +239,10 @@ final class ApiPollClient implements AutoCloseable {
     } catch (HttpClientException e) {
       String message = "could not ask the API (" + e.kind().name().toLowerCase(java.util.Locale.ROOT) + "): " + e.getMessage();
       steps.add(message + ".");
+      return new Failed(message, null, List.copyOf(steps));
+    } catch (UnsupportedIngestionException e) {
+      String message = String.valueOf(e.getMessage());
+      steps.add("Not asked: " + message + ".");
       return new Failed(message, null, List.copyOf(steps));
     }
   }
@@ -244,6 +288,8 @@ final class ApiPollClient implements AutoCloseable {
   }
 
   private ClientResponse send(@Nullable String cursor, List<String> steps) throws TokenRefused, TokenFailed {
+    // Again before each request: what the names resolve to now is what the client connects to.
+    checkHosts();
     RequestBuilder request =
         client(name, apiUrl).request(source.method() == Source.ApiPoll.Method.POST ? RequestMethod.POST : RequestMethod.GET, path).timeout(REQUEST_TIMEOUT);
     for (Map.Entry<String, String> q : fixedQuery) {
