@@ -94,10 +94,19 @@ var configErrorOutcome = &common.MediationOutcome{Result: common.MediationErrorC
 // wiring: a BLOCK_ON_ERROR head that fails terminally reports exactly its
 // untried buffered siblings (not the head itself) to the SettledReporter,
 // with the ackBuffered reason, after the broker ACKs have already happened.
+// heldFailingHead fails m1 terminally and holds every call until its hold is
+// closed, which each test does once its batch is submitted: the siblings are
+// then buffered behind the head when it fails, as a broker poll delivers them.
+// Unheld, the head could fail before the next submit, and the siblings would
+// arrive as a fresh group, delivered normally with nothing to report.
+func heldFailingHead() *cascadeMediator {
+	return &cascadeMediator{failID: "m1", failWith: configErrorOutcome, hold: make(chan struct{})}
+}
+
 func TestAckBufferedReportsSettledOnBlockOnErrorHeadFailure(t *testing.T) {
 	group := "g"
 	cons := &cascadeConsumer{wantTotal: 3, done: make(chan struct{})}
-	med := &cascadeMediator{failID: "m1", failWith: configErrorOutcome}
+	med := heldFailingHead()
 	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
 	reporter := newFakeSettledReporter()
 	pool.SetSettledReporter(reporter)
@@ -107,6 +116,7 @@ func TestAckBufferedReportsSettledOnBlockOnErrorHeadFailure(t *testing.T) {
 		mkOrderedTok("m2", &group, common.DispatchBlockOnError, "tok-m2"),
 		mkOrderedTok("m3", &group, common.DispatchBlockOnError, "tok-m3"),
 	})
+	close(med.hold)
 
 	select {
 	case <-cons.done:
@@ -143,7 +153,7 @@ func TestAckBufferedReportsSettledOnBlockOnErrorHeadFailure(t *testing.T) {
 func TestAckBufferedReportSkipsMessagesWithNoAuthToken(t *testing.T) {
 	group := "g"
 	cons := &cascadeConsumer{wantTotal: 3, done: make(chan struct{})}
-	med := &cascadeMediator{failID: "m1", failWith: configErrorOutcome}
+	med := heldFailingHead()
 	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
 	reporter := newFakeSettledReporter()
 	pool.SetSettledReporter(reporter)
@@ -153,6 +163,7 @@ func TestAckBufferedReportSkipsMessagesWithNoAuthToken(t *testing.T) {
 		mkOrderedTok("m2", &group, common.DispatchBlockOnError, "tok-m2"),
 		mkOrderedTok("m3", &group, common.DispatchBlockOnError, ""), // no AuthToken
 	})
+	close(med.hold)
 
 	select {
 	case <-cons.done:
@@ -171,7 +182,7 @@ func TestAckBufferedReportSkipsMessagesWithNoAuthToken(t *testing.T) {
 func TestAckBufferedReportSkippedWhenNoBufferedJobQualifies(t *testing.T) {
 	group := "g"
 	cons := &cascadeConsumer{wantTotal: 2, done: make(chan struct{})}
-	med := &cascadeMediator{failID: "m1", failWith: configErrorOutcome}
+	med := heldFailingHead()
 	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
 	reporter := newFakeSettledReporter()
 	pool.SetSettledReporter(reporter)
@@ -180,6 +191,7 @@ func TestAckBufferedReportSkippedWhenNoBufferedJobQualifies(t *testing.T) {
 		mkOrderedTok("m1", &group, common.DispatchBlockOnError, "tok-m1"),
 		mkOrderedTok("m2", &group, common.DispatchBlockOnError, ""), // no AuthToken
 	})
+	close(med.hold)
 
 	select {
 	case <-cons.done:
@@ -256,7 +268,7 @@ func TestAckBufferedReportNotFiredUnderNextOnError(t *testing.T) {
 func TestAckBufferedNilReporterIsANoOp(t *testing.T) {
 	group := "g"
 	cons := &cascadeConsumer{wantTotal: 3, done: make(chan struct{})}
-	med := &cascadeMediator{failID: "m1", failWith: configErrorOutcome}
+	med := heldFailingHead()
 	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
 	// Deliberately no SetSettledReporter call — nil is the zero value.
 
@@ -267,6 +279,7 @@ func TestAckBufferedNilReporterIsANoOp(t *testing.T) {
 			mkOrderedTok("m3", &group, common.DispatchBlockOnError, "tok-m3"),
 		})
 	})
+	close(med.hold)
 
 	select {
 	case <-cons.done:
@@ -288,7 +301,7 @@ func TestAckBufferedNilReporterIsANoOp(t *testing.T) {
 func TestAckBufferedReportErrorDoesNotAffectAcks(t *testing.T) {
 	group := "g"
 	cons := &cascadeConsumer{wantTotal: 3, done: make(chan struct{})}
-	med := &cascadeMediator{failID: "m1", failWith: configErrorOutcome}
+	med := heldFailingHead()
 	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
 	reporter := newFakeSettledReporter()
 	reporter.err = errors.New("platform unreachable")
@@ -299,6 +312,7 @@ func TestAckBufferedReportErrorDoesNotAffectAcks(t *testing.T) {
 		mkOrderedTok("m2", &group, common.DispatchBlockOnError, "tok-m2"),
 		mkOrderedTok("m3", &group, common.DispatchBlockOnError, "tok-m3"),
 	})
+	close(med.hold)
 
 	select {
 	case <-cons.done:

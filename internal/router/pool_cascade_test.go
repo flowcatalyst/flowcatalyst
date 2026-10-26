@@ -105,12 +105,20 @@ type cascadeMediator struct {
 	// the broker instead — see BrokerRelease — so they can no longer drive a
 	// retry test. Set explicitly to exercise the release path.
 	failWith *common.MediationOutcome
-	mu       sync.Mutex
-	seen     []string
-	failed   int
+	// hold, when set, keeps every call waiting until it is closed.
+	hold   chan struct{}
+	mu     sync.Mutex
+	seen   []string
+	failed int
 }
 
-func (m *cascadeMediator) Mediate(_ context.Context, msg *common.Message) common.MediationOutcome {
+func (m *cascadeMediator) Mediate(ctx context.Context, msg *common.Message) common.MediationOutcome {
+	if m.hold != nil {
+		select {
+		case <-m.hold:
+		case <-ctx.Done():
+		}
+	}
 	m.mu.Lock()
 	m.seen = append(m.seen, msg.ID)
 	fail := false

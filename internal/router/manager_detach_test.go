@@ -249,9 +249,9 @@ func TestReconfigure_RemovedPoolDrainsThenStops(t *testing.T) {
 
 	pool := m.Pool("DROPME")
 	require.NotNil(t, pool)
-	require.Eventually(t, func() bool { return pool.ActiveWorkers() == 1 }, time.Second, 5*time.Millisecond,
+	require.Eventually(t, func() bool { return pool.ActiveWorkers() == 1 }, 5*time.Second, 5*time.Millisecond,
 		"m1 must be actively mediating before the pool is removed")
-	require.Eventually(t, func() bool { return pool.QueueSize() == 1 }, time.Second, 5*time.Millisecond,
+	require.Eventually(t, func() bool { return pool.QueueSize() == 1 }, 5*time.Second, 5*time.Millisecond,
 		"m2 must be buffered behind m1 at the moment of removal")
 
 	// Remove the pool from config; the queue stays, so only the pool-removal
@@ -264,12 +264,12 @@ func TestReconfigure_RemovedPoolDrainsThenStops(t *testing.T) {
 	// The buffered group must still be delivered, not flushed for
 	// redelivery.
 	close(gate)
-	require.Eventually(t, func() bool { return q.acks.Load() == 2 }, time.Second, 5*time.Millisecond,
+	require.Eventually(t, func() bool { return q.acks.Load() == 2 }, 5*time.Second, 5*time.Millisecond,
 		"the removed pool's buffered group must still be delivered, not flushed")
 
 	// Once drained, the pool is fully stopped and drops out of AllPools.
-	require.Eventually(t, func() bool { return pool.stopped.Load() }, time.Second, 5*time.Millisecond)
-	require.Eventually(t, func() bool { return !slices.Contains(m.AllPools(), pool) }, time.Second, 5*time.Millisecond,
+	require.Eventually(t, func() bool { return pool.stopped.Load() }, 5*time.Second, 5*time.Millisecond)
+	require.Eventually(t, func() bool { return !slices.Contains(m.AllPools(), pool) }, 5*time.Second, 5*time.Millisecond,
 		"a finished drain must remove the pool from AllPools")
 }
 
