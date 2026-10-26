@@ -89,7 +89,10 @@ func TestCooperativeRunawaysStopAtTheDeadline(t *testing.T) {
 		"string building":   `let s = ""; for (;;) { s += "x"; if (s.length > 1e6) s = ""; }`,
 		"json churn":        `const o = {a: [1,2,3], b: {c: "d"}}; for (;;) { JSON.parse(JSON.stringify(o)); }`,
 		"bigint":            `let n = 3n; for (;;) { n = n * n; if (n.toString(2).length > 1e5) n = 3n; }`,
-		"large array fill":  `return { meta: '{"status":200}', body: String(new Array(2e7).fill(1).reduce((a, b) => a + b)) };`,
+		// Fills that fit the 256 MiB cap, repeated: one of 2e7 runs out of memory
+		// at about the limit, so the case raced the out-of-memory failure (a 500,
+		// no error) against the deadline.
+		"large array fill": `for (;;) { new Array(2e6).fill(1).reduce((a, b) => a + b); }`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
