@@ -1,0 +1,118 @@
+package pages
+
+import (
+	"strings"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// ingsConfigSection is the drawer's "Settings (this environment)": where the
+// ingestion's source keeps its settings, in which state, and the effective
+// values. A secret setting is shown as the secret's name, never a value.
+templ ingsConfigSection(d ingsDetail) {
+	if d.Config != nil {
+		@kit.FormSection(kit.FormSectionProps{
+			Title:       "Settings (this environment)",
+			Description: "The source's settings are not in the definition: they are platform config " + ingestion.ConfigSection + "/" + d.Config.Key + " of " + d.Application + ", for client " + d.Client + ". Another environment has its own.",
+			Actions:     ingsConfigActions(d),
+		}) {
+			<div id="ings-config" class="flex flex-col gap-3">
+				<div class="flex flex-wrap items-center gap-2">
+					@kit.Badge(kit.BadgeProps{Variant: d.Config.statusVariant()}) {
+						{ d.Config.statusText() }
+					}
+					<code class="fc-mono-chip">{ ingestion.ConfigSection }/{ d.Config.Key }</code>
+					if d.Config.UpdatedAt != "" {
+						<span class="text-xs text-muted-foreground">changed <time datetime={ d.Config.UpdatedAt }>{ d.Config.Updated }</time></span>
+					}
+				</div>
+				if d.Config.Draft {
+					@kit.Alert(kit.AlertProps{ID: "ings-config-draft", Icon: "info", Title: "Named by a draft", Description: "The live version holds its settings inline; the newest saved version, not live yet, names this entry."})
+				}
+				if d.Config.Status == ingestion.ConfigInvalid {
+					@kit.Alert(kit.AlertProps{ID: "ings-config-invalid", Variant: kit.AlertDestructive, Icon: "circle-x", Title: "The entry is not valid", Description: strings.Join(d.Config.Problems, "; ")})
+				}
+				if d.Config.Unchecked {
+					@kit.Alert(kit.AlertProps{ID: "ings-config-unchecked", Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "Schema not checked", Description: "No live runtime reports this kind's settings, so a value is stored without being checked against them; the runtime checks it before it builds the route."})
+				}
+				if len(d.Config.Others) > 0 {
+					<p class="text-sm text-muted-foreground" id="ings-config-shared">Shared with { strings.Join(d.Config.Others, ", ") }: a value must suit each of them.</p>
+				}
+				if len(d.Config.Rows) > 0 || d.Config.TargetURL != "" {
+					<div class="fc-detail-grid" id="ings-config-values">
+						for _, row := range d.Config.Rows {
+							@kit.DetailField(kit.DetailFieldProps{Label: row.Label}) {
+								if row.Secret {
+									<code title="The secret's name, never its value">{ row.Value }</code>
+								} else {
+									<span class="whitespace-pre-wrap break-all">{ row.Value }</span>
+								}
+							}
+						}
+						if d.Config.TargetURL != "" {
+							@kit.DetailField(kit.DetailFieldProps{Label: "Delivery URL", Value: d.Config.TargetURL, Span: true})
+						} else if d.Config.TargetInDefinition {
+							@kit.DetailField(kit.DetailFieldProps{Label: "Delivery URL", Value: "In the definition", Span: true})
+						}
+					</div>
+				} else if d.Config.Status == ingestion.ConfigMissing {
+					<p class="text-sm text-muted-foreground">Nothing is set for this client in this environment.</p>
+				}
+			</div>
+			if d.Config.CanDelete {
+				@kit.ConfirmDialog(kit.ConfirmDialogProps{
+					ID: ingsConfigDeleteDialog, Action: d.Base + "/config/delete", Title: "Delete these settings?", Message: d.Config.deleteMessage(d.Code),
+					ConfirmLabel: "Delete", Tone: kit.ToneDanger, Hidden: ingsHidden(), FormAttrs: templ.Attributes{"data-on:submit": kit.SubmitConfirm},
+				})
+			}
+		}
+	}
+}
+
+templ ingsConfigActions(d ingsDetail) {
+	if d.Config != nil {
+		if d.Config.CanEdit {
+			@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.configFormHref(), Icon: "pencil", Attrs: ingsLink()}) {
+				if d.Config.Status == ingestion.ConfigMissing {
+					Set…
+				} else {
+					Edit…
+				}
+			}
+			if d.Config.CanDelete {
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Small: true, Icon: "trash-2", Attrs: kit.OpenModal(ingsConfigDeleteDialog)}) {
+					Delete…
+				}
+			}
+		} else if d.Config.Block != "" {
+			<span class="text-xs text-muted-foreground">{ d.Config.Block }</span>
+		}
+	}
+}
+
+// ingsConfigDialogC is the settings dialog.
+templ ingsConfigDialogC(c ingsConfigForm) {
+	@kit.FormDialog(c.dialogProps()) {
+		@ingsConfigBody(c)
+	}
+}
+
+// ingsConfigBody is the whole form, the patch target of a failed submit.
+templ ingsConfigBody(c ingsConfigForm) {
+	<div id={ ingsConfigBodyID } class="flex flex-col gap-4" data-signals={ c.signals() }>
+		<p class="text-sm text-muted-foreground">
+			The kind's settings for this environment, as the definition would hold them inline. Secrets are named, never written here.
+			{ c.sharedText() }
+		</p>
+		if c.Unchecked {
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "Schema not checked", Description: "No live runtime reports this kind's settings, so the value is stored without being checked against them."})
+		}
+		for _, fld := range c.Kind.Fields {
+			@ingsGated(c.F, fld)
+		}
+		if !c.TargetInDefinition {
+			@ingsFieldC(c.F, c.targetField())
+		}
+	</div>
+}

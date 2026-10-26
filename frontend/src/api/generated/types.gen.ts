@@ -1998,6 +1998,12 @@ export type Failure = {
     [key: string]: unknown;
 };
 
+export type FieldError = {
+    code: string;
+    field: string;
+    message: string;
+};
+
 export type FireNowRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2153,6 +2159,93 @@ export type IdpRoleMappingResponse = {
     updatedAt: string;
 };
 
+export type IngestionConfigDeletedResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The codes of every ingestion that names the entry; each is now MISSING and does not run until the entry is set again
+     */
+    ingestions: Array<string>;
+    key: string;
+};
+
+export type IngestionConfigResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The entry's key; absent while the settings are inline
+     */
+    key?: string;
+    /**
+     * Why the entry is INVALID
+     */
+    problems?: Array<FieldError>;
+    /**
+     * A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings
+     */
+    schemaChecked: boolean;
+    status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
+    updatedAt?: string;
+    /**
+     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry or it is not an object
+     */
+    value?: {
+        [key: string]: unknown;
+    };
+};
+
+export type IngestionConfigStatus = {
+    /**
+     * The entry's key; absent while the settings are inline
+     */
+    key?: string;
+    /**
+     * Why the entry is INVALID
+     */
+    problems?: Array<FieldError>;
+    status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
+    updatedAt?: string;
+};
+
+export type IngestionConfigWritten = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The codes of every ingestion of the application and client that names the entry, which the value was checked against
+     */
+    ingestions: Array<string>;
+    /**
+     * The entry's key; absent while the settings are inline
+     */
+    key?: string;
+    /**
+     * Why the entry is INVALID
+     */
+    problems?: Array<FieldError>;
+    /**
+     * A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings
+     */
+    schemaChecked: boolean;
+    status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
+    updatedAt?: string;
+    /**
+     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry or it is not an object
+     */
+    value?: {
+        [key: string]: unknown;
+    };
+    /**
+     * SCHEMA_UNCHECKED when no live runtime reports the kind's settings, so the value was not checked against them
+     */
+    warnings?: Array<string>;
+};
+
 export type IngestionDefinition = {
     /**
      * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
@@ -2255,6 +2348,10 @@ export type IngestionResponse = {
     clientId: string;
     clientIdentifier: string;
     code: string;
+    /**
+     * Where the settings stand: INLINE (in the definition), or the config entry the source names: SET, MISSING (the ingestion does not run until it is set) or INVALID
+     */
+    config: IngestionConfigStatus;
     createdAt: string;
     id: string;
     /**
@@ -2573,6 +2670,10 @@ export type IngestionVersionResponse = {
     split: unknown;
     target: Target;
     version: number;
+    /**
+     * What the saved definition says that will not run as meant, such as CONFIG_MISSING for a config entry that is not set (the answer of POST .../versions only)
+     */
+    warnings?: Array<string>;
 };
 
 export type IntrospectResponse = {
@@ -4229,6 +4330,7 @@ export type SetChange = {
     client: string;
     code: string;
     ingestionId?: string;
+    warnings?: Array<string>;
 };
 
 export type SetDeveloperCredentialResponse = {
@@ -4243,6 +4345,20 @@ export type SetDeveloperCredentialResponse = {
 export type SetFile = {
     content: string;
     path: string;
+};
+
+export type SetIngestionConfigRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The entry: the kind's settings as an inline source holds them, and optionally targetUrl. A secret setting holds the secret's name
+     */
+    value: {
+        [key: string]: unknown;
+    };
+    [key: string]: unknown;
 };
 
 export type SetPropertyRequest = {
@@ -4713,7 +4829,10 @@ export type Target = {
     mode: string;
     pool: string;
     serviceAccount?: string;
-    targetUrl: string;
+    /**
+     * The delivery URL. May be left out only when the source names a config entry whose value gives it (exactly one of the two)
+     */
+    targetUrl?: string;
 };
 
 export type TestAnswer = {
@@ -4744,6 +4863,10 @@ export type TestIngestionRequest = {
      * With definition: the client's id (clt_...) or identifier
      */
     client?: string;
+    /**
+     * With definition: the ingestion's code, which is the config entry's key for a source that says config: true
+     */
+    code?: string;
     /**
      * A definition to test without saving it
      */
@@ -6685,6 +6808,68 @@ export type IdpRoleMappingListResponseWritable = {
     items: Array<IdpRoleMappingResponse>;
 };
 
+export type IngestionConfigDeletedResponseWritable = {
+    /**
+     * The codes of every ingestion that names the entry; each is now MISSING and does not run until the entry is set again
+     */
+    ingestions: Array<string>;
+    key: string;
+};
+
+export type IngestionConfigResponseWritable = {
+    /**
+     * The entry's key; absent while the settings are inline
+     */
+    key?: string;
+    /**
+     * Why the entry is INVALID
+     */
+    problems?: Array<FieldError>;
+    /**
+     * A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings
+     */
+    schemaChecked: boolean;
+    status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
+    updatedAt?: string;
+    /**
+     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry or it is not an object
+     */
+    value?: {
+        [key: string]: unknown;
+    };
+};
+
+export type IngestionConfigWrittenWritable = {
+    /**
+     * The codes of every ingestion of the application and client that names the entry, which the value was checked against
+     */
+    ingestions: Array<string>;
+    /**
+     * The entry's key; absent while the settings are inline
+     */
+    key?: string;
+    /**
+     * Why the entry is INVALID
+     */
+    problems?: Array<FieldError>;
+    /**
+     * A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings
+     */
+    schemaChecked: boolean;
+    status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
+    updatedAt?: string;
+    /**
+     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry or it is not an object
+     */
+    value?: {
+        [key: string]: unknown;
+    };
+    /**
+     * SCHEMA_UNCHECKED when no live runtime reports the kind's settings, so the value was not checked against them
+     */
+    warnings?: Array<string>;
+};
+
 export type IngestionFailureListResponseWritable = {
     failures: Array<IngestionFailureResponseWritable>;
     hasMore: boolean;
@@ -6738,6 +6923,10 @@ export type IngestionResponseWritable = {
     clientId: string;
     clientIdentifier: string;
     code: string;
+    /**
+     * Where the settings stand: INLINE (in the definition), or the config entry the source names: SET, MISSING (the ingestion does not run until it is set) or INVALID
+     */
+    config: IngestionConfigStatus;
     createdAt: string;
     id: string;
     /**
@@ -6898,6 +7087,10 @@ export type IngestionVersionResponseWritable = {
     split: unknown;
     target: Target;
     version: number;
+    /**
+     * What the saved definition says that will not run as meant, such as CONFIG_MISSING for a config entry that is not set (the answer of POST .../versions only)
+     */
+    warnings?: Array<string>;
 };
 
 export type IntrospectResponseWritable = {
@@ -7895,6 +8088,16 @@ export type SetDeveloperCredentialResponseWritable = {
     id: string;
 };
 
+export type SetIngestionConfigRequestWritable = {
+    /**
+     * The entry: the kind's settings as an inline source holds them, and optionally targetUrl. A secret setting holds the secret's name
+     */
+    value: {
+        [key: string]: unknown;
+    };
+    [key: string]: unknown;
+};
+
 export type SetPropertyRequestWritable = {
     clientId?: string;
     description?: string;
@@ -8097,6 +8300,10 @@ export type TestIngestionRequestWritable = {
      * With definition: the client's id (clt_...) or identifier
      */
     client?: string;
+    /**
+     * With definition: the ingestion's code, which is the config entry's key for a source that says config: true
+     */
+    code?: string;
     /**
      * A definition to test without saving it
      */
@@ -14408,6 +14615,87 @@ export type UpdateIngestionResponses = {
 };
 
 export type UpdateIngestionResponse = UpdateIngestionResponses[keyof UpdateIngestionResponses];
+
+export type DeleteIngestionConfigData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/config';
+};
+
+export type DeleteIngestionConfigErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteIngestionConfigError = DeleteIngestionConfigErrors[keyof DeleteIngestionConfigErrors];
+
+export type DeleteIngestionConfigResponses = {
+    /**
+     * OK
+     */
+    200: IngestionConfigDeletedResponse;
+};
+
+export type DeleteIngestionConfigResponse = DeleteIngestionConfigResponses[keyof DeleteIngestionConfigResponses];
+
+export type GetIngestionConfigData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/config';
+};
+
+export type GetIngestionConfigErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetIngestionConfigError = GetIngestionConfigErrors[keyof GetIngestionConfigErrors];
+
+export type GetIngestionConfigResponses = {
+    /**
+     * OK
+     */
+    200: IngestionConfigResponse;
+};
+
+export type GetIngestionConfigResponse = GetIngestionConfigResponses[keyof GetIngestionConfigResponses];
+
+export type SetIngestionConfigData = {
+    body: SetIngestionConfigRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/config';
+};
+
+export type SetIngestionConfigErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type SetIngestionConfigError = SetIngestionConfigErrors[keyof SetIngestionConfigErrors];
+
+export type SetIngestionConfigResponses = {
+    /**
+     * OK
+     */
+    200: IngestionConfigWritten;
+};
+
+export type SetIngestionConfigResponse = SetIngestionConfigResponses[keyof SetIngestionConfigResponses];
 
 export type GetIngestionDefinitionData = {
     body?: never;

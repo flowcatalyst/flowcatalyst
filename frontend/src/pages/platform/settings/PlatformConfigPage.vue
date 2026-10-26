@@ -18,6 +18,13 @@ const canReveal = computed(() =>
 	userHasPermission(authStore.user, "platform:admin:config:reveal"),
 );
 
+// Section "ingest" holds the per-environment settings of ingestions. They are
+// changed on the ingestion that names them, never here (the server refuses
+// writes and deletes in it).
+const RESERVED_SECTION = "ingest";
+const isReserved = (row: PlatformConfig) =>
+	row.section.toLowerCase() === RESERVED_SECTION;
+
 const apps = ref<{ label: string; value: string }[]>([]);
 const appCode = ref("");
 const rows = ref<PlatformConfig[]>([]);
@@ -256,8 +263,11 @@ async function copyRevealed() {
               :loading="revealing"
               @click="askReveal(data)"
             />
-            <Button v-if="canEdit" icon="pi pi-pencil" text rounded v-tooltip="'Edit'" @click="openEdit(data)" />
-            <Button v-if="canEdit" icon="pi pi-trash" text rounded severity="danger" v-tooltip="'Delete'" @click="remove(data)" />
+            <span v-if="isReserved(data)" class="muted reserved-note">Edited on the ingestion</span>
+            <template v-else>
+              <Button v-if="canEdit" icon="pi pi-pencil" text rounded v-tooltip="'Edit'" @click="openEdit(data)" />
+              <Button v-if="canEdit" icon="pi pi-trash" text rounded severity="danger" v-tooltip="'Delete'" @click="remove(data)" />
+            </template>
           </template>
         </Column>
       </DataTable>
@@ -330,6 +340,10 @@ async function copyRevealed() {
 }
 .muted {
   color: var(--p-text-muted-color);
+}
+.reserved-note {
+  font-size: 0.8rem;
+  white-space: normal;
 }
 .secret-value {
   color: var(--p-text-muted-color);

@@ -140,6 +140,9 @@ const (
 	flashIngPaused      = "ingestion-paused"
 	flashIngResumed     = "ingestion-resumed"
 	flashIngDeleted     = "ingestion-deleted"
+	// The environment's settings of an ingestion (platform config ingest/<key>).
+	flashIngConfigSet     = "ingestion-config-set"
+	flashIngConfigDeleted = "ingestion-config-deleted"
 )
 
 // The platform settings pages' keys (theme, client login branding, names).
@@ -170,6 +173,9 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashIngPaused:       success("Ingestion paused"),
 	flashIngResumed:      success("Ingestion resumed"),
 	flashIngDeleted:      success("Ingestion removed"),
+
+	flashIngConfigSet:     success("Settings saved for this environment"),
+	flashIngConfigDeleted: {Kind: kit.FlashSuccess, Summary: "Settings deleted", Detail: "The ingestions that use them wait until they are set again"},
 
 	flashPoolCreated:   success("Dispatch pool created"),
 	flashPoolUpdated:   success("Pool updated"),

@@ -37,6 +37,9 @@ type fakeIngStore struct {
 	err     error
 	// lastFilter is the filter the last list asked for.
 	lastFilter ingestion.ListFilter
+	// entries are the platform config entries of section ingest by
+	// "application code/client id/key" (ingsEntryKey).
+	entries map[string]*ingestion.ConfigEntry
 }
 
 func (f *fakeIngStore) List(_ context.Context, fl ingestion.ListFilter) (*ingestion.Page, error) {
@@ -120,6 +123,14 @@ type fakeIngOps struct {
 	saved ingops.SaveResult
 	err   error
 	newID string
+	// store is where SetConfig writes the entry; configs and deleted record the
+	// commands, configErr is what they answer.
+	store     *fakeIngStore
+	configs   []ingops.SetConfigCommand
+	deleted   []string
+	configErr error
+	// configWarnings are the warnings SetConfig answers with.
+	configWarnings []string
 }
 
 func (o *fakeIngOps) rec(call string) { o.calls = append(o.calls, call) }
@@ -253,7 +264,8 @@ type ingHarness struct {
 }
 
 func newIngHarness() *ingHarness {
-	return &ingHarness{store: ingFixture(), ops: &fakeIngOps{}}
+	store := ingFixture()
+	return &ingHarness{store: store, ops: &fakeIngOps{store: store}}
 }
 
 func (h *ingHarness) page() *Ingestions {

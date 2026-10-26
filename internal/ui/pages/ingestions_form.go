@@ -35,7 +35,7 @@ const (
 )
 
 // ingsIdentityKeys are the form's own controls, ahead of the definition's.
-var ingsIdentityKeys = []string{"application", "client", "code", "name", "kind"}
+var ingsIdentityKeys = []string{"application", "client", "code", "name", "kind", "settings", "configKey"}
 
 // ingsForm is the create or change form: what is rendered, or what was
 // submitted with its errors.
@@ -52,6 +52,9 @@ type ingsForm struct {
 	Cat    ingsCatalogue
 	Errs   formErrors
 	Open   bool
+	// Prefix is the form's element-id prefix; the settings form of an
+	// environment (ingestions_config.go) reuses the controls under its own.
+	Prefix string
 
 	// The create form's choices.
 	Apps          []kit.Option
@@ -66,8 +69,12 @@ type ingsForm struct {
 }
 
 func (f ingsForm) id(key string) string {
-	return fieldID(ingsFormDialog, strings.ReplaceAll(key, ".", "-"))
+	return fieldID(cmp.Or(f.Prefix, ingsFormDialog), strings.ReplaceAll(key, ".", "-"))
 }
+
+// byConfig reports whether the form's source names the environment's config
+// entry instead of holding its settings.
+func (f ingsForm) byConfig() bool               { return f.Values["settings"] == ingsSettingsConfig }
 func (f ingsForm) fieldError(key string) string { return f.Errs.Fields[key] }
 
 func (f ingsForm) describedBy(key string) string {
@@ -143,7 +150,7 @@ func (f ingsForm) versionText() string {
 // and every control other fields depend on, with the value the form starts
 // with.
 func (f ingsForm) signals() string {
-	sig := map[string]any{ingsKindSig: f.Values["kind"]}
+	sig := map[string]any{ingsKindSig: f.Values["kind"], ingsSettingsSig: cmp.Or(f.Values["settings"], ingsSettingsInline)}
 	add := func(fields []ingsField) {
 		for _, fld := range fields {
 			if !fld.control {
@@ -189,6 +196,16 @@ func (f ingsForm) kindGate(k ingsKind) templ.Attributes {
 	return ingsGate("$"+ingsKindSig+" === '"+k.Name+"'", f.Values["kind"] == k.Name)
 }
 
+// settingsGate applies a group of controls while the source holds its settings
+// inline (config true: the entry of the environment holds them).
+func (f ingsForm) settingsGate(config bool) templ.Attributes {
+	mode := ingsSettingsInline
+	if config {
+		mode = ingsSettingsConfig
+	}
+	return ingsGate("$"+ingsSettingsSig+" === '"+mode+"'", cmp.Or(f.Values["settings"], ingsSettingsInline) == mode)
+}
+
 func (f ingsForm) fieldGate(fld ingsField) templ.Attributes {
 	return ingsGate(f.whenExpr(fld.When), fld.active(f.Values))
 }
@@ -209,7 +226,9 @@ func (f ingsForm) controlAttrs(fld ingsField, extra templ.Attributes) templ.Attr
 
 func (f ingsForm) fieldProps(fld ingsField) kit.FieldProps {
 	id := f.id(fld.Name)
-	return kit.FieldProps{Label: fld.Label, For: id, Required: fld.Required, Description: fld.Help, Error: f.fieldError(fld.Name), ErrorID: id + "-err", Attrs: templ.Attributes{"id": id + "-field"}}
+	// The delivery URL is optional while the environment's settings may give it.
+	required := fld.Required && (fld.Name != "target.targetUrl" || !f.byConfig())
+	return kit.FieldProps{Label: fld.Label, For: id, Required: required, Description: fld.Help, Error: f.fieldError(fld.Name), ErrorID: id + "-err", Attrs: templ.Attributes{"id": id + "-field"}}
 }
 
 // ── building a form ────────────────────────────────────────────────────
@@ -410,6 +429,8 @@ func (f *ingsForm) applyFieldErrors(fields []ingestion.FieldError, built ingsBui
 		switch fe.Field {
 		case "name", "code", "application":
 			name, ok = fe.Field, true
+		case "source.config":
+			name, ok = "configKey", true
 		default:
 			var fld ingsField
 			if fld, ok = built.fieldFor(fe.Field); ok {

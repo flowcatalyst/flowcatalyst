@@ -14,6 +14,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -39,6 +40,18 @@ type IngestionStore interface {
 	// ListSecretFetches is when each runtime last fetched each of the
 	// ingestion's secrets (GET /api/ingestions/{id}/secrets).
 	ListSecretFetches(ctx context.Context, ingestionID string) ([]ingestion.SecretFetch, error)
+
+	// The environment's settings of an ingestion whose source names a config
+	// entry (docs/ingestion-design.md section 13), as the config endpoints read
+	// them. Resolve reads the entry a definition names, ConfigNamed finds the
+	// definition (live, else the newest saved) that names one, ConfigEntry
+	// reads an entry, SchemaOf the settings a live runtime reports for an
+	// extension kind, and NamingConfig the ingestions that name an entry.
+	Resolve(ctx context.Context, applicationCode string, clientID ids.ClientID, code string, def ingestion.Definition) (ingestion.Resolved, error)
+	ConfigNamed(ctx context.Context, i *ingestion.Ingestion) (def ingestion.Definition, key string, ok bool, err error)
+	ConfigEntry(ctx context.Context, applicationCode string, clientID ids.ClientID, key string) (*ingestion.ConfigEntry, error)
+	SchemaOf(ctx context.Context, kind string) (ingestion.KindSchema, error)
+	NamingConfig(ctx context.Context, applicationID ids.ApplicationID, clientID ids.ClientID, key string) ([]*ingestion.Ingestion, error)
 }
 
 // Ingestions is the ingestions page (/ui/ingestions), mirroring the Nuxt
@@ -125,12 +138,15 @@ func (h *Ingestions) Mount(r chi.Router) {
 	r.Get("/ingestions/new", h.createForm)
 	r.Get("/ingestions/{id}", h.detail)
 	r.Get("/ingestions/{id}/edit", h.editForm)
+	r.Get("/ingestions/{id}/config", h.configForm)
 	r.Get("/ingestions/{id}/compare", h.compare)
 	r.Get("/ingestions/{id}/tabs/{tab}", h.lazyTab)
 	r.Get("/ingestions/{id}/definition.yaml", h.export)
 	post := r.With(parseForm)
 	post.Post("/ingestions/new", h.create)
 	post.Post("/ingestions/{id}/edit", h.update)
+	post.Post("/ingestions/{id}/config", h.saveConfig)
+	post.Post("/ingestions/{id}/config/delete", h.deleteConfig)
 	post.Post("/ingestions/{id}/pause", h.pause)
 	post.Post("/ingestions/{id}/resume", h.resume)
 	post.Post("/ingestions/{id}/delete", h.delete)
@@ -190,8 +206,16 @@ func ingsEditBlock(ac *auth.AuthContext, i *ingestion.Ingestion, kinds ingsKindP
 	if i.ManagedBy != nil {
 		return "Managed by a set: change the set's files and apply them again."
 	}
+	return ingsKindBlock(ac, i, kinds)
+}
+
+// ingsKindBlock is the part of editBlock that is the kind's: an extension kind
+// that declares a permission is for whoever holds it. A set owns the
+// definition, not the environment's settings, so the settings form asks only
+// this.
+func ingsKindBlock(ac *auth.AuthContext, i *ingestion.Ingestion, kinds ingsKindPerms) string {
 	kind := ingsKindOf(i.Definition.Source)
-	if _, custom := i.Definition.Source.(ingestion.Custom); custom {
+	if ingsIsExtension(i.Definition.Source) {
 		if perm := kinds.of(kind); !ingestion.HoldsKindPermission(ac, perm) {
 			if perm == auth.PermIngestionRoute && ac.HasPermission(perm) {
 				return "A " + kind + " ingestion is written by a pipeline service account or by an ingestion administrator, at anchor tier."
@@ -200,6 +224,18 @@ func ingsEditBlock(ac *auth.AuthContext, i *ingestion.Ingestion, kinds ingsKindP
 		}
 	}
 	return ""
+}
+
+// ingsIsExtension reports whether the source runs as an extension's kind,
+// whether it holds its settings or names the config entry that does.
+func ingsIsExtension(src ingestion.Source) bool {
+	switch s := src.(type) {
+	case ingestion.Custom:
+		return true
+	case ingestion.Configured:
+		return s.Base == ingestion.KindCustom
+	}
+	return false
 }
 
 // ── URL state ──────────────────────────────────────────────────────────
@@ -256,6 +292,10 @@ type ingsRow struct {
 	Draft               bool
 	Set                 string
 	Notice              bool
+	// NeedsSettings: the source names a config entry this environment has not
+	// set (or not validly), so the ingestion does not run; NeedsReason says why.
+	NeedsSettings bool
+	NeedsReason   string
 	// Notices counts the undismissed rejected failures; LatestNotice is the
 	// newest one's message.
 	Notices              int
@@ -397,9 +437,21 @@ func (h *Ingestions) listView(ctx context.Context, ac *auth.AuthContext, q ingsQ
 		return ingsView{}, usecase.Internal("REPO", "notices failed", err)
 	}
 	for i := range page.Items {
-		row := toIngsRow(ac, &page.Items[i], names, kinds, carries)
-		n := notices[page.Items[i].ID]
+		item := &page.Items[i]
+		row := toIngsRow(ac, item, names, kinds, carries)
+		n := notices[item.ID]
 		row.Notices, row.LatestNotice = n.Count, n.LatestMessage
+		if _, byConfig := item.Definition.Source.(ingestion.Configured); byConfig {
+			res, err := h.Store.Resolve(ctx, item.ApplicationCode, item.ClientID, item.Code, item.Definition)
+			if err != nil {
+				return ingsView{}, usecase.Internal("REPO", "config entry lookup failed", err)
+			}
+			row.Where = ingsWhere(item.Definition.Source, item.Code, res)
+			if !res.Runnable() {
+				row.NeedsSettings = true
+				row.NeedsReason = ingsNeedsReason(res.Key, row.Client, res.Status, ingsProblemTexts(res.Problems))
+			}
+		}
 		v.Rows = append(v.Rows, row)
 	}
 	if page.Next != "" {
@@ -599,8 +651,10 @@ type ingsDetail struct {
 	// Secrets: the names the live definition binds and who last fetched
 	// each (names only, never a value).
 	Secrets []ingsSecretRow
-	Tab     string
-	Perms   ingsPerms
+	// Config is the environment's settings, when the source names an entry.
+	Config *ingsConfigView
+	Tab    string
+	Perms  ingsPerms
 	// CanChange: Change… and New version are offered; EditBlock says why a
 	// caller who may update is not offered them.
 	CanChange bool
@@ -680,7 +734,7 @@ func (h *Ingestions) buildDetail(ctx context.Context, ac *auth.AuthContext, i *i
 	if err != nil {
 		return ingsDetail{}, err
 	}
-	kinds, _, err := h.kindPerms(ctx)
+	kinds, reported, err := h.kindPerms(ctx)
 	if err != nil {
 		return ingsDetail{}, err
 	}
@@ -695,11 +749,19 @@ func (h *Ingestions) buildDetail(ctx context.Context, ac *auth.AuthContext, i *i
 	def := i.Definition
 	kind := ingsKindOf(def.Source)
 	perms := ingsPermsFor(ac)
+	// Where the data comes from, the delivery, the secrets and the warnings are
+	// the effective definition's: the settings of the config entry the source
+	// names, when it names one. The export keeps the reference.
+	live, err := h.Store.Resolve(ctx, app.Code, i.ClientID, i.Code, def)
+	if err != nil {
+		return ingsDetail{}, usecase.Internal("REPO", "config entry lookup failed", err)
+	}
+	effective := live.Definition
 	d := ingsDetail{
 		ID: i.ID, Code: i.Code, Name: def.Name, Application: app.Code, Client: clientName, ClientIdentifier: clientIdentifier,
 		Active: i.Active, Draft: i.Version == 0, Set: deref(i.ManagedBy), Notice: i.Live() && !carries(kind),
-		Version: i.Version, Latest: i.LatestVersion, Kind: ingsKindLabel(kind), Where: ingsSourceSummary(def.Source),
-		Split: ingsSplitSummary(def.Split), Target: def.Target, KeepPayloads: def.KeepFailedPayloads,
+		Version: i.Version, Latest: i.LatestVersion, Kind: ingsKindLabel(kind), Where: ingsWhere(def.Source, i.Code, live),
+		Split: ingsSplitSummary(def.Split), Target: effective.Target, KeepPayloads: def.KeepFailedPayloads,
 		Created: i.CreatedAt.UTC().Format("2006-01-02 15:04:05 UTC"), Updated: i.UpdatedAt.UTC().Format("2006-01-02 15:04:05 UTC"),
 		Tab: ingsTabOf(tab), Perms: perms, Base: ingsURL(i.ID),
 	}
@@ -715,8 +777,15 @@ func (h *Ingestions) buildDetail(ctx context.Context, ac *auth.AuthContext, i *i
 	if err != nil {
 		return ingsDetail{}, usecase.Internal("REPO", "list_secret_fetches failed", err)
 	}
-	d.Secrets = ingsSecretRows(i, fetches)
-	d.Warnings = def.Warnings()
+	bound := *i
+	bound.Definition = effective
+	d.Secrets = ingsSecretRows(&bound, fetches)
+	if live.Runnable() {
+		d.Warnings = effective.Warnings()
+	}
+	if d.Config, err = h.configView(ctx, ac, i, app.Code, clientName, live, kinds, reported); err != nil {
+		return ingsDetail{}, err
+	}
 	d.EditBlock = ingsEditBlock(ac, i, kinds)
 	d.CanChange = perms.Update && d.EditBlock == ""
 	d.CanRemove = perms.Delete && i.ManagedBy == nil
@@ -1016,4 +1085,13 @@ func ingsSecretRows(i *ingestion.Ingestion, fetches []ingestion.SecretFetch) []i
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// ingsProblemTexts are an entry's problems as one line each.
+func ingsProblemTexts(p ingestion.Problems) []string {
+	out := make([]string, 0, len(p))
+	for _, fe := range p {
+		out = append(out, fe.Field+" "+fe.Message)
+	}
+	return out
 }

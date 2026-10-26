@@ -116,9 +116,20 @@ func TestIngestionTestConnectionAgainstPostgres(t *testing.T) {
 	body = serve(tester, uitTestPost("/ui/ingestions/test", form))
 	mustContain(t, body, "permission required for source kind "+kind+": "+auth.PermIngestionRoute)
 	mustNotContain(t, body, `id="ing-test-itr_`)
+	// The test makes the checks of a save: a route is for a pipeline's service
+	// account or an ingestion administrator (the delete permission) at anchor
+	// tier, never a person who holds only the route permission.
 	body = serve(uitUser(uitPermTest, auth.PermIngestionRoute), uitTestPost("/ui/ingestions/test", form))
+	mustContain(t, body, "service account that holds "+auth.PermIngestionRoute)
+	mustNotContain(t, body, `id="ing-test-itr_`)
+	body = serve(uitUser(uitPermTest, auth.PermIngestionRoute, "platform:ingestion:ingestion:delete"), uitTestPost("/ui/ingestions/test", form))
 	mustContain(t, body, `id="ing-test-itr_`)
-	// A built-in kind needs nothing more.
+	// A built-in kind needs no kind permission, but an SQS source without a
+	// credential is read with the runtime fleet's own AWS identity, which a save
+	// needs a permission for, and so does its test.
 	body = serve(tester, uitTestPost("/ui/ingestions/test", nil))
+	mustContain(t, body, auth.PermIngestionRuntimeIdentity)
+	mustNotContain(t, body, `id="ing-test-itr_`)
+	body = serve(uitUser(uitPermTest, auth.PermIngestionRuntimeIdentity), uitTestPost("/ui/ingestions/test", nil))
 	mustContain(t, body, `id="ing-test-itr_`)
 }

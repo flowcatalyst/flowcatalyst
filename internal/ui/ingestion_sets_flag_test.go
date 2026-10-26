@@ -63,7 +63,9 @@ func (noTests) QueueTest(context.Context, *string, ids.ApplicationID, ids.Client
 
 func (noTests) FindTest(context.Context, string) (*ingestion.TestRequest, error) { return nil, nil }
 
-func (noTests) RequiredPermission(context.Context, string) (string, error) { return "", nil }
+func (noTests) ApplicationCode(context.Context, ids.ApplicationID) (string, error) { return "", nil }
+
+func (noTests) CheckAuthor(context.Context, *auth.AuthContext, ingestion.Change) error { return nil }
 
 // platformUser reaches every client and application, as a platform user does.
 func platformUser(next http.Handler) http.Handler {

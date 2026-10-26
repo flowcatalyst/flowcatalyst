@@ -163,7 +163,12 @@ type cfgRow struct {
 	CanReveal           bool
 	// CanEdit: the viewer may write the application and this row's client
 	// (or, for the application-wide value, that value).
-	CanEdit               bool
+	CanEdit bool
+	// Reserved: the entry belongs to an ingestion (section ingest) and is
+	// edited there; IngestionsHref lists that application's ingestions of the
+	// client.
+	Reserved              bool
+	IngestionsHref        string
 	updatedAt             int64
 	sortSection, sortProp string
 	sortClient            string
@@ -214,7 +219,8 @@ func (h *PlatformConfig) listView(ctx context.Context, ac *auth.AuthContext, q l
 	matched := make([]cfgRow, 0, len(rows))
 	for i := range rows {
 		row := h.toRow(ctx, ac, &rows[i], v.Perms)
-		row.CanEdit = v.Perms.Edit && reach.CanWrite(deref(ids.StringPtr(rows[i].ClientID)))
+		// An entry of an ingestion's settings is changed on the ingestion, never here.
+		row.CanEdit = v.Perms.Edit && !row.Reserved && reach.CanWrite(deref(ids.StringPtr(rows[i].ClientID)))
 		// The SPA's quick filter: section, property, description.
 		if needle == "" || strings.Contains(strings.ToLower(row.Section+" "+row.Property+" "+row.Description), needle) {
 			matched = append(matched, row)
@@ -316,6 +322,14 @@ func (h *PlatformConfig) toRow(ctx context.Context, ac *auth.AuthContext, c *pla
 			row.Value = string([]rune(row.Value)[:maxShownValue]) + "…"
 		}
 	}
+	if strings.EqualFold(c.Section, platformconfig.ReservedSection) {
+		row.Reserved = true
+		q := url.Values{"application": {c.ApplicationCode}}
+		if cid != "" {
+			q.Set("client", cid)
+		}
+		row.IngestionsHref = ingsPath + "?" + q.Encode()
+	}
 	row.Query = cfgQuery(c.ApplicationCode, c.Section, c.Property, cid)
 	row.EditHref = cfgPath + "/edit?" + row.Query
 	row.CanReveal = row.Secret && perms.Reveal && platformconfig.RevealReach(ac, cid) == nil
@@ -374,6 +388,11 @@ func (h *PlatformConfig) delete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
 	app := r.FormValue("app")
+	// The settings of an ingestion are deleted on the ingestion.
+	if err := platformconfig.RequireWritableSection(r.FormValue("section")); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
 	// DELETE /api/config/...'s rule, run by the service the API runs.
 	if err := h.Config.Delete(ctx, ac, app, r.FormValue("section"), r.FormValue("property"), r.FormValue("client")); err != nil {
 		h.Shell.Fail(w, r, err)

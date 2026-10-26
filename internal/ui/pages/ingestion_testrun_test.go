@@ -1,7 +1,9 @@
 package pages
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
@@ -44,6 +46,10 @@ type fakeUitTests struct {
 	reads   int
 	carries bool
 	perms   map[string]string
+	// entries are the config entries by ingsEntryKey; appCode is the saved
+	// ingestions' application's code.
+	entries map[string]*ingestion.ConfigEntry
+	appCode string
 }
 
 func (f *fakeUitTests) FindByID(_ context.Context, id string) (*ingestion.Ingestion, error) {
@@ -87,6 +93,33 @@ func (f *fakeUitTests) RequiredPermission(_ context.Context, kind string) (strin
 	return f.perms[kind], nil
 }
 
+func (f *fakeUitTests) ApplicationCode(context.Context, ids.ApplicationID) (string, error) {
+	return cmp.Or(f.appCode, "billing"), nil
+}
+
+func (f *fakeUitTests) Resolve(_ context.Context, app string, c ids.ClientID, code string, def ingestion.Definition) (ingestion.Resolved, error) {
+	return ingestion.ApplyConfig(def, code, f.entries[ingsEntryKey(app, c, ingestion.ConfigKeyOf(def, code))]), nil
+}
+
+// CheckAuthor makes the checks of Repository.CheckAuthor that need no database,
+// with the same rules and messages: the kind's permission, the runtime
+// identity, and the secrets a definition names.
+func (f *fakeUitTests) CheckAuthor(_ context.Context, ac *auth.AuthContext, c ingestion.Change) error {
+	kind := ingestion.RunKind(c.Next.Source)
+	if kind != c.Next.Source.Kind() {
+		if err := ingestion.RequireKindPermission(ac, kind, f.perms[kind]); err != nil {
+			return err
+		}
+	}
+	if ingestion.UsesRuntimeIdentity(c.Next.Source) && !ac.HasPermission(auth.PermIngestionRuntimeIdentity) {
+		return usecase.Authorization("INGESTION_RUNTIME_IDENTITY_PERMISSION_REQUIRED", "needs "+auth.PermIngestionRuntimeIdentity)
+	}
+	if len(ingestion.SecretNames(c.Next.Source)) > 0 && !ac.HasPermission(auth.PermIngestionBindSecrets) {
+		return usecase.Authorization("INGESTION_BIND_SECRETS_PERMISSION_REQUIRED", "needs "+auth.PermIngestionBindSecrets)
+	}
+	return nil
+}
+
 type fakeUitResolver struct{}
 
 func (fakeUitResolver) Application(_ context.Context, code string) (*application.Application, error) {
@@ -125,11 +158,11 @@ func uitTestHarness(store *fakeUitTests) *IngestionTests {
 		Store: store, Resolver: fakeUitResolver{}, Shell: shellForTest(),
 		every: time.Millisecond, now: func() time.Time { return uitNow },
 		Subject: func(r *http.Request) (IngestionTestSubject, error) {
-			var src ingestion.Source = ingestion.Sqs{Region: "eu-west-1", Queue: "q"}
+			var src ingestion.Source = ingestion.HTTP{Auth: ingestion.FlowCatalystToken{Application: "billing"}}
 			if kind := r.PostFormValue("kind"); kind != "" {
 				src = ingestion.Custom{Type: kind}
 			}
-			return IngestionTestSubject{Application: r.PostFormValue("application"), Client: r.PostFormValue("client"), Definition: uitTestDef(src)}, nil
+			return IngestionTestSubject{Application: r.PostFormValue("application"), Client: r.PostFormValue("client"), Code: r.PostFormValue("code"), Definition: uitTestDef(src)}, nil
 		},
 	}
 }
@@ -359,23 +392,30 @@ func TestIngestionTestOfAnUnsavedDefinition(t *testing.T) {
 	assert.Empty(t, store.queued)
 }
 
+// The test of an unsaved definition makes the checks of a save, so a route is
+// tried only by whoever may write one: the route permission at anchor tier, by
+// a pipeline's service account or an ingestion administrator (the delete
+// permission), never a person who holds only the route permission.
 func TestIngestionTestOfAKindThatNeedsAPermission(t *testing.T) {
 	form := url.Values{"application": {"billing"}, "client": {"acme"}, "kind": {"camel-route"}}
+	const permDelete = "platform:ingestion:ingestion:delete"
 	for name, c := range map[string]struct {
-		ac     *auth.AuthContext
-		queued int
+		ac      *auth.AuthContext
+		queued  int
+		message string
 	}{
-		"test only":       {uitUser(uitPermTest), 0},
-		"route only":      {uitUser(uitPermRoute), 0},
-		"test and route":  {uitUser(uitPermTest, uitPermRoute), 1},
-		"super admin":     {uitAnchorAdmin(), 1},
-		"view, test, set": {uitUser(uitPermView, uitPermTest, uitPermApply), 0},
+		"test only":              {uitUser(uitPermTest), 0, "permission required for source kind camel-route: " + uitPermRoute},
+		"route only":             {uitUser(uitPermRoute), 0, ""},
+		"test and route":         {uitUser(uitPermTest, uitPermRoute), 0, "service account that holds " + uitPermRoute},
+		"test, route and delete": {uitUser(uitPermTest, uitPermRoute, permDelete), 1, ""},
+		"super admin":            {uitAnchorAdmin(), 1, ""},
+		"view, test, set":        {uitUser(uitPermView, uitPermTest, uitPermApply), 0, "permission required for source kind camel-route: " + uitPermRoute},
 	} {
 		store := uitTestStore()
 		rec := serveMounted(t, c.ac, uitTestPost("/ui/ingestions/test", form), uitTestHarness(store))
 		assert.Len(t, store.queued, c.queued, name)
-		if c.queued == 0 && c.ac.HasPermission(uitPermTest) {
-			mustContain(t, rec.Body.String(), "permission required for source kind camel-route: "+uitPermRoute)
+		if c.message != "" {
+			mustContain(t, rec.Body.String(), c.message)
 		}
 	}
 }
@@ -402,4 +442,124 @@ func TestIngestionTestOfAnInvalidDefinitionQueuesNothing(t *testing.T) {
 	rec = serveMounted(t, uitUser(uitPermTest), uitTestPost("/ui/ingestions/test", nil), h)
 	assert.NotEqual(t, http.StatusOK, rec.Code)
 	assert.Empty(t, store.queued)
+}
+
+// ── the same checks as the API's tests ─────────────────────────────────
+
+// Trying an unsaved definition runs it on a runtime, so it needs what saving it
+// would: the runtime identity for an SQS source without a credential, the
+// permission to bind secrets for one that names them.
+func TestIngestionTestOfAnUnsavedDefinitionMakesTheChecksOfASave(t *testing.T) {
+	form := url.Values{"application": {"billing"}, "client": {"acme"}}
+	withSource := func(src ingestion.Source) func(*IngestionTests) {
+		return func(h *IngestionTests) {
+			h.Subject = func(*http.Request) (IngestionTestSubject, error) {
+				return IngestionTestSubject{Application: "billing", Client: "acme", Definition: uitTestDef(src)}, nil
+			}
+		}
+	}
+	run := func(ac *auth.AuthContext, mutate func(*IngestionTests)) (*fakeUitTests, string) {
+		store := uitTestStore()
+		h := uitTestHarness(store)
+		mutate(h)
+		return store, serveMounted(t, ac, uitTestPost("/ui/ingestions/test", form), h).Body.String()
+	}
+	keyless := withSource(ingestion.Sqs{Region: "eu-west-1", Queue: "q"})
+	store, body := run(uitUser(uitPermTest), keyless)
+	assert.Empty(t, store.queued)
+	mustContain(t, body, "runtime-identity")
+	store, _ = run(uitUser(uitPermTest, auth.PermIngestionRuntimeIdentity), keyless)
+	assert.Len(t, store.queued, 1)
+
+	named := withSource(ingestion.Sqs{Region: "eu-west-1", Queue: "q", Credential: &ingestion.AWSCredential{AccessKeyID: "AKIAEXAMPLE", SecretAccessKey: ingestion.SecretRef{Name: "aws-secret"}}})
+	store, body = run(uitUser(uitPermTest), named)
+	assert.Empty(t, store.queued)
+	mustContain(t, body, "bind-secrets")
+	store, _ = run(uitUser(uitPermTest, auth.PermIngestionBindSecrets), named)
+	assert.Len(t, store.queued, 1)
+}
+
+// A definition saved before the outbound guard existed is held to it by the
+// test of the saved ingestion: a test sends the runtime where the source points.
+func TestIngestionTestOfASavedIngestionIsHeldToTheOutboundGuard(t *testing.T) {
+	store := uitTestStore()
+	store.ings["ing_one"].Definition = uitTestDef(ingestion.Sftp{
+		Host: "169.254.169.254", Port: 22, Directory: "/out", Username: "svc", Credential: ingestion.SecretRef{Name: "p"}, Every: ingestion.Duration(time.Minute),
+	})
+	rec := serveMounted(t, uitUser(uitPermTest), uitTestPost("/ui/ingestions/ing_one/test", nil), uitTestHarness(store))
+	assert.Empty(t, store.queued, "nothing is queued for an address the guard refuses")
+	assert.NotContains(t, rec.Body.String(), `id="ing-test-itr_one"`)
+	assert.NotEmpty(t, rec.Body.String())
+}
+
+func uitConfiguredSftp(key ingestion.ConfigRef) ingestion.Definition {
+	d := uitTestDef(ingestion.Configured{Base: ingestion.KindSFTP, Config: key})
+	d.Target.TargetURL = ""
+	return d
+}
+
+func uitSftpEntry(host string) *ingestion.ConfigEntry {
+	raw, _ := json.Marshal(map[string]any{
+		"host": host, "port": 22, "directory": "/out", "username": "svc", "credential": map[string]any{"name": "vendor-pass"},
+		"knownHosts": "h ssh-ed25519 AAAA", "every": "PT1M", "targetUrl": "https://example.com/hook",
+	})
+	return &ingestion.ConfigEntry{Value: string(raw), UpdatedAt: uitNow}
+}
+
+// A test is of the effective definition: the runtime is given the settings of
+// the entry the source names, and a missing or invalid entry stops it.
+func TestIngestionTestIsOfTheEffectiveDefinition(t *testing.T) {
+	store := uitTestStore()
+	store.ings["ing_one"].Definition = uitConfiguredSftp(ingestion.ConfigRef{Own: true})
+	post := func() string {
+		return serveMounted(t, uitUser(uitPermTest), uitTestPost("/ui/ingestions/ing_one/test", nil), uitTestHarness(store)).Body.String()
+	}
+
+	body := post()
+	assert.Empty(t, store.queued)
+	mustContain(t, body, "the config entry orders is not set for this client")
+
+	store.entries = map[string]*ingestion.ConfigEntry{ingsEntryKey("billing", "clt_a", "orders"): {Value: `{"host":"h"}`, UpdatedAt: uitNow}}
+	body = post()
+	assert.Empty(t, store.queued)
+	mustContain(t, body, "config entry orders")
+
+	store.entries[ingsEntryKey("billing", "clt_a", "orders")] = uitSftpEntry("sftp.vendor.example")
+	body = post()
+	require.Len(t, store.queued, 1, body)
+	sftp, ok := store.queued[0].def.Source.(ingestion.Sftp)
+	require.True(t, ok, "the runtime is given the effective source, not the reference: %T", store.queued[0].def.Source)
+	assert.Equal(t, "sftp.vendor.example", sftp.Host)
+	assert.Equal(t, "https://example.com/hook", store.queued[0].def.Target.TargetURL, "the entry's delivery URL")
+
+	// An entry that points the runtime at an address the guard refuses is not run.
+	store.queued = nil
+	store.entries[ingsEntryKey("billing", "clt_a", "orders")] = uitSftpEntry("169.254.169.254")
+	post()
+	assert.Empty(t, store.queued)
+}
+
+func TestIngestionTestOfAnUnsavedConfiguredDefinitionReadsItsEntry(t *testing.T) {
+	store := uitTestStore()
+	store.entries = map[string]*ingestion.ConfigEntry{ingsEntryKey("billing", "clt_a", "orders"): uitSftpEntry("sftp.vendor.example")}
+	h := uitTestHarness(store)
+	h.Subject = func(r *http.Request) (IngestionTestSubject, error) {
+		return IngestionTestSubject{
+			Application: "billing", Client: "acme", Code: r.PostFormValue("code"),
+			Definition: uitConfiguredSftp(ingestion.ConfigRef{Own: true}),
+		}, nil
+	}
+	// config: true is the ingestion's code, which an unsaved definition may not have.
+	rec := serveMounted(t, uitUser(uitPermTest), uitTestPost("/ui/ingestions/test", nil), h)
+	assert.Empty(t, store.queued)
+	mustContain(t, rec.Body.String(), "which this test was not given")
+
+	rec = serveMounted(t, uitUser(uitPermTest, auth.PermIngestionBindSecrets), uitTestPost("/ui/ingestions/test", url.Values{"code": {"orders"}}), h)
+	require.Len(t, store.queued, 1, rec.Body.String())
+	assert.Equal(t, "sftp", store.queued[0].def.Source.Kind())
+	// The effective definition names a secret: binding it needs the permission, as a save does.
+	store.queued = nil
+	rec = serveMounted(t, uitUser(uitPermTest), uitTestPost("/ui/ingestions/test", url.Values{"code": {"orders"}}), h)
+	assert.Empty(t, store.queued)
+	mustContain(t, rec.Body.String(), "bind-secrets")
 }

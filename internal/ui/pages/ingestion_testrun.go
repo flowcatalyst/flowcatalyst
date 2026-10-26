@@ -12,6 +12,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	ingops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
@@ -27,7 +28,14 @@ type IngestionTestStore interface {
 	QueueTest(ctx context.Context, ingestionID *string, applicationID ids.ApplicationID, clientID ids.ClientID, def ingestion.Definition, requestedBy *string, now time.Time) (*ingestion.TestRequest, error)
 	FindTest(ctx context.Context, id string) (*ingestion.TestRequest, error)
 	AnyLiveRuntimeCarries(ctx context.Context) (func(kind string) bool, error)
-	RequiredPermission(ctx context.Context, kind string) (string, error)
+	// ApplicationCode and Resolve read the config entry a definition's source
+	// names (docs/ingestion-design.md section 13): a runtime is given the
+	// effective definition. CheckAuthor is the check a save makes on a
+	// definition (the kind's permission, the runtime identity, the secrets it
+	// points), which trying an unsaved one needs as well.
+	ApplicationCode(ctx context.Context, id ids.ApplicationID) (string, error)
+	Resolve(ctx context.Context, applicationCode string, clientID ids.ClientID, code string, def ingestion.Definition) (ingestion.Resolved, error)
+	CheckAuthor(ctx context.Context, ac *auth.AuthContext, c ingestion.Change) error
 }
 
 // IngestionTestSubject is what a test of an unsaved definition is of: the
@@ -35,7 +43,10 @@ type IngestionTestStore interface {
 // to (POST /api/ingestion-tests with a definition).
 type IngestionTestSubject struct {
 	Application, Client string
-	Definition          ingestion.Definition
+	// Code is the ingestion's code when the form has one: the entry `config:
+	// true` names is the code's.
+	Code       string
+	Definition ingestion.Definition
 }
 
 // IngestionTests is "test connection": a button queues a test, a runtime logs
@@ -121,7 +132,51 @@ func (h *IngestionTests) testSaved(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	h.queue(w, r, ac, &i.ID, i.ApplicationID, i.ClientID, i.Definition)
+	// The runtime is given the effective definition: the settings of the config
+	// entry the source names, when it names one.
+	app, err := h.Store.ApplicationCode(ctx, i.ApplicationID)
+	if err != nil {
+		h.Shell.Fail(w, r, usecase.Internal("REPO", "application lookup failed", err))
+		return
+	}
+	def, err := h.testable(ctx, app, i.ClientID, i.Code, i.Definition)
+	if err == nil {
+		// A definition saved before the outbound guard existed is held to it
+		// here: a test sends the runtime where the source points.
+		err = ingestion.CheckSourceAddresses(def.Source).Err()
+	}
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	h.queue(w, r, ac, &i.ID, i.ApplicationID, i.ClientID, def)
+}
+
+// testable is the definition a runtime is given to test: def with the settings
+// of its config entry. An entry that is missing or invalid stops the test (a
+// test needs the settings to try anything), as the API's does.
+func (h *IngestionTests) testable(ctx context.Context, applicationCode string, clientID ids.ClientID, code string, def ingestion.Definition) (ingestion.Definition, error) {
+	c, byConfig := ingestion.ConfigOf(def)
+	if !byConfig {
+		return def, nil
+	}
+	if c.Config.Own && code == "" {
+		return def, usecase.Validation("INGESTION_CONFIG_KEY_UNKNOWN",
+			"the source says config: true, the ingestion's code, which this test was not given; name the key instead")
+	}
+	res, err := h.Store.Resolve(ctx, applicationCode, clientID, code, def)
+	if err != nil {
+		return def, usecase.Internal("REPO", "config entry lookup failed", err)
+	}
+	switch res.Status {
+	case ingestion.ConfigMissing:
+		return def, usecase.Validation("INGESTION_CONFIG_MISSING",
+			"the config entry "+res.Key+" is not set for this client; set it on the ingestion (Settings, this environment) before testing")
+	case ingestion.ConfigInvalid:
+		return def, ingops.EntryProblems(res).Err()
+	case ingestion.ConfigInline, ingestion.ConfigSet:
+	}
+	return res.Definition, nil
 }
 
 // testUnsaved tests the definition a form holds, without saving it.
@@ -154,10 +209,20 @@ func (h *IngestionTests) testUnsaved(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = ingestion.CheckApplicationReach(ac, string(app.ID))
 	}
-	if err == nil {
-		err = h.requireKindPermission(ctx, ac, def.Source)
-	}
 	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	// The entry a source names is read now, and the runtime is given the
+	// effective definition; an entry that is not there stops the test.
+	if def, err = h.testable(ctx, app.Code, c.ID, strings.TrimSpace(subject.Code), def); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	// Trying an unsaved definition runs it on a runtime, so it needs what
+	// creating it would (the API's test makes the same check): the kind's
+	// permission, the runtime identity, the secrets it points.
+	if err := h.Store.CheckAuthor(ctx, ac, ingestion.Change{Next: def}); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
@@ -172,23 +237,6 @@ func ingClientRef(ref string) string {
 		return strings.ToLower(ref)
 	}
 	return ref
-}
-
-// requireKindPermission is the check a save makes: a custom kind that
-// declares a required permission is for whoever holds it.
-func (h *IngestionTests) requireKindPermission(ctx context.Context, ac *auth.AuthContext, src ingestion.Source) error {
-	custom, ok := src.(ingestion.Custom)
-	if !ok {
-		return nil
-	}
-	perm, err := h.Store.RequiredPermission(ctx, custom.Type)
-	if err != nil {
-		return usecase.Internal("REPO", "required permission lookup failed", err)
-	}
-	if perm != "" && !ac.HasPermission(perm) {
-		return usecase.Authorization("INGESTION_KIND_PERMISSION_REQUIRED", "permission required for source kind "+custom.Type+": "+perm)
-	}
-	return nil
 }
 
 // queue queues the test and answers with its first state, which asks for the

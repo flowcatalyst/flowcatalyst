@@ -8,11 +8,32 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/pages"
 )
 
 type noIngestions struct{}
+
+func (noIngestions) Resolve(_ context.Context, _ string, _ ids.ClientID, _ string, def ingestion.Definition) (ingestion.Resolved, error) {
+	return ingestion.Resolved{Status: ingestion.ConfigInline, Definition: def}, nil
+}
+
+func (noIngestions) ConfigNamed(context.Context, *ingestion.Ingestion) (ingestion.Definition, string, bool, error) {
+	return ingestion.Definition{}, "", false, nil
+}
+
+func (noIngestions) ConfigEntry(context.Context, string, ids.ClientID, string) (*ingestion.ConfigEntry, error) {
+	return nil, nil
+}
+
+func (noIngestions) SchemaOf(context.Context, string) (ingestion.KindSchema, error) {
+	return ingestion.KindSchema{}, nil
+}
+
+func (noIngestions) NamingConfig(context.Context, ids.ApplicationID, ids.ClientID, string) ([]*ingestion.Ingestion, error) {
+	return nil, nil
+}
 
 func (noIngestions) List(context.Context, ingestion.ListFilter) (*ingestion.Page, error) {
 	return &ingestion.Page{}, nil

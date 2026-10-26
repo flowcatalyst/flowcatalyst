@@ -52,6 +52,18 @@ const (
 // ingsOn is what a switch posts.
 const ingsOn = "on"
 
+// Where a source's settings live: in the definition, or in the platform config
+// of each environment (docs/ingestion-design.md section 13).
+const (
+	ingsSettingsInline = "inline"
+	ingsSettingsConfig = "config"
+	// ingsSettingsSig is the signal the choice is bound to: the kind's fields
+	// apply only while the settings are inline.
+	ingsSettingsSig = "ingSettings"
+	// ingsConfigTargetURL is the control of the delivery URL an entry may carry.
+	ingsConfigTargetURL = "config.targetUrl"
+)
+
 type ingsWhen struct{ Field, Is string }
 
 type ingsField struct {
@@ -115,6 +127,11 @@ func ingsSignal(name string) string {
 	}
 	return b.String()
 }
+
+var ingsSettingsOptions = ingsOpts(
+	ingsSettingsInline, "Settings in this definition",
+	ingsSettingsConfig, "Settings per environment (platform config)",
+)
 
 func ingsIs(field, value string) *ingsWhen { return &ingsWhen{Field: field, Is: value} }
 
@@ -372,7 +389,10 @@ var ingsTargetFields = []ingsField{
 		Name: "target.code", Path: "target.code", Label: "Code", Type: ingsText, Required: true, Placeholder: "application:subdomain:aggregate:action",
 		Help: "application:subdomain:aggregate:action, in lower case.",
 	},
-	{Name: "target.targetUrl", Path: "target.targetUrl", Label: "Target URL", Type: ingsText, Required: true, Placeholder: "https://app.example.com/hooks/orders"},
+	{
+		Name: "target.targetUrl", Path: "target.targetUrl", Label: "Target URL", Type: ingsText, Required: true, Placeholder: "https://app.example.com/hooks/orders",
+		Help: "Where each job is delivered. When the source's settings are per environment, this may be empty and given in the environment's settings instead.",
+	},
 	{Name: "target.pool", Path: "target.pool", Label: "Dispatch pool", Type: ingsText, Required: true, Help: "The pool's code; it must be active and usable by this client."},
 	{
 		Name: "target.connection", Path: "target.connection", Label: "Connection", Type: ingsText, Optional: true,
@@ -557,7 +577,7 @@ func (f ingsField) active(values map[string]string) bool {
 
 // ingsDefaults are the values a new ingestion's form starts with.
 func ingsDefaults(cat ingsCatalogue) map[string]string {
-	values := map[string]string{"kind": ingestion.KindHTTP, "live": ingsOn}
+	values := map[string]string{"kind": ingestion.KindHTTP, "live": ingsOn, "settings": ingsSettingsInline}
 	set := func(fields []ingsField) {
 		for _, f := range fields {
 			if f.Default != "" {
@@ -592,6 +612,11 @@ func ingsValuesOf(def ingestion.Definition, cat ingsCatalogue) (map[string]strin
 	}
 	kind := ingsKindOf(def.Source)
 	values["kind"] = kind
+	if c, ok := def.Source.(ingestion.Configured); ok {
+		// The key is blank for `config: true`, the ingestion's own code.
+		values["settings"] = ingsSettingsConfig
+		values["configKey"] = c.Config.Key
+	}
 	fields := slices.Clone(ingsSplitFields)
 	fields = append(fields, ingsTargetFields...)
 	if k := cat.find(kind); k != nil {
@@ -747,6 +772,16 @@ func ingsBuildDefinition(values map[string]string, cat ingsCatalogue) ingsBuilt 
 		ingsSetPath(b.Doc, "source.kind", ingestion.KindCustom)
 		ingsSetPath(b.Doc, "source.type", kind.Name)
 	}
+	// A source holds its settings inline or names the config entry of the
+	// environment, never both: with an entry, the kind's fields are not read.
+	byConfig := values["settings"] == ingsSettingsConfig
+	if byConfig {
+		if key := strings.TrimSpace(values["configKey"]); key != "" {
+			ingsSetPath(b.Doc, "source.config", key)
+		} else {
+			ingsSetPath(b.Doc, "source.config", true)
+		}
+	}
 	fields := slices.Clone(ingsSplitFields)
 	if kind.Name == ingestion.KindDatabasePoll {
 		// Each row is one record, so there is no split to choose.
@@ -754,12 +789,18 @@ func ingsBuildDefinition(values map[string]string, cat ingsCatalogue) ingsBuilt 
 		values["split.kind"] = "none"
 	}
 	fields = append(fields, ingsTargetFields...)
-	fields = append(fields, kind.Fields...)
+	if !byConfig {
+		fields = append(fields, kind.Fields...)
+	}
 	for _, f := range fields {
 		if !f.active(values) {
 			continue
 		}
 		b.Fields = append(b.Fields, f)
+		if byConfig && f.Name == "target.targetUrl" && strings.TrimSpace(values[f.Name]) == "" {
+			// The delivery URL may be in the environment's settings instead.
+			continue
+		}
 		b.read(f, values[f.Name])
 	}
 	return b

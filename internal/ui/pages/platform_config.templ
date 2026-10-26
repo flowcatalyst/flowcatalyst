@@ -129,6 +129,9 @@ templ cfgTable(v cfgView) {
 				}
 				@kit.TD(kit.TDProps{}) {
 					<span class="font-medium">{ row.Property }</span>
+					if row.Reserved {
+						<div class="text-xs text-muted-foreground" data-testid="cfg-reserved">Edited on the ingestion: <a href={ row.IngestionsHref }>see its ingestions</a></div>
+					}
 				}
 				@kit.TD(kit.TDProps{}) {
 					if row.Client != "" {

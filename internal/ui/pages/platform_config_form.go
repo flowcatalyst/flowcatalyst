@@ -33,6 +33,8 @@ var cfgFieldCodes = map[string]string{
 	"INVALID_VALUE_TYPE":    "valueType",
 	"SECRET_VALUE_MASKED":   "value",
 	"SECRET_VALUE_REQUIRED": "value",
+	// The section that holds ingestions' settings is written on the ingestion.
+	"CONFIG_SECTION_RESERVED": "section",
 }
 
 // cfgForm is the add or edit form (the SPA's dialog). It never holds a
@@ -134,6 +136,10 @@ func (h *PlatformConfig) editForm(w http.ResponseWriter, r *http.Request) {
 	app := strings.TrimSpace(q.Get("app"))
 	// The SPA edits the row it listed: view to see it, update to save it.
 	if err := h.Config.AuthorizeWrite(ctx, ac, app); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if err := platformconfig.RequireWritableSection(q.Get("section")); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	ingops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
@@ -26,6 +27,12 @@ type IngestionCommands interface {
 	// DismissFailure dismisses one of the ingestion's failures (a notice
 	// stops showing).
 	DismissFailure(ctx context.Context, id, failureID string) error
+	// SetConfig writes the config entry the ingestion's source names, after
+	// holding it against every ingestion that names it; DeleteConfig deletes
+	// it. Both need only the update permission, also for an ingestion a set
+	// owns (docs/ingestion-design.md section 13).
+	SetConfig(ctx context.Context, cmd ingops.SetConfigCommand) (ingops.IngestionConfigSet, error)
+	DeleteConfig(ctx context.Context, id string) (ingops.IngestionConfigDeleted, error)
 }
 
 // IngestionOps runs the ingestion use cases through the unit of work, exactly
@@ -34,7 +41,12 @@ type IngestionCommands interface {
 type IngestionOps struct {
 	Repo     *ingestion.Repository
 	Resolver ingestion.Resolver
-	UoW      *usecasepgx.UnitOfWork
+	// Configs is the platform config repository the entries of the environment
+	// are written to (only through SetConfig and DeleteConfig). Left nil, one
+	// is made over the unit of work's pool: an entry is a plain value, so it
+	// needs none of the wired repository's encryption.
+	Configs *platformconfig.Repository
+	UoW     *usecasepgx.UnitOfWork
 }
 
 // Create runs CreateIngestion and returns the new ingestion's id. The client
@@ -87,4 +99,21 @@ func (o IngestionOps) DismissFailure(ctx context.Context, id, failureID string) 
 	cmd := ingops.DismissFailureCommand{IngestionID: id, FailureID: failureID}
 	_, err := usecaseop.RunTx(ctx, o.UoW, ingops.DismissFailure(o.Repo), cmd, auth.NewExecutionContext(ctx))
 	return err
+}
+
+func (o IngestionOps) configs() *platformconfig.Repository {
+	if o.Configs != nil {
+		return o.Configs
+	}
+	return platformconfig.NewRepository(o.UoW.Pool())
+}
+
+// SetConfig runs SetIngestionConfig.
+func (o IngestionOps) SetConfig(ctx context.Context, cmd ingops.SetConfigCommand) (ingops.IngestionConfigSet, error) {
+	return usecaseop.Run(ctx, o.UoW, ingops.SetIngestionConfig(o.Repo, o.configs(), o.Resolver), cmd, auth.NewExecutionContext(ctx))
+}
+
+// DeleteConfig runs DeleteIngestionConfig.
+func (o IngestionOps) DeleteConfig(ctx context.Context, id string) (ingops.IngestionConfigDeleted, error) {
+	return usecaseop.Run(ctx, o.UoW, ingops.DeleteIngestionConfig(o.Repo, o.configs()), ingops.DeleteConfigCommand{ID: id}, auth.NewExecutionContext(ctx))
 }
