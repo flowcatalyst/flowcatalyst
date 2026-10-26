@@ -728,7 +728,12 @@ shown unless --since says otherwise. Takes the same filters as "trace log".`,
 				}
 				fmt.Fprintln(out, line+"; following it, and leaving it on")
 			} else {
-				st, err = enableTrace(ctx, api, fn, args[1], forD, false, sample, out)
+				// The switch is not cut short by Ctrl-C: a cancelled PUT may still
+				// have switched it on, and the run would end with no restore. A
+				// stop that lands here ends the run below, after the restore is set.
+				enCtx, enCancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+				st, err = enableTrace(enCtx, api, fn, args[1], forD, false, sample, out)
+				enCancel()
 				if err != nil {
 					return err
 				}

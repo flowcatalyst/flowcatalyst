@@ -37,6 +37,8 @@ type fakeTracePlatform struct {
 	// state is each context's state as GET /trace reports it; PUT and DELETE
 	// change it.
 	state map[string]map[string]any
+	// onPut, when set, runs as a PUT is applied, before it is answered.
+	onPut func()
 }
 
 func newFakeTracePlatform(t *testing.T) *fakeTracePlatform {
@@ -80,6 +82,9 @@ func newFakeTracePlatform(t *testing.T) *fakeTracePlatform {
 				"live": true, "maxMinutes": 60, "indefinite": p.putBody["indefinite"] == true,
 			}
 			p.state[name] = st
+			if p.onPut != nil {
+				p.onPut()
+			}
 			_ = json.NewEncoder(w).Encode(st)
 		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/functions/fn_1/trace/"):
 			name := strings.TrimPrefix(r.URL.Path, "/api/functions/fn_1/trace/")
@@ -518,6 +523,22 @@ func TestFnTraceRunRestoresAShorterWindow(t *testing.T) {
 	require.NoError(t, <-done)
 	require.Zero(t, p.count("DELETE"))
 	require.Contains(t, out2.String(), "was changed during the run")
+}
+
+// Ctrl-C while the switch is being made: the switch is on at the platform, so
+// the run still ends cleanly and switches it back off.
+func TestFnTraceRunStoppedDuringTheSwitchRestores(t *testing.T) {
+	shortPoll(t)
+	p := newFakeTracePlatform(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p.onPut = cancel
+	var out lockedBuffer
+	done := make(chan error, 1)
+	go func() { done <- traceCmd(p, &out, "run", "demo.logger", "orders").run(ctx) }()
+	require.NoError(t, <-done)
+	require.Equal(t, 1, p.count("PUT"))
+	require.Equal(t, 1, p.count("DELETE"), "the context was off before the run")
 }
 
 func TestFnTraceRunKeepLeavesContextOn(t *testing.T) {
