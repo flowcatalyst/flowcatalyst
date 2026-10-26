@@ -66,6 +66,9 @@ func SetProperty(repo *platformconfig.Repository) usecaseop.Operation[SetPropert
 					return usecase.Validation("FIELD_REQUIRED", name+" is required")
 				}
 			}
+			if err := platformconfig.RequireWritableSection(cmd.Section); err != nil {
+				return err
+			}
 			if cmd.ValueType != nil {
 				vt, ok := platformconfig.ParseValueType(*cmd.ValueType)
 				if !ok {

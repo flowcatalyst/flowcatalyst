@@ -61,6 +61,9 @@ type SetChange struct {
 	IngestionID *string `json:"ingestionId,omitempty"`
 	// Changed names the fields an apply changed, for a change or an adoption.
 	Changed []string `json:"changed"`
+	// Warnings are what the item's definition says that will not run as meant,
+	// such as a config entry it names that is not set (CONFIG_MISSING).
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // SetApplySummary is what an apply records about itself, beside its archive.

@@ -113,7 +113,7 @@ sends the credential to whoever answers at the address, so turning it on needs
 | Field | Meaning |
 |---|---|
 | `code` | The dispatch job's code, `application:subdomain:aggregate:action`. Its first part must be the ingestion's own application: an ingestion makes jobs of its application only |
-| `targetUrl` | Where the job is delivered. Checked at save with the platform's outbound-URL guard (no private or metadata addresses) |
+| `targetUrl` | Where the job is delivered. Checked at save with the platform's outbound-URL guard (no private or metadata addresses). May be left out only when the source names a config entry whose value gives it (see "Settings per environment"): exactly one of the two |
 | `pool` | A dispatch pool **code**; it must exist and be usable by the ingestion's client |
 | `connection` | Optional connection code. The connection's service account signs each delivery, and pausing the connection holds this ingestion's jobs |
 | `serviceAccount` | Optional service account code, to sign without a connection. Not together with `connection`. It must be one of the ingestion's application's own accounts and reach the ingestion's client (an account linked to no client reaches all of its application's clients); a platform account, or another application's, is refused |
@@ -123,6 +123,73 @@ sends the credential to whoever answers at the address, so turning it on needs
 With neither `connection` nor `serviceAccount` the delivery is unsigned. The job's
 client is the ingestion's client. Anything that does not resolve is a `400` when
 the ingestion is saved, not a failure in the runtime later.
+
+### Settings per environment
+
+A definition file is the same in every environment, so what differs per
+environment or per client is kept in the platform's configuration of that
+environment, and the source **names** it instead of holding it. A source holds
+its settings inline **or** names a config entry, never both:
+
+```yaml
+source:
+  kind: mix              # a built-in kind (kind: api-poll, kind: sftp, ...) or an extension's
+  config: mix-positions  # the entry's key; or `config: true`, the ingestion's own code
+```
+
+In JSON the reference is `{"kind": "api-poll", "config": "mix-positions"}` for a
+built-in kind and `{"kind": "custom", "type": "mix", "config": "mix-positions"}`
+for an extension's. The key follows the rules of a code. A source with `config`
+holds nothing else; any other setting beside it is a validation problem at
+`source.config`.
+
+The entry is platform configuration of the ingestion's **application**, section
+`ingest`, property = the key, scope `CLIENT` = the ingestion's client, type
+`PLAIN`. Its value is a JSON object: the kind's settings in the shape an inline
+source has (a built-in kind's fields without `kind`; an extension kind's
+`settings` themselves), and optionally `targetUrl`. Secrets stay where they are,
+in section `secrets` at the client; a secret setting in the value holds the
+secret's **name**. The delivery address is in the file's `target.targetUrl` **or**
+in the value's `targetUrl`, exactly one. Several ingestions of one application
+and client may name one key (one login for two feeds); the value must then suit
+each of them.
+
+Wherever the platform uses a definition to do something it uses the **effective
+definition**, the reference with the entry's settings in place: the poll (a
+runtime is given the effective source and never sees `config`), the secrets call
+(the secrets the effective live source names), the jobs call (its delivery
+address), tests, and the drawer. An ingestion whose entry is **missing** or
+**invalid** is not listed to any runtime, takes no lease and no jobs, and shows as
+needing configuration (`config.status` `MISSING` or `INVALID` on the ingestion,
+with the problems); it starts by itself once the entry is valid.
+
+- **Saving a definition** that names a missing entry saves it, with a
+  `CONFIG_MISSING` warning in the answer (create, update, save version, and each
+  item of a set's plan), so applying a set never depends on someone having entered
+  the environment's values first. When the entry exists, the effective definition
+  is validated and judged as an inline one is: the outbound guard, `bind-secrets`
+  when it points secrets somewhere new, `runtime-identity`, and the kind's
+  permission, against the effective live definition.
+- **An entry is written only through its ingestion.** `PUT /api/ingestions/{id}/config`
+  with `{"value": {...}}` (and `DELETE`, `GET`) needs the permission to update the
+  ingestion, also when a set owns it: the entry is the environment's part of it, not
+  the set's. It is checked for **every** ingestion of that application and client whose
+  live or latest saved version names the key: `Validate` of the effective definition,
+  the kind's schema, and the same authoring checks as a save, with the effective
+  definition under the old value as the live one and under the new value as the next.
+  A problem names the ingestion; nothing is written unless all pass. The answer lists
+  the ingestions it was checked against. A write is audited on the ingestion (the
+  value is not in the audit row) and emits `platform:ingestion:ingestion:config-set`;
+  it is not a version of the ingestion. `DELETE` makes the ingestions that name the
+  entry `MISSING` and lists them (`platform:ingestion:ingestion:config-deleted`).
+- **The kind's schema.** For a built-in kind it is the definition itself (strict
+  decoding and `Validate`; an unknown setting is a problem). For an extension kind it
+  is the field list a live runtime reports for it (type, required, choices, pattern,
+  bounds, list counts), checked by the platform. With no live runtime reporting the
+  kind the value is stored with a `SCHEMA_UNCHECKED` warning (`schemaChecked: false`
+  in `GET .../config`), and the runtime checks it before it builds the route.
+- **The generic configuration API and page refuse section `ingest`** (`400
+  CONFIG_SECTION_RESERVED`) for a write or a delete; reading it is as for any section.
 
 ## Definition files and sets
 
@@ -148,7 +215,7 @@ split:
   header: true
 target:
   code: ingest:orders:order:received
-  targetUrl: ${env:ORDERS_HOOK}
+  targetUrl: https://hooks.example.com/orders
   pool: orders
   connection: orders-conn
   mode: NEXT_ON_ERROR
@@ -157,10 +224,10 @@ target:
 
 A file may hold several definitions separated by `---`; keep one per file. An
 extension's source is written flat (`kind: camel-route`, then its settings).
-Unknown fields are errors. `${env:NAME}` is read from the environment when
-`fcdev` reads the file, for what differs between environments (a pool, an
-address); an unset variable stops the command. Nothing else is replaced, and
-comment lines are left alone.
+Unknown fields are errors. A file is the same in every environment: what
+differs between environments or clients (a vendor's login, an organisation id,
+the delivery address) is not in the file but in the platform's configuration of
+that environment (see "Settings per environment").
 
 A folder of files is applied as one **set**. Applying a set makes its
 ingestions what the files say. For each definition:
@@ -405,4 +472,5 @@ everything the set owns; use `sets release` to let go of a set.
 `test` exits `1` when the source failed, was refused, is not supported, or no
 runtime answered in time. `NO_RESULTS` is not a failure: the source answered
 and had nothing. `export` followed by `apply` of the same files changes nothing;
-replace what differs between environments with `${env:NAME}` before keeping them.
+what differs between environments is not in the files (see "Settings per
+environment").

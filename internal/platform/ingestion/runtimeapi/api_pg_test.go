@@ -119,6 +119,7 @@ func newEnv(t *testing.T) *env {
 		Repo:     e.repo,
 		Resolver: resolver,
 		Apps:     apps, Clients: clients, Audit: audit.NewRepository(e.pool), UoW: uow,
+		Configs: e.config.Repo,
 	})
 	// As the server does, after every route has registered.
 	httpcompat.RelaxRequestBodies(api)

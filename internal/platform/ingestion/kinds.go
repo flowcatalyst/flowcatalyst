@@ -39,8 +39,13 @@ type RuntimeKind struct {
 // RunKind is the kind a runtime must carry to run src: the built-in kind, or
 // the type of a custom source.
 func RunKind(src Source) string {
-	if c, ok := src.(Custom); ok {
+	switch c := src.(type) {
+	case Custom:
 		return c.Type
+	case Configured:
+		if c.Base == KindCustom {
+			return c.Type
+		}
 	}
 	return src.Kind()
 }

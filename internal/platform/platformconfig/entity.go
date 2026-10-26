@@ -4,10 +4,12 @@
 package platformconfig
 
 import (
+	"strings"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 )
 
 // Scope is the visibility scope.
@@ -54,6 +56,23 @@ func ParseValueType(s string) (ValueType, bool) {
 	default:
 		return "", false
 	}
+}
+
+// ReservedSection is the section that holds the per-environment settings of
+// ingestions (docs/ingestion-design.md section 13). Its entries are written
+// only through the ingestion that names them, which validates them against
+// every ingestion that does; the generic write surfaces refuse it
+// (RequireWritableSection). Reads are as for any section.
+const ReservedSection = "ingest"
+
+// RequireWritableSection refuses a write or a delete in a reserved section:
+// 400 CONFIG_SECTION_RESERVED.
+func RequireWritableSection(section string) error {
+	if strings.EqualFold(strings.TrimSpace(section), ReservedSection) {
+		return usecase.Validation("CONFIG_SECTION_RESERVED",
+			"section '"+ReservedSection+"' holds ingestion settings, which are changed on the ingestion (PUT /api/ingestions/{id}/config), not here")
+	}
+	return nil
 }
 
 // EncryptedPrefix marks a SECRET value stored encrypted at rest.

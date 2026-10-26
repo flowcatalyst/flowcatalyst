@@ -11,10 +11,11 @@ const (
 // ingestion's client. Pool, Connection and ServiceAccount are codes, resolved
 // to ids at save by a Resolver; a definition file therefore ports between
 // environments. Connection and ServiceAccount are exclusive: a connection's
-// own service account signs, and neither means unsigned delivery.
+// own service account signs, and neither means unsigned delivery. TargetURL is
+// empty only in a definition whose source names a config entry that gives it.
 type Target struct {
 	Code           string  `json:"code"`
-	TargetURL      string  `json:"targetUrl"`
+	TargetURL      string  `json:"targetUrl,omitempty" doc:"The delivery URL. May be left out only when the source names a config entry whose value gives it (exactly one of the two)"`
 	Pool           string  `json:"pool"`
 	Connection     *string `json:"connection,omitempty"`
 	ServiceAccount *string `json:"serviceAccount,omitempty"`

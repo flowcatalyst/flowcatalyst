@@ -17,6 +17,7 @@ admin	DELETE /api/functions/{id}/trace/{context}	disableFunctionTraceContext
 admin	DELETE /api/identity-providers/{id}	deleteIdentityProvider
 admin	DELETE /api/idp-role-mappings/{id}	deleteIdpRoleMapping
 admin	DELETE /api/ingestions/{id}	deleteIngestion
+admin	DELETE /api/ingestions/{id}/config	deleteIngestionConfig
 admin	DELETE /api/oauth-clients/{id}	deleteOAuthClient
 admin	DELETE /api/platform-config/access/{id}	revokePlatformConfigAccess
 admin	DELETE /api/platform/cors/{id}	deleteCorsOrigin
@@ -78,6 +79,7 @@ admin	GET /api/ingestion-source-kinds	listIngestionSourceKinds
 admin	GET /api/ingestion-tests/{id}	getIngestionTest
 admin	GET /api/ingestions	listIngestions
 admin	GET /api/ingestions/{id}	getIngestion
+admin	GET /api/ingestions/{id}/config	getIngestionConfig
 admin	GET /api/ingestions/{id}/definition	getIngestionDefinition
 admin	GET /api/ingestions/{id}/failures	listIngestionFailures
 admin	GET /api/ingestions/{id}/history	listIngestionHistory
@@ -222,6 +224,7 @@ admin	PUT /api/functions/{id}/trace/{context}	enableFunctionTraceContext
 admin	PUT /api/identity-providers/{id}	updateIdentityProvider
 admin	PUT /api/ingestion-sets/{name}	applyIngestionSet
 admin	PUT /api/ingestions/{id}	updateIngestion
+admin	PUT /api/ingestions/{id}/config	setIngestionConfig
 admin	PUT /api/oauth-clients/{id}	updateOAuthClient
 admin	PUT /api/portal-apps/{id}	updatePortalApp
 admin	PUT /api/principals/{id}/application-access	assignPrincipalApplicationAccess

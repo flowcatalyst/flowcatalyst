@@ -248,9 +248,6 @@ func planItems(ctx context.Context, repo *ingestion.Repository, resolver ingesti
 		if err := ingestion.CheckApplicationReach(ac, string(app.ID)); err != nil {
 			return nil, at(err)
 		}
-		if _, err := resolver.Target(ctx, app.Code, c.ID, f.Target); err != nil {
-			return nil, at(err)
-		}
 		key := string(app.ID) + "/" + string(c.ID) + "/" + f.Code
 		if first, dup := seen[key]; dup {
 			return nil, usecase.Validation("INGESTION_INVALID",
@@ -264,11 +261,17 @@ func planItems(ctx context.Context, repo *ingestion.Repository, resolver ingesti
 		}
 		// What saving the file over what exists asks of the caller: the kind's
 		// permission, the runtime identity, the secrets it points.
-		if err := checkAuthor(ctx, repo, existing, f.Definition); err != nil {
+		// A source that names a config entry is judged on the effective
+		// definition when the entry is there, and warned about when it is not.
+		effective, err := checkAuthor(ctx, repo, existing, identity{Application: app.Code, Client: c.ID, Code: f.Code}, f.Definition)
+		if err != nil {
+			return nil, at(err)
+		}
+		if _, err := resolver.Target(ctx, app.Code, c.ID, effective.Definition.Target); err != nil {
 			return nil, at(err)
 		}
 		p := planned{file: f, app: app, client: c, existing: existing}
-		p.change = ingestion.SetChange{Application: app.Code, Client: c.Identifier, Code: f.Code, Changed: []string{}}
+		p.change = ingestion.SetChange{Application: app.Code, Client: c.Identifier, Code: f.Code, Changed: []string{}, Warnings: effective.Warnings()}
 		if err := p.decide(ctx, repo, set); err != nil {
 			return nil, at(err)
 		}

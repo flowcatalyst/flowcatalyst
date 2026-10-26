@@ -143,7 +143,10 @@ func (o *fakeIngOps) SaveVersion(_ context.Context, cmd ingops.SaveVersionComman
 	if err := cmd.Definition.Validate().Err(); err != nil {
 		return ingops.SaveResult{}, err
 	}
-	res := cmp.Or(o.saved, ingops.SaveResult{Outcome: ingops.OutcomeDraft, Version: 1})
+	res := o.saved
+	if res.Ingestion == nil && res.Outcome == "" && res.Version == 0 { // (cmp.Or needs a comparable type; SaveResult carries warnings)
+		res = ingops.SaveResult{Outcome: ingops.OutcomeDraft, Version: 1}
+	}
 	if cmd.Live && o.saved.Outcome == "" {
 		res.Outcome = ingops.OutcomeSaved
 	}

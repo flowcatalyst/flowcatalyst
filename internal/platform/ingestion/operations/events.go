@@ -183,6 +183,58 @@ func (e IngestionFailureDismissed) ToDataJSON() ([]byte, error) {
 	}{e.IngestionID, e.Code, e.FailureID, e.Category})
 }
 
+// The events of an ingestion's config entry (docs/ingestion-design.md section
+// 13). They are the ingestion's events, on its subject, so the change reads in
+// its history; they carry which settings the entry holds, never the value.
+const (
+	IngestionConfigSetType     = "platform:ingestion:ingestion:config-set"
+	IngestionConfigDeletedType = "platform:ingestion:ingestion:config-deleted"
+)
+
+// IngestionConfigSet is emitted when the entry an ingestion names is written.
+// Ingestions are the codes of every ingestion of the application and client
+// that names the entry, all of which the value was checked against.
+type IngestionConfigSet struct {
+	ingestionEvent
+	Code       string
+	Key        string
+	Settings   []string
+	Ingestions []string
+	// Warnings are for the caller, not the event: SCHEMA_UNCHECKED when no live
+	// runtime reports the kind's settings.
+	Warnings []string
+}
+
+func (IngestionConfigSet) EventType() string { return IngestionConfigSetType }
+func (e IngestionConfigSet) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		IngestionID string   `json:"ingestionId"`
+		Code        string   `json:"code"`
+		Key         string   `json:"key"`
+		Settings    []string `json:"settings"`
+		Ingestions  []string `json:"ingestions"`
+	}{e.IngestionID, e.Code, e.Key, e.Settings, e.Ingestions})
+}
+
+// IngestionConfigDeleted is emitted when the entry an ingestion names is
+// deleted; every ingestion in Ingestions is then waiting for it.
+type IngestionConfigDeleted struct {
+	ingestionEvent
+	Code       string
+	Key        string
+	Ingestions []string
+}
+
+func (IngestionConfigDeleted) EventType() string { return IngestionConfigDeletedType }
+func (e IngestionConfigDeleted) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		IngestionID string   `json:"ingestionId"`
+		Code        string   `json:"code"`
+		Key         string   `json:"key"`
+		Ingestions  []string `json:"ingestions"`
+	}{e.IngestionID, e.Code, e.Key, e.Ingestions})
+}
+
 const (
 	IngestionManagedType     = "platform:ingestion:ingestion:managed"
 	IngestionSetAppliedType  = "platform:ingestion:set:applied"

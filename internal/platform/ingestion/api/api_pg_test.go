@@ -264,7 +264,7 @@ func TestPermissionMatrix(t *testing.T) {
 		{"resume", http.MethodPost, "/api/ingestions/" + id + "/resume", nil, permUpdate, nil},
 		{"save version", http.MethodPost, "/api/ingestions/" + id + "/versions", e.definitionOf("c", "q-save"), permUpdate, []string{permIdentity}},
 		{"list versions", http.MethodGet, "/api/ingestions/" + id + "/versions", nil, permView, nil},
-		{"make live", http.MethodPost, "/api/ingestions/" + id + "/versions/1/live", nil, permPromote, nil},
+		{"make live", http.MethodPost, "/api/ingestions/" + id + "/versions/1/live", nil, permPromote, []string{permIdentity}},
 		{"definition", http.MethodGet, "/api/ingestions/" + id + "/definition", nil, permView, nil},
 		{"history", http.MethodGet, "/api/ingestions/" + id + "/history", nil, permView, nil},
 		{"failures", http.MethodGet, "/api/ingestions/" + id + "/failures", nil, permView, nil},

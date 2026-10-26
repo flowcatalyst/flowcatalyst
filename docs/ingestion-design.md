@@ -491,3 +491,84 @@ audit row of a deduplicated or draft update names what was written (`SaveVersion
 the history reads it as it happened; refusals are audited on the ingestion (not the config row, which may not exist);
 a failure to write the last-fetched record or a refusal's audit row is logged and does not change the answer; the
 secret fetch record is per runtime id and goes with the runtime's route states after 7 days unseen.
+
+## 13. Per-environment settings in platform config (2026-10-26)
+
+A definition file is the same in every environment (it lives in git and every code in it is shared across
+environments); what differs per environment or per client (a vendor's login, an organisation id, the delivery URL)
+lives in the platform's config of that environment, never in environment variables of whoever applies the file. The
+`${env:NAME}` placeholders of `fcdev ingest apply` are removed.
+
+### The reference
+
+A source either carries its settings inline (as before) **or** names a config entry, never both:
+
+```yaml
+source:
+  kind: mix                 # a flat extension kind, or a built-in (kind: api-poll, kind: sftp, ...)
+  config: mix-positions     # or `config: true`: the ingestion's own code
+```
+
+In JSON it is `{kind, config}` for a built-in and `{kind: custom, type, config}` for an extension kind. The key
+follows the code's rules. A source with `config` holds nothing else.
+
+The entry is platform config **application** = the ingestion's application, **section** `ingest`, **property** = the
+key, **scope** `CLIENT` = the ingestion's client, type `PLAIN`. Its value is a JSON object: the kind's settings in
+the same shape as inline (a built-in kind's fields without `kind`; an extension kind's `settings`) plus an optional
+`targetUrl`. Secrets stay where they are, in section `secrets` at the client; a secret setting in the value holds the
+secret's **name**. The delivery URL is in the file's `target.targetUrl` **or** in the value's `targetUrl`, exactly one.
+Several ingestions of the same application and client may name one key (one login for two feeds); a value must then
+suit each of them.
+
+### The effective definition
+
+The platform resolves the entry into the **effective definition** wherever a definition is used to do something:
+
+| Where | Uses |
+|---|---|
+| The poll (section 7) | the effective source and target. A runtime never sees `config` and needs no change: the record it is handed changes when the value does, and it rebuilds the route as for any change |
+| The secrets call | the secret names of the effective live source |
+| The jobs call | the effective target (its `targetUrl`) |
+| Tests | a saved ingestion's effective definition; an unsaved file's entry is read when the test is queued |
+| The drawer (where it points, its secrets) | the effective definition; the export keeps the reference |
+
+An ingestion whose entry is **missing** or **invalid** is not listed to any runtime and takes no jobs; it shows as
+needing configuration, with the reason, in the list and the drawer (a computed notice, like "no runtime carries this
+kind"), and starts by itself once the entry is valid.
+
+### Saving
+
+- **A definition** that names an entry is saved even when the entry does not exist yet in this environment, with a
+  `CONFIG_MISSING` warning (owner ruling), so a pipeline applying a set never depends on someone having entered the
+  environment's values first. When the entry exists, the effective definition is validated and judged by
+  `CheckAuthor` against the effective live one, as an inline definition is.
+- **An entry** is written only through the ingestion (owner ruling): `PUT /api/ingestions/{id}/config` (and
+  `DELETE`), the drawer's "Settings (this environment)" form drawn from the kind's schema, and `fcdev ingest config`.
+  It needs the permission to update the ingestion (also for a set-managed one: the entry is the environment's part,
+  not the set's) and passes, for **every** ingestion of that application and client naming the key, `Validate` of the
+  effective definition, the kind's schema, and `CheckAuthor` with the effective definition under the old value as
+  live and under the new value as next: the outbound guard, `bind-secrets` when it points secrets somewhere new,
+  `runtime-identity`, and the kind's permission, exactly as a save. The generic config API and page refuse writes and
+  deletes in section `ingest` (`400 CONFIG_SECTION_RESERVED`) and show its entries read-only with a link to the
+  ingestion. A write is audited on the ingestion and emits `platform:ingestion:ingestion:config-set`; it is not a
+  version of the ingestion.
+- **The kind's schema.** A built-in kind's is its definition (strict decoding and `Validate`). An extension kind's is
+  the field list a live runtime reports for it (type, required, choices, pattern, bounds, list counts), checked by the
+  platform; with no live runtime reporting the kind the value is stored with a warning that it was not checked, and
+  the runtime still checks it before it builds the route. The UI draws the form from the same schema.
+
+### Fixed with this (gaps found on the way)
+
+- Making a draft live runs `CheckAuthor` against the version live at that moment (it was judged only against the one
+  live when the draft was saved).
+- The UI's test of an unsaved definition runs `CheckAuthor` in full, and its test of a saved ingestion runs the
+  outbound guard, as the API's tests do.
+
+### Rulings (owner, 2026-10-26)
+
+1. No environment variables: per-environment and per-client values are platform config, section `ingest`, per
+   client, one JSON value per key whose schema is the kind's, reflected in the UI.
+2. A definition naming a missing entry is saved with a warning and does not run until the entry exists.
+3. An entry is edited only through its ingestion; the generic config surfaces show it read-only.
+4. A source is inline or config, never both.
+5. The key is explicit; `config: true` is the ingestion's code; ingestions of one application and client may share one.

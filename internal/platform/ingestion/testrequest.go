@@ -142,6 +142,13 @@ func claimTests(ctx context.Context, q *dbq.Queries, req PollRequest, carried []
 		if err != nil {
 			continue // logged by rowToTest; the request expires unanswered
 		}
+		if _, unresolved := t.Definition.Source.(Configured); unresolved {
+			// A request is queued with the effective definition; one that
+			// names an entry has no settings to try, and a runtime never sees
+			// a reference.
+			slog.Error("ingestion test request names a config entry", "id", row.ID)
+			continue
+		}
 		ref := byID[row.ID]
 		t.ApplicationCode, t.ClientIdentifier = ref.ApplicationCode, ref.ClientIdentifier
 		if ref.IngestionCode != nil {

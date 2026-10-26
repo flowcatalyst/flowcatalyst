@@ -47,15 +47,15 @@ func (r *Repository) CheckAuthor(ctx context.Context, ac *auth.AuthContext, c Ch
 		sources = append([]Source{c.Current.Source}, sources...)
 	}
 	for _, src := range sources {
-		custom, ok := src.(Custom)
-		if !ok {
-			continue
+		kind := RunKind(src)
+		if kind == src.Kind() {
+			continue // a built-in kind declares no permission
 		}
-		perm, err := r.RequiredPermission(ctx, custom.Type)
+		perm, err := r.RequiredPermission(ctx, kind)
 		if err != nil {
 			return usecase.Internal("REPO", "required permission lookup failed", err)
 		}
-		if err := RequireKindPermission(ac, custom.Type, perm); err != nil {
+		if err := RequireKindPermission(ac, kind, perm); err != nil {
 			return err
 		}
 	}

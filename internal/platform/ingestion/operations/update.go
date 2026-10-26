@@ -64,14 +64,20 @@ func UpdateIngestion(repo *ingestion.Repository, resolver ingestion.Resolver) us
 			if i.Version > 0 && cmd.Definition.Equal(i.Definition) {
 				return UpdateResult{Ingestion: i, Outcome: OutcomeUnchanged, Version: i.Version}, nil
 			}
-			if err := checkAuthor(ctx, repo, i, cmd.Definition); err != nil {
+			who, err := identityOf(ctx, repo, i)
+			if err != nil {
 				return zero, err
 			}
-			if err := checkTarget(ctx, resolver, i, cmd.Definition); err != nil {
+			effective, err := checkAuthor(ctx, repo, i, who, cmd.Definition)
+			if err != nil {
+				return zero, err
+			}
+			if err := checkTarget(ctx, resolver, i, effective.Definition); err != nil {
 				return zero, err
 			}
 			live := LiveIfPermitted(ctx, true)
 			if res, done, err := reuseOrDraft(ctx, s, repo, i, cmd.Definition, live, cmd.Note, ec); done || err != nil {
+				res.Warnings = effective.Warnings()
 				return res, err
 			}
 
@@ -84,7 +90,7 @@ func UpdateIngestion(repo *ingestion.Repository, resolver ingestion.Resolver) us
 			if _, err := usecase.Into(usecasepgx.CommitScoped(ctx, s, i, repo, event, cmd)); err != nil {
 				return zero, err
 			}
-			return UpdateResult{Ingestion: i, Outcome: OutcomeSaved, Version: i.Version}, nil
+			return UpdateResult{Ingestion: i, Outcome: OutcomeSaved, Version: i.Version, Warnings: effective.Warnings()}, nil
 		},
 	}
 }

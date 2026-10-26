@@ -334,6 +334,14 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:ingestion:ingestion:failure-dismissed"] = obj(
 		reqStr("ingestionId"), reqStr("code"), reqStr("failureId"), reqStr("category"),
 	)
+	// The entry's value is not in the event (it is in no audit row either): the
+	// names of its settings and the ingestions it was checked against are.
+	m["platform:ingestion:ingestion:config-set"] = obj(
+		reqStr("ingestionId"), reqStr("code"), reqStr("key"), reqStrArray("settings"), reqStrArray("ingestions"),
+	)
+	m["platform:ingestion:ingestion:config-deleted"] = obj(
+		reqStr("ingestionId"), reqStr("code"), reqStr("key"), reqStrArray("ingestions"),
+	)
 	m["platform:ingestion:set:applied"] = obj(
 		reqStr("setId"), reqStr("name"), reqStr("applyId"), optStr("goingBackTo"),
 		reqU32("created"), reqU32("changed"), reqU32("adopted"), reqU32("removed"),

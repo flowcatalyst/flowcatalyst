@@ -42,7 +42,7 @@ func DeletePropertyOp(s *Service) usecaseop.Operation[DeletePropertyCommand, Pro
 					return usecase.Validation("FIELD_REQUIRED", name+" is required")
 				}
 			}
-			return nil
+			return RequireWritableSection(cmd.Section)
 		},
 		Authorize: func(ctx context.Context, cmd DeletePropertyCommand) error {
 			return s.AuthorizeSet(ctx, auth.FromContext(ctx), cmd.ApplicationCode, deref(cmd.ClientID))

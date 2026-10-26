@@ -13,13 +13,15 @@ import (
 
 func testTarget() *jobTarget {
 	conn := "con_0000000000001"
+	target := ingestion.Target{
+		Code: "acme:orders:order:received", TargetURL: "https://hooks.example.com/orders", Pool: "orders", Mode: ingestion.ModeBlockOnError,
+	}
 	return &jobTarget{
 		ingestion: &ingestion.Ingestion{
 			ID: "ing_000000000001", ClientID: ids.ClientID("clt_000000000001"),
-			Definition: ingestion.Definition{Target: ingestion.Target{
-				Code: "acme:orders:order:received", TargetURL: "https://hooks.example.com/orders", Pool: "orders", Mode: ingestion.ModeBlockOnError,
-			}},
+			Definition: ingestion.Definition{Target: target},
 		},
+		target: target,
 		source: "ingestion:acme:orders", poolID: "dpl_000000000001", connectionID: &conn,
 	}
 }

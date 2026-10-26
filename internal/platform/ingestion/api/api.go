@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -15,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -32,6 +34,9 @@ type State struct {
 	Clients  ClientLookup
 	Audit    *audit.Repository
 	UoW      *usecasepgx.UnitOfWork
+	// Configs is where the config entries an ingestion's source names are
+	// written (docs/ingestion-design.md section 13); reads go through Repo.
+	Configs *platformconfig.Repository
 	// SetArchive keeps what each apply of a set was given (file:// or s3://,
 	// as for function artifacts).
 	SetArchive artifact.Store
@@ -66,6 +71,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "saveIngestionVersion", "/api/ingestions/{id}/versions", "Save a definition as the next version (a definition an existing version says is not saved again)", http.StatusCreated, s.saveVersion)
 	apiroute.Post(g, "makeIngestionVersionLive", "/api/ingestions/{id}/versions/{version}/live", "Make a saved version the live one", http.StatusOK, s.makeLive)
 	registerDefinition(g, s)
+	registerConfig(g, s)
 	apiroute.Get(g, "listIngestionHistory", "/api/ingestions/{id}/history", "List the audit history of an ingestion", s.history)
 	apiroute.Get(g, "listIngestionSecrets", "/api/ingestions/{id}/secrets", "List the secrets the live definition binds and when each runtime last fetched them (names only, never values)", s.secrets)
 	apiroute.Get(g, "listIngestionFailures", "/api/ingestions/{id}/failures", "List the failures runtimes reported for an ingestion", s.failures)
@@ -130,6 +136,11 @@ func (s *State) respond(ctx context.Context, i *ingestion.Ingestion) (*apicommon
 	if err != nil {
 		return nil, usecase.Internal("MARSHAL", "ingestion does not render", err)
 	}
+	res, err := s.Repo.Resolve(ctx, app.Code, i.ClientID, i.Code, i.Definition)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "config entry lookup failed", err)
+	}
+	withConfig(&body, res)
 	notice, err := s.runtimeNotices(ctx)
 	if err != nil {
 		return nil, err
@@ -208,6 +219,11 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Ingesti
 		if err != nil {
 			return nil, usecase.Internal("MARSHAL", "ingestion does not render", err)
 		}
+		res, err := s.Repo.Resolve(ctx, item.ApplicationCode, item.ClientID, item.Code, item.Definition)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "config entry lookup failed", err)
+		}
+		withConfig(&r, res)
 		r.RuntimeNotice = notice(&item.Ingestion)
 		withNotices(&r, notices[item.ID])
 		body.Ingestions = append(body.Ingestions, r)
@@ -296,7 +312,20 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[Ing
 		return nil, err
 	}
 	out.Body.Save = saveOutcome(res)
+	// The answer shows the live definition; the warnings of the one just saved
+	// (a draft over a live version, say) are added to its own.
+	out.Body.Warnings = mergeWarnings(out.Body.Warnings, res.Warnings)
 	return out, nil
+}
+
+// mergeWarnings is a with the warnings of b it does not have.
+func mergeWarnings(a, b []string) []string {
+	for _, w := range b {
+		if !slices.Contains(a, w) {
+			a = append(a, w)
+		}
+	}
+	return a
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
@@ -386,6 +415,7 @@ func (s *State) saveVersion(ctx context.Context, in *saveVersionInput) (*apicomm
 		return nil, usecase.Internal("MARSHAL", "version does not render", err)
 	}
 	body.Save = saveOutcome(res)
+	body.Warnings = res.Warnings
 	return &apicommon.Out[IngestionVersionResponse]{Body: body}, nil
 }
 

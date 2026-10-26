@@ -410,3 +410,44 @@ func TestSetProperty_AnchorNeedsConfigUpdate(t *testing.T) {
 	_, err = usecaseop.Run(appCtx, uow, operations.SetProperty(repo), cmd, testpg.TestEC())
 	require.NoError(t, err, "an application-bound service account with the application-service permission")
 }
+
+// ── Reserved section ──────────────────────────────────────────────────────
+
+// Section "ingest" holds the per-environment settings of ingestions, which are
+// written only through the ingestion that names them: the generic write
+// surfaces (this operation is what the API, the config page and the SPA run)
+// refuse it, and a delete of what an ingestion wrote.
+func TestSetAndDeleteProperty_RefuseTheReservedSection(t *testing.T) {
+	t.Parallel()
+	testpg.EnsureApplication(t, "pcreserved")
+	repo := platformconfig.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	for _, section := range []string{"ingest", " Ingest "} {
+		_, err := runAuthorized(uow, operations.SetProperty(repo), operations.SetPropertyCommand{
+			ApplicationCode: "pcreserved", Section: section, Property: "mix-positions", Value: `{"a":1}`,
+		})
+		ue := usecase.AsError(err)
+		require.NotNil(t, ue, section)
+		assert.Equal(t, usecase.KindValidation, ue.Kind)
+		assert.Equal(t, "CONFIG_SECTION_RESERVED", ue.Code)
+
+		svc := &platformconfig.Service{Repo: repo, UoW: uow}
+		_, err = runAuthorized(uow, platformconfig.DeletePropertyOp(svc), platformconfig.DeletePropertyCommand{
+			ApplicationCode: "pcreserved", Section: section, Property: "mix-positions",
+		})
+		ue = usecase.AsError(err)
+		require.NotNil(t, ue, section)
+		assert.Equal(t, "CONFIG_SECTION_RESERVED", ue.Code)
+	}
+
+	got, err := repo.FindConfigsByApplication(context.Background(), "pcreserved")
+	require.NoError(t, err)
+	assert.Empty(t, got, "nothing was written")
+
+	// Any other section is as before.
+	_, err = runAuthorized(uow, operations.SetProperty(repo), operations.SetPropertyCommand{
+		ApplicationCode: "pcreserved", Section: "ingestion", Property: "x", Value: "1",
+	})
+	require.NoError(t, err)
+}

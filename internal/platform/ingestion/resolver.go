@@ -120,8 +120,14 @@ func (r *RepoResolver) Target(ctx context.Context, applicationCode string, clien
 	}
 	cid := string(clientID)
 
-	if err := r.guard.ValidateURL(t.TargetURL); err != nil {
-		return out, invalid("target.targetUrl %s", err)
+	// A target with no URL is an ingestion whose source names a config entry
+	// that is not set yet: the URL is checked when the entry gives it, with
+	// the effective target (Definition.Validate refuses an inline one that
+	// has none).
+	if t.TargetURL != "" {
+		if err := r.guard.ValidateURL(t.TargetURL); err != nil {
+			return out, invalid("target.targetUrl %s", err)
+		}
 	}
 	// The job's code names the application it belongs to, which must be the
 	// ingestion's own: the batch dispatch API's rule for an application's

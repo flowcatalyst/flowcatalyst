@@ -276,8 +276,16 @@ func (s *APIPoll) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// UnmarshalSource reads a source object by its kind, strictly.
+// UnmarshalSource reads a source object by its kind, strictly. An object with a
+// "config" field is a reference to a config entry (Configured), not a source
+// with settings.
 func UnmarshalSource(data []byte) (Source, error) {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(data, &fields) == nil && fields != nil {
+		if _, named := fields["config"]; named {
+			return decodeConfigured(fields)
+		}
+	}
 	return decodeTagged(data, "source", map[string]func([]byte) (Source, error){
 		KindHTTP:         variant[Source, HTTP],
 		KindSFTP:         variant[Source, Sftp],

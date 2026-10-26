@@ -136,7 +136,9 @@ func (s *State) createJobs(ctx context.Context, in *createJobsInput) (*apicommon
 
 // jobTarget is an ingestion's target resolved to what its jobs carry.
 type jobTarget struct {
-	ingestion      *ingestion.Ingestion
+	ingestion *ingestion.Ingestion
+	// target is the effective one: its delivery URL may be the config entry's.
+	target         ingestion.Target
 	source         string
 	poolID         string
 	connectionID   *string
@@ -154,7 +156,11 @@ func (s *State) resolveTarget(ctx context.Context, i *ingestion.Ingestion) (*job
 	if app == nil {
 		return nil, usecase.Internal("REPO", "ingestion's application not found", nil)
 	}
-	rt, err := s.Resolver.Target(ctx, app.Code, i.ClientID, i.Definition.Target)
+	effective, err := s.effective(ctx, app.Code, i)
+	if err != nil {
+		return nil, err
+	}
+	rt, err := s.Resolver.Target(ctx, app.Code, i.ClientID, effective.Definition.Target)
 	if err != nil {
 		if e := usecase.AsError(err); e != nil && e.Kind == usecase.KindValidation {
 			return nil, usecase.Conflict(e.Code, e.Message)
@@ -162,7 +168,7 @@ func (s *State) resolveTarget(ctx context.Context, i *ingestion.Ingestion) (*job
 		return nil, err
 	}
 	t := &jobTarget{
-		ingestion: i, source: "ingestion:" + app.Code + ":" + i.Code,
+		ingestion: i, target: effective.Definition.Target, source: "ingestion:" + app.Code + ":" + i.Code,
 		poolID: rt.PoolID, connectionID: rt.ConnectionID, serviceAccount: rt.ServiceAccountID,
 	}
 	if rt.ConnectionID != nil {
@@ -205,7 +211,7 @@ func (t *jobTarget) item(rec JobRecord, runtimeID string) (sdk.BatchItem, string
 	case tooLongPtr(rec.Subject, maxSubject):
 		return sdk.BatchItem{}, tooLong("subject", maxSubject)
 	}
-	target, clientID := t.ingestion.Definition.Target, string(t.ingestion.ClientID)
+	target, clientID := t.target, string(t.ingestion.ClientID)
 	return sdk.BatchItem{
 		ExternalID: rec.ExternalID, Code: target.Code, Source: &t.source, Subject: rec.Subject,
 		TargetURL: target.TargetURL, Payload: &rec.Payload, PayloadContentType: rec.PayloadContentType,
@@ -220,3 +226,19 @@ func tooLong(field string, max int) string {
 }
 
 func tooLongPtr(s *string, max int) bool { return s != nil && utf8.RuneCountInString(*s) > max }
+
+// effective is the ingestion's live definition with its config entry's
+// settings, when its source names one. An entry that is missing or invalid is
+// a 409: the ingestion is not listed to a runtime meanwhile, and one that asks
+// anyway (it polled before the entry went) is told so.
+func (s *State) effective(ctx context.Context, applicationCode string, i *ingestion.Ingestion) (ingestion.Resolved, error) {
+	res, err := s.Repo.Resolve(ctx, applicationCode, i.ClientID, i.Code, i.Definition)
+	if err != nil {
+		return res, usecase.Internal("REPO", "config entry lookup failed", err)
+	}
+	if !res.Runnable() {
+		return res, usecase.Conflict("INGESTION_CONFIG_NOT_READY",
+			"the ingestion's config entry "+res.Key+" is "+strings.ToLower(string(res.Status))+"; it runs once the entry is valid")
+	}
+	return res, nil
+}

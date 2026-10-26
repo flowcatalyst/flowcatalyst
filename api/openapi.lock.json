@@ -5496,6 +5496,26 @@
         ],
         "type": "object"
       },
+      "FieldError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
       "FireNowRequest": {
         "additionalProperties": true,
         "properties": {
@@ -5963,6 +5983,187 @@
         ],
         "type": "object"
       },
+      "IngestionConfigDeletedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionConfigDeletedResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "ingestions": {
+            "description": "The codes of every ingestion that names the entry; each is now MISSING and does not run until the entry is set again",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "ingestions"
+        ],
+        "type": "object"
+      },
+      "IngestionConfigResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionConfigResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "key": {
+            "description": "The entry's key; absent while the settings are inline",
+            "type": "string"
+          },
+          "problems": {
+            "description": "Why the entry is INVALID",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "type": "array"
+          },
+          "schemaChecked": {
+            "description": "A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "INLINE",
+              "SET",
+              "MISSING",
+              "INVALID"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "value": {
+            "additionalProperties": {},
+            "description": "The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry or it is not an object",
+            "type": "object"
+          }
+        },
+        "required": [
+          "schemaChecked",
+          "status"
+        ],
+        "type": "object"
+      },
+      "IngestionConfigStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "description": "The entry's key; absent while the settings are inline",
+            "type": "string"
+          },
+          "problems": {
+            "description": "Why the entry is INVALID",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "INLINE",
+              "SET",
+              "MISSING",
+              "INVALID"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "IngestionConfigWritten": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionConfigWritten.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "ingestions": {
+            "description": "The codes of every ingestion of the application and client that names the entry, which the value was checked against",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "key": {
+            "description": "The entry's key; absent while the settings are inline",
+            "type": "string"
+          },
+          "problems": {
+            "description": "Why the entry is INVALID",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "type": "array"
+          },
+          "schemaChecked": {
+            "description": "A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "INLINE",
+              "SET",
+              "MISSING",
+              "INVALID"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "value": {
+            "additionalProperties": {},
+            "description": "The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry or it is not an object",
+            "type": "object"
+          },
+          "warnings": {
+            "description": "SCHEMA_UNCHECKED when no live runtime reports the kind's settings, so the value was not checked against them",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ingestions",
+          "schemaChecked",
+          "status"
+        ],
+        "type": "object"
+      },
       "IngestionDefinition": {
         "additionalProperties": false,
         "properties": {
@@ -6212,6 +6413,10 @@
           "code": {
             "type": "string"
           },
+          "config": {
+            "$ref": "#/components/schemas/IngestionConfigStatus",
+            "description": "Where the settings stand: INLINE (in the definition), or the config entry the source names: SET, MISSING (the ingestion does not run until it is set) or INVALID"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -6296,6 +6501,7 @@
           "status",
           "version",
           "latestVersion",
+          "config",
           "notices",
           "createdAt",
           "updatedAt",
@@ -6936,6 +7142,13 @@
           "version": {
             "format": "int64",
             "type": "integer"
+          },
+          "warnings": {
+            "description": "What the saved definition says that will not run as meant, such as CONFIG_MISSING for a config entry that is not set (the answer of POST .../versions only)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -11487,6 +11700,12 @@
           },
           "ingestionId": {
             "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -11535,6 +11754,29 @@
         "required": [
           "path",
           "content"
+        ],
+        "type": "object"
+      },
+      "SetIngestionConfigRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetIngestionConfigRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "value": {
+            "additionalProperties": {},
+            "description": "The entry: the kind's settings as an inline source holds them, and optionally targetUrl. A secret setting holds the secret's name",
+            "type": "object"
+          }
+        },
+        "required": [
+          "value"
         ],
         "type": "object"
       },
@@ -12778,12 +13020,12 @@
             "type": "string"
           },
           "targetUrl": {
+            "description": "The delivery URL. May be left out only when the source names a config entry whose value gives it (exactly one of the two)",
             "type": "string"
           }
         },
         "required": [
           "code",
-          "targetUrl",
           "pool",
           "mode",
           "batchSize"
@@ -12850,6 +13092,10 @@
           },
           "client": {
             "description": "With definition: the client's id (clt_...) or identifier",
+            "type": "string"
+          },
+          "code": {
+            "description": "With definition: the ingestion's code, which is the config entry's key for a source that says config: true",
             "type": "string"
           },
           "definition": {
@@ -24921,6 +25167,138 @@
           }
         },
         "summary": "Save a definition as the next version: made live with promote, a draft awaiting promote without it; a definition an existing version says is not saved again",
+        "tags": [
+          "ingestions"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/ingestions/{id}/config": {
+      "delete": {
+        "operationId": "deleteIngestionConfig",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionConfigDeletedResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete the config entry the ingestion's source names; the ingestions that name it wait for it",
+        "tags": [
+          "ingestions"
+        ],
+        "x-sdk": "admin"
+      },
+      "get": {
+        "operationId": "getIngestionConfig",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionConfigResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get the config entry the ingestion's source names (its settings in this environment)",
+        "tags": [
+          "ingestions"
+        ],
+        "x-sdk": "admin"
+      },
+      "put": {
+        "operationId": "setIngestionConfig",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetIngestionConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionConfigWritten"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Write the config entry the ingestion's source names, after checking it against every ingestion that names it",
         "tags": [
           "ingestions"
         ],

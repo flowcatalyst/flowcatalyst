@@ -327,6 +327,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 				Clients: repos.clientRepo,
 				Audit:   repos.auditRepo,
 				UoW:     uow,
+				Configs: repos.platformConfigRepo,
 				// Sets keep what each apply was given beside the function artifacts.
 				SetArchive: svcs.functionArtifacts,
 			})

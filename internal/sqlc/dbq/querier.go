@@ -202,8 +202,18 @@ type Querier interface {
 	IdpRoleMappingFindByID(ctx context.Context, id string) (OauthIdpRoleMapping, error)
 	IdpRoleMappingFindByIdpRole(ctx context.Context, idpRoleName string) ([]OauthIdpRoleMapping, error)
 	IdpRoleMappingUpsert(ctx context.Context, arg IdpRoleMappingUpsertParams) error
+	IngestionApplicationCode(ctx context.Context, id ids.ApplicationID) (string, error)
 	// A suspended or deactivated client's ingestions take no jobs.
 	IngestionClientStatus(ctx context.Context, id ids.ClientID) (string, error)
+	// Every entry, for a poll to resolve all the ingestions it lists with one read
+	// (the table of entries is small: one per environment setting).
+	IngestionConfigEntriesList(ctx context.Context) ([]IngestionConfigEntriesListRow, error)
+	// Reads the ingestion feature makes of platform config, section "ingest": the
+	// per-environment settings a source names (docs/ingestion-design.md section
+	// 13). The entries are written through the ingestion (SetIngestionConfig),
+	// which persists them with the platform config repository; these only read.
+	// One entry: the CLIENT-scoped value of the application at the client.
+	IngestionConfigEntryFind(ctx context.Context, arg IngestionConfigEntryFindParams) (IngestionConfigEntryFindRow, error)
 	// The database's clock, read once per transaction (now() is the
 	// transaction's start), so every replica times leases by the same clock.
 	IngestionDBNow(ctx context.Context) (time.Time, error)
@@ -322,6 +332,10 @@ type Querier interface {
 	// IngestionVersionFindByDigest looks up by: one canonicalisation.
 	IngestionVersionInsert(ctx context.Context, arg IngestionVersionInsertParams) error
 	IngestionVersionList(ctx context.Context, ingestionID string) ([]IngVersion, error)
+	// The ingestions of an application and client whose live or latest saved
+	// version names the entry: by its key, or as "config: true" (the ingestion's
+	// own code). jsonb_typeof keeps the string "true" from reading as the boolean.
+	IngestionsNamingConfig(ctx context.Context, arg IngestionsNamingConfigParams) ([]string, error)
 	OAuthClientDelete(ctx context.Context, id string) error
 	OAuthClientFindAll(ctx context.Context) ([]OauthClient, error)
 	OAuthClientFindByClientID(ctx context.Context, clientID string) (OauthClient, error)

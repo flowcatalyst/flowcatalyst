@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -101,7 +102,9 @@ func ParseFiles(data []byte) ([]File, error) {
 }
 
 // unflattenSource turns a flat extension source into {kind: custom, type,
-// settings}.
+// settings}, or {kind: custom, type, config} when it names a config entry
+// (anything else written beside config is kept where it is, for Validate to
+// refuse).
 func unflattenSource(doc map[string]any) {
 	src, ok := doc["source"].(map[string]any)
 	if !ok {
@@ -109,6 +112,12 @@ func unflattenSource(doc map[string]any) {
 	}
 	kind, ok := src["kind"].(string)
 	if !ok || IsBuiltInKind(kind) {
+		return
+	}
+	if _, named := src["config"]; named {
+		flat := maps.Clone(src)
+		flat["kind"], flat["type"] = KindCustom, kind
+		doc["source"] = flat
 		return
 	}
 	settings := make(map[string]any, len(src))
@@ -137,12 +146,23 @@ func (f File) YAML() ([]byte, error) {
 		return nil
 	}
 	var source any = f.Source
-	if c, ok := f.Source.(Custom); ok {
+	switch c := f.Source.(type) {
+	case Custom:
 		flat, err := marshalTagged(c.Type, c.Settings)
 		if err != nil {
 			return nil, err
 		}
 		source = json.RawMessage(flat)
+	case Configured:
+		if c.Base == KindCustom {
+			flat, err := marshalTagged(c.Type, struct {
+				Config ConfigRef `json:"config"`
+			}{c.Config})
+			if err != nil {
+				return nil, err
+			}
+			source = json.RawMessage(flat)
+		}
 	}
 	steps := []struct {
 		key   string

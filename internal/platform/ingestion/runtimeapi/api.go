@@ -8,7 +8,9 @@ package runtimeapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"time"
@@ -196,6 +198,12 @@ func (s *State) poll(ctx context.Context, in *pollInput) (*apicommon.Out[PollRes
 	}
 	for _, item := range res.Ingestions {
 		ri, err := fromIngestion(item.Ingestion, item.ApplicationCode, item.ClientIdentifier)
+		if errors.Is(err, errUnresolved) {
+			// The poll resolves every config reference before it lists; one
+			// left over is a bug, and must not stop the runtime's other routes.
+			slog.ErrorContext(ctx, "ingestion not listed: its source names a config entry the poll did not resolve", "ingestion_id", item.ID)
+			continue
+		}
 		if err != nil {
 			return nil, usecase.Internal("MARSHAL", "ingestion does not render", err)
 		}
@@ -228,8 +236,16 @@ func knownBuiltins(declared []string) []string {
 	return out
 }
 
+// errUnresolved is a definition whose source still names a config entry: a
+// runtime is given the effective source, never the reference (it has no
+// settings to run).
+var errUnresolved = errors.New("source names a config entry that was not resolved")
+
 // fromIngestion renders the live definition in the contract's form.
 func fromIngestion(i ingestion.Ingestion, applicationCode, clientIdentifier string) (RuntimeIngestion, error) {
+	if _, ok := i.Definition.Source.(ingestion.Configured); ok {
+		return RuntimeIngestion{}, errUnresolved
+	}
 	source, err := json.Marshal(i.Definition.Source)
 	if err != nil {
 		return RuntimeIngestion{}, err

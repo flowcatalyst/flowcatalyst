@@ -71,6 +71,13 @@ fetch is logged as security telemetry, a log line, a counter and a "last
 fetched" record on the ingestion, not audited per read; a refused fetch is
 audited. See "Ingestion", Secrets.)
 
+**Section `ingest` is reserved.** It holds the per-environment settings of
+ingestions (one `PLAIN` JSON value per client and key), which are written only
+through the ingestion that names them, after being checked against every
+ingestion that does. Setting or deleting a property in it here is a
+`400 CONFIG_SECTION_RESERVED`; reading it is as for any section. See
+"Ingestion", Settings per environment.
+
 ```
 GET /api/config/{app}/{section}/{property}/secret            (global value)
 GET /api/config/{app}/{section}/{property}/secret?clientId=  (a client's value)

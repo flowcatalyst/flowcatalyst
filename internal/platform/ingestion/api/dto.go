@@ -104,6 +104,8 @@ type IngestionResponse struct {
 	// Warnings are what the definition says that saves but will not run as
 	// meant (an sftp source that checks no host key).
 	Warnings []string `json:"warnings,omitempty" doc:"What the definition says that will not run as meant, such as an sftp source that neither names the server's host key nor accepts any"`
+	// Config is where the settings stand in this environment.
+	Config IngestionConfigStatus `json:"config" doc:"Where the settings stand: INLINE (in the definition), or the config entry the source names: SET, MISSING (the ingestion does not run until it is set) or INVALID"`
 	// Notices counts the failures of category rejected nobody has dismissed:
 	// the platform refused the runtime's jobs permanently, and nothing more
 	// is made until someone acts and dismisses them.
@@ -112,6 +114,33 @@ type IngestionResponse struct {
 	LatestNoticeAt *httpcompat.Time `json:"latestNoticeAt,omitempty"`
 	CreatedAt      httpcompat.Time  `json:"createdAt"`
 	UpdatedAt      httpcompat.Time  `json:"updatedAt"`
+}
+
+// IngestionConfigStatus is the state of the config entry a source names
+// (docs/ingestion-design.md section 13): the entry is platform config of the
+// ingestion's application, section ingest, at its client, under Key.
+type IngestionConfigStatus struct {
+	Key      string                 `json:"key,omitempty" doc:"The entry's key; absent while the settings are inline"`
+	Status   string                 `json:"status" enum:"INLINE,SET,MISSING,INVALID"`
+	Problems []ingestion.FieldError `json:"problems,omitempty" doc:"Why the entry is INVALID"`
+	// UpdatedAt is when the entry was last written.
+	UpdatedAt *httpcompat.Time `json:"updatedAt,omitempty"`
+}
+
+func configStatus(r ingestion.Resolved) IngestionConfigStatus {
+	out := IngestionConfigStatus{Key: r.Key, Status: string(r.Status), Problems: r.Problems}
+	if r.UpdatedAt != nil {
+		out.UpdatedAt = new(jsontime.New(*r.UpdatedAt))
+	}
+	return out
+}
+
+// withConfig adds where the settings stand, and the warnings of the effective
+// definition (an entry that is not set among them). A function, not a method,
+// as parseDefinition.
+func withConfig(r *IngestionResponse, res ingestion.Resolved) {
+	r.Config = configStatus(res)
+	r.Warnings = res.Warnings()
 }
 
 // IngestionSaveOutcome is what a save of a definition did. A save is
@@ -188,6 +217,7 @@ type IngestionVersionResponse struct {
 	IngestionDefinition
 	// Save is what the save that answered did (POST .../versions only).
 	Save        *IngestionSaveOutcome `json:"save,omitempty" doc:"What this save did (the answer of POST .../versions only)"`
+	Warnings    []string              `json:"warnings,omitempty" doc:"What the saved definition says that will not run as meant, such as CONFIG_MISSING for a config entry that is not set (the answer of POST .../versions only)"`
 	Note        *string               `json:"note,omitempty"`
 	AppliedFrom *string               `json:"appliedFrom,omitempty" doc:"Id of the set apply that produced the version"`
 	CreatedBy   *string               `json:"createdBy,omitempty"`
@@ -280,6 +310,7 @@ type TestIngestionRequest struct {
 	IngestionID *string              `json:"ingestionId,omitempty" doc:"Test this saved ingestion's live definition"`
 	Application string               `json:"application,omitempty" doc:"With definition: code of the owning application, which must be of type INTEGRATION"`
 	Client      string               `json:"client,omitempty" doc:"With definition: the client's id (clt_...) or identifier"`
+	Code        string               `json:"code,omitempty" doc:"With definition: the ingestion's code, which is the config entry's key for a source that says config: true"`
 	Definition  *IngestionDefinition `json:"definition,omitempty" doc:"A definition to test without saving it"`
 }
 

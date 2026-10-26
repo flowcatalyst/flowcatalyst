@@ -102,7 +102,8 @@ func ValidateCode(code string) Problems {
 func (d Definition) Validate() Problems {
 	var v checker
 	v.require("name", strings.TrimSpace(d.Name) != "" && len(d.Name) <= 200, "must be 1 to 200 characters")
-	v.target(d.Target)
+	_, byConfig := d.Source.(Configured)
+	v.target(d.Target, byConfig)
 	v.split(d.Split)
 	v.source(d.Source, d.Split)
 	// Where the source sends the runtime is checked here too, so a save and a
@@ -141,9 +142,14 @@ func (v *checker) matches(field, value string, p *regexp.Regexp, message string)
 	v.require(field, p.MatchString(value), message)
 }
 
-func (v *checker) target(t Target) {
+// target checks the job each record becomes. A source that names a config
+// entry may leave the delivery URL to the entry's value (byConfig): whether
+// exactly one of them gives it is judged once the value is known (ApplyConfig).
+func (v *checker) target(t Target, byConfig bool) {
 	v.matches("target.code", t.Code, jobCode, "must be application:subdomain:aggregate:action")
-	v.require("target.targetUrl", webAddress(t.TargetURL), "must be an http or https address")
+	if t.TargetURL != "" || !byConfig {
+		v.require("target.targetUrl", webAddress(t.TargetURL), "must be an http or https address")
+	}
 	v.matches("target.pool", t.Pool, refPattern, "must be a dispatch pool's code")
 	if t.Connection != nil {
 		v.matches("target.connection", *t.Connection, refPattern, "must be a connection's code")
@@ -219,6 +225,8 @@ func (v *checker) source(src Source, split Split) {
 		v.apiPoll(s)
 	case Custom:
 		v.custom(s)
+	case Configured:
+		v.configured(s)
 	}
 }
 

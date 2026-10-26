@@ -125,6 +125,12 @@ func (r *Repository) Poll(ctx context.Context, req PollRequest) (*PollResult, er
 		if err != nil {
 			return err
 		}
+		// An ingestion whose settings are in a config entry is run as the
+		// entry says; while the entry is missing or invalid it is not listed,
+		// leased or counted.
+		if live, err = resolveListed(ctx, q, live); err != nil {
+			return err
+		}
 		// The lease section runs one poll at a time. Each poll renews what it
 		// holds and then claims what is free, so two polls interleaved would
 		// lock lease rows in different orders and could deadlock; serialised,

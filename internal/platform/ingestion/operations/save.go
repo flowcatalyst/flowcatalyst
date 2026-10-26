@@ -39,6 +39,9 @@ type SaveResult struct {
 	// Version is the number of the version the outcome names: the live one
 	// (UNCHANGED, SAVED, MADE_LIVE) or the draft (DRAFT, DRAFT_EXISTS).
 	Version int
+	// Warnings are what the saved definition says that will not run as meant,
+	// its config entry not being set among them (CONFIG_MISSING).
+	Warnings []string
 }
 
 // AwaitingPromote reports whether the save left the definition in a version

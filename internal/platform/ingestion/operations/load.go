@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
@@ -51,23 +52,76 @@ func requireID(id string) error {
 	return nil
 }
 
-// checkAuthor refuses a caller who may not save next over the ingestion i (nil
-// for a create): the kind's permission, the runtime identity and the secrets
-// it points (ingestion.Repository.CheckAuthor).
-func checkAuthor(ctx context.Context, repo *ingestion.Repository, i *ingestion.Ingestion, next ingestion.Definition) error {
-	return repo.CheckAuthor(ctx, auth.FromContext(ctx), changeOf(i, next))
+// identity is what names an ingestion's config entry: its application's code,
+// its client and its own code (`config: true` is the code).
+type identity struct {
+	Application string
+	Client      ids.ClientID
+	Code        string
 }
 
-// changeOf is the change saving next over i makes (i nil: a create).
-func changeOf(i *ingestion.Ingestion, next ingestion.Definition) ingestion.Change {
-	c := ingestion.Change{Next: next}
+// identityOf is the identity of a saved ingestion.
+func identityOf(ctx context.Context, repo *ingestion.Repository, i *ingestion.Ingestion) (identity, error) {
+	app, err := repo.ApplicationCode(ctx, i.ApplicationID)
+	if err != nil {
+		return identity{}, usecase.Internal("REPO", "application lookup failed", err)
+	}
+	return identity{Application: app, Client: i.ClientID, Code: i.Code}, nil
+}
+
+// checkAuthor refuses a caller who may not save next over the ingestion i (nil
+// for a create): the config entry it names must make a valid definition when
+// there is one, and the kind's permission, the runtime identity and the secrets
+// it points are judged on the effective definitions (ingestion.Repository.CheckAuthor):
+// next with its entry's settings against the live version with its entry's
+// settings. An entry that is not there does not stop the save; the answer's
+// Warnings say so (CONFIG_MISSING). The answer's Definition is the effective
+// one, whose target is the one to resolve.
+func checkAuthor(ctx context.Context, repo *ingestion.Repository, i *ingestion.Ingestion, who identity, next ingestion.Definition) (ingestion.Resolved, error) {
+	return judge(ctx, repo, i, who, next, true)
+}
+
+// judge is checkAuthor, with validate false when the effective definition
+// is not to be validated (making a saved version live: its shape was judged
+// when it was saved).
+func judge(ctx context.Context, repo *ingestion.Repository, i *ingestion.Ingestion, who identity, next ingestion.Definition, validate bool) (ingestion.Resolved, error) {
+	nextRes, err := repo.Resolve(ctx, who.Application, who.Client, who.Code, next)
+	if err != nil {
+		return ingestion.Resolved{}, usecase.Internal("REPO", "config entry lookup failed", err)
+	}
+	if validate && nextRes.Status == ingestion.ConfigInvalid {
+		return ingestion.Resolved{}, EntryProblems(nextRes).Err()
+	}
+	c := ingestion.Change{Next: nextRes.Definition}
 	if i != nil {
 		c.Current = &i.Definition
 		if i.Version > 0 {
-			c.Live = &i.Definition
+			liveRes, err := repo.Resolve(ctx, who.Application, who.Client, who.Code, i.Definition)
+			if err != nil {
+				return ingestion.Resolved{}, usecase.Internal("REPO", "config entry lookup failed", err)
+			}
+			// A live version whose entry is not usable runs nowhere: a save is
+			// judged as a first one.
+			if liveRes.Runnable() {
+				c.Live = &liveRes.Definition
+			}
 		}
 	}
-	return c
+	if err := repo.CheckAuthor(ctx, auth.FromContext(ctx), c); err != nil {
+		return ingestion.Resolved{}, err
+	}
+	return nextRes, nil
+}
+
+// EntryProblems are the problems of an invalid entry, each saying whose they
+// are.
+func EntryProblems(r ingestion.Resolved) ingestion.Problems {
+	out := make(ingestion.Problems, len(r.Problems))
+	for n, p := range r.Problems {
+		p.Message = "(config entry " + r.Key + ") " + p.Message
+		out[n] = p
+	}
+	return out
 }
 
 // requirePromote refuses a save that would make a version live for a caller

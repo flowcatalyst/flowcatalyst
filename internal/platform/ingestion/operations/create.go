@@ -62,10 +62,11 @@ func CreateIngestion(repo *ingestion.Repository, resolver ingestion.Resolver) us
 			if err := ingestion.CheckApplicationReach(ac, string(app.ID)); err != nil {
 				return nil, err
 			}
-			if err := checkAuthor(ctx, repo, nil, cmd.Definition); err != nil {
+			res, err := checkAuthor(ctx, repo, nil, identity{Application: app.Code, Client: cmd.ClientID, Code: cmd.Code}, cmd.Definition)
+			if err != nil {
 				return nil, err
 			}
-			if _, err := resolver.Target(ctx, app.Code, cmd.ClientID, cmd.Definition.Target); err != nil {
+			if _, err := resolver.Target(ctx, app.Code, cmd.ClientID, res.Definition.Target); err != nil {
 				return nil, err
 			}
 			existing, err := repo.FindByCode(ctx, app.ID, cmd.ClientID, cmd.Code)

@@ -92,9 +92,6 @@ func (s *State) fetchSecret(ctx context.Context, in *getSecretInput) (secretFetc
 	if err != nil {
 		return f, nil, err
 	}
-	if !slices.Contains(ingestion.SecretNames(i.Definition.Source), in.Name) {
-		return f, nil, usecase.NotFound("SECRET_NOT_FOUND", "the ingestion's live definition binds no secret "+in.Name)
-	}
 	app, err := s.Resolver.ApplicationByID(ctx, string(i.ApplicationID))
 	if err != nil {
 		return f, nil, err
@@ -103,6 +100,15 @@ func (s *State) fetchSecret(ctx context.Context, in *getSecretInput) (secretFetc
 		return f, nil, usecase.Internal("REPO", "ingestion's application not found", nil)
 	}
 	f.applicationCode = app.Code
+	// The names are those of the effective live source: when the settings are
+	// in a config entry, the entry's value is what binds a secret.
+	effective, err := s.effective(ctx, app.Code, i)
+	if err != nil {
+		return f, nil, err
+	}
+	if !slices.Contains(ingestion.SecretNames(effective.Definition.Source), in.Name) {
+		return f, nil, usecase.NotFound("SECRET_NOT_FOUND", "the ingestion's live definition binds no secret "+in.Name)
+	}
 	r, err := s.Config.FetchBoundSecretForIngestionRuntime(ctx, app.Code, secretsSection, in.Name, string(i.ClientID))
 	if e := usecase.AsError(err); e != nil && e.Kind == usecase.KindNotFound {
 		return f, nil, usecase.NotFound("SECRET_NOT_FOUND", "the secret "+in.Name+" has no value at the ingestion's client")

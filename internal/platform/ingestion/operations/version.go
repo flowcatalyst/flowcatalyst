@@ -55,13 +55,19 @@ func SaveVersion(repo *ingestion.Repository, resolver ingestion.Resolver) usecas
 			if i.Version > 0 && cmd.Definition.Equal(i.Definition) {
 				return SaveResult{Ingestion: i, Outcome: OutcomeUnchanged, Version: i.Version}, nil
 			}
-			if err := checkAuthor(ctx, repo, i, cmd.Definition); err != nil {
+			who, err := identityOf(ctx, repo, i)
+			if err != nil {
 				return zero, err
 			}
-			if err := checkTarget(ctx, resolver, i, cmd.Definition); err != nil {
+			effective, err := checkAuthor(ctx, repo, i, who, cmd.Definition)
+			if err != nil {
+				return zero, err
+			}
+			if err := checkTarget(ctx, resolver, i, effective.Definition); err != nil {
 				return zero, err
 			}
 			if res, done, err := reuseOrDraft(ctx, s, repo, i, cmd.Definition, cmd.Live, cmd.Note, ec); done || err != nil {
+				res.Warnings = effective.Warnings()
 				return res, err
 			}
 			v := i.SaveVersion(cmd.Definition, true, cmd.Note, new(ec.PrincipalID))
@@ -74,7 +80,7 @@ func SaveVersion(repo *ingestion.Repository, resolver ingestion.Resolver) usecas
 			if _, err := usecase.Into(usecasepgx.CommitScoped(ctx, s, i, repo, event, cmd)); err != nil {
 				return zero, err
 			}
-			return SaveResult{Ingestion: i, Outcome: OutcomeSaved, Version: v.Number}, nil
+			return SaveResult{Ingestion: i, Outcome: OutcomeSaved, Version: v.Number, Warnings: effective.Warnings()}, nil
 		},
 	}
 }
@@ -108,6 +114,15 @@ func MakeVersionLive(repo *ingestion.Repository) usecaseop.Operation[MakeVersion
 			if v == nil {
 				return nil, usecase.NotFound("INGESTION_VERSION_NOT_FOUND",
 					fmt.Sprintf("Ingestion %s has no version %d", i.Code, cmd.Version))
+			}
+			// Judged against the version live now, not the one that was live when
+			// the draft was saved: what runtimes would be steered from is this.
+			who, err := identityOf(ctx, repo, i)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := judge(ctx, repo, i, who, v.Definition, false); err != nil {
+				return nil, err
 			}
 			if err := i.MakeLive(*v); err != nil {
 				return nil, usecase.Internal("REPO", "make_live failed", err)
