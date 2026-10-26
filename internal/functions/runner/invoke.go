@@ -128,6 +128,9 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 		r.metrics.observe(r.metricAddress(t.address), 0, rerr.code, start)
 		return
 	}
+	// resolve entered the version; this runs last, after the trace capture,
+	// so a shutdown that drains the calls also waits for their records.
+	defer ver.inflight.Done()
 	settings := fn.snapshot()
 	outcome := "ok"
 	defer func() { r.metrics.observe(fn.address, ver.number, outcome, start) }()
@@ -264,13 +267,6 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 		w = cw
 		defer func() { tr.captureHTTP(req, path, body, caller, cw, outcome, start) }()
 	}
-	if !ver.enter() {
-		// Retired by a promotion between resolve and here.
-		outcome = "unavailable"
-		writeError(w, http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", "the function is not available right now", time.Second)
-		return
-	}
-	defer ver.inflight.Done()
 	ver.touch()
 
 	timeout := time.Duration(settings.Limits.TimeoutMs) * time.Millisecond
@@ -496,6 +492,13 @@ func (r *Runner) resolve(t target) (*function, *version, *resolveError) {
 	case stateFailed:
 		return nil, nil, &resolveError{http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", "the version could not be loaded", 30 * time.Second} // the reason is in the heartbeat and the log, not the caller's reply
 	case stateClosed:
+		return nil, nil, &resolveError{http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", "the version was unloaded", time.Second}
+	}
+	// Entered under r.mu: a promotion takes the old version out of the map
+	// under the write lock before it closes it, so a call either entered it
+	// first (and the close drains it) or finds the new one. Entered after the
+	// lock, a call could be refused by a swap that already had a successor.
+	if !ver.enter() {
 		return nil, nil, &resolveError{http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", "the version was unloaded", time.Second}
 	}
 	return fn, ver, nil
