@@ -139,6 +139,27 @@ type apiError struct {
 	Code    string `json:"error"`
 	Message string `json:"message"`
 	Detail  string `json:"detail"`
+	// Details is the answer's structured details, read by problems().
+	Details json.RawMessage `json:"details"`
+}
+
+// apiProblem is one field error of a validation answer.
+type apiProblem struct {
+	Field   string `json:"field"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// problems reads the field errors of a validation answer
+// ({"details": {"fields": [...]}}); none when the answer has no such list.
+func (e *apiError) problems() []apiProblem {
+	var d struct {
+		Fields []apiProblem `json:"fields"`
+	}
+	if json.Unmarshal(e.Details, &d) != nil {
+		return nil
+	}
+	return d.Fields
 }
 
 func (e *apiError) Error() string {

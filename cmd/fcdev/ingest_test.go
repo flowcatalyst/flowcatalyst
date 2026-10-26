@@ -33,7 +33,7 @@ split:
   header: true
 target:
   code: acme:orders:order:received
-  targetUrl: ${env:ORDERS_HOOK}
+  targetUrl: https://hooks.example.com/orders
   pool: orders
   mode: NEXT_ON_ERROR
   batchSize: 100
@@ -94,9 +94,20 @@ func newIngestPlatform(t *testing.T) *ingestPlatform {
 			}
 			_, _ = fmt.Fprintf(w, `{"name":"orders","dryRun":%v%s,"changes":[`+
 				`{"application":"ingest","client":"acme","code":"orders-sftp","action":"CHANGE","changed":["target","split"]},`+
-				`{"application":"ingest","client":"acme","code":"new-one","action":"CREATE","changed":[]},`+
+				`{"application":"ingest","client":"acme","code":"new-one","action":"CREATE","changed":[],"warnings":["CONFIG_MISSING: config entry orders-feed is not set"]},`+
 				`{"application":"ingest","client":"acme","code":"same","action":"UNCHANGED","changed":[]},`+
 				`{"application":"ingest","client":"acme","code":"old","action":"REMOVE","changed":[]}]}`, dry, apply)
+		case "GET /api/ingestions/ing_1/config":
+			_, _ = w.Write([]byte(`{"key":"orders-feed","status":"INVALID","problems":[{"field":"host","code":"NOT_NULL","message":"is required"}],"updatedAt":"2026-10-26T08:00:00Z","schemaChecked":false,"value":{"username":"feed"}}`))
+		case "PUT /api/ingestions/ing_1/config":
+			if strings.Contains(string(body), "bad") {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"INGESTION_INVALID","message":"host is required","details":{"fields":[{"field":"source.host","code":"NOT_NULL","message":"is required"}]}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"key":"orders-feed","status":"SET","schemaChecked":false,"value":{"host":"h"},"ingestions":["orders-sftp","stock"],"warnings":["SCHEMA_UNCHECKED: no live runtime reports sftp"]}`))
+		case "DELETE /api/ingestions/ing_1/config":
+			_, _ = w.Write([]byte(`{"key":"orders-feed","ingestions":["orders-sftp","stock"]}`))
 		case "GET /api/ingestion-sets":
 			_, _ = w.Write([]byte(`{"sets":[{"id":"s","name":"orders","ingestions":4,"createdAt":"2026-10-01T00:00:00Z","updatedAt":"2026-10-02T00:00:00Z"}]}`))
 		case "GET /api/ingestion-sets/orders/applies":
@@ -140,7 +151,6 @@ func (p *ingestPlatform) flags() []string {
 
 func ingestFolder(t *testing.T) string {
 	t.Helper()
-	t.Setenv("ORDERS_HOOK", "https://hooks.example.com/orders")
 	dir := filepath.Join(t.TempDir(), "Orders")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "sftp.yaml"), []byte(ingestSftpFile), 0o600))
@@ -157,6 +167,7 @@ func TestIngestApplyPrintsThePlan(t *testing.T) {
 	require.Equal(t, "set orders applied as apply ap_9, 1 definition(s)\n"+
 		"  change    ingest/acme/orders-sftp (target, split)\n"+
 		"  create    ingest/acme/new-one\n"+
+		"    warning: CONFIG_MISSING: config entry orders-feed is not set\n"+
 		"  unchanged ingest/acme/same\n"+
 		"  remove    ingest/acme/old\n", out)
 	require.Empty(t, p.queries["PUT /api/ingestion-sets/orders"])
@@ -170,7 +181,7 @@ func TestIngestApplyPrintsThePlan(t *testing.T) {
 	require.Equal(t, "ingest", sent.Items[0]["application"])
 	require.Equal(t, "acme", sent.Items[0]["client"])
 	require.Equal(t, "orders-sftp", sent.Items[0]["code"])
-	require.Equal(t, "https://hooks.example.com/orders", sent.Items[0]["target"].(map[string]any)["targetUrl"], "${env:} is read before it is sent")
+	require.Equal(t, "https://hooks.example.com/orders", sent.Items[0]["target"].(map[string]any)["targetUrl"])
 	require.Len(t, sent.Files, 1)
 	require.Equal(t, "sftp.yaml", sent.Files[0].Path)
 	require.Equal(t, ingestSftpFile, sent.Files[0].Content, "the archived file is as written")
@@ -206,16 +217,22 @@ func TestIngestApplyRefusals(t *testing.T) {
 	p := newIngestPlatform(t)
 	dir := ingestFolder(t)
 
-	t.Setenv("ORDERS_HOOK", "")
-	require.NoError(t, os.Unsetenv("ORDERS_HOOK"))
-	_, _, err := runCobra(t, newIngestApplyCmd(), "", append([]string{dir}, p.flags()...)...)
-	require.ErrorContains(t, err, "${env:ORDERS_HOOK}, which is not set")
+	// A leftover ${env:} is refused, naming the file and line; a comment line may mention it.
+	envFile := filepath.Join(t.TempDir(), "env.yaml")
+	require.NoError(t, os.WriteFile(envFile, []byte("# was ${env:OLD}\n"+ingestSftpFile+"# ${env:IN_COMMENT}\n"), 0o600))
+	_, _, err := runCobra(t, newIngestApplyCmd(), "", append([]string{envFile, "--set", "orders"}, p.flags()...)...)
+	require.NoError(t, err, "comment lines are not read")
+	sent := p.writes()
+	stale := strings.Replace(ingestSftpFile, "https://hooks.example.com/orders", "${env:ORDERS_HOOK}", 1)
+	require.NoError(t, os.WriteFile(envFile, []byte(stale), 0o600))
+	_, _, err = runCobra(t, newIngestApplyCmd(), "", append([]string{envFile, "--set", "orders"}, p.flags()...)...)
+	require.ErrorContains(t, err, "env.yaml line 18 holds ${env:...}")
+	require.ErrorContains(t, err, "fcdev ingest config set")
 
 	empty := t.TempDir()
 	_, _, err = runCobra(t, newIngestApplyCmd(), "", append([]string{empty}, p.flags()...)...)
 	require.ErrorContains(t, err, "no definitions found")
 
-	t.Setenv("ORDERS_HOOK", "https://h.example.com")
 	_, _, err = runCobra(t, newIngestApplyCmd(), "", append([]string{filepath.Join(dir, "sftp.yaml")}, p.flags()...)...)
 	require.ErrorContains(t, err, "--set")
 
@@ -223,7 +240,7 @@ func TestIngestApplyRefusals(t *testing.T) {
 	require.NoError(t, os.WriteFile(bad, []byte("application: [x\n"), 0o600))
 	_, _, err = runCobra(t, newIngestApplyCmd(), "", append([]string{bad, "--set", "orders"}, p.flags()...)...)
 	require.ErrorContains(t, err, "bad.yaml")
-	require.Zero(t, p.writes())
+	require.Equal(t, sent, p.writes(), "a refused file writes nothing")
 }
 
 func TestIngestApplyRefusedByThePlatformIsAnError(t *testing.T) {
@@ -238,7 +255,6 @@ func TestIngestProdApplyIsGuardedButDryRunIsNot(t *testing.T) {
 	e := newFnTestEnv(t)
 	pl := newProfilePlatform(t, testSecret)
 	profileWith(t, e, pl, "prod")
-	t.Setenv("ORDERS_HOOK", "https://h.example.com")
 	dir := ingestFolder(t)
 	_, _, err := runCobra(t, newIngestApplyCmd(), "", dir, "--profile", "p")
 	require.ErrorContains(t, err, "without a terminal")
@@ -432,4 +448,74 @@ func TestIngestSets(t *testing.T) {
 	out, _, err = runCobra(t, newIngestSetsCmd(), "", append([]string{"release", "orders"}, p.flags()...)...)
 	require.NoError(t, err)
 	require.Contains(t, out, "set orders released: 4 ingestion(s)")
+}
+
+func TestIngestConfigGet(t *testing.T) {
+	newFnTestEnv(t)
+	p := newIngestPlatform(t)
+	out, _, err := runCobra(t, newIngestConfigGetCmd(), "", append([]string{"ingest/acme/orders-sftp"}, p.flags()...)...)
+	require.NoError(t, err)
+	for _, want := range []string{"orders-feed", "INVALID", "problem host: is required", "not checked against them", `"username": "feed"`} {
+		require.Contains(t, out, want)
+	}
+	out, errOut, err := runCobra(t, newIngestConfigGetCmd(), "", append([]string{"ingest/acme/orders-sftp", "--json"}, p.flags()...)...)
+	require.NoError(t, err)
+	var c ingestConfig
+	require.NoError(t, json.Unmarshal([]byte(out), &c))
+	require.Equal(t, "INVALID", c.Status)
+	require.Contains(t, errOut, "orders-feed")
+}
+
+func TestIngestConfigSet(t *testing.T) {
+	newFnTestEnv(t)
+	p := newIngestPlatform(t)
+	file := filepath.Join(t.TempDir(), "v.json")
+	require.NoError(t, os.WriteFile(file, []byte(`{"host":"h","targetUrl":"https://h.example.com"}`), 0o600))
+	out, _, err := runCobra(t, newIngestConfigSetCmd(), "", append([]string{"ingest/acme/orders-sftp", file}, p.flags()...)...)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"value":{"host":"h","targetUrl":"https://h.example.com"}}`, p.bodies["PUT /api/ingestions/ing_1/config"])
+	require.Contains(t, out, "checked against orders-sftp, stock")
+	require.Contains(t, out, "warning: SCHEMA_UNCHECKED")
+
+	// stdin
+	_, _, err = runCobra(t, newIngestConfigSetCmd(), `{"host":"x"}`, append([]string{"ingest/acme/orders-sftp", "-"}, p.flags()...)...)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"value":{"host":"x"}}`, p.bodies["PUT /api/ingestions/ing_1/config"])
+
+	// a problem names its field path
+	_, errOut, err := runCobra(t, newIngestConfigSetCmd(), `{"bad":1}`, append([]string{"ingest/acme/orders-sftp", "-"}, p.flags()...)...)
+	require.ErrorContains(t, err, "HTTP 400")
+	require.Contains(t, errOut, "problem source.host: is required")
+}
+
+func TestIngestConfigSetRefusesANonObject(t *testing.T) {
+	newFnTestEnv(t)
+	p := newIngestPlatform(t)
+	before := p.writes()
+	for _, in := range []string{`[1]`, `"x"`, `null`, `not json`} {
+		_, _, err := runCobra(t, newIngestConfigSetCmd(), in, append([]string{"ingest/acme/orders-sftp", "-"}, p.flags()...)...)
+		require.ErrorContains(t, err, "not a JSON object", in)
+	}
+	require.Equal(t, before, p.writes())
+}
+
+func TestIngestConfigDeleteAndProdGuard(t *testing.T) {
+	newFnTestEnv(t)
+	p := newIngestPlatform(t)
+	out, _, err := runCobra(t, newIngestConfigDeleteCmd(), "", append([]string{"ingest/acme/orders-sftp", "--yes"}, p.flags()...)...)
+	require.NoError(t, err)
+	require.Contains(t, out, "stopped until they are set again: orders-sftp, stock")
+
+	// On a prod profile both writes stop at the confirmation, after the ingestion is found.
+	e := newFnTestEnv(t)
+	pp := newIngestPlatform(t)
+	t.Setenv("FC_TEST_SECRET", testSecret)
+	e.writeProfiles(t, 0o600, profileTOML("p", pp.srv.URL, "prod", "env:FC_TEST_SECRET"))
+	_, _, err = runCobra(t, newIngestConfigDeleteCmd(), "", "ing_1", "--profile", "p")
+	require.ErrorContains(t, err, "without a terminal")
+	file := filepath.Join(t.TempDir(), "v.json")
+	require.NoError(t, os.WriteFile(file, []byte(`{}`), 0o600))
+	_, _, err = runCobra(t, newIngestConfigSetCmd(), "", "ing_1", file, "--profile", "p")
+	require.ErrorContains(t, err, "without a terminal")
+	require.Zero(t, pp.writes())
 }

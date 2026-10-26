@@ -448,6 +448,9 @@ error is exit code `1`. Refer to an ingestion as `application/client/code` or by
 | `fcdev ingest live <ref> <version>` | Make a version live |
 | `fcdev ingest pause <ref>`, `resume <ref>` | Stop or start an ingestion |
 | `fcdev ingest test <ref \| file> [--wait] [--timeout d]` | Queue a test; `--wait` polls and prints the steps |
+| `fcdev ingest config get <ref> [--json]` | Show the settings entry the ingestion's source names: key, status, problems, the value |
+| `fcdev ingest config set <ref> <file.json \| -> [--json]` | Write the entry from a JSON object (a file, or stdin with `-`) |
+| `fcdev ingest config delete <ref> [--json]` | Delete the entry; the ingestions that name it stop |
 | `fcdev ingest sets list` | List the sets |
 | `fcdev ingest sets applies <set>` | List a set's kept applies |
 | `fcdev ingest sets reapply <set> <apply-id> [--dry-run]` | Go back to an earlier apply |
@@ -465,6 +468,32 @@ set acme, dry run: nothing was changed, 3 definition(s)
   create    ingest/acme/stock-feed
   unchanged ingest/acme/invoices
 ```
+
+A definition that names a settings entry which is not set yet is saved, and the
+plan prints its `CONFIG_MISSING` warning under its line (also with `--dry-run`);
+`pause`, `resume`, `live` and `get` print the warnings the platform returns in the
+same way. A file that still holds `${env:NAME}` outside a comment is refused with
+its line: environment variables are not read, put the value in the ingestion's
+settings instead.
+
+Per-environment settings are written with `config set`, after the apply has created
+the ingestion:
+
+```
+$ fcdev ingest config set bevco-integration/bevco/mix-positions mix-positions.json
+bevco-integration/bevco/mix-positions: settings written to mix-positions, SET
+  checked against mix-positions, mix-positions-b
+  warning: SCHEMA_UNCHECKED: ...
+```
+
+The file is a JSON object (anything else is refused before it is sent): the kind's
+settings and, if the file's target has no `targetUrl`, `targetUrl`. A secret setting
+holds the secret's name. A refused value prints each problem with its field path and
+exits `1`; nothing is written unless every ingestion naming the entry accepts it.
+`config get` prints the status (`INLINE`, `SET`, `MISSING`, `INVALID`), the problems and
+whether the value is checked against a kind's schema (`schemaChecked`); `--json` prints
+the raw answer. `config set` and `config delete` ask for confirmation on a prod profile
+like the other writes, and `delete` lists the ingestions that stop.
 
 `apply` refuses a folder with no definitions, since applying none would delete
 everything the set owns; use `sets release` to let go of a set.

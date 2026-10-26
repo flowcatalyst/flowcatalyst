@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -34,7 +36,7 @@ func newIngestCmd() *cobra.Command {
 	cmd.AddCommand(
 		newIngestListCmd(), newIngestGetCmd(), newIngestApplyCmd(), newIngestExportCmd(),
 		newIngestVersionsCmd(), newIngestLiveCmd(), newIngestPauseCmd(), newIngestResumeCmd(),
-		newIngestTestCmd(), newIngestSetsCmd(),
+		newIngestTestCmd(), newIngestConfigCmd(), newIngestSetsCmd(),
 	)
 	return cmd
 }
@@ -53,6 +55,7 @@ type ingRow struct {
 	ManagedBy        string          `json:"managedBy"`
 	Source           json.RawMessage `json:"source"`
 	Split            json.RawMessage `json:"split"`
+	Warnings         []string        `json:"warnings"`
 	Target           struct {
 		Code       string `json:"code"`
 		TargetURL  string `json:"targetUrl"`
@@ -209,6 +212,7 @@ func newIngestGetCmd() *cobra.Command {
 			if r.ManagedBy != "" {
 				rep.say("  set     %s owns it (read-only until released)", r.ManagedBy)
 			}
+			printWarnings(rep, "  ", r.Warnings)
 			return rep.emit(r.raw)
 		},
 	}
@@ -232,30 +236,29 @@ func ingestTargetLine(r *ingRow) string {
 
 // --- apply ----------------------------------------------------------------
 
-var envPlaceholder = regexp.MustCompile(`\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}`)
+// envPlaceholder finds the ${env:NAME} of the files this command used to read.
+var envPlaceholder = regexp.MustCompile(`\$\{env:`)
 
-// expandEnv replaces ${env:NAME} from the environment, outside comment lines.
-// An unset variable is an error; nothing else is replaced.
-func expandEnv(text, file string) (string, error) {
-	lines := strings.SplitAfter(text, "\n")
-	for i, line := range lines {
+// refuseEnv refuses a file that still holds ${env:NAME} outside comment lines.
+// Environment variables are not read any more, and leaving the text in would
+// send it to the platform as a literal, so it is an error, not a quiet pass.
+func refuseEnv(text, file string) error {
+	for i, line := range strings.Split(text, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
-		var missing string
-		lines[i] = envPlaceholder.ReplaceAllStringFunc(line, func(m string) string {
-			name := envPlaceholder.FindStringSubmatch(m)[1]
-			v, ok := os.LookupEnv(name)
-			if !ok && missing == "" {
-				missing = name
-			}
-			return v
-		})
-		if missing != "" {
-			return "", fmt.Errorf("%s names ${env:%s}, which is not set", file, missing)
+		if envPlaceholder.MatchString(line) {
+			return fmt.Errorf("%s line %d holds ${env:...}: environment variables are no longer read; put per-environment values in the ingestion's settings (`fcdev ingest config set`) and name them with `config:` in the source", file, i+1)
 		}
 	}
-	return strings.Join(lines, ""), nil
+	return nil
+}
+
+// printWarnings prints what the platform says will not run as meant.
+func printWarnings(rep *fnReport, indent string, warnings []string) {
+	for _, w := range warnings {
+		rep.say("%swarning: %s", indent, w)
+	}
 }
 
 // setFile is a definition file as the API keeps it with an apply.
@@ -302,11 +305,10 @@ func readDefinitionFiles(args []string) ([]ingestion.File, []setFile, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		text, err := expandEnv(string(data), names[i])
-		if err != nil {
+		if err := refuseEnv(string(data), names[i]); err != nil {
 			return nil, nil, err
 		}
-		parsed, err := ingestion.ParseFiles([]byte(text))
+		parsed, err := ingestion.ParseFiles(data)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", names[i], err)
 		}
@@ -325,6 +327,7 @@ type ingestChange struct {
 	Code        string   `json:"code"`
 	Action      string   `json:"action"`
 	Changed     []string `json:"changed"`
+	Warnings    []string `json:"warnings"`
 }
 
 type ingestPlan struct {
@@ -356,6 +359,7 @@ func printPlan(rep *fnReport, p ingestPlan, items int) {
 			line += " (" + strings.Join(c.Changed, ", ") + ")"
 		}
 		rep.say("%s", line)
+		printWarnings(rep, "    ", c.Warnings)
 	}
 }
 
@@ -369,8 +373,12 @@ func newIngestApplyCmd() *cobra.Command {
 		Long: `Reads definition files (a folder's *.yaml and *.yml, or the files named) and
 applies them as one set: ingestions the files list are created or changed,
 ones made by hand that they list are taken into the set, and ones the set
-owns but no longer lists are deleted. ${env:NAME} in a file is read from the
-environment; an unset one stops the apply.
+owns but no longer lists are deleted. A file is the same in every environment:
+what differs per environment (a vendor's login, the delivery URL) is the
+ingestion's settings, named by "config:" in the source and written with
+` + "`fcdev ingest config set`" + `. A file that still holds ${env:NAME} is refused.
+A source naming settings that are not set yet is saved with a CONFIG_MISSING
+warning, printed under its line; it runs once they are set.
 
 The set is named by --set; for a folder it defaults to the folder's name.
 --dry-run prints the plan and writes nothing.`,
@@ -633,6 +641,7 @@ func ingestChangeState(cmd *cobra.Command, pf *fnPlatformFlags, ref string, asJS
 	}
 	rep := newFnReport(cmd, asJSON)
 	rep.say("%s: %s, live v%d", now.ref(), now.Status, now.Version)
+	printWarnings(rep, "  ", now.Warnings)
 	return rep.emit(raw)
 }
 
@@ -931,6 +940,217 @@ func newIngestSetsReleaseCmd() *cobra.Command {
 	}
 	pf.add(cmd)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the result as JSON on stdout; human output goes to stderr")
+	addYesFlag(cmd, &yes)
+	return cmd
+}
+
+// --- config ---------------------------------------------------------------
+
+// ingestConfigPath is the route of the settings entry an ingestion names.
+func ingestConfigPath(id string) string { return "/api/ingestions/" + url.PathEscape(id) + "/config" }
+
+func newIngestConfigCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Read and write an ingestion's settings in this environment",
+		Long: `The settings a source names with "config:" are platform config of the
+environment (application, section ingest, at the ingestion's client), written
+only through the ingestion. They are the part of a definition that differs per
+environment: a vendor's login, an organisation id, the delivery URL.`,
+	}
+	cmd.AddCommand(newIngestConfigGetCmd(), newIngestConfigSetCmd(), newIngestConfigDeleteCmd())
+	return cmd
+}
+
+type ingestConfigProblem struct {
+	Field   string `json:"field"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type ingestConfig struct {
+	Key           string                `json:"key"`
+	Status        string                `json:"status"`
+	Problems      []ingestConfigProblem `json:"problems"`
+	UpdatedAt     string                `json:"updatedAt"`
+	SchemaChecked bool                  `json:"schemaChecked"`
+	Value         json.RawMessage       `json:"value"`
+	Ingestions    []string              `json:"ingestions"`
+	Warnings      []string              `json:"warnings"`
+}
+
+func printConfig(rep *fnReport, c ingestConfig) {
+	if c.Status == "INLINE" {
+		rep.say("  status  INLINE: the settings are in the definition, not in an entry")
+		return
+	}
+	rep.say("  key     %s", c.Key)
+	rep.say("  status  %s", c.Status)
+	if c.UpdatedAt != "" {
+		rep.say("  updated %s", c.UpdatedAt)
+	}
+	for _, p := range c.Problems {
+		rep.say("  problem %s: %s", p.Field, p.Message)
+	}
+	if !c.SchemaChecked {
+		rep.say("  no live runtime reports this kind's settings: a value is not checked against them when written")
+	}
+	if len(c.Value) > 0 && string(c.Value) != "null" {
+		var pretty bytes.Buffer
+		if json.Indent(&pretty, c.Value, "  ", "  ") == nil {
+			rep.say("  value   %s", pretty.String())
+		}
+	}
+}
+
+func newIngestConfigGetCmd() *cobra.Command {
+	var pf fnPlatformFlags
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "get <application>/<client>/<code>",
+		Short: "Show the settings entry an ingestion's source names",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			api, err := newFnAPI(cmd, &pf)
+			if err != nil {
+				return err
+			}
+			r, err := api.findIngestion(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			var raw json.RawMessage
+			if err := api.json(cmd.Context(), http.MethodGet, ingestConfigPath(r.ID), nil, &raw); err != nil {
+				return err
+			}
+			var c ingestConfig
+			if err := json.Unmarshal(raw, &c); err != nil {
+				return err
+			}
+			rep := newFnReport(cmd, asJSON)
+			rep.say("%s", r.ref())
+			printConfig(rep, c)
+			return rep.emit(raw)
+		},
+	}
+	pf.add(cmd)
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the answer as JSON on stdout; human output goes to stderr")
+	return cmd
+}
+
+func newIngestConfigSetCmd() *cobra.Command {
+	var pf fnPlatformFlags
+	var asJSON, yes bool
+	cmd := &cobra.Command{
+		Use:   "set <application>/<client>/<code> <file.json | ->",
+		Short: "Write the settings entry an ingestion's source names",
+		Long: `Writes the JSON object in the file (or on stdin, with -) as the entry: the
+kind's settings as an inline source holds them, and optionally targetUrl. A
+secret setting holds the secret's NAME; the secret itself is set in section
+secrets at the client. The platform checks the value against every ingestion of
+the application and client that names the entry, and writes nothing unless all
+pass.`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var data []byte
+			var err error
+			if args[1] == "-" {
+				data, err = io.ReadAll(cmd.InOrStdin())
+			} else {
+				data, err = os.ReadFile(args[1])
+			}
+			if err != nil {
+				return err
+			}
+			var value map[string]any
+			if err := json.Unmarshal(data, &value); err != nil || value == nil {
+				return fmt.Errorf("%s is not a JSON object: the entry is an object of settings", args[1])
+			}
+			api, err := newFnAPI(cmd, &pf)
+			if err != nil {
+				return err
+			}
+			r, err := api.findIngestion(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			if err := api.confirm("write the settings of "+r.ref(), yes); err != nil {
+				return err
+			}
+			var raw json.RawMessage
+			err = api.json(cmd.Context(), http.MethodPut, ingestConfigPath(r.ID), map[string]any{"value": value}, &raw)
+			if err != nil {
+				if ae, ok := errors.AsType[*apiError](err); ok {
+					for _, p := range ae.problems() {
+						fmt.Fprintf(cmd.ErrOrStderr(), "  problem %s: %s\n", p.Field, p.Message)
+					}
+				}
+				return err
+			}
+			var c ingestConfig
+			if err := json.Unmarshal(raw, &c); err != nil {
+				return err
+			}
+			rep := newFnReport(cmd, asJSON)
+			rep.say("%s: settings written to %s, %s", r.ref(), c.Key, c.Status)
+			if len(c.Ingestions) > 0 {
+				rep.say("  checked against %s", strings.Join(c.Ingestions, ", "))
+			}
+			for _, p := range c.Problems {
+				rep.say("  problem %s: %s", p.Field, p.Message)
+			}
+			printWarnings(rep, "  ", c.Warnings)
+			return rep.emit(raw)
+		},
+	}
+	pf.add(cmd)
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the answer as JSON on stdout; human output goes to stderr")
+	addYesFlag(cmd, &yes)
+	return cmd
+}
+
+func newIngestConfigDeleteCmd() *cobra.Command {
+	var pf fnPlatformFlags
+	var asJSON, yes bool
+	cmd := &cobra.Command{
+		Use:   "delete <application>/<client>/<code>",
+		Short: "Delete the settings entry an ingestion's source names",
+		Long: `Deletes the entry. Every ingestion of the application and client that names it
+is then MISSING and stops running until the entry is set again.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			api, err := newFnAPI(cmd, &pf)
+			if err != nil {
+				return err
+			}
+			r, err := api.findIngestion(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			if err := api.confirm("delete the settings of "+r.ref()+" (every ingestion naming them stops)", yes); err != nil {
+				return err
+			}
+			var raw json.RawMessage
+			if err := api.json(cmd.Context(), http.MethodDelete, ingestConfigPath(r.ID), nil, &raw); err != nil {
+				return err
+			}
+			var out struct {
+				Key        string   `json:"key"`
+				Ingestions []string `json:"ingestions"`
+			}
+			if err := json.Unmarshal(raw, &out); err != nil {
+				return err
+			}
+			rep := newFnReport(cmd, asJSON)
+			rep.say("%s: settings %s deleted", r.ref(), out.Key)
+			if len(out.Ingestions) > 0 {
+				rep.say("  stopped until they are set again: %s", strings.Join(out.Ingestions, ", "))
+			}
+			return rep.emit(raw)
+		},
+	}
+	pf.add(cmd)
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the answer as JSON on stdout; human output goes to stderr")
 	addYesFlag(cmd, &yes)
 	return cmd
 }
