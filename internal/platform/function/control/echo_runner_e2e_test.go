@@ -58,8 +58,11 @@ func TestE2E_RuntimesFilter_EchoRunner(t *testing.T) {
 	echoFn := seedFunction(t, pool, s.Repo, appID, appCode, "echo-fn", func(f *function.Function) { f.Pool = &poolName })
 	wv := seedVersion(t, s.Repo, wasmFn.ID, 1, function.VersionReady, "wasm", describeJSON(t))
 	seedAlias(t, s.Repo, wasmFn.ID, "live", wv.ID)
-	// Published (a candidate): exactly what a runner must prove loadable.
-	seedVersion(t, s.Repo, echoFn.ID, 1, function.VersionPublished, "echo", describeJSON(t))
+	// Published (a candidate): exactly what a runner must prove loadable. Also
+	// live, so it stays in the document once READY: an unaliased READY version
+	// leaves it, and the runner's next poll would drop it before the asserts.
+	ev := seedVersion(t, s.Repo, echoFn.ID, 1, function.VersionPublished, "echo", describeJSON(t))
+	seedAlias(t, s.Repo, echoFn.ID, "live", ev.ID)
 
 	ctx := context.Background()
 

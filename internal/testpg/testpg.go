@@ -88,8 +88,11 @@ func run(m *testing.M) int {
 	}
 	defer func() { _ = pg.Stop() }()
 
+	// pool_max_conns: the default, max(4, CPUs), is 4 on a two-CPU CI runner,
+	// and parallel tests whose use cases read through the pool while holding a
+	// transaction then wait on each other for a fifth connection, forever.
 	p, err := pgxpool.New(ctx, fmt.Sprintf(
-		"postgresql://postgres:postgres@localhost:%d/flowcatalyst?sslmode=disable", port))
+		"postgresql://postgres:postgres@localhost:%d/flowcatalyst?sslmode=disable&pool_max_conns=32", port))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "testpg: connect: %v\n", err)
 		return 1
