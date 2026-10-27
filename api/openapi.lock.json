@@ -6600,6 +6600,10 @@
             "readOnly": true,
             "type": "string"
           },
+          "namesHidden": {
+            "description": "The source's settings are in a config entry and the secret names it binds are withheld: they are shown only to a caller who can update ingestions (ingestion:update)",
+            "type": "boolean"
+          },
           "secrets": {
             "items": {
               "$ref": "#/components/schemas/IngestionSecretResponse"

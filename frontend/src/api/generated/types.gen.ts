@@ -2442,6 +2442,10 @@ export type IngestionSecretListResponse = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * The source's settings are in a config entry and the secret names it binds are withheld: they are shown only to a caller who can update ingestions (ingestion:update)
+     */
+    namesHidden?: boolean;
     secrets: Array<IngestionSecretResponse>;
 };
 
@@ -6988,6 +6992,10 @@ export type IngestionResponseWritable = {
 };
 
 export type IngestionSecretListResponseWritable = {
+    /**
+     * The source's settings are in a config entry and the secret names it binds are withheld: they are shown only to a caller who can update ingestions (ingestion:update)
+     */
+    namesHidden?: boolean;
     secrets: Array<IngestionSecretResponse>;
 };
 

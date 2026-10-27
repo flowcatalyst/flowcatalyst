@@ -121,6 +121,23 @@ func (s *State) find(ctx context.Context, id string) (*ingestion.Ingestion, erro
 	return i, nil
 }
 
+// shown is res as the caller (taken from ctx) may see it: the settings of the
+// config entry a source names are shown only to a caller who can update
+// ingestions, so anyone else gets the status and the reference as it was
+// given, which the warnings and everything else built from res then follow.
+func (s *State) shown(ctx context.Context, res ingestion.Resolved, reference ingestion.Definition) ingestion.Resolved {
+	if canSeeEntries(ctx) {
+		return res
+	}
+	return res.Redacted(reference)
+}
+
+// canSeeEntries is the one decision on whether the caller reads what a config
+// entry holds.
+func canSeeEntries(ctx context.Context) bool {
+	return auth.CanUpdateIngestions(auth.FromContext(ctx)) == nil
+}
+
 // respond builds the response for one ingestion, reading its application's
 // code and its client's identifier.
 func (s *State) respond(ctx context.Context, i *ingestion.Ingestion) (*apicommon.Out[IngestionResponse], error) {
@@ -140,7 +157,7 @@ func (s *State) respond(ctx context.Context, i *ingestion.Ingestion) (*apicommon
 	if err != nil {
 		return nil, usecase.Internal("REPO", "config entry lookup failed", err)
 	}
-	withConfig(&body, res)
+	withConfig(&body, s.shown(ctx, res, i.Definition))
 	notice, err := s.runtimeNotices(ctx)
 	if err != nil {
 		return nil, err
@@ -223,7 +240,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Ingesti
 		if err != nil {
 			return nil, usecase.Internal("REPO", "config entry lookup failed", err)
 		}
-		withConfig(&r, res)
+		withConfig(&r, s.shown(ctx, res, item.Definition))
 		r.RuntimeNotice = notice(&item.Ingestion)
 		withNotices(&r, notices[item.ID])
 		body.Ingestions = append(body.Ingestions, r)

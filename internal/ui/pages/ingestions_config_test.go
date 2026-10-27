@@ -437,8 +437,8 @@ func TestIngestionSettingsListBadgeOnlyForUnsetEntries(t *testing.T) {
 func TestIngestionSettingsAreNotReadWithoutPermission(t *testing.T) {
 	h := ingCfgHarness()
 	body := ingCfgDrawer(t, h, ingUser(ingPermView), "ing_6")
-	mustContain(t, body, `Settings (this environment)`, `sftp.vendor.example`)
-	mustNotContain(t, body, `/ui/ingestions/ing_6/config"`, `/config/delete`)
+	mustContain(t, body, `Settings (this environment)`, `id="ings-config-hidden"`, `Settings in config ingest/`)
+	mustNotContain(t, body, `sftp.vendor.example`, `/ui/ingestions/ing_6/config"`, `/config/delete`)
 }
 
 // ── the settings form ──────────────────────────────────────────────────

@@ -73,6 +73,19 @@ type Resolved struct {
 // settings are inline, or its entry is set and valid.
 func (r Resolved) Runnable() bool { return r.Status == ConfigInline || r.Status == ConfigSet }
 
+// Redacted is r as a caller who may not read the entry's settings sees it: the
+// status, problems and update time stay, and the definition is the reference as
+// it was given (reference), so nothing built from it (where the data comes
+// from, the delivery URL, the secret names, an effective definition's
+// warnings) quotes the entry. Settings inline have no entry: r is unchanged.
+func (r Resolved) Redacted(reference Definition) Resolved {
+	if r.Status == ConfigInline {
+		return r
+	}
+	r.Definition = reference
+	return r
+}
+
 // Warnings are what the definition says that saves but will not run as meant:
 // an effective definition's own (an sftp source that checks no host key), and
 // CONFIG_MISSING for an entry that is not set.
@@ -145,6 +158,21 @@ func entrySettings(entry *ConfigEntry) (targetURL string, settings map[string]js
 	return targetURL, settings, v.problems
 }
 
+// settingsProblem says why a value does not decode into the kind's settings,
+// without quoting it: the decoder's own error names the offending value (a
+// number's text, say), and a problem is shown to every viewer of the
+// ingestion, who may not read the entry. A wrong type is told as the field and
+// the type it wants, an unknown field by its name; anything else generically.
+func settingsProblem(err error) string {
+	if te, ok := errors.AsType[*json.UnmarshalTypeError](err); ok && te.Field != "" {
+		return "settings." + te.Field + " must be of type " + te.Type.String()
+	}
+	if _, name, ok := strings.Cut(err.Error(), "json: unknown field "); ok {
+		return "settings has an unknown field " + name
+	}
+	return "the settings do not fit the kind: a field has the wrong type or shape"
+}
+
 // effectiveDefinition is def with the entry's settings in its source, and its
 // delivery URL when the definition gives none.
 func effectiveDefinition(def Definition, c Configured, entry *ConfigEntry) (Definition, Problems) {
@@ -174,7 +202,7 @@ func effectiveDefinition(def Definition, c Configured, entry *ConfigEntry) (Defi
 			src, err = UnmarshalSource(raw)
 		}
 		if err != nil {
-			return Definition{}, Problems{{Field: "config", Code: "INVALID", Message: err.Error()}}
+			return Definition{}, Problems{{Field: "config", Code: "INVALID", Message: settingsProblem(err)}}
 		}
 	}
 	eff := def

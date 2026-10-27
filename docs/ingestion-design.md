@@ -528,6 +528,15 @@ sees that the entry exists and its status (key, `SET`/`MISSING`/`INVALID`, probl
 `GET /api/ingestions/{id}/config` leaves `value` out and answers `valueHidden: true`, the drawer says only people who
 can update ingestions see the settings, and the generic config reads (API, page, SPA) show `***` for the value.
 
+The ruling covers what the entry *supplies* as well as the value itself: to a caller who cannot update ingestions, the
+drawer's **Where** says "Settings in config ingest/<key>" instead of the effective source (as does the list), its
+**Target URL** says "In the settings" when the entry gives it, and its **Secrets** section lists no names (a note says
+people who can update ingestions see them); `GET /api/ingestions/{id}/secrets` answers an empty list with
+`namesHidden: true` for a source that names an entry. Warnings that describe the effective definition (an sftp source
+that checks no host key) are left out for such a caller, who still sees `CONFIG_MISSING`; problems of an invalid entry
+are told by field and expected type, never by the offending value. What the definition itself says (the reference, its
+own target, secrets it binds directly) and operational data stay visible to every viewer.
+
 ### The effective definition
 
 The platform resolves the entry into the **effective definition** wherever a definition is used to do something:

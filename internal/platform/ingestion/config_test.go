@@ -326,3 +326,46 @@ func TestWarningsOfAnEffectiveDefinition(t *testing.T) {
 	require.Len(t, r.Warnings(), 1)
 	assert.Contains(t, r.Warnings()[0], "knownHosts", "an sftp source that checks no host key is warned about, wherever its settings are")
 }
+
+// A problem is shown to everyone who can view the ingestion, who may not read
+// the entry, so a problem names the field and the type it wants, never the
+// value the decoder choked on.
+func TestProblemsOfAnEntryDoNotQuoteItsValue(t *testing.T) {
+	sftp := parse(t, withoutURL(`{"kind":"sftp","config":"k"}`))
+	for name, c := range map[string]struct {
+		def           ingestion.Definition
+		value, secret string
+		says          string
+	}{
+		"a number where a whole one is wanted": {sftp, `{"host":"h.example.com","port":1.5,"targetUrl":"https://h.example.com/x"}`, "1.5", "settings.port must be of type int"},
+		"text where a number is wanted":        {sftp, `{"host":"h.example.com","port":"s3cr3t-port","targetUrl":"https://h.example.com/x"}`, "s3cr3t-port", "settings.port must be of type int"},
+		"an unknown field":                     {sftp, `{"hostt":"h.example.com","targetUrl":"https://h.example.com/x"}`, "h.example.com", `unknown field "hostt"`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := ingestion.ApplyConfig(c.def, "orders", entry(c.value))
+			require.Equal(t, ingestion.ConfigInvalid, r.Status, r.Problems.String())
+			text := r.Problems.String()
+			assert.NotContains(t, text, c.secret)
+			assert.Contains(t, text, c.says)
+		})
+	}
+}
+
+func TestRedactedResolvedKeepsTheStatusAndNotTheEntry(t *testing.T) {
+	d := parse(t, withoutURL(`{"kind":"sftp","config":"k"}`))
+	r := ingestion.ApplyConfig(d, "orders", entry(`{"host":"sftp.vendor.example","port":22,"directory":"/out","username":"svc","credential":{"name":"vendor-pass"},"every":"PT5M","targetUrl":"https://hooks.example.com/orders"}`))
+	require.Equal(t, ingestion.ConfigSet, r.Status, r.Problems.String())
+
+	seen := r.Redacted(d)
+	assert.Equal(t, ingestion.ConfigSet, seen.Status)
+	assert.True(t, seen.Runnable())
+	assert.Equal(t, r.Key, seen.Key)
+	assert.NotNil(t, seen.UpdatedAt)
+	_, still := seen.Definition.Source.(ingestion.Configured)
+	assert.True(t, still, "the reference stands in for the effective definition")
+	assert.Empty(t, seen.Definition.Target.TargetURL)
+	assert.Empty(t, seen.Warnings(), "an effective definition's warnings describe the entry")
+
+	inline := ingestion.ApplyConfig(parse(t, definition(`{"kind":"sqs","region":"eu-west-1","queue":"q"}`, `{"kind":"none"}`)), "orders", nil)
+	assert.Equal(t, inline, inline.Redacted(inline.Definition), "settings inline have no entry to withhold")
+}

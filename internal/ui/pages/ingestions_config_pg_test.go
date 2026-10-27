@@ -87,11 +87,25 @@ func TestIngestionSettingsPerEnvironmentAgainstPostgres(t *testing.T) {
 	assert.Contains(t, row.Value, `"host":"sftp.vendor.example"`)
 	assert.Contains(t, p.do(admin, req{target: "/ui/ingestions/" + i.ID, datastar: true}).body, ">Set<")
 
-	// Someone who can only view sees that the entry is set, not what it holds.
+	// Someone who can only view sees that the entry is set, not what it holds,
+	// anywhere in the drawer or the list; the editor reads all of it.
+	editor := p.do(admin, req{target: "/ui/ingestions/" + i.ID, datastar: true}).body
 	seen := p.do(ingAnchor(ingPermView), req{target: "/ui/ingestions/" + i.ID, datastar: true})
 	assert.Contains(t, seen.body, `id="ings-config-hidden"`)
-	// (The drawer's overview still shows the effective definition; hiding that is not this section's.)
 	assert.NotContains(t, seen.body, `id="ings-config-values"`)
+	assert.Contains(t, seen.body, "In the settings", "the delivery URL is the entry's")
+	assert.Contains(t, seen.body, `id="ings-secrets-hidden"`)
+	assert.Contains(t, seen.body, "Settings in config ingest/"+code)
+	assert.NotContains(t, seen.body, `id="ings-secrets"`)
+	for _, entryContent := range []string{"sftp.vendor.example", "svc@", "vendor-pass", "app.example.com/hooks/vendor"} {
+		assert.NotContains(t, seen.body, entryContent)
+		assert.Contains(t, editor, entryContent)
+	}
+	assert.Contains(t, editor, `id="ings-secrets"`)
+	list := p.do(ingAnchor(ingPermView), req{target: "/ui/ingestions?q=" + code}).body
+	assert.Contains(t, list, code)
+	assert.NotContains(t, list, "sftp.vendor.example")
+	assert.Contains(t, p.do(admin, req{target: "/ui/ingestions?q=" + code}).body, "sftp.vendor.example")
 
 	// Deleting names who stops, and the ingestion waits again.
 	del := p.post(admin, "/ui/ingestions/"+i.ID+"/config/delete", url.Values{"drawer": {i.ID}})

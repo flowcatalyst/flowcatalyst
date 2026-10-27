@@ -189,7 +189,7 @@ with the problems); it starts by itself once the entry is valid.
   kind the value is stored with a `SCHEMA_UNCHECKED` warning (`schemaChecked: false`
   in `GET .../config`), and the runtime checks it before it builds the route.
 - **The generic configuration API and page refuse section `ingest`** (`400
-  CONFIG_SECTION_RESERVED`) for a write or a delete; reading it is as for any section, except that the value is shown only to a caller who can update ingestions (`ingestion:update`): everyone else sees the entry's status and problems, `GET .../config` answers `valueHidden: true` without `value`, and the generic config reads show `***`.
+  CONFIG_SECTION_RESERVED`) for a write or a delete; reading it is as for any section, except that the value is shown only to a caller who can update ingestions (`ingestion:update`): everyone else sees the entry's status and problems, `GET .../config` answers `valueHidden: true` without `value`, and the generic config reads show `***`. What the entry supplies is withheld the same way: the drawer's where, delivery URL and secrets, `GET .../secrets` (`namesHidden: true`, no names) and the warnings that describe the entry's settings.
 
 ## Definition files and sets
 

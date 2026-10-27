@@ -141,13 +141,14 @@ func (d ingsDetail) configFormHref() string { return d.Base + "/config" }
 
 // ingsWhere says where the data comes from, in one line: the effective
 // source's summary while its entry is set, otherwise where the settings are
-// kept.
+// kept. A res redacted for a viewer (ingestion.Resolved.Redacted) still holds
+// the reference, so it says where the settings are kept.
 func ingsWhere(src ingestion.Source, code string, res ingestion.Resolved) string {
 	c, ok := src.(ingestion.Configured)
 	if !ok {
 		return ingsSourceSummary(src)
 	}
-	if res.Runnable() {
+	if _, reference := res.Definition.Source.(ingestion.Configured); res.Runnable() && !reference {
 		return ingsSourceSummary(res.Definition.Source)
 	}
 	return "Settings in config " + ingestion.ConfigSection + "/" + c.Config.KeyFor(code)

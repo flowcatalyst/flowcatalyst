@@ -33,6 +33,9 @@ type IngestionSecretResponse struct {
 // IngestionSecretListResponse is the wire shape for GET /api/ingestions/{id}/secrets.
 type IngestionSecretListResponse struct {
 	Secrets []IngestionSecretResponse `json:"secrets"`
+	// NamesHidden: the settings are in a config entry, whose secret names are
+	// shown only to a caller who can update ingestions.
+	NamesHidden bool `json:"namesHidden,omitempty" doc:"The source's settings are in a config entry and the secret names it binds are withheld: they are shown only to a caller who can update ingestions (ingestion:update)"`
 }
 
 // secrets lists the secret names the ingestion's live definition binds and,
@@ -46,6 +49,12 @@ func (s *State) secrets(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	i, err := s.find(ctx, in.ID)
 	if err != nil {
 		return nil, err
+	}
+	// A caller who may not read the config entry is not told which secrets its
+	// settings bind, nor which of them a runtime fetched: the secrets come only
+	// from the entry for a source that names one.
+	if _, byConfig := i.Definition.Source.(ingestion.Configured); byConfig && !canSeeEntries(ctx) {
+		return &apicommon.Out[IngestionSecretListResponse]{Body: IngestionSecretListResponse{Secrets: []IngestionSecretResponse{}, NamesHidden: true}}, nil
 	}
 	fetches, err := s.Repo.ListSecretFetches(ctx, i.ID)
 	if err != nil {

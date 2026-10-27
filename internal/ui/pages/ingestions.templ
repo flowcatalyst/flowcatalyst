@@ -333,6 +333,10 @@ templ ingsOverview(d ingsDetail) {
 	@ingsConfigSection(d)
 	if len(d.Secrets) > 0 {
 		@ingsSecrets(d)
+	} else if d.SecretsWithheld {
+		@kit.FormSection(kit.FormSectionProps{Title: "Secrets"}) {
+			<p class="text-sm text-muted-foreground" id="ings-secrets-hidden">The secrets the settings name are shown to people who can update ingestions.</p>
+		}
 	}
 	if d.Perms.Update || d.CanRemove {
 		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {

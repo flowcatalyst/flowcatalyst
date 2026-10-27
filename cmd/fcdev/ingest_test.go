@@ -534,3 +534,21 @@ func TestIngestConfigDeleteAndProdGuard(t *testing.T) {
 	require.ErrorContains(t, err, "without a terminal")
 	require.Zero(t, pp.writes())
 }
+
+// A path that does not exist says so: run from the wrong directory, "is not a
+// definition file" sent the user to look at the file's contents.
+func TestReadDefinitionFilesNamesAMissingPath(t *testing.T) {
+	dir := t.TempDir()
+	good := filepath.Join(dir, "sftp.yaml")
+	require.NoError(t, os.WriteFile(good, []byte(ingestSftpFile), 0o600))
+
+	missing := filepath.Join(dir, "nowhere", "orders.yaml")
+	_, _, err := readDefinitionFiles([]string{missing})
+	require.EqualError(t, err, missing+": no such file or folder")
+	_, _, err = readDefinitionFiles([]string{good, missing})
+	require.EqualError(t, err, missing+": no such file or folder")
+
+	// A folder among several arguments is still not a definition file.
+	_, _, err = readDefinitionFiles([]string{good, dir})
+	require.EqualError(t, err, dir+" is not a definition file")
+}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -289,7 +290,13 @@ func readDefinitionFiles(args []string) ([]ingestion.File, []setFile, error) {
 	}
 	if !folder {
 		for _, a := range args {
-			if info, err := os.Stat(a); err != nil || info.IsDir() {
+			info, err := os.Stat(a)
+			if errors.Is(err, fs.ErrNotExist) {
+				// Usually the command was run from another directory: say so rather
+				// than that the path is not a definition file.
+				return nil, nil, fmt.Errorf("%s: no such file or folder", a)
+			}
+			if err != nil || info.IsDir() {
 				return nil, nil, fmt.Errorf("%s is not a definition file", a)
 			}
 			if slices.Contains(names, filepath.Base(a)) {

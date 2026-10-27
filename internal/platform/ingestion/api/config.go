@@ -85,7 +85,7 @@ func (s *State) configResponse(ctx context.Context, i *ingestion.Ingestion) (*In
 	if entry, err := s.Repo.ConfigEntry(ctx, app, i.ClientID, res.Key); err != nil {
 		return nil, usecase.Internal("REPO", "config entry lookup failed", err)
 	} else if entry != nil && !entry.Secret {
-		if auth.CanUpdateIngestions(auth.FromContext(ctx)) != nil {
+		if !canSeeEntries(ctx) {
 			out.ValueHidden = true
 		} else {
 			// An entry that is not a JSON object is left out; its problem says why.

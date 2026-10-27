@@ -446,6 +446,10 @@ func (h *Ingestions) listView(ctx context.Context, ac *auth.AuthContext, q ingsQ
 			if err != nil {
 				return ingsView{}, usecase.Internal("REPO", "config entry lookup failed", err)
 			}
+			// The entry's settings are shown only to someone who can update ingestions.
+			if auth.CanUpdateIngestions(ac) != nil {
+				res = res.Redacted(item.Definition)
+			}
 			row.Where = ingsWhere(item.Definition.Source, item.Code, res)
 			if !res.Runnable() {
 				row.NeedsSettings = true
@@ -651,6 +655,9 @@ type ingsDetail struct {
 	// Secrets: the names the live definition binds and who last fetched
 	// each (names only, never a value).
 	Secrets []ingsSecretRow
+	// SecretsWithheld: the settings are in a config entry the viewer cannot
+	// read, so the secrets it binds are not listed.
+	SecretsWithheld bool
 	// Config is the environment's settings, when the source names an entry.
 	Config *ingsConfigView
 	Tab    string
@@ -756,11 +763,23 @@ func (h *Ingestions) buildDetail(ctx context.Context, ac *auth.AuthContext, i *i
 	if err != nil {
 		return ingsDetail{}, usecase.Internal("REPO", "config entry lookup failed", err)
 	}
-	effective := live.Definition
+	// The entry's settings are shown only to someone who can update ingestions:
+	// anyone else sees the reference where the effective definition would say
+	// them (the source, the delivery URL the entry gives, the secrets it binds).
+	_, byConfig := def.Source.(ingestion.Configured)
+	withheld := byConfig && auth.CanUpdateIngestions(ac) != nil
+	shown := live
+	if withheld {
+		shown = live.Redacted(def)
+	}
+	effective := shown.Definition
+	if withheld && effective.Target.TargetURL == "" {
+		effective.Target.TargetURL = "In the settings"
+	}
 	d := ingsDetail{
 		ID: i.ID, Code: i.Code, Name: def.Name, Application: app.Code, Client: clientName, ClientIdentifier: clientIdentifier,
 		Active: i.Active, Draft: i.Version == 0, Set: deref(i.ManagedBy), Notice: i.Live() && !carries(kind),
-		Version: i.Version, Latest: i.LatestVersion, Kind: ingsKindLabel(kind), Where: ingsWhere(def.Source, i.Code, live),
+		Version: i.Version, Latest: i.LatestVersion, Kind: ingsKindLabel(kind), Where: ingsWhere(def.Source, i.Code, shown),
 		Split: ingsSplitSummary(def.Split), Target: effective.Target, KeepPayloads: def.KeepFailedPayloads,
 		Created: i.CreatedAt.UTC().Format("2006-01-02 15:04:05 UTC"), Updated: i.UpdatedAt.UTC().Format("2006-01-02 15:04:05 UTC"),
 		Tab: ingsTabOf(tab), Perms: perms, Base: ingsURL(i.ID),
@@ -777,11 +796,16 @@ func (h *Ingestions) buildDetail(ctx context.Context, ac *auth.AuthContext, i *i
 	if err != nil {
 		return ingsDetail{}, usecase.Internal("REPO", "list_secret_fetches failed", err)
 	}
-	bound := *i
-	bound.Definition = effective
-	d.Secrets = ingsSecretRows(&bound, fetches)
-	if live.Runnable() {
-		d.Warnings = effective.Warnings()
+	if withheld {
+		// The names, and what was fetched under them, come from the entry.
+		d.SecretsWithheld = true
+	} else {
+		bound := *i
+		bound.Definition = effective
+		d.Secrets = ingsSecretRows(&bound, fetches)
+	}
+	if shown.Runnable() {
+		d.Warnings = shown.Definition.Warnings()
 	}
 	if d.Config, err = h.configView(ctx, ac, i, app.Code, clientName, live, kinds, reported); err != nil {
 		return ingsDetail{}, err
