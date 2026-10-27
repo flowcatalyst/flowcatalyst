@@ -167,8 +167,11 @@ type cfgRow struct {
 	// Reserved: the entry belongs to an ingestion (section ingest) and is
 	// edited there; IngestionsHref lists that application's ingestions of the
 	// client.
-	Reserved              bool
-	IngestionsHref        string
+	Reserved       bool
+	IngestionsHref string
+	// Hidden: the read service withheld the value (an ingestion's settings
+	// seen by someone who cannot update ingestions).
+	Hidden                bool
 	updatedAt             int64
 	sortSection, sortProp string
 	sortClient            string
@@ -314,8 +317,10 @@ func (h *PlatformConfig) toRow(ctx context.Context, ac *auth.AuthContext, c *pla
 			}
 		}
 	}
-	// A secret's value is not read here at all: only the mask is shown.
-	if !row.Secret {
+	// A secret's value is not read here at all: only the mask is shown. A
+	// hidden value is blank already; the row says why.
+	row.Hidden = c.Hidden
+	if !row.Secret && !row.Hidden {
 		row.ValueFull = c.Value
 		row.Value = c.Value
 		if utf8.RuneCountInString(row.Value) > maxShownValue {

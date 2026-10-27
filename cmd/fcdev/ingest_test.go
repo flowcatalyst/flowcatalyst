@@ -52,6 +52,8 @@ type ingestPlatform struct {
 	// testPolls counts GETs of the queued test; it is DONE from the second.
 	testPolls int
 	outcome   string
+	// configHidden answers the config GET as to a viewer who cannot update.
+	configHidden bool
 }
 
 func newIngestPlatform(t *testing.T) *ingestPlatform {
@@ -98,6 +100,10 @@ func newIngestPlatform(t *testing.T) *ingestPlatform {
 				`{"application":"ingest","client":"acme","code":"same","action":"UNCHANGED","changed":[]},`+
 				`{"application":"ingest","client":"acme","code":"old","action":"REMOVE","changed":[]}]}`, dry, apply)
 		case "GET /api/ingestions/ing_1/config":
+			if p.configHidden {
+				_, _ = w.Write([]byte(`{"key":"orders-feed","status":"SET","schemaChecked":true,"valueHidden":true}`))
+				return
+			}
 			_, _ = w.Write([]byte(`{"key":"orders-feed","status":"INVALID","problems":[{"field":"host","code":"NOT_NULL","message":"is required"}],"updatedAt":"2026-10-26T08:00:00Z","schemaChecked":false,"value":{"username":"feed"}}`))
 		case "PUT /api/ingestions/ing_1/config":
 			if strings.Contains(string(body), "bad") {
@@ -464,6 +470,15 @@ func TestIngestConfigGet(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(out), &c))
 	require.Equal(t, "INVALID", c.Status)
 	require.Contains(t, errOut, "orders-feed")
+}
+
+func TestIngestConfigGetHiddenValue(t *testing.T) {
+	newFnTestEnv(t)
+	p := newIngestPlatform(t)
+	p.configHidden = true
+	out, _, err := runCobra(t, newIngestConfigGetCmd(), "", append([]string{"ingest/acme/orders-sftp"}, p.flags()...)...)
+	require.NoError(t, err)
+	require.Contains(t, out, "the value is hidden: it needs ingestion:update")
 }
 
 func TestIngestConfigSet(t *testing.T) {

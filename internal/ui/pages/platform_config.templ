@@ -159,6 +159,11 @@ templ cfgTable(v cfgView) {
 							@kit.Icon(kit.IconProps{Name: "lock", Class: "size-3.5"})
 							••••••••
 						</span>
+					} else if row.Hidden {
+						<span class="inline-flex items-center gap-1.5 text-muted-foreground" data-testid="cfg-hidden">
+							@kit.Icon(kit.IconProps{Name: "lock", Class: "size-3.5"})
+							Hidden — needs ingestion:update
+						</span>
 					} else {
 						<code class="font-mono text-[13px] break-all" title={ row.ValueFull }>{ row.Value }</code>
 					}

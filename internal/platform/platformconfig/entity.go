@@ -62,7 +62,12 @@ func ParseValueType(s string) (ValueType, bool) {
 // ingestions (docs/ingestion-design.md section 13). Its entries are written
 // only through the ingestion that names them, which validates them against
 // every ingestion that does; the generic write surfaces refuse it
-// (RequireWritableSection). Reads are as for any section.
+// (RequireWritableSection). A read is as for any section except that the value
+// of an entry is shown only to a caller who can update ingestions
+// (ingestion:update): the settings name accounts and endpoints, and the people
+// who merely view ingestions see the entry's status, not its content. For
+// everyone else Service.List and Service.Get blank the value and mark the row
+// Hidden.
 const ReservedSection = "ingest"
 
 // RequireWritableSection refuses a write or a delete in a reserved section:
@@ -93,6 +98,10 @@ type Config struct {
 	Description     *string       `json:"description,omitempty"`
 	CreatedAt       time.Time     `json:"createdAt"`
 	UpdatedAt       time.Time     `json:"updatedAt"`
+	// Hidden is set by the read service (Service.List, Service.Get) on a row
+	// whose value the caller may not see, with Value blanked. It is never
+	// stored.
+	Hidden bool `json:"-"`
 }
 
 // IDStr satisfies usecase.HasID.
@@ -114,10 +123,11 @@ func NewConfig(app, section, property, value string) *Config {
 	}
 }
 
-// MaskedValue returns "***" for secret values, the literal value otherwise.
-// Use in list/get responses when the caller doesn't have read-secrets permission.
+// MaskedValue returns "***" for secret values and for a value the read service
+// hid from the caller (Hidden), the literal value otherwise. Use in list/get
+// responses when the caller doesn't have read-secrets permission.
 func (c *Config) MaskedValue() string {
-	if c.ValueType == ValueSecret {
+	if c.ValueType == ValueSecret || c.Hidden {
 		return "***"
 	}
 	return c.Value

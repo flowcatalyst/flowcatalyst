@@ -75,7 +75,9 @@ audited. See "Ingestion", Secrets.)
 ingestions (one `PLAIN` JSON value per client and key), which are written only
 through the ingestion that names them, after being checked against every
 ingestion that does. Setting or deleting a property in it here is a
-`400 CONFIG_SECTION_RESERVED`; reading it is as for any section. See
+`400 CONFIG_SECTION_RESERVED`; reading it is as for any section, except that the value is shown
+only to a caller who can update ingestions (`ingestion:update`); others get
+`***`. See
 "Ingestion", Settings per environment.
 
 ```

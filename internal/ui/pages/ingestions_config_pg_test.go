@@ -87,6 +87,12 @@ func TestIngestionSettingsPerEnvironmentAgainstPostgres(t *testing.T) {
 	assert.Contains(t, row.Value, `"host":"sftp.vendor.example"`)
 	assert.Contains(t, p.do(admin, req{target: "/ui/ingestions/" + i.ID, datastar: true}).body, ">Set<")
 
+	// Someone who can only view sees that the entry is set, not what it holds.
+	seen := p.do(ingAnchor(ingPermView), req{target: "/ui/ingestions/" + i.ID, datastar: true})
+	assert.Contains(t, seen.body, `id="ings-config-hidden"`)
+	// (The drawer's overview still shows the effective definition; hiding that is not this section's.)
+	assert.NotContains(t, seen.body, `id="ings-config-values"`)
+
 	// Deleting names who stops, and the ingestion waits again.
 	del := p.post(admin, "/ui/ingestions/"+i.ID+"/config/delete", url.Values{"drawer": {i.ID}})
 	assert.Contains(t, del.body, "Waiting for settings: "+code)

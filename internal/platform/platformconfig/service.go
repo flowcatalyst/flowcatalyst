@@ -341,7 +341,8 @@ func (s *Service) AuthorizeUpdate(ctx context.Context, ac *auth.AuthContext, app
 	return s.AuthorizeWrite(ctx, ac, app)
 }
 
-// List is an application's properties (secrets masked) that the caller's
+// List is an application's properties (secrets masked, and the values of the
+// ingestion settings hidden from a caller who cannot update ingestions) that the caller's
 // Reach includes: the global values and its clients' values.
 func (s *Service) List(ctx context.Context, ac *auth.AuthContext, app string) ([]Config, error) {
 	if err := s.AuthorizeRead(ctx, ac, app); err != nil {
@@ -355,16 +356,29 @@ func (s *Service) List(ctx context.Context, ac *auth.AuthContext, app string) ([
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_configs_by_application failed", err)
 	}
-	if reach.All {
-		return rows, nil
-	}
-	out := rows[:0]
-	for i := range rows {
-		if reach.CanRead(deref(ids.StringPtr(rows[i].ClientID))) {
-			out = append(out, rows[i])
+	if !reach.All {
+		out := rows[:0]
+		for i := range rows {
+			if reach.CanRead(deref(ids.StringPtr(rows[i].ClientID))) {
+				out = append(out, rows[i])
+			}
 		}
+		rows = out
 	}
-	return out, nil
+	for i := range rows {
+		hideReservedValue(ac, &rows[i])
+	}
+	return rows, nil
+}
+
+// hideReservedValue blanks the value of an ingestion-settings entry (section
+// ReservedSection) for a caller who cannot update ingestions, and marks the
+// row Hidden so the serialisation shows the mask.
+func hideReservedValue(ac *auth.AuthContext, c *Config) {
+	if strings.EqualFold(c.Section, ReservedSection) && auth.CanUpdateIngestions(ac) != nil {
+		c.Value = ""
+		c.Hidden = true
+	}
 }
 
 // Get is one property (a secret masked by the caller's serialisation), with
@@ -389,6 +403,7 @@ func (s *Service) Get(ctx context.Context, ac *auth.AuthContext, app, section, p
 	if c == nil {
 		return nil, httperror.NotFound("Config", app+"/"+section+"/"+property)
 	}
+	hideReservedValue(ac, c)
 	return c, nil
 }
 

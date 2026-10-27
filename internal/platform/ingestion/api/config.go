@@ -26,7 +26,10 @@ func registerConfig(g apiroute.Group, s *State) {
 // IngestionConfigResponse is the config entry an ingestion's source names.
 type IngestionConfigResponse struct {
 	IngestionConfigStatus
-	Value map[string]any `json:"value,omitempty" doc:"The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry or it is not an object"`
+	Value map[string]any `json:"value,omitempty" doc:"The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry, when it is not an object, and when valueHidden"`
+	// ValueHidden: the entry exists but its value is shown only to a caller who
+	// can update ingestions; the status and problems are shown to every viewer.
+	ValueHidden bool `json:"valueHidden,omitempty" doc:"The entry exists but its value is withheld: it is shown only to a caller who can update ingestions (ingestion:update). The status and problems are shown regardless"`
 	// SchemaChecked says whether a value is checked against the kind's schema
 	// when written: always for a built-in kind (its definition is the schema),
 	// for an extension kind only while a live runtime reports its settings.
@@ -57,7 +60,9 @@ type setConfigInput struct {
 }
 
 // configResponse reads the entry the ingestion's source names, as the GET
-// answers it.
+// answers it. The entry's value is left out unless the caller (taken from ctx)
+// can update ingestions: the settings name accounts and endpoints, and a
+// viewer is told the entry exists and its status, not its content.
 func (s *State) configResponse(ctx context.Context, i *ingestion.Ingestion) (*IngestionConfigResponse, error) {
 	def, _, named, err := s.Repo.ConfigNamed(ctx, i)
 	if err != nil {
@@ -80,10 +85,14 @@ func (s *State) configResponse(ctx context.Context, i *ingestion.Ingestion) (*In
 	if entry, err := s.Repo.ConfigEntry(ctx, app, i.ClientID, res.Key); err != nil {
 		return nil, usecase.Internal("REPO", "config entry lookup failed", err)
 	} else if entry != nil && !entry.Secret {
-		// An entry that is not a JSON object is left out; its problem says why.
-		var value map[string]any
-		if json.Unmarshal([]byte(entry.Value), &value) == nil {
-			out.Value = value
+		if auth.CanUpdateIngestions(auth.FromContext(ctx)) != nil {
+			out.ValueHidden = true
+		} else {
+			// An entry that is not a JSON object is left out; its problem says why.
+			var value map[string]any
+			if json.Unmarshal([]byte(entry.Value), &value) == nil {
+				out.Value = value
+			}
 		}
 	}
 	out.SchemaChecked = true

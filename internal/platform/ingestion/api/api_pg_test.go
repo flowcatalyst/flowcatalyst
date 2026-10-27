@@ -26,6 +26,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	ingestionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -156,7 +157,8 @@ func newEnv(t *testing.T) *env {
 		Repo:       ingestion.NewRepository(e.pool),
 		Resolver: ingestion.NewResolver(apps, clients, dispatchpool.NewRepository(e.pool),
 			connection.NewRepository(e.pool), serviceaccount.NewRepository(e.pool), nil),
-		Apps: apps, Clients: clients, Audit: audit.NewRepository(e.pool), UoW: e.uow,
+		Configs: platformconfig.NewRepository(e.pool),
+		Apps:    apps, Clients: clients, Audit: audit.NewRepository(e.pool), UoW: e.uow,
 	}
 	ingestionapi.Register(api, e.state)
 	e.api = api

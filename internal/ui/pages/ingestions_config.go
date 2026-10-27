@@ -67,6 +67,9 @@ type ingsConfigView struct {
 	// Others are the codes of the other ingestions of this application and
 	// client that name the same entry.
 	Others []string
+	// Hidden: an entry exists but the viewer cannot update ingestions, so its
+	// settings are not shown.
+	Hidden bool
 	// CanEdit offers the form; Block says why a caller who may update is not
 	// offered it. CanDelete offers Delete (there is an entry to delete).
 	CanEdit, CanDelete bool
@@ -203,7 +206,13 @@ func (h *Ingestions) configView(ctx context.Context, ac *auth.AuthContext, i *in
 			v.Others = append(v.Others, o.Code)
 		}
 	}
-	if entry != nil && !entry.Secret {
+	// The settings name accounts and endpoints: only someone who can update
+	// ingestions sees them; the rest see that an entry exists and its status.
+	canSee := auth.CanUpdateIngestions(ac) == nil
+	if entry != nil && !entry.Secret && !canSee {
+		v.Hidden = true
+	}
+	if entry != nil && !entry.Secret && canSee {
 		var value map[string]any
 		if json.Unmarshal([]byte(entry.Value), &value) == nil && value != nil {
 			if kind := ingsNewCatalogue(reported, kindName).find(kindName); kind != nil {

@@ -6054,8 +6054,12 @@
           },
           "value": {
             "additionalProperties": {},
-            "description": "The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry or it is not an object",
+            "description": "The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry, when it is not an object, and when valueHidden",
             "type": "object"
+          },
+          "valueHidden": {
+            "description": "The entry exists but its value is withheld: it is shown only to a caller who can update ingestions (ingestion:update). The status and problems are shown regardless",
+            "type": "boolean"
           }
         },
         "required": [
@@ -6146,8 +6150,12 @@
           },
           "value": {
             "additionalProperties": {},
-            "description": "The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry or it is not an object",
+            "description": "The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry, when it is not an object, and when valueHidden",
             "type": "object"
+          },
+          "valueHidden": {
+            "description": "The entry exists but its value is withheld: it is shown only to a caller who can update ingestions (ingestion:update). The status and problems are shown regardless",
+            "type": "boolean"
           },
           "warnings": {
             "description": "SCHEMA_UNCHECKED when no live runtime reports the kind's settings, so the value was not checked against them",

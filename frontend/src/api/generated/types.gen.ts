@@ -2191,11 +2191,15 @@ export type IngestionConfigResponse = {
     status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
     updatedAt?: string;
     /**
-     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry or it is not an object
+     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry, when it is not an object, and when valueHidden
      */
     value?: {
         [key: string]: unknown;
     };
+    /**
+     * The entry exists but its value is withheld: it is shown only to a caller who can update ingestions (ingestion:update). The status and problems are shown regardless
+     */
+    valueHidden?: boolean;
 };
 
 export type IngestionConfigStatus = {
@@ -2235,11 +2239,15 @@ export type IngestionConfigWritten = {
     status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
     updatedAt?: string;
     /**
-     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry or it is not an object
+     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry, when it is not an object, and when valueHidden
      */
     value?: {
         [key: string]: unknown;
     };
+    /**
+     * The entry exists but its value is withheld: it is shown only to a caller who can update ingestions (ingestion:update). The status and problems are shown regardless
+     */
+    valueHidden?: boolean;
     /**
      * SCHEMA_UNCHECKED when no live runtime reports the kind's settings, so the value was not checked against them
      */
@@ -6832,11 +6840,15 @@ export type IngestionConfigResponseWritable = {
     status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
     updatedAt?: string;
     /**
-     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry or it is not an object
+     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry, when it is not an object, and when valueHidden
      */
     value?: {
         [key: string]: unknown;
     };
+    /**
+     * The entry exists but its value is withheld: it is shown only to a caller who can update ingestions (ingestion:update). The status and problems are shown regardless
+     */
+    valueHidden?: boolean;
 };
 
 export type IngestionConfigWrittenWritable = {
@@ -6859,11 +6871,15 @@ export type IngestionConfigWrittenWritable = {
     status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
     updatedAt?: string;
     /**
-     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry or it is not an object
+     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry, when it is not an object, and when valueHidden
      */
     value?: {
         [key: string]: unknown;
     };
+    /**
+     * The entry exists but its value is withheld: it is shown only to a caller who can update ingestions (ingestion:update). The status and problems are shown regardless
+     */
+    valueHidden?: boolean;
     /**
      * SCHEMA_UNCHECKED when no live runtime reports the kind's settings, so the value was not checked against them
      */

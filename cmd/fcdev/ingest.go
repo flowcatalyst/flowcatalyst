@@ -975,6 +975,7 @@ type ingestConfig struct {
 	UpdatedAt     string                `json:"updatedAt"`
 	SchemaChecked bool                  `json:"schemaChecked"`
 	Value         json.RawMessage       `json:"value"`
+	ValueHidden   bool                  `json:"valueHidden"`
 	Ingestions    []string              `json:"ingestions"`
 	Warnings      []string              `json:"warnings"`
 }
@@ -994,6 +995,9 @@ func printConfig(rep *fnReport, c ingestConfig) {
 	}
 	if !c.SchemaChecked {
 		rep.say("  no live runtime reports this kind's settings: a value is not checked against them when written")
+	}
+	if c.ValueHidden {
+		rep.say("  value   the value is hidden: it needs ingestion:update")
 	}
 	if len(c.Value) > 0 && string(c.Value) != "null" {
 		var pretty bytes.Buffer

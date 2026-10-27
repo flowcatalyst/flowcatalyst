@@ -246,6 +246,7 @@ async function copyRevealed() {
         <Column header="Value">
           <template #body="{ data }">
             <span v-if="data.valueType === 'SECRET'" class="secret-value"><i class="pi pi-lock" /> ••••••••</span>
+            <span v-else-if="isReserved(data) && data.value === '***'" class="muted"><i class="pi pi-lock" /> Hidden — needs ingestion:update</span>
             <code v-else class="value-code">{{ data.value }}</code>
           </template>
         </Column>

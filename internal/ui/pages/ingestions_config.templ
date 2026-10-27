@@ -39,7 +39,9 @@ templ ingsConfigSection(d ingsDetail) {
 				if len(d.Config.Others) > 0 {
 					<p class="text-sm text-muted-foreground" id="ings-config-shared">Shared with { strings.Join(d.Config.Others, ", ") }: a value must suit each of them.</p>
 				}
-				if len(d.Config.Rows) > 0 || d.Config.TargetURL != "" {
+				if d.Config.Hidden {
+					<p class="text-sm text-muted-foreground" id="ings-config-hidden">Only people who can update ingestions see these settings.</p>
+				} else if len(d.Config.Rows) > 0 || d.Config.TargetURL != "" {
 					<div class="fc-detail-grid" id="ings-config-values">
 						for _, row := range d.Config.Rows {
 							@kit.DetailField(kit.DetailFieldProps{Label: row.Label}) {

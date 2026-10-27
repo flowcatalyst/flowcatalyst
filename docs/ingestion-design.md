@@ -520,6 +520,14 @@ secret's **name**. The delivery URL is in the file's `target.targetUrl` **or** i
 Several ingestions of the same application and client may name one key (one login for two feeds); a value must then
 suit each of them.
 
+### Who sees the value (owner ruling 2026-10-27)
+
+The value of an `ingest` entry (account names, endpoints) is visible **only to a caller who can update ingestions**
+(`ingestion:update`; the kind's permission is not part of the rule). Everyone else who can view the ingestion still
+sees that the entry exists and its status (key, `SET`/`MISSING`/`INVALID`, problems, `updatedAt`, `schemaChecked`):
+`GET /api/ingestions/{id}/config` leaves `value` out and answers `valueHidden: true`, the drawer says only people who
+can update ingestions see the settings, and the generic config reads (API, page, SPA) show `***` for the value.
+
 ### The effective definition
 
 The platform resolves the entry into the **effective definition** wherever a definition is used to do something:

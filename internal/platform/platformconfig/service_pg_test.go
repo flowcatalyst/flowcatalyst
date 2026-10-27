@@ -17,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
+	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
 )
 
 func newServiceFixture(t *testing.T, app string) *platformconfig.Service {
@@ -149,4 +150,60 @@ func TestServiceRevealAuthorised_AuditsWithDetailAndRefusesWithoutAudit(t *testi
 	require.Error(t, err)
 	_, err = svc.RevealAuthorised(ctx, caller, "svcauthorised", "sftp", "missing", "", nil)
 	require.Error(t, err, "an unknown property is not found")
+}
+
+// The value of a row in the reserved section is shown only to a caller who can
+// update ingestions: List and Get blank it and mark it Hidden (MaskedValue is
+// "***"), while other sections and the editor's reads are unchanged.
+func TestServiceReads_HideReservedValueFromWhoCannotUpdateIngestions(t *testing.T) {
+	ctx := context.Background()
+	svc := newServiceFixture(t, "svchidden")
+	repo := svc.Repo
+	for section, value := range map[string]string{platformconfig.ReservedSection: `{"username":"feed"}`, "other": "plain-value"} {
+		c := platformconfig.NewConfig("svchidden", section, "key", value)
+		tx, err := svc.UoW.Pool().Begin(ctx)
+		require.NoError(t, err)
+		require.NoError(t, repo.Persist(ctx, c, usecasepgx.WrapTxForBootstrap(tx)))
+		require.NoError(t, tx.Commit(ctx))
+	}
+
+	viewer := revealer() // config permissions, but not ingestion:update
+	editor := revealer()
+	editor.Permissions = append(editor.Permissions, "platform:ingestion:ingestion:update")
+
+	valueOf := func(rows []platformconfig.Config, section string) *platformconfig.Config {
+		for i := range rows {
+			if rows[i].Section == section {
+				return &rows[i]
+			}
+		}
+		return nil
+	}
+
+	rows, err := svc.List(ctx, viewer, "svchidden")
+	require.NoError(t, err)
+	hidden := valueOf(rows, platformconfig.ReservedSection)
+	require.NotNil(t, hidden)
+	assert.True(t, hidden.Hidden)
+	assert.Empty(t, hidden.Value)
+	assert.Equal(t, "***", hidden.MaskedValue())
+	other := valueOf(rows, "other")
+	require.NotNil(t, other)
+	assert.False(t, other.Hidden)
+	assert.Equal(t, "plain-value", other.MaskedValue())
+
+	got, err := svc.Get(ctx, viewer, "svchidden", platformconfig.ReservedSection, "key", "")
+	require.NoError(t, err)
+	assert.True(t, got.Hidden)
+	assert.Equal(t, "***", got.MaskedValue())
+
+	rows, err = svc.List(ctx, editor, "svchidden")
+	require.NoError(t, err)
+	shown := valueOf(rows, platformconfig.ReservedSection)
+	require.NotNil(t, shown)
+	assert.False(t, shown.Hidden)
+	assert.JSONEq(t, `{"username":"feed"}`, shown.MaskedValue())
+	got, err = svc.Get(ctx, editor, "svchidden", platformconfig.ReservedSection, "key", "")
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"username":"feed"}`, got.Value)
 }
