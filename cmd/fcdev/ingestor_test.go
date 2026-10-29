@@ -463,6 +463,18 @@ func TestIngestorEnv(t *testing.T) {
 	assert.Contains(t, red, "FLOWCATALYST_CLIENT_ID=fcdev-ingestor")
 }
 
+func TestIngestorExtensionsDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("FC_INGESTOR_EXTENSIONS_DIR", "")
+	want := filepath.Join(home, ".flowcatalyst", "ingestor-extensions")
+	assert.Equal(t, want, ingestorExtensionsDir(), "the folder an extension's build drops its jar in")
+	assert.DirExists(t, want)
+
+	t.Setenv("FC_INGESTOR_EXTENSIONS_DIR", "/elsewhere")
+	assert.Equal(t, "/elsewhere", ingestorExtensionsDir())
+}
+
 func TestApplicationYAMLAndConfigDir(t *testing.T) {
 	cfg := ingestorConfig{Port: 18091, APIPort: 18080, StateDir: filepath.Join(t.TempDir(), "state")}
 	require.NoError(t, writeIngestorConfig(cfg))

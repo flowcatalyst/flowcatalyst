@@ -66,9 +66,30 @@ func ingestorConfigFromOpts(opts startOpts, creds routerCredentials) ingestorCon
 		APIPort:       opts.APIPort,
 		StateDir:      ingestorStateDir(opts.APIPort),
 		JarOverride:   os.Getenv("FC_INGESTOR_JAR"),
-		ExtensionsDir: os.Getenv("FC_INGESTOR_EXTENSIONS_DIR"),
+		ExtensionsDir: ingestorExtensionsDir(),
 		Creds:         creds,
 	}
+}
+
+// ingestorExtensionsDir is the folder of extension jars the runtime loads:
+// FC_INGESTOR_EXTENSIONS_DIR, else ~/.flowcatalyst/ingestor-extensions, where
+// an extension's build drops its jar (it is created, so the build and fcdev
+// meet without either being told). Empty, and no extensions, when neither can
+// be had.
+func ingestorExtensionsDir() string {
+	if d := os.Getenv("FC_INGESTOR_EXTENSIONS_DIR"); d != "" {
+		return d
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	d := filepath.Join(home, ".flowcatalyst", "ingestor-extensions")
+	if err := os.MkdirAll(d, 0o750); err != nil {
+		slog.Warn("no ingestor extensions folder; the runtime starts without extensions", "dir", d, "err", err)
+		return ""
+	}
+	return d
 }
 
 // applicationYAML is the config/application.yaml the jar insists on. Every

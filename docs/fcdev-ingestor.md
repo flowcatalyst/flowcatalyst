@@ -62,7 +62,9 @@ From a checkout, build and restart fcdev:
 
 fcdev finds `ingestor/ingestor-runtime/target/ingestor-runtime-*-all.jar` from its working directory or the
 directory of the fcdev binary upward. To use a jar from anywhere: `FC_INGESTOR_JAR=/path/to/jar fcdev start`.
-Extension jars: `FC_INGESTOR_EXTENSIONS_DIR=/path/to/dir`.
+Extension jars are loaded from `~/.flowcatalyst/ingestor-extensions` (created on start), where an
+extension's build drops its jar; `FC_INGESTOR_EXTENSIONS_DIR=/path/to/dir` names another folder. The runtime
+reads the folder when it starts, so restart fcdev after rebuilding an extension.
 
 ## Turning it off
 
