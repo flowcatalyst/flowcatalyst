@@ -2,8 +2,14 @@
 import { toast } from "@/utils/errorBus";
 import { ref, computed } from "vue";
 import { applicationsApi, type ApplicationType } from "@/api/applications";
+import DefinitionImport from "@/components/DefinitionImport.vue";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
+import {
+	applyApplicationDefinition,
+	parseDefinition,
+	type ImportOutcome,
+} from "@/utils/definition-transfer";
 
 const emit = defineEmits<{
 	changed: [];
@@ -53,6 +59,23 @@ const isFormValid = computed(() => {
 	);
 });
 
+// Import from JSON: fills the form only; the user reviews and presses Create.
+function runImport(text: string): ImportOutcome {
+	const parsed = parseDefinition(text, "application");
+	if (!parsed.ok) return { error: parsed.error };
+	const { values, notices } = applyApplicationDefinition(parsed.definition);
+	if (values.type !== undefined) type.value = values.type;
+	if (values.code !== undefined) code.value = values.code;
+	if (values.name !== undefined) name.value = values.name;
+	if (values.description !== undefined) description.value = values.description;
+	if (values.defaultBaseUrl !== undefined) defaultBaseUrl.value = values.defaultBaseUrl;
+	if (values.iconUrl !== undefined) iconUrl.value = values.iconUrl;
+	if (values.website !== undefined) website.value = values.website;
+	if (values.logo !== undefined) logo.value = values.logo;
+	if (values.logoMimeType !== undefined) logoMimeType.value = values.logoMimeType;
+	return { notices };
+}
+
 async function onSubmit() {
 	if (!isFormValid.value) return;
 
@@ -95,6 +118,8 @@ async function onSubmit() {
     :dirty="dirty"
     @close="goToList()"
   >
+    <DefinitionImport :run="runImport" />
+
     <section class="form-section">
       <h3 class="section-title">Application Identity</h3>
 

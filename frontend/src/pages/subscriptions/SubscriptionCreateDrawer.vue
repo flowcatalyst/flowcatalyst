@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { toast } from "@/utils/errorBus";
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, nextTick, onMounted, watch } from "vue";
 import {
 	subscriptionsApi,
 	type SubscriptionMode,
@@ -10,9 +10,17 @@ import { dispatchPoolsApi, type DispatchPool } from "@/api/dispatch-pools";
 import { connectionsApi, type Connection } from "@/api/connections";
 import { eventTypesApi, type EventType } from "@/api/event-types";
 import ConnectionCreateDialog from "@/components/ConnectionCreateDialog.vue";
+import DefinitionImport from "@/components/DefinitionImport.vue";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { QUEUE_OPTIONS } from "@/utils/subscription-queue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
+import { lookupClientsByIdentifier } from "@/composables/useDefinitionLookups";
+import {
+	applySubscriptionDefinition,
+	definitionClientIdentifiers,
+	parseDefinition,
+	type ImportOutcome,
+} from "@/utils/definition-transfer";
 
 const emit = defineEmits<{
 	changed: [];
@@ -173,6 +181,52 @@ function onConnectionCreated(connection: Connection) {
 	connectionId.value = connection.id;
 }
 
+// Import from JSON: fills the form only; the user reviews and presses Create.
+// References are matched by code against the lists loaded above. The
+// application code has no field on this form; the notice lists it.
+async function runImport(text: string): Promise<ImportOutcome> {
+	const parsed = parseDefinition(text, "subscription");
+	if (!parsed.ok) return { error: parsed.error };
+	const { values, notices } = applySubscriptionDefinition(parsed.definition, {
+		connections: connections.value,
+		dispatchPools: dispatchPools.value,
+		eventTypes: eventTypes.value
+			.filter((et) => et.specVersions.some((sv) => sv.status === "CURRENT"))
+			.map((et) => ({
+				id: et.id,
+				code: et.code,
+				clientScoped: et.clientScoped,
+				currentVersion:
+					et.specVersions.find((sv) => sv.status === "CURRENT")?.version || "",
+			})),
+		clients: await lookupClientsByIdentifier(
+			definitionClientIdentifiers(parsed.definition),
+		),
+	});
+
+	// Changing clientScoped clears the event types and client (watch above):
+	// set it first and let that settle before filling the dependent fields.
+	if (values.clientScoped !== undefined) {
+		clientScoped.value = values.clientScoped;
+		await nextTick();
+	}
+	if (values.code !== undefined) code.value = values.code;
+	if (values.name !== undefined) name.value = values.name;
+	if (values.description !== undefined) description.value = values.description;
+	if (values.endpoint !== undefined) endpoint.value = values.endpoint;
+	if (values.clientId !== undefined) clientId.value = values.clientId;
+	if (values.selectedEventTypes !== undefined) selectedEventTypes.value = values.selectedEventTypes;
+	if (values.connectionId !== undefined) connectionId.value = values.connectionId;
+	if (values.queue !== undefined) queue.value = values.queue;
+	if (values.dispatchPoolId !== undefined) dispatchPoolId.value = values.dispatchPoolId;
+	if (values.mode !== undefined) mode.value = values.mode;
+	if (values.maxAgeSeconds !== undefined) maxAgeSeconds.value = values.maxAgeSeconds;
+	if (values.timeoutSeconds !== undefined) timeoutSeconds.value = values.timeoutSeconds;
+	if (values.delaySeconds !== undefined) delaySeconds.value = values.delaySeconds;
+	if (values.sequence !== undefined) sequence.value = values.sequence;
+	return { notices };
+}
+
 function buildEventTypeBindings(): EventTypeBinding[] {
 	return selectedEventTypes.value.map((etId) => {
 		const et = eventTypeOptions.value.find((e) => e.id === etId);
@@ -229,6 +283,8 @@ async function onSubmit() {
     :dirty="dirty"
     @close="goToList()"
   >
+    <DefinitionImport :run="runImport" />
+
     <div class="form-section">
       <h3>Basic Information</h3>
 

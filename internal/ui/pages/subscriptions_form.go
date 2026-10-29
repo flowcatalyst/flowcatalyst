@@ -79,6 +79,18 @@ type subForm struct {
 	CanPickPool, CanPickConnection  bool
 	CanPickEventType, CanPickClient bool
 	ClientOptions                   []kit.Option
+
+	// ConnectionIDs, PoolIDs and EventTypeIDsByCode map the codes of the
+	// choices above to their ids, for an import matching by code;
+	// EventTypeVersions the current spec version of each event type code.
+	ConnectionIDs, PoolIDs, EventTypeIDsByCode map[string]string
+	EventTypeVersions                          map[string]string
+
+	// Import is the notice of the last Import from JSON; ImportOpen and
+	// ImportError render that dialog open (a native post that was refused).
+	Import      defImportState
+	ImportOpen  bool
+	ImportError string
 }
 
 func (f subForm) id(key string) string         { return fieldID(subFormDialog, key) }
@@ -416,6 +428,10 @@ func (h *Subscriptions) withChoices(r *http.Request, ac *auth.AuthContext, f *su
 		}
 		for _, c := range auth.FilterClientScoped(ac, conns, func(c *connection.Connection) *string { return ids.StringPtr(c.ClientID) }) {
 			f.Connections = append(f.Connections, kit.Option{Value: c.ID, Label: c.Name + " (" + c.Code + ")"})
+			if f.ConnectionIDs == nil {
+				f.ConnectionIDs = map[string]string{}
+			}
+			f.ConnectionIDs[c.Code] = c.ID
 		}
 		if f.ConnectionID != "" && !slices.ContainsFunc(f.Connections, func(o kit.Option) bool { return o.Value == f.ConnectionID }) {
 			f.Connections = append(f.Connections, kit.Option{Value: f.ConnectionID, Label: f.ConnectionID})
@@ -433,6 +449,10 @@ func (h *Subscriptions) withChoices(r *http.Request, ac *auth.AuthContext, f *su
 		}
 		for _, p := range auth.FilterClientScoped(ac, pools, func(p *dispatchpool.DispatchPool) *string { return ids.StringPtr(p.ClientID) }) {
 			f.Pools = append(f.Pools, kit.Option{Value: p.ID, Label: poolChoiceLabel(p)})
+			if f.PoolIDs == nil {
+				f.PoolIDs = map[string]string{}
+			}
+			f.PoolIDs[p.Code] = p.ID
 		}
 	}
 	if err := h.withEventTypes(r, ac, f); err != nil {
@@ -454,7 +474,9 @@ func (h *Subscriptions) withEventTypes(r *http.Request, ac *auth.AuthContext, f 
 		return err
 	}
 	f.EventTypes = f.EventTypes[:0]
+	f.EventTypeIDsByCode, f.EventTypeVersions = map[string]string{}, map[string]string{}
 	for _, et := range ets {
+		f.EventTypeIDsByCode[et.Code], f.EventTypeVersions[et.Code] = et.ID, currentVersion(et)
 		f.EventTypes = append(f.EventTypes, kit.Option{Value: et.ID, Label: et.Name + " — " + et.Code + " (v" + currentVersion(et) + ")"})
 	}
 	return nil

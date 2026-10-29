@@ -2,8 +2,16 @@
 import { toast } from "@/utils/errorBus";
 import { ref, computed } from "vue";
 import { dispatchPoolsApi } from "@/api/dispatch-pools";
+import DefinitionImport from "@/components/DefinitionImport.vue";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
+import { lookupClientsByIdentifier } from "@/composables/useDefinitionLookups";
+import {
+	applyDispatchPoolDefinition,
+	definitionClientIdentifiers,
+	parseDefinition,
+	type ImportOutcome,
+} from "@/utils/definition-transfer";
 
 const emit = defineEmits<{
 	changed: [];
@@ -55,6 +63,27 @@ const isFormValid = computed(() => {
 	);
 });
 
+// Import from JSON: fills the form only; the user reviews and presses Create.
+async function runImport(text: string): Promise<ImportOutcome> {
+	const parsed = parseDefinition(text, "dispatch-pool");
+	if (!parsed.ok) return { error: parsed.error };
+	const { values, notices } = applyDispatchPoolDefinition(parsed.definition, {
+		clients: await lookupClientsByIdentifier(
+			definitionClientIdentifiers(parsed.definition),
+		),
+	});
+	if (values.code !== undefined) code.value = values.code;
+	if (values.name !== undefined) name.value = values.name;
+	if (values.description !== undefined) description.value = values.description;
+	if (values.rateLimit !== undefined) rateLimit.value = values.rateLimit;
+	if (values.concurrency !== undefined) concurrency.value = values.concurrency;
+	if (values.clientId !== undefined) {
+		clientId.value = values.clientId;
+		isAnchorLevel.value = false;
+	}
+	return { notices };
+}
+
 async function onSubmit() {
 	if (!isFormValid.value) return;
 
@@ -90,6 +119,8 @@ async function onSubmit() {
     :dirty="dirty"
     @close="goToList()"
   >
+    <DefinitionImport :run="runImport" />
+
     <div class="form-section">
       <h3>Basic Information</h3>
 

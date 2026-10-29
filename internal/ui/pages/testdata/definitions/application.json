@@ -1,0 +1,16 @@
+{
+  "flowcatalyst": "definition",
+  "kind": "application",
+  "version": 1,
+  "definition": {
+    "code": "orders",
+    "name": "Orders",
+    "description": "Order capture and fulfilment",
+    "type": "APPLICATION",
+    "defaultBaseUrl": "https://orders.qa.example.com",
+    "iconUrl": "https://orders.qa.example.com/icon.png",
+    "website": "https://orders.example.com",
+    "logo": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"/>",
+    "logoMimeType": "image/svg+xml"
+  }
+}

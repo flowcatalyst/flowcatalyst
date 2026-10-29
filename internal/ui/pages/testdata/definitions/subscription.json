@@ -1,0 +1,28 @@
+{
+  "flowcatalyst": "definition",
+  "kind": "subscription",
+  "version": 1,
+  "definition": {
+    "code": "orders-hook",
+    "applicationCode": "orders",
+    "name": "Orders hook",
+    "description": "Order events to billing",
+    "endpoint": "https://billing.example.com/hooks/orders",
+    "clientScoped": true,
+    "clientIdentifier": "acme",
+    "eventTypes": [
+      {
+        "eventTypeCode": "orders:sales:order:placed",
+        "specVersion": "1.0"
+      }
+    ],
+    "connectionCode": "billing-hooks",
+    "queue": "DEFAULT",
+    "dispatchPoolCode": "orders-pool",
+    "mode": "NEXT_ON_ERROR",
+    "maxAgeSeconds": 86400,
+    "timeoutSeconds": 30,
+    "delaySeconds": 0,
+    "sequence": 99
+  }
+}

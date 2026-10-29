@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -49,6 +50,12 @@ type appForm struct {
 
 	Errs formErrors
 	Open bool
+
+	// Import is the notice of the last Import from JSON; ImportOpen and
+	// ImportError render that dialog open (a native post that was refused).
+	Import      defImportState
+	ImportOpen  bool
+	ImportError string
 }
 
 func (f appForm) id(key string) string         { return fieldID(appFormDialog, key) }
@@ -279,16 +286,17 @@ func (f appForm) typeHelp() string {
 	return "User-facing application that users can log into"
 }
 
+// signals seeds the form's signals from its values. appFormLogo is bound to
+// the logo textarea, so it holds the logo itself: a placeholder there would
+// replace the logo in the textarea (and on save) whenever the dialog renders
+// with one, as the edit dialog does.
 func (f appForm) signals() string {
-	logo := "''"
-	if f.Logo != "" {
-		logo = "'set'"
-	}
-	t := "'APPLICATION'"
+	t := string(application.TypeApplication)
 	if f.Type == string(application.TypeIntegration) {
-		t = "'INTEGRATION'"
+		t = string(application.TypeIntegration)
 	}
-	return "{appFormType: " + t + ", appFormLogo: " + logo + "}"
+	b, _ := json.Marshal(map[string]any{"appFormType": t, "appFormLogo": f.Logo})
+	return string(b)
 }
 
 // ── provisioning ───────────────────────────────────────────────────────

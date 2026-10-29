@@ -1,0 +1,13 @@
+{
+  "flowcatalyst": "definition",
+  "kind": "dispatch-pool",
+  "version": 1,
+  "definition": {
+    "code": "orders-pool",
+    "name": "Orders pool",
+    "description": "Order deliveries",
+    "rateLimit": 600,
+    "concurrency": 10,
+    "clientIdentifier": "acme"
+  }
+}

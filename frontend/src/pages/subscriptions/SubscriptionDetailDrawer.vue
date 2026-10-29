@@ -10,10 +10,15 @@ import {
 } from "@/api/subscriptions";
 import { connectionsApi, type Connection } from "@/api/connections";
 import { serviceAccountsApi, type ServiceAccount } from "@/api/service-accounts";
+import DefinitionExportDialog from "@/components/DefinitionExportDialog.vue";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
 import { useDirtyForm } from "@/composables/useDirtyForm";
 import { QUEUE_OPTIONS, queueFormValue } from "@/utils/subscription-queue";
+import {
+	buildSubscriptionDefinition,
+	type DefinitionExport,
+} from "@/utils/definition-transfer";
 
 const emit = defineEmits<{
 	changed: [];
@@ -86,7 +91,7 @@ async function loadSubscription(subscriptionId: string) {
 	loadError.value = null;
 	try {
 		subscription.value = await subscriptionsApi.get(subscriptionId);
-		void loadRefs(subscription.value);
+		refsLoaded = loadRefs(subscription.value);
 	} catch {
 		subscription.value = null;
 		loadError.value = "Subscription not found";
@@ -115,6 +120,8 @@ const signerKnown = computed(
 const signerSource = computed(() =>
 	subscription.value?.serviceAccountId ? "set on this subscription" : "from the connection",
 );
+// Settles when the best-effort reference loads below have finished.
+let refsLoaded: Promise<void> = Promise.resolve();
 async function loadRefs(sub: Subscription) {
 	connection.value = null;
 	signer.value = null;
@@ -132,6 +139,20 @@ async function loadRefs(sub: Subscription) {
 	} catch {
 		// Not visible to this user, or gone: keep the bare ids.
 	}
+}
+
+// Export JSON: the connection's code comes from loadRefs; the pool, client
+// and application codes are already on the subscription record.
+const showExport = ref(false);
+const exported = ref<DefinitionExport | null>(null);
+async function openExport() {
+	const sub = subscription.value;
+	if (!sub) return;
+	await refsLoaded;
+	exported.value = buildSubscriptionDefinition(sub, {
+		connectionCode: connection.value?.code,
+	});
+	showExport.value = true;
 }
 
 function startEditing() {
@@ -312,6 +333,7 @@ function getScopeLabel(sub: Subscription) {
       <!-- Details -->
       <FcFormSection title="Subscription Details" flat>
         <template v-if="!editing" #actions>
+          <Button icon="pi pi-download" label="Export JSON" text @click="openExport" />
           <Button icon="pi pi-pencil" label="Edit" text @click="startEditing" />
         </template>
 
@@ -504,6 +526,7 @@ function getScopeLabel(sub: Subscription) {
         <Button label="Save" :disabled="!dirty" :loading="saving" @click="saveChanges" />
       </FcFormActions>
     </template>
+    <DefinitionExportDialog v-model:visible="showExport" :definition="exported" />
   </EntityDrawer>
 </template>
 

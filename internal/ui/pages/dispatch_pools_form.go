@@ -53,6 +53,12 @@ type poolForm struct {
 
 	CanPickClient bool
 	ClientOptions []kit.Option
+
+	// Import is the notice of the last Import from JSON; ImportOpen and
+	// ImportError render that dialog open (a native post that was refused).
+	Import      defImportState
+	ImportOpen  bool
+	ImportError string
 }
 
 func (f poolForm) id(key string) string { return fieldID(poolFormID, key) }

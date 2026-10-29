@@ -17,10 +17,16 @@ import { connectionsApi, type Connection } from "@/api/connections";
 import type { PrincipalScope } from "@/api/users";
 import { rolesApi, type Role } from "@/api/roles";
 import { clientsApi, type Client } from "@/api/clients";
+import DefinitionExportDialog from "@/components/DefinitionExportDialog.vue";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
 import { useDirtyForm } from "@/composables/useDirtyForm";
+import { readApplicationCode } from "@/composables/useDefinitionLookups";
 import { useAuthStore } from "@/stores/auth";
+import {
+	buildServiceAccountDefinition,
+	type DefinitionExport,
+} from "@/utils/definition-transfer";
 import { isRoleAboveUser, ROLE_ABOVE_USER_HINT } from "@/utils/admin-permissions";
 
 const emit = defineEmits<{
@@ -200,6 +206,24 @@ watch(
 	},
 	{ immediate: true },
 );
+
+// Export JSON: client identifiers come from the clients list this drawer
+// already loads; the bound application's code is read on demand (quietly:
+// a viewer who can't read applications gets a note in the export instead).
+const showExport = ref(false);
+const exported = ref<DefinitionExport | null>(null);
+async function openExport() {
+	const sa = serviceAccount.value;
+	if (!sa) return;
+	const applicationCode = sa.applicationId
+		? await readApplicationCode(sa.applicationId)
+		: undefined;
+	exported.value = buildServiceAccountDefinition(sa, {
+		clients: clients.value,
+		applicationCode,
+	});
+	showExport.value = true;
+}
 
 function resetState() {
 	serviceAccount.value = null;
@@ -679,6 +703,13 @@ async function deleteServiceAccount() {
       <!-- Service Account Information -->
       <FcFormSection title="Service Account Information" flat>
         <template #actions>
+          <Button
+            v-if="!editMode"
+            label="Export JSON"
+            icon="pi pi-download"
+            text
+            @click="openExport"
+          />
           <Button v-if="!editMode" label="Edit" icon="pi pi-pencil" text @click="startEdit" />
           <template v-else>
             <Button v-if="dirty" label="Discard" text @click="cancelEdit" />
@@ -1283,6 +1314,8 @@ async function deleteServiceAccount() {
         />
       </template>
     </Dialog>
+
+    <DefinitionExportDialog v-model:visible="showExport" :definition="exported" />
   </EntityDrawer>
 </template>
 

@@ -4,9 +4,14 @@ import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useConfirm } from "primevue/useconfirm";
 import { dispatchPoolsApi, type DispatchPool } from "@/api/dispatch-pools";
+import DefinitionExportDialog from "@/components/DefinitionExportDialog.vue";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
 import { useDirtyForm } from "@/composables/useDirtyForm";
+import {
+	buildDispatchPoolDefinition,
+	type DefinitionExport,
+} from "@/utils/definition-transfer";
 
 const emit = defineEmits<{
 	changed: [];
@@ -67,6 +72,15 @@ async function loadPool(poolId: string) {
 	} finally {
 		loading.value = false;
 	}
+}
+
+// Export JSON: the pool record already carries its client identifier.
+const showExport = ref(false);
+const exported = ref<DefinitionExport | null>(null);
+function openExport() {
+	if (!pool.value) return;
+	exported.value = buildDispatchPoolDefinition(pool.value);
+	showExport.value = true;
 }
 
 function startEditing() {
@@ -224,8 +238,15 @@ function getScopeLabel(p: DispatchPool) {
     <template v-if="pool">
       <!-- Details -->
       <FcFormSection title="Pool Details" flat>
-        <template v-if="!editing && pool.status !== 'ARCHIVED'" #actions>
-          <Button icon="pi pi-pencil" label="Edit" text @click="startEditing" />
+        <template v-if="!editing" #actions>
+          <Button icon="pi pi-download" label="Export JSON" text @click="openExport" />
+          <Button
+            v-if="pool.status !== 'ARCHIVED'"
+            icon="pi pi-pencil"
+            label="Edit"
+            text
+            @click="startEditing"
+          />
         </template>
 
         <template v-if="editing">
@@ -342,6 +363,7 @@ function getScopeLabel(p: DispatchPool) {
         <Button label="Save" :disabled="!dirty" :loading="saving" @click="saveChanges" />
       </FcFormActions>
     </template>
+    <DefinitionExportDialog v-model:visible="showExport" :definition="exported" />
   </EntityDrawer>
 </template>
 

@@ -278,11 +278,14 @@ templ appDrawerBody(d appDetail) {
 }
 
 templ appEditButton(d appDetail) {
-	if d.Perms.Update {
-		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
-			Edit
+	<div class="flex items-center gap-1">
+		@defExportButton(d.ActionBase + "/export")
+		if d.Perms.Update {
+			@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+				Edit
+			}
 		}
-	}
+	</div>
 }
 
 templ appLoginField(f appLoginForm, key string) {
@@ -365,6 +368,9 @@ templ appCredentialsFooter() {
 templ appFormDialogC(f appForm) {
 	@kit.FormDialog(f.dialog()) {
 		<div class="flex flex-col gap-4" data-signals={ f.signals() }>
+			if !f.Edit {
+				@defImportBar(appFormDialog, appImportDialog, f.Import)
+			}
 			if f.Edit {
 				@appField(f, "name")
 				@appField(f, "description")
@@ -395,6 +401,9 @@ templ appFormDialogC(f appForm) {
 				}
 			}
 		</div>
+	}
+	if !f.Edit {
+		@defImportDialogC(f.importDialog())
 	}
 }
 

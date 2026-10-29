@@ -6,8 +6,16 @@ import {
 	serviceAccountsApi,
 	type ServiceAccount,
 } from "@/api/service-accounts";
+import DefinitionImport from "@/components/DefinitionImport.vue";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
+import { lookupClientsByIdentifier } from "@/composables/useDefinitionLookups";
+import {
+	applyConnectionDefinition,
+	definitionClientIdentifiers,
+	parseDefinition,
+	type ImportOutcome,
+} from "@/utils/definition-transfer";
 
 const emit = defineEmits<{
 	changed: [];
@@ -76,6 +84,27 @@ async function loadServiceAccounts() {
 	}
 }
 
+// Import from JSON: fills the form only; the user reviews and presses Create.
+// References are matched by code against the service accounts loaded above
+// and the clients the select offers.
+async function runImport(text: string): Promise<ImportOutcome> {
+	const parsed = parseDefinition(text, "connection");
+	if (!parsed.ok) return { error: parsed.error };
+	const { values, notices } = applyConnectionDefinition(parsed.definition, {
+		serviceAccounts: serviceAccounts.value,
+		clients: await lookupClientsByIdentifier(
+			definitionClientIdentifiers(parsed.definition),
+		),
+	});
+	if (values.code !== undefined) code.value = values.code;
+	if (values.name !== undefined) name.value = values.name;
+	if (values.description !== undefined) description.value = values.description;
+	if (values.externalId !== undefined) externalId.value = values.externalId;
+	if (values.serviceAccountId !== undefined) serviceAccountId.value = values.serviceAccountId;
+	if (values.clientId !== undefined) clientId.value = values.clientId;
+	return { notices };
+}
+
 async function onSubmit() {
 	if (!isFormValid.value) return;
 
@@ -111,6 +140,8 @@ async function onSubmit() {
     :dirty="dirty"
     @close="goToList()"
   >
+    <DefinitionImport :run="runImport" />
+
     <div class="form-section">
       <h3>Basic Information</h3>
 

@@ -213,6 +213,18 @@ func TestApplicationCreateAndEdit(t *testing.T) {
 	}
 }
 
+// The logo textarea is bound to appFormLogo, so the edit dialog seeds that
+// signal with the logo itself; a placeholder there replaced the logo in the
+// textarea, and saving stored the placeholder.
+func TestApplicationEditKeepsTheLogo(t *testing.T) {
+	h := newAppHarness()
+	logo := `<svg viewBox="0 0 1 1"/>`
+	h.store.apps[0].Logo = &logo
+	edit := h.do(t, anchorAdmin(), req{target: "/ui/applications/app_1/edit", datastar: true})
+	mustContain(t, edit, `&#34;appFormLogo&#34;:&#34;\u003csvg viewBox=\&#34;0 0 1 1\&#34;/\u003e&#34;`)
+	mustNotContain(t, edit, `&#39;set&#39;`)
+}
+
 func TestApplicationActionsAndProvisioning(t *testing.T) {
 	h := newAppHarness()
 	for _, a := range []string{"app_2/activate", "app_1/deactivate", "app_2/delete"} {

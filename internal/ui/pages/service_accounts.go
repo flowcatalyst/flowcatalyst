@@ -137,9 +137,12 @@ func (h *ServiceAccounts) Mount(r chi.Router) {
 	r.Get("/service-accounts/new", h.createForm)
 	r.Get("/service-accounts/{id}", h.detail)
 	r.Get("/service-accounts/{id}/edit", h.editForm)
+	r.Get("/service-accounts/{id}/export", h.export)
+	r.Get("/service-accounts/{id}/export.json", h.exportFile)
 	r.Get("/service-accounts/{id}/roles", h.rolesForm)
 	post := r.With(parseForm)
 	post.Post("/service-accounts/new", h.create)
+	post.Post("/service-accounts/new/import", h.importDefinition)
 	post.Post("/service-accounts/{id}/edit", h.update)
 	post.Post("/service-accounts/{id}/roles", h.saveRoles)
 	post.Post("/service-accounts/{id}/applications", h.saveApplications)
@@ -260,6 +263,10 @@ func (h *ServiceAccounts) list(w http.ResponseWriter, r *http.Request) {
 type saClients struct {
 	names   map[string]string
 	options []kit.Option
+	// identifiers maps a client id to its identifier, byIdentifier the way
+	// back (the definition export and import write clients by identifier).
+	identifiers  map[string]string
+	byIdentifier map[string]string
 }
 
 func (c saClients) label(id string) string {
@@ -278,9 +285,11 @@ func (h *ServiceAccounts) clients(ctx context.Context, ac *auth.AuthContext) saC
 		slog.WarnContext(ctx, "ui: clients unavailable for service accounts", "err", err)
 		return saClients{}
 	}
-	c := saClients{names: make(map[string]string, len(all))}
+	c := saClients{names: make(map[string]string, len(all)), identifiers: make(map[string]string, len(all)), byIdentifier: make(map[string]string, len(all))}
 	for _, cl := range all {
 		c.names[string(cl.ID)] = cl.Name
+		c.identifiers[string(cl.ID)] = cl.Identifier
+		c.byIdentifier[cl.Identifier] = string(cl.ID)
 		c.options = append(c.options, kit.Option{Value: string(cl.ID), Label: cl.Name})
 	}
 	slices.SortFunc(c.options, func(a, b kit.Option) int { return cmp.Compare(strings.ToLower(a.Label), strings.ToLower(b.Label)) })

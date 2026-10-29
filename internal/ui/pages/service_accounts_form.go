@@ -2,6 +2,7 @@ package pages
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -71,6 +72,15 @@ type saForm struct {
 	CanPickClients bool
 	// CanGrantAll: the user holds all-applications access, so may grant it.
 	CanGrantAll bool
+	// ClientIDsByIdentifier maps a client identifier to its id, for an import
+	// matching by identifier.
+	ClientIDsByIdentifier map[string]string
+
+	// Import is the notice of the last Import from JSON; ImportOpen and
+	// ImportError render that dialog open (a native post that was refused).
+	Import      defImportState
+	ImportOpen  bool
+	ImportError string
 }
 
 func (f saForm) id(key string) string         { return fieldID(saFormDialog, key) }
@@ -115,12 +125,22 @@ func (f saForm) dialog() kit.FormDialogProps {
 
 // signals declares the scope the client field follows and the code the name
 // suggests.
+// signals seeds the form's signals from its values. The code is set too:
+// signals are page-global, so a dialog rendered again (an import fills it in)
+// would otherwise bind its code input to the previous dialog's value.
+// saFormCodeKept stops the name field from replacing an imported code, as the
+// SPA's generateCode does.
 func (f saForm) signals() string {
 	scope := "ANCHOR"
 	if validSAScope(f.Scope) {
 		scope = f.Scope
 	}
-	return "{saFormScope: '" + scope + "'}"
+	b, _ := json.Marshal(map[string]any{
+		"saFormScope":    scope,
+		"saFormCode":     f.Code,
+		"saFormCodeKept": f.Import.Done && f.Code != "",
+	})
+	return string(b)
 }
 
 func (f saForm) clientsShown() bool { return f.Scope != "ANCHOR" && f.Scope != "" }
@@ -141,9 +161,9 @@ func (f saForm) inputProps(key, value, placeholder string, attrs templ.Attribute
 }
 
 // codeFromName is the SPA's generateCode (run when the name field loses
-// focus): lowercase, spaces to dashes, only [a-z0-9-], dashes squeezed and
+// focus, unless the code was imported): lowercase, spaces to dashes, only [a-z0-9-], dashes squeezed and
 // trimmed.
-const saCodeFromName = "el.value && ($saFormCode = el.value.toLowerCase().replace(/\\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, ''))"
+const saCodeFromName = "el.value && !$saFormCodeKept && ($saFormCode = el.value.toLowerCase().replace(/\\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, ''))"
 
 func submittedSAForm(r *http.Request, edit bool) saForm {
 	return saForm{
@@ -161,6 +181,7 @@ func (h *ServiceAccounts) fill(ctx context.Context, ac *auth.AuthContext, f *saF
 	f.CanPickClients = auth.CanReadClients(ac) == nil
 	f.CanGrantAll = ac.AllApplications
 	f.ClientOptions = clients.options
+	f.ClientIDsByIdentifier = clients.byIdentifier
 	have := make(map[string]bool, len(clients.options))
 	for _, o := range clients.options {
 		have[o.Value] = true

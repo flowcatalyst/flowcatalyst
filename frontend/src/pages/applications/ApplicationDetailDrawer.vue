@@ -10,11 +10,16 @@ import {
 	type LoginClientCredentials,
 } from "@/api/applications";
 import { docsApi, type DocSummary } from "@/api/docs";
+import DefinitionExportDialog from "@/components/DefinitionExportDialog.vue";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
 import { useDirtyForm } from "@/composables/useDirtyForm";
 import { useAuthStore } from "@/stores/auth";
 import { canProvisionApplicationServiceAccount } from "@/utils/admin-permissions";
+import {
+	buildApplicationDefinition,
+	type DefinitionExport,
+} from "@/utils/definition-transfer";
 
 const emit = defineEmits<{
 	changed: [];
@@ -59,6 +64,15 @@ const { id, goToList } = useDrawerRoute({
 const loading = ref(true);
 const loadError = ref<string | null>(null);
 const application = ref<Application | null>(null);
+
+// Export JSON: the definition built from the loaded record (no extra reads).
+const showExport = ref(false);
+const exported = ref<DefinitionExport | null>(null);
+function openExport() {
+	if (!application.value) return;
+	exported.value = buildApplicationDefinition(application.value);
+	showExport.value = true;
+}
 const saving = ref(false);
 
 // Service account provisioning
@@ -362,6 +376,7 @@ function formatDate(dateString: string) {
       <!-- Details -->
       <FcFormSection title="Application Details" flat>
         <template v-if="!editing" #actions>
+          <Button icon="pi pi-download" label="Export JSON" text @click="openExport" />
           <Button icon="pi pi-pencil" label="Edit" text @click="startEditing" />
         </template>
 
@@ -624,6 +639,7 @@ function formatDate(dateString: string) {
         <Button label="Save" :disabled="!dirty" :loading="saving" @click="saveChanges" />
       </FcFormActions>
     </template>
+    <DefinitionExportDialog v-model:visible="showExport" :definition="exported" />
   </EntityDrawer>
 
   <!-- Secret-shown-once dialogs live OUTSIDE the drawer body: they teleport to

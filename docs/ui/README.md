@@ -556,6 +556,25 @@ carry no request text); the nav entry uses the `list` icon (the kit sprite has n
 Not verified in a browser: the signal-driven value swap, the reveal dialog's self-removal and the Copy button
 are covered by the rendered markup in tests only.
 
+## Definition export and import (`/ui`)
+
+Applications, service accounts, connections, dispatch pools and subscriptions can be copied
+between environments as JSON. Spec and format: `docs/ui/definition-export-import.md`; the examples
+in `internal/ui/pages/testdata/definitions/` are the contract shared with the SPA (the tests export
+a record to exactly those bytes and import them back). The shared code is `pages/definitions.go`
+and `definitions.templ`; each page has a `<page>_definition.go`.
+
+| URL | Behaviour |
+|---|---|
+| `GET /ui/<page>/{id}/export` | Datastar: patches a read-only dialog (JSON, Copy, Download) into the page's dialog slot; a plain navigation gets the file. Same read permission and client-access checks as the drawer. |
+| `GET /ui/<page>/{id}/export.json` | The file: `application/json`, `Content-Disposition: attachment; filename="<kind>-<code>.json"`. |
+| `POST /ui/<page>/new/import` | Field `definition` (pasted text) or `file`. Needs the create permission. Re-renders the create dialog filled in, with a notice (references not found, values the form cannot take, unknown keys); a refused file puts a message in the import dialog and leaves the form alone. |
+
+References are written and read by code (client identifier, service account, application,
+connection, dispatch pool, event type); a reference the viewer cannot read is left out of the
+export and the dialog says so. Ids and credentials are never exported. Import calls no use case
+and writes nothing: the create dialog's own Create does that, with its usual checks.
+
 ## Compression
 
 `internal/ui/compress` (the first middleware of the page group) compresses `text/html` and

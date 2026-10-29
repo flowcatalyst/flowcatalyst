@@ -80,11 +80,14 @@ templ poolDrawerBody(d poolDetail) {
 }
 
 templ poolEditButton(d poolDetail) {
-	if d.canEdit() {
-		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
-			Edit
+	<div class="flex items-center gap-1">
+		@defExportButton(d.ActionBase + "/export")
+		if d.canEdit() {
+			@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+				Edit
+			}
 		}
-	}
+	</div>
 }
 
 // poolActionItem is one row of the drawer's Actions section (the SPA's

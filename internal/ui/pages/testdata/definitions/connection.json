@@ -1,0 +1,13 @@
+{
+  "flowcatalyst": "definition",
+  "kind": "connection",
+  "version": 1,
+  "definition": {
+    "code": "billing-hooks",
+    "name": "Billing hooks",
+    "description": "Webhooks into billing",
+    "externalId": "ext-42",
+    "serviceAccountCode": "orders-svc",
+    "clientIdentifier": "acme"
+  }
+}

@@ -5,9 +5,14 @@ import { useRoute } from "vue-router";
 import { useConfirm } from "primevue/useconfirm";
 import { connectionsApi, type Connection } from "@/api/connections";
 import { serviceAccountsApi, type ServiceAccount } from "@/api/service-accounts";
+import DefinitionExportDialog from "@/components/DefinitionExportDialog.vue";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
 import { useDirtyForm } from "@/composables/useDirtyForm";
+import {
+	buildConnectionDefinition,
+	type DefinitionExport,
+} from "@/utils/definition-transfer";
 
 const emit = defineEmits<{
 	changed: [];
@@ -80,6 +85,20 @@ async function loadServiceAccount(c: Connection) {
 	} catch {
 		// Not visible to this user, or gone: keep the bare id.
 	}
+}
+
+// Export JSON: the service account's code comes from the best-effort load
+// above, retried here in case the first attempt raced the click.
+const showExport = ref(false);
+const exported = ref<DefinitionExport | null>(null);
+async function openExport() {
+	const c = connection.value;
+	if (!c) return;
+	if (!serviceAccount.value) await loadServiceAccount(c);
+	exported.value = buildConnectionDefinition(c, {
+		serviceAccountCode: serviceAccount.value?.code,
+	});
+	showExport.value = true;
 }
 
 function startEditing() {
@@ -233,6 +252,7 @@ function getScopeLabel(conn: Connection) {
       <!-- Details -->
       <FcFormSection title="Connection Details" flat>
         <template v-if="!editing" #actions>
+          <Button icon="pi pi-download" label="Export JSON" text @click="openExport" />
           <Button icon="pi pi-pencil" label="Edit" text @click="startEditing" />
         </template>
 
@@ -339,6 +359,7 @@ function getScopeLabel(conn: Connection) {
         <Button label="Save" :disabled="!dirty" :loading="saving" @click="saveChanges" />
       </FcFormActions>
     </template>
+    <DefinitionExportDialog v-model:visible="showExport" :definition="exported" />
   </EntityDrawer>
 </template>
 

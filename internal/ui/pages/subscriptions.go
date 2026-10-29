@@ -48,9 +48,9 @@ type Subscriptions struct {
 	// drawer; nil shows its id.
 	ServiceAccounts ServiceAccountDirectory
 	EventTypes      EventTypeStore
-	Apps        EventTypeApps
-	Clients     ClientDirectory
-	Shell       *shell.Shell
+	Apps            EventTypeApps
+	Clients         ClientDirectory
+	Shell           *shell.Shell
 }
 
 const (
@@ -86,8 +86,11 @@ func (h *Subscriptions) Mount(r chi.Router) {
 	r.Get("/subscriptions/event-type-options", h.eventTypeOptions)
 	r.Get("/subscriptions/{id}", h.detail)
 	r.Get("/subscriptions/{id}/edit", h.editForm)
+	r.Get("/subscriptions/{id}/export", h.export)
+	r.Get("/subscriptions/{id}/export.json", h.exportFile)
 	post := r.With(parseForm)
 	post.Post("/subscriptions/new", h.create)
+	post.Post("/subscriptions/new/import", h.importDefinition)
 	post.Post("/subscriptions/{id}/edit", h.update)
 	post.Post("/subscriptions/{id}/pause", h.pause)
 	post.Post("/subscriptions/{id}/resume", h.resume)
@@ -362,19 +365,19 @@ type subDetail struct {
 	// named, else the connection's. SignerSource says which; SignerKnown is
 	// false when the signer is the connection's and the connection can't be
 	// read.
-	Signer       saRef
-	SignerSource string
-	SignerKnown  bool
-	Mode                        string
-	MaxAge, Delay, Timeout      string
-	Sequence                    string
-	Status                      string
-	RawStatus                   subscription.Status
-	StatusVariant               kit.BadgeVariant
-	Created, Updated            string
-	Bindings                    []subBinding
-	EditHref, ActionBase        string
-	Perms                       subPerms
+	Signer                 saRef
+	SignerSource           string
+	SignerKnown            bool
+	Mode                   string
+	MaxAge, Delay, Timeout string
+	Sequence               string
+	Status                 string
+	RawStatus              subscription.Status
+	StatusVariant          kit.BadgeVariant
+	Created, Updated       string
+	Bindings               []subBinding
+	EditHref, ActionBase   string
+	Perms                  subPerms
 }
 
 func seconds(n int32) string { return strconv.Itoa(int(n)) + " seconds" }

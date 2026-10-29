@@ -1,0 +1,107 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+// defExportButton is the drawer's Export JSON action: a link that opens the
+// read-only JSON in a dialog (Datastar), or downloads the file (no script).
+templ defExportButton(href string) {
+	@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: href, Icon: "download", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+		Export JSON
+	}
+}
+
+// defExportDialog shows an export read-only, with Copy and Download. It is in
+// the export response only.
+templ defExportDialog(e defExport) {
+	@kit.Dialog(kit.DialogProps{
+		ID:          defExportDialogID,
+		Title:       "Export JSON",
+		Description: "Read-only. Copy it or download the file, then use Import from JSON on the create form in the other environment. Ids and credentials are never included.",
+		Width:       kit.WidthWide,
+		Closable:    true,
+		Footer:      defExportFooter(e),
+		Attrs: templ.Attributes{
+			"open":         true,
+			"data-init":    "el.removeAttribute('open'); el.showModal()",
+			"data-signals": "{defCopied: ''}",
+		},
+	}) {
+		<div class="flex flex-col gap-3">
+			for _, o := range e.Omitted {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: o})
+			}
+			@kit.CodeBlock(kit.CodeBlockProps{ID: "definition-export-json", Label: "Definition JSON"}) {
+				{ e.text() }
+			}
+			<p class="text-xs text-muted-foreground" role="status" data-text="$defCopied"></p>
+		</div>
+	}
+}
+
+templ defExportFooter(e defExport) {
+	@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Icon: "copy", Attrs: templ.Attributes{"data-on:click": defCopyExpr}}) {
+		Copy
+	}
+	@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Icon: "download", Href: e.Href, Attrs: e.downloadAttrs()}) {
+		Download
+	}
+	@kit.Button(kit.ButtonProps{Attrs: templ.Attributes{"data-on:click": kit.CloseDialog}}) {
+		Close
+	}
+}
+
+// defImportBar sits at the top of a create form: the Import from JSON control
+// and, after an import, its notice (the values that could not be applied).
+// The id is stable so the notice can be patched.
+templ defImportBar(formID, dialogID string, s defImportState) {
+	<div id={ formID + "-import" } class="flex flex-col gap-2">
+		<div>
+			@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Icon: "upload", Attrs: kit.OpenModal(dialogID)}) {
+				Import from JSON
+			}
+		</div>
+		if s.Done {
+			@kit.Alert(kit.AlertProps{Icon: "info", Title: s.title()}) {
+				if len(s.Notes) > 0 {
+					<ul class="col-start-2 mt-1 list-disc pl-5 text-sm text-muted-foreground">
+						for _, n := range s.Notes {
+							<li>{ n }</li>
+						}
+					</ul>
+				}
+			}
+		}
+	</div>
+}
+
+// defImportDialogC is the dialog behind Import from JSON: its own multipart
+// form (a form dialog's fields are required, and the form cannot nest). The
+// file's text is read into the textarea by the browser; the server reads a
+// posted file as well.
+templ defImportDialogC(p defImportDialog) {
+	@kit.Dialog(kit.DialogProps{
+		ID: p.ID, Title: "Import from JSON", Width: kit.WidthWide, Persistent: true,
+		Description: "Paste a " + p.Kind + " definition exported from another environment, or choose its file. The form behind this dialog is filled in; nothing is created until you press Create.",
+		Footer:      defImportFooter(p),
+		Attrs:       defImportAttrs(p),
+	}) {
+		<form id={ p.ID + "-form" } method="post" action={ p.Action } enctype="multipart/form-data" class="flex flex-col gap-4" data-signals="{defImportBusy: false}" data-indicator="defImportBusy" data-on:submit={ kit.SubmitForm }>
+			@kit.FormDialogError(p.ID, p.Error)
+			@kit.Field(kit.FieldProps{Label: "Definition JSON", For: p.ID + "-text"}) {
+				@kit.Textarea(kit.TextareaProps{ID: p.ID + "-text", Name: "definition", Rows: 10, Placeholder: "{ \"flowcatalyst\": \"definition\", ... }", Class: "font-mono text-[13px]", Attrs: templ.Attributes{"spellcheck": "false"}})
+			}
+			@kit.Field(kit.FieldProps{Label: "Or choose a file", For: p.ID + "-file"}) {
+				@kit.Input(kit.InputProps{ID: p.ID + "-file", Name: "file", Type: "file", Attrs: templ.Attributes{"accept": ".json,application/json", "data-on:change": defReadFileExpr}})
+			}
+		</form>
+	}
+}
+
+templ defImportFooter(p defImportDialog) {
+	@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Attrs: templ.Attributes{"data-on:click": kit.CloseDialog}}) {
+		Cancel
+	}
+	@kit.Button(kit.ButtonProps{Type: "submit", Attrs: templ.Attributes{"form": p.ID + "-form", "data-attr:disabled": "$defImportBusy"}}) {
+		Import
+	}
+}

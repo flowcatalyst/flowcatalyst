@@ -5,6 +5,9 @@ import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
 // poolFormDialog is the create or edit dialog (kit form-dialog.md).
 templ poolFormDialog(f poolForm) {
 	@kit.FormDialog(f.dialog()) {
+		if !f.Edit {
+			@defImportBar(poolFormID, poolImportDialog, f.Import)
+		}
 		if f.Edit {
 			@poolField(f, "name")
 			@poolField(f, "description")
@@ -42,6 +45,9 @@ templ poolFormDialog(f poolForm) {
 				</div>
 			}
 		}
+	}
+	if !f.Edit {
+		@defImportDialogC(f.importDialog())
 	}
 }
 

@@ -227,11 +227,14 @@ templ connDrawerBody(d connDetail) {
 }
 
 templ connEditButton(d connDetail) {
-	if d.Perms.Update {
-		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
-			Edit
+	<div class="flex items-center gap-1">
+		@defExportButton(d.ActionBase + "/export")
+		if d.Perms.Update {
+			@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+				Edit
+			}
 		}
-	}
+	</div>
 }
 
 templ connConfirmDialogs(perms connPerms) {
@@ -247,6 +250,9 @@ templ connConfirmDialogs(perms connPerms) {
 // connFormDialog is the create or edit dialog.
 templ connFormDialog(f connForm) {
 	@kit.FormDialog(f.dialog()) {
+		if !f.Edit {
+			@defImportBar(connFormID, connImportDialog, f.Import)
+		}
 		if f.Edit {
 			@connField(f, "name")
 			@connField(f, "description")
@@ -269,6 +275,9 @@ templ connFormDialog(f connForm) {
 				@connField(f, "client")
 			}
 		}
+	}
+	if !f.Edit {
+		@defImportDialogC(f.importDialog())
 	}
 }
 

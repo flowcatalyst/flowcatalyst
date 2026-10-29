@@ -7,8 +7,14 @@ import {
 } from "@/api/service-accounts";
 import type { PrincipalScope } from "@/api/users";
 import { clientsApi, type Client } from "@/api/clients";
+import DefinitionImport from "@/components/DefinitionImport.vue";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
+import {
+	applyServiceAccountDefinition,
+	parseDefinition,
+	type ImportOutcome,
+} from "@/utils/definition-transfer";
 
 const emit = defineEmits<{
 	changed: [];
@@ -22,6 +28,7 @@ const selectedClientIds = ref<string[]>([]);
 // Off by default: a new account has no application access until granted.
 const allApplications = ref(false);
 const clients = ref<Client[]>([]);
+let codeImported = false;
 const saving = ref(false);
 
 // Once the account exists the drawer must never block navigation — the
@@ -79,7 +86,26 @@ async function loadClients() {
 	}
 }
 
+// Import from JSON: fills the form only; the user reviews and presses Create.
+// Roles and the application binding have no field here; the notice lists them.
+function runImport(text: string): ImportOutcome {
+	const parsed = parseDefinition(text, "service-account");
+	if (!parsed.ok) return { error: parsed.error };
+	const { values, notices } = applyServiceAccountDefinition(parsed.definition, {
+		clients: clients.value,
+	});
+	if (values.code !== undefined) code.value = values.code;
+	if (values.name !== undefined) name.value = values.name;
+	if (values.description !== undefined) description.value = values.description;
+	if (values.scope !== undefined) scope.value = values.scope;
+	if (values.selectedClientIds !== undefined) selectedClientIds.value = values.selectedClientIds;
+	// Blurring the name field must not overwrite an imported code.
+	if (values.code !== undefined) codeImported = true;
+	return { notices };
+}
+
 function generateCode() {
+	if (codeImported) return;
 	// Generate a code from the name (lowercase, replace spaces with dashes, remove special chars)
 	if (name.value) {
 		code.value = name.value
@@ -155,6 +181,8 @@ function closeDialogAndNavigate() {
     :dirty="dirty"
     @close="goToList()"
   >
+    <DefinitionImport :run="runImport" />
+
     <FcFormSection title="Basic Information" flat>
       <div class="fc-form-grid">
         <FcFormField

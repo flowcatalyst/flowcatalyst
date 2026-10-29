@@ -55,6 +55,15 @@ type connForm struct {
 	ClientOptions         []kit.Option
 	CanPickServiceAccount bool
 	ServiceAccounts       []kit.Option
+	// ServiceAccountIDs maps a service account's code to its id, for an import
+	// matching by code.
+	ServiceAccountIDs map[string]string
+
+	// Import is the notice of the last Import from JSON; ImportOpen and
+	// ImportError render that dialog open (a native post that was refused).
+	Import      defImportState
+	ImportOpen  bool
+	ImportError string
 }
 
 func (f connForm) id(key string) string         { return fieldID(connFormID, key) }
@@ -288,8 +297,10 @@ func (h *Connections) withChoices(r *http.Request, ac *auth.AuthContext, f *conn
 		return
 	}
 	f.ServiceAccounts = make([]kit.Option, 0, len(sas))
+	f.ServiceAccountIDs = make(map[string]string, len(sas))
 	for _, sa := range sas {
 		f.ServiceAccounts = append(f.ServiceAccounts, kit.Option{Value: sa.ID, Label: sa.Name + " (" + sa.Code + ")"})
+		f.ServiceAccountIDs[sa.Code] = sa.ID
 	}
 }
 
