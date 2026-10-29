@@ -40,6 +40,9 @@ type IngestionStore interface {
 	// ListSecretFetches is when each runtime last fetched each of the
 	// ingestion's secrets (GET /api/ingestions/{id}/secrets).
 	ListSecretFetches(ctx context.Context, ingestionID string) ([]ingestion.SecretFetch, error)
+	// MissingSecrets is which of the named secrets have no value at the client,
+	// as the resume readiness check looks them up.
+	MissingSecrets(ctx context.Context, applicationCode string, clientID ids.ClientID, names []string) ([]string, error)
 
 	// The environment's settings of an ingestion whose source names a config
 	// entry (docs/ingestion-design.md section 13), as the config endpoints read
@@ -803,6 +806,13 @@ func (h *Ingestions) buildDetail(ctx context.Context, ac *auth.AuthContext, i *i
 		bound := *i
 		bound.Definition = effective
 		d.Secrets = ingsSecretRows(&bound, fetches)
+		// An editor is shown which values exist and where to set them. A value
+		// is set on the platform configuration page, not here.
+		if perms.Update {
+			if err := h.linkSecrets(ctx, d.Secrets, app.Code, i.ClientID, clientIdentifier); err != nil {
+				return ingsDetail{}, err
+			}
+		}
 	}
 	if shown.Runnable() {
 		d.Warnings = shown.Definition.Warnings()
@@ -1087,6 +1097,11 @@ type ingsSecretRow struct {
 	Bound bool
 	// Fetches are the runtimes that fetched it, newest first.
 	Fetches []ingsSecretFetchRow
+	// Href is the platform configuration page that sets the value, shown to an
+	// editor only; Linked says Href and Set are filled, Set that a value exists.
+	Href   string
+	Linked bool
+	Set    bool
 }
 
 type ingsSecretFetchRow struct {
@@ -1109,6 +1124,37 @@ func ingsSecretRows(i *ingestion.Ingestion, fetches []ingestion.SecretFetch) []i
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// linkSecrets marks which of the rows' secrets have a value at the client and
+// points each at the configuration property that holds it: the edit form for a
+// value that exists, the add form with the coordinates filled in for one that
+// does not. A name no longer bound is left alone.
+func (h *Ingestions) linkSecrets(ctx context.Context, rows []ingsSecretRow, application string, clientID ids.ClientID, client string) error {
+	var names []string
+	for _, r := range rows {
+		if r.Bound {
+			names = append(names, r.Name)
+		}
+	}
+	missing, err := h.Store.MissingSecrets(ctx, application, clientID, names)
+	if err != nil {
+		return usecase.Internal("REPO", "secret lookup failed", err)
+	}
+	for k := range rows {
+		if !rows[k].Bound {
+			continue
+		}
+		rows[k].Linked = true
+		rows[k].Set = !slices.Contains(missing, rows[k].Name)
+		query := cfgQuery(application, ingestion.SecretsSection, rows[k].Name, client)
+		if rows[k].Set {
+			rows[k].Href = cfgPath + "/edit?" + query
+		} else {
+			rows[k].Href = cfgPath + "/new?" + query
+		}
+	}
+	return nil
 }
 
 // ingsProblemTexts are an entry's problems as one line each.

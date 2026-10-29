@@ -2886,104 +2886,162 @@ func ingsSecrets(d ingsDetail) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				}
+				if sec.Linked {
+					if sec.Set {
+						templ_7745c5c3_Err = kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Set"}).Render(ctx, templ_7745c5c3_Buffer)
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					} else {
+						templ_7745c5c3_Err = kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "Missing"}).Render(ctx, templ_7745c5c3_Buffer)
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, " <a class=\"text-xs underline\" href=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var120 templ.SafeURL
+					templ_7745c5c3_Var120, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(sec.Href))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestions.templ`, Line: 604, Col: 65}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var120))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "\" data-testid=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var121 string
+					templ_7745c5c3_Var121, templ_7745c5c3_Err = templ.ResolveAttributeValue("ings-secret-link-" + sec.Name)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestions.templ`, Line: 604, Col: 112}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var121)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					if sec.Set {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "Change")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					} else {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "Set")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "</a> ")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
 				if len(sec.Fetches) == 0 {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "<span class=\"text-muted-foreground\">: not fetched yet</span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "<span class=\"text-muted-foreground\">: not fetched yet</span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "<ul class=\"ml-4 text-xs text-muted-foreground\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, "<ul class=\"ml-4 text-xs text-muted-foreground\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					for _, f := range sec.Fetches {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "<li>last fetched by <code>")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var120 string
-						templ_7745c5c3_Var120, templ_7745c5c3_Err = templ.JoinStringErrs(f.RuntimeID)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestions.templ`, Line: 603, Col: 47}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var120))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "</code> at <time datetime=\"")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var121 string
-						templ_7745c5c3_Var121, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.AtISO)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestions.templ`, Line: 603, Col: 84}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var121)
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "<li>last fetched by <code>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var122 string
-						templ_7745c5c3_Var122, templ_7745c5c3_Err = templ.JoinStringErrs(f.At)
+						templ_7745c5c3_Var122, templ_7745c5c3_Err = templ.JoinStringErrs(f.RuntimeID)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestions.templ`, Line: 603, Col: 93}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestions.templ`, Line: 617, Col: 47}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var122))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "</time> (version ")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "</code> at <time datetime=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var123 string
-						templ_7745c5c3_Var123, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(f.Version))
+						templ_7745c5c3_Var123, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.AtISO)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestions.templ`, Line: 603, Col: 137}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestions.templ`, Line: 617, Col: 84}
 						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var123))
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var123)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, ", ")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var124 string
-						templ_7745c5c3_Var124, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.FormatInt(f.Count, 10))
+						templ_7745c5c3_Var124, templ_7745c5c3_Err = templ.JoinStringErrs(f.At)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestions.templ`, Line: 603, Col: 173}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestions.templ`, Line: 617, Col: 93}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var124))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, " fetches)</li>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "</time> (version ")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var125 string
+						templ_7745c5c3_Var125, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(f.Version))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestions.templ`, Line: 617, Col: 137}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var125))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 141, ", ")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var126 string
+						templ_7745c5c3_Var126, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.FormatInt(f.Count, 10))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/ingestions.templ`, Line: 617, Col: 173}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var126))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 142, " fetches)</li>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "</ul>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 143, "</ul>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "</li>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 144, "</li>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "</ul>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 145, "</ul>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = kit.FormSection(kit.FormSectionProps{Title: "Secrets", Description: "The secret names the live definition binds and when each runtime last fetched them. Values are never shown; a refused fetch is in the history."}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var116), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kit.FormSection(kit.FormSectionProps{Title: "Secrets", Description: "The secret names the live definition binds and when each runtime last fetched them. Values are never shown and are set on the platform configuration page; a refused fetch is in the history."}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var116), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3009,9 +3067,9 @@ func ingsConfirmDialogs(perms ingsPerms) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var125 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var125 == nil {
-			templ_7745c5c3_Var125 = templ.NopComponent
+		templ_7745c5c3_Var127 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var127 == nil {
+			templ_7745c5c3_Var127 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if perms.Update {
@@ -3019,7 +3077,7 @@ func ingsConfirmDialogs(perms ingsPerms) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, " ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 146, " ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3027,7 +3085,7 @@ func ingsConfirmDialogs(perms ingsPerms) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 141, " ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 147, " ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

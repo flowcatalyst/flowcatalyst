@@ -34,6 +34,8 @@ type fakeIngStore struct {
 	notices map[string]ingestion.Notices
 	// fetches are the secret fetch records by ingestion id.
 	fetches map[string][]ingestion.SecretFetch
+	// missing are the secret names that have no value; any other is set.
+	missing []string
 	err     error
 	// lastFilter is the filter the last list asked for.
 	lastFilter ingestion.ListFilter
@@ -98,6 +100,16 @@ func (f *fakeIngStore) AnyLiveRuntimeCarries(context.Context) (func(string) bool
 
 func (f *fakeIngStore) ListSecretFetches(_ context.Context, id string) ([]ingestion.SecretFetch, error) {
 	return f.fetches[id], f.err
+}
+
+func (f *fakeIngStore) MissingSecrets(_ context.Context, _ string, _ ids.ClientID, names []string) ([]string, error) {
+	var out []string
+	for _, n := range names {
+		if slices.Contains(f.missing, n) {
+			out = append(out, n)
+		}
+	}
+	return out, f.err
 }
 
 func (f *fakeIngStore) NoticesOf(_ context.Context, ids []string) (map[string]ingestion.Notices, error) {

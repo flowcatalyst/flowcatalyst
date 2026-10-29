@@ -67,3 +67,8 @@ func SecretNames(src Source) []string {
 	}
 	return slices.DeleteFunc(names, func(n string) bool { return n == "" })
 }
+
+// SecretsSection is the platform config section that holds the values of the
+// secrets an ingestion binds by name: the application's, at the ingestion's
+// client, as SECRET values, set on the platform configuration page.
+const SecretsSection = "secrets"

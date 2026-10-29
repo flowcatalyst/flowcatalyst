@@ -207,7 +207,7 @@ func TestConfigList(t *testing.T) {
 		`<title>Configuration · FlowCatalyst</title>`,
 		`<a href="/ui/platform/config" class="fc-nav-child" aria-current="page">`,
 		`<h1 class="fc-page-title">Configuration</h1>`, `href="/ui/platform/config/new?app=platform"`, "Add property",
-		`<option value="orders">orders</option>`, `<option value="platform" selected>platform</option>`,
+		`href="/ui/platform/config?app=orders" aria-selected="false"`, `href="/ui/platform/config?app=platform" aria-selected="true"`,
 		`id="cfg-table"`, "Search section, property, description...",
 		"Acme &lt;Portal&gt;", "About &lt;b&gt;name&lt;/b&gt;", "Global", "acme",
 		"••••••••", `<dialog id="cfg-reveal"`, `<dialog id="cfg-delete"`,
@@ -431,6 +431,13 @@ func TestConfigSave(t *testing.T) {
 		if got := h.do(t, cfgAdmin(), req{target: "/ui/platform/config/edit?app=platform&section=x&property=y", datastar: true}); !strings.Contains(got, "fc-flash-error") {
 			t.Error("editing a property that is not there should fail")
 		}
+	})
+	t.Run("the add dialog is filled from the address, a secrets property as a SECRET", func(t *testing.T) {
+		h := newCfgHarness()
+		out := h.do(t, cfgAdmin(), req{target: "/ui/platform/config/new?app=platform&section=secrets&property=vendor-pass&client=acme", datastar: true})
+		mustContain(t, out, "Add property", `value="secrets"`, `value="vendor-pass"`, `value="acme"`, `data-signals="{cfgSecret: true}"`)
+		plain := h.do(t, cfgAdmin(), req{target: "/ui/platform/config/new?app=platform&section=branding&property=x", datastar: true})
+		mustContain(t, plain, `data-signals="{cfgSecret: false}"`)
 	})
 	t.Run("native post: redirect with a flash", func(t *testing.T) {
 		h := newCfgHarness()

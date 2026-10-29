@@ -102,6 +102,22 @@ func TestIngestionSettingsPerEnvironmentAgainstPostgres(t *testing.T) {
 		assert.Contains(t, editor, entryContent)
 	}
 	assert.Contains(t, editor, `id="ings-secrets"`)
+
+	// An editor is shown which secrets the settings bind have a value, with a
+	// link to the platform config property that holds each; the add form for
+	// one that is missing, the edit form once it exists. A value is never shown.
+	assert.Contains(t, editor, ">Missing<")
+	assert.Contains(t, editor, `data-testid="ings-secret-link-vendor-pass"`)
+	link := "app=" + p.app.Code + "&amp;client=" + p.client.Identifier + "&amp;property=vendor-pass&amp;section=secrets"
+	assert.Contains(t, editor, "/ui/platform/config/new?"+link)
+	assert.NotContains(t, seen.body, "/ui/platform/config/")
+	_, err = testpg.Pool(t).Exec(ctx, `INSERT INTO app_platform_configs (id, application_code, section, property, scope, client_id, value_type, value, created_at, updated_at)
+		VALUES ($1, $2, 'secrets', 'vendor-pass', 'CLIENT', $3, 'SECRET', 'encrypted:x', now(), now())`, tsid.Generate(tsid.PlatformConfig), p.app.Code, string(p.client.ID))
+	require.NoError(t, err)
+	withValue := p.do(admin, req{target: "/ui/ingestions/" + i.ID, datastar: true}).body
+	assert.NotContains(t, withValue, ">Missing<")
+	assert.Contains(t, withValue, "/ui/platform/config/edit?"+link)
+	assert.Contains(t, withValue, "Change")
 	list := p.do(ingAnchor(ingPermView), req{target: "/ui/ingestions?q=" + code}).body
 	assert.Contains(t, list, code)
 	assert.NotContains(t, list, "sftp.vendor.example")

@@ -11,6 +11,7 @@ import (
 	"github.com/a-h/templ"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -126,7 +127,17 @@ func (h *PlatformConfig) createForm(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	h.showForm(w, r, ac, cfgForm{App: app, Open: true})
+	// The coordinates may come in the address (the ingestion drawer links a
+	// secret it binds that has no value yet); they only fill the form, which
+	// the save judges as it does any other. A secrets-section property is a
+	// SECRET.
+	q := r.URL.Query()
+	f := cfgForm{
+		App: app, Open: true, Section: strings.TrimSpace(q.Get("section")), Property: strings.TrimSpace(q.Get("property")),
+		Client: strings.TrimSpace(q.Get("client")),
+	}
+	f.Secret = f.Section == ingestion.SecretsSection
+	h.showForm(w, r, ac, f)
 }
 
 func (h *PlatformConfig) editForm(w http.ResponseWriter, r *http.Request) {

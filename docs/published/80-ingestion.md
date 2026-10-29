@@ -367,6 +367,8 @@ always reads at the ingestion's own client, with no fall-back to a global value,
 so one client's ingestion cannot read another's. Set the secret for each client
 that needs it before the ingestion runs.
 
+A secret's value is set on the platform configuration page (application = the ingestion's, section `secrets`, property = the name, client = the ingestion's, type SECRET), not through the ingestion. An editor's drawer lists each secret the ingestion binds as Set or Missing, with a link to that property's add or edit form, and resuming an ingestion whose secrets are missing is refused with their names.
+
 **A runtime's fetch is not a config reveal and is not audited per read.** A
 runtime re-reads each secret about once a minute per route, so a fetch is
 recorded as **security telemetry** instead:

@@ -79,15 +79,15 @@ templ cfgPage(v cfgView) {
 		})
 		<div class="fc-card-flush">
 			<form id="cfg-app-form" method="get" action={ cfgPath } class="flex flex-wrap items-center gap-3 px-4 pt-4">
-				@kit.Label(kit.LabelProps{For: "cfg-app"}) {
-					Application
-				}
-				@kit.Select(kit.SelectProps{
-					ID:       "cfg-app",
-					Name:     "app",
-					Options:  v.Apps,
-					Selected: v.App,
-					Attrs:    templ.Attributes{"data-on:change": cfgLiveGet},
+				@kit.SearchSelect(kit.SearchSelectProps{
+					ID:          "cfg-app",
+					Label:       "Application",
+					Options:     v.Apps,
+					Selected:    v.App,
+					Href:        cfgAppHref,
+					Placeholder: "Choose an application",
+					Signal:      "cfgAppSearch",
+					OptionAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
 				})
 			</form>
 			@kit.TableToolbar(v.toolbar())
@@ -153,7 +153,7 @@ templ cfgTable(v cfgView) {
 						}
 					}
 				}
-				@kit.TD(kit.TDProps{Class: "max-w-xs"}) {
+				@kit.TD(kit.TDProps{}) {
 					if row.Secret {
 						<span class="inline-flex items-center gap-1.5 tracking-wider text-muted-foreground">
 							@kit.Icon(kit.IconProps{Name: "lock", Class: "size-3.5"})
@@ -165,12 +165,12 @@ templ cfgTable(v cfgView) {
 							Hidden — needs ingestion:update
 						</span>
 					} else {
-						<code class="font-mono text-[13px] break-all" title={ row.ValueFull }>{ row.Value }</code>
+						<code class="block max-w-[300px] truncate font-mono text-[13px]" title={ row.ValueFull }>{ row.Value }</code>
 					}
 				}
 				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
 					if row.Description != "" {
-						{ row.Description }
+						<span class="block max-w-[300px] truncate" title={ row.Description }>{ row.Description }</span>
 					} else {
 						—
 					}

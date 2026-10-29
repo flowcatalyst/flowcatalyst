@@ -110,8 +110,8 @@ func requireReady(ctx context.Context, repo *ingestion.Repository, i *ingestion.
 	}
 	if len(missing) > 0 {
 		return usecase.Conflict("INGESTION_SECRET_MISSING",
-			fmt.Sprintf("the secrets the ingestion binds are not set for client %s: %s; set them in the application's secrets before resuming",
-				i.ClientID, strings.Join(missing, ", ")))
+			fmt.Sprintf("the secrets the ingestion binds are not set for client %s: %s; set each on the platform config page (application %s, section %s, client %s, type SECRET) before resuming",
+				i.ClientID, strings.Join(missing, ", "), app, ingestion.SecretsSection, i.ClientID))
 	}
 	return nil
 }

@@ -286,7 +286,11 @@ func (h *PlatformConfig) appOptions(ctx context.Context, ac *auth.AuthContext) (
 			}
 		}
 	}
-	slices.Sort(codes)
+	// The picker lists them by name, ignoring case, so the order does not
+	// depend on how the codes are cased.
+	slices.SortFunc(codes, func(a, b string) int {
+		return cmp.Or(strings.Compare(strings.ToLower(a), strings.ToLower(b)), strings.Compare(a, b))
+	})
 	codes = slices.Compact(codes)
 	opts := make([]kit.Option, len(codes))
 	for i, c := range codes {
@@ -342,6 +346,10 @@ func (h *PlatformConfig) toRow(ctx context.Context, ac *auth.AuthContext, c *pla
 }
 
 // cfgNewHref is the add dialog for an application.
+// cfgAppHref is the address of the list for an application (the application
+// picker's options link to it).
+func cfgAppHref(app string) string { return cfgPath + "?app=" + url.QueryEscape(app) }
+
 func cfgNewHref(app string) string { return cfgPath + "/new?app=" + url.QueryEscape(app) }
 
 // cfgQuery addresses one property: the application, section, property and the
