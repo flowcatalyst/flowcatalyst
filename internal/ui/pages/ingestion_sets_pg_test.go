@@ -25,7 +25,7 @@ func (e *uitPG) apply(set string, codes map[string]string) operations.ApplySetRe
 	ctx := e.ctx()
 	var items []ingestion.File
 	for code, queue := range codes {
-		items = append(items, ingestion.File{Application: e.app.Code, Client: e.client.Identifier, Code: code, Active: true, Definition: e.def(queue)})
+		items = append(items, ingestion.File{Application: e.app.Code, Client: e.client.Identifier, Code: code, Active: new(true), Definition: e.def(queue)})
 	}
 	files := []ingestion.SetFile{{Path: "ingest/" + set + ".yaml", Content: "queues: <" + set + ">"}}
 	res, err := usecaseop.RunTx(ctx, e.uow, operations.ApplySet(e.repo, e.resolver, e.archive),

@@ -229,7 +229,7 @@ Errors use the platform envelope with codes in the platform's style (`INGESTION_
 resolves every item (application, client, target, reach, kind permission) and then, per item: **CREATE** when nothing
 has that (application, client, code); **UNCHANGED** when the set owns it and it says the same; **CHANGE** when the set
 owns it and it differs (the definition is saved as the next live version, `applied_from` naming the apply; `active` is
-set from the file, so a pause made since is undone); **ADOPT** when it was made by hand (taken into the set, a new
+set from the file only when the file says it; otherwise a pause or resume made since stays); **ADOPT** when it was made by hand (taken into the set, a new
 version only if it differs). An ingestion owned by another set is a `409 INGESTION_SET_OWNED` and nothing is written.
 **An ingestion the set owns but no longer lists is deleted**, as `DELETE /api/ingestions/{id}` would (versions, leases and
 state go; failure and metric rows are left to retention); it is not deactivated. Any unresolvable item fails the whole
@@ -589,3 +589,18 @@ kind"), and starts by itself once the entry is valid.
 3. An entry is edited only through its ingestion; the generic config surfaces show it read-only.
 4. A source is inline or config, never both.
 5. The key is explicit; `config: true` is the ingestion's code; ingestions of one application and client may share one.
+
+### Rulings (owner, 2026-10-29): enabling
+
+1. `active` in a definition file is true, false or not said. Not said: an ingestion whose source names a config entry
+   is **created paused** (its settings and secrets are set after the apply), any other is created active, and on a
+   later apply the state is left as it is (a pause or resume made since stays, and the plan does not call it a
+   change). Said: enforced on create and every apply, and counted as a change.
+2. **Resume checks readiness**, on every path (`POST /api/ingestions/{id}/resume`, the page, `fcdev ingest resume`):
+   `409 INGESTION_CONFIG_NOT_SET` when the entry the source names is not set (or not valid) for the client, and
+   `409 INGESTION_SECRET_MISSING`, naming the secrets (never values), when a secret the effective definition binds has
+   no value (checked for a source that names an entry; an inline source is not checked). The secret lookup is the runtime's own fetch: the application's `secrets` section, the client's own
+   SECRET value, no global fallback. Pausing is unchanged. An explicit `active: true` in a set apply is the file
+   author's call and is not gated (the CONFIG_MISSING warning covers it).
+3. The order of work for a configured ingestion is: apply (created paused), set the entry, set the secrets, resume.
+4. An exported file keeps writing `active` with the current state, so applying an export back enforces it.

@@ -15,13 +15,15 @@ import (
 // File is an ingestion as a definition file, the form `fcdev ingest apply`
 // reads and `export` writes: the fields the API takes to create one, without
 // what the platform adds (id, versions, times, the set that owns it).
-// Application is a code, Client an id or identifier. Active is true when the
-// file does not say.
+// Application is a code, Client an id or identifier. Active is nil when the
+// file does not say: an apply then creates the ingestion paused when its source
+// names a config entry (its settings and secrets are set after the apply) and
+// active otherwise, and leaves the state of one that exists as it is.
 type File struct {
 	Application string
 	Client      string
 	Code        string
-	Active      bool
+	Active      *bool
 	Definition
 }
 
@@ -32,7 +34,7 @@ func (f *File) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &fields); err != nil || fields == nil {
 		return errors.New("a definition is an object")
 	}
-	*f = File{Active: true}
+	*f = File{}
 	for key, dst := range map[string]any{"application": &f.Application, "client": &f.Client, "code": &f.Code, "active": &f.Active} {
 		raw, ok := fields[key]
 		if !ok {
@@ -61,7 +63,11 @@ func (f File) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return nil, err
 	}
-	for key, value := range map[string]any{"application": f.Application, "client": f.Client, "code": f.Code, "active": f.Active} {
+	identity := map[string]any{"application": f.Application, "client": f.Client, "code": f.Code}
+	if f.Active != nil {
+		identity["active"] = *f.Active
+	}
+	for key, value := range identity {
 		if fields[key], err = json.Marshal(value); err != nil {
 			return nil, err
 		}
@@ -173,7 +179,7 @@ func (f File) YAML() ([]byte, error) {
 		{"client", f.Client, false},
 		{"code", f.Code, false},
 		{"name", f.Name, false},
-		{"active", f.Active, false},
+		{"active", f.Active != nil && *f.Active, f.Active == nil},
 		{"keepFailedPayloads", true, !f.KeepFailedPayloads},
 		{"source", source, false},
 		{"split", f.Split, false},

@@ -2505,7 +2505,7 @@ export type IngestionSetArchiveResponse = {
 
 export type IngestionSetItem = {
     /**
-     * Whether the ingestion runs. Default true; an apply sets it, so a pause made since is undone.
+     * Whether the ingestion runs. When omitted: a new ingestion whose source names a config entry is created paused (set the entry and its secrets, then resume), any other is created active, and one that exists keeps its state, so a pause made since stays. When given, an apply enforces it.
      */
     active?: boolean;
     /**

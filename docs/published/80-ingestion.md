@@ -22,7 +22,7 @@ ingestion = (application, client, code) + source + split + target + flags
 | `application` | The owning application, by code. **Required, and of type `INTEGRATION`.** It carries the permissions, the audit scope and the answer to "who owns this". |
 | `client` | **Required.** A client id (`clt_…`) or identifier. Data that is not one client's goes under a client the business keeps for the purpose; there is no client-less ingestion. |
 | `code` | Stable, lower-case, unique within `(application, client)`. |
-| `name`, `active` | A label, and whether the ingestion runs. `active` is true when a file does not say. |
+| `name`, `active` | A label, and whether the ingestion runs. `active` has three states in a file: `true`, `false`, or not said. When it is not said, an ingestion whose source names a settings entry is created **paused** (its settings and secrets are set after the apply, and resuming checks they are there) and any other is created active; an ingestion that already exists keeps whatever state it is in. When it is said, every apply enforces it. |
 | `keepFailedPayloads` | Off unless the client has agreed. When on, a failure may carry the first 2 KB of the payload that failed. |
 | `source` | Where the data comes from. |
 | `split` | How a payload becomes records. |
@@ -236,7 +236,7 @@ ingestions what the files say. For each definition:
 |---|---|
 | `create` | No ingestion has that `(application, client, code)` |
 | `unchanged` | The set owns it and it says the same |
-| `change` | The set owns it and it differs: saved as the next live version. `active` is set from the file, so a pause made since is undone |
+| `change` | The set owns it and it differs: saved as the next live version. `active` is set from the file only when the file says it; otherwise a pause or resume made since stays |
 | `adopt` | It was made by hand: taken into the set (a new version only if it differs) |
 | `remove` | The set owns it but no longer lists it: **deleted**, with its versions, leases and state |
 
@@ -446,7 +446,7 @@ error is exit code `1`. Refer to an ingestion as `application/client/code` or by
 | `fcdev ingest export <ref>... \| --all [--out dir] [--application A] [--client C]` | Write definition files to `<dir>/<application>/<client>/<code>.yaml` |
 | `fcdev ingest versions <ref>` | List versions, the live one marked |
 | `fcdev ingest live <ref> <version>` | Make a version live |
-| `fcdev ingest pause <ref>`, `resume <ref>` | Stop or start an ingestion |
+| `fcdev ingest pause <ref>`, `resume <ref>` | Stop or start an ingestion. Resume is refused (`409`) while the settings entry the source names is not set (`INGESTION_CONFIG_NOT_SET`) or a secret it binds has no value (`INGESTION_SECRET_MISSING`, naming the secrets) |
 | `fcdev ingest test <ref \| file> [--wait] [--timeout d]` | Queue a test; `--wait` polls and prints the steps |
 | `fcdev ingest config get <ref> [--json]` | Show the settings entry the ingestion's source names: key, status, problems, the value |
 | `fcdev ingest config set <ref> <file.json \| -> [--json]` | Write the entry from a JSON object (a file, or stdin with `-`) |

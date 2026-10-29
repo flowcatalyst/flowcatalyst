@@ -517,7 +517,7 @@ func TestIngestionExportDownloadsTheDefinitionFile(t *testing.T) {
 	if err != nil || len(files) != 1 {
 		t.Fatalf("the file does not parse back: %v (%d files)", err, len(files))
 	}
-	if f := files[0]; f.Application != "orders-sync" || f.Client != "acme" || f.Code != "nightly-feed" || f.Active {
+	if f := files[0]; f.Application != "orders-sync" || f.Client != "acme" || f.Code != "nightly-feed" || f.Active == nil || *f.Active {
 		t.Errorf("file = %+v", f)
 	}
 	// Exporting needs the view permission.

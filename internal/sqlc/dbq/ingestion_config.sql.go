@@ -98,6 +98,41 @@ func (q *Queries) IngestionConfigEntryFind(ctx context.Context, arg IngestionCon
 	return i, err
 }
 
+const ingestionSecretsPresent = `-- name: IngestionSecretsPresent :many
+SELECT property FROM app_platform_configs
+WHERE application_code = $1 AND section = 'secrets' AND scope = 'CLIENT'
+  AND client_id = $2 AND value_type = 'SECRET' AND property = ANY($3::text[])
+`
+
+type IngestionSecretsPresentParams struct {
+	ApplicationCode string        `db:"application_code"`
+	ClientID        *ids.ClientID `db:"client_id"`
+	Names           []string      `db:"names"`
+}
+
+// Which of the named secrets exist as the runtime would fetch them: SECRET
+// values of the application's secrets section at the client, with no global
+// fallback (the same lookup as the runtime's bound-secret fetch).
+func (q *Queries) IngestionSecretsPresent(ctx context.Context, arg IngestionSecretsPresentParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, ingestionSecretsPresent, arg.ApplicationCode, arg.ClientID, arg.Names)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var property string
+		if err := rows.Scan(&property); err != nil {
+			return nil, err
+		}
+		items = append(items, property)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ingestionsNamingConfig = `-- name: IngestionsNamingConfig :many
 SELECT DISTINCT i.id
 FROM ing_ingestions i

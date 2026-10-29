@@ -32,3 +32,11 @@ WHERE i.application_id = @application_id AND i.client_id = @client_id
     OR (v.definition->'source'->'config' = 'true'::jsonb AND i.code = @key::text)
   )
 ORDER BY i.id;
+
+-- Which of the named secrets exist as the runtime would fetch them: SECRET
+-- values of the application's secrets section at the client, with no global
+-- fallback (the same lookup as the runtime's bound-secret fetch).
+-- name: IngestionSecretsPresent :many
+SELECT property FROM app_platform_configs
+WHERE application_code = @application_code AND section = 'secrets' AND scope = 'CLIENT'
+  AND client_id = @client_id AND value_type = 'SECRET' AND property = ANY(@names::text[]);

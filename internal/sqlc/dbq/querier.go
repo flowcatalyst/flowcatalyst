@@ -293,6 +293,10 @@ type Querier interface {
 	// secret, under which live version and principal, and how often. Written on
 	// every successful fetch, by the database's clock.
 	IngestionSecretFetchRecord(ctx context.Context, arg IngestionSecretFetchRecordParams) error
+	// Which of the named secrets exist as the runtime would fetch them: SECRET
+	// values of the application's secrets section at the client, with no global
+	// fallback (the same lookup as the runtime's bound-secret fetch).
+	IngestionSecretsPresent(ctx context.Context, arg IngestionSecretsPresentParams) ([]string, error)
 	IngestionSetApplyFind(ctx context.Context, arg IngestionSetApplyFindParams) (IngSetApply, error)
 	// Forgets the applies beyond the newest @keep of a set, returning where their
 	// archives were kept.

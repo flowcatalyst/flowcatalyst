@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -259,6 +260,26 @@ func (r *Repository) ApplicationCode(ctx context.Context, id ids.ApplicationID) 
 // nil when there is none.
 func (r *Repository) ConfigEntry(ctx context.Context, applicationCode string, clientID ids.ClientID, key string) (*ConfigEntry, error) {
 	return configEntry(ctx, r.q, applicationCode, clientID, key)
+}
+
+// MissingSecrets lists, in name order, those of the named secrets that have no
+// value for the application at the client. It looks where the runtime's fetch
+// of a bound secret looks (the application's secrets section, the client's own
+// SECRET value, no global fallback), so a name reported present is a name the
+// runtime can fetch.
+func (r *Repository) MissingSecrets(ctx context.Context, applicationCode string, clientID ids.ClientID, names []string) ([]string, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	present, err := r.q.IngestionSecretsPresent(ctx, dbq.IngestionSecretsPresentParams{
+		ApplicationCode: applicationCode, ClientID: &clientID, Names: names,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ingestion repo: secrets present: %w", err)
+	}
+	missing := slices.DeleteFunc(slices.Clone(names), func(n string) bool { return slices.Contains(present, n) })
+	slices.Sort(missing)
+	return slices.Compact(missing), nil
 }
 
 func configEntry(ctx context.Context, q *dbq.Queries, applicationCode string, clientID ids.ClientID, key string) (*ConfigEntry, error) {

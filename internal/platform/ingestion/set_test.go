@@ -2,6 +2,7 @@ package ingestion_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,7 +16,7 @@ func TestFileJSONRoundTrip(t *testing.T) {
 	files, err := ingestion.ParseFiles([]byte(sftpFile))
 	require.NoError(t, err)
 	require.Len(t, files, 1)
-	files[0].Active = false
+	files[0].Active = new(false)
 
 	raw, err := json.Marshal(files[0])
 	require.NoError(t, err)
@@ -25,8 +26,21 @@ func TestFileJSONRoundTrip(t *testing.T) {
 	assert.Equal(t, "ingest", back.Application)
 	assert.Equal(t, "acme", back.Client)
 	assert.Equal(t, "orders-sftp", back.Code)
-	assert.False(t, back.Active)
+	require.NotNil(t, back.Active)
+	assert.False(t, *back.Active)
 	assert.True(t, files[0].Equal(back.Definition))
+}
+
+// A file that does not say stays unsaid through the JSON form.
+func TestFileJSONKeepsUnsaidActiveUnsaid(t *testing.T) {
+	files, err := ingestion.ParseFiles([]byte(strings.Replace(sftpFile, "active: true\n", "", 1)))
+	require.NoError(t, err)
+	raw, err := json.Marshal(files[0])
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "active")
+	var back ingestion.File
+	require.NoError(t, json.Unmarshal(raw, &back))
+	assert.Nil(t, back.Active)
 }
 
 func TestSetArchiveEncodeIsContentAddressed(t *testing.T) {

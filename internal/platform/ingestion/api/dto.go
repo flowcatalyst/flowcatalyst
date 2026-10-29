@@ -341,7 +341,7 @@ type IngestionSetItem struct {
 	Application string `json:"application" doc:"Code of the owning application, which must be of type INTEGRATION"`
 	Client      string `json:"client" doc:"The client's id (clt_...) or identifier"`
 	Code        string `json:"code"`
-	Active      *bool  `json:"active,omitempty" doc:"Whether the ingestion runs. Default true; an apply sets it, so a pause made since is undone."`
+	Active      *bool  `json:"active,omitempty" doc:"Whether the ingestion runs. When omitted: a new ingestion whose source names a config entry is created paused (set the entry and its secrets, then resume), any other is created active, and one that exists keeps its state, so a pause made since stays. When given, an apply enforces it."`
 	IngestionDefinition
 }
 
@@ -351,7 +351,7 @@ func (i IngestionSetItem) file() (ingestion.File, error) {
 	if err != nil {
 		return ingestion.File{}, err
 	}
-	return ingestion.File{Application: i.Application, Client: i.Client, Code: i.Code, Active: i.Active == nil || *i.Active, Definition: def}, nil
+	return ingestion.File{Application: i.Application, Client: i.Client, Code: i.Code, Active: i.Active, Definition: def}, nil
 }
 
 func itemOf(f ingestion.File) (IngestionSetItem, error) {
@@ -359,7 +359,7 @@ func itemOf(f ingestion.File) (IngestionSetItem, error) {
 	if err != nil {
 		return IngestionSetItem{}, err
 	}
-	return IngestionSetItem{Application: f.Application, Client: f.Client, Code: f.Code, Active: &f.Active, IngestionDefinition: def}, nil
+	return IngestionSetItem{Application: f.Application, Client: f.Client, Code: f.Code, Active: f.Active, IngestionDefinition: def}, nil
 }
 
 // ApplyIngestionSetRequest is the wire body for PUT /api/ingestion-sets/{name}:

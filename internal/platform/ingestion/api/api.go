@@ -492,7 +492,7 @@ func (s *State) definition(ctx context.Context, in *apicommon.IDInput) (*definit
 		return nil, usecase.Internal("REPO", "client lookup failed", err)
 	}
 	// The client is written by identifier, which ports between environments.
-	file := ingestion.File{Application: app.Code, Client: c.Identifier, Code: i.Code, Active: i.Active, Definition: i.Definition}
+	file := ingestion.File{Application: app.Code, Client: c.Identifier, Code: i.Code, Active: &i.Active, Definition: i.Definition}
 	yaml, err := file.YAML()
 	if err != nil {
 		return nil, usecase.Internal("MARSHAL", "definition does not render", err)

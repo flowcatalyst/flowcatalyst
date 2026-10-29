@@ -320,7 +320,8 @@ func (p *planned) decide(ctx context.Context, repo *ingestion.Repository, set *i
 			fmt.Sprintf("ingestion %s is owned by set %s; release that set first", i.Code, name))
 	}
 	p.change.Changed = i.Definition.ChangedFields(p.file.Definition)
-	if i.Active != p.file.Active {
+	// A file that does not say keeps whatever a pause or resume since made.
+	if p.file.Active != nil && i.Active != *p.file.Active {
 		p.change.Changed = append(p.change.Changed, "active")
 	}
 	// A draft (nothing live) is not what the file says even when it reads the same.
@@ -336,6 +337,17 @@ func (p *planned) decide(ctx context.Context, repo *ingestion.Repository, set *i
 		p.change.Action = ingestion.SetChanged
 	}
 	return nil
+}
+
+// createActive is whether the ingestion is created running. A file that says
+// so decides; one that does not leaves a source that names a config entry
+// paused, since its settings and secrets are set after the apply and resuming
+// then checks they are there (owner ruling 2026-10-29).
+func (p *planned) createActive() bool {
+	if p.file.Active != nil {
+		return *p.file.Active
+	}
+	return ingestion.ConfigKeyOf(p.file.Definition, p.file.Code) == ""
 }
 
 // planRemovals finds what the set owns but the items no longer list.
@@ -380,7 +392,7 @@ func writeItem(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, repo *inge
 		return nil
 	case ingestion.SetCreate:
 		i := ingestion.New(p.app.ID, p.client.ID, p.file.Code, p.file.Definition, true, nil, by)
-		if !p.file.Active {
+		if !p.createActive() {
 			i.Pause()
 		}
 		i.TakeInto(setID, applyID)
@@ -401,10 +413,12 @@ func writeItem(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, repo *inge
 	if i.Version == 0 || len(i.Definition.ChangedFields(p.file.Definition)) > 0 {
 		i.SaveVersion(p.file.Definition, true, nil, by)
 	}
-	if p.file.Active {
-		i.Resume()
-	} else {
-		i.Pause()
+	if p.file.Active != nil {
+		if *p.file.Active {
+			i.Resume()
+		} else {
+			i.Pause()
+		}
 	}
 	wasOwned := i.ManagedBy != nil
 	i.TakeInto(setID, applyID)

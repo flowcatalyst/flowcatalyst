@@ -45,7 +45,8 @@ func TestYAMLRoundTripKeepsEveryFile(t *testing.T) {
 	assert.Equal(t, "ingest", f.Application)
 	assert.Equal(t, "acme", f.Client)
 	assert.Equal(t, "orders-sftp", f.Code)
-	assert.True(t, f.Active)
+	require.NotNil(t, f.Active)
+	assert.True(t, *f.Active)
 	assert.Empty(t, f.Validate())
 
 	out, err := f.YAML()
@@ -61,7 +62,7 @@ func TestYAMLRoundTripOfEverySourceKind(t *testing.T) {
 	for _, c := range sourceCases {
 		t.Run(c.name, func(t *testing.T) {
 			d := parse(t, definition(c.source, c.split))
-			f := ingestion.File{Application: "ingest", Client: "acme", Code: "x", Active: true, Definition: d}
+			f := ingestion.File{Application: "ingest", Client: "acme", Code: "x", Active: new(true), Definition: d}
 			out, err := f.YAML()
 			require.NoError(t, err)
 
@@ -76,7 +77,7 @@ func TestYAMLRoundTripOfEverySourceKind(t *testing.T) {
 
 func TestExtensionSourceIsWrittenFlat(t *testing.T) {
 	d := parse(t, definition(`{"kind":"custom","type":"camel-route","settings":{"yaml":"from:\n  uri: timer:tick\n"}}`, `{"kind":"none"}`))
-	f := ingestion.File{Application: "ingest", Client: "acme", Code: "tick", Active: true, Definition: d}
+	f := ingestion.File{Application: "ingest", Client: "acme", Code: "tick", Active: new(true), Definition: d}
 	out, err := f.YAML()
 	require.NoError(t, err)
 	text := string(out)
@@ -115,9 +116,19 @@ func TestFileDefaultsAndMultipleDocuments(t *testing.T) {
 	files, err := ingestion.ParseFiles([]byte(doc))
 	require.NoError(t, err)
 	require.Len(t, files, 2)
-	assert.True(t, files[0].Active, "active is true when the file does not say")
-	assert.False(t, files[1].Active)
+	assert.Nil(t, files[0].Active, "active is unsaid when the file does not say")
+	require.NotNil(t, files[1].Active)
+	assert.False(t, *files[1].Active)
 	assert.Equal(t, "orders-two", files[1].Code)
+}
+
+func TestYAMLLeavesUnsaidActiveOut(t *testing.T) {
+	unsaid := strings.Replace(sftpFile, "active: true\n", "", 1)
+	files, err := ingestion.ParseFiles([]byte(unsaid))
+	require.NoError(t, err)
+	out, err := files[0].YAML()
+	require.NoError(t, err)
+	assert.Equal(t, unsaid, string(out), "a file that does not say active is written without it")
 }
 
 func TestKeepFailedPayloadsIsWrittenOnlyWhenOn(t *testing.T) {

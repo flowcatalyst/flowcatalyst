@@ -54,6 +54,8 @@ type ingestPlatform struct {
 	outcome   string
 	// configHidden answers the config GET as to a viewer who cannot update.
 	configHidden bool
+	// resumeRefusal, when set, is the platform's problem answered to a resume.
+	resumeRefusal string
 }
 
 func newIngestPlatform(t *testing.T) *ingestPlatform {
@@ -87,6 +89,11 @@ func newIngestPlatform(t *testing.T) *ingestPlatform {
 		case "GET /api/ingestions/ing_1/versions":
 			_, _ = w.Write([]byte(`{"versions":[{"id":"v","version":3,"live":false,"createdAt":"2026-10-24T10:00:00Z","createdBy":"prn_A","note":"tweak","name":"n"},{"id":"w","version":2,"live":true,"createdAt":"2026-10-23T10:00:00Z","createdBy":"prn_A","name":"n"}]}`))
 		case "POST /api/ingestions/ing_1/pause", "POST /api/ingestions/ing_1/resume", "POST /api/ingestions/ing_1/versions/3/live":
+			if key == "POST /api/ingestions/ing_1/resume" && p.resumeRefusal != "" {
+				w.WriteHeader(http.StatusConflict)
+				_, _ = fmt.Fprintf(w, `{"error":"INGESTION_SECRET_MISSING","message":%q}`, p.resumeRefusal)
+				return
+			}
 			_, _ = w.Write([]byte(strings.Replace(ingestRowJSON, `"ACTIVE"`, `"PAUSED"`, 1)))
 		case "PUT /api/ingestion-sets/orders", "POST /api/ingestion-sets/orders/applies/ap_1/reapply":
 			dry := r.URL.Query().Get("dryRun") == "true"
@@ -362,6 +369,16 @@ func TestIngestVersionsLivePauseResume(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(out), &row))
 	require.Equal(t, "ing_1", row["id"])
 	require.Equal(t, 1, countReq(p, "POST /api/ingestions/ing_1/pause"))
+	require.Equal(t, 1, countReq(p, "POST /api/ingestions/ing_1/resume"))
+}
+
+func TestIngestResumeRefusedShowsThePlatformsProblem(t *testing.T) {
+	newFnTestEnv(t)
+	p := newIngestPlatform(t)
+	p.resumeRefusal = "the secrets the ingestion binds are not set for client clt_1: orders-password"
+	_, _, err := runCobra(t, newIngestResumeCmd(), "", append([]string{"ingest/acme/orders-sftp"}, p.flags()...)...)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "orders-password")
 	require.Equal(t, 1, countReq(p, "POST /api/ingestions/ing_1/resume"))
 }
 

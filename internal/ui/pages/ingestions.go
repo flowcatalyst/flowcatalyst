@@ -815,7 +815,7 @@ func (h *Ingestions) buildDetail(ctx context.Context, ac *auth.AuthContext, i *i
 	d.CanRemove = perms.Delete && i.ManagedBy == nil
 	d.CanLive = perms.Promote && i.ManagedBy == nil
 	file := func(def ingestion.Definition) (string, error) {
-		y, err := ingestion.File{Application: app.Code, Client: clientIdentifier, Code: i.Code, Active: i.Active, Definition: def}.YAML()
+		y, err := ingestion.File{Application: app.Code, Client: clientIdentifier, Code: i.Code, Active: &i.Active, Definition: def}.YAML()
 		if err != nil {
 			return "", usecase.Internal("MARSHAL", "definition does not render", err)
 		}
@@ -1067,7 +1067,7 @@ func (h *Ingestions) export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The client is written by identifier, which ports between environments.
-	yaml, err := ingestion.File{Application: app.Code, Client: clientIdentifier, Code: i.Code, Active: i.Active, Definition: i.Definition}.YAML()
+	yaml, err := ingestion.File{Application: app.Code, Client: clientIdentifier, Code: i.Code, Active: &i.Active, Definition: i.Definition}.YAML()
 	if err != nil {
 		h.Shell.Fail(w, r, usecase.Internal("MARSHAL", "definition does not render", err))
 		return
