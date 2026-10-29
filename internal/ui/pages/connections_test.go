@@ -79,6 +79,16 @@ func (fakeSAs) FindAll(context.Context) ([]serviceaccount.ServiceAccount, error)
 	return []serviceaccount.ServiceAccount{{ID: "sa_1", Code: "orders-svc", Name: "Orders <service>"}}, nil
 }
 
+func (s fakeSAs) FindByID(ctx context.Context, id string) (*serviceaccount.ServiceAccount, error) {
+	all, _ := s.FindAll(ctx)
+	for i := range all {
+		if all[i].ID == id {
+			return &all[i], nil
+		}
+	}
+	return nil, nil
+}
+
 func conn(id, code, name string, status connection.Status, client string) connection.Connection {
 	day := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 	c := connection.Connection{ID: id, Code: code, Name: name, Status: status, ServiceAccountID: "sa_1", Source: connection.SourceUI, CreatedAt: day, UpdatedAt: day}
@@ -208,9 +218,13 @@ func TestConnectionsDrawer(t *testing.T) {
 	h := newConnHarness()
 	body := h.do(t, anchorAdmin(), req{target: "/ui/connections/con_1", datastar: true})
 	mustContain(t, body, "data: selector #conn-drawer\n", "Connection Details", "Primary &lt;b&gt;hook&lt;/b&gt;",
-		"<code>ext-42</code>", "Service Account", "sa_1", "Anchor-level (no client)",
+		"<code>ext-42</code>", "Service Account", `href="/ui/service-accounts/sa_1"`, "Orders &lt;service&gt;", "(orders-svc)", "Anchor-level (no client)",
 		"Pause Connection", "Delete Connection", `"selConn":"con_1"`, `href="/ui/connections/con_1/edit"`)
 	mustNotContain(t, body, "Activate Connection")
+	// Without the service-account read permission the id shows, unlinked.
+	viewer := h.do(t, connUser("platform:messaging:connection:view"), req{target: "/ui/connections/con_1", datastar: true})
+	mustContain(t, viewer, "<code>sa_1</code>")
+	mustNotContain(t, viewer, `href="/ui/service-accounts/`)
 	paused := h.do(t, anchorAdmin(), req{target: "/ui/connections/con_2", datastar: true})
 	mustContain(t, paused, "Activate Connection", ">acme<")
 }

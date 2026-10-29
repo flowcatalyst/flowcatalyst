@@ -8,6 +8,8 @@ import {
 	type Subscription,
 	type SubscriptionMode,
 } from "@/api/subscriptions";
+import { connectionsApi, type Connection } from "@/api/connections";
+import { serviceAccountsApi, type ServiceAccount } from "@/api/service-accounts";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
 import { useDirtyForm } from "@/composables/useDirtyForm";
@@ -84,11 +86,51 @@ async function loadSubscription(subscriptionId: string) {
 	loadError.value = null;
 	try {
 		subscription.value = await subscriptionsApi.get(subscriptionId);
+		void loadRefs(subscription.value);
 	} catch {
 		subscription.value = null;
 		loadError.value = "Subscription not found";
 	} finally {
 		loading.value = false;
+	}
+}
+
+// The connection and the service account that signs deliveries
+// (internal/server/delivery_creds.go: the subscription's own account if
+// named, else the connection's). Best effort: a user who may view
+// subscriptions may not view connections or service accounts; then the
+// bare ids show.
+const connection = ref<Connection | null>(null);
+const signer = ref<ServiceAccount | null>(null);
+const signerId = computed(
+	() => subscription.value?.serviceAccountId || connection.value?.serviceAccountId || null,
+);
+// False when the signer is the connection's and the connection can't be read.
+const signerKnown = computed(
+	() =>
+		!!subscription.value?.serviceAccountId ||
+		!subscription.value?.connectionId ||
+		!!connection.value,
+);
+const signerSource = computed(() =>
+	subscription.value?.serviceAccountId ? "set on this subscription" : "from the connection",
+);
+async function loadRefs(sub: Subscription) {
+	connection.value = null;
+	signer.value = null;
+	try {
+		if (sub.connectionId) {
+			const c = await connectionsApi.get(sub.connectionId);
+			if (subscription.value?.id !== sub.id) return;
+			connection.value = c;
+		}
+		const saId = sub.serviceAccountId || connection.value?.serviceAccountId;
+		if (saId) {
+			const sa = await serviceAccountsApi.get(saId);
+			if (subscription.value?.id === sub.id) signer.value = sa;
+		}
+	} catch {
+		// Not visible to this user, or gone: keep the bare ids.
 	}
 }
 
@@ -358,7 +400,23 @@ function getScopeLabel(sub: Subscription) {
               <code class="endpoint-url">{{ subscription.endpoint }}</code>
             </FcDetailField>
             <FcDetailField v-if="subscription.connectionId" label="Connection" span>
-              <code>{{ subscription.connectionId }}</code>
+              <span v-if="connection">
+                <RouterLink :to="`/connections/${connection.id}`" class="row-link">{{ connection.name }}</RouterLink>
+                <code> ({{ connection.code }})</code>
+              </span>
+              <code v-else>{{ subscription.connectionId }}</code>
+            </FcDetailField>
+            <FcDetailField v-if="signerKnown" label="Service Account" span>
+              <template v-if="signerId">
+                <span v-if="signer">
+                  <RouterLink :to="`/identity/service-accounts/${signer.id}`" class="row-link">{{ signer.name }}</RouterLink>
+                  <code> ({{ signer.code }})</code>
+                  <Tag v-if="!signer.active" value="INACTIVE" severity="danger" class="ml-2" />
+                </span>
+                <code v-else>{{ signerId }}</code>
+                <small class="text-muted"> signs deliveries, {{ signerSource }}</small>
+              </template>
+              <span v-else class="text-muted">None: deliveries fall back to the application's service account</span>
             </FcDetailField>
             <FcDetailField label="Queue">
               <code>{{ subscription.queue }}</code>
@@ -450,6 +508,10 @@ function getScopeLabel(sub: Subscription) {
 </template>
 
 <style scoped>
+.row-link { color: var(--primary-color); }
+.text-muted { color: var(--text-color-secondary); }
+.ml-2 { margin-left: 0.5rem; }
+
 .endpoint-url {
   font-size: 13px;
   word-break: break-all;

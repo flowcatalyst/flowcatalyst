@@ -186,7 +186,9 @@ templ connDrawerBody(d connDetail) {
 					<code>{ d.ExternalID }</code>
 				}
 			}
-			@kit.DetailField(kit.DetailFieldProps{Label: "Service Account", Value: d.ServiceAccount})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Service Account"}) {
+				@saRefView(d.ServiceAccount)
+			}
 			@kit.DetailField(kit.DetailFieldProps{Label: "Scope", Value: d.Scope})
 			@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
 				@poolStatusBadge(d.Status, d.StatusVariant)
@@ -316,5 +318,20 @@ templ connField(f connForm, key string) {
 					DescribedBy: f.describedBy(key),
 				})
 			}
+	}
+}
+
+// saRefView links a service account by name and code, or shows its id.
+templ saRefView(r saRef) {
+	if r.Href != "" {
+		<a href={ templ.SafeURL(r.Href) } class="text-primary">{ r.Name }</a>
+		<code>({ r.Code })</code>
+		if r.Inactive {
+			@kit.Badge(kit.BadgeProps{Variant: kit.BadgeDestructive}) {
+				INACTIVE
+			}
+		}
+	} else {
+		<code>{ r.ID }</code>
 	}
 }

@@ -4,6 +4,7 @@ import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useConfirm } from "primevue/useconfirm";
 import { connectionsApi, type Connection } from "@/api/connections";
+import { serviceAccountsApi, type ServiceAccount } from "@/api/service-accounts";
 import EntityDrawer from "@/components/drawer/EntityDrawer.vue";
 import { useDrawerRoute } from "@/composables/useDrawerRoute";
 import { useDirtyForm } from "@/composables/useDirtyForm";
@@ -59,11 +60,25 @@ async function loadConnection(connectionId: string) {
 	loadError.value = null;
 	try {
 		connection.value = await connectionsApi.get(connectionId);
+		void loadServiceAccount(connection.value);
 	} catch {
 		connection.value = null;
 		loadError.value = "Connection not found";
 	} finally {
 		loading.value = false;
+	}
+}
+
+// Name and link for the service account. Best effort: a user who may view
+// connections may not view service accounts; then the bare id shows.
+const serviceAccount = ref<ServiceAccount | null>(null);
+async function loadServiceAccount(c: Connection) {
+	serviceAccount.value = null;
+	try {
+		const sa = await serviceAccountsApi.get(c.serviceAccountId);
+		if (connection.value?.id === c.id) serviceAccount.value = sa;
+	} catch {
+		// Not visible to this user, or gone: keep the bare id.
 	}
 }
 
@@ -256,7 +271,13 @@ function getScopeLabel(conn: Connection) {
             <FcDetailField v-if="connection.externalId" label="External ID">
               <code>{{ connection.externalId }}</code>
             </FcDetailField>
-            <FcDetailField label="Service Account" :value="connection.serviceAccountId" />
+            <FcDetailField label="Service Account">
+              <span v-if="serviceAccount">
+                <RouterLink :to="`/identity/service-accounts/${serviceAccount.id}`" class="row-link">{{ serviceAccount.name }}</RouterLink>
+                <code> ({{ serviceAccount.code }})</code>
+              </span>
+              <code v-else>{{ connection.serviceAccountId }}</code>
+            </FcDetailField>
             <FcDetailField label="Scope" :value="getScopeLabel(connection)" />
             <FcDetailField label="Status">
               <Tag
@@ -322,6 +343,8 @@ function getScopeLabel(conn: Connection) {
 </template>
 
 <style scoped>
+.row-link { color: var(--primary-color); }
+
 .action-items {
   display: flex;
   flex-direction: column;

@@ -18,9 +18,11 @@ import (
 )
 
 // ServiceAccountDirectory lists the service accounts a connection can use
-// (the SPA's serviceAccountsApi.list(): GET /api/service-accounts).
+// (the SPA's serviceAccountsApi.list(): GET /api/service-accounts) and reads
+// one for a drawer that names it (GET /api/service-accounts/{id}).
 type ServiceAccountDirectory interface {
 	FindAll(ctx context.Context) ([]serviceaccount.ServiceAccount, error)
+	FindByID(ctx context.Context, id string) (*serviceaccount.ServiceAccount, error)
 }
 
 const (
@@ -180,7 +182,7 @@ func (h *Connections) create(w http.ResponseWriter, r *http.Request) {
 	h.afterChange(sse, r, ac, newID, false)
 	if c, err := h.loadConnection(ctx, ac, newID); err != nil {
 		h.Shell.FailSSE(sse, r, err)
-	} else if err := openConnDrawer(sse, toConnDetail(c, connPermsFor(ac))); err != nil {
+	} else if err := openConnDrawer(sse, h.connDetail(ctx, ac, c)); err != nil {
 		slog.DebugContext(ctx, "ui: connection drawer patch not delivered", "err", err)
 	}
 	if err := flashKey(sse, flashConnCreated); err != nil {

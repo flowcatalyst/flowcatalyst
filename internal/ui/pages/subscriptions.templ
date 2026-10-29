@@ -186,7 +186,22 @@ templ subDrawerBody(d subDetail) {
 			}
 			if d.Connection != "" {
 				@kit.DetailField(kit.DetailFieldProps{Label: "Connection", Span: true}) {
-					<code>{ d.Connection }</code>
+					if d.ConnectionHref != "" {
+						<a href={ templ.SafeURL(d.ConnectionHref) } class="text-primary">{ d.ConnectionName }</a>
+						<code>({ d.ConnectionCode })</code>
+					} else {
+						<code>{ d.Connection }</code>
+					}
+				}
+			}
+			if d.SignerKnown {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Service Account", Span: true}) {
+					if d.Signer.ID != "" {
+						@saRefView(d.Signer)
+						<span class="text-sm text-muted-foreground">signs deliveries, { d.SignerSource }</span>
+					} else {
+						<span class="text-muted-foreground">None: deliveries fall back to the application's service account</span>
+					}
 				}
 			}
 			@kit.DetailField(kit.DetailFieldProps{Label: "Queue"}) {

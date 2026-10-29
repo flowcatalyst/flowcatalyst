@@ -213,6 +213,16 @@ func (fakeFnSAs) FindAll(context.Context) ([]serviceaccount.ServiceAccount, erro
 	}, nil
 }
 
+func (s fakeFnSAs) FindByID(ctx context.Context, id string) (*serviceaccount.ServiceAccount, error) {
+	all, _ := s.FindAll(ctx)
+	for i := range all {
+		if all[i].ID == id {
+			return &all[i], nil
+		}
+	}
+	return nil, nil
+}
+
 // ── fixtures ───────────────────────────────────────────────────────────
 
 const fnsDescribeJSON = `{

@@ -111,7 +111,7 @@ func newSubHarness() *subHarness {
 
 func (h *subHarness) rec(t *testing.T, ac *auth.AuthContext, q req) *httptest.ResponseRecorder {
 	t.Helper()
-	page := &Subscriptions{Subs: h.subs, Ops: h.ops, Pools: fixturePools(), Connections: newConnHarness().conns, EventTypes: h.ets, Apps: fakeApps{}, Clients: someClients(), Shell: shellForTest()}
+	page := &Subscriptions{Subs: h.subs, Ops: h.ops, Pools: fixturePools(), Connections: newConnHarness().conns, ServiceAccounts: fakeSAs{}, EventTypes: h.ets, Apps: fakeApps{}, Clients: someClients(), Shell: shellForTest()}
 	return serveMounted(t, ac, q, page)
 }
 
@@ -180,6 +180,40 @@ func TestSubscriptionDrawerAndActions(t *testing.T) {
 	if got := strings.Join(h.ops.actions, ","); got != "pause:sub_1,resume:sub_2,delete:sub_1" {
 		t.Errorf("actions = %s", got)
 	}
+}
+
+// The drawer names the connection and the service account that signs
+// deliveries: the subscription's own account if set, else the connection's.
+func TestSubscriptionDrawerSigner(t *testing.T) {
+	h := newSubHarness()
+	viaConn := sub("sub_c", "via-conn", "Via connection", subscription.StatusActive, "", "")
+	own := sub("sub_o", "own-sa", "Own account", subscription.StatusActive, "", "")
+	cid, ghost := "con_1", "sa_gone"
+	viaConn.ConnectionID, own.ConnectionID, own.ServiceAccountID = &cid, &cid, &ghost
+	h.subs.subs = append(h.subs.subs, viaConn, own)
+
+	body := h.do(t, anchorAdmin(), req{target: "/ui/subscriptions/sub_c", datastar: true})
+	mustContain(t, body, `href="/ui/connections/con_1"`, ">Webhooks</a>", "(hooks)",
+		`href="/ui/service-accounts/sa_1"`, "Orders &lt;service&gt;", "(orders-svc)", "INACTIVE", "signs deliveries, from the connection")
+
+	// A named account no one can find shows its id; it is still the signer.
+	body = h.do(t, anchorAdmin(), req{target: "/ui/subscriptions/sub_o", datastar: true})
+	mustContain(t, body, "<code>sa_gone</code>", "signs deliveries, set on this subscription")
+	mustNotContain(t, body, `href="/ui/service-accounts/`)
+
+	mustContain(t, h.do(t, anchorAdmin(), req{target: "/ui/subscriptions/sub_1", datastar: true}),
+		"None: deliveries fall back to the application's service account")
+
+	// Without the connection read permission: the bare connection id, and no
+	// guess at the signer.
+	body = h.do(t, connUser(subViewPerm), req{target: "/ui/subscriptions/sub_c", datastar: true})
+	mustContain(t, body, "<code>con_1</code>")
+	mustNotContain(t, body, `href="/ui/connections/con_1"`, "Service Account", "None:")
+
+	// Connection readable, service accounts not: the account's id.
+	body = h.do(t, connUser(subViewPerm, "platform:messaging:connection:view"), req{target: "/ui/subscriptions/sub_c", datastar: true})
+	mustContain(t, body, `href="/ui/connections/con_1"`, "<code>sa_1</code>", "from the connection")
+	mustNotContain(t, body, `href="/ui/service-accounts/`)
 }
 
 func subCreateForm(kv ...string) url.Values {

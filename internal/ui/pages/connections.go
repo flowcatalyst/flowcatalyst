@@ -261,7 +261,8 @@ func connID(r *http.Request) (string, error) {
 
 type connDetail struct {
 	ID, Code, Name, Description, ExternalID string
-	ServiceAccount, Scope                   string
+	ServiceAccount                          saRef
+	Scope                                   string
 	Status                                  string
 	RawStatus                               connection.Status
 	StatusVariant                           kit.BadgeVariant
@@ -273,8 +274,7 @@ type connDetail struct {
 func toConnDetail(c *connection.Connection, perms connPerms) connDetail {
 	d := connDetail{
 		ID: c.ID, Code: c.Code, Name: c.Name, Description: deref(c.Description), ExternalID: deref(c.ExternalID),
-		// The SPA shows the service account's id.
-		ServiceAccount: c.ServiceAccountID,
+		ServiceAccount: saRef{ID: c.ServiceAccountID},
 		Scope:          "Anchor-level (no client)",
 		Status:         string(c.Status), RawStatus: c.Status, StatusVariant: connStatusVariant(c.Status),
 		Created:  c.CreatedAt.UTC().Format("2006-01-02 15:04:05 UTC"),
@@ -310,6 +310,38 @@ func (h *Connections) loadConnection(ctx context.Context, ac *auth.AuthContext, 
 	return c, nil
 }
 
+// connDetail is toConnDetail with the service account named (resolveSA).
+func (h *Connections) connDetail(ctx context.Context, ac *auth.AuthContext, c *connection.Connection) connDetail {
+	d := toConnDetail(c, connPermsFor(ac))
+	d.ServiceAccount = resolveSA(ctx, h.ServiceAccounts, ac, c.ServiceAccountID)
+	return d
+}
+
+// saRef is a service account as a drawer shows it: name and code linked to
+// its drawer, or only the id when the viewer may not read service accounts
+// (or it is gone), as the SPA's drawers fall back.
+type saRef struct {
+	ID, Name, Code, Href string
+	Inactive             bool
+}
+
+func resolveSA(ctx context.Context, dir ServiceAccountDirectory, ac *auth.AuthContext, id string) saRef {
+	ref := saRef{ID: id}
+	if id == "" || dir == nil || auth.CanReadServiceAccounts(ac) != nil {
+		return ref
+	}
+	sa, err := dir.FindByID(ctx, id)
+	if err != nil {
+		slog.DebugContext(ctx, "ui: service account not resolved", "id", id, "err", err)
+		return ref
+	}
+	if sa == nil {
+		return ref
+	}
+	ref.Name, ref.Code, ref.Href, ref.Inactive = sa.Name, sa.Code, saURL(sa.ID), !sa.Active
+	return ref
+}
+
 func (h *Connections) detail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
@@ -327,7 +359,7 @@ func (h *Connections) detail(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	d := toConnDetail(c, connPermsFor(ac))
+	d := h.connDetail(ctx, ac, c)
 	if ds.IsDatastar(r) {
 		if err := openConnDrawer(ds.NewSSE(w, r), d); err != nil {
 			slog.DebugContext(ctx, "ui: connection drawer patch not delivered", "err", err)
@@ -431,7 +463,7 @@ func (h *Connections) afterChange(sse *ds.SSE, r *http.Request, ac *auth.AuthCon
 		h.Shell.FailSSE(sse, r, err)
 		return
 	}
-	if err := sse.Patch(connDrawerContent(toConnDetail(c, connPermsFor(ac))), ds.Inner("#"+connDrawerID)); err != nil {
+	if err := sse.Patch(connDrawerContent(h.connDetail(ctx, ac, c)), ds.Inner("#"+connDrawerID)); err != nil {
 		slog.DebugContext(ctx, "ui: connection drawer patch not delivered", "err", err)
 	}
 }

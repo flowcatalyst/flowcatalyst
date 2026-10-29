@@ -17,6 +17,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
@@ -43,7 +44,10 @@ type Subscriptions struct {
 	Ops         SubscriptionCommands
 	Pools       PoolStore
 	Connections ConnectionStore
-	EventTypes  EventTypeStore
+	// ServiceAccounts names the account that signs deliveries in the
+	// drawer; nil shows its id.
+	ServiceAccounts ServiceAccountDirectory
+	EventTypes      EventTypeStore
 	Apps        EventTypeApps
 	Clients     ClientDirectory
 	Shell       *shell.Shell
@@ -350,6 +354,17 @@ type subDetail struct {
 	ID, Code, Name, Description string
 	Scope, Source, Endpoint     string
 	Connection, Queue, Pool     string
+	// ConnectionName, ConnectionCode and ConnectionHref are set when the
+	// viewer may read the connection; otherwise Connection's id shows.
+	ConnectionName, ConnectionCode, ConnectionHref string
+	// Signer is the service account that signs deliveries
+	// (internal/server/delivery_creds.go): the subscription's own account if
+	// named, else the connection's. SignerSource says which; SignerKnown is
+	// false when the signer is the connection's and the connection can't be
+	// read.
+	Signer       saRef
+	SignerSource string
+	SignerKnown  bool
 	Mode                        string
 	MaxAge, Delay, Timeout      string
 	Sequence                    string
@@ -377,6 +392,36 @@ func toSubDetail(s *subscription.Subscription, perms subPerms) subDetail {
 	}
 	for _, b := range s.EventTypes {
 		d.Bindings = append(d.Bindings, subBinding{Code: b.EventTypeCode, Version: deref(b.SpecVersion)})
+	}
+	return d
+}
+
+// subDetail is toSubDetail with the connection and the signing service
+// account named, as the SPA's drawer does. Each is read with its own read
+// permission (and the connection with its client check); otherwise the ids
+// show.
+func (h *Subscriptions) subDetail(ctx context.Context, ac *auth.AuthContext, s *subscription.Subscription) subDetail {
+	d := toSubDetail(s, subPermsFor(ac))
+	var conn *connection.Connection
+	if s.ConnectionID != nil && h.Connections != nil && auth.CanReadConnections(ac) == nil {
+		c, err := h.Connections.FindByID(ctx, *s.ConnectionID)
+		switch {
+		case err != nil:
+			slog.DebugContext(ctx, "ui: subscription connection not resolved", "id", *s.ConnectionID, "err", err)
+		case c != nil && (c.ClientID == nil || ac.CanAccessClient(string(*c.ClientID))):
+			conn = c
+			d.ConnectionName, d.ConnectionCode, d.ConnectionHref = c.Name, c.Code, connURL(c.ID)
+		}
+	}
+	switch {
+	case deref(s.ServiceAccountID) != "":
+		d.Signer = resolveSA(ctx, h.ServiceAccounts, ac, *s.ServiceAccountID)
+		d.SignerSource, d.SignerKnown = "set on this subscription", true
+	case conn != nil:
+		d.Signer = resolveSA(ctx, h.ServiceAccounts, ac, conn.ServiceAccountID)
+		d.SignerSource, d.SignerKnown = "from the connection", true
+	case s.ConnectionID == nil:
+		d.SignerKnown = true // none named: the application's account signs
 	}
 	return d
 }
@@ -424,7 +469,7 @@ func (h *Subscriptions) detail(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	d := toSubDetail(s, subPermsFor(ac))
+	d := h.subDetail(ctx, ac, s)
 	if ds.IsDatastar(r) {
 		if err := openSubDrawer(ds.NewSSE(w, r), d); err != nil {
 			slog.DebugContext(ctx, "ui: subscription drawer patch not delivered", "err", err)
@@ -524,7 +569,7 @@ func (h *Subscriptions) afterChange(sse *ds.SSE, r *http.Request, ac *auth.AuthC
 		h.Shell.FailSSE(sse, r, err)
 		return
 	}
-	if err := sse.Patch(subDrawerContent(toSubDetail(s, subPermsFor(ac))), ds.Inner("#"+subDrawerID)); err != nil {
+	if err := sse.Patch(subDrawerContent(h.subDetail(ctx, ac, s)), ds.Inner("#"+subDrawerID)); err != nil {
 		slog.DebugContext(ctx, "ui: subscription drawer patch not delivered", "err", err)
 	}
 }

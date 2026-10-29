@@ -240,7 +240,7 @@ func (h *Subscriptions) create(w http.ResponseWriter, r *http.Request) {
 	h.afterChange(sse, r, ac, newID, false)
 	if s, err := h.loadSubscription(ctx, ac, newID); err != nil {
 		h.Shell.FailSSE(sse, r, err)
-	} else if err := openSubDrawer(sse, toSubDetail(s, subPermsFor(ac))); err != nil {
+	} else if err := openSubDrawer(sse, h.subDetail(ctx, ac, s)); err != nil {
 		slog.DebugContext(ctx, "ui: subscription drawer patch not delivered", "err", err)
 	}
 	if err := flashKey(sse, flashSubCreated); err != nil {
