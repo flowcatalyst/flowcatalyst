@@ -2,7 +2,7 @@
 	"name": "@flowcatalyst/platform-frontend",
 	"version": "0.0.1",
 	"type": "module",
-	"packageManager": "pnpm@10.27.0",
+	"packageManager": "pnpm@12.16.1",
 	"scripts": {
 		"dev": "vite",
 		"dev:full": "concurrently -k -n go,vite -c blue,green \"cd .. && FC_API_PORT=${FC_API_PORT:-8080} make dev\" \"wait-on tcp:${FC_API_PORT:-8080} && VITE_BACKEND_PORT=${FC_API_PORT:-8080} vite\"",
