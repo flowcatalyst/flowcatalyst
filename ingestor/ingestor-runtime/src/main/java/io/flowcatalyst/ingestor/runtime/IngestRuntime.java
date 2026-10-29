@@ -43,6 +43,8 @@ public final class IngestRuntime {
     if (System.getProperty("vertx.disableDnsResolver") == null) {
       System.setProperty("vertx.disableDnsResolver", "true");
     }
+    // Under fcdev: stop when fcdev is gone, however it ended.
+    ParentWatch.start();
     switch (builder().shutdownHook(true).launch(args)) {
       case Launch.Ran ran -> System.exit(ran.exitCode());
       case Launch.Started started -> {}

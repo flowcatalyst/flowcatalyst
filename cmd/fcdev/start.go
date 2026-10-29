@@ -133,8 +133,10 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	// orphans the postgres child on its port and data directory. With the
 	// handler in place the boot's context-aware steps fail fast, runStart
 	// returns, and the defers stop Postgres; once up, server.Run drains.
+	// SIGHUP too: a closed terminal stops fcdev the same way, so the ingestor
+	// runtime and Postgres it started are stopped, not orphaned.
 	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(stop)
 	go func() {
 		select {

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -69,6 +70,67 @@ func ingestorConfigFromOpts(opts startOpts, creds routerCredentials) ingestorCon
 		ExtensionsDir: ingestorExtensionsDir(),
 		Creds:         creds,
 	}
+}
+
+// extensionJars lists the jar files in the extensions folder, by name. A
+// folder that is not one is an error naming FC_INGESTOR_EXTENSIONS_DIR, the
+// only way it can be wrong: the runtime would refuse it and never start.
+func extensionJars(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("the extensions folder %s cannot be read (%w); FC_INGESTOR_EXTENSIONS_DIR must name a folder of extension jars, or be unset for ~/.flowcatalyst/ingestor-extensions", dir, err)
+	}
+	var jars []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".jar") {
+			jars = append(jars, e.Name())
+		}
+	}
+	return jars, nil
+}
+
+// ingestorExitCause is why the runtime's latest run ended, from the end of its
+// log: the startup failure and the problems it lists, or else the last
+// exception line. Empty when the log says nothing recognisable.
+func ingestorExitCause(logPath string) string {
+	f, err := os.Open(logPath) //nolint:gosec // G304: fcdev's own log file
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+	const tail = 64 << 10
+	if st, err := f.Stat(); err == nil && st.Size() > tail {
+		_, _ = f.Seek(st.Size()-tail, io.SeekStart)
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return ""
+	}
+	text := string(data)
+	if i := strings.LastIndex(text, "--- fcdev restarted the ingestor runtime"); i >= 0 {
+		text = text[i:]
+	}
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		at := strings.Index(line, "StartupException")
+		if at < 0 {
+			continue
+		}
+		parts := []string{strings.TrimSpace(line[at:])}
+		for _, next := range lines[i+1:] {
+			if !strings.HasPrefix(next, "  - ") {
+				break
+			}
+			parts = append(parts, strings.TrimSpace(next[len("  - "):]))
+		}
+		return strings.Join(parts, "; ")
+	}
+	for _, line := range slices.Backward(lines) {
+		if strings.Contains(line, "Exception") && !strings.HasPrefix(strings.TrimSpace(line), "at ") {
+			return strings.TrimSpace(line)
+		}
+	}
+	return ""
 }
 
 // ingestorExtensionsDir is the folder of extension jars the runtime loads:
@@ -147,11 +209,18 @@ func ingestorEnv(parent []string, cfg ingestorConfig, jre jreInfo) []string {
 			env[k] = v
 		}
 	}
+	// Locally the extensions are always the folder fcdev chose (cfg), never a
+	// deployed runtime's S3 manifest or a folder left in the shell.
+	delete(env, "INGEST_EXTENSIONS_DIR")
+	delete(env, "INGEST_EXTENSIONS_MANIFEST")
 	env["JAVA_HOME"] = jre.Home
 	env["FLOWCATALYST_BASE_URL"] = fmt.Sprintf("http://localhost:%d", cfg.APIPort)
 	env["FLOWCATALYST_CLIENT_ID"] = cfg.Creds.ClientID
 	env["FLOWCATALYST_CLIENT_SECRET"] = cfg.Creds.Secret
 	env["INGEST_RUNTIME_ID"] = "fcdev-" + strconv.Itoa(cfg.APIPort)
+	// The runtime ends itself once fcdev is gone (ParentWatch): off Linux no
+	// signal reaches it when fcdev is killed hard.
+	env["INGEST_PARENT_PID"] = strconv.Itoa(os.Getpid())
 	env["HTTP_PORT"] = strconv.Itoa(cfg.Port)
 	env["APP_ENV"] = "local"
 	if _, set := env["INGEST_POLL_INTERVAL"]; !set {
@@ -304,6 +373,18 @@ func runIngestor(ctx context.Context, cfg ingestorConfig) {
 		slog.Warn("ingestor runtime skipped: could not prepare its working directory", "dir", cfg.StateDir, "err", err)
 		return
 	}
+	if cfg.ExtensionsDir != "" {
+		jars, err := extensionJars(cfg.ExtensionsDir)
+		if err != nil {
+			slog.Warn("ingestor runtime skipped: " + err.Error())
+			return
+		}
+		if len(jars) == 0 {
+			slog.Info("no ingestor extensions: an extension's build drops its jar in this folder; restart fcdev after it", "dir", cfg.ExtensionsDir)
+		} else {
+			slog.Info("ingestor extensions", "dir", cfg.ExtensionsDir, "jars", strings.Join(jars, ", "))
+		}
+	}
 	if !portFree(cfg.Port) {
 		slog.Warn("ingestor runtime skipped: its port is already in use (another fcdev, or a runtime left from a crashed one?); change it with --ingestor-port",
 			"port", cfg.Port)
@@ -332,6 +413,7 @@ func runIngestor(ctx context.Context, cfg ingestorConfig) {
 		stableAfter: 5 * time.Minute,
 		grace:       15 * time.Second,
 		log:         slog.Default(),
+		exitCause:   func() string { return ingestorExitCause(logPath) },
 		launch: func() (ingProc, error) {
 			flags := os.O_WRONLY | os.O_CREATE | os.O_APPEND
 			if first {

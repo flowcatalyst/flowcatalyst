@@ -32,6 +32,9 @@ type ingSupervisor struct {
 	grace       time.Duration
 	log         *slog.Logger
 	now         func() time.Time
+	// exitCause, when set, says why the child exited (from its log), so the
+	// developer sees it where fcdev reports the exit. Empty when unknown.
+	exitCause func() string
 }
 
 func defaultIngestorBackoff(restart int) time.Duration {
@@ -61,7 +64,13 @@ func (s *ingSupervisor) run(ctx context.Context) error {
 			case <-p.Done():
 				stopProbe()
 			}
-			s.log.Warn("ingestor runtime exited", "pid", p.Pid(), "after", s.now().Sub(started).Round(time.Second).String())
+			attrs := []any{"pid", p.Pid(), "after", s.now().Sub(started).Round(time.Second).String()}
+			if s.exitCause != nil {
+				if cause := s.exitCause(); cause != "" {
+					attrs = append(attrs, "cause", cause)
+				}
+			}
+			s.log.Warn("ingestor runtime exited", attrs...)
 		} else {
 			if ctx.Err() != nil {
 				return nil

@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -442,6 +443,7 @@ func TestIngestorEnv(t *testing.T) {
 	assert.Equal(t, "fcdev-ingestor", m["FLOWCATALYST_CLIENT_ID"])
 	assert.Equal(t, "s3cr3t-value", m["FLOWCATALYST_CLIENT_SECRET"])
 	assert.Equal(t, "fcdev-18080", m["INGEST_RUNTIME_ID"])
+	assert.Equal(t, strconv.Itoa(os.Getpid()), m["INGEST_PARENT_PID"], "the runtime ends itself once fcdev is gone")
 	assert.Equal(t, "18091", m["HTTP_PORT"])
 	assert.Equal(t, "local", m["APP_ENV"])
 	assert.Equal(t, "/ext", m["INGEST_EXTENSIONS_DIR"])
@@ -450,6 +452,14 @@ func TestIngestorEnv(t *testing.T) {
 	assert.Equal(t, "PT15S", m["INGEST_POLL_INTERVAL"])
 	assert.NotContains(t, m, "FC_APP_KEY")
 	assert.NotContains(t, m, "FLOWCATALYST_APP_KEY")
+
+	// The shell's extension settings never reach the runtime: fcdev's folder does.
+	env = ingestorEnv([]string{"INGEST_EXTENSIONS_DIR=/stale/*.jar", "INGEST_EXTENSIONS_MANIFEST=s3://b/manifest.json"}, cfg, jreInfo{})
+	assert.Contains(t, env, "INGEST_EXTENSIONS_DIR=/ext")
+	for _, kv := range env {
+		assert.False(t, strings.HasPrefix(kv, "INGEST_EXTENSIONS_MANIFEST="))
+	}
+	env = ingestorEnv(parent, cfg, jreInfo{Home: "/jre"})
 
 	// Unset extensions dir: not passed.
 	cfg.ExtensionsDir = ""
@@ -461,6 +471,39 @@ func TestIngestorEnv(t *testing.T) {
 	assert.NotContains(t, red, "s3cr3t-value")
 	assert.NotContains(t, red, "=pw")
 	assert.Contains(t, red, "FLOWCATALYST_CLIENT_ID=fcdev-ingestor")
+}
+
+func TestExtensionJars(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ingest-extension-mix.jar"), []byte("x"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x"), 0o600))
+	jars, err := extensionJars(dir)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ingest-extension-mix.jar"}, jars)
+
+	_, err = extensionJars(filepath.Join(dir, "ingest-extension-*.jar"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "FC_INGESTOR_EXTENSIONS_DIR")
+}
+
+func TestIngestorExitCause(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "ingestor.log")
+	require.NoError(t, os.WriteFile(log, []byte(`[main] INFO started
+Exception in thread "main" io.flowcatalyst.framework.core.StartupException: Application failed to start: 1 problem
+  - module 'ingest-runtime': provider failed: IllegalStateException: an old problem
+
+--- fcdev restarted the ingestor runtime at 2026-10-29T16:15:20Z ---
+[main] INFO org.apache.camel - starting
+Exception in thread "main" io.flowcatalyst.framework.core.StartupException: Application failed to start: 1 problem
+  - module 'ingest-runtime': provider failed: IllegalStateException: the extensions directory /x is not a directory
+	at io.flowcatalyst.framework.core.AppBuilder.configureAndBuild(AppBuilder.java:489)
+`), 0o600))
+	assert.Equal(t, "StartupException: Application failed to start: 1 problem; module 'ingest-runtime': provider failed: IllegalStateException: the extensions directory /x is not a directory",
+		ingestorExitCause(log), "the latest run's failure, not an earlier one")
+
+	require.NoError(t, os.WriteFile(log, []byte("java.lang.OutOfMemoryError: Java heap space\nException in thread \"x\" java.lang.RuntimeException: boom\n\tat a.b(C.java:1)\n"), 0o600))
+	assert.Equal(t, `Exception in thread "x" java.lang.RuntimeException: boom`, ingestorExitCause(log))
+	assert.Empty(t, ingestorExitCause(filepath.Join(t.TempDir(), "missing.log")))
 }
 
 func TestIngestorExtensionsDir(t *testing.T) {
