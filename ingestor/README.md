@@ -168,6 +168,7 @@ Every value is a key in `config/application.yaml` and an environment variable na
 | `FLOWCATALYST_APPLICATION` | `flowcatalyst.application` | `ingestor` | names the account's application to the client library; the runtime API does not use it |
 | `INGEST_RUNTIME_ID` | `ingest.runtime-id` | `runtime-<hostname>` | names this runtime; two running runtimes must never share one. `[A-Za-z0-9._:-]`, at most 100 |
 | `INGEST_EXTENSIONS_DIR` | `ingest.extensions-dir` | unset | a directory of extension jars, loaded at start in addition to those on the class path |
+| `INGEST_EXTENSIONS_MANIFEST` | `ingest.extensions-manifest` | unset | `s3://<bucket>/<key>` of a manifest pinning the extension jars (same bucket, SHA-256 checked) to load at start; exclusive with jars in `INGEST_EXTENSIONS_DIR`. See [docs/extensions.md](docs/extensions.md) |
 | `INGEST_CAMEL_ROUTES_ENABLED` | `ingest.camel-routes-enabled` | `false` | report and run the `camel-route` kind |
 | `INGEST_POLL_INTERVAL` | `ingest.poll-interval` | `PT1M` | how often to poll and report. The platform's lease is 3 minutes |
 | `INGEST_ADVERTISED_URL` | `ingest.advertised-url` | unset | where this runtime can be reached; shown by the platform for information, never called |

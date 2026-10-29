@@ -75,6 +75,18 @@
       <groupId>org.apache.camel</groupId>
       <artifactId>camel-aws2-s3</artifactId>
     </dependency>
+    <!-- Also read directly: the pinned extension manifest and its jars are fetched from S3. -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>s3</artifactId>
+      <!-- Camel's s3 component leaves the async Netty client out; the sync client is all that is used here. -->
+      <exclusions>
+        <exclusion>
+          <groupId>software.amazon.awssdk</groupId>
+          <artifactId>netty-nio-client</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
     <!--
       The camel-route source: Camel's YAML DSL, and the components a route is likely to start from
       or call that no built-in source brings: timer, http and log.

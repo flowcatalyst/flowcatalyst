@@ -141,13 +141,24 @@ final class Extensions {
    *     extension API or lists no extension, or {@link #of(List, boolean)} refuses one: the message names the jar
    */
   static Extensions load(@Nullable Path directory, boolean camelRoutes) {
+    return loadJars(directory == null ? List.of() : jars(directory), camelRoutes);
+  }
+
+  /**
+   * The extensions on the class path and in the jars given, which come from a directory or from a
+   * downloaded manifest: the checks are the same either way.
+   *
+   * @param jars the extension jars
+   * @param camelRoutes whether the {@code camel-route} kind is carried
+   * @return them, checked
+   * @throws IllegalStateException as {@link #load(Path, boolean)}
+   */
+  static Extensions loadJars(List<Path> jars, boolean camelRoutes) {
     ClassLoader parent = Extensions.class.getClassLoader();
     List<Found> found = new ArrayList<>();
     ServiceLoader.load(IngestExtension.class, parent).forEach(e -> found.add(new Found(e, CLASS_PATH)));
-    if (directory != null) {
-      for (Path jar : jars(directory)) {
-        found.addAll(fromJar(jar, parent));
-      }
+    for (Path jar : jars) {
+      found.addAll(fromJar(jar, parent));
     }
     Extensions extensions = of(found, camelRoutes);
     if (!extensions.byType.isEmpty()) {
@@ -157,6 +168,27 @@ final class Extensions {
       LOG.warn("camel routes are enabled: a camel-route ingestion runs with this runtime's network, identity and environment");
     }
     return extensions;
+  }
+
+  /**
+   * The extensions on the class path and those a pinned manifest in S3 lists.
+   *
+   * @param directory the extensions directory; it must hold no jar, because extensions come from the
+   *     manifest or the directory, not both. Null, absent or empty is fine
+   * @param manifest {@code s3://bucket/key} of the manifest
+   * @param objects where the manifest and its jars are read from
+   * @param camelRoutes whether the {@code camel-route} kind is carried
+   * @return them, checked; only the class path's when the manifest does not exist yet
+   * @throws IllegalStateException when the directory holds jars, the manifest or a jar cannot be used,
+   *     or {@link #loadJars(List, boolean)} refuses a jar: the message names the manifest or the jar
+   */
+  static Extensions load(@Nullable Path directory, String manifest, ExtensionObjects objects, boolean camelRoutes) {
+    if (directory != null && Files.isDirectory(directory) && !jars(directory).isEmpty()) {
+      throw new IllegalStateException(
+          "extensions come from the manifest " + manifest + " or from the directory " + directory + ", not both: the directory holds jars");
+    }
+    ExtensionManifest pinned = ExtensionManifest.fetch(manifest, objects);
+    return loadJars(pinned == null ? List.of() : pinned.download(objects), camelRoutes);
   }
 
   private static List<Path> jars(Path directory) {

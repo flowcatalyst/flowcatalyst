@@ -22,13 +22,14 @@ is lighter. The worked example is `ingestor-extensions/generator`, which makes u
 
 ## How the runtime gets it
 
-Two ways, which can be mixed:
+Three ways. The class path mixes with either of the others; the directory and the manifest are exclusive:
 
 1. **A jar in `INGEST_EXTENSIONS_DIR`.** The runtime loads every `*.jar` in the directory at start, each with
    a class loader of its own whose parent is the runtime's, so the jar sees the contract, the extension API
    and Camel, and not other extension jars. The jar must hold what it needs beyond those (shade it) and must
    **not** bundle `ingestor-contract` or `ingestor-extension`.
-2. **On the class path**, in a build that depends on `ingestor-runtime` and the extension module.
+2. **A pinned manifest in S3** (`INGEST_EXTENSIONS_MANIFEST`), for deployed runtimes: see below.
+3. **On the class path**, in a build that depends on `ingestor-runtime` and the extension module.
 
 Either way the extension is found with `ServiceLoader` through
 `META-INF/services/io.flowcatalyst.ingestor.extension.IngestExtension`, one line: the extension's class name.
@@ -36,6 +37,46 @@ Either way the extension is found with `ServiceLoader` through
 The runtime refuses to start, naming the jar, when: the jar declares no extension API, or one with another
 major version than the runtime's; the jar lists no extension; a type is taken twice (the message names both
 places); a kind is malformed; a default does not satisfy its own field.
+
+### Deployed: loading from a pinned manifest in S3
+
+A deployed runtime cannot write its extensions directory, so it loads its jars from S3, pinned per
+environment by a manifest. Set `INGEST_EXTENSIONS_MANIFEST=s3://<bucket>/<key>` (for example
+`s3://inhance-ingestor-extensions-np/manifest.json`). Unset, nothing changes.
+
+```json
+{"version": 1, "environment": "np", "publishedAt": "2026-10-29T12:00:00Z",
+ "source": {"repository": "inhance-supply-chain/mono-repo", "commit": "<40-hex sha>"},
+ "extensions": [{"name": "ingest-extension-mix", "version": "0.1.0-SNAPSHOT",
+                 "key": "jars/ingest-extension-mix-0.1.0-SNAPSHOT-<sha12>.jar", "sha256": "<64 lowercase hex>"}]}
+```
+
+`key` is an object key in the same bucket as the manifest. Names are unique and match `[a-z0-9][a-z0-9.-]*`.
+Unknown fields are ignored, so the publisher can add to the manifest; a `version` other than 1 is refused.
+
+At start the runtime fetches the manifest, downloads each jar into a fresh directory only its process can
+read (streaming, computing SHA-256), and loads exactly those jars with the same checks as a directory
+(extension API, service discovery, taken types). It logs each jar's name, version, first 12 hex of its hash
+and the manifest's source commit. Credentials come from the default AWS provider chain (the task role) and
+the region from `AWS_REGION`; `INGEST_AWS_ENDPOINT` points it at a stand-in such as LocalStack.
+
+The runtime refuses to start, naming the manifest (or the jar), when:
+
+- `INGEST_EXTENSIONS_DIR` also holds a `*.jar`: extensions come from the manifest or the directory, not
+  both (an empty or absent directory is fine, the image's default is an empty one);
+- the manifest cannot be read (access denied, the network after the S3 client's bounded retries), is not
+  valid JSON, has another `version`, or has a bad entry (name form, duplicate name, missing field, a
+  `sha256` that is not 64 lowercase hex);
+- a listed jar cannot be fetched, or its SHA-256 differs from the manifest's (the message gives the
+  expected and the actual hash).
+
+If the manifest object **does not exist** (NoSuchKey / 404: nothing has been published to the environment
+yet), the runtime logs a WARN naming it and starts with no extensions. The platform then never leases an
+extension kind to this runtime, which is the safe failure.
+
+IAM: the task role needs `s3:GetObject` on the bucket's objects. Without `s3:ListBucket` too, S3 answers a
+missing key with 403 rather than 404, so a not-yet-published manifest would refuse the start instead of
+starting with no extensions; grant both to get the behaviour above.
 
 ### The extension API version
 

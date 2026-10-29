@@ -23,6 +23,7 @@ import java.net.UnknownHostException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.InstantSource;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -70,6 +71,11 @@ public final class RuntimeModule implements Module {
   public static final Setting<String> EXTENSIONS_DIR =
       Setting.string("ingest.extensions-dir")
           .describedAs("A directory of extension jars, loaded at start in addition to the extensions on the class path; unset for none.");
+
+  /** The pinned manifest of extension jars in S3. */
+  public static final Setting<String> EXTENSIONS_MANIFEST =
+      Setting.string("ingest.extensions-manifest")
+          .describedAs("s3://<bucket>/<key> of a manifest pinning the extension jars to load from the same bucket; exclusive with jars in the extensions directory. Unset for none.");
 
   /** Whether camel-route ingestions are run. */
   public static final Setting<Boolean> CAMEL_ROUTES_ENABLED =
@@ -132,6 +138,7 @@ public final class RuntimeModule implements Module {
     app.declare(AWS_ENDPOINT);
     app.declare(ADVERTISED_URL);
     app.declare(EXTENSIONS_DIR);
+    app.declare(EXTENSIONS_MANIFEST);
     app.declare(CAMEL_ROUTES_ENABLED);
     app.declare(SECRETS_CACHE_TTL);
 
@@ -139,7 +146,12 @@ public final class RuntimeModule implements Module {
         Extensions.class,
         lookup -> {
           Config config = lookup.get(Config.class);
-          return Extensions.load(config.find(EXTENSIONS_DIR).map(Path::of).orElse(null), config.get(CAMEL_ROUTES_ENABLED));
+          Path directory = config.find(EXTENSIONS_DIR).map(Path::of).orElse(null);
+          Optional<String> manifest = config.find(EXTENSIONS_MANIFEST);
+          if (manifest.isEmpty()) {
+            return Extensions.load(directory, config.get(CAMEL_ROUTES_ENABLED));
+          }
+          return Extensions.load(directory, manifest.get(), new S3ExtensionObjects(config.find(AWS_ENDPOINT).orElse(null)), config.get(CAMEL_ROUTES_ENABLED));
         });
     app.provide(
         PlatformApi.class,

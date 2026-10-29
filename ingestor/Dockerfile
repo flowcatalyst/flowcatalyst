@@ -3,8 +3,10 @@
 #   ./mvnw -B -DskipTests package
 #   docker build -t flowcatalyst/ingestor:local .
 #
-# Extensions: mount extension jars into /opt/ingestor/extensions (INGEST_EXTENSIONS_DIR), or build an
-# image of your own FROM this one that copies them there as root. The runtime's user can read the jar,
+# Extensions: a deployed runtime sets INGEST_EXTENSIONS_MANIFEST=s3://<bucket>/<key> and loads the jars the
+# manifest pins (docs/extensions.md); otherwise mount extension jars into /opt/ingestor/extensions
+# (INGEST_EXTENSIONS_DIR), or build an image of your own FROM this one that copies them there as root. The
+# manifest and a non-empty directory are exclusive. The runtime's user can read the jar,
 # its config and the extensions, and write none of them.
 FROM eclipse-temurin:25-jre
 
