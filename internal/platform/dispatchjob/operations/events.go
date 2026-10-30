@@ -25,6 +25,7 @@ const (
 	DispatchJobCompletedType     = "platform:messaging:dispatch-job:completed"
 	DispatchJobPayloadEditedType = "platform:messaging:dispatch-job:payload-edited"
 	DispatchJobsResentType       = "platform:messaging:dispatch-jobs:resent"
+	DispatchJobsCancelledType    = "platform:messaging:dispatch-jobs:cancelled"
 	Source                       = "platform:messaging"
 )
 
@@ -95,6 +96,32 @@ func (e DispatchJobsResent) CausationID() string   { return e.Metadata.Causation
 func (e DispatchJobsResent) ExecutionID() string   { return e.Metadata.ExecutionID }
 func (e DispatchJobsResent) MessageGroup() string  { return "platform:dispatchjobs:resent" }
 func (e DispatchJobsResent) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		IDs []string `json:"ids"`
+	}{e.IDs})
+}
+
+// DispatchJobsCancelled is the rollup emitted by the bulk Cancel operation
+// (the UI's "Ignore selected"). The event data is only the ids cancelled;
+// Skipped is the use case's result for the caller, not serialized.
+type DispatchJobsCancelled struct {
+	Metadata usecase.EventMetadata
+	IDs      []string
+	Skipped  []SkippedJob
+}
+
+func (e DispatchJobsCancelled) EventID() string       { return e.Metadata.EventID }
+func (e DispatchJobsCancelled) EventType() string     { return DispatchJobsCancelledType }
+func (e DispatchJobsCancelled) SpecVersion() string   { return "1.0" }
+func (e DispatchJobsCancelled) Source() string        { return Source }
+func (e DispatchJobsCancelled) Subject() string       { return "platform.dispatchjobs.cancelled" }
+func (e DispatchJobsCancelled) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e DispatchJobsCancelled) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e DispatchJobsCancelled) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e DispatchJobsCancelled) CausationID() string   { return e.Metadata.CausationID }
+func (e DispatchJobsCancelled) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e DispatchJobsCancelled) MessageGroup() string  { return "platform:dispatchjobs:cancelled" }
+func (e DispatchJobsCancelled) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		IDs []string `json:"ids"`
 	}{e.IDs})

@@ -17,6 +17,16 @@ var RequeueableStatuses = []common.DispatchStatus{
 	common.DispatchPending, common.DispatchFailed, "ERROR", common.DispatchCancelled, common.DispatchExpired,
 }
 
+// CancellableStatuses are the statuses an operator may cancel (ignore) a job
+// from: PENDING (waiting, or sitting out a retry backoff) and FAILED (and its
+// legacy alias ERROR). QUEUED and PROCESSING are refused: the delivery is under
+// way. The lifecycle enforces it again in SQL (TOperatorCancel).
+var CancellableStatuses = []common.DispatchStatus{common.DispatchPending, common.DispatchFailed, "ERROR"}
+
+// SkipNotCancellable is the reason a bulk cancel reports for a job whose
+// status is not one of CancellableStatuses.
+const SkipNotCancellable = "NOT_CANCELLABLE"
+
 // RedriveConfirmation is the literal a request sends as
 // confirmRedriveCompleted, next to redriveCompleted=true, to redrive COMPLETED
 // jobs.

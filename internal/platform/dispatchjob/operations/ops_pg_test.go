@@ -117,18 +117,34 @@ func TestCancelDispatchJob_NotFound(t *testing.T) {
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "DispatchJob_NOT_FOUND")
 }
 
-// TestCancelDispatchJob_NonFailedSource_Conflict pins the T3 brief's explicit
-// guard: Cancel/Complete are terminal→terminal operator OVERRIDES, valid
-// only from FAILED. DispatchStatus.IsTerminal() already counts FAILED as
-// terminal, so without this guard an operator could "cancel" an
-// already-COMPLETED or already-CANCELLED job.
-func TestCancelDispatchJob_NonFailedSource_Conflict(t *testing.T) {
+// TestCancelDispatchJob_FromPending: an operator may ignore a job that is
+// still waiting (owner ruling 2026-10-30), not only a FAILED one.
+func TestCancelDispatchJob_FromPending(t *testing.T) {
+	t.Parallel()
+	repo := dispatchjob.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	j := seedJob(t, repo, "opstest:cancel:pending", common.DispatchPending, seedOpts{})
+
+	_, err := runAuthorized(uow, operations.CancelDispatchJob(repo), operations.CancelCommand{ID: j.ID})
+	require.NoError(t, err)
+
+	got, err := repo.FindByID(context.Background(), j.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, common.DispatchCancelled, got.Status)
+	assert.NotNil(t, got.CompletedAt)
+}
+
+// TestCancelDispatchJob_NotCancellable_Conflict pins the guard: Cancel is
+// valid only from PENDING or FAILED. Without it an operator could "cancel"
+// an already-COMPLETED job, or one whose delivery is under way.
+func TestCancelDispatchJob_NotCancellable_Conflict(t *testing.T) {
 	t.Parallel()
 	repo := dispatchjob.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
 	statuses := []common.DispatchStatus{
-		common.DispatchPending, common.DispatchQueued, common.DispatchProcessing,
+		common.DispatchQueued, common.DispatchProcessing,
 		common.DispatchCompleted, common.DispatchCancelled, common.DispatchExpired,
 	}
 	for _, st := range statuses {
@@ -136,7 +152,7 @@ func TestCancelDispatchJob_NonFailedSource_Conflict(t *testing.T) {
 			t.Parallel()
 			j := seedJob(t, repo, "opstest:cancel:conflict:"+string(st), st, seedOpts{})
 			_, err := runAuthorized(uow, operations.CancelDispatchJob(repo), operations.CancelCommand{ID: j.ID})
-			testpg.RequireUsecaseError(t, err, usecase.KindConflict, "NOT_FAILED")
+			testpg.RequireUsecaseError(t, err, usecase.KindConflict, "NOT_CANCELLABLE")
 		})
 	}
 }
@@ -198,6 +214,84 @@ func TestCompleteDispatchJob_NonFailedSource_Conflict(t *testing.T) {
 
 	_, err := runAuthorized(uow, operations.CompleteDispatchJob(repo), operations.CompleteCommand{ID: j.ID})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "NOT_FAILED")
+}
+
+// ── Cancel many ("Ignore selected") ───────────────────────────────────────
+
+func TestCancelDispatchJobs_Validation(t *testing.T) {
+	t.Parallel()
+	repo := dispatchjob.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	_, err := runAuthorized(uow, operations.CancelDispatchJobs(repo), operations.CancelManyCommand{})
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "IDS_REQUIRED")
+}
+
+// TestCancelDispatchJobs_CancelsPendingAndFailedSkipsTheRest: PENDING and
+// FAILED jobs become CANCELLED; QUEUED, PROCESSING and COMPLETED ones are
+// left as they are and reported skipped; unknown ids are dropped.
+func TestCancelDispatchJobs_CancelsPendingAndFailedSkipsTheRest(t *testing.T) {
+	t.Parallel()
+	repo := dispatchjob.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	pending := seedJob(t, repo, "opstest:cancelmany:pending", common.DispatchPending, seedOpts{})
+	failed := seedJob(t, repo, "opstest:cancelmany:failed", common.DispatchFailed, seedOpts{})
+	queued := seedJob(t, repo, "opstest:cancelmany:queued", common.DispatchQueued, seedOpts{})
+	processing := seedJob(t, repo, "opstest:cancelmany:processing", common.DispatchProcessing, seedOpts{})
+	completed := seedJob(t, repo, "opstest:cancelmany:completed", common.DispatchCompleted, seedOpts{})
+
+	ev, err := runAuthorized(uow, operations.CancelDispatchJobs(repo), operations.CancelManyCommand{
+		IDs: []string{pending.ID, failed.ID, queued.ID, processing.ID, completed.ID, "dpj_doesnotexist03"},
+	})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{pending.ID, failed.ID}, ev.IDs)
+	skipped := map[string]string{}
+	for _, s := range ev.Skipped {
+		assert.Equal(t, dispatchjob.SkipNotCancellable, s.Reason)
+		skipped[s.ID] = s.Status
+	}
+	assert.Equal(t, map[string]string{
+		queued.ID: "QUEUED", processing.ID: "PROCESSING", completed.ID: "COMPLETED",
+	}, skipped)
+
+	for id, want := range map[string]common.DispatchStatus{
+		pending.ID: common.DispatchCancelled, failed.ID: common.DispatchCancelled,
+		queued.ID: common.DispatchQueued, processing.ID: common.DispatchProcessing, completed.ID: common.DispatchCompleted,
+	} {
+		got, err := repo.FindByID(context.Background(), id)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, want, got.Status, id)
+	}
+}
+
+// TestCancelDispatchJobs_ScopeFiltering: the bulk contract drops ids outside
+// the caller's scope silently, as the bulk requeue does.
+func TestCancelDispatchJobs_ScopeFiltering(t *testing.T) {
+	t.Parallel()
+	repo := dispatchjob.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	ownClient := tsid.Generate(tsid.Client)
+	otherClient := tsid.Generate(tsid.Client)
+	own := seedJob(t, repo, "opstest:cancelmany:scope:own", common.DispatchFailed, seedOpts{ClientID: &ownClient})
+	other := seedJob(t, repo, "opstest:cancelmany:scope:other", common.DispatchFailed, seedOpts{ClientID: &otherClient})
+
+	clientCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_djcancelmany1",
+		Scope:       auth.ScopeClient,
+		Clients:     []string{ownClient},
+	})
+	ev, err := usecaseop.Run(clientCtx, uow, operations.CancelDispatchJobs(repo),
+		operations.CancelManyCommand{IDs: []string{own.ID, other.ID}}, testpg.TestEC())
+	require.NoError(t, err)
+	assert.Equal(t, []string{own.ID}, ev.IDs)
+
+	got, err := repo.FindByID(context.Background(), other.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, common.DispatchFailed, got.Status, "another tenant's job is untouched")
 }
 
 // ── Resend ────────────────────────────────────────────────────────────────

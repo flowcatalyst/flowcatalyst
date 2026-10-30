@@ -25,7 +25,9 @@ export function auditActor(row: { principalName?: string; principalId?: string }
 export function explainJobActionError(action: "cancel" | "complete", err: unknown): string {
 	const e = err as { status?: number; message?: string } | null;
 	if (e?.status === 409) {
-		return `The job is no longer FAILED, so it cannot be ${action === "cancel" ? "cancelled" : "marked completed"}. It has been reloaded.`;
+		return action === "cancel"
+			? "The job is no longer PENDING or FAILED (it may be on its way), so it cannot be cancelled. It has been reloaded."
+			: "The job is no longer FAILED, so it cannot be marked completed. It has been reloaded.";
 	}
 	return e?.message || `The job could not be ${action === "cancel" ? "cancelled" : "completed"}.`;
 }

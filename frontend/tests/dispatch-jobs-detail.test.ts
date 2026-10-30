@@ -23,10 +23,14 @@ describe("jobActions", () => {
 		expect(jobActions("COMPLETED", as(`${P}requeue`)).redrive).toBe(false);
 		expect(jobActions("FAILED", as(`${P}requeue`, `${P}redrive-completed`)).redrive).toBe(false);
 	});
-	it("cancel and complete are for FAILED jobs, each with its own permission", () => {
+	it("cancel is for PENDING and FAILED jobs, complete for FAILED ones, each with its own permission", () => {
 		expect(jobActions("FAILED", as(`${P}cancel`))).toMatchObject({ cancel: true, complete: false });
 		expect(jobActions("FAILED", as(`${P}complete`))).toMatchObject({ cancel: false, complete: true });
-		expect(jobActions("PENDING", as(`${P}cancel`, `${P}complete`))).toMatchObject({ cancel: false, complete: false });
+		expect(jobActions("PENDING", as(`${P}cancel`, `${P}complete`))).toMatchObject({ cancel: true, complete: false });
+		expect(jobActions("ERROR", as(`${P}cancel`)).cancel).toBe(true);
+		for (const s of ["QUEUED", "PROCESSING", "COMPLETED", "CANCELLED", "EXPIRED"]) {
+			expect(jobActions(s, as(`${P}cancel`)).cancel).toBe(false);
+		}
 	});
 	it("a platform wildcard holder gets all of them", () => {
 		expect(jobActions("FAILED", as("platform:*:*:*"))).toMatchObject({ requeue: true, cancel: true, complete: true });
@@ -47,7 +51,8 @@ describe("audit rows", () => {
 
 describe("cancel / complete errors", () => {
 	it("explains the 409", () => {
-		expect(explainJobActionError("cancel", { status: 409 })).toMatch(/no longer FAILED/);
+		expect(explainJobActionError("cancel", { status: 409 })).toMatch(/no longer PENDING or FAILED/);
+		expect(explainJobActionError("complete", { status: 409 })).toMatch(/no longer FAILED/);
 		expect(explainJobActionError("complete", { status: 500, message: "boom" })).toBe("boom");
 	});
 });

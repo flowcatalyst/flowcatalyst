@@ -120,7 +120,7 @@ templ djPage(v djView) {
 		<form id="dj-row-form" method="post" hidden>
 			<input type="hidden" name="drawer" data-attr:value={ "$" + djDrawerSig }/>
 		</form>
-		@kit.ConfirmDialog(djConfirm(djCancelDialog, "Cancel this job?", "The job is marked CANCELLED and will not be retried. If it blocks later jobs in its message group, they are released. This cannot be undone.", "Cancel job", kit.ToneDanger))
+		@kit.ConfirmDialog(djConfirm(djCancelDialog, "Cancel this job?", "The job is marked CANCELLED and will not be delivered or retried. If it holds back later jobs in its message group, they are released. Requeue brings it back.", "Cancel job", kit.ToneDanger))
 		@kit.ConfirmDialog(djConfirm(djCompleteDialog, "Mark this job completed?", "Use this only if the delivery was made another way. The job is marked COMPLETED without anything being sent, and a BLOCK_ON_ERROR group behind it is released. This cannot be undone.", "Mark completed", kit.ToneDefault))
 		<div id={ djDialogSlot }>
 			if v.Dialog != nil {
@@ -269,23 +269,33 @@ templ djFilters(v djView) {
 // and the select-all banner.
 templ djBulkBar(v djView) {
 	<div id="dj-bulk" class="flex flex-col gap-2 border-b border-border px-3 py-2">
-		if v.CanRequeue {
+		if v.CanRequeue || v.CanCancel {
 			<div class="flex flex-wrap items-center gap-2">
-				<form id="dj-selection" method="post" action={ djPath + "/requeue" } data-on:submit={ kit.SubmitForm }>
+				<form id="dj-selection" method="post" action={ djPath + "/requeue" } class="flex flex-wrap items-center gap-2" data-on:submit={ kit.SubmitForm }>
 					<input type="hidden" name="drawer" data-attr:value={ "$" + djDrawerSig }/>
-					<button type="submit" class="fc-btn fc-btn-secondary fc-btn-sm" disabled data-attr:disabled={ "$" + djSelSig + " === 0" } title="Reset the selected jobs to PENDING for re-dispatch">
-						@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
-						<span data-text={ "$" + djSelSig + " > 0 ? 'Requeue selected (' + $" + djSelSig + " + ')' : 'Requeue selected'" }>Requeue selected</span>
-					</button>
+					if v.CanRequeue {
+						<button type="submit" class="fc-btn fc-btn-secondary fc-btn-sm" disabled data-attr:disabled={ "$" + djSelSig + " === 0" } title="Reset the selected jobs to PENDING for re-dispatch">
+							@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
+							<span data-text={ "$" + djSelSig + " > 0 ? 'Requeue selected (' + $" + djSelSig + " + ')' : 'Requeue selected'" }>Requeue selected</span>
+						</button>
+					}
+					if v.CanCancel {
+						<button type="submit" formaction={ djPath + "/cancel" } class="fc-btn fc-btn-outline fc-btn-sm" disabled data-attr:disabled={ "$" + djSelSig + " === 0" } title="Mark the selected PENDING or FAILED jobs CANCELLED: they will not be delivered or retried" data-on:click__prevent={ "@post('" + djPath + "/cancel', {contentType: 'form', selector: '#dj-selection', retryMaxCount: 0})" }>
+							@kit.Icon(kit.IconProps{Name: "ban", Class: "size-[1rem]"})
+							<span data-text={ "$" + djSelSig + " > 0 ? 'Ignore selected (' + $" + djSelSig + " + ')' : 'Ignore selected'" }>Ignore selected</span>
+						</button>
+					}
 				</form>
-				<a href={ v.rbfHref() } class="fc-btn fc-btn-outline fc-btn-sm" aria-haspopup="dialog" title="Reset every job matching the current filters to PENDING — preview and confirm first" data-on:click__prevent={ liveLink }>
-					@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
-					Requeue all matching
-				</a>
-				<a href={ v.errorsHref() } class="fc-btn fc-btn-text fc-btn-sm" aria-haspopup="dialog" title="Every job in an error status, whatever else the view is filtered by — preview and confirm first" data-on:click__prevent={ djNavLink }>
-					@kit.Icon(kit.IconProps{Name: "circle-alert", Class: "size-[1rem]"})
-					Requeue everything in error
-				</a>
+				if v.CanRequeue {
+					<a href={ v.rbfHref() } class="fc-btn fc-btn-outline fc-btn-sm" aria-haspopup="dialog" title="Reset every job matching the current filters to PENDING — preview and confirm first" data-on:click__prevent={ liveLink }>
+						@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
+						Requeue all matching
+					</a>
+					<a href={ v.errorsHref() } class="fc-btn fc-btn-text fc-btn-sm" aria-haspopup="dialog" title="Every job in an error status, whatever else the view is filtered by — preview and confirm first" data-on:click__prevent={ djNavLink }>
+						@kit.Icon(kit.IconProps{Name: "circle-alert", Class: "size-[1rem]"})
+						Requeue everything in error
+					</a>
+				}
 			</div>
 		}
 		if v.CanRequeue && v.fullPage() {
@@ -803,6 +813,53 @@ templ djAuditBody(a djAudit) {
 			</ul>
 		}
 	</div>
+}
+
+// ── ignore of ticked rows ──────────────────────────────────────────────
+
+// djIgnoreConfirm is the confirmation of "Ignore selected": the ticked PENDING
+// and FAILED jobs become CANCELLED.
+templ djIgnoreConfirm(g djIgnore) {
+	@kit.Dialog(kit.DialogProps{
+		ID: djIgnoreDialog, Title: djIgnoreTitle(g), Width: kit.WidthDefault, Closable: true,
+		Attrs:  templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()"},
+		Footer: djIgnoreFooter(g),
+	}) {
+		<form id={ djIgnoreDialog + "-form" } method="post" action={ djPath + "/cancel" } class="flex flex-col gap-4" data-on:submit={ kit.SubmitForm }>
+			<input type="hidden" name="step" value="confirm"/>
+			<input type="hidden" name="drawer" value={ g.Drawer }/>
+			for _, id := range g.IDs {
+				<input type="hidden" name="ids" value={ id }/>
+			}
+			<p class="text-sm">They are marked CANCELLED: never delivered or retried. Later jobs they hold back in their message group are released. Requeue brings a job back.</p>
+			if g.Others > 0 {
+				<p class="text-sm text-muted-foreground">{ djIgnoreOthers(g.Others) }</p>
+			}
+		</form>
+	}
+}
+
+func djIgnoreTitle(g djIgnore) string {
+	if g.Cancellable == 1 {
+		return "Ignore this job?"
+	}
+	return "Ignore " + thousands(int64(g.Cancellable)) + " jobs?"
+}
+
+// djIgnoreOthers says how many ticked jobs the ignore leaves alone.
+func djIgnoreOthers(n int) string {
+	if n == 1 {
+		return "1 selected job is queued, being delivered or already finished and is left as it is."
+	}
+	return thousands(int64(n)) + " selected jobs are queued, being delivered or already finished and are left as they are."
+}
+
+templ djIgnoreFooter(g djIgnore) {
+	<button type="button" class="fc-btn fc-btn-secondary" data-on:click={ kit.CloseDialog }>Keep them</button>
+	<button type="submit" form={ djIgnoreDialog + "-form" } class="fc-btn fc-btn-danger">
+		@kit.Icon(kit.IconProps{Name: "ban", Class: "size-[1rem]"})
+		{ "Ignore " + counted(int64(g.Cancellable), "job") }
+	</button>
 }
 
 // ── requeue of ticked rows with COMPLETED jobs among them ──────────────

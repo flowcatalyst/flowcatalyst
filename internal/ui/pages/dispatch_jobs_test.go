@@ -111,6 +111,17 @@ type fakeDJOps struct {
 	edits     []string // "id|payload|contentType"
 	cancels   []string
 	completes []string
+	// cancelMany records each ignore-by-ids run; cancelled overrides its result.
+	cancelMany [][]string
+	cancelled  CancelResult
+}
+
+func (o *fakeDJOps) CancelMany(_ context.Context, ids []string) (CancelResult, error) {
+	o.cancelMany = append(o.cancelMany, ids)
+	if o.cancelled != (CancelResult{}) {
+		return o.cancelled, o.err
+	}
+	return CancelResult{Cancelled: len(ids)}, o.err
 }
 
 func (o *fakeDJOps) Cancel(_ context.Context, id string) error {
@@ -404,6 +415,65 @@ func TestDispatchJobsRequeue(t *testing.T) {
 	if rec := h.rec(t, connUser("platform:messaging:event:view"), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_2/requeue", datastar: true, form: url.Values{}}); len(h.ops.requeued) != 3 {
 		t.Errorf("requeued without permission (%d)", rec.Code)
 	}
+}
+
+// "Ignore selected" asks first (step ""), runs on step=confirm with the deduped
+// ids, and needs dispatch-job:cancel.
+func TestDispatchJobsIgnoreSelected(t *testing.T) {
+	h := newDJHarness()
+	list := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs"})
+	mustContain(t, list, "Ignore selected", `formaction="/ui/dispatch-jobs/cancel"`, "Mark the selected PENDING or FAILED jobs CANCELLED")
+
+	// Step one: djb_1 FAILED and djb_3 PENDING are ignorable, djb_2 COMPLETED is not.
+	ids := url.Values{"ids": {"djb_1", " djb_1", "djb_2", "djb_3", ""}, "drawer": {"djb_1"}}
+	ask := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", datastar: true, form: ids})
+	mustContain(t, ask, "Ignore 2 jobs?", "They are marked CANCELLED", "1 selected job is queued, being delivered or already finished",
+		`name="step" value="confirm"`, `name="ids" value="djb_3"`, "Keep them", "Ignore 2 jobs")
+	if len(h.ops.cancelMany) != 0 {
+		t.Fatalf("asking ignored jobs: %v", h.ops.cancelMany)
+	}
+	one := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", datastar: true, form: url.Values{"ids": {"djb_3"}}})
+	mustContain(t, one, "Ignore this job?")
+	mustNotContain(t, one, "selected jobs are queued")
+	none := h.rec(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", form: url.Values{"ids": {"djb_2"}}})
+	if none.Code != http.StatusBadRequest || len(h.ops.cancelMany) != 0 {
+		t.Errorf("nothing ignorable: %d, %v", none.Code, h.ops.cancelMany)
+	}
+
+	// Step two.
+	ids.Set("step", "confirm")
+	h.ops.cancelled = CancelResult{Cancelled: 2, Skipped: 1}
+	run := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", datastar: true, multipart: true, form: ids})
+	if len(h.ops.cancelMany) != 1 || strings.Join(h.ops.cancelMany[0], ",") != "djb_1,djb_2,djb_3" {
+		t.Fatalf("ignored %v", h.ops.cancelMany)
+	}
+	mustContain(t, run, "2 jobs ignored", "2 dispatch jobs marked CANCELLED. 1 left as they were: no longer PENDING or FAILED.", "dj-ignore", `id="dj-table"`)
+	h.ops.cancelled = CancelResult{Skipped: 3}
+	mustContain(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", datastar: true, form: ids}), "Nothing ignored")
+
+	native := h.rec(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", form: ids, referer: "http://example.com/ui/dispatch-jobs?size=50"})
+	if native.Code != http.StatusSeeOther || native.Header().Get("Location") != "/ui/dispatch-jobs?size=50" {
+		t.Errorf("native ignore: %d %s", native.Code, native.Header().Get("Location"))
+	}
+
+	// Without dispatch-job:cancel: no button, no dialog, no run.
+	before := len(h.ops.cancelMany)
+	viewer := connUser(djViewPerm, "platform:messaging:dispatch-job:requeue")
+	mustNotContain(t, h.do(t, viewer, req{target: "/ui/dispatch-jobs"}), "Ignore selected")
+	if rec := h.rec(t, viewer, req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", form: ids}); rec.Code != http.StatusForbidden || len(h.ops.cancelMany) != before {
+		t.Errorf("ignored without permission (%d)", rec.Code)
+	}
+	// A canceller who cannot requeue still gets the selection form and the button.
+	canceller := connUser(djViewPerm, djCancelPerm)
+	mustContain(t, h.do(t, canceller, req{target: "/ui/dispatch-jobs"}), "Ignore selected", `id="dj-selection"`)
+	mustNotContain(t, h.do(t, canceller, req{target: "/ui/dispatch-jobs"}), "Requeue selected")
+}
+
+// The drawer offers Cancel job for a PENDING job (and for FAILED), not COMPLETED.
+func TestDispatchJobDrawerCancelPending(t *testing.T) {
+	h := newDJHarness()
+	mustContain(t, h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/djb_3", datastar: true}), "Cancel job", `/ui/dispatch-jobs/djb_3/cancel`)
+	mustNotContain(t, h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/djb_2", datastar: true}), "Cancel job")
 }
 
 func TestDispatchJobsRequeueByFilter(t *testing.T) {

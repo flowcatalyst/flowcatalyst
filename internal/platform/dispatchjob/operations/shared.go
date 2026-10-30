@@ -2,6 +2,7 @@ package operations
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
@@ -24,14 +25,16 @@ type (
 	CompleteCommand = StatusFlipCommand
 )
 
-// statusFlip builds a terminal→terminal operator-override Operation: load
-// the job, enforce per-resource scope, require the source status is FAILED
-// (this is NOT a general state machine — DispatchStatus.IsTerminal() already
-// counts FAILED as terminal, so without this guard an operator could "cancel"
-// an already-COMPLETED job), apply the mutator, emit the typed event.
-// Shared body for CancelDispatchJob / CompleteDispatchJob.
+// statusFlip builds an operator-override Operation: load the job, enforce
+// per-resource scope, require the source status is one of from (this is NOT
+// a general state machine — without this guard an operator could "cancel" an
+// already-COMPLETED job), apply the mutator, emit the typed event. A refusal
+// is a 409 with conflictCode and conflictWhat ("only <conflictWhat> can be
+// ..."). Shared body for CancelDispatchJob / CompleteDispatchJob.
 func statusFlip[E usecase.DomainEvent](
 	name string,
+	from []common.DispatchStatus,
+	conflictCode, conflictWhat string,
 	repo *dispatchjob.Repository,
 	persist usecasepgx.Persist[dispatchjob.DispatchJob],
 	apply func(*dispatchjob.DispatchJob),
@@ -60,9 +63,9 @@ func statusFlip[E usecase.DomainEvent](
 			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(j.ClientID)); err != nil {
 				return nil, err
 			}
-			if j.Status != common.DispatchFailed {
-				return nil, usecase.Conflict("NOT_FAILED",
-					"dispatch job is not FAILED (current status: "+string(j.Status)+"); only a FAILED job can be overridden")
+			if !slices.Contains(from, j.Status) {
+				return nil, usecase.Conflict(conflictCode,
+					"dispatch job is "+string(j.Status)+"; only "+conflictWhat)
 			}
 			apply(j)
 			return usecaseop.Save(j, persist, event(j, ec)), nil

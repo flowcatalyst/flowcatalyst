@@ -58,6 +58,7 @@ const (
 	flashDjRequeuedByFilter = "dispatch-jobs-requeued-by-filter"
 	flashDjPayloadSaved     = "dispatch-job-payload-saved"
 	flashDjCancelled        = "dispatch-job-cancelled"
+	flashDjIgnored          = "dispatch-jobs-ignored"
 	flashDjCompleted        = "dispatch-job-completed"
 
 	flashProcCreated  = "process-created"
@@ -235,7 +236,8 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashDjRequeued:         {Kind: kit.FlashSuccess, Summary: "Requeued", Detail: "The dispatch jobs were reset to PENDING"},
 	flashDjRequeuedByFilter: {Kind: kit.FlashSuccess, Summary: "Requeued", Detail: "The matching dispatch jobs were reset to PENDING"},
 	flashDjPayloadSaved:     {Kind: kit.FlashSuccess, Summary: "Payload saved", Detail: "Requeue the job to deliver it with the new payload"},
-	flashDjCancelled:        {Kind: kit.FlashSuccess, Summary: "Cancelled", Detail: "The job will not be retried"},
+	flashDjCancelled:        {Kind: kit.FlashSuccess, Summary: "Cancelled", Detail: "The job will not be delivered or retried"},
+	flashDjIgnored:          {Kind: kit.FlashSuccess, Summary: "Ignored", Detail: "The dispatch jobs were marked CANCELLED"},
 	flashDjCompleted:        {Kind: kit.FlashSuccess, Summary: "Marked completed", Detail: "The job is COMPLETED; nothing was sent"},
 
 	// The SPA's process toasts carry the code as their detail; a flash key

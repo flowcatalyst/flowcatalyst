@@ -166,12 +166,16 @@ func TestDispatchJobsCancelComplete(t *testing.T) {
 	// ...view alone gets no write action...
 	viewer := h.do(t, connUser(djViewPerm), req{target: "/ui/dispatch-jobs/djb_1", datastar: true})
 	mustNotContain(t, viewer, `/djb_1/cancel"`, `/djb_1/complete"`)
-	// ...and only a FAILED job has them.
+	// ...a PENDING job can be cancelled but not marked completed...
 	pending := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/djb_3", datastar: true})
-	mustNotContain(t, pending, `/djb_3/cancel"`, `/djb_3/complete"`)
+	mustContain(t, pending, `/djb_3/cancel"`)
+	mustNotContain(t, pending, `/djb_3/complete"`)
+	// ...and a COMPLETED one has neither.
+	finished := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/djb_2", datastar: true})
+	mustNotContain(t, finished, `/djb_2/cancel"`, `/djb_2/complete"`)
 
 	run := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/cancel", datastar: true, form: url.Values{}})
-	mustContain(t, run, "Cancelled", "The job will not be retried")
+	mustContain(t, run, "Cancelled", "The job will not be delivered or retried")
 	done := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/complete", datastar: true, form: url.Values{}})
 	mustContain(t, done, "Marked completed")
 	if strings.Join(h.ops.cancels, ",") != "djb_1" || strings.Join(h.ops.completes, ",") != "djb_1" {
@@ -197,5 +201,5 @@ func TestDispatchJobsCancelComplete(t *testing.T) {
 	h.ops.err = usecase.Conflict("INVALID_STATE", "only a FAILED job can be cancelled")
 	failed := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/cancel", datastar: true, form: url.Values{}})
 	mustContain(t, failed, "fc-flash-error")
-	mustNotContain(t, failed, "The job will not be retried")
+	mustNotContain(t, failed, "The job will not be delivered or retried")
 }

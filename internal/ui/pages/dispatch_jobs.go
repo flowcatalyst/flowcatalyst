@@ -143,6 +143,8 @@ const (
 	// djSelDialog is the requeue dialog of ticked rows that include COMPLETED
 	// jobs (the SPA's RequeueSelectedDialog).
 	djSelDialog = "dj-sel"
+	// djIgnoreDialog is the confirmation of "Ignore selected".
+	djIgnoreDialog = "dj-ignore"
 
 	// djSelSig counts the ticked rows (the "Requeue selected" label).
 	djSelSig = "djSel"
@@ -241,6 +243,7 @@ func (h *DispatchJobs) Mount(r chi.Router) {
 	r.Get("/dispatch-jobs/{id}/audit", h.auditSection)
 	post := r.With(parseForm)
 	post.Post("/dispatch-jobs/requeue", h.requeueSelected)
+	post.Post("/dispatch-jobs/cancel", h.cancelSelected)
 	post.Post("/dispatch-jobs/requeue-by-filter", h.requeueByFilter)
 	post.Post("/dispatch-jobs/{id}/requeue", h.requeueOne)
 	post.Post("/dispatch-jobs/{id}/redrive", h.redriveOne)
@@ -577,6 +580,8 @@ type djView struct {
 	CanSign   bool
 	// CanRequeue shows the requeue actions (dispatch-job:requeue).
 	CanRequeue bool
+	// CanCancel shows "Ignore selected" (dispatch-job:cancel).
+	CanCancel bool
 	// CanRedrive adds the redrive of COMPLETED jobs (dispatch-job:redrive-completed
 	// on top of the requeue permission).
 	CanRedrive bool
@@ -647,6 +652,7 @@ func (h *DispatchJobs) listView(ctx context.Context, ac *auth.AuthContext, q djQ
 	v := djView{
 		Query: q, CanSign: auth.CanWritePermission(ac, djRawPerm) == nil,
 		CanRequeue: auth.CanWritePermission(ac, djRequeuePerm) == nil,
+		CanCancel:  auth.CanWritePermission(ac, djCancelPerm) == nil,
 	}
 	v.CanRedrive = v.CanRequeue && auth.CanWritePermission(ac, djRedrivePerm) == nil
 	facets, names, err := h.filterOptions(ctx, ac, q)
@@ -996,7 +1002,7 @@ func (h *DispatchJobs) detailOf(ctx context.Context, ac *auth.AuthContext, j *di
 		// The editor opens on the stored text, pretty-printed for a JSON job.
 		CanEditPayload: slices.Contains(dispatchjob.EditableStatuses, j.Status) && auth.CanWritePermission(ac, djEditPayloadPerm) == nil,
 		ContentType:    j.PayloadContentType,
-		CanCancel:      j.Status == common.DispatchFailed && auth.CanWritePermission(ac, djCancelPerm) == nil,
+		CanCancel:      slices.Contains(dispatchjob.CancellableStatuses, j.Status) && auth.CanWritePermission(ac, djCancelPerm) == nil,
 		CanComplete:    j.Status == common.DispatchFailed && auth.CanWritePermission(ac, djCompletePerm) == nil,
 	}
 	if j.Payload != nil {
@@ -1468,8 +1474,113 @@ func redrivenNote(n int64) string {
 
 // ── cancel / complete ──────────────────────────────────────────────────
 
+// djIgnore is the dialog of "Ignore selected": how many of the ticked rows the
+// caller can reach and how many of those the use case would mark CANCELLED.
+type djIgnore struct {
+	IDs    []string
+	Drawer string
+	// Cancellable is how many would be cancelled, Others how many reachable
+	// ones are left as they are (queued, being delivered or finished).
+	Cancellable, Others int
+}
+
+// cancelSelected is "Ignore selected": the ticked rows' ids, PENDING and FAILED
+// ones to CANCELLED (dispatch-job:cancel). Step "" opens the confirmation,
+// "confirm" runs it.
+func (h *DispatchJobs) cancelSelected(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, djCancelPerm); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	var picked []string
+	for _, id := range r.PostForm["ids"] {
+		if id = strings.TrimSpace(id); id != "" && !slices.Contains(picked, id) {
+			picked = append(picked, id)
+		}
+	}
+	if r.PostFormValue("step") == "confirm" {
+		h.runIgnore(w, r, ac, picked)
+		return
+	}
+	jobs, err := h.Jobs.FindByIDs(ctx, picked)
+	if err != nil {
+		h.Shell.Fail(w, r, usecase.Internal("REPO", "find_by_ids failed", err))
+		return
+	}
+	ig := djIgnore{IDs: picked, Drawer: r.PostFormValue("drawer")}
+	for i := range jobs {
+		if !auth.CanAccessScope(ac, ids.StringPtr(jobs[i].ClientID)) {
+			continue
+		}
+		if slices.Contains(dispatchjob.CancellableStatuses, jobs[i].Status) {
+			ig.Cancellable++
+		} else {
+			ig.Others++
+		}
+	}
+	if ig.Cancellable == 0 {
+		h.Shell.Fail(w, r, usecase.Validation("NOTHING_TO_IGNORE", "None of the selected jobs is PENDING or FAILED."))
+		return
+	}
+	if !ds.IsDatastar(r) {
+		// The dialog exists only as an answer: show the list with it open.
+		view, err := h.listView(ctx, ac, djReferer(r))
+		if err != nil {
+			h.Shell.Fail(w, r, err)
+			return
+		}
+		view.Dialog = djIgnoreConfirm(ig)
+		h.renderPage(w, r, http.StatusOK, view)
+		return
+	}
+	if err := patchDialogSlot(ds.NewSSE(w, r), djDialogSlot, djIgnoreConfirm(ig)); err != nil {
+		slog.DebugContext(ctx, "ui: ignore dialog not delivered", "err", err)
+	}
+}
+
+func (h *DispatchJobs) runIgnore(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, picked []string) {
+	ctx := r.Context()
+	res, err := h.Ops.CancelMany(ctx, picked)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if !ds.IsDatastar(r) {
+		h.Shell.SetFlash(w, flashDjIgnored)
+		http.Redirect(w, r, djReferer(r).URL(), http.StatusSeeOther) //nolint:gosec // G710: djPath plus a query re-encoded from parsed list state
+		return
+	}
+	sse := ds.NewSSE(w, r)
+	h.refreshList(sse, r, ac)
+	if drawer := r.PostFormValue("drawer"); drawer != "" && slices.Contains(picked, drawer) {
+		h.refreshDrawer(sse, r, ac, drawer)
+	}
+	if err := errors.Join(sse.CloseDialog(djIgnoreDialog), shell.Flash(sse, ignoreOutcome(res))); err != nil {
+		slog.DebugContext(ctx, "ui: ignore outcome not delivered", "err", err)
+	}
+}
+
+// ignoreOutcome is the toast for an ignore by ids: what was cancelled, what the
+// status guard left alone.
+func ignoreOutcome(res CancelResult) kit.FlashMessageProps {
+	var skipped string
+	if res.Skipped > 0 {
+		skipped = " " + thousands(int64(res.Skipped)) + " left as they were: no longer PENDING or FAILED."
+	}
+	if res.Cancelled == 0 {
+		return kit.FlashMessageProps{Kind: kit.FlashInfo, Summary: "Nothing ignored", Detail: "No selected job could be ignored." + skipped}
+	}
+	summary := "Job ignored"
+	if res.Cancelled > 1 {
+		summary = counted(int64(res.Cancelled), "job") + " ignored"
+	}
+	return kit.FlashMessageProps{Kind: kit.FlashSuccess, Summary: summary, Detail: counted(int64(res.Cancelled), "dispatch job") + " marked CANCELLED." + skipped}
+}
+
 // cancel is the drawer's "Cancel job": the API's POST /dispatch-jobs/{id}/cancel
-// (FAILED -> CANCELLED; dispatch-job:cancel). The use case enforces the status
+// (PENDING or FAILED -> CANCELLED; dispatch-job:cancel). The use case enforces the status
 // rule and the client scope.
 func (h *DispatchJobs) cancel(w http.ResponseWriter, r *http.Request) {
 	h.statusAction(w, r, djCancelPerm, h.Ops.Cancel, flashDjCancelled)

@@ -153,13 +153,13 @@ watch(auditCollapsed, (collapsed) => {
 // its temporal dead zone).
 watch(id, load, { immediate: true });
 
-// FAILED -> CANCELLED (never retried; a BLOCK_ON_ERROR group behind it moves on).
+// PENDING or FAILED -> CANCELLED (never delivered or retried; a BLOCK_ON_ERROR group behind it moves on).
 function cancelJob() {
 	if (!job.value) return;
 	confirm.require({
 		header: "Cancel this job?",
 		message:
-			"The job is marked CANCELLED and will not be retried. If it blocks later jobs in its message group, they are released. This cannot be undone.",
+			"The job is marked CANCELLED and will not be delivered or retried. If it holds back later jobs in its message group, they are released. Requeue brings it back.",
 		icon: "pi pi-exclamation-triangle",
 		acceptLabel: "Cancel job",
 		rejectLabel: "Keep",

@@ -423,6 +423,7 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqStr("contentType"), reqStr("previousContentType"),
 	)
 	m["platform:messaging:dispatch-jobs:resent"] = obj(reqStrArray("ids"))
+	m["platform:messaging:dispatch-jobs:cancelled"] = obj(reqStrArray("ids"))
 
 	// ── platform:developer:application-openapi ──────────────────────────
 	m["platform:developer:application-openapi:synced"] = obj(

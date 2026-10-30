@@ -120,4 +120,21 @@ func TestDispatchJobsPageAgainstPostgres(t *testing.T) {
 	assert.Contains(t, run, "Requeued 2 jobs")
 	assert.Equal(t, common.DispatchPending, status("djbuipg000001"))
 	assert.Equal(t, common.DispatchPending, status("djbuipg000002"))
+
+	// Ignore selected: a PENDING and a FAILED job become CANCELLED, a QUEUED one
+	// (being delivered) is left as it is. The drawer of a PENDING job offers it.
+	seed("djbuipg000030", "uipgi:sales:order:paid", "PENDING")
+	seed("djbuipg000031", "uipgi:sales:order:paid", "FAILED")
+	seed("djbuipg000032", "uipgi:sales:order:paid", "QUEUED")
+	assert.Contains(t, do(req{target: "/ui/dispatch-jobs/djbuipg000030", datastar: true}), "Cancel job")
+	ignore := url.Values{"ids": {"djbuipg000030", "djbuipg000031", "djbuipg000032"}}
+	asked = do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", datastar: true, form: ignore})
+	assert.Contains(t, asked, "Ignore 2 jobs?")
+	assert.Equal(t, common.DispatchPending, status("djbuipg000030"), "asking ignores nothing")
+	ignore.Set("step", "confirm")
+	done := do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", datastar: true, form: ignore})
+	assert.Contains(t, done, "2 jobs ignored")
+	assert.Equal(t, common.DispatchCancelled, status("djbuipg000030"))
+	assert.Equal(t, common.DispatchCancelled, status("djbuipg000031"))
+	assert.Equal(t, common.DispatchQueued, status("djbuipg000032"))
 }

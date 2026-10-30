@@ -2,6 +2,7 @@ package pages
 
 import (
 	"context"
+	"errors"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	appops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
@@ -505,10 +506,15 @@ type DispatchJobCommands interface {
 	// attempts are untouched. The use case enforces the status rule, the
 	// client scope and the payload validation.
 	EditPayload(ctx context.Context, id, payload string, contentType *string) error
-	// Cancel runs CancelDispatchJob (FAILED -> CANCELLED) and Complete runs
-	// CompleteDispatchJob (FAILED -> COMPLETED, delivered out of band). Each
-	// is a 409 unless the job is FAILED.
+	// Cancel runs CancelDispatchJob (PENDING or FAILED -> CANCELLED) and
+	// Complete runs CompleteDispatchJob (FAILED -> COMPLETED, delivered out of
+	// band). Cancel is a 409 unless the job is PENDING or FAILED, Complete
+	// unless it is FAILED.
 	Cancel(ctx context.Context, id string) error
+	// CancelMany runs CancelDispatchJobs: the ticked jobs that are PENDING or
+	// FAILED become CANCELLED, the rest are left as they are (ids outside the
+	// caller's tenants are dropped by the use case).
+	CancelMany(ctx context.Context, ids []string) (CancelResult, error)
 	Complete(ctx context.Context, id string) error
 }
 
@@ -527,6 +533,12 @@ type DispatchJobOps struct {
 // COMPLETED ones included) and the ones the status guard left alone.
 type RequeueResult struct {
 	Requeued, Redriven, SkippedInFlight, SkippedCompleted int
+}
+
+// CancelResult is what an ignore by ids did: the jobs cancelled and the ones
+// the status guard left alone.
+type CancelResult struct {
+	Cancelled, Skipped int
 }
 
 // Requeue runs ResendDispatchJobs.
@@ -561,12 +573,31 @@ func (o DispatchJobOps) EditPayload(ctx context.Context, id, payload string, con
 // Cancel runs CancelDispatchJob.
 func (o DispatchJobOps) Cancel(ctx context.Context, id string) error {
 	_, err := usecaseop.Run(ctx, o.UoW, djops.CancelDispatchJob(o.Repo), djops.CancelCommand{ID: id}, auth.NewExecutionContext(ctx))
-	return err
+	return statusChanged(err)
+}
+
+// CancelMany runs CancelDispatchJobs.
+func (o DispatchJobOps) CancelMany(ctx context.Context, ids []string) (CancelResult, error) {
+	ev, err := usecaseop.Run(ctx, o.UoW, djops.CancelDispatchJobs(o.Repo), djops.CancelManyCommand{IDs: ids}, auth.NewExecutionContext(ctx))
+	if err != nil {
+		return CancelResult{}, err
+	}
+	return CancelResult{Cancelled: len(ev.IDs), Skipped: len(ev.Skipped)}, nil
 }
 
 // Complete runs CompleteDispatchJob.
 func (o DispatchJobOps) Complete(ctx context.Context, id string) error {
 	_, err := usecaseop.Run(ctx, o.UoW, djops.CompleteDispatchJob(o.Repo), djops.CompleteCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return statusChanged(err)
+}
+
+// statusChanged is the API's transitionConflict: the SQL status guard refused
+// because the job moved between the use case's read and its write (a PENDING
+// job the scheduler queued meanwhile), which is a 409, not a server error.
+func statusChanged(err error) error {
+	if errors.Is(err, dispatchjob.ErrTransitionRefused) {
+		return usecase.Conflict("STATUS_CHANGED", "the job changed status while the action ran; reload it and try again")
+	}
 	return err
 }
 

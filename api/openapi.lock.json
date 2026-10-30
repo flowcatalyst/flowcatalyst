@@ -20522,7 +20522,7 @@
             "description": "Error"
           }
         },
-        "summary": "Cancel a FAILED dispatch job",
+        "summary": "Cancel a PENDING or FAILED dispatch job",
         "tags": [
           "dispatch-jobs"
         ],

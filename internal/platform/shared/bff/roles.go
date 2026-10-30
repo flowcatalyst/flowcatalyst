@@ -673,7 +673,7 @@ func builtinPermissions() []bffPermissionResponse {
 	out = appendPerm(out, "platform", "messaging", "dispatch-job", "retry", "Retry dispatch jobs")
 	out = appendPerm(out, "platform", "messaging", "dispatch-job", "requeue", "Requeue dispatch jobs (by ids or by filter); never in-flight or completed ones")
 	out = appendPerm(out, "platform", "messaging", "dispatch-job", "redrive-completed", "Re-deliver COMPLETED dispatch jobs (with a requeue request that confirms it)")
-	out = appendPerm(out, "platform", "messaging", "dispatch-job", "cancel", "Cancel a FAILED dispatch job")
+	out = appendPerm(out, "platform", "messaging", "dispatch-job", "cancel", "Cancel a PENDING or FAILED dispatch job")
 	out = appendPerm(out, "platform", "messaging", "dispatch-job", "complete", "Mark a FAILED dispatch job COMPLETED (delivered out of band)")
 	out = appendPerm(out, "platform", "messaging", "dispatch-job", "edit-payload", "Edit the payload of a PENDING or FAILED dispatch job")
 	out = appendPerm(out, "platform", "messaging", "dispatch-pool", "view", "View dispatch pools")

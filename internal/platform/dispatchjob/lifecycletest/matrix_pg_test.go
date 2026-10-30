@@ -168,7 +168,7 @@ var cases = []tcase{
 		},
 	},
 	{
-		name: "operator_cancel", counted: true, allowed: to("CANCELLED", "FAILED"),
+		name: "operator_cancel", counted: true, allowed: to("CANCELLED", "PENDING", "FAILED", "ERROR"),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.OperatorCancel(ctx, j.id, j.createdAt)
 			return err

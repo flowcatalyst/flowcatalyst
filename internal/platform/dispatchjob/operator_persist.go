@@ -41,9 +41,19 @@ func (operatorPersist) Delete(context.Context, *DispatchJob, *usecasepgx.DbTx) e
 	return errors.New("dispatch jobs are never deleted through the use-case envelope")
 }
 
-// CancelPersister commits an operator cancel: FAILED -> CANCELLED, checked in SQL.
+// CancelPersister commits an operator cancel: PENDING or FAILED -> CANCELLED, checked in SQL.
 func (r *Repository) CancelPersister() usecasepgx.Persist[DispatchJob] {
 	return operatorPersist{lc: r.lc, strict: true, do: func(ctx context.Context, lc *Lifecycle, j *DispatchJob) (bool, error) {
+		return lc.OperatorCancel(ctx, j.ID, j.CreatedAt)
+	}}
+}
+
+// BulkCancelPersister commits one job of an operator bulk cancel: as
+// CancelPersister, except that a job which left the cancellable statuses after
+// it was read (a PENDING job the scheduler queued meanwhile) is left alone
+// rather than failing the batch.
+func (r *Repository) BulkCancelPersister() usecasepgx.Persist[DispatchJob] {
+	return operatorPersist{lc: r.lc, do: func(ctx context.Context, lc *Lifecycle, j *DispatchJob) (bool, error) {
 		return lc.OperatorCancel(ctx, j.ID, j.CreatedAt)
 	}}
 }

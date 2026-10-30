@@ -147,7 +147,7 @@ var (
 	TReclaimStale      = Transition{"reclaim_stale_delivery", []common.DispatchStatus{common.DispatchProcessing}, common.DispatchProcessing}
 	TComplete          = Transition{"complete", liveStatuses, common.DispatchCompleted}
 	TFail              = Transition{"fail", liveStatuses, common.DispatchFailed}
-	TOperatorCancel    = Transition{"operator_cancel", []common.DispatchStatus{common.DispatchFailed}, common.DispatchCancelled}
+	TOperatorCancel    = Transition{"operator_cancel", CancellableStatuses, common.DispatchCancelled}
 	TOperatorComplete  = Transition{"operator_complete", []common.DispatchStatus{common.DispatchFailed}, common.DispatchCompleted}
 	allTransitionNames = []Transition{
 		TCreate, TRetry, TDefer, THold, TSettleAcked, TSweepStranded, TStaleQueued,
@@ -854,11 +854,14 @@ func resetForRetry() *changes {
 		raw("completed_at", "NULL").raw("duration_millis", "NULL").raw("last_error", "NULL")
 }
 
-// OperatorCancel moves a FAILED job to CANCELLED. The FAILED check is in the
-// SQL: reports false (and changes nothing) when the job is in any other status.
+// OperatorCancel moves a PENDING or FAILED (or legacy ERROR) job to CANCELLED.
+// The status check is in the SQL: reports false (and changes nothing) when the
+// job is in any other status, which is how a PENDING job the scheduler marked
+// QUEUED a moment earlier is refused rather than cancelled mid-delivery. Once
+// CANCELLED, mark-QUEUED and claim-for-delivery both refuse it.
 func (l *Lifecycle) OperatorCancel(ctx context.Context, id string, createdAt time.Time) (bool, error) {
 	now := time.Now().UTC()
-	rows, err := l.passThrough(ctx, TOperatorCancel, byKey(id, createdAt),
+	rows, err := l.leavePending(ctx, TOperatorCancel, byKey(id, createdAt),
 		new(changes).set("completed_at", now).set("updated_at", now))
 	return len(rows) == 1, err
 }

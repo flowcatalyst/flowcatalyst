@@ -147,6 +147,7 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	// ── platform:messaging ──────────────────────────────────────────────
 	group("platform:messaging:dispatch-job", "cancelled", "completed", "payload-edited")
 	push("platform:messaging:dispatch-jobs:resent", "Dispatch Jobs Resent")
+	push("platform:messaging:dispatch-jobs:cancelled", "Dispatch Jobs Cancelled")
 
 	// ── platform:developer ──────────────────────────────────────────────
 	push("platform:developer:application-openapi:synced", "Application OpenAPI Synced")

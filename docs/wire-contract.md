@@ -545,6 +545,15 @@ only `{ids: string[]}`. The redrive mark lives in the audit row's operation JSON
 (`redriveCompleted`, `confirmRedriveCompleted`); the skipped counts are in the HTTP
 response.
 
+**Cancel guard.** `POST /api/dispatch-jobs/{id}/cancel` cancels a `PENDING` or
+`FAILED` (`ERROR`) job; any other status is `409 NOT_CANCELLABLE` (it was
+`NOT_FAILED`, FAILED only, before 2026-10-30). A PENDING job the scheduler queues
+in the meantime is refused, never cancelled mid-delivery, and a CANCELLED job is
+never claimed for delivery. `POST /{id}/complete` stays FAILED-only (`409
+NOT_FAILED`). The admin UI's "Ignore selected" cancels many in one use case
+(`CancelDispatchJobs`, no HTTP route), emitting one
+`platform:messaging:dispatch-jobs:cancelled` event whose data is `{ids: string[]}`.
+
 **Permissions.** `view` is read-only. `platform:messaging:dispatch-job:requeue`
 gates both requeue endpoints (the preview also admits `view`);
 `...:redrive-completed` is additionally required when `redriveCompleted` is true
