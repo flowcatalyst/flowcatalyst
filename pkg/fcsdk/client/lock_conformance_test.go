@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
+	"github.com/flowcatalyst/go-sdk/client"
 )
 
 // lockCase is one client method exercised against the lock server. call

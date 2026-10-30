@@ -20,8 +20,8 @@ import (
 	resetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/usecaseop"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // resetMail records the reset links the approvals send.

@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // Repository is the Postgres-backed repository for fng_domains. Hand-rolled

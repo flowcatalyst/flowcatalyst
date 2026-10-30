@@ -32,7 +32,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/logging"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // Time is the canonical timestamp type for API responses. Always emits

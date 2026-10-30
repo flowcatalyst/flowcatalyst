@@ -5,7 +5,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // ClientApplicationIDs returns the applications a client is entitled to (an

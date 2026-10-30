@@ -25,7 +25,7 @@ routes that answer `204 No Content` return only an `error` (nil on success), so
 there is no body to decode.
 
 ```go
-import "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
+import "github.com/flowcatalyst/go-sdk/client"
 
 err := c.Principals().Update(ctx, id, &req)
 var apiErr *client.APIError
@@ -56,8 +56,8 @@ a failed commit (repository, event or audit write) as an `Internal` one.
 
 ```go
 import (
-    "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
-    "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
+    "github.com/flowcatalyst/go-sdk/usecase"
+    "github.com/flowcatalyst/go-sdk/usecaseop"
 )
 
 event, err := usecaseop.Run(ctx, uow, PlaceOrder(repo), cmd, ec)

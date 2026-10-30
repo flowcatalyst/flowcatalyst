@@ -32,8 +32,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
+	"github.com/flowcatalyst/go-sdk/auth"
+	"github.com/flowcatalyst/go-sdk/client"
 )
 
 func main() {

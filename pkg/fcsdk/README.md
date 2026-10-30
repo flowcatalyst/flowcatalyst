@@ -4,7 +4,7 @@ The Go member of the FlowCatalyst SDK family (TypeScript, Laravel, Java and
 Rust live beside it under `clients/`). It is a separate Go module:
 
 ```
-github.com/flowcatalyst/flowcatalyst/pkg/fcsdk
+github.com/flowcatalyst/go-sdk
 ```
 
 It is also the dependency of the FlowCatalyst application framework's
@@ -30,17 +30,21 @@ What it gives an application:
 Go 1.26 or later.
 
 ```
-go get github.com/flowcatalyst/flowcatalyst/pkg/fcsdk@latest
+go get github.com/flowcatalyst/go-sdk@latest
 ```
 
-Releases are tags `pkg/fcsdk/vX.Y.Z` on `github.com/flowcatalyst/flowcatalyst`
-(`make release-go-sdk` in this repository; see `docs/releasing.md`). Until the
-first release, depend on a commit (`@main`) or on a checkout:
+Releases are the tags `vX.Y.Z` on `github.com/flowcatalyst/go-sdk`, one commit
+per release. To build against a local checkout instead:
 
 ```
-go mod edit -require=github.com/flowcatalyst/flowcatalyst/pkg/fcsdk@v0.0.0-00010101000000-000000000000 \
-            -replace=github.com/flowcatalyst/flowcatalyst/pkg/fcsdk=../flowcatalyst/pkg/fcsdk
+go mod edit -require=github.com/flowcatalyst/go-sdk@v0.0.0-00010101000000-000000000000 \
+            -replace=github.com/flowcatalyst/go-sdk=../go-sdk
 ```
+
+Versions up to v0.0.8 were published as
+`github.com/flowcatalyst/flowcatalyst/pkg/fcsdk`; moving to this module path
+means changing the import paths (`github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/...`
+becomes `github.com/flowcatalyst/go-sdk/...`). Nothing else changed.
 
 ## A use case, end to end
 
@@ -355,13 +359,16 @@ All of them build with `go build ./...` (CI does this).
 
 ## Developing the SDK
 
-From the repository root: `make test-go-sdk` (build, vet, race tests;
+The SDK is developed in the FlowCatalyst platform repository (`pkg/fcsdk`) and
+published here by its release script; changes made directly in this repository
+are not carried back. From the platform repository's root: `make test-go-sdk` (build, vet, race tests;
 the tests that need a database live in the nested module `pkg/fcsdk/tests`,
 which boots its own embedded Postgres and keeps `embedded-postgres` out of
 the SDK's `go.mod`: `make test-go-sdk-tests`, or `go test ./...` in that
 directory),
 `make lint-go-sdk`, `make go-sdk-smoke` (a scratch module consumes the SDK
-through a local `replace` and through `go get` of a git tag), and
+through a local `replace` and through `go get` of HEAD published to a
+throwaway repository), and
 `RELEASE_DRY_RUN=1 make release-go-sdk BUMP=0.1.0`. The platform module uses
 this tree through `replace ... => ./pkg/fcsdk`. The SDK imports nothing from
 the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock

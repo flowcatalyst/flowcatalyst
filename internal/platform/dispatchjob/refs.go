@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // Limits on the ids a name resolves to. Past them the filter is refused (400)

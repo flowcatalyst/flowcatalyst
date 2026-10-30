@@ -19,7 +19,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	etops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 type fakeETs struct{ ets []eventtype.EventType }

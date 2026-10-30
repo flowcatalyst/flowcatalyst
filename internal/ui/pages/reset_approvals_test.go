@@ -10,7 +10,7 @@ import (
 
 	resetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // fakeResetService is the API State seen from the page: it records the

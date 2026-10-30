@@ -4,9 +4,9 @@ import (
 	"context"
 	"slices"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outbox"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/outbox"
+	"github.com/flowcatalyst/go-sdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // Plan describes a pending change and the domain event it produces, built

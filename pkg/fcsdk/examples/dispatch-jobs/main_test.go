@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // A notify URL the platform would refuse is the caller's validation error

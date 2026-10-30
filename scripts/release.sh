@@ -31,9 +31,12 @@ usage() {
 # The function SDKs add: manifest_toml (Cargo.toml, first top-level
 # `version = "…"`), lock_npm (package-lock.json root version, two places) and
 # lock_cargo (Cargo.lock entry for $lock_cargo_crate). The Go modules (go-sdk,
-# fn-go) have none: a Go module is versioned purely by its tag
-# (pkg/fcsdk/vX.Y.Z, clients/fn-go/vX.Y.Z); go_module names the module path
-# its go.mod must declare (guarded below).
+# fn-go) have none: a Go module is versioned purely by its tag; go_module names
+# the module path its go.mod must declare (guarded below). fn-go is served from
+# this repo's clients/fn-go/vX.Y.Z tags. go-sdk is published to its own repo
+# (publish_go_sdk): this repo's go-sdk/vX.Y.Z tag marks the source, and
+# scripts/publish-go-sdk.sh pushes one commit tagged vX.Y.Z to
+# github.com/flowcatalyst/go-sdk.
 #
 # The ingestor adds manifest_revision: the <revision> property of its parent
 # pom.xml, which every Maven module's version reads.
@@ -50,12 +53,13 @@ lock_cargo_crate=""
 workflow=""
 go_module=""
 go_mod_file=""
+publish_go_sdk=""
 case "$kind" in
 	dev)     prefix="fcdev";         version_file="cmd/fcdev/VERSION";             label="fcdev" ;;
 	ts)      prefix="typescript-sdk"; version_file="clients/typescript-sdk/VERSION"; label="typescript-sdk"; manifest="clients/typescript-sdk/package.json" ;;
 	laravel) prefix="laravel-sdk";    version_file="clients/laravel-sdk/VERSION";    label="laravel-sdk" ;;
 	java)    prefix="java-sdk";       version_file="clients/java-sdk/VERSION";       label="java-sdk"; manifest_pom="clients/java-sdk/pom.xml" ;;
-	go-sdk)  prefix="pkg/fcsdk";      version_file="pkg/fcsdk/VERSION";             label="go-sdk"; go_module="github.com/flowcatalyst/flowcatalyst/pkg/fcsdk"; go_mod_file="pkg/fcsdk/go.mod" ;;
+	go-sdk)  prefix="go-sdk";         version_file="pkg/fcsdk/VERSION";             label="go-sdk"; go_module="github.com/flowcatalyst/go-sdk"; go_mod_file="pkg/fcsdk/go.mod"; publish_go_sdk=1 ;;
 	fn-ts)   prefix="fn-ts-sdk";      version_file="clients/fn-ts/VERSION";         label="fn-ts-sdk"; manifest="clients/fn-ts/package.json"; lock_npm="clients/fn-ts/package-lock.json"; workflow="split-fn-ts-sdk.yml" ;;
 	fn-rust) prefix="fn-rust-sdk";    version_file="clients/fn-rust/VERSION";       label="fn-rust-sdk"; manifest_toml="clients/fn-rust/Cargo.toml"; lock_cargo="clients/fn-rust/Cargo.lock"; lock_cargo_crate="flowcatalyst-fn"; workflow="split-fn-rust-sdk.yml" ;;
 	fn-go)   prefix="clients/fn-go";  version_file="clients/fn-go/VERSION";         label="fn-go-sdk"; go_module="github.com/flowcatalyst/flowcatalyst/clients/fn-go"; go_mod_file="clients/fn-go/go.mod" ;;
@@ -81,10 +85,10 @@ fi
 if [ -n "$go_module" ]; then
 	have="$(awk '/^module[[:space:]]/ {print $2; exit}' "$go_mod_file")"
 	if [ "$have" != "$go_module" ]; then
-		echo "✗ $go_mod_file declares '$have'; it must be '$go_module' to be fetchable from this repo's tags. See docs/releasing.md." >&2
+		echo "✗ $go_mod_file declares '$have'; it must be '$go_module'. See docs/releasing.md." >&2
 		exit 1
 	fi
-	if [ "$prefix" != "${go_mod_file%/go.mod}" ]; then
+	if [ -z "$publish_go_sdk" ] && [ "$prefix" != "${go_mod_file%/go.mod}" ]; then
 		echo "✗ tag prefix '$prefix' must be the module directory '${go_mod_file%/go.mod}'." >&2
 		exit 1
 	fi
@@ -144,6 +148,18 @@ fi
 if git rev-parse -q --verify "refs/tags/$prefix/v$new" >/dev/null; then
 	echo "✗ Tag $prefix/v$new already exists." >&2
 	exit 1
+fi
+# go-sdk: the published repo must be reachable and must not have the version
+# yet, before anything is committed here.
+if [ -n "$publish_go_sdk" ]; then
+	published="$(git ls-remote git@github.com:flowcatalyst/go-sdk.git "refs/tags/v$new")" || {
+		echo "✗ cannot reach git@github.com:flowcatalyst/go-sdk.git. Create the repository (empty) and check your access." >&2
+		exit 1
+	}
+	if [ -n "$published" ]; then
+		echo "✗ github.com/flowcatalyst/go-sdk already has v$new." >&2
+		exit 1
+	fi
 fi
 
 echo ""
@@ -269,6 +285,12 @@ git add -- "$version_file" $touched
 git commit -m "$label v$new"
 git tag "$prefix/v$new"
 git push origin HEAD "$prefix/v$new"
+if [ -n "$publish_go_sdk" ]; then
+	scripts/publish-go-sdk.sh "$prefix/v$new" "$new" || {
+		echo "✗ Tagged $prefix/v$new here, but publishing to github.com/flowcatalyst/go-sdk failed. Fix it and rerun: scripts/publish-go-sdk.sh $prefix/v$new $new" >&2
+		exit 1
+	}
+fi
 
 echo ""
 echo "✓ Released $label v$new"

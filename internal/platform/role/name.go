@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // Role-name and permission shape (docs/platform-bug-fixes.md F18).

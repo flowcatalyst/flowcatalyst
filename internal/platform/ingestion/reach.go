@@ -2,7 +2,7 @@ package ingestion
 
 import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // CheckReach reports whether the caller may act on this ingestion: below

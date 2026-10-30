@@ -7,8 +7,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/usecaseop"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // PortalStore is the slice of the portal repositories the portal pages read

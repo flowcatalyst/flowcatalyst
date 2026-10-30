@@ -13,8 +13,8 @@ import (
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
+	"github.com/flowcatalyst/go-sdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecaseop"
 )
 
 // TestAssignUnassignedPortalUsers pins the gap-closing bulk use case: every

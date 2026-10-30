@@ -21,7 +21,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
+	"github.com/flowcatalyst/go-sdk/usecaseop"
 )
 
 // revealAudits is the number of SECRET_REVEALED audit rows for a config row.

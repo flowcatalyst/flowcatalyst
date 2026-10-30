@@ -13,7 +13,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // The config entries of section ingest, read with the ingestion: the poll

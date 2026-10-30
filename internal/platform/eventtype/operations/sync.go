@@ -10,9 +10,9 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecaseop"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // SyncEventTypeInput is one entry in a sync batch.

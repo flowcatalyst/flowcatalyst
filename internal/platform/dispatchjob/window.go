@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // The time window of a dispatch-job list read.

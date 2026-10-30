@@ -22,8 +22,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/usecaseop"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // The OAuth clients page end to end against Postgres: the handlers run the

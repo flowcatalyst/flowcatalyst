@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	fcauth "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/webhook"
+	fcauth "github.com/flowcatalyst/go-sdk/auth"
+	"github.com/flowcatalyst/go-sdk/webhook"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"

@@ -22,7 +22,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // UserService is the principal API the users page runs: each method is the

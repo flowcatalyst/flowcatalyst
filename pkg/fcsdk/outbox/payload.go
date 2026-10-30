@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // Row types: the outbox processor maps the type column to an endpoint by

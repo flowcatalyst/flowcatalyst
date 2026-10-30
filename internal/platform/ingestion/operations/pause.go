@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
+	"github.com/flowcatalyst/go-sdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecaseop"
 )
 
 // PauseCommand is the input DTO of the pause and resume operations.

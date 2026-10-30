@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outbox"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outboxpgx"
+	"github.com/flowcatalyst/go-sdk/outbox"
+	"github.com/flowcatalyst/go-sdk/outboxpgx"
 )
 
 // The Go SDK's DISPATCH_JOB outbox rows (outboxpgx.Sink.WriteDispatchJob) are

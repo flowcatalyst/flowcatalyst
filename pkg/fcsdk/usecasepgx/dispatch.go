@@ -4,8 +4,8 @@ import (
 	"context"
 	"slices"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outbox"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/outbox"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // DispatchJobSink is a Sink that also writes dispatch jobs (outbox rows of

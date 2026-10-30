@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // MaxStateValue is the longest value a polled source keeps, in characters.

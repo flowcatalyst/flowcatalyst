@@ -107,10 +107,9 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
-      # Full history: the smoke test clones HEAD and tags the clone.
+      # The smoke test publishes HEAD's pkg/fcsdk to a throwaway repository
+      # (scripts/publish-go-sdk.sh); HEAD alone is enough.
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.2"

@@ -18,7 +18,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/budget"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runner"
-	fcauth "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
+	fcauth "github.com/flowcatalyst/go-sdk/auth"
 )
 
 // FunctionRunnerConfig configures the function-runner subsystem

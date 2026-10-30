@@ -7,8 +7,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
+	"github.com/flowcatalyst/go-sdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecaseop"
 )
 
 // DisableForClientCommand disables an application for a specific client.

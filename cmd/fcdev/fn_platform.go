@@ -17,7 +17,7 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
+	"github.com/flowcatalyst/go-sdk/tsid"
 )
 
 // fnCredentials is what `fcdev fn` authenticates with. In CI, flags or

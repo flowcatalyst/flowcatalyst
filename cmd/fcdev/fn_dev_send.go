@@ -12,7 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/webhook"
+	"github.com/flowcatalyst/go-sdk/webhook"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 )

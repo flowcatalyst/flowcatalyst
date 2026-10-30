@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // DefaultTable is the outbox table every SDK writes.

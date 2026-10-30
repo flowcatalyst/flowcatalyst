@@ -3,7 +3,7 @@ package server
 import (
 	passwordresetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset/api"
 	principalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // principalAPIState is the principal API's state. The /api routes and the

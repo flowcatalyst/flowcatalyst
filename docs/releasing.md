@@ -11,7 +11,7 @@ tag)`, commits the bump, tags `<prefix>/vX.Y.Z` and pushes `HEAD` plus the tag.
 | TypeScript SDK | `make release-ts-sdk BUMP=…` | `typescript-sdk/vX.Y.Z` | `split-typescript-sdk.yml` (disabled, `if: false`) |
 | Laravel SDK | `make release-laravel-sdk BUMP=…` | `laravel-sdk/vX.Y.Z` | `split-laravel-sdk.yml` (disabled, `if: false`) |
 | Java SDK | `make release-java-sdk BUMP=…` | `java-sdk/vX.Y.Z` | none |
-| Go SDK | `make release-go-sdk BUMP=…` | `pkg/fcsdk/vX.Y.Z` | nothing: the Go module proxy serves the tag |
+| Go SDK | `make release-go-sdk BUMP=…` | `go-sdk/vX.Y.Z` | nothing: the script itself publishes `vX.Y.Z` to `flowcatalyst/go-sdk` |
 | Function Go SDK | `make release-fn-go-sdk BUMP=…` | `clients/fn-go/vX.Y.Z` | nothing: the Go module proxy serves the tag |
 | Function TS SDK | `make release-fn-ts-sdk BUMP=…` | `fn-ts-sdk/vX.Y.Z` | `split-fn-ts-sdk.yml` (**off**) |
 | Function Rust SDK | `make release-fn-rust-sdk BUMP=…` | `fn-rust-sdk/vX.Y.Z` | `split-fn-rust-sdk.yml` (**off**) |
@@ -39,39 +39,50 @@ ts, laravel, java, go-sdk, fn-ts, fn-rust, fn-go (and fcdev with `WITH_DEV=1`).
 
 ## Go SDK (`pkg/fcsdk`)
 
-The Go SDK is its own Go module, `github.com/flowcatalyst/flowcatalyst/pkg/fcsdk`
-(`pkg/fcsdk/go.mod`), fetched straight from this repository like fn-go: the
-module proxy maps the path to the repo `flowcatalyst/flowcatalyst` and the tag
-prefix to the directory, so `make release-go-sdk` cuts `pkg/fcsdk/vX.Y.Z` and
-consumers run `go get github.com/flowcatalyst/flowcatalyst/pkg/fcsdk@vX.Y.Z`.
-No workflow, no split. `scripts/release.sh go-sdk` refuses a `go.mod` whose
-module path is not that one (a tag on a mismatched module is permanently
-unfetchable: proxies cache the failure).
+The Go SDK is its own Go module, `github.com/flowcatalyst/go-sdk`
+(`pkg/fcsdk/go.mod`), published to its own repository
+`github.com/flowcatalyst/go-sdk` (owner ruling 2026-10-30: consumers must not
+depend on this repository, which need not stay public). Consumers run
+`go get github.com/flowcatalyst/go-sdk@vX.Y.Z`.
 
-- **Unreleased.** `pkg/fcsdk/VERSION` is seeded at `0.0.0`, so the first
-  release must be explicit: `make release-go-sdk BUMP=0.1.0`.
+- **One commit per release.** `make release-go-sdk BUMP=…` bumps
+  `pkg/fcsdk/VERSION`, commits, tags `go-sdk/vX.Y.Z` here and pushes, then runs
+  `scripts/publish-go-sdk.sh go-sdk/vX.Y.Z X.Y.Z`. That script makes one commit
+  whose tree is `pkg/fcsdk` exactly as tagged, parented on the published repo's
+  `main`, message `Release vX.Y.Z`, and pushes it as `main` plus the tag
+  `vX.Y.Z` (what the module proxy serves). No history or commit message from
+  this repository goes with it. It runs locally with your own git access; no
+  workflow, no token.
+- **Checks.** `release.sh` refuses before committing if `go.mod` does not
+  declare `github.com/flowcatalyst/go-sdk`, if the published repo can't be
+  reached, or if it already has `vX.Y.Z`. If the publish step fails after the
+  push here, rerun `scripts/publish-go-sdk.sh go-sdk/vX.Y.Z X.Y.Z`: it says
+  "already published" for the same tree and refuses a different tree (a
+  published Go version is immutable; the proxy has cached it).
+- **Changes go here, not there.** The published repo is output: the next
+  release replaces its tree with `pkg/fcsdk`, so anything committed directly
+  there is lost (its history is kept).
+- **Old module path.** v0.0.1 to v0.0.8 were tags `pkg/fcsdk/vX.Y.Z` on this
+  repository, module `github.com/flowcatalyst/flowcatalyst/pkg/fcsdk`. Those
+  versions stay on the module proxy; moving to the new path is an import path
+  change only. The first release under the new path is v0.0.9.
 - **The platform uses the tree's copy**: the root `go.mod` requires the module
-  through `replace github.com/flowcatalyst/flowcatalyst/pkg/fcsdk => ./pkg/fcsdk`
+  through `replace github.com/flowcatalyst/go-sdk => ./pkg/fcsdk`
   (the version in its `require` line is a placeholder). The Dockerfile copies
   `pkg/fcsdk/go.{mod,sum}` before `go mod download` for that reason.
 - **Its own CI**: `.github/workflows/go-sdk.yml` (tidy, build, vet, race tests
   on the `go 1.26.0` floor and on 1.27, golangci-lint, and
   `scripts/go-sdk-smoke.sh`, which consumes the SDK from a scratch module
-  through a local `replace` and through `go get` of a git tag on a throwaway
-  clone). Locally: `make test-go-sdk`, `make lint-go-sdk`, `make go-sdk-smoke`;
-  `make test-unit` and `make lint` include the module.
-- **Licence**: Apache-2.0; the module carries its own `LICENSE` and `NOTICE`
-  (a module download contains only its directory).
-- **Module path verified (2026-10-13)**: `go get …/pkg/fcsdk@v0.1.0` resolved
-  through git (`url.insteadOf` pointing the GitHub URL at a local clone tagged
-  `pkg/fcsdk/v0.1.0`) and the consumer built; the module zip held `go.mod`,
-  `LICENSE`, `NOTICE`. On the public proxy, `clients/fn-go@ceb986a` resolves as
-  `github.com/flowcatalyst/flowcatalyst/clients/fn-go` (origin subdir
-  `clients/fn-go`), the same mechanism. The old path
-  (`github.com/flowcatalyst/flowcatalyst-go/...`) only resolves through GitHub's
-  rename redirect (`flowcatalyst-go` answers 301 to `flowcatalyst`), so it was
-  not used.
-- The application framework's Go FlowCatalyst module depends on this module.
+  through a local `replace`, and through `go get` after
+  `scripts/publish-go-sdk.sh` has published HEAD to a throwaway bare repository).
+  Locally: `make test-go-sdk`, `make lint-go-sdk`, `make go-sdk-smoke`;
+  `make test-unit` and `make lint` include the module. The tests that read files
+  outside `pkg/fcsdk` (the OpenAPI lock, the framework's conformance vectors)
+  skip when the SDK is checked out on its own.
+- **Licence**: Apache-2.0; the module carries its own `LICENSE` and `NOTICE`.
+- The application framework's Go FlowCatalyst module
+  (`../flowcatalyst-framework/go/flowcatalyst`) depends on this module by its
+  released version.
 
 ## Function SDKs
 

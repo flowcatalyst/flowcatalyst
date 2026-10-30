@@ -39,9 +39,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/lock"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/scheduledjobs"
+	"github.com/flowcatalyst/go-sdk/client"
+	"github.com/flowcatalyst/go-sdk/lock"
+	"github.com/flowcatalyst/go-sdk/scheduledjobs"
 )
 
 func main() {

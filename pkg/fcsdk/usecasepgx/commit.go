@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/internal/sealed"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/internal/sealed"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // Commit upserts the aggregate via its repository, writes the domain

@@ -120,7 +120,7 @@ test-go-sdk-tests: ## Run the Go SDK's Postgres-backed tests (pkg/fcsdk/tests mo
 	$(GO) -C pkg/fcsdk/tests vet ./...
 	$(GO) -C pkg/fcsdk/tests test -race -p 1 ./...
 
-go-sdk-smoke: ## Consume the Go SDK from a scratch module (local replace + `go get` via git tag)
+go-sdk-smoke: ## Consume the Go SDK from a scratch module (local replace + `go get` of HEAD as published)
 	@scripts/go-sdk-smoke.sh all
 
 e2e-platform: ## Isolated platform for app end-to-end checks; CMD=up|down|status|env|verify|drop (docs/e2e-platform.md)
@@ -326,9 +326,9 @@ release-laravel-sdk: ## Cut a Laravel SDK release: BUMP=… (tags laravel-sdk/vX
 release-java-sdk: ## Cut a Java SDK release: BUMP=… (bumps pom.xml, tags java-sdk/vX.Y.Z)
 	@scripts/release.sh java "$(BUMP)"
 
-# The Go SDK (pkg/fcsdk) is consumed straight from this repo through the Go
-# module proxy: `go get github.com/flowcatalyst/flowcatalyst/pkg/fcsdk@vX.Y.Z`.
-release-go-sdk: ## Cut a Go SDK release: BUMP=… (tags pkg/fcsdk/vX.Y.Z)
+# The Go SDK (pkg/fcsdk) is published to its own repo, one commit per release
+# (scripts/publish-go-sdk.sh): `go get github.com/flowcatalyst/go-sdk@vX.Y.Z`.
+release-go-sdk: ## Cut a Go SDK release: BUMP=… (tags go-sdk/vX.Y.Z here, publishes vX.Y.Z to flowcatalyst/go-sdk)
 	@scripts/release.sh go-sdk "$(BUMP)"
 
 # Function-runner SDKs (docs/releasing.md). fn-go is consumed straight from

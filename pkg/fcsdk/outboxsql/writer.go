@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outbox"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/outbox"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // Execer is what a Writer writes through: *sql.Tx (the usual case: the

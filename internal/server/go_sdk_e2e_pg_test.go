@@ -21,14 +21,14 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outbox"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outboxpgx"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/sync"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/client"
+	"github.com/flowcatalyst/go-sdk/outbox"
+	"github.com/flowcatalyst/go-sdk/outboxpgx"
+	"github.com/flowcatalyst/go-sdk/sync"
+	"github.com/flowcatalyst/go-sdk/tsid"
+	"github.com/flowcatalyst/go-sdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecaseop"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // goSDKPlatform serves the whole platform router (WirePlatform on embedded

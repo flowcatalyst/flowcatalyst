@@ -11,7 +11,7 @@ import (
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
+	"github.com/flowcatalyst/go-sdk/client"
 )
 
 // ─── M7: config resolution (env → file → default) ────────────────────────

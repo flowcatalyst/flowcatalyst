@@ -21,9 +21,9 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outboxpgx"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outboxsql"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/outboxpgx"
+	"github.com/flowcatalyst/go-sdk/outboxsql"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // wireEvent is a Go SDK domain event with a fresh id per test run (the batch

@@ -15,7 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	subops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/operations"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 type fakeSubs struct{ subs []subscription.Subscription }

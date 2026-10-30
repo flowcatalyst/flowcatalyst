@@ -14,7 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // echoVersion publishes a JS version and re-labels it with the made-up

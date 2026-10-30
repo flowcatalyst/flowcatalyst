@@ -1,6 +1,6 @@
 package usecase
 
-import "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
+import "github.com/flowcatalyst/go-sdk/tsid"
 
 // newEventID returns a fresh 13-character Crockford Base32 TSID — the
 // format msg_events.id expects (VARCHAR(13) per the schema). Internal

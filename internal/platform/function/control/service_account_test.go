@@ -14,8 +14,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/webhook"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/webhook"
 )
 
 // seedPlainServiceAccount inserts an account linked to NO application — the

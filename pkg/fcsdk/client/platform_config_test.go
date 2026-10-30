@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
+	"github.com/flowcatalyst/go-sdk/client"
 )
 
 const secretJSON = `{"applicationCode":"orders","section":"smtp","property":"password","clientId":"clt_1","value":"hunter2-plaintext","updatedAt":"2026-10-23T10:00:00Z"}`

@@ -1,4 +1,4 @@
-module github.com/flowcatalyst/flowcatalyst/pkg/fcsdk
+module github.com/flowcatalyst/go-sdk
 
 go 1.26.0
 

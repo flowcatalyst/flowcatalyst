@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // FieldError is one problem with a definition, at a dotted field path such as

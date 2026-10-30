@@ -3,7 +3,7 @@ package usecasepgx
 import (
 	"context"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // Sink is the destination for domain events and audit logs. The

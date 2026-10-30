@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outbox"
+	"github.com/flowcatalyst/go-sdk/outbox"
 )
 
 type recorder struct {

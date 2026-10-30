@@ -9,7 +9,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // IngestionDefinition is the editable part of an ingestion, as the API reads and

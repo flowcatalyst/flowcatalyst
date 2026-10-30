@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
+	"github.com/flowcatalyst/go-sdk/auth"
 )
 
 func makeClaims(scope, principalType string, clients, roles []string) auth.AccessTokenClaims {

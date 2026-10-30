@@ -12,7 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors"
 	corsops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 type fakeCorsStore struct{ origins []cors.AllowedOrigin }

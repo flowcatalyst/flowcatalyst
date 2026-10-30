@@ -1,10 +1,10 @@
-module github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tests
+module github.com/flowcatalyst/go-sdk/tests
 
 go 1.26.0
 
 require (
 	github.com/fergusstrange/embedded-postgres v1.34.0
-	github.com/flowcatalyst/flowcatalyst/pkg/fcsdk v0.0.0-00010101000000-000000000000
+	github.com/flowcatalyst/go-sdk v0.0.0-00010101000000-000000000000
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/stretchr/testify v1.11.1
 )
@@ -23,4 +23,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/flowcatalyst/flowcatalyst/pkg/fcsdk => ../
+replace github.com/flowcatalyst/go-sdk => ../

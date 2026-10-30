@@ -21,7 +21,7 @@ import (
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/pages"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // registerUI mounts the server-rendered UI under /ui (internal/ui,

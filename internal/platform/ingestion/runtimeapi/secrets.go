@@ -12,8 +12,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/tsid"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // SecretFetchEvent is the event name (the message and the "event" field) of

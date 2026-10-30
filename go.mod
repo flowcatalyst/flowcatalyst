@@ -17,7 +17,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/danielgtaylor/huma/v2 v2.38.0
 	github.com/fergusstrange/embedded-postgres v1.34.0
-	github.com/flowcatalyst/flowcatalyst/pkg/fcsdk v0.0.0-00010101000000-000000000000
+	github.com/flowcatalyst/go-sdk v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/go-webauthn/webauthn v0.18.2
@@ -138,4 +138,4 @@ require (
 
 tool github.com/a-h/templ/cmd/templ
 
-replace github.com/flowcatalyst/flowcatalyst/pkg/fcsdk => ./pkg/fcsdk
+replace github.com/flowcatalyst/go-sdk => ./pkg/fcsdk

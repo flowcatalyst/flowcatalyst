@@ -34,7 +34,7 @@ lines=(
 	"ts|typescript-sdk|clients/typescript-sdk|clients/typescript-sdk/VERSION"
 	"laravel|laravel-sdk|clients/laravel-sdk|clients/laravel-sdk/VERSION"
 	"java|java-sdk|clients/java-sdk|clients/java-sdk/VERSION"
-	"go-sdk|pkg/fcsdk|pkg/fcsdk|pkg/fcsdk/VERSION"
+	"go-sdk|go-sdk|pkg/fcsdk|pkg/fcsdk/VERSION"
 	"fn-ts|fn-ts-sdk|clients/fn-ts|clients/fn-ts/VERSION"
 	"fn-rust|fn-rust-sdk|clients/fn-rust|clients/fn-rust/VERSION"
 	"fn-go|clients/fn-go|clients/fn-go|clients/fn-go/VERSION"

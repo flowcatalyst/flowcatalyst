@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outbox"
+	"github.com/flowcatalyst/go-sdk/outbox"
 )
 
 // The audit row is the platform's POST /api/audit-logs/batch item: camelCase

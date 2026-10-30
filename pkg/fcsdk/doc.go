@@ -1,5 +1,5 @@
 // Package fcsdk is the entry-point overview for the FlowCatalyst Go SDK,
-// module github.com/flowcatalyst/flowcatalyst/pkg/fcsdk. There is no Go code
+// module github.com/flowcatalyst/go-sdk. There is no Go code
 // in the root; this file exists so that `go doc` on the module path returns
 // a map of what's where. It is also the dependency of the FlowCatalyst
 // application framework's FlowCatalyst module.

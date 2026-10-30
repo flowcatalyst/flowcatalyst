@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outbox"
+	"github.com/flowcatalyst/go-sdk/outbox"
 )
 
 type testEvent struct{}

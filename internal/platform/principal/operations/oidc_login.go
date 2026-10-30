@@ -3,8 +3,8 @@ package operations
 import (
 	"context"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
+	"github.com/flowcatalyst/go-sdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecaseop"
 )
 
 // OidcLogin is the audit-only command backing the UserLoggedIn event-only

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // accessRepo adapts platformconfig.Repository's PersistAccess/DeleteAccess

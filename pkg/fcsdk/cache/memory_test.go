@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/cache"
+	"github.com/flowcatalyst/go-sdk/cache"
 )
 
 func TestMemoryRoundTripBytes(t *testing.T) {

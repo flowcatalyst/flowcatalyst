@@ -13,7 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	fcauth "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/auth"
+	fcauth "github.com/flowcatalyst/go-sdk/auth"
 )
 
 // fnTarget is the resolved connection: credentials plus, when a profile

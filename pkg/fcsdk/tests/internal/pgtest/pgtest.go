@@ -25,8 +25,8 @@ import (
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outboxpgx"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
+	"github.com/flowcatalyst/go-sdk/outboxpgx"
+	"github.com/flowcatalyst/go-sdk/tsid"
 )
 
 var (

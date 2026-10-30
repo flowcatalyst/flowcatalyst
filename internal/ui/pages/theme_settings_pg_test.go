@@ -24,7 +24,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/publicapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
+	"github.com/flowcatalyst/go-sdk/usecaseop"
 )
 
 // The theme, client branding and names pages end to end against Postgres,

@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/client"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/sync"
+	"github.com/flowcatalyst/go-sdk/client"
+	"github.com/flowcatalyst/go-sdk/sync"
 )
 
 func TestSynchronizerSkipsEmptyCategories(t *testing.T) {

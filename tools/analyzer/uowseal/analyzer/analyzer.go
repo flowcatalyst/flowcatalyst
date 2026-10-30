@@ -24,7 +24,7 @@ import (
 )
 
 // operationPkgPath is the import path of the package that declares Operation.
-const operationPkgPath = "github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecaseop"
+const operationPkgPath = "github.com/flowcatalyst/go-sdk/usecaseop"
 
 var Analyzer = &analysis.Analyzer{
 	Name:     "uowseal",

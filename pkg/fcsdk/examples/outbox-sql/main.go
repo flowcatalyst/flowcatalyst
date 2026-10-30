@@ -20,9 +20,9 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outbox"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/outboxsql"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/tsid"
+	"github.com/flowcatalyst/go-sdk/outbox"
+	"github.com/flowcatalyst/go-sdk/outboxsql"
+	"github.com/flowcatalyst/go-sdk/tsid"
 )
 
 // invoiceIssued is a domain event implemented directly on a struct.

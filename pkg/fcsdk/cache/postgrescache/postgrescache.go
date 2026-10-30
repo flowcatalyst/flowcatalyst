@@ -21,7 +21,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/cache"
+	"github.com/flowcatalyst/go-sdk/cache"
 )
 
 // DefaultTable is the cache table name when New is used.

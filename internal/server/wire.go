@@ -11,7 +11,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	platformsink "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // WirePlatform instantiates every subdomain's repository + operations +

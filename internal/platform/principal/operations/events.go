@@ -6,7 +6,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 
-	"github.com/flowcatalyst/flowcatalyst/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 const (
