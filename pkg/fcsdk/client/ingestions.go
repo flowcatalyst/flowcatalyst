@@ -158,8 +158,28 @@ type IngestionResponse struct {
 	LatestNoticeAt string `json:"latestNoticeAt,omitempty"`
 	// Warnings names what the definition says that will not run as meant.
 	Warnings []string `json:"warnings,omitempty"`
+	// Config is where the source's settings stand.
+	Config *IngestionConfigStatus `json:"config,omitempty"`
 	// Save is what a create or update did (set on those answers only).
 	Save *IngestionSaveOutcome `json:"save,omitempty"`
+}
+
+// IngestionConfigStatus is where an ingestion's source settings stand. Status
+// is INLINE (in the definition), or the config entry the source names: SET,
+// MISSING (the ingestion does not run until it is set) or INVALID (Problems
+// says why). Key is the entry's key, absent while the settings are inline.
+type IngestionConfigStatus struct {
+	Status    string                `json:"status"`
+	Key       string                `json:"key,omitempty"`
+	UpdatedAt string                `json:"updatedAt,omitempty"`
+	Problems  []IngestionFieldError `json:"problems,omitempty"`
+}
+
+// IngestionFieldError is one problem with a settings field.
+type IngestionFieldError struct {
+	Field   string `json:"field"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 // IngestionSaveOutcome is what a create, update or version save did. Outcome
@@ -219,6 +239,9 @@ type IngestionVersionResponse struct {
 	Draft  bool                  `json:"draft,omitempty"`
 	Digest string                `json:"digest,omitempty"`
 	Save   *IngestionSaveOutcome `json:"save,omitempty"`
+	// Warnings names what the saved definition says that will not run as
+	// meant, such as CONFIG_MISSING (the answer of SaveVersion only).
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // UnmarshalJSON reads the source and split as their typed members.
@@ -358,6 +381,7 @@ type SetChange struct {
 	Action      string   `json:"action"`
 	Changed     []string `json:"changed"`
 	IngestionID string   `json:"ingestionId,omitempty"`
+	Warnings    []string `json:"warnings,omitempty"`
 }
 
 // IngestionSetResponse is a set and how many ingestions it owns.
@@ -636,6 +660,9 @@ type IngestionSecretResponse struct {
 // IngestionSecretListResponse — GET /api/ingestions/{id}/secrets.
 type IngestionSecretListResponse struct {
 	Secrets []IngestionSecretResponse `json:"secrets"`
+	// NamesHidden: the source's settings are in a config entry and the names
+	// it binds are withheld from a caller who cannot update ingestions.
+	NamesHidden bool `json:"namesHidden,omitempty"`
 }
 
 // Secrets — GET /api/ingestions/{id}/secrets: the secret names the live
