@@ -6039,6 +6039,13 @@
             "description": "A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings",
             "type": "boolean"
           },
+          "secrets": {
+            "description": "The secret settings of the entry, for a caller who can update ingestions: the path of each setting, the name of its secret and whether the secret has a value. Never a value. Write a value with secretFields (by field) or secrets (by name)",
+            "items": {
+              "$ref": "#/components/schemas/IngestionConfigSecret"
+            },
+            "type": "array"
+          },
           "status": {
             "enum": [
               "INLINE",
@@ -6065,6 +6072,32 @@
         "required": [
           "schemaChecked",
           "status"
+        ],
+        "type": "object"
+      },
+      "IngestionConfigSecret": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "description": "The path of the setting in the entry, such as password or auth.clientSecret",
+            "type": "string"
+          },
+          "name": {
+            "description": "The name of the secret the entry gives the setting; absent when it names none",
+            "type": "string"
+          },
+          "set": {
+            "description": "The secret has a value at this client",
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "description": "When the value was last set, RFC 3339; absent when not set",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "set"
         ],
         "type": "object"
       },
@@ -6134,6 +6167,13 @@
           "schemaChecked": {
             "description": "A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings",
             "type": "boolean"
+          },
+          "secrets": {
+            "description": "The secret settings of the entry, for a caller who can update ingestions: the path of each setting, the name of its secret and whether the secret has a value. Never a value. Write a value with secretFields (by field) or secrets (by name)",
+            "items": {
+              "$ref": "#/components/schemas/IngestionConfigSecret"
+            },
+            "type": "array"
           },
           "status": {
             "enum": [
@@ -11780,6 +11820,20 @@
             "format": "uri",
             "readOnly": true,
             "type": "string"
+          },
+          "secretFields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Secret values by the path of the setting they belong to (password, credential.secretAccessKey, auth.clientSecret). The platform names the secret: the name the value gives the setting, else the one the entry has now, else the entry's key and the path in kebab case (mix-positions-client-secret), writes the name into the value and the secret under it",
+            "type": "object"
+          },
+          "secrets": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Secret values by secret name, written with the entry as SECRET values of the application's secrets section at the ingestion's client. Each name must be one the value names. Needs no bind-secrets permission for a name the write gives a value",
+            "type": "object"
           },
           "value": {
             "additionalProperties": {},

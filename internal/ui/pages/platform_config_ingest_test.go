@@ -58,3 +58,30 @@ func TestConfigIngestEntriesAreNotEditedOrDeletedHere(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Empty(t, h.cfg.deleted, "nothing is deleted")
 }
+
+// A value the cell cuts off opens a dialog with all of it, indented when it is
+// JSON; an ingestion's settings link from the dialog to the ingestions that use
+// them. A secret has no such dialog (its value is not read here), nor does a
+// value the read service withheld, nor a short one.
+func TestConfigValueCellOpensTheWholeValueInADialog(t *testing.T) {
+	h := cfgWithIngestEntry()
+	long := strings.Repeat("a long plain value ", 12)
+	h.cfg.rows = append(h.cfg.rows,
+		cfgRowFixture("pfc_10", "branding", "tagline", platformconfig.ValuePlain, long),
+		cfgRowFixture("pfc_11", platformconfig.ReservedSection, "hidden-feed", platformconfig.ValuePlain, ""),
+	)
+	h.cfg.rows[len(h.cfg.rows)-1].Hidden = true
+	body := h.do(t, cfgAdmin(), req{target: "/ui/platform/config", datastar: true})
+
+	// The JSON entry: a button in the cell, a dialog with the indented value, and the link to its ingestions.
+	mustContain(t, body, `data-testid="cfg-value-open-pfc_9"`, `id="cfg-value-pfc_9"`, `class="fc-code-block"`,
+		`<code>{`, `  &#34;host&#34;: &#34;sftp.vendor.example&#34;`, // indented, one key to a line
+		`data-testid="cfg-value-ingestions-pfc_9"`, `href="/ui/ingestions?application=platform&amp;client=clt_acme"`)
+	// A long plain value shows whole in the dialog although the cell cuts it.
+	mustContain(t, body, `data-testid="cfg-value-open-pfc_10"`, `id="cfg-value-pfc_10"`, long)
+	assert.NotContains(t, body, `data-testid="cfg-value-ingestions-pfc_10"`, "only an ingestion's settings link to ingestions")
+
+	// No dialog for a short value, a secret or a withheld value.
+	mustNotContain(t, body, `id="cfg-value-pfc_1"`, `id="cfg-value-pfc_2"`, `id="cfg-value-pfc_3"`, `id="cfg-value-pfc_11"`, cfgSecretValue)
+	mustContain(t, body, `data-testid="cfg-hidden"`)
+}

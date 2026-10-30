@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -54,8 +55,20 @@ type ingestPlatform struct {
 	outcome   string
 	// configHidden answers the config GET as to a viewer who cannot update.
 	configHidden bool
+	// configured makes the ingestion's source name an api-poll entry;
+	// secretsJSON, when set, is the secrets list the config GET reports.
+	configured  bool
+	secretsJSON string
 	// resumeRefusal, when set, is the platform's problem answered to a resume.
 	resumeRefusal string
+}
+
+// row is the ingestion the fake serves.
+func (p *ingestPlatform) row() string {
+	if p.configured {
+		return strings.Replace(ingestRowJSON, `"source":{"kind":"sftp"}`, `"source":{"kind":"api-poll","config":true}`, 1)
+	}
+	return ingestRowJSON
 }
 
 func newIngestPlatform(t *testing.T) *ingestPlatform {
@@ -75,7 +88,7 @@ func newIngestPlatform(t *testing.T) *ingestPlatform {
 			q := r.URL.Query()
 			switch {
 			case q.Get("q") != "":
-				_, _ = fmt.Fprintf(w, `{"ingestions":[%s],"hasMore":false}`, ingestRowJSON)
+				_, _ = fmt.Fprintf(w, `{"ingestions":[%s],"hasMore":false}`, p.row())
 			case q.Get("after") == "":
 				_, _ = fmt.Fprintf(w, `{"ingestions":[%s],"hasMore":true,"nextCursor":"c1"}`, ingestRowJSON)
 			default:
@@ -109,6 +122,10 @@ func newIngestPlatform(t *testing.T) *ingestPlatform {
 		case "GET /api/ingestions/ing_1/config":
 			if p.configHidden {
 				_, _ = w.Write([]byte(`{"key":"orders-feed","status":"SET","schemaChecked":true,"valueHidden":true}`))
+				return
+			}
+			if p.secretsJSON != "" {
+				_, _ = fmt.Fprintf(w, `{"key":"orders-feed","status":"SET","schemaChecked":true,"secrets":%s}`, p.secretsJSON)
 				return
 			}
 			_, _ = w.Write([]byte(`{"key":"orders-feed","status":"INVALID","problems":[{"field":"host","code":"NOT_NULL","message":"is required"}],"updatedAt":"2026-10-26T08:00:00Z","schemaChecked":false,"value":{"username":"feed"}}`))
@@ -568,4 +585,70 @@ func TestReadDefinitionFilesNamesAMissingPath(t *testing.T) {
 	// A folder among several arguments is still not a definition file.
 	_, _, err = readDefinitionFiles([]string{good, dir})
 	require.EqualError(t, err, dir+" is not a definition file")
+}
+
+// secretAnswers stands in for the terminal: it answers the hidden prompts in
+// order and keeps the prompts, which must never hold an answer.
+func secretAnswers(t *testing.T, answers ...string) *[]string {
+	t.Helper()
+	prompts := &[]string{}
+	oldRead, oldTTY := fnReadSecret, fnStdinIsTerminal
+	t.Cleanup(func() { fnReadSecret, fnStdinIsTerminal = oldRead, oldTTY })
+	fnStdinIsTerminal = func() bool { return true }
+	fnReadSecret = func(prompt string, _ io.Writer) (string, error) {
+		*prompts = append(*prompts, prompt)
+		if len(*prompts) > len(answers) {
+			return "", errors.New("asked more than expected")
+		}
+		return answers[len(*prompts)-1], nil
+	}
+	return prompts
+}
+
+const ingestLoginEntry = `{"url":"https://api.vendor.example/v1/stock","method":"GET","auth":{"kind":"login","url":"https://api.vendor.example/login","username":"svc"}}`
+
+func TestIngestConfigSetSecretsPromptsForEverySecretTheEntryUses(t *testing.T) {
+	newFnTestEnv(t)
+	p := newIngestPlatform(t)
+	p.configured = true
+	p.secretsJSON = `[{"field":"auth.password","name":"orders-feed-auth-password","set":true}]`
+	file := filepath.Join(t.TempDir(), "v.json")
+	require.NoError(t, os.WriteFile(file, []byte(ingestLoginEntry), 0o600))
+	const typed = "typed-value-9f3"
+	prompts := secretAnswers(t, typed)
+	out, errOut, err := runCobra(t, newIngestConfigSetCmd(), "", append([]string{"ingest/acme/orders-sftp", file, "--secrets"}, p.flags()...)...)
+	require.NoError(t, err)
+	// The value travels in the body, by the path of its setting; the platform names the secret.
+	require.JSONEq(t, `{"value":`+ingestLoginEntry+`,"secretFields":{"auth.password":"`+typed+`"}}`, p.bodies["PUT /api/ingestions/ing_1/config"])
+	require.Len(t, *prompts, 1)
+	require.Contains(t, (*prompts)[0], "auth.password")
+	require.Contains(t, (*prompts)[0], "set; Enter keeps it")
+	for _, text := range []string{out, errOut, (*prompts)[0]} {
+		require.NotContains(t, text, typed)
+	}
+}
+
+func TestIngestConfigSetSecretsEnterKeepsTheValueThereIs(t *testing.T) {
+	newFnTestEnv(t)
+	p := newIngestPlatform(t)
+	p.configured = true
+	p.secretsJSON = `[{"field":"auth.password","name":"orders-feed-auth-password","set":true}]`
+	file := filepath.Join(t.TempDir(), "v.json")
+	require.NoError(t, os.WriteFile(file, []byte(ingestLoginEntry), 0o600))
+	secretAnswers(t, "")
+	_, _, err := runCobra(t, newIngestConfigSetCmd(), "", append([]string{"ingest/acme/orders-sftp", file, "--secrets"}, p.flags()...)...)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"value":`+ingestLoginEntry+`}`, p.bodies["PUT /api/ingestions/ing_1/config"])
+}
+
+func TestIngestConfigSetSecretsNeedsATerminal(t *testing.T) {
+	newFnTestEnv(t)
+	p := newIngestPlatform(t)
+	oldTTY := fnStdinIsTerminal
+	t.Cleanup(func() { fnStdinIsTerminal = oldTTY })
+	fnStdinIsTerminal = func() bool { return false }
+	before := p.writes()
+	_, _, err := runCobra(t, newIngestConfigSetCmd(), ingestLoginEntry, append([]string{"ingest/acme/orders-sftp", "-", "--secrets"}, p.flags()...)...)
+	require.ErrorContains(t, err, "stdin holds the file")
+	require.Equal(t, before, p.writes())
 }

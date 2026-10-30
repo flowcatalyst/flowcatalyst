@@ -604,3 +604,38 @@ kind"), and starts by itself once the entry is valid.
    author's call and is not gated (the CONFIG_MISSING warning covers it).
 3. The order of work for a configured ingestion is: apply (created paused), set the entry, set the secrets, resume.
 4. An exported file keeps writing `active` with the current state, so applying an export back enforces it.
+
+### Rulings (owner, 2026-10-30): secrets are entered as values
+
+1. Setting an ingestion's settings is **one form of values**. A secret setting is a password input (never filled in,
+   never echoed back) with a Set / Not set tag beside it; blank keeps the value there is. A person does not see or type
+   a secret name in that form. The JSON-editor fallback (a kind no runtime reports) stays the advanced path, where
+   secret settings are still names.
+2. **The platform names the secret**, by one rule used by the settings form, the API and fcdev
+   (`ingestion.SecretNameFor`): the name the value being written gives the setting, else the name the entry already
+   holds there (an existing entry such as `mix-client-secret` keeps working), else `<entry key>-<setting path in kebab
+   case>` (key `mix-positions`, `clientSecret`: `mix-positions-client-secret`; a nested setting joins its segments:
+   `auth.clientSecret` gives `mix-positions-auth-client-secret`). A derived name that is not a valid secret name (too
+   long) is refused, never cut.
+3. **One write, one transaction.** `PUT /api/ingestions/{id}/config` takes `secrets` (value by secret name) and
+   `secretFields` (value by setting path, the platform naming it) beside `value`. The entry and each secret (section
+   `secrets`, `CLIENT` scope at the ingestion's client, `SECRET`) are saved in one unit of work, with a
+   `property-set` event for each config row and the ingestion's `config-set` event as the rollup, which carries
+   `secretsSet` (names). A name in `secrets` must be one the new value binds (`not a secret this entry uses`). The audit
+   row masks `value`, `secrets` and `secretFields`; no answer, audit row or event holds a value.
+4. **Authorship.** Binding a secret name needs `bind-secrets` because it points an ingestion at a secret the author may
+   not know. A name whose value is supplied in the same write is the author's own and does not count
+   (`Change.Supplied`, `SteersSecretsExcept`): a new name with its value, or an address change with every bound secret
+   re-supplied, needs no `bind-secrets`. A name without its value, and an address change with the secrets kept, still
+   do. One exception: a supplied name that already has a value which no ingestion of the entry binds is not the
+   author's (the write would replace someone else's secret), so it still needs `bind-secrets`.
+5. `GET .../config` lists, for a caller who can update, `secrets: [{field, name, set, updatedAt}]` for the entry's
+   secret settings (an extension kind's: every SECRET setting of its reported schema): names and state, never values.
+   The API takes the derived-name route (`secretFields`) rather than publishing derived names for unset fields,
+   because the fields a first-time entry has depend on its value.
+6. fcdev: `fcdev ingest config set <ref> <file|-> --secrets` prompts (hidden) for each secret the entry uses, Enter
+   keeps the value there is, and sends them as `secretFields`; with the file on stdin it needs a terminal and is refused
+   otherwise.
+7. The drawer's Secrets section links to the settings form (where a value is entered); the platform config page stays
+   as a small secondary link. The platform config page opens a truncated value in a dialog (indented when JSON; never for a
+   secret or a withheld value; settings of an ingestion link to the ingestions using them).

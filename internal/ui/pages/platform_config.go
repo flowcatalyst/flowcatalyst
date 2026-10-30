@@ -1,8 +1,10 @@
 package pages
 
 import (
+	"bytes"
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -171,7 +173,12 @@ type cfgRow struct {
 	IngestionsHref string
 	// Hidden: the read service withheld the value (an ingestion's settings
 	// seen by someone who cannot update ingestions).
-	Hidden                bool
+	Hidden bool
+	// Expand: the value does not show whole in the table, so the cell opens a
+	// dialog with all of it (ValuePretty: indented when it is JSON). Never for
+	// a secret, whose value is not read here, or a hidden one.
+	Expand                bool
+	ValuePretty           string
 	updatedAt             int64
 	sortSection, sortProp string
 	sortClient            string
@@ -299,6 +306,29 @@ func (h *PlatformConfig) appOptions(ctx context.Context, ac *auth.AuthContext) (
 	return opts, nil
 }
 
+// expandableLength is how long a plain value is before the cell offers the
+// whole of it in a dialog: past this the column's width cuts it off.
+const expandableLength = 40
+
+// prettyValue is the value as the dialog shows it: indented when it is a JSON
+// object or array. expand says whether the table cell shows less than all of
+// it (cut at the cap, long, over several lines, or JSON).
+func prettyValue(value string, cut bool) (shown string, expand bool) {
+	shown = value
+	trimmed := strings.TrimSpace(value)
+	isJSON := false
+	if (strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[")) && json.Valid([]byte(trimmed)) {
+		var out bytes.Buffer
+		if json.Indent(&out, []byte(trimmed), "", "  ") == nil {
+			shown, isJSON = out.String(), true
+		}
+	}
+	return shown, cut || isJSON || strings.Contains(value, "\n") || utf8.RuneCountInString(value) > expandableLength
+}
+
+// valueDialogID is the id of the dialog that shows the row's whole value.
+func (r cfgRow) valueDialogID() string { return "cfg-value-" + r.ID }
+
 // maxShownValue caps a plain value in the table; the rest is in the edit
 // dialog.
 const maxShownValue = 120
@@ -330,6 +360,7 @@ func (h *PlatformConfig) toRow(ctx context.Context, ac *auth.AuthContext, c *pla
 		if utf8.RuneCountInString(row.Value) > maxShownValue {
 			row.Value = string([]rune(row.Value)[:maxShownValue]) + "…"
 		}
+		row.ValuePretty, row.Expand = prettyValue(c.Value, row.Value != row.ValueFull)
 	}
 	if strings.EqualFold(c.Section, platformconfig.ReservedSection) {
 		row.Reserved = true

@@ -975,6 +975,15 @@ type ingestConfigProblem struct {
 	Message string `json:"message"`
 }
 
+// ingestConfigSecret is a secret setting of an entry: names and whether a value
+// is set, never a value.
+type ingestConfigSecret struct {
+	Field     string `json:"field"`
+	Name      string `json:"name"`
+	Set       bool   `json:"set"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
 type ingestConfig struct {
 	Key           string                `json:"key"`
 	Status        string                `json:"status"`
@@ -985,6 +994,7 @@ type ingestConfig struct {
 	ValueHidden   bool                  `json:"valueHidden"`
 	Ingestions    []string              `json:"ingestions"`
 	Warnings      []string              `json:"warnings"`
+	Secrets       []ingestConfigSecret  `json:"secrets"`
 }
 
 func printConfig(rep *fnReport, c ingestConfig) {
@@ -1002,6 +1012,16 @@ func printConfig(rep *fnReport, c ingestConfig) {
 	}
 	if !c.SchemaChecked {
 		rep.say("  no live runtime reports this kind's settings: a value is not checked against them when written")
+	}
+	for _, sec := range c.Secrets {
+		state := "not set"
+		if sec.Set {
+			state = "set"
+			if sec.UpdatedAt != "" {
+				state += " " + sec.UpdatedAt
+			}
+		}
+		rep.say("  secret  %s (%s): %s", sec.Field, firstNonEmpty(sec.Name, "no name yet"), state)
 	}
 	if c.ValueHidden {
 		rep.say("  value   the value is hidden: it needs ingestion:update")
@@ -1051,18 +1071,30 @@ func newIngestConfigGetCmd() *cobra.Command {
 
 func newIngestConfigSetCmd() *cobra.Command {
 	var pf fnPlatformFlags
-	var asJSON, yes bool
+	var asJSON, yes, secrets bool
 	cmd := &cobra.Command{
 		Use:   "set <application>/<client>/<code> <file.json | ->",
 		Short: "Write the settings entry an ingestion's source names",
 		Long: `Writes the JSON object in the file (or on stdin, with -) as the entry: the
-kind's settings as an inline source holds them, and optionally targetUrl. A
-secret setting holds the secret's NAME; the secret itself is set in section
-secrets at the client. The platform checks the value against every ingestion of
-the application and client that names the entry, and writes nothing unless all
-pass.`,
+kind's settings as an inline source holds them, and optionally targetUrl. The
+platform checks the value against every ingestion of the application and client
+that names the entry, and writes nothing unless all pass.
+
+A secret setting holds the secret's name; the secret itself lives in section
+secrets at the client. With --secrets the command asks for the value of every
+secret the entry uses (hidden, from the terminal; Enter keeps the value there is)
+and sends them with the entry in one write. The platform names a secret that
+has no name yet. A value is never printed. With - the file is stdin, so
+--secrets then needs a terminal on stdin to answer the prompts and is refused
+otherwise.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if secrets && !fnStdinIsTerminal() {
+				if args[1] == "-" {
+					return errors.New("--secrets reads the secrets from the terminal, but stdin holds the file: give the file as a path")
+				}
+				return errors.New("--secrets reads the secrets from the terminal, and stdin is not one")
+			}
 			var data []byte
 			var err error
 			if args[1] == "-" {
@@ -1085,11 +1117,21 @@ pass.`,
 			if err != nil {
 				return err
 			}
+			body := map[string]any{"value": value}
+			if secrets {
+				fields, err := promptEntrySecrets(cmd, api, r, data)
+				if err != nil {
+					return err
+				}
+				if len(fields) > 0 {
+					body["secretFields"] = fields
+				}
+			}
 			if err := api.confirm("write the settings of "+r.ref(), yes); err != nil {
 				return err
 			}
 			var raw json.RawMessage
-			err = api.json(cmd.Context(), http.MethodPut, ingestConfigPath(r.ID), map[string]any{"value": value}, &raw)
+			err = api.json(cmd.Context(), http.MethodPut, ingestConfigPath(r.ID), body, &raw)
 			if err != nil {
 				if ae, ok := errors.AsType[*apiError](err); ok {
 					for _, p := range ae.problems() {
@@ -1110,14 +1152,78 @@ pass.`,
 			for _, p := range c.Problems {
 				rep.say("  problem %s: %s", p.Field, p.Message)
 			}
+			for _, sec := range c.Secrets {
+				if sec.Set {
+					rep.say("  secret  %s (%s): set", sec.Field, sec.Name)
+				} else {
+					rep.say("  secret  %s (%s): not set", sec.Field, firstNonEmpty(sec.Name, "no name yet"))
+				}
+			}
 			printWarnings(rep, "  ", c.Warnings)
 			return rep.emit(raw)
 		},
 	}
 	pf.add(cmd)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the answer as JSON on stdout; human output goes to stderr")
+	cmd.Flags().BoolVar(&secrets, "secrets", false, "ask (hidden, on the terminal) for the value of each secret the entry uses, and write them with the entry")
 	addYesFlag(cmd, &yes)
 	return cmd
+}
+
+func isConfigured(src ingestion.Source) bool {
+	_, ok := src.(ingestion.Configured)
+	return ok
+}
+
+// promptEntrySecrets asks for the value of each secret the entry uses, by the
+// path of its setting, and returns the ones given. The secrets are those the
+// platform reports for the current entry (which, for an extension kind, are all
+// its secret settings) and those the file's entry names, which for a built-in
+// kind are read with the platform's own model of the kind. A blank answer
+// keeps what is there. A value goes only into the returned map.
+func promptEntrySecrets(cmd *cobra.Command, api *fnAPI, r *ingRow, data []byte) (map[string]string, error) {
+	var raw json.RawMessage
+	if err := api.json(cmd.Context(), http.MethodGet, ingestConfigPath(r.ID), nil, &raw); err != nil {
+		return nil, err
+	}
+	var current ingestConfig
+	if err := json.Unmarshal(raw, &current); err != nil {
+		return nil, err
+	}
+	set := map[string]bool{}
+	var fields []string
+	for _, sec := range current.Secrets {
+		set[sec.Field] = sec.Set
+		fields = append(fields, sec.Field)
+	}
+	if src, err := ingestion.UnmarshalSource(r.Source); err == nil && isConfigured(src) {
+		res := ingestion.ApplyConfig(ingestion.Definition{Source: src}, r.Code, &ingestion.ConfigEntry{Value: string(data)})
+		if res.Runnable() {
+			if _, isCustom := res.Definition.Source.(ingestion.Custom); !isCustom {
+				for _, slot := range ingestion.SecretSlots(res.Definition.Source) {
+					if !slices.Contains(fields, slot.Path) {
+						fields = append(fields, slot.Path)
+					}
+				}
+			}
+		}
+	}
+	slices.Sort(fields)
+	out := map[string]string{}
+	for _, field := range fields {
+		state := "not set"
+		if set[field] {
+			state = "set; Enter keeps it"
+		}
+		answer, err := fnReadSecret(fmt.Sprintf("Secret for %s (%s): ", field, state), cmd.ErrOrStderr())
+		if err != nil {
+			return nil, err
+		}
+		if answer != "" {
+			out[field] = answer
+		}
+	}
+	return out, nil
 }
 
 func newIngestConfigDeleteCmd() *cobra.Command {

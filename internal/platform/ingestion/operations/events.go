@@ -196,9 +196,12 @@ const (
 // that names the entry, all of which the value was checked against.
 type IngestionConfigSet struct {
 	ingestionEvent
-	Code       string
-	Key        string
-	Settings   []string
+	Code     string
+	Key      string
+	Settings []string
+	// SecretsSet are the names of the secrets whose values the same write set;
+	// never the values.
+	SecretsSet []string
 	Ingestions []string
 	// Warnings are for the caller, not the event: SCHEMA_UNCHECKED when no live
 	// runtime reports the kind's settings.
@@ -212,8 +215,9 @@ func (e IngestionConfigSet) ToDataJSON() ([]byte, error) {
 		Code        string   `json:"code"`
 		Key         string   `json:"key"`
 		Settings    []string `json:"settings"`
+		SecretsSet  []string `json:"secretsSet"`
 		Ingestions  []string `json:"ingestions"`
-	}{e.IngestionID, e.Code, e.Key, e.Settings, e.Ingestions})
+	}{e.IngestionID, e.Code, e.Key, e.Settings, e.SecretsSet, e.Ingestions})
 }
 
 // IngestionConfigDeleted is emitted when the entry an ingestion names is

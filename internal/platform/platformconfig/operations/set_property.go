@@ -75,7 +75,7 @@ func SetProperty(repo *platformconfig.Repository) usecaseop.Operation[SetPropert
 					return usecase.Validation("INVALID_VALUE_TYPE", "valueType must be PLAIN or SECRET")
 				}
 				if vt == platformconfig.ValueSecret {
-					return validSecretValue(cmd.Value)
+					return ValidSecretValue(cmd.Value)
 				}
 			}
 			return nil
@@ -121,27 +121,33 @@ func SetProperty(repo *platformconfig.Repository) usecaseop.Operation[SetPropert
 			// A SECRET kept by leaving valueType out is checked here, where the
 			// stored type is known.
 			if c.ValueType == platformconfig.ValueSecret {
-				if err := validSecretValue(cmd.Value); err != nil {
+				if err := ValidSecretValue(cmd.Value); err != nil {
 					return nil, err
 				}
 			}
 
-			event := PropertySet{
-				Metadata:        usecase.NewEventMetadata(ec, PropertySetType, Source, subjectFor(c.ID)),
-				ConfigID:        c.ID,
-				ApplicationCode: c.ApplicationCode,
-				Section:         c.Section,
-				Property:        c.Property,
-			}
-			return usecaseop.Save(c, repo, event), nil
+			return usecaseop.Save(c, repo, NewPropertySet(ec, c)), nil
 		},
 	}
 }
 
-// validSecretValue refuses a SECRET value that is the mask every read
+// NewPropertySet is the event of writing c. An operation that writes config
+// rows beside its own aggregate (an ingestion writing its settings and secrets)
+// emits it for each row.
+func NewPropertySet(ec usecase.ExecutionContext, c *platformconfig.Config) PropertySet {
+	return PropertySet{
+		Metadata:        usecase.NewEventMetadata(ec, PropertySetType, Source, subjectFor(c.ID)),
+		ConfigID:        c.ID,
+		ApplicationCode: c.ApplicationCode,
+		Section:         c.Section,
+		Property:        c.Property,
+	}
+}
+
+// ValidSecretValue refuses a SECRET value that is the mask every read
 // returns, or empty: either written back would destroy the secret. A caller
 // that does not mean to change a secret does not set it.
-func validSecretValue(v string) error {
+func ValidSecretValue(v string) error {
 	switch strings.TrimSpace(v) {
 	case MaskedSecret:
 		return usecase.Validation("SECRET_VALUE_MASKED",

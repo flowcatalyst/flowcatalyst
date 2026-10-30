@@ -211,7 +211,11 @@ templ ingsControl(f ingsForm, fld ingsField) {
 		case ingsDuration:
 			@kit.Input(kit.InputProps{ID: f.id(fld.Name), Name: fld.Name, Value: f.text(fld), Placeholder: "5m", Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name), Attrs: ingsTextAttrs(fld)})
 		case ingsSecret:
-			@kit.SecretRefInput(kit.SecretRefInputProps{ID: f.id(fld.Name), Name: fld.Name, Value: f.text(fld), Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name)})
+			if f.Secrets != nil {
+				@ingsSecretValue(f, fld)
+			} else {
+				@kit.SecretRefInput(kit.SecretRefInputProps{ID: f.id(fld.Name), Name: fld.Name, Value: f.text(fld), Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name)})
+			}
 		case ingsChoice:
 			@kit.Select(kit.SelectProps{ID: f.id(fld.Name), Name: fld.Name, Options: fld.Options, Selected: f.choice(fld), Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name), Attrs: f.controlAttrs(fld, nil)})
 		case ingsArea, ingsList, ingsPairs:
@@ -219,4 +223,30 @@ templ ingsControl(f ingsForm, fld ingsField) {
 		case ingsCode, ingsJSON:
 			@kit.CodeEditor(kit.CodeEditorProps{ID: f.id(fld.Name), Name: fld.Name, Value: f.text(fld), Language: fld.Lang, Label: fld.Label, Rows: 12, Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name)})
 	}
+}
+
+// ingsSecretValue is a secret of an environment's settings: a password input
+// that is never filled in, with whether the secret has a value beside it.
+templ ingsSecretValue(f ingsForm, fld ingsField) {
+	<div class="flex items-center gap-2">
+		<div class="min-w-0 flex-1">
+			@kit.Input(kit.InputProps{
+				ID: f.id(fld.Name), Name: fld.Name, Type: "password", Placeholder: ingsSecretPlaceholder(f.Secrets[fld.Name]),
+				Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name),
+				Attrs: templ.Attributes{"autocomplete": "new-password", "autocapitalize": "off", "spellcheck": "false"},
+			})
+		</div>
+		if f.Secrets[fld.Name] {
+			@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Set"})
+		} else {
+			@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "Not set"})
+		}
+	</div>
+}
+
+func ingsSecretPlaceholder(set bool) string {
+	if set {
+		return "Leave blank to keep the current value"
+	}
+	return ""
 }

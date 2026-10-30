@@ -1006,9 +1006,16 @@ func ingsControl(f ingsForm, fld ingsField) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		case ingsSecret:
-			templ_7745c5c3_Err = kit.SecretRefInput(kit.SecretRefInputProps{ID: f.id(fld.Name), Name: fld.Name, Value: f.text(fld), Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name)}).Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
+			if f.Secrets != nil {
+				templ_7745c5c3_Err = ingsSecretValue(f, fld).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = kit.SecretRefInput(kit.SecretRefInputProps{ID: f.id(fld.Name), Name: fld.Name, Value: f.text(fld), Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name)}).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
 		case ingsChoice:
 			templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id(fld.Name), Name: fld.Name, Options: fld.Options, Selected: f.choice(fld), Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name), Attrs: f.controlAttrs(fld, nil)}).Render(ctx, templ_7745c5c3_Buffer)
@@ -1028,6 +1035,71 @@ func ingsControl(f ingsForm, fld ingsField) templ.Component {
 		}
 		return nil
 	})
+}
+
+// ingsSecretValue is a secret of an environment's settings: a password input
+// that is never filled in, with whether the secret has a value beside it.
+func ingsSecretValue(f ingsForm, fld ingsField) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var36 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var36 == nil {
+			templ_7745c5c3_Var36 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<div class=\"flex items-center gap-2\"><div class=\"min-w-0 flex-1\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = kit.Input(kit.InputProps{
+			ID: f.id(fld.Name), Name: fld.Name, Type: "password", Placeholder: ingsSecretPlaceholder(f.Secrets[fld.Name]),
+			Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name),
+			Attrs: templ.Attributes{"autocomplete": "new-password", "autocapitalize": "off", "spellcheck": "false"},
+		}).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if f.Secrets[fld.Name] {
+			templ_7745c5c3_Err = kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Set"}).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "Not set"}).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func ingsSecretPlaceholder(set bool) string {
+	if set {
+		return "Leave blank to keep the current value"
+	}
+	return ""
 }
 
 var _ = templruntime.GeneratedTemplate

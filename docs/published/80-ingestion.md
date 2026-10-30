@@ -149,7 +149,8 @@ The entry is platform configuration of the ingestion's **application**, section
 source has (a built-in kind's fields without `kind`; an extension kind's
 `settings` themselves), and optionally `targetUrl`. Secrets stay where they are,
 in section `secrets` at the client; a secret setting in the value holds the
-secret's **name**. The delivery address is in the file's `target.targetUrl` **or**
+secret's **name** (see "Secrets are entered as values" below: the settings form,
+the API and fcdev take the value and name the secret for you). The delivery address is in the file's `target.targetUrl` **or**
 in the value's `targetUrl`, exactly one. Several ingestions of one application
 and client may name one key (one login for two feeds); the value must then suit
 each of them.
@@ -182,6 +183,19 @@ with the problems); it starts by itself once the entry is valid.
   value is not in the audit row) and emits `platform:ingestion:ingestion:config-set`;
   it is not a version of the ingestion. `DELETE` makes the ingestions that name the
   entry `MISSING` and lists them (`platform:ingestion:ingestion:config-deleted`).
+- **Secrets are entered as values.** In the settings form every secret setting is a
+  password input with a Set / Not set tag; leave it blank to keep the value there is.
+  The platform names the secret: the name the entry already holds for that setting, else
+  `<entry key>-<setting in kebab case>` (key `mix-positions`, `clientSecret`:
+  `mix-positions-client-secret`; a nested setting joins its segments). The API takes
+  `PUT .../config` with `secretFields` (`{"<setting path>": "<value>"}`, the platform
+  names it) or `secrets` (`{"<secret name>": "<value>"}`, a name the value uses) beside
+  `value`; the entry and its secrets are written in one transaction, stored as `SECRET`
+  values at the ingestion's client. `GET .../config` lists `secrets: [{field, name, set,
+  updatedAt}]` for a caller who can update ingestions (names and state, never a value).
+  A value you supply needs no `bind-secrets`; a name without a value, or an address
+  change that keeps the secrets, still does. The JSON editor used for a kind no
+  runtime reports keeps secret settings as names.
 - **The kind's schema.** For a built-in kind it is the definition itself (strict
   decoding and `Validate`; an unknown setting is a problem). For an extension kind it
   is the field list a live runtime reports for it (type, required, choices, pattern,
@@ -451,7 +465,7 @@ error is exit code `1`. Refer to an ingestion as `application/client/code` or by
 | `fcdev ingest pause <ref>`, `resume <ref>` | Stop or start an ingestion. Resume is refused (`409`) while the settings entry the source names is not set (`INGESTION_CONFIG_NOT_SET`) or a secret it binds has no value (`INGESTION_SECRET_MISSING`, naming the secrets) |
 | `fcdev ingest test <ref \| file> [--wait] [--timeout d]` | Queue a test; `--wait` polls and prints the steps |
 | `fcdev ingest config get <ref> [--json]` | Show the settings entry the ingestion's source names: key, status, problems, the value |
-| `fcdev ingest config set <ref> <file.json \| -> [--json]` | Write the entry from a JSON object (a file, or stdin with `-`) |
+| `fcdev ingest config set <ref> <file.json \| -> [--secrets] [--json]` | Write the entry from a JSON object (a file, or stdin with `-`). `--secrets` asks (hidden, on the terminal) for the value of each secret the entry uses, Enter keeps the one there is, and writes them with the entry; it is refused when stdin holds the file and is not a terminal |
 | `fcdev ingest config delete <ref> [--json]` | Delete the entry; the ingestions that name it stop |
 | `fcdev ingest sets list` | List the sets |
 | `fcdev ingest sets applies <set>` | List a set's kept applies |

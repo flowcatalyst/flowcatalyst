@@ -23,6 +23,12 @@ type Change struct {
 	Live *Definition
 	// Next is the definition being saved.
 	Next Definition
+	// Supplied are the names of the secrets whose values the author gives in
+	// this same write (the settings form, a config write with secrets). An
+	// author who provides a secret's value is not reading one they cannot
+	// see, so a name in Supplied never counts as steering a secret
+	// (SteersSecretsExcept).
+	Supplied []string
 }
 
 // CheckAuthor refuses a caller who may not save the change, beyond the coarse
@@ -41,6 +47,10 @@ type Change struct {
 //     runtime presents a named secret to whatever host the definition names,
 //     so naming one is reading it. For an extension kind every text setting
 //     counts as a secret name, so any change of its settings counts.
+//
+// A secret whose value the same write supplies (Change.Supplied) is the
+// author's own: it does not need bind-secrets, whether its name is new or its
+// address changed. Everything else the definition names still does.
 func (r *Repository) CheckAuthor(ctx context.Context, ac *auth.AuthContext, c Change) error {
 	sources := []Source{c.Next.Source}
 	if c.Current != nil {
@@ -75,7 +85,7 @@ func (r *Repository) CheckAuthor(ctx context.Context, ac *auth.AuthContext, c Ch
 					auth.PermIngestionBindSecrets+"; give the server's known_hosts line instead")
 		}
 	}
-	if len(SecretNames(c.Next.Source)) > 0 && (c.Live == nil || SteersSecrets(*c.Live, c.Next)) {
+	if unsupplied := withoutNames(SecretNames(c.Next.Source), c.Supplied); len(unsupplied) > 0 && (c.Live == nil || SteersSecretsExcept(*c.Live, c.Next, c.Supplied)) {
 		if !ac.HasPermission(auth.PermIngestionBindSecrets) {
 			return usecase.Authorization("INGESTION_BIND_SECRETS_PERMISSION_REQUIRED",
 				"the definition names secrets and points them at a new address or names other secrets than the live version, which needs "+
@@ -148,23 +158,71 @@ func UsesRuntimeIdentity(src Source) bool {
 // somewhere other than live does: another kind, another outbound address,
 // another set of secret names, or (an extension kind, whose settings all
 // count as secret names) other settings.
-func SteersSecrets(live, next Definition) bool {
+func SteersSecrets(live, next Definition) bool { return SteersSecretsExcept(live, next, nil) }
+
+// SteersSecretsExcept is SteersSecrets for a write that supplies the values
+// of the secrets in supplied: those are the author's own, so they are left out
+// of the comparison. What remains named and unsupplied is steered when it is
+// sent to another address or kind, or the unsupplied names differ from live's.
+// A write that supplies every secret it names steers none.
+func SteersSecretsExcept(live, next Definition, supplied []string) bool {
+	nextNames := withoutNames(SecretNames(next.Source), supplied)
+	if len(nextNames) == 0 {
+		return false
+	}
 	if RunKind(live.Source) != RunKind(next.Source) {
 		return true
 	}
 	if lc, ok := live.Source.(Custom); ok {
 		nc, _ := next.Source.(Custom)
-		a, errA := json.Marshal(lc.Settings)
-		b, errB := json.Marshal(nc.Settings)
+		// A setting whose new value is a supplied secret is the author's own, so
+		// it is left out of both sides, whatever it held before.
+		own := func(k string) bool {
+			text, ok := nc.Settings[k].(string)
+			return ok && slices.Contains(supplied, text)
+		}
+		a, errA := json.Marshal(settingsWithout(lc.Settings, supplied, own))
+		b, errB := json.Marshal(settingsWithout(nc.Settings, supplied, own))
 		return errA != nil || errB != nil || string(a) != string(b)
 	}
 	if !slices.Equal(addressValues(live.Source), addressValues(next.Source)) {
 		return true
 	}
-	a, b := SecretNames(live.Source), SecretNames(next.Source)
+	a, b := withoutNames(SecretNames(live.Source), supplied), nextNames
 	slices.Sort(a)
 	slices.Sort(b)
 	return !slices.Equal(slices.Compact(a), slices.Compact(b))
+}
+
+// withoutNames is names without those in except.
+func withoutNames(names, except []string) []string {
+	return slices.DeleteFunc(slices.Clone(names), func(n string) bool { return slices.Contains(except, n) })
+}
+
+// settingsWithout is an extension's settings without the secrets it names that
+// the write supplies, so that giving a secret does not read as changing the
+// other settings.
+func settingsWithout(settings map[string]any, supplied []string, own func(key string) bool) map[string]any {
+	out := make(map[string]any, len(settings))
+	for k, v := range settings {
+		if own(k) {
+			continue
+		}
+		switch x := v.(type) {
+		case string:
+			if slices.Contains(supplied, x) {
+				continue
+			}
+		case []any:
+			x = slices.DeleteFunc(slices.Clone(x), func(item any) bool {
+				text, ok := item.(string)
+				return ok && slices.Contains(supplied, text)
+			})
+			v = x
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // addressValues are src's outbound addresses as written, field by field.

@@ -9,48 +9,8 @@ import "slices"
 // that is no secret reveals nothing). The runtime reads only these.
 func SecretNames(src Source) []string {
 	var names []string
-	add := func(refs ...SecretRef) {
-		for _, ref := range refs {
-			names = append(names, ref.Name)
-		}
-	}
-	switch s := src.(type) {
-	case Sftp:
-		add(s.Credential)
-	case S3:
-		if s.Credential != nil {
-			add(s.Credential.SecretAccessKey)
-		}
-	case Sqs:
-		if s.Credential != nil {
-			add(s.Credential.SecretAccessKey)
-		}
-	case RabbitMQ:
-		add(s.Password)
-	case DatabasePoll:
-		add(s.Password)
-	case HTTP:
-		switch a := s.Auth.(type) {
-		case BasicAuth:
-			add(a.Password)
-		case BearerAuth:
-			add(a.Token)
-		}
-	case APIPoll:
-		switch a := s.Auth.(type) {
-		case APIBasic:
-			add(a.Password)
-		case APIBearer:
-			add(a.Token)
-		case APIKey:
-			add(a.Value)
-		case ClientCredentials:
-			add(a.ClientSecret)
-		case Login:
-			add(a.Password)
-		}
-	case Custom:
-		for _, value := range s.Settings {
+	if c, ok := src.(Custom); ok {
+		for _, value := range c.Settings {
 			switch x := value.(type) {
 			case string:
 				names = append(names, x)
@@ -63,6 +23,10 @@ func SecretNames(src Source) []string {
 			case []string:
 				names = append(names, x...)
 			}
+		}
+	} else {
+		for _, slot := range SecretSlots(src) {
+			names = append(names, slot.Name)
 		}
 	}
 	return slices.DeleteFunc(names, func(n string) bool { return n == "" })

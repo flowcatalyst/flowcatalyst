@@ -2188,6 +2188,10 @@ export type IngestionConfigResponse = {
      * A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings
      */
     schemaChecked: boolean;
+    /**
+     * The secret settings of the entry, for a caller who can update ingestions: the path of each setting, the name of its secret and whether the secret has a value. Never a value. Write a value with secretFields (by field) or secrets (by name)
+     */
+    secrets?: Array<IngestionConfigSecret>;
     status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
     updatedAt?: string;
     /**
@@ -2200,6 +2204,25 @@ export type IngestionConfigResponse = {
      * The entry exists but its value is withheld: it is shown only to a caller who can update ingestions (ingestion:update). The status and problems are shown regardless
      */
     valueHidden?: boolean;
+};
+
+export type IngestionConfigSecret = {
+    /**
+     * The path of the setting in the entry, such as password or auth.clientSecret
+     */
+    field: string;
+    /**
+     * The name of the secret the entry gives the setting; absent when it names none
+     */
+    name?: string;
+    /**
+     * The secret has a value at this client
+     */
+    set: boolean;
+    /**
+     * When the value was last set, RFC 3339; absent when not set
+     */
+    updatedAt?: string;
 };
 
 export type IngestionConfigStatus = {
@@ -2236,6 +2259,10 @@ export type IngestionConfigWritten = {
      * A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings
      */
     schemaChecked: boolean;
+    /**
+     * The secret settings of the entry, for a caller who can update ingestions: the path of each setting, the name of its secret and whether the secret has a value. Never a value. Write a value with secretFields (by field) or secrets (by name)
+     */
+    secrets?: Array<IngestionConfigSecret>;
     status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
     updatedAt?: string;
     /**
@@ -4364,6 +4391,18 @@ export type SetIngestionConfigRequest = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Secret values by the path of the setting they belong to (password, credential.secretAccessKey, auth.clientSecret). The platform names the secret: the name the value gives the setting, else the one the entry has now, else the entry's key and the path in kebab case (mix-positions-client-secret), writes the name into the value and the secret under it
+     */
+    secretFields?: {
+        [key: string]: string;
+    };
+    /**
+     * Secret values by secret name, written with the entry as SECRET values of the application's secrets section at the ingestion's client. Each name must be one the value names. Needs no bind-secrets permission for a name the write gives a value
+     */
+    secrets?: {
+        [key: string]: string;
+    };
     /**
      * The entry: the kind's settings as an inline source holds them, and optionally targetUrl. A secret setting holds the secret's name
      */
@@ -6841,6 +6880,10 @@ export type IngestionConfigResponseWritable = {
      * A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings
      */
     schemaChecked: boolean;
+    /**
+     * The secret settings of the entry, for a caller who can update ingestions: the path of each setting, the name of its secret and whether the secret has a value. Never a value. Write a value with secretFields (by field) or secrets (by name)
+     */
+    secrets?: Array<IngestionConfigSecret>;
     status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
     updatedAt?: string;
     /**
@@ -6872,6 +6915,10 @@ export type IngestionConfigWrittenWritable = {
      * A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings
      */
     schemaChecked: boolean;
+    /**
+     * The secret settings of the entry, for a caller who can update ingestions: the path of each setting, the name of its secret and whether the secret has a value. Never a value. Write a value with secretFields (by field) or secrets (by name)
+     */
+    secrets?: Array<IngestionConfigSecret>;
     status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
     updatedAt?: string;
     /**
@@ -8113,6 +8160,18 @@ export type SetDeveloperCredentialResponseWritable = {
 };
 
 export type SetIngestionConfigRequestWritable = {
+    /**
+     * Secret values by the path of the setting they belong to (password, credential.secretAccessKey, auth.clientSecret). The platform names the secret: the name the value gives the setting, else the one the entry has now, else the entry's key and the path in kebab case (mix-positions-client-secret), writes the name into the value and the secret under it
+     */
+    secretFields?: {
+        [key: string]: string;
+    };
+    /**
+     * Secret values by secret name, written with the entry as SECRET values of the application's secrets section at the ingestion's client. Each name must be one the value names. Needs no bind-secrets permission for a name the write gives a value
+     */
+    secrets?: {
+        [key: string]: string;
+    };
     /**
      * The entry: the kind's settings as an inline source holds them, and optionally targetUrl. A secret setting holds the secret's name
      */

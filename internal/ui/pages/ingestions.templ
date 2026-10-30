@@ -585,7 +585,7 @@ func ingsConfirm(id, title, message, label string, tone kit.ConfirmTone) kit.Con
 // when. A runtime's fetch is security telemetry, not an audited reveal; a
 // refused fetch is in the history.
 templ ingsSecrets(d ingsDetail) {
-	@kit.FormSection(kit.FormSectionProps{Title: "Secrets", Description: "The secret names the live definition binds and when each runtime last fetched them. Values are never shown and are set on the platform configuration page; a refused fetch is in the history."}) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Secrets", Description: "The secret names the live definition binds and when each runtime last fetched them. Values are never shown: they are entered in the ingestion's settings; a refused fetch is in the history."}) {
 		<ul id="ings-secrets" class="flex flex-col gap-2 text-sm">
 			for _, sec := range d.Secrets {
 				<li id={ "ings-secret-" + sec.Name }>
@@ -601,13 +601,26 @@ templ ingsSecrets(d ingsDetail) {
 						} else {
 							@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "Missing"})
 						}
-						<a class="text-xs underline" href={ templ.SafeURL(sec.Href) } data-testid={ "ings-secret-link-" + sec.Name }>
-							if sec.Set {
-								Change
-							} else {
-								Set
-							}
-						</a>
+						if d.Config != nil && d.Config.CanEdit {
+							// The value is entered in the settings form; the config page
+							// stays for an administrator.
+							<a class="text-xs underline" href={ templ.SafeURL(d.configFormHref()) } { ingsLink()... } data-testid={ "ings-secret-settings-" + sec.Name }>
+								if sec.Set {
+									Change in settings
+								} else {
+									Set in settings
+								}
+							</a>
+							<a class="text-xs text-muted-foreground underline" href={ templ.SafeURL(sec.Href) } data-testid={ "ings-secret-link-" + sec.Name }>on the config page</a>
+						} else {
+							<a class="text-xs underline" href={ templ.SafeURL(sec.Href) } data-testid={ "ings-secret-link-" + sec.Name }>
+								if sec.Set {
+									Change
+								} else {
+									Set
+								}
+							</a>
+						}
 					}
 					if len(sec.Fetches) == 0 {
 						<span class="text-muted-foreground">: not fetched yet</span>

@@ -55,6 +55,10 @@ type ingsForm struct {
 	// Prefix is the form's element-id prefix; the settings form of an
 	// environment (ingestions_config.go) reuses the controls under its own.
 	Prefix string
+	// Secrets, set only on the settings form of an environment, says for each
+	// secret field (by name) whether its secret has a value. That form takes
+	// secrets as values in password inputs; the definition form takes names.
+	Secrets map[string]bool
 
 	// The create form's choices.
 	Apps          []kit.Option
@@ -228,7 +232,12 @@ func (f ingsForm) fieldProps(fld ingsField) kit.FieldProps {
 	id := f.id(fld.Name)
 	// The delivery URL is optional while the environment's settings may give it.
 	required := fld.Required && (fld.Name != "target.targetUrl" || !f.byConfig())
-	return kit.FieldProps{Label: fld.Label, For: id, Required: required, Description: fld.Help, Error: f.fieldError(fld.Name), ErrorID: id + "-err", Attrs: templ.Attributes{"id": id + "-field"}}
+	label, help := fld.Label, fld.Help
+	if fld.Type == ingsSecret && f.Secrets != nil {
+		label, help = ingsSecretLabel(fld), "Stored encrypted and never shown again."
+		required = required && !f.Secrets[fld.Name]
+	}
+	return kit.FieldProps{Label: label, For: id, Required: required, Description: help, Error: f.fieldError(fld.Name), ErrorID: id + "-err", Attrs: templ.Attributes{"id": id + "-field"}}
 }
 
 // ── building a form ────────────────────────────────────────────────────

@@ -275,3 +275,42 @@ func TestUsesRuntimeIdentity(t *testing.T) {
 	assert.False(t, ingestion.UsesRuntimeIdentity(ingestion.S3{Credential: &ingestion.AWSCredential{AccessKeyID: "AKIA1234"}}))
 	assert.False(t, ingestion.UsesRuntimeIdentity(ingestion.Sftp{}))
 }
+
+// A secret whose value the same write supplies is the author's own: it needs
+// no bind-secrets. What is not supplied still does.
+func TestCheckAuthor_SuppliedSecrets(t *testing.T) {
+	ctx := context.Background()
+	var repo *ingestion.Repository
+	who := &auth.AuthContext{PrincipalID: "prn_author000001", Scope: auth.ScopeAnchor, AllApplications: true}
+	needs := func(err error) bool {
+		ue := usecase.AsError(err)
+		return ue != nil && ue.Code == "INGESTION_BIND_SECRETS_PERMISSION_REQUIRED"
+	}
+	sftpAt := func(host, secret string) ingestion.Definition {
+		return parse(t, definition(`{"kind":"sftp","host":"`+host+`","port":22,"directory":"/in","username":"u","credential":{"name":"`+secret+`"},"every":"PT5M"}`, `{"kind":"none"}`))
+	}
+	live := sftpAt("sftp.example.com", "pw")
+
+	// A new name with its value: allowed. Without the value: still needs it.
+	renamed := sftpAt("sftp.example.com", "feed-credential")
+	require.NoError(t, repo.CheckAuthor(ctx, who, ingestion.Change{Current: &live, Live: &live, Next: renamed, Supplied: []string{"feed-credential"}}))
+	assert.True(t, needs(repo.CheckAuthor(ctx, who, ingestion.Change{Current: &live, Live: &live, Next: renamed})))
+	assert.True(t, needs(repo.CheckAuthor(ctx, who, ingestion.Change{Current: &live, Live: &live, Next: renamed, Supplied: []string{"another"}})),
+		"a value for some other name does not cover this one")
+	require.NoError(t, repo.CheckAuthor(ctx, who, ingestion.Change{Next: renamed, Supplied: []string{"feed-credential"}}), "a create too")
+
+	// An address change with the secrets kept needs it; with every secret re-supplied it does not.
+	moved := sftpAt("other.example.net", "pw")
+	assert.True(t, needs(repo.CheckAuthor(ctx, who, ingestion.Change{Current: &live, Live: &live, Next: moved})))
+	assert.True(t, needs(repo.CheckAuthor(ctx, who, ingestion.Change{Current: &live, Live: &live, Next: moved, Supplied: nil})))
+	require.NoError(t, repo.CheckAuthor(ctx, who, ingestion.Change{Current: &live, Live: &live, Next: moved, Supplied: []string{"pw"}}))
+}
+
+func TestSteersSecretsExcept_ExtensionSettings(t *testing.T) {
+	a := parse(t, definition(`{"kind":"custom","type":"mix","settings":{"account":"acme","token":"old-token"}}`, `{"kind":"none"}`))
+	b := parse(t, definition(`{"kind":"custom","type":"mix","settings":{"account":"acme","token":"new-token"}}`, `{"kind":"none"}`))
+	assert.True(t, ingestion.SteersSecretsExcept(a, b, nil))
+	assert.False(t, ingestion.SteersSecretsExcept(a, b, []string{"new-token"}), "only the supplied secret's name changed")
+	c := parse(t, definition(`{"kind":"custom","type":"mix","settings":{"account":"other","token":"new-token"}}`, `{"kind":"none"}`))
+	assert.True(t, ingestion.SteersSecretsExcept(a, c, []string{"new-token"}), "another account is another setting")
+}

@@ -164,6 +164,9 @@ templ cfgTable(v cfgView) {
 							@kit.Icon(kit.IconProps{Name: "lock", Class: "size-3.5"})
 							Hidden — needs ingestion:update
 						</span>
+					} else if row.Expand {
+						<button type="button" class="block max-w-[300px] cursor-pointer truncate text-left font-mono text-[13px] underline decoration-dotted underline-offset-2" title="Show the whole value" data-testid={ "cfg-value-open-" + row.ID } { kit.OpenModal(row.valueDialogID())... }>{ row.Value }</button>
+						@cfgValueDialog(row)
 					} else {
 						<code class="block max-w-[300px] truncate font-mono text-[13px]" title={ row.ValueFull }>{ row.Value }</code>
 					}
@@ -181,6 +184,30 @@ templ cfgTable(v cfgView) {
 				@kit.RowActions(v.rowActions(row))
 			}
 		}
+	}
+}
+
+// cfgValueDialog shows the whole value of a plain row, indented when it is
+// JSON. A secret or a hidden value has no such dialog: it is not read here.
+// An ingestion's settings (section ingest) link to the ingestions that use them.
+templ cfgValueDialog(row cfgRow) {
+	@kit.Dialog(kit.DialogProps{
+		ID: row.valueDialogID(), Title: row.Section + "/" + row.Property, Closable: true, Width: kit.WidthWide,
+		Description: "The value as stored.",
+		Footer:      cfgValueFooter(row),
+	}) {
+		@kit.CodeBlock(kit.CodeBlockProps{ID: row.valueDialogID() + "-code", Label: "Value of " + row.Section + "/" + row.Property}) {
+			{ row.ValuePretty }
+		}
+	}
+}
+
+templ cfgValueFooter(row cfgRow) {
+	if row.Reserved {
+		<a class="fc-btn fc-btn-text" href={ templ.SafeURL(row.IngestionsHref) } data-testid={ "cfg-value-ingestions-" + row.ID }>Ingestions using this entry</a>
+	}
+	@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Attrs: templ.Attributes{"data-on:click": kit.CloseDialog}}) {
+		Close
 	}
 }
 

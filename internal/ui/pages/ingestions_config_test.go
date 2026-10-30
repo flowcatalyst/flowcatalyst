@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -156,6 +157,9 @@ func (o *fakeIngOps) DeleteConfig(ctx context.Context, id string) (ingops.Ingest
 // ── fixtures ───────────────────────────────────────────────────────────
 
 const ingCfgKnownHost = "sftp.vendor.example ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample"
+
+// ingCfgSecretValue is a secret typed into a settings form; nothing may echo it.
+const ingCfgSecretValue = "hunter2-not-for-display"
 
 // ingCfgSftp is an SFTP source whose settings are per environment: `config:
 // true`, the ingestion's own code.
@@ -358,17 +362,26 @@ func TestIngestionExportKeepsTheReference(t *testing.T) {
 // ── the list and the drawer ────────────────────────────────────────────
 
 func TestIngestionSettingsStates(t *testing.T) {
-	t.Run("set: the effective values, the secret by name", func(t *testing.T) {
+	t.Run("set: the effective values, the secret as set or not, never its name", func(t *testing.T) {
 		h := ingCfgHarness()
 		body := ingCfgDrawer(t, h, ingAdmin(), "ing_6")
 		mustContain(t, body,
 			`Settings (this environment)`, `id="ings-config"`, `>Set<`, `ingest/vendor-feed`,
-			`sftp.vendor.example`, `/out`, `<code title="The secret's name, never its value">vendor-sftp-pass</code>`,
+			`sftp.vendor.example`, `/out`,
 			// The effective source is where the drawer says it points, and its secret is in the Secrets section.
 			`svc@sftp.vendor.example:22/out`, `id="ings-secret-vendor-sftp-pass"`,
 			`href="/ui/ingestions/ing_6/config"`, `Edit…`, `/ui/ingestions/ing_6/config/delete`,
+			// The secret's value is entered in the settings form; the config page stays for an administrator.
+			`data-testid="ings-secret-settings-vendor-sftp-pass"`, `Change in settings`, `data-testid="ings-secret-link-vendor-sftp-pass"`, `on the config page`,
 		)
-		mustNotContain(t, body, `id="ings-needs-settings"`, `Needs settings`)
+		mustNotContain(t, body, `id="ings-needs-settings"`, `Needs settings`, `<code title="The secret's name, never its value">`)
+		// The settings rows say whether the secret has a value, not its name.
+		rows := body[strings.Index(body, `id="ings-config-values"`):strings.Index(body, `id="ings-secrets"`)]
+		mustContain(t, rows, `>Set<`)
+		mustNotContain(t, rows, `vendor-sftp-pass`)
+		h.store.missing = []string{"vendor-sftp-pass"}
+		missing := ingCfgDrawer(t, h, ingAdmin(), "ing_6")
+		mustContain(t, missing, `Set in settings`)
 	})
 	t.Run("not set: needs settings, with the reason", func(t *testing.T) {
 		h := ingCfgHarness()
@@ -450,12 +463,20 @@ func TestIngestionSettingsFormOfABuiltInKind(t *testing.T) {
 		`id="ings-config-body"`, `action="/ui/ingestions/ing_6/config"`, `Settings for vendor-feed`, `ingest/vendor-feed for client Acme Corp`,
 		// The same controls as the definition's form, with the stored values.
 		`name="sftp.host"`, `value="sftp.vendor.example"`, `name="sftp.port"`, `value="22"`, `name="sftp.directory"`,
-		`name="sftp.credential"`, `value="vendor-sftp-pass"`, `name="sftp.every"`, `name="sftp.knownHosts"`,
+		`name="sftp.every"`, `name="sftp.knownHosts"`,
 		// The element ids carry the settings form's own prefix.
 		`id="ings-config-sftp-host"`,
+		// A secret is a password input, never filled in, with whether it has a value beside it.
+		`name="sftp.credential"`, `type="password"`, `autocomplete="new-password"`, `Leave blank to keep the current value`, `>Set<`,
 	)
 	// The definition gives the delivery URL, so the entry does not ask for it.
-	mustNotContain(t, body, `name="config.targetUrl"`, `name="kind"`, `type="password"`)
+	mustNotContain(t, body, `name="config.targetUrl"`, `name="kind"`)
+	// The secret's name is not the user's to see or type: not as a value, not as a default.
+	mustNotContain(t, body, `vendor-sftp-pass`, `sftp-password`, `(secret name)`, `secret-ref`)
+	h.store.missing = []string{"vendor-sftp-pass"}
+	unset := ingBody(t, h.do(t, ingAdmin(), req{target: "/ui/ingestions/ing_6/config", datastar: true}))
+	mustContain(t, unset, `>Not set<`)
+	mustNotContain(t, unset, `Leave blank to keep the current value`)
 	// Neither the definition's identity nor its other sections.
 	mustNotContain(t, body, `name="split.kind"`, `name="target.pool"`, `name="code"`)
 
@@ -474,10 +495,11 @@ func TestIngestionSettingsFormOfAnApiPollIsDrawnFromItsFields(t *testing.T) {
 	})
 	body := ingBody(t, h.do(t, ingAdmin(), req{target: "/ui/ingestions/ing_11/config", datastar: true}))
 	mustContain(t, body, `name="api.url"`, `value="https://api.vendor.example/v1/stock"`, `name="api.auth"`, `<option value="login" selected>`,
-		`name="api.loginUser"`, `name="api.loginPassword"`, `value="api-pass"`, `data-bind:ing-api-auth`)
-	// The drawer shows the effective values, the secret by name.
+		`name="api.loginUser"`, `name="api.loginPassword"`, `type="password"`, `data-bind:ing-api-auth`)
+	mustNotContain(t, body, `api-pass`)
+	// The drawer shows the effective values, the secret as set.
 	drawer := ingCfgDrawer(t, h, ingAdmin(), "ing_11")
-	mustContain(t, drawer, `https://api.vendor.example/v1/stock`, `api-pass`)
+	mustContain(t, drawer, `https://api.vendor.example/v1/stock`, `>Set<`)
 }
 
 func TestIngestionSettingsFormOfAnExtensionIsDrawnFromTheReportedFields(t *testing.T) {
@@ -486,9 +508,10 @@ func TestIngestionSettingsFormOfAnExtensionIsDrawnFromTheReportedFields(t *testi
 	h.store.entries[ingsEntryKey("orders-sync", "clt_acme", "mix-positions")] = ingCfgEntry(map[string]any{"region": "us", "token": "mix-token", "targetUrl": "https://mix.example/hook"})
 	body := ingBody(t, h.do(t, ingAdmin(), req{target: "/ui/ingestions/ing_9/config", datastar: true}))
 	mustContain(t, body,
-		`name="mix.s.region"`, `<option value="us" selected>`, `<option value="eu"`, `name="mix.s.token"`, `value="mix-token"`, `name="mix.s.batch"`,
+		`name="mix.s.region"`, `<option value="us" selected>`, `<option value="eu"`, `name="mix.s.token"`, `type="password"`, `name="mix.s.batch"`,
 		`name="config.targetUrl"`, `value="https://mix.example/hook"`,
 	)
+	mustNotContain(t, body, `mix-token`)
 	mustNotContain(t, body, `Schema not checked`)
 	// And an unreported kind is edited as JSON, with the schema not checked.
 	h2 := ingCfgHarness()
@@ -534,7 +557,7 @@ func TestIngestionSettingsSaveRunsTheUseCaseWithTheEntry(t *testing.T) {
 	delete(h.store.entries, ingsEntryKey("orders-sync", "clt_acme", "vendor-feed"))
 	form := url.Values{
 		"sftp.host": {" sftp.vendor.example "}, "sftp.port": {"2222"}, "sftp.directory": {"/out"}, "sftp.username": {"svc"},
-		"sftp.credential": {"vendor-sftp-pass"}, "sftp.knownHosts": {ingCfgKnownHost}, "sftp.every": {"5m"}, "sftp.include": {""},
+		"sftp.credential": {ingCfgSecretValue}, "sftp.knownHosts": {ingCfgKnownHost}, "sftp.every": {"5m"}, "sftp.include": {""},
 		"drawer": {"ing_6"}, "tab": {"overview"},
 	}
 	body := ingBody(t, ingPost(h, t, ingAdmin(), "/ui/ingestions/ing_6/config", form))
@@ -542,8 +565,12 @@ func TestIngestionSettingsSaveRunsTheUseCaseWithTheEntry(t *testing.T) {
 	cmd := h.ops.configs[0]
 	assert.Equal(t, "ing_6", cmd.ID)
 	raw, _ := json.Marshal(cmd.Value)
-	assert.JSONEq(t, `{"host":"sftp.vendor.example","port":2222,"directory":"/out","username":"svc","credential":{"name":"vendor-sftp-pass"},"knownHosts":"`+ingCfgKnownHost+`","acceptAnyHostKey":false,"every":"PT5M"}`, string(raw))
-	// The secret is a name, never a value; the delivery URL stays the definition's.
+	// The user typed a value; the platform named the secret (the entry's key and the setting) and the entry holds the name.
+	assert.JSONEq(t, `{"host":"sftp.vendor.example","port":2222,"directory":"/out","username":"svc","credential":{"name":"vendor-feed-credential"},"knownHosts":"`+ingCfgKnownHost+`","acceptAnyHostKey":false,"every":"PT5M"}`, string(raw))
+	assert.Equal(t, map[string]string{"vendor-feed-credential": ingCfgSecretValue}, cmd.Secrets)
+	assert.NotContains(t, string(raw), ingCfgSecretValue)
+	assert.NotContains(t, body, ingCfgSecretValue, "the value is not echoed back")
+	// The delivery URL stays the definition's.
 	assert.NotContains(t, cmd.Value, "targetUrl")
 	// The dialog closes, the drawer is redrawn with the entry set, the user is told.
 	mustContain(t, body, `ings-config`, `Settings saved for this environment`, `id="ings-config"`, `>Set<`)
@@ -557,7 +584,8 @@ func TestIngestionSettingsSaveCarriesTheDeliveryURLWhenTheDefinitionHasNone(t *t
 	body := ingBody(t, ingPost(h, t, ingAdmin(), "/ui/ingestions/ing_9/config", form))
 	require.Len(t, h.ops.configs, 1, body)
 	raw, _ := json.Marshal(h.ops.configs[0].Value)
-	assert.JSONEq(t, `{"region":"eu","token":"mix-token","batch":5,"targetUrl":"https://mix.example/hook"}`, string(raw))
+	assert.JSONEq(t, `{"region":"eu","token":"mix-positions-token","batch":5,"targetUrl":"https://mix.example/hook"}`, string(raw))
+	assert.Equal(t, map[string]string{"mix-positions-token": "mix-token"}, h.ops.configs[0].Secrets, "an extension's secret is plain text in its entry")
 	// A definition that gives the delivery URL gets none from a forged post.
 	h2 := ingCfgHarness()
 	f2 := url.Values{"sftp.host": {"sftp.vendor.example"}, "sftp.port": {"22"}, "sftp.directory": {"/out"}, "sftp.username": {"svc"}, "sftp.credential": {"x"}, "sftp.knownHosts": {ingCfgKnownHost}, "sftp.every": {"1m"}, "config.targetUrl": {"https://evil.example"}}
@@ -606,6 +634,54 @@ func TestIngestionSettingsSaveMapsTheProblemsOntoTheFields(t *testing.T) {
 		form := url.Values{"sftp.host": {"h.example"}, "sftp.port": {"22"}, "sftp.directory": {"/out"}, "sftp.username": {"svc"}, "sftp.credential": {"x"}, "sftp.every": {"1m"}}
 		body := ingPost(h, t, ingAdmin(), "/ui/ingestions/ing_6/config", form).Body.String()
 		mustContain(t, body, `ings-config-error`)
+	})
+}
+
+func TestIngestionSettingsSecretsAreValuesTheUserEnters(t *testing.T) {
+	sftp := func(credential string) url.Values {
+		return url.Values{
+			"sftp.host": {"sftp.vendor.example"}, "sftp.port": {"22"}, "sftp.directory": {"/out"}, "sftp.username": {"svc"},
+			"sftp.credential": {credential}, "sftp.knownHosts": {ingCfgKnownHost}, "sftp.every": {"1m"}, "drawer": {"ing_6"},
+		}
+	}
+	t.Run("blank keeps the secret there is, under the name the entry has", func(t *testing.T) {
+		h := ingCfgHarness()
+		body := ingBody(t, ingPost(h, t, ingAdmin(), "/ui/ingestions/ing_6/config", sftp("")))
+		require.Len(t, h.ops.configs, 1, body)
+		assert.Empty(t, h.ops.configs[0].Secrets)
+		assert.Equal(t, map[string]any{"name": "vendor-sftp-pass"}, h.ops.configs[0].Value["credential"])
+	})
+	t.Run("a value for a name the entry already has replaces it under that name", func(t *testing.T) {
+		h := ingCfgHarness()
+		body := ingBody(t, ingPost(h, t, ingAdmin(), "/ui/ingestions/ing_6/config", sftp(ingCfgSecretValue)))
+		require.Len(t, h.ops.configs, 1, body)
+		assert.Equal(t, map[string]string{"vendor-sftp-pass": ingCfgSecretValue}, h.ops.configs[0].Secrets)
+		assert.NotContains(t, body, ingCfgSecretValue)
+	})
+	t.Run("a required secret with no value yet and a blank input is the field's problem", func(t *testing.T) {
+		h := ingCfgHarness()
+		delete(h.store.entries, ingsEntryKey("orders-sync", "clt_acme", "vendor-feed"))
+		h.store.missing = []string{"vendor-feed-credential"}
+		body := ingPost(h, t, ingAdmin(), "/ui/ingestions/ing_6/config", sftp("")).Body.String()
+		assert.Empty(t, h.ops.configs, "nothing is sent")
+		mustContain(t, body, `id="ings-config-sftp-credential-err"`, `Enter the secret.`)
+	})
+	t.Run("the mask is not a secret", func(t *testing.T) {
+		h := ingCfgHarness()
+		body := ingPost(h, t, ingAdmin(), "/ui/ingestions/ing_6/config", sftp("***")).Body.String()
+		assert.Empty(t, h.ops.configs)
+		mustContain(t, body, `id="ings-config-sftp-credential-err"`, `the mask a read shows`)
+	})
+	t.Run("a refused form never shows the value back", func(t *testing.T) {
+		h := ingCfgHarness()
+		f := sftp(ingCfgSecretValue)
+		f.Set("sftp.port", "many")
+		for _, datastar := range []bool{true, false} {
+			rec := h.do(t, ingAdmin(), req{method: http.MethodPost, target: "/ui/ingestions/ing_6/config", datastar: datastar, multipart: true, form: f, referer: "https://fc.example/ui/ingestions"})
+			assert.NotContains(t, rec.Body.String(), ingCfgSecretValue)
+			assert.Contains(t, rec.Body.String(), `type="password"`)
+		}
+		assert.Empty(t, h.ops.configs)
 	})
 }
 

@@ -9,7 +9,7 @@ import (
 
 // ingsConfigSection is the drawer's "Settings (this environment)": where the
 // ingestion's source keeps its settings, in which state, and the effective
-// values. A secret setting is shown as the secret's name, never a value.
+// values. A secret setting is shown as whether it has a value, never as its name or its value.
 templ ingsConfigSection(d ingsDetail) {
 	if d.Config != nil {
 		@kit.FormSection(kit.FormSectionProps{
@@ -46,7 +46,11 @@ templ ingsConfigSection(d ingsDetail) {
 						for _, row := range d.Config.Rows {
 							@kit.DetailField(kit.DetailFieldProps{Label: row.Label}) {
 								if row.Secret {
-									<code title="The secret's name, never its value">{ row.Value }</code>
+									if row.SecretSet {
+										@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Set"})
+									} else {
+										@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "Not set"})
+									}
 								} else {
 									<span class="whitespace-pre-wrap break-all">{ row.Value }</span>
 								}
@@ -104,7 +108,7 @@ templ ingsConfigDialogC(c ingsConfigForm) {
 templ ingsConfigBody(c ingsConfigForm) {
 	<div id={ ingsConfigBodyID } class="flex flex-col gap-4" data-signals={ c.signals() }>
 		<p class="text-sm text-muted-foreground">
-			The kind's settings for this environment, as the definition would hold them inline. Secrets are named, never written here.
+			The kind's settings for this environment, as the definition would hold them inline. Secrets are entered as values, stored encrypted and never shown again.
 			{ c.sharedText() }
 		</p>
 		if c.Unchecked {

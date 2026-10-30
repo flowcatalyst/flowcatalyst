@@ -8,13 +8,16 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/a-h/templ"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	ingops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/operations"
+	pcops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
@@ -39,11 +42,13 @@ const (
 	ingsConfigDeleteDialog = "ings-config-delete"
 )
 
-// ingsConfigRow is one setting the drawer shows. A secret setting holds the
-// secret's name, never a value, and is shown as that name.
+// ingsConfigRow is one setting the drawer shows. A secret setting is shown as
+// whether it has a value, never as its name or its value.
 type ingsConfigRow struct {
 	Label, Value string
 	Secret       bool
+	// SecretSet: the secret has a value at the client.
+	SecretSet bool
 }
 
 // ingsConfigView is the drawer's "Settings (this environment)" section.
@@ -217,7 +222,11 @@ func (h *Ingestions) configView(ctx context.Context, ac *auth.AuthContext, i *in
 		var value map[string]any
 		if json.Unmarshal([]byte(entry.Value), &value) == nil && value != nil {
 			if kind := ingsNewCatalogue(reported, kindName).find(kindName); kind != nil {
-				v.Rows = ingsConfigRows(*kind, value)
+				set, err := h.secretStates(ctx, appCode, i.ClientID, key, *kind, value)
+				if err != nil {
+					return nil, err
+				}
+				v.Rows = ingsConfigRows(*kind, value, set)
 			}
 			v.TargetURL, _ = value["targetUrl"].(string)
 		}
@@ -234,7 +243,7 @@ func (h *Ingestions) configView(ctx context.Context, ac *auth.AuthContext, i *in
 
 // ingsConfigRows are the settings an entry holds, in the order of the kind's
 // fields.
-func ingsConfigRows(kind ingsKind, entry map[string]any) []ingsConfigRow {
+func ingsConfigRows(kind ingsKind, entry map[string]any, secretSet map[string]bool) []ingsConfigRow {
 	values := ingsEntryValues(kind, entry, false)
 	var rows []ingsConfigRow
 	for _, f := range kind.Fields {
@@ -245,13 +254,18 @@ func ingsConfigRows(kind ingsKind, entry map[string]any) []ingsConfigRow {
 		if v == "" {
 			continue
 		}
+		if f.Type == ingsSecret {
+			// The entry names a secret; the page says whether it has a value.
+			rows = append(rows, ingsConfigRow{Label: ingsSecretLabel(f), Secret: true, SecretSet: secretSet[f.Name]})
+			continue
+		}
 		if f.Type == ingsSwitch {
 			v = "Yes"
 		}
 		if utf8.RuneCountInString(v) > 400 {
 			v = string([]rune(v)[:400]) + "…"
 		}
-		rows = append(rows, ingsConfigRow{Label: f.Label, Value: v, Secret: f.Type == ingsSecret})
+		rows = append(rows, ingsConfigRow{Label: f.Label, Value: v})
 	}
 	return rows
 }
@@ -347,6 +361,58 @@ func ingsEntryFieldFor(kind ingsKind, b ingsBuilt, path string) (string, bool) {
 	return "", false
 }
 
+// ── secrets ────────────────────────────────────────────────────────────
+
+// ingsSecretPath is where a secret field sits in the entry: its path in the
+// definition below the source (an extension's below its settings).
+func ingsSecretPath(f ingsField) string {
+	return strings.TrimPrefix(strings.TrimPrefix(f.Path, "source."), "settings.")
+}
+
+// ingsSecretLabel is a secret field's label without the note that it takes a
+// name: the settings form takes a value.
+func ingsSecretLabel(f ingsField) string {
+	return strings.TrimSuffix(f.Label, " (secret name)")
+}
+
+// ingsSecretName is the name of the secret behind a field: the one the
+// entry has, else the one the platform derives for it ("" when none can be).
+func ingsSecretName(f ingsField, key string, current map[string]any) string {
+	name, err := ingestion.SecretNameFor(nil, current, key, ingsSecretPath(f))
+	if err != nil {
+		return ""
+	}
+	return name
+}
+
+// secretStates says, for each secret field of the kind, by the field's name,
+// whether the secret behind it has a value at the client.
+func (h *Ingestions) secretStates(ctx context.Context, app string, client ids.ClientID, key string, kind ingsKind, current map[string]any) (map[string]bool, error) {
+	states := map[string]bool{}
+	names := map[string]string{}
+	var all []string
+	for _, f := range kind.Fields {
+		if f.Type != ingsSecret {
+			continue
+		}
+		if name := ingsSecretName(f, key, current); name != "" {
+			names[f.Name] = name
+			all = append(all, name)
+		}
+	}
+	missing, err := h.Store.MissingSecrets(ctx, app, client, all)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "secret lookup failed", err)
+	}
+	for _, f := range kind.Fields {
+		if f.Type == ingsSecret {
+			name, named := names[f.Name]
+			states[f.Name] = named && !slices.Contains(missing, name)
+		}
+	}
+	return states, nil
+}
+
 // ── the form ───────────────────────────────────────────────────────────
 
 // ingsConfigForm is the settings form of one ingestion's entry: its kind's
@@ -367,6 +433,9 @@ type ingsConfigForm struct {
 	Unchecked bool
 	// Exists: there is an entry to change (the dialog then needs a change to submit).
 	Exists bool
+	// Current is the entry as stored (nil when there is none); the secrets the
+	// form names are named as it names them.
+	Current map[string]any
 }
 
 func (c ingsConfigForm) targetField() ingsField {
@@ -491,9 +560,22 @@ func (h *Ingestions) loadConfigForm(r *http.Request, ac *auth.AuthContext, id st
 	if entry != nil && !entry.Secret {
 		_ = json.Unmarshal([]byte(entry.Value), &value)
 	}
+	states, err := h.secretStates(ctx, app.Code, i.ClientID, key, *kind, value)
+	if err != nil {
+		return ingsConfigForm{}, nil, err
+	}
+	values := ingsEntryValues(*kind, value, true)
+	// A secret is entered as a value and never shown: not the name the entry
+	// has, not a default name.
+	for _, f := range kind.Fields {
+		if f.Type == ingsSecret {
+			delete(values, f.Name)
+		}
+	}
 	c := ingsConfigForm{
-		F:    ingsForm{Prefix: ingsConfigDialog, Cat: ingsCatalogue{*kind}, Values: ingsEntryValues(*kind, value, true), Open: true},
+		F:    ingsForm{Prefix: ingsConfigDialog, Cat: ingsCatalogue{*kind}, Values: values, Open: true, Secrets: states},
 		Kind: *kind, ID: i.ID, Code: i.Code, Key: key, Client: clientName, TargetInDefinition: def.Target.TargetURL != "", Exists: entry != nil,
+		Current: value,
 	}
 	if cn, ok := ingestion.ConfigOf(def); ok && cn.Base == ingestion.KindCustom {
 		schema, err := h.Store.SchemaOf(ctx, cn.Type)
@@ -620,8 +702,37 @@ func (h *Ingestions) saveConfig(w http.ResponseWriter, r *http.Request) {
 			posted[f.Name] = f.Default
 		}
 	}
+	// A secret is entered as a value and the platform names it: the entry gets
+	// the name the field has (or derives), and the value is written under it.
+	// Blank keeps the value there is. The values are not kept for the form
+	// shown again, whatever happens.
+	named := maps.Clone(posted)
+	secrets := map[string]string{}
+	for _, f := range c.Kind.Fields {
+		if f.Type != ingsSecret || !f.active(posted) {
+			continue
+		}
+		given := posted[f.Name]
+		posted[f.Name] = ""
+		name := ingsSecretName(f, c.Key, c.Current)
+		switch {
+		case name == "":
+			c.F.Errs.field(f.Name, "The platform cannot make a name for this secret: the config key is too long.")
+		case strings.TrimSpace(given) == pcops.MaskedSecret:
+			c.F.Errs.field(f.Name, "That is the mask a read shows, not the secret; enter the secret itself.")
+		case given != "":
+			secrets[name] = given
+			named[f.Name] = name
+		case c.F.Secrets[f.Name]:
+			named[f.Name] = name
+		case f.Required:
+			c.F.Errs.field(f.Name, "Enter the secret.")
+		default:
+			named[f.Name] = ""
+		}
+	}
 	c.F.Values = posted
-	entry, built := ingsBuildEntry(posted, c.Kind, !c.TargetInDefinition)
+	entry, built := ingsBuildEntry(named, c.Kind, !c.TargetInDefinition)
 	for name, msg := range built.Errs {
 		c.F.Errs.field(name, msg)
 	}
@@ -629,7 +740,7 @@ func (h *Ingestions) saveConfig(w http.ResponseWriter, r *http.Request) {
 		h.configFailed(w, r, ac, c)
 		return
 	}
-	ev, err := h.Ops.SetConfig(ctx, ingops.SetConfigCommand{ID: id, Value: entry})
+	ev, err := h.Ops.SetConfig(ctx, ingops.SetConfigCommand{ID: id, Value: entry, Secrets: secrets})
 	if err != nil {
 		c.applyError(r, err, built)
 		h.configFailed(w, r, ac, c)

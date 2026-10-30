@@ -63,7 +63,7 @@ func TestIngestionSettingsPerEnvironmentAgainstPostgres(t *testing.T) {
 	assert.Contains(t, form.body, `name="config.targetUrl"`)
 	values := url.Values{
 		"sftp.host": {"169.254.169.254"}, "sftp.port": {"22"}, "sftp.directory": {"/out"}, "sftp.username": {"svc"},
-		"sftp.credential": {"vendor-pass"}, "sftp.knownHosts": {ingCfgKnownHost}, "sftp.every": {"1m"},
+		"sftp.credential": {ingCfgSecretValue}, "sftp.knownHosts": {ingCfgKnownHost}, "sftp.every": {"1m"},
 		"config.targetUrl": {"https://app.example.com/hooks/vendor"}, "drawer": {i.ID},
 	}
 	refused := p.post(admin, "/ui/ingestions/"+i.ID+"/config", values)
@@ -78,7 +78,17 @@ func TestIngestionSettingsPerEnvironmentAgainstPostgres(t *testing.T) {
 	require.Equal(t, http.StatusOK, saved.code, saved.body)
 	assert.Contains(t, saved.body, "Settings saved for this environment")
 	assert.Contains(t, saved.body, "sftp.vendor.example")
-	assert.Contains(t, saved.body, "vendor-pass")
+	// The user typed a value; the platform named the secret and stored it, encrypted, at the client.
+	name := code + "-credential"
+	assert.Contains(t, saved.body, name)
+	assert.NotContains(t, saved.body, ingCfgSecretValue)
+	secret, err := configs.FindByCoordinate(ctx, p.app.Code, ingestion.SecretsSection, name, platformconfig.ScopeClient, new(string(p.client.ID)))
+	require.NoError(t, err)
+	require.NotNil(t, secret)
+	assert.Equal(t, platformconfig.ValueSecret, secret.ValueType)
+	fetched, err := (&platformconfig.Service{Repo: configs}).FetchBoundSecretForIngestionRuntime(ctx, p.app.Code, ingestion.SecretsSection, name, string(p.client.ID))
+	require.NoError(t, err)
+	assert.Equal(t, ingCfgSecretValue, fetched.Value)
 	assert.NotContains(t, saved.body, `id="ings-needs-settings"`)
 	row, err := configs.FindByCoordinate(ctx, p.app.Code, ingestion.ConfigSection, code, platformconfig.ScopeClient, new(string(p.client.ID)))
 	require.NoError(t, err)
@@ -97,27 +107,29 @@ func TestIngestionSettingsPerEnvironmentAgainstPostgres(t *testing.T) {
 	assert.Contains(t, seen.body, `id="ings-secrets-hidden"`)
 	assert.Contains(t, seen.body, "Settings in config ingest/"+code)
 	assert.NotContains(t, seen.body, `id="ings-secrets"`)
-	for _, entryContent := range []string{"sftp.vendor.example", "svc@", "vendor-pass", "app.example.com/hooks/vendor"} {
+	for _, entryContent := range []string{"sftp.vendor.example", "svc@", name, "app.example.com/hooks/vendor"} {
 		assert.NotContains(t, seen.body, entryContent)
 		assert.Contains(t, editor, entryContent)
 	}
 	assert.Contains(t, editor, `id="ings-secrets"`)
 
-	// An editor is shown which secrets the settings bind have a value, with a
-	// link to the platform config property that holds each; the add form for
-	// one that is missing, the edit form once it exists. A value is never shown.
-	assert.Contains(t, editor, ">Missing<")
-	assert.Contains(t, editor, `data-testid="ings-secret-link-vendor-pass"`)
-	link := "app=" + p.app.Code + "&amp;client=" + p.client.Identifier + "&amp;property=vendor-pass&amp;section=secrets"
-	assert.Contains(t, editor, "/ui/platform/config/new?"+link)
+	// An editor is shown that the secret has a value, with a link to where it is entered; the value is nowhere.
+	assert.NotContains(t, editor, ">Missing<")
+	assert.Contains(t, editor, `data-testid="ings-secret-settings-`+name+`"`)
+	assert.NotContains(t, editor, ingCfgSecretValue)
 	assert.NotContains(t, seen.body, "/ui/platform/config/")
-	_, err = testpg.Pool(t).Exec(ctx, `INSERT INTO app_platform_configs (id, application_code, section, property, scope, client_id, value_type, value, created_at, updated_at)
-		VALUES ($1, $2, 'secrets', 'vendor-pass', 'CLIENT', $3, 'SECRET', 'encrypted:x', now(), now())`, tsid.Generate(tsid.PlatformConfig), p.app.Code, string(p.client.ID))
+	// Blank keeps the value; the form shows it as set and never fills it in.
+	form = p.do(admin, req{target: "/ui/ingestions/" + i.ID + "/config", datastar: true})
+	assert.Contains(t, form.body, `type="password"`)
+	assert.Contains(t, form.body, ">Set<")
+	assert.NotContains(t, form.body, ingCfgSecretValue)
+	values.Set("sftp.credential", "")
+	kept := p.post(admin, "/ui/ingestions/"+i.ID+"/config", values)
+	require.Equal(t, http.StatusOK, kept.code, kept.body)
+	assert.Contains(t, kept.body, "Settings saved for this environment")
+	fetched, err = (&platformconfig.Service{Repo: configs}).FetchBoundSecretForIngestionRuntime(ctx, p.app.Code, ingestion.SecretsSection, name, string(p.client.ID))
 	require.NoError(t, err)
-	withValue := p.do(admin, req{target: "/ui/ingestions/" + i.ID, datastar: true}).body
-	assert.NotContains(t, withValue, ">Missing<")
-	assert.Contains(t, withValue, "/ui/platform/config/edit?"+link)
-	assert.Contains(t, withValue, "Change")
+	assert.Equal(t, ingCfgSecretValue, fetched.Value, "a blank input keeps the secret")
 	list := p.do(ingAnchor(ingPermView), req{target: "/ui/ingestions?q=" + code}).body
 	assert.Contains(t, list, code)
 	assert.NotContains(t, list, "sftp.vendor.example")
