@@ -545,14 +545,18 @@ only `{ids: string[]}`. The redrive mark lives in the audit row's operation JSON
 (`redriveCompleted`, `confirmRedriveCompleted`); the skipped counts are in the HTTP
 response.
 
-**Cancel guard.** `POST /api/dispatch-jobs/{id}/cancel` cancels a `PENDING` or
-`FAILED` (`ERROR`) job; any other status is `409 NOT_CANCELLABLE` (it was
-`NOT_FAILED`, FAILED only, before 2026-10-30). A PENDING job the scheduler queues
-in the meantime is refused, never cancelled mid-delivery, and a CANCELLED job is
-never claimed for delivery. `POST /{id}/complete` stays FAILED-only (`409
+**Cancel guard.** `POST /api/dispatch-jobs/{id}/cancel` cancels an unfinished
+(`PENDING`, `QUEUED`, `PROCESSING`/`IN_PROGRESS`) or `FAILED` (`ERROR`) job;
+`COMPLETED`, `CANCELLED`, `EXPIRED` are `409 NOT_CANCELLABLE` (it was
+`NOT_FAILED`, FAILED only, before 2026-10-30). A CANCELLED job is never claimed
+for delivery, and a delivery already under way cannot move it on (complete and
+fail move only live jobs), though that delivery may still land. `POST /{id}/complete` stays FAILED-only (`409
 NOT_FAILED`). The admin UI's "Ignore selected" cancels many in one use case
 (`CancelDispatchJobs`, no HTTP route), emitting one
 `platform:messaging:dispatch-jobs:cancelled` event whose data is `{ids: string[]}`.
+The admin UI's confirmed requeue of selected jobs may also reset in-flight
+(`QUEUED`, `PROCESSING`) ones (`ResendCommand.requeueInFlight`, recorded in the
+audit row's operation JSON; not on the HTTP API, and never by filter).
 
 **Permissions.** `view` is read-only. `platform:messaging:dispatch-job:requeue`
 gates both requeue endpoints (the preview also admits `view`);

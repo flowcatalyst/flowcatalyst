@@ -81,6 +81,8 @@ type DispatchJobsResent struct {
 	IDs      []string
 	Redrive  bool
 	Redriven []string
+	// InFlight are the QUEUED or PROCESSING jobs reset (RequeueInFlight).
+	InFlight []string
 	Skipped  []SkippedJob
 }
 

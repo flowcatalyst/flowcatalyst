@@ -121,6 +121,8 @@ templ djPage(v djView) {
 			<input type="hidden" name="drawer" data-attr:value={ "$" + djDrawerSig }/>
 		</form>
 		@kit.ConfirmDialog(djConfirm(djCancelDialog, "Cancel this job?", "The job is marked CANCELLED and will not be delivered or retried. If it holds back later jobs in its message group, they are released. Requeue brings it back.", "Cancel job", kit.ToneDanger))
+		@kit.ConfirmDialog(djConfirm(djCancelInFlightDialog, "Cancel this job?", "This job is QUEUED or being delivered. It is marked CANCELLED and not retried, but a delivery already under way may still land.", "Cancel job", kit.ToneDanger))
+		@kit.ConfirmDialog(djRequeueInFlightConfirm())
 		@kit.ConfirmDialog(djConfirm(djCompleteDialog, "Mark this job completed?", "Use this only if the delivery was made another way. The job is marked COMPLETED without anything being sent, and a BLOCK_ON_ERROR group behind it is released. This cannot be undone.", "Mark completed", kit.ToneDefault))
 		<div id={ djDialogSlot }>
 			if v.Dialog != nil {
@@ -280,7 +282,7 @@ templ djBulkBar(v djView) {
 						</button>
 					}
 					if v.CanCancel {
-						<button type="submit" formaction={ djPath + "/cancel" } class="fc-btn fc-btn-outline fc-btn-sm" disabled data-attr:disabled={ "$" + djSelSig + " === 0" } title="Mark the selected PENDING or FAILED jobs CANCELLED: they will not be delivered or retried" data-on:click__prevent={ "@post('" + djPath + "/cancel', {contentType: 'form', selector: '#dj-selection', retryMaxCount: 0})" }>
+						<button type="submit" formaction={ djPath + "/cancel" } class="fc-btn fc-btn-outline fc-btn-sm" disabled data-attr:disabled={ "$" + djSelSig + " === 0" } title="Mark the selected unfinished or FAILED jobs CANCELLED: they will not be delivered or retried" data-on:click__prevent={ "@post('" + djPath + "/cancel', {contentType: 'form', selector: '#dj-selection', retryMaxCount: 0})" }>
 							@kit.Icon(kit.IconProps{Name: "ban", Class: "size-[1rem]"})
 							<span data-text={ "$" + djSelSig + " > 0 ? 'Ignore selected (' + $" + djSelSig + " + ')' : 'Ignore selected'" }>Ignore selected</span>
 						</button>
@@ -459,8 +461,13 @@ templ djDrawerBody(d djDetail) {
 				}
 			}
 			if d.CanCancel {
-				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacySecondary, Icon: "ban", Attrs: confirmTrigger(djCancelDialog, d.ActionBase+"/cancel")}) {
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacySecondary, Icon: "ban", Attrs: confirmTrigger(djCancelDialogFor(d), d.ActionBase+"/cancel")}) {
 					Cancel job
+				}
+			}
+			if d.CanRequeueInFlight {
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacySecondary, Icon: "rotate-ccw", Attrs: confirmTrigger(djRequeueInFlightDialog, d.ActionBase+"/requeue")}) {
+					Requeue
 				}
 			}
 			if d.CanRequeue {
@@ -835,6 +842,9 @@ templ djIgnoreConfirm(g djIgnore) {
 			if g.Others > 0 {
 				<p class="text-sm text-muted-foreground">{ djIgnoreOthers(g.Others) }</p>
 			}
+			if g.InFlight > 0 {
+				<p class="text-sm text-muted-foreground">{ djIgnoreInFlight(g.InFlight) }</p>
+			}
 		</form>
 	}
 }
@@ -849,9 +859,37 @@ func djIgnoreTitle(g djIgnore) string {
 // djIgnoreOthers says how many ticked jobs the ignore leaves alone.
 func djIgnoreOthers(n int) string {
 	if n == 1 {
-		return "1 selected job is queued, being delivered or already finished and is left as it is."
+		return "1 selected job is already finished and is left as it is."
 	}
-	return thousands(int64(n)) + " selected jobs are queued, being delivered or already finished and are left as they are."
+	return thousands(int64(n)) + " selected jobs are already finished and are left as they are."
+}
+
+// djIgnoreInFlight warns about the ticked jobs that are QUEUED or being delivered.
+func djIgnoreInFlight(n int) string {
+	if n == 1 {
+		return "1 of them is in flight: a delivery already under way may still land."
+	}
+	return thousands(int64(n)) + " of them are in flight: a delivery already under way may still land."
+}
+
+// djCancelDialogFor picks the Cancel job confirmation: a job in flight gets the
+// one that says a delivery under way may still land.
+func djCancelDialogFor(d djDetail) string {
+	if d.InFlight {
+		return djCancelInFlightDialog
+	}
+	return djCancelDialog
+}
+
+// djRequeueInFlightConfirm is the confirmation of the drawer's Requeue of a job
+// in flight; it posts the single-job requeue with the operator's consent.
+func djRequeueInFlightConfirm() kit.ConfirmDialogProps {
+	p := djConfirm(djRequeueInFlightDialog, "Requeue a job in flight?", "This job is QUEUED or being delivered. Requeueing puts it back to PENDING for a fresh delivery; if the delivery under way still lands, the job is delivered twice. Use this for a job you judge stuck.", "Requeue anyway", kit.ToneDanger)
+	p.Hidden = []kit.HiddenField{
+		{Name: "inflight", Value: "1"},
+		{Name: "drawer", Attrs: templ.Attributes{"data-attr:value": "$" + djDrawerSig}},
+	}
+	return p
 }
 
 templ djIgnoreFooter(g djIgnore) {
@@ -882,16 +920,35 @@ templ djSelectionDialog(s djSelection) {
 				<input type="hidden" name="ids" value={ id }/>
 			}
 			if s.Confirm {
+				if s.Consent {
+					<input type="hidden" name="inflight" value="1"/>
+				}
 				@djRedriveStep(counted(int64(s.Completed), "COMPLETED job"), int64(s.Completed), false, s.Error)
 			} else {
-				<p class="text-sm">
-					<strong>{ counted(int64(len(s.IDs)), "job") }</strong> selected, <strong>{ thousands(int64(s.Completed)) }</strong> of them COMPLETED.
-					A requeue leaves COMPLETED jobs alone; jobs in flight (QUEUED or PROCESSING) are also never reset.
-				</p>
-				<p class="text-sm text-muted-foreground">Redriving the COMPLETED ones delivers them again: they were already delivered once. You will be asked to confirm a second time.</p>
+				if s.Completed > 0 {
+					<p class="text-sm">
+						<strong>{ counted(int64(len(s.IDs)), "job") }</strong> selected, <strong>{ thousands(int64(s.Completed)) }</strong> of them COMPLETED.
+						A requeue leaves COMPLETED jobs alone.
+					</p>
+					<p class="text-sm text-muted-foreground">Redriving the COMPLETED ones delivers them again: they were already delivered once. You will be asked to confirm a second time.</p>
+				} else {
+					<p class="text-sm"><strong>{ counted(int64(len(s.IDs)), "job") }</strong> selected.</p>
+				}
+				if s.InFlight > 0 {
+					<label class="flex items-start gap-2 text-sm">
+						<input type="checkbox" name="inflight" value="1" checked?={ s.Consent } class="mt-1"/>
+						<span>{ djInFlightLabel(s.InFlight) }</span>
+					</label>
+					<p class="text-sm text-muted-foreground">Left unticked, jobs in flight are not reset.</p>
+				}
 			}
 		</form>
 	}
+}
+
+// djInFlightLabel is the in-flight checkbox's label.
+func djInFlightLabel(n int) string {
+	return "Also requeue the " + counted(int64(n), "job") + " in flight (QUEUED or being delivered) — any still being delivered may be delivered twice"
 }
 
 func djSelTitle(s djSelection) string {
@@ -910,14 +967,21 @@ templ djSelectionFooter(s djSelection) {
 			{ "Redrive " + counted(int64(s.Completed), "COMPLETED job") }
 		</button>
 	} else {
-		<button type="button" class="fc-btn fc-btn-outline" data-on:click={ djStep(djSelForm, "confirm") }>
-			@kit.Icon(kit.IconProps{Name: "triangle-alert", Class: "size-[1rem]"})
-			{ "Also redrive " + counted(int64(s.Completed), "COMPLETED job") + "…" }
-		</button>
-		<button type="submit" form={ djSelForm } class="fc-btn fc-btn-danger" disabled?={ s.others() == 0 }>
-			@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
-			{ "Requeue " + counted(int64(s.others()), "other job") }
-		</button>
+		if s.Completed > 0 {
+			<button type="button" class="fc-btn fc-btn-outline" data-on:click={ djStep(djSelForm, "confirm") }>
+				@kit.Icon(kit.IconProps{Name: "triangle-alert", Class: "size-[1rem]"})
+				{ "Also redrive " + counted(int64(s.Completed), "COMPLETED job") + "…" }
+			</button>
+			<button type="submit" form={ djSelForm } class="fc-btn fc-btn-danger" disabled?={ s.others() == 0 }>
+				@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
+				{ "Requeue " + counted(int64(s.others()), "other job") }
+			</button>
+		} else {
+			<button type="submit" form={ djSelForm } class="fc-btn fc-btn-danger">
+				@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
+				Requeue
+			</button>
+		}
 	}
 }
 

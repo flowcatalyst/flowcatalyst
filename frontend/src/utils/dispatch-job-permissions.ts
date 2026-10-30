@@ -14,7 +14,7 @@ export const DISPATCH_JOB_VIEW_RAW = "platform:messaging:dispatch-job:view-raw";
 export const DISPATCH_JOB_REQUEUE = "platform:messaging:dispatch-job:requeue";
 /** Re-delivering COMPLETED jobs (a requeue that also sets redriveCompleted). */
 export const DISPATCH_JOB_REDRIVE_COMPLETED = "platform:messaging:dispatch-job:redrive-completed";
-/** Cancel (ignore) a PENDING or FAILED job. */
+/** Cancel (ignore) an unfinished or FAILED job. */
 export const DISPATCH_JOB_CANCEL = "platform:messaging:dispatch-job:cancel";
 /** Mark a FAILED job COMPLETED (delivered out of band). */
 export const DISPATCH_JOB_COMPLETE = "platform:messaging:dispatch-job:complete";
@@ -24,15 +24,15 @@ export const DISPATCH_JOB_EDIT_PAYLOAD = "platform:messaging:dispatch-job:edit-p
 /** Statuses a requeue resets (the server's guard: PENDING, FAILED/ERROR, CANCELLED, EXPIRED). */
 const REQUEUEABLE = new Set(["PENDING", "FAILED", "ERROR", "CANCELLED", "EXPIRED"]);
 
-/** Statuses a cancel accepts (the server's guard: PENDING, FAILED/ERROR). */
-const CANCELLABLE = new Set(["PENDING", "FAILED", "ERROR"]);
+/** Statuses a cancel accepts (the server's guard: unfinished, or FAILED/ERROR). */
+const CANCELLABLE = new Set(["PENDING", "QUEUED", "PROCESSING", "IN_PROGRESS", "FAILED", "ERROR"]);
 
 export interface JobActions {
 	/** Reset to PENDING (not a COMPLETED or in-flight job). */
 	requeue: boolean;
 	/** Re-deliver a COMPLETED job: needs requeue AND redrive-completed. */
 	redrive: boolean;
-	/** Cancel (ignore) a PENDING or FAILED job. */
+	/** Cancel (ignore) an unfinished or FAILED job. */
 	cancel: boolean;
 	/** Mark a FAILED job COMPLETED (delivered out of band). */
 	complete: boolean;

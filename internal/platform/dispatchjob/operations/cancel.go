@@ -18,7 +18,7 @@ import (
 // order (see docs/owner-rulings-plan.md T3).
 func CancelDispatchJob(repo *dispatchjob.Repository) usecaseop.Operation[CancelCommand, DispatchJobCancelled] {
 	return statusFlip("CancelDispatchJob", dispatchjob.CancellableStatuses,
-		"NOT_CANCELLABLE", "a PENDING or FAILED job can be cancelled", repo, repo.CancelPersister(),
+		"NOT_CANCELLABLE", "an unfinished or FAILED job can be cancelled", repo, repo.CancelPersister(),
 		func(j *dispatchjob.DispatchJob) { j.Cancel() },
 		func(j *dispatchjob.DispatchJob, ec usecase.ExecutionContext) DispatchJobCancelled {
 			return DispatchJobCancelled{commonEvent{

@@ -99,6 +99,7 @@ func (f *fakeDJStore) DistinctValues(_ context.Context, column string, _ int, sc
 type fakeDJOps struct {
 	requeued  [][]string
 	redrives  []bool // each requeue's redrive flag
+	inflights []bool // each requeue's in-flight consent
 	byRedrive []bool // each by-filter run's redrive flag
 	requeue   RequeueResult
 	previews  []dispatchjob.FilterParams
@@ -143,9 +144,10 @@ func (o *fakeDJOps) EditPayload(_ context.Context, id, payload string, contentTy
 	return o.err
 }
 
-func (o *fakeDJOps) Requeue(_ context.Context, ids []string, redrive bool) (RequeueResult, error) {
+func (o *fakeDJOps) Requeue(_ context.Context, ids []string, opts RequeueOptions) (RequeueResult, error) {
 	o.requeued = append(o.requeued, ids)
-	o.redrives = append(o.redrives, redrive)
+	o.redrives = append(o.redrives, opts.Redrive)
+	o.inflights = append(o.inflights, opts.InFlight)
 	if o.requeue != (RequeueResult{}) {
 		return o.requeue, o.err
 	}
@@ -422,19 +424,19 @@ func TestDispatchJobsRequeue(t *testing.T) {
 func TestDispatchJobsIgnoreSelected(t *testing.T) {
 	h := newDJHarness()
 	list := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs"})
-	mustContain(t, list, "Ignore selected", `formaction="/ui/dispatch-jobs/cancel"`, "Mark the selected PENDING or FAILED jobs CANCELLED")
+	mustContain(t, list, "Ignore selected", `formaction="/ui/dispatch-jobs/cancel"`, "Mark the selected unfinished or FAILED jobs CANCELLED")
 
 	// Step one: djb_1 FAILED and djb_3 PENDING are ignorable, djb_2 COMPLETED is not.
 	ids := url.Values{"ids": {"djb_1", " djb_1", "djb_2", "djb_3", ""}, "drawer": {"djb_1"}}
 	ask := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", datastar: true, form: ids})
-	mustContain(t, ask, "Ignore 2 jobs?", "They are marked CANCELLED", "1 selected job is queued, being delivered or already finished",
+	mustContain(t, ask, "Ignore 2 jobs?", "They are marked CANCELLED", "1 selected job is already finished",
 		`name="step" value="confirm"`, `name="ids" value="djb_3"`, "Keep them", "Ignore 2 jobs")
 	if len(h.ops.cancelMany) != 0 {
 		t.Fatalf("asking ignored jobs: %v", h.ops.cancelMany)
 	}
 	one := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", datastar: true, form: url.Values{"ids": {"djb_3"}}})
 	mustContain(t, one, "Ignore this job?")
-	mustNotContain(t, one, "selected jobs are queued")
+	mustNotContain(t, one, "selected jobs are already")
 	none := h.rec(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", form: url.Values{"ids": {"djb_2"}}})
 	if none.Code != http.StatusBadRequest || len(h.ops.cancelMany) != 0 {
 		t.Errorf("nothing ignorable: %d, %v", none.Code, h.ops.cancelMany)
@@ -447,7 +449,7 @@ func TestDispatchJobsIgnoreSelected(t *testing.T) {
 	if len(h.ops.cancelMany) != 1 || strings.Join(h.ops.cancelMany[0], ",") != "djb_1,djb_2,djb_3" {
 		t.Fatalf("ignored %v", h.ops.cancelMany)
 	}
-	mustContain(t, run, "2 jobs ignored", "2 dispatch jobs marked CANCELLED. 1 left as they were: no longer PENDING or FAILED.", "dj-ignore", `id="dj-table"`)
+	mustContain(t, run, "2 jobs ignored", "2 dispatch jobs marked CANCELLED. 1 left as they were: already finished.", "dj-ignore", `id="dj-table"`)
 	h.ops.cancelled = CancelResult{Skipped: 3}
 	mustContain(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", datastar: true, form: ids}), "Nothing ignored")
 

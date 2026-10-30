@@ -142,6 +142,7 @@ var (
 	TStaleProcessing   = Transition{"stale_processing", []common.DispatchStatus{common.DispatchProcessing}, common.DispatchPending}
 	TRequeue           = Transition{"requeue", RequeueableStatuses, common.DispatchPending}
 	TRedrive           = Transition{"redrive_completed", []common.DispatchStatus{common.DispatchCompleted}, common.DispatchPending}
+	TRequeueInFlight   = Transition{"requeue_in_flight", InFlightStatuses, common.DispatchPending}
 	TMarkQueued        = Transition{"mark_queued", []common.DispatchStatus{common.DispatchPending}, common.DispatchQueued}
 	TClaimForDelivery  = Transition{"claim_for_delivery", []common.DispatchStatus{common.DispatchPending, common.DispatchQueued}, common.DispatchProcessing}
 	TReclaimStale      = Transition{"reclaim_stale_delivery", []common.DispatchStatus{common.DispatchProcessing}, common.DispatchProcessing}
@@ -151,7 +152,7 @@ var (
 	TOperatorComplete  = Transition{"operator_complete", []common.DispatchStatus{common.DispatchFailed}, common.DispatchCompleted}
 	allTransitionNames = []Transition{
 		TCreate, TRetry, TDefer, THold, TSettleAcked, TSweepStranded, TStaleQueued,
-		TStaleProcessing, TRequeue, TRedrive, TMarkQueued, TClaimForDelivery, TReclaimStale, TComplete, TFail,
+		TStaleProcessing, TRequeue, TRedrive, TRequeueInFlight, TMarkQueued, TClaimForDelivery, TReclaimStale, TComplete, TFail,
 		TOperatorCancel, TOperatorComplete,
 	}
 )
@@ -834,10 +835,20 @@ func jobIDs(rows []JobRow) []string {
 // PENDING, FAILED, CANCELLED, EXPIRED) — clears scheduled_for (immediate
 // eligibility), zeroes attempt_count (a full retry budget again), clears the
 // terminal stamps and last_error. QUEUED and PROCESSING are refused in SQL (a
-// delivery is under way: resetting it would deliver twice), and so is COMPLETED
-// (see Redrive). Reports whether a row was reset.
+// delivery is under way: resetting it may deliver twice; see RequeueInFlight),
+// and so is COMPLETED (see Redrive). Reports whether a row was reset.
 func (l *Lifecycle) Requeue(ctx context.Context, id string, createdAt time.Time) (bool, error) {
 	rows, err := l.enterPending(ctx, TRequeue, byKey(id, createdAt), resetForRetry())
+	return len(rows) == 1, err
+}
+
+// RequeueInFlight is the operator's reset of a job in flight (QUEUED or
+// PROCESSING) back to PENDING, with the same reset as Requeue, for a job the
+// operator judges stuck. A delivery still under way may then land as well as
+// the new one. A separate transition so that the in-flight guard sits in SQL
+// and an ordinary requeue can never reach it.
+func (l *Lifecycle) RequeueInFlight(ctx context.Context, id string, createdAt time.Time) (bool, error) {
+	rows, err := l.enterPending(ctx, TRequeueInFlight, byKey(id, createdAt), resetForRetry())
 	return len(rows) == 1, err
 }
 
@@ -854,11 +865,11 @@ func resetForRetry() *changes {
 		raw("completed_at", "NULL").raw("duration_millis", "NULL").raw("last_error", "NULL")
 }
 
-// OperatorCancel moves a PENDING or FAILED (or legacy ERROR) job to CANCELLED.
-// The status check is in the SQL: reports false (and changes nothing) when the
-// job is in any other status, which is how a PENDING job the scheduler marked
-// QUEUED a moment earlier is refused rather than cancelled mid-delivery. Once
-// CANCELLED, mark-QUEUED and claim-for-delivery both refuse it.
+// OperatorCancel moves an unfinished (PENDING, QUEUED, PROCESSING) or FAILED
+// (or legacy ERROR) job to CANCELLED (CancellableStatuses). The status check is
+// in the SQL: reports false (and changes nothing) when the job is in any other
+// status. Once CANCELLED, mark-QUEUED and claim-for-delivery refuse it, and so
+// do complete and fail, so a delivery already under way cannot move it on.
 func (l *Lifecycle) OperatorCancel(ctx context.Context, id string, createdAt time.Time) (bool, error) {
 	now := time.Now().UTC()
 	rows, err := l.leavePending(ctx, TOperatorCancel, byKey(id, createdAt),

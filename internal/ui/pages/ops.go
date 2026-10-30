@@ -490,8 +490,9 @@ type DispatchJobCommands interface {
 	// the caller's tenants are dropped by the use case). redrive sends the
 	// API's two redrive fields, so COMPLETED jobs are re-delivered too; the
 	// caller has checked dispatch-job:redrive-completed and the typed
-	// confirmation.
-	Requeue(ctx context.Context, ids []string, redrive bool) (RequeueResult, error)
+	// confirmation. opts.InFlight sends requeueInFlight, so QUEUED and
+	// PROCESSING jobs are reset too (the caller has the operator's consent).
+	Requeue(ctx context.Context, ids []string, opts RequeueOptions) (RequeueResult, error)
 	// Preview counts what a requeue-by-filter would touch (SummarizeMatches).
 	Preview(ctx context.Context, f dispatchjob.FilterParams) (djops.MatchSummary, error)
 	// RequeueByFilter runs ResendByFilter with the confirmed count (the
@@ -533,7 +534,14 @@ type DispatchJobOps struct {
 // COMPLETED ones included) and the ones the status guard left alone.
 type RequeueResult struct {
 	Requeued, Redriven, SkippedInFlight, SkippedCompleted int
+	// InFlight is how many of the Requeued jobs were QUEUED or PROCESSING.
+	InFlight int
 }
+
+// RequeueOptions are the operator's consents on a requeue by ids: Redrive
+// re-delivers COMPLETED jobs, InFlight resets jobs that are QUEUED or being
+// delivered (a delivery under way may then land as well).
+type RequeueOptions struct{ Redrive, InFlight bool }
 
 // CancelResult is what an ignore by ids did: the jobs cancelled and the ones
 // the status guard left alone.
@@ -542,16 +550,16 @@ type CancelResult struct {
 }
 
 // Requeue runs ResendDispatchJobs.
-func (o DispatchJobOps) Requeue(ctx context.Context, ids []string, redrive bool) (RequeueResult, error) {
-	cmd := djops.ResendCommand{IDs: ids}
-	if redrive {
+func (o DispatchJobOps) Requeue(ctx context.Context, ids []string, opts RequeueOptions) (RequeueResult, error) {
+	cmd := djops.ResendCommand{IDs: ids, RequeueInFlight: opts.InFlight}
+	if opts.Redrive {
 		cmd.RedriveCompleted, cmd.ConfirmRedriveCompleted = true, dispatchjob.RedriveConfirmation
 	}
 	ev, err := usecaseop.Run(ctx, o.UoW, djops.ResendDispatchJobs(o.Repo), cmd, auth.NewExecutionContext(ctx))
 	if err != nil {
 		return RequeueResult{}, err
 	}
-	res := RequeueResult{Requeued: len(ev.IDs), Redriven: len(ev.Redriven)}
+	res := RequeueResult{Requeued: len(ev.IDs), Redriven: len(ev.Redriven), InFlight: len(ev.InFlight)}
 	for _, s := range ev.Skipped {
 		switch s.Reason {
 		case dispatchjob.SkipInFlight:

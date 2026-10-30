@@ -26,12 +26,16 @@ type SkippedJob struct {
 //
 // RedriveCompleted and ConfirmRedriveCompleted together authorise re-delivering
 // COMPLETED jobs (dispatchjob.RedriveConfirmed); without both, COMPLETED jobs
-// are skipped and reported. The command is the audit row's operation JSON, so
-// the flags a caller sent are on the record.
+// are skipped and reported. RequeueInFlight resets QUEUED and PROCESSING jobs
+// too (an operator's judgement that they are stuck; a delivery still under way
+// may land as well); without it they are skipped and reported. The HTTP API
+// does not set it: only the admin UI's confirmed requeue does. The command is
+// the audit row's operation JSON, so the flags a caller sent are on the record.
 type ResendCommand struct {
 	IDs                     []string `json:"ids"`
 	RedriveCompleted        bool     `json:"redriveCompleted,omitempty"`
 	ConfirmRedriveCompleted string   `json:"confirmRedriveCompleted,omitempty"`
+	RequeueInFlight         bool     `json:"requeueInFlight,omitempty"`
 }
 
 // ResendDispatchJobs resets a batch of jobs to PENDING for a fresh delivery
@@ -43,7 +47,8 @@ type ResendCommand struct {
 // however many jobs were actually reset.
 //
 // Status guard (dispatchjob/requeue_rules.go): QUEUED and PROCESSING jobs are
-// never reset (skipped, reason IN_FLIGHT); COMPLETED jobs are reset only when
+// reset only when the command carries RequeueInFlight (otherwise skipped,
+// reason IN_FLIGHT); COMPLETED jobs are reset only when
 // the command carries both redrive fields (a redrive; the event says so),
 // otherwise skipped (reason COMPLETED_REDRIVE_NOT_CONFIRMED). A skipped job is
 // reported on the event, never an error for the batch. The lifecycle checks the
@@ -80,6 +85,7 @@ func ResendDispatchJobs(repo *dispatchjob.Repository) usecaseop.Operation[Resend
 			redrive := dispatchjob.RedriveConfirmed(cmd.RedriveCompleted, cmd.ConfirmRedriveCompleted)
 			accessible := make([]dispatchjob.DispatchJob, 0, len(jobs))
 			redriven := map[string]bool{}
+			inFlight := map[string]bool{}
 			var skipped []SkippedJob
 			for _, j := range jobs {
 				if !auth.CanAccessScope(ac, ids.StringPtr(j.ClientID)) {
@@ -87,8 +93,11 @@ func ResendDispatchJobs(repo *dispatchjob.Repository) usecaseop.Operation[Resend
 				}
 				switch dispatchjob.ClassifyForRequeue(j.Status) {
 				case dispatchjob.VerdictInFlight:
-					skipped = append(skipped, SkippedJob{ID: j.ID, Status: string(j.Status), Reason: dispatchjob.SkipInFlight})
-					continue
+					if !cmd.RequeueInFlight {
+						skipped = append(skipped, SkippedJob{ID: j.ID, Status: string(j.Status), Reason: dispatchjob.SkipInFlight})
+						continue
+					}
+					inFlight[j.ID] = true
 				case dispatchjob.VerdictCompleted:
 					if !redrive {
 						skipped = append(skipped, SkippedJob{ID: j.ID, Status: string(j.Status), Reason: dispatchjob.SkipCompletedNotConfirmed})
@@ -110,9 +119,10 @@ func ResendDispatchJobs(repo *dispatchjob.Repository) usecaseop.Operation[Resend
 				IDs:      ids,
 				Redrive:  len(redriven) > 0,
 				Redriven: slices.Sorted(maps.Keys(redriven)),
+				InFlight: slices.Sorted(maps.Keys(inFlight)),
 				Skipped:  skipped,
 			}
-			return usecaseop.SaveAll(accessible, repo.RequeuePersister(redriven), event), nil
+			return usecaseop.SaveAll(accessible, repo.RequeuePersister(redriven, inFlight), event), nil
 		},
 	}
 }

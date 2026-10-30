@@ -138,8 +138,12 @@ const (
 	djDialogSlot = "dj-dialog-slot"
 	djRBFDialog  = "dj-rbf"
 	// The drawer's confirm dialogs; their form action comes from the button.
-	djCancelDialog   = "dj-cancel"
-	djCompleteDialog = "dj-complete"
+	djCancelDialog = "dj-cancel"
+	// djCancelInFlightDialog is the Cancel confirmation of a job in flight;
+	// djRequeueInFlightDialog the Requeue confirmation of one.
+	djCancelInFlightDialog  = "dj-cancel-inflight"
+	djRequeueInFlightDialog = "dj-requeue-inflight"
+	djCompleteDialog        = "dj-complete"
 	// djSelDialog is the requeue dialog of ticked rows that include COMPLETED
 	// jobs (the SPA's RequeueSelectedDialog).
 	djSelDialog = "dj-sel"
@@ -827,6 +831,10 @@ type djDetail struct {
 	// CanRequeue shows the drawer's Requeue (dispatch-job:requeue, and a status
 	// the API resets); CanRedrive its Redrive (a COMPLETED job, redrive-completed).
 	CanRequeue, CanRedrive bool
+	// CanRequeueInFlight shows the drawer's Requeue of a job in flight, behind
+	// its own confirmation (a delivery under way may land as well); InFlight
+	// picks the Cancel job confirmation that says so.
+	CanRequeueInFlight, InFlight bool
 	// CanAudit shows the Audit section (audit-log view); AuditHref loads it.
 	CanAudit  bool
 	AuditHref string
@@ -995,10 +1003,12 @@ func (h *DispatchJobs) detailOf(ctx context.Context, ac *auth.AuthContext, j *di
 		ScheduledFor: timeOr(j.ScheduledFor), Created: j.CreatedAt, Completed: timeOr(j.CompletedAt),
 		LastError: deref(j.LastError), Payload: prettyText(j.Payload),
 		History: toAttempts(attempts), ActionBase: djURL(j.ID),
-		CanSign:    auth.CanWritePermission(ac, djRawPerm) == nil,
-		CanRequeue: auth.CanWritePermission(ac, djRequeuePerm) == nil && slices.Contains(dispatchjob.RequeueableStatuses, j.Status),
-		CanRedrive: j.Status == common.DispatchCompleted && auth.CanWritePermission(ac, djRequeuePerm) == nil && auth.CanWritePermission(ac, djRedrivePerm) == nil,
-		CanAudit:   h.Audit != nil && auth.CanWritePermission(ac, djAuditPerm) == nil, AuditHref: djURL(j.ID) + "/audit",
+		CanSign:            auth.CanWritePermission(ac, djRawPerm) == nil,
+		CanRequeue:         auth.CanWritePermission(ac, djRequeuePerm) == nil && slices.Contains(dispatchjob.RequeueableStatuses, j.Status),
+		CanRequeueInFlight: slices.Contains(dispatchjob.InFlightStatuses, j.Status) && auth.CanWritePermission(ac, djRequeuePerm) == nil,
+		InFlight:           slices.Contains(dispatchjob.InFlightStatuses, j.Status),
+		CanRedrive:         j.Status == common.DispatchCompleted && auth.CanWritePermission(ac, djRequeuePerm) == nil && auth.CanWritePermission(ac, djRedrivePerm) == nil,
+		CanAudit:           h.Audit != nil && auth.CanWritePermission(ac, djAuditPerm) == nil, AuditHref: djURL(j.ID) + "/audit",
 		// The editor opens on the stored text, pretty-printed for a JSON job.
 		CanEditPayload: slices.Contains(dispatchjob.EditableStatuses, j.Status) && auth.CanWritePermission(ac, djEditPayloadPerm) == nil,
 		ContentType:    j.PayloadContentType,
@@ -1296,12 +1306,17 @@ func (h *DispatchJobs) requeueSelected(w http.ResponseWriter, r *http.Request) {
 }
 
 // djSelection is the dialog of a requeue of ticked rows that include COMPLETED
-// jobs (RequeueSelectedDialog): a plain requeue leaves them alone; redriving
-// them is the separate, dangerous option behind a typed confirmation.
+// jobs (RequeueSelectedDialog) or jobs in flight: a plain requeue leaves
+// COMPLETED ones alone, redriving them is the separate, dangerous option behind
+// a typed confirmation, and requeueing the ones in flight is a checkbox.
 type djSelection struct {
-	IDs       []string
-	Drawer    string
-	Completed int
+	IDs    []string
+	Drawer string
+	// Completed counts the COMPLETED jobs the caller may redrive (0 without
+	// dispatch-job:redrive-completed); InFlight the QUEUED or PROCESSING ones.
+	Completed, InFlight int
+	// Consent is the in-flight checkbox as the caller last left it.
+	Consent bool
 	// Confirm is the second step (the word and the count); Error is its
 	// message after a wrong entry.
 	Confirm bool
@@ -1312,9 +1327,10 @@ type djSelection struct {
 func (s djSelection) others() int { return len(s.IDs) - s.Completed }
 
 // requeue runs a requeue of ids. A caller who may redrive and has COMPLETED
-// jobs among them goes through the dialog (step "" opens it, "confirm" shows
-// the typed confirmation, "redrive" runs it); everyone else requeues at once
-// and is told what the status guard left alone.
+// jobs among them, or any caller with jobs in flight among them who has not
+// consented, goes through the dialog (step "" opens it, "confirm" shows the
+// typed confirmation, "redrive" runs it); everyone else requeues at once and is
+// told what the status guard left alone.
 func (h *DispatchJobs) requeue(w http.ResponseWriter, r *http.Request, picked []string) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
@@ -1328,12 +1344,17 @@ func (h *DispatchJobs) requeue(w http.ResponseWriter, r *http.Request, picked []
 		h.Shell.Fail(w, r, redrivePerm)
 		return
 	}
-	if redrivePerm == nil && len(picked) > 0 && step != "plain" {
+	opts := RequeueOptions{InFlight: formFlag(r.PostFormValue("inflight"))}
+	if len(picked) > 0 && step != "plain" {
 		sel, err := h.selection(ctx, ac, picked, r.PostFormValue("drawer"))
 		if err != nil {
 			h.Shell.Fail(w, r, err)
 			return
 		}
+		if redrivePerm != nil {
+			sel.Completed = 0
+		}
+		sel.Consent = opts.InFlight
 		switch {
 		case step == "redrive":
 			if msg := redriveEntryError(r.PostFormValue("word"), r.PostFormValue("count"), sel.Completed); msg != "" {
@@ -1341,24 +1362,34 @@ func (h *DispatchJobs) requeue(w http.ResponseWriter, r *http.Request, picked []
 				h.showSelectionDialog(w, r, sel)
 				return
 			}
-			h.runRequeue(w, r, ac, picked, true)
+			opts.Redrive = true
+			h.runRequeue(w, r, ac, picked, opts)
 		case step == "confirm" && sel.Completed > 0:
 			sel.Confirm = true
 			h.showSelectionDialog(w, r, sel)
-		case sel.Completed > 0:
+		case sel.Completed > 0, sel.InFlight > 0 && !opts.InFlight:
 			h.showSelectionDialog(w, r, sel)
-		case step != "":
+		case step != "" && sel.Completed == 0 && redrivePerm == nil:
 			h.Shell.Fail(w, r, usecase.Validation("NOTHING_TO_REDRIVE", "None of the selected jobs is COMPLETED any more."))
 		default:
-			h.runRequeue(w, r, ac, picked, false)
+			h.runRequeue(w, r, ac, picked, opts)
 		}
 		return
 	}
-	h.runRequeue(w, r, ac, picked, false)
+	h.runRequeue(w, r, ac, picked, opts)
 }
 
-// selection counts the COMPLETED jobs among the ticked ones the caller can
-// reach (the use case drops the rest).
+// formFlag reads a checkbox or hidden flag: "1", "on" or "true".
+func formFlag(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "on", "true":
+		return true
+	}
+	return false
+}
+
+// selection counts the COMPLETED and in-flight jobs among the ticked ones the
+// caller can reach (the use case drops the rest).
 func (h *DispatchJobs) selection(ctx context.Context, ac *auth.AuthContext, picked []string, drawer string) (djSelection, error) {
 	jobs, err := h.Jobs.FindByIDs(ctx, picked)
 	if err != nil {
@@ -1366,8 +1397,14 @@ func (h *DispatchJobs) selection(ctx context.Context, ac *auth.AuthContext, pick
 	}
 	sel := djSelection{IDs: picked, Drawer: drawer}
 	for i := range jobs {
-		if jobs[i].Status == common.DispatchCompleted && auth.CanAccessScope(ac, ids.StringPtr(jobs[i].ClientID)) {
+		if !auth.CanAccessScope(ac, ids.StringPtr(jobs[i].ClientID)) {
+			continue
+		}
+		switch {
+		case jobs[i].Status == common.DispatchCompleted:
 			sel.Completed++
+		case slices.Contains(dispatchjob.InFlightStatuses, jobs[i].Status):
+			sel.InFlight++
 		}
 	}
 	return sel, nil
@@ -1406,12 +1443,12 @@ func (h *DispatchJobs) showSelectionDialog(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-func (h *DispatchJobs) runRequeue(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, picked []string, redrive bool) {
+func (h *DispatchJobs) runRequeue(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, picked []string, opts RequeueOptions) {
 	ctx := r.Context()
 	var res RequeueResult
 	if len(picked) > 0 {
 		var err error
-		if res, err = h.Ops.Requeue(ctx, picked, redrive); err != nil {
+		if res, err = h.Ops.Requeue(ctx, picked, opts); err != nil {
 			h.Shell.Fail(w, r, err)
 			return
 		}
@@ -1445,7 +1482,7 @@ func idsOutcome(res RequeueResult, single bool) kit.FlashMessageProps {
 	n := int64(res.Requeued)
 	return kit.FlashMessageProps{
 		Kind: kit.FlashSuccess, Summary: "Requeued " + counted(n, "job") + redrivenNote(int64(res.Redriven)),
-		Detail: counted(n, "dispatch job") + " reset to PENDING" + skipped,
+		Detail: counted(n, "dispatch job") + " reset to PENDING" + skipped + inFlightNote(int64(res.InFlight)),
 	}
 }
 
@@ -1465,6 +1502,18 @@ func skipNote(inFlight, completed int64) string {
 	return " — " + strings.Join(parts, "; ")
 }
 
+// inFlightNote says how many of the reset jobs were in flight (" 1 of them was
+// in flight."), "" when none.
+func inFlightNote(n int64) string {
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return " 1 of them was in flight."
+	}
+	return " " + thousands(n) + " of them were in flight."
+}
+
 func redrivenNote(n int64) string {
 	if n == 0 {
 		return ""
@@ -1479,14 +1528,15 @@ func redrivenNote(n int64) string {
 type djIgnore struct {
 	IDs    []string
 	Drawer string
-	// Cancellable is how many would be cancelled, Others how many reachable
-	// ones are left as they are (queued, being delivered or finished).
-	Cancellable, Others int
+	// Cancellable is how many would be cancelled (InFlight of them QUEUED or
+	// being delivered), Others how many reachable ones are left as they are
+	// (already finished).
+	Cancellable, InFlight, Others int
 }
 
-// cancelSelected is "Ignore selected": the ticked rows' ids, PENDING and FAILED
-// ones to CANCELLED (dispatch-job:cancel). Step "" opens the confirmation,
-// "confirm" runs it.
+// cancelSelected is "Ignore selected": the ticked rows' ids, every unfinished
+// one (in flight included) to CANCELLED (dispatch-job:cancel). Step ""
+// opens the confirmation, "confirm" runs it.
 func (h *DispatchJobs) cancelSelected(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
@@ -1516,12 +1566,15 @@ func (h *DispatchJobs) cancelSelected(w http.ResponseWriter, r *http.Request) {
 		}
 		if slices.Contains(dispatchjob.CancellableStatuses, jobs[i].Status) {
 			ig.Cancellable++
+			if slices.Contains(dispatchjob.InFlightStatuses, jobs[i].Status) {
+				ig.InFlight++
+			}
 		} else {
 			ig.Others++
 		}
 	}
 	if ig.Cancellable == 0 {
-		h.Shell.Fail(w, r, usecase.Validation("NOTHING_TO_IGNORE", "None of the selected jobs is PENDING or FAILED."))
+		h.Shell.Fail(w, r, usecase.Validation("NOTHING_TO_IGNORE", "None of the selected jobs can be ignored: they are all finished."))
 		return
 	}
 	if !ds.IsDatastar(r) {
@@ -1567,7 +1620,7 @@ func (h *DispatchJobs) runIgnore(w http.ResponseWriter, r *http.Request, ac *aut
 func ignoreOutcome(res CancelResult) kit.FlashMessageProps {
 	var skipped string
 	if res.Skipped > 0 {
-		skipped = " " + thousands(int64(res.Skipped)) + " left as they were: no longer PENDING or FAILED."
+		skipped = " " + thousands(int64(res.Skipped)) + " left as they were: already finished."
 	}
 	if res.Cancelled == 0 {
 		return kit.FlashMessageProps{Kind: kit.FlashInfo, Summary: "Nothing ignored", Detail: "No selected job could be ignored." + skipped}

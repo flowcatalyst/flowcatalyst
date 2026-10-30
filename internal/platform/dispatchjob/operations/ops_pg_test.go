@@ -136,15 +136,14 @@ func TestCancelDispatchJob_FromPending(t *testing.T) {
 }
 
 // TestCancelDispatchJob_NotCancellable_Conflict pins the guard: Cancel is
-// valid only from PENDING or FAILED. Without it an operator could "cancel"
-// an already-COMPLETED job, or one whose delivery is under way.
+// valid only from an unfinished status or FAILED. Without it an operator
+// could "cancel" an already-COMPLETED job.
 func TestCancelDispatchJob_NotCancellable_Conflict(t *testing.T) {
 	t.Parallel()
 	repo := dispatchjob.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
 	statuses := []common.DispatchStatus{
-		common.DispatchQueued, common.DispatchProcessing,
 		common.DispatchCompleted, common.DispatchCancelled, common.DispatchExpired,
 	}
 	for _, st := range statuses {
@@ -227,10 +226,10 @@ func TestCancelDispatchJobs_Validation(t *testing.T) {
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "IDS_REQUIRED")
 }
 
-// TestCancelDispatchJobs_CancelsPendingAndFailedSkipsTheRest: PENDING and
-// FAILED jobs become CANCELLED; QUEUED, PROCESSING and COMPLETED ones are
-// left as they are and reported skipped; unknown ids are dropped.
-func TestCancelDispatchJobs_CancelsPendingAndFailedSkipsTheRest(t *testing.T) {
+// TestCancelDispatchJobs_CancelsUnfinishedAndFailedSkipsTheRest: PENDING,
+// QUEUED, PROCESSING and FAILED jobs become CANCELLED; COMPLETED and EXPIRED
+// ones are left as they are and reported skipped; unknown ids are dropped.
+func TestCancelDispatchJobs_CancelsUnfinishedAndFailedSkipsTheRest(t *testing.T) {
 	t.Parallel()
 	repo := dispatchjob.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
@@ -240,24 +239,24 @@ func TestCancelDispatchJobs_CancelsPendingAndFailedSkipsTheRest(t *testing.T) {
 	queued := seedJob(t, repo, "opstest:cancelmany:queued", common.DispatchQueued, seedOpts{})
 	processing := seedJob(t, repo, "opstest:cancelmany:processing", common.DispatchProcessing, seedOpts{})
 	completed := seedJob(t, repo, "opstest:cancelmany:completed", common.DispatchCompleted, seedOpts{})
+	expired := seedJob(t, repo, "opstest:cancelmany:expired", common.DispatchExpired, seedOpts{})
 
 	ev, err := runAuthorized(uow, operations.CancelDispatchJobs(repo), operations.CancelManyCommand{
-		IDs: []string{pending.ID, failed.ID, queued.ID, processing.ID, completed.ID, "dpj_doesnotexist03"},
+		IDs: []string{pending.ID, failed.ID, queued.ID, processing.ID, completed.ID, expired.ID, "dpj_doesnotexist03"},
 	})
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{pending.ID, failed.ID}, ev.IDs)
+	assert.ElementsMatch(t, []string{pending.ID, failed.ID, queued.ID, processing.ID}, ev.IDs)
 	skipped := map[string]string{}
 	for _, s := range ev.Skipped {
 		assert.Equal(t, dispatchjob.SkipNotCancellable, s.Reason)
 		skipped[s.ID] = s.Status
 	}
-	assert.Equal(t, map[string]string{
-		queued.ID: "QUEUED", processing.ID: "PROCESSING", completed.ID: "COMPLETED",
-	}, skipped)
+	assert.Equal(t, map[string]string{completed.ID: "COMPLETED", expired.ID: "EXPIRED"}, skipped)
 
 	for id, want := range map[string]common.DispatchStatus{
 		pending.ID: common.DispatchCancelled, failed.ID: common.DispatchCancelled,
-		queued.ID: common.DispatchQueued, processing.ID: common.DispatchProcessing, completed.ID: common.DispatchCompleted,
+		queued.ID: common.DispatchCancelled, processing.ID: common.DispatchCancelled,
+		completed.ID: common.DispatchCompleted, expired.ID: common.DispatchExpired,
 	} {
 		got, err := repo.FindByID(context.Background(), id)
 		require.NoError(t, err)
@@ -295,6 +294,40 @@ func TestCancelDispatchJobs_ScopeFiltering(t *testing.T) {
 }
 
 // ── Resend ────────────────────────────────────────────────────────────────
+
+// TestResendDispatchJobs_InFlightOnlyWhenAsked: QUEUED and PROCESSING jobs are
+// skipped (IN_FLIGHT) by a plain requeue and reset to PENDING when the command
+// carries RequeueInFlight (owner ruling 2026-10-30).
+func TestResendDispatchJobs_InFlightOnlyWhenAsked(t *testing.T) {
+	t.Parallel()
+	repo := dispatchjob.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	queued := seedJob(t, repo, "opstest:resend:inflight:queued", common.DispatchQueued, seedOpts{})
+	processing := seedJob(t, repo, "opstest:resend:inflight:processing", common.DispatchProcessing, seedOpts{AttemptCount: 2})
+	idList := []string{queued.ID, processing.ID}
+
+	ev, err := runAuthorized(uow, operations.ResendDispatchJobs(repo), operations.ResendCommand{IDs: idList})
+	require.NoError(t, err)
+	assert.Empty(t, ev.IDs)
+	require.Len(t, ev.Skipped, 2)
+	for _, s := range ev.Skipped {
+		assert.Equal(t, dispatchjob.SkipInFlight, s.Reason)
+	}
+
+	ev, err = runAuthorized(uow, operations.ResendDispatchJobs(repo), operations.ResendCommand{IDs: idList, RequeueInFlight: true})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, idList, ev.IDs)
+	assert.ElementsMatch(t, idList, ev.InFlight)
+	assert.Empty(t, ev.Skipped)
+	for _, id := range idList {
+		got, err := repo.FindByID(context.Background(), id)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, common.DispatchPending, got.Status, id)
+		assert.Equal(t, int32(0), got.AttemptCount, id)
+	}
+}
 
 func TestResendDispatchJobs_Validation(t *testing.T) {
 	t.Parallel()

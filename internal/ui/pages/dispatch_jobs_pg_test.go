@@ -121,20 +121,36 @@ func TestDispatchJobsPageAgainstPostgres(t *testing.T) {
 	assert.Equal(t, common.DispatchPending, status("djbuipg000001"))
 	assert.Equal(t, common.DispatchPending, status("djbuipg000002"))
 
-	// Ignore selected: a PENDING and a FAILED job become CANCELLED, a QUEUED one
-	// (being delivered) is left as it is. The drawer of a PENDING job offers it.
+	// Ignore selected: a PENDING, a FAILED and a QUEUED job (in flight) become
+	// CANCELLED, a COMPLETED one is left as it is. The drawer of a PENDING job
+	// offers it.
 	seed("djbuipg000030", "uipgi:sales:order:paid", "PENDING")
 	seed("djbuipg000031", "uipgi:sales:order:paid", "FAILED")
 	seed("djbuipg000032", "uipgi:sales:order:paid", "QUEUED")
+	seed("djbuipg000033", "uipgi:sales:order:paid", "COMPLETED")
 	assert.Contains(t, do(req{target: "/ui/dispatch-jobs/djbuipg000030", datastar: true}), "Cancel job")
-	ignore := url.Values{"ids": {"djbuipg000030", "djbuipg000031", "djbuipg000032"}}
+	ignore := url.Values{"ids": {"djbuipg000030", "djbuipg000031", "djbuipg000032", "djbuipg000033"}}
 	asked = do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", datastar: true, form: ignore})
-	assert.Contains(t, asked, "Ignore 2 jobs?")
+	assert.Contains(t, asked, "Ignore 3 jobs?")
+	assert.Contains(t, asked, "1 of them is in flight")
 	assert.Equal(t, common.DispatchPending, status("djbuipg000030"), "asking ignores nothing")
 	ignore.Set("step", "confirm")
 	done := do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/cancel", datastar: true, form: ignore})
-	assert.Contains(t, done, "2 jobs ignored")
+	assert.Contains(t, done, "3 jobs ignored")
 	assert.Equal(t, common.DispatchCancelled, status("djbuipg000030"))
 	assert.Equal(t, common.DispatchCancelled, status("djbuipg000031"))
-	assert.Equal(t, common.DispatchQueued, status("djbuipg000032"))
+	assert.Equal(t, common.DispatchCancelled, status("djbuipg000032"), "a QUEUED job may be ignored")
+	assert.Equal(t, common.DispatchCompleted, status("djbuipg000033"))
+
+	// Requeue of a job in flight (owner ruling 2026-10-30): the drawer offers it
+	// behind its own confirmation, and only inflight=1 resets it.
+	seed("djbuipg000040", "uipgf:sales:order:paid", "PROCESSING")
+	drawerIF := do(req{target: "/ui/dispatch-jobs/djbuipg000040", datastar: true})
+	assert.Contains(t, drawerIF, `data-action="/ui/dispatch-jobs/djbuipg000040/requeue"`)
+	assert.Contains(t, drawerIF, "Cancel job")
+	do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/djbuipg000040/requeue", datastar: true, form: url.Values{}})
+	assert.Equal(t, common.DispatchProcessing, status("djbuipg000040"), "no consent, no reset")
+	flash := do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/djbuipg000040/requeue", datastar: true, form: url.Values{"inflight": {"1"}}})
+	assert.Equal(t, common.DispatchPending, status("djbuipg000040"))
+	assert.Contains(t, flash, "1 of them was in flight.")
 }

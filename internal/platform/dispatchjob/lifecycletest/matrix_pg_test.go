@@ -118,6 +118,13 @@ var cases = []tcase{
 	{
 		// Not QUEUED/PROCESSING/IN_PROGRESS (a delivery is under way) and not
 		// COMPLETED (that is redrive_completed).
+		name: "requeue_in_flight", counted: true, allowed: to("PENDING", "QUEUED", "PROCESSING", "IN_PROGRESS"),
+		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
+			_, err := lc.RequeueInFlight(ctx, j.id, j.createdAt)
+			return err
+		},
+	},
+	{
 		name: "requeue", counted: true, allowed: to("PENDING", "PENDING", "FAILED", "ERROR", "CANCELLED", "EXPIRED"),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.Requeue(ctx, j.id, j.createdAt)
@@ -168,7 +175,7 @@ var cases = []tcase{
 		},
 	},
 	{
-		name: "operator_cancel", counted: true, allowed: to("CANCELLED", "PENDING", "FAILED", "ERROR"),
+		name: "operator_cancel", counted: true, allowed: to("CANCELLED", "PENDING", "QUEUED", "PROCESSING", "IN_PROGRESS", "FAILED", "ERROR"),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.OperatorCancel(ctx, j.id, j.createdAt)
 			return err

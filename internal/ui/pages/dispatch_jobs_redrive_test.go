@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	djops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
@@ -292,4 +293,79 @@ func TestAuditOperationLabel(t *testing.T) {
 			t.Errorf("%q: %q, want %q", in, got, want)
 		}
 	}
+}
+
+// A job in flight: the drawer offers Requeue (behind its own confirmation) and
+// Cancel job; only inflight=1 reaches Ops.Requeue as consent.
+func TestDispatchJobsInFlightDrawerAndSingleRequeue(t *testing.T) {
+	h := newDJHarness()
+	h.store.jobs = append(h.store.jobs, djJob("djb_p", "orders:billing:invoice:paid", common.DispatchProcessing, "clt_1", 4))
+
+	drawer := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/djb_p", datastar: true})
+	mustContain(t, drawer, "Requeue", "Cancel job", `data-action="/ui/dispatch-jobs/djb_p/requeue"`, `data-action="/ui/dispatch-jobs/djb_p/cancel"`)
+	if !strings.Contains(drawer, "dj-requeue-inflight") || !strings.Contains(drawer, "dj-cancel-inflight") {
+		t.Errorf("drawer lacks the in-flight dialogs' triggers: %s", drawer)
+	}
+	// The dialogs sit on the page.
+	// A caller with requeue alone gets Requeue, not Cancel job.
+	opsDrawer := h.do(t, opsUser(), req{target: "/ui/dispatch-jobs/djb_p", datastar: true})
+	mustContain(t, opsDrawer, `data-action="/ui/dispatch-jobs/djb_p/requeue"`)
+	mustNotContain(t, opsDrawer, "Cancel job")
+	page := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs"})
+	mustContain(t, page, "Requeue a job in flight?", "Requeue anyway", `name="inflight" value="1"`,
+		"This job is QUEUED or being delivered. It is marked CANCELLED and not retried, but a delivery already under way may still land.")
+	// A FAILED job keeps the plain Cancel dialog and a plain Requeue.
+	failed := h.do(t, opsUser(), req{target: "/ui/dispatch-jobs/djb_1", datastar: true})
+	mustContain(t, failed, `action="/ui/dispatch-jobs/djb_1/requeue"`)
+	mustNotContain(t, failed, "dj-requeue-inflight")
+
+	post := func(id string, form url.Values) string {
+		return h.do(t, opsUser(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/" + id + "/requeue", datastar: true, form: form})
+	}
+	post("djb_1", url.Values{"drawer": {"djb_1"}})
+	post("djb_p", url.Values{"drawer": {"djb_p"}, "inflight": {"1"}})
+	if len(h.ops.requeued) != 2 || h.ops.inflights[0] || !h.ops.inflights[1] {
+		t.Fatalf("in-flight consent not passed through: %v %v", h.ops.requeued, h.ops.inflights)
+	}
+	// A job in flight without the consent is not reset behind the operator's
+	// back: the dialog opens instead.
+	mustContain(t, post("djb_p", url.Values{}), "Requeue selected jobs", `name="inflight" value="1"`)
+	if len(h.ops.requeued) != 2 {
+		t.Fatalf("ran without consent: %v", h.ops.requeued)
+	}
+}
+
+// Ticked jobs that include one in flight open the dialog for a caller without
+// redrive-completed too; the checkbox is the consent.
+func TestDispatchJobsRequeueSelectedWithInFlight(t *testing.T) {
+	h := newDJHarness()
+	h.store.jobs = append(h.store.jobs, djJob("djb_p", "orders:billing:invoice:paid", common.DispatchProcessing, "clt_1", 4))
+	post := func(form url.Values) string {
+		return h.do(t, opsUser(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/requeue", datastar: true, multipart: true, referer: "http://example.com/ui/dispatch-jobs", form: form})
+	}
+
+	review := post(url.Values{"ids": {"djb_1", "djb_p"}})
+	mustContain(t, review, `data: elements <div id="dj-dialog-slot">`, "Requeue selected jobs",
+		`name="inflight" value="1"`, "Also requeue the 1 job in flight (QUEUED or being delivered)", "may be delivered twice")
+	mustNotContain(t, review, "COMPLETED", "Also redrive")
+	if len(h.ops.requeued) != 0 {
+		t.Fatalf("ran before the dialog was answered: %v", h.ops.requeued)
+	}
+
+	// The dialog submits step=plain, with the box ticked or not.
+	post(url.Values{"ids": {"djb_1", "djb_p"}, "step": {"plain"}})
+	post(url.Values{"ids": {"djb_1", "djb_p"}, "step": {"plain"}, "inflight": {"1"}})
+	if len(h.ops.requeued) != 2 || h.ops.inflights[0] || !h.ops.inflights[1] || h.ops.redrives[1] {
+		t.Fatalf("runs: %v inflight %v redrive %v", h.ops.requeued, h.ops.inflights, h.ops.redrives)
+	}
+
+	// No in-flight job among them: no dialog, a direct run.
+	post(url.Values{"ids": {"djb_1", "djb_3"}})
+	if len(h.ops.requeued) != 3 {
+		t.Fatalf("direct run: %v", h.ops.requeued)
+	}
+
+	// The outcome says how many were in flight.
+	h.ops.requeue = RequeueResult{Requeued: 2, InFlight: 1}
+	mustContain(t, post(url.Values{"ids": {"djb_1", "djb_p"}, "step": {"plain"}, "inflight": {"1"}}), "2 dispatch jobs reset to PENDING 1 of them was in flight.")
 }

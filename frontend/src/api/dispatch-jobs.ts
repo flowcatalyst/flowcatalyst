@@ -217,9 +217,10 @@ export const dispatchJobsApi = {
 			suppressGlobalErrorToast: true,
 		});
 	},
-	// Cancel a PENDING or FAILED job (an operator override: it will not be
-	// delivered or retried, and a BLOCK_ON_ERROR group behind it is released).
-	// 409 NOT_CANCELLABLE when it is in any other status.
+	// Cancel an unfinished (PENDING, QUEUED, PROCESSING) or FAILED job (an
+	// operator override: it will not be retried, a delivery already under way
+	// may still land, and a BLOCK_ON_ERROR group behind it is released).
+	// 409 NOT_CANCELLABLE when it is COMPLETED, CANCELLED or EXPIRED.
 	cancel(id: string): Promise<DispatchJobDetail> {
 		return apiFetch(`/dispatch-jobs/${encodeURIComponent(id)}/cancel`, {
 			method: "POST",

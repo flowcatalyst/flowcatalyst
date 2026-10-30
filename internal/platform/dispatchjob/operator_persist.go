@@ -41,7 +41,7 @@ func (operatorPersist) Delete(context.Context, *DispatchJob, *usecasepgx.DbTx) e
 	return errors.New("dispatch jobs are never deleted through the use-case envelope")
 }
 
-// CancelPersister commits an operator cancel: PENDING or FAILED -> CANCELLED, checked in SQL.
+// CancelPersister commits an operator cancel: CancellableStatuses -> CANCELLED, checked in SQL.
 func (r *Repository) CancelPersister() usecasepgx.Persist[DispatchJob] {
 	return operatorPersist{lc: r.lc, strict: true, do: func(ctx context.Context, lc *Lifecycle, j *DispatchJob) (bool, error) {
 		return lc.OperatorCancel(ctx, j.ID, j.CreatedAt)
@@ -68,11 +68,16 @@ func (r *Repository) CompletePersister() usecasepgx.Persist[DispatchJob] {
 // RequeuePersister commits an operator requeue: PENDING, FAILED, CANCELLED or
 // EXPIRED (the status guard is in SQL) -> PENDING. A job whose id is in
 // redrive is COMPLETED and is re-delivered through the lifecycle's separate
-// Redrive transition instead; every other COMPLETED job is refused by SQL.
-func (r *Repository) RequeuePersister(redrive map[string]bool) usecasepgx.Persist[DispatchJob] {
+// Redrive transition instead, and one whose id is in inFlight is QUEUED or
+// PROCESSING and is reset through RequeueInFlight; every other COMPLETED or
+// in-flight job is refused by SQL.
+func (r *Repository) RequeuePersister(redrive, inFlight map[string]bool) usecasepgx.Persist[DispatchJob] {
 	return operatorPersist{lc: r.lc, do: func(ctx context.Context, lc *Lifecycle, j *DispatchJob) (bool, error) {
 		if redrive[j.ID] {
 			return lc.Redrive(ctx, j.ID, j.CreatedAt)
+		}
+		if inFlight[j.ID] {
+			return lc.RequeueInFlight(ctx, j.ID, j.CreatedAt)
 		}
 		return lc.Requeue(ctx, j.ID, j.CreatedAt)
 	}}
