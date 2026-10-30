@@ -38,6 +38,8 @@ final class ExchangeCounters {
     long failed;
     long records;
     long dispatchJobs;
+    int polls;
+    @Nullable Instant lastPollAt;
     final List<Failure> failures = new ArrayList<>();
   }
 
@@ -49,6 +51,16 @@ final class ExchangeCounters {
   ExchangeCounters(InstantSource clock) {
     this.clock = clock;
     this.windowStart = clock.instant();
+  }
+
+  /** Counts a poll that has ended, empty or not, and when it ended. */
+  void polled(Ingestion ingestion) {
+    Instant now = clock.instant();
+    synchronized (lock) {
+      Tally t = tally(ingestion);
+      t.polls++;
+      t.lastPollAt = now;
+    }
   }
 
   void exchangeCompleted(Ingestion ingestion) {
@@ -134,10 +146,10 @@ final class ExchangeCounters {
       List<Failure> failures = new ArrayList<>();
       for (Map.Entry<String, Tally> e : tallies.entrySet()) {
         Tally t = e.getValue();
-        if (t.completed + t.failed + t.records + t.dispatchJobs > 0) {
+        if (t.completed + t.failed + t.records + t.dispatchJobs + t.polls > 0) {
           windows.add(
               new ExchangeWindow(
-                  e.getKey(), windowStart, now, t.completed, t.failed, t.records, t.dispatchJobs));
+                  e.getKey(), windowStart, now, t.completed, t.failed, t.records, t.dispatchJobs, t.polls, t.lastPollAt));
         }
         failures.addAll(t.failures);
       }

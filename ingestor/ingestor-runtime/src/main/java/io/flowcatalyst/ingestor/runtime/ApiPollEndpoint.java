@@ -3,6 +3,7 @@ package io.flowcatalyst.ingestor.runtime;
 import io.flowcatalyst.ingestor.contract.Ingestion;
 import io.flowcatalyst.ingestor.contract.RuntimeReport.Failure;
 import io.flowcatalyst.ingestor.contract.Source;
+import io.flowcatalyst.ingestor.extension.PollTrace;
 import java.time.Duration;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -42,6 +43,7 @@ final class ApiPollEndpoint extends DefaultEndpoint {
   private final StateStore state;
   private @Nullable ExchangeCounters counters;
   private @Nullable SourceHealth health;
+  private TraceWindows traces = TraceWindows.disabled();
   private Duration authRetry = ApiPollClient.AUTH_RETRY;
 
   ApiPollEndpoint(CamelContext camel, Ingestion ingestion, Source.ApiPoll source, ApiPollClient client, StateStore state) {
@@ -56,6 +58,11 @@ final class ApiPollEndpoint extends DefaultEndpoint {
   void reportTo(ExchangeCounters counters, SourceHealth health) {
     this.counters = counters;
     this.health = health;
+  }
+
+  /** Where polls are counted and, while tracing is on, captured; set before the route starts. */
+  void traceTo(TraceWindows windows) {
+    this.traces = windows;
   }
 
   /** How long a refused login waits; tests shorten it. */
@@ -83,6 +90,9 @@ final class ApiPollEndpoint extends DefaultEndpoint {
   private final class ApiPoller extends DefaultConsumer {
 
     private @Nullable ScheduledExecutorService executor;
+    /** Whether the poll in progress reported a failure, and the last one's text; used by one thread. */
+    private boolean failedThisPoll;
+    private @Nullable String lastFailure;
 
     ApiPoller(Processor processor) {
       super(ApiPollEndpoint.this, processor);
@@ -112,8 +122,13 @@ final class ApiPollEndpoint extends DefaultEndpoint {
     /** One poll, and the next one scheduled whatever it threw: an {@code Error} fails that poll, not the source. */
     private void run() {
       Duration next = source.idleDelay();
+      failedThisPoll = false;
+      lastFailure = null;
+      ExchangeCounters c = counters;
+      PollTrace trace = c == null ? PollTrace.NONE : traces.pollStarting(ingestion, c);
       try {
-        next = pollOnce();
+        next = trace.run(this::pollOnce);
+        ended(trace, next);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         return;
@@ -121,12 +136,22 @@ final class ApiPollEndpoint extends DefaultEndpoint {
         LOG.warn("ingestion {} could not poll its API", ingestion.id(), e);
         String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
         failure(Failure.Kind.SOURCE, message, null);
+        ended(trace, null);
         if (e instanceof OutOfMemoryError oom) {
           schedule(next);
           throw oom;
         }
       }
       schedule(next);
+    }
+
+    /** Tells the runtime how the poll ended; tracing never changes what the poll does next. */
+    private void ended(PollTrace trace, @Nullable Duration next) {
+      try {
+        trace.finished(!failedThisPoll, lastFailure, next);
+      } catch (RuntimeException e) {
+        LOG.warn("ingestion {}: tracing a poll failed to finish", ingestion.id(), e);
+      }
     }
 
     private void schedule(Duration next) {
@@ -211,6 +236,8 @@ final class ApiPollEndpoint extends DefaultEndpoint {
     }
 
     private void failure(Failure.Kind kind, String message, @Nullable String body) {
+      failedThisPoll = true;
+      lastFailure = message;
       ExchangeCounters c = counters;
       if (c != null) {
         c.failure(ingestion, kind, message, null, body);

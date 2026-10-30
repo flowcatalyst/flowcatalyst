@@ -167,7 +167,8 @@ class AwsIngestTest {
     harness.reconciler.reconcile(List.of(fromBucket(new Split.Csv(true))));
     assertThat(harness.reconciler.states()).extracting(RouteState::status).containsExactly(RouteState.Status.STARTED);
 
-    await(() -> keys().contains(".done/in/orders.csv"));
+    // A move is a copy then a delete: wait for both, not only the copy.
+    await(() -> keys().contains(".done/in/orders.csv") && !keys().contains("in/orders.csv"));
 
     assertThat(harness.payloads()).containsExactly("1,A", "2,B", "3,C");
     assertThat(keys()).containsExactly(".done/in/orders.csv", "elsewhere.csv", "in/archive/old.csv");

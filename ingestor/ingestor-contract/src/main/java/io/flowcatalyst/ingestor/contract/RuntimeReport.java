@@ -163,7 +163,35 @@ public record RuntimeReport(
    * @param failed exchanges that failed
    * @param records records the exchanges were split into
    * @param dispatchJobs dispatch jobs created
+   * @param polls polls finished in the window, empty ones included, so a source that polls and finds
+   *     nothing is told from one that does not poll
+   * @param lastPollAt the end of the last poll in the window, or null when there was none
    */
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public record ExchangeWindow(
-      String ingestionId, Instant from, Instant to, long completed, long failed, long records, long dispatchJobs) {}
+      String ingestionId,
+      Instant from,
+      Instant to,
+      long completed,
+      long failed,
+      long records,
+      long dispatchJobs,
+      int polls,
+      @Nullable Instant lastPollAt) {
+
+    /**
+     * A window without polls.
+     *
+     * @param ingestionId the ingestion
+     * @param from the start of the window
+     * @param to the end of the window
+     * @param completed exchanges that completed
+     * @param failed exchanges that failed
+     * @param records records the exchanges were split into
+     * @param dispatchJobs dispatch jobs created
+     */
+    public ExchangeWindow(String ingestionId, Instant from, Instant to, long completed, long failed, long records, long dispatchJobs) {
+      this(ingestionId, from, to, completed, failed, records, dispatchJobs, 0, null);
+    }
+  }
 }

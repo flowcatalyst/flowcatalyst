@@ -16,13 +16,28 @@ import org.jspecify.annotations.Nullable;
  *     single-owner ingestions listed here without another answer
  * @param ingestions the ingestions this runtime should run
  * @param tests the "test connection" requests for kinds this runtime carries; none when absent
+ * @param traces the trace windows switched on for the ingestions listed here; none when absent
  */
-public record PollAnswer(Instant asOf, Duration leaseFor, List<Ingestion> ingestions, @Nullable List<TestRequest> tests) {
+public record PollAnswer(
+    Instant asOf, Duration leaseFor, List<Ingestion> ingestions, @Nullable List<TestRequest> tests, @Nullable List<TraceWindow> traces) {
 
-  /** Copies the lists; no tests when absent. */
+  /** Copies the lists; no tests or traces when absent. */
   public PollAnswer {
     ingestions = List.copyOf(ingestions);
     tests = tests == null ? List.of() : List.copyOf(tests);
+    traces = traces == null ? List.of() : List.copyOf(traces);
+  }
+
+  /**
+   * An answer without trace windows.
+   *
+   * @param asOf when the platform read the ingestions
+   * @param leaseFor how long the single-owner ingestions may run
+   * @param ingestions the ingestions to run
+   * @param tests the pending tests, or null
+   */
+  public PollAnswer(Instant asOf, Duration leaseFor, List<Ingestion> ingestions, @Nullable List<TestRequest> tests) {
+    this(asOf, leaseFor, ingestions, tests, null);
   }
 
   /**
@@ -33,7 +48,7 @@ public record PollAnswer(Instant asOf, Duration leaseFor, List<Ingestion> ingest
    * @param ingestions the ingestions to run
    */
   public PollAnswer(Instant asOf, Duration leaseFor, List<Ingestion> ingestions) {
-    this(asOf, leaseFor, ingestions, null);
+    this(asOf, leaseFor, ingestions, null, null);
   }
 
   /**
@@ -43,6 +58,16 @@ public record PollAnswer(Instant asOf, Duration leaseFor, List<Ingestion> ingest
    */
   public List<TestRequest> testList() {
     List<TestRequest> list = tests;
+    return list == null ? List.of() : list;
+  }
+
+  /**
+   * The trace windows.
+   *
+   * @return the windows switched on for the ingestions listed here
+   */
+  public List<TraceWindow> traceList() {
+    List<TraceWindow> list = traces;
     return list == null ? List.of() : list;
   }
 }

@@ -94,6 +94,7 @@ final class RuntimeLoop {
   private final Duration platformTimeout;
   private final @Nullable Secrets secrets;
   private final Duration secretsEvery;
+  private final TraceWindows traces;
   private final ExecutorService testers = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("ingest-test-", 0).factory());
 
   /** The monotonic reading after which the single-owner ingestions must not be running. */
@@ -151,6 +152,39 @@ final class RuntimeLoop {
       Duration platformTimeout,
       @Nullable Secrets secrets,
       Duration secretsEvery) {
+    this(runtimeId, interval, platform, reconciler, counters, tester, clock, monotonic, platformTimeout, secrets, secretsEvery, TraceWindows.disabled());
+  }
+
+  /**
+   * Creates the loop.
+   *
+   * @param runtimeId names this runtime
+   * @param interval how often a round runs
+   * @param platform the runtime API
+   * @param reconciler the routes
+   * @param counters the exchange counts and failures
+   * @param tester runs a connection test
+   * @param clock the time
+   * @param monotonic the clock leases are counted on
+   * @param platformTimeout the longest a call to the platform may wait; the poll and report wait less when the lease is short
+   * @param secrets the secrets the routes were built with, re-read every {@code secretsEvery}; null not to
+   * @param secretsEvery how often they are re-read (no more often than a round)
+   * @param traces the trace windows each poll answer updates
+   */
+  RuntimeLoop(
+      String runtimeId,
+      Duration interval,
+      RuntimeApi platform,
+      Reconciler reconciler,
+      ExchangeCounters counters,
+      Function<TestRequest, ConnectionTest> tester,
+      InstantSource clock,
+      MonotonicClock monotonic,
+      Duration platformTimeout,
+      @Nullable Secrets secrets,
+      Duration secretsEvery,
+      TraceWindows traces) {
+    this.traces = traces;
     this.runtimeId = runtimeId;
     this.interval = interval;
     this.platform = platform;
@@ -198,6 +232,12 @@ final class RuntimeLoop {
         // The answer took most of the lease to arrive, or the lease is shorter than two intervals.
         LOG.warn("the lease of {} cannot cover the next interval; not running single-owner ingestions", answer.leaseFor());
         desired = desired.stream().filter(i -> !i.source().singleOwner()).toList();
+      }
+      // Tracing is never worth failing a round for.
+      try {
+        traces.update(answer.traceList());
+      } catch (RuntimeException e) {
+        LOG.warn("the trace windows of the platform's answer could not be taken: {}", e.getMessage());
       }
       reconciler.reconcile(desired, polled.unreadable());
       lastPoll = clock.instant();

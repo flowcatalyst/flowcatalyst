@@ -110,7 +110,7 @@ class WireContractTest {
         new RuntimeReport(
             "runtime-a",
             List.of(new RuntimeReport.RouteState("ing_1", 4, RuntimeReport.RouteState.Status.FAILING, "login refused")),
-            List.of(new RuntimeReport.ExchangeWindow("ing_1", at.minusSeconds(60), at, 3, 1, 9, 9)),
+            List.of(new RuntimeReport.ExchangeWindow("ing_1", at.minusSeconds(60), at, 3, 1, 9, 9, 4, at)),
             List.of(new RuntimeReport.Failure("ing_1", 4, at, RuntimeReport.Failure.Kind.AUTH, "refused", 2L, null)),
             List.of(new ConnectionTest("tst_1", ConnectionTest.Outcome.RESULTS, List.of("logged in"), 5L, null)));
 
@@ -120,7 +120,9 @@ class WireContractTest {
     assertThat(propertyNames(json.get("routes").get(0))).containsExactlyInAnyOrder("ingestionId", "version", "status", "error");
     assertThat(json.get("routes").get(0).get("status").asString()).isEqualTo("FAILING");
     assertThat(propertyNames(json.get("metrics").get(0)))
-        .containsExactlyInAnyOrder("ingestionId", "from", "to", "completed", "failed", "records", "dispatchJobs");
+        .containsExactlyInAnyOrder("ingestionId", "from", "to", "completed", "failed", "records", "dispatchJobs", "polls", "lastPollAt");
+    assertThat(json.get("metrics").get(0).get("polls").asInt()).isEqualTo(4);
+    assertThat(json.get("metrics").get(0).get("lastPollAt").asString()).isEqualTo("2026-10-24T10:00:00Z");
     assertThat(json.get("metrics").get(0).get("to").asString()).isEqualTo("2026-10-24T10:00:00Z");
     assertThat(propertyNames(json.get("failures").get(0)))
         .containsExactlyInAnyOrder("ingestionId", "version", "at", "kind", "message", "afterRecords");
@@ -173,5 +175,41 @@ class WireContractTest {
 
   private static List<String> propertyNames(JsonNode node) {
     return node.propertyNames().stream().toList();
+  }
+
+  @Test
+  void aWindowWithoutAPollOmitsWhenItLastPolledAndStillSaysHowManyPolls() {
+    Instant at = Instant.parse("2026-10-24T10:00:00Z");
+
+    JsonNode json = mapper.readTree(mapper.writeValueAsString(new RuntimeReport.ExchangeWindow("ing_1", at.minusSeconds(60), at, 1, 0, 1, 1)));
+
+    assertThat(json.get("polls").asInt()).isZero();
+    assertThat(json.has("lastPollAt")).isFalse();
+  }
+
+  @Test
+  void aTraceBatchHasExactlyTheFieldsThePlatformTakes() {
+    TraceRecord record = new TraceRecord("r1", "ing_1", 2, "itw_1", "c-1", 1761823500123L, "http", "warn", "x".repeat(1500), java.util.Map.of("client", "mix"));
+
+    JsonNode json = mapper.readTree(mapper.writeValueAsString(new TraceBatch("fcdev-8080", List.of(record))));
+
+    assertThat(json.propertyNames()).containsExactlyInAnyOrder("runtimeId", "records");
+    assertThat(propertyNames(json.get("records").get(0)))
+        .containsExactlyInAnyOrder("id", "ingestionId", "version", "windowId", "captureId", "at", "kind", "level", "message", "data");
+    assertThat(json.get("records").get(0).get("message").asString()).hasSize(TraceRecord.MESSAGE);
+    assertThat(json.get("records").get(0).get("at").asLong()).isEqualTo(1761823500123L);
+  }
+
+  @Test
+  void aPollAnswerWithTraceWindowsReadsThemAndOneWithoutDoesNot() {
+    String with =
+        "{\"asOf\":\"2026-10-24T10:00:00Z\",\"leaseFor\":\"PT3M\",\"ingestions\":[],\"traces\":[{\"ingestionId\":\"ing_1\",\"windowId\":\"itw_1\",\"windowSecs\":60,\"sampleEverySecs\":5,\"hardStop\":\"2026-10-30T11:30:00Z\"}]}";
+    String without = "{\"asOf\":\"2026-10-24T10:00:00Z\",\"leaseFor\":\"PT3M\",\"ingestions\":[]}";
+
+    assertThat(mapper.readValue(with, PollAnswer.class).traceList()).singleElement().satisfies(w -> {
+      assertThat(w.windowId()).isEqualTo("itw_1");
+      assertThat(w.hardStop()).isEqualTo(Instant.parse("2026-10-30T11:30:00Z"));
+    });
+    assertThat(mapper.readValue(without, PollAnswer.class).traceList()).isEmpty();
   }
 }

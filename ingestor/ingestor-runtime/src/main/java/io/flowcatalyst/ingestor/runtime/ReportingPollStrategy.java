@@ -51,11 +51,13 @@ final class ReportingPollStrategy implements PollingConsumerPollStrategy {
 
   @Override
   public void commit(Consumer consumer, Endpoint endpoint, int polledMessages) {
+    counters.polled(ingestion);
     health.recovered(ingestion);
   }
 
   @Override
   public boolean rollback(Consumer consumer, Endpoint endpoint, int retryCounter, Exception cause) {
+    counters.polled(ingestion);
     String message = ExchangeCounters.clean(cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage());
     LOG.warn("ingestion {} could not poll its source: {}", ingestion.id(), message);
     counters.failure(ingestion, Failure.Kind.SOURCE, message, null, null);

@@ -6,8 +6,10 @@ import io.flowcatalyst.ingestor.contract.JobRecord;
 import io.flowcatalyst.ingestor.contract.RuntimeReport.Failure;
 import io.flowcatalyst.ingestor.contract.Source;
 import io.flowcatalyst.ingestor.contract.Split;
+import io.flowcatalyst.ingestor.contract.Text;
 import io.flowcatalyst.ingestor.contract.Target;
 import io.flowcatalyst.ingestor.extension.PayloadIdentity;
+import io.flowcatalyst.ingestor.extension.PollTrace;
 import io.flowcatalyst.ingestor.extension.PolledSource;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -15,7 +17,9 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
@@ -104,6 +108,12 @@ final class IngestionRoute extends RouteBuilder {
     boolean rejected;
     /** The record last read, kept only when the ingestion keeps failed payloads. */
     @Nullable String lastRecord;
+    /** Jobs created so far. */
+    long sent;
+    /** The capture this payload is traced in, or null. */
+    @Nullable Capture capture;
+    /** The first record read, kept only while traced, for a payload held as a stream. */
+    @Nullable String firstRecord;
 
     Pending(String messageGroup, @Nullable String identity, @Nullable List<?> rowIdentities) {
       this.messageGroup = messageGroup;
@@ -117,6 +127,7 @@ final class IngestionRoute extends RouteBuilder {
   private final JobSink sink;
   private final ExchangeCounters counters;
   private final SourceHealth health;
+  private final TraceWindows traces;
   /** The endpoint the route consumes from, once configured. */
   private @Nullable Endpoint consumed;
 
@@ -127,6 +138,12 @@ final class IngestionRoute extends RouteBuilder {
 
   IngestionRoute(
       Ingestion ingestion, SourceEndpoints endpoints, JobSink sink, ExchangeCounters counters, SourceHealth health) {
+    this(ingestion, endpoints, sink, counters, health, TraceWindows.disabled());
+  }
+
+  IngestionRoute(
+      Ingestion ingestion, SourceEndpoints endpoints, JobSink sink, ExchangeCounters counters, SourceHealth health, TraceWindows traces) {
+    this.traces = traces;
     this.ingestion = ingestion;
     this.endpoints = endpoints;
     this.sink = sink;
@@ -142,11 +159,20 @@ final class IngestionRoute extends RouteBuilder {
         String clean = ExchangeCounters.clean(message);
         counters.failure(ingestion, kind, clean, null, null);
         health.failing(ingestion, clean);
+        // Inside a captured poll (a part of it failed) the failure is part of the trace.
+        if (Capture.CURRENT.isBound()) {
+          Capture.CURRENT.get().error(clean, kind.name());
+        }
       }
 
       @Override
       public void recovered() {
         health.recovered(ingestion);
+      }
+
+      @Override
+      public PollTrace pollStarting() {
+        return traces.pollStarting(ingestion, counters);
       }
     };
   }
@@ -160,7 +186,10 @@ final class IngestionRoute extends RouteBuilder {
     switch (source) {
       case ScheduledPollEndpoint polled -> polled.setPollStrategy(polls);
       case DatabasePollEndpoint table -> table.pollStrategy(polls);
-      case ApiPollEndpoint api -> api.reportTo(counters, health);
+      case ApiPollEndpoint api -> {
+        api.reportTo(counters, health);
+        api.traceTo(traces);
+      }
       case PolledSource polled -> polled.reportTo(reporter());
       default -> {}
     }
@@ -336,6 +365,10 @@ final class IngestionRoute extends RouteBuilder {
     List<?> rows = exchange.getProperty(ROW_IDENTITIES, List.class);
     String group = ingestion.id() + ":" + groupOf(exchange, identity, rows);
     Pending pending = new Pending(group, identity, rows);
+    Capture capture = captureFor();
+    pending.capture = capture;
+    Map<String, String> sourceHeaders = capture == null ? Map.of() : sourceHeaders(exchange);
+    Object heldBody = capture == null ? null : exchange.getMessage().getBody();
     exchange.setProperty(PENDING, pending);
     exchange.setProperty(FOLDER, ".done");
     exchange
@@ -349,6 +382,7 @@ final class IngestionRoute extends RouteBuilder {
                 } else {
                   counters.exchangeCompleted(ingestion);
                 }
+                traced(capture, pending, sourceHeaders, heldBody, done, pending.rejected ? "rejected" : "completed", done.getProperty(REJECTED, String.class));
               }
 
               @Override
@@ -373,8 +407,86 @@ final class IngestionRoute extends RouteBuilder {
                     cause == null ? "the payload was not taken" : cause.getMessage(),
                     (long) pending.read,
                     excerpt(done, pending));
+                traced(capture, pending, sourceHeaders, heldBody, done, "failed", cause == null ? "the payload was not taken" : cause.getMessage());
               }
             });
+  }
+
+  /**
+   * The capture this payload is traced in: the poll's, when it is dispatched inside a captured poll;
+   * none when it is dispatched inside a poll the sampler passed over (a capture is a whole poll or one
+   * exchange); else a capture of its own if the sampler starts one.
+   */
+  private @Nullable Capture captureFor() {
+    try {
+      if (Capture.CURRENT.isBound()) {
+        Capture polled = Capture.CURRENT.get();
+        return polled.recording() ? polled : null;
+      }
+      return traces.begin(ingestion);
+    } catch (RuntimeException e) {
+      LOG.debug("ingestion {}: tracing an exchange failed to start", ingestion.id(), e);
+      return null;
+    }
+  }
+
+  /** Writes the exchange's record into its capture; tracing never changes the exchange's outcome. */
+  private void traced(
+      @Nullable Capture capture,
+      Pending pending,
+      Map<String, String> source,
+      @Nullable Object heldBody,
+      Exchange done,
+      String outcome,
+      @Nullable String error) {
+    if (capture == null) {
+      return;
+    }
+    try {
+      byte[] body =
+          switch (heldBody) {
+            case String text -> text.getBytes(StandardCharsets.UTF_8);
+            case byte[] bytes -> bytes;
+            case null, default -> pending.firstRecord == null ? null : pending.firstRecord.getBytes(StandardCharsets.UTF_8);
+          };
+      long size = -1;
+      if (heldBody instanceof String text) {
+        size = text.getBytes(StandardCharsets.UTF_8).length;
+      } else if (heldBody instanceof byte[] bytes) {
+        size = bytes.length;
+      } else if (source.get("fileLength") != null) {
+        try {
+          size = Long.parseLong(source.get("fileLength"));
+        } catch (NumberFormatException e) {
+          // Not a number: the size is not known.
+        }
+      }
+      capture.exchange(source, done.getProperty(IDENTITY, String.class), body, size, pending.read, pending.sent, outcome, error);
+    } catch (RuntimeException e) {
+      LOG.debug("ingestion {}: an exchange could not be traced", ingestion.id(), e);
+    }
+  }
+
+  /** What the source says about the payload: the file, the object, the message; no credentials. */
+  private static Map<String, String> sourceHeaders(Exchange exchange) {
+    Map<String, String> out = new LinkedHashMap<>();
+    var message = exchange.getMessage();
+    put(out, "fileName", message.getHeader(FileConstants.FILE_NAME));
+    put(out, "filePath", message.getHeader(FileConstants.FILE_ABSOLUTE_PATH));
+    put(out, "fileLength", message.getHeader(FileConstants.FILE_LENGTH));
+    put(out, "fileLastModified", message.getHeader(FileConstants.FILE_LAST_MODIFIED));
+    put(out, "bucket", message.getHeader(AWS2S3Constants.BUCKET_NAME));
+    put(out, "object", message.getHeader(AWS2S3Constants.KEY));
+    put(out, "etag", message.getHeader(AWS2S3Constants.E_TAG));
+    put(out, "messageId", message.getHeader(Sqs2Constants.MESSAGE_ID));
+    put(out, "contentType", message.getHeader(Exchange.CONTENT_TYPE));
+    return out;
+  }
+
+  private static void put(Map<String, String> out, String name, @Nullable Object value) {
+    if (value instanceof CharSequence || value instanceof Number) {
+      out.put(name, Text.cut(value.toString(), 500));
+    }
   }
 
   /**
@@ -450,6 +562,9 @@ final class IngestionRoute extends RouteBuilder {
     if (ingestion.keepFailedPayloads()) {
       pending.lastRecord = record;
     }
+    if (pending.capture != null && pending.firstRecord == null) {
+      pending.firstRecord = Text.cut(record, TraceRedactor.BODY_LIMIT);
+    }
     Target target = ingestion.target();
     int position = pending.read;
     pending.read++;
@@ -519,6 +634,7 @@ final class IngestionRoute extends RouteBuilder {
         wait = wait.multipliedBy(3);
       }
     }
+    pending.sent += batch.size();
     counters.dispatched(ingestion, batch.size());
   }
 

@@ -17,6 +17,7 @@ import io.flowcatalyst.ingestor.contract.RuntimeReport;
 import io.flowcatalyst.ingestor.contract.Source;
 import io.flowcatalyst.ingestor.contract.Split;
 import io.flowcatalyst.ingestor.contract.Target;
+import io.flowcatalyst.ingestor.contract.TraceRecord;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -111,6 +112,76 @@ class PlatformApiTest {
     answer = "{\"$schema\":\"http://platform/PollResponse.json\",\"asOf\":\"2026-10-24T10:00:00Z\",\"leaseFor\":\"PT3M\",\"ingestions\":[],\"tests\":[],\"later\":1}";
 
     assertThat(api.poll(T).answer().leaseFor()).isEqualTo(Duration.ofMinutes(3));
+  }
+
+  @Test
+  void aPollAnswerListsTheTraceWindowsAndOneWithoutThemIsStillRead() throws Exception {
+    answer =
+        "{\"asOf\":\"2026-10-24T10:00:00Z\",\"leaseFor\":\"PT3M\",\"ingestions\":[],\"traces\":["
+            + "{\"ingestionId\":\"ing_1\",\"windowId\":\"itw_1\",\"windowSecs\":60,\"sampleEverySecs\":5,\"hardStop\":\"2026-10-30T11:30:00Z\"},"
+            + "{\"ingestionId\":\"ing_2\",\"windowId\":\"itw_2\",\"windowSecs\":900,\"sampleEverySecs\":1,\"hardStop\":\"2026-10-30T11:31:00Z\",\"later\":true}]}";
+
+    PollAnswer with = api.poll(T).answer();
+
+    assertThat(with.traceList()).hasSize(2);
+    assertThat(with.traceList().getFirst().ingestionId()).isEqualTo("ing_1");
+    assertThat(with.traceList().getFirst().windowId()).isEqualTo("itw_1");
+    assertThat(with.traceList().getFirst().windowSecs()).isEqualTo(60);
+    assertThat(with.traceList().getFirst().sampleEverySecs()).isEqualTo(5);
+    assertThat(with.traceList().getFirst().hardStop()).isEqualTo(java.time.Instant.parse("2026-10-30T11:30:00Z"));
+
+    answer = "{\"asOf\":\"2026-10-24T10:00:00Z\",\"leaseFor\":\"PT3M\",\"ingestions\":[],\"tests\":[]}";
+    assertThat(api.poll(T).answer().traceList()).isEmpty();
+  }
+
+  @Test
+  void aTraceWindowThatCannotBeReadIsSkippedAndNeverFailsThePoll() throws Exception {
+    answer =
+        "{\"asOf\":\"2026-10-24T10:00:00Z\",\"leaseFor\":\"PT3M\",\"ingestions\":[],\"traces\":["
+            + "{\"ingestionId\":\"ing_1\",\"windowId\":\"itw_1\",\"windowSecs\":\"soon\",\"hardStop\":\"not a time\"},"
+            + "{\"windowId\":\"itw_2\"},\"junk\","
+            + "{\"ingestionId\":\"ing_3\",\"windowId\":\"itw_3\",\"windowSecs\":60,\"sampleEverySecs\":5,\"hardStop\":\"2026-10-30T11:30:00Z\"}]}";
+
+    assertThat(api.poll(T).answer().traceList()).extracting(w -> w.ingestionId()).containsExactly("ing_3");
+  }
+
+  @Test
+  void traceRecordsAreSentWithTheRuntimeIdAndTheAnswerCountsAreRead() throws Exception {
+    answer = "{\"accepted\":1,\"dropped\":0}";
+    statuses.add(202);
+    TraceRecord record = new TraceRecord("r1", "ing_1", 3, "itw_1", "c-1", 1761823500123L, "poll", "info", "poll: 1 call, 0 payloads", java.util.Map.of("outcome", "ok"));
+
+    TraceUplink.Result result = api.sendTraces(List.of(record), T);
+
+    assertThat(result.status()).isEqualTo(202);
+    assertThat(result.accepted()).isEqualTo(1);
+    Seen call = seen.getFirst();
+    assertThat(call.method()).isEqualTo("POST");
+    assertThat(call.target()).isEqualTo("/api/ingestion-runtime/v1/traces");
+    assertThat(call.authorization()).isEqualTo("Bearer runtime-token");
+    JsonNode body = Json.mapper().readTree(call.body());
+    assertThat(body.get("runtimeId").asString()).isEqualTo("runtime 1");
+    JsonNode sent = body.get("records").get(0);
+    assertThat(sent.get("id").asString()).isEqualTo("r1");
+    assertThat(sent.get("ingestionId").asString()).isEqualTo("ing_1");
+    assertThat(sent.get("version").asInt()).isEqualTo(3);
+    assertThat(sent.get("windowId").asString()).isEqualTo("itw_1");
+    assertThat(sent.get("captureId").asString()).isEqualTo("c-1");
+    assertThat(sent.get("at").asLong()).isEqualTo(1761823500123L);
+    assertThat(sent.get("kind").asString()).isEqualTo("poll");
+    assertThat(sent.get("level").asString()).isEqualTo("info");
+    assertThat(sent.get("message").asString()).isEqualTo("poll: 1 call, 0 payloads");
+    assertThat(sent.get("data").get("outcome").asString()).isEqualTo("ok");
+  }
+
+  @Test
+  void aTraceBatchThePlatformDoesNotTakeIsAnswerWithItsStatusAndSentOnce() throws Exception {
+    statuses.addAll(List.of(429, 400));
+    TraceRecord record = new TraceRecord("r1", "ing_1", 3, "itw_1", "c-1", 1L, "poll", "info", "m", java.util.Map.of());
+
+    assertThat(api.sendTraces(List.of(record), T).status()).isEqualTo(429);
+    assertThat(api.sendTraces(List.of(record), T).status()).isEqualTo(400);
+    assertThat(seen).hasSize(2);
   }
 
   @Test

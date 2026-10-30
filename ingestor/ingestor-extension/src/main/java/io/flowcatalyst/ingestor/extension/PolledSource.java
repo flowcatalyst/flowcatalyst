@@ -93,6 +93,17 @@ public abstract class PolledSource extends DefaultEndpoint {
 
     /** A poll got through without a failure. */
     void recovered();
+
+    /**
+     * A poll is about to start. The runtime counts it and, when an operator has switched tracing on
+     * for the ingestion, records what the poll does. A default method, so a reporter written before
+     * it keeps compiling.
+     *
+     * @return the poll's trace; never null, and {@link PollTrace#NONE} by default
+     */
+    default PollTrace pollStarting() {
+      return PollTrace.NONE;
+    }
   }
 
   /**
@@ -215,17 +226,20 @@ public abstract class PolledSource extends DefaultEndpoint {
     private void run() {
       Duration next = FIRST_POLL;
       failedThisPoll = false;
+      PollTrace trace = starting();
       try {
-        next = poll(payloads);
+        next = trace.run(() -> poll(payloads));
         Reporter r = reporter;
         if (r != null && !failedThisPoll) {
           r.recovered();
         }
+        ended(trace, !failedThisPoll, failedThisPoll ? "a part of the poll failed" : null, next);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         return;
       } catch (Throwable e) {
         String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+        ended(trace, false, message, null);
         if (refusedLogin(e)) {
           LOG.warn("ingestion {}: the {} login was refused; trying again in {}", ingestion.id(), kind, authRetry);
           failure(Failure.Kind.AUTH, message + "; tried again every " + authRetry.toMinutes() + " minutes, or at once when the ingestion is saved");
@@ -242,6 +256,29 @@ public abstract class PolledSource extends DefaultEndpoint {
         }
       }
       schedule(next);
+    }
+
+    /** The poll's trace; a runtime that cannot give one must not stop the poll. */
+    private PollTrace starting() {
+      Reporter r = reporter;
+      if (r == null) {
+        return PollTrace.NONE;
+      }
+      try {
+        return r.pollStarting();
+      } catch (RuntimeException e) {
+        LOG.warn("ingestion {}: tracing a poll failed to start", ingestion.id(), e);
+        return PollTrace.NONE;
+      }
+    }
+
+    /** Tells the runtime how the poll ended; tracing never changes what the poll does next. */
+    private void ended(PollTrace trace, boolean ok, @Nullable String error, @Nullable Duration next) {
+      try {
+        trace.finished(ok, error, next);
+      } catch (RuntimeException e) {
+        LOG.warn("ingestion {}: tracing a poll failed to finish", ingestion.id(), e);
+      }
     }
 
     private Duration safeRetryDelay() {

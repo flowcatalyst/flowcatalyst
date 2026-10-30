@@ -18,7 +18,8 @@ The runtime talks to the platform only through that API, as a service account:
 | Call | What for |
 |---|---|
 | `POST /poll` | every `INGEST_POLL_INTERVAL`: the live ingestions this runtime should run, the lease length, pending "test connection" requests. Sends `contractVersion` 2, the kinds the runtime adds (`kinds`) and the built-in kinds it runs (`builtinKinds`) |
-| `POST /report` | route states, exchange counts, failures and test answers |
+| `POST /report` | route states, exchange counts (with `polls` and `lastPollAt`), failures and test answers |
+| `POST /traces` | trace records (poll, exchange, http, error) captured while an operator has tracing on for an ingestion; redacted in the runtime before they leave it. See the repository's `docs/ingestion-trace-design.md` |
 | `GET/PUT /state/{ingestionId}/{key}` | the watermark or cursor of a polled source, kept on the platform so it follows the ingestion to another runtime |
 | `POST /ingestions/{id}/jobs` | the **only** way jobs are created: the runtime sends records, the platform builds each job from the ingestion's own target (URL, pool, connection, signer, client) |
 | `GET /ingestions/{id}/secrets/{name}` | the **only** way secrets are read: only secrets the ingestion's live definition binds; logged on the platform as security telemetry (not an audit row per read; a refused fetch is audited) |
@@ -173,6 +174,7 @@ Every value is a key in `config/application.yaml` and an environment variable na
 | `INGEST_POLL_INTERVAL` | `ingest.poll-interval` | `PT1M` | how often to poll and report. The platform's lease is 3 minutes |
 | `INGEST_ADVERTISED_URL` | `ingest.advertised-url` | unset | where this runtime can be reached; shown by the platform for information, never called |
 | `INGEST_SECRETS_CACHE_TTL` | `ingest.secrets-cache-ttl` | `PT1M` | how long a fetched secret is kept, and how often each running route's secrets are read again (each fetch is a security log line and a "last fetched" update on the platform, not an audit row) |
+| `INGEST_TRACE_QUEUE` | `ingest.trace-queue` | `2000` | trace records (and at most 16 MiB of them) waiting to be shipped to the platform while an operator has tracing switched on for an ingestion; when full the oldest are dropped and counted. Nothing is captured unless the platform lists a trace window for the ingestion |
 | `FLOWCATALYST_TIMEOUT` | `flowcatalyst.timeout` | `PT30S` | the longest a call to the platform waits; the poll and the report wait at most a sixth of the lease |
 | `INGEST_AWS_ENDPOINT` | `ingest.aws.endpoint` | unset | a stand-in for AWS (LocalStack, an S3-compatible store) |
 | `HTTP_PORT` / `HTTP_HOST` | `http.port` / `http.host` | `8091` / `0.0.0.0` | the listener for HTTP ingestions and `/health/live`, `/health/ready` |
@@ -270,7 +272,7 @@ See [docs/extensions.md](docs/extensions.md); `ingestor-extensions/generator` is
 
 ## Build and test
 
-Needs JDK 25 and the FlowCatalyst framework 0.1.2 in the local Maven repository (or the GitHub Packages
+Needs JDK 25 and the FlowCatalyst framework 0.1.4 in the local Maven repository (or the GitHub Packages
 repository `flowcatalyst/framework`).
 
 ```

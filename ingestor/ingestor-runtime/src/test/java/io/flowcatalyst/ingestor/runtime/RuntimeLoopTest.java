@@ -16,6 +16,7 @@ import io.flowcatalyst.ingestor.contract.Source;
 import io.flowcatalyst.ingestor.contract.PollAnswer;
 import io.flowcatalyst.ingestor.contract.Split;
 import io.flowcatalyst.ingestor.contract.TestRequest;
+import io.flowcatalyst.ingestor.contract.TraceWindow;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -39,6 +40,7 @@ class RuntimeLoopTest {
   static final class FakePlatform implements RuntimeApi {
     List<Ingestion> active = List.of();
     List<TestRequest> tests = List.of();
+    List<TraceWindow> traces = List.of();
     final List<RuntimeReport> reports = new ArrayList<>();
     boolean down;
     boolean reportDown;
@@ -54,7 +56,7 @@ class RuntimeLoopTest {
       if (down) {
         throw new IOException("connection refused");
       }
-      return new Polled(new PollAnswer(Instant.EPOCH, lease, active, tests), unreadable, List.of());
+      return new Polled(new PollAnswer(Instant.EPOCH, lease, active, tests, traces), unreadable, List.of());
     }
 
     @Override
@@ -84,6 +86,7 @@ class RuntimeLoopTest {
   CamelContext camel;
   SourceEndpoints endpoints = (context, ingestion) -> context.getEndpoint("direct:" + ingestion.id());
   RuntimeLoop loop;
+  Reconciler reconciler;
   long monotonicNanos = 1_000_000_000L;
 
   @BeforeEach
@@ -104,7 +107,7 @@ class RuntimeLoopTest {
           }
           batches.add(jobs);
         };
-    Reconciler reconciler =
+    reconciler =
         new Reconciler(camel, ingestion -> new IngestionRoute(ingestion, (c, i) -> endpoints.endpoint(c, i), sink, counters, health), health);
     loop =
         new RuntimeLoop(
@@ -772,5 +775,52 @@ class RuntimeLoopTest {
     java.lang.reflect.Field field = RuntimeLoop.class.getDeclaredField("reconciler");
     field.setAccessible(true);
     return (Reconciler) field.get(of);
+  }
+
+  @Test
+  void theTraceWindowsOfAPollAnswerAreTakenAndAnIngestionNoLongerListedLosesItsWindow() throws Exception {
+    TraceWindows windows = new TraceWindows(clock, TraceSink.DISCARD, id -> List.of());
+    RuntimeLoop tracing =
+        new RuntimeLoop(
+            "runtime-1",
+            Duration.ofMinutes(1),
+            controlPlane,
+            reconciler,
+            counters,
+            request -> new ConnectionTest(request.id(), ConnectionTest.Outcome.RESULTS, List.of(), null, null),
+            clock,
+            () -> monotonicNanos,
+            Duration.ofSeconds(30),
+            null,
+            Duration.ZERO,
+            windows);
+
+    controlPlane.traces = List.of(new TraceWindow("ing_1", "itw_1", 60, 5, clock.instant().plusSeconds(600)));
+    tracing.tick();
+    assertThat(windows.active("ing_1")).isTrue();
+
+    controlPlane.traces = List.of();
+    tracing.tick();
+    assertThat(windows.active("ing_1")).isFalse();
+  }
+
+  @Test
+  void anIngestionThatOnlyPolledIsReportedWithItsPollsAndWhenItLastPolled() throws Exception {
+    Ingestion polled = ingestion("polled", 1, new Split.None(), 10);
+    counters.polled(polled);
+    counters.polled(polled);
+
+    loop.tick();
+
+    assertThat(lastReport().metrics()).singleElement().satisfies(w -> {
+      assertThat(w.ingestionId()).isEqualTo("polled");
+      assertThat(w.polls()).isEqualTo(2);
+      assertThat(w.lastPollAt()).isNotNull();
+      assertThat(w.completed()).isZero();
+      assertThat(w.records()).isZero();
+    });
+    // A window with nothing in it is not reported.
+    loop.tick();
+    assertThat(lastReport().metrics()).isEmpty();
   }
 }

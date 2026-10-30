@@ -73,6 +73,8 @@ final class Secrets {
   private final Map<Key, Kept> kept = new ConcurrentHashMap<>();
   /** What each route read, by name: the salted hash of the value it was given. */
   private final Map<Route, Map<String, String>> used = new ConcurrentHashMap<>();
+  /** The plain values each route was given, by name, for the trace redactor; held as long as the route's secrets are. */
+  private final Map<Route, Map<String, Secret>> values = new ConcurrentHashMap<>();
   private final Set<String> warned = ConcurrentHashMap.newKeySet();
   private final byte[] salt = new byte[16];
 
@@ -125,7 +127,33 @@ final class Secrets {
     Secret secret = cached != null && nanos.getAsLong() - cached.expiresNanos() < 0 ? cached.secret() : reveal(ingestion, name);
     used.computeIfAbsent(new Route(ingestion.id(), ingestion.version()), r -> new ConcurrentHashMap<>())
         .computeIfAbsent(name, n -> fingerprint(secret));
+    remember(ingestion, name, secret);
     return secret;
+  }
+
+  /**
+   * The plain values of every secret the ingestion's routes (any version still held) were given or
+   * read again, so a trace can take them out of anything it records. The caller must not log or keep
+   * them.
+   *
+   * @param ingestionId the ingestion
+   * @return the values; empty when none
+   */
+  Collection<String> valuesOf(String ingestionId) {
+    List<String> found = new java.util.ArrayList<>();
+    values.forEach(
+        (route, secrets) -> {
+          if (route.ingestionId().equals(ingestionId)) {
+            secrets.values().forEach(secret -> found.add(secret.reveal()));
+          }
+        });
+    return found;
+  }
+
+  private void remember(Ingestion ingestion, String name, Secret secret) {
+    values.computeIfAbsent(new Route(ingestion.id(), ingestion.version()), r -> new ConcurrentHashMap<>())
+        // Keyed by the value too: a secret read again after a rotation adds the new value, and the old one stays covered until the route is rebuilt.
+        .putIfAbsent(name + "#" + secret.reveal().hashCode(), secret);
   }
 
   /**
@@ -176,6 +204,7 @@ final class Secrets {
       routes.add(new Route(ingestion.id(), ingestion.version()));
     }
     used.keySet().removeIf(route -> !routes.contains(route));
+    values.keySet().removeIf(route -> !routes.contains(route));
     long now = nanos.getAsLong();
     kept.entrySet().removeIf(e -> !routes.contains(new Route(e.getKey().ingestionId(), e.getKey().version())) || now - e.getValue().expiresNanos() >= 0);
   }
@@ -187,6 +216,7 @@ final class Secrets {
    */
   void forget(String ingestionId) {
     used.keySet().removeIf(route -> route.ingestionId().equals(ingestionId));
+    values.keySet().removeIf(route -> route.ingestionId().equals(ingestionId));
     kept.keySet().removeIf(key -> key.ingestionId().equals(ingestionId));
   }
 
@@ -212,6 +242,7 @@ final class Secrets {
         value
             .map(Secret::of)
             .orElseThrow(() -> new UnsupportedIngestionException("secret '" + name + "' is not set for client " + ingestion.clientIdentifier()));
+    remember(ingestion, name, secret);
     if (!ttl.isZero()) {
       kept.put(new Key(ingestion.id(), ingestion.version(), name), new Kept(secret, nanos.getAsLong() + ttl.toNanos()));
     }
@@ -242,7 +273,9 @@ final class Secrets {
     if (value == null || value.isEmpty()) {
       throw new UnsupportedIngestionException("secret '" + name + "' is not set for client " + ingestion.clientIdentifier() + " (variable " + variable + ")");
     }
-    return Secret.of(value);
+    Secret secret = Secret.of(value);
+    remember(ingestion, name, secret);
+    return secret;
   }
 
   /**

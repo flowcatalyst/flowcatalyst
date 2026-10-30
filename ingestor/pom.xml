@@ -36,7 +36,7 @@
       with read:packages), or built at its tag into the local repository. Its BOM also fixes the AWS
       SDK at the version Camel's aws2 components are built against.
     -->
-    <flowcatalyst-framework.version>0.1.2</flowcatalyst-framework.version>
+    <flowcatalyst-framework.version>0.1.4</flowcatalyst-framework.version>
     <camel.version>4.22.1</camel.version>
     <amqp-client.version>5.37.0</amqp-client.version>
 

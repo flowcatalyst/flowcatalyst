@@ -90,6 +90,13 @@ public final class RuntimeModule implements Module {
           .describedAs(
               "How long a secret revealed by the platform is kept, and how often each running route's secrets are read again (a route whose secret changed is rebuilt); each reveal is audited on the platform.");
 
+  /** How many trace records wait to be shipped. */
+  public static final Setting<Integer> TRACE_QUEUE =
+      Setting.integer("ingest.trace-queue")
+          .withDefault(TraceShipper.DEFAULT_QUEUE)
+          .describedAs(
+              "How many trace records (and at most 16 MiB of them) wait to be shipped to the platform while an operator has tracing on for an ingestion; when full the oldest are dropped. Tracing is off unless the platform switches it on.");
+
   /**
    * The system property that makes Camel's own threads (its consumers, timers and scheduled polls)
    * virtual. Every source is I/O bound. Camel reads it once, when its thread code first loads, which
@@ -104,6 +111,9 @@ public final class RuntimeModule implements Module {
 
   /** The longest stopping every route may take when the runtime stops; fcdev and most orchestrators wait 15 s or more. */
   static final Duration STOP_WITHIN = Duration.ofSeconds(12);
+
+  /** The longest the last trace records are given to be shipped when the runtime stops. */
+  static final Duration TRACE_FLUSH = Duration.ofSeconds(2);
 
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeModule.class);
 
@@ -141,6 +151,7 @@ public final class RuntimeModule implements Module {
     app.declare(EXTENSIONS_MANIFEST);
     app.declare(CAMEL_ROUTES_ENABLED);
     app.declare(SECRETS_CACHE_TTL);
+    app.declare(TRACE_QUEUE);
 
     app.provide(
         Extensions.class,
@@ -167,7 +178,7 @@ public final class RuntimeModule implements Module {
               lookup
                   .get(ServiceClients.class)
                   .register(
-                      ServiceOptions.builder("platform", config.get(FlowCatalystModule.BASE_URL))
+                      ServiceOptions.builder(Capture.PLATFORM_CLIENT, config.get(FlowCatalystModule.BASE_URL))
                           .requestTimeout(config.get(FlowCatalystModule.TIMEOUT))
                           .auth(Auth.bearer(platform::accessToken, platform::clearToken))
                           .build());
@@ -197,6 +208,19 @@ public final class RuntimeModule implements Module {
                 lookup.get(ServiceClients.class),
                 lookup.get(Extensions.class),
                 lookup.get(OutboundGuard.class)));
+    app.provide(
+        TraceShipper.class,
+        lookup -> {
+          TraceShipper shipper = new TraceShipper(lookup.get(PlatformApi.class), lookup.get(Config.class).get(TRACE_QUEUE));
+          shipper.start();
+          return shipper;
+        });
+    app.provide(
+        TraceWindows.class,
+        lookup -> {
+          Secrets secrets = lookup.get(Secrets.class);
+          return new TraceWindows(lookup.get(InstantSource.class), lookup.get(TraceShipper.class), secrets::valuesOf);
+        });
     app.provide(ExchangeCounters.class, lookup -> new ExchangeCounters(lookup.get(InstantSource.class)));
     app.provide(SourceHealth.class, lookup -> new SourceHealth());
     app.provide(
@@ -216,9 +240,10 @@ public final class RuntimeModule implements Module {
           ExchangeCounters counters = lookup.get(ExchangeCounters.class);
           SourceHealth health = lookup.get(SourceHealth.class);
           Secrets secrets = lookup.get(Secrets.class);
+          TraceWindows traces = lookup.get(TraceWindows.class);
           return new Reconciler(
               lookup.get(CamelContext.class),
-              ingestion -> new IngestionRoute(ingestion, endpoints, sink, counters, health),
+              ingestion -> new IngestionRoute(ingestion, endpoints, sink, counters, health, traces),
               health,
               secrets::forget);
         });
@@ -247,7 +272,8 @@ public final class RuntimeModule implements Module {
               lookup.get(MonotonicClock.class),
               config.get(FlowCatalystModule.TIMEOUT),
               lookup.get(Secrets.class),
-              config.get(SECRETS_CACHE_TTL));
+              config.get(SECRETS_CACHE_TTL),
+              lookup.get(TraceWindows.class));
         });
   }
 
@@ -311,6 +337,8 @@ public final class RuntimeModule implements Module {
       if (stopped > 0) {
         LOG.info("stopped {} ingestion route(s)", stopped);
       }
+      // After the routes: what their last exchanges recorded is shipped, within a bound.
+      app.get(TraceShipper.class).close(TRACE_FLUSH);
     }
     ProducerTemplate template = producer;
     if (template != null) {

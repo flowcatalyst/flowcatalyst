@@ -16,6 +16,10 @@ import io.flowcatalyst.ingestor.contract.RuntimeReport;
 import io.flowcatalyst.ingestor.contract.SecretValue;
 import io.flowcatalyst.ingestor.contract.StateValue;
 import io.flowcatalyst.ingestor.contract.TestRequest;
+import io.flowcatalyst.ingestor.contract.TraceAccepted;
+import io.flowcatalyst.ingestor.contract.TraceBatch;
+import io.flowcatalyst.ingestor.contract.TraceRecord;
+import io.flowcatalyst.ingestor.contract.TraceWindow;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -38,13 +42,14 @@ import tools.jackson.databind.ObjectMapper;
  * a secret); a poll, a report and a jobs request are sent once: the next round is a poll's and a
  * report's retry, and the source keeps what a jobs request did not make.
  */
-final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource {
+final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource, TraceUplink {
 
   private static final Logger LOG = LoggerFactory.getLogger(PlatformApi.class);
 
   private static final String BASE = "/api/ingestion-runtime/v1";
   private static final String POLL = BASE + "/poll";
   private static final String REPORT = BASE + "/report";
+  private static final String TRACES = BASE + "/traces";
   private static final String STATE = BASE + "/state/{ingestion}/{key}";
   private static final String JOBS = BASE + "/ingestions/{ingestion}/jobs";
   private static final String SECRET = BASE + "/ingestions/{ingestion}/secrets/{name}";
@@ -65,7 +70,8 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
   static final String NOT_SUPPORTED = "definition not supported by this runtime version";
 
   /** The answer's outline: each ingestion and test is read on its own, so one this runtime cannot read fails alone. */
-  private record Outline(Instant asOf, Duration leaseFor, @Nullable List<JsonNode> ingestions, @Nullable List<JsonNode> tests) {}
+  private record Outline(
+      Instant asOf, Duration leaseFor, @Nullable List<JsonNode> ingestions, @Nullable List<JsonNode> tests, @Nullable List<JsonNode> traces) {}
 
   private final ServiceClient client;
   private final String runtimeId;
@@ -139,7 +145,19 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
         }
       }
     }
-    return new Polled(new PollAnswer(outline.asOf(), outline.leaseFor(), ingestions, tests), unreadable, unreadableTests);
+    List<TraceWindow> traces = new ArrayList<>();
+    for (JsonNode node : outline.traces() == null ? List.<JsonNode>of() : outline.traces()) {
+      try {
+        TraceWindow window = ANSWERS.treeToValue(node, TraceWindow.class);
+        if (window.ingestionId() != null && !window.ingestionId().isBlank() && window.windowId() != null && !window.windowId().isBlank() && window.hardStop() != null) {
+          traces.add(window);
+        }
+      } catch (JacksonException | IllegalArgumentException e) {
+        // A window this runtime cannot read is no window: tracing is never worth failing a poll for.
+        LOG.debug("a trace window of the platform's answer cannot be read; it is skipped");
+      }
+    }
+    return new Polled(new PollAnswer(outline.asOf(), outline.leaseFor(), ingestions, tests, traces), unreadable, unreadableTests);
   }
 
   /** Why a definition cannot be read, naming its source kind when it is one this runtime does not know. */
@@ -158,6 +176,35 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
   @Override
   public void report(RuntimeReport report, Duration timeout) throws IOException, InterruptedException {
     succeeded(client.post(REPORT).timeout(timeout).json(report), "POST " + REPORT);
+  }
+
+  /**
+   * Sends a batch of trace records, once: the shipper decides about trying again from the status. A
+   * 401 or 403 drops the token held, so the next call fetches a new one.
+   *
+   * @param records the records, at most {@link TraceBatch#MAX_RECORDS}
+   * @param timeout how long to wait for the answer
+   * @return the answer, whatever its status
+   * @throws IOException when there is no answer
+   * @throws InterruptedException when interrupted while waiting
+   */
+  @Override
+  public Result sendTraces(List<TraceRecord> records, Duration timeout) throws IOException, InterruptedException {
+    ClientResponse response = ServiceCalls.send(client.post(TRACES).timeout(timeout).json(new TraceBatch(runtimeId, records)));
+    int status = response.status();
+    if (status == 401 || status == 403) {
+      forgetToken.run();
+    }
+    if (!response.isSuccess()) {
+      return new Result(status, 0, 0);
+    }
+    try {
+      TraceAccepted accepted = ANSWERS.readValue(response.bodyBytes(), TraceAccepted.class);
+      return new Result(status, accepted.accepted(), accepted.dropped());
+    } catch (JacksonException e) {
+      // The batch was taken; only its counts are unreadable.
+      return new Result(status, records.size(), 0);
+    }
   }
 
   @Override
