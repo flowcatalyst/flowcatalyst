@@ -55,6 +55,10 @@ func (noIngestions) MissingSecrets(context.Context, string, ids.ClientID, []stri
 	return nil, nil
 }
 
+func (noIngestions) SecretNamesOf(context.Context, ingestion.Source) ([]string, error) {
+	return nil, nil
+}
+
 func (noIngestions) ListSecretFetches(context.Context, string) ([]ingestion.SecretFetch, error) {
 	return nil, nil
 }

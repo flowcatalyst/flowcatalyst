@@ -43,6 +43,9 @@ type IngestionStore interface {
 	// MissingSecrets is which of the named secrets have no value at the client,
 	// as the resume readiness check looks them up.
 	MissingSecrets(ctx context.Context, applicationCode string, clientID ids.ClientID, names []string) ([]string, error)
+	// SecretNamesOf is the secrets a source needs set: for an extension kind a
+	// live runtime reports, only the settings its schema types SECRET.
+	SecretNamesOf(ctx context.Context, src ingestion.Source) ([]string, error)
 
 	// The environment's settings of an ingestion whose source names a config
 	// entry (docs/ingestion-design.md section 13), as the config endpoints read
@@ -803,9 +806,13 @@ func (h *Ingestions) buildDetail(ctx context.Context, ac *auth.AuthContext, i *i
 		// The names, and what was fetched under them, come from the entry.
 		d.SecretsWithheld = true
 	} else {
-		bound := *i
-		bound.Definition = effective
-		d.Secrets = ingsSecretRows(&bound, fetches)
+		var names []string
+		if i.Version > 0 {
+			if names, err = h.Store.SecretNamesOf(ctx, effective.Source); err != nil {
+				return ingsDetail{}, usecase.Internal("REPO", "live kinds failed", err)
+			}
+		}
+		d.Secrets = ingsSecretRows(names, fetches)
 		// An editor is shown which values exist and where to set them. A value
 		// is set on the platform configuration page, not here.
 		if perms.Update {
@@ -1110,8 +1117,8 @@ type ingsSecretFetchRow struct {
 	Count                int64
 }
 
-func ingsSecretRows(i *ingestion.Ingestion, fetches []ingestion.SecretFetch) []ingsSecretRow {
-	bound := ingestion.BoundSecrets(i, fetches)
+func ingsSecretRows(names []string, fetches []ingestion.SecretFetch) []ingsSecretRow {
+	bound := ingestion.BoundSecrets(names, fetches)
 	rows := make([]ingsSecretRow, 0, len(bound))
 	for _, b := range bound {
 		row := ingsSecretRow{Name: b.Name, Bound: b.Bound}

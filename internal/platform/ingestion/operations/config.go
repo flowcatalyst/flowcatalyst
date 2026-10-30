@@ -358,7 +358,11 @@ func judgeEntry(ctx context.Context, repo *ingestion.Repository, resolver ingest
 		}
 		if res.Runnable() {
 			lives[a.ID] = &res.Definition
-			boundNow = append(boundNow, ingestion.SecretNames(res.Definition.Source)...)
+			names, err := repo.SecretNamesOf(ctx, res.Definition.Source)
+			if err != nil {
+				return judged{}, usecase.Internal("REPO", "live kinds failed", err)
+			}
+			boundNow = append(boundNow, names...)
 		}
 	}
 	authored, err := authoredSecrets(ctx, repo, who, secrets, boundNow)
@@ -381,7 +385,11 @@ func judgeEntry(ctx context.Context, repo *ingestion.Repository, resolver ingest
 				}
 				continue
 			}
-			bound = append(bound, ingestion.SecretNames(res.Definition.Source)...)
+			names, err := repo.SecretNamesOf(ctx, res.Definition.Source)
+			if err != nil {
+				return judged{}, usecase.Internal("REPO", "live kinds failed", err)
+			}
+			bound = append(bound, names...)
 			if custom, ok := def.Source.(ingestion.Configured); ok && custom.Base == ingestion.KindCustom {
 				schema, err := repo.SchemaOf(ctx, custom.Type)
 				if err != nil {

@@ -96,7 +96,11 @@ func requireReady(ctx context.Context, repo *ingestion.Repository, i *ingestion.
 	if res.Status == ingestion.ConfigInline {
 		return nil
 	}
-	names := ingestion.SecretNames(res.Definition.Source)
+	// The secrets the kind needs, not every text setting of an extension's.
+	names, err := repo.SecretNamesOf(ctx, res.Definition.Source)
+	if err != nil {
+		return usecase.Internal("REPO", "live kinds failed", err)
+	}
 	if len(names) == 0 {
 		return nil
 	}

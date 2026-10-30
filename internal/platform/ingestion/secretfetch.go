@@ -71,16 +71,14 @@ type BoundSecret struct {
 	Fetches []SecretFetch
 }
 
-// BoundSecrets lists the secrets the ingestion's live definition binds (none
-// while nothing is live) in name order, each with its fetch rows, followed by
-// the names that were fetched but are no longer bound.
-func BoundSecrets(i *Ingestion, fetches []SecretFetch) []BoundSecret {
-	var names []string
-	if i.Version > 0 {
-		names = SecretNames(i.Definition.Source)
-		slices.Sort(names)
-		names = slices.Compact(names)
-	}
+// BoundSecrets lists the secrets the ingestion's live definition binds, names
+// (Repository.SecretNamesOf of its effective source; none while nothing is
+// live), in name order, each with its fetch rows, followed by the names that
+// were fetched but are no longer bound.
+func BoundSecrets(names []string, fetches []SecretFetch) []BoundSecret {
+	names = slices.Clone(names)
+	slices.Sort(names)
+	names = slices.Compact(names)
 	out := make([]BoundSecret, 0, len(names))
 	for _, n := range names {
 		out = append(out, BoundSecret{Name: n, Bound: true})

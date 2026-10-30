@@ -63,7 +63,7 @@ func (s *State) secrets(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	// The names are those of the effective live source: when the settings are in
 	// a config entry, the entry's value binds the secrets. An entry that is not
 	// usable binds none (nothing runs).
-	named := *i
+	var names []string
 	if i.Version > 0 {
 		app, err := s.Repo.ApplicationCode(ctx, i.ApplicationID)
 		if err != nil {
@@ -74,12 +74,12 @@ func (s *State) secrets(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 			return nil, usecase.Internal("REPO", "config entry lookup failed", err)
 		}
 		if res.Runnable() {
-			named.Definition = res.Definition
-		} else {
-			named.Version = 0
+			if names, err = s.Repo.SecretNamesOf(ctx, res.Definition.Source); err != nil {
+				return nil, usecase.Internal("REPO", "live kinds failed", err)
+			}
 		}
 	}
-	bound := ingestion.BoundSecrets(&named, fetches)
+	bound := ingestion.BoundSecrets(names, fetches)
 	body := IngestionSecretListResponse{Secrets: make([]IngestionSecretResponse, 0, len(bound))}
 	for _, b := range bound {
 		r := IngestionSecretResponse{Name: b.Name, Bound: b.Bound, Fetches: make([]IngestionSecretFetchResponse, 0, len(b.Fetches))}

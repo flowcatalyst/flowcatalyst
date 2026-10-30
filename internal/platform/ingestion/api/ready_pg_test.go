@@ -4,8 +4,10 @@ package api_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -83,6 +85,57 @@ func TestResumeChecksReadiness(t *testing.T) {
 
 	// Pausing is not checked.
 	assert.Equal(t, http.StatusOK, e.do(http.MethodPost, "/api/ingestions/"+id+"/pause", nil).code)
+}
+
+// An extension kind a live runtime reports names secrets only in the settings
+// its schema types SECRET: resuming checks those, and the secrets list shows
+// those, not its URLs, durations or username.
+func TestResumeChecksOnlyTheSecretsAReportedKindDeclares(t *testing.T) {
+	e := newEnv(t)
+	kind := "telem-" + unique()
+	reported, err := json.Marshal([]map[string]any{{"kind": kind, "description": "A telematics feed", "settings": []map[string]any{
+		{"name": "apiUrl", "type": "URL", "required": true},
+		{"name": "username", "type": "TEXT", "required": true},
+		{"name": "every", "type": "DURATION", "required": false},
+		{"name": "password", "type": "SECRET", "required": true},
+	}}})
+	require.NoError(t, err)
+	_, err = e.pool.Exec(context.Background(),
+		`INSERT INTO ing_runtimes (runtime_id, kinds, contract_version, first_seen_at, last_seen_at)
+		 VALUES ($1, $2, 1, $3, $3) ON CONFLICT (runtime_id) DO UPDATE SET kinds = $2, last_seen_at = $3`,
+		"rt-"+kind, reported, time.Now().UTC())
+	require.NoError(t, err)
+
+	key, code := "telem-"+unique(), "tlm-"+unique()
+	body := e.body(e.appA, e.clientA.Identifier, code)
+	body["source"] = map[string]any{"kind": "custom", "type": kind, "config": key}
+	r := e.do(http.MethodPost, "/api/ingestions", body)
+	require.Equal(t, http.StatusCreated, r.code, r.raw)
+	id := r.str("id")
+	require.Equal(t, http.StatusOK, e.do(http.MethodPost, "/api/ingestions/"+id+"/pause", nil).code)
+	put := e.do(http.MethodPut, "/api/ingestions/"+id+"/config", map[string]any{"value": map[string]any{
+		"apiUrl": "https://api.example.com", "username": "someone@example.com", "every": "PT1M", "password": "telem-password",
+	}})
+	require.Equal(t, http.StatusOK, put.code, put.raw)
+
+	// Only the password is missing, not the URL, the username or the duration.
+	r = e.do(http.MethodPost, "/api/ingestions/"+id+"/resume", nil)
+	assert.Equal(t, http.StatusConflict, r.code, r.raw)
+	assert.Equal(t, "INGESTION_SECRET_MISSING", r.errCode())
+	assert.Contains(t, r.raw, "telem-password")
+	for _, notSecret := range []string{"api.example.com", "someone@example.com", "PT1M"} {
+		assert.NotContains(t, r.raw, notSecret)
+	}
+
+	e.setSecret("telem-password")
+	r = e.do(http.MethodPost, "/api/ingestions/"+id+"/resume", nil)
+	require.Equal(t, http.StatusOK, r.code, r.raw)
+
+	listed := e.do(http.MethodGet, "/api/ingestions/"+id+"/secrets", nil)
+	require.Equal(t, http.StatusOK, listed.code, listed.raw)
+	secrets := listed.json["secrets"].([]any)
+	require.Len(t, secrets, 1, listed.raw)
+	assert.Equal(t, "telem-password", secrets[0].(map[string]any)["name"])
 }
 
 // A source with inline settings is not held to the secret check: it was saved

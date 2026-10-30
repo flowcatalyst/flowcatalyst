@@ -102,6 +102,10 @@ func (f *fakeIngStore) ListSecretFetches(_ context.Context, id string) ([]ingest
 	return f.fetches[id], f.err
 }
 
+func (f *fakeIngStore) SecretNamesOf(_ context.Context, src ingestion.Source) ([]string, error) {
+	return ingestion.SecretNames(src), f.err
+}
+
 func (f *fakeIngStore) MissingSecrets(_ context.Context, _ string, _ ids.ClientID, names []string) ([]string, error) {
 	var out []string
 	for _, n := range names {
