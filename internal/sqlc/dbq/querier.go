@@ -245,6 +245,8 @@ type Querier interface {
 	IngestionKindRequirementUpsert(ctx context.Context, arg IngestionKindRequirementUpsertParams) error
 	IngestionLastExchange(ctx context.Context, arg IngestionLastExchangeParams) (time.Time, error)
 	IngestionLastFailure(ctx context.Context, ingestionID string) (time.Time, error)
+	// The end of the newest poll any runtime reported in the week.
+	IngestionLastPoll(ctx context.Context, arg IngestionLastPollParams) (time.Time, error)
 	// The lease is taken in one statement: a conflicting row is taken over only by
 	// its holder (a renewal) or once it has expired, and two runtimes racing for
 	// the same ingestion are serialised on the row, so exactly one affects it.
@@ -269,6 +271,8 @@ type Querier interface {
 	IngestionListManagedBy(ctx context.Context, managedBy *string) ([]IngIngestion, error)
 	// A window re-sent replaces the counts: it never adds to them. created_at is
 	// when the platform first wrote the window (retention prunes by it).
+	// polls and last_poll_at are what a runtime reports of its polls (empty ones
+	// included), so a polled source that found nothing still shows as polling.
 	IngestionMetricUpsert(ctx context.Context, arg IngestionMetricUpsertParams) error
 	// The undismissed notices ("rejected" failures) of the ingestions shown:
 	// how many, and the newest one's message (idx_ing_failures_notices).
@@ -323,6 +327,10 @@ type Querier interface {
 	// What a claimed request is named by: its application, client and, for a saved
 	// ingestion, its code.
 	IngestionTestRefs(ctx context.Context, argIds []string) ([]IngestionTestRefsRow, error)
+	IngestionTraceLogDelete(ctx context.Context, ingestionID string) error
+	// The trace tables carry no foreign key (migration 094), so deleting an
+	// ingestion removes its window and records itself, in the same transaction.
+	IngestionTraceWindowDelete(ctx context.Context, ingestionID string) error
 	// Guarded on the version pointer and the latest number the caller read: a
 	// concurrent save or promote moves one of them and this updates no row.
 	IngestionUpdate(ctx context.Context, arg IngestionUpdateParams) (int64, error)

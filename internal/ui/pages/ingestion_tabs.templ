@@ -58,10 +58,13 @@ templ ingActivityPanel(v ingActivityView) {
 				}
 			}
 		}
-		@kit.FormSection(kit.FormSectionProps{Title: "Activity", Description: "Exchanges every runtime reported."}) {
+		@kit.FormSection(kit.FormSectionProps{Title: "Activity", Description: "Polls and exchanges every runtime reported.", Actions: ingOpenActivity(v.ID)}) {
 			<div class="fc-detail-grid" id="ing-activity-totals">
 				@kit.DetailField(kit.DetailFieldProps{Label: "Last 24 hours", Value: v.Day, Span: true})
 				@kit.DetailField(kit.DetailFieldProps{Label: "Last 7 days", Value: v.Week, Span: true})
+				@kit.DetailField(kit.DetailFieldProps{Label: "Last poll"}) {
+					@kit.LocalTime(kit.LocalTimeProps{At: v.LastPoll, Empty: "None in 7 days"})
+				}
 				@kit.DetailField(kit.DetailFieldProps{Label: "Last exchange"}) {
 					@kit.LocalTime(kit.LocalTimeProps{At: v.LastExchange, Empty: "None in 7 days"})
 				}
@@ -71,6 +74,15 @@ templ ingActivityPanel(v ingActivityView) {
 			</div>
 		}
 	</div>
+}
+
+// ingOpenActivity is the link from the drawer's short summary to the Activity
+// page, where the trace switch and the trace records are. A plain link: it
+// leaves the drawer.
+templ ingOpenActivity(id string) {
+	@kit.Button(kit.ButtonProps{Variant: kit.ButtonOutline, Size: kit.ButtonSm, Href: ingActivityURL(id), Icon: "external-link", Attrs: templ.Attributes{"id": "ing-open-activity"}}) {
+		Open activity
+	}
 }
 
 templ ingRouteRowC(rt ingRouteRow) {

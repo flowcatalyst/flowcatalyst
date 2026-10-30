@@ -32,6 +32,14 @@ func (emptyTabs) ListFailures(context.Context, string, string, int) (*ingestion.
 	return &ingestion.FailurePage{}, nil
 }
 
+func (emptyTabs) GetTraceWindow(context.Context, string) (*ingestion.TraceWindow, error) {
+	return nil, nil
+}
+
+func (emptyTabs) QueryTraceLog(context.Context, ingestion.TraceLogFilter) ([]ingestion.TraceLogRecord, error) {
+	return nil, nil
+}
+
 func (emptyTabs) FindWithFilters(context.Context, audit.FilterParams) ([]audit.Log, error) {
 	return nil, nil
 }

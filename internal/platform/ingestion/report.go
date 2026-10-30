@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -28,6 +29,10 @@ type WindowReport struct {
 	IngestionID                          string
 	From, To                             time.Time
 	Completed, Failed, Records, Dispatch int64
+	// Polls is how many polls finished in the window, empty ones included;
+	// LastPollAt is when the last of them ended (nil: none reported).
+	Polls      int64
+	LastPollAt *time.Time
 }
 
 // FailureReport is one thing that went wrong with an ingestion.
@@ -81,6 +86,15 @@ func clampFuture(t, now time.Time) time.Time {
 	return t
 }
 
+// clampFuturePtr is clampFuture for an optional time.
+func clampFuturePtr(t *time.Time, now time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	c := clampFuture(*t, now)
+	return &c
+}
+
 // ReportSummary counts the entries of a report that were recorded and those
 // that were ignored.
 type ReportSummary struct{ Accepted, Ignored int }
@@ -132,6 +146,7 @@ func (r *Repository) Record(ctx context.Context, rep Report) (ReportSummary, err
 				IngestionID: w.IngestionID, RuntimeID: rep.RuntimeID, WindowStart: clampFuture(w.From, rep.Now),
 				WindowSecs: int32(w.To.Sub(w.From) / time.Second),
 				Completed:  w.Completed, Failed: w.Failed, Records: w.Records, Jobs: w.Dispatch,
+				Polls: int32(min(max(w.Polls, 0), math.MaxInt32)), LastPollAt: clampFuturePtr(w.LastPollAt, rep.Now),
 				CreatedAt: &rep.Now,
 			}); err != nil {
 				return fmt.Errorf("exchange metric: %w", err)

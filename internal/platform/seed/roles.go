@@ -277,11 +277,17 @@ func PlatformRoles() []role.Role {
 				permIngestionView, permIngestionCreate, permIngestionUpdate, permIngestionDelete,
 				permIngestionPromote, permIngestionTest, permIngestionSetApply, permIngestionRoute,
 				permIngestionRuntimeIdentity, permIngestionBindSecrets,
+				// Switches tracing on and reads what it captured, bodies
+				// included (docs/ingestion-trace-design.md decision 8).
+				permIngestionTraceManage, permIngestionTraceView, permIngestionTraceViewBodies,
 			}),
 
+		// The operator reads trace records with headers, bodies and error
+		// text withheld; the viewer, and the pipeline's route author below,
+		// read none.
 		mk("ingestion-operator", "Ingestion Operator",
 			"Views ingestions, changes them, pauses and resumes them, and tests their connections",
-			[]string{permIngestionView, permIngestionUpdate, permIngestionTest}),
+			[]string{permIngestionView, permIngestionUpdate, permIngestionTest, permIngestionTraceView}),
 
 		mk("ingestion-viewer", "Ingestion Viewer",
 			"View-only access to ingestions, their versions, history and failures",

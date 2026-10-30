@@ -447,6 +447,8 @@ type IngExchangeMetric struct {
 	Records     int64      `db:"records"`
 	Jobs        int64      `db:"jobs"`
 	CreatedAt   *time.Time `db:"created_at"`
+	Polls       int32      `db:"polls"`
+	LastPollAt  *time.Time `db:"last_poll_at"`
 }
 
 type IngFailure struct {
@@ -571,6 +573,32 @@ type IngTestRequest struct {
 	CreatedAt     time.Time       `db:"created_at"`
 	ExpiresAt     time.Time       `db:"expires_at"`
 	CompletedAt   *time.Time      `db:"completed_at"`
+}
+
+type IngTraceLog struct {
+	ID          string          `db:"id"`
+	IngestionID string          `db:"ingestion_id"`
+	Version     int32           `db:"version"`
+	WindowID    string          `db:"window_id"`
+	CaptureID   string          `db:"capture_id"`
+	RuntimeID   string          `db:"runtime_id"`
+	Kind        string          `db:"kind"`
+	Level       string          `db:"level"`
+	Message     string          `db:"message"`
+	Data        json.RawMessage `db:"data"`
+	At          time.Time       `db:"at"`
+	CreatedAt   time.Time       `db:"created_at"`
+}
+
+type IngTraceWindow struct {
+	IngestionID     string    `db:"ingestion_id"`
+	WindowID        string    `db:"window_id"`
+	WindowSecs      int32     `db:"window_secs"`
+	SampleEverySecs int32     `db:"sample_every_secs"`
+	HardStop        time.Time `db:"hard_stop"`
+	EnabledBy       *string   `db:"enabled_by"`
+	EnabledAt       time.Time `db:"enabled_at"`
+	UpdatedAt       time.Time `db:"updated_at"`
 }
 
 type IngVersion struct {

@@ -35,6 +35,14 @@ WHERE id = @id
 -- name: IngestionDelete :exec
 DELETE FROM ing_ingestions WHERE id = $1;
 
+-- The trace tables carry no foreign key (migration 094), so deleting an
+-- ingestion removes its window and records itself, in the same transaction.
+-- name: IngestionTraceWindowDelete :exec
+DELETE FROM ing_trace_windows WHERE ingestion_id = $1;
+
+-- name: IngestionTraceLogDelete :exec
+DELETE FROM ing_trace_log WHERE ingestion_id = $1;
+
 -- definition_digest is computed by the database from the definition's jsonb
 -- text (Postgres's canonical form: keys sorted, no insignificant whitespace),
 -- the same expression migration 093 backfilled with and

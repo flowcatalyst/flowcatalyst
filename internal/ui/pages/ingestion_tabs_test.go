@@ -51,6 +51,35 @@ type fakeUitTabs struct {
 	activity *ingestion.Activity
 	failures []ingestion.Failure
 	afters   []string
+	// window and records are the trace window and the records of the trace
+	// panel, newest first; filters records every QueryTraceLog filter asked.
+	window  *ingestion.TraceWindow
+	records []ingestion.TraceLogRecord
+	filters []ingestion.TraceLogFilter
+}
+
+func (f *fakeUitTabs) GetTraceWindow(context.Context, string) (*ingestion.TraceWindow, error) {
+	return f.window, nil
+}
+
+// QueryTraceLog answers the records the way the repository does: the kind and
+// runtime filters, a keyset cursor over (at, id), and the limit.
+func (f *fakeUitTabs) QueryTraceLog(_ context.Context, flt ingestion.TraceLogFilter) ([]ingestion.TraceLogRecord, error) {
+	f.filters = append(f.filters, flt)
+	var out []ingestion.TraceLogRecord
+	for _, r := range f.records {
+		if flt.Kind != "" && r.Kind != flt.Kind || flt.RuntimeID != "" && r.RuntimeID != flt.RuntimeID {
+			continue
+		}
+		if c := flt.After; c != nil && !r.At.Before(c.At) && (!r.At.Equal(c.At) || r.ID >= c.ID) {
+			continue
+		}
+		out = append(out, r)
+	}
+	if flt.Limit > 0 && len(out) > flt.Limit {
+		out = out[:flt.Limit]
+	}
+	return out, nil
 }
 
 func (f *fakeUitTabs) FindByID(_ context.Context, id string) (*ingestion.Ingestion, error) {
@@ -108,6 +137,7 @@ func uitFixture(keep bool) *ingestion.Ingestion {
 
 func uitTabsStore(keep bool) *fakeUitTabs {
 	last := uitNow.Add(-time.Minute)
+	polled := uitNow.Add(-30 * time.Second)
 	failed := uitNow.Add(-time.Hour)
 	errText := "connection refused <b>by</b> the source"
 	return &fakeUitTabs{
@@ -117,8 +147,8 @@ func uitTabsStore(keep bool) *fakeUitTabs {
 			{RuntimeID: "rt-2", Version: 2, Status: "FAILING", Error: &errText, UpdatedAt: uitNow.Add(-3 * time.Minute)},
 		},
 		activity: &ingestion.Activity{
-			Day: ingestion.Exchanges{Completed: 12, Failed: 1, Records: 340, Jobs: 12}, Week: ingestion.Exchanges{Completed: 80, Failed: 4, Records: 2100, Jobs: 80},
-			LastExchange: &last, LastFailure: &failed,
+			Day: ingestion.Exchanges{Completed: 12, Failed: 1, Records: 340, Jobs: 12, Polls: 1440}, Week: ingestion.Exchanges{Completed: 80, Failed: 4, Records: 2100, Jobs: 80, Polls: 10080},
+			LastExchange: &last, LastPoll: &polled, LastFailure: &failed,
 		},
 	}
 }
@@ -153,8 +183,10 @@ func TestIngestionActivityPanel(t *testing.T) {
 		// rt-2 runs version 2, not the live 3.
 		`class="text-warning" title="Not the live version">2<`,
 		"connection refused &lt;b&gt;by&lt;/b&gt; the source",
-		"12 completed, 1 failed, 340 records, 12 jobs", "80 completed, 4 failed, 2100 records, 80 jobs",
-		"Last exchange", "Last failure", `datetime="2026-10-24T11:59:00Z"`,
+		"1440 polls, 12 completed, 1 failed, 340 records, 12 jobs", "10080 polls, 80 completed, 4 failed, 2100 records, 80 jobs",
+		"Last poll", `datetime="2026-10-24T11:59:30Z"`, "Last exchange", "Last failure", `datetime="2026-10-24T11:59:00Z"`,
+		// The drawer keeps the short summary and links to the page.
+		`id="ing-open-activity"`, `href="/ui/ingestions/ing_one/activity"`,
 	)
 	mustNotContain(t, body, "<b>by</b>", "None in 7 days")
 
@@ -162,7 +194,7 @@ func TestIngestionActivityPanel(t *testing.T) {
 	s := uitTabsStore(false)
 	s.activity, s.routes = &ingestion.Activity{}, nil
 	_, body = uitGet(t, uitTabsPage(s), uitUser(uitPermView), "/ui/ingestions/ing_one/activity", true)
-	mustContain(t, body, "No runtime has reported it yet.", "None in 7 days", "None kept", "0 completed, 0 failed, 0 records, 0 jobs")
+	mustContain(t, body, "No runtime has reported it yet.", "None in 7 days", "None kept", "0 polls, 0 completed, 0 failed, 0 records, 0 jobs")
 }
 
 func TestIngestionTabsPermissionsAndReach(t *testing.T) {

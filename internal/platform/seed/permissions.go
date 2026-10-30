@@ -209,6 +209,11 @@ const (
 	// of a route counts as a secret name), never the operator's.
 	permIngestionRuntimeIdentity = "platform:ingestion:ingestion:runtime-identity"
 	permIngestionBindSecrets     = "platform:ingestion:ingestion:bind-secrets"
+	// permIngestionTrace* gate ingestion traces
+	// (docs/ingestion-trace-design.md section 1, decision 8).
+	permIngestionTraceManage     = "platform:ingestion:trace:manage"
+	permIngestionTraceView       = "platform:ingestion:trace:view"
+	permIngestionTraceViewBodies = "platform:ingestion:trace:view-bodies"
 )
 
 // IAM context — users, roles, access control.

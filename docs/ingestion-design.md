@@ -219,7 +219,7 @@ Everything below is huma, in `api/openapi.lock.json`, so the SDKs and the SPA ty
 | `listIngestionSourceKinds` | `GET /api/ingestion-source-kinds` | built-in kinds plus the kinds the live runtimes report; the form is drawn from this |
 | `testIngestionConnection` | `POST /api/ingestion-tests` | queues a test (section 7); `GET /api/ingestion-tests/{id}` for the result |
 | `applyIngestionSet`, `listIngestionSets`, `listIngestionSetApplies`, `reapplyIngestionSet`, `releaseIngestionSet` | `/api/ingestion-sets...` | as today: a set owns its ingestions (read-only in the pages) until released |
-| `ingestionRuntimePoll`, `ingestionRuntimeReport`, `ingestionRuntimeGetState`, `ingestionRuntimePutState`, `ingestionRuntimeCreateJobs`, `ingestionRuntimeGetSecret` | `/api/ingestion-runtime/v1/...` | the runtime contract (section 7) |
+| `ingestionRuntimePoll`, `ingestionRuntimeReport`, `ingestionRuntimeGetState`, `ingestionRuntimePutState`, `ingestionRuntimeCreateJobs`, `ingestionRuntimeGetSecret`, `ingestionRuntimeTraces` | `/api/ingestion-runtime/v1/...` | the runtime contract (section 7); traces: `docs/ingestion-trace-design.md` |
 
 Errors use the platform envelope with codes in the platform's style (`INGESTION_NOT_FOUND`,
 `INGESTION_CODE_EXISTS`, `INGESTION_TARGET_INVALID`, `INGESTION_SET_OWNED`, `LEASE_NOT_HELD`).

@@ -56,6 +56,21 @@ type PollResponse struct {
 	LeaseFor   string             `json:"leaseFor" example:"PT3M"`
 	Ingestions []RuntimeIngestion `json:"ingestions" doc:"Live versions only: every shared ingestion of a kind the runtime carries, and the polled ones whose lease it holds"`
 	Tests      []RuntimeTest      `json:"tests" doc:"Pending test requests for kinds the runtime carries"`
+	// Traces is additive within contract version 2: an older runtime ignores
+	// it. It is a list of its own, not a field of RuntimeIngestion, because a
+	// runtime rebuilds a route when its ingestion changes and switching
+	// tracing must not restart routes.
+	Traces []RuntimeTrace `json:"traces,omitempty" doc:"The open trace windows (hardStop in the future) of the ingestions listed above, for this runtime; absent when none. A windowId seen for the first time starts the runtime's own window of windowSecs, ending no later than hardStop; the same windowId again changes nothing; a different one replaces the window; an ingestion no longer listed has none."`
+}
+
+// RuntimeTrace is the trace window of one ingestion a runtime should capture
+// under (docs/ingestion-trace-design.md section 2).
+type RuntimeTrace struct {
+	IngestionID     string          `json:"ingestionId"`
+	WindowID        string          `json:"windowId" doc:"A new id every time tracing is switched on"`
+	WindowSecs      int             `json:"windowSecs" doc:"How long the runtime captures, counted from when it first sees this windowId"`
+	SampleEverySecs int             `json:"sampleEverySecs" doc:"The runtime starts a capture of this ingestion at most this often"`
+	HardStop        httpcompat.Time `json:"hardStop" doc:"The runtime never captures past this, and the platform refuses records dated after it (plus a short grace)"`
 }
 
 // StateValue is a value a polled source keeps with the platform, so that it
@@ -82,6 +97,11 @@ type ExchangeWindow struct {
 	Failed       int64           `json:"failed" minimum:"0"`
 	Records      int64           `json:"records" minimum:"0"`
 	DispatchJobs int64           `json:"dispatchJobs" minimum:"0"`
+	// Polls and LastPollAt are additive within contract version 2: absent is
+	// no poll. A window with polls is reported even when nothing else
+	// happened in it, so a polled source that found nothing still shows.
+	Polls      int64            `json:"polls,omitempty" minimum:"0" doc:"Polls finished in the window, empty ones included"`
+	LastPollAt *httpcompat.Time `json:"lastPollAt,omitempty" doc:"When the last poll in the window ended"`
 }
 
 // Failure is one thing that went wrong with an ingestion. The message never
@@ -160,4 +180,37 @@ type CreateJobsResponse struct {
 type SecretValue struct {
 	Value     string          `json:"value"`
 	UpdatedAt httpcompat.Time `json:"updatedAt"`
+}
+
+// IngestionTraceRecord is one captured record, as a runtime ships it
+// (docs/ingestion-trace-design.md section 4). Data is the kind's own document
+// (poll, exchange, http or error), already redacted by the runtime.
+type IngestionTraceRecord struct {
+	// ID is the runtime's id for the record (a random UUID), the same on every
+	// retry of its batch, so the platform stores it once.
+	ID          string          `json:"id,omitempty"`
+	IngestionID string          `json:"ingestionId"`
+	Version     int             `json:"version" minimum:"0"`
+	WindowID    string          `json:"windowId"`
+	CaptureID   string          `json:"captureId" doc:"Shared by the records of one capture"`
+	At          int64           `json:"at" doc:"Unix milliseconds, the runtime's clock"`
+	Kind        string          `json:"kind" doc:"poll, exchange, http or error"`
+	Level       string          `json:"level" doc:"info, warn or error"`
+	Message     string          `json:"message" doc:"One line; cut to 1000 characters"`
+	Data        json.RawMessage `json:"data,omitempty" doc:"Cut to a stub over 80 KiB"`
+}
+
+// IngestionTraceBatch is the body of POST /api/ingestion-runtime/v1/traces: at most 500
+// records and 1 MiB.
+type IngestionTraceBatch struct {
+	RuntimeID string                 `json:"runtimeId" pattern:"^[A-Za-z0-9._:-]{1,100}$"`
+	Records   []IngestionTraceRecord `json:"records" maxItems:"500"`
+}
+
+// IngestionTraceAck is the answer to a IngestionTraceBatch (202): how many records were stored
+// and how many were dropped (outside the ingestion's window, too old, over the
+// rate cap or malformed). Dropping is never an error.
+type IngestionTraceAck struct {
+	Accepted int `json:"accepted"`
+	Dropped  int `json:"dropped"`
 }

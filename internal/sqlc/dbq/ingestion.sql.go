@@ -132,6 +132,26 @@ func (q *Queries) IngestionInsert(ctx context.Context, arg IngestionInsertParams
 	return err
 }
 
+const ingestionTraceLogDelete = `-- name: IngestionTraceLogDelete :exec
+DELETE FROM ing_trace_log WHERE ingestion_id = $1
+`
+
+func (q *Queries) IngestionTraceLogDelete(ctx context.Context, ingestionID string) error {
+	_, err := q.db.Exec(ctx, ingestionTraceLogDelete, ingestionID)
+	return err
+}
+
+const ingestionTraceWindowDelete = `-- name: IngestionTraceWindowDelete :exec
+DELETE FROM ing_trace_windows WHERE ingestion_id = $1
+`
+
+// The trace tables carry no foreign key (migration 094), so deleting an
+// ingestion removes its window and records itself, in the same transaction.
+func (q *Queries) IngestionTraceWindowDelete(ctx context.Context, ingestionID string) error {
+	_, err := q.db.Exec(ctx, ingestionTraceWindowDelete, ingestionID)
+	return err
+}
+
 const ingestionUpdate = `-- name: IngestionUpdate :execrows
 UPDATE ing_ingestions SET
     name = $1,

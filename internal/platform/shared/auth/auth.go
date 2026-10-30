@@ -250,6 +250,14 @@ const (
 	// and points them somewhere new (another host, other secrets): naming a
 	// secret makes the runtime present it to the host the definition names.
 	PermIngestionBindSecrets = "platform:ingestion:ingestion:bind-secrets"
+	// permIngestionTrace* gate ingestion traces
+	// (docs/ingestion-trace-design.md section 1, decision 8): manage switches
+	// tracing on and off, view reads a record's metadata, view-bodies reads
+	// headers, query strings, bodies, payload excerpts and error text and is
+	// also required to switch tracing on.
+	permIngestionTraceManage     = "platform:ingestion:trace:manage"
+	permIngestionTraceView       = "platform:ingestion:trace:view"
+	permIngestionTraceViewBodies = "platform:ingestion:trace:view-bodies"
 	// Super-admin wildcard.
 	permSuperAdmin = "platform:*:*:*"
 )
@@ -1334,6 +1342,30 @@ func CanUpdateIngestions(a *AuthContext) error  { return requirePermission(a, pe
 func CanDeleteIngestions(a *AuthContext) error  { return requirePermission(a, permIngestionDelete) }
 func CanPromoteIngestions(a *AuthContext) error { return requirePermission(a, permIngestionPromote) }
 func CanTestIngestions(a *AuthContext) error    { return requirePermission(a, permIngestionTest) }
+
+// CanManageIngestionTrace gates switching an ingestion's tracing on and off.
+func CanManageIngestionTrace(a *AuthContext) error {
+	return requirePermission(a, permIngestionTraceManage)
+}
+
+// CanViewIngestionTrace gates reading an ingestion's trace window and records.
+func CanViewIngestionTrace(a *AuthContext) error {
+	return requirePermission(a, permIngestionTraceView)
+}
+
+// CanViewIngestionTraceBodies reports whether a may read the sensitive parts
+// of trace records: headers, query strings, bodies, payload excerpts and error
+// text. Not an error-returning gate: a viewer without it still reads the
+// records' metadata, the sensitive parts withheld.
+func CanViewIngestionTraceBodies(a *AuthContext) bool {
+	return requirePermission(a, permIngestionTraceViewBodies) == nil
+}
+
+// RequireIngestionTraceBodies gates switching tracing on: capture records
+// bodies, so whoever starts it must be allowed to read them.
+func RequireIngestionTraceBodies(a *AuthContext) error {
+	return requirePermission(a, permIngestionTraceViewBodies)
+}
 
 // CanApplyIngestionSets gates applying or releasing an ingestion set.
 func CanApplyIngestionSets(a *AuthContext) error { return requirePermission(a, permIngestionSetApply) }

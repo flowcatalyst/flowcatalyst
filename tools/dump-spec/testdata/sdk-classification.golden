@@ -18,6 +18,7 @@ admin	DELETE /api/identity-providers/{id}	deleteIdentityProvider
 admin	DELETE /api/idp-role-mappings/{id}	deleteIdpRoleMapping
 admin	DELETE /api/ingestions/{id}	deleteIngestion
 admin	DELETE /api/ingestions/{id}/config	deleteIngestionConfig
+admin	DELETE /api/ingestions/{id}/trace	disableIngestionTrace
 admin	DELETE /api/oauth-clients/{id}	deleteOAuthClient
 admin	DELETE /api/platform-config/access/{id}	revokePlatformConfigAccess
 admin	DELETE /api/platform/cors/{id}	deleteCorsOrigin
@@ -84,6 +85,8 @@ admin	GET /api/ingestions/{id}/definition	getIngestionDefinition
 admin	GET /api/ingestions/{id}/failures	listIngestionFailures
 admin	GET /api/ingestions/{id}/history	listIngestionHistory
 admin	GET /api/ingestions/{id}/secrets	listIngestionSecrets
+admin	GET /api/ingestions/{id}/trace	getIngestionTrace
+admin	GET /api/ingestions/{id}/trace-log	listIngestionTraceLog
 admin	GET /api/ingestions/{id}/versions	listIngestionVersions
 admin	GET /api/login-attempts	listLoginAttempts
 admin	GET /api/oauth-clients	listOAuthClients
@@ -225,6 +228,7 @@ admin	PUT /api/identity-providers/{id}	updateIdentityProvider
 admin	PUT /api/ingestion-sets/{name}	applyIngestionSet
 admin	PUT /api/ingestions/{id}	updateIngestion
 admin	PUT /api/ingestions/{id}/config	setIngestionConfig
+admin	PUT /api/ingestions/{id}/trace	enableIngestionTrace
 admin	PUT /api/oauth-clients/{id}	updateOAuthClient
 admin	PUT /api/portal-apps/{id}	updatePortalApp
 admin	PUT /api/principals/{id}/application-access	assignPrincipalApplicationAccess
@@ -336,6 +340,7 @@ internal	POST /api/event-types/{id}/schemas	addEventTypeSchema
 internal	POST /api/ingestion-runtime/v1/ingestions/{id}/jobs	ingestionRuntimeCreateJobs
 internal	POST /api/ingestion-runtime/v1/poll	ingestionRuntimePoll
 internal	POST /api/ingestion-runtime/v1/report	ingestionRuntimeReport
+internal	POST /api/ingestion-runtime/v1/traces	ingestionRuntimeTraces
 internal	POST /api/oauth-clients/{id}/regenerate-secret	regenerateOAuthClientSecret
 internal	POST /api/service-accounts/{id}/regenerate-secret	regenerateServiceAccountSigningSecret_regenerate-secret
 internal	POST /api/service-accounts/{id}/regenerate-token	regenerateServiceAccountAuthToken_regenerate-token

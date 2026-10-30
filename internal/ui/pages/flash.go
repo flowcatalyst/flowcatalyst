@@ -141,6 +141,8 @@ const (
 	flashIngResumed     = "ingestion-resumed"
 	flashIngDeleted     = "ingestion-deleted"
 	// The environment's settings of an ingestion (platform config ingest/<key>).
+	flashIngTraceOn       = "ingestion-trace-on"
+	flashIngTraceOff      = "ingestion-trace-off"
 	flashIngConfigSet     = "ingestion-config-set"
 	flashIngConfigDeleted = "ingestion-config-deleted"
 )
@@ -173,6 +175,9 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashIngPaused:       success("Ingestion paused"),
 	flashIngResumed:      success("Ingestion resumed"),
 	flashIngDeleted:      success("Ingestion removed"),
+	// Each runtime starts capturing when it next syncs.
+	flashIngTraceOn:  {Kind: kit.FlashSuccess, Summary: "Tracing on", Detail: "Each runtime starts capturing when it next syncs"},
+	flashIngTraceOff: {Kind: kit.FlashSuccess, Summary: "Tracing off"},
 
 	flashIngConfigSet:     success("Settings saved for this environment"),
 	flashIngConfigDeleted: {Kind: kit.FlashSuccess, Summary: "Settings deleted", Detail: "The ingestions that use them wait until they are set again"},

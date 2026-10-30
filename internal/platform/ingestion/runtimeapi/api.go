@@ -28,6 +28,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
 	"github.com/flowcatalyst/go-sdk/usecase"
 )
@@ -62,6 +63,10 @@ type State struct {
 	// report calls; zero reads FC_INGESTION_JOBS_MAX_BYTES and
 	// FC_INGESTION_REPORT_MAX_BYTES (DefaultJobsMaxBytes, DefaultReportMaxBytes).
 	JobsMaxBytes, ReportMaxBytes int64
+
+	// limiter is the trace ingest's per-ingestion rate cap; its zero value is
+	// ready.
+	limiter traceRateLimiter
 }
 
 // The request-body bounds of the two calls that carry payloads. A jobs
@@ -94,6 +99,7 @@ const tag = "ingestion-runtime"
 const (
 	PollOperationID   = "ingestionRuntimePoll"
 	ReportOperationID = "ingestionRuntimeReport"
+	TracesOperationID = "ingestionRuntimeTraces"
 )
 
 // Register mounts the runtime endpoints. The server mounts them only when
@@ -120,6 +126,17 @@ func Register(api huma.API, s *State) {
 		DefaultStatus: http.StatusNoContent,
 		MaxBodyBytes:  bodyLimit(s.ReportMaxBytes, "FC_INGESTION_REPORT_MAX_BYTES", DefaultReportMaxBytes),
 	}, s.report)
+	// Trace records (docs/ingestion-trace-design.md section 4), pinned to the
+	// design's 1 MiB batch cap.
+	huma.Register(api, huma.Operation{
+		OperationID:   TracesOperationID,
+		Method:        http.MethodPost,
+		Path:          "/api/ingestion-runtime/v1/traces",
+		Summary:       "Ship trace records captured inside an ingestion's open trace window (ingestion runtime only)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusAccepted,
+		MaxBodyBytes:  ingestion.MaxTraceBatchBytes,
+	}, s.traces)
 	apiroute.Get(g, "ingestionRuntimeGetState", "/api/ingestion-runtime/v1/state/{ingestionId}/{key}", "Read a value a polled source keeps (lease holder only)", s.getState)
 	huma.Register(api, huma.Operation{
 		OperationID:   CreateJobsOperationID,
@@ -209,6 +226,11 @@ func (s *State) poll(ctx context.Context, in *pollInput) (*apicommon.Out[PollRes
 		}
 		body.Ingestions = append(body.Ingestions, ri)
 	}
+	traces, err := s.traceWindows(ctx, res)
+	if err != nil {
+		return nil, err
+	}
+	body.Traces = traces
 	for _, t := range res.Tests {
 		ri, err := fromTest(t)
 		if err != nil {
@@ -217,6 +239,28 @@ func (s *State) poll(ctx context.Context, in *pollInput) (*apicommon.Out[PollRes
 		body.Tests = append(body.Tests, RuntimeTest{ID: t.ID, ExpiresAt: jsontime.New(t.ExpiresAt), Ingestion: ri})
 	}
 	return &apicommon.Out[PollResponse]{Body: body}, nil
+}
+
+// traceWindows lists the open trace windows of the ingestions the answer lists
+// (design section 2): a polled one is in the answer only for its lease holder,
+// so this follows the answer, not the table. Empty when none is open.
+func (s *State) traceWindows(ctx context.Context, res *ingestion.PollResult) ([]RuntimeTrace, error) {
+	listed := make([]string, 0, len(res.Ingestions))
+	for _, item := range res.Ingestions {
+		listed = append(listed, item.ID)
+	}
+	windows, err := s.Repo.ListLiveTraceWindows(ctx, listed, res.AsOf)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "list_live_trace_windows failed", err)
+	}
+	var out []RuntimeTrace
+	for _, w := range windows {
+		out = append(out, RuntimeTrace{
+			IngestionID: w.IngestionID, WindowID: w.WindowID, WindowSecs: w.WindowSecs,
+			SampleEverySecs: w.SampleEverySecs, HardStop: jsontime.New(w.HardStop.UTC()),
+		})
+	}
+	return out, nil
 }
 
 // knownBuiltins keeps the built-in kinds this platform knows from a poll's
@@ -297,6 +341,7 @@ func (s *State) report(ctx context.Context, in *reportInput) (*apicommon.Empty, 
 		rep.Metrics = append(rep.Metrics, ingestion.WindowReport{
 			IngestionID: w.IngestionID, From: from, To: to,
 			Completed: w.Completed, Failed: w.Failed, Records: w.Records, Dispatch: w.DispatchJobs,
+			Polls: w.Polls, LastPollAt: lastPollAt(w.LastPollAt),
 		})
 	}
 	for _, f := range b.Failures {
@@ -334,6 +379,15 @@ func (s *State) report(ctx context.Context, in *reportInput) (*apicommon.Empty, 
 		return nil, usecase.Internal("REPO", "record report failed", err)
 	}
 	return &apicommon.Empty{}, nil
+}
+
+// lastPollAt is a window's optional last-poll time as the repository takes it.
+func lastPollAt(t *httpcompat.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	u := t.Underlying()
+	return &u
 }
 
 // maxStepLength bounds one step of a test answer, in characters.

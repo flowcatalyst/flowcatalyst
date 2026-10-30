@@ -127,6 +127,7 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 		Ingestions:        ingestionRepo,
 		IngestionOps:      pages.IngestionOps{Repo: ingestionRepo, Resolver: ingestionResolver, UoW: uow},
 		IngestionTabs:     ingestionRepo,
+		IngestionTraceOps: pages.IngestionTraceOps{Repo: ingestionRepo, UoW: uow},
 		IngestionAudit:    repos.auditRepo,
 		IngestionSets:     pages.IngestionSetReader{Repository: ingestionRepo, Archive: svcs.functionArtifacts},
 		IngestionSetOps:   pages.IngestionSetOps{Repo: ingestionRepo, Resolver: ingestionResolver, Archive: svcs.functionArtifacts, UoW: uow},

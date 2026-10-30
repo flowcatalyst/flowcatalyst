@@ -333,11 +333,11 @@ func (q *Queries) IngestionLeaseShareHeld(ctx context.Context, arg IngestionLeas
 }
 
 const ingestionMetricUpsert = `-- name: IngestionMetricUpsert :exec
-INSERT INTO ing_exchange_metrics (ingestion_id, runtime_id, window_start, window_secs, completed, failed, records, jobs, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO ing_exchange_metrics (ingestion_id, runtime_id, window_start, window_secs, completed, failed, records, jobs, polls, last_poll_at, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (ingestion_id, runtime_id, window_start) DO UPDATE SET
     window_secs = EXCLUDED.window_secs, completed = EXCLUDED.completed, failed = EXCLUDED.failed,
-    records = EXCLUDED.records, jobs = EXCLUDED.jobs
+    records = EXCLUDED.records, jobs = EXCLUDED.jobs, polls = EXCLUDED.polls, last_poll_at = EXCLUDED.last_poll_at
 `
 
 type IngestionMetricUpsertParams struct {
@@ -349,11 +349,15 @@ type IngestionMetricUpsertParams struct {
 	Failed      int64      `db:"failed"`
 	Records     int64      `db:"records"`
 	Jobs        int64      `db:"jobs"`
+	Polls       int32      `db:"polls"`
+	LastPollAt  *time.Time `db:"last_poll_at"`
 	CreatedAt   *time.Time `db:"created_at"`
 }
 
 // A window re-sent replaces the counts: it never adds to them. created_at is
 // when the platform first wrote the window (retention prunes by it).
+// polls and last_poll_at are what a runtime reports of its polls (empty ones
+// included), so a polled source that found nothing still shows as polling.
 func (q *Queries) IngestionMetricUpsert(ctx context.Context, arg IngestionMetricUpsertParams) error {
 	_, err := q.db.Exec(ctx, ingestionMetricUpsert,
 		arg.IngestionID,
@@ -364,6 +368,8 @@ func (q *Queries) IngestionMetricUpsert(ctx context.Context, arg IngestionMetric
 		arg.Failed,
 		arg.Records,
 		arg.Jobs,
+		arg.Polls,
+		arg.LastPollAt,
 		arg.CreatedAt,
 	)
 	return err

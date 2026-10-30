@@ -37,7 +37,7 @@ func newIngestCmd() *cobra.Command {
 	cmd.AddCommand(
 		newIngestListCmd(), newIngestGetCmd(), newIngestApplyCmd(), newIngestExportCmd(),
 		newIngestVersionsCmd(), newIngestLiveCmd(), newIngestPauseCmd(), newIngestResumeCmd(),
-		newIngestTestCmd(), newIngestConfigCmd(), newIngestSetsCmd(),
+		newIngestTestCmd(), newIngestConfigCmd(), newIngestSetsCmd(), newIngestTraceCmd(),
 	)
 	return cmd
 }

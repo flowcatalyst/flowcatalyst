@@ -123,7 +123,7 @@ func newEnv(t *testing.T) *env {
 	})
 	// As the server does, after every route has registered.
 	httpcompat.RelaxRequestBodies(api)
-	httpcompat.RelaxRequestBodiesDeep(api, runtimeapi.PollOperationID, runtimeapi.ReportOperationID)
+	httpcompat.RelaxRequestBodiesDeep(api, runtimeapi.PollOperationID, runtimeapi.ReportOperationID, runtimeapi.TracesOperationID)
 	e.api = api
 	return e
 }

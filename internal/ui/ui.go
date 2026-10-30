@@ -124,6 +124,9 @@ type Config struct {
 	IngestionTests       pages.IngestionTestStore
 	IngestionResolver    ingestion.Resolver
 	IngestionTestSubject func(r *http.Request) (pages.IngestionTestSubject, error)
+	// IngestionTraceOps runs the trace switch of the Activity page
+	// (/ui/ingestions/{id}/activity), which IngestionTabs also backs.
+	IngestionTraceOps pages.IngestionTraceCommands
 
 	// The developer portal reads the applications, their OpenAPI documents and
 	// event types; its processes tab reads Processes above. The Developer Users
@@ -287,7 +290,9 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.DeveloperUsers{Store: cfg.DeveloperUsers, Ops: cfg.DeveloperUserOps, Shell: sh}).Mount(r)
 			if cfg.IngestionEnabled {
 				(&pages.Ingestions{Store: cfg.Ingestions, Ops: cfg.IngestionOps, Apps: cfg.ApplicationStore, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Shell: sh}).Mount(r)
-				(&pages.IngestionTabs{Store: cfg.IngestionTabs, Audit: cfg.IngestionAudit, Shell: sh}).Mount(r)
+				activity := &pages.IngestionActivity{Store: cfg.IngestionTabs, Ops: cfg.IngestionTraceOps, Shell: sh}
+				activity.Mount(r)
+				(&pages.IngestionTabs{Store: cfg.IngestionTabs, Audit: cfg.IngestionAudit, Page: activity, Shell: sh}).Mount(r)
 				(&pages.IngestionSets{Sets: cfg.IngestionSets, Ops: cfg.IngestionSetOps, Names: cfg.DisplayName, Shell: sh}).Mount(r)
 				(&pages.IngestionTests{Store: cfg.IngestionTests, Resolver: cfg.IngestionResolver, Subject: cfg.IngestionTestSubject, Shell: sh}).Mount(r)
 			}

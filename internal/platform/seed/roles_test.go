@@ -211,10 +211,16 @@ func TestIngestionRoles(t *testing.T) {
 		operate  = "platform:ingestion:runtime:operate"
 		identity = "platform:ingestion:ingestion:runtime-identity"
 		secrets  = "platform:ingestion:ingestion:bind-secrets"
+		// The trace permissions (docs/ingestion-trace-design.md decision 8):
+		// the administrator switches tracing on and reads bodies, the
+		// operator reads records with bodies withheld, nobody else reads any.
+		traceManage = "platform:ingestion:trace:manage"
+		traceView   = "platform:ingestion:trace:view"
+		traceBodies = "platform:ingestion:trace:view-bodies"
 	)
 	want := map[string][]string{
-		"platform:ingestion-admin":        {view, create, update, del, promote, test, apply, route, identity, secrets},
-		"platform:ingestion-operator":     {view, update, test},
+		"platform:ingestion-admin":        {view, create, update, del, promote, test, apply, route, identity, secrets, traceManage, traceView, traceBodies},
+		"platform:ingestion-operator":     {view, update, test, traceView},
 		"platform:ingestion-viewer":       {view},
 		"platform:ingestion-route-author": {view, create, update, route, secrets},
 		"platform:ingestion-runtime":      {operate},

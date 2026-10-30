@@ -347,6 +347,11 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqU32("created"), reqU32("changed"), reqU32("adopted"), reqU32("removed"),
 	)
 	m["platform:ingestion:set:released"] = obj(reqStr("setId"), reqStr("name"), reqU32("released"))
+	// Ingestion traces (docs/ingestion-trace-design.md decision 9).
+	m["platform:ingestion:trace:enabled"] = obj(
+		reqStr("ingestionId"), reqStr("code"), reqStr("windowId"), reqU32("windowSecs"), reqU32("sampleEverySecs"), optDateTime("hardStop"),
+	)
+	m["platform:ingestion:trace:disabled"] = obj(reqStr("ingestionId"), reqStr("code"), reqStr("windowId"))
 
 	// ── platform:function (shared with Java and Rust), platform:admin:function* (Go-only)
 	// The shared codes carry Java's and Rust's schemas, except that

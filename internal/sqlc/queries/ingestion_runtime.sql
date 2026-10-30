@@ -94,12 +94,14 @@ ON CONFLICT (ingestion_id, runtime_id) DO UPDATE SET
 
 -- A window re-sent replaces the counts: it never adds to them. created_at is
 -- when the platform first wrote the window (retention prunes by it).
+-- polls and last_poll_at are what a runtime reports of its polls (empty ones
+-- included), so a polled source that found nothing still shows as polling.
 -- name: IngestionMetricUpsert :exec
-INSERT INTO ing_exchange_metrics (ingestion_id, runtime_id, window_start, window_secs, completed, failed, records, jobs, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO ing_exchange_metrics (ingestion_id, runtime_id, window_start, window_secs, completed, failed, records, jobs, polls, last_poll_at, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (ingestion_id, runtime_id, window_start) DO UPDATE SET
     window_secs = EXCLUDED.window_secs, completed = EXCLUDED.completed, failed = EXCLUDED.failed,
-    records = EXCLUDED.records, jobs = EXCLUDED.jobs;
+    records = EXCLUDED.records, jobs = EXCLUDED.jobs, polls = EXCLUDED.polls, last_poll_at = EXCLUDED.last_poll_at;
 
 -- name: IngestionFailureInsert :exec
 INSERT INTO ing_failures (id, ingestion_id, runtime_id, version, kind, category, message, after_records, excerpt, occurred_at, created_at)

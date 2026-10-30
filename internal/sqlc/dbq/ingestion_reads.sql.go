@@ -17,10 +17,12 @@ SELECT
     COALESCE(SUM(failed)    FILTER (WHERE window_start >= $1::timestamptz), 0)::bigint AS failed_day,
     COALESCE(SUM(records)   FILTER (WHERE window_start >= $1::timestamptz), 0)::bigint AS records_day,
     COALESCE(SUM(jobs)      FILTER (WHERE window_start >= $1::timestamptz), 0)::bigint AS jobs_day,
+    COALESCE(SUM(polls)     FILTER (WHERE window_start >= $1::timestamptz), 0)::bigint AS polls_day,
     COALESCE(SUM(completed), 0)::bigint AS completed_week,
     COALESCE(SUM(failed), 0)::bigint    AS failed_week,
     COALESCE(SUM(records), 0)::bigint   AS records_week,
-    COALESCE(SUM(jobs), 0)::bigint      AS jobs_week
+    COALESCE(SUM(jobs), 0)::bigint      AS jobs_week,
+    COALESCE(SUM(polls), 0)::bigint     AS polls_week
 FROM ing_exchange_metrics
 WHERE ingestion_id = $2 AND window_start >= $3::timestamptz
 `
@@ -36,10 +38,12 @@ type IngestionExchangeTotalsRow struct {
 	FailedDay     int64 `db:"failed_day"`
 	RecordsDay    int64 `db:"records_day"`
 	JobsDay       int64 `db:"jobs_day"`
+	PollsDay      int64 `db:"polls_day"`
 	CompletedWeek int64 `db:"completed_week"`
 	FailedWeek    int64 `db:"failed_week"`
 	RecordsWeek   int64 `db:"records_week"`
 	JobsWeek      int64 `db:"jobs_week"`
+	PollsWeek     int64 `db:"polls_week"`
 }
 
 // Exchange counts over the last day and the last week, from the windows the
@@ -52,10 +56,12 @@ func (q *Queries) IngestionExchangeTotals(ctx context.Context, arg IngestionExch
 		&i.FailedDay,
 		&i.RecordsDay,
 		&i.JobsDay,
+		&i.PollsDay,
 		&i.CompletedWeek,
 		&i.FailedWeek,
 		&i.RecordsWeek,
 		&i.JobsWeek,
+		&i.PollsWeek,
 	)
 	return i, err
 }
@@ -207,6 +213,25 @@ func (q *Queries) IngestionLastFailure(ctx context.Context, ingestionID string) 
 	var occurred_at time.Time
 	err := row.Scan(&occurred_at)
 	return occurred_at, err
+}
+
+const ingestionLastPoll = `-- name: IngestionLastPoll :one
+SELECT last_poll_at::timestamptz AS last_poll_at FROM ing_exchange_metrics
+WHERE ingestion_id = $1 AND window_start >= $2 AND last_poll_at IS NOT NULL
+ORDER BY last_poll_at DESC LIMIT 1
+`
+
+type IngestionLastPollParams struct {
+	IngestionID string    `db:"ingestion_id"`
+	WindowStart time.Time `db:"window_start"`
+}
+
+// The end of the newest poll any runtime reported in the week.
+func (q *Queries) IngestionLastPoll(ctx context.Context, arg IngestionLastPollParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, ingestionLastPoll, arg.IngestionID, arg.WindowStart)
+	var last_poll_at time.Time
+	err := row.Scan(&last_poll_at)
+	return last_poll_at, err
 }
 
 const ingestionNotices = `-- name: IngestionNotices :many

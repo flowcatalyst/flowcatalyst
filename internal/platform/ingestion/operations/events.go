@@ -15,7 +15,10 @@ const (
 	IngestionResumedType      = "platform:ingestion:ingestion:resumed"
 	IngestionVersionSavedType = "platform:ingestion:ingestion:version-saved"
 	IngestionVersionLiveType  = "platform:ingestion:ingestion:version-live"
-	Source                    = "platform:ingestion"
+	// Ingestion traces (docs/ingestion-trace-design.md decision 9).
+	TraceEnabledType  = "platform:ingestion:trace:enabled"
+	TraceDisabledType = "platform:ingestion:trace:disabled"
+	Source            = "platform:ingestion"
 )
 
 func subjectFor(id string) string { return "platform.ingestion." + id }
@@ -325,4 +328,44 @@ func (e IngestionSetReleased) ToDataJSON() ([]byte, error) {
 		Name     string `json:"name"`
 		Released int    `json:"released"`
 	}{e.SetID, e.Name, e.Released})
+}
+
+// TraceEnabled is emitted when tracing is switched on for an ingestion:
+// {ingestionId, code, windowId, windowSecs, sampleEverySecs, hardStop}.
+type TraceEnabled struct {
+	ingestionEvent
+	Code            string
+	WindowID        string
+	WindowSecs      int
+	SampleEverySecs int
+	HardStop        time.Time
+}
+
+func (TraceEnabled) EventType() string { return TraceEnabledType }
+func (e TraceEnabled) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		IngestionID     string    `json:"ingestionId"`
+		Code            string    `json:"code"`
+		WindowID        string    `json:"windowId"`
+		WindowSecs      int       `json:"windowSecs"`
+		SampleEverySecs int       `json:"sampleEverySecs"`
+		HardStop        time.Time `json:"hardStop"`
+	}{e.IngestionID, e.Code, e.WindowID, e.WindowSecs, e.SampleEverySecs, e.HardStop.UTC()})
+}
+
+// TraceDisabled is emitted when a live trace window is switched off:
+// {ingestionId, code, windowId}.
+type TraceDisabled struct {
+	ingestionEvent
+	Code     string
+	WindowID string
+}
+
+func (TraceDisabled) EventType() string { return TraceDisabledType }
+func (e TraceDisabled) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		IngestionID string `json:"ingestionId"`
+		Code        string `json:"code"`
+		WindowID    string `json:"windowId"`
+	}{e.IngestionID, e.Code, e.WindowID})
 }

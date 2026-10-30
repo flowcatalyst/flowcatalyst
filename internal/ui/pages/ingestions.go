@@ -510,7 +510,7 @@ func toIngsRow(ac *auth.AuthContext, item *ingestion.ListItem, names fnsNames, k
 }
 
 // rowActions: Edit inline (the Nuxt row has none; the drawer's Change is the
-// first action here), View details, Pause or Resume and Remove in the menu.
+// first action here), View details, Activity, Pause or Resume and Remove in the menu.
 func (v ingsView) rowActions(row ingsRow) kit.RowActionsProps {
 	p := kit.RowActionsProps{ID: "ings-" + row.ID + "-actions", RowLabel: row.Code}
 	if v.Perms.Update {
@@ -519,6 +519,8 @@ func (v ingsView) rowActions(row ingsRow) kit.RowActionsProps {
 		p.Actions = append(p.Actions, edit)
 	}
 	p.Menu = append(p.Menu, kit.RowAction{Icon: "eye", Label: "View details", Href: row.DetailHref, Attrs: templ.Attributes{"data-on:click__prevent": liveLink}})
+	// The Activity page (counters, runtimes, trace): a plain link, it leaves the list.
+	p.Menu = append(p.Menu, kit.RowAction{Icon: "list", Label: "Activity", Href: row.DetailHref + "/activity"})
 	if v.Perms.Update {
 		if row.Active {
 			p.Menu = append(p.Menu, kit.RowAction{Icon: "pause", Label: "Pause…", Attrs: confirmTrigger(ingsPauseDialog, row.DetailHref+"/pause")})

@@ -320,6 +320,64 @@ week, counted from when the platform recorded them, not from times the runtime
 sent. A time from a runtime that is more than five minutes in the future is
 recorded as now.
 
+## Traces
+
+"The ingestion is running but nothing shows." A **trace** answers it: an operator
+switches tracing on for an ingestion and sees, for a minute or so, what each runtime's
+polls and exchanges did, with the HTTP calls an extension or an `api-poll` made and
+their requests and responses. Tracing is **never on by default**; switched off it costs
+a runtime a map lookup per poll or exchange, and it never blocks, slows or fails
+ingestion.
+
+- **A window per ingestion, a capture per runtime.** Switching on opens a new
+  *window* (`windowSecs`: 60, 300 or 900; `sampleEverySecs`: 1 to 60, default 5).
+  A runtime learns of it at its next sync (a minute in production, 15 s under
+  `fcdev`) and captures for `windowSecs` **from the moment it first sees the
+  window**, so a one-minute window is a minute of capture however long the sync
+  took. The platform keeps a **hard stop**, the switch-on time plus the window plus
+  a pickup grace (`FC_INGESTION_TRACE_PICKUP_GRACE`, 2 minutes), and refuses records
+  dated after it (10 seconds of slack). Switching off sets the hard stop to now.
+- **Sampling.** A runtime starts a capture of an ingestion only if its last one
+  started `sampleEverySecs` or more ago. A capture is **one poll cycle** (a polled
+  source's poll, everything it called and dispatched) **or one exchange** (a push,
+  file or queue message), captured whole.
+- **Empty polls show.** A captured poll that found nothing is recorded. Without
+  tracing too, every runtime reports how many polls it finished and when the last
+  ended, so Activity shows "polling, nothing new" (`polls` in the counters, `Last
+  poll`) instead of nothing.
+- **Records** are `poll`, `exchange`, `http` and `error`, grouped by capture. Bodies are
+  kept to 32 KiB; credentials are redacted before a record leaves the runtime:
+  headers and query values whose name contains `auth`, `key`, `token`, `secret`,
+  `password`, `signature`, `cookie` or `session`, the same fields in JSON and form
+  bodies, user info in URLs, and the secret values the runtime fetched for the
+  ingestion wherever they appear verbatim. Records are kept 7 days
+  (`FC_INGESTION_TRACE_RETENTION_DAYS`) and are deleted with the ingestion.
+- **Permissions.** `platform:ingestion:trace:manage` switches tracing on and off;
+  `platform:ingestion:trace:view` reads a record's metadata (an HTTP call's client,
+  method, URL path, status, duration and sizes; an exchange's counts and outcome; a
+  poll's counters); `platform:ingestion:trace:view-bodies` reads headers, query strings,
+  bodies, payload excerpts and error text, and is also needed to switch tracing on.
+  `platform:ingestion-admin` holds all three, `platform:ingestion-operator` holds
+  `view`; the viewer and the pipeline's route author hold none. A reader without
+  `view-bodies` gets records marked `redacted: true` with those parts withheld.
+- **Audit.** Switching on and off emit `platform:ingestion:trace:enabled` and
+  `platform:ingestion:trace:disabled` (off only when a live window ended), which read
+  in the ingestion's history.
+
+| Call | Needs | Does |
+|---|---|---|
+| `GET /api/ingestions/{id}/trace` | `trace:view` | `{live, windowId, windowSecs, sampleEverySecs, enabledAt, hardStop, enabledBy, maxWindowSecs}`; the fields are null when it was never on |
+| `PUT /api/ingestions/{id}/trace` `{windowSecs, sampleEverySecs}` | `trace:manage` and `trace:view-bodies` | New window; `400 TRACE_WINDOW_INVALID` / `TRACE_SAMPLE_INVALID` |
+| `DELETE /api/ingestions/{id}/trace` | `trace:manage` | Hard stop = now; idempotent; `204` |
+| `GET /api/ingestions/{id}/trace-log?kind&runtimeId&captureId&since&until&limit&cursor` | `trace:view` | Newest first, keyset `nextCursor`, limit 100 (at most 500) |
+
+The **Activity page** (`/ui/ingestions/{id}/activity`, also "Activity" in the list's row
+menu and "Open activity" in the drawer's Activity tab) shows the counters for the last
+24 hours and 7 days (polls, completed, failed, records, jobs), the last poll, exchange
+and failure, the runtimes, the trace switch, and the records, each capture with its
+HTTP calls and exchanges nested and each call expanding to its request and response.
+It refreshes every 5 seconds while a window is live.
+
 ## Test connection
 
 A test tries a source once, from a runtime's own network and with its own
@@ -352,11 +410,12 @@ real outbound call.
 | `platform:ingestion:ingestion:runtime-identity` | Save an `sqs` or `s3` source the runtime reads with its own AWS identity |
 | `platform:ingestion:ingestion:bind-secrets` | Save a definition that names secrets and points them somewhere new |
 | `platform:ingestion:set:apply` | Apply or release a set |
+| `platform:ingestion:trace:manage`, `view`, `view-bodies` | Switch tracing on and off; read trace records (metadata); read their headers, bodies and error text and switch tracing on (see Traces) |
 | `platform:ingestion:runtime:operate` | The runtime API: poll, report, state, jobs, secrets |
 
 Seeded roles: `platform:ingestion-admin` (everything but the runtime's, route
 included, and the only role with `runtime-identity`),
-`platform:ingestion-operator` (view, update, test: it cannot write routes),
+`platform:ingestion-operator` (view, update, test and trace view: it cannot write routes),
 `platform:ingestion-viewer`, `platform:ingestion-route-author` (the **pipeline**
 role, for a service account: view, create, update, route and bind-secrets; it
 writes drafts that an administrator makes live, and a user given it cannot write
@@ -467,6 +526,10 @@ error is exit code `1`. Refer to an ingestion as `application/client/code` or by
 | `fcdev ingest config get <ref> [--json]` | Show the settings entry the ingestion's source names: key, status, problems, the value |
 | `fcdev ingest config set <ref> <file.json \| -> [--secrets] [--json]` | Write the entry from a JSON object (a file, or stdin with `-`). `--secrets` asks (hidden, on the terminal) for the value of each secret the entry uses, Enter keeps the one there is, and writes them with the entry; it is refused when stdin holds the file and is not a terminal |
 | `fcdev ingest config delete <ref> [--json]` | Delete the entry; the ingestions that name it stop |
+| `fcdev ingest trace on <ref> [--for 1m\|5m\|15m] [--every 5s]` | Switch tracing on with a new window (default 1m, one capture every 5s) |
+| `fcdev ingest trace off <ref>` | Switch tracing off now |
+| `fcdev ingest trace status <ref>` | Whether tracing is live, its window, sampling and time left |
+| `fcdev ingest trace log <ref> [--kind poll\|exchange\|http\|error] [--runtime id] [--capture id] [--since d] [--limit n] [--bodies] [--json] [-f]` | Print the newest trace records oldest first; `-f` follows new ones until Ctrl-C |
 | `fcdev ingest sets list` | List the sets |
 | `fcdev ingest sets applies <set>` | List a set's kept applies |
 | `fcdev ingest sets reapply <set> <apply-id> [--dry-run]` | Go back to an earlier apply |

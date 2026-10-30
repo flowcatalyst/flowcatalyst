@@ -121,7 +121,7 @@ func buildSpec(withSDK bool) (*huma.OpenAPI, error) {
 	// Accept-and-ignore unknown request-body fields (serde-style leniency).
 	// Keep in sync with WirePlatform so the lockfile matches the live spec.
 	httpcompat.RelaxRequestBodies(api)
-	httpcompat.RelaxRequestBodiesDeep(api, functioncontrol.TraceLogOperationID, ingestionruntimeapi.PollOperationID, ingestionruntimeapi.ReportOperationID)
+	httpcompat.RelaxRequestBodiesDeep(api, functioncontrol.TraceLogOperationID, ingestionruntimeapi.PollOperationID, ingestionruntimeapi.ReportOperationID, ingestionruntimeapi.TracesOperationID)
 
 	// Exclude /bff/* from the published spec (handlers stay
 	// mounted in the server). Keep in sync with WirePlatform.

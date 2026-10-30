@@ -55,7 +55,10 @@ func RetentionMaxChunks() int {
 }
 
 // Pruned counts the rows one retention sweep deleted.
-type Pruned struct{ Metrics, Failures, TestRequests, JobKeys, Leases, RouteStates, SecretFetches, Runtimes int64 }
+type Pruned struct {
+	Metrics, Failures, TestRequests, JobKeys, Leases, RouteStates, SecretFetches, Runtimes int64
+	TraceLog, TraceWindows                                                                 int64
+}
 
 // Prune deletes the records past retention as of now, with the chunk budget
 // RetentionMaxChunks.
@@ -66,7 +69,9 @@ func (r *Repository) Prune(ctx context.Context, now time.Time) (Pruned, error) {
 // PruneWith deletes the records past retention as of now: exchange metrics
 // and failures after 30 days, test requests after a day, job keys after a
 // week, leases that have expired, and the route states, secret fetch records
-// and rows of runtimes unseen for 7 days. Each is judged by created_at, the time the platform
+// and rows of runtimes unseen for 7 days, and trace records after
+// FC_INGESTION_TRACE_RETENTION_DAYS (7) with the windows that ended before
+// that. Each is judged by created_at, the time the platform
 // wrote the row, never by a time the runtime supplied. The high-volume tables
 // go in chunks of retentionChunk, at most maxChunks of them a table; every
 // delete is idempotent, so concurrent sweeps on several replicas are safe.
@@ -89,7 +94,19 @@ func (r *Repository) PruneWith(ctx context.Context, now time.Time, maxChunks int
 		SELECT ctid FROM ing_job_keys WHERE created_at < $1 LIMIT $2))`, now.Add(-JobKeysRetention), maxChunks); err != nil {
 		return p, fmt.Errorf("ingestion repo: prune job keys: %w", err)
 	}
-	ct, err := r.pool.Exec(ctx, `DELETE FROM ing_leases WHERE expires_at < $1`, now)
+	// Trace records by created_at, never the runtime's `at`; a window row is
+	// kept for as long as its records could be, then goes (it is one row per
+	// ingestion, so this only tidies ingestions nobody traces any more).
+	if p.TraceLog, err = r.deleteChunked(ctx, `DELETE FROM ing_trace_log WHERE id IN (
+		SELECT id FROM ing_trace_log WHERE created_at < $1 LIMIT $2)`, now.Add(-TraceRetention()), maxChunks); err != nil {
+		return p, fmt.Errorf("ingestion repo: prune trace log: %w", err)
+	}
+	ct, err := r.pool.Exec(ctx, `DELETE FROM ing_trace_windows WHERE hard_stop < $1`, now.Add(-TraceRetention()))
+	if err != nil {
+		return p, fmt.Errorf("ingestion repo: prune trace windows: %w", err)
+	}
+	p.TraceWindows = ct.RowsAffected()
+	ct, err = r.pool.Exec(ctx, `DELETE FROM ing_leases WHERE expires_at < $1`, now)
 	if err != nil {
 		return p, fmt.Errorf("ingestion repo: prune leases: %w", err)
 	}
@@ -160,7 +177,8 @@ func RunRetention(ctx context.Context, repo *Repository, delay, interval time.Du
 		case p != Pruned{}:
 			slog.Info("ingestion retention sweep", "metrics", p.Metrics, "failures", p.Failures,
 				"test_requests", p.TestRequests, "job_keys", p.JobKeys, "leases", p.Leases,
-				"route_states", p.RouteStates, "secret_fetches", p.SecretFetches, "runtimes", p.Runtimes)
+				"route_states", p.RouteStates, "secret_fetches", p.SecretFetches, "runtimes", p.Runtimes,
+				"trace_log", p.TraceLog, "trace_windows", p.TraceWindows)
 		}
 		timer.Reset(interval)
 	}

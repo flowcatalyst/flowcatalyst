@@ -35,6 +35,9 @@ type IngestionTabStore interface {
 	ListRouteStates(ctx context.Context, ingestionID string) ([]ingestion.RouteState, error)
 	ActivityOf(ctx context.Context, ingestionID string, now time.Time) (*ingestion.Activity, error)
 	ListFailures(ctx context.Context, ingestionID, after string, limit int) (*ingestion.FailurePage, error)
+	// GetTraceWindow and QueryTraceLog back the Activity page's trace panel.
+	GetTraceWindow(ctx context.Context, ingestionID string) (*ingestion.TraceWindow, error)
+	QueryTraceLog(ctx context.Context, f ingestion.TraceLogFilter) ([]ingestion.TraceLogRecord, error)
 }
 
 // IngestionAudit reads an ingestion's audit rows (GET
@@ -50,6 +53,10 @@ type IngestionTabs struct {
 	Store IngestionTabStore
 	Audit IngestionAudit
 	Shell *shell.Shell
+	// Page is the Activity page: GET /ingestions/{id}/activity is the drawer's
+	// panel for a Datastar request and the page for a navigation. Nil serves
+	// the panel only.
+	Page *IngestionActivity
 
 	// now is the clock of the tests; nil is the wall clock.
 	now func() time.Time
@@ -88,21 +95,37 @@ func ingTabURL(id string) string { return ingTabBase + "/" + id }
 
 // load makes the by-id checks of GET /api/ingestions/{id}/...: the view
 // permission, the id, the ingestion and its reach. A panel is a fragment: a
-// navigation to it goes to the ingestion's own page instead. ok is false when
-// the request has been answered.
+// navigation to it goes to the ingestion's own page instead (the Activity
+// panel's address is also the Activity page, which handles a navigation
+// itself). ok is false when the request has been answered.
 func (h *IngestionTabs) load(w http.ResponseWriter, r *http.Request) (*ingestion.Ingestion, bool) {
+	i, ok := findIngestion(w, r, h.Store, h.Shell)
+	if !ok {
+		return nil, false
+	}
+	if !ds.IsDatastar(r) {
+		http.Redirect(w, r, ingTabURL(i.ID), http.StatusSeeOther) //nolint:gosec // G710: id is a validated element id
+		return nil, false
+	}
+	return i, true
+}
+
+// findIngestion is the by-id checks without the fragment rule: the view
+// permission, the id, the ingestion and its reach. ok is false when the
+// request has been answered.
+func findIngestion(w http.ResponseWriter, r *http.Request, store IngestionTabStore, sh *shell.Shell) (*ingestion.Ingestion, bool) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadIngestions(ac); err != nil {
-		h.Shell.Fail(w, r, err)
+		sh.Fail(w, r, err)
 		return nil, false
 	}
 	id := chi.URLParam(r, "id")
 	if !kit.ValidID(id) {
-		h.Shell.Fail(w, r, httperror.NotFound("Ingestion", id))
+		sh.Fail(w, r, httperror.NotFound("Ingestion", id))
 		return nil, false
 	}
-	i, err := h.Store.FindByID(ctx, id)
+	i, err := store.FindByID(ctx, id)
 	if err == nil && i == nil {
 		err = httperror.NotFound("Ingestion", id)
 	} else if err != nil {
@@ -112,11 +135,7 @@ func (h *IngestionTabs) load(w http.ResponseWriter, r *http.Request) (*ingestion
 		err = ingestion.CheckReach(ac, i)
 	}
 	if err != nil {
-		h.Shell.Fail(w, r, err)
-		return nil, false
-	}
-	if !ds.IsDatastar(r) {
-		http.Redirect(w, r, ingTabURL(id), http.StatusSeeOther) //nolint:gosec // G710: id is a validated element id
+		sh.Fail(w, r, err)
 		return nil, false
 	}
 	return i, true
@@ -135,9 +154,10 @@ type ingRouteRow struct {
 }
 
 type ingActivityView struct {
-	Routes                    []ingRouteRow
-	Day, Week                 string
-	LastExchange, LastFailure time.Time
+	ID                                  string
+	Routes                              []ingRouteRow
+	Day, Week                           string
+	LastPoll, LastExchange, LastFailure time.Time
 }
 
 func ingRouteSeverity(status string) kit.TagSeverity {
@@ -152,13 +172,20 @@ func ingRouteSeverity(status string) kit.TagSeverity {
 	return kit.TagSecondary
 }
 
-// ingCounts is a period's exchanges in one line.
+// ingCounts is a period's polls and exchanges in one line.
 func ingCounts(e ingestion.Exchanges) string {
-	return strconv.FormatInt(e.Completed, 10) + " completed, " + strconv.FormatInt(e.Failed, 10) + " failed, " +
+	return strconv.FormatInt(e.Polls, 10) + " poll" + ingPlural(e.Polls) + ", " +
+		strconv.FormatInt(e.Completed, 10) + " completed, " + strconv.FormatInt(e.Failed, 10) + " failed, " +
 		strconv.FormatInt(e.Records, 10) + " records, " + strconv.FormatInt(e.Jobs, 10) + " jobs"
 }
 
 func (h *IngestionTabs) activity(w http.ResponseWriter, r *http.Request) {
+	if !ds.IsDatastar(r) && h.Page != nil {
+		if i, ok := findIngestion(w, r, h.Store, h.Shell); ok {
+			h.Page.page(w, r, i)
+		}
+		return
+	}
 	i, ok := h.load(w, r)
 	if !ok {
 		return
@@ -174,20 +201,11 @@ func (h *IngestionTabs) activity(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, usecase.Internal("REPO", "activity failed", err))
 		return
 	}
-	v := ingActivityView{Day: ingCounts(a.Day), Week: ingCounts(a.Week)}
+	v := ingActivityView{ID: i.ID, Day: ingCounts(a.Day), Week: ingCounts(a.Week)}
 	for _, rs := range routes {
-		row := ingRouteRow{
-			Runtime: rs.RuntimeID, Status: rs.Status, Severity: ingRouteSeverity(rs.Status), Version: rs.Version,
-			Stale: rs.Version != i.Version, Reported: rs.UpdatedAt, Error: deref(rs.Error),
-		}
-		v.Routes = append(v.Routes, row)
+		v.Routes = append(v.Routes, ingRouteRowOf(i, rs))
 	}
-	if a.LastExchange != nil {
-		v.LastExchange = *a.LastExchange
-	}
-	if a.LastFailure != nil {
-		v.LastFailure = *a.LastFailure
-	}
+	v.LastPoll, v.LastExchange, v.LastFailure = derefTime(a.LastPoll), derefTime(a.LastExchange), derefTime(a.LastFailure)
 	if err := ds.NewSSE(w, r).Patch(ingActivityPanel(v)); err != nil {
 		slog.DebugContext(ctx, "ui: ingestion activity patch not delivered", "err", err)
 	}

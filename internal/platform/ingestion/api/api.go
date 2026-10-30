@@ -77,6 +77,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "listIngestionFailures", "/api/ingestions/{id}/failures", "List the failures runtimes reported for an ingestion", s.failures)
 	apiroute.Post(g, "dismissIngestionFailure", "/api/ingestions/{id}/failures/{failureId}/dismiss", "Dismiss a failure (a notice stops showing on the ingestion)", http.StatusOK, s.dismissFailure)
 	apiroute.Get(g, "listIngestionSourceKinds", "/api/ingestion-source-kinds", "List the source kinds a definition can use", s.sourceKinds)
+	registerTrace(g, s)
 	registerTests(g, s)
 	registerSets(g, s)
 }

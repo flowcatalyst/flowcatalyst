@@ -1,0 +1,280 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+// ingTraceFilterExpr applies a changed filter at once.
+const ingTraceFilterExpr = "el.form.requestSubmit()"
+
+// ingTraceLiveExpr sends the filter bar to its address as a Datastar GET.
+const ingTraceLiveExpr = "@get(el.action, {contentType: 'form'})"
+
+// ingTraceTickExpr asks for the panel again every few seconds while a window
+// is live, through the filter bar so that the filters are carried.
+const ingTraceTickExpr = "document.getElementById('" + ingTraceFiltersID + "')?.requestSubmit()"
+
+// ── the page ───────────────────────────────────────────────────────────
+templ ingActivityPage(v ingActView) {
+	<div>
+		<header class="fc-page-header">
+			<div>
+				<a href={ templ.SafeURL(v.Back) } class="mb-1.5 inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground" id="ing-activity-back">
+					@kit.Icon(kit.IconProps{Name: "arrow-left", Class: "size-4"})
+					Back to the ingestion
+				</a>
+				<h1 class="fc-page-title">Activity</h1>
+				<p class="fc-page-subtitle">
+					<code>{ v.Code }</code>
+					{ v.Name }
+					if v.Active {
+						@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Active"})
+					} else {
+						@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "Paused"})
+					}
+				</p>
+			</div>
+		</header>
+		<div class="flex flex-col gap-4">
+			@kit.FormSection(kit.FormSectionProps{Title: "Summary", Description: "Polls and exchanges every runtime reported."}) {
+				<div class="fc-detail-grid" id="ing-activity-totals">
+					@kit.DetailField(kit.DetailFieldProps{Label: "Last 24 hours", Value: v.Summary.Day, Span: true})
+					@kit.DetailField(kit.DetailFieldProps{Label: "Last 7 days", Value: v.Summary.Week, Span: true})
+					@kit.DetailField(kit.DetailFieldProps{Label: "Last poll"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: v.Summary.LastPoll, Empty: "None in 7 days"})
+					}
+					@kit.DetailField(kit.DetailFieldProps{Label: "Last exchange"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: v.Summary.LastExchange, Empty: "None in 7 days"})
+					}
+					@kit.DetailField(kit.DetailFieldProps{Label: "Last failure"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: v.Summary.LastFailure, Empty: "None kept"})
+					}
+				</div>
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Runtimes", Description: "What each runtime last reported for it."}) {
+				@ingRoutesTable(v.Routes)
+			}
+			@ingTraceSection(v.Trace)
+		</div>
+	</div>
+}
+
+templ ingRoutesTable(routes []ingRouteRow) {
+	if len(routes) == 0 {
+		<p class="text-sm text-muted-foreground" id="ing-no-routes">No runtime has reported it yet.</p>
+	} else {
+		@kit.Table(kit.TableProps{ID: "ing-routes", Dense: true, Attrs: templ.Attributes{"aria-label": "Runtime reports"}}) {
+			@kit.THead(kit.THeadProps{}) {
+				@kit.TR(kit.TRProps{Static: true}) {
+					@kit.TH(kit.THProps{}) {
+						Runtime
+					}
+					@kit.TH(kit.THProps{}) {
+						Status
+					}
+					@kit.TH(kit.THProps{Class: "text-right"}) {
+						Version
+					}
+					@kit.TH(kit.THProps{Class: "text-right"}) {
+						Reported
+					}
+				}
+			}
+			@kit.TBody(kit.TBodyProps{}) {
+				for _, rt := range routes {
+					@ingRouteRowC(rt)
+				}
+			}
+		}
+	}
+}
+
+// ── the trace panel ────────────────────────────────────────────────────
+
+// ingTraceSection is the Trace panel: the switch, the filters and the records.
+templ ingTraceSection(v ingTraceView) {
+	<section id={ ingTraceBodyID } class="fc-card flex flex-col gap-3" aria-labelledby="ing-trace-title">
+		<h2 id="ing-trace-title" class="text-[13px] font-semibold tracking-wide text-muted-foreground uppercase">Trace</h2>
+		if !v.Gates.View {
+			@kit.Alert(kit.AlertProps{ID: "ing-trace-no-permission", Icon: "info", Title: "You do not have permission to view traces (platform:ingestion:trace:view)."})
+		} else {
+			@ingTraceSwitch(v)
+			<form
+				id={ ingTraceFiltersID }
+				method="get"
+				action={ v.refreshURL() }
+				class="flex flex-wrap items-center gap-2"
+				data-on:submit={ ingTraceLiveExpr }
+			>
+				@kit.Select(kit.SelectProps{
+					ID: "ing-trace-kind", Name: "kind", Options: ingTraceKindOptions, Selected: v.Q.Kind, Placeholder: "Kind", Class: "min-w-36",
+					Attrs: templ.Attributes{"aria-label": "Kind", "data-on:change": ingTraceFilterExpr},
+				})
+				@kit.Select(kit.SelectProps{
+					ID: "ing-trace-runtime", Name: "runtime", Options: v.runtimeOptions(), Selected: v.Q.Runtime, Placeholder: "Runtime", Class: "min-w-44",
+					Attrs: templ.Attributes{"aria-label": "Runtime", "data-on:change": ingTraceFilterExpr},
+				})
+				@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Size: kit.ButtonSm, Type: "submit", Icon: "refresh-cw"}) {
+					Refresh
+				}
+			</form>
+			@ingTraceRecordList(v)
+			@ingTraceMore(v)
+		}
+	</section>
+}
+
+// ingTraceSwitch is the switch: the state of the window and, for a viewer who
+// may manage tracing, the controls. The refresh timer lives in it, so a patch
+// that finds no live window takes the timer away.
+templ ingTraceSwitch(v ingTraceView) {
+	<div id={ ingTraceSwitchID } class="flex flex-col gap-3">
+		<p class="text-sm text-muted-foreground">
+			Tracing is <strong>off by default</strong>. While it is on, each runtime that runs this ingestion records what its polls and exchanges did, the HTTP calls they made included, with their requests and responses. Headers and bodies can hold customer data; credential-like values are redacted.
+		</p>
+		if v.Window.Live {
+			<div class="flex flex-wrap items-center gap-2 text-sm" id="ing-trace-live">
+				@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Live"})
+				<span>
+					<time class="tabular-nums" datetime={ v.Window.UntilISO } data-until={ v.Window.UntilMs } data-refresh={ v.refreshURL() } data-on-interval__duration.1s={ traceTickExpr }>{ v.Window.Label }</time>
+					left
+				</span>
+				<span class="text-muted-foreground">{ v.Window.Window } per runtime, { v.Window.Sample }</span>
+				@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Refreshing every 5 s"})
+				<span hidden data-on-interval__duration.5s={ ingTraceTickExpr }></span>
+			</div>
+		} else if v.Window.Ever {
+			<div class="flex flex-wrap items-center gap-2 text-sm" id="ing-trace-off">
+				@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "Off"})
+				<span class="text-muted-foreground">Last switched on { v.Window.Window } per runtime, { v.Window.Sample }.</span>
+			</div>
+		} else {
+			<div class="flex items-center gap-2 text-sm" id="ing-trace-off">
+				@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "Off"})
+			</div>
+		}
+		if v.Gates.Manage && v.Gates.Bodies {
+			<form method="post" action={ ingTabURL(v.ID) + "/trace/enable" } class="flex flex-wrap items-end gap-3" id="ing-trace-enable" data-on:submit={ kit.SubmitForm }>
+				@kit.Field(kit.FieldProps{Label: "Capture for", For: "ing-trace-window"}) {
+					@kit.Select(kit.SelectProps{ID: "ing-trace-window", Name: "windowSecs", Options: ingTraceWindowOptions, Selected: "60", Class: "min-w-32"})
+				}
+				@kit.Field(kit.FieldProps{Label: "One capture every (seconds)", For: "ing-trace-sample"}) {
+					@kit.Input(kit.InputProps{
+						ID: "ing-trace-sample", Name: "sampleEverySecs", Type: "number", Value: "5", Class: "w-24",
+						Attrs: templ.Attributes{"min": "1", "max": "60", "step": "1", "inputmode": "numeric"},
+					})
+				}
+				@kit.Button(kit.ButtonProps{Type: "submit", Icon: "play"}) {
+					if v.Window.Live {
+						Start a new window
+					} else {
+						Switch on
+					}
+				}
+			</form>
+			<small class="text-xs text-muted-foreground" id="ing-trace-hint">{ ingTraceEnableHint }</small>
+		} else if v.Gates.Manage {
+			<small class="text-xs text-muted-foreground" id="ing-trace-needs-bodies">Switching tracing on records bodies, which needs the view-bodies permission (platform:ingestion:trace:view-bodies).</small>
+		}
+		if v.Gates.Manage && v.Window.Live {
+			<form method="post" action={ ingTabURL(v.ID) + "/trace/disable" } data-on:submit={ kit.SubmitForm } id="ing-trace-disable">
+				@kit.Button(kit.ButtonProps{Variant: kit.ButtonDestructiveOutline, Size: kit.ButtonSm, Type: "submit"}) {
+					Switch off
+				}
+			</form>
+		}
+		if v.Err != "" {
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Icon: "circle-x", Title: v.Err})
+		}
+	</div>
+}
+
+templ ingTraceRecordList(v ingTraceView) {
+	<div id={ ingTraceRecordsID } class="overflow-hidden rounded-lg border border-border" data-testid="ing-trace-log">
+		if len(v.Groups) == 0 {
+			<p id="ing-trace-empty" class="p-6 text-center text-sm text-muted-foreground" role="status">
+				if v.Q.filtered() {
+					No records match these filters.
+				} else {
+					No trace records yet. Switch tracing on; runtimes start within a sync.
+				}
+			</p>
+		}
+		@ingTraceGroupItems(v.Groups)
+	</div>
+}
+
+templ ingTraceGroupItems(groups []ingTraceGroup) {
+	for _, g := range groups {
+		@ingTraceGroupC(g)
+	}
+}
+
+templ ingTraceMore(v ingTraceView) {
+	<div id={ ingTraceMoreID } class="flex justify-center">
+		if v.Next != "" {
+			<a
+				href={ templ.SafeURL(v.moreURL()) }
+				class={ kit.ButtonClasses(kit.ButtonOutline, kit.ButtonSm) }
+				data-more={ v.moreURL() }
+				data-on:click__prevent="@get(el.dataset.more)"
+			>Load more</a>
+		}
+	</div>
+}
+
+// ingTraceGroupC is one capture: its head, and the records nested under it.
+templ ingTraceGroupC(g ingTraceGroup) {
+	<section id={ g.DomID } class="border-b border-border last:border-b-0" data-testid="ing-trace-capture">
+		@ingTraceRecC(g.Head, false)
+		if len(g.Items) > 0 {
+			<div class="ml-6 border-l border-border">
+				for _, it := range g.Items {
+					@ingTraceRecC(it, true)
+				}
+			</div>
+		}
+	</section>
+}
+
+// ingTraceRecC is one record: a summary line, and the record in full when it
+// is opened. A record never changes, so a refresh leaves the rows it already
+// has alone (data-ignore-morph): the ones the viewer opened stay open.
+templ ingTraceRecC(rec ingTraceRec, nested bool) {
+	<details id={ rec.DomID } class="group" data-ignore-morph data-kind={ rec.Kind }>
+		<summary class="flex cursor-pointer list-none flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-sm outline-none hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+			@kit.Icon(kit.IconProps{Name: "chevron-right", Class: "size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"})
+			<span class="shrink-0 text-xs text-muted-foreground tabular-nums">
+				@kit.LocalTime(kit.LocalTimeProps{At: rec.At})
+			</span>
+			<span class="inline-flex gap-1.5">
+				@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: rec.Kind})
+				@kit.Tag(kit.TagProps{Severity: traceLevelSeverity(rec.Level), Label: rec.Level})
+				if rec.Outcome != "" {
+					@kit.Tag(kit.TagProps{Severity: ingOutcomeSeverity(rec.Outcome), Label: rec.Outcome})
+				}
+			</span>
+			<span class="min-w-0 flex-1 basis-60 break-words">{ rec.Headline }</span>
+			if rec.DurationText != "" {
+				<span class="text-xs text-muted-foreground tabular-nums">{ rec.DurationText }</span>
+			}
+			<code class="fc-mono-chip" title="Runtime">{ rec.Runtime }</code>
+		</summary>
+		<div class="flex flex-col gap-2 px-3 pb-3 pl-10">
+			<div class="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+				<span>{ rec.versionText }</span>
+				<span>{ rec.atText }</span>
+			</div>
+			if rec.Redacted {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "lock", Title: ingBodiesHidden})
+			}
+			if rec.HTTP != nil {
+				<div class="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(18rem,1fr))]">
+					for _, p := range rec.HTTP.Panels {
+						@tracePanelC(p)
+					}
+				</div>
+			} else if rec.Data != "" {
+				@traceBlock("data", "data", rec.DataID, rec.Data, "")
+			}
+		</div>
+	</details>
+}

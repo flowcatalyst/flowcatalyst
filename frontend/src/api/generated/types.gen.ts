@@ -1972,6 +1972,14 @@ export type ExchangeWindow = {
     failed: number;
     from: string;
     ingestionId: string;
+    /**
+     * When the last poll in the window ended
+     */
+    lastPollAt?: string;
+    /**
+     * Polls finished in the window, empty ones included
+     */
+    polls?: number;
     records: number;
     to: string;
     [key: string]: unknown;
@@ -2296,6 +2304,22 @@ export type IngestionDefinition = {
      */
     split: unknown;
     target: Target;
+};
+
+export type IngestionEnableTraceRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * A runtime starts a capture at most this often, 1 to 60 seconds (default 5). 400 TRACE_SAMPLE_INVALID otherwise.
+     */
+    sampleEverySecs?: number;
+    /**
+     * How long each runtime captures: 60, 300 or 900 (default 60). 400 TRACE_WINDOW_INVALID otherwise.
+     */
+    windowSecs?: number;
+    [key: string]: unknown;
 };
 
 export type IngestionFailureListResponse = {
@@ -2658,6 +2682,125 @@ export type IngestionTestResponse = {
      * What the runtime did, step by step, for a person
      */
     steps?: Array<string>;
+};
+
+export type IngestionTraceAck = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    accepted: number;
+    dropped: number;
+};
+
+export type IngestionTraceBatch = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    records: Array<IngestionTraceRecord>;
+    runtimeId: string;
+    [key: string]: unknown;
+};
+
+export type IngestionTraceLogResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Pass as cursor to fetch the next (older) page; null on the last page
+     */
+    nextCursor: string | null;
+    records: Array<IngestionTraceRecordResponse>;
+};
+
+export type IngestionTraceRecord = {
+    /**
+     * Unix milliseconds, the runtime's clock
+     */
+    at: number;
+    /**
+     * Shared by the records of one capture
+     */
+    captureId: string;
+    /**
+     * Cut to a stub over 80 KiB
+     */
+    data?: unknown;
+    id?: string;
+    ingestionId: string;
+    /**
+     * poll, exchange, http or error
+     */
+    kind: string;
+    /**
+     * info, warn or error
+     */
+    level: string;
+    /**
+     * One line; cut to 1000 characters
+     */
+    message: string;
+    version: number;
+    windowId: string;
+    [key: string]: unknown;
+};
+
+export type IngestionTraceRecordResponse = {
+    at: string;
+    /**
+     * Shared by the records of one capture: a poll cycle or one exchange
+     */
+    captureId: string;
+    /**
+     * The record's data, by kind
+     */
+    data: unknown;
+    id: string;
+    kind: 'poll' | 'exchange' | 'http' | 'error';
+    level: string;
+    message: string;
+    /**
+     * Sensitive parts withheld (no platform:ingestion:trace:view-bodies): an http record keeps the client, method, URL path, status, sizes, duration, attempt and failure; an exchange record its counts and outcome; a poll record all but its error; an error record nothing in data. The message of an http, exchange or error record is then rebuilt from what stays.
+     */
+    redacted?: boolean;
+    runtimeId: string;
+    version: number;
+    windowId: string;
+};
+
+export type IngestionTraceStateResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    enabledAt: string | null;
+    enabledBy: string | null;
+    /**
+     * No runtime captures past this; switching off sets it to the switch-off time
+     */
+    hardStop: string | null;
+    /**
+     * The window is open now (hardStop is in the future)
+     */
+    live: boolean;
+    /**
+     * The longest window that may be switched on
+     */
+    maxWindowSecs: number;
+    /**
+     * A runtime starts a capture of this ingestion at most this often
+     */
+    sampleEverySecs: number | null;
+    /**
+     * A new id every time tracing is switched on
+     */
+    windowId: string | null;
+    /**
+     * How long each runtime captures, counted from when it first sees the window
+     */
+    windowSecs: number | null;
 };
 
 export type IngestionVersionListResponse = {
@@ -3160,6 +3303,10 @@ export type PollResponse = {
      * Pending test requests for kinds the runtime carries
      */
     tests: Array<RuntimeTest>;
+    /**
+     * The open trace windows (hardStop in the future) of the ingestions listed above, for this runtime; absent when none. A windowId seen for the first time starts the runtime's own window of windowSecs, ending no later than hardStop; the same windowId again changes nothing; a different one replaces the window; an ingestion no longer listed has none.
+     */
+    traces?: Array<RuntimeTrace>;
 };
 
 export type PoolConfig = {
@@ -4146,6 +4293,26 @@ export type RuntimeTest = {
      */
     id: string;
     ingestion: RuntimeIngestion;
+};
+
+export type RuntimeTrace = {
+    /**
+     * The runtime never captures past this, and the platform refuses records dated after it (plus a short grace)
+     */
+    hardStop: string;
+    ingestionId: string;
+    /**
+     * The runtime starts a capture of this ingestion at most this often
+     */
+    sampleEverySecs: number;
+    /**
+     * A new id every time tracing is switched on
+     */
+    windowId: string;
+    /**
+     * How long the runtime captures, counted from when it first sees this windowId
+     */
+    windowSecs: number;
 };
 
 export type SaveIngestionVersionRequest = {
@@ -6937,6 +7104,18 @@ export type IngestionConfigWrittenWritable = {
     warnings?: Array<string>;
 };
 
+export type IngestionEnableTraceRequestWritable = {
+    /**
+     * A runtime starts a capture at most this often, 1 to 60 seconds (default 5). 400 TRACE_SAMPLE_INVALID otherwise.
+     */
+    sampleEverySecs?: number;
+    /**
+     * How long each runtime captures: 60, 300 or 900 (default 60). 400 TRACE_WINDOW_INVALID otherwise.
+     */
+    windowSecs?: number;
+    [key: string]: unknown;
+};
+
 export type IngestionFailureListResponseWritable = {
     failures: Array<IngestionFailureResponseWritable>;
     hasMore: boolean;
@@ -7115,6 +7294,54 @@ export type IngestionTestResponseWritable = {
      * What the runtime did, step by step, for a person
      */
     steps?: Array<string>;
+};
+
+export type IngestionTraceAckWritable = {
+    accepted: number;
+    dropped: number;
+};
+
+export type IngestionTraceBatchWritable = {
+    records: Array<IngestionTraceRecord>;
+    runtimeId: string;
+    [key: string]: unknown;
+};
+
+export type IngestionTraceLogResponseWritable = {
+    /**
+     * Pass as cursor to fetch the next (older) page; null on the last page
+     */
+    nextCursor: string | null;
+    records: Array<IngestionTraceRecordResponse>;
+};
+
+export type IngestionTraceStateResponseWritable = {
+    enabledAt: string | null;
+    enabledBy: string | null;
+    /**
+     * No runtime captures past this; switching off sets it to the switch-off time
+     */
+    hardStop: string | null;
+    /**
+     * The window is open now (hardStop is in the future)
+     */
+    live: boolean;
+    /**
+     * The longest window that may be switched on
+     */
+    maxWindowSecs: number;
+    /**
+     * A runtime starts a capture of this ingestion at most this often
+     */
+    sampleEverySecs: number | null;
+    /**
+     * A new id every time tracing is switched on
+     */
+    windowId: string | null;
+    /**
+     * How long each runtime captures, counted from when it first sees the window
+     */
+    windowSecs: number | null;
 };
 
 export type IngestionVersionListResponseWritable = {
@@ -7400,6 +7627,10 @@ export type PollResponseWritable = {
      * Pending test requests for kinds the runtime carries
      */
     tests: Array<RuntimeTest>;
+    /**
+     * The open trace windows (hardStop in the future) of the ingestions listed above, for this runtime; absent when none. A windowId seen for the first time starts the runtime's own window of windowSecs, ending no later than hardStop; the same windowId again changes nothing; a different one replaces the window; an ingestion no longer listed has none.
+     */
+    traces?: Array<RuntimeTrace>;
 };
 
 export type PortalAppListResponseWritable = {
@@ -14284,6 +14515,31 @@ export type IngestionRuntimePutStateResponses = {
 
 export type IngestionRuntimePutStateResponse = IngestionRuntimePutStateResponses[keyof IngestionRuntimePutStateResponses];
 
+export type IngestionRuntimeTracesData = {
+    body: IngestionTraceBatchWritable;
+    path?: never;
+    query?: never;
+    url: '/api/ingestion-runtime/v1/traces';
+};
+
+export type IngestionRuntimeTracesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type IngestionRuntimeTracesError = IngestionRuntimeTracesErrors[keyof IngestionRuntimeTracesErrors];
+
+export type IngestionRuntimeTracesResponses = {
+    /**
+     * Accepted
+     */
+    202: IngestionTraceAck;
+};
+
+export type IngestionRuntimeTracesResponse = IngestionRuntimeTracesResponses[keyof IngestionRuntimeTracesResponses];
+
 export type ListIngestionSetsData = {
     body?: never;
     path?: never;
@@ -14992,6 +15248,143 @@ export type ListIngestionSecretsResponses = {
 };
 
 export type ListIngestionSecretsResponse = ListIngestionSecretsResponses[keyof ListIngestionSecretsResponses];
+
+export type DisableIngestionTraceData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/trace';
+};
+
+export type DisableIngestionTraceErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DisableIngestionTraceError = DisableIngestionTraceErrors[keyof DisableIngestionTraceErrors];
+
+export type DisableIngestionTraceResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DisableIngestionTraceResponse = DisableIngestionTraceResponses[keyof DisableIngestionTraceResponses];
+
+export type GetIngestionTraceData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/trace';
+};
+
+export type GetIngestionTraceErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetIngestionTraceError = GetIngestionTraceErrors[keyof GetIngestionTraceErrors];
+
+export type GetIngestionTraceResponses = {
+    /**
+     * OK
+     */
+    200: IngestionTraceStateResponse;
+};
+
+export type GetIngestionTraceResponse = GetIngestionTraceResponses[keyof GetIngestionTraceResponses];
+
+export type EnableIngestionTraceData = {
+    body: IngestionEnableTraceRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/trace';
+};
+
+export type EnableIngestionTraceErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type EnableIngestionTraceError = EnableIngestionTraceErrors[keyof EnableIngestionTraceErrors];
+
+export type EnableIngestionTraceResponses = {
+    /**
+     * OK
+     */
+    200: IngestionTraceStateResponse;
+};
+
+export type EnableIngestionTraceResponse = EnableIngestionTraceResponses[keyof EnableIngestionTraceResponses];
+
+export type ListIngestionTraceLogData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: {
+        /**
+         * Only this record kind
+         */
+        kind?: 'poll' | 'exchange' | 'http' | 'error';
+        /**
+         * Only this runtime's records
+         */
+        runtimeId?: string;
+        /**
+         * One capture's records
+         */
+        captureId?: string;
+        /**
+         * Oldest record time: RFC 3339 or unix milliseconds
+         */
+        since?: string;
+        /**
+         * Newest record time: RFC 3339 or unix milliseconds
+         */
+        until?: string;
+        /**
+         * Page size, default 100, max 500
+         */
+        limit?: number;
+        /**
+         * nextCursor of the previous page
+         */
+        cursor?: string;
+    };
+    url: '/api/ingestions/{id}/trace-log';
+};
+
+export type ListIngestionTraceLogErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListIngestionTraceLogError = ListIngestionTraceLogErrors[keyof ListIngestionTraceLogErrors];
+
+export type ListIngestionTraceLogResponses = {
+    /**
+     * OK
+     */
+    200: IngestionTraceLogResponse;
+};
+
+export type ListIngestionTraceLogResponse = ListIngestionTraceLogResponses[keyof ListIngestionTraceLogResponses];
 
 export type ListIngestionVersionsData = {
     body?: never;

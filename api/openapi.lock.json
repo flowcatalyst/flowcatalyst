@@ -5418,6 +5418,17 @@
           "ingestionId": {
             "type": "string"
           },
+          "lastPollAt": {
+            "description": "When the last poll in the window ended",
+            "format": "date-time",
+            "type": "string"
+          },
+          "polls": {
+            "description": "Polls finished in the window, empty ones included",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "records": {
             "format": "int64",
             "minimum": 0,
@@ -6238,6 +6249,31 @@
           "split",
           "target"
         ],
+        "type": "object"
+      },
+      "IngestionEnableTraceRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionEnableTraceRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "sampleEverySecs": {
+            "description": "A runtime starts a capture at most this often, 1 to 60 seconds (default 5). 400 TRACE_SAMPLE_INVALID otherwise.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "windowSecs": {
+            "description": "How long each runtime captures: 60, 300 or 900 (default 60). 400 TRACE_WINDOW_INVALID otherwise.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
         "type": "object"
       },
       "IngestionFailureListResponse": {
@@ -7104,6 +7140,288 @@
           "status",
           "createdAt",
           "expiresAt"
+        ],
+        "type": "object"
+      },
+      "IngestionTraceAck": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionTraceAck.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "accepted": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "dropped": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accepted",
+          "dropped"
+        ],
+        "type": "object"
+      },
+      "IngestionTraceBatch": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionTraceBatch.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionTraceRecord"
+            },
+            "maxItems": 500,
+            "type": "array"
+          },
+          "runtimeId": {
+            "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runtimeId",
+          "records"
+        ],
+        "type": "object"
+      },
+      "IngestionTraceLogResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionTraceLogResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "nextCursor": {
+            "description": "Pass as cursor to fetch the next (older) page; null on the last page",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionTraceRecordResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "records",
+          "nextCursor"
+        ],
+        "type": "object"
+      },
+      "IngestionTraceRecord": {
+        "additionalProperties": true,
+        "properties": {
+          "at": {
+            "description": "Unix milliseconds, the runtime's clock",
+            "format": "int64",
+            "type": "integer"
+          },
+          "captureId": {
+            "description": "Shared by the records of one capture",
+            "type": "string"
+          },
+          "data": {
+            "description": "Cut to a stub over 80 KiB"
+          },
+          "id": {
+            "type": "string"
+          },
+          "ingestionId": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "poll, exchange, http or error",
+            "type": "string"
+          },
+          "level": {
+            "description": "info, warn or error",
+            "type": "string"
+          },
+          "message": {
+            "description": "One line; cut to 1000 characters",
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "windowId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ingestionId",
+          "version",
+          "windowId",
+          "captureId",
+          "at",
+          "kind",
+          "level",
+          "message"
+        ],
+        "type": "object"
+      },
+      "IngestionTraceRecordResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "captureId": {
+            "description": "Shared by the records of one capture: a poll cycle or one exchange",
+            "type": "string"
+          },
+          "data": {
+            "description": "The record's data, by kind"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "poll",
+              "exchange",
+              "http",
+              "error"
+            ],
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "redacted": {
+            "description": "Sensitive parts withheld (no platform:ingestion:trace:view-bodies): an http record keeps the client, method, URL path, status, sizes, duration, attempt and failure; an exchange record its counts and outcome; a poll record all but its error; an error record nothing in data. The message of an http, exchange or error record is then rebuilt from what stays.",
+            "type": "boolean"
+          },
+          "runtimeId": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "windowId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "version",
+          "windowId",
+          "captureId",
+          "runtimeId",
+          "kind",
+          "level",
+          "message",
+          "data"
+        ],
+        "type": "object"
+      },
+      "IngestionTraceStateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IngestionTraceStateResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "enabledAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabledBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hardStop": {
+            "description": "No runtime captures past this; switching off sets it to the switch-off time",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "live": {
+            "description": "The window is open now (hardStop is in the future)",
+            "type": "boolean"
+          },
+          "maxWindowSecs": {
+            "description": "The longest window that may be switched on",
+            "format": "int64",
+            "type": "integer"
+          },
+          "sampleEverySecs": {
+            "description": "A runtime starts a capture of this ingestion at most this often",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "windowId": {
+            "description": "A new id every time tracing is switched on",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "windowSecs": {
+            "description": "How long each runtime captures, counted from when it first sees the window",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "live",
+          "windowId",
+          "windowSecs",
+          "sampleEverySecs",
+          "enabledAt",
+          "hardStop",
+          "enabledBy",
+          "maxWindowSecs"
         ],
         "type": "object"
       },
@@ -8593,6 +8911,13 @@
             "description": "Pending test requests for kinds the runtime carries",
             "items": {
               "$ref": "#/components/schemas/RuntimeTest"
+            },
+            "type": "array"
+          },
+          "traces": {
+            "description": "The open trace windows (hardStop in the future) of the ingestions listed above, for this runtime; absent when none. A windowId seen for the first time starts the runtime's own window of windowSecs, ending no later than hardStop; the same windowId again changes nothing; a different one replaces the window; an ingestion no longer listed has none.",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeTrace"
             },
             "type": "array"
           }
@@ -11078,6 +11403,41 @@
           "id",
           "expiresAt",
           "ingestion"
+        ],
+        "type": "object"
+      },
+      "RuntimeTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "hardStop": {
+            "description": "The runtime never captures past this, and the platform refuses records dated after it (plus a short grace)",
+            "format": "date-time",
+            "type": "string"
+          },
+          "ingestionId": {
+            "type": "string"
+          },
+          "sampleEverySecs": {
+            "description": "The runtime starts a capture of this ingestion at most this often",
+            "format": "int64",
+            "type": "integer"
+          },
+          "windowId": {
+            "description": "A new id every time tracing is switched on",
+            "type": "string"
+          },
+          "windowSecs": {
+            "description": "How long the runtime captures, counted from when it first sees this windowId",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ingestionId",
+          "windowId",
+          "windowSecs",
+          "sampleEverySecs",
+          "hardStop"
         ],
         "type": "object"
       },
@@ -24555,6 +24915,47 @@
         ]
       }
     },
+    "/api/ingestion-runtime/v1/traces": {
+      "post": {
+        "operationId": "ingestionRuntimeTraces",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestionTraceBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionTraceAck"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Ship trace records captured inside an ingestion's open trace window (ingestion runtime only)",
+        "tags": [
+          "ingestion-runtime"
+        ]
+      }
+    },
     "/api/ingestion-sets": {
       "get": {
         "operationId": "listIngestionSets",
@@ -25744,6 +26145,250 @@
           }
         },
         "summary": "List the secrets the live definition binds and when each runtime last fetched them (names only, never values)",
+        "tags": [
+          "ingestions"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/ingestions/{id}/trace": {
+      "delete": {
+        "operationId": "disableIngestionTrace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Switch tracing off now (idempotent)",
+        "tags": [
+          "ingestions"
+        ],
+        "x-sdk": "admin"
+      },
+      "get": {
+        "operationId": "getIngestionTrace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionTraceStateResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read an ingestion's trace window: whether tracing is on and until when",
+        "tags": [
+          "ingestions"
+        ],
+        "x-sdk": "admin"
+      },
+      "put": {
+        "operationId": "enableIngestionTrace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestionEnableTraceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionTraceStateResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Switch tracing on: a new window every runtime that runs the ingestion captures under",
+        "tags": [
+          "ingestions"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/ingestions/{id}/trace-log": {
+      "get": {
+        "operationId": "listIngestionTraceLog",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this record kind",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "Only this record kind",
+              "enum": [
+                "poll",
+                "exchange",
+                "http",
+                "error"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this runtime's records",
+            "explode": false,
+            "in": "query",
+            "name": "runtimeId",
+            "schema": {
+              "description": "Only this runtime's records",
+              "type": "string"
+            }
+          },
+          {
+            "description": "One capture's records",
+            "explode": false,
+            "in": "query",
+            "name": "captureId",
+            "schema": {
+              "description": "One capture's records",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Oldest record time: RFC 3339 or unix milliseconds",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Oldest record time: RFC 3339 or unix milliseconds",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Newest record time: RFC 3339 or unix milliseconds",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "Newest record time: RFC 3339 or unix milliseconds",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size, default 100, max 500",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "Page size, default 100, max 500",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "nextCursor of the previous page",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "nextCursor of the previous page",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionTraceLogResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the trace records runtimes captured for an ingestion, newest first",
         "tags": [
           "ingestions"
         ],
