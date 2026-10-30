@@ -319,6 +319,22 @@ func TestDispatchJobsList(t *testing.T) {
 	mustContain(t, full, `id="dj-list"`, `id="dj-group"`, `value="order-42"`)
 }
 
+// A dispatch job's id is an untyped TSID, and the ones made now start with a
+// digit: the row still links to its drawer, and the drawer opens, as a live
+// fetch and as a whole page (whose signals carry the id).
+func TestDispatchJobWithADigitLeadingID(t *testing.T) {
+	h := newDJHarness()
+	const id = "6GRSCM02H2KF8"
+	h.store.jobs = append(h.store.jobs, djJob(id, "orders:billing:invoice:created", common.DispatchFailed, "", 5))
+	list := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs"})
+	mustContain(t, list, `href="/ui/dispatch-jobs/`+id+`"`, "View payload and attempts")
+
+	live := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/" + id, datastar: true})
+	mustContain(t, live, "orders:billing:invoice:created", `action="/ui/dispatch-jobs/`+id+`/requeue"`)
+	page := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/" + id})
+	mustContain(t, page, `<aside id="dj-drawer"`, "&#39;"+id+"&#39;")
+}
+
 func TestDispatchJobsCursorPaging(t *testing.T) {
 	h := newDJHarness()
 	body := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs?size=50"})

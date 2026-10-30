@@ -85,7 +85,7 @@ func (v djView) pager() kit.CursorPagerProps {
 func (v djView) signals() string {
 	sel := ""
 	if v.Drawer != nil {
-		sel = kit.ID(v.Drawer.ID)
+		sel = v.Drawer.ID // matched kit.ValidRecordID: no quote can occur
 	}
 	return "{" + djDrawerSig + ": '" + sel + "', " + djSelSig + ": 0}"
 }

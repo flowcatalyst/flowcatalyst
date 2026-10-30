@@ -757,7 +757,7 @@ func (h *DispatchJobs) toRow(ctx context.Context, q djQuery, j *dispatchjob.Disp
 	row := djRow{
 		ID: j.ID, Href: djURL(j.ID), Descriptor: deref(j.Descriptor), Code: j.Code,
 		Status: string(j.Status), Severity: djSeverity(string(j.Status)), Created: j.CreatedAt,
-		RequeueAction: djURL(j.ID) + "/requeue", RedriveAction: djURL(j.ID) + "/redrive", ValidID: kit.ValidID(j.ID),
+		RequeueAction: djURL(j.ID) + "/requeue", RedriveAction: djURL(j.ID) + "/redrive", ValidID: kit.ValidRecordID(j.ID),
 	}
 	row.Meta, row.MetaFull = metadataPreview(j.Metadata)
 	switch {
@@ -1041,7 +1041,7 @@ func (h *DispatchJobs) nameRefs(ctx context.Context, ac *auth.AuthContext, j *di
 
 func djID(r *http.Request) (string, error) {
 	id := chi.URLParam(r, "id")
-	if !kit.ValidID(id) {
+	if !kit.ValidRecordID(id) {
 		return "", httperror.NotFound("DispatchJob", id)
 	}
 	return id, nil
@@ -1163,7 +1163,7 @@ func (h *DispatchJobs) auditSection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ds.IsDatastar(r) {
-		http.Redirect(w, r, djURL(id), http.StatusSeeOther) //nolint:gosec // G710: djPath plus an id kit.ValidID accepted
+		http.Redirect(w, r, djURL(id), http.StatusSeeOther) //nolint:gosec // G710: djPath plus an id kit.ValidRecordID accepted
 		return
 	}
 	entity := djAuditEntity
@@ -1499,7 +1499,7 @@ func (h *DispatchJobs) statusAction(w http.ResponseWriter, r *http.Request, perm
 	}
 	if !ds.IsDatastar(r) {
 		h.Shell.SetFlash(w, flash)
-		http.Redirect(w, r, djURL(id), http.StatusSeeOther) //nolint:gosec // G710: djPath plus an id kit.ValidID accepted
+		http.Redirect(w, r, djURL(id), http.StatusSeeOther) //nolint:gosec // G710: djPath plus an id kit.ValidRecordID accepted
 		return
 	}
 	sse := ds.NewSSE(w, r)
@@ -1539,7 +1539,7 @@ func (h *DispatchJobs) editPayload(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ds.IsDatastar(r) {
 		h.Shell.SetFlash(w, flashDjPayloadSaved)
-		http.Redirect(w, r, djURL(id), http.StatusSeeOther) //nolint:gosec // G710: djPath plus an id kit.ValidID accepted
+		http.Redirect(w, r, djURL(id), http.StatusSeeOther) //nolint:gosec // G710: djPath plus an id kit.ValidRecordID accepted
 		return
 	}
 	sse := ds.NewSSE(w, r)
@@ -1564,7 +1564,7 @@ func (h *DispatchJobs) refreshList(sse *ds.SSE, r *http.Request, ac *auth.AuthCo
 
 func (h *DispatchJobs) refreshDrawer(sse *ds.SSE, r *http.Request, ac *auth.AuthContext, id string) {
 	ctx := r.Context()
-	if !kit.ValidID(id) {
+	if !kit.ValidRecordID(id) {
 		return
 	}
 	j, err := h.loadJob(ctx, ac, id)

@@ -103,7 +103,7 @@ func dbgDjPage(v dbgDjView) templ.Component {
 func (v dbgDjView) signals() string {
 	sel := ""
 	if v.Drawer != nil {
-		sel = v.Drawer.ID // matched kit.ValidID: no quote can occur
+		sel = v.Drawer.ID // matched kit.ValidRecordID: no quote can occur
 	}
 	return "{" + dbgDjDrawerSig + ": '" + sel + "'}"
 }

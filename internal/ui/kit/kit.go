@@ -145,6 +145,15 @@ func Path(p string) string {
 // from a request with it before they reach ID.
 func ValidID(id string) bool { return idPattern.MatchString(id) }
 
+var recordIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// ValidRecordID reports whether id may be a record's id in a URL path: letters,
+// digits, '_' and '-'. Unlike ValidID it allows a leading digit, because an
+// untyped TSID (an event's, a dispatch job's) can start with one, and the
+// ones made now do. Such an id is never an element id or part of a Datastar
+// expression: build those from a prefix ("dj-" + id).
+func ValidRecordID(id string) bool { return recordIDPattern.MatchString(id) }
+
 // orDefault returns v, or def when v is empty.
 func orDefault[T ~string](v, def T) T {
 	if v == "" {

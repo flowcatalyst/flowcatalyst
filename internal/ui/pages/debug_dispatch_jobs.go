@@ -189,7 +189,7 @@ func (h *DebugDispatchJobs) detail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	if !kit.ValidID(id) {
+	if !kit.ValidRecordID(id) {
 		h.Shell.Fail(w, r, httperror.NotFound("DispatchJob", id))
 		return
 	}
