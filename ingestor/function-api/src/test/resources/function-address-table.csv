@@ -1,0 +1,36 @@
+#
+# Address-parsing table for io.flowcatalyst.function.FunctionAddressTest: the two-label
+# address {applicationCode}.{name} (internal/platform/function BuildAddress; name rule
+# ^[a-z][a-z0-9-]{0,62}$, application code rule ^[a-z][a-z0-9-]*$).
+#
+# Columns: raw (always double-quoted, so an empty string is a legal row),
+# accepted (true/false). For every accepted row, render(raw) == raw — the
+# parser never normalises.
+#
+raw,accepted
+"orders.order-created",true
+"a.b",true
+"app-1.fn-2",true
+"a1-b2.c3-d4",true
+"orders.create-",true
+"orders",false
+"billing.invoices.create",false
+"a.b.c.d",false
+"orders..create",false
+".create",false
+"orders.",false
+".",false
+"",false
+"Orders.create",false
+"orders.Create",false
+"orders.order_created",false
+"order_s.create",true
+"1orders.create",false
+"orders.1create",false
+"-orders.create",false
+"orders.-create",false
+"orders.*",false
+"*.create",false
+" orders.create",false
+"orders.create ",false
+"orders.create@live",false

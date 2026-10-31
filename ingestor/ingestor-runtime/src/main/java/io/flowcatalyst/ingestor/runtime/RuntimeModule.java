@@ -14,13 +14,17 @@ import io.flowcatalyst.framework.flowcatalyst.PlatformClient;
 import io.flowcatalyst.framework.http.Routes;
 import io.flowcatalyst.framework.http.ratelimit.RateLimiter;
 import io.flowcatalyst.framework.httpclient.Auth;
+import io.flowcatalyst.framework.httpclient.HttpClients;
 import io.flowcatalyst.framework.httpclient.ServiceClient;
 import io.flowcatalyst.framework.httpclient.ServiceOptions;
 import io.flowcatalyst.framework.httpclient.module.ServiceClients;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
+import io.flowcatalyst.ingestor.functions.FunctionHost;
+import io.flowcatalyst.ingestor.functions.control.HttpControlPlane;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.InstantSource;
 import java.util.Optional;
@@ -83,6 +87,26 @@ public final class RuntimeModule implements Module {
           .withDefault(false)
           .describedAs("Whether the runtime reports the camel-route kind and runs its ingestions. A route runs with this runtime's network, identity and environment.");
 
+  /** Whether this process hosts JVM functions. */
+  public static final Setting<Boolean> FUNCTIONS_ENABLED =
+      Setting.bool("ingest.functions-enabled")
+          .withDefault(true)
+          .describedAs(
+              "Whether this process hosts JVM functions: it fetches the platform's desired state for its pool, loads the jvm versions in it and serves /fn/. The runtime's service account must also hold platform:function-runner.");
+
+  /** The function pool this process serves. */
+  public static final Setting<String> FUNCTIONS_POOL =
+      Setting.string("ingest.functions-pool")
+          .withDefault("default")
+          .describedAs("The function pool this process serves (the pool of its desired-state request); the pool of the Go function runner by default.");
+
+  /** Whether this process runs ingestions. */
+  public static final Setting<Boolean> INGESTION_ENABLED =
+      Setting.bool("ingest.ingestion-enabled")
+          .withDefault(true)
+          .describedAs(
+              "Whether this process runs ingestions. Off, it never polls the platform for ingestions, so it takes no ingestion leases, runs no routes and serves no /ingest/ endpoint: a functions-only process.");
+
   /** How long a revealed secret is kept. */
   public static final Setting<Duration> SECRETS_CACHE_TTL =
       Setting.duration("ingest.secrets-cache-ttl")
@@ -104,6 +128,9 @@ public final class RuntimeModule implements Module {
    */
   static final String CAMEL_VIRTUAL_THREADS = "camel.threads.virtual.enabled";
 
+  /** The name of the runtime's client for the platform's function control plane. */
+  static final String FUNCTIONS_CLIENT = "platform-functions";
+
   /** The background loop that polls the platform; its health check is {@code background:ingest-poll}. */
   public static final String LOOP = "ingest-poll";
 
@@ -119,6 +146,7 @@ public final class RuntimeModule implements Module {
 
   private @Nullable ProducerTemplate producer;
   private @Nullable ScheduledExecutorService watchdog;
+  private @Nullable FunctionHost functions;
 
   /** {@code runtime-<hostname>}, with anything the platform would refuse in a runtime id made {@code -}. */
   private static String defaultRuntimeId() {
@@ -150,6 +178,9 @@ public final class RuntimeModule implements Module {
     app.declare(EXTENSIONS_DIR);
     app.declare(EXTENSIONS_MANIFEST);
     app.declare(CAMEL_ROUTES_ENABLED);
+    app.declare(FUNCTIONS_ENABLED);
+    app.declare(FUNCTIONS_POOL);
+    app.declare(INGESTION_ENABLED);
     app.declare(SECRETS_CACHE_TTL);
     app.declare(TRACE_QUEUE);
 
@@ -290,6 +321,42 @@ public final class RuntimeModule implements Module {
 
   @Override
   public void boot(App app) {
+    if (app.config().get(INGESTION_ENABLED)) {
+      bootIngestion(app);
+    } else {
+      LOG.info("ingestion is off (ingest.ingestion-enabled): this process takes no ingestion leases");
+    }
+    if (app.config().get(FUNCTIONS_ENABLED)) {
+      bootFunctions(app);
+    }
+  }
+
+  /** The function role: the control plane as the runtime's service account, the listener, the reconcile loop. */
+  private void bootFunctions(App app) {
+    Config config = app.config();
+    PlatformClient platform = app.get(PlatformClient.class);
+    ServiceClient control =
+        app.get(ServiceClients.class)
+            .register(
+                ServiceOptions.builder(FUNCTIONS_CLIENT, config.get(FlowCatalystModule.BASE_URL))
+                    .requestTimeout(config.get(FlowCatalystModule.TIMEOUT))
+                    .maxResponseBytes(HttpControlPlane.MAX_ARTIFACT_BYTES + 1)
+                    .auth(Auth.bearer(platform::accessToken, platform::clearToken))
+                    .build());
+    String version = IngestRuntime.class.getPackage().getImplementationVersion();
+    functions =
+        FunctionHost.start(
+            config.get(FUNCTIONS_POOL),
+            config.get(RUNTIME_ID),
+            version == null ? "dev" : version,
+            new HttpControlPlane(control),
+            app.get(HttpClients.class),
+            platformTokens(app),
+            app.get(Routes.class).forModule(ID),
+            Clock.systemUTC());
+  }
+
+  private void bootIngestion(App app) {
     // Loaded now, so that an extension that cannot be carried stops the runtime from starting.
     app.get(Extensions.class);
     CamelContext camel = app.get(CamelContext.class);
@@ -327,6 +394,10 @@ public final class RuntimeModule implements Module {
    */
   @Override
   public void shutdown(App app) {
+    FunctionHost host = functions;
+    if (host != null) {
+      host.close();
+    }
     // The loop has already been stopped; the Camel context is closed by the application after this.
     ScheduledExecutorService dog = watchdog;
     if (dog != null) {

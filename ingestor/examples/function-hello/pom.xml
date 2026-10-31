@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.flowcatalyst.examples</groupId>
+  <artifactId>function-hello</artifactId>
+  <version>0.1.0</version>
+  <name>function-hello</name>
+  <description>A JVM function served by the ingestor runtime (docs/jvm-functions-in-ingestor.md). Not part of the ingestor build.</description>
+
+  <properties>
+    <maven.compiler.release>25</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Equal to the ingestor runtime that serves the function. -->
+    <ingestor.version>0.1.0</ingestor.version>
+    <flowcatalyst-framework.version>0.1.4</flowcatalyst-framework.version>
+  </properties>
+
+  <!--
+    Both provided: the host gives a function the function API and the framework (with its Jackson),
+    so the jar carries only the function's own classes and function.json. Anything else a function
+    uses it bundles (the shade plugin, for instance).
+  -->
+  <dependencies>
+    <dependency>
+      <groupId>io.flowcatalyst.ingestor</groupId>
+      <artifactId>function-api</artifactId>
+      <version>${ingestor.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.flowcatalyst.framework</groupId>
+      <artifactId>framework-http</artifactId>
+      <version>${flowcatalyst-framework.version}</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+</project>

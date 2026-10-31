@@ -21,6 +21,12 @@
       <groupId>io.flowcatalyst.ingestor</groupId>
       <artifactId>ingestor-extension</artifactId>
     </dependency>
+    <!-- The API a JVM function is written against: the host loads functions that implement it (io.flowcatalyst.ingestor.functions). -->
+    <dependency>
+      <groupId>io.flowcatalyst.ingestor</groupId>
+      <artifactId>function-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <!-- Checks platform access tokens presented to HTTP ingestions. -->
     <dependency>
       <groupId>io.flowcatalyst.framework</groupId>

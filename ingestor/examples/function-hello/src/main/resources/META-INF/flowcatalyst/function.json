@@ -1,0 +1,14 @@
+{
+  "abi": 1,
+  "jvm": { "entrypoint": "io.flowcatalyst.example.hello.HelloFunction" },
+  "endpoints": [
+    { "method": "GET", "path": "/healthz", "auth": "none" },
+    { "method": "GET", "path": "/hello/{name}", "auth": "platform" },
+    { "method": "POST", "path": "/events/greeting-requested", "auth": "webhook" }
+  ],
+  "subscriptions": [
+    { "eventType": "hello:greeting:greeting:requested", "path": "/events/greeting-requested", "mode": "IMMEDIATE" }
+  ],
+  "config": ["GREETING"],
+  "emits": ["hello:greeting:greeting:sent"]
+}

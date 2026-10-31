@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.flowcatalyst.ingestor</groupId>
+    <artifactId>ingestor-parent</artifactId>
+    <version>${revision}</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+  <artifactId>function-api</artifactId>
+  <name>function-api</name>
+  <description>
+    The API a JVM function is written against: Function, Request, Result, Caller, FunctionContext and the
+    webhook envelope parsers (docs/jvm-functions-in-ingestor.md section 2). Zero dependencies beyond the
+    JDK: a function author's build must never pull anything through this jar. The only test-scope
+    dependencies are the parent's test stack.
+  </description>
+
+  <dependencies>
+    <!--
+      The parent adds jspecify and slf4j-api to every module. Neither may reach a function author, so
+      they are re-declared here out of the transitive graph: jspecify is not used by this module's code
+      (provided = compile-time only, never transitive) and slf4j-api is only the test logger's API.
+    -->
+    <dependency>
+      <groupId>org.jspecify</groupId>
+      <artifactId>jspecify</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+</project>

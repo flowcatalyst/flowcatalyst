@@ -21,6 +21,7 @@
     <module>ingestor-contract</module>
     <module>ingestor-extension</module>
     <module>ingestor-extensions/generator</module>
+    <module>function-api</module>
     <module>ingestor-runtime</module>
   </modules>
 
