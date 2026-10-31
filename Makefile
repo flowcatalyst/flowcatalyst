@@ -7,7 +7,7 @@
 	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk release-ingestor release-all-sdks install-tools help \
 	test-go-sdk test-go-sdk-tests lint-go-sdk go-sdk-smoke release-go-sdk e2e-platform \
 	tools tidy-verify vet ci-fast pre-push install-hooks \
-	ingestor-build ingestor-test function-api-install function-hello
+	ingestor-build ingestor-test function-api-install function-hello java-build
 
 GO ?= go
 PNPM ?= pnpm
@@ -33,7 +33,7 @@ SQLC            := $(TOOLS_DIR)/sqlc-$(SQLC_VERSION)-$(GOVERSION_LOCAL)/sqlc
 
 FC_API_PORT ?= 8080
 
-build: frontend go-build ## Build the frontend then every Go binary
+build: frontend go-build java-build ## Build the frontend, every Go binary, the ingestor jar and the JVM function API
 
 go-build: ## Build all Go binaries (skips frontend; assumes frontend/dist exists)
 	@for b in $(BINARIES); do \
@@ -68,17 +68,26 @@ frontend-dev: ## Run the Vite dev server (proxies API to fcdev)
 MVNW := ingestor/mvnw -f ingestor/pom.xml
 INGESTOR_JAR := ingestor/ingestor-runtime/target/ingestor-runtime-*-all.jar
 
+# `make build` passes INGESTOR_BUSY=skip: a running fcdev leaves its jar alone
+# and the rest of the build goes on; on its own, ingestor-build refuses.
+INGESTOR_BUSY ?= fail
+
 ingestor-build: ## Build the ingestor runtime jar fcdev runs (skips tests; stop fcdev first)
 	@if lsof -t $(INGESTOR_JAR) >/dev/null 2>&1; then \
+		if [ "$(INGESTOR_BUSY)" = skip ]; then echo ">> ingestor jar NOT rebuilt: a running ingestor holds it (fcdev stop, then make ingestor-build)"; exit 0; fi; \
 		echo "an ingestor is running $(INGESTOR_JAR): stop fcdev (fcdev stop) and run this again"; exit 1; \
-	fi
-	$(MVNW) -DskipTests package
+	fi; \
+	echo ">> building the ingestor runtime jar"; $(MVNW) -q -DskipTests package
+
+java-build: ## Build the ingestor jar (skipped while a running fcdev holds it) and install the JVM function API
+	@$(MAKE) --no-print-directory ingestor-build INGESTOR_BUSY=skip
+	@$(MAKE) --no-print-directory function-api-install
 
 ingestor-test: ## Run the ingestor's tests: contract, function API, runtime (about 5 minutes)
 	$(MVNW) test
 
 function-api-install: ## Install the JVM function API into ~/.m2, which a JVM function compiles against
-	$(MVNW) -pl function-api install -DskipTests
+	@echo ">> installing the JVM function API into ~/.m2"; $(MVNW) -q -pl function-api install -DskipTests
 
 function-hello: function-api-install ## Build the example JVM function (ingestor/examples/function-hello/target)
 	ingestor/mvnw -f ingestor/examples/function-hello/pom.xml package

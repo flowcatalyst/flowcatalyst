@@ -51,6 +51,14 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
+      # `make build` also builds the ingestor runtime jar and the JVM function API (ingestor/mvnw).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: ingestor/pom.xml
+
       - name: Verify go.mod tidy (all modules)
         run: make tidy-verify
 

@@ -235,7 +235,7 @@ instances with different subsystems enabled.
 The repo builds with `make` (run `make help` for the full target list):
 
 ```sh
-make build            # build the Vue frontend, then every Go binary into bin/
+make build            # build the Vue frontend, every Go binary into bin/, the ingestor jar and the JVM function API (needs a JDK 25)
 make build-release    # optimized build (trimpath, -s -w)
 make go-build         # Go binaries only (assumes frontend/dist already built)
 ```
