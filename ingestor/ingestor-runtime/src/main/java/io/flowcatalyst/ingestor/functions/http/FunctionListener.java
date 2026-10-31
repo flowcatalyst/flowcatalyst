@@ -261,7 +261,14 @@ public final class FunctionListener {
 
         if (caller == null) {
             if (Describe.AUTH_WEBHOOK.equals(ep.auth())) {
-                if (!verifyWebhook(doc.webhookSecret(), request, body)) {
+                // No secret yet (the signing account came after this host's last desired document) is "not
+                // ready", not "bad signature": a 401 is never retried and the delivery would be lost, a 503 is
+                // retried once the next document has the secret. As the Go runner.
+                String secret = doc.webhookSecret();
+                if (secret == null || secret.isEmpty()) {
+                    return error(503, "WEBHOOK_SECRET_PENDING", "the function cannot verify deliveries yet", 5);
+                }
+                if (!verifyWebhook(secret, request, body)) {
                     return error(401, "INVALID_SIGNATURE", "the delivery signature did not verify", 0);
                 }
                 caller = Caller.Platform.INSTANCE;

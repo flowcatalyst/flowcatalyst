@@ -231,6 +231,15 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 	if caller == nil {
 		switch ep.Auth {
 		case abi.AuthWebhook:
+			// No secret yet (the signing account came after this runner's
+			// last desired document) is "not ready", not "bad signature": a
+			// 401 is never retried and the delivery would be lost, a 503 is
+			// retried once the next document has the secret.
+			if settings.WebhookSecret == "" {
+				outcome = "unavailable"
+				writeError(w, http.StatusServiceUnavailable, "WEBHOOK_SECRET_PENDING", "the function cannot verify deliveries yet", 5*time.Second)
+				return
+			}
 			if !verifyWebhook(settings.WebhookSecret, req, body) {
 				outcome = "unauthenticated"
 				writeError(w, http.StatusUnauthorized, "INVALID_SIGNATURE", "the delivery signature did not verify", 0)

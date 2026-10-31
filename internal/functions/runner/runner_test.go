@@ -345,6 +345,20 @@ func TestWebhookAuth(t *testing.T) {
 	}
 }
 
+// Without a webhook secret yet (the signing account came after the runner's
+// last desired document) a delivery is "not ready" — 503, retried — never the
+// 401 that the platform does not retry and so would lose it.
+func TestWebhookWithoutASecretYetIsRetriedNotRefused(t *testing.T) {
+	doc := fnDoc(ver(1, control.RoleLive))
+	doc.WebhookSecret = ""
+	h := start(t, doc)
+	body := []byte(`{"event":1}`)
+	resp, b := h.do("POST", "/fn/app.hello/hook", body, signed(body))
+	if resp.StatusCode != 503 || resp.Header.Get("Retry-After") != "5" || !strings.Contains(string(b), "WEBHOOK_SECRET_PENDING") {
+		t.Fatalf("delivery before the secret: %d %q %s", resp.StatusCode, resp.Header.Get("Retry-After"), b)
+	}
+}
+
 func TestPlatformAuthStripsToken(t *testing.T) {
 	h := start(t, fnDoc(ver(1, control.RoleLive)))
 	if resp, _ := h.do("GET", "/fn/app.hello/secure", nil, nil); resp.StatusCode != 401 {

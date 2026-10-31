@@ -272,13 +272,18 @@ class FunctionListenerTest {
     }
 
     @Test
-    void aFunctionWithoutAWebhookSecretFailsClosed() {
+    void aFunctionWithoutAWebhookSecretYetAsksForTheDeliveryAgain() {
+        // Fails closed (the handler never runs) with a 503 the platform retries, not a 401 it would not: the
+        // secret arrives with the next desired document.
         Fx.Jar jar = MultiFunction.jar();
         h.plane.push(Fx.desired(2, Fx.function("fn_1", "app.multi")
                 .version(Fx.version(1, jar, MultiFunction.describe(), "live")).build()));
         h.reconcile();
 
-        assertThat(hook("{}", SECRET).status()).isEqualTo(401);
+        TestResponse r = hook("{}", SECRET);
+        assertThat(r.status()).isEqualTo(503);
+        assertThat(errorCode(r)).isEqualTo("WEBHOOK_SECRET_PENDING");
+        assertThat(r.header("Retry-After")).isEqualTo("5");
     }
 
     private TestResponse me(String token) {
