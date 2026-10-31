@@ -172,6 +172,11 @@ final class HttpIngest {
       return HttpErrors.error(503, "UNAVAILABLE", "credentials cannot be checked right now; send it again");
     }
     if (refusal != null) {
+      // Only a refusal the caller caused counts towards the lockout: one the platform caused (a 503 when its
+      // keys cannot be read) must not lock callers out during an outage.
+      if (refusal.status() >= 500) {
+        return refusal;
+      }
       Response limited = refused(caller);
       return limited != null ? limited : refusal;
     }
@@ -207,11 +212,15 @@ final class HttpIngest {
     String key = request.header(IDEMPOTENCY_KEY);
     String sentGroup = group;
     String sentCorrelation = correlation;
+    String sentType = request.header("Content-Type");
     Exchange exchange =
         producer.send(
             endpoint(ingestion),
             e -> {
               e.getMessage().setBody(body);
+              if (sentType != null) {
+                e.setProperty(IngestionRoute.CONTENT_TYPE, sentType);
+              }
               if (sentGroup != null) {
                 e.setProperty(IngestionRoute.MESSAGE_GROUP, sentGroup);
               }

@@ -307,6 +307,32 @@ class HttpIngestTest {
   }
 
   @Test
+  void aPlatformThatCannotCheckTokensDoesNotLockCallersOut() {
+    // Each answer is the platform's fault, not the caller's: well past the failed-login limit, the caller
+    // is still told to try again (503), never made to wait (429) as if it had guessed credentials.
+    String token = token(Map.of("applications", List.of("*")));
+    platform.down(true);
+    for (int i = 0; i < HttpIngest.AUTH_FAILURES.burst() + 5; i++) {
+      assertThat(post("users", token).status()).as("call %d", i + 1).isEqualTo(503);
+    }
+  }
+
+  @Test
+  void anUnsplitRecordKeepsTheTypeItsCallerSent() {
+    assertThat(send("yard", "application/xml; charset=UTF-8", "<trip/>").status()).isEqualTo(202);
+    assertThat(send("one", null, "{\"id\":1}").status()).isEqualTo(202);
+    assertThat(send("one", "x/" + "y".repeat(120), "{\"id\":2}").status()).isEqualTo(202);
+    assertThat(send("orders", "text/plain", "[{\"id\":3}]").status()).isEqualTo(202);
+
+    assertThat(batches.get(0)).extracting(JobRecord::payloadContentType).containsExactly("application/xml; charset=UTF-8");
+    // None sent, or longer than the platform keeps: JSON, as before.
+    assertThat(batches.get(1)).extracting(JobRecord::payloadContentType).containsExactly("application/json");
+    assertThat(batches.get(2)).extracting(JobRecord::payloadContentType).containsExactly("application/json");
+    // A split payload's records are what the split makes of them, whatever the request says.
+    assertThat(batches.get(3)).extracting(JobRecord::payloadContentType).containsExactly("application/json");
+  }
+
+  @Test
   void aCallerOverTheLimitIsToldToSlowDownAndWhenToRetry() {
     assertThat(post("stock", "Bearer s3cret").status()).isEqualTo(202);
     assertThat(post("stock", "Bearer s3cret").status()).isEqualTo(202);

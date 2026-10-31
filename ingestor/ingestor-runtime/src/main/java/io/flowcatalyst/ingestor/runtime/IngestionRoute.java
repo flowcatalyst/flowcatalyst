@@ -82,6 +82,16 @@ final class IngestionRoute extends RouteBuilder {
   /** Exchange property: the {@code X-Correlation-Id} an HTTP caller gave; every record's correlation id. */
   static final String CORRELATION_ID = "ingestCorrelationId";
 
+  /**
+   * Exchange property: the {@code Content-Type} an HTTP caller sent. It is the record's own type when the
+   * payload is not split (the payload is the record): a raw (dataOnly) delivery carries it, and an event
+   * target wraps the record only when it is not JSON.
+   */
+  static final String CONTENT_TYPE = "ingestContentType";
+
+  /** The longest content type the platform keeps for a record (its payloadContentType column). */
+  private static final int MAX_CONTENT_TYPE = 100;
+
   /** Exchange property, set by the route for an HTTP ingestion: the ids the platform made, in record order ({@link Created}). */
   static final String CREATED = "ingestCreated";
 
@@ -599,7 +609,7 @@ final class IngestionRoute extends RouteBuilder {
     int position = pending.read;
     pending.read++;
     JobRecord job =
-        new JobRecord(record.strip(), contentType(), pending.messageGroup, externalId(exchange, pending, position), pending.correlationId, null);
+        new JobRecord(record.strip(), contentType(exchange), pending.messageGroup, externalId(exchange, pending, position), pending.correlationId, null);
     long size = Identities.encodedSize(job) + 1L;
     if (size + ENVELOPE > JobRecord.MAX_REQUEST_BYTES) {
       throw new IllegalArgumentException(
@@ -616,11 +626,19 @@ final class IngestionRoute extends RouteBuilder {
     }
   }
 
-  private String contentType() {
+  /**
+   * The type of a record: what the split makes of the payload, or, for a payload that is not split, the type
+   * its HTTP caller sent (JSON when there is none, or it is longer than the platform keeps).
+   */
+  private String contentType(Exchange exchange) {
     return switch (ingestion.split()) {
       case Split.Csv _ -> "text/csv";
       case Split.Xml _ -> "application/xml";
-      case Split.Json _, Split.None _ -> "application/json";
+      case Split.Json _ -> "application/json";
+      case Split.None _ -> {
+        String sent = exchange.getProperty(CONTENT_TYPE, String.class);
+        yield sent == null || sent.isBlank() || sent.strip().length() > MAX_CONTENT_TYPE ? "application/json" : sent.strip();
+      }
     };
   }
 
