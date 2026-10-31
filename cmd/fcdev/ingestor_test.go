@@ -24,6 +24,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/server"
 )
 
 // ── helpers ────────────────────────────────────────────────────────────
@@ -450,6 +452,8 @@ func TestIngestorEnv(t *testing.T) {
 	assert.Equal(t, "/jre", m["JAVA_HOME"])
 	assert.Equal(t, "pw", m["INGEST_SECRET_ACME__X"], "the developer's own INGEST_* pass through")
 	assert.Equal(t, "PT15S", m["INGEST_POLL_INTERVAL"])
+	assert.Equal(t, "true", m["INGEST_FUNCTIONS_ENABLED"], "the function role is on locally")
+	assert.Equal(t, "default", m["INGEST_FUNCTIONS_POOL"], "no pool configured: the Go runner's default")
 	assert.NotContains(t, m, "FC_APP_KEY")
 	assert.NotContains(t, m, "FLOWCATALYST_APP_KEY")
 
@@ -471,6 +475,50 @@ func TestIngestorEnv(t *testing.T) {
 	assert.NotContains(t, red, "s3cr3t-value")
 	assert.NotContains(t, red, "=pw")
 	assert.Contains(t, red, "FLOWCATALYST_CLIENT_ID=fcdev-ingestor")
+}
+
+// The ingestor's function role serves the pool the local Go runner serves, and
+// fcdev's values win over a stale shell.
+func TestIngestorEnv_FunctionsPool(t *testing.T) {
+	cfg := ingestorConfig{Port: 18091, APIPort: 18080, FunctionsPool: "dev-pool"}
+	env := ingestorEnv([]string{"INGEST_FUNCTIONS_ENABLED=false", "INGEST_FUNCTIONS_POOL=stale"}, cfg, jreInfo{})
+	assert.Contains(t, env, "INGEST_FUNCTIONS_ENABLED=true")
+	assert.Contains(t, env, "INGEST_FUNCTIONS_POOL=dev-pool")
+	for _, kv := range env {
+		assert.NotEqual(t, "INGEST_FUNCTIONS_POOL=stale", kv)
+	}
+}
+
+func TestDevFunctionsPool(t *testing.T) {
+	t.Setenv("FC_FUNCTIONS_POOL", "")
+	assert.Equal(t, "default", devFunctionsPool())
+	t.Setenv("FC_FUNCTIONS_POOL", "mine")
+	assert.Equal(t, "mine", devFunctionsPool())
+	t.Setenv("FC_FUNCTIONS_POOL", "")
+	assert.Equal(t, "default", ingestorConfigFromOpts(startOpts{APIPort: 18080, IngestorPort: 18091}, routerCredentials{}).FunctionsPool)
+}
+
+// jvm functions are routed to the ingestor child unless the developer already
+// pointed them somewhere.
+func TestApplyIngestorRunnerURL(t *testing.T) {
+	var cfg server.EnvCfg
+	applyIngestorRunnerURL(&cfg, 18091)
+	assert.Equal(t, "http://127.0.0.1:18091", cfg.FunctionsRunnerURLByRuntime["jvm"])
+
+	cfg = server.EnvCfg{FunctionsRunnerURLByRuntime: map[string]string{"jvm": "http://elsewhere:9000", "echo": "http://echo"}}
+	applyIngestorRunnerURL(&cfg, 18091)
+	assert.Equal(t, "http://elsewhere:9000", cfg.FunctionsRunnerURLByRuntime["jvm"], "the developer's setting wins")
+	assert.Equal(t, "http://echo", cfg.FunctionsRunnerURLByRuntime["echo"])
+
+	cfg = server.EnvCfg{}
+	applyIngestorRunnerURL(&cfg, 0)
+	assert.Empty(t, cfg.FunctionsRunnerURLByRuntime, "no port, no route")
+
+	// Through the real env loader: a variable the developer exported is kept.
+	t.Setenv("FC_FUNCTIONS_RUNNER_URL_JVM", "http://mine:1")
+	cfg = devEnvCfg(startOpts{APIPort: 18080}, "postgres://x", routerCredentials{})
+	applyIngestorRunnerURL(&cfg, 18091)
+	assert.Equal(t, "http://mine:1", cfg.FunctionsRunnerURLByRuntime["jvm"])
 }
 
 func TestExtensionJars(t *testing.T) {

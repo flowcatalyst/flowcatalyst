@@ -150,7 +150,7 @@ is created, and pools and connections are not resolved: that needs a platform.`,
 	f := cmd.Flags()
 	f.IntVar(&o.port, "port", 8099, "listen port (127.0.0.1)")
 	f.StringVar(&o.address, "address", "", "the address to serve the function at (default local.<directory name>)")
-	f.StringVar(&o.runtime, "runtime", "", "wasm or js (default: from the artifact's extension)")
+	f.StringVar(&o.runtime, "runtime", "", "wasm, js or jvm (default: from the artifact's extension: .js, .jar, else wasm)")
 	f.StringArrayVar(&o.configs, "config", nil, "KEY=VALUE config setting (repeatable)")
 	f.StringArrayVar(&o.secrets, "secret", nil, "KEY=VALUE secret (repeatable; values are never printed)")
 	f.StringArrayVar(&o.dbs, "db", nil, "NAME=DSN database binding (repeatable)")

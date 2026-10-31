@@ -58,7 +58,7 @@ on a platform.)
 
 `--address` (default `local.<directory name>`), `--port`, `--config K=V`,
 `--secret K=V` (values are masked in everything `fn dev` prints), `--db NAME=DSN`,
-`--perms` (permissions of the dev principal), `--memory` (MB), `--runtime wasm|js`,
+`--perms` (permissions of the dev principal), `--memory` (MB), `--runtime wasm|js` (a `.jar` is a `jvm` function: deploy it, it does not run here),
 `--webhook-secret`, `--no-watch` (build and serve once).
 
 ## Limits

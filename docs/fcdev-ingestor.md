@@ -9,10 +9,10 @@ does, see `ingestor/README.md`; for the variables, `docs/environment-variables.m
 It happens only when ingestion is enabled (`FC_INGESTION_ENABLED`, on in fcdev) and the ingestor is
 (`--ingestor` / `FC_INGESTOR_ENABLED`, on by default).
 
-1. **Credential.** fcdev creates the OAuth client `fcdev-ingestor` if it is missing, holding exactly the role
-   `platform:ingestion-runtime`. On every start its secret is re-minted (kept only in the child's environment,
-   never logged or written to disk) and its role is reconciled to that one role, like `fcdev-router` and
-   `fcdev-functions`.
+1. **Credential.** fcdev creates the OAuth client `fcdev-ingestor` if it is missing, holding exactly the roles
+   `platform:ingestion-runtime` and `platform:function-runner` (the runtime also hosts `jvm` functions). On every
+   start its secret is re-minted (kept only in the child's environment, never logged or written to disk) and its
+   roles are reconciled to those two, like `fcdev-router` and `fcdev-functions`.
 2. **Jar.** In order: `FC_INGESTOR_JAR`; a built jar in the checkout fcdev is run from
    (`ingestor/ingestor-runtime/target/ingestor-runtime-*-all.jar`, the newest); the pinned release, downloaded
    and SHA-256 checked. No runtime release exists yet, so when the first two find nothing fcdev logs one INFO
@@ -31,6 +31,15 @@ failures (a run of 5 minutes or more resets the count); each restart is a WARN l
 
 A missing ingestor never stops fcdev. Offline, no jar, port taken, or a Java that cannot be installed each log
 one INFO/WARN line and fcdev carries on.
+
+## JVM functions
+
+The runtime is also the host of `jvm` functions (`docs/jvm-functions-in-ingestor.md`). When the ingestor child
+runs, fcdev points the platform's `FC_FUNCTIONS_RUNNER_URL_JVM` at it (`http://127.0.0.1:<ingestor port>`,
+unless you set that variable yourself) and gives the child `INGEST_FUNCTIONS_ENABLED=true` and
+`INGEST_FUNCTIONS_POOL=<FC_FUNCTIONS_POOL, default "default">`, the pool the local Go runner serves.
+`fcdev fn deploy <address> app.jar` publishes a jar (runtime `jvm`, picked from the `.jar` extension; a function's
+runtime is fixed by its first version). A jar cannot be run with `fcdev fn run` / `fn dev`: deploy it.
 
 ## Where things are
 

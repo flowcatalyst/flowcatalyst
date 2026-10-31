@@ -44,7 +44,8 @@ const describeMemoryCapBytes = uint64(function.DefaultMemoryMB) << 20
 type PublishCommand struct {
 	FunctionID string `json:"functionId"`
 	Digest     string `json:"digest"`
-	// Runtime is "wasm" (default) or "js" (plan §9). Omitted means wasm.
+	// Runtime is "wasm" (default), "js" (plan §9) or "jvm" (a jar for the
+	// ingestor runtime's function host). Omitted means wasm.
 	Runtime string `json:"runtime,omitempty"`
 }
 
@@ -88,8 +89,8 @@ func Publish(repo *function.Repository, artifacts artifact.Store, loader *runtim
 			if !artifact.ValidDigest(strings.ToLower(strings.TrimSpace(cmd.Digest))) {
 				return usecase.Validation("INVALID_DIGEST", "digest must be a lowercase hex sha256 (64 characters)")
 			}
-			if cmd.Runtime != "" && !runtimes.Valid(cmd.Runtime) {
-				return usecase.Validation("INVALID_RUNTIME", `runtime must be "wasm" or "js"`)
+			if cmd.Runtime != "" && !runtimes.Publishable(cmd.Runtime) {
+				return usecase.Validation("INVALID_RUNTIME", `runtime must be "wasm", "js" or "jvm"`)
 			}
 			return nil
 		},
@@ -153,6 +154,25 @@ func Publish(repo *function.Repository, artifacts artifact.Store, loader *runtim
 				runtimeName = function.DefaultRuntime
 			}
 
+			// A function is a JVM function or it is not, from its first version
+			// (owner ruling 2026-10-31): a jvm version is served by another runner,
+			// at another URL, than a wasm or js one. wasm and js share the
+			// in-process runner, so a function may still move between those two.
+			versions, err := repo.ListVersionsByFunction(ctx, f.ID)
+			if err != nil {
+				return zero, usecase.Internal("REPO", "list_versions_by_function failed", err)
+			}
+			for _, ev := range versions {
+				have := ev.Runtime
+				if have == "" {
+					have = function.DefaultRuntime
+				}
+				if (have == runtimes.JVM) != (runtimeName == runtimes.JVM) {
+					return zero, usecase.BusinessRule("RUNTIME_MISMATCH",
+						fmt.Sprintf("function %s runs the %q runtime (its existing versions); this artifact is %q, and a function's runtime cannot change", f.Address, have, runtimeName))
+				}
+			}
+
 			describeCtx, cancel := context.WithTimeout(ctx, describeTimeout)
 			defer cancel()
 			doc, err := loader.Describe(describeCtx, runtimeName, data, describeMemoryCapBytes)
@@ -163,6 +183,9 @@ func Publish(repo *function.Repository, artifacts artifact.Store, loader *runtim
 			d, err := abi.ParseDescribe(doc)
 			if err != nil {
 				return zero, publishDescribeError(err)
+			}
+			if d.JVM != nil && runtimeName != runtimes.JVM {
+				return zero, publishDescribeError(&abi.DescribeError{Problems: []string{"jvm: only a jvm-runtime function may declare a jvm block"}})
 			}
 
 			// Platform validation on top of abi's own (plan §8.2 WP4 task 2):

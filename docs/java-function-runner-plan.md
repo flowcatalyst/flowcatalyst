@@ -1,5 +1,10 @@
 # Java function runner — plan
 
+> **Superseded 2026-10-31 by [`jvm-functions-in-ingestor.md`](jvm-functions-in-ingestor.md):** JVM
+> functions are hosted by the ingestor runtime, copied from the javalin host. The standalone runner,
+> `fcdev runner install`, its release pipeline and most of section 9 no longer apply. Sections 1, 7
+> and 8.2 remain useful background.
+
 *Status: **ON HOLD** (owner, 2026-10-17: documented, not started; the sixteen decisions in section 9 are unanswered). Design written 2026-10-17 for owner review. Nothing here is built. Direction (owner,
 2026-10-17): the Go platform and the wazero runner stay. A Java runner is added next to them so
 JVM functions (jars) run beside Wasm/JS ones, installable like a plugin

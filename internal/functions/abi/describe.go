@@ -43,7 +43,24 @@ type Describe struct {
 	// (docs/function-trace-design.md section 3). The built-in "http" context
 	// is not declared.
 	TraceContexts []TraceContext `json:"traceContexts,omitempty"`
+	// JVM is present only in a jvm-runtime function's describe (the jar's
+	// META-INF/flowcatalyst/function.json): how the JVM host starts it.
+	// Publish requires it for the jvm runtime and refuses it elsewhere.
+	JVM *JVM `json:"jvm,omitempty"`
 }
+
+// JVM is the jvm-runtime block of a describe document.
+type JVM struct {
+	// Entrypoint is the binary name of the class implementing the function
+	// interface (com.example.HelloFunction, Outer$Inner).
+	Entrypoint string `json:"entrypoint"`
+}
+
+// javaClassPattern is a Java binary class name: dot-separated identifiers.
+var javaClassPattern = regexp.MustCompile(`^([A-Za-z_$][A-Za-z0-9_$]*\.)*[A-Za-z_$][A-Za-z0-9_$]*$`)
+
+// MaxEntrypointLength bounds a jvm entrypoint class name.
+const MaxEntrypointLength = 255
 
 // TraceContext declares one trace context.
 type TraceContext struct {
@@ -333,6 +350,9 @@ func (d *Describe) Validate() error {
 			add("%s: %q is declared twice", at, c.Name)
 		}
 		seenTrace[c.Name] = true
+	}
+	if d.JVM != nil && (len(d.JVM.Entrypoint) > MaxEntrypointLength || !javaClassPattern.MatchString(d.JVM.Entrypoint)) {
+		add("jvm.entrypoint: %q is not a Java binary class name (for example com.example.HelloFunction)", d.JVM.Entrypoint)
 	}
 	seenDispatch := map[[2]string]bool{}
 	for i, t := range d.Dispatches {

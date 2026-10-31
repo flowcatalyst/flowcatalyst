@@ -136,7 +136,7 @@ func fromEntity(f *function.Function) FunctionResponse {
 // PublishVersionRequest is the wire body for POST …/versions.
 type PublishVersionRequest struct {
 	Digest  string  `json:"digest" doc:"Lowercase hex sha256 of a previously-uploaded artifact"`
-	Runtime *string `json:"runtime,omitempty" doc:"\"wasm\" (default) or \"js\""`
+	Runtime *string `json:"runtime,omitempty" doc:"\"wasm\" (default), \"js\" or \"jvm\" (a jar)"`
 }
 
 func (r PublishVersionRequest) toCommand(functionID string) operations.PublishCommand {

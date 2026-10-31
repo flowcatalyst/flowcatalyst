@@ -125,8 +125,11 @@ func checkRequeued(address string, was, now *fnVersion) error {
 // publishBytes uploads the artifact and publishes it as a version.
 func (a *fnAPI) publishBytes(ctx context.Context, fn *fnFunction, data []byte, digest, runtime string) (*fnVersion, error) {
 	ctype := "application/wasm"
-	if runtime == "js" {
+	switch runtime {
+	case "js":
 		ctype = "text/javascript"
+	case "jvm":
+		ctype = "application/java-archive"
 	}
 	if err := a.do(ctx, http.MethodPut, "/api/functions/"+fn.ID+"/artifacts/"+digest, bytes.NewReader(data), ctype, nil); err != nil {
 		return nil, fmt.Errorf("upload: %w", err)

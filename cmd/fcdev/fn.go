@@ -60,10 +60,14 @@ func hasGoFiles(dir string) bool {
 }
 
 // runtimeFor maps an artifact path to its runtime: a .js file is a script
-// for the shared JS engine, anything else a module.
+// for the shared JS engine, a .jar a jvm function (served by the ingestor
+// runtime, not run locally), anything else a module.
 func runtimeFor(path string) string {
 	if strings.HasSuffix(path, ".js") {
 		return runtimes.JS
+	}
+	if strings.HasSuffix(path, ".jar") {
+		return runtimes.JVM
 	}
 	return runtimes.Wasm
 }
@@ -125,6 +129,18 @@ func describeArtifact(ctx context.Context, path, runtime string) (*abi.Describe,
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil, err
+	}
+	if runtime == runtimes.JVM {
+		// A jar's describe is read from the zip; no engine is involved.
+		doc, err := runtimes.DescribeJar(data)
+		if err != nil {
+			return nil, nil, err
+		}
+		d, err := abi.ParseDescribe(doc)
+		if err != nil {
+			return nil, doc, err
+		}
+		return d, doc, nil
 	}
 	b, err := budget.New(512<<20, 0)
 	if err != nil {
@@ -252,7 +268,7 @@ func newFnDescribeCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&runtime, "runtime", "", "wasm or js (default: from the file extension)")
+	cmd.Flags().StringVar(&runtime, "runtime", "", "wasm, js or jvm (default: from the file extension: .js, .jar, else wasm)")
 	cmd.Flags().BoolVar(&raw, "json", false, "print the raw describe document")
 	return cmd
 }

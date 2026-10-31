@@ -501,7 +501,7 @@ Like --client it is ignored for a function that already exists.`,
 		},
 	}
 	pf.add(cmd)
-	cmd.Flags().StringVar(&runtime, "runtime", "", "wasm or js (default: from the file extension)")
+	cmd.Flags().StringVar(&runtime, "runtime", "", "wasm, js or jvm (default: from the file extension: .js, .jar, else wasm)")
 	cmd.Flags().BoolVar(&create, "create", false, "create the function if it does not exist")
 	cmd.Flags().StringVar(&clientID, "client", "", "with --create: the owning client, by code (e.g. bevco) or id (clt_...) (default: platform-owned)")
 	cmd.Flags().StringVar(&pool, "pool", "", "with --create: the runner pool (default: default)")
@@ -746,7 +746,7 @@ digest) needs no prod confirmation; any other write to a prod profile does.`,
 		},
 	}
 	pf.add(cmd)
-	cmd.Flags().StringVar(&runtime, "runtime", "", "wasm or js (default: from the artifact)")
+	cmd.Flags().StringVar(&runtime, "runtime", "", "wasm, js or jvm (default: from the artifact)")
 	cmd.Flags().BoolVar(&create, "create", false, "create the function if it does not exist")
 	cmd.Flags().StringVar(&clientID, "client", "", "with --create: the owning client, by code (e.g. bevco, stable across environments) or id (clt_...)")
 	cmd.Flags().StringVar(&pool, "pool", "", "with --create: the runner pool")

@@ -3603,7 +3603,7 @@ export type PublishVersionRequest = {
      */
     digest: string;
     /**
-     * "wasm" (default) or "js"
+     * "wasm" (default), "js" or "jvm" (a jar)
      */
     runtime?: string;
     [key: string]: unknown;
@@ -7828,7 +7828,7 @@ export type PublishVersionRequestWritable = {
      */
     digest: string;
     /**
-     * "wasm" (default) or "js"
+     * "wasm" (default), "js" or "jvm" (a jar)
      */
     runtime?: string;
     [key: string]: unknown;

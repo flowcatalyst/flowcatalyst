@@ -4,6 +4,9 @@
 //   - "wasm": the artifact is an ABI v1 module, compiled as is.
 //   - "js":   the artifact is a bundled script; instances come from the shared
 //     JS engine (compiled once per Loader) with the script preloaded.
+//   - "jvm":  the artifact is a jar served by the ingestor runtime's function
+//     host. The in-process runner never runs it (it does not ask for it);
+//     this package only reads its describe document at publish (jar.go).
 //
 // The runner prepares versions with it and the platform reads a published
 // artifact's describe document with it, so both see an artifact identically.
@@ -24,12 +27,18 @@ import (
 const (
 	Wasm = "wasm"
 	JS   = "js"
+	JVM  = "jvm"
 )
 
 // Valid reports whether r names a runtime THIS package can prepare ("" means
 // Wasm). It is the in-process runner's set; other runners (the generic runner
 // plumbing) advertise their own runtimes, which only need to be a ValidTag.
 func Valid(r string) bool { return r == "" || r == Wasm || r == JS }
+
+// Publishable reports whether a version may be published with runtime r: the
+// in-process set plus runtimes other runners serve whose artifacts publish can
+// still read (jvm).
+func Publishable(r string) bool { return Valid(r) || r == JVM }
 
 // ValidTag reports whether s is well-formed as a runtime tag: lower-case, a
 // letter first, 2-16 characters. The same pattern is the CHECK on
@@ -163,6 +172,9 @@ func (l *Loader) jsEngine(ctx context.Context) (*engine.Module, error) {
 // Describe reads an artifact's describe document the way publish must: one
 // instance with no capabilities, capped at capBytes of memory.
 func (l *Loader) Describe(ctx context.Context, runtime string, artifact []byte, capBytes uint64) ([]byte, error) {
+	if runtime == JVM {
+		return DescribeJar(artifact)
+	}
 	p, err := l.Prepare(ctx, runtime, artifact)
 	if err != nil {
 		return nil, err

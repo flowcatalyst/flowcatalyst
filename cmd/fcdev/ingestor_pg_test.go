@@ -14,7 +14,7 @@ import (
 )
 
 // The dev ingestor principal is created if missing and its role is reconciled
-// to exactly platform:ingestion-runtime on every start, like the other fixed
+// to exactly platform:ingestion-runtime + platform:function-runner on every start, like the other fixed
 // dev principals.
 func TestBootstrapIngestorCredentials_RoleReconciled(t *testing.T) {
 	key, err := encryption.GenerateKey()
@@ -23,18 +23,18 @@ func TestBootstrapIngestorCredentials_RoleReconciled(t *testing.T) {
 	ctx := context.Background()
 	pool := testpg.Pool(t)
 
-	first, err := bootstrapLocalCredentials(ctx, pool, ingestorLocalClientID, "fcdev ingestor runtime", "Ingestor", ingestorRole)
+	first, err := bootstrapLocalCredentials(ctx, pool, ingestorLocalClientID, "fcdev ingestor runtime", "Ingestor", ingestorRole, ingestorFunctionRole)
 	require.NoError(t, err)
 	pid, roles := bootstrapRoles(t, ctx, ingestorLocalClientID)
-	assert.Equal(t, []string{"platform:ingestion-runtime"}, roles)
+	assert.Equal(t, []string{"platform:function-runner", "platform:ingestion-runtime"}, roles)
 
 	_, err = pool.Exec(ctx, `INSERT INTO iam_principal_roles (principal_id, role_name, assignment_source, assigned_at)
 		VALUES ($1,'platform:router','BOOTSTRAP',NOW()) ON CONFLICT DO NOTHING`, pid)
 	require.NoError(t, err)
 
-	second, err := bootstrapLocalCredentials(ctx, pool, ingestorLocalClientID, "fcdev ingestor runtime", "Ingestor", ingestorRole)
+	second, err := bootstrapLocalCredentials(ctx, pool, ingestorLocalClientID, "fcdev ingestor runtime", "Ingestor", ingestorRole, ingestorFunctionRole)
 	require.NoError(t, err)
 	_, roles = bootstrapRoles(t, ctx, ingestorLocalClientID)
-	assert.Equal(t, []string{"platform:ingestion-runtime"}, roles)
+	assert.Equal(t, []string{"platform:function-runner", "platform:ingestion-runtime"}, roles)
 	assert.NotEqual(t, first.Secret, second.Secret)
 }

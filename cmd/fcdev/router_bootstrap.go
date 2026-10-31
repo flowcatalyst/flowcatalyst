@@ -50,12 +50,16 @@ func bootstrapRouterCredentials(ctx context.Context, pool *pgxpool.Pool) (router
 // client_credentials principal holding exactly one role, for an in-process
 // subsystem that authenticates to this fcdev's platform like any deployment
 // would (the router, the function runner). See bootstrapRouterCredentials.
-func bootstrapLocalCredentials(ctx context.Context, pool *pgxpool.Pool, clientID, principalName, clientName, role_ string) (routerCredentials, error) {
+func bootstrapLocalCredentials(ctx context.Context, pool *pgxpool.Pool, clientID, principalName, clientName, role_ string, moreRoles ...string) (routerCredentials, error) {
 	var zero routerCredentials
 
-	roleName, err := role.ParseName(role_)
-	if err != nil {
-		return zero, fmt.Errorf("%s role: %w", clientID, err)
+	var roleNames []role.Name
+	for _, r := range append([]string{role_}, moreRoles...) {
+		n, err := role.ParseName(r)
+		if err != nil {
+			return zero, fmt.Errorf("%s role: %w", clientID, err)
+		}
+		roleNames = append(roleNames, n)
 	}
 
 	enc, err := encryption.FromEnv()
@@ -94,7 +98,7 @@ func bootstrapLocalCredentials(ctx context.Context, pool *pgxpool.Pool, clientID
 			if existing.PrincipalID == nil {
 				return fmt.Errorf("%s client has no principal", clientID)
 			}
-			return reconcileBootstrapRole(ctx, tx, clientID, string(*existing.PrincipalID), roleName)
+			return reconcileBootstrapRoles(ctx, tx, clientID, string(*existing.PrincipalID), roleNames)
 		}); err != nil {
 			return zero, fmt.Errorf("re-secret %s client: %w", clientID, err)
 		}
@@ -120,43 +124,61 @@ func bootstrapLocalCredentials(ctx context.Context, pool *pgxpool.Pool, clientID
 		}
 		// principal.Persist does not sync iam_principal_roles, so the role is
 		// written directly — it is the whole authority this credential has.
-		_, err := tx.Inner().Exec(ctx,
-			`INSERT INTO iam_principal_roles
-			     (principal_id, role_name, assignment_source, assigned_at)
-			 VALUES ($1, $2, 'BOOTSTRAP', NOW())
-			 ON CONFLICT DO NOTHING`,
-			routerPrincipal.ID, roleName)
-		return err
+		for _, rn := range roleNames {
+			if _, err := tx.Inner().Exec(ctx,
+				`INSERT INTO iam_principal_roles
+				     (principal_id, role_name, assignment_source, assigned_at)
+				 VALUES ($1, $2, 'BOOTSTRAP', NOW())
+				 ON CONFLICT DO NOTHING`,
+				routerPrincipal.ID, rn); err != nil {
+				return err
+			}
+		}
+		return nil
 	}); err != nil {
 		return zero, err
 	}
 
-	slog.Info("bootstrapped a dev credential", "client_id", clientID, "role", roleName.String())
+	slog.Info("bootstrapped a dev credential", "client_id", clientID, "roles", roleStrings(roleNames))
 	return routerCredentials{ClientID: clientID, Secret: secret}, nil
 }
 
-// reconcileBootstrapRole makes roleName the ONLY role the dev-bootstrap
+func roleStrings(names []role.Name) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = n.String()
+	}
+	return out
+}
+
+// reconcileBootstrapRoles makes roleNames the ONLY roles the dev-bootstrap
 // principal holds. Only ever called for the fixed principals fcdev creates
-// itself (router, function runner, fn CLI), never for a user-managed one.
-func reconcileBootstrapRole(ctx context.Context, tx *usecasepgx.DbTx, clientID, principalID string, roleName role.Name) error {
+// itself (router, function runner, fn CLI, ingestor), never for a
+// user-managed one.
+func reconcileBootstrapRoles(ctx context.Context, tx *usecasepgx.DbTx, clientID, principalID string, roleNames []role.Name) error {
+	keep := roleStrings(roleNames)
 	del, err := tx.Inner().Exec(ctx,
-		`DELETE FROM iam_principal_roles WHERE principal_id = $1 AND role_name <> $2`,
-		principalID, roleName)
+		`DELETE FROM iam_principal_roles WHERE principal_id = $1 AND NOT (role_name = ANY($2))`,
+		principalID, keep)
 	if err != nil {
 		return fmt.Errorf("%s: remove stale roles: %w", clientID, err)
 	}
-	ins, err := tx.Inner().Exec(ctx,
-		`INSERT INTO iam_principal_roles
-		     (principal_id, role_name, assignment_source, assigned_at)
-		 VALUES ($1, $2, 'BOOTSTRAP', NOW())
-		 ON CONFLICT DO NOTHING`,
-		principalID, roleName)
-	if err != nil {
-		return fmt.Errorf("%s: assign role: %w", clientID, err)
+	var added int64
+	for _, rn := range roleNames {
+		ins, err := tx.Inner().Exec(ctx,
+			`INSERT INTO iam_principal_roles
+			     (principal_id, role_name, assignment_source, assigned_at)
+			 VALUES ($1, $2, 'BOOTSTRAP', NOW())
+			 ON CONFLICT DO NOTHING`,
+			principalID, rn)
+		if err != nil {
+			return fmt.Errorf("%s: assign role: %w", clientID, err)
+		}
+		added += ins.RowsAffected()
 	}
-	if del.RowsAffected() > 0 || ins.RowsAffected() > 0 {
-		slog.Info("reconciled a dev credential's role", "client_id", clientID,
-			"role", roleName.String(), "removed", del.RowsAffected(), "added", ins.RowsAffected())
+	if del.RowsAffected() > 0 || added > 0 {
+		slog.Info("reconciled a dev credential's roles", "client_id", clientID,
+			"roles", keep, "removed", del.RowsAffected(), "added", added)
 	}
 	return nil
 }

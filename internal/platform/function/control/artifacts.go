@@ -51,8 +51,11 @@ func (s *State) artifact(ctx context.Context, in *artifactInput) (*huma.StreamRe
 		return nil, httperror.NotFound("Artifact", in.Digest)
 	}
 	contentType := "application/wasm"
-	if runtime == function.RuntimeJS {
+	switch runtime {
+	case function.RuntimeJS:
 		contentType = "text/javascript"
+	case function.RuntimeJVM:
+		contentType = "application/java-archive"
 	}
 
 	url, presigned, err := s.Artifacts.PresignGet(ctx, in.Digest, s.presignTTL())

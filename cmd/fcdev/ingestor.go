@@ -17,6 +17,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/server"
 )
 
 // This file runs the ingestor runtime (the Java program built from ./ingestor)
@@ -29,8 +32,13 @@ import (
 // OAuth client (see bootstrapLocalCredentials).
 const ingestorLocalClientID = "fcdev-ingestor"
 
-// ingestorRole is the whole authority the dev ingestor has.
-const ingestorRole = "platform:ingestion-runtime"
+// ingestorRole is the ingestion half of the authority the dev ingestor has;
+// ingestorFunctionRole is the other half: the ingestor runtime also hosts the
+// jvm functions, so it speaks the function-runner control protocol.
+const (
+	ingestorRole         = "platform:ingestion-runtime"
+	ingestorFunctionRole = "platform:function-runner"
+)
 
 const (
 	defaultIngestorPort  = 8091
@@ -46,6 +54,29 @@ type ingestorConfig struct {
 	JarOverride   string
 	ExtensionsDir string
 	Creds         routerCredentials
+	// FunctionsPool is the function pool the ingestor's function role serves:
+	// the one the in-process Go runner serves (FC_FUNCTIONS_POOL).
+	FunctionsPool string
+}
+
+// devFunctionsPool is the pool the dev Go runner serves, which the ingestor's
+// function role joins so both runtimes see the same functions.
+func devFunctionsPool() string { return firstNonEmpty(os.Getenv("FC_FUNCTIONS_POOL"), "default") }
+
+// ingestorRunnerURL is where the platform reaches the ingestor's function
+// listener (/fn/...).
+func ingestorRunnerURL(port int) string { return fmt.Sprintf("http://127.0.0.1:%d", port) }
+
+// applyIngestorRunnerURL routes jvm functions to the ingestor child unless
+// the developer set FC_FUNCTIONS_RUNNER_URL_JVM themselves.
+func applyIngestorRunnerURL(cfg *server.EnvCfg, ingestorPort int) {
+	if ingestorPort <= 0 || cfg.FunctionsRunnerURLByRuntime[runtimes.JVM] != "" {
+		return
+	}
+	if cfg.FunctionsRunnerURLByRuntime == nil {
+		cfg.FunctionsRunnerURLByRuntime = map[string]string{}
+	}
+	cfg.FunctionsRunnerURLByRuntime[runtimes.JVM] = ingestorRunnerURL(ingestorPort)
 }
 
 // devIngestionEnabled mirrors devEnvCfg: ingestion is on in dev unless
@@ -69,6 +100,7 @@ func ingestorConfigFromOpts(opts startOpts, creds routerCredentials) ingestorCon
 		JarOverride:   os.Getenv("FC_INGESTOR_JAR"),
 		ExtensionsDir: ingestorExtensionsDir(),
 		Creds:         creds,
+		FunctionsPool: devFunctionsPool(),
 	}
 }
 
@@ -229,6 +261,10 @@ func ingestorEnv(parent []string, cfg ingestorConfig, jre jreInfo) []string {
 	if cfg.ExtensionsDir != "" {
 		env["INGEST_EXTENSIONS_DIR"] = cfg.ExtensionsDir
 	}
+	// The function role (jvm functions) is on locally, serving the pool the Go
+	// runner serves; fcdev's values win over anything left in the shell.
+	env["INGEST_FUNCTIONS_ENABLED"] = "true"
+	env["INGEST_FUNCTIONS_POOL"] = firstNonEmpty(cfg.FunctionsPool, "default")
 	out := make([]string, 0, len(env))
 	for k, v := range env {
 		out = append(out, k+"="+v)

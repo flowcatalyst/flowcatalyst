@@ -280,7 +280,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	runIngestorChild := opts.IngestorEnabled && devIngestionEnabled() && opts.APIPort > 0
 	if runIngestorChild {
 		if creds, err := bootstrapLocalCredentials(rootCtx, pool, ingestorLocalClientID, "fcdev ingestor runtime",
-			"FlowCatalyst Ingestor Runtime (local dev)", ingestorRole); err != nil {
+			"FlowCatalyst Ingestor Runtime (local dev)", ingestorRole, ingestorFunctionRole); err != nil {
 			slog.Warn("ingestor credential bootstrap failed; the ingestor runtime will not start", "err", err)
 			runIngestorChild = false
 		} else {
@@ -290,6 +290,9 @@ func runStart(cmd *cobra.Command, _ []string) error {
 
 	// ── Delegate to the shared run-loop ────────────────────────────────
 	cfg := devEnvCfg(opts, databaseURL, routerCreds)
+	if runIngestorChild {
+		applyIngestorRunnerURL(&cfg, opts.IngestorPort)
+	}
 	runOpts := server.RunOptions{}
 	if frontend.IsAvailable() {
 		runOpts.Fallback = frontend.Handler()

@@ -24,6 +24,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/budget"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runner"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 )
 
 // newFnRunCmd is `fcdev fn run`: one artifact on the real runner, no
@@ -45,6 +46,9 @@ func newFnRunCmd() *cobra.Command {
 			path := args[0]
 			if runtime == "" {
 				runtime = runtimeFor(path)
+			}
+			if runtime == runtimes.JVM {
+				return errors.New("jvm functions cannot run locally: they run in the ingestor runtime; deploy with `fcdev fn deploy` to a running fcdev")
 			}
 			fn, err := newLocalFunction(address, whSecret, configs, secrets, dbs)
 			if err != nil {
@@ -70,7 +74,7 @@ func newFnRunCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.IntVar(&port, "port", 8099, "listen port (127.0.0.1)")
 	f.StringVar(&address, "address", "local.fn", "the address to serve the function at")
-	f.StringVar(&runtime, "runtime", "", "wasm or js (default: from the file extension)")
+	f.StringVar(&runtime, "runtime", "", "wasm, js or jvm (default: from the file extension: .js, .jar, else wasm)")
 	f.StringArrayVar(&configs, "config", nil, "KEY=VALUE config setting (repeatable)")
 	f.StringArrayVar(&secrets, "secret", nil, "KEY=VALUE secret (repeatable)")
 	f.StringArrayVar(&dbs, "db", nil, "NAME=DSN database binding (repeatable)")

@@ -43,8 +43,15 @@ func BuildAddress(applicationCode, name string) string {
 // I/O-adjacent dependencies). DefaultRuntime, below, is the "wasm" sibling.
 const RuntimeJS = "js"
 
+// RuntimeJVM is the "jvm" runtime name (mirrors internal/functions/runtimes.JVM):
+// a jar served by the ingestor runtime's function host, never the in-process
+// Go runner.
+const RuntimeJVM = "jvm"
+
 // ValidRuntime reports whether r names a runtime ("" means DefaultRuntime).
-func ValidRuntime(r string) bool { return r == "" || r == DefaultRuntime || r == RuntimeJS }
+func ValidRuntime(r string) bool {
+	return r == "" || r == DefaultRuntime || r == RuntimeJS || r == RuntimeJVM
+}
 
 // Limits are the per-function resource caps (plan §7.1). Stored as the
 // fng_functions.limits JSONB column.
