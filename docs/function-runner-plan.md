@@ -27,7 +27,8 @@ contract below (schema, guest ABI, manifest, API) is ours to choose. Written aga
 
 Owner decisions §13.1–13.3 were taken as proposed (two-label addresses, the reject outcome,
 scheduled-job 429). §13.4 was ruled 2026-09-28: no native runtime for now — Wasm only, with the
-native Go option documented in §15 for if it is ever needed.
+native Go option documented in §15 for if it is ever needed. (2026-10-31: a `jvm` runtime was added, but
+as a separate host in the ingestor runtime, `docs/jvm-functions-in-ingestor.md`; this runner stays Wasm and JS.)
 
 ## 1. What it is
 
@@ -869,7 +870,7 @@ Sized for one agent each. Every package names its tests and runs a mutation chec
   deadlines (not per-function CPU quotas), and none of it is hardened against a hostile author.
 - The WebAssembly component model / WASI preview 2. wazero does not implement it; our ABI is
   small enough to version ourselves.
-- A JVM runtime, or compatibility with any other function-service artifact format.
+- A JVM runtime **in this runner**, or compatibility with any other function-service artifact format. (Owner ruling 2026-10-31: JVM functions exist, but are served by the ingestor runtime, a separate host with the same control protocol; see `docs/jvm-functions-in-ingestor.md`. This runner never runs `jvm`.)
 - Subscription filters (the platform has no filter column; out of scope here).
 
 ## 15. Option: a native Go process runtime (deferred)

@@ -16,16 +16,43 @@ on its own virtual thread, so a function keeps no mutable state of its own.
 
 ## Run it locally
 
-`fcdev start` (after `make ingestor-build`) runs the ingestor, which serves JVM functions on its port (`FC_INGESTOR_PORT`, default
-8091; `fcdev ingestor status` shows it). Then:
+From a checkout of the platform repository, with a JDK 25 (building) and nothing else installed:
 
 ```sh
-make function-hello      # installs the function API into ~/.m2, then builds this jar
-fcdev fn deploy hello.greeting ingestor/examples/function-hello/target/function-hello-0.1.0.jar --create
-fcdev fn set hello.greeting --config GREETING=Howdy
-fcdev fn promote hello.greeting 1          # if deploy stopped for the missing GREETING value
-curl http://127.0.0.1:8091/fn/hello.greeting/healthz
+make build               # the platform (frontend + Go binaries), the ingestor jar and the function API in ~/.m2
+make function-hello      # this jar: ingestor/examples/function-hello/target/function-hello-0.1.0.jar
+./bin/fcdev start        # runs the ingestor beside the platform; it serves JVM functions on its port
 ```
 
-The application `hello` must exist with an active service account (it signs the subscription's
-deliveries), and so must the two event types.
+Use `./bin/fcdev`, the binary `make build` made: an installed `fcdev` that predates JVM functions (0.11.5 and
+older) rejects a jar as an invalid Wasm module. `make build` skips the ingestor jar while a running `fcdev` holds
+it; stop `fcdev`, run `make ingestor-build`, and start it again to pick up a rebuilt ingestor.
+
+The ingestor listens on `FC_INGESTOR_PORT` (default 8091; `./bin/fcdev ingestor status` shows it) and `fcdev`
+points the platform's `FC_FUNCTIONS_RUNNER_URL_JVM` at it. Then, once:
+
+1. **The application `hello`, with a service account.** Create it in the console (Applications) or with
+   `POST /api/applications` (`{"code":"hello","name":"Hello"}`), then give it a service account:
+   `POST /api/applications/{id}/provision-service-account`. The service account signs the subscription's
+   deliveries, and the function verifies them with it; without one the function cannot verify a delivery
+   (it answers `503 WEBHOOK_SECRET_PENDING` until it has the secret).
+2. **The two event types** the describe names, in the console (Event types) or with `POST /api/event-types`:
+   `hello:greeting:greeting:requested` and `hello:greeting:greeting:sent`.
+
+And for every build:
+
+```sh
+./bin/fcdev fn deploy hello.greeting ingestor/examples/function-hello/target/function-hello-0.1.0.jar --create
+./bin/fcdev fn set hello.greeting --config GREETING=Howdy
+./bin/fcdev fn promote hello.greeting 1          # if deploy stopped because GREETING had no value yet
+curl http://127.0.0.1:8091/fn/hello.greeting/healthz
+./bin/fcdev fn invoke hello.greeting hello/Aroha --runner http://127.0.0.1:8091   # a platform-token call
+```
+
+`deploy` publishes the jar (the runtime, `jvm`, is chosen from the `.jar` extension and is fixed for the function
+from then on), waits until the ingestor has loaded the version, and promotes it to `live` when every declared
+config key has a value. Promoting is what creates the subscription to `hello:greeting:greeting:requested`: publish
+that event (for example from the console) with `{"name": "Aroha"}` as its data, and the function emits
+`hello:greeting:greeting:sent`.
+
+A function that is JVM from its first version cannot take a Wasm or JS version later (`RUNTIME_MISMATCH`).

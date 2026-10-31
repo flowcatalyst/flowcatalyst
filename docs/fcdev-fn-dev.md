@@ -58,7 +58,8 @@ on a platform.)
 
 `--address` (default `local.<directory name>`), `--port`, `--config K=V`,
 `--secret K=V` (values are masked in everything `fn dev` prints), `--db NAME=DSN`,
-`--perms` (permissions of the dev principal), `--memory` (MB), `--runtime wasm|js` (a `.jar` is a `jvm` function: deploy it, it does not run here),
+`--perms` (permissions of the dev principal), `--memory` (MB), `--runtime wasm|js` (a `.jar` is a `jvm` function: it does not run here;
+`fcdev fn deploy` it to a local `fcdev`, where the ingestor serves it: `docs/fcdev-ingestor.md`),
 `--webhook-secret`, `--no-watch` (build and serve once).
 
 ## Limits

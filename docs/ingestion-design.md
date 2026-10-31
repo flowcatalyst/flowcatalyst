@@ -307,7 +307,8 @@ of them (N-1, or a v2 runtime from before) is served as before.
   plane calling the runtime's address, which does not work from a platform behind a firewall.
 - **Jobs:** `POST /api/ingestion-runtime/v1/ingestions/{id}/jobs?runtimeId=` takes `{records: [{payload, payloadContentType?,
   messageGroup?, externalId?, correlationId?, subject?}]}`, at most 1000 per request and 10 MiB, and answers
-  `{created, results: [{index, id} | {index, error}]}`. A runtime does **not** use the batch dispatch-job API: that takes ids,
+  `{kind, created, results: [{index, id, existing?} | {index, error}]}` (`kind` is `DISPATCH_JOB` or `EVENT`; for an event target
+  each `id` is an event's id and the record is stored through the `POST /api/events/batch` insert path, section 14). A runtime does **not** use the batch dispatch-job API: that takes ids,
   has no connection field, and an application-confined service account cannot create jobs for another application's
   ingestion. The platform builds every job from the **ingestion's own target**, resolved as at save: the target's `code` and
   `targetUrl`, the pool by code, the connection by code (the job carries `connection_id`, so pausing the connection holds it),
@@ -642,3 +643,46 @@ kind"), and starts by itself once the entry is valid.
 7. The drawer's Secrets section links to the settings form (where a value is entered); the platform config page stays
    as a small secondary link. The platform config page opens a truncated value in a dialog (indented when JSON; never for a
    secret or a withheld value; settings of an ingestion link to the ingestions using them).
+
+## 14. HTTP ingestions: the listener, and the event target (2026-10-31)
+
+Owner rulings 2026-10-31 (the spec is `docs/ingestion-http-and-event-target.md`; the reader-facing description is
+the "HTTP ingestions" section of `docs/published/80-ingestion.md`). The mono-repo's two ingest functions (a bevco yard
+trip in XML, a merensky tower trip in JSON) were "authenticated POST, then one dispatch job"; an HTTP ingestion does that
+with idempotency, rate limiting, traces and pause, and both URLs stay live until the functions are shut down.
+
+**Where it lives.** The listener is the ingestor runtime's `HttpIngest` (`ingestor-runtime`), one fixed route pair
+`POST /ingest/{client}/{code}` and `POST /ingest/{application}/{client}/{code}` (the short form is `409 AMBIGUOUS` when two
+applications have the code for the client). Which ingestions exist behind it changes as the platform's poll answer does.
+The records go to the platform through the jobs call of section 7; the listener answers only after that call returns.
+
+**Order of checks.** Ingestion lookup, login (bearer, basic, or a FlowCatalyst token, section 2), the ingestion's rate
+limit, `accept.contentTypes` (`415 UNSUPPORTED_MEDIA_TYPE`), `X-Message-Group` (`400 INVALID_MESSAGE_GROUP`),
+`X-Correlation-Id` (`400 INVALID_CORRELATION_ID`), then the body (`400 EMPTY_BODY` once `accept` is set, then
+`INVALID_JSON`, `PAYLOAD_MUST_BE_A_NON_EMPTY_JSON_OBJECT` or `INVALID_XML` per `accept.body`). The login is checked
+before the rate limit is spent, so a caller without credentials cannot use up an ingestion's budget; failed logins are
+limited apart (20 a minute per ingestion and address, then `429` without checking credentials); only a refusal the
+caller caused counts, not a `503` because the platform's keys or the secret store cannot be read.
+
+**Rulings.**
+
+| # | Ruling |
+|---|---|
+| R1 | The listener answers `202 {"accepted":true,"jobId"}` (split `none`) or `"jobIds"` (record order); an event target answers `eventId` / `eventIds`. A resend with the same `Idempotency-Key` answers the same ids |
+| R2 | `X-Message-Group` (pattern `^[A-Za-z0-9_.:-]{1,128}$`) becomes every record's group as `{ingestionId}:{value}`; `X-Correlation-Id` (at most 100 characters) every record's correlation id |
+| R3 | `source.accept` restricts media types and checks the body: `NONE`, `JSON`, `JSON_OBJECT`, `XML` (DTDs and external entities off; a `DOCTYPE` is refused outright) |
+| R4 | A dispatch-job target gains `dataOnly` (the raw record, with the job's content type) beside the envelope (the default) |
+| R5 | The delivery envelope gains `time` (job creation, UTC, RFC 3339 with milliseconds) and `dataContentType`; a `dataOnly` delivery's `Content-Type` is the job's own, `application/json` when it has none |
+| R6 | Target `kind`: `DISPATCH_JOB` (default; every stored definition is unchanged) or `EVENT` |
+| R7 | Event data is JSON; a record that is not JSON is wrapped as `{"contentType","body"}` only when `wrapNonJson` is true, and saving requires it unless the records are known JSON. Never implicit |
+
+**Content type of a record.** A split record has the type its split implies (`json`: `application/json`, `xml`:
+`application/xml`, `csv`: `text/csv`). A split-`none` HTTP record is the whole body and keeps the request's
+`Content-Type` as sent (`application/json` when there is none or it is over 100 characters, the platform's column), so a
+raw (`dataOnly`) delivery of posted XML carries the caller's XML type, and an `EVENT` target wraps it with that type.
+
+**Event insert.** One event per record through `event.Repository.InsertBatch`; type = `target.code`, source =
+`ingestion:<application>:<code>`, client = the ingestion's, subject, group and correlation id from the record, deduplication
+id `ing:{ingestionId}:{externalId}` when the record has an `externalId` (an HTTP request with an `Idempotency-Key`). A record
+whose id already exists answers the stored event's id with `existing: true`. Events are not claimed under `ing_job_keys`:
+the deduplication id is the idempotency.

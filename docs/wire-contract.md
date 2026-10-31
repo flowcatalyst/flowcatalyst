@@ -601,7 +601,8 @@ the *other* subscriber-facing delivery path — the platform, not the router,
 POSTs directly to the subscription's `target_url` (the router only invokes
 this endpoint; it never sees the real webhook). The request:
 
-- **Headers:** `Content-Type: application/json`, `X-Dispatch-Job-Id`,
+- **Headers:** `Content-Type` (`application/json`; a `dataOnly` delivery sends
+  the job's own, see below), `X-Dispatch-Job-Id`,
   `X-Event-Type` (the job's code), `Authorization: Bearer <token>` (when the
   resolved service account has one), and the same
   `X-FlowCatalyst-Signature`/`X-FlowCatalyst-Timestamp` pair described above
@@ -720,6 +721,50 @@ protocol. Additions for runners of runtimes beyond the built-in `wasm` and
 - Delivery URLs for subscriptions, scheduled jobs and function dispatch use
   `FC_FUNCTIONS_RUNNER_URL_<RT>` when set for the version's runtime (see
   `docs/environment-variables.md`).
+- The `jvm` runtime (owner ruling 2026-10-31, `docs/jvm-functions-in-ingestor.md`):
+  an artifact that is a jar (zip magic) is published with runtime `jvm`; its
+  describe document is read, without executing anything, from the entry
+  `META-INF/flowcatalyst/function.json` (at most 1 MiB uncompressed, at most
+  50,000 entries): the ordinary describe document plus `jvm: {entrypoint}`, the
+  class implementing the function interface. A jar without the entry, or whose
+  document is invalid or has no `jvm.entrypoint`, is refused like a bad Wasm
+  describe, and a `jvm` block in a non-jar artifact is refused. Whether a
+  function is JVM is fixed by its first version: publishing a `jvm` artifact for
+  a function whose versions are not `jvm` (or the reverse) is `409
+  RUNTIME_MISMATCH`; `wasm` and `js` may still follow each other. The runner is
+  the ingestor runtime's function host, which sends `runtimes=jvm` and
+  `capabilities.runnerKind` `ingestor-jvm`.
+- Invocation, both runners: a `webhook` endpoint of a function whose desired
+  document carries no webhook secret yet (the signing account came after the
+  runner's last document) answers `503 WEBHOOK_SECRET_PENDING` with
+  `Retry-After: 5`, not `401`: a `401` is never retried and the delivery would be
+  lost, a `503` is retried once the next document has the secret.
+
+## Ingestion: the HTTP listener and the runtime jobs route
+
+`POST /api/ingestion-runtime/v1/ingestions/{id}/jobs` takes the records
+(`payload`, `payloadContentType`, `messageGroup`, `externalId`, `correlationId`,
+`subject`) and answers `{kind, created, results[]}` with `kind` `DISPATCH_JOB` or
+`EVENT` (the ingestion target's kind). `results[]` is positional: `{index, id,
+existing?}` or `{index, error}`; for `EVENT`, `id` is an event's id. An event is
+stored through the `POST /api/events/batch` insert path with source
+`ingestion:<application>:<code>`, the ingestion's client and, when the record has an
+`externalId`, the deduplication id `ing:{ingestionId}:{externalId}`; a repeat
+answers the stored event's id with `existing: true`. Event data is the record when
+its content type is JSON and it parses; else `{"contentType","body"}` when the
+target has `wrapNonJson`, else that record's result is an error.
+
+The runtime's HTTP listener (`POST /ingest/{client}/{code}`, or
+`/ingest/{application}/{client}/{code}`) answers `202 {"accepted":true,"jobId"}`
+(split `none`) or `"jobIds"` in record order, `eventId` / `eventIds` for an event
+target, `503 UNAVAILABLE` (send it again), `422 REFUSED` / `UNPROCESSABLE`, `429
+RATE_LIMITED` with `Retry-After`, and the refusals `401`, `403 FORBIDDEN`, `404`,
+`409 AMBIGUOUS`, `415 UNSUPPORTED_MEDIA_TYPE`, `400 EMPTY_BODY | INVALID_JSON |
+PAYLOAD_MUST_BE_A_NON_EMPTY_JSON_OBJECT | INVALID_XML | INVALID_MESSAGE_GROUP |
+INVALID_CORRELATION_ID`, each as `{"error": CODE, "message"?}`. The request headers
+`Idempotency-Key`, `X-Message-Group` (the records' group becomes
+`{ingestionId}:{value}`) and `X-Correlation-Id` are honoured. See "HTTP
+ingestions" in `docs/published/80-ingestion.md`.
 
 ## Non-contractual surface
 

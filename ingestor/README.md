@@ -21,7 +21,7 @@ The runtime talks to the platform only through that API, as a service account:
 | `POST /report` | route states, exchange counts (with `polls` and `lastPollAt`), failures and test answers |
 | `POST /traces` | trace records (poll, exchange, http, error) captured while an operator has tracing on for an ingestion; redacted in the runtime before they leave it. See the repository's `docs/ingestion-trace-design.md` |
 | `GET/PUT /state/{ingestionId}/{key}` | the watermark or cursor of a polled source, kept on the platform so it follows the ingestion to another runtime |
-| `POST /ingestions/{id}/jobs` | the **only** way jobs are created: the runtime sends records, the platform builds each job from the ingestion's own target (URL, pool, connection, signer, client) |
+| `POST /ingestions/{id}/jobs` | the **only** way jobs are created: the runtime sends records, the platform builds each job from the ingestion's own target (URL, pool, connection, signer, client); for an `EVENT` target it stores one event per record instead, and the answer says which (`kind`) |
 | `GET /ingestions/{id}/secrets/{name}` | the **only** way secrets are read: only secrets the ingestion's live definition binds; logged on the platform as security telemetry (not an audit row per read; a refused fetch is audited) |
 
 ### Contract version 2, and what was added to it
@@ -87,6 +87,16 @@ same code for the client (the short form answers `409` then). Failed logins are 
 20 times in a minute against one ingestion is answered `429` (with `Retry-After`) without its credentials being
 checked until its wait is over; other addresses and other ingestions are not held up.
 
+The listener checks, in order: the login (bearer, basic or a FlowCatalyst token), the ingestion's `rateLimit`, the
+source's `accept` (`415` for a media type it does not take; `400` for an empty body, or one that is not the JSON,
+non-empty JSON object or XML it must be, a `DOCTYPE` being refused outright), then the headers. `X-Message-Group`
+(`^[A-Za-z0-9_.:-]{1,128}$`, else `400`) becomes every record's group as `<ingestion id>:<value>`, and
+`X-Correlation-Id` (at most 100 characters, else `400`) every record's correlation id. It answers `202` only after
+the platform has the jobs: `{"accepted":true,"jobId"}` for a payload that is not split, `"jobIds"` in record order
+for one that is, and `eventId` / `eventIds` when the ingestion's target is an event; `503` means send it again, and
+with an `Idempotency-Key` a resend answers the same ids. The reader's description, with examples, is "HTTP
+ingestions" in `docs/published/80-ingestion.md`.
+
 ### SFTP host keys
 
 An `sftp` source checks the server's host key against `knownHosts` (a `known_hosts` line). Without one the
@@ -140,7 +150,8 @@ positions get new keys, a record at a position already keyed is taken as already
 
 The jobs of one payload share a `messageGroup` (and `correlationId`): `<ingestion id>:` and the start of the
 SHA-256 of its identity, or of its content when it has no identity and is held whole (an HTTP body, a
-message), so a payload read again lands in the same group.
+message), so a payload read again lands in the same group. An HTTP caller can name the group
+itself with `X-Message-Group` (and the correlation id with `X-Correlation-Id`).
 
 ## Running it
 
@@ -172,7 +183,7 @@ Every value is a key in `config/application.yaml` and an environment variable na
 | `INGEST_EXTENSIONS_MANIFEST` | `ingest.extensions-manifest` | unset | `s3://<bucket>/<key>` of a manifest pinning the extension jars (same bucket, SHA-256 checked) to load at start; exclusive with jars in `INGEST_EXTENSIONS_DIR`. See [docs/extensions.md](docs/extensions.md) |
 | `INGEST_CAMEL_ROUTES_ENABLED` | `ingest.camel-routes-enabled` | `false` | report and run the `camel-route` kind |
 | `INGEST_POLL_INTERVAL` | `ingest.poll-interval` | `PT1M` | how often to poll and report. The platform's lease is 3 minutes |
-| `INGEST_FUNCTIONS_ENABLED` | `ingest.functions-enabled` | `true` | host JVM functions (docs/jvm-functions-in-ingestor.md): fetch the pool's desired state from the platform's function control plane, load the `jvm` versions in it and serve `/fn/{address}[@{alias}\|@v{n}]/{path}` on this server. The runtime's service account must also hold `platform:function-runner`. The server's `HTTP_MAX_BODY_BYTES` (default 1 MiB) caps every function's request body |
+| `INGEST_FUNCTIONS_ENABLED` | `ingest.functions-enabled` | `true` | host JVM functions (docs/jvm-functions-in-ingestor.md): fetch the pool's desired state from the platform's function control plane, load the `jvm` versions in it and serve `/fn/{address}[@{alias}\|@v{n}]/{path}` on this server. The runtime's service account must also hold `platform:function-runner`. The server's `HTTP_MAX_BODY_BYTES` (default 5 MiB, framework 0.1.5) caps every function's request body |
 | `INGEST_FUNCTIONS_POOL` | `ingest.functions-pool` | `default` | the function pool this process serves (the `pool` of its desired-state request) |
 | `INGEST_FUNCTIONS_DB_MAX_POOLS` | `ingest.functions-db-max-pools` | `32` | database pools the host keeps for `ctx.dataSource(name)`: one per distinct DSN, shared by every function; at the cap the least recently used is closed (as the Go runner) |
 | `INGEST_FUNCTIONS_DB_MAX_CONNS` | `ingest.functions-db-max-conns` | `4` | connections per pool |

@@ -41,6 +41,37 @@ unless you set that variable yourself) and gives the child `INGEST_FUNCTIONS_ENA
 `fcdev fn deploy <address> app.jar` publishes a jar (runtime `jvm`, picked from the `.jar` extension; a function's
 runtime is fixed by its first version). A jar cannot be run with `fcdev fn run` / `fn dev`: deploy it.
 
+**Use the fcdev you built.** Jar support is in this checkout and not yet in a release: an installed `fcdev`
+(0.11.5, for one) rejects a jar as an invalid Wasm module. `make build` builds `./bin/fcdev`, the ingestor jar and
+installs the function API; run `./bin/fcdev start` and `./bin/fcdev fn deploy ...` until the next fcdev release.
+
+| Make target | Does |
+|---|---|
+| `make build` | The frontend, the Go binaries, the ingestor jar (skipped, with a line saying so, while a running ingestor holds it) and the function API (`java-build`) |
+| `make ingestor-build` | Only the ingestor jar (`-DskipTests package`); refuses while a running ingestor holds it: `fcdev stop` first |
+| `make ingestor-test` | The ingestor's tests: contract, function API, runtime (about 5 minutes) |
+| `make function-api-install` | Installs the function API into `~/.m2`, which a JVM function compiles against |
+| `make function-hello` | `function-api-install`, then builds `ingestor/examples/function-hello/target/function-hello-0.1.0.jar` |
+
+**The function-hello walkthrough.** After `make build` and `make function-hello`, with `./bin/fcdev start` running
+(the ingestor is on `FC_INGESTOR_PORT`, default 8091):
+
+1. Create the application `hello` and give it a service account (console, or `POST /api/applications` then
+   `POST /api/applications/{id}/provision-service-account`). The service account signs the subscription's
+   deliveries; until the function's runner has its secret a delivery is answered `503 WEBHOOK_SECRET_PENDING` and retried.
+2. Create the two event types the describe names, `hello:greeting:greeting:requested` and
+   `hello:greeting:greeting:sent` (console, or `POST /api/event-types`).
+3. `./bin/fcdev fn deploy hello.greeting ingestor/examples/function-hello/target/function-hello-0.1.0.jar --create`
+   publishes version 1 and waits until the ingestor has loaded it. It stops short of promoting while the declared
+   config key `GREETING` has no value.
+4. `./bin/fcdev fn set hello.greeting --config GREETING=Howdy`, then `./bin/fcdev fn promote hello.greeting 1`
+   (promoting creates the subscription).
+5. `curl http://127.0.0.1:8091/fn/hello.greeting/healthz` answers `{"status":"ok"}`; publishing a
+   `hello:greeting:greeting:requested` event makes the function emit `hello:greeting:greeting:sent`.
+
+The example's own README (`ingestor/examples/function-hello/README.md`) has the same steps with the commands. The
+reader's guide to writing a JVM function is "JVM functions" in `docs/published/60-functions.md`.
+
 ## Where things are
 
 | What | Where |

@@ -116,6 +116,35 @@ flowchart LR
   DELIVERY_FAILED, with raw payload debugging for administrators holding
   the view-raw permission.
 
+## The delivery body
+
+A dispatch job is delivered to its target as a signed `POST`. Two shapes, chosen
+by the job's `dataOnly` flag:
+
+**The envelope** (the default, `dataOnly` false) is JSON, sent with
+`Content-Type: application/json`:
+
+| Field | Meaning |
+|---|---|
+| `id` | The dispatch job's id |
+| `type` | The job's code (the event type, for a job an event raised) |
+| `attemptNumber` | 1 for the first delivery, then 2, 3, … |
+| `time` | When the job was created: UTC, RFC 3339 with milliseconds (`2026-10-31T09:15:02.481Z`) |
+| `dataContentType` | The content type of the payload, when the job has one (an ingestion's record: its split's type, or for an unsplit HTTP payload the caller's `Content-Type`) |
+| `source`, `subject`, `correlationId`, `messageGroup` | Present when the job has them |
+| `clientId`, `clientCode` | The job's client; `clientCode` (the identifier slug) is left out when the client cannot be resolved |
+| `data` | The payload: parsed JSON when it parses, else the text as a string |
+
+**Data only** (`dataOnly` true) sends the payload **byte for byte, with no
+envelope**. Its `Content-Type` is the **job's own content type** (`application/json`
+when it has none), so a job made with `application/xml` reaches the target as XML. What
+the envelope would have carried arrives in headers instead: `X-Dispatch-Job-Id`,
+`X-Event-Type` (the job's code) and `X-FlowCatalyst-Client: {clientId}:{clientCode}`
+(left out when the job has no resolvable client).
+
+Both are signed the same way (`X-FlowCatalyst-Signature` over timestamp plus body, with
+`X-FlowCatalyst-Timestamp`); the signature covers the body alone.
+
 ## Scheduled jobs
 
 Cron-driven work lives in **scheduled jobs** (`sjb_…`): 6-field cron

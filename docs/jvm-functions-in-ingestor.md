@@ -4,6 +4,30 @@
 (standalone `runners/jvm`, `fcdev runner install`); that document stays as background for the
 contract gap analysis (§1), security (§7) and risks (§8.2).*
 
+## Status (2026-10-31)
+
+**Built and committed:**
+
+| Commit | What |
+|---|---|
+| `9f1a15de` | Platform and fcdev (section 4): runtime `jvm`; a jar's describe read from `META-INF/flowcatalyst/function.json` without executing it (caps: 64 MiB artifact, 1 MiB describe, 50,000 entries) and `jvm.entrypoint` required; `RUNTIME_MISMATCH` when a function's `jvm`-ness would change (wasm and js may still follow each other); `FC_FUNCTIONS_RUNNER_URL_JVM`; fcdev points it at its ingestor child and gives the ingestor's account `platform:function-runner`; `fcdev fn deploy x.jar` |
+| `69e3f6ac` | The function API (`ingestor/function-api`, section 2) and the host in the ingestor runtime (section 3): listener, control-plane client, loader and reconcile loop, permits, deadlines, the role switches `INGEST_FUNCTIONS_ENABLED` / `INGEST_FUNCTIONS_POOL` / `INGEST_INGESTION_ENABLED`; the example `ingestor/examples/function-hello` |
+| `885bde38` | `ctx.dataSource(name)`: PostgreSQL through one shared HikariCP pool per distinct DSN (`INGEST_FUNCTIONS_DB_MAX_POOLS`, `_MAX_CONNS`, `_IDLE_TTL`, defaults 32 / 4 / 10 min) |
+| `64cc4cfb` | A webhook delivery before the runner has the function's secret is `503 WEBHOOK_SECRET_PENDING` (`Retry-After: 5`), retried, on both runners |
+
+Make targets: `ingestor-build`, `ingestor-test`, `function-api-install`, `function-hello`; `make build` also builds the
+ingestor jar and installs the function API (`java-build`). The reader's guide is "JVM functions" in
+`docs/published/60-functions.md`; the fcdev walkthrough is in `docs/fcdev-ingestor.md`.
+
+**Not built yet:** function traces (`traceContexts` are accepted in a describe and recorded nowhere), public routes and
+domains (`isPublic` is always false), per-function metrics, and a readiness check for the function role.
+
+**Known limits:** a PEM `sslkey` in a function's database DSN is handed to the driver as it is (the host does no PEM
+conversion); the request body of every function is also capped by the ingestor server's own body limit
+(`HTTP_MAX_BODY_BYTES`), whatever the function's `maxBodyBytes` says; an installed `fcdev` that predates the `jvm`
+runtime (0.11.5) rejects a jar as an invalid Wasm module, so `./bin/fcdev` (built by `make build`) is needed until the
+next fcdev release.
+
 ## 0. Rulings
 
 | # | Ruling |

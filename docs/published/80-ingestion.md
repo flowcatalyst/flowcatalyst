@@ -1,7 +1,8 @@
 # Ingestion
 
 An **ingestion** takes data from wherever a system keeps it, splits each payload
-into records, and turns every record into a **dispatch job**. It is the inbound
+into records, and turns every record into a **dispatch job** (or, if the target says so,
+a platform **event**). It is the inbound
 twin of subscriptions: a subscription delivers events out, an ingestion brings
 data in and hands it to the same delivery machinery.
 
@@ -26,7 +27,7 @@ ingestion = (application, client, code) + source + split + target + flags
 | `keepFailedPayloads` | Off unless the client has agreed. When on, a failure may carry the first 2 KB of the payload that failed. |
 | `source` | Where the data comes from. |
 | `split` | How a payload becomes records. |
-| `target` | The dispatch job each record becomes. |
+| `target` | The dispatch job (or the platform event) each record becomes. |
 
 An ingestion is addressed as **`application/client/code`** (for example
 `ingest/acme/orders-sftp`) by `fcdev ingest`, or by its `ing_…` id.
@@ -35,17 +36,14 @@ An ingestion is addressed as **`application/client/code`** (for example
 
 | Kind | Reads |
 |---|---|
-| `http` | Data pushed to the runtime over HTTP |
+| `http` | Data pushed to the runtime over HTTP (see "HTTP ingestions") |
 | `sftp`, `s3` | Files in a directory or bucket, polled |
 | `sqs`, `rabbitmq` | Messages from a queue |
 | `database-poll`, `api-poll` | A table or an HTTP API, polled on an interval |
 | `custom` | A kind a runtime adds as an extension (`kind: custom`, `type`, `settings`) |
 
-An `http` source may set `accept`: `contentTypes` (media types such as
-`application/xml`, parameters like `charset` ignored; absent or empty accepts any,
-others get `415`) and `body`, a check made before the payload is split, failing
-with `400`: `NONE` (the default), `JSON`, `JSON_OBJECT` (a non-empty object) or
-`XML` (well-formed).
+An `http` source may set `accept`, `rateLimit` and one of three `auth` kinds; the endpoint, the
+checks, the answers and the headers are described under "HTTP ingestions".
 
 `GET /api/ingestion-source-kinds` lists the built-in kinds and the ones the live
 runtimes report. A kind that needs a special permission (a Camel route is one)
@@ -220,6 +218,248 @@ with the problems); it starts by itself once the entry is valid.
   in `GET .../config`), and the runtime checks it before it builds the route.
 - **The generic configuration API and page refuse section `ingest`** (`400
   CONFIG_SECTION_RESERVED`) for a write or a delete; reading it is as for any section, except that the value is shown only to a caller who can update ingestions (`ingestion:update`): everyone else sees the entry's status and problems, `GET .../config` answers `valueHidden: true` without `value`, and the generic config reads show `***`. What the entry supplies is withheld the same way: the drawer's where, delivery URL and secrets, `GET .../secrets` (`namesHidden: true`, no names) and the warnings that describe the entry's settings.
+
+## HTTP ingestions
+
+An `http` source is a push endpoint: a system posts a payload to the runtime and the
+runtime turns it into dispatch jobs (or events) **before it answers**. The endpoint is
+served by the ingestor runtime (port `8091` by default; under `fcdev`,
+`http://127.0.0.1:8091`), not by the platform.
+
+### The endpoint
+
+```
+POST /ingest/{client}/{code}
+POST /ingest/{application}/{client}/{code}
+```
+
+`{client}` is the client's identifier or its platform id (`clt_…`); `{code}` is the
+ingestion's code. The short form is enough while only one application has an
+ingestion of that code for the client; when two do, it answers
+`409 AMBIGUOUS` and the caller posts to the application-qualified form. An unknown
+ingestion, or one that is not an `http` source, is `404`. Only `POST` is served.
+
+The checks run in this order, and the first to fail answers: the ingestion, the
+login, the rate limit, `accept` (media type), the headers, the body.
+
+### Who may post (`source.auth`)
+
+| `auth.kind` | The caller sends | What is checked |
+|---|---|---|
+| `bearer` | `Authorization: Bearer <token>` | The token equals the secret named in `token` (`{name: …}`, a secret of the ingestion's client; see "Secrets") |
+| `basic` | `Authorization: Basic <base64 user:password>` | The user name equals `username` in the definition and the password equals the secret named in `password`. A user name may not contain `:` |
+| `flowcatalyst-token` | `Authorization: Bearer <platform access token>` | The token verifies against the platform's signing keys, and its principal may act for **the ingestion's client** and may use the application named in `application` (a code). `principalId` (`prn_…`) narrows it to one principal. A service account's `sac_` id is not in its tokens: name its principal |
+
+A missing or wrong credential is `401`. A valid platform token whose principal lacks
+the client, the application or the named principal is `403 FORBIDDEN`. If the platform's
+keys or the secret store cannot be read at that moment the answer is `503` (send it
+again). The secret is read through the runtime's secrets call and kept for a short
+while, so a rotated secret is in force within about a minute.
+
+### What the request may be (`source.accept`)
+
+```yaml
+source:
+  kind: http
+  auth: {…}
+  accept:
+    contentTypes: [application/xml, text/xml]
+    body: XML
+```
+
+- `contentTypes`: media types as `type/subtype`, compared case-insensitively with the
+  request's `Content-Type`, parameters such as `charset` ignored. Absent or empty
+  accepts any. Anything else is `415 UNSUPPORTED_MEDIA_TYPE`; so is a request with no
+  `Content-Type` when a list is given.
+- `body` is checked before the payload is split, and a failure is `400`: see the table below.
+- XML is parsed with DTDs and external entities off, and **a `DOCTYPE` is refused
+  outright** (`INVALID_XML`, "a DOCTYPE is not accepted"): an integration payload has no
+  need of one, and the body is passed on to a processor whose own parser this check
+  cannot vouch for. The refusal says where a body is malformed (line and column),
+  never what it says.
+- Once `accept` is set, a blank body is `400 EMPTY_BODY`. Without `accept` a blank body
+  makes no records (the answer is `202` without an id).
+
+| `body` | Accepts | Refusal |
+|---|---|---|
+| `NONE` (default) | anything | |
+| `JSON` | one JSON value | `INVALID_JSON` |
+| `JSON_OBJECT` | one JSON object with at least one property (not a scalar, an array or `{}`) | `INVALID_JSON`, or `PAYLOAD_MUST_BE_A_NON_EMPTY_JSON_OBJECT` |
+| `XML` | well-formed XML with a root element | `INVALID_XML` |
+
+Every refusal has the body `{"error": "<CODE>"}`, with a `message` added where there is
+something to say (the media types taken, where the XML is malformed).
+
+### Request headers
+
+| Header | Meaning |
+|---|---|
+| `Idempotency-Key` | Names the request. Each record is keyed by it and its position, so **sending the same request again makes no new jobs or events** and the answer carries the same ids. Without it, a request sent again makes everything again. |
+| `X-Message-Group` | 1 to 128 of `A-Z a-z 0-9 _ . : -`, else `400 INVALID_MESSAGE_GROUP`. Every record of the payload gets the group `{ingestionId}:{value}`: the ingestion's id is put in front so that two ingestions that use the same value never share a group. Without it the group is `{ingestionId}:` and a hash of the `Idempotency-Key` (else of the payload), so a request sent again lands in the same group |
+| `X-Correlation-Id` | At most 100 characters, else `400 INVALID_CORRELATION_ID`. It becomes every record's correlation id. Without it the correlation id is the record's group |
+
+### The answers
+
+| Status | Body | Meaning |
+|---|---|---|
+| `202` | `{"accepted": true, …}` | The platform has the jobs (or events). **Only now is it safe to forget the payload** |
+| `503` | `{"error": "UNAVAILABLE"}` | The platform has none of them, or only some: **send the same request again** (with an `Idempotency-Key`, nothing is made twice) |
+| `422` | `REFUSED` or `UNPROCESSABLE` | The platform refused the records for good, or the payload could not be read: do not send it again unchanged |
+| `429` | `{"error": "RATE_LIMITED"}` with `Retry-After` | See "Rate limits" |
+| `400`, `401`, `403`, `404`, `409`, `415` | | As above |
+
+The `202` names what was made, in record order:
+
+| Target | Split `none` | Any other split |
+|---|---|---|
+| dispatch job | `{"accepted": true, "jobId": "…"}` | `{"accepted": true, "jobIds": ["…", …]}` |
+| event | `{"accepted": true, "eventId": "…"}` | `{"accepted": true, "eventIds": ["…", …]}` |
+
+A payload that makes no records has no ids to name: the list is empty, or the answer is
+`{"accepted": true}` alone (a blank payload). A resend under the same
+`Idempotency-Key` answers the **same** ids.
+
+### Rate limits
+
+```yaml
+rateLimit: {requests: 120, per: PT1M}     # inside source:
+```
+
+`rateLimit` allows at most `requests` per `per` (1 to 1,000,000 requests, `per` from 1 ms to
+1 day) to one ingestion; beyond it the answer is `429 RATE_LIMITED` with `Retry-After`
+(seconds). A caller is counted only **after** it has logged in, so a stranger cannot use up
+an ingestion's budget. The count is each runtime's own: with several runtimes behind a
+load balancer each allows the full limit.
+
+Separately, failed logins are limited. An address that fails to log in to one ingestion
+more than 20 times in a minute is answered `429` (with `Retry-After`) **without its
+credentials being checked** until the wait is over. Other addresses and other ingestions
+are not held up. This applies to every ingestion, with or without `rateLimit`. Only a
+refusal the caller caused counts: a `503` because the platform's keys or the secret store
+cannot be read does not, so an outage locks nobody out.
+
+### What the record becomes
+
+Whatever the source, a record is one piece of the payload (the whole body for split
+`none`). Its content type is what the split makes of it: `application/json` for `json`,
+`application/xml` for `xml`, `text/csv` for `csv`. With split `none` the record is the
+whole body, so it keeps the **`Content-Type` its HTTP caller sent** (as sent, parameters
+included, such as `application/xml; charset=UTF-8`); `application/json` when the caller
+sent none, or one over 100 characters, and for a source other than HTTP.
+
+**Target `DISPATCH_JOB`** (the default). The record becomes a dispatch job and is delivered
+to `targetUrl` as in "Delivery" (messaging page):
+
+- **envelope** (`dataOnly: false`, the default): the platform's JSON envelope, the record in
+  its `data` (parsed when it is JSON, else as a string), with `dataContentType` naming the
+  record's content type and `time` the job's creation time;
+- **`dataOnly: true`**: the record itself, byte for byte, with the job's content type as
+  the request's `Content-Type`. The envelope's fields travel as headers
+  (`X-Dispatch-Job-Id`, `X-Event-Type` (the job's code), `X-FlowCatalyst-Client`, and the signature headers).
+
+**Target `EVENT`.** The record becomes one platform event of the event type named in
+`target.code`, stored through the same path as `POST /api/events/batch`, so **the event
+type's subscriptions deliver it** and there is no `targetUrl`, pool or connection. The
+event's source is `ingestion:{application}:{code}`, its client is the ingestion's, its
+subject, message group and correlation id come from the record. Event `data` is JSON:
+
+- a record whose content type is JSON and that parses is the data as it is;
+- any other record is wrapped as `{"contentType": "<type>", "body": "<text>"}`, **only when
+  the target says `wrapNonJson: true`**; without it that record is refused (its result is an
+  error and nothing is made for it);
+- `wrapNonJson` is therefore **required** at save unless the records are known to be JSON:
+  a `json` split, or split `none` on an HTTP source whose `accept.body` is `JSON` or
+  `JSON_OBJECT`. The platform refuses the definition otherwise (`target.wrapNonJson: these
+  records are not known to be JSON; set wrapNonJson to true…`). It is never implicit.
+
+An event is deduplicated per ingestion when its request carried an `Idempotency-Key`: the
+event's deduplication id is `ing:{ingestionId}:` followed by a hash of the key and the record's position, and a resend answers the
+first event's id instead of storing a second.
+
+### Example: XML posted by a partner, delivered raw to a processor
+
+`POST /ingest/bevco/yard-trip` with the caller's own FlowCatalyst token. Each posted XML
+document is one dispatch job, delivered unchanged to the function that processes it.
+
+```yaml
+application: bevco-integration       # an INTEGRATION application; also the first part of target.code
+client: bevco
+code: yard-trip
+name: Yard trip (XML)
+source:
+  kind: http
+  auth:
+    kind: flowcatalyst-token
+    application: bevco-integration     # the caller's token must reach this application and client bevco
+  accept:
+    contentTypes: [application/xml, text/xml]
+    body: XML
+  rateLimit: {requests: 600, per: PT1M}
+split:
+  kind: none                           # the posted body is the one record
+target:
+  kind: DISPATCH_JOB
+  code: bevco-integration:function:yard-trip-ingest:dispatch
+  targetUrl: https://functions.example.com/fn/bevco-integration.yard-trip-processor/deliver
+  pool: yard-process-pool              # a dispatch pool code
+  connection: bevco-yard               # a connection code; its service account signs the delivery
+  mode: IMMEDIATE
+  batchSize: 1
+  dataOnly: true                       # deliver the XML itself, not the envelope
+```
+
+```
+curl -X POST https://ingest.example.com/ingest/bevco/yard-trip \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/xml" \
+  -H "Idempotency-Key: trip-4711" --data-binary @trip.xml
+{"accepted":true,"jobId":"…"}
+```
+
+A definition that is the same in every environment keeps `auth`, `accept`, `rateLimit` and
+the delivery address out of the file: the source names a settings entry instead
+(`source: {kind: http, config: yard-trip}`) and the entry holds
+`{"auth": {…}, "accept": {…}, "targetUrl": "…"}` per environment (see "Settings per
+environment").
+
+### Example: JSON records posted by an application, delivered as events
+
+`POST /ingest/acme/orders` with a bearer token held as a secret. Each order in the posted
+array becomes an `shop:orders:order:received` event that the event type's subscribers
+receive.
+
+```yaml
+application: shop-integration
+client: acme
+code: orders
+name: Orders (push)
+source:
+  kind: http
+  auth:
+    kind: bearer
+    token: {name: orders-push-token}   # a secret of client acme, set on the platform
+  accept:
+    contentTypes: [application/json]
+    body: JSON
+split:
+  kind: json
+  arrayPath: $.orders                  # one record per element of the array
+target:
+  kind: EVENT
+  code: shop:orders:order:received     # an existing event type
+  batchSize: 100
+  wrapNonJson: false                   # known JSON (a json split), so not required
+```
+
+```
+curl -X POST https://ingest.example.com/ingest/acme/orders \
+  -H "Authorization: Bearer $PUSH_TOKEN" -H "Content-Type: application/json" \
+  -H "X-Message-Group: tenant-7" -H "Idempotency-Key: batch-2026-10-31-1" \
+  -d '{"orders": [{"id": 1}, {"id": 2}]}'
+{"accepted":true,"eventIds":["…","…"]}
+```
+
+Sending the same request again (same `Idempotency-Key`) answers the same two event ids and
+stores nothing new.
 
 ## Definition files and sets
 

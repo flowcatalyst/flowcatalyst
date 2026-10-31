@@ -1,8 +1,8 @@
 # Functions
 
 A **function** is a small program the platform stores, versions and runs for
-you. You write it in Go, Rust or TypeScript against a FlowCatalyst SDK,
-publish it, and promote a version to `live`. The platform then wires it up:
+you. You write it in Go, Rust or TypeScript against a FlowCatalyst SDK (or in Java, see
+"JVM functions"), publish it, and promote a version to `live`. The platform then wires it up:
 subscriptions deliver events to it, schedules fire it, and callers invoke it
 over HTTP — with no server of yours to run.
 
@@ -11,7 +11,8 @@ this platform to provide services to their customers. Customers do not write or 
 functions of their own, and nothing in the platform or the SDKs is built to let them.
 
 Functions run in the **function runner**, a sandbox built on WebAssembly (it isolates
-faults and limits what each function can reach; it is not hardened against hostile code). A
+faults and limits what each function can reach; it is not hardened against hostile code).
+A Java function is a jar served by the ingestor runtime instead (see "JVM functions"). A
 function reaches nothing except what it declares: its config and secret keys,
 its databases, the hosts it may call, and the event types it may emit. The
 runner holds every credential; the function never sees one.
@@ -153,6 +154,12 @@ account is deactivated or deleted, the secret is empty and every webhook deliver
 (`401 INVALID_SIGNATURE`) — the platform logs the reason (`function webhook secret is empty`) and
 does not quietly use the application's account instead. Service-account credentials are cached for
 one minute, so a change or a rotated secret reaches runners within about a minute.
+
+A delivery that arrives before the runner has the function's signing secret at all (the
+account was only just attached and the runner has not yet fetched its next document) is
+answered `503 WEBHOOK_SECRET_PENDING` with `Retry-After: 5`, **not** `401`. The platform
+retries a `503`; it would not retry a `401`, and the delivery would be lost. This is the
+same on the WebAssembly runner and on the ingestor's JVM host.
 
 ### Subscriptions and schedules
 
@@ -311,6 +318,206 @@ the call's time is up, everything it started stops.
 A function past its concurrency limit answers `429` (deliveries wait and try
 again without spending an attempt). One that needs more memory than it may
 have fails only its own call — never its neighbours.
+
+## JVM functions
+
+A function may also be written in Java (25) and published as a **jar**. It is the same
+function in every other way — addresses, versions, aliases, declarations, subscriptions,
+schedules, settings, promotion — but it runs in the **ingestor runtime** instead of the
+WebAssembly runner. The jar is first-party code like any other function; the class-loader
+filter that keeps a function away from the host's internals is fault isolation, not a sandbox.
+
+### How it runs
+
+- The host loads **one instance of your `Function` class per published version** and calls
+  it for every request at once, **each call on its own virtual thread**. Nothing queues
+  behind anything else. Keep the handler **stateless and thread-safe**: no mutable fields,
+  or guard them.
+- The function's **concurrency limit** (default 16, settable per function like any other) is a
+  permit count: a call that finds none free is answered `429 FUNCTION_BUSY` with
+  `Retry-After: 1` at once, never queued. Deliveries treat that as a deferral.
+- Each call has a deadline (the endpoint's `timeoutMs`, else the function's, default 30 s). A
+  call past it is answered `504 FUNCTION_TIMEOUT`; its permit comes back when the handler
+  really returns. A handler that throws is answered `500 FUNCTION_FAILED` (the exception is
+  in the host's log, not in the answer).
+- The pool, `warm` and the limits are **platform settings** of the function, as for every
+  runtime; none of them is in the jar.
+- A function is **JVM or not from its first version**. Publishing a jar for a function that has
+  Wasm or JS versions, or the reverse, is refused `RUNTIME_MISMATCH`.
+
+### Writing one
+
+One class implements `io.flowcatalyst.function.Function`:
+
+```java
+public final class HelloFunction implements Function {
+
+    @Override
+    public void init(FunctionContext ctx) {            // once, before the first call
+        ctx.logger().log(Level.INFO, "starting {0} v{1}", ctx.address(), ctx.version());
+    }
+
+    @Override
+    public Result handle(Request in, FunctionContext ctx) throws Exception {
+        return switch (in.route()) {                  // the pattern the describe declares
+            case "GET /healthz" -> Result.json(200, "{\"status\":\"ok\"}");
+            case "GET /hello/{name}" -> hello(in);
+            case "POST /events/greeting-requested" -> greetingRequested(in, ctx);
+            default -> Result.fail("no handler for " + in.route());
+        };
+    }
+
+    @Override
+    public void stop() { }                            // once, after the last call returned
+}
+```
+
+The host routes and authenticates **before** `handle` runs, so a path is always one the
+describe declares. A class needs a public no-argument constructor.
+
+**`Request`** carries `id`, `address`, `version`, `method`, `path`, `rawQuery`, `headers`,
+`route` (the matched pattern, `GET /hello/{name}`), `pathParams`, `caller`, `deadline`, `host`,
+`remoteAddr`, `isPublic` and the body (`body()`, `bodyText()`); `header(name)` and `query()`
+match as you would expect.
+
+**`Caller`** is one of three, one per endpoint `auth`:
+
+| `auth` | `Caller` | Meaning |
+|---|---|---|
+| `webhook` | `Platform` | A verified delivery (subscription, dispatch job or schedule). Parse the body with `Webhook.event(in)`, `Webhook.dataOnly(in)` or `Webhook.schedule(in)` |
+| `platform` | `Principal` | A platform access token the host verified: `id`, `type`, `tier`, `clients`, `clientCodes`, `roles`, `applications`, `permissions`, with `hasPermission`, `canAccessClient`, `canAccessClientCode`, `canAccessApplication` and `canAccessApplicationCode` |
+| `none` | `Anonymous` | Nothing was checked; the function authenticates for itself |
+
+**`Result`** is the HTTP answer, with the delivery conventions as factories:
+
+| Factory | Answer | A delivery treats it as |
+|---|---|---|
+| `Result.ack()` | `200` | delivered |
+| `Result.retry(Duration)` | `429` + `Retry-After` | try again after the delay, without spending an attempt |
+| `Result.reject(reason)` | `422` + `FlowCatalyst-Outcome: reject` | give up at once |
+| `Result.fail(reason)` | `500` `{"error": …}` | a failed attempt, retried on the schedule |
+| `Result.json(status, json)`, `text`, `status`, `http` | what you say | what a browser or API client receives |
+
+**`FunctionContext`** is everything a function may reach, limited to what the describe declares:
+
+| Service | Notes |
+|---|---|
+| `logger()` | A `System.Logger` carrying the function, version and invocation id |
+| `config()`, `secrets()` | `get(key)` and `require(key)` for the declared keys; secret values never appear in a `toString` or a log |
+| `dataSource(name)` | A JDBC `DataSource` for a declared database `name`. **PostgreSQL only.** The platform setting is the function's DSN (`postgres://…` or `key=value`); the host keeps **one pool per distinct DSN, shared by every function** bound to it (default 4 connections a pool, 32 pools in all, an idle pool closed after 10 minutes and made again by the next call). Borrow a connection per call and close it; never keep one. A DSN the host cannot represent (a Unix socket, an unknown `sslmode`) is refused with a message that never echoes it |
+| `http()` | Outbound calls only to the hosts in `httpAllow` (`api.example.com`, or `*.example.com` for subdomains, not the apex); `https` only (plain `http` to loopback); redirects are not followed, you see the 3xx; a response over 16 MiB fails the call; the timeout is the shorter of your call's (default 30 s) and the time left before the deadline |
+| `events().emit(OutboundEvent)` | Only types listed in `emits`, only your application's; a dedup id is required. Answers `Emitted` or `Refused` (with `retryable()`), never throws for either |
+| `dispatcher().dispatch(DispatchJob)` | Only `(target, path)` pairs declared in `dispatches`; `DispatchJob.to(target, path)` builder; not deduplicated. `DispatchException` says whether a retry makes sense (`retryable()`) |
+| `clock()` | The host's clock; never read the system clock directly, so a test can fix time |
+| `address()`, `version()` | This function and the loaded version |
+
+For unit tests without a host, the API jar has `FakeFunctionContext`, `FakeRequest`,
+`RecordingEvents` and `RecordingDispatcher` in `io.flowcatalyst.function.testing`.
+
+**What the host provides and what the jar bundles.** The host gives a function the **JDK**, the
+**function API** (`io.flowcatalyst.function`), the **FlowCatalyst framework**
+(`io.flowcatalyst.framework.*`), the **Jackson** the framework exposes (`tools.jackson`, and
+Jackson annotations), **SLF4J** and **jspecify**. Everything else the function bundles in its own
+jar (a fat jar). Mark the function API and the framework `provided`. A jar that contains the API's
+own package is refused; so is one with a native library (`.so`, `.dll`, `.dylib`) or a registered
+`java.security.Provider`. A function cannot load the ingestor's own classes or a JDBC driver of the
+host's: use `dataSource`.
+
+### The describe document
+
+The jar holds `META-INF/flowcatalyst/function.json`: the same describe document every function has
+(`abi`, `endpoints`, `subscriptions`, `schedules`, `config`, `secrets`, `db`, `httpAllow`, `emits`,
+`dispatches`), plus a `jvm` block naming the entrypoint class. A method-less endpoint matches every
+method; list one endpoint per method otherwise.
+
+```json
+{
+  "abi": 1,
+  "jvm": { "entrypoint": "io.flowcatalyst.example.hello.HelloFunction" },
+  "endpoints": [
+    { "method": "GET",  "path": "/healthz", "auth": "none" },
+    { "method": "GET",  "path": "/hello/{name}", "auth": "platform" },
+    { "method": "POST", "path": "/events/greeting-requested", "auth": "webhook" }
+  ],
+  "subscriptions": [
+    { "eventType": "hello:greeting:greeting:requested", "path": "/events/greeting-requested", "mode": "IMMEDIATE" }
+  ],
+  "config": ["GREETING"],
+  "emits": ["hello:greeting:greeting:sent"]
+}
+```
+
+Publishing reads this entry **without running anything** (at most 1 MiB, at most 50,000 jar
+entries; the jar itself at most 64 MiB) and checks it as it checks a Wasm function's describe,
+plus that `jvm.entrypoint` is present. A jar without it is refused.
+
+### Building and deploying
+
+Build with Maven. The function API is installed once into your local repository (`make
+function-api-install` in the platform repository), and both it and the framework are `provided`:
+
+```xml
+<dependency>
+  <groupId>io.flowcatalyst.ingestor</groupId><artifactId>function-api</artifactId>
+  <version>${ingestor.version}</version><scope>provided</scope>
+</dependency>
+<dependency>
+  <groupId>io.flowcatalyst.framework</groupId><artifactId>framework-http</artifactId>
+  <version>${flowcatalyst-framework.version}</version><scope>provided</scope>
+</dependency>
+```
+
+Put `function.json` in `src/main/resources/META-INF/flowcatalyst/`, build the jar (a shade plugin
+if you bundle dependencies), and deploy it like any function. The runtime is picked from the
+`.jar` extension:
+
+```sh
+fcdev fn deploy hello.greeting target/function-hello-0.1.0.jar --create
+fcdev fn set hello.greeting --config GREETING=Howdy
+fcdev fn promote hello.greeting 1        # if deploy stopped for the missing GREETING value
+```
+
+A jar cannot be run with `fcdev fn run` or `fcdev fn dev`: they run Wasm and JS. Deploy it to a
+local `fcdev` (below) and call it there. The example, with its walkthrough, is
+`ingestor/examples/function-hello` in the platform repository.
+
+### Locally, with fcdev
+
+`fcdev` starts the ingestor runtime beside the platform and points the platform's JVM function
+URL at it, so JVM functions work with no setup. From a checkout of the platform repository:
+
+```sh
+make build                 # the platform, the ingestor jar and the function API
+make function-hello        # the example jar
+./bin/fcdev start
+curl http://127.0.0.1:8091/fn/hello.greeting/healthz          # the ingestor's port (FC_INGESTOR_PORT)
+```
+
+Use the `fcdev` built by `make build` (`./bin/fcdev`): an installed `fcdev` that predates JVM
+functions rejects a jar as an invalid Wasm module.
+
+### Setting it up where you deploy
+
+- **The runner URL.** Set `FC_FUNCTIONS_RUNNER_URL_JVM` on the platform to the ingestor's URL
+  (`{pool}` is substituted, as in `FC_FUNCTIONS_RUNNER_URL`). A delivery to a function whose live
+  version is a jar is built from it; the others use `FC_FUNCTIONS_RUNNER_URL`.
+- **The ingestor's account.** The ingestor's service account must hold `platform:function-runner`
+  as well as `platform:ingestion-runtime`.
+- **The roles.** `INGEST_FUNCTIONS_ENABLED` (default `true`) turns the function role on and
+  `INGEST_FUNCTIONS_POOL` (default `default`) names the pool it serves. `INGEST_INGESTION_ENABLED`
+  (default `true`) turns the ingestion role on: set it `false` for a functions-only process (it
+  takes no ingestion leases and serves no `/ingest/` endpoint) and `INGEST_FUNCTIONS_ENABLED=false`
+  for an ingestion-only one.
+- **Databases.** `INGEST_FUNCTIONS_DB_MAX_POOLS` (32), `INGEST_FUNCTIONS_DB_MAX_CONNS` (4 a pool) and
+  `INGEST_FUNCTIONS_DB_IDLE_TTL` (`PT10M`).
+- A request body is also capped by the ingestor server's own request-body limit, whatever the function's limit says.
+
+### What a JVM function cannot do yet
+
+Trace contexts (`traceContexts`), public routes and domains, per-function metrics and a
+readiness check are not built for JVM functions; a describe that declares trace contexts is
+accepted but nothing records them. A PEM `sslkey` in a database DSN is passed to the driver as
+it is, not converted.
 
 ## Stability
 
