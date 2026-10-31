@@ -118,3 +118,54 @@ func TestCallerFromDefaultsToAnonymous(t *testing.T) {
 		t.Error("Principal() should be nil for a default Caller")
 	}
 }
+
+func TestPrincipalCanAccessApplicationIDCode(t *testing.T) {
+	app := func(a ...string) *Principal { return &Principal{Applications: a} }
+	if !(&Principal{AllApplications: true}).CanAccessApplication("app_1") {
+		t.Error("allApplications must short-circuit")
+	}
+	cases := []struct {
+		name string
+		p    *Principal
+		id   string
+		want bool
+	}{
+		{"bare id", app("app_1"), "app_1", true},
+		{"bare id miss", app("app_1"), "app_2", false},
+		{"id half", app("app_1:orders", "app_2:billing"), "app_2", true},
+		{"id half miss", app("app_1:orders", "app_2:billing"), "app_3", false},
+		{"code half never matches", app("app_1:orders"), "orders", false},
+		{"first colon only", app("app_1:co:de"), "app_1", true},
+		{"first colon only, partial", app("app_1:co:de"), "app_1:co", false},
+		{"star", app("*"), "anything", true},
+		{"empty", app(), "app_1", false},
+		{"empty id half", app(":code"), "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.p.CanAccessApplication(tc.id); got != tc.want {
+				t.Errorf("got %v want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPrincipalCanAccessApplicationCode(t *testing.T) {
+	p := &Principal{Applications: []string{"app_1:bevco-integration", "orders"}}
+	for code, want := range map[string]bool{
+		"bevco-integration":    true,
+		"orders":               true,
+		"app_1":                false,
+		"merensky-integration": false,
+	} {
+		if got := p.CanAccessApplicationCode(code); got != want {
+			t.Errorf("%s: got %v want %v", code, got, want)
+		}
+	}
+	if !(&Principal{Applications: []string{"*"}}).CanAccessApplicationCode("x") {
+		t.Error("star must match")
+	}
+	if !(&Principal{AllApplications: true}).CanAccessApplicationCode("x") {
+		t.Error("allApplications must match")
+	}
+}

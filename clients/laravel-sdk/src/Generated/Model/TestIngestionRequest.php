@@ -31,6 +31,12 @@ class TestIngestionRequest extends \ArrayObject
      */
     protected $client;
     /**
+     * With definition: the ingestion's code, which is the config entry's key for a source that says config: true
+     *
+     * @var string|null
+     */
+    protected $code;
+    /**
      * @var IngestionDefinition|null
      */
     protected $definition;
@@ -104,6 +110,28 @@ class TestIngestionRequest extends \ArrayObject
     {
         $this->initialized['client'] = true;
         $this->client = $client;
+        return $this;
+    }
+    /**
+     * With definition: the ingestion's code, which is the config entry's key for a source that says config: true
+     *
+     * @return string|null
+     */
+    public function getCode(): ?string
+    {
+        return $this->code;
+    }
+    /**
+     * With definition: the ingestion's code, which is the config entry's key for a source that says config: true
+     *
+     * @param string|null $code
+     *
+     * @return self
+     */
+    public function setCode(?string $code): self
+    {
+        $this->initialized['code'] = true;
+        $this->code = $code;
         return $this;
     }
     /**

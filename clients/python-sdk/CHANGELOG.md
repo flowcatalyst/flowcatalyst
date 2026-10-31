@@ -18,6 +18,9 @@ Additive: new parameters are keyword-only with defaults, so existing calls are u
   failure_id)` and `secrets(id)` (`IngestionSecretList`: bound names and each runtime's last
   fetch, never a value). The blocking facade has the same.
 - `SftpSource.accept_any_host_key`.
+- `Target` gains `kind` (`TargetKind`: `DISPATCH_JOB` | `EVENT`), `data_only` and `wrap_non_json`;
+  `target_url`, `pool` and `mode` are now optional (an `EVENT` target has none of them).
+  `HttpSource` gains `accept` (`Accept`: `content_types`, `body`).
 
 ### Platform config
 - `set`, `delete` and `reveal_secret` take `on_behalf_of`, sent as `X-On-Behalf-Of`

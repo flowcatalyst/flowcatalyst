@@ -41,6 +41,12 @@ class PollResponse
      */
     protected $tests;
     /**
+     * The open trace windows (hardStop in the future) of the ingestions listed above, for this runtime; absent when none. A windowId seen for the first time starts the runtime's own window of windowSecs, ending no later than hardStop; the same windowId again changes nothing; a different one replaces the window; an ingestion no longer listed has none.
+     *
+     * @var list<RuntimeTrace>|null
+     */
+    protected $traces;
+    /**
      * A URL to the JSON Schema for this object.
      *
      * @return string|null
@@ -144,6 +150,28 @@ class PollResponse
     {
         $this->initialized['tests'] = true;
         $this->tests = $tests;
+        return $this;
+    }
+    /**
+     * The open trace windows (hardStop in the future) of the ingestions listed above, for this runtime; absent when none. A windowId seen for the first time starts the runtime's own window of windowSecs, ending no later than hardStop; the same windowId again changes nothing; a different one replaces the window; an ingestion no longer listed has none.
+     *
+     * @return list<RuntimeTrace>|null
+     */
+    public function getTraces(): ?array
+    {
+        return $this->traces;
+    }
+    /**
+     * The open trace windows (hardStop in the future) of the ingestions listed above, for this runtime; absent when none. A windowId seen for the first time starts the runtime's own window of windowSecs, ending no later than hardStop; the same windowId again changes nothing; a different one replaces the window; an ingestion no longer listed has none.
+     *
+     * @param list<RuntimeTrace>|null $traces
+     *
+     * @return self
+     */
+    public function setTraces(?array $traces): self
+    {
+        $this->initialized['traces'] = true;
+        $this->traces = $traces;
         return $this;
     }
 }

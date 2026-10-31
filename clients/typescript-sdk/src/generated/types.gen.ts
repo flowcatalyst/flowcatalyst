@@ -1128,9 +1128,13 @@ export type CreateJobsResponse = {
      */
     readonly $schema?: string;
     /**
-     * Jobs made by this request; records answered with an existing job are not counted
+     * Jobs or events made by this request; records answered with an existing one are not counted
      */
     created: number;
+    /**
+     * What the ingestion's target makes of a record; results[].id is a dispatch job's id or an event's
+     */
+    kind: 'DISPATCH_JOB' | 'EVENT';
     results: Array<JobResult>;
 };
 
@@ -1843,9 +1847,17 @@ export type ExchangeWindow = {
     failed: number;
     from: string;
     ingestionId: string;
+    /**
+     * When the last poll in the window ended
+     */
+    lastPollAt?: string;
+    /**
+     * Polls finished in the window, empty ones included
+     */
+    polls?: number;
     records: number;
     to: string;
-    [key: string]: unknown | number | string;
+    [key: string]: unknown | number | string | undefined;
 };
 
 export type Failure = {
@@ -1867,6 +1879,12 @@ export type Failure = {
     message: string;
     version: number;
     [key: string]: unknown | number | string | 'payload' | 'rejected' | string | 'REJECTED' | 'NOT_DISPATCHED' | 'SOURCE' | 'AUTH' | string | undefined;
+};
+
+export type FieldError = {
+    code: string;
+    field: string;
+    message: string;
 };
 
 export type FireNowRequest = {
@@ -2024,6 +2042,128 @@ export type IdpRoleMappingResponse = {
     updatedAt: string;
 };
 
+export type IngestionConfigDeletedResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The codes of every ingestion that names the entry; each is now MISSING and does not run until the entry is set again
+     */
+    ingestions: Array<string>;
+    key: string;
+};
+
+export type IngestionConfigResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The entry's key; absent while the settings are inline
+     */
+    key?: string;
+    /**
+     * Why the entry is INVALID
+     */
+    problems?: Array<FieldError>;
+    /**
+     * A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings
+     */
+    schemaChecked: boolean;
+    /**
+     * The secret settings of the entry, for a caller who can update ingestions: the path of each setting, the name of its secret and whether the secret has a value. Never a value. Write a value with secretFields (by field) or secrets (by name)
+     */
+    secrets?: Array<IngestionConfigSecret>;
+    status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
+    updatedAt?: string;
+    /**
+     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry, when it is not an object, and when valueHidden
+     */
+    value?: {
+        [key: string]: unknown;
+    };
+    /**
+     * The entry exists but its value is withheld: it is shown only to a caller who can update ingestions (ingestion:update). The status and problems are shown regardless
+     */
+    valueHidden?: boolean;
+};
+
+export type IngestionConfigSecret = {
+    /**
+     * The path of the setting in the entry, such as password or auth.clientSecret
+     */
+    field: string;
+    /**
+     * The name of the secret the entry gives the setting; absent when it names none
+     */
+    name?: string;
+    /**
+     * The secret has a value at this client
+     */
+    set: boolean;
+    /**
+     * When the value was last set, RFC 3339; absent when not set
+     */
+    updatedAt?: string;
+};
+
+export type IngestionConfigStatus = {
+    /**
+     * The entry's key; absent while the settings are inline
+     */
+    key?: string;
+    /**
+     * Why the entry is INVALID
+     */
+    problems?: Array<FieldError>;
+    status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
+    updatedAt?: string;
+};
+
+export type IngestionConfigWritten = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The codes of every ingestion of the application and client that names the entry, which the value was checked against
+     */
+    ingestions: Array<string>;
+    /**
+     * The entry's key; absent while the settings are inline
+     */
+    key?: string;
+    /**
+     * Why the entry is INVALID
+     */
+    problems?: Array<FieldError>;
+    /**
+     * A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings
+     */
+    schemaChecked: boolean;
+    /**
+     * The secret settings of the entry, for a caller who can update ingestions: the path of each setting, the name of its secret and whether the secret has a value. Never a value. Write a value with secretFields (by field) or secrets (by name)
+     */
+    secrets?: Array<IngestionConfigSecret>;
+    status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
+    updatedAt?: string;
+    /**
+     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry, when it is not an object, and when valueHidden
+     */
+    value?: {
+        [key: string]: unknown;
+    };
+    /**
+     * The entry exists but its value is withheld: it is shown only to a caller who can update ingestions (ingestion:update). The status and problems are shown regardless
+     */
+    valueHidden?: boolean;
+    /**
+     * SCHEMA_UNCHECKED when no live runtime reports the kind's settings, so the value was not checked against them
+     */
+    warnings?: Array<string>;
+};
+
 export type IngestionDefinition = {
     /**
      * Keep the first 2 KB of a payload that failed. Off unless the client has agreed.
@@ -2039,6 +2179,22 @@ export type IngestionDefinition = {
      */
     split: unknown;
     target: Target;
+};
+
+export type IngestionEnableTraceRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * A runtime starts a capture at most this often, 1 to 60 seconds (default 5). 400 TRACE_SAMPLE_INVALID otherwise.
+     */
+    sampleEverySecs?: number;
+    /**
+     * How long each runtime captures: 60, 300 or 900 (default 60). 400 TRACE_WINDOW_INVALID otherwise.
+     */
+    windowSecs?: number;
+    [key: string]: unknown | string | number | undefined;
 };
 
 export type IngestionFailureListResponse = {
@@ -2126,6 +2282,10 @@ export type IngestionResponse = {
     clientId: string;
     clientIdentifier: string;
     code: string;
+    /**
+     * Where the settings stand: INLINE (in the definition), or the config entry the source names: SET, MISSING (the ingestion does not run until it is set) or INVALID
+     */
+    config: IngestionConfigStatus;
     createdAt: string;
     id: string;
     /**
@@ -2208,6 +2368,10 @@ export type IngestionSecretListResponse = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * The source's settings are in a config entry and the secret names it binds are withheld: they are shown only to a caller who can update ingestions (ingestion:update)
+     */
+    namesHidden?: boolean;
     secrets: Array<IngestionSecretResponse>;
 };
 
@@ -2267,7 +2431,7 @@ export type IngestionSetArchiveResponse = {
 
 export type IngestionSetItem = {
     /**
-     * Whether the ingestion runs. Default true; an apply sets it, so a pause made since is undone.
+     * Whether the ingestion runs. When omitted: a new ingestion whose source names a config entry is created paused (set the entry and its secrets, then resume), any other is created active, and one that exists keeps its state, so a pause made since stays. When given, an apply enforces it.
      */
     active?: boolean;
     /**
@@ -2395,6 +2559,125 @@ export type IngestionTestResponse = {
     steps?: Array<string>;
 };
 
+export type IngestionTraceAck = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    accepted: number;
+    dropped: number;
+};
+
+export type IngestionTraceBatch = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    records: Array<IngestionTraceRecord>;
+    runtimeId: string;
+    [key: string]: unknown | string | Array<IngestionTraceRecord> | string | undefined;
+};
+
+export type IngestionTraceLogResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Pass as cursor to fetch the next (older) page; null on the last page
+     */
+    nextCursor: string | null;
+    records: Array<IngestionTraceRecordResponse>;
+};
+
+export type IngestionTraceRecord = {
+    /**
+     * Unix milliseconds, the runtime's clock
+     */
+    at: number;
+    /**
+     * Shared by the records of one capture
+     */
+    captureId: string;
+    /**
+     * Cut to a stub over 80 KiB
+     */
+    data?: unknown;
+    id?: string;
+    ingestionId: string;
+    /**
+     * poll, exchange, http or error
+     */
+    kind: string;
+    /**
+     * info, warn or error
+     */
+    level: string;
+    /**
+     * One line; cut to 1000 characters
+     */
+    message: string;
+    version: number;
+    windowId: string;
+    [key: string]: unknown | number | string | number | undefined;
+};
+
+export type IngestionTraceRecordResponse = {
+    at: string;
+    /**
+     * Shared by the records of one capture: a poll cycle or one exchange
+     */
+    captureId: string;
+    /**
+     * The record's data, by kind
+     */
+    data: unknown;
+    id: string;
+    kind: 'poll' | 'exchange' | 'http' | 'error';
+    level: string;
+    message: string;
+    /**
+     * Sensitive parts withheld (no platform:ingestion:trace:view-bodies): an http record keeps the client, method, URL path, status, sizes, duration, attempt and failure; an exchange record its counts and outcome; a poll record all but its error; an error record nothing in data. The message of an http, exchange or error record is then rebuilt from what stays.
+     */
+    redacted?: boolean;
+    runtimeId: string;
+    version: number;
+    windowId: string;
+};
+
+export type IngestionTraceStateResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    enabledAt: string | null;
+    enabledBy: string | null;
+    /**
+     * No runtime captures past this; switching off sets it to the switch-off time
+     */
+    hardStop: string | null;
+    /**
+     * The window is open now (hardStop is in the future)
+     */
+    live: boolean;
+    /**
+     * The longest window that may be switched on
+     */
+    maxWindowSecs: number;
+    /**
+     * A runtime starts a capture of this ingestion at most this often
+     */
+    sampleEverySecs: number | null;
+    /**
+     * A new id every time tracing is switched on
+     */
+    windowId: string | null;
+    /**
+     * How long each runtime captures, counted from when it first sees the window
+     */
+    windowSecs: number | null;
+};
+
 export type IngestionVersionListResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2444,6 +2727,10 @@ export type IngestionVersionResponse = {
     split: unknown;
     target: Target;
     version: number;
+    /**
+     * What the saved definition says that will not run as meant, such as CONFIG_MISSING for a config entry that is not set (the answer of POST .../versions only)
+     */
+    warnings?: Array<string>;
 };
 
 export type InviteApplicationUserRequest = {
@@ -2773,6 +3060,10 @@ export type PollResponse = {
      * Pending test requests for kinds the runtime carries
      */
     tests: Array<RuntimeTest>;
+    /**
+     * The open trace windows (hardStop in the future) of the ingestions listed above, for this runtime; absent when none. A windowId seen for the first time starts the runtime's own window of windowSecs, ending no later than hardStop; the same windowId again changes nothing; a different one replaces the window; an ingestion no longer listed has none.
+     */
+    traces?: Array<RuntimeTrace>;
 };
 
 export type PoolConfig = {
@@ -3065,7 +3356,7 @@ export type PublishVersionRequest = {
      */
     digest: string;
     /**
-     * "wasm" (default) or "js"
+     * "wasm" (default), "js" or "jvm" (a jar)
      */
     runtime?: string;
     [key: string]: unknown | string | undefined;
@@ -3761,6 +4052,26 @@ export type RuntimeTest = {
     ingestion: RuntimeIngestion;
 };
 
+export type RuntimeTrace = {
+    /**
+     * The runtime never captures past this, and the platform refuses records dated after it (plus a short grace)
+     */
+    hardStop: string;
+    ingestionId: string;
+    /**
+     * The runtime starts a capture of this ingestion at most this often
+     */
+    sampleEverySecs: number;
+    /**
+     * A new id every time tracing is switched on
+     */
+    windowId: string;
+    /**
+     * How long the runtime captures, counted from when it first sees this windowId
+     */
+    windowSecs: number;
+};
+
 export type SaveIngestionVersionRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3982,6 +4293,7 @@ export type SetChange = {
     client: string;
     code: string;
     ingestionId?: string;
+    warnings?: Array<string>;
 };
 
 export type SetDeveloperCredentialResponse = {
@@ -3996,6 +4308,38 @@ export type SetDeveloperCredentialResponse = {
 export type SetFile = {
     content: string;
     path: string;
+};
+
+export type SetIngestionConfigRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Secret values by the path of the setting they belong to (password, credential.secretAccessKey, auth.clientSecret). The platform names the secret: the name the value gives the setting, else the one the entry has now, else the entry's key and the path in kebab case (mix-positions-client-secret), writes the name into the value and the secret under it
+     */
+    secretFields?: {
+        [key: string]: string;
+    };
+    /**
+     * Secret values by secret name, written with the entry as SECRET values of the application's secrets section at the ingestion's client. Each name must be one the value names. Needs no bind-secrets permission for a name the write gives a value
+     */
+    secrets?: {
+        [key: string]: string;
+    };
+    /**
+     * The entry: the kind's settings as an inline source holds them, and optionally targetUrl. A secret setting holds the secret's name
+     */
+    value: {
+        [key: string]: unknown;
+    };
+    [key: string]: unknown | string | {
+        [key: string]: string;
+    } | {
+        [key: string]: string;
+    } | {
+        [key: string]: unknown;
+    } | undefined;
 };
 
 export type SetPropertyRequest = {
@@ -4461,12 +4805,36 @@ export type SyncUsersResponse = {
 
 export type Target = {
     batchSize: number;
+    /**
+     * A dispatch job's code, application:subdomain:aggregate:action; for an EVENT target, the code of an existing event type
+     */
     code: string;
     connection?: string;
-    mode: string;
-    pool: string;
+    /**
+     * DISPATCH_JOB only: deliver the record as it is, with its own content type, instead of the platform envelope
+     */
+    dataOnly?: boolean;
+    /**
+     * What each record becomes; DISPATCH_JOB when absent
+     */
+    kind?: 'DISPATCH_JOB' | 'EVENT';
+    /**
+     * Not for an EVENT target
+     */
+    mode?: string;
+    /**
+     * Not for an EVENT target
+     */
+    pool?: string;
     serviceAccount?: string;
-    targetUrl: string;
+    /**
+     * The delivery URL. May be left out only when the source names a config entry whose value gives it (exactly one of the two). Not for an EVENT target
+     */
+    targetUrl?: string;
+    /**
+     * EVENT only: deliver a record that is not JSON as {contentType, body}. Required unless the records are known to be JSON
+     */
+    wrapNonJson?: boolean;
 };
 
 export type TestAnswer = {
@@ -4497,6 +4865,10 @@ export type TestIngestionRequest = {
      * With definition: the client's id (clt_...) or identifier
      */
     client?: string;
+    /**
+     * With definition: the ingestion's code, which is the config entry's key for a source that says config: true
+     */
+    code?: string;
     /**
      * A definition to test without saving it
      */
@@ -5750,9 +6122,13 @@ export type CreateJobsRequestWritable = {
 
 export type CreateJobsResponseWritable = {
     /**
-     * Jobs made by this request; records answered with an existing job are not counted
+     * Jobs or events made by this request; records answered with an existing one are not counted
      */
     created: number;
+    /**
+     * What the ingestion's target makes of a record; results[].id is a dispatch job's id or an event's
+     */
+    kind: 'DISPATCH_JOB' | 'EVENT';
     results: Array<JobResult>;
 };
 
@@ -6284,6 +6660,96 @@ export type IdpRoleMappingListResponseWritable = {
     items: Array<IdpRoleMappingResponse>;
 };
 
+export type IngestionConfigDeletedResponseWritable = {
+    /**
+     * The codes of every ingestion that names the entry; each is now MISSING and does not run until the entry is set again
+     */
+    ingestions: Array<string>;
+    key: string;
+};
+
+export type IngestionConfigResponseWritable = {
+    /**
+     * The entry's key; absent while the settings are inline
+     */
+    key?: string;
+    /**
+     * Why the entry is INVALID
+     */
+    problems?: Array<FieldError>;
+    /**
+     * A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings
+     */
+    schemaChecked: boolean;
+    /**
+     * The secret settings of the entry, for a caller who can update ingestions: the path of each setting, the name of its secret and whether the secret has a value. Never a value. Write a value with secretFields (by field) or secrets (by name)
+     */
+    secrets?: Array<IngestionConfigSecret>;
+    status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
+    updatedAt?: string;
+    /**
+     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry, when it is not an object, and when valueHidden
+     */
+    value?: {
+        [key: string]: unknown;
+    };
+    /**
+     * The entry exists but its value is withheld: it is shown only to a caller who can update ingestions (ingestion:update). The status and problems are shown regardless
+     */
+    valueHidden?: boolean;
+};
+
+export type IngestionConfigWrittenWritable = {
+    /**
+     * The codes of every ingestion of the application and client that names the entry, which the value was checked against
+     */
+    ingestions: Array<string>;
+    /**
+     * The entry's key; absent while the settings are inline
+     */
+    key?: string;
+    /**
+     * Why the entry is INVALID
+     */
+    problems?: Array<FieldError>;
+    /**
+     * A value is checked against the kind's schema when written: always for a built-in kind, for an extension's only while a live runtime reports its settings
+     */
+    schemaChecked: boolean;
+    /**
+     * The secret settings of the entry, for a caller who can update ingestions: the path of each setting, the name of its secret and whether the secret has a value. Never a value. Write a value with secretFields (by field) or secrets (by name)
+     */
+    secrets?: Array<IngestionConfigSecret>;
+    status: 'INLINE' | 'SET' | 'MISSING' | 'INVALID';
+    updatedAt?: string;
+    /**
+     * The entry: the kind's settings as an inline source holds them (an extension kind's settings are the object itself), and optionally targetUrl. Absent when there is no entry, when it is not an object, and when valueHidden
+     */
+    value?: {
+        [key: string]: unknown;
+    };
+    /**
+     * The entry exists but its value is withheld: it is shown only to a caller who can update ingestions (ingestion:update). The status and problems are shown regardless
+     */
+    valueHidden?: boolean;
+    /**
+     * SCHEMA_UNCHECKED when no live runtime reports the kind's settings, so the value was not checked against them
+     */
+    warnings?: Array<string>;
+};
+
+export type IngestionEnableTraceRequestWritable = {
+    /**
+     * A runtime starts a capture at most this often, 1 to 60 seconds (default 5). 400 TRACE_SAMPLE_INVALID otherwise.
+     */
+    sampleEverySecs?: number;
+    /**
+     * How long each runtime captures: 60, 300 or 900 (default 60). 400 TRACE_WINDOW_INVALID otherwise.
+     */
+    windowSecs?: number;
+    [key: string]: unknown | number | undefined;
+};
+
 export type IngestionFailureListResponseWritable = {
     failures: Array<IngestionFailureResponseWritable>;
     hasMore: boolean;
@@ -6337,6 +6803,10 @@ export type IngestionResponseWritable = {
     clientId: string;
     clientIdentifier: string;
     code: string;
+    /**
+     * Where the settings stand: INLINE (in the definition), or the config entry the source names: SET, MISSING (the ingestion does not run until it is set) or INVALID
+     */
+    config: IngestionConfigStatus;
     createdAt: string;
     id: string;
     /**
@@ -6382,6 +6852,10 @@ export type IngestionResponseWritable = {
 };
 
 export type IngestionSecretListResponseWritable = {
+    /**
+     * The source's settings are in a config entry and the secret names it binds are withheld: they are shown only to a caller who can update ingestions (ingestion:update)
+     */
+    namesHidden?: boolean;
     secrets: Array<IngestionSecretResponse>;
 };
 
@@ -6456,6 +6930,54 @@ export type IngestionTestResponseWritable = {
     steps?: Array<string>;
 };
 
+export type IngestionTraceAckWritable = {
+    accepted: number;
+    dropped: number;
+};
+
+export type IngestionTraceBatchWritable = {
+    records: Array<IngestionTraceRecord>;
+    runtimeId: string;
+    [key: string]: unknown | Array<IngestionTraceRecord> | string;
+};
+
+export type IngestionTraceLogResponseWritable = {
+    /**
+     * Pass as cursor to fetch the next (older) page; null on the last page
+     */
+    nextCursor: string | null;
+    records: Array<IngestionTraceRecordResponse>;
+};
+
+export type IngestionTraceStateResponseWritable = {
+    enabledAt: string | null;
+    enabledBy: string | null;
+    /**
+     * No runtime captures past this; switching off sets it to the switch-off time
+     */
+    hardStop: string | null;
+    /**
+     * The window is open now (hardStop is in the future)
+     */
+    live: boolean;
+    /**
+     * The longest window that may be switched on
+     */
+    maxWindowSecs: number;
+    /**
+     * A runtime starts a capture of this ingestion at most this often
+     */
+    sampleEverySecs: number | null;
+    /**
+     * A new id every time tracing is switched on
+     */
+    windowId: string | null;
+    /**
+     * How long each runtime captures, counted from when it first sees the window
+     */
+    windowSecs: number | null;
+};
+
 export type IngestionVersionListResponseWritable = {
     versions: Array<IngestionVersionResponseWritable>;
 };
@@ -6497,6 +7019,10 @@ export type IngestionVersionResponseWritable = {
     split: unknown;
     target: Target;
     version: number;
+    /**
+     * What the saved definition says that will not run as meant, such as CONFIG_MISSING for a config entry that is not set (the answer of POST .../versions only)
+     */
+    warnings?: Array<string>;
 };
 
 export type InviteApplicationUserRequestWritable = {
@@ -6670,6 +7196,10 @@ export type PollResponseWritable = {
      * Pending test requests for kinds the runtime carries
      */
     tests: Array<RuntimeTest>;
+    /**
+     * The open trace windows (hardStop in the future) of the ingestions listed above, for this runtime; absent when none. A windowId seen for the first time starts the runtime's own window of windowSecs, ending no later than hardStop; the same windowId again changes nothing; a different one replaces the window; an ingestion no longer listed has none.
+     */
+    traces?: Array<RuntimeTrace>;
 };
 
 export type PortalAppListResponseWritable = {
@@ -6838,7 +7368,7 @@ export type PublishVersionRequestWritable = {
      */
     digest: string;
     /**
-     * "wasm" (default) or "js"
+     * "wasm" (default), "js" or "jvm" (a jar)
      */
     runtime?: string;
     [key: string]: unknown | string | undefined;
@@ -7429,6 +7959,34 @@ export type SetDeveloperCredentialResponseWritable = {
     id: string;
 };
 
+export type SetIngestionConfigRequestWritable = {
+    /**
+     * Secret values by the path of the setting they belong to (password, credential.secretAccessKey, auth.clientSecret). The platform names the secret: the name the value gives the setting, else the one the entry has now, else the entry's key and the path in kebab case (mix-positions-client-secret), writes the name into the value and the secret under it
+     */
+    secretFields?: {
+        [key: string]: string;
+    };
+    /**
+     * Secret values by secret name, written with the entry as SECRET values of the application's secrets section at the ingestion's client. Each name must be one the value names. Needs no bind-secrets permission for a name the write gives a value
+     */
+    secrets?: {
+        [key: string]: string;
+    };
+    /**
+     * The entry: the kind's settings as an inline source holds them, and optionally targetUrl. A secret setting holds the secret's name
+     */
+    value: {
+        [key: string]: unknown;
+    };
+    [key: string]: unknown | {
+        [key: string]: string;
+    } | {
+        [key: string]: string;
+    } | {
+        [key: string]: unknown;
+    } | undefined;
+};
+
 export type SetPropertyRequestWritable = {
     clientId?: string;
     description?: string;
@@ -7631,6 +8189,10 @@ export type TestIngestionRequestWritable = {
      * With definition: the client's id (clt_...) or identifier
      */
     client?: string;
+    /**
+     * With definition: the ingestion's code, which is the config entry's key for a source that says config: true
+     */
+    code?: string;
     /**
      * A definition to test without saving it
      */
@@ -13323,6 +13885,31 @@ export type IngestionRuntimePutStateResponses = {
 
 export type IngestionRuntimePutStateResponse = IngestionRuntimePutStateResponses[keyof IngestionRuntimePutStateResponses];
 
+export type IngestionRuntimeTracesData = {
+    body: IngestionTraceBatchWritable;
+    path?: never;
+    query?: never;
+    url: '/api/ingestion-runtime/v1/traces';
+};
+
+export type IngestionRuntimeTracesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type IngestionRuntimeTracesError = IngestionRuntimeTracesErrors[keyof IngestionRuntimeTracesErrors];
+
+export type IngestionRuntimeTracesResponses = {
+    /**
+     * Accepted
+     */
+    202: IngestionTraceAck;
+};
+
+export type IngestionRuntimeTracesResponse = IngestionRuntimeTracesResponses[keyof IngestionRuntimeTracesResponses];
+
 export type ListIngestionSetsData = {
     body?: never;
     path?: never;
@@ -13738,6 +14325,87 @@ export type UpdateIngestionResponses = {
 
 export type UpdateIngestionResponse = UpdateIngestionResponses[keyof UpdateIngestionResponses];
 
+export type DeleteIngestionConfigData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/config';
+};
+
+export type DeleteIngestionConfigErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteIngestionConfigError = DeleteIngestionConfigErrors[keyof DeleteIngestionConfigErrors];
+
+export type DeleteIngestionConfigResponses = {
+    /**
+     * OK
+     */
+    200: IngestionConfigDeletedResponse;
+};
+
+export type DeleteIngestionConfigResponse = DeleteIngestionConfigResponses[keyof DeleteIngestionConfigResponses];
+
+export type GetIngestionConfigData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/config';
+};
+
+export type GetIngestionConfigErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetIngestionConfigError = GetIngestionConfigErrors[keyof GetIngestionConfigErrors];
+
+export type GetIngestionConfigResponses = {
+    /**
+     * OK
+     */
+    200: IngestionConfigResponse;
+};
+
+export type GetIngestionConfigResponse = GetIngestionConfigResponses[keyof GetIngestionConfigResponses];
+
+export type SetIngestionConfigData = {
+    body: SetIngestionConfigRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/config';
+};
+
+export type SetIngestionConfigErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type SetIngestionConfigError = SetIngestionConfigErrors[keyof SetIngestionConfigErrors];
+
+export type SetIngestionConfigResponses = {
+    /**
+     * OK
+     */
+    200: IngestionConfigWritten;
+};
+
+export type SetIngestionConfigResponse = SetIngestionConfigResponses[keyof SetIngestionConfigResponses];
+
 export type GetIngestionDefinitionData = {
     body?: never;
     path: {
@@ -13950,6 +14618,143 @@ export type ListIngestionSecretsResponses = {
 };
 
 export type ListIngestionSecretsResponse = ListIngestionSecretsResponses[keyof ListIngestionSecretsResponses];
+
+export type DisableIngestionTraceData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/trace';
+};
+
+export type DisableIngestionTraceErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DisableIngestionTraceError = DisableIngestionTraceErrors[keyof DisableIngestionTraceErrors];
+
+export type DisableIngestionTraceResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DisableIngestionTraceResponse = DisableIngestionTraceResponses[keyof DisableIngestionTraceResponses];
+
+export type GetIngestionTraceData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/trace';
+};
+
+export type GetIngestionTraceErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetIngestionTraceError = GetIngestionTraceErrors[keyof GetIngestionTraceErrors];
+
+export type GetIngestionTraceResponses = {
+    /**
+     * OK
+     */
+    200: IngestionTraceStateResponse;
+};
+
+export type GetIngestionTraceResponse = GetIngestionTraceResponses[keyof GetIngestionTraceResponses];
+
+export type EnableIngestionTraceData = {
+    body: IngestionEnableTraceRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/ingestions/{id}/trace';
+};
+
+export type EnableIngestionTraceErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type EnableIngestionTraceError = EnableIngestionTraceErrors[keyof EnableIngestionTraceErrors];
+
+export type EnableIngestionTraceResponses = {
+    /**
+     * OK
+     */
+    200: IngestionTraceStateResponse;
+};
+
+export type EnableIngestionTraceResponse = EnableIngestionTraceResponses[keyof EnableIngestionTraceResponses];
+
+export type ListIngestionTraceLogData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: {
+        /**
+         * Only this record kind
+         */
+        kind?: 'poll' | 'exchange' | 'http' | 'error';
+        /**
+         * Only this runtime's records
+         */
+        runtimeId?: string;
+        /**
+         * One capture's records
+         */
+        captureId?: string;
+        /**
+         * Oldest record time: RFC 3339 or unix milliseconds
+         */
+        since?: string;
+        /**
+         * Newest record time: RFC 3339 or unix milliseconds
+         */
+        until?: string;
+        /**
+         * Page size, default 100, max 500
+         */
+        limit?: number;
+        /**
+         * nextCursor of the previous page
+         */
+        cursor?: string;
+    };
+    url: '/api/ingestions/{id}/trace-log';
+};
+
+export type ListIngestionTraceLogErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListIngestionTraceLogError = ListIngestionTraceLogErrors[keyof ListIngestionTraceLogErrors];
+
+export type ListIngestionTraceLogResponses = {
+    /**
+     * OK
+     */
+    200: IngestionTraceLogResponse;
+};
+
+export type ListIngestionTraceLogResponse = ListIngestionTraceLogResponses[keyof ListIngestionTraceLogResponses];
 
 export type ListIngestionVersionsData = {
     body?: never;

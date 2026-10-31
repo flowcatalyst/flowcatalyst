@@ -71,8 +71,10 @@ func (p *Principal) CanAccessClientCode(code string) bool {
 }
 
 // CanAccessApplication reports whether the principal may act on the given
-// application: true when it holds all-applications access, or when
-// applicationID is in its explicit Applications list.
+// application: true when it holds all-applications access, or an
+// Applications entry is "*", equals applicationID, or is an "id:code" pair
+// whose id (before the first ":") equals applicationID. The code half never
+// matches here; see CanAccessApplicationCode.
 func (p *Principal) CanAccessApplication(applicationID string) bool {
 	if p == nil {
 		return false
@@ -80,7 +82,37 @@ func (p *Principal) CanAccessApplication(applicationID string) bool {
 	if p.AllApplications {
 		return true
 	}
-	return slices.Contains(p.Applications, applicationID)
+	for _, entry := range p.Applications {
+		if entry == "*" || entry == applicationID {
+			return true
+		}
+		if i := strings.IndexByte(entry, ':'); i > 0 && entry[:i] == applicationID {
+			return true
+		}
+	}
+	return false
+}
+
+// CanAccessApplicationCode reports whether the principal may act on the
+// application with the given code (e.g. "bevco-integration"): true when it
+// holds all-applications access, or an Applications entry is "*", equals
+// code, or is an "id:code" pair whose code (after the first ":") equals code.
+func (p *Principal) CanAccessApplicationCode(code string) bool {
+	if p == nil {
+		return false
+	}
+	if p.AllApplications {
+		return true
+	}
+	for _, entry := range p.Applications {
+		if entry == "*" || entry == code {
+			return true
+		}
+		if i := strings.IndexByte(entry, ':'); i >= 0 && entry[i+1:] == code {
+			return true
+		}
+	}
+	return false
 }
 
 // HasPermission reports whether the principal carries a permission

@@ -76,10 +76,29 @@ export class Principal {
     return this.isAnchor() || this.clientCodes.includes(code);
   }
 
-  /** True when the principal holds all-applications access, or when
-   * applicationId is in its explicit `applications` list. */
+  /** True when the principal holds all-applications access, or an
+   * `applications` entry is `*`, equals applicationId, or is an `id:code`
+   * pair whose id (before the first `:`) equals applicationId. The code half
+   * never matches here; see canAccessApplicationCode. */
   canAccessApplication(applicationId: string): boolean {
-    return this.allApplications || this.applications.includes(applicationId);
+    if (this.allApplications) return true;
+    return this.applications.some((entry) => {
+      if (entry === "*" || entry === applicationId) return true;
+      const i = entry.indexOf(":");
+      return i > 0 && entry.slice(0, i) === applicationId;
+    });
+  }
+
+  /** True when the principal holds all-applications access, or an
+   * `applications` entry is `*`, equals `code`, or is an `id:code` pair whose
+   * code (after the first `:`) equals `code`. */
+  canAccessApplicationCode(code: string): boolean {
+    if (this.allApplications) return true;
+    return this.applications.some((entry) => {
+      if (entry === "*" || entry === code) return true;
+      const i = entry.indexOf(":");
+      return i >= 0 && entry.slice(i + 1) === code;
+    });
   }
 
   /** True when the principal carries a permission satisfying `code`. */

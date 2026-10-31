@@ -37,6 +37,12 @@ class TargetNormalizer implements DenormalizerInterface, NormalizerInterface, De
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('dataOnly', $data) && \is_int($data['dataOnly'])) {
+            $data['dataOnly'] = (bool) $data['dataOnly'];
+        }
+        if (\array_key_exists('wrapNonJson', $data) && \is_int($data['wrapNonJson'])) {
+            $data['wrapNonJson'] = (bool) $data['wrapNonJson'];
+        }
         if (\array_key_exists('batchSize', $data) && $data['batchSize'] !== null) {
             $object->setBatchSize($data['batchSize']);
         }
@@ -54,6 +60,18 @@ class TargetNormalizer implements DenormalizerInterface, NormalizerInterface, De
         }
         elseif (\array_key_exists('connection', $data) && $data['connection'] === null) {
             $object->setConnection(null);
+        }
+        if (\array_key_exists('dataOnly', $data) && $data['dataOnly'] !== null) {
+            $object->setDataOnly($data['dataOnly']);
+        }
+        elseif (\array_key_exists('dataOnly', $data) && $data['dataOnly'] === null) {
+            $object->setDataOnly(null);
+        }
+        if (\array_key_exists('kind', $data) && $data['kind'] !== null) {
+            $object->setKind($data['kind']);
+        }
+        elseif (\array_key_exists('kind', $data) && $data['kind'] === null) {
+            $object->setKind(null);
         }
         if (\array_key_exists('mode', $data) && $data['mode'] !== null) {
             $object->setMode($data['mode']);
@@ -79,6 +97,12 @@ class TargetNormalizer implements DenormalizerInterface, NormalizerInterface, De
         elseif (\array_key_exists('targetUrl', $data) && $data['targetUrl'] === null) {
             $object->setTargetUrl(null);
         }
+        if (\array_key_exists('wrapNonJson', $data) && $data['wrapNonJson'] !== null) {
+            $object->setWrapNonJson($data['wrapNonJson']);
+        }
+        elseif (\array_key_exists('wrapNonJson', $data) && $data['wrapNonJson'] === null) {
+            $object->setWrapNonJson(null);
+        }
         return $object;
     }
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
@@ -89,12 +113,27 @@ class TargetNormalizer implements DenormalizerInterface, NormalizerInterface, De
         if ($data->isInitialized('connection') && null !== $data->getConnection()) {
             $dataArray['connection'] = $data->getConnection();
         }
-        $dataArray['mode'] = $data->getMode();
-        $dataArray['pool'] = $data->getPool();
+        if ($data->isInitialized('dataOnly') && null !== $data->getDataOnly()) {
+            $dataArray['dataOnly'] = $data->getDataOnly();
+        }
+        if ($data->isInitialized('kind') && null !== $data->getKind()) {
+            $dataArray['kind'] = $data->getKind();
+        }
+        if ($data->isInitialized('mode') && null !== $data->getMode()) {
+            $dataArray['mode'] = $data->getMode();
+        }
+        if ($data->isInitialized('pool') && null !== $data->getPool()) {
+            $dataArray['pool'] = $data->getPool();
+        }
         if ($data->isInitialized('serviceAccount') && null !== $data->getServiceAccount()) {
             $dataArray['serviceAccount'] = $data->getServiceAccount();
         }
-        $dataArray['targetUrl'] = $data->getTargetUrl();
+        if ($data->isInitialized('targetUrl') && null !== $data->getTargetUrl()) {
+            $dataArray['targetUrl'] = $data->getTargetUrl();
+        }
+        if ($data->isInitialized('wrapNonJson') && null !== $data->getWrapNonJson()) {
+            $dataArray['wrapNonJson'] = $data->getWrapNonJson();
+        }
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

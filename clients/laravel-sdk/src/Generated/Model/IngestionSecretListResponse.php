@@ -19,6 +19,12 @@ class IngestionSecretListResponse
      */
     protected $dollarSchema;
     /**
+     * The source's settings are in a config entry and the secret names it binds are withheld: they are shown only to a caller who can update ingestions (ingestion:update)
+     *
+     * @var bool|null
+     */
+    protected $namesHidden;
+    /**
      * @var list<IngestionSecretResponse>|null
      */
     protected $secrets;
@@ -42,6 +48,28 @@ class IngestionSecretListResponse
     {
         $this->initialized['dollarSchema'] = true;
         $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
+     * The source's settings are in a config entry and the secret names it binds are withheld: they are shown only to a caller who can update ingestions (ingestion:update)
+     *
+     * @return bool|null
+     */
+    public function getNamesHidden(): ?bool
+    {
+        return $this->namesHidden;
+    }
+    /**
+     * The source's settings are in a config entry and the secret names it binds are withheld: they are shown only to a caller who can update ingestions (ingestion:update)
+     *
+     * @param bool|null $namesHidden
+     *
+     * @return self
+     */
+    public function setNamesHidden(?bool $namesHidden): self
+    {
+        $this->initialized['namesHidden'] = true;
+        $this->namesHidden = $namesHidden;
         return $this;
     }
     /**

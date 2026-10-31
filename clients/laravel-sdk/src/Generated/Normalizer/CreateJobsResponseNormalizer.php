@@ -49,6 +49,12 @@ class CreateJobsResponseNormalizer implements DenormalizerInterface, NormalizerI
         elseif (\array_key_exists('created', $data) && $data['created'] === null) {
             $object->setCreated(null);
         }
+        if (\array_key_exists('kind', $data) && $data['kind'] !== null) {
+            $object->setKind($data['kind']);
+        }
+        elseif (\array_key_exists('kind', $data) && $data['kind'] === null) {
+            $object->setKind(null);
+        }
         if (\array_key_exists('results', $data) && $data['results'] !== null) {
             $values = [];
             foreach ($data['results'] as $value) {
@@ -65,6 +71,7 @@ class CreateJobsResponseNormalizer implements DenormalizerInterface, NormalizerI
     {
         $dataArray = [];
         $dataArray['created'] = $data->getCreated();
+        $dataArray['kind'] = $data->getKind();
         $values = [];
         foreach ($data->getResults() as $value) {
             $values[] = $this->normalizer->normalize($value, 'json', $context);

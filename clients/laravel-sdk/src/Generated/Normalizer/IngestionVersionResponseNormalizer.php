@@ -142,6 +142,16 @@ class IngestionVersionResponseNormalizer implements DenormalizerInterface, Norma
         elseif (\array_key_exists('version', $data) && $data['version'] === null) {
             $object->setVersion(null);
         }
+        if (\array_key_exists('warnings', $data) && $data['warnings'] !== null) {
+            $values = [];
+            foreach ($data['warnings'] as $value) {
+                $values[] = $value;
+            }
+            $object->setWarnings($values);
+        }
+        elseif (\array_key_exists('warnings', $data) && $data['warnings'] === null) {
+            $object->setWarnings(null);
+        }
         return $object;
     }
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
@@ -174,6 +184,13 @@ class IngestionVersionResponseNormalizer implements DenormalizerInterface, Norma
         $dataArray['split'] = $data->getSplit();
         $dataArray['target'] = $this->normalizer->normalize($data->getTarget(), 'json', $context);
         $dataArray['version'] = $data->getVersion();
+        if ($data->isInitialized('warnings') && null !== $data->getWarnings()) {
+            $values = [];
+            foreach ($data->getWarnings() as $value) {
+                $values[] = $value;
+            }
+            $dataArray['warnings'] = $values;
+        }
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

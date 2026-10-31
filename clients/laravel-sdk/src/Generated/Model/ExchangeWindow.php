@@ -33,6 +33,18 @@ class ExchangeWindow extends \ArrayObject
      */
     protected $ingestionId;
     /**
+     * When the last poll in the window ended
+     *
+     * @var \DateTime|null
+     */
+    protected $lastPollAt;
+    /**
+     * Polls finished in the window, empty ones included
+     *
+     * @var int|null
+     */
+    protected $polls;
+    /**
      * @var int|null
      */
     protected $records;
@@ -128,6 +140,50 @@ class ExchangeWindow extends \ArrayObject
     {
         $this->initialized['ingestionId'] = true;
         $this->ingestionId = $ingestionId;
+        return $this;
+    }
+    /**
+     * When the last poll in the window ended
+     *
+     * @return \DateTime|null
+     */
+    public function getLastPollAt(): ?\DateTime
+    {
+        return $this->lastPollAt;
+    }
+    /**
+     * When the last poll in the window ended
+     *
+     * @param \DateTime|null $lastPollAt
+     *
+     * @return self
+     */
+    public function setLastPollAt(?\DateTime $lastPollAt): self
+    {
+        $this->initialized['lastPollAt'] = true;
+        $this->lastPollAt = $lastPollAt;
+        return $this;
+    }
+    /**
+     * Polls finished in the window, empty ones included
+     *
+     * @return int|null
+     */
+    public function getPolls(): ?int
+    {
+        return $this->polls;
+    }
+    /**
+     * Polls finished in the window, empty ones included
+     *
+     * @param int|null $polls
+     *
+     * @return self
+     */
+    public function setPolls(?int $polls): self
+    {
+        $this->initialized['polls'] = true;
+        $this->polls = $polls;
         return $this;
     }
     /**

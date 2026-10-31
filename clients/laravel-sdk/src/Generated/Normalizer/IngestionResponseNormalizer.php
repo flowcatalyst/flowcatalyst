@@ -76,6 +76,12 @@ class IngestionResponseNormalizer implements DenormalizerInterface, NormalizerIn
         elseif (\array_key_exists('code', $data) && $data['code'] === null) {
             $object->setCode(null);
         }
+        if (\array_key_exists('config', $data) && $data['config'] !== null) {
+            $object->setConfig($this->denormalizer->denormalize($data['config'], \FlowCatalyst\Generated\Model\IngestionConfigStatus::class, 'json', $context));
+        }
+        elseif (\array_key_exists('config', $data) && $data['config'] === null) {
+            $object->setConfig(null);
+        }
         if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
             $object->setCreatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']));
         }
@@ -198,6 +204,7 @@ class IngestionResponseNormalizer implements DenormalizerInterface, NormalizerIn
         $dataArray['clientId'] = $data->getClientId();
         $dataArray['clientIdentifier'] = $data->getClientIdentifier();
         $dataArray['code'] = $data->getCode();
+        $dataArray['config'] = $this->normalizer->normalize($data->getConfig(), 'json', $context);
         $dataArray['createdAt'] = $data->getCreatedAt()->format('Y-m-d\TH:i:sP');
         $dataArray['id'] = $data->getId();
         if ($data->isInitialized('keepFailedPayloads') && null !== $data->getKeepFailedPayloads()) {

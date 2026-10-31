@@ -58,6 +58,13 @@ class TestIngestionRequestNormalizer implements DenormalizerInterface, Normalize
         elseif (\array_key_exists('client', $data) && $data['client'] === null) {
             $object->setClient(null);
         }
+        if (\array_key_exists('code', $data) && $data['code'] !== null) {
+            $object->setCode($data['code']);
+            unset($data['code']);
+        }
+        elseif (\array_key_exists('code', $data) && $data['code'] === null) {
+            $object->setCode(null);
+        }
         if (\array_key_exists('definition', $data) && $data['definition'] !== null) {
             $object->setDefinition($this->denormalizer->denormalize($data['definition'], \FlowCatalyst\Generated\Model\IngestionDefinition::class, 'json', $context));
             unset($data['definition']);
@@ -87,6 +94,9 @@ class TestIngestionRequestNormalizer implements DenormalizerInterface, Normalize
         }
         if ($data->isInitialized('client') && null !== $data->getClient()) {
             $dataArray['client'] = $data->getClient();
+        }
+        if ($data->isInitialized('code') && null !== $data->getCode()) {
+            $dataArray['code'] = $data->getCode();
         }
         if ($data->isInitialized('definition') && null !== $data->getDefinition()) {
             $dataArray['definition'] = $this->normalizer->normalize($data->getDefinition(), 'json', $context);

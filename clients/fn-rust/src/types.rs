@@ -59,8 +59,28 @@ impl Principal {
         self.is_anchor() || self.client_codes.iter().any(|c| c == code)
     }
 
+    /// All-applications access, or an `applications` entry that is `*`, equals
+    /// `application_id`, or is an `id:code` pair whose id (before the first
+    /// `:`) equals it. The code half never matches here.
     pub fn can_access_application(&self, application_id: &str) -> bool {
-        self.all_applications || self.applications.iter().any(|a| a == application_id)
+        self.all_applications
+            || self.applications.iter().any(|e| {
+                e == "*"
+                    || e == application_id
+                    || e.split_once(':')
+                        .is_some_and(|(id, _)| !id.is_empty() && id == application_id)
+            })
+    }
+
+    /// All-applications access, or an `applications` entry that is `*`, equals
+    /// `code`, or is an `id:code` pair whose code (after the first `:`) equals it.
+    pub fn can_access_application_code(&self, code: &str) -> bool {
+        self.all_applications
+            || self.applications.iter().any(|e| {
+                e == "*"
+                    || e == code
+                    || e.split_once(':').is_some_and(|(_, c)| c == code)
+            })
     }
 
     /// A held permission may contain `*` segment wildcards (e.g.
@@ -395,6 +415,45 @@ mod tests {
         };
         assert!(scoped.can_access_application("app_1"));
         assert!(!scoped.can_access_application("app_2"));
+    }
+
+    fn with_apps(apps: &[&str]) -> Principal {
+        Principal {
+            applications: apps.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn can_access_application_id_code_pairs() {
+        let p = with_apps(&["app_1:orders", "app_2:billing"]);
+        assert!(p.can_access_application("app_1"));
+        assert!(p.can_access_application("app_2"));
+        assert!(!p.can_access_application("app_3"));
+        // the code half never matches the id check
+        assert!(!with_apps(&["app_1:orders"]).can_access_application("orders"));
+        // first colon only
+        let p = with_apps(&["app_1:co:de"]);
+        assert!(p.can_access_application("app_1"));
+        assert!(!p.can_access_application("app_1:co"));
+        assert!(with_apps(&["*"]).can_access_application("anything"));
+        assert!(!with_apps(&[]).can_access_application("app_1"));
+        assert!(!with_apps(&[":code"]).can_access_application(""));
+    }
+
+    #[test]
+    fn can_access_application_code_matrix() {
+        let p = with_apps(&["app_1:bevco-integration", "orders"]);
+        assert!(p.can_access_application_code("bevco-integration"));
+        assert!(p.can_access_application_code("orders"));
+        assert!(!p.can_access_application_code("app_1"));
+        assert!(!p.can_access_application_code("merensky-integration"));
+        assert!(with_apps(&["*"]).can_access_application_code("x"));
+        let all = Principal {
+            all_applications: true,
+            ..Default::default()
+        };
+        assert!(all.can_access_application_code("x"));
     }
 
     #[test]

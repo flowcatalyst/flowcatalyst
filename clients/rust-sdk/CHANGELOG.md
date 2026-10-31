@@ -10,6 +10,9 @@ shapes fixed to the platform contract. The README lists every change from
 fc-sdk and the wire-contract ambiguities found. Summary:
 
 ### Ingestions
+- `Target` gains `kind` (`TargetKind::{DispatchJob, Event}`), `data_only` and `wrap_non_json`;
+  `target_url`, `pool` and `mode` are now `Option` (an `EVENT` target has none of them).
+  `Source::Http` gains `accept` (`SourceAccept`, `AcceptBody`).
 - `ingestions()` resource: CRUD, `pause`/`resume`, versions (`list_versions`,
   `save_version`, `make_version_live`), `definition` (the YAML file as text),
   `list_history`, `list_failures`, `list_source_kinds`, connection tests

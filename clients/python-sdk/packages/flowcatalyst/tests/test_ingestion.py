@@ -22,6 +22,7 @@ from flowcatalyst import (
     ValidationError,
 )
 from flowcatalyst.models.ingestion import (
+    Accept,
     ApiPollSource,
     BearerAuth,
     DatabasePollSource,
@@ -745,3 +746,44 @@ def _json(route: respx.Route) -> dict[str, Any]:
 
     out: dict[str, Any] = json.loads(_req(route).content)
     return out
+
+
+def test_event_target_and_http_accept_serialise_to_the_wire_shape() -> None:
+    d = IngestionDefinition(
+        name="Webhooks",
+        source=HttpSource(
+            auth=BearerAuth(token=SecretRef(name="t")),
+            accept=Accept(content_types=["application/json", "text/plain"], body="JSON"),
+        ),
+        split=JsonSplit(array_path="$.items"),
+        target=Target(
+            code="shop:orders:order:placed", kind="EVENT", batch_size=5, wrap_non_json=True
+        ),
+    )
+    body = d.model_dump(by_alias=True, exclude_none=True, mode="json")
+    assert body["target"] == {
+        "code": "shop:orders:order:placed",
+        "kind": "EVENT",
+        "batchSize": 5,
+        "wrapNonJson": True,
+    }
+    assert body["source"]["accept"] == {
+        "contentTypes": ["application/json", "text/plain"],
+        "body": "JSON",
+    }
+
+
+def test_data_only_dispatch_target_serialises() -> None:
+    t = Target(
+        code="a:b:c:d",
+        kind="DISPATCH_JOB",
+        target_url="https://x.example/h",
+        pool="p",
+        mode="IMMEDIATE",
+        batch_size=1,
+        data_only=True,
+    )
+    dumped = t.model_dump(by_alias=True, exclude_none=True)
+    assert dumped["dataOnly"] is True
+    assert dumped["kind"] == "DISPATCH_JOB"
+    assert "wrapNonJson" not in dumped

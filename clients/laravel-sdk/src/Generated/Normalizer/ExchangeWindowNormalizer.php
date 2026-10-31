@@ -72,6 +72,20 @@ class ExchangeWindowNormalizer implements DenormalizerInterface, NormalizerInter
         elseif (\array_key_exists('ingestionId', $data) && $data['ingestionId'] === null) {
             $object->setIngestionId(null);
         }
+        if (\array_key_exists('lastPollAt', $data) && $data['lastPollAt'] !== null) {
+            $object->setLastPollAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lastPollAt']));
+            unset($data['lastPollAt']);
+        }
+        elseif (\array_key_exists('lastPollAt', $data) && $data['lastPollAt'] === null) {
+            $object->setLastPollAt(null);
+        }
+        if (\array_key_exists('polls', $data) && $data['polls'] !== null) {
+            $object->setPolls($data['polls']);
+            unset($data['polls']);
+        }
+        elseif (\array_key_exists('polls', $data) && $data['polls'] === null) {
+            $object->setPolls(null);
+        }
         if (\array_key_exists('records', $data) && $data['records'] !== null) {
             $object->setRecords($data['records']);
             unset($data['records']);
@@ -101,6 +115,12 @@ class ExchangeWindowNormalizer implements DenormalizerInterface, NormalizerInter
         $dataArray['failed'] = $data->getFailed();
         $dataArray['from'] = $data->getFrom()->format('Y-m-d\TH:i:sP');
         $dataArray['ingestionId'] = $data->getIngestionId();
+        if ($data->isInitialized('lastPollAt') && null !== $data->getLastPollAt()) {
+            $dataArray['lastPollAt'] = $data->getLastPollAt()->format('Y-m-d\TH:i:sP');
+        }
+        if ($data->isInitialized('polls') && null !== $data->getPolls()) {
+            $dataArray['polls'] = $data->getPolls();
+        }
         $dataArray['records'] = $data->getRecords();
         $dataArray['to'] = $data->getTo()->format('Y-m-d\TH:i:sP');
         foreach ($data as $key => $value) {

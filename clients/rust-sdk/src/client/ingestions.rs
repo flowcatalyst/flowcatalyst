@@ -55,6 +55,9 @@ pub enum Source {
         auth: HttpAuth,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         rate_limit: Option<SourceRateLimit>,
+        /// What the endpoint takes; absent accepts any content type, no body check.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        accept: Option<SourceAccept>,
     },
     /// Files polled in a directory on an SFTP server.
     #[serde(rename_all = "camelCase")]
@@ -141,6 +144,28 @@ pub enum Source {
         #[serde(default, skip_serializing_if = "Map::is_empty")]
         settings: Map<String, Value>,
     },
+}
+
+/// What an HTTP source takes.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceAccept {
+    /// Media types as `type/subtype`, without parameters; absent or empty accepts any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_types: Option<Vec<String>>,
+    /// How the body is checked; `NONE` when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<AcceptBody>,
+}
+
+/// How an HTTP source checks a request body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum AcceptBody {
+    None,
+    Json,
+    JsonObject,
+    Xml,
 }
 
 /// At most `requests` per `per` (ISO 8601), counted per runtime.
@@ -308,21 +333,45 @@ pub enum TargetMode {
     BlockOnError,
 }
 
-/// The dispatch job each record becomes. `connection` and `service_account`
-/// are codes and may not both be set; neither is unsigned delivery.
+/// What each record becomes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TargetKind {
+    DispatchJob,
+    Event,
+}
+
+/// What each record becomes. `kind` is `DISPATCH_JOB` when absent: `code` is
+/// then the job's code and `target_url`, `pool` and `mode` apply (`target_url`
+/// may be left out only when the source names a config entry that gives it).
+/// `connection` and `service_account` are codes and may not both be set;
+/// neither is unsigned delivery. `data_only` delivers the record as it is,
+/// with its own content type, instead of the platform envelope. For an
+/// `EVENT` target `code` is the code of an existing event type,
+/// `target_url`, `pool` and `mode` do not apply, and `wrap_non_json` delivers
+/// a record that is not JSON as `{contentType, body}`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Target {
     pub code: String,
-    pub target_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<TargetKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_url: Option<String>,
     /// A dispatch pool code.
-    pub pool: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pool: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub connection: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service_account: Option<String>,
-    pub mode: TargetMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<TargetMode>,
     pub batch_size: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_only: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wrap_non_json: Option<bool>,
 }
 
 /// A definition without its identity: what a test takes and a version holds.
@@ -1148,12 +1197,15 @@ mod tests {
     fn target() -> Target {
         Target {
             code: "orders".into(),
-            target_url: "https://hooks.example.com/orders".into(),
-            pool: "default".into(),
+            kind: None,
+            target_url: Some("https://hooks.example.com/orders".into()),
+            pool: Some("default".into()),
             connection: None,
             service_account: None,
-            mode: TargetMode::NextOnError,
+            mode: Some(TargetMode::NextOnError),
             batch_size: 10,
+            data_only: None,
+            wrap_non_json: None,
         }
     }
 
@@ -1182,6 +1234,7 @@ mod tests {
                     token: SecretRef::new("orders-token"),
                 },
                 rate_limit: None,
+                accept: None,
             },
             split: Split::Json {
                 array_path: "$.items".into(),
@@ -1206,7 +1259,7 @@ mod tests {
             .unwrap();
         assert_eq!(created.id, "ing_1");
         assert_eq!(created.latest_version, 3);
-        assert_eq!(created.target.mode, TargetMode::NextOnError);
+        assert_eq!(created.target.mode, Some(TargetMode::NextOnError));
         assert!(matches!(created.source, Source::Http { .. }));
         let req = stub.single();
         assert_eq!(req.method, "POST");
@@ -1292,6 +1345,7 @@ mod tests {
                         token: SecretRef::new("orders-token"),
                     },
                     rate_limit: None,
+                    accept: None,
                 },
                 split: Split::None,
                 target: target(),
@@ -1648,11 +1702,56 @@ mod tests {
             "keepFailedPayloads":true});
         let def: IngestionDefinition = serde_json::from_value(wire.clone()).unwrap();
         assert_eq!(def.target.connection.as_deref(), Some("billing"));
-        assert_eq!(def.target.mode, TargetMode::BlockOnError);
+        assert_eq!(def.target.mode, Some(TargetMode::BlockOnError));
         assert_eq!(serde_json::to_value(&def).unwrap(), wire);
         assert_eq!(
             serde_json::to_value(TargetMode::Immediate).unwrap(),
             json!("IMMEDIATE")
         );
+    }
+
+    #[test]
+    fn event_target_and_http_accept_round_trip() {
+        let t = Target {
+            code: "shop:orders:order:placed".into(),
+            kind: Some(TargetKind::Event),
+            target_url: None,
+            pool: None,
+            connection: None,
+            service_account: None,
+            mode: None,
+            batch_size: 5,
+            data_only: None,
+            wrap_non_json: Some(true),
+        };
+        let v = serde_json::to_value(&t).unwrap();
+        assert_eq!(
+            v,
+            json!({"code":"shop:orders:order:placed","kind":"EVENT","batchSize":5,"wrapNonJson":true})
+        );
+        assert_eq!(serde_json::from_value::<Target>(v).unwrap(), t);
+
+        let data_only: Target = serde_json::from_value(json!({"code":"a:b:c:d","kind":"DISPATCH_JOB",
+            "targetUrl":"https://x.example/h","pool":"p","mode":"IMMEDIATE","batchSize":1,"dataOnly":true}))
+        .unwrap();
+        assert_eq!(data_only.kind, Some(TargetKind::DispatchJob));
+        assert_eq!(data_only.data_only, Some(true));
+
+        let src = Source::Http {
+            auth: HttpAuth::Bearer {
+                token: SecretRef::new("t"),
+            },
+            rate_limit: None,
+            accept: Some(SourceAccept {
+                content_types: Some(vec!["application/json".into()]),
+                body: Some(AcceptBody::JsonObject),
+            }),
+        };
+        let v = serde_json::to_value(&src).unwrap();
+        assert_eq!(
+            v["accept"],
+            json!({"contentTypes":["application/json"],"body":"JSON_OBJECT"})
+        );
+        assert_eq!(serde_json::from_value::<Source>(v).unwrap(), src);
     }
 }

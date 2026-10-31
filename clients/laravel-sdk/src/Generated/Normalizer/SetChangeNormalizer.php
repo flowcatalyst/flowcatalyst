@@ -77,6 +77,16 @@ class SetChangeNormalizer implements DenormalizerInterface, NormalizerInterface,
         elseif (\array_key_exists('ingestionId', $data) && $data['ingestionId'] === null) {
             $object->setIngestionId(null);
         }
+        if (\array_key_exists('warnings', $data) && $data['warnings'] !== null) {
+            $values_1 = [];
+            foreach ($data['warnings'] as $value_1) {
+                $values_1[] = $value_1;
+            }
+            $object->setWarnings($values_1);
+        }
+        elseif (\array_key_exists('warnings', $data) && $data['warnings'] === null) {
+            $object->setWarnings(null);
+        }
         return $object;
     }
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
@@ -93,6 +103,13 @@ class SetChangeNormalizer implements DenormalizerInterface, NormalizerInterface,
         $dataArray['code'] = $data->getCode();
         if ($data->isInitialized('ingestionId') && null !== $data->getIngestionId()) {
             $dataArray['ingestionId'] = $data->getIngestionId();
+        }
+        if ($data->isInitialized('warnings') && null !== $data->getWarnings()) {
+            $values_1 = [];
+            foreach ($data->getWarnings() as $value_1) {
+                $values_1[] = $value_1;
+            }
+            $dataArray['warnings'] = $values_1;
         }
         return $dataArray;
     }

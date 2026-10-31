@@ -112,3 +112,41 @@ test("callerFromMeta: missing/null caller defaults to anonymous", () => {
   assert.equal(callerFromMeta(undefined).kind, "anonymous");
   assert.equal(callerFromMeta(null).kind, "anonymous");
 });
+
+const withApps = (applications: string[]) => new Principal({ applications });
+
+test("canAccessApplication: matches the id half of an id:code pair", () => {
+  const p = withApps(["app_1:orders", "app_2:billing"]);
+  assert.equal(p.canAccessApplication("app_1"), true);
+  assert.equal(p.canAccessApplication("app_2"), true);
+  assert.equal(p.canAccessApplication("app_3"), false);
+});
+
+test("canAccessApplication: never matches the code half", () => {
+  assert.equal(withApps(["app_1:orders"]).canAccessApplication("orders"), false);
+});
+
+test("canAccessApplication: splits on the first colon only", () => {
+  const p = withApps(["app_1:co:de"]);
+  assert.equal(p.canAccessApplication("app_1"), true);
+  assert.equal(p.canAccessApplication("app_1:co"), false);
+});
+
+test("canAccessApplication: a * entry means every application", () => {
+  assert.equal(withApps(["*"]).canAccessApplication("anything"), true);
+});
+
+test("canAccessApplication: no entry, no access", () => {
+  assert.equal(withApps([]).canAccessApplication("app_1"), false);
+  assert.equal(withApps([":code"]).canAccessApplication(""), false);
+});
+
+test("canAccessApplicationCode: code half, bare code, star, allApplications", () => {
+  const p = withApps(["app_1:bevco-integration", "orders"]);
+  assert.equal(p.canAccessApplicationCode("bevco-integration"), true);
+  assert.equal(p.canAccessApplicationCode("orders"), true);
+  assert.equal(p.canAccessApplicationCode("app_1"), false);
+  assert.equal(p.canAccessApplicationCode("merensky-integration"), false);
+  assert.equal(withApps(["*"]).canAccessApplicationCode("x"), true);
+  assert.equal(new Principal({ allApplications: true }).canAccessApplicationCode("x"), true);
+});

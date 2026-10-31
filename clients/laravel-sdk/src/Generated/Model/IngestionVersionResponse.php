@@ -91,6 +91,12 @@ class IngestionVersionResponse
      */
     protected $version;
     /**
+     * What the saved definition says that will not run as meant, such as CONFIG_MISSING for a config entry that is not set (the answer of POST .../versions only)
+     *
+     * @var list<string>|null
+     */
+    protected $warnings;
+    /**
      * A URL to the JSON Schema for this object.
      *
      * @return string|null
@@ -404,6 +410,28 @@ class IngestionVersionResponse
     {
         $this->initialized['version'] = true;
         $this->version = $version;
+        return $this;
+    }
+    /**
+     * What the saved definition says that will not run as meant, such as CONFIG_MISSING for a config entry that is not set (the answer of POST .../versions only)
+     *
+     * @return list<string>|null
+     */
+    public function getWarnings(): ?array
+    {
+        return $this->warnings;
+    }
+    /**
+     * What the saved definition says that will not run as meant, such as CONFIG_MISSING for a config entry that is not set (the answer of POST .../versions only)
+     *
+     * @param list<string>|null $warnings
+     *
+     * @return self
+     */
+    public function setWarnings(?array $warnings): self
+    {
+        $this->initialized['warnings'] = true;
+        $this->warnings = $warnings;
         return $this;
     }
 }

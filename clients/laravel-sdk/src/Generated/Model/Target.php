@@ -17,6 +17,8 @@ class Target
      */
     protected $batchSize;
     /**
+     * A dispatch job's code, application:subdomain:aggregate:action; for an EVENT target, the code of an existing event type
+     *
      * @var string|null
      */
     protected $code;
@@ -25,10 +27,26 @@ class Target
      */
     protected $connection;
     /**
+     * DISPATCH_JOB only: deliver the record as it is, with its own content type, instead of the platform envelope
+     *
+     * @var bool|null
+     */
+    protected $dataOnly;
+    /**
+     * What each record becomes; DISPATCH_JOB when absent
+     *
+     * @var string|null
+     */
+    protected $kind;
+    /**
+     * Not for an EVENT target
+     *
      * @var string|null
      */
     protected $mode;
     /**
+     * Not for an EVENT target
+     *
      * @var string|null
      */
     protected $pool;
@@ -37,9 +55,17 @@ class Target
      */
     protected $serviceAccount;
     /**
+     * The delivery URL. May be left out only when the source names a config entry whose value gives it (exactly one of the two). Not for an EVENT target
+     *
      * @var string|null
      */
     protected $targetUrl;
+    /**
+     * EVENT only: deliver a record that is not JSON as {contentType, body}. Required unless the records are known to be JSON
+     *
+     * @var bool|null
+     */
+    protected $wrapNonJson;
     /**
      * @return int|null
      */
@@ -59,6 +85,8 @@ class Target
         return $this;
     }
     /**
+     * A dispatch job's code, application:subdomain:aggregate:action; for an EVENT target, the code of an existing event type
+     *
      * @return string|null
      */
     public function getCode(): ?string
@@ -66,6 +94,8 @@ class Target
         return $this->code;
     }
     /**
+     * A dispatch job's code, application:subdomain:aggregate:action; for an EVENT target, the code of an existing event type
+     *
      * @param string|null $code
      *
      * @return self
@@ -95,6 +125,52 @@ class Target
         return $this;
     }
     /**
+     * DISPATCH_JOB only: deliver the record as it is, with its own content type, instead of the platform envelope
+     *
+     * @return bool|null
+     */
+    public function getDataOnly(): ?bool
+    {
+        return $this->dataOnly;
+    }
+    /**
+     * DISPATCH_JOB only: deliver the record as it is, with its own content type, instead of the platform envelope
+     *
+     * @param bool|null $dataOnly
+     *
+     * @return self
+     */
+    public function setDataOnly(?bool $dataOnly): self
+    {
+        $this->initialized['dataOnly'] = true;
+        $this->dataOnly = $dataOnly;
+        return $this;
+    }
+    /**
+     * What each record becomes; DISPATCH_JOB when absent
+     *
+     * @return string|null
+     */
+    public function getKind(): ?string
+    {
+        return $this->kind;
+    }
+    /**
+     * What each record becomes; DISPATCH_JOB when absent
+     *
+     * @param string|null $kind
+     *
+     * @return self
+     */
+    public function setKind(?string $kind): self
+    {
+        $this->initialized['kind'] = true;
+        $this->kind = $kind;
+        return $this;
+    }
+    /**
+     * Not for an EVENT target
+     *
      * @return string|null
      */
     public function getMode(): ?string
@@ -102,6 +178,8 @@ class Target
         return $this->mode;
     }
     /**
+     * Not for an EVENT target
+     *
      * @param string|null $mode
      *
      * @return self
@@ -113,6 +191,8 @@ class Target
         return $this;
     }
     /**
+     * Not for an EVENT target
+     *
      * @return string|null
      */
     public function getPool(): ?string
@@ -120,6 +200,8 @@ class Target
         return $this->pool;
     }
     /**
+     * Not for an EVENT target
+     *
      * @param string|null $pool
      *
      * @return self
@@ -149,6 +231,8 @@ class Target
         return $this;
     }
     /**
+     * The delivery URL. May be left out only when the source names a config entry whose value gives it (exactly one of the two). Not for an EVENT target
+     *
      * @return string|null
      */
     public function getTargetUrl(): ?string
@@ -156,6 +240,8 @@ class Target
         return $this->targetUrl;
     }
     /**
+     * The delivery URL. May be left out only when the source names a config entry whose value gives it (exactly one of the two). Not for an EVENT target
+     *
      * @param string|null $targetUrl
      *
      * @return self
@@ -164,6 +250,28 @@ class Target
     {
         $this->initialized['targetUrl'] = true;
         $this->targetUrl = $targetUrl;
+        return $this;
+    }
+    /**
+     * EVENT only: deliver a record that is not JSON as {contentType, body}. Required unless the records are known to be JSON
+     *
+     * @return bool|null
+     */
+    public function getWrapNonJson(): ?bool
+    {
+        return $this->wrapNonJson;
+    }
+    /**
+     * EVENT only: deliver a record that is not JSON as {contentType, body}. Required unless the records are known to be JSON
+     *
+     * @param bool|null $wrapNonJson
+     *
+     * @return self
+     */
+    public function setWrapNonJson(?bool $wrapNonJson): self
+    {
+        $this->initialized['wrapNonJson'] = true;
+        $this->wrapNonJson = $wrapNonJson;
         return $this;
     }
 }

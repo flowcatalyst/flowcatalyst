@@ -39,6 +39,10 @@ class IngestionResponse
      */
     protected $code;
     /**
+     * @var IngestionConfigStatus|null
+     */
+    protected $config;
+    /**
      * @var \DateTime|null
      */
     protected $createdAt;
@@ -234,6 +238,24 @@ class IngestionResponse
     {
         $this->initialized['code'] = true;
         $this->code = $code;
+        return $this;
+    }
+    /**
+     * @return IngestionConfigStatus|null
+     */
+    public function getConfig(): ?IngestionConfigStatus
+    {
+        return $this->config;
+    }
+    /**
+     * @param IngestionConfigStatus|null $config
+     *
+     * @return self
+     */
+    public function setConfig(?IngestionConfigStatus $config): self
+    {
+        $this->initialized['config'] = true;
+        $this->config = $config;
         return $this;
     }
     /**

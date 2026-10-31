@@ -25,7 +25,7 @@ class PublishVersionRequest extends \ArrayObject
      */
     protected $digest;
     /**
-     * "wasm" (default) or "js"
+     * "wasm" (default), "js" or "jvm" (a jar)
      *
      * @var string|null
      */
@@ -75,7 +75,7 @@ class PublishVersionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * "wasm" (default) or "js"
+     * "wasm" (default), "js" or "jvm" (a jar)
      *
      * @return string|null
      */
@@ -84,7 +84,7 @@ class PublishVersionRequest extends \ArrayObject
         return $this->runtime;
     }
     /**
-     * "wasm" (default) or "js"
+     * "wasm" (default), "js" or "jvm" (a jar)
      *
      * @param string|null $runtime
      *

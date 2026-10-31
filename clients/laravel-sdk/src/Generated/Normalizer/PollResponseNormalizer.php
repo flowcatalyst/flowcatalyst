@@ -75,6 +75,16 @@ class PollResponseNormalizer implements DenormalizerInterface, NormalizerInterfa
         elseif (\array_key_exists('tests', $data) && $data['tests'] === null) {
             $object->setTests(null);
         }
+        if (\array_key_exists('traces', $data) && $data['traces'] !== null) {
+            $values_2 = [];
+            foreach ($data['traces'] as $value_2) {
+                $values_2[] = $this->denormalizer->denormalize($value_2, \FlowCatalyst\Generated\Model\RuntimeTrace::class, 'json', $context);
+            }
+            $object->setTraces($values_2);
+        }
+        elseif (\array_key_exists('traces', $data) && $data['traces'] === null) {
+            $object->setTraces(null);
+        }
         return $object;
     }
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
@@ -92,6 +102,13 @@ class PollResponseNormalizer implements DenormalizerInterface, NormalizerInterfa
             $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
         }
         $dataArray['tests'] = $values_1;
+        if ($data->isInitialized('traces') && null !== $data->getTraces()) {
+            $values_2 = [];
+            foreach ($data->getTraces() as $value_2) {
+                $values_2[] = $this->normalizer->normalize($value_2, 'json', $context);
+            }
+            $dataArray['traces'] = $values_2;
+        }
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

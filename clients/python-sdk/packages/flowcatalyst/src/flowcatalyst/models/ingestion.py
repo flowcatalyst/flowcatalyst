@@ -17,6 +17,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 __all__ = [
+    "Accept",
+    "AcceptBody",
     "ApiBasicAuth",
     "ApiBearerAuth",
     "ApiKeyAuth",
@@ -34,6 +36,7 @@ __all__ = [
     "HeaderResults",
     "HttpSource",
     "Ingestion",
+    "IngestionConfigStatus",
     "IngestionDefinition",
     "IngestionFailure",
     "IngestionFailurePage",
@@ -71,6 +74,7 @@ __all__ = [
     "SqsSource",
     "StatusTrack",
     "Target",
+    "TargetKind",
     "WatermarkTrack",
     "XmlSplit",
 ]
@@ -80,6 +84,12 @@ _RESPONSE = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="i
 
 #: How a target hands each record on; ``IMMEDIATE`` | ``NEXT_ON_ERROR`` | ``BLOCK_ON_ERROR``.
 TargetMode = Literal["IMMEDIATE", "NEXT_ON_ERROR", "BLOCK_ON_ERROR"]
+
+#: What each record becomes; ``DISPATCH_JOB`` when absent.
+TargetKind = Literal["DISPATCH_JOB", "EVENT"]
+
+#: How an HTTP source treats a request body; ``NONE`` when absent.
+AcceptBody = Literal["NONE", "JSON", "JSON_OBJECT", "XML"]
 
 
 class _Part(BaseModel):
@@ -235,10 +245,19 @@ Track = Annotated[WatermarkTrack | StatusTrack, Field(discriminator="kind")]
 # --- sources -----------------------------------------------------------------------------------
 
 
+class Accept(_Part):
+    """What an HTTP source takes: ``content_types`` are ``type/subtype`` media types without
+    parameters (absent or empty accepts any); ``body`` is ``NONE`` when absent."""
+
+    content_types: list[str] | None = None
+    body: AcceptBody | None = None
+
+
 class HttpSource(_Part):
     kind: Literal["http"] = "http"
     auth: HttpAuth
     rate_limit: RateLimit | None = None
+    accept: Accept | None = None
 
 
 class SftpSource(_Part):
@@ -354,17 +373,25 @@ Split = Annotated[NoSplit | CsvSplit | JsonSplit | XmlSplit, Field(discriminator
 
 
 class Target(_Part):
-    """The dispatch job each record becomes. ``pool`` is a pool code; ``connection`` and
-    ``service_account`` are optional codes and may not both be set; neither set is unsigned
-    delivery."""
+    """What each record becomes. ``kind`` is ``DISPATCH_JOB`` when absent: ``code`` is then the
+    job's code, ``target_url`` the delivery URL (may be left out only when the source names a
+    config entry that gives it), ``pool`` a pool code, ``connection`` and ``service_account``
+    optional codes that may not both be set (neither set is unsigned delivery), and ``data_only``
+    delivers the record as it is, with its own content type, instead of the platform envelope.
+    For an ``EVENT`` target ``code`` is the code of an existing event type, ``target_url``,
+    ``pool`` and ``mode`` do not apply, and ``wrap_non_json`` delivers a record that is not JSON
+    as ``{contentType, body}``."""
 
     code: str
-    target_url: str
-    pool: str
+    kind: TargetKind | None = None
+    target_url: str | None = None
+    pool: str | None = None
     connection: str | None = None
     service_account: str | None = None
-    mode: TargetMode
+    mode: TargetMode | None = None
     batch_size: int
+    data_only: bool | None = None
+    wrap_non_json: bool | None = None
 
 
 class IngestionDefinition(_Part):
@@ -385,6 +412,20 @@ SaveOutcome = Literal["UNCHANGED", "SAVED", "MADE_LIVE", "DRAFT", "DRAFT_EXISTS"
 #: ``payload``: a record or payload the runtime could not take. ``rejected``: the platform
 #: refused the runtime's jobs permanently, shown on the ingestion as a notice until dismissed.
 FailureCategory = Literal["payload", "rejected"]
+
+
+class IngestionConfigStatus(BaseModel):
+    """Where the settings stand: ``INLINE`` (in the definition), or the config entry the source
+    names: ``SET``, ``MISSING`` (the ingestion does not run until it is set) or ``INVALID``."""
+
+    model_config = _RESPONSE
+
+    status: Literal["INLINE", "SET", "MISSING", "INVALID"] | str
+    #: The entry's key; absent while the settings are inline.
+    key: str | None = None
+    #: Why the entry is ``INVALID`` (the platform's field errors, as sent).
+    problems: list[dict[str, Any]] | None = None
+    updated_at: datetime | None = None
 
 
 class IngestionSaveOutcome(BaseModel):
@@ -415,6 +456,8 @@ class Ingestion(BaseModel):
     status: Literal["ACTIVE", "PAUSED"] | str
     version: int
     latest_version: int
+    #: Where the settings stand (absent from an older platform).
+    config: IngestionConfigStatus | None = None
     created_at: datetime
     updated_at: datetime
     name: str

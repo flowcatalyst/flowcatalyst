@@ -37,6 +37,10 @@ class SetChange
      */
     protected $ingestionId;
     /**
+     * @var list<string>|null
+     */
+    protected $warnings;
+    /**
      * @return string|null
      */
     public function getAction(): ?string
@@ -142,6 +146,24 @@ class SetChange
     {
         $this->initialized['ingestionId'] = true;
         $this->ingestionId = $ingestionId;
+        return $this;
+    }
+    /**
+     * @return list<string>|null
+     */
+    public function getWarnings(): ?array
+    {
+        return $this->warnings;
+    }
+    /**
+     * @param list<string>|null $warnings
+     *
+     * @return self
+     */
+    public function setWarnings(?array $warnings): self
+    {
+        $this->initialized['warnings'] = true;
+        $this->warnings = $warnings;
         return $this;
     }
 }

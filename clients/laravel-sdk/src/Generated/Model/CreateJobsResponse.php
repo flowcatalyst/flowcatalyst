@@ -19,11 +19,17 @@ class CreateJobsResponse
      */
     protected $dollarSchema;
     /**
-     * Jobs made by this request; records answered with an existing job are not counted
+     * Jobs or events made by this request; records answered with an existing one are not counted
      *
      * @var int|null
      */
     protected $created;
+    /**
+     * What the ingestion's target makes of a record; results[].id is a dispatch job's id or an event's
+     *
+     * @var string|null
+     */
+    protected $kind;
     /**
      * @var list<JobResult>|null
      */
@@ -51,7 +57,7 @@ class CreateJobsResponse
         return $this;
     }
     /**
-     * Jobs made by this request; records answered with an existing job are not counted
+     * Jobs or events made by this request; records answered with an existing one are not counted
      *
      * @return int|null
      */
@@ -60,7 +66,7 @@ class CreateJobsResponse
         return $this->created;
     }
     /**
-     * Jobs made by this request; records answered with an existing job are not counted
+     * Jobs or events made by this request; records answered with an existing one are not counted
      *
      * @param int|null $created
      *
@@ -70,6 +76,28 @@ class CreateJobsResponse
     {
         $this->initialized['created'] = true;
         $this->created = $created;
+        return $this;
+    }
+    /**
+     * What the ingestion's target makes of a record; results[].id is a dispatch job's id or an event's
+     *
+     * @return string|null
+     */
+    public function getKind(): ?string
+    {
+        return $this->kind;
+    }
+    /**
+     * What the ingestion's target makes of a record; results[].id is a dispatch job's id or an event's
+     *
+     * @param string|null $kind
+     *
+     * @return self
+     */
+    public function setKind(?string $kind): self
+    {
+        $this->initialized['kind'] = true;
+        $this->kind = $kind;
         return $this;
     }
     /**

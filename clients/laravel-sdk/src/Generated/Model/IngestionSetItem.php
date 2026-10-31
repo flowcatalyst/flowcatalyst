@@ -13,7 +13,7 @@ class IngestionSetItem
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * Whether the ingestion runs. Default true; an apply sets it, so a pause made since is undone.
+     * Whether the ingestion runs. When omitted: a new ingestion whose source names a config entry is created paused (set the entry and its secrets, then resume), any other is created active, and one that exists keeps its state, so a pause made since stays. When given, an apply enforces it.
      *
      * @var bool|null
      */
@@ -61,7 +61,7 @@ class IngestionSetItem
      */
     protected $target;
     /**
-     * Whether the ingestion runs. Default true; an apply sets it, so a pause made since is undone.
+     * Whether the ingestion runs. When omitted: a new ingestion whose source names a config entry is created paused (set the entry and its secrets, then resume), any other is created active, and one that exists keeps its state, so a pause made since stays. When given, an apply enforces it.
      *
      * @return bool|null
      */
@@ -70,7 +70,7 @@ class IngestionSetItem
         return $this->active;
     }
     /**
-     * Whether the ingestion runs. Default true; an apply sets it, so a pause made since is undone.
+     * Whether the ingestion runs. When omitted: a new ingestion whose source names a config entry is created paused (set the entry and its secrets, then resume), any other is created active, and one that exists keeps its state, so a pause made since stays. When given, an apply enforces it.
      *
      * @param bool|null $active
      *
