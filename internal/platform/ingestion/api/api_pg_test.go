@@ -23,6 +23,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	ingestionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/api"
@@ -156,7 +157,7 @@ func newEnv(t *testing.T) *env {
 		SetArchive: archive,
 		Repo:       ingestion.NewRepository(e.pool),
 		Resolver: ingestion.NewResolver(apps, clients, dispatchpool.NewRepository(e.pool),
-			connection.NewRepository(e.pool), serviceaccount.NewRepository(e.pool), nil),
+			connection.NewRepository(e.pool), serviceaccount.NewRepository(e.pool), eventtype.NewRepository(e.pool), nil),
 		Configs: platformconfig.NewRepository(e.pool),
 		Apps:    apps, Clients: clients, Audit: audit.NewRepository(e.pool), UoW: e.uow,
 	}
@@ -692,4 +693,80 @@ func TestDefinitionHistoryAndFailures(t *testing.T) {
 	require.Len(t, last.json["failures"], 1)
 	assert.Equal(t, "failure 1", last.json["failures"].([]any)[0].(map[string]any)["message"])
 	assert.Equal(t, false, last.json["hasMore"])
+}
+
+// An EVENT target is saved only when the event type exists and the records are
+// known to be JSON or wrapNonJson says how to carry them; the saved definition
+// reads back as it was written.
+func TestCreateEventTarget(t *testing.T) {
+	e := newEnv(t)
+	typeCode := e.appA.Code + ":orders:order:received"
+	et, err := eventtype.New(typeCode, "Order received")
+	require.NoError(t, err)
+	persist(t, e.uow, func(ctx context.Context, tx *usecasepgx.DbTx) error {
+		return eventtype.NewRepository(e.pool).Persist(ctx, et, tx)
+	})
+	event := func(code string, target map[string]any) map[string]any {
+		b := e.body(e.appA, e.clientA.Identifier, code)
+		b["target"] = target
+		return b
+	}
+
+	// Anything may be carried when wrapNonJson says how.
+	r := e.do(http.MethodPost, "/api/ingestions", event("evt-"+unique(), map[string]any{
+		"kind": "EVENT", "code": typeCode, "batchSize": 100, "wrapNonJson": true,
+	}))
+	require.Equal(t, http.StatusCreated, r.code, r.raw)
+	id, _ := r.json["id"].(string)
+	got := e.do(http.MethodGet, "/api/ingestions/"+id, nil)
+	require.Equal(t, http.StatusOK, got.code, got.raw)
+	target, _ := got.json["target"].(map[string]any)
+	if target == nil {
+		target, _ = got.json["definition"].(map[string]any)["target"].(map[string]any)
+	}
+	assert.Equal(t, "EVENT", target["kind"], got.raw)
+	assert.Equal(t, true, target["wrapNonJson"])
+	assert.NotContains(t, target, "pool")
+
+	// Not known to be JSON, and not wrapped: refused at the field.
+	r = e.do(http.MethodPost, "/api/ingestions", event("evt-"+unique(), map[string]any{"kind": "EVENT", "code": typeCode, "batchSize": 100}))
+	assert.Equal(t, http.StatusBadRequest, r.code, r.raw)
+	assert.Equal(t, "INGESTION_INVALID", r.errCode())
+	assert.Contains(t, r.raw, `target.wrapNonJson`)
+	assert.Contains(t, r.raw, `set wrapNonJson to true`)
+
+	// A JSON split knows its records.
+	b := event("evt-"+unique(), map[string]any{"kind": "EVENT", "code": typeCode, "batchSize": 100})
+	b["split"] = map[string]any{"kind": "json", "arrayPath": "$"}
+	assert.Equal(t, http.StatusCreated, e.do(http.MethodPost, "/api/ingestions", b).code)
+
+	// A job's settings are not an event's.
+	r = e.do(http.MethodPost, "/api/ingestions", event("evt-"+unique(), map[string]any{
+		"kind": "EVENT", "code": typeCode, "batchSize": 100, "wrapNonJson": true, "pool": e.poolCode,
+	}))
+	assert.Equal(t, http.StatusBadRequest, r.code, r.raw)
+	assert.Contains(t, r.raw, `target.pool`)
+
+	// The event type must exist.
+	r = e.do(http.MethodPost, "/api/ingestions", event("evt-"+unique(), map[string]any{
+		"kind": "EVENT", "code": e.appA.Code + ":orders:order:nope", "batchSize": 100, "wrapNonJson": true,
+	}))
+	assert.Equal(t, http.StatusBadRequest, r.code, r.raw)
+	assert.Equal(t, "INGESTION_TARGET_INVALID", r.errCode())
+	assert.Contains(t, r.raw, `target.code`)
+
+	// A dispatch job target with dataOnly, and an HTTP source that restricts and checks what it takes.
+	d := e.body(e.appA, e.clientA.Identifier, "raw-"+unique())
+	d["source"] = map[string]any{
+		"kind": "http", "auth": map[string]any{"kind": "bearer", "token": map[string]any{"name": "t"}},
+		"accept": map[string]any{"contentTypes": []string{"application/xml", "text/xml"}, "body": "XML"},
+	}
+	d["target"].(map[string]any)["dataOnly"] = true
+	r = e.do(http.MethodPost, "/api/ingestions", d)
+	require.Equal(t, http.StatusCreated, r.code, r.raw)
+	id, _ = r.json["id"].(string)
+	got = e.do(http.MethodGet, "/api/ingestions/"+id, nil)
+	assert.Contains(t, got.raw, `"dataOnly":true`)
+	assert.Contains(t, got.raw, `"contentTypes":["application/xml","text/xml"]`)
+	assert.Contains(t, got.raw, `"body":"XML"`)
 }

@@ -3,6 +3,8 @@ package io.flowcatalyst.ingestor.runtime;
 import io.flowcatalyst.ingestor.contract.CamelRoutes;
 import io.flowcatalyst.ingestor.contract.Ingestion;
 import io.flowcatalyst.ingestor.contract.JobRecord;
+import io.flowcatalyst.ingestor.contract.JobResult;
+import io.flowcatalyst.ingestor.contract.JobsAnswer;
 import io.flowcatalyst.ingestor.contract.RuntimeReport.Failure;
 import io.flowcatalyst.ingestor.contract.Source;
 import io.flowcatalyst.ingestor.contract.Split;
@@ -74,6 +76,23 @@ final class IngestionRoute extends RouteBuilder {
   /** Exchange property: the folder a file source moves the file into when the exchange ends. */
   static final String FOLDER = "ingestFolder";
 
+  /** Exchange property: the {@code X-Message-Group} an HTTP caller gave; every record's group is the ingestion's id and this. */
+  static final String MESSAGE_GROUP = "ingestMessageGroup";
+
+  /** Exchange property: the {@code X-Correlation-Id} an HTTP caller gave; every record's correlation id. */
+  static final String CORRELATION_ID = "ingestCorrelationId";
+
+  /** Exchange property, set by the route for an HTTP ingestion: the ids the platform made, in record order ({@link Created}). */
+  static final String CREATED = "ingestCreated";
+
+  /**
+   * What the platform made of an HTTP payload's records.
+   *
+   * @param events true when the ids are events' and not dispatch jobs'
+   * @param ids the id of each record, in record order; null when the platform did not say
+   */
+  record Created(boolean events, @Nullable List<String> ids) {}
+
   /** Exchange property: where the payload came from, set by the source ({@link PayloadIdentity#PROPERTY}). */
   static final String IDENTITY = PayloadIdentity.PROPERTY;
 
@@ -98,9 +117,14 @@ final class IngestionRoute extends RouteBuilder {
   /** The jobs of one inbound payload not yet sent. Used by one thread at a time. */
   private static final class Pending {
     final String messageGroup;
+    /** What the records' correlation id is: the caller's, else the group. */
+    final String correlationId;
     final @Nullable String identity;
     final @Nullable List<?> rowIdentities;
     final List<JobRecord> jobs = new ArrayList<>();
+    /** The ids of the records sent, kept only for an HTTP source; null once the platform did not give one. */
+    @Nullable List<String> ids;
+    boolean events;
     /** The bytes of {@code jobs} as JSON, with a comma each. */
     long bytes;
     /** How many records have been read, sent or not. */
@@ -115,8 +139,9 @@ final class IngestionRoute extends RouteBuilder {
     /** The first record read, kept only while traced, for a payload held as a stream. */
     @Nullable String firstRecord;
 
-    Pending(String messageGroup, @Nullable String identity, @Nullable List<?> rowIdentities) {
+    Pending(String messageGroup, String correlationId, @Nullable String identity, @Nullable List<?> rowIdentities) {
       this.messageGroup = messageGroup;
+      this.correlationId = correlationId;
       this.identity = identity;
       this.rowIdentities = rowIdentities;
     }
@@ -363,8 +388,13 @@ final class IngestionRoute extends RouteBuilder {
   private void begin(Exchange exchange) {
     String identity = identity(exchange);
     List<?> rows = exchange.getProperty(ROW_IDENTITIES, List.class);
-    String group = ingestion.id() + ":" + groupOf(exchange, identity, rows);
-    Pending pending = new Pending(group, identity, rows);
+    String given = exchange.getProperty(MESSAGE_GROUP, String.class);
+    String group = ingestion.id() + ":" + (given != null ? given : groupOf(exchange, identity, rows));
+    String correlation = exchange.getProperty(CORRELATION_ID, String.class);
+    Pending pending = new Pending(group, correlation != null ? correlation : group, identity, rows);
+    if (ingestion.source() instanceof Source.Http) {
+      pending.ids = new ArrayList<>();
+    }
     Capture capture = captureFor();
     pending.capture = capture;
     Map<String, String> sourceHeaders = capture == null ? Map.of() : sourceHeaders(exchange);
@@ -569,7 +599,7 @@ final class IngestionRoute extends RouteBuilder {
     int position = pending.read;
     pending.read++;
     JobRecord job =
-        new JobRecord(record.strip(), contentType(), pending.messageGroup, externalId(exchange, pending, position), pending.messageGroup, null);
+        new JobRecord(record.strip(), contentType(), pending.messageGroup, externalId(exchange, pending, position), pending.correlationId, null);
     long size = Identities.encodedSize(job) + 1L;
     if (size + ENVELOPE > JobRecord.MAX_REQUEST_BYTES) {
       throw new IllegalArgumentException(
@@ -598,6 +628,9 @@ final class IngestionRoute extends RouteBuilder {
     Pending pending = pending(exchange);
     flush(pending);
     exchange.setProperty(RECORDS, (long) pending.read);
+    if (ingestion.source() instanceof Source.Http) {
+      exchange.setProperty(CREATED, new Created(pending.events, pending.ids));
+    }
     if (CamelRoutes.yaml(ingestion.source()) != null) {
       // A payload made it through the route's steps: it is no longer failing.
       health.recovered(ingestion);
@@ -619,7 +652,7 @@ final class IngestionRoute extends RouteBuilder {
     Duration wait = FIRST_BACKOFF;
     for (int attempt = 1; ; attempt++) {
       try {
-        sink.create(ingestion, batch);
+        recorded(pending, batch, sink.submit(ingestion, batch));
         break;
       } catch (InterruptedException e) {
         throw e;
@@ -636,6 +669,28 @@ final class IngestionRoute extends RouteBuilder {
     }
     pending.sent += batch.size();
     counters.dispatched(ingestion, batch.size());
+  }
+
+  /** Keeps the ids of an HTTP payload's records, in order, to answer the caller with. */
+  private static void recorded(Pending pending, List<JobRecord> batch, JobsAnswer answer) {
+    List<String> kept = pending.ids;
+    if (kept == null) {
+      return;
+    }
+    pending.events |= answer.events();
+    if (answer.results().size() != batch.size()) {
+      pending.ids = null;
+      return;
+    }
+    List<String> ids = new ArrayList<>(batch.size());
+    for (JobResult result : answer.results()) {
+      if (result.id() == null) {
+        pending.ids = null;
+        return;
+      }
+      ids.add(result.id());
+    }
+    kept.addAll(ids);
   }
 
   private static Pending pending(Exchange exchange) {

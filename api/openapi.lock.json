@@ -3253,9 +3253,17 @@
             "type": "string"
           },
           "created": {
-            "description": "Jobs made by this request; records answered with an existing job are not counted",
+            "description": "Jobs or events made by this request; records answered with an existing one are not counted",
             "format": "int64",
             "type": "integer"
+          },
+          "kind": {
+            "description": "What the ingestion's target makes of a record; results[].id is a dispatch job's id or an event's",
+            "enum": [
+              "DISPATCH_JOB",
+              "EVENT"
+            ],
+            "type": "string"
           },
           "results": {
             "items": {
@@ -3265,6 +3273,7 @@
           }
         },
         "required": [
+          "kind",
           "created",
           "results"
         ],
@@ -13431,29 +13440,46 @@
             "type": "integer"
           },
           "code": {
+            "description": "A dispatch job's code, application:subdomain:aggregate:action; for an EVENT target, the code of an existing event type",
             "type": "string"
           },
           "connection": {
             "type": "string"
           },
+          "dataOnly": {
+            "description": "DISPATCH_JOB only: deliver the record as it is, with its own content type, instead of the platform envelope",
+            "type": "boolean"
+          },
+          "kind": {
+            "description": "What each record becomes; DISPATCH_JOB when absent",
+            "enum": [
+              "DISPATCH_JOB",
+              "EVENT"
+            ],
+            "type": "string"
+          },
           "mode": {
+            "description": "Not for an EVENT target",
             "type": "string"
           },
           "pool": {
+            "description": "Not for an EVENT target",
             "type": "string"
           },
           "serviceAccount": {
             "type": "string"
           },
           "targetUrl": {
-            "description": "The delivery URL. May be left out only when the source names a config entry whose value gives it (exactly one of the two)",
+            "description": "The delivery URL. May be left out only when the source names a config entry whose value gives it (exactly one of the two). Not for an EVENT target",
             "type": "string"
+          },
+          "wrapNonJson": {
+            "description": "EVENT only: deliver a record that is not JSON as {contentType, body}. Required unless the records are known to be JSON",
+            "type": "boolean"
           }
         },
         "required": [
           "code",
-          "pool",
-          "mode",
           "batchSize"
         ],
         "type": "object"

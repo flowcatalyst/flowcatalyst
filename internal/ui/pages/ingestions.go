@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
@@ -602,6 +603,35 @@ func ingsAPIAuthKind(a ingestion.APIAuth) string {
 	return "none"
 }
 
+// ingsAcceptText says what an HTTP source accepts, "" when anything.
+func ingsAcceptText(a *ingestion.Accept) string {
+	if a == nil {
+		return ""
+	}
+	var parts []string
+	if len(a.ContentTypes) > 0 {
+		parts = append(parts, strings.Join(a.ContentTypes, ", "))
+	}
+	if a.Body != "" && a.Body != ingestion.BodyNone {
+		parts = append(parts, "body checked as "+a.Body)
+	}
+	return strings.Join(parts, "; ")
+}
+
+// ingsTargetText says what each record becomes.
+func ingsTargetText(t ingestion.Target) string {
+	if t.IsEvent() {
+		if t.WrapNonJson {
+			return "An event of this type (a record that is not JSON is wrapped as {contentType, body})"
+		}
+		return "An event of this type"
+	}
+	if t.DataOnly {
+		return "A dispatch job, delivered as the record itself"
+	}
+	return "A dispatch job, delivered in the platform envelope"
+}
+
 func ingsSplitSummary(s ingestion.Split) string {
 	switch s := s.(type) {
 	case ingestion.CSV:
@@ -653,13 +683,15 @@ type ingsDetail struct {
 	Warnings              []string
 	Version, Latest       int
 	Kind, Where, Endpoint string
-	Split, SourceYAML     string
-	Target                ingestion.Target
-	KeepPayloads          bool
-	Created, Updated      string
-	YAML                  string
-	Versions              []ingsVersionRow
-	Compare               *ingsComparison
+	// Accepts: what an HTTP source restricts (content types, body check); empty when it takes anything.
+	Accepts           string
+	Split, SourceYAML string
+	Target            ingestion.Target
+	KeepPayloads      bool
+	Created, Updated  string
+	YAML              string
+	Versions          []ingsVersionRow
+	Compare           *ingsComparison
 	// Secrets: the names the live definition binds and who last fetched
 	// each (names only, never a value).
 	Secrets []ingsSecretRow
@@ -792,8 +824,9 @@ func (h *Ingestions) buildDetail(ctx context.Context, ac *auth.AuthContext, i *i
 		Created: i.CreatedAt.UTC().Format("2006-01-02 15:04:05 UTC"), Updated: i.UpdatedAt.UTC().Format("2006-01-02 15:04:05 UTC"),
 		Tab: ingsTabOf(tab), Perms: perms, Base: ingsURL(i.ID),
 	}
-	if _, ok := def.Source.(ingestion.HTTP); ok {
+	if h, ok := def.Source.(ingestion.HTTP); ok {
 		d.Endpoint = "POST /ingest/" + clientIdentifier + "/" + i.Code + " on each runtime"
+		d.Accepts = ingsAcceptText(h.Accept)
 	}
 	notices, err := h.Store.NoticesOf(ctx, []string{i.ID})
 	if err != nil {

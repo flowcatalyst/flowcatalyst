@@ -990,6 +990,69 @@ func TestIngestionFormRoundTripsEveryKind(t *testing.T) {
 	}
 }
 
+// The event target, dataOnly and an HTTP source's accept round-trip through the
+// form; a plain dispatch job target stays as it was stored (no kind, no accept).
+func TestIngestionFormRoundTripsTheEventTargetAndAccept(t *testing.T) {
+	cat := ingsNewCatalogue(nil)
+	auth := ingestion.BearerAuth{Token: ingestion.SecretRef{Name: "t"}}
+	event := ingestion.Target{Kind: ingestion.TargetEvent, Code: "orders:sync:order:received", BatchSize: 50, WrapNonJson: true}
+	raw := ingDef("raw", ingestion.HTTP{Auth: auth, Accept: &ingestion.Accept{ContentTypes: []string{"application/xml", "text/xml"}, Body: ingestion.BodyXML}}, ingestion.None{})
+	raw.Target.DataOnly = true
+	asEvent := ingDef("event", ingestion.HTTP{Auth: auth, Accept: &ingestion.Accept{Body: ingestion.BodyJSONObject}}, ingestion.None{})
+	asEvent.Target = event
+	wrapped := ingDef("wrapped event", ingestion.Sqs{Region: "eu-west-1", Queue: "q"}, ingestion.CSV{Header: true})
+	wrapped.Target = event
+	plain := ingDef("plain", ingestion.HTTP{Auth: auth}, ingestion.None{})
+
+	for name, def := range map[string]ingestion.Definition{"raw": raw, "event": asEvent, "wrapped": wrapped, "plain": plain} {
+		values, err := ingsValuesOf(def, cat)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		built := ingsBuildDefinition(values, cat)
+		if len(built.Errs) != 0 {
+			t.Fatalf("%s: %v", name, built.Errs)
+		}
+		doc, _ := json.Marshal(built.Doc)
+		back, err := ingestion.ParseDefinition(doc)
+		if err != nil {
+			t.Fatalf("%s: %v\n%s", name, err, doc)
+		}
+		if !def.Equal(back) {
+			want, _ := json.Marshal(def)
+			t.Errorf("%s:\n got %s\nwant %s", name, doc, want)
+		}
+		if problems := back.Validate(); len(problems) != 0 {
+			t.Errorf("%s: %v", name, problems)
+		}
+	}
+
+	// A plain one writes neither a kind nor an accept.
+	values, err := ingsValuesOf(plain, cat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, _ := json.Marshal(ingsBuildDefinition(values, cat).Doc)
+	for _, absent := range []string{`"kind":"DISPATCH_JOB"`, `"accept"`} {
+		if strings.Contains(string(doc), absent) {
+			t.Errorf("a plain definition writes %s: %s", absent, doc)
+		}
+	}
+
+	// An event's form has no delivery fields, so none are written.
+	values, err = ingsValuesOf(asEvent, cat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values["target.pool"], values["target.targetUrl"], values["target.dataOnly"] = "orders", "https://x.example.com", ingsOn
+	doc, _ = json.Marshal(ingsBuildDefinition(values, cat).Doc)
+	for _, absent := range []string{`"pool"`, `"targetUrl"`, `"dataOnly"`} {
+		if strings.Contains(string(doc), absent) {
+			t.Errorf("an event target writes %s: %s", absent, doc)
+		}
+	}
+}
+
 func TestIngestionDurationsAreReadInShortAndISOForm(t *testing.T) {
 	for in, want := range map[string]string{"30s": "PT30S", "5m": "PT5M", "2H": "PT2H", "1d": "PT24H", "90s": "PT1M30S", "pt15m": "PT15M", "PT1H30M": "PT1H30M"} {
 		got, err := ingsParseDuration(in)

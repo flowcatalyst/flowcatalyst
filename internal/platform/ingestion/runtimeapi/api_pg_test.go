@@ -23,6 +23,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	ingestionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/runtimeapi"
@@ -104,7 +106,7 @@ func newEnv(t *testing.T) *env {
 		next(huma.WithContext(ctx, auth.WithContext(ctx.Context(), e.who)))
 	})
 	resolver := ingestion.NewResolver(apps, clients, dispatchpool.NewRepository(e.pool),
-		connection.NewRepository(e.pool), serviceaccount.NewRepository(e.pool), nil)
+		connection.NewRepository(e.pool), serviceaccount.NewRepository(e.pool), eventtype.NewRepository(e.pool), nil)
 	enc, err := encryption.New(os.Getenv("FLOWCATALYST_APP_KEY"))
 	require.NoError(t, err)
 	e.config = &platformconfig.Service{
@@ -112,7 +114,7 @@ func newEnv(t *testing.T) *env {
 		Audit: audit.NewRepository(e.pool),
 	}
 	runtimeapi.Register(api, &runtimeapi.State{
-		Repo: e.repo, Jobs: dispatchjob.NewRepository(e.pool), Resolver: resolver,
+		Repo: e.repo, Jobs: dispatchjob.NewRepository(e.pool), Events: event.NewRepository(e.pool), Resolver: resolver,
 		Connections: connection.NewRepository(e.pool), Config: e.config, Audit: audit.NewRepository(e.pool), Now: func() time.Time { return e.now },
 	})
 	ingestionapi.Register(api, &ingestionapi.State{

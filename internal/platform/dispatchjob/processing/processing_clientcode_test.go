@@ -50,6 +50,7 @@ type captured struct {
 	hasHeader    bool
 	sig          string
 	tstamp       string
+	contentType  string
 }
 
 func fakeSubscriber(t *testing.T, out *atomic.Value) *httptest.Server {
@@ -63,6 +64,7 @@ func fakeSubscriber(t *testing.T, out *atomic.Value) *httptest.Server {
 			hasHeader:    hasHeader,
 			sig:          r.Header.Get(signatureHeader),
 			tstamp:       r.Header.Get(timestampHeader),
+			contentType:  r.Header.Get("Content-Type"),
 		})
 		w.WriteHeader(http.StatusOK)
 	}))

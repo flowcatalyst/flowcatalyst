@@ -17,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -49,7 +50,7 @@ func newIngPG(t *testing.T) *ingPG {
 	uow := testpg.NewUoW(t)
 	apps, clients := application.NewRepository(pool), client.NewRepository(pool)
 	repo := ingestion.NewRepository(pool)
-	resolver := ingestion.NewResolver(apps, clients, dispatchpool.NewRepository(pool), connection.NewRepository(pool), serviceaccount.NewRepository(pool), nil)
+	resolver := ingestion.NewResolver(apps, clients, dispatchpool.NewRepository(pool), connection.NewRepository(pool), serviceaccount.NewRepository(pool), eventtype.NewRepository(pool), nil)
 
 	p := &ingPG{t: t, repo: repo, poolRef: "pool-" + ingUnique()}
 	p.app = application.NewIntegration("ingui-"+ingUnique(), "Ingest UI")

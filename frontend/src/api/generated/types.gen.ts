@@ -1226,9 +1226,13 @@ export type CreateJobsResponse = {
      */
     readonly $schema?: string;
     /**
-     * Jobs made by this request; records answered with an existing job are not counted
+     * Jobs or events made by this request; records answered with an existing one are not counted
      */
     created: number;
+    /**
+     * What the ingestion's target makes of a record; results[].id is a dispatch job's id or an event's
+     */
+    kind: 'DISPATCH_JOB' | 'EVENT';
     results: Array<JobResult>;
 };
 
@@ -5042,15 +5046,36 @@ export type SyncUsersResponse = {
 
 export type Target = {
     batchSize: number;
+    /**
+     * A dispatch job's code, application:subdomain:aggregate:action; for an EVENT target, the code of an existing event type
+     */
     code: string;
     connection?: string;
-    mode: string;
-    pool: string;
+    /**
+     * DISPATCH_JOB only: deliver the record as it is, with its own content type, instead of the platform envelope
+     */
+    dataOnly?: boolean;
+    /**
+     * What each record becomes; DISPATCH_JOB when absent
+     */
+    kind?: 'DISPATCH_JOB' | 'EVENT';
+    /**
+     * Not for an EVENT target
+     */
+    mode?: string;
+    /**
+     * Not for an EVENT target
+     */
+    pool?: string;
     serviceAccount?: string;
     /**
-     * The delivery URL. May be left out only when the source names a config entry whose value gives it (exactly one of the two)
+     * The delivery URL. May be left out only when the source names a config entry whose value gives it (exactly one of the two). Not for an EVENT target
      */
     targetUrl?: string;
+    /**
+     * EVENT only: deliver a record that is not JSON as {contentType, body}. Required unless the records are known to be JSON
+     */
+    wrapNonJson?: boolean;
 };
 
 export type TestAnswer = {
@@ -6479,9 +6504,13 @@ export type CreateJobsRequestWritable = {
 
 export type CreateJobsResponseWritable = {
     /**
-     * Jobs made by this request; records answered with an existing job are not counted
+     * Jobs or events made by this request; records answered with an existing one are not counted
      */
     created: number;
+    /**
+     * What the ingestion's target makes of a record; results[].id is a dispatch job's id or an event's
+     */
+    kind: 'DISPATCH_JOB' | 'EVENT';
     results: Array<JobResult>;
 };
 

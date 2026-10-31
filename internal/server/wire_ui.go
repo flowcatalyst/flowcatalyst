@@ -34,7 +34,7 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 	sjInstances := scheduledjob.NewInstanceRepository(pool)
 	ingestionRepo := ingestion.NewRepository(pool)
 	ingestionResolver := ingestion.NewResolver(repos.applicationRepo, repos.clientRepo,
-		repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, nil)
+		repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, repos.eventTypeRepo, nil)
 	return ui.Mount(r, ui.Config{
 		// The new sign-in pages (/ui/auth/*) call the public auth endpoints of
 		// this same router in-process.

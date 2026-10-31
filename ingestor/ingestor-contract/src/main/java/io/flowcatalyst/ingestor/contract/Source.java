@@ -1,6 +1,7 @@
 package io.flowcatalyst.ingestor.contract;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.time.Duration;
@@ -127,8 +128,51 @@ public sealed interface Source {
    *
    * @param auth how the caller authenticates
    * @param rateLimit how fast requests are accepted, or null for no limit
+   * @param accept the media types and body checks, or null to take any request
    */
-  record Http(HttpAuth auth, @Nullable RateLimit rateLimit) implements Source {}
+  record Http(HttpAuth auth, @Nullable RateLimit rateLimit, @Nullable Accept accept) implements Source {
+
+    /** An endpoint that takes any request. */
+    public Http(HttpAuth auth, @Nullable RateLimit rateLimit) {
+      this(auth, rateLimit, null);
+    }
+
+    /**
+     * What the endpoint accepts before the payload is read: the media types it takes and how much of
+     * the body is checked. A request that does not match is answered {@code 415} or {@code 400} and
+     * makes no jobs.
+     *
+     * @param contentTypes media types without parameters ({@code application/xml}), compared
+     *     case-insensitively with the request's media type, its parameters ignored; null or empty
+     *     for any
+     * @param body how the body is checked; null is {@link Body#NONE}
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Accept(@Nullable List<String> contentTypes, @Nullable Body body) {
+
+      /** The media types allowed, empty for any. */
+      public List<String> types() {
+        return contentTypes == null ? List.of() : contentTypes;
+      }
+
+      /** The check on the body, never null. */
+      public Body check() {
+        return body == null ? Body.NONE : body;
+      }
+    }
+
+    /** How much of an accepted body is checked. */
+    public enum Body {
+      /** Not checked. */
+      NONE,
+      /** Must be JSON. */
+      JSON,
+      /** Must be a JSON object with at least one property. */
+      JSON_OBJECT,
+      /** Must be well-formed XML. */
+      XML
+    }
+  }
 
   /**
    * Messages consumed from a RabbitMQ queue.

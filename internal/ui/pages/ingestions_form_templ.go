@@ -347,7 +347,7 @@ func ingsFormBody(f ingsForm) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = kit.FormSection(kit.FormSectionProps{Title: "Split", Description: "How one payload becomes records; each record is one dispatch job."}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var12), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kit.FormSection(kit.FormSectionProps{Title: "Split", Description: "How one payload becomes records; each record becomes one dispatch job or event."}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var12), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -368,7 +368,7 @@ func ingsFormBody(f ingsForm) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			for _, fld := range ingsTargetFields {
-				templ_7745c5c3_Err = ingsFieldC(f, fld).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = ingsGated(f, fld).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -379,7 +379,7 @@ func ingsFormBody(f ingsForm) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = kit.FormSection(kit.FormSectionProps{Title: "Dispatch", Description: "The dispatch job created for each record."}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var15), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kit.FormSection(kit.FormSectionProps{Title: "Target", Description: "What each record becomes: a dispatch job delivered to one URL, or an event that subscriptions deliver."}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var15), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

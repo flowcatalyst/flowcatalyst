@@ -19,6 +19,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
@@ -440,7 +441,7 @@ func newResolverEnv(t *testing.T) *resolverEnv {
 	return &resolverEnv{
 		env: e,
 		resolver: ingestion.NewResolver(application.NewRepository(e.pool), client.NewRepository(e.pool), pools,
-			connection.NewRepository(e.pool), serviceaccount.NewRepository(e.pool), nil),
+			connection.NewRepository(e.pool), serviceaccount.NewRepository(e.pool), eventtype.NewRepository(e.pool), nil),
 		pools: pools,
 	}
 }
@@ -736,4 +737,34 @@ func TestResolver_JobCodeBelongsToTheApplication(t *testing.T) {
 	tg.Code = strings.ToUpper(r.app.Code[:1]) + r.app.Code[1:] + ":orders:order:received"
 	_, err = r.resolver.Target(ctx, r.app.Code, r.client.ID, tg)
 	require.NoError(t, err, "an application's code matches whatever its case")
+}
+
+func TestResolver_EventTarget(t *testing.T) {
+	ctx := context.Background()
+	r := newResolverEnv(t)
+	code := r.app.Code + ":orders:order:received"
+	et, err := eventtype.New(code, "Order received")
+	require.NoError(t, err)
+	require.NoError(t, withTx(t, r.uow, func(tx *usecasepgx.DbTx) error {
+		return eventtype.NewRepository(r.pool).Persist(ctx, et, tx)
+	}))
+
+	// An existing event type resolves; there is no pool, connection or URL to.
+	got, err := r.resolver.Target(ctx, r.app.Code, r.client.ID, ingestion.Target{Kind: ingestion.TargetEvent, Code: code, BatchSize: 100})
+	require.NoError(t, err)
+	assert.Equal(t, et.ID, got.EventTypeID)
+	assert.Empty(t, got.PoolID)
+
+	// One that does not exist is refused, naming target.code.
+	_, err = r.resolver.Target(ctx, r.app.Code, r.client.ID,
+		ingestion.Target{Kind: ingestion.TargetEvent, Code: r.app.Code + ":orders:order:missing", BatchSize: 100})
+	invalidTarget(t, err, "target.code: no event type with code")
+
+	// An archived one is refused.
+	et.Archive()
+	require.NoError(t, withTx(t, r.uow, func(tx *usecasepgx.DbTx) error {
+		return eventtype.NewRepository(r.pool).Persist(ctx, et, tx)
+	}))
+	_, err = r.resolver.Target(ctx, r.app.Code, r.client.ID, ingestion.Target{Kind: ingestion.TargetEvent, Code: code, BatchSize: 100})
+	invalidTarget(t, err, "archived")
 }

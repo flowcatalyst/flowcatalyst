@@ -273,6 +273,21 @@ class PlatformApiTest {
   }
 
   @Test
+  void theAnswerToARecordsCallNamesWhatWasMadeAndOfWhatKind() throws Exception {
+    List<JobRecord> one = List.of(new JobRecord("a", "text/plain", null, null, null, null));
+
+    answer = "{\"kind\":\"EVENT\",\"created\":0,\"results\":[{\"index\":0,\"id\":\"evt_9\",\"existing\":true}],\"somethingNew\":1}";
+    var events = api.submit(ingestion, one);
+    answer = "{\"created\":1,\"results\":[{\"index\":0,\"id\":\"djb_1\"}]}";
+    var jobs = api.submit(ingestion, one);
+
+    assertThat(events.events()).isTrue();
+    assertThat(events.results()).extracting(r -> r.id()).containsExactly("evt_9");
+    assertThat(jobs.events()).isFalse();
+    assertThat(jobs.results()).extracting(r -> r.id()).containsExactly("djb_1");
+  }
+
+  @Test
   void aRecordTheCallRefusesOrAnAnswerThatDoesNotCoverEveryRecordIsAFailureAndIsNotSentAgain() {
     List<JobRecord> two = List.of(new JobRecord("a", "text/plain", null, null, null, null), new JobRecord("b", "text/plain", null, null, null, null));
 

@@ -41,6 +41,12 @@ An ingestion is addressed as **`application/client/code`** (for example
 | `database-poll`, `api-poll` | A table or an HTTP API, polled on an interval |
 | `custom` | A kind a runtime adds as an extension (`kind: custom`, `type`, `settings`) |
 
+An `http` source may set `accept`: `contentTypes` (media types such as
+`application/xml`, parameters like `charset` ignored; absent or empty accepts any,
+others get `415`) and `body`, a check made before the payload is split, failing
+with `400`: `NONE` (the default), `JSON`, `JSON_OBJECT` (a non-empty object) or
+`XML` (well-formed).
+
 `GET /api/ingestion-source-kinds` lists the built-in kinds and the ones the live
 runtimes report. A kind that needs a special permission (a Camel route is one)
 declares it, and saving an ingestion of that kind needs it (`platform:ingestion:ingestion:route`).
@@ -112,13 +118,23 @@ sends the credential to whoever answers at the address, so turning it on needs
 
 | Field | Meaning |
 |---|---|
-| `code` | The dispatch job's code, `application:subdomain:aggregate:action`. Its first part must be the ingestion's own application: an ingestion makes jobs of its application only |
+| `kind` | `DISPATCH_JOB` (the default when absent) or `EVENT`: what each record becomes |
+| `code` | For `EVENT`, the code of an existing event type. For a job, the dispatch job's code, `application:subdomain:aggregate:action`. Its first part must be the ingestion's own application: an ingestion makes jobs of its application only |
 | `targetUrl` | Where the job is delivered. Checked at save with the platform's outbound-URL guard (no private or metadata addresses). May be left out only when the source names a config entry whose value gives it (see "Settings per environment"): exactly one of the two |
 | `pool` | A dispatch pool **code**; it must exist and be usable by the ingestion's client |
 | `connection` | Optional connection code. The connection's service account signs each delivery, and pausing the connection holds this ingestion's jobs |
 | `serviceAccount` | Optional service account code, to sign without a connection. Not together with `connection`. It must be one of the ingestion's application's own accounts and reach the ingestion's client (an account linked to no client reaches all of its application's clients); a platform account, or another application's, is refused |
 | `mode` | `IMMEDIATE`, `NEXT_ON_ERROR` or `BLOCK_ON_ERROR` |
 | `batchSize` | Records per job batch |
+| `dataOnly` | `DISPATCH_JOB` only, default false. Deliver the record itself, with its own content type, instead of the platform envelope |
+| `wrapNonJson` | `EVENT` only, default false. Deliver a record that is not JSON as `{"contentType", "body"}`. **Required** unless the records are known to be JSON: a `json` split, or split `none` on an HTTP source whose `accept.body` is `JSON` or `JSON_OBJECT` |
+
+An `EVENT` target stores one platform event per record, through the same path as
+`POST /api/events/batch`, so subscriptions to the event type deliver it. It takes
+only `code`, `batchSize` and `wrapNonJson`: `targetUrl`, `pool`, `connection`,
+`serviceAccount`, `mode` and `dataOnly` are refused, because the subscriptions decide
+where the event goes. A record with an `externalId` is stored once per ingestion:
+sending it again answers the first event.
 
 With neither `connection` nor `serviceAccount` the delivery is unsigned. The job's
 client is the ingestion's client. Anything that does not resolve is a `400` when

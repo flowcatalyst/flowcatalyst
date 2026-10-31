@@ -5,12 +5,14 @@ import io.flowcatalyst.ingestor.contract.Ingestion;
 import io.flowcatalyst.ingestor.contract.RateLimit;
 import io.flowcatalyst.ingestor.contract.SecretRef;
 import io.flowcatalyst.ingestor.contract.Source;
+import io.flowcatalyst.ingestor.contract.Split;
 import io.flowcatalyst.framework.auth.PlatformTokens;
 import io.flowcatalyst.framework.auth.Principal;
 import io.flowcatalyst.framework.auth.TokenResult;
 import io.flowcatalyst.framework.config.Secret;
 import io.flowcatalyst.framework.core.MonotonicClock;
 import io.flowcatalyst.framework.http.HttpErrors;
+import io.flowcatalyst.framework.http.Json;
 import io.flowcatalyst.framework.http.Request;
 import io.flowcatalyst.framework.http.Response;
 import io.flowcatalyst.framework.http.ratelimit.Decision;
@@ -18,17 +20,29 @@ import io.flowcatalyst.framework.http.ratelimit.MemoryRateLimiter;
 import io.flowcatalyst.framework.http.ratelimit.RateLimitPolicy;
 import io.flowcatalyst.framework.http.ratelimit.RateLimiter;
 import io.flowcatalyst.framework.secrets.SecretStoreException;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
+import javax.xml.XMLConstants;
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
 import org.apache.camel.Exchange;
 import org.apache.camel.ProducerTemplate;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
 
 /**
  * The listener for every HTTP ingestion: {@code POST /ingest/{client}/{code}}, or {@code POST
@@ -43,6 +57,13 @@ import org.slf4j.LoggerFactory;
  * request sent again makes them again. An address that fails to log in to an ingestion more than
  * {@link #AUTH_FAILURES} allows is answered {@code 429} without its credentials being checked, until
  * its wait is over.
+ *
+ * <p>After the login and the rate limit, and before any job is made, the request is checked against
+ * the ingestion's {@code accept} ({@code 415} for a media type it does not take, {@code 400} for a
+ * body that is empty, not the JSON or XML it must be), and its {@code X-Message-Group} and {@code
+ * X-Correlation-Id} headers, which become every record's group and correlation id. The {@code 202}
+ * names what was made: {@code jobId} or, for an ingestion that splits, {@code jobIds} in record order;
+ * {@code eventId} or {@code eventIds} when the ingestion's target is an event.
  */
 final class HttpIngest {
 
@@ -61,6 +82,17 @@ final class HttpIngest {
 
   /** The request header a caller names a request with, so that sending it again makes no new jobs. */
   static final String IDEMPOTENCY_KEY = "Idempotency-Key";
+
+  /** The request header a caller names the records' message group with. */
+  static final String MESSAGE_GROUP = "X-Message-Group";
+
+  /** The request header a caller names the records' correlation id with. */
+  static final String CORRELATION_ID = "X-Correlation-Id";
+
+  private static final Pattern GROUP = Pattern.compile("^[A-Za-z0-9_.:-]{1,128}$");
+
+  /** The longest correlation id a job takes. */
+  private static final int MAX_CORRELATION_ID = 100;
 
   /** Failed logins one address may make to one ingestion before it waits. */
   static final RateLimitPolicy AUTH_FAILURES = RateLimitPolicy.of(20, Duration.ofMinutes(1));
@@ -150,13 +182,42 @@ final class HttpIngest {
       }
     }
 
+    Source.Http.Accept accept = http.accept();
+    if (accept != null && !accept.types().isEmpty() && !accepted(accept.types(), request.header("Content-Type"))) {
+      return bad(415, "UNSUPPORTED_MEDIA_TYPE", "this ingestion takes " + String.join(", ", accept.types()));
+    }
+    String group = request.header(MESSAGE_GROUP);
+    if (group != null && !GROUP.matcher(group).matches()) {
+      return bad(400, "INVALID_MESSAGE_GROUP", MESSAGE_GROUP + " must be 1 to 128 letters, digits, and _ . : -");
+    }
+    String correlation = request.header(CORRELATION_ID);
+    if (correlation != null && correlation.isBlank()) {
+      correlation = null;
+    }
+    if (correlation != null && correlation.length() > MAX_CORRELATION_ID) {
+      return bad(400, "INVALID_CORRELATION_ID", CORRELATION_ID + " must be at most " + MAX_CORRELATION_ID + " characters");
+    }
     byte[] body = request.bodyBytes();
+    if (accept != null) {
+      Response invalid = invalid(accept.check(), body);
+      if (invalid != null) {
+        return invalid;
+      }
+    }
     String key = request.header(IDEMPOTENCY_KEY);
+    String sentGroup = group;
+    String sentCorrelation = correlation;
     Exchange exchange =
         producer.send(
             endpoint(ingestion),
             e -> {
               e.getMessage().setBody(body);
+              if (sentGroup != null) {
+                e.setProperty(IngestionRoute.MESSAGE_GROUP, sentGroup);
+              }
+              if (sentCorrelation != null) {
+                e.setProperty(IngestionRoute.CORRELATION_ID, sentCorrelation);
+              }
               if (key != null && !key.isBlank()) {
                 // The caller's own key: the same request sent again makes no new jobs.
                 e.setProperty(IngestionRoute.IDENTITY, key.strip());
@@ -172,7 +233,140 @@ final class HttpIngest {
     if (exchange.getProperty(IngestionRoute.REJECTED) != null) {
       return HttpErrors.error(422, "UNPROCESSABLE", "the payload could not be read; do not send it again unchanged");
     }
-    return Response.json(202, Map.of("accepted", true));
+    return Response.json(202, accepted(ingestion, exchange.getProperty(IngestionRoute.CREATED, IngestionRoute.Created.class)));
+  }
+
+  /** The {@code 202} body: {@code accepted}, and the ids the platform made when it said (R1). */
+  private static Map<String, Object> accepted(Ingestion ingestion, IngestionRoute.@Nullable Created created) {
+    Map<String, Object> answer = new LinkedHashMap<>();
+    answer.put("accepted", true);
+    if (created == null || created.ids() == null) {
+      return answer;
+    }
+    String noun = created.events() ? "event" : "job";
+    if (ingestion.split() instanceof Split.None) {
+      // One payload, one record: its id, or none when the payload was blank.
+      if (created.ids().size() == 1) {
+        answer.put(noun + "Id", created.ids().getFirst());
+      }
+    } else {
+      answer.put(noun + "Ids", created.ids());
+    }
+    return answer;
+  }
+
+  private static Response bad(int status, String code, String message) {
+    return Response.json(status, Map.of("error", code, "message", message));
+  }
+
+  private static Response bad(int status, String code) {
+    return Response.json(status, Map.of("error", code));
+  }
+
+  /** Whether the request's media type, its parameters ignored, is one of those allowed. */
+  static boolean accepted(List<String> allowed, @Nullable String contentType) {
+    if (contentType == null) {
+      return false;
+    }
+    int semicolon = contentType.indexOf(';');
+    String type = (semicolon < 0 ? contentType : contentType.substring(0, semicolon)).strip().toLowerCase(Locale.ROOT);
+    for (String candidate : allowed) {
+      if (candidate.strip().toLowerCase(Locale.ROOT).equals(type)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** The refusal for a body that is empty or not what the ingestion takes, or null when it is. Reads the body in place. */
+  private static @Nullable Response invalid(Source.Http.Body check, byte[] body) {
+    boolean blank = true;
+    for (byte b : body) {
+      if (b != ' ' && b != '\t' && b != '\n' && b != '\r') {
+        blank = false;
+        break;
+      }
+    }
+    if (blank) {
+      return bad(400, "EMPTY_BODY");
+    }
+    return switch (check) {
+      case NONE -> null;
+      case JSON -> json(body, false);
+      case JSON_OBJECT -> json(body, true);
+      case XML -> xml(body);
+    };
+  }
+
+  /** Reads the whole body as one JSON value without building it, and checks it is an object with a property when asked. */
+  private static @Nullable Response json(byte[] body, boolean object) {
+    try (JsonParser parser = Json.mapper().createParser(body)) {
+      JsonToken first = parser.nextToken();
+      if (first == null) {
+        return bad(400, "INVALID_JSON");
+      }
+      if (object && (first != JsonToken.START_OBJECT || parser.nextToken() != JsonToken.PROPERTY_NAME)) {
+        return bad(400, "PAYLOAD_MUST_BE_A_NON_EMPTY_JSON_OBJECT");
+      }
+      if (object) {
+        // Inside the first property; skip on to the end of the object.
+        parser.nextToken();
+        parser.skipChildren();
+        while (parser.nextToken() == JsonToken.PROPERTY_NAME) {
+          parser.nextToken();
+          parser.skipChildren();
+        }
+      } else {
+        parser.skipChildren();
+      }
+      // One value only: anything after it is not JSON.
+      return parser.nextToken() == null ? null : bad(400, "INVALID_JSON");
+    } catch (JacksonException e) {
+      return bad(400, "INVALID_JSON");
+    }
+  }
+
+  /**
+   * Reads the whole body as XML with DTDs and external entities off; says where it is not well-formed,
+   * never what it says. A DOCTYPE is refused outright: no integration payload needs one, and the body is
+   * passed on as it is to a processor whose own XML parser this check cannot vouch for.
+   */
+  private static @Nullable Response xml(byte[] body) {
+    XMLInputFactory factory = XMLInputFactory.newFactory();
+    factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+    factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
+    for (String property : new String[] {XMLConstants.ACCESS_EXTERNAL_DTD, XMLConstants.ACCESS_EXTERNAL_SCHEMA}) {
+      try {
+        factory.setProperty(property, "");
+      } catch (IllegalArgumentException e) {
+        // A parser without that property has no such access to close.
+      }
+    }
+    XMLStreamReader reader = null;
+    try {
+      reader = factory.createXMLStreamReader(new ByteArrayInputStream(body));
+      boolean root = false;
+      while (reader.hasNext()) {
+        int event = reader.next();
+        if (event == XMLStreamConstants.DTD) {
+          return bad(400, "INVALID_XML", "a DOCTYPE is not accepted");
+        }
+        root |= event == XMLStreamConstants.START_ELEMENT;
+      }
+      return root ? null : bad(400, "INVALID_XML", "no root element");
+    } catch (XMLStreamException e) {
+      var at = e.getLocation();
+      String where = at == null || at.getLineNumber() < 0 ? "" : " at line " + at.getLineNumber() + ", column " + at.getColumnNumber();
+      return bad(400, "INVALID_XML", "the body is not well-formed XML" + where);
+    } finally {
+      if (reader != null) {
+        try {
+          reader.close();
+        } catch (XMLStreamException e) {
+          // Nothing left to read.
+        }
+      }
+    }
   }
 
   /**

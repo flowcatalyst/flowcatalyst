@@ -127,7 +127,7 @@ func (f ingsForm) action() string {
 func (f ingsForm) dialogProps() kit.FormDialogProps {
 	p := kit.FormDialogProps{
 		ID: ingsFormDialog, Signal: ingsFormSignal, Width: kit.WidthWide, Action: f.action(), Open: f.Open, Error: f.Errs.Form,
-		Title: "New ingestion", Description: "Where a client's data comes from, how it is split, and the dispatch job each record becomes", SubmitLabel: "Create ingestion",
+		Title: "New ingestion", Description: "Where a client's data comes from, how it is split, and what each record becomes", SubmitLabel: "Create ingestion",
 	}
 	if f.Edit {
 		p.Title, p.Description, p.SubmitLabel, p.RequireChange = "Change "+f.Code, f.versionText(), "Save version", true

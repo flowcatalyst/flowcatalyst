@@ -65,10 +65,11 @@ func (s *State) requireRuntimeIngestion(ctx context.Context, id, runtimeID strin
 	return i, nil
 }
 
-// createJobs makes a dispatch job of each record, from the ingestion's own
-// target. The runtime supplies the records; the job's code, URL, pool,
-// connection, signer, mode and client are the ingestion's, resolved as at
-// save, so a runtime can neither choose nor alter them.
+// createJobs makes a dispatch job (or, for an EVENT target, an event) of each
+// record, from the ingestion's own target. The runtime supplies the records;
+// the job's code, URL, pool, connection, signer, mode and client are the
+// ingestion's, resolved as at save, so a runtime can neither choose nor alter
+// them.
 func (s *State) createJobs(ctx context.Context, in *createJobsInput) (*apicommon.Out[CreateJobsResponse], error) {
 	i, err := s.requireRuntimeIngestion(ctx, in.ID, in.RuntimeID, false)
 	if err != nil {
@@ -77,6 +78,9 @@ func (s *State) createJobs(ctx context.Context, in *createJobsInput) (*apicommon
 	target, err := s.resolveTarget(ctx, i)
 	if err != nil {
 		return nil, err
+	}
+	if target.target.IsEvent() {
+		return s.createEvents(ctx, in, i, target)
 	}
 
 	results := make([]JobResult, len(in.Body.Records))
@@ -131,7 +135,7 @@ func (s *State) createJobs(ctx context.Context, in *createJobsInput) (*apicommon
 		}
 		return nil, usecase.Internal("REPO", "create jobs failed", err)
 	}
-	return &apicommon.Out[CreateJobsResponse]{Body: CreateJobsResponse{Created: created, Results: results}}, nil
+	return &apicommon.Out[CreateJobsResponse]{Body: CreateJobsResponse{Kind: ingestion.TargetDispatchJob, Created: created, Results: results}}, nil
 }
 
 // jobTarget is an ingestion's target resolved to what its jobs carry.
@@ -216,7 +220,7 @@ func (t *jobTarget) item(rec JobRecord, runtimeID string) (sdk.BatchItem, string
 		ExternalID: rec.ExternalID, Code: target.Code, Source: &t.source, Subject: rec.Subject,
 		TargetURL: target.TargetURL, Payload: &rec.Payload, PayloadContentType: rec.PayloadContentType,
 		CorrelationID: rec.CorrelationID, ClientID: &clientID, ServiceAccountID: t.serviceAccount,
-		DispatchPoolID: &t.poolID, MessageGroup: rec.MessageGroup, Mode: target.Mode,
+		DispatchPoolID: &t.poolID, MessageGroup: rec.MessageGroup, Mode: target.Mode, DataOnly: target.DataOnly,
 		Metadata: []dispatchjob.Metadata{{Key: "ingestionId", Value: t.ingestion.ID}, {Key: "runtimeId", Value: runtimeID}},
 	}, ""
 }

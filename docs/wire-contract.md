@@ -628,9 +628,13 @@ this endpoint; it never sees the real webhook). The request:
   platform-scoped job (no `client_id`) or a client that does not resolve
   omits the header entirely. Adding this header does not change what the
   signature covers — it is still the body alone.
+- **`Content-Type`:** `application/json` for the envelope. A `dataOnly`
+  delivery sends the job's own `payloadContentType` (`application/json` when
+  it has none), since its body is the raw payload.
 - **Body:** the raw payload byte-for-byte in `dataOnly` mode; otherwise a
-  CloudEvents-style envelope — `id`, `type`, `attemptNumber`, and, when
-  present, `source`, `subject`, `correlationId`, `messageGroup`, `clientId`,
+  CloudEvents-style envelope — `id`, `type`, `attemptNumber`, `time` (the
+  job's creation time, UTC, RFC 3339 with milliseconds), and, when
+  present, `dataContentType` (the job's payload content type), `source`, `subject`, `correlationId`, `messageGroup`, `clientId`,
   `clientCode` (identifier slug, alongside `clientId`, omitted — the key
   absent, not null — when the job has no `clientId` or the client cannot be
   resolved), and `data` (the parsed or raw payload).

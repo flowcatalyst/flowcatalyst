@@ -45,6 +45,29 @@ type Source interface {
 type HTTP struct {
 	Auth      HTTPAuth   `json:"auth"`
 	RateLimit *RateLimit `json:"rateLimit,omitempty"`
+	Accept    *Accept    `json:"accept,omitempty"`
+}
+
+// What an HTTP source checks of a body it accepts (Accept.Body).
+const (
+	BodyNone       = "NONE"        // no check (the default)
+	BodyJSON       = "JSON"        // it parses
+	BodyJSONObject = "JSON_OBJECT" // a non-empty JSON object, not a scalar, array or {}
+	BodyXML        = "XML"         // well-formed, parsed with DTDs and external entities disabled
+)
+
+// Accept is what an HTTP source takes: the media types of a request (parameters
+// such as charset ignored, case ignored; none listed means any) and a check of
+// its body, refused with 415 and 400 before the payload is split.
+type Accept struct {
+	ContentTypes []string `json:"contentTypes,omitempty" doc:"Media types as type/subtype, without parameters; absent or empty accepts any"`
+	Body         string   `json:"body,omitempty" enum:"NONE,JSON,JSON_OBJECT,XML" doc:"NONE when absent"`
+}
+
+// KnownJSON reports whether every record of an HTTP source that makes one
+// record of the body is JSON: the body is checked to be.
+func (a *Accept) KnownJSON() bool {
+	return a != nil && (a.Body == BodyJSON || a.Body == BodyJSONObject)
 }
 
 // RateLimit accepts at most Requests per Per, counted per runtime.
@@ -220,11 +243,12 @@ func (s *HTTP) UnmarshalJSON(data []byte) error {
 	var aux struct {
 		Auth      json.RawMessage `json:"auth"`
 		RateLimit *RateLimit      `json:"rateLimit"`
+		Accept    *Accept         `json:"accept"`
 	}
 	if err := strictDecode(data, &aux); err != nil {
 		return err
 	}
-	*s = HTTP{RateLimit: aux.RateLimit}
+	*s = HTTP{RateLimit: aux.RateLimit, Accept: aux.Accept}
 	if aux.Auth == nil {
 		return nil // validation reports the missing auth
 	}

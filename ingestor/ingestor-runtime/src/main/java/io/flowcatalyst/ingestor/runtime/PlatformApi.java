@@ -226,6 +226,11 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
 
   @Override
   public void create(Ingestion ingestion, List<JobRecord> records) throws IOException, InterruptedException {
+    submit(ingestion, records);
+  }
+
+  @Override
+  public JobsAnswer submit(Ingestion ingestion, List<JobRecord> records) throws IOException, InterruptedException {
     ClientResponse response =
         succeeded(
             client.post(JOBS).pathParam("ingestion", ingestion.id()).query("runtimeId", runtimeId).json(Map.of("records", records)),
@@ -240,6 +245,7 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
         throw new RejectedException("the platform refused record " + result.index() + ": " + result.error(), response.status());
       }
     }
+    return answer;
   }
 
   @Override

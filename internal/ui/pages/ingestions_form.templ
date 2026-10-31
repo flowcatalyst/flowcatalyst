@@ -47,7 +47,7 @@ templ ingsFormBody(f ingsForm) {
 				}
 			</div>
 		}
-		@kit.FormSection(kit.FormSectionProps{Title: "Split", Description: "How one payload becomes records; each record is one dispatch job."}) {
+		@kit.FormSection(kit.FormSectionProps{Title: "Split", Description: "How one payload becomes records; each record becomes one dispatch job or event."}) {
 			<fieldset class="m-0 flex min-w-0 flex-col gap-4 border-0 p-0" { f.splitGate()... }>
 				for _, fld := range ingsSplitFields {
 					@ingsGated(f, fld)
@@ -55,10 +55,10 @@ templ ingsFormBody(f ingsForm) {
 			</fieldset>
 			<p class="text-sm text-muted-foreground" data-show={ "$" + ingsKindSig + " === 'database-poll'" } style={ ingsHiddenUnless(f.Values["kind"] == "database-poll") }>A database poll's records are its rows, so it has no split to choose.</p>
 		}
-		@kit.FormSection(kit.FormSectionProps{Title: "Dispatch", Description: "The dispatch job created for each record."}) {
+		@kit.FormSection(kit.FormSectionProps{Title: "Target", Description: "What each record becomes: a dispatch job delivered to one URL, or an event that subscriptions deliver."}) {
 			<div class="flex flex-col gap-4">
 				for _, fld := range ingsTargetFields {
-					@ingsFieldC(f, fld)
+					@ingsGated(f, fld)
 				}
 			</div>
 		}

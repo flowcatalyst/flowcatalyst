@@ -101,7 +101,7 @@ templ ingsStateTags(active, draft bool, set string) {
 templ ingsPage(v ingsView) {
 	<div data-signals={ v.signals() }>
 		<script defer src={ assets.URL("fc-code-editor.js") }></script>
-		@kit.PageHeader(kit.PageHeaderProps{Title: "Ingestions", Subtitle: "Where each client's data comes from, how it is split, and the dispatch job each record becomes", Actions: ingsActions(v)})
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Ingestions", Subtitle: "Where each client's data comes from, how it is split, and what each record becomes", Actions: ingsActions(v)})
 		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI.", Class: "mb-4"})
 		<div class="fc-card-flush">
 			@kit.TableToolbar(v.toolbar())
@@ -313,20 +313,30 @@ templ ingsOverview(d ingsDetail) {
 			if d.Endpoint != "" {
 				@kit.DetailField(kit.DetailFieldProps{Label: "Endpoint", Value: d.Endpoint, Span: true})
 			}
+			if d.Accepts != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Accepts", Value: d.Accepts, Span: true})
+			}
 		</div>
 	}
-	@kit.FormSection(kit.FormSectionProps{Title: "Split and dispatch"}) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Split and target"}) {
 		<div class="fc-detail-grid">
 			@kit.DetailField(kit.DetailFieldProps{Label: "Split", Value: d.Split, Span: true})
-			@kit.DetailField(kit.DetailFieldProps{Label: "Dispatch code"}) {
-				<code>{ d.Target.Code }</code>
+			@kit.DetailField(kit.DetailFieldProps{Label: "Each record becomes", Value: ingsTargetText(d.Target), Span: true})
+			if d.Target.IsEvent() {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Event type"}) {
+					<code>{ d.Target.Code }</code>
+				}
+			} else {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Dispatch code"}) {
+					<code>{ d.Target.Code }</code>
+				}
+				@kit.DetailField(kit.DetailFieldProps{Label: "Target URL", Value: d.Target.TargetURL, Span: true})
+				@kit.DetailField(kit.DetailFieldProps{Label: "Dispatch pool"}) {
+					<code>{ d.Target.Pool }</code>
+				}
+				@kit.DetailField(kit.DetailFieldProps{Label: "Signed by", Value: ingsSignedText(d)})
+				@kit.DetailField(kit.DetailFieldProps{Label: "Mode", Value: d.Target.Mode})
 			}
-			@kit.DetailField(kit.DetailFieldProps{Label: "Target URL", Value: d.Target.TargetURL, Span: true})
-			@kit.DetailField(kit.DetailFieldProps{Label: "Dispatch pool"}) {
-				<code>{ d.Target.Pool }</code>
-			}
-			@kit.DetailField(kit.DetailFieldProps{Label: "Signed by", Value: ingsSignedText(d)})
-			@kit.DetailField(kit.DetailFieldProps{Label: "Mode", Value: d.Target.Mode})
 			@kit.DetailField(kit.DetailFieldProps{Label: "Batch size", Value: strconv.Itoa(d.Target.BatchSize)})
 		</div>
 	}

@@ -172,7 +172,7 @@ func ingsAWSKey(prefix string) []ingsField {
 
 func ingsBuiltinKinds() []ingsKind {
 	kinds := []ingsKind{
-		{Name: ingestion.KindHTTP, Description: "Callers post JSON to POST /ingest/{client}/{code} on each runtime.", Fields: []ingsField{
+		{Name: ingestion.KindHTTP, Description: "Callers post to POST /ingest/{client}/{code} on each runtime.", Fields: []ingsField{
 			{
 				Name: "http.auth", Path: "source.auth.kind", Label: "Callers authenticate with", Type: ingsChoice, Default: "bearer",
 				Options: ingsOpts("bearer", "A fixed bearer token", "basic", "A user name and password (basic)", "flowcatalyst-token", "A FlowCatalyst access token"),
@@ -187,6 +187,15 @@ func ingsBuiltinKinds() []ingsKind {
 			{
 				Name: "http.principal", Path: "source.auth.principalId", Label: "Only this principal", Type: ingsText, Optional: true, When: ingsIs("http.auth", "flowcatalyst-token"),
 				Placeholder: "any principal with access", Help: "Optional. A principal id (prn_...); a service account's sac_ id is not in its tokens.",
+			},
+			{
+				Name: "http.contentTypes", Path: "source.accept.contentTypes", Label: "Accept only these content types", Type: ingsList, Optional: true,
+				Help: "One media type a line, such as application/xml; parameters like charset are ignored. Empty accepts any; others get 415.",
+			},
+			{
+				Name: "http.acceptBody", Path: "source.accept.body", Label: "Check the body is", Type: ingsChoice, Default: ingestion.BodyNone,
+				Options: ingsOpts(ingestion.BodyNone, "Not checked", ingestion.BodyJSON, "JSON", ingestion.BodyJSONObject, "A non-empty JSON object", ingestion.BodyXML, "Well-formed XML"),
+				Help:    "A body that fails the check gets 400. A checked JSON body is known to be JSON, which an event target needs.",
 			},
 			{
 				Name: "http.limited", Path: "source.rateLimit", Type: ingsSwitch, Presence: true, Label: "Limit how fast requests are accepted",
@@ -383,31 +392,48 @@ var ingsSplitFields = func() []ingsField {
 	return fields
 }()
 
-// ingsTargetFields are the dispatch job each record becomes.
-var ingsTargetFields = []ingsField{
-	{
-		Name: "target.code", Path: "target.code", Label: "Code", Type: ingsText, Required: true, Placeholder: "application:subdomain:aggregate:action",
-		Help: "application:subdomain:aggregate:action, in lower case.",
-	},
-	{
-		Name: "target.targetUrl", Path: "target.targetUrl", Label: "Target URL", Type: ingsText, Required: true, Placeholder: "https://app.example.com/hooks/orders",
-		Help: "Where each job is delivered. When the source's settings are per environment, this may be empty and given in the environment's settings instead.",
-	},
-	{Name: "target.pool", Path: "target.pool", Label: "Dispatch pool", Type: ingsText, Required: true, Help: "The pool's code; it must be active and usable by this client."},
-	{
-		Name: "target.connection", Path: "target.connection", Label: "Connection", Type: ingsText, Optional: true,
-		Help: "Optional: a connection's code. Its service account signs each delivery, and pausing it holds this ingestion's jobs.",
-	},
-	{
-		Name: "target.serviceAccount", Path: "target.serviceAccount", Label: "Signed by", Type: ingsText, Optional: true,
-		Help: "Optional: a service account's code, for signing without a connection. Not with a connection.",
-	},
-	{
-		Name: "target.mode", Path: "target.mode", Label: "Mode", Type: ingsChoice, Default: ingestion.ModeImmediate,
-		Options: ingsOpts(ingestion.ModeImmediate, "Immediate (no ordering)", ingestion.ModeNextOnError, "In order, move on after a failure", ingestion.ModeBlockOnError, "In order, block on a failure"),
-	},
-	{Name: "target.batchSize", Path: "target.batchSize", Label: "Batch size", Type: ingsNumber, Required: true, Default: "100", Min: "1", Help: "Jobs sent to the platform per call (1 to 1000)."},
-}
+// ingsTargetFields are what each record becomes: a dispatch job or an event.
+var ingsTargetFields = func() []ingsField {
+	job := ingsIs("target.kind", ingestion.TargetDispatchJob)
+	fields := []ingsField{
+		{
+			Name: "target.kind", Path: "target.kind", Label: "Each record becomes", Type: ingsChoice, Default: ingestion.TargetDispatchJob,
+			Options: ingsOpts(ingestion.TargetDispatchJob, "A dispatch job", ingestion.TargetEvent, "An event, delivered by subscriptions"),
+		},
+		{
+			Name: "target.code", Path: "target.code", Label: "Code", Type: ingsText, Required: true, Placeholder: "application:subdomain:aggregate:action",
+			Help: "application:subdomain:aggregate:action, in lower case. For an event, the code of an existing event type.",
+		},
+		{
+			Name: "target.targetUrl", Path: "target.targetUrl", Label: "Target URL", Type: ingsText, Required: true, Placeholder: "https://app.example.com/hooks/orders", When: job,
+			Help: "Where each job is delivered. When the source's settings are per environment, this may be empty and given in the environment's settings instead.",
+		},
+		{Name: "target.pool", Path: "target.pool", Label: "Dispatch pool", Type: ingsText, Required: true, When: job, Help: "The pool's code; it must be active and usable by this client."},
+		{
+			Name: "target.connection", Path: "target.connection", Label: "Connection", Type: ingsText, Optional: true, When: job,
+			Help: "Optional: a connection's code. Its service account signs each delivery, and pausing it holds this ingestion's jobs.",
+		},
+		{
+			Name: "target.serviceAccount", Path: "target.serviceAccount", Label: "Signed by", Type: ingsText, Optional: true, When: job,
+			Help: "Optional: a service account's code, for signing without a connection. Not with a connection.",
+		},
+		{
+			Name: "target.mode", Path: "target.mode", Label: "Mode", Type: ingsChoice, Default: ingestion.ModeImmediate, When: job,
+			Options: ingsOpts(ingestion.ModeImmediate, "Immediate (no ordering)", ingestion.ModeNextOnError, "In order, move on after a failure", ingestion.ModeBlockOnError, "In order, block on a failure"),
+		},
+		{
+			Name: "target.dataOnly", Path: "target.dataOnly", Label: "Deliver the record as it is", Type: ingsSwitch, When: job,
+			Help: "Off, the subscriber gets the platform envelope. On, it gets the record itself, with its own content type.",
+		},
+		{
+			Name: "target.wrapNonJson", Path: "target.wrapNonJson", Label: "Wrap a record that is not JSON", Type: ingsSwitch, When: ingsIs("target.kind", ingestion.TargetEvent),
+			Help: `On, a record that is not JSON becomes {"contentType", "body"}. Required unless the records are known to be JSON: a JSON split, or one record from an HTTP source that checks for JSON.`,
+		},
+		{Name: "target.batchSize", Path: "target.batchSize", Label: "Batch size", Type: ingsNumber, Required: true, Default: "100", Min: "1", Help: "Jobs or events sent to the platform per call (1 to 1000)."},
+	}
+	ingsMarkControls(fields)
+	return fields
+}()
 
 // ── extension kinds ────────────────────────────────────────────────────
 
@@ -788,6 +814,11 @@ func ingsBuildDefinition(values map[string]string, cat ingsCatalogue) ingsBuilt 
 		values = maps.Clone(values)
 		values["split.kind"] = "none"
 	}
+	if values["target.kind"] == "" {
+		// A form that does not say is a dispatch job's.
+		values = maps.Clone(values)
+		values["target.kind"] = ingestion.TargetDispatchJob
+	}
 	fields = append(fields, ingsTargetFields...)
 	if !byConfig {
 		fields = append(fields, kind.Fields...)
@@ -803,7 +834,28 @@ func ingsBuildDefinition(values map[string]string, cat ingsCatalogue) ingsBuilt 
 		}
 		b.read(f, values[f.Name])
 	}
+	b.tidy()
 	return b
+}
+
+// tidy leaves out what the API takes as the default, so a definition edited
+// through the form is the one that was stored: a dispatch job target has no
+// kind, and an HTTP source with nothing to accept has no accept.
+func (b *ingsBuilt) tidy() {
+	if v, _ := ingsGetPath(b.Doc, "target.kind"); v == ingestion.TargetDispatchJob {
+		delete(b.Doc["target"].(map[string]any), "kind")
+	}
+	src, _ := b.Doc["source"].(map[string]any)
+	accept, _ := src["accept"].(map[string]any)
+	if accept == nil {
+		return
+	}
+	if b := accept["body"]; b == ingestion.BodyNone || b == "" {
+		delete(accept, "body")
+	}
+	if len(accept) == 0 {
+		delete(src, "accept")
+	}
 }
 
 func (b *ingsBuilt) read(f ingsField, raw string) {

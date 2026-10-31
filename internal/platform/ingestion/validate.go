@@ -43,18 +43,21 @@ func full(p string) *regexp.Regexp { return regexp.MustCompile("^(?:" + p + ")$"
 var (
 	codePattern = full(`[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?`)
 	// A reference to another record by code: pool, connection, service account.
-	refPattern  = full(`[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}`)
-	jobCode     = full(`[a-z0-9-]+(:[a-z0-9-]+){3}`)
-	hostPattern = full(`[A-Za-z0-9.-]{1,253}`)
-	dirPattern  = full(`/?[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*`)
-	region      = full(`[a-z]{2}(-[a-z]+)+-\d`)
-	sqsQueue    = full(`[A-Za-z0-9_-]{1,80}(\.fifo)?`)
-	bucket      = full(`[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]`)
-	s3Prefix    = full(`[A-Za-z0-9!_*'()-][A-Za-z0-9!_.*'()-]*/([A-Za-z0-9!_.*'()-]+/)*`)
-	tableName   = full(`[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?`)
-	columnName  = full(`[A-Za-z_][A-Za-z0-9_]*`)
-	jsonPath    = full(`\$(\.[A-Za-z0-9_-]+)*`)
-	xmlName     = full(`[A-Za-z_][A-Za-z0-9._:-]*`)
+	refPattern = full(`[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}`)
+	jobCode    = full(`[a-z0-9-]+(:[a-z0-9-]+){3}`)
+	// An event type's code has the same four parts as a job's.
+	eventTypeCode = jobCode
+	mediaType     = full(`[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}`)
+	hostPattern   = full(`[A-Za-z0-9.-]{1,253}`)
+	dirPattern    = full(`/?[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*`)
+	region        = full(`[a-z]{2}(-[a-z]+)+-\d`)
+	sqsQueue      = full(`[A-Za-z0-9_-]{1,80}(\.fifo)?`)
+	bucket        = full(`[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]`)
+	s3Prefix      = full(`[A-Za-z0-9!_*'()-][A-Za-z0-9!_.*'()-]*/([A-Za-z0-9!_.*'()-]+/)*`)
+	tableName     = full(`[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?`)
+	columnName    = full(`[A-Za-z_][A-Za-z0-9_]*`)
+	jsonPath      = full(`\$(\.[A-Za-z0-9_-]+)*`)
+	xmlName       = full(`[A-Za-z_][A-Za-z0-9._:-]*`)
 	// $ then .field or [n] steps; a negative index counts from the end.
 	apiPath    = full(`\$(\.[A-Za-z0-9_-]+|\[-?\d{1,6}\])*`)
 	headerName = full("[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}")
@@ -103,7 +106,7 @@ func (d Definition) Validate() Problems {
 	var v checker
 	v.require("name", strings.TrimSpace(d.Name) != "" && len(d.Name) <= 200, "must be 1 to 200 characters")
 	_, byConfig := d.Source.(Configured)
-	v.target(d.Target, byConfig)
+	v.target(d.Target, byConfig, d.Source, d.Split)
 	v.split(d.Split)
 	v.source(d.Source, d.Split)
 	// Where the source sends the runtime is checked here too, so a save and a
@@ -142,10 +145,25 @@ func (v *checker) matches(field, value string, p *regexp.Regexp, message string)
 	v.require(field, p.MatchString(value), message)
 }
 
-// target checks the job each record becomes. A source that names a config
-// entry may leave the delivery URL to the entry's value (byConfig): whether
-// exactly one of them gives it is judged once the value is known (ApplyConfig).
-func (v *checker) target(t Target, byConfig bool) {
+// target checks what each record becomes. A source that names a config entry
+// may leave the delivery URL to the entry's value (byConfig): whether exactly
+// one of them gives it is judged once the value is known (ApplyConfig). The
+// source and split say whether the records are known to be JSON, which an
+// event target needs to know.
+func (v *checker) target(t Target, byConfig bool, src Source, split Split) {
+	switch t.Kind {
+	case "", TargetDispatchJob:
+		v.dispatchJobTarget(t, byConfig)
+	case TargetEvent:
+		v.eventTarget(t, src, split)
+	default:
+		v.add("target.kind", "INVALID", "must be DISPATCH_JOB or EVENT")
+		return
+	}
+	v.require("target.batchSize", t.BatchSize >= 1 && t.BatchSize <= 1000, "must be 1 to 1000")
+}
+
+func (v *checker) dispatchJobTarget(t Target, byConfig bool) {
 	v.matches("target.code", t.Code, jobCode, "must be application:subdomain:aggregate:action")
 	if t.TargetURL != "" || !byConfig {
 		v.require("target.targetUrl", webAddress(t.TargetURL), "must be an http or https address")
@@ -164,7 +182,37 @@ func (v *checker) target(t Target, byConfig bool) {
 	default:
 		v.add("target.mode", "INVALID", "must be IMMEDIATE, NEXT_ON_ERROR or BLOCK_ON_ERROR")
 	}
-	v.require("target.batchSize", t.BatchSize >= 1 && t.BatchSize <= 1000, "must be 1 to 1000")
+	v.require("target.wrapNonJson", !t.WrapNonJson, "is for an EVENT target only")
+}
+
+// eventTarget checks an event target. Whether the event type exists is the
+// Resolver's to say; here only its form, and that nothing of a dispatch job's
+// delivery is set: the subscriptions decide that.
+func (v *checker) eventTarget(t Target, src Source, split Split) {
+	v.matches("target.code", t.Code, eventTypeCode, "must be an event type's code, application:subdomain:aggregate:event")
+	const notForEvent = "is for a DISPATCH_JOB target only: the subscriptions decide where an event goes"
+	v.require("target.targetUrl", t.TargetURL == "", notForEvent)
+	v.require("target.pool", t.Pool == "", notForEvent)
+	v.require("target.connection", t.Connection == nil, notForEvent)
+	v.require("target.serviceAccount", t.ServiceAccount == nil, notForEvent)
+	v.require("target.mode", t.Mode == "", notForEvent)
+	v.require("target.dataOnly", !t.DataOnly, "is for a DISPATCH_JOB target only")
+	v.require("target.wrapNonJson", t.WrapNonJson || recordsKnownJSON(src, split),
+		`these records are not known to be JSON; set wrapNonJson to true to deliver each as {"contentType", "body"}`)
+}
+
+// recordsKnownJSON reports whether every record the source and split make is
+// known to be JSON: a JSON split, or one record that an HTTP source checked to
+// be JSON.
+func recordsKnownJSON(src Source, split Split) bool {
+	switch split.(type) {
+	case JSON:
+		return true
+	case None:
+		h, ok := src.(HTTP)
+		return ok && h.Accept.KnownJSON()
+	}
+	return false
 }
 
 func (v *checker) split(s Split) {
@@ -184,6 +232,16 @@ func (v *checker) source(src Source, split Split) {
 		v.add("source", "NOT_NULL", "is required")
 	case HTTP:
 		v.httpAuth(s.Auth)
+		if a := s.Accept; a != nil {
+			for i, t := range a.ContentTypes {
+				v.matches(fmt.Sprintf("source.accept.contentTypes.%d", i), t, mediaType, "must be a media type, type/subtype, without parameters")
+			}
+			switch a.Body {
+			case "", BodyNone, BodyJSON, BodyJSONObject, BodyXML:
+			default:
+				v.add("source.accept.body", "INVALID", "must be NONE, JSON, JSON_OBJECT or XML")
+			}
+		}
 		if r := s.RateLimit; r != nil {
 			per := time.Duration(r.Per)
 			v.require("source.rateLimit.requests", r.Requests >= 1 && r.Requests <= 1_000_000, "must be 1 to 1000000")

@@ -17,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/operations"
@@ -66,7 +67,7 @@ func newUitPG(t *testing.T) *uitPG {
 	require.NoError(t, tx.Commit(ctx))
 	e.archive, err = artifact.NewFileStore(t.TempDir())
 	require.NoError(t, err)
-	e.resolver = ingestion.NewResolver(apps, clients, dispatchpool.NewRepository(pool), connection.NewRepository(pool), serviceaccount.NewRepository(pool), nil)
+	e.resolver = ingestion.NewResolver(apps, clients, dispatchpool.NewRepository(pool), connection.NewRepository(pool), serviceaccount.NewRepository(pool), eventtype.NewRepository(pool), nil)
 	return e
 }
 

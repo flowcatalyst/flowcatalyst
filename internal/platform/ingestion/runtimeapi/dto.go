@@ -159,20 +159,21 @@ type CreateJobsRequest struct {
 	Records []JobRecord `json:"records" maxItems:"1000"`
 }
 
-// JobResult is the outcome of the record at Index: the job it is (new or the
-// one an earlier request made under the same externalId), or why it was not
-// made. A record that failed does not fail the others.
+// JobResult is the outcome of the record at Index: the job (or, for an EVENT
+// target, the event) it is, new or the one an earlier request made under the
+// same externalId, or why it was not made. A record that failed does not fail the others.
 type JobResult struct {
 	Index int     `json:"index"`
 	ID    string  `json:"id,omitempty"`
 	Error *string `json:"error,omitempty"`
-	// Existing is true when the externalId had already made this job.
+	// Existing is true when the externalId had already made this job or event.
 	Existing bool `json:"existing,omitempty"`
 }
 
 // CreateJobsResponse answers a jobs request, one result per record in order.
 type CreateJobsResponse struct {
-	Created int         `json:"created" doc:"Jobs made by this request; records answered with an existing job are not counted"`
+	Kind    string      `json:"kind" enum:"DISPATCH_JOB,EVENT" doc:"What the ingestion's target makes of a record; results[].id is a dispatch job's id or an event's"`
+	Created int         `json:"created" doc:"Jobs or events made by this request; records answered with an existing one are not counted"`
 	Results []JobResult `json:"results"`
 }
 

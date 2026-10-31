@@ -22,6 +22,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
@@ -39,6 +40,10 @@ type State struct {
 	Repo *ingestion.Repository
 	// Jobs is where a record's dispatch job is created.
 	Jobs *dispatchjob.Repository
+	// Events is where a record of an EVENT target is stored: the repository
+	// POST /api/events/batch inserts through, so the stream fans the event out
+	// to its subscriptions.
+	Events *event.Repository
 	// Resolver resolves an ingestion's target (and its application) as the
 	// save did.
 	Resolver ingestion.Resolver

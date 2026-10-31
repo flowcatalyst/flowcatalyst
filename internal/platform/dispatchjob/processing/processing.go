@@ -586,7 +586,7 @@ func (h *Handler) buildRequest(ctx context.Context, job *dispatchjob.DispatchJob
 	if err != nil {
 		return nil, nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", bodyContentType(job))
 	req.Header.Set("X-Dispatch-Job-Id", job.ID)
 	req.Header.Set("X-Event-Type", job.Code)
 	// Sent for dataOnly deliveries too (R2) — the raw-payload body has no
@@ -769,6 +769,20 @@ func (h *Handler) exchange(req *http.Request) deliveryResult {
 	}
 }
 
+// bodyContentType is the request's Content-Type: the envelope is always JSON;
+// a data-only body is the raw payload, so it goes with the content type the
+// job was made with (application/json when it has none).
+func bodyContentType(job *dispatchjob.DispatchJob) string {
+	if job.DataOnly && strings.TrimSpace(job.PayloadContentType) != "" {
+		return job.PayloadContentType
+	}
+	return "application/json"
+}
+
+// envelopeTime is how the envelope writes the job's creation time: UTC, RFC
+// 3339, milliseconds.
+const envelopeTime = "2006-01-02T15:04:05.000Z"
+
 // buildPayload renders the request body: raw payload in data-only mode,
 // otherwise a CloudEvents-style envelope. clientCode is the job's client's
 // identifier slug ("" when the job has no client_id, or the client didn't
@@ -788,6 +802,12 @@ func buildPayload(job *dispatchjob.DispatchJob, clientCode string) []byte {
 		"id":            job.ID,
 		"type":          job.Code,
 		"attemptNumber": job.AttemptCount + 1,
+	}
+	if !job.CreatedAt.IsZero() {
+		env["time"] = job.CreatedAt.UTC().Format(envelopeTime)
+	}
+	if job.PayloadContentType != "" {
+		env["dataContentType"] = job.PayloadContentType
 	}
 	if job.Source != nil {
 		env["source"] = *job.Source

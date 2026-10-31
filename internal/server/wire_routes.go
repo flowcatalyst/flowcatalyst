@@ -322,7 +322,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			ingestionapi.Register(humaAPI, &ingestionapi.State{
 				Repo: ingestion.NewRepository(pool),
 				Resolver: ingestion.NewResolver(repos.applicationRepo, repos.clientRepo,
-					repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, nil),
+					repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, repos.eventTypeRepo, nil),
 				Apps:    repos.applicationRepo,
 				Clients: repos.clientRepo,
 				Audit:   repos.auditRepo,
@@ -332,10 +332,11 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 				SetArchive: svcs.functionArtifacts,
 			})
 			ingestionruntimeapi.Register(humaAPI, &ingestionruntimeapi.State{
-				Repo: ingestion.NewRepository(pool),
-				Jobs: repos.dispatchJobRepo,
+				Repo:   ingestion.NewRepository(pool),
+				Jobs:   repos.dispatchJobRepo,
+				Events: repos.eventRepo,
 				Resolver: ingestion.NewResolver(repos.applicationRepo, repos.clientRepo,
-					repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, nil),
+					repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, repos.eventTypeRepo, nil),
 				Connections: repos.connectionRepo,
 				Config:      platformConfigService(repos, uow),
 				// Refused secret fetches are audited; successful ones are

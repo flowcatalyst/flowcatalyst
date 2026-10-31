@@ -12,6 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/go-sdk/usecase"
 )
@@ -20,6 +21,7 @@ import (
 // keeps its codes, so a definition file ports between environments; the
 // resolution is the save-time proof that they name real, usable records.
 type ResolvedTarget struct {
+	EventTypeID      string // an event target's type
 	PoolID           string
 	ConnectionID     *string
 	ServiceAccountID *string
@@ -51,6 +53,7 @@ type RepoResolver struct {
 	pools           *dispatchpool.Repository
 	connections     *connection.Repository
 	serviceAccounts *serviceaccount.Repository
+	eventTypes      *eventtype.Repository
 	guard           *netguard.Policy
 }
 
@@ -62,12 +65,13 @@ func NewResolver(
 	pools *dispatchpool.Repository,
 	connections *connection.Repository,
 	serviceAccounts *serviceaccount.Repository,
+	eventTypes *eventtype.Repository,
 	guard *netguard.Policy,
 ) *RepoResolver {
 	if guard == nil {
 		guard = netguard.Default
 	}
-	return &RepoResolver{applications, clients, pools, connections, serviceAccounts, guard}
+	return &RepoResolver{applications, clients, pools, connections, serviceAccounts, eventTypes, guard}
 }
 
 func (r *RepoResolver) Application(ctx context.Context, code string) (*application.Application, error) {
@@ -119,6 +123,21 @@ func (r *RepoResolver) Target(ctx context.Context, applicationCode string, clien
 		return usecase.Validation("INGESTION_TARGET_INVALID", fmt.Sprintf(format, args...))
 	}
 	cid := string(clientID)
+
+	if t.IsEvent() {
+		et, err := r.eventTypes.FindByCode(ctx, t.Code)
+		if err != nil {
+			return out, usecase.Internal("REPO", "event type lookup failed", err)
+		}
+		switch {
+		case et == nil:
+			return out, invalid("target.code: no event type with code %q", t.Code)
+		case et.Status == eventtype.StatusArchived:
+			return out, invalid("target.code: event type %q is archived", t.Code)
+		}
+		out.EventTypeID = et.ID
+		return out, nil
+	}
 
 	// A target with no URL is an ingestion whose source names a config entry
 	// that is not set yet: the URL is checked when the entry gives it, with

@@ -210,6 +210,8 @@ func effectiveDefinition(def Definition, c Configured, entry *ConfigEntry) (Defi
 	eff.Source = src
 	var v checker
 	switch {
+	case def.Target.IsEvent():
+		// An event has no delivery URL: the entry's does not apply.
 	case def.Target.TargetURL != "" && targetURL != "":
 		v.add("target.targetUrl", "INVALID", "is given in the definition and in the config entry: give the delivery URL in one of them")
 	case def.Target.TargetURL == "" && targetURL == "":

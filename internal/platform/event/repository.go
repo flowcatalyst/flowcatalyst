@@ -413,6 +413,34 @@ func (r *Repository) FindByDeduplicationID(ctx context.Context, deduplicationID 
 	return e, rows.Err()
 }
 
+// IDsByDeduplicationID maps each of deduplicationIDs that has a stored
+// msg_events row to the id of the earliest such row. An id with no row is
+// absent from the map. One query, for a caller that must answer, after
+// InsertBatch, which event each of a batch's records is (its own, or one an
+// earlier request stored).
+func (r *Repository) IDsByDeduplicationID(ctx context.Context, deduplicationIDs []string) (map[string]string, error) {
+	out := make(map[string]string, len(deduplicationIDs))
+	if len(deduplicationIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT DISTINCT ON (deduplication_id) deduplication_id, id
+		   FROM msg_events WHERE deduplication_id = ANY($1)
+		   ORDER BY deduplication_id, created_at ASC`, deduplicationIDs)
+	if err != nil {
+		return nil, fmt.Errorf("event repo: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var dedup, id string
+		if err := rows.Scan(&dedup, &id); err != nil {
+			return nil, fmt.Errorf("event repo: %w", err)
+		}
+		out[dedup] = id
+	}
+	return out, rows.Err()
+}
+
 // DistinctValues lists up to `limit` distinct non-null values for the
 // given column, of the events a caller with accessibleClientIDs can see
 // (nil: every event, for an anchor). Used to populate the frontend's filter-options dropdowns
