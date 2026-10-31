@@ -22,6 +22,7 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
 import io.flowcatalyst.ingestor.functions.FunctionHost;
+import io.flowcatalyst.ingestor.functions.context.DbPools;
 import io.flowcatalyst.ingestor.functions.control.HttpControlPlane;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -99,6 +100,25 @@ public final class RuntimeModule implements Module {
       Setting.string("ingest.functions-pool")
           .withDefault("default")
           .describedAs("The function pool this process serves (the pool of its desired-state request); the pool of the Go function runner by default.");
+
+  /** The most database pools the function host keeps open. */
+  public static final Setting<Integer> FUNCTIONS_DB_MAX_POOLS =
+      Setting.integer("ingest.functions-db-max-pools")
+          .withDefault(DbPools.Limits.DEFAULTS.maxPools())
+          .describedAs(
+              "The most database connection pools the function host keeps open: one per distinct DSN, shared by every function bound to it. A new DSN past the cap closes the pool used longest ago.");
+
+  /** The connections in each of those pools. */
+  public static final Setting<Integer> FUNCTIONS_DB_MAX_CONNS =
+      Setting.integer("ingest.functions-db-max-conns")
+          .withDefault(DbPools.Limits.DEFAULTS.maxConnsPerPool())
+          .describedAs("The most connections each function database pool opens.");
+
+  /** How long an unused pool is kept. */
+  public static final Setting<Duration> FUNCTIONS_DB_IDLE_TTL =
+      Setting.duration("ingest.functions-db-idle-ttl")
+          .withDefault(DbPools.Limits.DEFAULTS.idleTtl())
+          .describedAs("How long a function database pool nobody has used is kept before it is closed; the next call opens it again.");
 
   /** Whether this process runs ingestions. */
   public static final Setting<Boolean> INGESTION_ENABLED =
@@ -180,6 +200,9 @@ public final class RuntimeModule implements Module {
     app.declare(CAMEL_ROUTES_ENABLED);
     app.declare(FUNCTIONS_ENABLED);
     app.declare(FUNCTIONS_POOL);
+    app.declare(FUNCTIONS_DB_MAX_POOLS);
+    app.declare(FUNCTIONS_DB_MAX_CONNS);
+    app.declare(FUNCTIONS_DB_IDLE_TTL);
     app.declare(INGESTION_ENABLED);
     app.declare(SECRETS_CACHE_TTL);
     app.declare(TRACE_QUEUE);
@@ -353,7 +376,9 @@ public final class RuntimeModule implements Module {
             app.get(HttpClients.class),
             platformTokens(app),
             app.get(Routes.class).forModule(ID),
-            Clock.systemUTC());
+            Clock.systemUTC(),
+            new DbPools.Limits(
+                config.get(FUNCTIONS_DB_MAX_POOLS), config.get(FUNCTIONS_DB_MAX_CONNS), config.get(FUNCTIONS_DB_IDLE_TTL)));
   }
 
   private void bootIngestion(App app) {

@@ -119,6 +119,16 @@
       <artifactId>amqp-client</artifactId>
     </dependency>
 
+    <!-- The function host's database pools (DbPools). Host-only: a function sees javax.sql.DataSource and nothing of these. Versions from framework-bom. -->
+    <dependency>
+      <groupId>com.zaxxer</groupId>
+      <artifactId>HikariCP</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+    </dependency>
+
     <!-- An application chooses its logging backend; libraries bring none. -->
     <dependency>
       <groupId>org.slf4j</groupId>

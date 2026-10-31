@@ -4,6 +4,7 @@ import io.flowcatalyst.framework.auth.PlatformTokens;
 import io.flowcatalyst.framework.http.Routes;
 import io.flowcatalyst.framework.httpclient.HttpClients;
 import io.flowcatalyst.ingestor.functions.context.ContextFactory;
+import io.flowcatalyst.ingestor.functions.context.DbPools;
 import io.flowcatalyst.ingestor.functions.context.OutboundClients;
 import io.flowcatalyst.ingestor.functions.control.ControlPlane;
 import io.flowcatalyst.ingestor.functions.http.FunctionListener;
@@ -15,6 +16,9 @@ import io.flowcatalyst.ingestor.functions.reconcile.ReconcileLoop;
 import io.flowcatalyst.ingestor.functions.reconcile.Reconciler;
 import java.time.Clock;
 import java.util.Objects;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,11 +36,16 @@ public final class FunctionHost implements AutoCloseable {
     private final Reconciler reconciler;
     private final ReconcileLoop loop;
     private final FunctionListener listener;
+    private final DbPools dbPools;
+    private final ScheduledExecutorService dbSweeper;
 
-    private FunctionHost(Reconciler reconciler, ReconcileLoop loop, FunctionListener listener) {
+    private FunctionHost(Reconciler reconciler, ReconcileLoop loop, FunctionListener listener, DbPools dbPools,
+            ScheduledExecutorService dbSweeper) {
         this.reconciler = reconciler;
         this.loop = loop;
         this.listener = listener;
+        this.dbPools = dbPools;
+        this.dbSweeper = dbSweeper;
     }
 
     /// Builds the host and starts it.
@@ -56,10 +65,25 @@ public final class FunctionHost implements AutoCloseable {
             PlatformTokens tokens,
             Routes routes,
             Clock clock) {
+        return start(pool, runnerId, version, controlPlane, clients, tokens, routes, clock, DbPools.Limits.DEFAULTS);
+    }
+
+    /// As above, with the limits of the shared database pools (`ingest.functions-db-*`).
+    public static FunctionHost start(
+            String pool,
+            String runnerId,
+            String version,
+            ControlPlane controlPlane,
+            HttpClients clients,
+            PlatformTokens tokens,
+            Routes routes,
+            Clock clock,
+            DbPools.Limits dbLimits) {
         Objects.requireNonNull(pool, "pool");
+        DbPools dbPools = new DbPools(dbLimits, clock);
         ArtifactCache artifacts = new ArtifactCache(controlPlane, null);
         FunctionRegistry registry = new FunctionRegistry(MAX_LOADED, clock);
-        ContextFactory contexts = new ContextFactory(new OutboundClients(clients), clock, controlPlane);
+        ContextFactory contexts = new ContextFactory(new OutboundClients(clients), clock, controlPlane, dbPools);
         Reconciler reconciler = new Reconciler(
                 pool, runnerId, version, controlPlane, artifacts, new JvmFunctionLoader(), registry, contexts,
                 MetaspaceGuard.system(), clock, Reconciler.Timing.DEFAULTS);
@@ -67,8 +91,15 @@ public final class FunctionHost implements AutoCloseable {
         listener.install(routes);
         ReconcileLoop loop = new ReconcileLoop(reconciler);
         loop.start();
+        ScheduledExecutorService sweeper = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "function-db-sweeper");
+            t.setDaemon(true);
+            return t;
+        });
+        long everySeconds = Math.clamp(dbLimits.idleTtl().toSeconds() / 2, 1, 60);
+        sweeper.scheduleWithFixedDelay(dbPools::sweep, everySeconds, everySeconds, TimeUnit.SECONDS);
         LOG.info("function host started: pool={} runner={}", pool, runnerId);
-        return new FunctionHost(reconciler, loop, listener);
+        return new FunctionHost(reconciler, loop, listener, dbPools, sweeper);
     }
 
     public Reconciler reconciler() {
@@ -84,6 +115,8 @@ public final class FunctionHost implements AutoCloseable {
         reconciler.drain();
         loop.close();
         reconciler.close();
+        dbSweeper.shutdownNow();
+        dbPools.close();
         LOG.info("function host stopped");
     }
 }

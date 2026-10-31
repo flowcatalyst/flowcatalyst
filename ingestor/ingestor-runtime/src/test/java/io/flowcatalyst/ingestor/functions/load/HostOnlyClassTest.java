@@ -25,7 +25,9 @@ class HostOnlyClassTest {
         "io.flowcatalyst.ingestor.runtime.RuntimeModule",
         "io.flowcatalyst.ingestor.functions.load.LoadedFunction",
         "org.apache.camel.CamelContext",
-        "org.eclipse.jetty.server.Server"
+        "org.eclipse.jetty.server.Server",
+        "com.zaxxer.hikari.HikariDataSource",
+        "org.postgresql.Driver"
     })
     void functionCannotLoadAHostOnlyClass(String target, @TempDir Path dir) throws Exception {
         Path jar = FixtureJars.builder()

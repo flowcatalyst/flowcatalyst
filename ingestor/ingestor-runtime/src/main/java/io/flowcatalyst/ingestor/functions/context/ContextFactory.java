@@ -15,8 +15,11 @@ public final class ContextFactory {
     private final OutboundClients outbound;
     private final Clock clock;
     private final ControlPlane controlPlane;
+    private final DbPools dbPools;
 
-    public ContextFactory(OutboundClients outbound, Clock clock, ControlPlane controlPlane) {
+    /// @param dbPools the host's shared database pools (the host owns and closes them)
+    public ContextFactory(OutboundClients outbound, Clock clock, ControlPlane controlPlane, DbPools dbPools) {
+        this.dbPools = Objects.requireNonNull(dbPools, "dbPools");
         this.outbound = Objects.requireNonNull(outbound, "outbound");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.controlPlane = Objects.requireNonNull(controlPlane, "controlPlane");
@@ -42,6 +45,8 @@ public final class ContextFactory {
                 new ControlPlaneEvents(controlPlane, function.id(), function.address(), version, describe.emits()),
                 new ControlPlaneDispatcher(controlPlane, function.id(), version, describe.dispatches()),
                 clock,
-                describe.db());
+                describe.db(),
+                function.db(),
+                dbPools);
     }
 }

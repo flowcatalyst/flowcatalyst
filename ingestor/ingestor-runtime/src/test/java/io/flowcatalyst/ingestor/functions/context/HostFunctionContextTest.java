@@ -19,26 +19,29 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /// The context a function receives: config and secrets limited to the declared keys (their values never printed),
-/// databases not available yet (a clear refusal), events and dispatches limited to what the describe declares.
+/// databases from the shared pools, events and dispatches limited to what the describe declares.
 class HostFunctionContextTest {
 
     HttpClients clients;
     FakeControlPlane plane;
     HostFunctionContext ctx;
+    DbPools pools;
 
     @BeforeEach
     void start() {
         clients = HttpClients.create();
         plane = new FakeControlPlane();
+        pools = new DbPools(DbPools.Limits.DEFAULTS, Clock.systemUTC());
         Control.FunctionDoc doc = new Control.FunctionDoc("fn_1", "app.hello", "app_1", null, null, false, null,
                 Map.of("a", "1", "b", "2"), Map.of("s", "hunter2", "t", "other"), Map.of("main", "postgres://u:p@h/db"), List.of());
         Describe describe = new Describe(1, List.of(), List.of("a"), List.of("s"), List.of("main"), List.of(), List.of("app:orders:order:created"),
                 List.of(new Describe.DispatchTarget("app.other", "/hook", null, "conn")), new Describe.Jvm("a.B"));
-        ctx = new ContextFactory(new OutboundClients(clients), Clock.systemUTC(), plane).build(doc, 4, describe);
+        ctx = new ContextFactory(new OutboundClients(clients), Clock.systemUTC(), plane, pools).build(doc, 4, describe);
     }
 
     @AfterEach
     void stop() {
+        pools.close();
         clients.close();
     }
 
@@ -64,15 +67,6 @@ class HostFunctionContextTest {
         assertThat(ctx.version()).isEqualTo(4);
         assertThat(ctx.clock()).isNotNull();
         assertThat(ctx.logger().getName()).isEqualTo("fn.app.hello");
-    }
-
-    @Test
-    void aDeclaredDatabaseIsRefusedClearlyAndAnUndeclaredOneIsAnArgumentError() {
-        assertThatThrownBy(() -> ctx.dataSource("main"))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessageContaining("main")
-                .hasMessageContaining("database support");
-        assertThatThrownBy(() -> ctx.dataSource("other")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -110,10 +104,41 @@ class HostFunctionContextTest {
     void anAddressTheFunctionApiCannotRepresentIsRefusedAtBuild() {
         Control.FunctionDoc doc = new Control.FunctionDoc("fn_1", "App_1.hello", "app_1", null, null, false, null, Map.of(), Map.of(), Map.of(), List.of());
         Describe describe = new Describe(1, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), new Describe.Jvm("a.B"));
-        assertThatThrownBy(() -> new ContextFactory(new OutboundClients(clients), Clock.systemUTC(), plane).build(doc, 1, describe))
+        assertThatThrownBy(() -> new ContextFactory(new OutboundClients(clients), Clock.systemUTC(), plane, pools).build(doc, 1, describe))
                 .isInstanceOfSatisfying(ContextLoadException.class, e -> {
                     assertThat(e.code()).isEqualTo("ADDRESS_UNSUPPORTED");
                     assertThat(e.isTransient()).isFalse();
                 });
+    }
+
+    @Test
+    void dataSourceForADeclaredNameIsAWrapperOverTheSharedPool() throws Exception {
+        javax.sql.DataSource ds = ctx.dataSource("main");
+        assertThat(ds).isSameAs(ctx.dataSource("main"));
+        assertThat(ds).isNotInstanceOf(AutoCloseable.class);
+        assertThat(ds.toString()).doesNotContain("p@h");
+        assertThatThrownBy(() -> ds.unwrap(com.zaxxer.hikari.HikariDataSource.class)).isInstanceOf(java.sql.SQLException.class);
+    }
+
+    @Test
+    void anUndeclaredNameIsRefused() {
+        assertThatThrownBy(() -> ctx.dataSource("other")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void aDeclaredNameWithNoDsnIsRefusedWithoutAnyValue() {
+        Control.FunctionDoc doc = new Control.FunctionDoc("fn_1", "app.hello", "app_1", null, null, false, null, Map.of(), Map.of(), Map.of(), List.of());
+        Describe describe = new Describe(1, List.of(), List.of(), List.of(), List.of("main"), List.of(), List.of(), List.of(), new Describe.Jvm("a.B"));
+        HostFunctionContext unset = new ContextFactory(new OutboundClients(clients), Clock.systemUTC(), plane, pools).build(doc, 1, describe);
+        assertThatThrownBy(() -> unset.dataSource("main")).isInstanceOf(IllegalStateException.class).hasMessageContaining("main");
+    }
+
+    @Test
+    void aBadDsnIsRefusedWithoutItsPassword() {
+        Control.FunctionDoc doc = new Control.FunctionDoc("fn_1", "app.hello", "app_1", null, null, false, null, Map.of(), Map.of(),
+                Map.of("main", "postgres://u:topsecret@h:nope/d"), List.of());
+        Describe describe = new Describe(1, List.of(), List.of(), List.of(), List.of("main"), List.of(), List.of(), List.of(), new Describe.Jvm("a.B"));
+        HostFunctionContext bad = new ContextFactory(new OutboundClients(clients), Clock.systemUTC(), plane, pools).build(doc, 1, describe);
+        assertThatThrownBy(() -> bad.dataSource("main")).isInstanceOf(IllegalStateException.class).hasMessageNotContaining("topsecret");
     }
 }

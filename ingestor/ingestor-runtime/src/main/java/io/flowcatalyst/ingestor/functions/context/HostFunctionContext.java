@@ -10,6 +10,8 @@ import io.flowcatalyst.function.Secrets;
 import java.lang.System.Logger;
 import java.time.Clock;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Objects;
 import javax.sql.DataSource;
 
@@ -20,8 +22,9 @@ import javax.sql.DataSource;
 /// [io.flowcatalyst.ingestor.functions.load.LoadedFunction] with a brand-new context instead of mutating
 /// this one in place).
 ///
-/// `dataSource(name)` is not available in the ingestor's function host yet: the ingestor build carries no JDBC
-/// connection pool (see [#dataSource]).
+/// `dataSource(name)` borrows from the host's shared pool for the DSN bound to the name in the desired document
+/// (see [DbPools]); the DSNs are the ones in the document this version was loaded with, and a changed DSN loads a
+/// new version of the context.
 public final class HostFunctionContext implements FunctionContext {
 
     private final FunctionAddress address;
@@ -34,9 +37,12 @@ public final class HostFunctionContext implements FunctionContext {
     private final Clock clock;
     private final Logger logger;
     private final List<String> declaredDatabases;
+    private final Map<String, String> databaseDsns;
+    private final DbPools dbPools;
+    private final Map<String, DataSource> dataSources = new ConcurrentHashMap<>();
 
     HostFunctionContext(FunctionAddress address, int version, Config config, Secrets secrets, HttpCaller http, Events events,
-            Dispatcher dispatcher, Clock clock, List<String> declaredDatabases) {
+            Dispatcher dispatcher, Clock clock, List<String> declaredDatabases, Map<String, String> databaseDsns, DbPools dbPools) {
         this.address = Objects.requireNonNull(address, "address");
         this.version = version;
         this.config = Objects.requireNonNull(config, "config");
@@ -46,6 +52,8 @@ public final class HostFunctionContext implements FunctionContext {
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.declaredDatabases = List.copyOf(declaredDatabases);
+        this.databaseDsns = Map.copyOf(databaseDsns);
+        this.dbPools = Objects.requireNonNull(dbPools, "dbPools");
         this.logger = new HostLogger(address.render());
     }
 
@@ -65,15 +73,28 @@ public final class HostFunctionContext implements FunctionContext {
     }
 
     /// @throws IllegalArgumentException `name` is not one of this version's declared `db` entries
-    /// @throws UnsupportedOperationException always, for a declared name: the ingestor's function host has no
-    ///                                        database connection pool yet
+    /// @throws IllegalStateException    `name` is declared but the function has no DSN bound to it, or the DSN
+    ///                                   cannot be used (the message never carries any of it)
     @Override
     public DataSource dataSource(String name) {
         if (!declaredDatabases.contains(name)) {
             throw new IllegalArgumentException("no database named '" + name + "' declared by this function's describe");
         }
-        throw new UnsupportedOperationException(
-                "dataSource('" + name + "') is not available: the ingestor's function host has no database support yet");
+        DataSource known = dataSources.get(name);
+        if (known != null) {
+            return known;
+        }
+        String dsn = databaseDsns.get(name);
+        if (dsn == null || dsn.isBlank()) {
+            throw new IllegalStateException("database '" + name + "' has no binding on this function");
+        }
+        PostgresDsn.Target target;
+        try {
+            target = PostgresDsn.parse(dsn);
+        } catch (PostgresDsn.DsnException e) {
+            throw new IllegalStateException("database '" + name + "' has a DSN that cannot be used: " + e.getMessage());
+        }
+        return dataSources.computeIfAbsent(name, n -> dbPools.shared(dsn, target));
     }
 
     @Override

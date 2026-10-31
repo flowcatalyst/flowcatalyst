@@ -174,6 +174,9 @@ Every value is a key in `config/application.yaml` and an environment variable na
 | `INGEST_POLL_INTERVAL` | `ingest.poll-interval` | `PT1M` | how often to poll and report. The platform's lease is 3 minutes |
 | `INGEST_FUNCTIONS_ENABLED` | `ingest.functions-enabled` | `true` | host JVM functions (docs/jvm-functions-in-ingestor.md): fetch the pool's desired state from the platform's function control plane, load the `jvm` versions in it and serve `/fn/{address}[@{alias}\|@v{n}]/{path}` on this server. The runtime's service account must also hold `platform:function-runner`. The server's `HTTP_MAX_BODY_BYTES` (default 1 MiB) caps every function's request body |
 | `INGEST_FUNCTIONS_POOL` | `ingest.functions-pool` | `default` | the function pool this process serves (the `pool` of its desired-state request) |
+| `INGEST_FUNCTIONS_DB_MAX_POOLS` | `ingest.functions-db-max-pools` | `32` | database pools the host keeps for `ctx.dataSource(name)`: one per distinct DSN, shared by every function; at the cap the least recently used is closed (as the Go runner) |
+| `INGEST_FUNCTIONS_DB_MAX_CONNS` | `ingest.functions-db-max-conns` | `4` | connections per pool |
+| `INGEST_FUNCTIONS_DB_IDLE_TTL` | `ingest.functions-db-idle-ttl` | `PT10M` | a pool unused this long is closed (made again by the next call) |
 | `INGEST_INGESTION_ENABLED` | `ingest.ingestion-enabled` | `true` | run ingestions. `false` makes a functions-only process: it never polls for ingestions, so it takes no ingestion leases, runs no routes and serves no `/ingest/` endpoint |
 | `INGEST_ADVERTISED_URL` | `ingest.advertised-url` | unset | where this runtime can be reached; shown by the platform for information, never called |
 | `INGEST_SECRETS_CACHE_TTL` | `ingest.secrets-cache-ttl` | `PT1M` | how long a fetched secret is kept, and how often each running route's secrets are read again (each fetch is a security log line and a "last fetched" update on the platform, not an audit row) |

@@ -67,6 +67,7 @@ public final class Harness implements AutoCloseable {
     public final FakeMetaspaceGauge gauge = new FakeMetaspaceGauge();
     public final TestOidcProvider platform = TestOidcProvider.start(InstantSource.system());
     public final HttpClients clients = HttpClients.create();
+    public final io.flowcatalyst.ingestor.functions.context.DbPools dbPools;
     public final FunctionRegistry registry;
     public final Reconciler reconciler;
     public final FunctionListener listener;
@@ -84,8 +85,9 @@ public final class Harness implements AutoCloseable {
     public Harness(Reconciler.Timing timing, boolean realClock) {
         this.clock = new MovableClock(realClock);
         this.registry = new FunctionRegistry(64, clock);
+        this.dbPools = new io.flowcatalyst.ingestor.functions.context.DbPools(io.flowcatalyst.ingestor.functions.context.DbPools.Limits.DEFAULTS, clock);
         ArtifactCache artifacts = new ArtifactCache(plane, null);
-        ContextFactory contexts = new ContextFactory(new OutboundClients(clients), clock, plane);
+        ContextFactory contexts = new ContextFactory(new OutboundClients(clients), clock, plane, dbPools);
         reconciler = new Reconciler(
                 "default", "runner-1", "test", plane, artifacts, new JvmFunctionLoader(), registry, contexts,
                 new MetaspaceGuard(gauge), clock, timing);
@@ -104,6 +106,7 @@ public final class Harness implements AutoCloseable {
     @Override
     public void close() {
         reconciler.close();
+        dbPools.close();
         platform.close();
         clients.close();
     }
