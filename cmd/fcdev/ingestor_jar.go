@@ -71,7 +71,7 @@ func ingestorJarCacheDir() string {
 
 // errNoIngestorJar means no jar could be found and none is released: not a
 // failure, the ingestor is just not run.
-var errNoIngestorJar = errors.New("no ingestor runtime jar found: build it with `ingestor/mvnw -f ingestor/pom.xml -DskipTests package` or set FC_INGESTOR_JAR; none is released yet")
+var errNoIngestorJar = errors.New("no ingestor runtime jar found: build it with `make ingestor-build` or set FC_INGESTOR_JAR; none is released yet")
 
 // resolveIngestorJar finds the jar by the order above. startDirs are where the
 // search for a checkout starts (the working directory and the executable's).

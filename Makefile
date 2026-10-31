@@ -6,7 +6,8 @@
 	release-ts-sdk release-laravel-sdk build-java-sdk release-java-sdk \
 	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk release-ingestor release-all-sdks install-tools help \
 	test-go-sdk test-go-sdk-tests lint-go-sdk go-sdk-smoke release-go-sdk e2e-platform \
-	tools tidy-verify vet ci-fast pre-push install-hooks
+	tools tidy-verify vet ci-fast pre-push install-hooks \
+	ingestor-build ingestor-test function-api-install function-hello
 
 GO ?= go
 PNPM ?= pnpm
@@ -58,6 +59,29 @@ frontend-install: ## Install frontend deps (idempotent; pnpm skips when up-to-da
 
 frontend-dev: ## Run the Vite dev server (proxies API to fcdev)
 	@cd frontend && VITE_BACKEND_PORT=$(FC_API_PORT) $(PNPM) dev
+
+# ── Ingestor runtime (Java) ──────────────────────────────────────────
+# fcdev started from this checkout runs ingestor/ingestor-runtime/target/
+# ingestor-runtime-*-all.jar (docs/fcdev-ingestor.md), so the build refuses
+# while a running ingestor holds that file: `fcdev stop`, build, start again.
+# Needs a JDK 25 to build.
+MVNW := ingestor/mvnw -f ingestor/pom.xml
+INGESTOR_JAR := ingestor/ingestor-runtime/target/ingestor-runtime-*-all.jar
+
+ingestor-build: ## Build the ingestor runtime jar fcdev runs (skips tests; stop fcdev first)
+	@if lsof -t $(INGESTOR_JAR) >/dev/null 2>&1; then \
+		echo "an ingestor is running $(INGESTOR_JAR): stop fcdev (fcdev stop) and run this again"; exit 1; \
+	fi
+	$(MVNW) -DskipTests package
+
+ingestor-test: ## Run the ingestor's tests: contract, function API, runtime (about 5 minutes)
+	$(MVNW) test
+
+function-api-install: ## Install the JVM function API into ~/.m2, which a JVM function compiles against
+	$(MVNW) -pl function-api install -DskipTests
+
+function-hello: function-api-install ## Build the example JVM function (ingestor/examples/function-hello/target)
+	ingestor/mvnw -f ingestor/examples/function-hello/pom.xml package
 
 # ── Run / dev loop ───────────────────────────────────────────────────
 # fcdev runs every subsystem against an embedded Postgres — no Docker,

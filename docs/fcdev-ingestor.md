@@ -65,9 +65,13 @@ delete `jre-25/` and restart.
 
 ## Using a local jar
 
-From a checkout, build and restart fcdev:
+From a checkout, stop fcdev, build, and start it again:
 
-    ingestor/mvnw -f ingestor/pom.xml -DskipTests package     # needs a JDK 25 to build; running needs none
+    make ingestor-build     # ingestor/mvnw -f ingestor/pom.xml -DskipTests package; needs a JDK 25 to build, running needs none
+
+The target refuses while a running ingestor holds the jar. `make ingestor-test` runs the ingestor's tests;
+`make function-api-install` and `make function-hello` build a JVM function against the local API (see
+`ingestor/examples/function-hello`).
 
 fcdev finds `ingestor/ingestor-runtime/target/ingestor-runtime-*-all.jar` from its working directory or the
 directory of the fcdev binary upward. To use a jar from anywhere: `FC_INGESTOR_JAR=/path/to/jar fcdev start`.

@@ -16,12 +16,11 @@ on its own virtual thread, so a function keeps no mutable state of its own.
 
 ## Run it locally
 
-`fcdev start` runs the ingestor, which serves JVM functions on its port (`FC_INGESTOR_PORT`, default
+`fcdev start` (after `make ingestor-build`) runs the ingestor, which serves JVM functions on its port (`FC_INGESTOR_PORT`, default
 8091; `fcdev ingestor status` shows it). Then:
 
 ```sh
-mvn -o -f ingestor/pom.xml -pl function-api install -DskipTests   # once: the API this example compiles against
-mvn -f ingestor/examples/function-hello/pom.xml package
+make function-hello      # installs the function API into ~/.m2, then builds this jar
 fcdev fn deploy hello.greeting ingestor/examples/function-hello/target/function-hello-0.1.0.jar --create
 fcdev fn set hello.greeting --config GREETING=Howdy
 fcdev fn promote hello.greeting 1          # if deploy stopped for the missing GREETING value
