@@ -39,8 +39,7 @@ class NoLockOnInvokePathTest {
             FunctionRegistry.class,
             Reconciler.class,
             HostFunctionContext.class,
-            AllowlistHttpCaller.class,
-            io.flowcatalyst.ingestor.functions.FrameworkAccess.class);
+            AllowlistHttpCaller.class);
 
     @Test
     void noClassOnTheInvokePathEntersAMonitor() throws IOException {

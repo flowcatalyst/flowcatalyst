@@ -10,7 +10,6 @@ import io.flowcatalyst.framework.pipeline.Next;
 import io.flowcatalyst.function.Caller;
 import io.flowcatalyst.function.FunctionContext;
 import io.flowcatalyst.function.Result;
-import io.flowcatalyst.ingestor.functions.FrameworkAccess;
 import io.flowcatalyst.ingestor.functions.control.Control;
 import io.flowcatalyst.ingestor.functions.control.Describe;
 import io.flowcatalyst.ingestor.functions.load.LoadedFunction;
@@ -390,7 +389,7 @@ public final class FunctionListener {
     /// replay against the platform.
     private static Map<String, List<String>> requestHeaders(Request request, boolean dropAuthorization) {
         Map<String, List<String>> out = new LinkedHashMap<>();
-        for (Map.Entry<String, List<String>> e : FrameworkAccess.requestHeaders(request).entrySet()) {
+        for (Map.Entry<String, List<String>> e : request.headers().entrySet()) {
             String name = e.getKey().toLowerCase(Locale.ROOT);
             if (HOP_HEADERS.contains(name) || (dropAuthorization && name.equals("authorization"))) {
                 continue;

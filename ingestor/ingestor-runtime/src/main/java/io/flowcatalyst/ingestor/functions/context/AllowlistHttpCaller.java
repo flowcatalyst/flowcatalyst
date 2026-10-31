@@ -10,7 +10,6 @@ import io.flowcatalyst.function.HttpCallRefusedException;
 import io.flowcatalyst.function.HttpCaller;
 import io.flowcatalyst.function.HttpReply;
 import io.flowcatalyst.function.HttpResponseTooLargeException;
-import io.flowcatalyst.ingestor.functions.FrameworkAccess;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.URI;
@@ -142,6 +141,6 @@ public final class AllowlistHttpCaller implements HttpCaller {
                 default -> throw new IOException(e.getMessage(), e);
             }
         }
-        return new HttpReply(response.status(), FrameworkAccess.responseHeaders(response), response.bodyBytes());
+        return new HttpReply(response.status(), response.headers(), response.bodyBytes());
     }
 }
