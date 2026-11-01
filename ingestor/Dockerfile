@@ -25,4 +25,5 @@ ENV INGEST_EXTENSIONS_DIR=/opt/ingestor/extensions
 ENV APP_ENV=production
 EXPOSE 8091
 # Out of memory, the process ends and the orchestrator starts a healthy one, instead of a thread dying.
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-XX:+ExitOnOutOfMemoryError", "-jar", "/app/ingestor-runtime.jar"]
+# Compact object headers (8 bytes, not 12) are a product feature from Java 25 but off unless asked for.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-XX:+ExitOnOutOfMemoryError", "-XX:+UseCompactObjectHeaders", "-jar", "/app/ingestor-runtime.jar"]

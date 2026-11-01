@@ -264,7 +264,8 @@ own handlers halt the JVM) so that it is restarted healthy.
 ### The image
 
 `APP_ENV=production` (a plain-`http` platform and loopback sources are refused), `-XX:+ExitOnOutOfMemoryError`,
-and `/app` (the jar and its config) and `/opt/ingestor/extensions` owned by root and not writable by the
+`-XX:+UseCompactObjectHeaders` (8-byte object headers: a smaller heap for the same work; fcdev runs the jar
+with it too), and `/app` (the jar and its config) and `/opt/ingestor/extensions` owned by root and not writable by the
 runtime's user; mount extension jars read-only or build an image of your own that copies them in as root.
 
 ### Secrets on the platform

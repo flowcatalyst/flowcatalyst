@@ -289,7 +289,8 @@ func redactEnv(env []string) []string {
 }
 
 func ingestorJVMArgs(jar string) []string {
-	return []string{"-XX:MaxRAMPercentage=25", "-jar", jar}
+	// Compact object headers as in the image (ingestor/Dockerfile); fcdev's Java is 25 (ingestorJavaMajor).
+	return []string{"-XX:MaxRAMPercentage=25", "-XX:+UseCompactObjectHeaders", "-jar", jar}
 }
 
 // osProc is a real child process.
