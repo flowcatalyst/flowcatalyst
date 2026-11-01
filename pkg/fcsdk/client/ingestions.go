@@ -17,19 +17,43 @@ const (
 	TargetModeBlockOnError IngestionTargetMode = "BLOCK_ON_ERROR"
 )
 
+// IngestionTargetKind is what each record becomes.
+type IngestionTargetKind string
+
+// The kinds of an ingestion target.
+const (
+	TargetKindDispatchJob IngestionTargetKind = "DISPATCH_JOB" // the default when absent
+	TargetKindEvent       IngestionTargetKind = "EVENT"
+)
+
 // ─── Shared shapes ───────────────────────────────────────────────────
 
-// IngestionTarget is the dispatch job each record becomes. Pool is a dispatch
-// pool code; Connection and ServiceAccount are optional codes and may not both
-// be set (a connection's account signs). Neither set is unsigned delivery.
+// IngestionTarget is what each record becomes: a dispatch job (Kind empty or
+// TargetKindDispatchJob) or an event (TargetKindEvent).
+//
+// For a dispatch job, Code is the job's code, Pool a dispatch pool code, and
+// Connection and ServiceAccount optional codes that may not both be set (a
+// connection's account signs; neither is unsigned delivery). TargetURL may be
+// left empty only when the source names a config entry that gives it. DataOnly
+// delivers the record itself, with its own content type, instead of the
+// platform envelope.
+//
+// For an event, Code is an existing event type's code and only BatchSize and
+// WrapNonJSON may be set besides: the subscriptions decide where the event goes.
+// WrapNonJSON delivers a record that is not JSON as {"contentType", "body"}; it
+// is required unless the records are known to be JSON (a JSON split, or no split
+// on an HTTP source whose Accept.Body is JSON or JSON_OBJECT).
 type IngestionTarget struct {
+	Kind           IngestionTargetKind `json:"kind,omitempty"`
 	Code           string              `json:"code"`
-	TargetURL      string              `json:"targetUrl"`
-	Pool           string              `json:"pool"`
+	TargetURL      string              `json:"targetUrl,omitempty"`
+	Pool           string              `json:"pool,omitempty"`
 	Connection     string              `json:"connection,omitempty"`
 	ServiceAccount string              `json:"serviceAccount,omitempty"`
-	Mode           IngestionTargetMode `json:"mode"`
+	Mode           IngestionTargetMode `json:"mode,omitempty"`
 	BatchSize      int64               `json:"batchSize"`
+	DataOnly       bool                `json:"dataOnly,omitempty"`
+	WrapNonJSON    bool                `json:"wrapNonJson,omitempty"`
 }
 
 // IngestionDefinition is the part of an ingestion a version holds, without its

@@ -50,11 +50,31 @@ type APIResults interface{ resultsKind() string }
 
 // ─── Sources ─────────────────────────────────────────────────────────
 
-// HTTPSource is JSON posted to the endpoint the runtime exposes for the
-// ingestion.
+// HTTPSource is a body posted to the endpoint the runtime exposes for the
+// ingestion. Accept, when set, is what a request must be to be taken.
 type HTTPSource struct {
-	Auth      HTTPAuth   `json:"auth"`
-	RateLimit *RateLimit `json:"rateLimit,omitempty"`
+	Auth      HTTPAuth    `json:"auth"`
+	RateLimit *RateLimit  `json:"rateLimit,omitempty"`
+	Accept    *HTTPAccept `json:"accept,omitempty"`
+}
+
+// HTTPAcceptBody is the check an HTTP source makes of a request's body.
+type HTTPAcceptBody string
+
+// The body checks of an HTTP source.
+const (
+	AcceptBodyNone       HTTPAcceptBody = "NONE"        // no check (the default)
+	AcceptBodyJSON       HTTPAcceptBody = "JSON"        // it parses
+	AcceptBodyJSONObject HTTPAcceptBody = "JSON_OBJECT" // a non-empty JSON object
+	AcceptBodyXML        HTTPAcceptBody = "XML"         // well-formed XML, without a DOCTYPE
+)
+
+// HTTPAccept is what an HTTP source takes: ContentTypes are media types as
+// type/subtype without parameters (empty takes any; another answers 415), and
+// Body the check of the body (a failure answers 400).
+type HTTPAccept struct {
+	ContentTypes []string       `json:"contentTypes,omitempty"`
+	Body         HTTPAcceptBody `json:"body,omitempty"`
 }
 
 // RateLimit accepts at most Requests per Per (ISO 8601), counted per runtime.
@@ -604,6 +624,7 @@ func (s *HTTPSource) UnmarshalJSON(data []byte) error {
 	var aux struct {
 		Auth      json.RawMessage `json:"auth"`
 		RateLimit *RateLimit      `json:"rateLimit"`
+		Accept    *HTTPAccept     `json:"accept"`
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -612,7 +633,7 @@ func (s *HTTPSource) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
-	*s = HTTPSource{Auth: auth, RateLimit: aux.RateLimit}
+	*s = HTTPSource{Auth: auth, RateLimit: aux.RateLimit, Accept: aux.Accept}
 	return nil
 }
 

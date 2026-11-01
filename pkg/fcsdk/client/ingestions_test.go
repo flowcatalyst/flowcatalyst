@@ -155,6 +155,7 @@ func TestIngestionDefinitionRoundTrip(t *testing.T) {
 	sources := []string{
 		`{"kind":"http","auth":{"kind":"flowcatalyst-token","application":"app"},"rateLimit":{"requests":10,"per":"PT1S"}}`,
 		`{"kind":"http","auth":{"kind":"basic","username":"u","password":{"name":"p"}}}`,
+		`{"kind":"http","auth":{"kind":"flowcatalyst-token","application":"app"},"accept":{"contentTypes":["application/xml","text/xml"],"body":"XML"}}`,
 		`{"kind":"sftp","host":"h","port":22,"directory":"/in","username":"u","credential":{"name":"k"},"include":"*.csv","every":"PT5M"}`,
 		`{"kind":"s3","region":"eu-west-1","bucket":"b","prefix":"in/","every":"PT1M","credential":{"accessKeyId":"AK","secretAccessKey":{"name":"s"}}}`,
 		`{"kind":"sqs","region":"eu-west-1","queue":"q"}`,
@@ -167,32 +168,48 @@ func TestIngestionDefinitionRoundTrip(t *testing.T) {
 		`{"kind":"camel-route","yaml":"route"}`,
 	}
 	splits := []string{`{"kind":"none"}`, `{"kind":"csv","header":true}`, `{"kind":"json","arrayPath":"$.items"}`, `{"kind":"xml","element":"order"}`, `{"kind":"future","x":1}`}
-	target := `{"code":"c","targetUrl":"https://x","pool":"p","connection":"conn","mode":"BLOCK_ON_ERROR","batchSize":5}`
+	targets := []string{
+		`{"code":"c","targetUrl":"https://x","pool":"p","connection":"conn","mode":"BLOCK_ON_ERROR","batchSize":5}`,
+		`{"kind":"DISPATCH_JOB","code":"c","pool":"p","mode":"IMMEDIATE","batchSize":1,"dataOnly":true}`,
+		`{"kind":"EVENT","code":"app:orders:order:received","batchSize":1,"wrapNonJson":true}`,
+	}
 
 	for _, src := range sources {
 		for _, spl := range splits {
-			body := `{"id":"ing_1","applicationId":"a","applicationCode":"app","clientId":"c","clientIdentifier":"acme","code":"orders","status":"ACTIVE","version":1,"latestVersion":1,"createdAt":"t","updatedAt":"t","name":"N","source":` + src + `,"split":` + spl + `,"target":` + target + `}`
-			var got client.IngestionResponse
-			require.NoError(t, json.Unmarshal([]byte(body), &got))
-			out, err := json.Marshal(got)
-			require.NoError(t, err)
-			assert.JSONEq(t, body, string(out))
+			for _, target := range targets {
+				body := `{"id":"ing_1","applicationId":"a","applicationCode":"app","clientId":"c","clientIdentifier":"acme","code":"orders","status":"ACTIVE","version":1,"latestVersion":1,"createdAt":"t","updatedAt":"t","name":"N","source":` + src + `,"split":` + spl + `,"target":` + target + `}`
+				var got client.IngestionResponse
+				require.NoError(t, json.Unmarshal([]byte(body), &got))
+				out, err := json.Marshal(got)
+				require.NoError(t, err)
+				assert.JSONEq(t, body, string(out))
+			}
 		}
 	}
+}
+
+// An event target sends none of a dispatch job's delivery fields: the platform
+// refuses them on an EVENT target.
+func TestIngestionEventTargetSendsOnlyItsFields(t *testing.T) {
+	out, err := json.Marshal(client.IngestionTarget{Kind: client.TargetKindEvent, Code: "app:orders:order:received", BatchSize: 1, WrapNonJSON: true})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"kind":"EVENT","code":"app:orders:order:received","batchSize":1,"wrapNonJson":true}`, string(out))
 }
 
 func TestIngestionDefinitionDecodesTypedMembers(t *testing.T) {
 	var got client.IngestionVersionResponse
 	require.NoError(t, json.Unmarshal([]byte(`{"id":"v","version":2,"live":true,"createdAt":"t","name":"N",
-		"source":{"kind":"http","auth":{"kind":"bearer","token":{"name":"t"}}},
+		"source":{"kind":"http","auth":{"kind":"bearer","token":{"name":"t"}},"accept":{"contentTypes":["application/json"],"body":"JSON_OBJECT"}},
 		"split":{"kind":"csv","header":true},
-		"target":{"code":"c","targetUrl":"https://x","pool":"p","mode":"IMMEDIATE","batchSize":1}}`), &got))
+		"target":{"code":"c","targetUrl":"https://x","pool":"p","mode":"IMMEDIATE","batchSize":1,"dataOnly":true}}`), &got))
 
 	src, ok := got.Source.(client.HTTPSource)
 	require.True(t, ok)
 	assert.Equal(t, client.HTTPBearerAuth{Token: client.SecretRef{Name: "t"}}, src.Auth)
+	assert.Equal(t, &client.HTTPAccept{ContentTypes: []string{"application/json"}, Body: client.AcceptBodyJSONObject}, src.Accept)
 	assert.Equal(t, client.CSVSplit{Header: true}, got.Split)
 	assert.Equal(t, client.TargetModeImmediate, got.Target.Mode)
+	assert.True(t, got.Target.DataOnly)
 
 	var odd client.IngestionVersionResponse
 	require.NoError(t, json.Unmarshal([]byte(`{"source":{"kind":"mix","a":1},"split":{"kind":"none"}}`), &odd))
