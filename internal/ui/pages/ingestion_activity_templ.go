@@ -8,7 +8,7 @@ package pages
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+import "github.com/flowcatalyst/framework/go/ui/kit"
 
 // ingTraceFilterExpr applies a changed filter at once.
 const ingTraceFilterExpr = "el.form.requestSubmit()"

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
+	"github.com/flowcatalyst/framework/go/ui/ds"
 )
 
 // A whole-set save must never be truncated: facetValues caps URL filters at

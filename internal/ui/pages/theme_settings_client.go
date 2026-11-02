@@ -8,8 +8,8 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
+	"github.com/flowcatalyst/framework/go/ui/ds"
 )
 
 // ClientTheme is a client's Login Branding page (/ui/clients/{id}/theme),

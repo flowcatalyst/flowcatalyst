@@ -1,4 +1,0 @@
-{
-  "props": { "id": "note", "name": "note", "invalid": true, "describedBy": "note-error" },
-  "source": "code-editor.md options: no language, invalid, describedBy"
-}

@@ -3,8 +3,8 @@ package pages
 import (
 	"strconv"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // ── list ───────────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ templ ingsStateTags(active, draft bool, set string) {
 
 templ ingsPage(v ingsView) {
 	<div data-signals={ v.signals() }>
-		<script defer src={ assets.URL("fc-code-editor.js") }></script>
+		<script defer src={ uiassets.URL("fc-code-editor.js") }></script>
 		@kit.PageHeader(kit.PageHeaderProps{Title: "Ingestions", Subtitle: "Where each client's data comes from, how it is split, and what each record becomes", Actions: ingsActions(v)})
 		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI.", Class: "mb-4"})
 		<div class="fc-card-flush">

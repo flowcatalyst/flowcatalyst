@@ -16,8 +16,8 @@ import (
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/framework/go/ui/ds"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // The create and edit dialogs (the SPA's OAuthClientCreateDrawer and the

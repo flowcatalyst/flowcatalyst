@@ -1,8 +1,8 @@
 package shell
 
 import (
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // sessionExpiredExpr: a Datastar action answered 401 (the session expired
@@ -25,8 +25,8 @@ templ document(title string, collapsed bool, theme pageTheme, shellProps kit.App
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } · FlowCatalyst</title>
 			<link rel="icon" href="data:,"/>
-			<link rel="stylesheet" href={ assets.URL("kit.css") }/>
-			<script type="module" src={ assets.URL("datastar.js") }></script>
+			<link rel="stylesheet" href={ uiassets.URL("platform.css") }/>
+			<script type="module" src={ uiassets.URL("datastar.js") }></script>
 		</head>
 		<body data-on:datastar-fetch={ sessionExpiredExpr }>
 			@kit.AppShell(shellProps) {
@@ -50,8 +50,8 @@ templ bareDocument(title string, theme pageTheme, content templ.Component) {
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } · FlowCatalyst</title>
 			<link rel="icon" href="data:,"/>
-			<link rel="stylesheet" href={ assets.URL("kit.css") }/>
-			<script type="module" src={ assets.URL("datastar.js") }></script>
+			<link rel="stylesheet" href={ uiassets.URL("platform.css") }/>
+			<script type="module" src={ uiassets.URL("datastar.js") }></script>
 		</head>
 		<body>
 			<main class="mx-auto max-w-xl p-[24px]">

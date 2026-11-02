@@ -1,8 +1,8 @@
 package pages
 
 import (
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 var procStatusOptions = []kit.Option{
@@ -86,7 +86,7 @@ templ procTagList(tags []string) {
 
 templ procsPage(v procsView) {
 	<div data-signals={ v.drawerSignals() }>
-		<script type="module" src={ assets.URL("fc-diagram.js") }></script>
+		<script type="module" src={ uiassets.URL("fc-diagram.js") }></script>
 		@kit.PageHeader(kit.PageHeaderProps{Title: "Processes", Subtitle: "Workflow documentation — how events, dispatch jobs, and reactive aggregates compose into a business process.", Actions: procsActions(v)})
 		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Processes.", Class: "mb-4"})
 		<div class="fc-card-flush">
@@ -219,7 +219,7 @@ templ procDrawerBody(d procDetail) {
 				<p>No diagram body yet. Edit this process to add Mermaid source.</p>
 			</div>
 		} else if d.mermaid() {
-			@kit.Diagram(kit.DiagramProps{Label: "Diagram of " + d.Name, Bundle: assets.URL("mermaid.min.js")}) {
+			@kit.Diagram(kit.DiagramProps{Label: "Diagram of " + d.Name, Bundle: uiassets.URL("mermaid.min.js")}) {
 				{ d.Body }
 			}
 		} else {

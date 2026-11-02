@@ -12,7 +12,7 @@ import (
 	"strconv"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // usrCheckGet asks for the email's domain check with the form's fields.

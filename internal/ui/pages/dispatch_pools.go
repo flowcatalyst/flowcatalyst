@@ -19,9 +19,9 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
+	"github.com/flowcatalyst/framework/go/ui/ds"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // PoolStore is the slice of the dispatch-pool repository the page reads

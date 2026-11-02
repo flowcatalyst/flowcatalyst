@@ -24,8 +24,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	wa "github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/guard"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
 )
 
 // fakeMFA is a mfa.Service with the state the pages read: the confirmed
@@ -389,7 +389,7 @@ func TestChallengePageOffersTheUsersMethods(t *testing.T) {
 	}
 	mustContain(t, body, "Two-factor verification", "Enter the 6-digit code from your authenticator app.", `autocomplete="one-time-code"`,
 		`name="next" value="/ui/users"`, `name="method" value="TOTP"`, "Use a recovery code", "method=RECOVERY_CODE")
-	mustNotContain(t, body, "Use an email code", "Remember this device", assets.URL("fc-webauthn.js"))
+	mustNotContain(t, body, "Use an email code", "Remember this device", uiassets.URL("fc-webauthn.js"))
 	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
 		t.Errorf("Cache-Control = %q", cc)
 	}
@@ -799,7 +799,7 @@ func TestSecurityPageShowsTheUsersOwnState(t *testing.T) {
 	rec := h.serve(t, mfaSession("prn_ann"), req{target: "/ui/auth/security"})
 	body := rec.Body.String()
 	mustContain(t, body, "<title>Security · FlowCatalyst</title>", "Authenticator app", "Your organisation requires 2FA.", "Add Email code",
-		"7 unused codes remaining.", "Regenerate recovery codes", "Safari on a Mac", "Work laptop", "Add a passkey", assets.URL("fc-webauthn.js"),
+		"7 unused codes remaining.", "Regenerate recovery codes", "Safari on a Mac", "Work laptop", "Add a passkey", uiassets.URL("fc-webauthn.js"),
 		"data-fc-passkey-register", `/ui/auth/security/passkeys/pk_ann/remove`, `/ui/auth/security/2fa/devices/dev_ann/revoke`)
 	mustNotContain(t, body, "Add Authenticator app", "dev_bob", "pk_bob", "Unnamed passkey")
 
@@ -942,7 +942,7 @@ func TestSecurityPageWithoutPasskeys(t *testing.T) {
 	h.build().Passkeys, h.page.PasskeyOps = nil, nil
 	body := h.serve(t, mfaSession("prn_ann"), req{target: "/ui/auth/security"}).Body.String()
 	mustContain(t, body, "Two-Factor Authentication")
-	mustNotContain(t, body, "Passkeys", assets.URL("fc-webauthn.js"))
+	mustNotContain(t, body, "Passkeys", uiassets.URL("fc-webauthn.js"))
 	rec := h.serve(t, mfaSession("prn_ann"), mfaPost("/ui/auth/security/passkeys/x/remove", nil, nil))
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status %d", rec.Code)
@@ -959,7 +959,7 @@ func TestPasskeySignInPage(t *testing.T) {
 		t.Fatalf("status %d", rec.Code)
 	}
 	mustContain(t, body, "Sign in with a passkey", "data-fc-passkey-signin", `data-next="/ui/users"`, `value="ann@x.test"`,
-		`<script defer src="`+assets.URL("fc-webauthn.js")+`">`, "data-fc-passkey-error")
+		`<script defer src="`+uiassets.URL("fc-webauthn.js")+`">`, "data-fc-passkey-error")
 	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
 		t.Errorf("Cache-Control = %q", cc)
 	}

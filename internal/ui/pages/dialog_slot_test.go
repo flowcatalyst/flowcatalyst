@@ -9,7 +9,7 @@ import (
 
 	"github.com/a-h/templ"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
+	"github.com/flowcatalyst/framework/go/ui/ds"
 )
 
 // A dialog is put into its slot by replacing the slot, never by morphing it

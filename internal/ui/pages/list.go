@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // The URL is the list state: a list page's search, status filter and sort

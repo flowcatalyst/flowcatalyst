@@ -8,7 +8,7 @@ package pages
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+import "github.com/flowcatalyst/framework/go/ui/kit"
 
 // permsFacetLabels are the SPA's filter labels: field label, placeholder,
 // selectedItemsLabel.

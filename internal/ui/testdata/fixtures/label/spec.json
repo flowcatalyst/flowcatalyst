@@ -1,9 +1,0 @@
-{
-  "props": {
-    "for": "email"
-  },
-  "slots": {
-    "default": "Email"
-  },
-  "source": "components/label.md: element starting with '<label class='"
-}

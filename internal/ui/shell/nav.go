@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // The sidebar mirrors the SPA's navigation (frontend/src/config/navigation.ts)

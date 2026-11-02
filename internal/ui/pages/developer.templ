@@ -3,8 +3,8 @@ package pages
 import (
 	"strconv"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // devStatusTag shows a status the way the SPA's tables do: CURRENT green,
@@ -82,7 +82,7 @@ templ devOrDash(s string) {
 
 // ── application page ───────────────────────────────────────────────────
 templ devDetailPage(v devDetailView) {
-	<script type="module" src={ assets.URL("fc-diagram.js") }></script>
+	<script type="module" src={ uiassets.URL("fc-diagram.js") }></script>
 	@kit.PageHeader(kit.PageHeaderProps{Title: v.App.Name, Subtitle: v.App.subtitle(), Actions: devDetailActions(v.App)})
 	@devPreviewNote()
 	@kit.TabList(kit.TabListProps{
@@ -372,7 +372,7 @@ templ devProcSelected(v devProcView) {
 				<p>No diagram body yet.</p>
 			</div>
 		} else if v.Selected.DiagramType == "mermaid" {
-			@kit.Diagram(kit.DiagramProps{Label: "Diagram of " + v.Selected.Name, Bundle: assets.URL("mermaid.min.js")}) {
+			@kit.Diagram(kit.DiagramProps{Label: "Diagram of " + v.Selected.Name, Bundle: uiassets.URL("mermaid.min.js")}) {
 				{ v.Selected.Body }
 			}
 		} else {

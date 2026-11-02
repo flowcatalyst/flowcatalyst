@@ -9,7 +9,7 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 import "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
-import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+import "github.com/flowcatalyst/framework/go/ui/kit"
 
 // ingSetsPage is /ui/ingestion-sets and /ui/ingestion-sets/{name}: the sets
 // and, for the one named, its applies. Reading only: a set is applied with

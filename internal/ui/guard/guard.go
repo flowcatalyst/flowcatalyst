@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
+	"github.com/flowcatalyst/framework/go/ui/ds"
 )
 
 // Denier renders a refusal (an HTML page for navigations, a bare status for

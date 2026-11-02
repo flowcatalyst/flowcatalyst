@@ -119,7 +119,7 @@ func TestProcessesList(t *testing.T) {
 
 	// A subdomain that is not one of the application's is dropped; so is an unknown application.
 	pruned := h.do(t, anchorAdmin(), req{target: "/ui/processes?app=crm&subdomain=billing", datastar: true})
-	mustContain(t, pruned, "Onboarding", `&#34;/ui/processes?app=crm&#34;)`)
+	mustContain(t, pruned, "Onboarding", `&quot;/ui/processes?app=crm&quot;)`)
 	unknown := h.do(t, anchorAdmin(), req{target: "/ui/processes?app=nope"})
 	mustContain(t, unknown, "Showing 1 to 3 of 3 processes")
 

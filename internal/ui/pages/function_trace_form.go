@@ -12,8 +12,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/framework/go/ui/ds"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // The enable dialog (the SPA's "Enable tracing" dialog of

@@ -1,6 +1,6 @@
 package pages
 
-import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+import "github.com/flowcatalyst/framework/go/ui/kit"
 
 // Flash keys of the roles and permissions pages (shell.SetFlash); the texts
 // are the SPA's toasts. The sync and permission ones carry text built on the

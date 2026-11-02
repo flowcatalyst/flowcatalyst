@@ -9,7 +9,7 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 import "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
-import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+import "github.com/flowcatalyst/framework/go/ui/kit"
 
 // ingTestSavedExpr and ingTestFormExpr start a test. A saved ingestion needs
 // no body; the unsaved definition rides in the form the button is in. The URL

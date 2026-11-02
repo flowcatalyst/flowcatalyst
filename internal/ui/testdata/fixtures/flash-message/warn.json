@@ -1,8 +1,0 @@
-{
-  "props": {
-    "kind": "warn",
-    "summary": "Rate limit lowered.",
-    "detail": "Jobs already queued keep their schedule."
-  },
-  "source": "gallery/index.html: Flash stack card, the 'warn' banner"
-}

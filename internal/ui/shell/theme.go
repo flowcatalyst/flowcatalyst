@@ -3,7 +3,7 @@ package shell
 import (
 	"net/http"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // pageTheme is the theme a page renders with: the user's choice and whether

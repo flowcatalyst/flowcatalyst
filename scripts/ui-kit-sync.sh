@@ -1,26 +1,32 @@
 #!/bin/sh
-# Rebuild the vendored UI kit assets in internal/ui from the framework
-# repository's ui-kit (the kit's specs are the authority; this repo carries
-# only built output, committed). See docs/ui/README.md, "Refreshing the kit".
+# Rebuild the platform's UI stylesheet (internal/ui/uiassets/static/platform.css).
 #
-#   scripts/ui-kit-sync.sh                 # kit at ../flowcatalyst-framework/ui-kit
+# The kit itself (components, datastar.js, icon sprite, islands, fixtures) is the
+# framework's published Go module github.com/flowcatalyst/framework/go/ui; this
+# repo no longer vendors any of it. What it still builds is its own Tailwind
+# stylesheet, because the module's kit.css cannot carry the classes the
+# platform's pages use. See docs/ui/README.md, "Refreshing the kit".
+#
+#   scripts/ui-kit-sync.sh                 # theme from ../flowcatalyst-framework/ui-kit
 #   KIT_DIR=/path/to/ui-kit scripts/ui-kit-sync.sh
 #
 # What it does:
-#   1. runs the kit's own build.sh, which downloads its pinned Tailwind
-#      standalone CLI into <kit>/.bin on first use (no Node, no npm);
-#   2. builds internal/ui/assets/static/kit.css from the kit's entry file
-#      (theme/kit.css, which scans the kit's gallery and specs) PLUS this
-#      repo's *.templ and *.go files under internal/ui (not tests or
-#      testdata), so classes used only by our pages are emitted too;
-#   3. copies the icon sprite and the licence notices;
-#   4. copies the conformance fixtures into internal/ui/testdata/fixtures;
-#   5. checks the vendored datastar.js against its pinned sha256 (downloads
-#      it from the pinned URL when missing);
-#   6. records the kit commit, Tailwind version and the sprite's icon count and
-#      sha256 in internal/ui/assets/KIT_SOURCE (assets_test checks the sprite).
+#   1. resolves the module's directory (go list -m) for the kit's sources and
+#      version;
+#   2. runs the framework ui-kit's own build.sh (downloads its pinned Tailwind
+#      standalone CLI into <kit>/.bin on first use: no Node, no npm);
+#   3. builds platform.css from the kit's theme (theme/kit.css, @import) with
+#      @source of this repo's *.templ/*.go under internal/ui AND the module's
+#      kit sources (*.templ/*.go of kit/ and views/), so both the kit's classes
+#      and ours are emitted;
+#   4. records the module version and the Tailwind version in
+#      internal/ui/uiassets/KIT_SOURCE.
 #
-# POSIX sh; needs git, curl (only when datastar.js is missing) and shasum or sha256sum.
+# The theme CSS comes from the framework repo checkout (the module does not ship
+# the Tailwind theme sources); the module version recorded is the one go.mod
+# requires. Keep the checkout at the commit the module tag points to.
+#
+# POSIX sh; needs go and git.
 set -eu
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
@@ -31,78 +37,47 @@ if [ ! -f "$kit/build.sh" ] || [ ! -f "$kit/theme/kit.css" ]; then
 fi
 kit=$(cd "$kit" && pwd)
 
-static=$repo/internal/ui/assets/static
-fixtures=$repo/internal/ui/testdata/fixtures
+mod=github.com/flowcatalyst/framework/go/ui
+moddir=$(cd "$repo" && go list -m -f '{{.Dir}}' "$mod")
+modver=$(cd "$repo" && go list -m -f '{{.Version}}' "$mod")
+if [ -z "$moddir" ] || [ ! -d "$moddir/kit" ]; then
+  echo "module $mod not available (run go mod download)" >&2
+  exit 1
+fi
+
+static=$repo/internal/ui/uiassets/static
 mkdir -p "$static"
 
-DATASTAR_VERSION=1.0.4
-DATASTAR_URL="https://cdn.jsdelivr.net/gh/starfederation/datastar@$DATASTAR_VERSION/bundles/datastar.js"
-DATASTAR_LICENSE_URL="https://cdn.jsdelivr.net/gh/starfederation/datastar@$DATASTAR_VERSION/LICENSE.md"
-# Keep in sync with assets.DatastarSHA256 (a Go test checks the embedded file).
-DATASTAR_SHA256=727844adfc825ee651fb93c544a2a739986f9a21820a94524b35f0cac470cf91
-
-sha256() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
-  else shasum -a 256 "$1" | cut -d' ' -f1; fi
-}
-
-# 1. The kit's build (also fetches the Tailwind CLI).
 "$kit/build.sh" >/dev/null 2>&1
 tw=$kit/.bin/tailwindcss
 tw_version=$("$tw" --help 2>&1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 
-# 2. Our stylesheet.
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-cat > "$tmp/ui.css" <<EOF
+cat > "$tmp/ui.css" <<CSS
 @import "$kit/theme/kit.css";
 @source "$repo/internal/ui/**/*.templ";
 @source "$repo/internal/ui/**/*.go";
 @source not "$repo/internal/ui/**/*_test.go";
-@source not "$repo/internal/ui/testdata";
-EOF
-"$tw" -i "$tmp/ui.css" -o "$static/kit.css" --minify >/dev/null 2>&1
+@source "$moddir/kit/**/*.templ";
+@source "$moddir/kit/**/*.go";
+@source "$moddir/views/**/*.templ";
+@source "$moddir/views/**/*.go";
+@source not "$moddir/**/*_test.go";
+CSS
+"$tw" -i "$tmp/ui.css" -o "$static/platform.css" --minify >/dev/null 2>&1
 
-# 3. Sprite and notices.
-cp "$kit/icons/lucide-sprite.svg" "$static/lucide-sprite.svg"
-cp "$kit/icons/LICENSE-lucide.txt" "$static/LICENSE-lucide.txt"
-cp "$kit/THIRD-PARTY-NOTICES.md" "$static/KIT-THIRD-PARTY-NOTICES.md"
-
-# 4. Fixtures (language-neutral; the Go conformance test reads this copy).
-if [ -d "$kit/fixtures" ]; then
-  rm -rf "$fixtures"
-  mkdir -p "$(dirname "$fixtures")"
-  cp -R "$kit/fixtures" "$fixtures"
-fi
-
-# 5. Datastar, pinned.
-if [ ! -f "$static/datastar.js" ]; then
-  curl -fsSL -o "$static/datastar.js" "$DATASTAR_URL"
-fi
-if [ ! -f "$static/LICENSE-datastar.md" ]; then
-  curl -fsSL -o "$static/LICENSE-datastar.md" "$DATASTAR_LICENSE_URL"
-fi
-got=$(sha256 "$static/datastar.js")
-if [ "$got" != "$DATASTAR_SHA256" ]; then
-  echo "datastar.js sha256 mismatch: got $got, want $DATASTAR_SHA256" >&2
-  exit 1
-fi
-
-# 6. Provenance.
-commit=$(git -C "$kit" rev-parse HEAD)
+kitrev=$(git -C "$kit" rev-parse HEAD 2>/dev/null || echo unknown)
 dirty=""
 if [ -n "$(git -C "$kit" status --porcelain -- . 2>/dev/null)" ]; then
-  dirty=" (uncommitted kit changes present)"
+  dirty=" (uncommitted theme changes present)"
   echo "warning: $kit has uncommitted changes; commit them in the framework repo before committing this output" >&2
 fi
-sprite_icons=$(grep -c '<symbol id="i-' "$static/lucide-sprite.svg")
-sprite_sha=$(sha256 "$static/lucide-sprite.svg")
-cat > "$repo/internal/ui/assets/KIT_SOURCE" <<EOF
-kit-repo: flowcatalyst-framework (ui-kit/)
-kit-commit: $commit$dirty
+cat > "$repo/internal/ui/uiassets/KIT_SOURCE" <<REC
+kit-module: $mod $modver
+theme-repo: flowcatalyst-framework (ui-kit/theme)
+theme-commit: $kitrev$dirty
 tailwind: $tw_version
-datastar: $DATASTAR_VERSION sha256 $DATASTAR_SHA256
-sprite: $sprite_icons icons sha256 $sprite_sha
-EOF
+REC
 
-echo "ui-kit synced from $kit @ $commit$dirty (tailwind $tw_version)"
+echo "platform.css built (module $modver, theme @ $kitrev$dirty, tailwind $tw_version)"

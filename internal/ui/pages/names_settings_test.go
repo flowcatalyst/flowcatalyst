@@ -109,7 +109,7 @@ func TestNamesSave(t *testing.T) {
 	t.Run("an empty name is refused with the SPA's message", func(t *testing.T) {
 		h := newNamesHarness("Acme")
 		body := h.serve(t, cfgAdmin(), post("   ", true))
-		mustContain(t, body, "Platform name cannot be empty.", `id="names-platform-name-err"`, `document.getElementById(&#34;names-platform-name&#34;)?.focus()`)
+		mustContain(t, body, "Platform name cannot be empty.", `id="names-platform-name-err"`, `document.getElementById(&#39;names-platform-name&#39;)?.focus()`)
 		if rec := h.rec(t, cfgAdmin(), post("", false)); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "Platform name cannot be empty.") {
 			t.Errorf("native: status %d", rec.Code)
 		}

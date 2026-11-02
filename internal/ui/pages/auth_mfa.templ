@@ -1,8 +1,8 @@
 package pages
 
 import (
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // authDocument is the bare page of the sign-in area: a centred card.
@@ -14,10 +14,10 @@ templ authDocument(title string, scripts []string, content templ.Component) {
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } · FlowCatalyst</title>
 			<link rel="icon" href="data:,"/>
-			<link rel="stylesheet" href={ assets.URL("kit.css") }/>
-			<script type="module" src={ assets.URL("datastar.js") }></script>
+			<link rel="stylesheet" href={ uiassets.URL("platform.css") }/>
+			<script type="module" src={ uiassets.URL("datastar.js") }></script>
 			for _, s := range scripts {
-				<script defer src={ assets.URL(s) }></script>
+				<script defer src={ uiassets.URL(s) }></script>
 			}
 		</head>
 		<body>

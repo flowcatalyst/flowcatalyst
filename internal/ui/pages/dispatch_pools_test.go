@@ -20,8 +20,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
+	"github.com/flowcatalyst/framework/go/ui/ds"
 	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
@@ -402,7 +402,7 @@ func TestPoolsDatastarPatches(t *testing.T) {
 		`data: elements <div id="pools-list-state" class="fc-toolbar-state">`,
 		`<span class="fc-badge">1</span>`,
 		`Clear All</a>`,
-		`history.replaceState(history.state, &#39;&#39;, &#34;/ui/dispatch-pools?q=acme\u0026status=SUSPENDED&#34;)`,
+		`history.replaceState(history.state, &#39;&#39;, &quot;/ui/dispatch-pools?q=acme\u0026status=SUSPENDED&quot;)`,
 	)
 	mustNotContain(t, body, "fc-sidebar", `name="q"`, `popover class="fc-filter-popover"`)
 	if got := rowOrder(body); strings.Join(got, ",") != "dpl_2" {
@@ -559,7 +559,7 @@ func TestPoolDrawer(t *testing.T) {
 			`href="/ui/dispatch-pools/dpl_1/edit"`, // Edit
 			"Suspend Pool", `data-action="/ui/dispatch-pools/dpl_1/suspend"`, "Delete Pool",
 			"event: datastar-patch-signals\n", `"selPool":"dpl_1"`,
-			`document.getElementById(&#34;pool-drawer-title&#34;)?.focus()`,
+			`document.getElementById(&#39;pool-drawer-title&#39;)?.focus()`,
 		)
 		mustNotContain(t, body, "Activate Pool", "<b>and</b>")
 	})
@@ -657,7 +657,7 @@ func TestPoolCreateSubmit(t *testing.T) {
 		}
 		body := rec.Body.String()
 		mustContain(t, body,
-			`document.getElementById(&#34;pool-form&#34;)?.close()`,
+			`document.getElementById(&#39;pool-form&#39;).close()`,
 			`data: elements <div id="pools-table"`,
 			"data: selector #pool-drawer\n", `"selPool":"dpl_9"`,
 			`class="fc-flash fc-flash-success"`, "Dispatch pool created",
@@ -694,7 +694,7 @@ func TestPoolCreateSubmit(t *testing.T) {
 			`<div id="pool-form-concurrency-err"`,
 			`id="pool-form-code-field">`, // every field is re-sent (clears old errors)
 			`data: elements <div id="pool-form-error"></div>`,
-			`document.getElementById(&#34;pool-form-rate-limit&#34;)?.focus()`,
+			`document.getElementById(&#39;pool-form-rate-limit&#39;)?.focus()`,
 		)
 		mustNotContain(t, body, "pool-form-code-err", "fc-flash-success")
 	})
@@ -703,7 +703,7 @@ func TestPoolCreateSubmit(t *testing.T) {
 		h.ops.err = usecase.Conflict("CODE_EXISTS", "Dispatch pool with code 'orders' already exists")
 		body := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-pools/new", datastar: true, form: createForm()}).Body.String()
 		mustContain(t, body, `<div id="pool-form-code-err" role="alert" class="text-sm text-destructive">Dispatch pool with code &#39;orders&#39; already exists</div>`,
-			`document.getElementById(&#34;pool-form-code&#34;)?.focus()`)
+			`document.getElementById(&#39;pool-form-code&#39;)?.focus()`)
 
 		h.ops.err = usecase.Authorization("SCOPE_FORBIDDEN", "anchor scope required for this resource")
 		body = h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-pools/new", datastar: true, form: createForm()}).Body.String()
@@ -820,7 +820,7 @@ func TestPoolEdit(t *testing.T) {
 			cmd.RateLimit == nil || *cmd.RateLimit != 0 || cmd.Concurrency != nil {
 			t.Errorf("command = %+v", cmd)
 		}
-		mustContain(t, body, `document.getElementById(&#34;pool-form&#34;)?.close()`, `data: elements <div id="pools-table"`,
+		mustContain(t, body, `document.getElementById(&#39;pool-form&#39;).close()`, `data: elements <div id="pools-table"`,
 			"data: selector #pool-drawer\n", "Pool updated")
 		other := h.do(t, anchorAdmin(), req{
 			method: http.MethodPost, target: "/ui/dispatch-pools/dpl_1/edit", datastar: true,

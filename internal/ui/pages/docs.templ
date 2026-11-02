@@ -1,15 +1,15 @@
 package pages
 
 import (
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // docsLiveGet filters the navigation as the user types.
 const docsLiveGet = "@get(el.form.action, {contentType: 'form'})"
 
 templ docsPage(v docsView) {
-	<script type="module" src={ assets.URL("fc-diagram.js") }></script>
+	<script type="module" src={ uiassets.URL("fc-diagram.js") }></script>
 	@kit.PageHeader(kit.PageHeaderProps{Title: "Documentation", Subtitle: "The platform's published docs plus each application's synced pages."})
 	@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Platform, Documentation.", Class: "mb-4"})
 	<div style="display:flex;flex-wrap:wrap;gap:1.5rem;align-items:flex-start">
@@ -56,7 +56,7 @@ templ docsBody(segs []docsSegment) {
 	<article class="fc-markdown">
 		for _, s := range segs {
 			if s.Mermaid {
-				@kit.Diagram(kit.DiagramProps{Label: "Diagram", Bundle: assets.URL("mermaid.min.js"), Class: "mt-4 mb-4"}) {
+				@kit.Diagram(kit.DiagramProps{Label: "Diagram", Bundle: uiassets.URL("mermaid.min.js"), Class: "mt-4 mb-4"}) {
 					{ s.Text }
 				}
 			} else {

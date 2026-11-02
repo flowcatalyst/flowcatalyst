@@ -304,11 +304,11 @@ func TestEventTypeCreate(t *testing.T) {
 	if c := h.ops.created[0]; c.Code != "orders:sales:order:shipped" || !c.ClientScoped || c.Description != nil || c.Schema != nil {
 		t.Errorf("command = %+v", c)
 	}
-	mustContain(t, body, `document.getElementById(&#34;et-form&#34;)?.close()`, `"selEt":"evt_9"`, "Event type created")
+	mustContain(t, body, `document.getElementById(&#39;et-form&#39;).close()`, `"selEt":"evt_9"`, "Event type created")
 
 	h.ops.err = usecase.Conflict("CODE_EXISTS", "Event type with code 'orders:sales:order:shipped' already exists")
 	dup := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/event-types/new", datastar: true, form: form})
-	mustContain(t, dup, `id="et-form-application-err"`, "already exists", `document.getElementById(&#34;et-form-application&#34;)?.focus()`)
+	mustContain(t, dup, `id="et-form-application-err"`, "already exists", `document.getElementById(&#39;et-form-application&#39;)?.focus()`)
 
 	if rec := h.rec(t, etUser(etViewPerm), req{target: "/ui/event-types/new"}); rec.Code != http.StatusForbidden {
 		t.Errorf("create without permission: %d", rec.Code)

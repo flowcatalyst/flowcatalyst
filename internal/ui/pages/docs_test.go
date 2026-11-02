@@ -10,7 +10,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/docsapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
 )
 
 const permDocsView = "platform:admin:docs:view"
@@ -100,7 +100,7 @@ func TestDocsPage(t *testing.T) {
 		mustContain(t, body, `href="/ui/platform/docs/platform/events#flow"`, `href="https://example.com/x?a=1&amp;b=2" target="_blank" rel="noopener noreferrer"`)
 	})
 	t.Run("a mermaid fence is a diagram with its source escaped; another fence stays code", func(t *testing.T) {
-		mustContain(t, body, "<fc-diagram", `data-bundle="`+assets.URL("mermaid.min.js")+`"`, "A[&lt;b&gt;Start&lt;/b&gt;] --&gt; B", assets.URL("fc-diagram.js"), "in a go fence")
+		mustContain(t, body, "<fc-diagram", `data-bundle="`+uiassets.URL("mermaid.min.js")+`"`, "A[&lt;b&gt;Start&lt;/b&gt;] --&gt; B", uiassets.URL("fc-diagram.js"), "in a go fence")
 		mustContain(t, body, "&lt;i data-init=&#39;alert(2)&#39;&gt;x&lt;/i&gt;", ` hidden data-ignore></div>`)
 		mustNotContain(t, body, "language-mermaid", "<b>Start", "<i data-init")
 		if strings.Count(body, "<fc-diagram") != 1 {

@@ -12,9 +12,9 @@ import (
 
 	resetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
+	"github.com/flowcatalyst/framework/go/ui/ds"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 const (

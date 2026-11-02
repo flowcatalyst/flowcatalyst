@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 const (
@@ -107,7 +107,7 @@ func (v djView) empty() *kit.EmptyStateProps {
 
 templ djPage(v djView) {
 	<div data-signals={ v.signals() }>
-		<script defer src={ assets.URL("fc-code-editor.js") }></script>
+		<script defer src={ uiassets.URL("fc-code-editor.js") }></script>
 		@kit.PageHeader(kit.PageHeaderProps{Title: "Dispatch Jobs", Subtitle: "Monitor webhook dispatch jobs and delivery status"})
 		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Dispatch Jobs.", Class: "mb-4"})
 		<div class="fc-card-flush">

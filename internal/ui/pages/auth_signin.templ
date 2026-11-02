@@ -3,8 +3,8 @@ package pages
 import (
 	"strings"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // signinDocument is a full sign-in page: no app shell (there is no session),
@@ -20,8 +20,8 @@ templ signinDocument(title string, th signinTheme, portal bool, content templ.Co
 			<meta name="robots" content="noindex"/>
 			<title>{ title }</title>
 			<link rel="icon" href="data:,"/>
-			<link rel="stylesheet" href={ assets.URL("kit.css") }/>
-			<script type="module" src={ assets.URL("datastar.js") }></script>
+			<link rel="stylesheet" href={ uiassets.URL("platform.css") }/>
+			<script type="module" src={ uiassets.URL("datastar.js") }></script>
 			if th.CustomCSS != "" {
 				@templ.Raw("<style>" + th.CustomCSS + "</style>")
 			}

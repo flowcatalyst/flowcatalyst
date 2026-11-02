@@ -16,7 +16,7 @@ import (
 	connops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
+	"github.com/flowcatalyst/framework/go/ui/ds"
 	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
@@ -261,14 +261,14 @@ func TestConnectionCreate(t *testing.T) {
 		if cmd.Code != "orders-hook" || cmd.ServiceAccountID != "sa_1" || deref(cmd.ExternalID) != "x-1" || cmd.Description != nil || deref(cmd.ClientID) != "clt_acme" || cmd.ApplicationCode != nil {
 			t.Errorf("command = %+v", cmd)
 		}
-		mustContain(t, body, `document.getElementById(&#34;conn-form&#34;)?.close()`, `data: elements <div id="conns-table"`, `"selConn":"con_9"`, "Connection created")
+		mustContain(t, body, `document.getElementById(&#39;conn-form&#39;).close()`, `data: elements <div id="conns-table"`, `"selConn":"con_9"`, "Connection created")
 	})
 	t.Run("use-case errors go to their fields", func(t *testing.T) {
 		h := newConnHarness()
 		h.ops.err = usecase.Validation("SERVICE_ACCOUNT_REQUIRED", "serviceAccountId is required")
 		body := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/connections/new", datastar: true, form: connCreateForm("serviceAccountId", "")})
 		mustContain(t, body, `<div id="conn-form-service-account-id-err" role="alert" class="text-sm text-destructive">ServiceAccountId is required</div>`,
-			`document.getElementById(&#34;conn-form-service-account-id&#34;)?.focus()`)
+			`document.getElementById(&#39;conn-form-service-account-id&#39;)?.focus()`)
 		h.ops.err = usecase.Conflict("CODE_EXISTS", "Connection with code 'orders-hook' already exists")
 		body = h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/connections/new", datastar: true, form: connCreateForm()})
 		mustContain(t, body, `id="conn-form-code-err"`, "already exists")

@@ -1,7 +1,0 @@
-{
-  "props": {
-    "kind": "success",
-    "summary": "Pool saved."
-  },
-  "source": "gallery/index.html: Flash stack card, the 'success' banner"
-}

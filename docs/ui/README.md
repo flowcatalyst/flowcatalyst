@@ -21,24 +21,39 @@ the rendered diagram until 2026-10-24; now drawn by the Mermaid island, see "Isl
 ```
 internal/ui/
   ui.go          Mount: the /ui route group (assets, guards, pages, sign-out)
-  ds/            the only package that imports the Datastar Go SDK (datastar-go v1.2.2)
-  kit/           templ components, one per kit spec; Props structs mirror the specs' Props tables
-  htmlnorm/      HTML normaliser behind the conformance test
+                 (kit, ds, assets, compress, htmlnorm and md are NOT here: they are the framework's
+                 published module github.com/flowcatalyst/framework/go/ui, see "The UI module" below)
   shell/         page layout around the kit app shell; sidebar navigation; error pages
   guard/         CSRF, session negotiation, role-less gate, security headers
-  compress/      Brotli/gzip for pages and Datastar streams (middleware), Accept-Encoding negotiation
   pages/         page handlers: dispatch_pools*.go/.templ, connections*.go/.templ and
                  event_types*.go/.templ (list, drawer, form, actions), list.go (the URL as
                  list state: search, status, multi-valued facets, sort, page and rows),
                  clients.go (the client select's search), forms.go (form plumbing),
                  ops.go (PoolOps, ConnectionOps: the use cases), flash.go (the flash key table)
-  assets/        embedded kit.css, icon sprite, pinned datastar.js, licences (served at /ui/assets/)
-  testdata/fixtures/  the kit's conformance fixtures, vendored
+  uiassets/      the one assets instance (module assets + platform.css, fc-webauthn.js), served at /ui/assets/
 internal/server/wire_ui.go   registerUI: mounts the above with the platform's Authenticator
 internal/schemacodegen/      Go port of the SPA's schema code generator, highlighter and zip
                              export (frontend/packages/schema-codegen, utils/schema-highlight.ts,
                              utils/schema-export.ts), byte-identical to the TS on 47 golden inputs
 ```
+
+### The UI module
+
+The kit (components, `kit.Attrs`/`kit.URL` hardening), the Datastar adapter (`ds`), the assets
+(datastar.js, icon sprite, Mermaid, the diagram and code-editor islands), the Brotli/gzip middleware
+(`compress`), the HTML normaliser and the Markdown renderer are the framework's Go module
+`github.com/flowcatalyst/framework/go/ui` (pinned in `go.mod`, currently v0.1.0; guide:
+`docs/guide/go/ui-templ.md` in the framework repo). This repo imports `.../go/ui/kit`, `.../ds`,
+`.../compress`, `.../md` and `.../assets`; it no longer vendors any of them, nor the conformance
+fixtures (the module tests those). Upgrade with `go get github.com/flowcatalyst/framework/go/ui@vX.Y.Z`,
+then `make ui-kit-sync` and `make ui-generate`.
+
+`internal/ui/uiassets` builds the single `assets.Load(assets.WithPrefix("/ui/assets/"),
+assets.WithFiles(...))` instance at package initialisation and exposes `URL`, `SpriteURL`, `HasIcon` and
+`Handler` (the call sites stay `uiassets.URL("datastar.js")`). Asset URLs are `/ui/assets/<name>?v=<12 hex>`
+(immutable cache with `v`, `max-age=3600, must-revalidate` without). The platform's own files are
+`platform.css` (the stylesheet; layouts link it instead of the module's `kit.css`),
+`fc-webauthn.js` and `LICENSE-webauthn.md`.
 
 Request path: `compress.Handler` → `CorrelationID` → the platform `Authenticator` (same configuration as the `/api`
 group, so the `fc_session` cookie is read and resolved the same way) → `SecurityHeaders` → `CSRF`
@@ -61,7 +76,7 @@ are the use case's; the page adds nothing to the business rules. Pages take smal
 | `make ui-generate` | `go tool templ generate -path internal/ui` (templ is pinned by the `tool` directive in go.mod; no global install) |
 | `make ui-fmt` | `templ fmt internal/ui` |
 | `make ui-verify` | regenerates and fails on a diff, an uncommitted `_templ.go` or an unformatted `.templ`; part of `make ci` and a CI step |
-| `make ui-kit-sync` | rebuild `kit.css`, copy sprite/notices/fixtures from the kit (below) |
+| `make ui-kit-sync` | rebuild `uiassets/static/platform.css` from the framework theme + our templates + the module's kit sources (below) |
 
 Generated `*_templ.go` files are committed, like sqlc output. Always generate with
 `make ui-generate`: templ records file names relative to `-path`, so generating a single
@@ -601,11 +616,11 @@ Not used, and why:
   received gzip bytes with no encoding header, plus a "superfluous WriteHeader" log). It also matches
   `gzip;q=0` as accepting gzip and sets `Vary` only on compressed responses.
 
-**Assets** (`/ui/assets/`, outside the page group, so never compressed twice): text files (CSS, JS,
-SVG, notices) are compressed once per coding at the best level on their first request in it and served
-by `Accept-Encoding`, with `Vary`, the right `Content-Length` and their own ETag per variant (a
-Brotli ETag does not validate the gzip variant). kit.css 105 KB → 16.6 KB, datastar.js 34 KB → 12.2 KB,
-the sprite 25 KB → 3.5 KB (Brotli).
+**Assets** (`/ui/assets/`, outside the page group, so never compressed twice): the module's asset
+handler serves identity bodies; the mount wraps it in `compress.Handler`, which compresses text files
+(CSS, JS, SVG) per request by `Accept-Encoding`, with `Vary` and an ETag per variant (a Brotli ETag does
+not validate the gzip variant); there is no `Content-Length` on a compressed answer. platform.css 105 KB
+→ 18.8 KB (Brotli), 21 KB (gzip).
 
 Levels: on the 1,000-row dispatch-jobs stream (2.9 MB, seeded data), Brotli 4 → 49 KB in 5.9 ms,
 5 → 38 KB in 7.7 ms, 6 → 37 KB in 7.8 ms; gzip 5 → 91 KB in 2.9 ms, 6 → 83 KB in 3.8 ms (Apple M4 Pro).
@@ -652,18 +667,9 @@ round-trips keep precedence. SPA routes in `?redirect=` are still ignored, as be
 
 ## Conformance fixtures
 
-`flowcatalyst-framework/ui-kit/fixtures/<component>/<case>.{json,html}` (format and normalisation
-rules: `ui-kit/fixtures/README.md`), vendored to `internal/ui/testdata/fixtures`.
-`TestConformance` (`internal/ui/kit/conformance_test.go`) renders each fixture's props and slots
-and compares with the golden through `htmlnorm` (HTML5 fragment parse in the right context,
-comments dropped, attributes sorted, whitespace collapsed, class order kept). It fails for a
-fixture directory without a renderer, a renderer without fixtures, an unknown prop (strict
-decoding) or an unused slot. 158 fixtures pass. Run against the framework checkout directly:
-`UI_KIT_FIXTURES=../flowcatalyst-framework/ui-kit/fixtures go test ./internal/ui/kit/`.
-
-Adding a component: spec + Props table + gallery example + fixtures in the framework repo
-(commit there), `make ui-kit-sync`, the templ component, a `renderers` entry, `make ui-generate`,
-tests green.
+The kit's conformance fixtures and their test (`TestConformance`, through `htmlnorm`) now live in the
+framework module (`go/ui/kit`); this repo no longer vendors them. Adding or changing a component is a framework
+change (spec, Props table, gallery, fixtures, a new `go/ui` tag), then `go get` the tag here.
 
 ## Adding a page
 
@@ -680,13 +686,15 @@ tests green.
 ## Islands (Mermaid and CodeMirror)
 
 Two parts need real client code and are web elements loaded by a script tag **only on the pages that use them**
-(owner ruling 2026-10-24; no Vite or Node in the product build). Both files are committed under
-`internal/ui/assets/static/`, served compressed like the other assets, with their licences.
+(owner ruling 2026-10-24; no Vite or Node in the product build). The island files are in
+the framework module (`fc-diagram.js`, `mermaid.min.js`, `fc-code-editor.js`, with their licences; their pins
+are the module's `assets.MermaidSHA256`, `CodeEditorSHA256`, `DiagramSHA256`); `fc-webauthn.js` is ours, under
+`internal/ui/uiassets/static/`.
 
 | Part | Files | Page loads |
 |---|---|---|
-| `kit.Diagram` (`<fc-diagram>`) | `fc-diagram.js` (ours, 4.2 kB) and `mermaid.min.js` (unmodified `dist/mermaid.min.js` of npm `mermaid@12.1.0`, sha256 `6484afc3...18b2`, `assets.MermaidSHA256`) | `<script type="module" src={ assets.URL("fc-diagram.js") }>`; the element fetches the Mermaid bundle itself, once, on the first diagram |
-| `kit.CodeEditor` (`<fc-code-editor>`) | `fc-code-editor.js` (CodeMirror 6 with JSON and YAML, built by `tools/vendor-codemirror`, `assets.CodeEditorSHA256`) | `<script defer src={ assets.URL("fc-code-editor.js") }>` |
+| `kit.Diagram` (`<fc-diagram>`) | `fc-diagram.js` (ours, 4.2 kB) and `mermaid.min.js` (unmodified `dist/mermaid.min.js` of npm `mermaid@12.1.0`, sha256 `6484afc3...18b2`, `assets.MermaidSHA256`) | `<script type="module" src={ uiassets.URL("fc-diagram.js") }>`; the element fetches the Mermaid bundle itself, once, on the first diagram |
+| `kit.CodeEditor` (`<fc-code-editor>`) | `fc-code-editor.js` (CodeMirror 6 with JSON and YAML, built in the framework repo, `assets.CodeEditorSHA256`) | `<script defer src={ uiassets.URL("fc-code-editor.js") }>` |
 
 Both render the server's text as the fallback (a `<pre>` source, a `<textarea>`), so a page without script is
 usable. Used by the Processes drawer (diagram) and the dispatch job payload editor (JSON when the content type is).
@@ -702,43 +710,34 @@ scrubbed of Datastar attributes in an inert `<template>` before it is moved in (
 Mermaid's inline `<style>` and `style=""` fit the existing `style-src 'unsafe-inline'`, and it does not use
 `eval` (`'unsafe-eval'` stays only for Datastar). Checked in headless Chrome under the exact policy.
 Transfer sizes (Brotli, best): `mermaid.min.js` 5.49 MB raw, 1.18 MB; `fc-code-editor.js` 340 kB, 97 kB;
-`fc-diagram.js` 1.8 kB, 0.7 kB. The first request in a coding compresses at the best level (about 6 s for
-Mermaid, once per process); later requests and revalidations are served from memory.
+`fc-diagram.js` 1.8 kB, 0.7 kB. Compression is now per request (compress.Handler), not cached per variant.
 
 `<fc-code-editor>` replaces its textarea with a hidden input of the same `name` (and `data-bind*` attributes) and
 the editor, and writes every change into the input with a bubbling `input` event, so forms, Datastar signals and
 dirty-form checks work. It does not follow later writes to the input.
 
-Upgrading Mermaid: `npm pack mermaid@X`, copy `package/dist/mermaid.min.js` and `package/LICENSE`, then change
-`assets.MermaidVersion`, `assets.MermaidSHA256` and this table together. Upgrading CodeMirror (run only then):
-
-```
-cd tools/vendor-codemirror && npm ci && npm run build   # after editing the exact versions in package.json
-```
+Upgrading Mermaid or CodeMirror is a framework change (a new `go/ui` tag), then `go get` it here.
 
 The build is reproducible; copy the printed `shasum -a 256` of `fc-code-editor.js` into `assets.CodeEditorSHA256`
 and commit the bundle with `LICENSE-codemirror.md` (regenerated by the script). `node_modules` is not committed.
 
 ## Refreshing the kit
 
-`make ui-kit-sync` (`scripts/ui-kit-sync.sh`, `KIT_DIR=` to point elsewhere) runs the kit's own
-`build.sh` (downloads its pinned Tailwind 4.3.2 standalone CLI on first use), builds
-`internal/ui/assets/static/kit.css` from the kit's `theme/kit.css` plus this repo's
-`internal/ui/**/*.{templ,go}`, copies the sprite, the Lucide licence and the kit's
-third-party notices, copies `fixtures/` to `internal/ui/testdata/fixtures`, checks
-`datastar.js` against its sha256 and writes `internal/ui/assets/KIT_SOURCE` (kit commit,
-Tailwind and Datastar versions, the sprite's icon count and sha256).
+The kit itself is the `go/ui` module (see "The UI module"). What this repo still builds is its own
+Tailwind stylesheet, because the module's `kit.css` cannot carry the classes the platform's pages use.
+`make ui-kit-sync` (`scripts/ui-kit-sync.sh`, `KIT_DIR=` to point at a framework `ui-kit` checkout, default
+`../flowcatalyst-framework/ui-kit`) runs that checkout's own `build.sh` (downloads its pinned Tailwind
+standalone CLI on first use) and builds `internal/ui/uiassets/static/platform.css` from the checkout's
+`theme/kit.css` (`@import`) with `@source` of this repo's `internal/ui/**/*.{templ,go}` and the module's
+`kit/` and `views/` sources (the module directory comes from `go list -m`). It writes
+`internal/ui/uiassets/KIT_SOURCE` (module version, theme checkout commit, Tailwind version). Keep the
+checkout at the commit the module tag points to.
 
-Icons: a new icon is a line in the kit's `icons/sprite-icons.txt` and `icons/build-sprite.sh`
-(pinned lucide-static 1.52.0), committed in the kit, then the sync. `TestSpriteMatchesKitSource`
-fails when the embedded sprite is not the synced one; `TestEveryIconUsedIsInTheSprite` fails
-when a `.templ`/`.go` file under `internal/ui` names an icon the sprite lacks. Commit the kit change first (the script warns when the kit has
-uncommitted changes), then commit the synced files with `KIT_SOURCE`.
+Icons: a new icon is a change to the framework kit's sprite and a new module tag. `TestEveryIconUsedIsInTheSprite`
+(`internal/ui/uiassets`) fails when a `.templ`/`.go` file under `internal/ui` names an icon the module's sprite lacks.
 
-Classes used only in Go templates exist in the stylesheet only after a sync, so run it after
-adding a page. Datastar is vendored unmodified (1.0.4, the version the kit pins; sha256
-`727844ad…cf91`, checked by `TestDatastarIsThePinnedFile`); upgrading it means changing the URL
-and hash in the script and `assets.DatastarSHA256` together, after the kit moves.
+Classes used only in Go templates exist in the stylesheet only after a sync, so run it after adding a page,
+and commit `platform.css` with `KIT_SOURCE`.
 
 ## Kit defects and gaps found (also in the kit's PORTING-NOTES.md)
 

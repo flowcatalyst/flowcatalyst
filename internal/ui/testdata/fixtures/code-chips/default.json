@@ -1,6 +1,0 @@
-{
-  "props": {
-    "code": "orders:billing:invoice:created"
-  },
-  "source": "gallery/index.html: Hand-built helpers, Code chips"
-}

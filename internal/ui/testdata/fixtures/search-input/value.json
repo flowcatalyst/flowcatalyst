@@ -1,7 +1,0 @@
-{
-  "props": {
-    "placeholder": "Search users",
-    "value": "ada"
-  },
-  "source": "search-input.md Structure with the value parameter"
-}

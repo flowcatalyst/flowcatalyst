@@ -15,9 +15,9 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/docsapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/md"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
+	"github.com/flowcatalyst/framework/go/ui/ds"
+	"github.com/flowcatalyst/framework/go/ui/md"
 )
 
 // DocsSource is the slice of docsapi.State the page reads: the same listing

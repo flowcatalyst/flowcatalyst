@@ -393,7 +393,7 @@ func TestConfigSave(t *testing.T) {
 			deref(cmd.ValueType) != "PLAIN" || deref(cmd.Description) != "the title" || deref(cmd.ClientID) != "clt_acme" {
 			t.Errorf("command = %+v", cmd)
 		}
-		mustContain(t, body, `document.getElementById(&#34;cfg-form&#34;)?.close()`, `id="cfg-table"`, "The property was saved")
+		mustContain(t, body, `document.getElementById(&#39;cfg-form&#39;).close()`, `id="cfg-table"`, "The property was saved")
 	})
 	t.Run("secret: the password input's value, a blank description is none", func(t *testing.T) {
 		h := newCfgHarness()
@@ -406,7 +406,7 @@ func TestConfigSave(t *testing.T) {
 	t.Run("a secret needs a new value, a plain value needs a value", func(t *testing.T) {
 		h := newCfgHarness()
 		body := h.do(t, cfgAdmin(), req{method: http.MethodPost, target: "/ui/platform/config/save", datastar: true, form: cfgSaveForm("edit", "1", "valueType", "SECRET", "secretValue", "")})
-		mustContain(t, body, "Enter the secret value.", `id="cfg-form-value-err"`, `document.getElementById(&#34;cfg-form-secret-value&#34;)?.focus()`)
+		mustContain(t, body, "Enter the secret value.", `id="cfg-form-value-err"`, `document.getElementById(&#39;cfg-form-secret-value&#39;)?.focus()`)
 		body = h.do(t, cfgAdmin(), req{method: http.MethodPost, target: "/ui/platform/config/save", datastar: true, form: cfgSaveForm("plainValue", "", "section", "", "property", "")})
 		mustContain(t, body, "A value is required.", "Section is required.", "Property is required.")
 		if len(h.ops.sets) != 0 {

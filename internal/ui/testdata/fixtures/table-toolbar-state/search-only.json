@@ -1,7 +1,0 @@
-{
-  "props": {
-    "formId": "docs-list",
-    "clearHref": "/docs"
-  },
-  "source": "components/table-toolbar.md, state part: a toolbar without filters while a search is active (written from the spec)"
-}

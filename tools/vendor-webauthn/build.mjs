@@ -1,13 +1,13 @@
 // Builds the one WebAuthn bundle the passkey pages load (see docs/ui/README.md,
 // "Sign-in pages, part B"). Run with `npm ci && npm run build` in this
 // directory, only when upgrading a pinned version. The bundle and the licence
-// of what it contains are written into internal/ui/assets/static and committed.
+// of what it contains are written into internal/ui/uiassets/static and committed.
 import { build } from "esbuild";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
-const out = fileURLToPath(new URL("../../internal/ui/assets/static/", import.meta.url));
+const out = fileURLToPath(new URL("../../internal/ui/uiassets/static/", import.meta.url));
 
 const result = await build({
   entryPoints: [here + "src/fc-webauthn.js"],

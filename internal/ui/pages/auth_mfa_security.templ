@@ -1,15 +1,15 @@
 package pages
 
 import (
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // securityPageContent is the security page: two-factor, recovery codes,
 // remembered devices and passkeys, each a card as in the current UI's profile.
 templ securityPageContent(v securityView) {
 	if v.ShowPasskeys {
-		<script defer src={ assets.URL("fc-webauthn.js") }></script>
+		<script defer src={ uiassets.URL("fc-webauthn.js") }></script>
 	}
 	@kit.PageHeader(kit.PageHeaderProps{Title: "Security", Subtitle: "Your two-factor authentication and passkeys"})
 	@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same cards on your profile.", Class: "mb-4"})

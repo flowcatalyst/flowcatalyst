@@ -1,6 +1,6 @@
 // Package ui mounts the server-rendered UI under /ui: templ components from
-// the framework's UI kit (internal/ui/kit), Datastar for interaction
-// (internal/ui/ds), served next to the Vue SPA and switched over area by area
+// the framework's UI kit (github.com/flowcatalyst/framework/go/ui/kit), Datastar for interaction
+// (.../go/ui/ds), served next to the Vue SPA and switched over area by area
 // (only with the owner's approval; until then the SPA stays the default).
 // Architecture, conventions and the CSRF design: docs/ui/README.md.
 package ui
@@ -13,13 +13,13 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/compress"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/guard"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/pages"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
+	"github.com/flowcatalyst/framework/go/ui/compress"
+	"github.com/flowcatalyst/framework/go/ui/ds"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // Config is what the UI needs from the platform wiring.
@@ -210,7 +210,7 @@ func Mount(r chi.Router, cfg Config) error {
 	r.Route("/ui", func(r chi.Router) {
 		// Static, public, long-cached: no session needed (the future login
 		// page uses them too).
-		r.Handle("/assets/*", assets.Handler())
+		r.Handle("/assets/*", compress.Handler(uiassets.Handler()))
 
 		// The sign-in pages are what a caller without a session reaches: no
 		// session guard, but the same compression, headers and CSRF check.
@@ -310,7 +310,7 @@ func Mount(r chi.Router, cfg Config) error {
 
 // withSprite makes kit icons reference the served, content-hashed sprite.
 func withSprite(next http.Handler) http.Handler {
-	sprite := assets.URL("lucide-sprite.svg")
+	sprite := uiassets.SpriteURL()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r.WithContext(kit.WithSpriteURL(r.Context(), sprite)))
 	})

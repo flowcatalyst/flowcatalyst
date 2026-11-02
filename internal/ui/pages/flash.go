@@ -1,6 +1,6 @@
 package pages
 
-import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+import "github.com/flowcatalyst/framework/go/ui/kit"
 
 // Flash keys a native post/redirect/get may carry (shell.SetFlash). The
 // texts are the SPA's toasts (summary "Success", the action as detail).

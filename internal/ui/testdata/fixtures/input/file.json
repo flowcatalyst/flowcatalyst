@@ -1,9 +1,0 @@
-{
-  "props": {
-    "type": "file",
-    "attrs": {
-      "aria-label": "File"
-    }
-  },
-  "source": "gallery/index.html: element starting with '<input type=\"file\" class=\"h-9'"
-}

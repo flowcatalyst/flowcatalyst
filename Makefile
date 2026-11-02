@@ -246,7 +246,7 @@ ui-verify: ## Fail if generated *_templ.go files or templ formatting are stale (
 			{ echo "$$f is not templ-formatted; run 'make ui-fmt'"; exit 1; }; \
 	done
 
-ui-kit-sync: ## Rebuild internal/ui/assets from ../flowcatalyst-framework/ui-kit (KIT_DIR=... to override)
+ui-kit-sync: ## Rebuild the platform stylesheet (uiassets/static/platform.css) from the framework theme (KIT_DIR=... to override)
 	@scripts/ui-kit-sync.sh
 
 dump-spec: ## Emit the current huma-generated OpenAPI spec to stdout

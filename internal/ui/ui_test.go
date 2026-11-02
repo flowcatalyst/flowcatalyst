@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -14,9 +13,9 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/compress"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
+	"github.com/flowcatalyst/framework/go/ui/compress"
+	"github.com/flowcatalyst/framework/go/ui/ds"
 )
 
 type noPools struct{}
@@ -105,8 +104,8 @@ func TestUIRouteGroup(t *testing.T) {
 		body := rec.Body.String()
 		for _, want := range []string{
 			`<span class="fc-user-name">Ada Lovelace</span>`, `<span class="fc-avatar">AL</span>`, `<span>1.2.3</span>`,
-			`action="/ui/logout"`, assets.URL("kit.css"), assets.URL("datastar.js"),
-			`href="` + assets.URL("lucide-sprite.svg") + `#i-`, // icons use the served sprite
+			`action="/ui/logout"`, uiassets.URL("platform.css"), uiassets.URL("datastar.js"),
+			`href="` + uiassets.SpriteURL() + `#i-`, // icons use the served sprite
 			`data-on:datastar-fetch=`, `data-signals:sidebar-collapsed="false"`,
 		} {
 			if !strings.Contains(body, want) {
@@ -141,7 +140,7 @@ func TestUIRouteGroup(t *testing.T) {
 		}
 	})
 	t.Run("assets need no session", func(t *testing.T) {
-		rec := do(t, h, req{method: http.MethodGet, target: assets.URL("kit.css")})
+		rec := do(t, h, req{method: http.MethodGet, target: uiassets.URL("platform.css")})
 		if rec.Code != http.StatusOK || !strings.Contains(rec.Header().Get("Cache-Control"), "immutable") {
 			t.Fatalf("status %d", rec.Code)
 		}
@@ -203,8 +202,8 @@ func TestUIRouteGroup(t *testing.T) {
 			t.Errorf("cross-site post: %d", refused.Code)
 		}
 	})
-	t.Run("text assets are served pre-compressed, once per variant", func(t *testing.T) {
-		url := assets.URL("kit.css")
+	t.Run("text assets are served compressed (compress.Handler), a variant per ETag", func(t *testing.T) {
+		url := uiassets.URL("platform.css")
 		plain := do(t, h, req{method: http.MethodGet, target: url})
 		br := do(t, h, req{method: http.MethodGet, target: url, headers: map[string]string{"Accept-Encoding": "gzip, br"}})
 		gz := do(t, h, req{method: http.MethodGet, target: url, headers: map[string]string{"Accept-Encoding": "gzip"}})
@@ -214,7 +213,7 @@ func TestUIRouteGroup(t *testing.T) {
 		for coding, rec := range map[string]*httptest.ResponseRecorder{compress.Brotli: br, compress.Gzip: gz} {
 			hdr := rec.Header()
 			if hdr.Get("Content-Encoding") != coding || hdr.Get("Vary") != "Accept-Encoding" || hdr.Get("ETag") == plain.Header().Get("ETag") ||
-				!strings.Contains(hdr.Get("Cache-Control"), "immutable") || hdr.Get("Content-Length") != strconv.Itoa(rec.Body.Len()) || rec.Body.Len() >= plain.Body.Len()/3 {
+				!strings.Contains(hdr.Get("Cache-Control"), "immutable") || rec.Body.Len() >= plain.Body.Len()/3 {
 				t.Errorf("%s: %v (%d bytes, plain %d)", coding, hdr, rec.Body.Len(), plain.Body.Len())
 			}
 		}
@@ -229,7 +228,7 @@ func TestUIRouteGroup(t *testing.T) {
 		if other.Code != http.StatusOK || other.Header().Get("Content-Encoding") != compress.Gzip {
 			t.Errorf("the br ETag must not validate the gzip variant: %d", other.Code)
 		}
-		js := do(t, h, req{method: http.MethodGet, target: assets.URL("datastar.js"), headers: map[string]string{"Accept-Encoding": "br"}})
+		js := do(t, h, req{method: http.MethodGet, target: uiassets.URL("datastar.js"), headers: map[string]string{"Accept-Encoding": "br"}})
 		if js.Header().Get("Content-Encoding") != compress.Brotli {
 			t.Errorf("datastar.js: %v", js.Header())
 		}

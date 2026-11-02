@@ -1,7 +1,0 @@
-{
-  "props": {
-    "severity": "danger",
-    "label": "Danger"
-  },
-  "source": "gallery/index.html: element starting with '<span class=\"fc-tag fc-tag-danger\">'"
-}

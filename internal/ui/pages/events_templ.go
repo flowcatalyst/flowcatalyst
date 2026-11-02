@@ -8,7 +8,7 @@ package pages
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+import "github.com/flowcatalyst/framework/go/ui/kit"
 
 // evRowClick opens a row's drawer from anywhere on the row (the SPA's
 // row-click), through the row's Event ID link; one handler on the <tbody>.
