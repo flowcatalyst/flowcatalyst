@@ -201,10 +201,35 @@ moved) should do so on a failed exchange, and commit (store the token, move the 
 
 `PolledSource` fits a source polled with code of its own. `poll(payloads)` hands any number of payloads to the
 route (`payloads.dispatch(body)` answers whether their jobs exist) and says when to poll again; a poll that
-throws anything, an `Error` included, is reported (`AUTH` for a refused login, tried again every five minutes,
-else `SOURCE`) and the next poll still comes; the ingestion is `FAILING` until one gets through. `SeenKeys`
+throws anything, an `Error` included, is reported (`AUTH` for a refused login, else `SOURCE`) and the next poll
+still comes, after the wait described under [Failures are paced](#failures-are-paced); the ingestion is
+`FAILING` until one gets through. `SeenKeys`
 remembers what a poll dispatched lately, by key. A `ScheduledPollEndpoint` fits too (the generator's). The
 endpoint never produces (`createProducer` throws).
+
+### Failures are paced
+
+A failure that repeats is waited out and logged once in full, then summarised
+(see [ingestor-failure-pacing](../../docs/ingestor-failure-pacing.md)). A `PolledSource` gets this without
+doing anything:
+
+- After a poll that succeeded, the wait it returned is used, but never less than 250 ms: a loop that returns
+  `Duration.ZERO` still drains a backlog, and cannot spin.
+- A poll that throws, reports a part of itself with `partFailed`, or has `payloads.dispatch(...)` return
+  `false` at least once is a failure, whatever it returned. Dispatching `false` is not an exception and has no
+  stack trace in the log; the route has reported it. After `n` failures in a row the next poll waits
+  `Backoff.FAILURES.delay(n, max(retryDelay(), 1 s))` (5 s doubling to 5 min, with jitter), and not less than
+  the wait the poll returned. The first poll that succeeds ends the streak.
+- A refused login (`PolledSource.refusedLogin`) waits `Backoff.REFUSED_LOGIN` (5 min doubling to 1 h), and the
+  `AUTH` failure the platform shows says when it will try again. Saving the ingestion starts it at once.
+- The first failure of a streak is logged with its stack trace, then at most one line a minute with a count.
+
+An extension's own calls can use the same two classes from `io.flowcatalyst.ingestor.extension`: `Backoff`
+(`Backoff.FAILURES`, or `new Backoff(initial, max)`; `delay(n)` or `delay(n, floor)` for the wait after `n`
+failures in a row) and `FailureLog` (`FailureLog.warn(logger)`; `failed(key, message, cause)` for a failure that
+can repeat, `recovered(key, message)` when it stops). Use a key that names what failed, for example the
+ingestion's id and `":poll"`. Do not write a loop that retries at once, and do not log a failure that repeats
+once per attempt.
 
 ### Saying where a payload came from (idempotency keys)
 
@@ -224,9 +249,12 @@ never share one. Without one (the default) the jobs carry no key, as before.
 protected Duration poll(Payloads payloads) throws Exception {
   Page page = vendor.page(cursor);
   // The page asked for is what this payload is.
-  if (payloads.dispatch(page.json(), "acme-vendor:orders?page=" + cursor)) {
-    context.state().put("cursor", page.next());
+  if (!payloads.dispatch(page.json(), "acme-vendor:orders?page=" + cursor)) {
+    // The platform did not take the jobs; the route has reported why. Ask for the same page again
+    // later: returning ZERO here would ask for it again at once, over and over.
+    return Duration.ofSeconds(30);
   }
+  context.state().put("cursor", page.next());
   return page.hasMore() ? Duration.ZERO : Duration.ofMinutes(5);
 }
 ```

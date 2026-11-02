@@ -2,6 +2,7 @@ package io.flowcatalyst.ingestor.runtime;
 
 import io.flowcatalyst.ingestor.contract.Ingestion;
 import io.flowcatalyst.ingestor.contract.RuntimeReport.RouteState;
+import io.flowcatalyst.ingestor.extension.FailureLog;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -42,6 +43,7 @@ final class Reconciler {
   private final Map<String, Ingestion> started = new LinkedHashMap<>();
   private final SourceHealth health;
   private final Consumer<String> forgotten;
+  private final FailureLog failures;
   /** What {@link #find} reads: a copy of {@code started}, replaced after every change. */
   private volatile List<Ingestion> running = List.of();
 
@@ -62,6 +64,21 @@ final class Reconciler {
    * @param forgotten told the id of each ingestion whose route is gone, so what was kept for it (its secrets) is let go
    */
   Reconciler(CamelContext camel, Function<Ingestion, RoutesBuilder> routes, SourceHealth health, Consumer<String> forgotten) {
+    this(camel, routes, health, forgotten, Pacing.system().failures());
+  }
+
+  /**
+   * Creates the reconciler.
+   *
+   * @param camel the context the routes are in
+   * @param routes the routes of an ingestion
+   * @param health which sources keep failing
+   * @param forgotten told the id of each ingestion whose route is gone
+   * @param failures where a route that keeps failing to start is logged (a route is tried again on every reconcile)
+   */
+  Reconciler(
+      CamelContext camel, Function<Ingestion, RoutesBuilder> routes, SourceHealth health, Consumer<String> forgotten, FailureLog failures) {
+    this.failures = failures;
     this.camel = camel;
     this.routes = routes;
     this.health = health;
@@ -214,15 +231,14 @@ final class Reconciler {
       camel.addRoutes(routes.apply(ingestion));
       started.put(ingestion.id(), ingestion);
       LOG.info("started ingestion {} version {}", ingestion.id(), ingestion.version());
+      failures.recovered(ingestion.id() + ":start");
       return new RouteState(ingestion.id(), ingestion.version(), RouteState.Status.STARTED, null);
     } catch (Exception e) {
       String reason = ExchangeCounters.clean(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-      if (e instanceof UnsupportedIngestionException) {
-        // The definition cannot be run as it is: nothing a stack trace adds.
-        LOG.warn("ingestion {} version {} failed to start: {}", ingestion.id(), ingestion.version(), reason);
-      } else {
-        LOG.warn("ingestion {} version {} failed to start", ingestion.id(), ingestion.version(), e);
-      }
+      // It is tried again on every reconcile, so the same failure comes back: logged in full once,
+      // then a line a minute (R3). A definition that cannot be run as it is has no stack trace to add.
+      String line = "ingestion " + ingestion.id() + " version " + ingestion.version() + " failed to start" + (e instanceof UnsupportedIngestionException ? ": " + reason : "");
+      failures.failed(ingestion.id() + ":start", line, e instanceof UnsupportedIngestionException ? null : e);
       removeRoute(ingestion.id());
       return new RouteState(ingestion.id(), ingestion.version(), RouteState.Status.FAILED, reason);
     }

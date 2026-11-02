@@ -100,8 +100,14 @@ class ApiPollTest {
     answer(exchange, 200, "{\"data\":{\"token\":\"L1\"},\"expires\":60}", Map.of());
   }
 
+  volatile boolean ordersFail;
+
   private void orders(HttpExchange exchange) throws IOException {
     apiCalls.incrementAndGet();
+    if (ordersFail) {
+      answer(exchange, 500, "{\"error\":\"boom\"}", Map.of());
+      return;
+    }
     String authorization = String.valueOf(exchange.getRequestHeaders().getFirst("Authorization"));
     String presented = authorization.replaceFirst("^(Bearer|Token) ", "");
     if (refuseEverything || !validTokens.contains(presented)) {
@@ -233,6 +239,31 @@ class ApiPollTest {
     assertThat(again.steps()).anyMatch(s -> s.contains("fetching a new token"));
     // Nothing a person reads holds the secret or a token.
     assertThat(String.join("\n", again.steps())).doesNotContain("s3cret").doesNotContain("tok-");
+  }
+
+  /** R1 of docs/ingestor-failure-pacing.md: an API that keeps failing is asked less and less often. */
+  @Test
+  void anApiThatKeepsFailingIsNotAskedAtItsIntervalButWaitsLonger() throws Exception {
+    ordersFail = true;
+    ExchangeCounters counters = new ExchangeCounters(InstantSource.system());
+    SourceHealth health = new SourceHealth();
+    CamelContext camel = new DefaultCamelContext();
+    camel.start();
+    try {
+      SourceEndpoints endpoints = new CamelSourceEndpoints(secrets, new MemoryState(), null, clients);
+      Reconciler reconciler = new Reconciler(camel, i -> new IngestionRoute(i, endpoints, (ingestion, jobs) -> {}, counters, health), health);
+      reconciler.reconcile(List.of(ingestion("ing_api", orders(clientCredentials(), new ResultCheck.Records()))));
+
+      await(() -> reconciler.states().getFirst().status() == RouteState.Status.FAILING);
+      int calls = apiCalls.get();
+      // At its 1 s interval it would ask twice more in this time; after one failure it waits 2.5 s at least.
+      Thread.sleep(2000);
+
+      assertThat(apiCalls.get()).isEqualTo(calls);
+      assertThat(counters.drain(InstantSource.system().instant()).failures()).singleElement().satisfies(f -> assertThat(f.kind()).isEqualTo(Failure.Kind.SOURCE));
+    } finally {
+      camel.stop();
+    }
   }
 
   @Test

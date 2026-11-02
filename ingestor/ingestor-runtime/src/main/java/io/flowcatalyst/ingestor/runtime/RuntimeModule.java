@@ -246,7 +246,8 @@ public final class RuntimeModule implements Module {
     app.provide(OutboundGuard.class, lookup -> OutboundGuard.forEnvironment(lookup.get(Config.class).environment()));
     app.provide(RuntimeApi.class, lookup -> lookup.get(PlatformApi.class));
     app.provide(StateStore.class, lookup -> lookup.get(PlatformApi.class));
-    app.provide(JobSink.class, lookup -> lookup.get(PlatformApi.class));
+    // One breaker for every ingestion's jobs (docs/ingestor-failure-pacing.md, R2).
+    app.provide(JobSink.class, lookup -> new HoldingJobSink(lookup.get(PlatformApi.class)));
     app.provide(
         Secrets.class,
         lookup ->

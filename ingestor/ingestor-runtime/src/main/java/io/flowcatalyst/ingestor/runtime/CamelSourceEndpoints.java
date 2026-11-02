@@ -38,6 +38,15 @@ final class CamelSourceEndpoints implements SourceEndpoints {
 
   private static final Duration FASTEST_POLL = Duration.ofSeconds(1);
 
+  /** The wait between two receive calls of an SQS source; the pause a busy queue is polled at. */
+  static final Duration SQS_DELAY = Duration.ofMillis(100);
+
+  /**
+   * How long one receive call waits for a message (SQS long polling, at most 20 seconds). An empty
+   * queue waits at SQS instead of being asked ten times a second.
+   */
+  static final int SQS_WAIT_SECONDS = 20;
+
   /**
    * The AWS components refuse to build an endpoint that names no credentials, so every endpoint
    * starts as the runtime's own identity and is given an ingestion's access key afterwards.
@@ -228,13 +237,31 @@ final class CamelSourceEndpoints implements SourceEndpoints {
   private Endpoint sqs(CamelContext camel, Ingestion ingestion, Source.Sqs sqs) {
     require(REGION.matcher(sqs.region()).matches(), "the sqs region is not valid");
     require(SQS_QUEUE.matcher(sqs.queue()).matches(), "the sqs queue name is not valid");
+    Sqs2Endpoint endpoint = sqsEndpoint(camel, ingestion, sqs);
+    Sqs2Configuration configuration = endpoint.getConfiguration();
+    // Left to itself the component lists the account's queues to find this one, and starts even
+    // when it is not there. Asking for the one queue needs less permission and fails now.
+    try (SqsClient client = Sqs2ClientFactory.getSqsClient(configuration)) {
+      configuration.setQueueUrl(client.getQueueUrl(request -> request.queueName(sqs.queue())).queueUrl());
+    } catch (SdkException e) {
+      throw new UnsupportedIngestionException("the sqs queue '" + sqs.queue() + "' cannot be used: " + e.getMessage());
+    }
+    return endpoint;
+  }
+
+  /** The SQS endpoint with everything but the queue's address set; no call is made to AWS. */
+  Sqs2Endpoint sqsEndpoint(CamelContext camel, Ingestion ingestion, Source.Sqs sqs) {
     Sqs2Endpoint endpoint =
-        create(camel, "aws2-sqs", "aws2-sqs://" + sqs.queue() + "?delay=100&maxMessagesPerPoll=10" + OWN_IDENTITY, Sqs2Endpoint.class);
+        create(
+            camel,
+            "aws2-sqs",
+            "aws2-sqs://" + sqs.queue() + "?delay=" + SQS_DELAY.toMillis() + "&maxMessagesPerPoll=10" + OWN_IDENTITY,
+            Sqs2Endpoint.class);
     Sqs2Configuration configuration = endpoint.getConfiguration();
     configuration.setRegion(sqs.region());
     configuration.setAutoCreateQueue(false);
     configuration.setDeleteAfterRead(true);
-    configuration.setWaitTimeSeconds(10);
+    configuration.setWaitTimeSeconds(SQS_WAIT_SECONDS);
     if (sqs.credential() != null) {
       configuration.setUseDefaultCredentialsProvider(false);
       configuration.setAccessKey(sqs.credential().accessKeyId());
@@ -243,13 +270,6 @@ final class CamelSourceEndpoints implements SourceEndpoints {
     if (awsEndpoint != null) {
       configuration.setOverrideEndpoint(true);
       configuration.setUriEndpointOverride(awsEndpoint.toString());
-    }
-    // Left to itself the component lists the account's queues to find this one, and starts even
-    // when it is not there. Asking for the one queue needs less permission and fails now.
-    try (SqsClient client = Sqs2ClientFactory.getSqsClient(configuration)) {
-      configuration.setQueueUrl(client.getQueueUrl(request -> request.queueName(sqs.queue())).queueUrl());
-    } catch (SdkException e) {
-      throw new UnsupportedIngestionException("the sqs queue '" + sqs.queue() + "' cannot be used: " + e.getMessage());
     }
     return endpoint;
   }
@@ -348,6 +368,9 @@ final class CamelSourceEndpoints implements SourceEndpoints {
         "sftp://" + sftp.host() + ":" + sftp.port() + "/" + directory
             + "?delay=" + sftp.every().toMillis()
             + "&streamDownload=true&stepwise=false&disconnect=true&autoCreate=false"
+            // A refused login or a host that is down fails the poll (and is paced and reported) and
+            // does not just skip it; the default skips it and the route looks healthy.
+            + "&throwExceptionOnConnectFailed=true"
             + "&readLock=changed&readLockCheckInterval=1000"
             + "&move=${exchangeProperty." + IngestionRoute.FOLDER + "}/${file:name}";
     SftpEndpoint endpoint = create(camel, "sftp", uri, SftpEndpoint.class);

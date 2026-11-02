@@ -27,7 +27,12 @@ final class ServiceCalls {
         Thread.interrupted();
         throw new InterruptedException(e.getMessage());
       }
-      throw new IOException(e.getMessage(), e);
+      switch (e.kind()) {
+        case CONNECT, TIMEOUT, IO, AUTH ->
+            // No answer (connect failed, timed out, the token endpoint failed): the platform's failure, not the request's.
+            throw new PlatformUnavailableException(String.valueOf(e.getMessage()), 0, null, e);
+        default -> throw new IOException(e.getMessage(), e);
+      }
     }
   }
 }

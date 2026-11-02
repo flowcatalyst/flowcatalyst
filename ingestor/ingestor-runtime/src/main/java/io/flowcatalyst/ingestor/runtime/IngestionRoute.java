@@ -10,6 +10,7 @@ import io.flowcatalyst.ingestor.contract.Source;
 import io.flowcatalyst.ingestor.contract.Split;
 import io.flowcatalyst.ingestor.contract.Text;
 import io.flowcatalyst.ingestor.contract.Target;
+import io.flowcatalyst.ingestor.extension.FailureLog;
 import io.flowcatalyst.ingestor.extension.PayloadIdentity;
 import io.flowcatalyst.ingestor.extension.PollTrace;
 import io.flowcatalyst.ingestor.extension.PolledSource;
@@ -22,6 +23,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
@@ -31,6 +33,7 @@ import org.apache.camel.component.aws2.s3.AWS2S3Constants;
 import org.apache.camel.component.aws2.sqs.Sqs2Constants;
 import org.apache.camel.component.aws2.sqs.Sqs2Endpoint;
 import org.apache.camel.component.file.FileConstants;
+import org.apache.camel.component.file.GenericFileEndpoint;
 import org.apache.camel.component.file.GenericFileOperationFailedException;
 import org.apache.camel.model.TryDefinition;
 import org.apache.camel.support.PluginHelper;
@@ -163,6 +166,8 @@ final class IngestionRoute extends RouteBuilder {
   private final ExchangeCounters counters;
   private final SourceHealth health;
   private final TraceWindows traces;
+  private final PollPacer pacer;
+  private final FailureLog failures;
   /** The endpoint the route consumes from, once configured. */
   private @Nullable Endpoint consumed;
 
@@ -178,6 +183,19 @@ final class IngestionRoute extends RouteBuilder {
 
   IngestionRoute(
       Ingestion ingestion, SourceEndpoints endpoints, JobSink sink, ExchangeCounters counters, SourceHealth health, TraceWindows traces) {
+    this(ingestion, endpoints, sink, counters, health, traces, Pacing.system());
+  }
+
+  IngestionRoute(
+      Ingestion ingestion,
+      SourceEndpoints endpoints,
+      JobSink sink,
+      ExchangeCounters counters,
+      SourceHealth health,
+      TraceWindows traces,
+      Pacing pacing) {
+    this.pacer = pacing.pacer();
+    this.failures = pacing.failures();
     this.traces = traces;
     this.ingestion = ingestion;
     this.endpoints = endpoints;
@@ -214,16 +232,32 @@ final class IngestionRoute extends RouteBuilder {
 
   @Override
   public void configure() {
+    // Camel's own error handler logs every exchange it gives up on, with a stack trace. A failed
+    // exchange is counted, reported and logged once through the failure log (failedExchange), so the
+    // handler's copy is turned off: it would be a second line, with a stack, per failed payload (F12).
+    errorHandler(defaultErrorHandler().logExhausted(false).logStackTrace(false).logHandled(false).logRetryAttempted(false).logRetryStackTrace(false));
     Endpoint source = endpoints.endpoint(getContext(), ingestion);
     consumed = source;
     boolean route = CamelRoutes.yaml(ingestion.source()) != null;
-    ReportingPollStrategy polls = new ReportingPollStrategy(ingestion, counters, health, endpoints.guard(ingestion));
+    ReportingPollStrategy polls = new ReportingPollStrategy(ingestion, counters, health, endpoints.guard(ingestion), pacer, failures);
     switch (source) {
-      case ScheduledPollEndpoint polled -> polled.setPollStrategy(polls);
-      case DatabasePollEndpoint table -> table.pollStrategy(polls);
+      case ScheduledPollEndpoint polled -> {
+        polled.setPollStrategy(polls);
+        // Camel logs a failed poll again, with its stack trace, through the consumer's exception
+        // handler; the strategy reports it once. A file consumer's commit (the move) has its own.
+        polled.setExceptionHandler(polls);
+        if (polled instanceof GenericFileEndpoint<?> files) {
+          files.setOnCompletionExceptionHandler(polls);
+        }
+      }
+      case DatabasePollEndpoint table -> {
+        table.pollStrategy(polls);
+        table.setExceptionHandler(polls);
+      }
       case ApiPollEndpoint api -> {
         api.reportTo(counters, health);
         api.traceTo(traces);
+        api.pacedBy(pacer, failures);
       }
       case PolledSource polled -> polled.reportTo(reporter());
       default -> {}
@@ -281,7 +315,8 @@ final class IngestionRoute extends RouteBuilder {
     // Jobs the platform did not take were reported by the ingestion's route already.
     if (!dispatch) {
       String message = cause == null || cause.getMessage() == null ? "a step of the route failed" : cause.getMessage();
-      LOG.warn("ingestion {}: a step of its route failed: {}", ingestion.id(), message);
+      failures.failed(ingestion.id() + ":poll", "ingestion " + ingestion.id() + ": a step of its route failed: " + ExchangeCounters.clean(message), cause);
+      pacer.sourceFailed();
       counters.failure(ingestion, Failure.Kind.SOURCE, message, null, null);
       if (exchange.getProperty(PENDING) == null) {
         // It failed before the ingestion's route began, so nothing counted it.
@@ -440,6 +475,7 @@ final class IngestionRoute extends RouteBuilder {
                     break;
                   }
                 }
+                failedExchange(cause, dispatch);
                 counters.failure(
                     ingestion,
                     // Not taken by the platform, or a read cut off: either way the source keeps the payload.
@@ -450,6 +486,29 @@ final class IngestionRoute extends RouteBuilder {
                 traced(capture, pending, sourceHeaders, heldBody, done, "failed", cause == null ? "the payload was not taken" : cause.getMessage());
               }
             });
+  }
+
+  /**
+   * An exchange failed: the payload stays with its source. The poll counts as failed for pacing (R1),
+   * and the failure is logged through the failure log (R3): a platform that did not take the jobs
+   * without a stack trace (R2), anything else in full once. An HTTP source's caller is answered and
+   * {@link HttpIngest} logs it.
+   */
+  private void failedExchange(@Nullable Throwable cause, boolean dispatch) {
+    if (dispatch) {
+      pacer.dispatchFailed();
+    } else {
+      pacer.sourceFailed();
+    }
+    if (ingestion.source() instanceof Source.Http) {
+      return;
+    }
+    String why = cause == null || cause.getMessage() == null ? "the payload was not taken" : ExchangeCounters.clean(cause.getMessage());
+    if (dispatch) {
+      failures.failed(ingestion.id() + ":dispatch", "ingestion " + ingestion.id() + ": the platform did not take a payload's jobs; the source keeps it: " + why, null);
+    } else {
+      failures.failed(ingestion.id() + ":poll", "ingestion " + ingestion.id() + ": a payload failed and the source keeps it: " + why, cause);
+    }
   }
 
   /**
@@ -668,20 +727,35 @@ final class IngestionRoute extends RouteBuilder {
     pending.jobs.clear();
     pending.bytes = 0;
     Duration wait = FIRST_BACKOFF;
+    Exception lastFailure = null;
     for (int attempt = 1; ; attempt++) {
       try {
-        recorded(pending, batch, sink.submit(ingestion, batch));
+        // Held while the platform is not taking jobs: fails at once, without calling it (R2).
+        sink.admit();
+        JobsAnswer answer = sink.submit(ingestion, batch);
+        sink.settled(null);
+        recorded(pending, batch, answer);
         break;
       } catch (InterruptedException e) {
         throw e;
+      } catch (PlatformHeldException e) {
+        if (lastFailure instanceof PlatformUnavailableException) {
+          // This batch was the probe (or the hold began meanwhile): its own failed attempt ends the probe.
+          sink.settled(lastFailure);
+        }
+        throw new DispatchFailedException(e);
       } catch (RejectedException e) {
+        sink.settled(e);
         throw new PlatformRefusedException(e);
       } catch (Exception e) {
         if (attempt >= ATTEMPTS) {
+          sink.settled(e);
           throw new DispatchFailedException(e);
         }
+        lastFailure = e;
         LOG.debug("ingestion {}: the platform did not take {} job(s), sending them again in {}: {}", ingestion.id(), batch.size(), wait, e.getMessage());
-        Thread.sleep(wait);
+        // The pause for a single blip, with jitter added so ingestions that failed together do not retry together.
+        Thread.sleep(wait.plusMillis(ThreadLocalRandom.current().nextLong(wait.toMillis() / 2 + 1)));
         wait = wait.multipliedBy(3);
       }
     }

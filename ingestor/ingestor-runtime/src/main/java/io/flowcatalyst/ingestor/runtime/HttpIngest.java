@@ -5,6 +5,7 @@ import io.flowcatalyst.ingestor.contract.Ingestion;
 import io.flowcatalyst.ingestor.contract.RateLimit;
 import io.flowcatalyst.ingestor.contract.SecretRef;
 import io.flowcatalyst.ingestor.contract.Source;
+import io.flowcatalyst.ingestor.extension.FailureLog;
 import io.flowcatalyst.ingestor.contract.Split;
 import io.flowcatalyst.framework.auth.PlatformTokens;
 import io.flowcatalyst.framework.auth.Principal;
@@ -107,6 +108,7 @@ final class HttpIngest {
   private final PlatformTokens tokens;
   private final MonotonicClock clock;
   private final Map<String, Long> blockedUntil = new ConcurrentHashMap<>();
+  private final FailureLog failures;
 
   HttpIngest(Reconciler reconciler, Secrets secrets, RateLimiter limiter, ProducerTemplate producer, PlatformTokens tokens) {
     this(reconciler, secrets, limiter, producer, tokens, System::nanoTime);
@@ -114,6 +116,18 @@ final class HttpIngest {
 
   HttpIngest(
       Reconciler reconciler, Secrets secrets, RateLimiter limiter, ProducerTemplate producer, PlatformTokens tokens, MonotonicClock clock) {
+    this(reconciler, secrets, limiter, producer, tokens, clock, Pacing.system().failures());
+  }
+
+  HttpIngest(
+      Reconciler reconciler,
+      Secrets secrets,
+      RateLimiter limiter,
+      ProducerTemplate producer,
+      PlatformTokens tokens,
+      MonotonicClock clock,
+      FailureLog failures) {
+    this.failures = failures;
     this.tokens = tokens;
     this.reconciler = reconciler;
     this.secrets = secrets;
@@ -168,7 +182,7 @@ final class HttpIngest {
     try {
       refusal = refusal(ingestion, http.auth(), request.header("Authorization"));
     } catch (SecretStoreException e) {
-      LOG.warn("ingestion {} cannot check credentials: {}", ingestion.id(), e.getMessage());
+      failures.failed(ingestion.id() + ":credentials", "ingestion " + ingestion.id() + " cannot check credentials: " + e.getMessage(), null);
       return HttpErrors.error(503, "UNAVAILABLE", "credentials cannot be checked right now; send it again");
     }
     if (refusal != null) {
@@ -233,7 +247,16 @@ final class HttpIngest {
               }
             });
     if (exchange.isFailed()) {
-      LOG.warn("ingestion {} could not take a payload", ingestion.id(), exchange.getException());
+      // A platform that did not take the jobs is the same for every request: no stack trace (R2, R7).
+      Throwable why = exchange.getException();
+      boolean dispatch = false;
+      for (Throwable t = why; t != null; t = t.getCause()) {
+        dispatch |= t instanceof DispatchFailedException;
+      }
+      failures.failed(
+          ingestion.id() + ":payload",
+          "ingestion " + ingestion.id() + " could not take a payload" + (why == null || why.getMessage() == null ? "" : ": " + ExchangeCounters.clean(why.getMessage())),
+          dispatch ? null : why);
       return HttpErrors.error(503, "UNAVAILABLE", "the payload was not accepted; send it again");
     }
     if (Boolean.TRUE.equals(exchange.getProperty(IngestionRoute.REFUSED, Boolean.class))) {
@@ -242,6 +265,7 @@ final class HttpIngest {
     if (exchange.getProperty(IngestionRoute.REJECTED) != null) {
       return HttpErrors.error(422, "UNPROCESSABLE", "the payload could not be read; do not send it again unchanged");
     }
+    failures.recovered(ingestion.id() + ":payload", "ingestion " + ingestion.id() + " takes payloads again");
     return Response.json(202, accepted(ingestion, exchange.getProperty(IngestionRoute.CREATED, IngestionRoute.Created.class)));
   }
 
@@ -490,7 +514,7 @@ final class HttpIngest {
         yield unauthenticated();
       }
       case TokenResult.Unavailable unavailable -> {
-        LOG.warn("the platform's signing keys could not be read: {}", unavailable.reason());
+        failures.failed(ingestion.id() + ":signing-keys", "the platform's signing keys could not be read (ingestion " + ingestion.id() + "): " + unavailable.reason(), null);
         yield HttpErrors.error(503, "UNAVAILABLE", "tokens cannot be checked right now; send it again");
       }
     };
@@ -505,7 +529,7 @@ final class HttpIngest {
     try {
       expected = secrets.require(ingestion, ref);
     } catch (UnsupportedIngestionException e) {
-      LOG.warn("ingestion {} cannot check credentials; refusing the request: {}", ingestion.id(), e.getMessage());
+      failures.failed(ingestion.id() + ":secret", "ingestion " + ingestion.id() + " cannot check credentials; refusing the request: " + e.getMessage(), null);
       return false;
     }
     return expected.matches(presented);

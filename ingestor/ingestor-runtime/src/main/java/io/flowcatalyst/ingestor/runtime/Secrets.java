@@ -63,6 +63,12 @@ final class Secrets {
 
   private record Kept(Secret secret, long expiresNanos) {}
 
+  /** A reveal that failed because the platform could not be reached, and when it may be tried again. */
+  private record Failed(String message, @Nullable Throwable cause, long untilNanos) {}
+
+  /** How long a failed reveal is remembered: calls in that time fail at once without calling the platform (R7). */
+  static final Duration FAILED_REVEAL_MEMORY = Duration.ofSeconds(10);
+
   /** A route: an ingestion's id and version. */
   private record Route(String ingestionId, long version) {}
 
@@ -71,6 +77,7 @@ final class Secrets {
   private final Duration ttl;
   private final LongSupplier nanos;
   private final Map<Key, Kept> kept = new ConcurrentHashMap<>();
+  private final Map<Key, Failed> failedReveals = new ConcurrentHashMap<>();
   /** What each route read, by name: the salted hash of the value it was given. */
   private final Map<Route, Map<String, String>> used = new ConcurrentHashMap<>();
   /** The plain values each route was given, by name, for the trace redactor; held as long as the route's secrets are. */
@@ -206,6 +213,7 @@ final class Secrets {
     used.keySet().removeIf(route -> !routes.contains(route));
     values.keySet().removeIf(route -> !routes.contains(route));
     long now = nanos.getAsLong();
+    failedReveals.entrySet().removeIf(e -> !routes.contains(new Route(e.getKey().ingestionId(), e.getKey().version())) || now - e.getValue().untilNanos() >= 0);
     kept.entrySet().removeIf(e -> !routes.contains(new Route(e.getKey().ingestionId(), e.getKey().version())) || now - e.getValue().expiresNanos() >= 0);
   }
 
@@ -218,6 +226,7 @@ final class Secrets {
     used.keySet().removeIf(route -> route.ingestionId().equals(ingestionId));
     values.keySet().removeIf(route -> route.ingestionId().equals(ingestionId));
     kept.keySet().removeIf(key -> key.ingestionId().equals(ingestionId));
+    failedReveals.keySet().removeIf(key -> key.ingestionId().equals(ingestionId));
   }
 
   /** How many values are kept in memory: for tests. */
@@ -226,6 +235,28 @@ final class Secrets {
   }
 
   private Secret reveal(Ingestion ingestion, String name) {
+    Key key = new Key(ingestion.id(), ingestion.version(), name);
+    Failed failed = failedReveals.get(key);
+    if (failed != null) {
+      if (nanos.getAsLong() - failed.untilNanos() < 0) {
+        throw new SecretStoreException(failed.message(), failed.cause());
+      }
+      failedReveals.remove(key, failed);
+    }
+    try {
+      return revealNow(ingestion, name);
+    } catch (SecretStoreException e) {
+      // The platform could not be reached: a source that checks credentials on every request must
+      // not call it for each one while it is down. Only this failure is remembered; a secret that is
+      // not set, or that the platform refuses, is answered afresh so a fix takes effect at once.
+      if (!Thread.currentThread().isInterrupted()) {
+        failedReveals.put(key, new Failed(String.valueOf(e.getMessage()), e.getCause(), nanos.getAsLong() + FAILED_REVEAL_MEMORY.toNanos()));
+      }
+      throw e;
+    }
+  }
+
+  private Secret revealNow(Ingestion ingestion, String name) {
     Optional<String> value;
     try {
       value = platform.reveal(ingestion, name);

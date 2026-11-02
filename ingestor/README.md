@@ -279,6 +279,17 @@ counter and a "last fetched" record per ingestion, secret and runtime, shown on 
 writing an audit row per read; a refused fetch is audited. A "test connection" of a polled source from a runtime that does not hold the lease cannot read
 its secrets, and says so. A definition under test that is not saved cannot read secrets at all.
 
+## Failure pacing
+
+A failure that repeats is paced and logged once, so a broken source or platform cannot make a tight retry loop
+or flood the log. After `n` failed polls in a row a polled source (sftp, s3, sqs, database poll, API poll,
+extension) waits `5 s * 2^(n-1)` (at most 5 minutes, with jitter, never less than its own interval); a payload
+read and sent but not marked done (a file not moved, a row not marked) counts as a failure. While the platform
+is not taking jobs (no answer, 5xx, 429, 401 or 403) every ingestion is held for the same kind of wait, or the
+platform's `Retry-After`, and one probe tests it. A failure is logged in full the first time and then at most
+once a minute with a count. The rulings, the building blocks (`Backoff`, `FailureLog`) and the tests are in
+[docs/ingestor-failure-pacing.md](../docs/ingestor-failure-pacing.md).
+
 ## Extensions
 
 A jar in `INGEST_EXTENSIONS_DIR` adds a kind. Each jar has a class loader of its own that sees the runtime's

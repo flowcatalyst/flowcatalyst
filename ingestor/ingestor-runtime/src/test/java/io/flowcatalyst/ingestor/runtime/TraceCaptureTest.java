@@ -211,7 +211,8 @@ class TraceCaptureTest {
     assertThat(poll.get("records").asInt()).isEqualTo(2);
     assertThat(poll.get("jobs").asInt()).isEqualTo(2);
     assertThat(poll.get("outcome").asString()).isEqualTo("ok");
-    assertThat(poll.get("nextDelayMs").asInt()).isEqualTo(50);
+    // The poll returned 50 ms; a wait after a poll that succeeded is at least 250 ms (failure pacing, R5).
+    assertThat(poll.get("nextDelayMs").asInt()).isEqualTo(250);
 
     // The empty polls are recorded too: their calls show why nothing came.
     for (TraceRecord empty : ofKind("poll").subList(1, 3)) {

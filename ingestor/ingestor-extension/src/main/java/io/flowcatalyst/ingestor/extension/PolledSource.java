@@ -5,6 +5,8 @@ import io.flowcatalyst.ingestor.contract.RuntimeReport.Failure;
 import io.flowcatalyst.framework.httpclient.HttpClientException;
 import io.flowcatalyst.framework.httpclient.UnexpectedStatusException;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.camel.Consumer;
@@ -21,13 +23,25 @@ import org.slf4j.LoggerFactory;
  * A source polled with code of its own: each poll may hand the route any number of payloads, each
  * split and dispatched like any other, and says when to poll again. A poll that throws is a {@code
  * SOURCE} failure, or {@code AUTH} when the source refused the login ({@link
- * #refusedLogin(Throwable)}), which is tried again every {@link #AUTH_RETRY}; the ingestion is
- * {@code FAILING} until a poll gets through. Polls run one at a time, on one thread. The runtime
- * reports the failures ({@link #reportTo(Reporter)}).
+ * #refusedLogin(Throwable)}); the ingestion is {@code FAILING} until a poll gets through. Polls run
+ * one at a time, on one thread. The runtime reports the failures ({@link #reportTo(Reporter)}).
+ *
+ * <p>Failures are paced and logged for the extension (docs/ingestor-failure-pacing.md, R5):
+ * <ul>
+ *   <li>After a poll that succeeded the wait it returned is used, but never less than 250 ms.
+ *   <li>A poll that threw, failed in part ({@link #partFailed}), or in which {@link
+ *       Payloads#dispatch} returned false at least once is a failure. The next poll waits {@link
+ *       Backoff#FAILURES} for the failures in a row, from the larger of {@link #retryDelay()} and
+ *       one second, and not less than the wait the poll returned. A poll whose dispatch failed is
+ *       not an exception: it has no stack trace in the log.
+ *   <li>A refused login waits {@link Backoff#REFUSED_LOGIN} (5 minutes, doubling to an hour).
+ *   <li>The first failure of a streak is logged in full, then a line a minute with a count
+ *       ({@link FailureLog}).
+ * </ul>
  */
 public abstract class PolledSource extends DefaultEndpoint {
 
-  /** How long a refused login waits before it is tried again. */
+  /** How long the first refused login waits before it is tried again; each further one doubles it, up to an hour. */
   public static final Duration AUTH_RETRY = Duration.ofMinutes(5);
 
   private static final Logger LOG = LoggerFactory.getLogger(PolledSource.class);
@@ -39,8 +53,11 @@ public abstract class PolledSource extends DefaultEndpoint {
 
   private final String kind;
   private @Nullable Reporter reporter;
-  private Duration authRetry = AUTH_RETRY;
+  private @Nullable Duration authRetry;
   private boolean failedThisPoll;
+  private boolean dispatchRefused;
+  private PollPacing pacing = new PollPacing();
+  private FailureLog failureLog = FailureLog.warn(LOG);
 
   /**
    * A source of one ingestion.
@@ -136,12 +153,33 @@ public abstract class PolledSource extends DefaultEndpoint {
   }
 
   /**
-   * How long a refused login waits; tests shorten it.
+   * How long a refused login waits, every time instead of {@link Backoff#REFUSED_LOGIN}; tests
+   * shorten it.
    *
    * @param wait the wait
    */
   public final void authRetry(Duration wait) {
     this.authRetry = wait;
+  }
+
+  /**
+   * The waits after failures and refused logins; tests shorten them. The one second a failed poll
+   * waits at least and the 250 ms a poll that succeeded waits at least stay.
+   *
+   * @param failures the wait after failures in a row
+   * @param refusedLogin the wait after refused logins in a row
+   */
+  public final void pacing(Backoff failures, Backoff refusedLogin) {
+    this.pacing = new PollPacing(failures, refusedLogin);
+  }
+
+  /**
+   * Where repeated failures are logged; tests capture them.
+   *
+   * @param log the failure log
+   */
+  public final void failureLog(FailureLog log) {
+    this.failureLog = log;
   }
 
   /**
@@ -226,12 +264,22 @@ public abstract class PolledSource extends DefaultEndpoint {
     private void run() {
       Duration next = FIRST_POLL;
       failedThisPoll = false;
+      dispatchRefused = false;
+      String pollKey = ingestion.id() + ":poll";
       PollTrace trace = starting();
       try {
-        next = trace.run(() -> poll(payloads));
+        Duration returned = trace.run(() -> poll(payloads));
         Reporter r = reporter;
         if (r != null && !failedThisPoll) {
           r.recovered();
+        }
+        if (failedThisPoll || dispatchRefused) {
+          // A payload the platform did not take is a failure for pacing, though nothing was thrown (R5).
+          next = pacing.afterFailedPoll(returned, safeRetryDelay());
+        } else {
+          next = pacing.afterSuccess(returned);
+          failureLog.recovered(pollKey, "ingestion " + ingestion.id() + " polls " + kind + " again");
+          failureLog.recovered(ingestion.id() + ":login", "ingestion " + ingestion.id() + " is let in to " + kind + " again");
         }
         ended(trace, !failedThisPoll, failedThisPoll ? "a part of the poll failed" : null, next);
       } catch (InterruptedException e) {
@@ -241,13 +289,17 @@ public abstract class PolledSource extends DefaultEndpoint {
         String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
         ended(trace, false, message, null);
         if (refusedLogin(e)) {
-          LOG.warn("ingestion {}: the {} login was refused; trying again in {}", ingestion.id(), kind, authRetry);
-          failure(Failure.Kind.AUTH, message + "; tried again every " + authRetry.toMinutes() + " minutes, or at once when the ingestion is saved");
-          next = authRetry;
+          Duration wait = pacing.afterRefusedLogin();
+          Duration fixed = authRetry;
+          next = fixed != null ? fixed : wait;
+          Instant again = Instant.now().plus(next).truncatedTo(ChronoUnit.SECONDS);
+          failureLog.failed(
+              ingestion.id() + ":login", "ingestion " + ingestion.id() + ": the " + kind + " login was refused; trying again at " + again, null);
+          failure(Failure.Kind.AUTH, message + "; tries again at " + again + ", or at once when the ingestion is saved");
         } else {
-          LOG.warn("ingestion {} could not poll {}", ingestion.id(), kind, e);
+          next = pacing.afterError(safeRetryDelay());
+          failureLog.failed(pollKey, "ingestion " + ingestion.id() + " could not poll " + kind + ": " + message, e);
           failure(Failure.Kind.SOURCE, message);
-          next = safeRetryDelay();
         }
         if (e instanceof OutOfMemoryError oom) {
           // Nothing is safe after this; the process should end (the image runs with -XX:+ExitOnOutOfMemoryError).
@@ -316,7 +368,11 @@ public abstract class PolledSource extends DefaultEndpoint {
                 PayloadIdentity.set(exchange, identity);
               }
               getProcessor().process(exchange);
-              return exchange.getException() == null;
+              boolean taken = exchange.getException() == null;
+              if (!taken) {
+                dispatchRefused = true;
+              }
+              return taken;
             } finally {
               releaseExchange(exchange, false);
             }

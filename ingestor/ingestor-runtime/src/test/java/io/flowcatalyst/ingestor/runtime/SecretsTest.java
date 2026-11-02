@@ -150,4 +150,48 @@ class SecretsTest {
     secrets.forget(ingestion.id());
     assertThat(secrets.keptCount()).isZero();
   }
+
+  // R7 of docs/ingestor-failure-pacing.md: a reveal that failed because the platform could not be reached is
+  // remembered for 10 seconds, so a source that checks credentials on every request does not call a platform
+  // that is down for each one.
+
+  @Test
+  void aRevealThatFailedBecauseThePlatformIsDownIsNotAskedAgainForTenSecondsAndThenIsAsked() {
+    Secrets secrets = secrets(Duration.ofMinutes(1));
+    failure = new IOException("connection refused");
+
+    for (int i = 0; i < 100; i++) {
+      assertThatThrownBy(() -> secrets.require(ingestion, new SecretRef("token"))).isInstanceOf(SecretStoreException.class).hasMessageContaining("connection refused");
+      nanos.addAndGet(Duration.ofMillis(90).toNanos());
+    }
+    // 9 seconds on: one call.
+    assertThat(asked).hasSize(1);
+
+    nanos.addAndGet(Duration.ofSeconds(2).toNanos());
+    assertThatThrownBy(() -> secrets.require(ingestion, new SecretRef("token"))).isInstanceOf(SecretStoreException.class);
+    assertThat(asked).hasSize(2);
+  }
+
+  @Test
+  void aSuccessfulRevealIsUnaffectedAndTheFirstOneAfterAnOutageIsKept() {
+    Secrets secrets = secrets(Duration.ofMinutes(1));
+    failure = new IOException("connection refused");
+    assertThatThrownBy(() -> secrets.require(ingestion, new SecretRef("token"))).isInstanceOf(SecretStoreException.class);
+
+    failure = null;
+    nanos.addAndGet(Duration.ofSeconds(11).toNanos());
+    assertThat(secrets.require(ingestion, new SecretRef("token")).matches("s3cret")).isTrue();
+    assertThat(secrets.require(ingestion, new SecretRef("token")).matches("s3cret")).isTrue();
+    assertThat(asked).hasSize(2);
+  }
+
+  @Test
+  void aSecretThatIsNotSetIsNotRemembered() {
+    Secrets secrets = secrets(Duration.ZERO);
+    value = Optional.empty();
+    assertThatThrownBy(() -> secrets.require(ingestion, new SecretRef("token"))).isInstanceOf(UnsupportedIngestionException.class);
+
+    value = Optional.of("now-set");
+    assertThat(secrets.require(ingestion, new SecretRef("token")).matches("now-set")).isTrue();
+  }
 }

@@ -3,6 +3,7 @@ package io.flowcatalyst.ingestor.runtime;
 import io.flowcatalyst.ingestor.contract.Ingestion;
 import io.flowcatalyst.ingestor.contract.RuntimeReport.Failure;
 import io.flowcatalyst.ingestor.contract.Source;
+import io.flowcatalyst.ingestor.extension.FailureLog;
 import io.flowcatalyst.ingestor.extension.PollTrace;
 import java.time.Duration;
 import java.util.concurrent.ScheduledExecutorService;
@@ -45,6 +46,8 @@ final class ApiPollEndpoint extends DefaultEndpoint {
   private @Nullable SourceHealth health;
   private TraceWindows traces = TraceWindows.disabled();
   private Duration authRetry = ApiPollClient.AUTH_RETRY;
+  private PollPacer pacer = Pacing.system().pacer();
+  private FailureLog failures = Pacing.system().failures();
 
   ApiPollEndpoint(CamelContext camel, Ingestion ingestion, Source.ApiPoll source, ApiPollClient client, StateStore state) {
     this.ingestion = ingestion;
@@ -63,6 +66,15 @@ final class ApiPollEndpoint extends DefaultEndpoint {
   /** Where polls are counted and, while tracing is on, captured; set before the route starts. */
   void traceTo(TraceWindows windows) {
     this.traces = windows;
+  }
+
+  /**
+   * The pacer and the failure log of the ingestion's route (R1, R3); set before the route starts. The
+   * next poll after failures in a row waits at least {@code Backoff.FAILURES.delay(n, idleDelay)}.
+   */
+  void pacedBy(PollPacer pacer, FailureLog failures) {
+    this.pacer = pacer;
+    this.failures = failures;
   }
 
   /** How long a refused login waits; tests shorten it. */
@@ -124,18 +136,25 @@ final class ApiPollEndpoint extends DefaultEndpoint {
       Duration next = source.idleDelay();
       failedThisPoll = false;
       lastFailure = null;
+      pacer.started();
       ExchangeCounters c = counters;
       PollTrace trace = c == null ? PollTrace.NONE : traces.pollStarting(ingestion, c);
       try {
         next = trace.run(this::pollOnce);
+        next = paced(next);
         ended(trace, next);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         return;
       } catch (Throwable e) {
-        LOG.warn("ingestion {} could not poll its API", ingestion.id(), e);
         String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+        boolean commit = e instanceof CommitFailedException;
+        failures.failed(
+            ingestion.id() + (commit ? ":commit" : ":poll"),
+            "ingestion " + ingestion.id() + (commit ? ": " : " could not poll its API: ") + ExchangeCounters.clean(message),
+            e);
         failure(Failure.Kind.SOURCE, message, null);
+        next = paced(next);
         ended(trace, null);
         if (e instanceof OutOfMemoryError oom) {
           schedule(next);
@@ -143,6 +162,21 @@ final class ApiPollEndpoint extends DefaultEndpoint {
         }
       }
       schedule(next);
+    }
+
+    /**
+     * The wait before the next poll: {@code next} after a poll that did not fail, else the wait for
+     * failures in a row (R1). A refused login keeps its own, longer wait.
+     */
+    private Duration paced(Duration next) {
+      Duration wait = pacer.ended(source.idleDelay());
+      if (!pacer.lastFailed()) {
+        failures.recovered(ingestion.id() + ":poll", "ingestion " + ingestion.id() + " polls its API again");
+        failures.recovered(ingestion.id() + ":commit", "ingestion " + ingestion.id() + " stores its cursor again");
+        failures.recovered(ingestion.id() + ":dispatch", "ingestion " + ingestion.id() + " dispatches what it reads again");
+        return next;
+      }
+      return wait.compareTo(next) > 0 ? wait : next;
     }
 
     /** Tells the runtime how the poll ended; tracing never changes what the poll does next. */
@@ -170,12 +204,12 @@ final class ApiPollEndpoint extends DefaultEndpoint {
       ApiPollClient.Outcome outcome = client.poll(cursor);
       return switch (outcome) {
         case ApiPollClient.Refused refused -> {
-          LOG.warn("ingestion {}: {}; trying again in {}", ingestion.id(), refused.message(), authRetry);
+          failures.failed(ingestion.id() + ":poll", "ingestion " + ingestion.id() + ": " + ExchangeCounters.clean(refused.message()) + "; trying again in " + authRetry, null);
           failure(Failure.Kind.AUTH, refused.message() + "; tried again every " + authRetry.toMinutes() + " minutes, or at once when the ingestion is saved", null);
           yield authRetry;
         }
         case ApiPollClient.Failed failed -> {
-          LOG.warn("ingestion {}: {}", ingestion.id(), failed.message());
+          failures.failed(ingestion.id() + ":poll", "ingestion " + ingestion.id() + ": " + ExchangeCounters.clean(failed.message()), null);
           failure(Failure.Kind.SOURCE, failed.message(), failed.body());
           yield source.idleDelay();
         }
@@ -210,12 +244,20 @@ final class ApiPollEndpoint extends DefaultEndpoint {
         releaseExchange(exchange, false);
       }
       if (!taken) {
-        // The route has reported it; the same answer is asked for again.
+        // The route has reported and logged it; the same answer is asked for again, after a wait.
+        pacer.dispatchFailed();
         return source.idleDelay();
       }
       String next = answer.cursor();
       if (next != null && !next.equals(cursor)) {
-        state.put(ingestion.id(), CURSOR, next);
+        try {
+          state.put(ingestion.id(), CURSOR, next);
+        } catch (InterruptedException e) {
+          throw e;
+        } catch (Exception e) {
+          // Read and sent, but not remembered (R4): the answer is asked for again.
+          throw new CommitFailedException("stored as the cursor", e);
+        }
       }
       boolean results = answer.hasResults() != null ? answer.hasResults() : records > 0;
       return results ? source.every() : source.idleDelay();
@@ -237,6 +279,7 @@ final class ApiPollEndpoint extends DefaultEndpoint {
 
     private void failure(Failure.Kind kind, String message, @Nullable String body) {
       failedThisPoll = true;
+      pacer.sourceFailed();
       lastFailure = message;
       ExchangeCounters c = counters;
       if (c != null) {

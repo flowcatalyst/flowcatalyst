@@ -43,6 +43,7 @@ class PlatformApiTest {
   final List<Seen> seen = new ArrayList<>();
   final List<Integer> statuses = new ArrayList<>();
   String answer = "";
+  String retryAfter;
   HttpClients clients;
   PlatformApi api;
   final Ingestion ingestion =
@@ -61,6 +62,9 @@ class PlatformApiTest {
       int status = statuses.isEmpty() ? 200 : statuses.removeFirst();
       byte[] out = answer.getBytes(StandardCharsets.UTF_8);
       exchange.getResponseHeaders().add("Content-Type", "application/json");
+      if (retryAfter != null) {
+        exchange.getResponseHeaders().add("Retry-After", retryAfter);
+      }
       exchange.sendResponseHeaders(status, out.length == 0 ? -1 : out.length);
       if (out.length > 0) {
         exchange.getResponseBody().write(out);
@@ -397,5 +401,44 @@ class PlatformApiTest {
   void aPlatformThatIsNotThereIsAFailure() {
     platform.stop(0);
     assertThatThrownBy(() -> api.poll(T).answer()).isInstanceOf(IOException.class);
+  }
+
+  // R2 of docs/ingestor-failure-pacing.md: which failures are the platform's.
+
+  @Test
+  void aJobsRequestTheEnvironmentFailedIsMarkedAsThePlatformsWithItsRetryAfterAndOnesTheRequestFailedAreNot() {
+    List<JobRecord> one = List.of(new JobRecord("a", "text/plain", null, null, null, null));
+    statuses.addAll(List.of(503, 429, 500, 403, 409));
+    retryAfter = "120";
+
+    assertThatThrownBy(() -> api.create(ingestion, one))
+        .isInstanceOfSatisfying(PlatformUnavailableException.class, e -> {
+          assertThat(e.status()).isEqualTo(503);
+          assertThat(e.retryAfter()).isEqualTo(Duration.ofSeconds(120));
+        });
+    for (int status : new int[] {429, 500, 403}) {
+      assertThatThrownBy(() -> api.create(ingestion, one)).as("status %d", status).isInstanceOf(PlatformUnavailableException.class);
+    }
+    // A paused target is the ingestion's own.
+    assertThatThrownBy(() -> api.create(ingestion, one)).isNotInstanceOf(PlatformUnavailableException.class).isNotInstanceOf(RejectedException.class).isInstanceOf(IOException.class);
+  }
+
+  @Test
+  void aRetryAfterThatIsADateOrNothingOrNonsenseIsRead() {
+    List<JobRecord> one = List.of(new JobRecord("a", "text/plain", null, null, null, null));
+    statuses.addAll(List.of(503, 503, 503));
+    retryAfter = java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.format(java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC).plusMinutes(5));
+    assertThatThrownBy(() -> api.create(ingestion, one))
+        .isInstanceOfSatisfying(PlatformUnavailableException.class, e -> assertThat(e.retryAfter()).isBetween(Duration.ofMinutes(4), Duration.ofMinutes(5)));
+    retryAfter = "soon";
+    assertThatThrownBy(() -> api.create(ingestion, one)).isInstanceOfSatisfying(PlatformUnavailableException.class, e -> assertThat(e.retryAfter()).isNull());
+    retryAfter = null;
+    assertThatThrownBy(() -> api.create(ingestion, one)).isInstanceOfSatisfying(PlatformUnavailableException.class, e -> assertThat(e.retryAfter()).isNull());
+  }
+
+  @Test
+  void aPlatformThatCannotBeReachedIsMarkedAsThePlatformsFailure() {
+    platform.stop(0);
+    assertThatThrownBy(() -> api.create(ingestion, List.of(new JobRecord("a", "text/plain", null, null, null, null)))).isInstanceOf(PlatformUnavailableException.class);
   }
 }

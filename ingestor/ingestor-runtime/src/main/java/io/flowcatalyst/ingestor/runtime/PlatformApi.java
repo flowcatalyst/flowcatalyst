@@ -301,7 +301,33 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
       forgetToken.run();
     }
     String message = what + " answered " + status + said(response);
-    throw permanent(status) ? new RejectedException(message, status) : new IOException(message);
+    if (permanent(status)) {
+      throw new RejectedException(message, status);
+    }
+    if (PlatformUnavailableException.platformStatus(status)) {
+      throw new PlatformUnavailableException(message, status, retryAfter(response), null);
+    }
+    throw new IOException(message);
+  }
+
+  /** How long the platform asked callers to wait: {@code Retry-After} as seconds or as an HTTP date; null when absent or unreadable. */
+  static @Nullable Duration retryAfter(ClientResponse response) {
+    String value = response.header("Retry-After");
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    String text = value.strip();
+    try {
+      long seconds = Long.parseLong(text);
+      return seconds < 0 ? null : Duration.ofSeconds(seconds);
+    } catch (NumberFormatException notSeconds) {
+      try {
+        Duration wait = Duration.between(Instant.now(), java.time.ZonedDateTime.parse(text, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant());
+        return wait.isNegative() ? null : wait;
+      } catch (java.time.format.DateTimeParseException notDate) {
+        return null;
+      }
+    }
   }
 
   /** What the platform said, from its error envelope: {@code : CODE, the message}. */

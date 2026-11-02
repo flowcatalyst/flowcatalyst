@@ -135,15 +135,24 @@ final class DatabasePollEndpoint extends DefaultEndpoint {
         if (!dispatched(batch)) {
           return 0;
         }
-        switch (source.track()) {
-          case Track.Watermark _ -> {
-            if (batch.watermark() != null) {
-              state.put(ingestionId, WATERMARK, batch.watermark());
+        // The rows are read and their jobs exist: a failure from here on is a failed commit (R4), not
+        // a failed read. They are read again, and their keys keep that from making new jobs.
+        try {
+          switch (source.track()) {
+            case Track.Watermark _ -> {
+              if (batch.watermark() != null) {
+                state.put(ingestionId, WATERMARK, batch.watermark());
+              }
             }
+            case Track.Status status -> markProcessed(connection, status, batch.keys());
           }
-          case Track.Status status -> markProcessed(connection, status, batch.keys());
+          connection.commit();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new CommitFailedException("marked as read", e);
+        } catch (Exception e) {
+          throw new CommitFailedException("marked as read", e);
         }
-        connection.commit();
         return batch.rows().size();
       }
     }
@@ -160,7 +169,8 @@ final class DatabasePollEndpoint extends DefaultEndpoint {
           exchange.setException(e);
         }
         if (exchange.getException() != null) {
-          LOG.warn("ingestion {} could not take {} row(s); they are read again: {}", ingestionId, batch.rows().size(), exchange.getException().getMessage());
+          // The route has reported and logged it (IngestionRoute.failedExchange) and the poll is paced.
+          LOG.debug("ingestion {} could not take {} row(s); they are read again: {}", ingestionId, batch.rows().size(), exchange.getException().getMessage());
           return false;
         }
         return true;
