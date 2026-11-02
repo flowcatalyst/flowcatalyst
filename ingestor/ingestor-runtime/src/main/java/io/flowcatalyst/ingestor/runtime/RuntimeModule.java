@@ -23,6 +23,7 @@ import java.net.URI;
 import java.net.UnknownHostException;
 import io.flowcatalyst.ingestor.functions.FunctionHost;
 import io.flowcatalyst.ingestor.functions.context.DbPools;
+import io.flowcatalyst.ingestor.functions.context.LogBudget;
 import io.flowcatalyst.ingestor.functions.control.HttpControlPlane;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -120,6 +121,19 @@ public final class RuntimeModule implements Module {
           .withDefault(DbPools.Limits.DEFAULTS.idleTtl())
           .describedAs("How long a function database pool nobody has used is kept before it is closed; the next call opens it again.");
 
+  /** The most lines a second one function may write to the log. */
+  public static final Setting<Integer> FUNCTIONS_LOG_RATE =
+      Setting.integer("ingest.functions-log-rate")
+          .withDefault(LogBudget.Limits.DEFAULTS.rate())
+          .describedAs(
+              "The most log lines a second one function may write; lines over the budget are dropped and counted, and the host reports the count once a minute.");
+
+  /** The most lines one function may write at once. */
+  public static final Setting<Integer> FUNCTIONS_LOG_BURST =
+      Setting.integer("ingest.functions-log-burst")
+          .withDefault(LogBudget.Limits.DEFAULTS.burst())
+          .describedAs("The most log lines one function may write in a burst, before the rate applies.");
+
   /** Whether this process runs ingestions. */
   public static final Setting<Boolean> INGESTION_ENABLED =
       Setting.bool("ingest.ingestion-enabled")
@@ -203,6 +217,8 @@ public final class RuntimeModule implements Module {
     app.declare(FUNCTIONS_DB_MAX_POOLS);
     app.declare(FUNCTIONS_DB_MAX_CONNS);
     app.declare(FUNCTIONS_DB_IDLE_TTL);
+    app.declare(FUNCTIONS_LOG_RATE);
+    app.declare(FUNCTIONS_LOG_BURST);
     app.declare(INGESTION_ENABLED);
     app.declare(SECRETS_CACHE_TTL);
     app.declare(TRACE_QUEUE);
@@ -379,7 +395,8 @@ public final class RuntimeModule implements Module {
             app.get(Routes.class).forModule(ID),
             Clock.systemUTC(),
             new DbPools.Limits(
-                config.get(FUNCTIONS_DB_MAX_POOLS), config.get(FUNCTIONS_DB_MAX_CONNS), config.get(FUNCTIONS_DB_IDLE_TTL)));
+                config.get(FUNCTIONS_DB_MAX_POOLS), config.get(FUNCTIONS_DB_MAX_CONNS), config.get(FUNCTIONS_DB_IDLE_TTL)),
+            new LogBudget.Limits(config.get(FUNCTIONS_LOG_RATE), config.get(FUNCTIONS_LOG_BURST)));
   }
 
   private void bootIngestion(App app) {

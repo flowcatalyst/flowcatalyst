@@ -147,6 +147,27 @@ class FunctionListenerTest {
     }
 
     @Test
+    void aFunctionFailingOnEveryCallIsLoggedOnceInFullThenAtMostALineAMinute() {
+        for (int i = 0; i < 600; i++) {
+            assertThat(get(BASE + "/boom").status()).isEqualTo(500);
+        }
+        assertThat(failureLines()).as("600 failures within a minute").hasSize(1);
+        assertThat(failureLines().get(0).withStack()).isTrue();
+
+        h.clock.advance(Duration.ofSeconds(61));
+        get(BASE + "/boom");
+        get(BASE + "/boom");
+
+        assertThat(failureLines()).hasSize(2);
+        assertThat(failureLines().get(1).withStack()).isFalse();
+        assertThat(failureLines().get(1).message()).contains("more like it not logged");
+    }
+
+    private List<Harness.Logged> failureLines() {
+        return h.logged.stream().filter(l -> l.message().startsWith("function app.multi v1 failed")).toList();
+    }
+
+    @Test
     void anErrorThrownByTheFunctionIs500NotACrash() {
         TestResponse r = get(BASE + "/error");
         assertThat(r.status()).isEqualTo(500);
