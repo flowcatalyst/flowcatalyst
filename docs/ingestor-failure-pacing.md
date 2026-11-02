@@ -164,7 +164,13 @@ format and level stay as they are apart from the summaries above.
 | Part | Status |
 |---|---|
 | Building blocks (`Backoff`, `FailureLog`) | committed `1d2776e3` |
-| R1–R5, R7 (ingestion) | to build |
-| R6 (function host) | to build |
-| WebIQ (mono-repo): stop on refused login/429/refused dispatch | to build |
-| iac: log-volume alarm + budget | to build |
+| R1–R5, R7 (ingestion) | committed `d12d2954` |
+| R6 (function host) | committed `4811de79` |
+| WebIQ (mono-repo): stop on refused login/429/refused dispatch | mono-repo `9fd7632` |
+| iac: alerts topic, log-volume alarm, optional budget | iac `d04c644` |
+
+**Not met (no hook without reaching into a component):** Camel components' own log lines on a failed poll
+(`Sqs2Consumer` "Error while polling", the S3 rollback line, the file rollback WARN) still appear, but only as often
+as the paced polls; an SQS delete-after-read failure is not reported as a commit failure. **Limit:** a function's
+"N log lines dropped" summary is written on its next log call after the minute (no timer), so a function that floods
+and then falls silent reports its last minute only when it logs again.
