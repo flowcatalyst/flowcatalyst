@@ -43,6 +43,13 @@ public final class HostFunctionContext implements FunctionContext {
 
     HostFunctionContext(FunctionAddress address, int version, Config config, Secrets secrets, HttpCaller http, Events events,
             Dispatcher dispatcher, Clock clock, List<String> declaredDatabases, Map<String, String> databaseDsns, DbPools dbPools) {
+        this(address, version, config, secrets, http, events, dispatcher, clock, declaredDatabases, databaseDsns, dbPools,
+                new LogBudget(LogBudget.Limits.DEFAULTS));
+    }
+
+    HostFunctionContext(FunctionAddress address, int version, Config config, Secrets secrets, HttpCaller http, Events events,
+            Dispatcher dispatcher, Clock clock, List<String> declaredDatabases, Map<String, String> databaseDsns, DbPools dbPools,
+            LogBudget logBudget) {
         this.address = Objects.requireNonNull(address, "address");
         this.version = version;
         this.config = Objects.requireNonNull(config, "config");
@@ -54,7 +61,7 @@ public final class HostFunctionContext implements FunctionContext {
         this.declaredDatabases = List.copyOf(declaredDatabases);
         this.databaseDsns = Map.copyOf(databaseDsns);
         this.dbPools = Objects.requireNonNull(dbPools, "dbPools");
-        this.logger = new HostLogger(address.render());
+        this.logger = new HostLogger(address.render(), logBudget);
     }
 
     @Override

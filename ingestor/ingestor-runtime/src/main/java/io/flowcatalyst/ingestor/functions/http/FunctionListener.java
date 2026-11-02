@@ -10,6 +10,7 @@ import io.flowcatalyst.framework.pipeline.Next;
 import io.flowcatalyst.function.Caller;
 import io.flowcatalyst.function.FunctionContext;
 import io.flowcatalyst.function.Result;
+import io.flowcatalyst.ingestor.extension.FailureLog;
 import io.flowcatalyst.ingestor.functions.control.Control;
 import io.flowcatalyst.ingestor.functions.control.Describe;
 import io.flowcatalyst.ingestor.functions.load.LoadedFunction;
@@ -21,6 +22,7 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -85,7 +87,24 @@ public final class FunctionListener {
     private final Permits permits = new Permits();
     private final Clock clock;
 
+    /// Invocation failures and timeouts (docs/ingestor-failure-pacing.md R3, F6): the first of a streak of one
+    /// function version and failure with its stack trace, then a line a minute with a count. No "recovered" call:
+    /// the minute limit and the log's stale rule end a streak.
+    private final FailureLog failures;
+
     public FunctionListener(Reconciler reconciler, PlatformTokens tokens, Clock clock) {
+        this(reconciler, tokens, clock, new FailureLog((message, cause) -> {
+            if (cause == null) {
+                LOG.warn(message);
+            } else {
+                LOG.warn(message, cause);
+            }
+        }, Duration.ofMinutes(1), clock));
+    }
+
+    /// @param failures where invocation failures are logged (tests give one with a clock they move)
+    public FunctionListener(Reconciler reconciler, PlatformTokens tokens, Clock clock, FailureLog failures) {
+        this.failures = Objects.requireNonNull(failures, "failures");
         this.reconciler = Objects.requireNonNull(reconciler, "reconciler");
         this.tokens = Objects.requireNonNull(tokens, "tokens");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -334,7 +353,8 @@ public final class FunctionListener {
             result = invocation.future().get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             invocation.worker().interrupt();
-            LOG.warn("function {} v{} did not finish before its deadline (invocation {})", doc.address(), served.number(), invocationId);
+            failures.failed(doc.address() + "@" + served.number() + ":timeout",
+                    "function " + doc.address() + " v" + served.number() + " did not finish before its deadline (invocation " + invocationId + ")", null);
             return error(504, "FUNCTION_TIMEOUT", "the function did not finish before its deadline", 0);
         } catch (InterruptedException e) {
             // The request thread was interrupted (the server is stopping, or the client went away).
@@ -344,7 +364,10 @@ public final class FunctionListener {
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
             // The exception is the function's own: its message goes to the log, never to the caller.
-            LOG.warn("function {} v{} failed (invocation {})", doc.address(), served.number(), invocationId, cause);
+            failures.failed(doc.address() + "@" + served.number() + ":" + cause.getClass().getName(),
+                    "function " + doc.address() + " v" + served.number() + " failed with " + cause.getClass().getName()
+                            + " (invocation " + invocationId + ")",
+                    cause);
             return error(500, "FUNCTION_FAILED", "the function failed", 0);
         }
         return answer(result, ep.cors() != null, invocationId);

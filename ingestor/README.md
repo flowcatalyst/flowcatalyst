@@ -188,6 +188,8 @@ Every value is a key in `config/application.yaml` and an environment variable na
 | `INGEST_FUNCTIONS_DB_MAX_POOLS` | `ingest.functions-db-max-pools` | `32` | database pools the host keeps for `ctx.dataSource(name)`: one per distinct DSN, shared by every function; at the cap the least recently used is closed (as the Go runner) |
 | `INGEST_FUNCTIONS_DB_MAX_CONNS` | `ingest.functions-db-max-conns` | `4` | connections per pool |
 | `INGEST_FUNCTIONS_DB_IDLE_TTL` | `ingest.functions-db-idle-ttl` | `PT10M` | a pool unused this long is closed (made again by the next call) |
+| `INGEST_FUNCTIONS_LOG_RATE` | `ingest.functions-log-rate` | `100` | the most log lines a second one function may write; over it, lines are dropped and counted |
+| `INGEST_FUNCTIONS_LOG_BURST` | `ingest.functions-log-burst` | `1000` | the most log lines one function may write in a burst |
 | `INGEST_INGESTION_ENABLED` | `ingest.ingestion-enabled` | `true` | run ingestions. `false` makes a functions-only process: it never polls for ingestions, so it takes no ingestion leases, runs no routes and serves no `/ingest/` endpoint |
 | `INGEST_ADVERTISED_URL` | `ingest.advertised-url` | unset | where this runtime can be reached; shown by the platform for information, never called |
 | `INGEST_SECRETS_CACHE_TTL` | `ingest.secrets-cache-ttl` | `PT1M` | how long a fetched secret is kept, and how often each running route's secrets are read again (each fetch is a security log line and a "last fetched" update on the platform, not an audit row) |

@@ -5,6 +5,7 @@ import io.flowcatalyst.framework.auth.TestOidcProvider;
 import io.flowcatalyst.framework.http.Routes;
 import io.flowcatalyst.framework.http.TestClient;
 import io.flowcatalyst.framework.httpclient.HttpClients;
+import io.flowcatalyst.ingestor.extension.FailureLog;
 import io.flowcatalyst.ingestor.functions.context.ContextFactory;
 import io.flowcatalyst.ingestor.functions.context.OutboundClients;
 import io.flowcatalyst.ingestor.functions.http.FunctionListener;
@@ -19,6 +20,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.InstantSource;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
 /// A real host (reconciler, registry, listener, loader) over a [FakeControlPlane], with a movable clock and a fake
@@ -73,6 +76,13 @@ public final class Harness implements AutoCloseable {
     public final FunctionListener listener;
     public final TestClient http;
 
+    /// What the host logged through its [FailureLog]s (the reconciler's, the loop's and the listener's share it).
+    public record Logged(String message, boolean withStack) {
+    }
+
+    public final List<Logged> logged = new CopyOnWriteArrayList<>();
+    public final FailureLog failureLog;
+
     public Harness() {
         this(new Reconciler.Timing(Duration.ofMillis(10), Duration.ofMillis(50), Duration.ofMinutes(5), Duration.ofMillis(100)));
     }
@@ -88,11 +98,12 @@ public final class Harness implements AutoCloseable {
         this.dbPools = new io.flowcatalyst.ingestor.functions.context.DbPools(io.flowcatalyst.ingestor.functions.context.DbPools.Limits.DEFAULTS, clock);
         ArtifactCache artifacts = new ArtifactCache(plane, null);
         ContextFactory contexts = new ContextFactory(new OutboundClients(clients), clock, plane, dbPools);
+        this.failureLog = new FailureLog((message, cause) -> logged.add(new Logged(message, cause != null)), Duration.ofMinutes(1), clock);
         reconciler = new Reconciler(
                 "default", "runner-1", "test", plane, artifacts, new JvmFunctionLoader(), registry, contexts,
-                new MetaspaceGuard(gauge), clock, timing);
+                new MetaspaceGuard(gauge), clock, timing, failureLog);
         PlatformTokens tokens = PlatformTokens.createAllowingPlainHttp(platform.issuer(), Duration.ofSeconds(5), InstantSource.system());
-        listener = new FunctionListener(reconciler, tokens, clock);
+        listener = new FunctionListener(reconciler, tokens, clock, failureLog);
         Routes routes = new Routes();
         listener.install(routes);
         http = TestClient.of(routes).withMaxBodyBytes(64L << 20);

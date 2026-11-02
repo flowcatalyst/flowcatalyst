@@ -1,6 +1,8 @@
 package io.flowcatalyst.ingestor.functions.reconcile;
 
 import io.flowcatalyst.function.FunctionAddress;
+import io.flowcatalyst.ingestor.extension.Backoff;
+import io.flowcatalyst.ingestor.extension.FailureLog;
 import io.flowcatalyst.ingestor.functions.context.ContextFactory;
 import io.flowcatalyst.ingestor.functions.context.ContextLoadException;
 import io.flowcatalyst.ingestor.functions.context.HostFunctionContext;
@@ -37,6 +39,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -69,6 +72,9 @@ public final class Reconciler implements AutoCloseable {
 
     /// A lazy function idle longer than this is closed, but keeps its route (it loads again on its next call).
     static final Duration IDLE_UNLOAD = Duration.ofHours(1);
+
+    /// The shortest wait [#nextWake] returns.
+    private static final Duration MIN_WAKE = Duration.ofSeconds(1);
 
     /// Artifacts are fetched at most this many at a time.
     private static final int MAX_CONCURRENT_PREPARES = 4;
@@ -198,6 +204,14 @@ public final class Reconciler implements AutoCloseable {
     private volatile boolean everReconciled;
     private final AtomicBoolean draining = new AtomicBoolean();
 
+    /// Failures that can repeat (docs/ingestor-failure-pacing.md R3): the control plane's desired and heartbeat
+    /// calls (keys `control:desired`, `control:heartbeat`) and each version's artifact fetch.
+    private final FailureLog failures;
+
+    /// Heartbeats refused (401/403) in a row, and the time before which none is sent (R6, F10).
+    private final AtomicInteger heartbeatRefusals = new AtomicInteger();
+    private volatile Instant heartbeatHeldUntil = Instant.MIN;
+
     public Reconciler(
             String pool,
             String runnerId,
@@ -210,6 +224,31 @@ public final class Reconciler implements AutoCloseable {
             MetaspaceGuard metaspaceGuard,
             Clock clock,
             Timing timing) {
+        this(pool, runnerId, runnerVersion, controlPlane, artifacts, loader, registry, contextFactory, metaspaceGuard, clock, timing,
+                new FailureLog((message, cause) -> {
+                    if (cause == null) {
+                        LOG.warn(message);
+                    } else {
+                        LOG.warn(message, cause);
+                    }
+                }, Duration.ofMinutes(1), clock));
+    }
+
+    /// @param failures where repeated failures are logged (tests give one with a clock they move)
+    public Reconciler(
+            String pool,
+            String runnerId,
+            String runnerVersion,
+            ControlPlane controlPlane,
+            ArtifactCache artifacts,
+            JvmFunctionLoader loader,
+            FunctionRegistry registry,
+            ContextFactory contextFactory,
+            MetaspaceGuard metaspaceGuard,
+            Clock clock,
+            Timing timing,
+            FailureLog failures) {
+        this.failures = Objects.requireNonNull(failures, "failures");
         this.pool = Objects.requireNonNull(pool, "pool");
         this.runnerId = Objects.requireNonNull(runnerId, "runnerId");
         this.runnerVersion = Objects.requireNonNull(runnerVersion, "runnerVersion");
@@ -265,7 +304,10 @@ public final class Reconciler implements AutoCloseable {
     }
 
     /// How a cycle's fetch went.
-    public enum Outcome { CHANGED, NOT_MODIFIED, OUTAGE }
+    ///
+    /// `REFUSED` is an outage of one kind: the platform answered 401/403 after the token was refreshed (the
+    /// service account is not a function runner). The loop waits much longer for it than for a plain outage.
+    public enum Outcome { CHANGED, NOT_MODIFIED, OUTAGE, REFUSED }
 
     /// One full cycle: fetch the document (the platform holds the request up to `wait` for a change), then
     /// fetch, load and unload, then heartbeat — in that order, and no earlier step is skipped because a later
@@ -289,10 +331,16 @@ public final class Reconciler implements AutoCloseable {
                     outcome = Outcome.CHANGED;
                 }
             }
+            failures.recovered("control:desired", "the platform answers desired-state requests again");
         } catch (ControlPlaneException e) {
-            LOG.warn("desired-state fetch failed; keeping what is already loaded: {}", e.getMessage());
             outage = true;
-            outcome = Outcome.OUTAGE;
+            if (isRefusal(e)) {
+                failures.failed("control:desired", refusedText(e), null);
+                outcome = Outcome.REFUSED;
+            } else {
+                failures.failed("control:desired", "desired-state fetch failed; keeping what is already loaded: " + e.getMessage(), null);
+                outcome = Outcome.OUTAGE;
+            }
         }
         reconcileAttempted = true;
 
@@ -310,7 +358,8 @@ public final class Reconciler implements AutoCloseable {
     }
 
     /// How long the loop may wait for the platform to answer before something here is due again (a retry),
-    /// at most `max`, at least 100 ms.
+    /// at most `max`, at least 1 s (a wait of 0 would make the platform answer at once, and the loop would
+    /// long-poll in a tight loop).
     public Duration nextWake(Instant now, Duration max) {
         Instant earliest = null;
         for (VersionRecord r : records.values()) {
@@ -323,8 +372,8 @@ public final class Reconciler implements AutoCloseable {
             return max;
         }
         Duration until = Duration.between(now, earliest);
-        if (until.compareTo(Duration.ofMillis(100)) < 0) {
-            return Duration.ofMillis(100);
+        if (until.compareTo(MIN_WAKE) < 0) {
+            until = MIN_WAKE;
         }
         return until.compareTo(max) < 0 ? until : max;
     }
@@ -442,7 +491,8 @@ public final class Reconciler implements AutoCloseable {
                     Thread.currentThread().interrupt();
                     return;
                 } catch (java.util.concurrent.ExecutionException e) {
-                    LOG.warn("fetching an artifact failed unexpectedly", e.getCause());
+                    Throwable cause = e.getCause() == null ? e : e.getCause();
+                    failures.failed("reconcile:prepare:" + cause.getClass().getName(), "fetching an artifact failed unexpectedly", cause);
                 }
             }
         }
@@ -461,9 +511,17 @@ public final class Reconciler implements AutoCloseable {
     private void fetchArtifact(VersionRecord rec, Instant now) {
         try {
             rec.artifact = artifacts.get(rec.digest);
+            failures.recovered(rec.address + "@" + rec.number + ":artifact");
         } catch (ControlPlaneException e) {
             fail(rec, "ARTIFACT: " + e.getMessage(), !e.isTransient(), now);
-            LOG.warn("an artifact could not be fetched: {} v{}: {}", rec.address, rec.number, e.getMessage());
+            failures.failed(rec.address + "@" + rec.number + ":artifact",
+                    "an artifact could not be fetched: " + rec.address + " v" + rec.number + ": " + e.getMessage(), null);
+        } catch (RuntimeException e) {
+            // Anything else from the fetch (a malformed digest, a bug) is no reason to leave the version due and be
+            // asked again on every cycle: it is a transient failure, retried by the same backoff as a fetch error.
+            fail(rec, "ARTIFACT: " + e.getClass().getSimpleName() + ": " + e.getMessage(), false, now);
+            failures.failed(rec.address + "@" + rec.number + ":artifact",
+                    "an artifact could not be fetched: " + rec.address + " v" + rec.number + ": " + e.getClass().getName(), e);
         }
     }
 
@@ -649,6 +707,15 @@ public final class Reconciler implements AutoCloseable {
             // Java-heap OOM is not this call's to swallow.
             OutOfMemoryError oom = JvmFunctionLoader.findMetaspaceOom(e);
             if (oom == null) {
+                if (e instanceof LinkageError) {
+                    // NoClassDefFoundError, ExceptionInInitializerError, UnsatisfiedLinkError...: the function's own
+                    // bytes fail to link, the same way every time: like an exception, permanently INIT_FAILED. It
+                    // must not leave the reconcile cycle.
+                    fail(rec, "LOAD:INIT_FAILED", true, now);
+                    LOG.warn("a function version's init() failed: {} v{}", rec.address, rec.number, e);
+                    fn.close();
+                    return null;
+                }
                 throw e;
             }
             fail(rec, "LOAD:" + Reason.OUT_OF_METASPACE.name(), false, now);
@@ -894,12 +961,36 @@ public final class Reconciler implements AutoCloseable {
     }
 
     /// Sends one heartbeat; a failure is logged, never thrown.
+    ///
+    /// A refused heartbeat (401/403 after the token was refreshed) holds the next one back by
+    /// [Backoff#REFUSED_LOGIN]: five minutes, doubling to an hour (R6, F10).
     public void sendHeartbeat() {
+        Instant now = clock.instant();
+        if (now.isBefore(heartbeatHeldUntil)) {
+            return;
+        }
         try {
             controlPlane.heartbeat(heartbeat());
+            heartbeatHeldUntil = Instant.MIN;
+            heartbeatRefusals.set(0);
+            failures.recovered("control:heartbeat", "heartbeats are accepted again");
         } catch (ControlPlaneException e) {
-            LOG.warn("heartbeat failed: {}", e.getMessage());
+            if (isRefusal(e)) {
+                heartbeatHeldUntil = now.plus(Backoff.REFUSED_LOGIN.delay(heartbeatRefusals.incrementAndGet()));
+                failures.failed("control:heartbeat", "heartbeat refused: " + refusedText(e), null);
+            } else {
+                failures.failed("control:heartbeat", "heartbeat failed: " + e.getMessage(), null);
+            }
         }
+    }
+
+    private static boolean isRefusal(ControlPlaneException e) {
+        return e.status() == 401 || e.status() == 403;
+    }
+
+    private static String refusedText(ControlPlaneException e) {
+        return "the platform refused this runtime as a function runner (" + e.status()
+                + "): give its service account platform:function-runner";
     }
 
     /// Whether a reconcile has resolved, for diagnostics.

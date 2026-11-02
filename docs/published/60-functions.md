@@ -510,6 +510,13 @@ functions rejects a jar as an invalid Wasm module.
   for an ingestion-only one.
 - **Databases.** `INGEST_FUNCTIONS_DB_MAX_POOLS` (32), `INGEST_FUNCTIONS_DB_MAX_CONNS` (4 a pool) and
   `INGEST_FUNCTIONS_DB_IDLE_TTL` (`PT10M`).
+- **Logs.** A function's log is limited so that a loop in one function cannot flood the log: each
+  function address may write `INGEST_FUNCTIONS_LOG_RATE` lines a second (100) with a burst of
+  `INGEST_FUNCTIONS_LOG_BURST` (1000). Lines over the budget are dropped and counted, and the host
+  writes one warning a minute for a function that dropped any ("function X dropped N log lines in
+  the last minute (limit 100/s)"). A message longer than 8 KiB is cut and ends "(cut, M bytes)"; an
+  exception keeps its stack trace, with its message cut the same way. A function that fails on
+  every call is logged in full once (with the stack trace), then as one line a minute with a count.
 - A request body is also capped by the ingestor server's own request-body limit, whatever the function's limit says.
 
 ### What a JVM function cannot do yet

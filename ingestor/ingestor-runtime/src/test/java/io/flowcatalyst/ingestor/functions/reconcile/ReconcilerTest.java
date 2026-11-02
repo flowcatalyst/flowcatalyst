@@ -562,7 +562,110 @@ class ReconcilerTest {
         h.reconcile();
 
         Duration wait = h.reconciler.nextWake(h.clock.instant(), Duration.ofSeconds(30));
-        assertThat(wait).as("a retry is due in a few ms: the floor of 100 ms, not the 30 s long-poll").isEqualTo(Duration.ofMillis(100));
+        assertThat(wait).as("a retry is due in a few ms: the floor of 1 s, not the 30 s long-poll").isEqualTo(Duration.ofSeconds(1));
+    }
+
+    // ── failure pacing (docs/ingestor-failure-pacing.md R6) ─────────────────────────────────────
+
+    @Test
+    void anUnexpectedExceptionFromTheArtifactFetchFailsTheVersionTransientAndIsNotAskedAgainAtOnce() {
+        Fx.Jar v1 = Fx.hello("1");
+        h.plane.addArtifact(v1);
+        h.plane.artifactFailure = d -> {
+            throw new IllegalArgumentException("not a digest");
+        };
+        h.plane.push(Fx.desired(1, fn(Fx.version(1, v1, helloDescribe(), "live"))));
+
+        h.reconcile();
+        assertThat(report(1).state()).as("transient: RETRYING, never FAILED").isEqualTo("RETRYING");
+        assertThat(h.plane.artifactFetches.get()).isEqualTo(1);
+        h.reconcile();
+        assertThat(h.plane.artifactFetches.get()).as("not due again in the same instant").isEqualTo(1);
+        assertThat(h.reconciler.nextWake(h.clock.instant(), Duration.ofSeconds(30))).isGreaterThanOrEqualTo(Duration.ofSeconds(1));
+
+        h.clock.advance(Duration.ofSeconds(1));
+        h.reconcile();
+        assertThat(h.plane.artifactFetches.get()).as("retried once the delay has passed").isEqualTo(2);
+        assertThat(h.logged).filteredOn(l -> l.message().contains("could not be fetched")).hasSize(1);
+        assertThat(h.logged.get(0).withStack()).isTrue();
+
+        h.plane.artifactFailure = null;
+        h.clock.advance(Duration.ofMinutes(1));
+        h.reconcile();
+        assertThat(report(1).state()).isEqualTo("LOADED");
+    }
+
+    private Fx.Jar initThrowing(String statement) {
+        return Fx.jar("fixture.app.Hello", """
+                package fixture.app;
+                import io.flowcatalyst.function.*;
+                public final class Hello implements Function {
+                    public void init(FunctionContext ctx) { %s }
+                    public Result handle(Request in, FunctionContext ctx) { return Result.ack(); }
+                }
+                """.formatted(statement));
+    }
+
+    @Test
+    void aLinkageErrorFromInitIsAPermanentInitFailedAndTheCycleSurvives() {
+        for (String statement : List.of("throw new NoClassDefFoundError(\"missing/Thing\");", "throw new ExceptionInInitializerError(\"static block\");")) {
+            Harness own = new Harness();
+            try {
+                Fx.Jar v = initThrowing(statement);
+                own.plane.addArtifact(v);
+                own.plane.push(Fx.desired(1, fn(Fx.version(1, v, helloDescribe(), "live"))));
+
+                own.reconcile(); // must return, not throw
+
+                assertThat(own.plane.report("fn_1", 1).state()).as(statement).isEqualTo("FAILED");
+                assertThat(own.plane.report("fn_1", 1).reason()).isEqualTo("LOAD:INIT_FAILED");
+                int fetches = own.plane.artifactFetches.get();
+                own.clock.advance(Duration.ofMinutes(10));
+                own.reconcile();
+                assertThat(own.plane.artifactFetches.get()).as("permanent: not tried again").isEqualTo(fetches);
+            } finally {
+                own.close();
+            }
+        }
+    }
+
+    @Test
+    void aRefusedDesiredFetchIsRefusedNotAPlainOutageAndNamesTheCause() {
+        h.plane.desiredFailure = new ControlPlaneException(403, "FORBIDDEN", "no", null);
+        assertThat(h.reconcile()).isEqualTo(Reconciler.Outcome.REFUSED);
+        assertThat(h.logged).anyMatch(l -> l.message().contains("refused this runtime as a function runner (403)")
+                && l.message().contains("platform:function-runner"));
+
+        h.plane.desiredFailure = new ControlPlaneException(503, "", "down", null);
+        assertThat(h.reconcile()).isEqualTo(Reconciler.Outcome.OUTAGE);
+    }
+
+    @Test
+    void aRefusedHeartbeatIsHeldBackByMinutesDoublingToAnHour() {
+        h.plane.heartbeatFailure = new ControlPlaneException(403, "FORBIDDEN", "no", null);
+        h.reconciler.sendHeartbeat();
+        assertThat(h.plane.heartbeatCalls.get()).isEqualTo(1);
+
+        // Backoff.REFUSED_LOGIN is 5 minutes doubling; with equal jitter a hold is between half of that and all of it.
+        h.clock.advance(Duration.ofMinutes(2).plusSeconds(29));
+        h.reconciler.sendHeartbeat();
+        assertThat(h.plane.heartbeatCalls.get()).as("first hold is at least 2.5 minutes").isEqualTo(1);
+
+        h.clock.advance(Duration.ofMinutes(2).plusSeconds(32)); // 5 minutes in: past the longest first hold
+        h.reconciler.sendHeartbeat();
+        assertThat(h.plane.heartbeatCalls.get()).isEqualTo(2);
+
+        h.clock.advance(Duration.ofMinutes(4).plusSeconds(59));
+        h.reconciler.sendHeartbeat();
+        assertThat(h.plane.heartbeatCalls.get()).as("second hold is at least 5 minutes").isEqualTo(2);
+
+        h.clock.advance(Duration.ofMinutes(5).plusSeconds(2)); // past the longest second hold (10 minutes)
+        h.plane.heartbeatFailure = null;
+        h.reconciler.sendHeartbeat();
+        assertThat(h.plane.heartbeatCalls.get()).isEqualTo(3);
+        assertThat(h.plane.heartbeats).hasSize(1);
+        assertThat(h.logged).anyMatch(l -> l.message().contains("heartbeat refused") && l.message().contains("platform:function-runner"));
+        assertThat(h.logged).anyMatch(l -> l.message().contains("heartbeats are accepted again"));
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────

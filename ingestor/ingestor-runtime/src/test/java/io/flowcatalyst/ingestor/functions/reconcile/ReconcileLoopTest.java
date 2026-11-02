@@ -114,6 +114,38 @@ class ReconcileLoopTest {
     }
 
     @Test
+    void aRefusedRuntimeIsNotAskedAgainForMinutes() throws Exception {
+        loop = new ReconcileLoop(h.reconciler, h.clock, Duration.ofMillis(100), Duration.ofSeconds(5), Duration.ofMillis(20), h.failureLog);
+        h.plane.desiredFailure = new ControlPlaneException(403, "FORBIDDEN", "no", null);
+        loop.start();
+        await(() -> h.plane.desiredCalls.get() >= 1, "the first request");
+
+        Thread.sleep(1500); // a plain outage at this firstBackoff would retry 5-6 times in this time
+
+        assertThat(h.plane.desiredCalls.get()).as("requests while refused: the next is minutes away").isEqualTo(1);
+        assertThat(loop.isAlive()).isTrue();
+    }
+
+    @Test
+    void aCycleThatThrowsAnErrorDoesNotEndTheLoopAndDoesNotSpin() throws Exception {
+        loop = new ReconcileLoop(h.reconciler, h.clock, Duration.ofMillis(100), Duration.ofSeconds(5), Duration.ofMillis(20), h.failureLog);
+        h.plane.desiredThrows = new NoClassDefFoundError("missing/Thing");
+        loop.start();
+        await(() -> h.plane.desiredCalls.get() >= 2, "the loop to go round again");
+
+        Thread.sleep(1000);
+        int calls = h.plane.desiredCalls.get();
+        assertThat(loop.isAlive()).as("the loop survives").isTrue();
+        assertThat(calls).as("attempts in about a second: backed off, not spinning").isLessThan(12);
+        assertThat(h.logged).filteredOn(l -> l.message().contains("reconcile run failed")).hasSize(1);
+        assertThat(h.logged.get(0).withStack()).isTrue();
+
+        h.plane.desiredThrows = null;
+        deploy(1, Fx.hello("1"), "1");
+        await(() -> h.registry.peek(FunctionAddress.parse("app.hello")) != null, "the loop to recover");
+    }
+
+    @Test
     void closeStopsTheThreads() throws Exception {
         loop = new ReconcileLoop(h.reconciler, h.clock, Duration.ofMillis(100), Duration.ofMillis(50), Duration.ofMillis(20));
         deploy(1, Fx.hello("1"), "1");

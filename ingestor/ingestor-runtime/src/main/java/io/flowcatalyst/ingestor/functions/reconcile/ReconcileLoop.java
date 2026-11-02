@@ -1,5 +1,7 @@
 package io.flowcatalyst.ingestor.functions.reconcile;
 
+import io.flowcatalyst.ingestor.extension.Backoff;
+import io.flowcatalyst.ingestor.extension.FailureLog;
 import io.flowcatalyst.ingestor.functions.load.JvmFunctionLoader;
 import java.time.Clock;
 import java.time.Duration;
@@ -15,7 +17,9 @@ import org.slf4j.LoggerFactory;
 /// The platform's desired-state request is a long-poll (it answers as soon as the document changes, or `304` after
 /// the wait), so a cycle follows the previous one at once; the wait is shortened to when a retry of a transient
 /// load failure is due ([Reconciler#nextWake]). When the platform cannot be reached the loop backs off (1 s,
-/// doubling to 30 s) and what is loaded keeps serving. A heartbeat goes out every 15 s and as soon as a version's
+/// doubling to 30 s) and what is loaded keeps serving; when the platform refuses the runtime (401/403) it waits
+/// [Backoff#REFUSED_LOGIN] (5 minutes doubling to an hour) instead. Whatever a cycle throws (short of a
+/// `VirtualMachineError`) is logged and followed by the same backoff, never ends the loop. A heartbeat goes out every 15 s and as soon as a version's
 /// state changes.
 public final class ReconcileLoop implements AutoCloseable {
 
@@ -43,6 +47,7 @@ public final class ReconcileLoop implements AutoCloseable {
     private final Thread reconcileThread;
     private final Thread heartbeatThread;
     private final Semaphore heartbeatNow = new Semaphore(0);
+    private final FailureLog failures;
     private volatile boolean closed;
 
     public ReconcileLoop(Reconciler reconciler) {
@@ -51,6 +56,18 @@ public final class ReconcileLoop implements AutoCloseable {
 
     /// Package-private: tests shorten the waits; production never calls it.
     ReconcileLoop(Reconciler reconciler, Clock clock, Duration longPoll, Duration heartbeatEvery, Duration firstBackoff) {
+        this(reconciler, clock, longPoll, heartbeatEvery, firstBackoff, new FailureLog((message, cause) -> {
+            if (cause == null) {
+                LOG.warn(message);
+            } else {
+                LOG.warn(message, cause);
+            }
+        }, Duration.ofMinutes(1), clock));
+    }
+
+    ReconcileLoop(Reconciler reconciler, Clock clock, Duration longPoll, Duration heartbeatEvery, Duration firstBackoff,
+            FailureLog failures) {
+        this.failures = Objects.requireNonNull(failures, "failures");
         this.reconciler = Objects.requireNonNull(reconciler, "reconciler");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.longPoll = longPoll;
@@ -74,6 +91,7 @@ public final class ReconcileLoop implements AutoCloseable {
 
     private void runReconcile() {
         Duration backoff = firstBackoff;
+        int refused = 0;
         while (!closed) {
             Duration pause = MIN_CYCLE;
             try {
@@ -82,31 +100,51 @@ public final class ReconcileLoop implements AutoCloseable {
                 switch (outcome) {
                     case CHANGED -> {
                         backoff = firstBackoff;
+                        refused = 0;
                         pause = Duration.ZERO;
                     }
-                    case NOT_MODIFIED -> backoff = firstBackoff;
+                    case NOT_MODIFIED -> {
+                        backoff = firstBackoff;
+                        refused = 0;
+                    }
                     case OUTAGE -> {
+                        refused = 0;
                         pause = backoff;
-                        backoff = backoff.multipliedBy(2).compareTo(MAX_BACKOFF) > 0 ? MAX_BACKOFF : backoff.multipliedBy(2);
+                        backoff = next(backoff);
+                    }
+                    case REFUSED -> {
+                        pause = Backoff.REFUSED_LOGIN.delay(++refused);
+                        backoff = firstBackoff;
                     }
                 }
-            } catch (RuntimeException e) {
-                LOG.warn("reconcile run failed; continuing", e);
-                pause = Duration.ofSeconds(1);
-            } catch (Error e) {
+                failures.recovered("reconcile:cycle");
+            } catch (VirtualMachineError e) {
                 // A metaspace-family OutOfMemoryError — found by the cause-chain walker the per-load fence uses
                 // — outside any one function's own try/catch (parsing a response, say): the loop continues.
-                // Any OTHER Error is a real emergency: rethrown, which ends the loop, and isAlive() says so.
+                // Any OTHER VirtualMachineError (heap OutOfMemoryError, StackOverflowError, InternalError) is a
+                // real emergency: rethrown, which ends the loop, and isAlive() says so.
                 if (JvmFunctionLoader.findMetaspaceOom(e) == null) {
                     throw e;
                 }
-                System.err.println("WARN function reconcile run hit a metaspace OutOfMemoryError; continuing");
-                pause = Duration.ofSeconds(1);
+                failures.failed("reconcile:cycle", "function reconcile run hit a metaspace OutOfMemoryError; continuing", null);
+                pause = backoff;
+                backoff = next(backoff);
+            } catch (Throwable e) {
+                // Anything else a cycle throws (a LinkageError out of a function's code, a bug) is logged — in full
+                // once, then a line a minute — and followed by the outage backoff, then the next cycle.
+                failures.failed("reconcile:cycle", "reconcile run failed; continuing: " + e.getClass().getName(), e);
+                pause = backoff;
+                backoff = next(backoff);
             }
             if (!pause.isZero() && !sleep(pause)) {
                 return;
             }
         }
+    }
+
+    private static Duration next(Duration backoff) {
+        Duration doubled = backoff.multipliedBy(2);
+        return doubled.compareTo(MAX_BACKOFF) > 0 ? MAX_BACKOFF : doubled;
     }
 
     private void runHeartbeat() {
@@ -122,7 +160,7 @@ public final class ReconcileLoop implements AutoCloseable {
                 Thread.currentThread().interrupt();
                 return;
             } catch (RuntimeException e) {
-                LOG.warn("heartbeat run failed; continuing", e);
+                failures.failed("reconcile:heartbeat", "heartbeat run failed; continuing: " + e.getClass().getName(), e);
             }
         }
     }

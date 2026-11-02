@@ -6,6 +6,7 @@ import io.flowcatalyst.ingestor.functions.control.ControlPlane;
 import io.flowcatalyst.ingestor.functions.control.Describe;
 import java.time.Clock;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 /// Builds a [HostFunctionContext] from a desired-state function and one of its versions' describe documents:
 /// config and secrets restricted to what the describe declares, the allowlisting HTTP caller, and events and
@@ -16,9 +17,19 @@ public final class ContextFactory {
     private final Clock clock;
     private final ControlPlane controlPlane;
     private final DbPools dbPools;
+    private final LogBudget.Limits logLimits;
+
+    /// One log budget per function address, shared by all its versions (docs/ingestor-failure-pacing.md R6).
+    private final ConcurrentHashMap<String, LogBudget> logBudgets = new ConcurrentHashMap<>();
 
     /// @param dbPools the host's shared database pools (the host owns and closes them)
     public ContextFactory(OutboundClients outbound, Clock clock, ControlPlane controlPlane, DbPools dbPools) {
+        this(outbound, clock, controlPlane, dbPools, LogBudget.Limits.DEFAULTS);
+    }
+
+    /// @param logLimits how many lines a second a function may log, and its burst
+    public ContextFactory(OutboundClients outbound, Clock clock, ControlPlane controlPlane, DbPools dbPools, LogBudget.Limits logLimits) {
+        this.logLimits = Objects.requireNonNull(logLimits, "logLimits");
         this.dbPools = Objects.requireNonNull(dbPools, "dbPools");
         this.outbound = Objects.requireNonNull(outbound, "outbound");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -47,6 +58,7 @@ public final class ContextFactory {
                 clock,
                 describe.db(),
                 function.db(),
-                dbPools);
+                dbPools,
+                logBudgets.computeIfAbsent(address.render(), a -> new LogBudget(logLimits)));
     }
 }

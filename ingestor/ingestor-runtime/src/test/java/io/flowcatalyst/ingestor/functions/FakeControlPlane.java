@@ -27,6 +27,10 @@ public final class FakeControlPlane implements ControlPlane {
     public final AtomicInteger artifactFetches = new AtomicInteger();
     public final AtomicInteger desiredCalls = new AtomicInteger();
     public volatile @Nullable ControlPlaneException desiredFailure;
+    /// Thrown out of `desired` as it is (an unchecked exception or an `Error`), to test a cycle that blows up.
+    public volatile @Nullable Throwable desiredThrows;
+    public volatile @Nullable ControlPlaneException heartbeatFailure;
+    public final AtomicInteger heartbeatCalls = new AtomicInteger();
     public volatile @Nullable Function<String, ControlPlaneException> artifactFailure;
     public volatile Function<Control.EmitRequest, EmitResult> emitAnswer = r -> new EmitResult.Emitted("evt_1");
     public volatile Function<Control.DispatchRequest, String> dispatchAnswer = r -> "djb_1";
@@ -46,6 +50,13 @@ public final class FakeControlPlane implements ControlPlane {
     public Fetched desired(String pool, @Nullable String known, Duration wait) throws ControlPlaneException {
         desiredCalls.incrementAndGet();
         lastRequestedPool = pool;
+        Throwable thrown = desiredThrows;
+        if (thrown instanceof Error error) {
+            throw error;
+        }
+        if (thrown instanceof RuntimeException runtime) {
+            throw runtime;
+        }
         ControlPlaneException failure = desiredFailure;
         if (failure != null) {
             throw failure;
@@ -62,7 +73,12 @@ public final class FakeControlPlane implements ControlPlane {
     }
 
     @Override
-    public void heartbeat(Control.Heartbeat heartbeat) {
+    public void heartbeat(Control.Heartbeat heartbeat) throws ControlPlaneException {
+        heartbeatCalls.incrementAndGet();
+        ControlPlaneException failure = heartbeatFailure;
+        if (failure != null) {
+            throw failure;
+        }
         heartbeats.add(heartbeat);
     }
 

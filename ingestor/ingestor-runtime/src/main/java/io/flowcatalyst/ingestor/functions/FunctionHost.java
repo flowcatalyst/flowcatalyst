@@ -5,6 +5,7 @@ import io.flowcatalyst.framework.http.Routes;
 import io.flowcatalyst.framework.httpclient.HttpClients;
 import io.flowcatalyst.ingestor.functions.context.ContextFactory;
 import io.flowcatalyst.ingestor.functions.context.DbPools;
+import io.flowcatalyst.ingestor.functions.context.LogBudget;
 import io.flowcatalyst.ingestor.functions.context.OutboundClients;
 import io.flowcatalyst.ingestor.functions.control.ControlPlane;
 import io.flowcatalyst.ingestor.functions.http.FunctionListener;
@@ -79,11 +80,26 @@ public final class FunctionHost implements AutoCloseable {
             Routes routes,
             Clock clock,
             DbPools.Limits dbLimits) {
+        return start(pool, runnerId, version, controlPlane, clients, tokens, routes, clock, dbLimits, LogBudget.Limits.DEFAULTS);
+    }
+
+    /// As above, with how many log lines a second one function may write (`ingest.functions-log-rate`, `-burst`).
+    public static FunctionHost start(
+            String pool,
+            String runnerId,
+            String version,
+            ControlPlane controlPlane,
+            HttpClients clients,
+            PlatformTokens tokens,
+            Routes routes,
+            Clock clock,
+            DbPools.Limits dbLimits,
+            LogBudget.Limits logLimits) {
         Objects.requireNonNull(pool, "pool");
         DbPools dbPools = new DbPools(dbLimits, clock);
         ArtifactCache artifacts = new ArtifactCache(controlPlane, null);
         FunctionRegistry registry = new FunctionRegistry(MAX_LOADED, clock);
-        ContextFactory contexts = new ContextFactory(new OutboundClients(clients), clock, controlPlane, dbPools);
+        ContextFactory contexts = new ContextFactory(new OutboundClients(clients), clock, controlPlane, dbPools, logLimits);
         Reconciler reconciler = new Reconciler(
                 pool, runnerId, version, controlPlane, artifacts, new JvmFunctionLoader(), registry, contexts,
                 MetaspaceGuard.system(), clock, Reconciler.Timing.DEFAULTS);
