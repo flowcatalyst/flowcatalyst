@@ -324,6 +324,34 @@ them: call `Set`, `Delete` or `RevealSecret` with
 characters, no control characters; the platform honours it only from service
 accounts).
 
+### Field workers
+
+The field-worker identity admin API (workers, devices, per-client policy and
+token introspection) is available as `c.FieldWorkers()`, `c.FieldDevices()`,
+`c.FieldPolicies()` and `c.FieldTokens()`:
+
+```go
+w, _ := c.FieldWorkers().Ensure(ctx, &client.EnsureFieldWorkerRequest{
+    ClientID: "clt_1", WorkerCode: "driver-42", Name: "Sam", AppCodes: []string{"deliveries"},
+})
+pin, _ := c.FieldWorkers().ResetPin(ctx, w.ID, nil) // nil: platform generates a PIN
+if pin.TemporaryPin != nil { /* shown once, hand it to the worker */ }
+
+code, _ := c.FieldDevices().CreateEnrolmentCode(ctx, &client.CreateEnrolmentCodeRequest{
+    ClientID: "clt_1", Mode: "SHARED", AppCodes: []string{"deliveries"},
+}) // render code.QrPayload as a QR code
+
+res, _ := c.FieldTokens().Introspect(ctx, accessToken) // res.Active
+```
+
+Workers: `Ensure`, `List`, `Get`, `Update`, `Delete`, `ResetPin`, `Unlock`,
+`Suspend`, `Activate`, `GrantApp`, `RevokeApp`, `SignIns`. Devices:
+`CreateEnrolmentCode`, `List`, `Get`, `Suspend`, `Activate`, `Revoke`.
+Policies: `Get`, `Put`. Timestamps are RFC 3339 strings; the action methods
+return only an error (the platform's `{ message }` is discarded). Offline
+verification of a field access token is `auth.FieldTokenVerifier`;
+`Introspect` is the online check that the session is still live.
+
 ## Packages
 
 | Package | Purpose |
@@ -335,7 +363,7 @@ accounts).
 | `outboxpgx` | The use-case `Sink` (a `DispatchJobSink`) writing to `outbox_messages` via pgx, plus the lower-level `WriteDispatchJob`. |
 | `outboxsql` | `Writer` for `database/sql` (Postgres, MySQL) and the table DDL. |
 | `sync` | `DefinitionSet` + `Synchronizer`: declarative sync of every application category. |
-| `client` | Platform HTTP API client: event types, subscriptions, dispatch pools, applications, processes, principals, roles, permissions, audit logs, clients, connections, ingestions and ingestion sets, me, router, scheduled jobs, OpenAPI, docs. |
+| `client` | Platform HTTP API client: event types, subscriptions, dispatch pools, applications, processes, principals, roles, permissions, audit logs, clients, connections, ingestions and ingestion sets, field workers/devices/policies/tokens, me, router, scheduled jobs, OpenAPI, docs. |
 | `auth` | Access-token claims, `TokenValidator` (JWKS), `HmacTokenValidator`, `OAuthClient`, `ClientCredentialsProvider`. |
 | `webhook` | HMAC-SHA256 webhook signature verification (`Verifier` for the platform's router; `Validator` for the SDK-peer shape). |
 | `scheduledjobs` | `Runner` for platform-fired scheduled jobs: handlers by job code, a lock per firing, logs and completion reported back. |

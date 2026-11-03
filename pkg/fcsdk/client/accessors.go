@@ -86,3 +86,23 @@ func (c *FlowCatalystClient) OpenAPI() *OpenAPIResource {
 func (c *FlowCatalystClient) PlatformConfig() *PlatformConfigResource {
 	return &PlatformConfigResource{c: c}
 }
+
+// FieldWorkers returns the field-workers accessor — /api/field-workers/*.
+func (c *FlowCatalystClient) FieldWorkers() *FieldWorkersResource {
+	return &FieldWorkersResource{c: c}
+}
+
+// FieldDevices returns the field-devices accessor — /api/field-devices/*.
+func (c *FlowCatalystClient) FieldDevices() *FieldDevicesResource {
+	return &FieldDevicesResource{c: c}
+}
+
+// FieldPolicies returns the field-policies accessor — /api/field-policies/*.
+func (c *FlowCatalystClient) FieldPolicies() *FieldPoliciesResource {
+	return &FieldPoliciesResource{c: c}
+}
+
+// FieldTokens returns the field-tokens accessor — /api/field-tokens/*.
+func (c *FlowCatalystClient) FieldTokens() *FieldTokensResource {
+	return &FieldTokensResource{c: c}
+}

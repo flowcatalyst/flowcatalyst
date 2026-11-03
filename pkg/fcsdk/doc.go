@@ -70,8 +70,8 @@
 //
 //   - client     — *FlowCatalystClient + resource families (event types,
 //     subscriptions, dispatch pools, applications, processes, principals,
-//     roles, permissions, audit logs, clients, connections, me, router,
-//     scheduled jobs, openapi, docs). Retry on transient 5xx, typed
+//     roles, permissions, audit logs, clients, connections, field workers,
+//     devices, policies and tokens, me, router, scheduled jobs, openapi, docs). Retry on transient 5xx, typed
 //     *APIError. Bearer token or TokenProvider auth.
 //   - auth       — AccessTokenClaims + AuthContext; TokenValidator (RS256
 //     via JWKS auto-discovery through lestrrat-go/jwx/v2);

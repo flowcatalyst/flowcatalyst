@@ -46,6 +46,71 @@ type lockCase struct {
 func lockCases() []lockCase {
 	raw := json.RawMessage(`{"a":1}`)
 	return []lockCase{
+		// ── Field workers / devices / policies / tokens ──
+		{name: "FieldWorkers.Ensure", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldWorkers().Ensure(ctx, &client.EnsureFieldWorkerRequest{ClientID: "clt_1", WorkerCode: "w1", Name: "W", Email: new("w@x.io"), AppCodes: []string{"a"}, Pin: new("123456")})
+		}},
+		{name: "FieldWorkers.List", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldWorkers().List(ctx, "clt_1", &client.FieldWorkerFilters{Q: "w", AppCode: "a", Status: "ACTIVE", Page: new(uint32(1)), PageSize: new(uint32(5))})
+		}},
+		{name: "FieldWorkers.Get", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldWorkers().Get(ctx, "fwk_1")
+		}},
+		{name: "FieldWorkers.Update", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldWorkers().Update(ctx, "fwk_1", &client.UpdateFieldWorkerRequest{Name: "W", Email: new("w@x.io")})
+		}},
+		{name: "FieldWorkers.Delete", discardsBody: true, call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return nil, c.FieldWorkers().Delete(ctx, "fwk_1")
+		}},
+		{name: "FieldWorkers.ResetPin", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldWorkers().ResetPin(ctx, "fwk_1", &client.ResetFieldWorkerPinRequest{Pin: new("123456")})
+		}},
+		{name: "FieldWorkers.Unlock", discardsBody: true, call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return nil, c.FieldWorkers().Unlock(ctx, "fwk_1")
+		}},
+		{name: "FieldWorkers.Suspend", discardsBody: true, call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return nil, c.FieldWorkers().Suspend(ctx, "fwk_1")
+		}},
+		{name: "FieldWorkers.Activate", discardsBody: true, call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return nil, c.FieldWorkers().Activate(ctx, "fwk_1")
+		}},
+		{name: "FieldWorkers.GrantApp", discardsBody: true, call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return nil, c.FieldWorkers().GrantApp(ctx, "fwk_1", "orders")
+		}},
+		{name: "FieldWorkers.RevokeApp", discardsBody: true, call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return nil, c.FieldWorkers().RevokeApp(ctx, "fwk_1", "orders")
+		}},
+		{name: "FieldWorkers.SignIns", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldWorkers().SignIns(ctx, "fwk_1", new(uint32(1)), new(uint32(5)))
+		}},
+		{name: "FieldDevices.CreateEnrolmentCode", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldDevices().CreateEnrolmentCode(ctx, &client.CreateEnrolmentCodeRequest{ClientID: "clt_1", Mode: "PERSONAL", AppCodes: []string{"a"}, AssignedWorkerID: new("fwk_1"), Label: new("L")})
+		}},
+		{name: "FieldDevices.List", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldDevices().List(ctx, "clt_1", &client.FieldDeviceFilters{Status: "ACTIVE", Mode: "SHARED", Page: new(uint32(1)), PageSize: new(uint32(5))})
+		}},
+		{name: "FieldDevices.Get", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldDevices().Get(ctx, "fdv_1")
+		}},
+		{name: "FieldDevices.Suspend", discardsBody: true, call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return nil, c.FieldDevices().Suspend(ctx, "fdv_1")
+		}},
+		{name: "FieldDevices.Activate", discardsBody: true, call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return nil, c.FieldDevices().Activate(ctx, "fdv_1")
+		}},
+		{name: "FieldDevices.Revoke", discardsBody: true, call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return nil, c.FieldDevices().Revoke(ctx, "fdv_1")
+		}},
+		{name: "FieldPolicies.Get", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldPolicies().Get(ctx, "clt_1")
+		}},
+		{name: "FieldPolicies.Put", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldPolicies().Put(ctx, "clt_1", &client.PutFieldPolicyRequest{PinMinLength: new(6), SoftLockThreshold: new(5), SoftLockSecs: new(900), HardLockThreshold: new(10), SharedIdleSecs: new(900), PersonalIdleSecs: new(7200), ShiftMaxSecs: new(50400), RequireAttestation: true, PinReauthDays: new(7)})
+		}},
+		{name: "FieldTokens.Introspect", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldTokens().Introspect(ctx, "tok")
+		}},
+
 		// ── Applications ──
 		{name: "Applications.Create", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.Applications().Create(ctx, &client.CreateApplicationRequest{Code: "a", Name: "A"})
@@ -661,6 +726,10 @@ func TestEveryResourceMethodIsRegistered(t *testing.T) {
 		"OpenAPI":        c.OpenAPI(),
 		"Me":             c.Me(),
 		"Router":         c.Router(),
+		"FieldWorkers":   c.FieldWorkers(),
+		"FieldDevices":   c.FieldDevices(),
+		"FieldPolicies":  c.FieldPolicies(),
+		"FieldTokens":    c.FieldTokens(),
 	}
 	registered := map[string]bool{}
 	for _, tc := range lockCases() {
