@@ -99,3 +99,32 @@ export {
 	type PaginatedJobs,
 	type PaginatedInstances,
 } from "./scheduled-jobs.js";
+export {
+	FieldWorkersResource,
+	type EnsureFieldWorkerRequest,
+	type UpdateFieldWorkerRequest,
+	type ResetFieldWorkerPinRequest,
+	type FieldWorkerFilters,
+	type FieldWorkerSignInPage,
+	type FieldWorkerDto,
+	type FieldWorkerListResponse,
+	type FieldWorkerSignInListResponse,
+	type ResetFieldWorkerPinResult,
+} from "./field-workers.js";
+export {
+	FieldDevicesResource,
+	type CreateEnrolmentCodeRequest,
+	type FieldDeviceFilters,
+	type FieldEnrolmentCode,
+	type FieldDeviceDto,
+	type FieldDeviceListResponse,
+} from "./field-devices.js";
+export {
+	FieldPoliciesResource,
+	type PutFieldPolicyRequest,
+	type FieldPolicyDto,
+} from "./field-policies.js";
+export {
+	FieldTokensResource,
+	type FieldTokenIntrospection,
+} from "./field-tokens.js";

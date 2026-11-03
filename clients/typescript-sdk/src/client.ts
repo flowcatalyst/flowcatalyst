@@ -32,6 +32,10 @@ import {
 } from "./sync/definition-synchronizer.js";
 import { RouterResource } from "./resources/router.js";
 import { IngestionsResource } from "./resources/ingestions.js";
+import { FieldWorkersResource } from "./resources/field-workers.js";
+import { FieldDevicesResource } from "./resources/field-devices.js";
+import { FieldPoliciesResource } from "./resources/field-policies.js";
+import { FieldTokensResource } from "./resources/field-tokens.js";
 import { ScheduledJobsResource } from "./resources/scheduled-jobs.js";
 import {
 	ScheduledJobRunner,
@@ -146,6 +150,10 @@ export class FlowCatalystClient {
 	private _scheduledJobs?: ScheduledJobsResource;
 	private _auditLogs?: AuditLogsResource;
 	private _ingestions?: IngestionsResource;
+	private _fieldWorkers?: FieldWorkersResource;
+	private _fieldDevices?: FieldDevicesResource;
+	private _fieldPolicies?: FieldPoliciesResource;
+	private _fieldTokens?: FieldTokensResource;
 
 	constructor(config: FlowCatalystConfig) {
 		this.config = {
@@ -273,6 +281,35 @@ export class FlowCatalystClient {
 	/** Ingestions resource (definitions, versions, test connection, sets). */
 	ingestions(): IngestionsResource {
 		return (this._ingestions ??= new IngestionsResource(this));
+	}
+
+	/** Field workers resource (admin API for PIN-based field identities). */
+	fieldWorkers(): FieldWorkersResource {
+		return (this._fieldWorkers ??= new FieldWorkersResource(this));
+	}
+
+	/** Field devices resource (enrolment codes and enrolled devices). */
+	fieldDevices(): FieldDevicesResource {
+		return (this._fieldDevices ??= new FieldDevicesResource(this));
+	}
+
+	/** Field policies resource (per-client PIN, lock and session policy). */
+	fieldPolicies(): FieldPoliciesResource {
+		return (this._fieldPolicies ??= new FieldPoliciesResource(this));
+	}
+
+	/** Field tokens resource (online introspection). */
+	fieldTokens(): FieldTokensResource {
+		return (this._fieldTokens ??= new FieldTokensResource(this));
+	}
+
+	/**
+	 * Online check of a field access token (`POST /api/field-tokens/introspect`).
+	 * Use when the offline `FieldTokenVerifier` is not enough and the session
+	 * must still be live.
+	 */
+	introspectFieldToken(token: string) {
+		return this.fieldTokens().introspect(token);
 	}
 
 	/**

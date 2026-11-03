@@ -440,6 +440,73 @@ See **[docs/effect-usage.md](./docs/effect-usage.md)** for the full
 worked example, layer wiring, error handling with `Effect.catchTag`, and
 testing with `TestUnitOfWork`.
 
+## Field workers
+
+Field workers (drivers, pickers, yard staff) sign in on an enrolled device with
+a PIN at the platform's `/field/*`. The platform issues a short RS256 field
+access token (`typ: fc-field+jwt`, `token_use: "field"`, `aud` = your app code)
+bound to the device key, presented to your backend as
+`Authorization: DPoP <token>` plus a `DPoP: <proof>` header (ES256 JWS). PINs
+never reach your backend; the SDK only verifies.
+
+```ts
+import { fieldAuth } from "@flowcatalyst/sdk/fastify";
+
+await app.register(fieldAuth, {
+  issuer: "https://auth.example.com",
+  appCode: "my-app",
+  // The proof's htu is checked against publicBaseUrl + request path.
+  // The Host header is never used.
+  publicBaseUrl: "https://api.my-app.example.com",
+});
+
+app.post("/orders", { preHandler: app.fcField.require() }, async (req) => {
+  const p = req.fieldPrincipal!; // workerId, workerCode, deviceId, clientId, appCode, ...
+});
+```
+
+`fieldAuth` adds no global hook: it only runs on routes that use
+`app.fcField.require()` and never touches `request.principal`, so it coexists
+with `flowcatalystAuth`. A PIN-change-only token is answered `403
+PIN_CHANGE_REQUIRED`; any other refusal is `401` with `WWW-Authenticate: DPoP
+error="invalid_token"` and `{ "error": <reason> }`; a discovery/key-fetch
+failure is `503`.
+
+Without Fastify, use the verifier directly:
+
+```ts
+import { FieldTokenVerifier, FieldError } from "@flowcatalyst/sdk";
+
+const verifier = new FieldTokenVerifier({ issuer, appCode: "my-app" });
+try {
+  const p = await verifier.verify(authHeader, dpopHeader, "POST", "https://api.my-app.example.com/orders");
+} catch (e) {
+  if (e instanceof FieldError) console.log(e.reason); // "expired", "htu_mismatch", ...
+}
+```
+
+Refusal reasons: `malformed`, `wrong_typ`, `wrong_token_use`, `wrong_aud`,
+`expired`, `invalid_token`, `pcr`, `missing_proof`, `invalid_proof`,
+`jkt_mismatch`, `htm_mismatch`, `htu_mismatch`, `ath_mismatch`, `stale_proof`.
+Only RS256 tokens and ES256 proofs are accepted. The proof's `iat` must be
+within 5 minutes of now (`proofMaxAgeSeconds` widens it for devices with bad
+clocks). Nonce replay protection is not done by the verifier.
+
+Admin API (service account or user token):
+
+```ts
+await client.fieldWorkers().ensure({ clientId, workerCode: "W001", name: "Wendy", appCodes: ["my-app"] });
+await client.fieldWorkers().resetPin(id);            // temporaryPin returned once
+await client.fieldDevices().createEnrolmentCode({ clientId, mode: "SHARED", appCodes: ["my-app"] });
+await client.fieldPolicies().put(clientId, { requireAttestation: true });
+await client.introspectFieldToken(token);            // online check; session must still be live
+```
+
+Resources: `fieldWorkers()` (ensure, list, get, update, delete, resetPin,
+unlock, suspend, activate, grantApp, revokeApp, signIns), `fieldDevices()`
+(createEnrolmentCode, list, get, suspend, activate, revoke), `fieldPolicies()`
+(get, put).
+
 ## Portal identities
 
 Portal users (`ptu_…`) are a separate end-user population from platform

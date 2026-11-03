@@ -79,6 +79,18 @@ export {
 	isPartialFailureError,
 } from "./errors.js";
 
+// Field-worker token verification (offline; admin API is under Resource classes)
+export {
+	FieldTokenVerifier,
+	verifyFieldToken,
+	FieldError,
+	FieldVerifierUnavailableError,
+	FieldReason,
+	type FieldReasonCode,
+	type FieldPrincipal,
+	type FieldTokenVerifierConfig,
+} from "./field/index.js";
+
 // Resource classes
 export {
 	EventTypesResource,
@@ -95,6 +107,24 @@ export {
 	ScheduledJobsResource,
 	AuditLogsResource,
 	IngestionsResource,
+	FieldWorkersResource,
+	FieldDevicesResource,
+	FieldPoliciesResource,
+	FieldTokensResource,
+	type FieldWorkerDto,
+	type FieldWorkerListResponse,
+	type FieldWorkerFilters,
+	type EnsureFieldWorkerRequest,
+	type UpdateFieldWorkerRequest,
+	type ResetFieldWorkerPinRequest,
+	type FieldDeviceDto,
+	type FieldDeviceListResponse,
+	type FieldDeviceFilters,
+	type CreateEnrolmentCodeRequest,
+	type FieldEnrolmentCode,
+	type FieldPolicyDto,
+	type PutFieldPolicyRequest,
+	type FieldTokenIntrospection,
 	type Ingestion,
 	type IngestionDefinition,
 	type IngestionSource,

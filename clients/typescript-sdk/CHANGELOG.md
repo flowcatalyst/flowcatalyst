@@ -7,6 +7,23 @@ Notable changes to `@flowcatalyst/sdk`. Releases are tagged
 
 Additive: no signature breaks (new parameters are optional).
 
+### Field workers
+- `FieldTokenVerifier` / `verifyFieldToken` and `FieldPrincipal`: offline
+  verification of field-worker access tokens (RS256, `typ fc-field+jwt`,
+  `token_use field`, `aud` = app code) and their DPoP proofs (ES256, RFC 7638
+  `jkt` binding, `htm`/`htu`/`ath`, `iat` window). `FieldError.reason` is one of
+  the shared `FieldReason` strings; `pcr` tokens are refused. Key discovery and
+  caching use `jose`.
+- Fastify: `fieldAuth` plugin (`@flowcatalyst/sdk/fastify`) decorates
+  `request.fieldPrincipal` on routes using `app.fcField.require()`. It never
+  writes `request.principal`. `pcr` -> `403 PIN_CHANGE_REQUIRED`, other
+  refusals -> `401` + `WWW-Authenticate: DPoP error="invalid_token"`.
+- Admin resources `fieldWorkers()`, `fieldDevices()`, `fieldPolicies()`,
+  `fieldTokens()` and `introspectFieldToken(token)`.
+- The Fastify bearer validator now enforces a `token_use` allowlist (`api`,
+  `identity`, or absent): a field token, or any other plane's token, no longer
+  authenticates as a platform principal even when no `expectedAudience` is set.
+
 ### Ingestions
 - `Ingestion` gains `notices` (undismissed notices: failures the platform
   refused), `latestNotice`, `latestNoticeAt`, `warnings` (what the definition

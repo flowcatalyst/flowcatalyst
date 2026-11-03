@@ -56,6 +56,8 @@
  */
 
 export { flowcatalystAuth } from "./plugin.js";
+export { fieldAuth } from "./field.js";
+export type { FieldAuthOptions, FieldAuthDecorator } from "./field.js";
 export type {
 	FlowcatalystAuthOptions,
 	FlowcatalystAuthDecorator,

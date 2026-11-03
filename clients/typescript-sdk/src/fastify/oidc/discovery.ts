@@ -20,6 +20,23 @@ export interface DiscoveryDoc {
 	revocation_endpoint?: string;
 }
 
+/**
+ * `token_use` values an access token may carry to be accepted here: `api`
+ * (authority-bearing), `identity` (login proof, no authority) or absent
+ * (older platform versions). Anything else (notably `field`, the
+ * field-worker plane) is refused: a token minted for another plane must
+ * never authenticate as a platform principal, whatever its `aud`.
+ */
+export const ACCEPTED_TOKEN_USE: readonly string[] = ["api", "identity"];
+
+export function assertAccessTokenUse(payload: JWTPayload): void {
+	const use = (payload as Record<string, unknown>)["token_use"];
+	if (use === undefined) return;
+	if (typeof use !== "string" || !ACCEPTED_TOKEN_USE.includes(use)) {
+		throw new Error(`token_use ${String(use)} is not an access token for this plane`);
+	}
+}
+
 export interface OidcEndpoints {
 	issuer: string;
 	authorizationEndpoint: string;
@@ -106,6 +123,7 @@ async function load(
 				issuer: doc.issuer,
 				...(expectedAudience ? { audience: expectedAudience } : {}),
 			});
+			assertAccessTokenUse(payload);
 			return payload;
 		},
 		async verifyIdToken(token: string, clientId: string) {
