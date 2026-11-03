@@ -12,6 +12,10 @@ import io.flowcatalyst.sdk.resources.DispatchJobsResource;
 import io.flowcatalyst.sdk.resources.DispatchPoolsResource;
 import io.flowcatalyst.sdk.resources.EventTypesResource;
 import io.flowcatalyst.sdk.resources.EventsResource;
+import io.flowcatalyst.sdk.resources.FieldDevicesResource;
+import io.flowcatalyst.sdk.resources.FieldPoliciesResource;
+import io.flowcatalyst.sdk.resources.FieldTokensResource;
+import io.flowcatalyst.sdk.resources.FieldWorkersResource;
 import io.flowcatalyst.sdk.resources.IngestionSetsResource;
 import io.flowcatalyst.sdk.resources.IngestionsResource;
 import io.flowcatalyst.sdk.resources.MeResource;
@@ -69,6 +73,10 @@ public final class FlowCatalystClient {
     private DispatchJobsResource dispatchJobs;
     private EventsResource events;
     private ApplicationUsersResource applicationUsers;
+    private FieldWorkersResource fieldWorkers;
+    private FieldDevicesResource fieldDevices;
+    private FieldPoliciesResource fieldPolicies;
+    private FieldTokensResource fieldTokens;
     private io.flowcatalyst.sdk.sync.DefinitionSynchronizer definitions;
 
     private FlowCatalystClient(Builder builder) {
@@ -213,6 +221,31 @@ public final class FlowCatalystClient {
     public synchronized ApplicationUsersResource applicationUsers() {
         return applicationUsers != null
                 ? applicationUsers : (applicationUsers = new ApplicationUsersResource(transport));
+    }
+
+    /** Field workers: people who sign in on enrolled devices with a PIN. */
+    public synchronized FieldWorkersResource fieldWorkers() {
+        return fieldWorkers != null ? fieldWorkers : (fieldWorkers = new FieldWorkersResource(transport));
+    }
+
+    /** Field devices and their single-use enrolment codes. */
+    public synchronized FieldDevicesResource fieldDevices() {
+        return fieldDevices != null ? fieldDevices : (fieldDevices = new FieldDevicesResource(transport));
+    }
+
+    /** The per-client field policy (PIN rules, lockouts, session lifetimes). */
+    public synchronized FieldPoliciesResource fieldPolicies() {
+        return fieldPolicies != null ? fieldPolicies : (fieldPolicies = new FieldPoliciesResource(transport));
+    }
+
+    /** Online introspection of field access tokens. */
+    public synchronized FieldTokensResource fieldTokens() {
+        return fieldTokens != null ? fieldTokens : (fieldTokens = new FieldTokensResource(transport));
+    }
+
+    /** Shorthand for {@code fieldTokens().introspect(token)}. */
+    public io.flowcatalyst.sdk.generated.model.FieldTokenIntrospectResponse introspectFieldToken(String token) {
+        return fieldTokens().introspect(token);
     }
 
     /**

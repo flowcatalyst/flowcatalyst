@@ -404,6 +404,55 @@ try {
 }
 ```
 
+## Field workers
+
+Field workers sign in on enrolled devices with a PIN at the platform's `/field/*`; the platform
+issues a short RS256 access token bound to the device key. Your backend never sees a PIN: it
+verifies the token and a per-request DPoP proof with `FieldTokenVerifier`, which uses only the
+JDK's `java.security` and `java.net.http` (no JOSE dependency, no web-framework glue).
+
+```java
+var verifier = FieldTokenVerifier.builder()
+        .issuer("https://auth.flowcatalyst.io")   // the platform base URL (token iss)
+        .appCode("my-app")                        // tokens must be addressed to this app (aud)
+        .build();                                 // jwksUrl(...) skips OIDC discovery
+
+// Authorization: "DPoP <token>", DPoP: "<proof>", method, and the FULL public URL you serve
+// (never rebuilt from a Host header; any query is ignored).
+switch (verifier.verify(authorization, dpop, "POST", "https://app.example.com/api/orders")) {
+    case FieldVerification.Valid v -> handle(v.principal());      // FieldPrincipal record
+    case FieldVerification.Invalid i -> respond(401, i.reason()); // FieldReason.* constant
+    case FieldVerification.Unavailable u -> respond(503, "keys unavailable");
+}
+```
+
+Access tokens must be RS256 and proofs ES256; anything else (HS256, `none`, ...) is refused. A
+PIN-change-only token is refused with `pcr`. The proof's `iat` must be within 5 minutes of now
+(`proofMaxAge(...)` widens it for devices with bad clocks). Signing keys are cached and
+refetched at most once a minute when a token names an unknown `kid`. Nonce checking is not done
+here. Reasons: `malformed`, `wrong_typ`, `wrong_token_use`, `wrong_aud`, `expired`,
+`invalid_token`, `pcr`, `missing_proof`, `invalid_proof`, `jkt_mismatch`, `htm_mismatch`,
+`htu_mismatch`, `ath_mismatch`, `stale_proof`. The shared vectors in `api/field-fixtures` run in
+`FieldTokenVerifierTest`.
+
+Admin calls (service account needs the `platform:iam:field-*` permissions and access to the
+client):
+
+```java
+var worker = client.fieldWorkers().ensure(new EnsureFieldWorkerRequest()
+        .clientId(clientId).workerCode("W001").name("Ann").appCodes(List.of("my-app")));
+var pin = client.fieldWorkers().resetPin(worker.getId(), null);      // pin.getTemporaryPin(), shown once
+var code = client.fieldDevices().createEnrolmentCode(new CreateEnrolmentCodeRequest()
+        .clientId(clientId).mode(CreateEnrolmentCodeRequest.ModeEnum.PERSONAL)
+        .appCodes(List.of("my-app")).assignedWorkerId(worker.getId())); // render code.getQrPayload()
+client.fieldPolicies().put(clientId, new PutFieldPolicyRequest().pinMinLength(8L).requireAttestation(false));
+client.introspectFieldToken(token);   // online check that the session is still live
+```
+
+`fieldWorkers()` also has `list`, `get`, `update`, `delete`, `unlock`, `suspend`, `activate`,
+`grantApp`, `revokeApp` and `signIns`; `fieldDevices()` has `list`, `get`, `suspend`, `activate`
+and `revoke`; `fieldPolicies()` has `get` and `put`.
+
 ## Webhook verification
 
 ```java
