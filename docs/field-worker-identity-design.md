@@ -1,6 +1,8 @@
 # Field-worker identity: platform-held PINs, device-bound sessions, biometric unlock
 
-Status: DESIGN (2026-10-19), not built. Owner decisions in §9 are open.
+Status: ACCEPTED (owner rulings 2026-10-19, recorded in §9). P1 in progress on branch
+`feat/field-identity` (2026-11-03): the build spec is `docs/field-worker-identity-p1-spec.md`.
+F34 (platform `token_use` allowlist, `8165e614`) landed on main 2026-10-19.
 Related: `docs/portal-identity-plan.md` (why a separate plane), `docs/portal-apps-and-access-gate.md`
 (per-app grants), `docs/2fa-implementation-plan.md` (trusted-device upgrade path names exactly this
 work), `docs/auth-hardening-plan.md`, `docs/wire-contract.md`.
@@ -323,6 +325,72 @@ shared by all five SDKs.
 - `clients/field-android` (Kotlin, AAR, later): the same protocol with Credential Manager passkeys
   as an option.
 
+### 6.1 Application framework integration (Go first, Java mirrored)
+
+Written 2026-11-03 against `../flowcatalyst-framework` (Go: `go/auth`, `go/fw`,
+`go/flowcatalyst`; contract `docs/contracts/sessions-and-login.md`). Nothing below is built; it
+starts once P1 freezes the token claims and `api/field-fixtures/`.
+
+**What already holds.** The framework's bearer path (`auth.PlatformTokens.Verify`) accepts only
+`token_use: "api"` (`go/auth/claims.go`), so a field token presented as `Bearer` is refused today.
+No change is needed to keep the two planes apart. A test vector with `token_use: "field"` is
+added to `tokens_test.go` anyway, so the separation is pinned.
+
+**Shape: a third authentication source beside session and bearer, chosen by the
+`Authorization` scheme.** Field tokens travel as `Authorization: DPoP <token>` with a `DPoP` proof
+header (RFC 9449). `ContextResolver.authenticate` adds a branch for the `DPoP` scheme, enabled only
+when the application opts in (`auth.Build(..., auth.FieldWorkers(opts))`). Sessions and platform
+bearer tokens are unchanged.
+
+1. **`auth.FieldTokens`**, the counterpart of `PlatformTokens`. It shares the JWKS cache and issuer
+   check, and requires `typ: fc-field+jwt`, `token_use: "field"`, `aud` = the application code
+   (`flowcatalyst.application-code`, already configured), and no `pcr` claim (a token minted
+   from a temporary PIN works only on the platform's `/field/auth/pin`). It also verifies the proof:
+   an ES256 JWS whose `jwk` thumbprint equals `cnf.jkt`, `htm`/`htu` equal to the request, `ath` =
+   SHA-256 of the token, and the proof `nonce`. Result types follow `Valid | Invalid | Unavailable`.
+2. **Proof freshness at the application.** The platform's nonces are single-use and stored
+   platform-side, so an application cannot check them. The framework issues its own **stateless**
+   nonce: `HMAC(cookie-keys, 5-minute bucket)`, sent as `DPoP-Nonce` on a `401` with
+   `WWW-Authenticate: DPoP error="use_dpop_nonce"` (RFC 9449 §9) and on every field response. It
+   accepts the current and previous bucket. A per-replica `jti` cache (memory, or Redis when
+   `redisfw` is configured) stops a proof being replayed inside the window. Because device
+   clocks are unreliable, `iat` is checked only loosely (±24 h). Freshness comes from the nonce.
+3. **`fw.Context` mapping.** The new `fw.PrincipalFieldWorker` kind needs a core contract
+   section 3 amendment. `principal` = `sub` (`fwu_…`). `client` = the token's
+   `client_identifier` claim (P1 mints it alongside `client_id` so the framework never has to
+   translate `clt_` ids), and it must pass the same `MayActFor` check. `application` = `aud`.
+   `Authenticated` gains `Field *FieldPrincipal` (worker code, name, device id, device mode, `amr`,
+   `auth_time`).
+4. **Permissions are code, and none by default** (contract section 12 rule 6 carries over). The
+   platform stores only "worker may sign in to app"; what a worker may do belongs to the
+   application. The option is `FieldPermissions func(FieldPrincipal) []string`, with helpers for a
+   fixed set and a set by `device_mode`, because SHARED kiosks often get less. A missing mapping
+   fails closed.
+5. **Online check before high-value actions.** `auth.RequireFreshField(maxAge)` is route
+   middleware that calls `POST /api/field-tokens/introspect` through the application's service
+   account (the `flowcatalyst` module's platform client) when `auth_time`/`iat` is older than
+   `maxAge`. Typical uses are opening a gate or releasing a load.
+6. **Revocation events.** `flowcatalyst.OnFieldRevocation(handler)` is sugar over the existing
+   receivers for `field-worker.suspended`, `field-device.revoked` and `field-session.revoked`. It
+   lets an application drop cached work assignments. Access tokens last 10 min, so the events are
+   for application state, not for token validity.
+7. **Supervisor screens.** The admin wrappers live in go-sdk (`fcsdk`: `FieldWorkers.Ensure`,
+   `ResetPin`, `SetStatus`, `GrantApp`; `FieldDevices.Get`, `Revoke`). `go/ui` may later ship a
+   field-worker admin page set (list, PIN reset with a one-time display, device revoke) under
+   `admin`, like the standard admin pages.
+8. **No login in the framework.** PINs never reach an application backend. The web side of a
+   field application is the `field-js` library talking to the platform's `/field/*`; the framework
+   only verifies what it is handed. A server-rendered field page (templ + Datastar) gets its token
+   from `field-js` through `fetch`, never from a cookie. Field sessions are not framework sessions,
+   so cookies, CSRF and 302 do not apply to the DPoP branch, and a navigation with no token gets
+   `401`, not a redirect.
+
+Work items in the framework repo, after P1: contract section `sessions-and-login.md` §15 "Field
+workers" and core §3 (kind); Go `auth.FieldTokens` + resolver branch + nonce + `jti` cache +
+conformance against `api/field-fixtures/`; `flowcatalyst` introspect + receivers sugar; go-sdk
+wrappers (released through `make release-go-sdk`); then the Java mirror (`FieldTokens`,
+`Auth.current(..).field()`), sharing the fixtures. Size: M (Go) + M (Java).
+
 ## 7. Phased plan
 
 | Phase | Scope | Size | Gate | Parallel? |
@@ -355,7 +423,14 @@ and Laravel verifiers + one app migrated. Value delivered:
 Deliberately left out of the slice: offline login, passkeys, attestation enforcement, Kotlin,
 badges.
 
-## 9. Owner decisions (with recommendations)
+## 9. Owner decisions (ruled 2026-10-19)
+
+All six were ruled as recommended on 2026-10-19. Rulings in brief: D1 a new
+`field_identities` plane (`fwu_`); D2 the platform-owned client library takes the PIN (a
+narrow, recorded exception to "credentials only on platform pages"); D3 platform-issued
+device-bound field tokens; D4 no offline login in v1; D5 no biometrics or unlock keys on
+SHARED devices; D6 6-digit PIN by default, hard lock at 10, import legacy bcrypt/argon2i
+hashes and rehash with the pepper on first success. The text below keeps the reasoning.
 
 1. **D1 Plane.** A new `field_identities` plane, or field workers as `iam_principals` /
    `portal_identities`? **Recommend a new plane** (§3.1): no email, no platform authority, refresh
