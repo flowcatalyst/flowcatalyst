@@ -702,7 +702,7 @@ Route::post('/api/deliveries', function (Request $request) {
 - To use the verifier directly: `app(\FlowCatalyst\Auth\Field\FieldTokenVerifier::class)->verify($authorizationHeader, $dpopHeader, $method, $fullUrl)`
   returns a `FieldPrincipal` or throws `FieldTokenException` (`->reason`).
 - Platform API access-token validation (`AccessTokenValidator`, the `fc-token` guard) refuses any
-  `token_use` other than `api` (or absent), so a field token is never an API credential.
+  `token_use` other than `api` or `identity` (or absent), so a field token is never an API credential.
 
 Online check (the session must still be live; needs `platform:iam:field-token:introspect`):
 

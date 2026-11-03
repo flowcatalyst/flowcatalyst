@@ -11,7 +11,7 @@
   `clock_skew_seconds`). New `fieldWorkers()`, `fieldDevices()`, `fieldPolicies()`, `fieldTokens()` and
   `introspectFieldToken($token)` over the generated client. Passes the shared `api/field-fixtures` vectors.
 - `AccessTokenValidator` (the `fc-token` guard and `fc.auth` middleware) now treats `token_use` as an
-  allowlist: only `api` or an absent claim is an access token; `field`, portal and any other class are refused.
+  allowlist: `api`, `identity` (accepted as before) or an absent claim; `field` and any other class are refused.
 - Ingestions: `Ingestion` gains `notices`, `latestNotice`, `latestNoticeAt`, `warnings` and `save`
   (new `IngestionSaveOutcome`: `outcome` SAVED | MADE_LIVE | DRAFT | DRAFT_EXISTS | UNCHANGED,
   `version`, `awaitingPromote`, `message`); `IngestionVersion` gains `draft`, `digest` and `save`.

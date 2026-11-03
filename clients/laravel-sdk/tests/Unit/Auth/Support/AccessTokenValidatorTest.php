@@ -47,7 +47,7 @@ final class AccessTokenValidatorTest extends TestCase
             'exp' => $now + 300,
             'nbf' => $now - 5,
             'iat' => $now,
-            'token_use' => 'api',
+            'token_use' => 'identity',
         ], $overrides);
     }
 
@@ -67,7 +67,7 @@ final class AccessTokenValidatorTest extends TestCase
 
     public function test_token_use_is_an_allowlist(): void
     {
-        foreach (['field', 'identity', 'portal', 'id', 'something-new', ''] as $use) {
+        foreach (['field', 'portal', 'id', 'something-new', ''] as $use) {
             $token = $this->issuer->sign($this->baseClaims(['token_use' => $use]));
             $this->assertNull($this->validator()->validate($token), "token_use={$use} must be refused");
         }
@@ -77,6 +77,7 @@ final class AccessTokenValidatorTest extends TestCase
         ));
 
         $this->assertNotNull($this->validator()->validate($this->issuer->sign($this->baseClaims(['token_use' => 'api']))));
+        $this->assertNotNull($this->validator()->validate($this->issuer->sign($this->baseClaims(['token_use' => 'identity']))));
         $claims = $this->baseClaims();
         unset($claims['token_use']);
         $this->assertNotNull($this->validator()->validate($this->issuer->sign($claims)));

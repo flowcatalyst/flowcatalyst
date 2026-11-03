@@ -12,7 +12,7 @@ use FlowCatalyst\Auth\DTOs\FlowCatalystUser;
  * Verification path (signature + kid lookup delegated to {@see JwtSignature}):
  *   1. Parse JWT, lift `kid` from the header, verify the RS256 signature
  *      against the matching JWK from {@see JwksCache::keys()}.
- *   2. Check `exp`, `nbf`, `sub`, and `token_use` (allowlist: `api` or absent).
+ *   2. Check `exp`, `nbf`, `sub`, and `token_use` (allowlist: `api`, `identity` or absent).
  *   3. Check `iss` against the platform's own discovery issuer
  *      ({@see JwksCache::issuer()}) — mandatory, not best-effort.
  *   4. Check `aud` — only when `$expectedAudience` is configured (opt-in).
@@ -53,12 +53,13 @@ final class AccessTokenValidator
             return null;
         }
 
-        // `token_use` is an allowlist, not a denylist: only an API credential
-        // (`api`) or a token with no marker is an access token. Any other
-        // class (`field`, a portal token, a future one) shares the platform
-        // signing keys but is never an API credential.
+        // `token_use` is an allowlist, not a denylist: an API credential
+        // (`api`), an interactive login's access token (`identity`, accepted
+        // here as before so existing apps keep working) or a token with no
+        // marker. Any other class (`field`, a future one) shares the platform
+        // signing keys but is never accepted by this guard.
         $tokenUse = $payload['token_use'] ?? null;
-        if ($tokenUse !== null && $tokenUse !== 'api') {
+        if ($tokenUse !== null && $tokenUse !== 'api' && $tokenUse !== 'identity') {
             return null;
         }
 
