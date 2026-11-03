@@ -176,6 +176,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\CreateDomainRequest::class => \FlowCatalyst\Generated\Normalizer\CreateDomainRequestNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\CreateEnrolmentCodeRequest::class => \FlowCatalyst\Generated\Normalizer\CreateEnrolmentCodeRequestNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\CreateEventRequest::class => \FlowCatalyst\Generated\Normalizer\CreateEventRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\CreateEventResponse::class => \FlowCatalyst\Generated\Normalizer\CreateEventResponseNormalizer::class,
@@ -264,6 +266,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\EnableTraceRequest::class => \FlowCatalyst\Generated\Normalizer\EnableTraceRequestNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\EnsureFieldWorkerRequest::class => \FlowCatalyst\Generated\Normalizer\EnsureFieldWorkerRequestNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\ErrorModel::class => \FlowCatalyst\Generated\Normalizer\ErrorModelNormalizer::class,
         
         \FlowCatalyst\Generated\Model\Event::class => \FlowCatalyst\Generated\Normalizer\EventNormalizer::class,
@@ -286,7 +290,31 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\Failure::class => \FlowCatalyst\Generated\Normalizer\FailureNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\FieldAppRef::class => \FlowCatalyst\Generated\Normalizer\FieldAppRefNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldDeviceListResponse::class => \FlowCatalyst\Generated\Normalizer\FieldDeviceListResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldDeviceResponse::class => \FlowCatalyst\Generated\Normalizer\FieldDeviceResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldEnrolmentCodeResponse::class => \FlowCatalyst\Generated\Normalizer\FieldEnrolmentCodeResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\FieldError::class => \FlowCatalyst\Generated\Normalizer\FieldErrorNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldPolicyResponse::class => \FlowCatalyst\Generated\Normalizer\FieldPolicyResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldTokenIntrospectRequest::class => \FlowCatalyst\Generated\Normalizer\FieldTokenIntrospectRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldTokenIntrospectResponse::class => \FlowCatalyst\Generated\Normalizer\FieldTokenIntrospectResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldWorkerAppRef::class => \FlowCatalyst\Generated\Normalizer\FieldWorkerAppRefNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldWorkerListResponse::class => \FlowCatalyst\Generated\Normalizer\FieldWorkerListResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldWorkerResponse::class => \FlowCatalyst\Generated\Normalizer\FieldWorkerResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldWorkerSignInListResponse::class => \FlowCatalyst\Generated\Normalizer\FieldWorkerSignInListResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldWorkerSignInResponse::class => \FlowCatalyst\Generated\Normalizer\FieldWorkerSignInResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\FireNowRequest::class => \FlowCatalyst\Generated\Normalizer\FireNowRequestNormalizer::class,
         
@@ -299,6 +327,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\GrantAccessRequest::class => \FlowCatalyst\Generated\Normalizer\GrantAccessRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\GrantClientAccessRequest::class => \FlowCatalyst\Generated\Normalizer\GrantClientAccessRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\GrantFieldWorkerAppRequest::class => \FlowCatalyst\Generated\Normalizer\GrantFieldWorkerAppRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\GrantPermissionRequest::class => \FlowCatalyst\Generated\Normalizer\GrantPermissionRequestNormalizer::class,
         
@@ -492,6 +522,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\PutAliasResponse::class => \FlowCatalyst\Generated\Normalizer\PutAliasResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\PutFieldPolicyRequest::class => \FlowCatalyst\Generated\Normalizer\PutFieldPolicyRequestNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\PutRouteRequest::class => \FlowCatalyst\Generated\Normalizer\PutRouteRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\PutSettingRequest::class => \FlowCatalyst\Generated\Normalizer\PutSettingRequestNormalizer::class,
@@ -535,6 +567,10 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\ResendInvitationRequest::class => \FlowCatalyst\Generated\Normalizer\ResendInvitationRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ResendInvitationResponse::class => \FlowCatalyst\Generated\Normalizer\ResendInvitationResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ResetFieldWorkerPinRequest::class => \FlowCatalyst\Generated\Normalizer\ResetFieldWorkerPinRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ResetFieldWorkerPinResponse::class => \FlowCatalyst\Generated\Normalizer\ResetFieldWorkerPinResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ResetPasswordRequest::class => \FlowCatalyst\Generated\Normalizer\ResetPasswordRequestNormalizer::class,
         
@@ -726,6 +762,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\UpdateEventTypeRequest::class => \FlowCatalyst\Generated\Normalizer\UpdateEventTypeRequestNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\UpdateFieldWorkerRequest::class => \FlowCatalyst\Generated\Normalizer\UpdateFieldWorkerRequestNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\UpdateFunctionRequest::class => \FlowCatalyst\Generated\Normalizer\UpdateFunctionRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\UpdateIdentityProviderRequest::class => \FlowCatalyst\Generated\Normalizer\UpdateIdentityProviderRequestNormalizer::class,
@@ -885,6 +923,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\CreateConnectionRequest::class => false,
             \FlowCatalyst\Generated\Model\CreateDispatchPoolRequest::class => false,
             \FlowCatalyst\Generated\Model\CreateDomainRequest::class => false,
+            \FlowCatalyst\Generated\Model\CreateEnrolmentCodeRequest::class => false,
             \FlowCatalyst\Generated\Model\CreateEventRequest::class => false,
             \FlowCatalyst\Generated\Model\CreateEventResponse::class => false,
             \FlowCatalyst\Generated\Model\CreateEventTypeRequest::class => false,
@@ -929,6 +968,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\EmitRequest::class => false,
             \FlowCatalyst\Generated\Model\EmitResponse::class => false,
             \FlowCatalyst\Generated\Model\EnableTraceRequest::class => false,
+            \FlowCatalyst\Generated\Model\EnsureFieldWorkerRequest::class => false,
             \FlowCatalyst\Generated\Model\ErrorModel::class => false,
             \FlowCatalyst\Generated\Model\Event::class => false,
             \FlowCatalyst\Generated\Model\EventFilterOption::class => false,
@@ -940,13 +980,26 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\EventTypeResponse::class => false,
             \FlowCatalyst\Generated\Model\ExchangeWindow::class => false,
             \FlowCatalyst\Generated\Model\Failure::class => false,
+            \FlowCatalyst\Generated\Model\FieldAppRef::class => false,
+            \FlowCatalyst\Generated\Model\FieldDeviceListResponse::class => false,
+            \FlowCatalyst\Generated\Model\FieldDeviceResponse::class => false,
+            \FlowCatalyst\Generated\Model\FieldEnrolmentCodeResponse::class => false,
             \FlowCatalyst\Generated\Model\FieldError::class => false,
+            \FlowCatalyst\Generated\Model\FieldPolicyResponse::class => false,
+            \FlowCatalyst\Generated\Model\FieldTokenIntrospectRequest::class => false,
+            \FlowCatalyst\Generated\Model\FieldTokenIntrospectResponse::class => false,
+            \FlowCatalyst\Generated\Model\FieldWorkerAppRef::class => false,
+            \FlowCatalyst\Generated\Model\FieldWorkerListResponse::class => false,
+            \FlowCatalyst\Generated\Model\FieldWorkerResponse::class => false,
+            \FlowCatalyst\Generated\Model\FieldWorkerSignInListResponse::class => false,
+            \FlowCatalyst\Generated\Model\FieldWorkerSignInResponse::class => false,
             \FlowCatalyst\Generated\Model\FireNowRequest::class => false,
             \FlowCatalyst\Generated\Model\FireNowResponse::class => false,
             \FlowCatalyst\Generated\Model\_Function::class => false,
             \FlowCatalyst\Generated\Model\FunctionResponse::class => false,
             \FlowCatalyst\Generated\Model\GrantAccessRequest::class => false,
             \FlowCatalyst\Generated\Model\GrantClientAccessRequest::class => false,
+            \FlowCatalyst\Generated\Model\GrantFieldWorkerAppRequest::class => false,
             \FlowCatalyst\Generated\Model\GrantPermissionRequest::class => false,
             \FlowCatalyst\Generated\Model\Heartbeat::class => false,
             \FlowCatalyst\Generated\Model\IdentityProviderListResponse::class => false,
@@ -1043,6 +1096,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\PublishVersionRequest::class => false,
             \FlowCatalyst\Generated\Model\PutAliasRequest::class => false,
             \FlowCatalyst\Generated\Model\PutAliasResponse::class => false,
+            \FlowCatalyst\Generated\Model\PutFieldPolicyRequest::class => false,
             \FlowCatalyst\Generated\Model\PutRouteRequest::class => false,
             \FlowCatalyst\Generated\Model\PutSettingRequest::class => false,
             \FlowCatalyst\Generated\Model\QueueConfig::class => false,
@@ -1065,6 +1119,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\RequeueResponse::class => false,
             \FlowCatalyst\Generated\Model\ResendInvitationRequest::class => false,
             \FlowCatalyst\Generated\Model\ResendInvitationResponse::class => false,
+            \FlowCatalyst\Generated\Model\ResetFieldWorkerPinRequest::class => false,
+            \FlowCatalyst\Generated\Model\ResetFieldWorkerPinResponse::class => false,
             \FlowCatalyst\Generated\Model\ResetPasswordRequest::class => false,
             \FlowCatalyst\Generated\Model\RoleAssignmentDTO::class => false,
             \FlowCatalyst\Generated\Model\RoleListResponse::class => false,
@@ -1160,6 +1216,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\UpdateConnectionRequest::class => false,
             \FlowCatalyst\Generated\Model\UpdateDispatchPoolRequest::class => false,
             \FlowCatalyst\Generated\Model\UpdateEventTypeRequest::class => false,
+            \FlowCatalyst\Generated\Model\UpdateFieldWorkerRequest::class => false,
             \FlowCatalyst\Generated\Model\UpdateFunctionRequest::class => false,
             \FlowCatalyst\Generated\Model\UpdateIdentityProviderRequest::class => false,
             \FlowCatalyst\Generated\Model\UpdateIngestionRequest::class => false,

@@ -1546,6 +1546,238 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param array{
+     *    "clientId"?: string, //Tenant client whose devices to list
+     *    "status"?: string,
+     *    "mode"?: string,
+     *    "page"?: int, //0-based page index (default 0)
+     *    "pageSize"?: int, //Page size (default 100, max 1000)
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldDeviceListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listFieldDevices(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFieldDevices($queryParameters), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\CreateEnrolmentCodeRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldEnrolmentCodeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function createFieldEnrolmentCode(?\FlowCatalyst\Generated\Model\CreateEnrolmentCodeRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\CreateFieldEnrolmentCode($requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldDeviceResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getFieldDevice(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetFieldDevice($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusChangeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function activateFieldDevice(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ActivateFieldDevice($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusChangeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function revokeFieldDevice(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RevokeFieldDevice($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusChangeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function suspendFieldDevice(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SuspendFieldDevice($id), $fetch);
+    }
+    /**
+     * @param string $clientId
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldPolicyResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getFieldPolicy(string $clientId, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetFieldPolicy($clientId), $fetch);
+    }
+    /**
+     * @param string $clientId
+     * @param null|\FlowCatalyst\Generated\Model\PutFieldPolicyRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldPolicyResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function putFieldPolicy(string $clientId, ?\FlowCatalyst\Generated\Model\PutFieldPolicyRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PutFieldPolicy($clientId, $requestBody), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\FieldTokenIntrospectRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldTokenIntrospectResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function introspectFieldToken(?\FlowCatalyst\Generated\Model\FieldTokenIntrospectRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\IntrospectFieldToken($requestBody), $fetch);
+    }
+    /**
+     * @param array{
+     *    "clientId"?: string, //Tenant client whose workers to list
+     *    "q"?: string, //Case-insensitive prefix matched against name and worker code
+     *    "appCode"?: string, //Only workers granted this application
+     *    "status"?: string, //Only workers in this state
+     *    "page"?: int, //0-based page index (default 0)
+     *    "pageSize"?: int, //Page size (default 100, max 1000)
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldWorkerListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listFieldWorkers(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFieldWorkers($queryParameters), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\EnsureFieldWorkerRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldWorkerResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function ensureFieldWorker(?\FlowCatalyst\Generated\Model\EnsureFieldWorkerRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\EnsureFieldWorker($requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusChangeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deleteFieldWorker(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteFieldWorker($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldWorkerResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getFieldWorker(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetFieldWorker($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\UpdateFieldWorkerRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldWorkerResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function updateFieldWorker(string $id, ?\FlowCatalyst\Generated\Model\UpdateFieldWorkerRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\UpdateFieldWorker($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusChangeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function activateFieldWorker(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ActivateFieldWorker($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\GrantFieldWorkerAppRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusChangeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function grantFieldWorkerApp(string $id, ?\FlowCatalyst\Generated\Model\GrantFieldWorkerAppRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GrantFieldWorkerApp($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $appCode
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusChangeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function revokeFieldWorkerApp(string $id, string $appCode, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RevokeFieldWorkerApp($id, $appCode), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\ResetFieldWorkerPinRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ResetFieldWorkerPinResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function resetFieldWorkerPin(string $id, ?\FlowCatalyst\Generated\Model\ResetFieldWorkerPinRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ResetFieldWorkerPin($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param array{
+     *    "page"?: int, //0-based page index (default 0)
+     *    "pageSize"?: int, //Page size (default 100, max 1000)
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldWorkerSignInListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listFieldWorkerSignIns(string $id, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFieldWorkerSignIns($id, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusChangeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function suspendFieldWorker(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SuspendFieldWorker($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusChangeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function unlockFieldWorker(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\UnlockFieldWorker($id), $fetch);
+    }
+    /**
+     * @param array{
      *    "clientId"?: string, //Filter by owning client id
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)

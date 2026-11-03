@@ -897,6 +897,22 @@ export type CreateDomainRequest = {
     [key: string]: unknown | string | undefined;
 };
 
+export type CreateEnrolmentCodeRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    appCodes: Array<string>;
+    /**
+     * PERSONAL devices only
+     */
+    assignedWorkerId?: string;
+    clientId: string;
+    label?: string;
+    mode: 'PERSONAL' | 'SHARED';
+    [key: string]: unknown | string | Array<string> | 'PERSONAL' | 'SHARED' | undefined;
+};
+
 export type CreateEventRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1726,6 +1742,23 @@ export type EnableTraceRequest = {
     [key: string]: unknown | string | boolean | number | undefined;
 };
 
+export type EnsureFieldWorkerRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Applications the worker may sign in to; granted additively
+     */
+    appCodes?: Array<string>;
+    clientId: string;
+    email?: string;
+    name: string;
+    pin?: string;
+    workerCode: string;
+    [key: string]: unknown | string | Array<string> | undefined;
+};
+
 export type ErrorModel = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1881,10 +1914,170 @@ export type Failure = {
     [key: string]: unknown | number | string | 'payload' | 'rejected' | string | 'REJECTED' | 'NOT_DISPATCHED' | 'SOURCE' | 'AUTH' | string | undefined;
 };
 
+export type FieldAppRef = {
+    code: string;
+    id: string;
+    name: string;
+};
+
+export type FieldDeviceListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    devices: Array<FieldDeviceResponse>;
+    page: number;
+    size: number;
+    total: number;
+};
+
+export type FieldDeviceResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    activeSessions: number;
+    apps: Array<FieldAppRef>;
+    assignedWorkerId?: string;
+    attestationLevel: 'STRONGBOX' | 'TEE' | 'SOFTWARE' | 'NONE';
+    clientId: string;
+    enrolledAt: string;
+    id: string;
+    /**
+     * RFC 7638 thumbprint of the device key
+     */
+    jkt: string;
+    label?: string;
+    lastSeenAt?: string;
+    mode: 'PERSONAL' | 'SHARED';
+    model?: string;
+    platform?: string;
+    status: 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
+};
+
+export type FieldEnrolmentCodeResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    code: string;
+    expiresAt: string;
+    qrPayload: string;
+};
+
 export type FieldError = {
     code: string;
     field: string;
     message: string;
+};
+
+export type FieldPolicyResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    clientId: string;
+    hardLockThreshold: number;
+    isDefault: boolean;
+    personalIdleSecs: number;
+    pinMinLength: number;
+    pinReauthDays: number;
+    requireAttestation: boolean;
+    sharedIdleSecs: number;
+    shiftMaxSecs: number;
+    softLockSecs: number;
+    softLockThreshold: number;
+    updatedAt?: string;
+};
+
+export type FieldTokenIntrospectRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    token: string;
+    [key: string]: unknown | string | undefined;
+};
+
+export type FieldTokenIntrospectResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    active: boolean;
+    amr?: Array<string>;
+    appCode?: string;
+    authTime?: string;
+    clientId?: string;
+    deviceId?: string;
+    exp?: string;
+    sub?: string;
+    workerCode?: string;
+};
+
+export type FieldWorkerAppRef = {
+    code: string;
+    grantedAt: string;
+    id: string;
+    name: string;
+    source: string;
+};
+
+export type FieldWorkerListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    page: number;
+    size: number;
+    total: number;
+    workers: Array<FieldWorkerResponse>;
+};
+
+export type FieldWorkerResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    apps: Array<FieldWorkerAppRef>;
+    clientId: string;
+    created?: boolean;
+    createdAt: string;
+    email?: string;
+    failedSinceSuccess: number;
+    hardLocked: boolean;
+    hasPin: boolean;
+    id: string;
+    lastLoginAt?: string;
+    locked: boolean;
+    lockedUntil?: string;
+    name: string;
+    pinChangeRequired: boolean;
+    status: 'ACTIVE' | 'DISABLED';
+    updatedAt: string;
+    workerCode: string;
+};
+
+export type FieldWorkerSignInListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    page: number;
+    signIns: Array<FieldWorkerSignInResponse>;
+    size: number;
+    total: number;
+};
+
+export type FieldWorkerSignInResponse = {
+    appCode?: string;
+    attemptedAt: string;
+    authMethod: string;
+    deviceId?: string;
+    failureReason?: string;
+    id: string;
+    ipAddress?: string;
+    outcome: 'SUCCESS' | 'FAILURE';
 };
 
 export type FireNowRequest = {
@@ -1965,6 +2158,15 @@ export type GrantClientAccessRequest = {
      */
     readonly $schema?: string;
     clientId: string;
+    [key: string]: unknown | string | undefined;
+};
+
+export type GrantFieldWorkerAppRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    appCode: string;
     [key: string]: unknown | string | undefined;
 };
 
@@ -3380,6 +3582,47 @@ export type PutAliasResponse = {
     wiring?: WiringResponse;
 };
 
+export type PutFieldPolicyRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * softLockThreshold to 50 (default 10)
+     */
+    hardLockThreshold?: number;
+    /**
+     * 60 to 86400 (default 7200)
+     */
+    personalIdleSecs?: number;
+    /**
+     * 4 to 12 (default 6)
+     */
+    pinMinLength?: number;
+    /**
+     * 1 to 90 (default 7)
+     */
+    pinReauthDays?: number;
+    requireAttestation: boolean;
+    /**
+     * 60 to 86400 (default 900)
+     */
+    sharedIdleSecs?: number;
+    /**
+     * 3600 to 86400 (default 50400)
+     */
+    shiftMaxSecs?: number;
+    /**
+     * 30 to 86400 (default 900)
+     */
+    softLockSecs?: number;
+    /**
+     * 1 to 20 (default 5)
+     */
+    softLockThreshold?: number;
+    [key: string]: unknown | string | number | boolean | undefined;
+};
+
 export type PutRouteRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3880,6 +4123,24 @@ export type ResendInvitationResponse = {
     readonly $schema?: string;
     expiresAt?: string;
     inviteLink?: string;
+};
+
+export type ResetFieldWorkerPinRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    pin?: string;
+    [key: string]: unknown | string | undefined;
+};
+
+export type ResetFieldWorkerPinResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    pinChangeRequired: boolean;
+    temporaryPin?: string;
 };
 
 export type ResetPasswordRequest = {
@@ -5109,6 +5370,16 @@ export type UpdateEventTypeRequest = {
     [key: string]: unknown | string | boolean | undefined;
 };
 
+export type UpdateFieldWorkerRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    email?: string;
+    name: string;
+    [key: string]: unknown | string | undefined;
+};
+
 export type UpdateFunctionRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -5927,6 +6198,18 @@ export type CreateDomainRequestWritable = {
     [key: string]: unknown | string | undefined;
 };
 
+export type CreateEnrolmentCodeRequestWritable = {
+    appCodes: Array<string>;
+    /**
+     * PERSONAL devices only
+     */
+    assignedWorkerId?: string;
+    clientId: string;
+    label?: string;
+    mode: 'PERSONAL' | 'SHARED';
+    [key: string]: unknown | Array<string> | string | 'PERSONAL' | 'SHARED' | undefined;
+};
+
 export type CreateEventRequestWritable = {
     /**
      * Causation ID - the event that caused this event
@@ -6518,6 +6801,19 @@ export type EnableTraceRequestWritable = {
     [key: string]: unknown | boolean | number | undefined;
 };
 
+export type EnsureFieldWorkerRequestWritable = {
+    /**
+     * Applications the worker may sign in to; granted additively
+     */
+    appCodes?: Array<string>;
+    clientId: string;
+    email?: string;
+    name: string;
+    pin?: string;
+    workerCode: string;
+    [key: string]: unknown | Array<string> | string | undefined;
+};
+
 export type ErrorModelWritable = {
     details?: {
         [key: string]: unknown;
@@ -6575,6 +6871,105 @@ export type EventTypeResponseWritable = {
     updatedAt: string;
 };
 
+export type FieldDeviceListResponseWritable = {
+    devices: Array<FieldDeviceResponseWritable>;
+    page: number;
+    size: number;
+    total: number;
+};
+
+export type FieldDeviceResponseWritable = {
+    activeSessions: number;
+    apps: Array<FieldAppRef>;
+    assignedWorkerId?: string;
+    attestationLevel: 'STRONGBOX' | 'TEE' | 'SOFTWARE' | 'NONE';
+    clientId: string;
+    enrolledAt: string;
+    id: string;
+    /**
+     * RFC 7638 thumbprint of the device key
+     */
+    jkt: string;
+    label?: string;
+    lastSeenAt?: string;
+    mode: 'PERSONAL' | 'SHARED';
+    model?: string;
+    platform?: string;
+    status: 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
+};
+
+export type FieldEnrolmentCodeResponseWritable = {
+    code: string;
+    expiresAt: string;
+    qrPayload: string;
+};
+
+export type FieldPolicyResponseWritable = {
+    clientId: string;
+    hardLockThreshold: number;
+    isDefault: boolean;
+    personalIdleSecs: number;
+    pinMinLength: number;
+    pinReauthDays: number;
+    requireAttestation: boolean;
+    sharedIdleSecs: number;
+    shiftMaxSecs: number;
+    softLockSecs: number;
+    softLockThreshold: number;
+    updatedAt?: string;
+};
+
+export type FieldTokenIntrospectRequestWritable = {
+    token: string;
+    [key: string]: unknown | string;
+};
+
+export type FieldTokenIntrospectResponseWritable = {
+    active: boolean;
+    amr?: Array<string>;
+    appCode?: string;
+    authTime?: string;
+    clientId?: string;
+    deviceId?: string;
+    exp?: string;
+    sub?: string;
+    workerCode?: string;
+};
+
+export type FieldWorkerListResponseWritable = {
+    page: number;
+    size: number;
+    total: number;
+    workers: Array<FieldWorkerResponseWritable>;
+};
+
+export type FieldWorkerResponseWritable = {
+    apps: Array<FieldWorkerAppRef>;
+    clientId: string;
+    created?: boolean;
+    createdAt: string;
+    email?: string;
+    failedSinceSuccess: number;
+    hardLocked: boolean;
+    hasPin: boolean;
+    id: string;
+    lastLoginAt?: string;
+    locked: boolean;
+    lockedUntil?: string;
+    name: string;
+    pinChangeRequired: boolean;
+    status: 'ACTIVE' | 'DISABLED';
+    updatedAt: string;
+    workerCode: string;
+};
+
+export type FieldWorkerSignInListResponseWritable = {
+    page: number;
+    signIns: Array<FieldWorkerSignInResponse>;
+    size: number;
+    total: number;
+};
+
 export type FireNowRequestWritable = {
     correlationId?: string;
     [key: string]: unknown | string | undefined;
@@ -6612,6 +7007,11 @@ export type GrantAccessRequestWritable = {
 
 export type GrantClientAccessRequestWritable = {
     clientId: string;
+    [key: string]: unknown | string;
+};
+
+export type GrantFieldWorkerAppRequestWritable = {
+    appCode: string;
     [key: string]: unknown | string;
 };
 
@@ -7384,6 +7784,43 @@ export type PutAliasResponseWritable = {
     wiring?: WiringResponseWritable;
 };
 
+export type PutFieldPolicyRequestWritable = {
+    /**
+     * softLockThreshold to 50 (default 10)
+     */
+    hardLockThreshold?: number;
+    /**
+     * 60 to 86400 (default 7200)
+     */
+    personalIdleSecs?: number;
+    /**
+     * 4 to 12 (default 6)
+     */
+    pinMinLength?: number;
+    /**
+     * 1 to 90 (default 7)
+     */
+    pinReauthDays?: number;
+    requireAttestation: boolean;
+    /**
+     * 60 to 86400 (default 900)
+     */
+    sharedIdleSecs?: number;
+    /**
+     * 3600 to 86400 (default 50400)
+     */
+    shiftMaxSecs?: number;
+    /**
+     * 30 to 86400 (default 900)
+     */
+    softLockSecs?: number;
+    /**
+     * 1 to 20 (default 5)
+     */
+    softLockThreshold?: number;
+    [key: string]: unknown | number | boolean | undefined;
+};
+
 export type PutRouteRequestWritable = {
     /**
      * An existing alias name to route to; omitted routes to live
@@ -7748,6 +8185,16 @@ export type ResendInvitationRequestWritable = {
 export type ResendInvitationResponseWritable = {
     expiresAt?: string;
     inviteLink?: string;
+};
+
+export type ResetFieldWorkerPinRequestWritable = {
+    pin?: string;
+    [key: string]: unknown | string | undefined;
+};
+
+export type ResetFieldWorkerPinResponseWritable = {
+    pinChangeRequired: boolean;
+    temporaryPin?: string;
 };
 
 export type ResetPasswordRequestWritable = {
@@ -8329,6 +8776,12 @@ export type UpdateEventTypeRequestWritable = {
     description?: string;
     name: string;
     [key: string]: unknown | boolean | string | undefined;
+};
+
+export type UpdateFieldWorkerRequestWritable = {
+    email?: string;
+    name: string;
+    [key: string]: unknown | string | undefined;
 };
 
 export type UpdateFunctionRequestWritable = {
@@ -12572,6 +13025,613 @@ export type GetEventResponses = {
 };
 
 export type GetEventResponse = GetEventResponses[keyof GetEventResponses];
+
+export type ListFieldDevicesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Tenant client whose devices to list
+         */
+        clientId?: string;
+        status?: 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
+        mode?: 'PERSONAL' | 'SHARED';
+        /**
+         * 0-based page index (default 0)
+         */
+        page?: number;
+        /**
+         * Page size (default 100, max 1000)
+         */
+        pageSize?: number;
+    };
+    url: '/api/field-devices';
+};
+
+export type ListFieldDevicesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFieldDevicesError = ListFieldDevicesErrors[keyof ListFieldDevicesErrors];
+
+export type ListFieldDevicesResponses = {
+    /**
+     * OK
+     */
+    200: FieldDeviceListResponse;
+};
+
+export type ListFieldDevicesResponse = ListFieldDevicesResponses[keyof ListFieldDevicesResponses];
+
+export type CreateFieldEnrolmentCodeData = {
+    body: CreateEnrolmentCodeRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/field-devices/enrolment-codes';
+};
+
+export type CreateFieldEnrolmentCodeErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateFieldEnrolmentCodeError = CreateFieldEnrolmentCodeErrors[keyof CreateFieldEnrolmentCodeErrors];
+
+export type CreateFieldEnrolmentCodeResponses = {
+    /**
+     * Created
+     */
+    201: FieldEnrolmentCodeResponse;
+};
+
+export type CreateFieldEnrolmentCodeResponse = CreateFieldEnrolmentCodeResponses[keyof CreateFieldEnrolmentCodeResponses];
+
+export type GetFieldDeviceData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-devices/{id}';
+};
+
+export type GetFieldDeviceErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetFieldDeviceError = GetFieldDeviceErrors[keyof GetFieldDeviceErrors];
+
+export type GetFieldDeviceResponses = {
+    /**
+     * OK
+     */
+    200: FieldDeviceResponse;
+};
+
+export type GetFieldDeviceResponse = GetFieldDeviceResponses[keyof GetFieldDeviceResponses];
+
+export type ActivateFieldDeviceData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-devices/{id}/activate';
+};
+
+export type ActivateFieldDeviceErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ActivateFieldDeviceError = ActivateFieldDeviceErrors[keyof ActivateFieldDeviceErrors];
+
+export type ActivateFieldDeviceResponses = {
+    /**
+     * OK
+     */
+    200: StatusChangeResponse;
+};
+
+export type ActivateFieldDeviceResponse = ActivateFieldDeviceResponses[keyof ActivateFieldDeviceResponses];
+
+export type RevokeFieldDeviceData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-devices/{id}/revoke';
+};
+
+export type RevokeFieldDeviceErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RevokeFieldDeviceError = RevokeFieldDeviceErrors[keyof RevokeFieldDeviceErrors];
+
+export type RevokeFieldDeviceResponses = {
+    /**
+     * OK
+     */
+    200: StatusChangeResponse;
+};
+
+export type RevokeFieldDeviceResponse = RevokeFieldDeviceResponses[keyof RevokeFieldDeviceResponses];
+
+export type SuspendFieldDeviceData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-devices/{id}/suspend';
+};
+
+export type SuspendFieldDeviceErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type SuspendFieldDeviceError = SuspendFieldDeviceErrors[keyof SuspendFieldDeviceErrors];
+
+export type SuspendFieldDeviceResponses = {
+    /**
+     * OK
+     */
+    200: StatusChangeResponse;
+};
+
+export type SuspendFieldDeviceResponse = SuspendFieldDeviceResponses[keyof SuspendFieldDeviceResponses];
+
+export type GetFieldPolicyData = {
+    body?: never;
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/field-policies/{clientId}';
+};
+
+export type GetFieldPolicyErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetFieldPolicyError = GetFieldPolicyErrors[keyof GetFieldPolicyErrors];
+
+export type GetFieldPolicyResponses = {
+    /**
+     * OK
+     */
+    200: FieldPolicyResponse;
+};
+
+export type GetFieldPolicyResponse = GetFieldPolicyResponses[keyof GetFieldPolicyResponses];
+
+export type PutFieldPolicyData = {
+    body: PutFieldPolicyRequestWritable;
+    path: {
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/field-policies/{clientId}';
+};
+
+export type PutFieldPolicyErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PutFieldPolicyError = PutFieldPolicyErrors[keyof PutFieldPolicyErrors];
+
+export type PutFieldPolicyResponses = {
+    /**
+     * OK
+     */
+    200: FieldPolicyResponse;
+};
+
+export type PutFieldPolicyResponse = PutFieldPolicyResponses[keyof PutFieldPolicyResponses];
+
+export type IntrospectFieldTokenData = {
+    body: FieldTokenIntrospectRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/field-tokens/introspect';
+};
+
+export type IntrospectFieldTokenErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type IntrospectFieldTokenError = IntrospectFieldTokenErrors[keyof IntrospectFieldTokenErrors];
+
+export type IntrospectFieldTokenResponses = {
+    /**
+     * OK
+     */
+    200: FieldTokenIntrospectResponse;
+};
+
+export type IntrospectFieldTokenResponse = IntrospectFieldTokenResponses[keyof IntrospectFieldTokenResponses];
+
+export type ListFieldWorkersData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Tenant client whose workers to list
+         */
+        clientId?: string;
+        /**
+         * Case-insensitive prefix matched against name and worker code
+         */
+        q?: string;
+        /**
+         * Only workers granted this application
+         */
+        appCode?: string;
+        /**
+         * Only workers in this state
+         */
+        status?: 'ACTIVE' | 'DISABLED';
+        /**
+         * 0-based page index (default 0)
+         */
+        page?: number;
+        /**
+         * Page size (default 100, max 1000)
+         */
+        pageSize?: number;
+    };
+    url: '/api/field-workers';
+};
+
+export type ListFieldWorkersErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFieldWorkersError = ListFieldWorkersErrors[keyof ListFieldWorkersErrors];
+
+export type ListFieldWorkersResponses = {
+    /**
+     * OK
+     */
+    200: FieldWorkerListResponse;
+};
+
+export type ListFieldWorkersResponse = ListFieldWorkersResponses[keyof ListFieldWorkersResponses];
+
+export type EnsureFieldWorkerData = {
+    body: EnsureFieldWorkerRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/field-workers';
+};
+
+export type EnsureFieldWorkerErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type EnsureFieldWorkerError = EnsureFieldWorkerErrors[keyof EnsureFieldWorkerErrors];
+
+export type EnsureFieldWorkerResponses = {
+    /**
+     * Created
+     */
+    201: FieldWorkerResponse;
+};
+
+export type EnsureFieldWorkerResponse = EnsureFieldWorkerResponses[keyof EnsureFieldWorkerResponses];
+
+export type DeleteFieldWorkerData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}';
+};
+
+export type DeleteFieldWorkerErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteFieldWorkerError = DeleteFieldWorkerErrors[keyof DeleteFieldWorkerErrors];
+
+export type DeleteFieldWorkerResponses = {
+    /**
+     * OK
+     */
+    200: StatusChangeResponse;
+};
+
+export type DeleteFieldWorkerResponse = DeleteFieldWorkerResponses[keyof DeleteFieldWorkerResponses];
+
+export type GetFieldWorkerData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}';
+};
+
+export type GetFieldWorkerErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetFieldWorkerError = GetFieldWorkerErrors[keyof GetFieldWorkerErrors];
+
+export type GetFieldWorkerResponses = {
+    /**
+     * OK
+     */
+    200: FieldWorkerResponse;
+};
+
+export type GetFieldWorkerResponse = GetFieldWorkerResponses[keyof GetFieldWorkerResponses];
+
+export type UpdateFieldWorkerData = {
+    body: UpdateFieldWorkerRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}';
+};
+
+export type UpdateFieldWorkerErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type UpdateFieldWorkerError = UpdateFieldWorkerErrors[keyof UpdateFieldWorkerErrors];
+
+export type UpdateFieldWorkerResponses = {
+    /**
+     * OK
+     */
+    200: FieldWorkerResponse;
+};
+
+export type UpdateFieldWorkerResponse = UpdateFieldWorkerResponses[keyof UpdateFieldWorkerResponses];
+
+export type ActivateFieldWorkerData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/activate';
+};
+
+export type ActivateFieldWorkerErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ActivateFieldWorkerError = ActivateFieldWorkerErrors[keyof ActivateFieldWorkerErrors];
+
+export type ActivateFieldWorkerResponses = {
+    /**
+     * OK
+     */
+    200: StatusChangeResponse;
+};
+
+export type ActivateFieldWorkerResponse = ActivateFieldWorkerResponses[keyof ActivateFieldWorkerResponses];
+
+export type GrantFieldWorkerAppData = {
+    body: GrantFieldWorkerAppRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/apps';
+};
+
+export type GrantFieldWorkerAppErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GrantFieldWorkerAppError = GrantFieldWorkerAppErrors[keyof GrantFieldWorkerAppErrors];
+
+export type GrantFieldWorkerAppResponses = {
+    /**
+     * OK
+     */
+    200: StatusChangeResponse;
+};
+
+export type GrantFieldWorkerAppResponse = GrantFieldWorkerAppResponses[keyof GrantFieldWorkerAppResponses];
+
+export type RevokeFieldWorkerAppData = {
+    body?: never;
+    path: {
+        id: string;
+        appCode: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/apps/{appCode}';
+};
+
+export type RevokeFieldWorkerAppErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RevokeFieldWorkerAppError = RevokeFieldWorkerAppErrors[keyof RevokeFieldWorkerAppErrors];
+
+export type RevokeFieldWorkerAppResponses = {
+    /**
+     * OK
+     */
+    200: StatusChangeResponse;
+};
+
+export type RevokeFieldWorkerAppResponse = RevokeFieldWorkerAppResponses[keyof RevokeFieldWorkerAppResponses];
+
+export type ResetFieldWorkerPinData = {
+    body: ResetFieldWorkerPinRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/pin-reset';
+};
+
+export type ResetFieldWorkerPinErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ResetFieldWorkerPinError = ResetFieldWorkerPinErrors[keyof ResetFieldWorkerPinErrors];
+
+export type ResetFieldWorkerPinResponses = {
+    /**
+     * OK
+     */
+    200: ResetFieldWorkerPinResponse;
+};
+
+export type ResetFieldWorkerPinResponse2 = ResetFieldWorkerPinResponses[keyof ResetFieldWorkerPinResponses];
+
+export type ListFieldWorkerSignInsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: {
+        /**
+         * 0-based page index (default 0)
+         */
+        page?: number;
+        /**
+         * Page size (default 100, max 1000)
+         */
+        pageSize?: number;
+    };
+    url: '/api/field-workers/{id}/sign-ins';
+};
+
+export type ListFieldWorkerSignInsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFieldWorkerSignInsError = ListFieldWorkerSignInsErrors[keyof ListFieldWorkerSignInsErrors];
+
+export type ListFieldWorkerSignInsResponses = {
+    /**
+     * OK
+     */
+    200: FieldWorkerSignInListResponse;
+};
+
+export type ListFieldWorkerSignInsResponse = ListFieldWorkerSignInsResponses[keyof ListFieldWorkerSignInsResponses];
+
+export type SuspendFieldWorkerData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/suspend';
+};
+
+export type SuspendFieldWorkerErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type SuspendFieldWorkerError = SuspendFieldWorkerErrors[keyof SuspendFieldWorkerErrors];
+
+export type SuspendFieldWorkerResponses = {
+    /**
+     * OK
+     */
+    200: StatusChangeResponse;
+};
+
+export type SuspendFieldWorkerResponse = SuspendFieldWorkerResponses[keyof SuspendFieldWorkerResponses];
+
+export type UnlockFieldWorkerData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/unlock';
+};
+
+export type UnlockFieldWorkerErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type UnlockFieldWorkerError = UnlockFieldWorkerErrors[keyof UnlockFieldWorkerErrors];
+
+export type UnlockFieldWorkerResponses = {
+    /**
+     * OK
+     */
+    200: StatusChangeResponse;
+};
+
+export type UnlockFieldWorkerResponse = UnlockFieldWorkerResponses[keyof UnlockFieldWorkerResponses];
 
 export type ListFunctionDomainsData = {
     body?: never;
