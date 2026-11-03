@@ -351,6 +351,10 @@ func (a *fnAPI) mustFunction(ctx context.Context, address string) (*fnFunction, 
 	return fn, err
 }
 
+// fnWaitPoll is how often waitReady asks; each ask is an authenticated
+// request, so it stays well under the platform's per-client rate limits.
+var fnWaitPoll = time.Second // a var so tests need not sit through it
+
 // waitReady polls until a runner has proved the version loadable.
 func (a *fnAPI) waitReady(ctx context.Context, fn *fnFunction, number int32, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
@@ -371,7 +375,7 @@ func (a *fnAPI) waitReady(ctx context.Context, fn *fnFunction, number int32, tim
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(500 * time.Millisecond):
+		case <-time.After(fnWaitPoll):
 		}
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1006,4 +1007,103 @@ func TestDefaultLoginListenerIsLoopbackOnly(t *testing.T) {
 	defer func() { _ = ln.Close() }()
 	require.Equal(t, "127.0.0.1", ln.Addr().(*net.TCPAddr).IP.String())
 	require.NotZero(t, ln.Addr().(*net.TCPAddr).Port)
+}
+
+// ---- the in-process memo (keychain refuses the access token) -------------
+
+// refusingAccessKeychain stores everything except the login-access entry, as
+// a backend does when an admin's JWT is too large for it.
+type refusingAccessKeychain struct{ *memKeychain }
+
+func (k refusingAccessKeychain) Set(a, s string) error {
+	if strings.HasPrefix(a, "login-access:") {
+		return fmt.Errorf("the keychain refused %d bytes", len(s))
+	}
+	return k.memKeychain.Set(a, s)
+}
+
+// refusedAccessSession logs in against pl with a keychain that refuses the
+// access token, and returns a token source for it.
+func refusedAccessSession(t *testing.T, e *fnTestEnv, pl *loginPlatform) *loginTokenSource {
+	t.Helper()
+	fnKeychain = refusingAccessKeychain{e.kc} // fnTestEnv restores the original
+	p, _ := doLogin(t, e, pl)
+	_, kerr := e.kc.Get("login-access:me")
+	require.ErrorIs(t, kerr, ErrKeychainNotFound)
+	return newLoginTokenSource(p)
+}
+
+func TestLoginTokenIsMemoisedWhenTheKeychainRefusesIt(t *testing.T) {
+	e := newFnTestEnv(t)
+	pl := newLoginPlatform(t)
+	src := refusedAccessSession(t, e, pl)
+
+	first, err := src.Token(context.Background())
+	require.NoError(t, err)
+	_, _, refreshes := pl.counts()
+	require.Equal(t, 1, refreshes, "nothing cached anywhere yet: one refresh")
+	for range 20 {
+		tok, err := src.Token(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, first, tok)
+	}
+	_, _, refreshes = pl.counts()
+	require.Equal(t, 1, refreshes, "later calls are served from memory")
+
+	// past the skew the memo is stale: exactly one more refresh
+	src.now = func() time.Time { return time.Now().Add(pl.accessTTL - 30*time.Second) }
+	next, err := src.Token(context.Background())
+	require.NoError(t, err)
+	require.NotEqual(t, first, next)
+	_, err = src.Token(context.Background())
+	require.NoError(t, err)
+	_, _, refreshes = pl.counts()
+	require.Equal(t, 2, refreshes)
+}
+
+func TestLoginMemoDoesNotOutliveTheAbsoluteDeadline(t *testing.T) {
+	e := newFnTestEnv(t)
+	pl := newLoginPlatform(t)
+	pl.refreshTTL = 30 * time.Minute // shorter than the access token
+	src := refusedAccessSession(t, e, pl)
+	_, err := src.Token(context.Background())
+	require.NoError(t, err)
+
+	src.now = func() time.Time { return time.Now().Add(31 * time.Minute) }
+	_, err = src.Token(context.Background())
+	require.EqualError(t, err, "session expired: run fcdev login --profile me")
+}
+
+func TestDeployWaitRefreshesOnceWhenTheKeychainRefusesTheAccessToken(t *testing.T) {
+	e := newFnTestEnv(t)
+	pl := newLoginPlatform(t)
+	var polls atomic.Int32
+	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/functions/") {
+			pl.srv.Config.Handler.ServeHTTP(w, r)
+			return
+		}
+		status := "PUBLISHED"
+		if polls.Add(1) > 3 {
+			status = "READY"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"number":1,"status":%q}`, status)
+	}))
+	t.Cleanup(front.Close)
+	old := fnWaitPoll
+	fnWaitPoll = time.Millisecond
+	t.Cleanup(func() { fnWaitPoll = old })
+
+	fnKeychain = refusingAccessKeychain{e.kc}
+	e.writeProfiles(t, 0o600, loginProfileTOML("me", front.URL, "np"))
+	set, _, err := loadProfiles()
+	require.NoError(t, err)
+	require.NoError(t, runLogin(context.Background(), testDeps(io.Discard, newFakeBrowser()), set["me"]))
+
+	api := &fnAPI{c: fnCredentials{PlatformURL: front.URL}, tokens: newLoginTokenSource(set["me"]), http: front.Client()}
+	require.NoError(t, api.waitReady(context.Background(), &fnFunction{ID: "fn_1"}, 1, 10*time.Second))
+	require.Equal(t, int32(4), polls.Load())
+	_, _, refreshes := pl.counts()
+	require.Equal(t, 1, refreshes, "four polls, one refresh grant")
 }

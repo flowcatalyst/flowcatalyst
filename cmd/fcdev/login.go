@@ -60,7 +60,9 @@ const (
 //	login-access:NAME  SECRET  the cached access token (best effort: a JWT
 //	                           carrying many permissions may exceed what a
 //	                           backend allows; without it every command
-//	                           refreshes, which still works)
+//	                           refreshes, which still works, and the token
+//	                           source keeps the token it just got in memory so
+//	                           one process refreshes once, not per request)
 //	login-meta:NAME    plain   {platform, subject, email, name, login_at,
 //	                           refresh_expires_at, access_expires_at}
 //
@@ -576,16 +578,42 @@ type tokenSource interface {
 // commands starting together cannot present the same refresh token twice (the
 // platform treats a replay as theft and revokes the whole session).
 //
+// The access token it hands out (from a refresh or from the keychain) is also
+// memoised in the process under the same skew and deadline rules, so a command
+// that makes many requests (a deploy polling for READY) refreshes at most once
+// even when the keychain refused to store the token.
+//
 // It never prompts, never opens a browser and never falls back to anything
 // else: an unusable session is the "run fcdev login" error.
 type loginTokenSource struct {
 	profile *Profile
 	http    *http.Client
 	now     func() time.Time
+
+	mu       sync.Mutex // held across Token: one refresh at a time in this process
+	memo     string     // the access token last obtained, "" if none
+	memoExp  time.Time  // its expiry
+	memoDead time.Time  // the session's absolute deadline, zero if unknown
 }
 
 func newLoginTokenSource(p *Profile) *loginTokenSource {
 	return &loginTokenSource{profile: p, http: noRedirectClient(loginHTTPTimeout), now: time.Now}
+}
+
+// memoised returns the in-process token while it is good for more than
+// accessRefreshSkew and the session's absolute deadline has not passed.
+func (s *loginTokenSource) memoised() (string, bool) {
+	if s.memo == "" || s.memoExp.IsZero() || s.memoExp.Sub(s.now()) <= accessRefreshSkew {
+		return "", false
+	}
+	if !s.memoDead.IsZero() && !s.now().Before(s.memoDead) {
+		return "", false
+	}
+	return s.memo, true
+}
+
+func (s *loginTokenSource) remember(tok string, exp, deadline time.Time) {
+	s.memo, s.memoExp, s.memoDead = tok, exp, deadline
 }
 
 func (s *loginTokenSource) cached() (string, bool) {
@@ -606,10 +634,16 @@ func (s *loginTokenSource) cached() (string, bool) {
 	if err != nil || tok == "" {
 		return "", false
 	}
+	s.remember(tok, meta.AccessExpiresAt, meta.RefreshExpiresAt)
 	return tok, true
 }
 
 func (s *loginTokenSource) Token(ctx context.Context) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if tok, ok := s.memoised(); ok {
+		return tok, nil
+	}
 	if tok, ok := s.cached(); ok {
 		return tok, nil
 	}
@@ -672,9 +706,13 @@ func (s *loginTokenSource) refresh(ctx context.Context) (string, error) {
 		return "", errors.New("the platform's refresh response carried no new refresh token")
 	}
 	meta := metaFromTokens(platform, tokens, now, prev)
+	// Taken before storing: storeLoginTokens zeroes the access expiry when the
+	// keychain refuses the token, which is exactly when the memo matters.
+	accessExp, deadline := meta.AccessExpiresAt, meta.RefreshExpiresAt
 	if err := storeLoginTokens(name, platform, tokens, meta); err != nil {
 		return "", err
 	}
+	s.remember(tokens.AccessToken, accessExp, deadline)
 	return tokens.AccessToken, nil
 }
 
