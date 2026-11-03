@@ -87,6 +87,18 @@ class FlowCatalystServiceProvider extends ServiceProvider
         config(['auth.guards.fc-token' => ['driver' => 'fc-token']]);
         config(['auth.guards.fc-session' => ['driver' => 'fc-session']]);
 
+        // Field-worker identities (PIN sign-in on an enrolled device).
+        if (config('auth.guards.field') === null) {
+            config(['auth.guards.field' => ['driver' => 'field']]);
+        }
+        \Illuminate\Support\Facades\Auth::extend('field', function ($app) {
+            return new \FlowCatalyst\Auth\Field\FieldGuard(
+                verifier: $app->make(\FlowCatalyst\Auth\Field\FieldTokenVerifier::class),
+                requestResolver: static fn () => $app['request'],
+                appBaseUrl: (string) ($app['config']['flowcatalyst']['field']['app_base_url'] ?? ''),
+            );
+        });
+
         // Bearer/API identities (user + client_credentials tokens).
         \Illuminate\Support\Facades\Auth::viaRequest('fc-token', function ($request) {
             return $this->app->make(\FlowCatalyst\Auth\FlowCatalystTokenGuard::class)->resolve($request);
@@ -372,6 +384,8 @@ class FlowCatalystServiceProvider extends ServiceProvider
         $router->aliasMiddleware('fc.session', RequireSession::class);
         $router->aliasMiddleware('fc.bearer', RequireBearer::class);
         $router->aliasMiddleware('fc.any', RequireAuth::class);
+        // Field-worker (DPoP) requests: 401 / 403 PIN_CHANGE_REQUIRED / 503.
+        $router->aliasMiddleware('fc.field', \FlowCatalyst\Auth\Http\Middleware\AuthenticateField::class);
         $router->aliasMiddleware(
             'fc.or-passport',
             \FlowCatalyst\Auth\Http\Middleware\AuthenticateServiceTokenOrFallback::class,
@@ -397,6 +411,18 @@ class FlowCatalystServiceProvider extends ServiceProvider
                 http: new \GuzzleHttp\Client(['timeout' => 10]),
                 cache: $app['cache']->driver($config['oidc']['jwks_cache_driver'] ?? null),
                 ttlSeconds: $ttl,
+            );
+        });
+
+        $this->app->singleton(\FlowCatalyst\Auth\Field\FieldTokenVerifier::class, function ($app) {
+            $config = $app['config']['flowcatalyst'];
+            $field = $config['field'] ?? [];
+            return new \FlowCatalyst\Auth\Field\FieldTokenVerifier(
+                jwks: $app->make(JwksCache::class),
+                baseUrl: $config['base_url'],
+                appCode: (string) ($field['app_code'] ?? ''),
+                clockSkewSeconds: (int) ($field['clock_skew_seconds'] ?? 60),
+                proofMaxAgeSeconds: (int) ($field['proof_max_age_seconds'] ?? 300),
             );
         });
 

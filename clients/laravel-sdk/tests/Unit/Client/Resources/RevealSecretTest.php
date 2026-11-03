@@ -104,7 +104,7 @@ final class RevealSecretTest extends TestCase
         ];
     }
 
-    /** @dataProvider errors */
+    #[\PHPUnit\Framework\Attributes\DataProvider('errors')]
     public function test_error_statuses_map_to_exceptions(int $status, string $code): void
     {
         $c = $this->client([new Response($status, ['Content-Type' => 'application/json'], json_encode(['error' => $code, 'message' => "m $code"]))]);

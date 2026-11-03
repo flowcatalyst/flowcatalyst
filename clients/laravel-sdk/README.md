@@ -33,7 +33,7 @@ talk to the **event-driven control plane** — all from idiomatic Laravel.
 - [Installation](#installation) · [Local dev with `fcdev`](#local-development-with-fcdev)
 - [Authentication & authorization](#authentication--authorization) — login, guards, permissions, modes, refresh
 - [Declaring & syncing roles and permissions](#declaring--syncing-roles-and-permissions)
-- [Control plane API](#control-plane-api) · [Portal identities](#portal-identities) · [Outbox](#outbox-event-creation) · [Webhooks](#webhook-validation)
+- [Control plane API](#control-plane-api) · [Portal identities](#portal-identities) · [Field workers](#field-workers) · [Outbox](#outbox-event-creation) · [Webhooks](#webhook-validation)
 
 ## Installation
 
@@ -659,6 +659,74 @@ rest of the lifecycle. All credential UX (login page, invites, self-service
 forgot-password) is platform-hosted — the portal app never implements any
 of it. Full walkthrough:
 [docs/portal-implementation-guide.md](../../docs/portal-implementation-guide.md).
+
+## Field workers
+
+Field workers (drivers, pickers, yard staff) sign in on an **enrolled device** with a PIN, at the
+platform's `/field/*`. The platform issues a short RS256 access token (`typ: fc-field+jwt`,
+`token_use: "field"`, `aud` = your application code) bound to the device key (`cnf.jkt`). The device
+presents it to your backend as `Authorization: DPoP <token>` plus a `DPoP: <proof>` header (an ES256
+JWS signed by the device key). PINs never reach your backend: the SDK only verifies.
+
+```env
+FLOWCATALYST_FIELD_APP_CODE=my-app
+# Public origin devices call (scheme://host[:port]); defaults to APP_URL. The proof's htu is
+# checked against this + the request path. The Host header is never used.
+FLOWCATALYST_FIELD_APP_BASE_URL=https://app.example.com
+```
+
+The issuer and signing keys come from `FLOWCATALYST_BASE_URL` (OIDC discovery + JWKS, shared with the
+other validators). Optional: `FLOWCATALYST_FIELD_PROOF_MAX_AGE` (seconds a proof's `iat` may differ from
+now, default 300; widen for devices with bad clocks) and `FLOWCATALYST_FIELD_CLOCK_SKEW` (default 60).
+
+```php
+// Routes: the `fc.field` middleware authenticates with the `field` guard.
+Route::post('/api/deliveries', function (Request $request) {
+    /** @var \FlowCatalyst\Auth\Field\FieldPrincipal $worker */
+    $worker = $request->user();   // or Auth::guard('field')->user()
+    $worker->workerId; $worker->workerCode; $worker->clientIdentifier; $worker->deviceId;
+})->middleware('fc.field');
+```
+
+- A verified request carries a `FieldPrincipal` (`workerId`, `clientId`, `clientIdentifier`,
+  `workerCode`, `name`, `appCode`, `deviceId`, `deviceMode`, `sessionId`, `amr`, `authTime`,
+  `expiresAt`, `jkt`, `tokenId`). It is also the `Authenticatable` of the `field` guard (identifier =
+  worker id), so `auth:field` works, but the middleware gives proper error responses.
+- A token that may only change the PIN (`pcr`) answers `403 {"error":"PIN_CHANGE_REQUIRED"}`.
+  Every other refusal answers `401 {"error": <reason>}` with `WWW-Authenticate: DPoP error="invalid_token"`;
+  reasons are `malformed`, `wrong_typ`, `wrong_token_use`, `wrong_aud`, `expired`, `invalid_token`,
+  `missing_proof`, `invalid_proof`, `jkt_mismatch`, `htm_mismatch`, `htu_mismatch`, `ath_mismatch`,
+  `stale_proof`. A JWKS fetch failure answers `503`.
+- Access tokens must be RS256 and proofs ES256; any other `alg` is refused. Replay protection beyond the
+  proof's `iat` window (a nonce) is not done by the SDK.
+- To use the verifier directly: `app(\FlowCatalyst\Auth\Field\FieldTokenVerifier::class)->verify($authorizationHeader, $dpopHeader, $method, $fullUrl)`
+  returns a `FieldPrincipal` or throws `FieldTokenException` (`->reason`).
+- Platform API access-token validation (`AccessTokenValidator`, the `fc-token` guard) refuses any
+  `token_use` other than `api` (or absent), so a field token is never an API credential.
+
+Online check (the session must still be live; needs `platform:iam:field-token:introspect`):
+
+```php
+$r = FlowCatalyst::introspectFieldToken($token);   // ->getActive(), ->getSub(), ->getWorkerCode() ...
+```
+
+Admin wrappers over the generated client (permissions `platform:iam:field-worker:*`,
+`platform:iam:field-device:*`):
+
+```php
+$fc = FlowCatalyst::fieldWorkers();
+$fc->ensure((new EnsureFieldWorkerRequest())->setClientId($cid)->setWorkerCode('W001')->setName('Ann')->setAppCodes(['my-app']));
+$fc->list($cid, ['appCode' => 'my-app']); $fc->get($id); $fc->update($id, $req); $fc->delete($id);
+$fc->resetPin($id);              // random temporary PIN, returned once; resetPin($id, '482913') to set one
+$fc->unlock($id); $fc->suspend($id); $fc->activate($id);
+$fc->grantApp($id, 'my-app'); $fc->revokeApp($id, 'my-app'); $fc->signIns($id, page: 0);
+
+$dev = FlowCatalyst::fieldDevices();
+$dev->createEnrolmentCode((new CreateEnrolmentCodeRequest())->setClientId($cid)->setMode('PERSONAL')->setAppCodes(['my-app']));
+$dev->list($cid); $dev->get($id); $dev->suspend($id); $dev->activate($id); $dev->revoke($id);
+
+FlowCatalyst::fieldPolicies()->get($cid);   // ->put($cid, new PutFieldPolicyRequest(...))
+```
 
 ## Outbox (Event Creation)
 

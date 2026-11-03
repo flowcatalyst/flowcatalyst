@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Field-worker identity: `FieldTokenVerifier` verifies field access tokens (RS256 only, `typ fc-field+jwt`,
+  `token_use field`, `aud` = app code, `pcr` refused) and their DPoP proofs (ES256 only, RFC 7638 `jkt`,
+  `htm`, `htu`, `ath`, `iat` +-5 min), returning a `FieldPrincipal`; refusals throw `FieldTokenException`
+  with the shared reason names. New `field` auth guard and `fc.field` middleware (`pcr` -> 403
+  `PIN_CHANGE_REQUIRED`, other refusals -> 401 with `WWW-Authenticate: DPoP error="invalid_token"`, JWKS
+  failure -> 503). Config `flowcatalyst.field` (`app_code`, `app_base_url`, `proof_max_age_seconds`,
+  `clock_skew_seconds`). New `fieldWorkers()`, `fieldDevices()`, `fieldPolicies()`, `fieldTokens()` and
+  `introspectFieldToken($token)` over the generated client. Passes the shared `api/field-fixtures` vectors.
+- `AccessTokenValidator` (the `fc-token` guard and `fc.auth` middleware) now treats `token_use` as an
+  allowlist: only `api` or an absent claim is an access token; `field`, portal and any other class are refused.
 - Ingestions: `Ingestion` gains `notices`, `latestNotice`, `latestNoticeAt`, `warnings` and `save`
   (new `IngestionSaveOutcome`: `outcome` SAVED | MADE_LIVE | DRAFT | DRAFT_EXISTS | UNCHANGED,
   `version`, `awaitingPromote`, `message`); `IngestionVersion` gains `draft`, `digest` and `save`.

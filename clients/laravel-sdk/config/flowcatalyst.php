@@ -102,6 +102,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Field workers (PIN + device-bound sessions)
+    |--------------------------------------------------------------------------
+    |
+    | Verifies field-worker access tokens (`Authorization: DPoP <token>` plus a
+    | `DPoP: <proof>` header) for the `field` guard / `fc.field` middleware.
+    | PINs never reach this app; it only verifies. The issuer / JWKS come from
+    | `base_url` above.
+    |
+    |   app_code      This application's code; tokens must be addressed to it.
+    |   app_base_url  Public origin (scheme://host[:port]) the devices call,
+    |                 e.g. https://app.example.com. The proof's htu is checked
+    |                 against this + the request path; the Host header is never
+    |                 used. Defaults to APP_URL.
+    |   proof_max_age_seconds  Allowed distance of a proof's iat from now, either
+    |                 way (default 300; widen for devices with bad clocks).
+    |   clock_skew_seconds     Slack on the token's exp / nbf (default 60).
+    |
+    */
+    'field' => [
+        'app_code' => env('FLOWCATALYST_FIELD_APP_CODE'),
+        'app_base_url' => env('FLOWCATALYST_FIELD_APP_BASE_URL', env('APP_URL')),
+        'proof_max_age_seconds' => (int) env('FLOWCATALYST_FIELD_PROOF_MAX_AGE', 300),
+        'clock_skew_seconds' => (int) env('FLOWCATALYST_FIELD_CLOCK_SKEW', 60),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | OIDC User Authentication
     |--------------------------------------------------------------------------
     |

@@ -13,6 +13,10 @@ use FlowCatalyst\Client\Resources\Clients;
 use FlowCatalyst\Client\Resources\DispatchPools;
 use FlowCatalyst\Client\Resources\EmailDomainMappings;
 use FlowCatalyst\Client\Resources\EventTypes;
+use FlowCatalyst\Client\Resources\FieldDevices;
+use FlowCatalyst\Client\Resources\FieldPolicies;
+use FlowCatalyst\Client\Resources\FieldTokens;
+use FlowCatalyst\Client\Resources\FieldWorkers;
 use FlowCatalyst\Client\Resources\IngestionSets;
 use FlowCatalyst\Client\Resources\Ingestions;
 use FlowCatalyst\Client\Resources\Me;
@@ -64,6 +68,10 @@ class FlowCatalystClient
     private ?EmailDomainMappings $emailDomainMappings = null;
     private ?DefinitionSynchronizer $definitions = null;
     private ?Admin $admin = null;
+    private ?FieldWorkers $fieldWorkers = null;
+    private ?FieldDevices $fieldDevices = null;
+    private ?FieldPolicies $fieldPolicies = null;
+    private ?FieldTokens $fieldTokens = null;
 
     /**
      * Create a new FlowCatalyst client.
@@ -146,6 +154,48 @@ class FlowCatalystClient
     public function admin(): Admin
     {
         return $this->admin ??= new Admin($this);
+    }
+
+    /**
+     * Field workers (PIN identity plane): ensure, list, get, update, delete,
+     * resetPin, unlock, suspend, activate, grantApp, revokeApp, signIns.
+     */
+    public function fieldWorkers(): FieldWorkers
+    {
+        return $this->fieldWorkers ??= new FieldWorkers($this);
+    }
+
+    /**
+     * Field devices: createEnrolmentCode, list, get, suspend, activate, revoke.
+     */
+    public function fieldDevices(): FieldDevices
+    {
+        return $this->fieldDevices ??= new FieldDevices($this);
+    }
+
+    /**
+     * Per-client field policy: get, put.
+     */
+    public function fieldPolicies(): FieldPolicies
+    {
+        return $this->fieldPolicies ??= new FieldPolicies($this);
+    }
+
+    /**
+     * Field token introspection (`introspect($token)`).
+     */
+    public function fieldTokens(): FieldTokens
+    {
+        return $this->fieldTokens ??= new FieldTokens($this);
+    }
+
+    /**
+     * Online check of a field access token; shortcut for
+     * `fieldTokens()->introspect($token)`.
+     */
+    public function introspectFieldToken(string $token): ?\FlowCatalyst\Generated\Model\FieldTokenIntrospectResponse
+    {
+        return $this->fieldTokens()->introspect($token);
     }
 
     /**

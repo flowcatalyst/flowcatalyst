@@ -26,6 +26,11 @@ use Illuminate\Support\Facades\Facade;
  * @method static Roles roles()
  * @method static Permissions permissions()
  * @method static Applications applications()
+ * @method static \FlowCatalyst\Client\Resources\FieldWorkers fieldWorkers()
+ * @method static \FlowCatalyst\Client\Resources\FieldDevices fieldDevices()
+ * @method static \FlowCatalyst\Client\Resources\FieldPolicies fieldPolicies()
+ * @method static \FlowCatalyst\Client\Resources\FieldTokens fieldTokens()
+ * @method static \FlowCatalyst\Generated\Model\FieldTokenIntrospectResponse|null introspectFieldToken(string $token)
  * @method static array request(string $method, string $endpoint, array $options = [])
  *
  * @see FlowCatalystClient
