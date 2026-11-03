@@ -1,0 +1,48 @@
+// Standalone-buildable Android library. When consumed by a React Native app, the app's root
+// project supplies AGP/Kotlin and the react-android version (RN autolinking includes this module).
+buildscript {
+    ext.fcKotlinVersion = rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : "2.0.21"
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath "com.android.tools.build:gradle:8.7.3"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${fcKotlinVersion}"
+    }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "org.jetbrains.kotlin.android"
+
+def safeExtGet(prop, fallback) {
+    rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+android {
+    namespace "io.flowcatalyst.field"
+    compileSdk safeExtGet("compileSdkVersion", 35)
+
+    defaultConfig {
+        minSdk safeExtGet("minSdkVersion", 26)
+        targetSdk safeExtGet("targetSdkVersion", 35)
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+dependencies {
+    // Version is resolved by the app's React Native Gradle plugin; the fallback is for standalone builds.
+    compileOnly "com.facebook.react:react-android:${safeExtGet('reactNativeVersion', '0.76.9')}"
+    implementation "androidx.biometric:biometric:1.1.0"
+    implementation "androidx.fragment:fragment:1.8.5"
+    testImplementation "junit:junit:4.13.2"
+}

@@ -1,0 +1,9 @@
+node_modules/
+lib/
+android/build/
+android/.gradle/
+android/local.properties
+.gradle/
+ios/.build/
+ios/.swiftpm/
+*.tsbuildinfo
