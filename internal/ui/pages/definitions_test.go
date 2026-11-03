@@ -74,8 +74,10 @@ func defCases() []defCase {
 				return func(ac *auth.AuthContext, q req) *httptest.ResponseRecorder { return serveMounted(t, ac, q, page) },
 					func() int { return len(ops.created) }
 			},
-			filled: []string{`value="orders"`, `value="Orders"`, "Order capture and fulfilment", `value="https://orders.qa.example.com"`,
-				`value="https://orders.example.com"`, `value="image/svg+xml"`, `&lt;svg xmlns=`},
+			filled: []string{
+				`value="orders"`, `value="Orders"`, "Order capture and fulfilment", `value="https://orders.qa.example.com"`,
+				`value="https://orders.example.com"`, `value="image/svg+xml"`, `&lt;svg xmlns=`,
+			},
 			broken: []defBroken{{`"APPLICATION"`, `"BOGUS"`, "Type `BOGUS` is not Application or Integration"}},
 		},
 		{
@@ -92,10 +94,12 @@ func defCases() []defCase {
 				return func(ac *auth.AuthContext, q req) *httptest.ResponseRecorder { return serveMounted(t, ac, q, page) },
 					func() int { return len(h.ops.created) }
 			},
-			filled: []string{`value="orders-svc"`, `value="Orders service"`, "Signs order webhooks", `&#34;saFormScope&#34;:&#34;CLIENT&#34;`,
+			filled: []string{
+				`value="orders-svc"`, `value="Orders service"`, "Signs order webhooks", `&#34;saFormScope&#34;:&#34;CLIENT&#34;`,
 				// The code signal is seeded and kept: a stale page signal or the
 				// name field's blur would otherwise replace the imported code.
-				`&#34;saFormCode&#34;:&#34;orders-svc&#34;`, `&#34;saFormCodeKept&#34;:true`},
+				`&#34;saFormCode&#34;:&#34;orders-svc&#34;`, `&#34;saFormCodeKept&#34;:true`,
+			},
 			notes: []string{
 				"Application not applied by this form: `orders`.",
 				"Assign roles after creating: `orders:dispatcher`.",
@@ -155,8 +159,10 @@ func defCases() []defCase {
 				return func(ac *auth.AuthContext, q req) *httptest.ResponseRecorder { return serveMounted(t, ac, q, page) },
 					func() int { return len(ops.created) }
 			},
-			filled: []string{`value="orders-hook"`, `value="Orders hook"`, "Order events to billing", `value="https://billing.example.com/hooks/orders"`,
-				`value="evt_1"`, `value="con_1" selected`, `value="dpl_1" selected`, `value="acme"`},
+			filled: []string{
+				`value="orders-hook"`, `value="Orders hook"`, "Order events to billing", `value="https://billing.example.com/hooks/orders"`,
+				`value="evt_1"`, `value="con_1" selected`, `value="dpl_1" selected`, `value="acme"`,
+			},
 			notes: []string{"Application not applied by this form: `orders`."},
 			broken: []defBroken{
 				{`"billing-hooks"`, `"nope-conn"`, "Connection `nope-conn` was not found here."},

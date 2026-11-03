@@ -151,8 +151,7 @@ func parseDefinition[T any](kind, text string) (def T, unknown []string, err err
 		Definition   json.RawMessage `json:"definition"`
 	}
 	if err := json.Unmarshal([]byte(text), &env); err != nil {
-		var te *json.UnmarshalTypeError
-		if errors.As(err, &te) {
+		if _, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
 			return def, nil, defRefusal("This is not a FlowCatalyst definition file.")
 		}
 		return def, nil, defRefusal("This is not valid JSON.")
@@ -174,8 +173,7 @@ func parseDefinition[T any](kind, text string) (def T, unknown []string, err err
 		return def, nil, defRefusal("The file has no definition object.")
 	}
 	if err := json.Unmarshal(env.Definition, &def); err != nil {
-		var te *json.UnmarshalTypeError
-		if errors.As(err, &te) {
+		if te, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
 			return def, nil, defRefusal("The definition's " + te.Field + " has the wrong type (expected " + te.Type.String() + ").")
 		}
 		return def, nil, defRefusal("The definition could not be read.")
