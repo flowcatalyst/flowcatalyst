@@ -237,6 +237,7 @@ export class FieldTokenVerifier {
 			({ payload } = await jwtVerify(token, keys, {
 				issuer: this.cfg.issuer,
 				algorithms: ["RS256"],
+				requiredClaims: ["exp"],
 				clockTolerance: this.cfg.clockSkewSeconds,
 				currentDate: now,
 			}));
