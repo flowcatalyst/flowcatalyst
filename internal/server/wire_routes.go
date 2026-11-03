@@ -2,7 +2,9 @@ package server
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -32,6 +34,9 @@ import (
 	emaildomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/api"
 	eventapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/event/api"
 	eventtypeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
+	fieldidentityapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/pin"
 	functionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/api"
 	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
 	functiondomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain/api"
@@ -185,6 +190,21 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			UoW:          uow,
 			Invites:      principalResetEmailer,
 			IdPs:         repos.idpRepo,
+		})
+
+		// Field-worker identity admin surface. The PIN pepper derives from
+		// FLOWCATALYST_APP_KEY; without it the Hasher is nil and every PIN
+		// operation fails closed (503 FIELD_IDENTITY_UNCONFIGURED).
+		fieldHasher, herr := pin.NewHasher(os.Getenv("FLOWCATALYST_APP_KEY"))
+		if herr != nil {
+			slog.Warn("field identity: PIN operations disabled; set FLOWCATALYST_APP_KEY", "err", herr)
+		}
+		fieldidentityapi.Register(humaAPI, &fieldidentityapi.State{
+			Ops: &fieldidentity.Ops{
+				R: repos.fieldRepos, Clients: repos.clientRepo, Apps: repos.applicationRepo, Hasher: fieldHasher,
+			},
+			UoW:     uow,
+			BaseURL: cfg.JWTIssuer,
 		})
 
 		// Phase 8: lost-device reset approval queue (client-admin gated).

@@ -766,6 +766,83 @@ INVALID_CORRELATION_ID`, each as `{"error": CODE, "message"?}`. The request head
 `{ingestionId}:{value}`) and `X-Correlation-Id` are honoured. See "HTTP
 ingestions" in `docs/published/80-ingestion.md`.
 
+## Field identity: the admin API (`/api/field-*`)
+
+The field-worker identity plane (workers with a PIN, enrolled devices) is a separate
+population from principals and portal users. Design: `docs/field-worker-identity-design.md`;
+build spec: `docs/field-worker-identity-p1-spec.md`. This section is the admin surface;
+the device-facing `/field/*` protocol is added with its own section when it lands.
+
+**Authorization.** Every route needs a permission AND access to the target client:
+`platform:iam:field-worker:view|manage` (workers), `platform:iam:field-device:view|manage`
+(devices, enrolment codes, policy), `platform:iam:field-token:introspect`. Scope alone grants
+nothing (an anchor needs the permission too). The role `platform:field-administrator` holds
+the first four. By-id routes answer `404` (`FieldWorker_NOT_FOUND` / `FieldDevice_NOT_FOUND`)
+for a resource of a client the caller cannot reach, and `403 PERMISSION_REQUIRED` without the
+permission; routes that take a `clientId` answer `403 SCOPE_FORBIDDEN`. An application-confined
+service account (an explicit application list) may only name its own applications
+(`403 APPLICATION_FORBIDDEN` otherwise), sees and acts on workers/devices that share one of
+its applications (others are `404`), must name its application in `appCodes` when ensuring a
+worker, may grant its own application to a worker it cannot yet see, and may not change the
+client's policy. Application codes resolve to active applications, else `400 UNKNOWN_APPLICATION`.
+
+**Workers.** `POST /api/field-workers {clientId, workerCode, name, email?, appCodes?[], pin?}`
+is an idempotent ensure on `(clientId, workerCode)` (the code is stored upper-case): `201` with
+`created:true` for a new worker, `200` with `created:false` for an existing one, whose fields
+(including any PIN) are not overwritten; `appCodes` grants are added. A supplied `pin` must pass
+the client's PIN policy (`400 PIN_POLICY`, `details.violations[]`) and is stored with
+`pinChangeRequired:true`; without one the worker has no PIN and cannot sign in until a reset.
+Responses carry `hasPin`, `pinChangeRequired`, `locked`, `hardLocked`, `lockedUntil?`,
+`failedSinceSuccess`, `apps[]` and never the hash. `GET /api/field-workers?clientId&q&appCode&status&page&pageSize`
+(`page` 0-based, `pageSize` default 100 max 1000; `q` is a case-insensitive prefix of name or
+worker code) answers `{workers, total, page, size}`; `GET|PUT|DELETE /api/field-workers/{id}`
+(PUT takes `{name, email?}`; DELETE revokes the worker's sessions and removes the row).
+`POST /{id}/pin-reset {pin?}` answers `{temporaryPin?, pinChangeRequired:true}`: with no `pin`
+the platform generates a policy-valid PIN, returned this once and recorded nowhere readable
+(not in events or audit); every session of the worker is revoked (`PIN_CHANGED`) and the lock
+state cleared. `POST /{id}/unlock` clears both locks and the failure counter. `POST /{id}/suspend`
+sets `DISABLED` and revokes all sessions; `POST /{id}/activate` reverses the status.
+`POST /{id}/apps {appCode}` grants; `DELETE /{id}/apps/{appCode}` revokes and revokes that
+application's sessions for the worker; both idempotent. `GET /{id}/sign-ins?page&pageSize` lists
+sign-in attempts newest first (`{signIns, total, page, size}`).
+
+**Without `FLOWCATALYST_APP_KEY`** every operation that hashes a PIN (a supplied `pin`, a
+pin-reset) answers `503 FIELD_IDENTITY_UNCONFIGURED`; the field plane never hashes without the
+pepper.
+
+**Devices.** `POST /api/field-devices/enrolment-codes {clientId, mode, appCodes[], assignedWorkerId?, label?}`
+answers `201 {code, qrPayload, expiresAt}`. `mode` is `PERSONAL | SHARED`; a `SHARED` code with
+`assignedWorkerId` is `400 SHARED_DEVICE_ASSIGNED`; `appCodes` must be non-empty. The code is 10
+characters from `23456789ABCDEFGHJKMNPQRSTUVWXYZ`, valid 10 minutes, single use, stored only as
+its SHA-256 and shown once; `qrPayload` is `fcfield:1:<platform base URL>:<code>`.
+`GET /api/field-devices?clientId&status&mode&page&pageSize` answers `{devices, total, page, size}`;
+`GET /api/field-devices/{id}` includes `activeSessions` and `lastSeenAt`. `POST /{id}/suspend`
+revokes the device's sessions and is resumable by `POST /{id}/activate`; `POST /{id}/revoke` is
+terminal (sessions revoked; revoking twice is a no-op; suspend or activate on a revoked device is
+`409 DEVICE_REVOKED`).
+
+**Policy.** `GET /api/field-policies/{clientId}` answers the effective policy with `isDefault`
+(true when the client has no row). Defaults: `pinMinLength` 6, `softLockThreshold` 5,
+`softLockSecs` 900, `hardLockThreshold` 10, `sharedIdleSecs` 900, `personalIdleSecs` 7200,
+`shiftMaxSecs` 50400, `requireAttestation` false, `pinReauthDays` 7. `PUT` takes the same fields
+(numeric ones optional, defaults applied; ranges: `pinMinLength` 4..12, `softLockThreshold` 1..20,
+`softLockSecs` 30..86400, `hardLockThreshold` softLockThreshold..50, idle 60..86400, `shiftMaxSecs`
+3600..86400, `pinReauthDays` 1..90; a `pinMinLength` below 6 defaults `hardLockThreshold` to 5 and
+caps it at 5) or `400 POLICY_INVALID`. PINs are digits only, at most 12, and may not be all one
+digit, a straight run (including wrap-around, `123456`, `890123`, `654321`), on the short common
+list, or the worker's own code.
+
+**Introspection.** `POST /api/field-tokens/introspect {token}` answers `{active, sub?, clientId?,
+workerCode?, deviceId?, appCode?, amr?, authTime?, exp?}`. A token that fails any check, belongs to
+a client or application the caller cannot reach, or is unknown answers `{"active": false}`, never
+an error. `active` is true only while the token is unexpired, its login family (`sid`) has a
+non-revoked unexpired session, and both the worker and the device are `ACTIVE`.
+
+**Events** (catalogued, `platform:iam:...`): `field-worker:created | ensured | updated | deleted |
+suspended | activated | pin-reset | unlocked | app-granted | app-revoked`, `field-device:enrolment-code-created
+| enrolled | suspended | activated | revoked | throttled`, `field-session:revoked` (admin, reuse and worker
+revocations, not routine rotation), `field-policy:updated`. Payloads never carry a PIN or code.
+
 ## Non-contractual surface
 
 These may vary freely between builds/deployments:

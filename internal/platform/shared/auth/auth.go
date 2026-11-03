@@ -183,6 +183,13 @@ const (
 	permPortalUserView   = "platform:iam:portal-user:view"
 	permPortalUserManage = "platform:iam:portal-user:manage"
 
+	// Field-worker identity plane (docs/field-worker-identity-p1-spec.md).
+	permFieldWorkerView      = "platform:iam:field-worker:view"
+	permFieldWorkerManage    = "platform:iam:field-worker:manage"
+	permFieldDeviceView      = "platform:iam:field-device:view"
+	permFieldDeviceManage    = "platform:iam:field-device:manage"
+	permFieldTokenIntrospect = "platform:iam:field-token:introspect"
+
 	permUserView        = "platform:iam:user:view"
 	permUserCreate      = "platform:iam:user:create"
 	permUserUpdate      = "platform:iam:user:update"
@@ -1212,6 +1219,55 @@ func CanManagePortalUsers(a *AuthContext, clientID string) error {
 		return usecase.Authorization("SCOPE_FORBIDDEN", "no access to this client")
 	}
 	return requirePermission(a, permPortalUserManage)
+}
+
+// ── Field-worker identity permissions ────────────────────────────────────
+// Like the portal-user permissions these are CLIENT-delegable: the caller
+// needs the permission AND access to the target client. Unlike them, scope
+// alone never passes - an anchor needs the permission too (requirePermission's
+// rule: scope is reach, roles are authority). Application confinement of
+// service accounts is enforced per resource in the use cases.
+
+func fieldClientGate(a *AuthContext, clientID string, perms ...string) error {
+	if a == nil {
+		return usecase.Authorization("UNAUTHENTICATED", "authentication required")
+	}
+	if err := requireAny(a, perms...); err != nil {
+		return err
+	}
+	if !a.CanAccessClient(clientID) {
+		return usecase.Authorization("SCOPE_FORBIDDEN", "no access to this client")
+	}
+	return nil
+}
+
+// CanReadFieldWorkers authorizes listing and reading a client's field workers.
+func CanReadFieldWorkers(a *AuthContext, clientID string) error {
+	return fieldClientGate(a, clientID, permFieldWorkerView, permFieldWorkerManage)
+}
+
+// CanManageFieldWorkers authorizes ensure, update, PIN reset, unlock, suspend,
+// grants and deletion of a client's field workers.
+func CanManageFieldWorkers(a *AuthContext, clientID string) error {
+	return fieldClientGate(a, clientID, permFieldWorkerManage)
+}
+
+// CanReadFieldDevices authorizes listing and reading a client's field devices
+// and its field policy.
+func CanReadFieldDevices(a *AuthContext, clientID string) error {
+	return fieldClientGate(a, clientID, permFieldDeviceView, permFieldDeviceManage)
+}
+
+// CanManageFieldDevices authorizes enrolment codes, device suspend/activate/
+// revoke, and the client's field policy.
+func CanManageFieldDevices(a *AuthContext, clientID string) error {
+	return fieldClientGate(a, clientID, permFieldDeviceManage)
+}
+
+// CanIntrospectFieldTokens authorizes the permission only; the caller then
+// checks the token's own client with CanAccessClient.
+func CanIntrospectFieldTokens(a *AuthContext) error {
+	return requirePermission(a, permFieldTokenIntrospect)
 }
 
 // ── Platform documentation ───────────────────────────────────────────────

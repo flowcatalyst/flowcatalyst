@@ -206,6 +206,18 @@ func PlatformRoles() []role.Role {
 				permPortalUserView, permPortalUserManage,
 			}),
 
+		// platform:field-administrator - CLIENT-delegable: assign to a client
+		// administrator (workers, devices and policy in the platform UI).
+		// An application's confined service account is given field-worker:manage
+		// and field-token:introspect directly (see the permission definitions),
+		// not this role. Client confinement comes from the holder's own scope.
+		mk("field-administrator", "Field Administrator",
+			"Manage the client's field workers, devices and field policy",
+			[]string{
+				permFieldWorkerView, permFieldWorkerManage,
+				permFieldDeviceView, permFieldDeviceManage,
+			}),
+
 		// platform:developer
 		mk("developer", "Developer",
 			"Developer portal: API documentation, accessible event types, and a self-service API credential for local testing",

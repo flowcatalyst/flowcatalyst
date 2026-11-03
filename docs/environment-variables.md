@@ -98,7 +98,7 @@ Resolution precedence: full URL
 
 | Variable | Default | Aliases | Read in | Purpose |
 |---|---|---|---|---|
-| `FLOWCATALYST_APP_KEY` | — | — | `internal/platform/shared/encryption`, `internal/server/subsystems.go`, `cmd/fcdev`, `cmd/decrypt-check` | Field-encryption key (base64, AES-GCM). Unset → encryption disabled: confidential OAuth client-secret minting fails and TOTP enrollment degrades; the dispatch scheduler **refuses to start** (its HMAC dispatch-auth secret is HKDF-derived from this key). fcdev generates + persists one. |
+| `FLOWCATALYST_APP_KEY` | — | — | `internal/platform/shared/encryption`, `internal/server/subsystems.go`, `internal/server/wire_routes.go`, `cmd/fcdev`, `cmd/decrypt-check` | Field-encryption key (base64, AES-GCM). Also the source of the field-worker PIN pepper (HKDF info `fc-field-pin`, `internal/platform/fieldidentity/pin`): unset → every PIN set/verify fails closed (`503 FIELD_IDENTITY_UNCONFIGURED`). Unset → encryption disabled: confidential OAuth client-secret minting fails and TOTP enrollment degrades; the dispatch scheduler **refuses to start** (its HMAC dispatch-auth secret is HKDF-derived from this key). fcdev generates + persists one. |
 | `FLOWCATALYST_APP_KEY_PREVIOUS` | — | — | `internal/platform/shared/encryption` | Previous encryption key; decryption falls back to it during key rotation (new writes always use the current key). |
 | `FLOWCATALYST_SIGNING_SECRET` | — | — | `pkg/fcsdk/webhook` | Webhook HMAC-SHA256 signing secret for consumer apps using the Go SDK's `ValidatorFromEnv` (required for SDK webhook validation — errors when unset). |
 

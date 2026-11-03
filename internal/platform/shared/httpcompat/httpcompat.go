@@ -389,3 +389,9 @@ func logInternal(ctx huma.Context, se huma.StatusError, errs []error) {
 	}
 	l.Error("internal error response", attrs...)
 }
+
+// NewStatusError builds an error response with an explicit HTTP status, for
+// the few conditions the usecase error kinds do not map (e.g. 503).
+func NewStatusError(status int, code, message string) *ErrorModel {
+	return &ErrorModel{Code: code, Message: message, status: status}
+}

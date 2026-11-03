@@ -270,6 +270,13 @@ const (
 	// Portal identity plane (docs/portal-identity-plan.md Phase 2.5 v2).
 	permPortalUserView   = "platform:iam:portal-user:view"
 	permPortalUserManage = "platform:iam:portal-user:manage"
+
+	// Field-worker identity plane (docs/field-worker-identity-p1-spec.md).
+	permFieldWorkerView      = "platform:iam:field-worker:view"
+	permFieldWorkerManage    = "platform:iam:field-worker:manage"
+	permFieldDeviceView      = "platform:iam:field-device:view"
+	permFieldDeviceManage    = "platform:iam:field-device:manage"
+	permFieldTokenIntrospect = "platform:iam:field-token:introspect"
 )
 
 // Application-service permissions — scoped to a single application via SDK.

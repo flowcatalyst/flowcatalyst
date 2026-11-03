@@ -99,6 +99,13 @@ const (
 	IngestionSetApply
 	IngestionFailure
 	IngestionTest
+	// FieldWorker, FieldDevice, FieldEnrolmentCode and FieldSession back the
+	// field-worker identity plane (field_identities, field_devices,
+	// field_enrolment_codes, field_sessions) - docs/field-worker-identity-design.md.
+	FieldWorker
+	FieldDevice
+	FieldEnrolmentCode
+	FieldSession
 )
 
 // Prefix returns the 3-character prefix for this entity type. These are
@@ -219,6 +226,14 @@ func (e EntityType) Prefix() string {
 		return "ifl"
 	case IngestionTest:
 		return "itr"
+	case FieldWorker:
+		return "fwu"
+	case FieldDevice:
+		return "fwd"
+	case FieldEnrolmentCode:
+		return "fwe"
+	case FieldSession:
+		return "fws"
 	default:
 		return "unk"
 	}

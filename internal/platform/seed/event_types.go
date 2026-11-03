@@ -74,6 +74,15 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 		"created", "updated", "activated", "deactivated", "deleted",
 		"service-account-provisioned", "enabled-for-client", "disabled-for-client")
 
+	// Field-worker identity plane (docs/field-worker-identity-design.md).
+	groupAs("platform:iam:field-worker", "Field Worker",
+		"created", "ensured", "updated", "deleted", "suspended", "activated",
+		"pin-reset", "unlocked", "app-granted", "app-revoked")
+	groupAs("platform:iam:field-device", "Field Device",
+		"enrolment-code-created", "enrolled", "suspended", "activated", "revoked", "throttled")
+	groupAs("platform:iam:field-session", "Field Session", "revoked")
+	groupAs("platform:iam:field-policy", "Field Policy", "updated")
+
 	// ── platform:admin ──────────────────────────────────────────────────
 	group("platform:admin:client",
 		"created", "updated", "activated", "suspended", "deactivated", "deleted", "note-added")

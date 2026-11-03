@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
@@ -44,6 +45,7 @@ type repoSet struct {
 	principalRepo               *principal.Repository
 	principalGrantRepo          *principal.ClientAccessGrantRepo
 	portalIdentityRepo          *portalidentity.Repository
+	fieldRepos                  *fieldidentity.Repos
 	portalAppRepo               *portalidentity.AppRepository
 	serviceAccountRepo          *serviceaccount.Repository
 	authRepo                    *auth.Repository
@@ -79,6 +81,7 @@ func buildRepos(pool *pgxpool.Pool) *repoSet {
 		principalRepo:               principal.NewRepository(pool),
 		principalGrantRepo:          principal.NewClientAccessGrantRepo(pool),
 		portalIdentityRepo:          portalidentity.NewRepository(pool),
+		fieldRepos:                  fieldidentity.NewRepos(pool),
 		portalAppRepo:               portalidentity.NewAppRepository(pool),
 		serviceAccountRepo:          serviceaccount.NewRepository(pool),
 		authRepo:                    auth.NewRepository(pool),

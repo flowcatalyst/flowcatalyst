@@ -2,6 +2,7 @@
 
 Status: ACCEPTED (owner rulings 2026-10-19, recorded in §9). P1 in progress on branch
 `feat/field-identity` (2026-11-03): the build spec is `docs/field-worker-identity-p1-spec.md`.
+Slice A (schema, domain, admin API, PIN policy and hashing, events) landed on the branch 2026-11-03; slice B (the `/field/*` device protocol, token minting, SDK verifier, fixtures) is open.
 F34 (platform `token_use` allowlist, `8165e614`) landed on main 2026-10-19.
 Related: `docs/portal-identity-plan.md` (why a separate plane), `docs/portal-apps-and-access-gate.md`
 (per-app grants), `docs/2fa-implementation-plan.md` (trusted-device upgrade path names exactly this

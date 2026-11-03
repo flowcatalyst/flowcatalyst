@@ -98,6 +98,121 @@ type AudLog struct {
 	ClientID      *string         `db:"client_id"`
 }
 
+type FieldDevice struct {
+	ID                 string     `db:"id"`
+	ClientID           string     `db:"client_id"`
+	Mode               string     `db:"mode"`
+	Label              *string    `db:"label"`
+	Platform           *string    `db:"platform"`
+	Model              *string    `db:"model"`
+	Jkt                string     `db:"jkt"`
+	PublicKeyJwk       string     `db:"public_key_jwk"`
+	AttestationLevel   string     `db:"attestation_level"`
+	AssignedIdentityID *string    `db:"assigned_identity_id"`
+	Status             string     `db:"status"`
+	EnrolledBy         *string    `db:"enrolled_by"`
+	EnrolledAt         time.Time  `db:"enrolled_at"`
+	LastSeenAt         *time.Time `db:"last_seen_at"`
+	UpdatedAt          time.Time  `db:"updated_at"`
+}
+
+type FieldDeviceApp struct {
+	DeviceID      string `db:"device_id"`
+	ApplicationID string `db:"application_id"`
+}
+
+type FieldEnrolmentCode struct {
+	ID                 string     `db:"id"`
+	ClientID           string     `db:"client_id"`
+	CodeHash           string     `db:"code_hash"`
+	Mode               string     `db:"mode"`
+	AppIds             []string   `db:"app_ids"`
+	AssignedIdentityID *string    `db:"assigned_identity_id"`
+	Label              *string    `db:"label"`
+	ExpiresAt          time.Time  `db:"expires_at"`
+	UsedAt             *time.Time `db:"used_at"`
+	CreatedBy          *string    `db:"created_by"`
+	CreatedAt          time.Time  `db:"created_at"`
+}
+
+type FieldIdentity struct {
+	ID                 string     `db:"id"`
+	ClientID           string     `db:"client_id"`
+	WorkerCode         string     `db:"worker_code"`
+	Name               string     `db:"name"`
+	Email              *string    `db:"email"`
+	Status             string     `db:"status"`
+	PinHash            *string    `db:"pin_hash"`
+	PinScheme          string     `db:"pin_scheme"`
+	PepperVersion      int32      `db:"pepper_version"`
+	PinSetAt           *time.Time `db:"pin_set_at"`
+	PinChangeRequired  bool       `db:"pin_change_required"`
+	FailedSinceSuccess int32      `db:"failed_since_success"`
+	LockedUntil        *time.Time `db:"locked_until"`
+	HardLocked         bool       `db:"hard_locked"`
+	LastLoginAt        *time.Time `db:"last_login_at"`
+	CreatedAt          time.Time  `db:"created_at"`
+	UpdatedAt          time.Time  `db:"updated_at"`
+}
+
+type FieldIdentityApp struct {
+	IdentityID    string    `db:"identity_id"`
+	ApplicationID string    `db:"application_id"`
+	Source        string    `db:"source"`
+	GrantedAt     time.Time `db:"granted_at"`
+}
+
+type FieldLoginAttempt struct {
+	ID            string    `db:"id"`
+	ClientID      *string   `db:"client_id"`
+	IdentityID    *string   `db:"identity_id"`
+	WorkerCode    *string   `db:"worker_code"`
+	DeviceID      *string   `db:"device_id"`
+	ApplicationID *string   `db:"application_id"`
+	AuthMethod    string    `db:"auth_method"`
+	Outcome       string    `db:"outcome"`
+	FailureReason *string   `db:"failure_reason"`
+	IpAddress     *string   `db:"ip_address"`
+	AttemptedAt   time.Time `db:"attempted_at"`
+}
+
+type FieldNonce struct {
+	NonceHash []byte    `db:"nonce_hash"`
+	ExpiresAt time.Time `db:"expires_at"`
+}
+
+type FieldPolicy struct {
+	ClientID           string    `db:"client_id"`
+	PinMinLength       int32     `db:"pin_min_length"`
+	SoftLockThreshold  int32     `db:"soft_lock_threshold"`
+	SoftLockSecs       int32     `db:"soft_lock_secs"`
+	HardLockThreshold  int32     `db:"hard_lock_threshold"`
+	SharedIdleSecs     int32     `db:"shared_idle_secs"`
+	PersonalIdleSecs   int32     `db:"personal_idle_secs"`
+	ShiftMaxSecs       int32     `db:"shift_max_secs"`
+	RequireAttestation bool      `db:"require_attestation"`
+	PinReauthDays      int32     `db:"pin_reauth_days"`
+	UpdatedAt          time.Time `db:"updated_at"`
+}
+
+type FieldSession struct {
+	ID                string     `db:"id"`
+	FamilyID          string     `db:"family_id"`
+	IdentityID        string     `db:"identity_id"`
+	DeviceID          string     `db:"device_id"`
+	ApplicationID     string     `db:"application_id"`
+	RefreshHash       string     `db:"refresh_hash"`
+	Amr               []string   `db:"amr"`
+	AuthTime          time.Time  `db:"auth_time"`
+	IssuedAt          time.Time  `db:"issued_at"`
+	IdleExpiresAt     time.Time  `db:"idle_expires_at"`
+	AbsoluteExpiresAt time.Time  `db:"absolute_expires_at"`
+	RotatedAt         *time.Time `db:"rotated_at"`
+	RevokedAt         *time.Time `db:"revoked_at"`
+	RevokedReason     *string    `db:"revoked_reason"`
+	PinChangeRequired bool       `db:"pin_change_required"`
+}
+
 type FngAlias struct {
 	FunctionID string    `db:"function_id"`
 	Name       string    `db:"name"`

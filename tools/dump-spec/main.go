@@ -33,6 +33,7 @@ import (
 	emaildomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/api"
 	eventapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/event/api"
 	eventtypeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/api"
+	fieldidentityapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/api"
 	functionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/api"
 	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
 	functiondomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain/api"
@@ -88,6 +89,7 @@ func buildSpec(withSDK bool) (*huma.OpenAPI, error) {
 	emaildomainapi.Register(api, &emaildomainapi.State{})
 	eventapi.Register(api, &eventapi.State{})
 	eventtypeapi.Register(api, &eventtypeapi.State{})
+	fieldidentityapi.Register(api, &fieldidentityapi.State{})
 	functionapi.Register(api, &functionapi.State{})
 	functioncontrol.Register(api, &functioncontrol.State{})
 	functiondomainapi.Register(api, &functiondomainapi.State{})

@@ -208,12 +208,16 @@ func TestKnownValueDecode(t *testing.T) {
 
 func TestIngestionPrefixes(t *testing.T) {
 	want := map[tsid.EntityType]string{
-		tsid.Ingestion:         "ing",
-		tsid.IngestionVersion:  "inv",
-		tsid.IngestionSet:      "ins",
-		tsid.IngestionSetApply: "isa",
-		tsid.IngestionFailure:  "ifl",
-		tsid.IngestionTest:     "itr",
+		tsid.Ingestion:          "ing",
+		tsid.IngestionVersion:   "inv",
+		tsid.IngestionSet:       "ins",
+		tsid.IngestionSetApply:  "isa",
+		tsid.IngestionFailure:   "ifl",
+		tsid.IngestionTest:      "itr",
+		tsid.FieldWorker:        "fwu",
+		tsid.FieldDevice:        "fwd",
+		tsid.FieldEnrolmentCode: "fwe",
+		tsid.FieldSession:       "fws",
 	}
 	for et, prefix := range want {
 		assert.Equal(t, prefix, et.Prefix())

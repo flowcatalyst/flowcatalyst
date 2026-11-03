@@ -432,6 +432,40 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqBool("hasBreaking"), reqBool("unchanged"),
 	)
 
+	// ── platform:iam:field-* (field-worker identity plane) ──────────────
+	worker := func(extra ...prop) json.RawMessage {
+		return obj(append([]prop{reqStr("workerId"), reqStr("clientId"), reqStr("workerCode")}, extra...)...)
+	}
+	m["platform:iam:field-worker:created"] = worker(reqStr("name"), optStrArray("applicationIds"))
+	m["platform:iam:field-worker:ensured"] = worker(optStrArray("applicationIds"))
+	m["platform:iam:field-worker:updated"] = worker(reqStr("name"))
+	m["platform:iam:field-worker:deleted"] = worker()
+	m["platform:iam:field-worker:suspended"] = worker()
+	m["platform:iam:field-worker:activated"] = worker()
+	m["platform:iam:field-worker:pin-reset"] = worker(reqBool("pinChangeRequired"))
+	m["platform:iam:field-worker:unlocked"] = worker()
+	m["platform:iam:field-worker:app-granted"] = worker(reqStr("applicationId"), reqStr("applicationCode"))
+	m["platform:iam:field-worker:app-revoked"] = worker(reqStr("applicationId"), reqStr("applicationCode"))
+	device := func(extra ...prop) json.RawMessage {
+		return obj(append([]prop{reqStr("deviceId"), reqStr("clientId"), reqStr("mode")}, extra...)...)
+	}
+	m["platform:iam:field-device:enrolment-code-created"] = obj(
+		reqStr("codeId"), reqStr("clientId"), reqStr("mode"), reqStrArray("applicationIds"),
+		optStr("assignedWorkerId"), reqStr("expiresAt"),
+	)
+	m["platform:iam:field-device:enrolled"] = device(reqStrArray("applicationIds"))
+	m["platform:iam:field-device:suspended"] = device()
+	m["platform:iam:field-device:activated"] = device()
+	m["platform:iam:field-device:revoked"] = device()
+	m["platform:iam:field-device:throttled"] = obj(
+		reqEnum("scope", "DEVICE", "CLIENT"), reqStr("clientId"), optStr("deviceId"),
+	)
+	m["platform:iam:field-session:revoked"] = obj(
+		reqStr("clientId"), reqStr("reason"), reqU32("count"),
+		optStr("workerId"), optStr("deviceId"), optStr("familyId"), optStr("applicationId"),
+	)
+	m["platform:iam:field-policy:updated"] = obj(reqStr("clientId"))
+
 	// ── platform:portal ─────────────────────────────────────────────────
 	for _, ev := range []string{"created", "updated", "deleted"} {
 		m["platform:portal:app:"+ev] = obj(
