@@ -1,0 +1,28 @@
+{
+	"name": "@flowcatalyst/field-react-native",
+	"version": "0.0.0",
+	"private": true,
+	"description": "React Native native module (Android Keystore / iOS Secure Enclave) and WebView bridge host for @flowcatalyst/field-js",
+	"license": "Apache-2.0",
+	"main": "./lib/index.js",
+	"types": "./lib/index.d.ts",
+	"react-native": "./src/index.ts",
+	"files": ["lib", "src", "android", "ios", "FlowcatalystFieldReactNative.podspec", "README.md"],
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"lint": "tsc --noEmit",
+		"test": "node --import tsx --test --test-reporter=spec 'tests/**/*.test.ts'"
+	},
+	"peerDependencies": {
+		"react": ">=18",
+		"react-native": ">=0.73",
+		"react-native-webview": ">=13"
+	},
+	"devDependencies": {
+		"@types/node": "^22.0.0",
+		"@types/react": "^18.3.0",
+		"react": "^18.3.1",
+		"tsx": "^4.19.0",
+		"typescript": "^5.7.0"
+	}
+}

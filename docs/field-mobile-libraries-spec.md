@@ -133,6 +133,8 @@ export interface SecureStore {
 }
 ```
 
+`set` never prompts the user, even with `requireBiometric`; only `get` of a biometric entry prompts.
+
 Errors from providers and stores carry a `code`: `KEY_INVALIDATED`, `BIOMETRIC_UNAVAILABLE`,
 `BIOMETRIC_CANCELLED`, `NO_SECURE_LOCK_SCREEN`, `INTERNAL`.
 
@@ -197,12 +199,12 @@ A bare React Native native module (no Expo dependency), usable from plain RN scr
     not verify it in P1; send the chain); level from `KeyInfo.securityLevel` on API 31+
     (`STRONGBOX`/`TRUSTED_ENVIRONMENT`→`TEE`/`SOFTWARE`), else `isInsideSecureHardware`. `sign`
     uses `SHA256withECDSA` and converts the DER signature to raw r‖s (left-pad to 32 bytes each).
-  - Secure store: values encrypted with AES-256-GCM under Keystore keys and kept in
-    `SharedPreferences` (ciphertext + IV, base64). Two keys: `fc_field_store` (no user auth) and
-    `fc_field_store_bio` (`setUserAuthenticationRequired(true)`,
-    `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)` on API 30+,
-    `setInvalidatedByBiometricEnrollment(true)`); a biometric `get`/`set` runs `BiometricPrompt`
-    with a `CryptoObject(Cipher)`. `KeyPermanentlyInvalidatedException` /
+  - Secure store: plain entries are AES-256-GCM under the Keystore key `fc_field_store` (no user auth),
+    kept in `SharedPreferences` (ciphertext + IV, base64). Biometric entries use a hybrid envelope: the
+    Keystore RSA-2048 pair `fc_field_store_bio` (DECRYPT, OAEP SHA-256/MGF1-SHA-1,
+    `setUserAuthenticationRequired(true)`, `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)` on
+    API 30+, `setInvalidatedByBiometricEnrollment(true)`); `set` wraps a fresh software AES-256-GCM data key
+    with the public key (no prompt); only `get` runs `BiometricPrompt` with a `CryptoObject(Cipher)` to unwrap. `KeyPermanentlyInvalidatedException` /
     `UnrecoverableKeyException` → delete the entry and the key, answer `KEY_INVALIDATED`. No
     secure lock screen → `NO_SECURE_LOCK_SCREEN`.
   - `minSdkVersion` 26, `androidx.biometric`. Never log values or signatures.
