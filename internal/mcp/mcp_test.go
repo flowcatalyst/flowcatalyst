@@ -118,3 +118,17 @@ func toolText(t *testing.T, res *mcpsdk.CallToolResult) string {
 	}
 	return tc.Text
 }
+
+func TestCredentialsPathOverride(t *testing.T) {
+	want := filepath.Join(t.TempDir(), "isolated.json")
+	t.Setenv("FC_MCP_CREDENTIALS_PATH", want)
+	if got, err := CredentialsPath(); err != nil || got != want {
+		t.Fatalf("CredentialsPath() = %q, %v; want %q", got, err, want)
+	}
+	if err := WriteCredentialsFile("cid", "s", "http://x"); err != nil {
+		t.Fatal(err)
+	}
+	if id, s, u, ok := ReadCredentialsFile(); !ok || id != "cid" || s != "s" || u != "http://x" {
+		t.Fatalf("read back %q %q %q %v", id, s, u, ok)
+	}
+}

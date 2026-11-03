@@ -37,8 +37,13 @@ type credentialsFile struct {
 }
 
 // CredentialsPath is where fcdev writes, and the MCP server reads, the
-// bootstrapped local credentials: <user-cache>/flowcatalyst-dev/mcp-credentials.json.
+// bootstrapped local credentials: <user-cache>/flowcatalyst-dev/mcp-credentials.json,
+// or FC_MCP_CREDENTIALS_PATH when set (an isolated fcdev run must set it, or it
+// rewrites the developer's own file).
 func CredentialsPath() (string, error) {
+	if p := os.Getenv("FC_MCP_CREDENTIALS_PATH"); p != "" {
+		return p, nil
+	}
 	cache, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
@@ -84,6 +89,13 @@ func readCredentialsFile() (credentialsFile, bool) {
 		return credentialsFile{}, false
 	}
 	return readCredentialsFileAt(path)
+}
+
+// ReadCredentialsFile returns the credentials file's contents, ok false when it
+// is missing or unreadable.
+func ReadCredentialsFile() (clientID, clientSecret, baseURL string, ok bool) {
+	fc, ok := readCredentialsFile()
+	return fc.ClientID, fc.ClientSecret, fc.BaseURL, ok
 }
 
 func readCredentialsFileAt(path string) (credentialsFile, bool) {

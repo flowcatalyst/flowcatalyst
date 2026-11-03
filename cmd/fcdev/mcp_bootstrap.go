@@ -41,18 +41,20 @@ func bootstrapMCPCredentials(ctx context.Context, pool *pgxpool.Pool, baseURL st
 	if err != nil {
 		return fmt.Errorf("look up MCP client: %w", err)
 	}
-	if existing != nil {
-		// Already provisioned on a prior boot; the credentials file persists
-		// from first run. Idempotent.
-		return nil
-	}
-
 	enc, err := encryption.FromEnv()
 	if err != nil {
 		return fmt.Errorf("init encryption: %w", err)
 	}
 	if enc == nil {
 		return fmt.Errorf("FLOWCATALYST_APP_KEY not set; cannot encrypt MCP client secret")
+	}
+
+	if existing != nil {
+		// Already provisioned on a prior boot. The credentials file normally
+		// persists from the first run, but it can go missing or be overwritten
+		// (another fcdev instance on this machine writes the same path unless
+		// FC_MCP_CREDENTIALS_PATH is set), so make it match this database.
+		return healMCPCredentialsFile(enc, existing.SecretRef, baseURL)
 	}
 
 	secret, err := generateSecret()
@@ -156,4 +158,26 @@ func resolveAppKey(embeddedDBPath string) (string, error) {
 		return "", err
 	}
 	return key, nil
+}
+
+// healMCPCredentialsFile rewrites mcp-credentials.json from the stored client
+// secret when the file is missing or does not match this database's client
+// (other client id, secret or base URL). It changes nothing when they match.
+func healMCPCredentialsFile(enc *encryption.Service, secretRef *string, baseURL string) error {
+	if secretRef == nil || *secretRef == "" {
+		return fmt.Errorf("MCP client %s has no stored secret", mcpLocalClientID)
+	}
+	secret, err := enc.Decrypt(*secretRef)
+	if err != nil {
+		return fmt.Errorf("decrypt MCP client secret: %w", err)
+	}
+	if id, s, u, ok := mcp.ReadCredentialsFile(); ok && id == mcpLocalClientID && s == secret && u == baseURL {
+		return nil
+	}
+	if err := mcp.WriteCredentialsFile(mcpLocalClientID, secret, baseURL); err != nil {
+		return fmt.Errorf("rewrite MCP credentials file: %w", err)
+	}
+	path, _ := mcp.CredentialsPath()
+	slog.Info("rewrote local MCP credentials to match this database", "client_id", mcpLocalClientID, "credentials", path)
+	return nil
 }
