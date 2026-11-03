@@ -10,6 +10,7 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.UnrecoverableKeyException
 import java.util.Base64
@@ -21,7 +22,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 /**
  * AES-256-GCM secure store. Ciphertext + IV live in SharedPreferences (base64); keys live in the Keystore.
- * Entry format: "v1:<n|b>:<iv b64>:<ciphertext b64>". Never logs keys, values or plaintext.
+ * Plain entries: "v1:n:<iv b64>:<ciphertext b64>"; biometric entries use HybridEnvelope ("v2:b:..."). Never logs keys, values or plaintext.
  */
 internal class SecureStoreManager(private val context: Context) {
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -48,7 +49,7 @@ internal class SecureStoreManager(private val context: Context) {
         if (entry.bio) throw FcFieldException("INTERNAL", "entry requires biometric")
         try {
             val cipher = Cipher.getInstance(TRANSFORM)
-            cipher.init(Cipher.DECRYPT_MODE, key(KEY_PLAIN, false), GCMParameterSpec(128, entry.iv))
+            cipher.init(Cipher.DECRYPT_MODE, key(KEY_PLAIN), GCMParameterSpec(128, entry.iv))
             return String(cipher.doFinal(entry.ct), Charsets.UTF_8)
         } catch (e: Exception) {
             return lost(name, KEY_PLAIN, e)
@@ -60,10 +61,10 @@ internal class SecureStoreManager(private val context: Context) {
         try {
             val cipher = Cipher.getInstance(TRANSFORM)
             try {
-                cipher.init(Cipher.ENCRYPT_MODE, key(KEY_PLAIN, false))
+                cipher.init(Cipher.ENCRYPT_MODE, key(KEY_PLAIN))
             } catch (e: Exception) {
                 runCatching { keyStore().deleteEntry(KEY_PLAIN) }
-                cipher.init(Cipher.ENCRYPT_MODE, key(KEY_PLAIN, false))
+                cipher.init(Cipher.ENCRYPT_MODE, key(KEY_PLAIN))
             }
             val ct = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
             prefs.edit().putString(name, format(false, cipher.iv, ct)).apply()
@@ -74,67 +75,100 @@ internal class SecureStoreManager(private val context: Context) {
         }
     }
 
-    fun biometricEntryExists(name: String): Boolean = parse(prefs.getString(name, null))?.bio == true
-
     fun delete(name: String) {
         prefs.edit().remove(name).apply()
     }
 
     // ---- biometric ----------------------------------------------------------------------------
+    // Hybrid scheme: the RSA key pair `fc_field_store_bio` is biometric-gated for DECRYPT only. `set` wraps a fresh
+    // AES data key with the PUBLIC key (no auth, never prompts); only `get` prompts, to unwrap the data key.
 
-    /** Prepare a decrypt cipher for a biometric entry; null when the entry does not exist. */
+    /** Seal a biometric entry. Never prompts. */
     @Synchronized
-    fun biometricGetCipher(name: String): Pair<Cipher, ByteArray>? {
+    fun biometricSet(name: String, value: String) {
         requireBiometricReady()
-        val entry = parse(prefs.getString(name, null)) ?: return null
-        if (!entry.bio) throw FcFieldException("INTERNAL", "entry is not biometric-protected")
         try {
-            val cipher = Cipher.getInstance(TRANSFORM)
-            cipher.init(Cipher.DECRYPT_MODE, key(KEY_BIO, true), GCMParameterSpec(128, entry.iv))
-            return cipher to entry.ct
-        } catch (e: Exception) {
-            lost<Unit>(name, KEY_BIO, e)
-            throw IllegalStateException() // unreachable: lost() always throws for the bio path
-        }
-    }
-
-    fun biometricFinishGet(cipher: Cipher, ct: ByteArray): String =
-        try {
-            String(cipher.doFinal(ct), Charsets.UTF_8)
-        } catch (e: Exception) {
-            throw FcFieldException("INTERNAL", "could not decrypt value", e)
-        }
-
-    @Synchronized
-    fun biometricSetCipher(): Cipher {
-        requireBiometricReady()
-        val cipher = Cipher.getInstance(TRANSFORM)
-        try {
-            cipher.init(Cipher.ENCRYPT_MODE, key(KEY_BIO, true))
-        } catch (e: KeyPermanentlyInvalidatedException) {
-            // Enrolment changed: the old key (and everything under it) is gone; start a fresh key.
-            runCatching { keyStore().deleteEntry(KEY_BIO) }
-            try {
-                cipher.init(Cipher.ENCRYPT_MODE, key(KEY_BIO, true))
-            } catch (e2: Exception) {
-                throw FcFieldException("INTERNAL", "could not prepare biometric key", e2)
-            }
+            val sealed = HybridEnvelope.seal(value, bioPublicKey())
+            prefs.edit().putString(name, sealed).apply()
         } catch (e: FcFieldException) {
             throw e
-        } catch (e: Exception) {
-            throw FcFieldException("INTERNAL", "could not prepare biometric key", e)
-        }
-        return cipher
-    }
-
-    fun biometricFinishSet(name: String, cipher: Cipher, value: String) {
-        try {
-            val ct = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-            prefs.edit().putString(name, format(true, cipher.iv, ct)).apply()
         } catch (e: Exception) {
             throw FcFieldException("INTERNAL", "could not store value", e)
         }
     }
+
+    /** Public half of the biometric key pair, regenerating the pair if enrolment changed or it is unusable. */
+    private fun bioPublicKey(): java.security.PublicKey {
+        val ks = keyStore()
+        if (ks.containsAlias(KEY_BIO)) {
+            try {
+                // Init (without using) the private key: throws if it was invalidated by an enrolment change.
+                val probe = Cipher.getInstance(HybridEnvelope.RSA_TRANSFORM)
+                probe.init(Cipher.DECRYPT_MODE, ks.getKey(KEY_BIO, null) as java.security.PrivateKey, HybridEnvelope.oaep)
+                return ks.getCertificate(KEY_BIO).publicKey
+            } catch (e: Exception) {
+                // Entries under the old key are unrecoverable; the stale ones report KEY_INVALIDATED on get.
+                runCatching { ks.deleteEntry(KEY_BIO) }
+            }
+        }
+        generateBioKeyPair()
+        return keyStore().getCertificate(KEY_BIO).publicKey
+    }
+
+    private fun generateBioKeyPair() {
+        val b = KeyGenParameterSpec.Builder(KEY_BIO, KeyProperties.PURPOSE_DECRYPT)
+            .setKeySize(2048)
+            .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA1)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_OAEP)
+            .setUserAuthenticationRequired(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            b.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
+        } else {
+            @Suppress("DEPRECATION")
+            b.setUserAuthenticationValidityDurationSeconds(-1)
+        }
+        b.setInvalidatedByBiometricEnrollment(true)
+        val kpg = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, "AndroidKeyStore")
+        kpg.initialize(b.build())
+        kpg.generateKeyPair()
+    }
+
+    fun biometricEntryExists(name: String): Boolean = prefs.getString(name, null)?.startsWith("v2:b:") == true
+
+    /** Prepare the unwrap cipher for a biometric entry; null when the entry does not exist. */
+    @Synchronized
+    fun biometricGetCipher(name: String): Pair<Cipher, HybridEnvelope.Parsed>? {
+        requireBiometricReady()
+        val env = HybridEnvelope.parse(prefs.getString(name, null)) ?: return null
+        try {
+            val ks = keyStore()
+            val priv = ks.getKey(KEY_BIO, null) as? java.security.PrivateKey
+                ?: throw UnrecoverableKeyException("no biometric key")
+            val cipher = Cipher.getInstance(HybridEnvelope.RSA_TRANSFORM)
+            cipher.init(Cipher.DECRYPT_MODE, priv, HybridEnvelope.oaep)
+            return cipher to env
+        } catch (e: Exception) {
+            lost<Unit>(name, KEY_BIO, e)
+            throw IllegalStateException() // unreachable: lost() always throws
+        }
+    }
+
+    /** [authed] is the cipher returned by the BiometricPrompt CryptoObject. */
+    fun biometricFinishGet(name: String, authed: Cipher, env: HybridEnvelope.Parsed): String =
+        try {
+            HybridEnvelope.open(env) { authed.doFinal(it) }
+        } catch (e: KeyPermanentlyInvalidatedException) {
+            lost(name, KEY_BIO, e)
+        } catch (e: javax.crypto.BadPaddingException) {
+            // Entry was sealed under an earlier key pair (regenerated after an enrolment change): drop just the entry.
+            prefs.edit().remove(name).apply()
+            throw FcFieldException("KEY_INVALIDATED", "stored value is no longer recoverable", e)
+        } catch (e: javax.crypto.IllegalBlockSizeException) {
+            prefs.edit().remove(name).apply()
+            throw FcFieldException("KEY_INVALIDATED", "stored value is no longer recoverable", e)
+        } catch (e: Exception) {
+            throw FcFieldException("INTERNAL", "could not decrypt value", e)
+        }
 
     private fun requireBiometricReady() {
         if (!deviceSecure()) throw FcFieldException("NO_SECURE_LOCK_SCREEN", "device has no secure lock screen")
@@ -191,23 +225,13 @@ internal class SecureStoreManager(private val context: Context) {
 
     // ---- keys & entries -----------------------------------------------------------------------
 
-    private fun key(alias: String, bio: Boolean): SecretKey {
+    private fun key(alias: String): SecretKey {
         val ks = keyStore()
         (ks.getKey(alias, null) as? SecretKey)?.let { return it }
         val b = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
             .setKeySize(256)
-        if (bio) {
-            b.setUserAuthenticationRequired(true)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                b.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
-            } else {
-                @Suppress("DEPRECATION")
-                b.setUserAuthenticationValidityDurationSeconds(-1)
-            }
-            b.setInvalidatedByBiometricEnrollment(true)
-        }
         val kg = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         kg.init(b.build())
         return kg.generateKey()

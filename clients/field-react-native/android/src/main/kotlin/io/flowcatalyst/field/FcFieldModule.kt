@@ -51,9 +51,9 @@ class FcFieldModule(private val reactContext: ReactApplicationContext) : ReactCo
     fun storeGet(key: String, prompt: String?, promise: Promise) = run(promise) {
         val bioEntry = store.biometricEntryExists(key)
         if (!bioEntry) return@run store.getPlain(key)
-        val (cipher, ct) = store.biometricGetCipher(key) ?: return@run null
+        val (cipher, env) = store.biometricGetCipher(key) ?: return@run null
         val authed = store.authenticate(activity(), cipher, prompt)
-        store.biometricFinishGet(authed, ct)
+        store.biometricFinishGet(key, authed, env)
     }
 
     @ReactMethod
@@ -61,9 +61,7 @@ class FcFieldModule(private val reactContext: ReactApplicationContext) : ReactCo
         if (!requireBiometric) {
             store.setPlain(key, value)
         } else {
-            val cipher = store.biometricSetCipher()
-            val authed = store.authenticate(activity(), cipher, null)
-            store.biometricFinishSet(key, authed, value)
+            store.biometricSet(key, value) // never prompts; only get of a biometric entry does
         }
         null
     }
