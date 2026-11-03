@@ -1288,6 +1288,62 @@ revoke rules, escaping) and `portal_pg_test.go` (`-tags=integration`: the whole 
 against the real use cases, the secret stored hashed and in no later answer, audit rows, refused posts writing nothing).
 The sidebar's Portal Apps and Portal Users entries link to `/ui/portal-apps` and `/ui/portal-users`.
 
+## Field workers (P2)
+
+The platform console for the field-worker identity plane (`docs/field-worker-identity-design.md` §4.2-§4.3), built here in
+templ and not in the frozen SPA. Three sidebar entries under Identity & Access: Field Workers (`platform:iam:field-worker:view`),
+Field Devices and Field Policy (`platform:iam:field-device:view`). They have no SPA counterpart. The pages call the field
+operations in-process (`pages.FieldOps` over the unit of work, `pages.FieldReader` over the repositories), as the portal pages do,
+with the checks of `internal/platform/fieldidentity/api`.
+
+Routes: `/ui/field-workers?client=&q=&app=&status=&page=&rows=` (list), `/field-workers/new?client=` (ensure dialog),
+`/field-workers/{id}` (drawer), `/field-workers/{id}/sign-ins?page=` (history page), `/field-workers/{id}/grant` (dialog), POSTs
+`/field-workers/new`, `/{id}/grant`, `/{id}/suspend`, `/{id}/activate`, `/{id}/unlock`, `/{id}/reset-pin`, `/{id}/delete`,
+`/{id}/apps/{code}/revoke`; `/ui/field-devices?client=&status=&mode=` with `/field-devices/new`, `/field-devices/{id}`, POSTs
+`/new`, `/{id}/suspend`, `/{id}/activate`, `/{id}/revoke`; `/ui/field-policy?client=` with POST `/ui/field-policy`.
+
+- **Permissions and the client box are the API's.** A read is `CanReadFieldWorkers` / `CanReadFieldDevices` (the view or the manage
+  permission, plus access to the client; an anchor needs the permission too). A change is the `:manage` permission. By-id requests
+  load the record first, then gate on *its* client: a missing permission is 403, a record of a client the caller cannot reach (or an
+  unknown id) is **404**, never 403, so ids do not leak. A list for a client the caller cannot reach is 403, as the API. An
+  application-confined service account sees only workers and devices holding one of its applications, and cannot change the
+  client-wide policy. A viewer sees no action column, no New, no dialogs and no drawer actions; a forged post is refused and runs
+  nothing. Actions are POST only (GET answers 405), behind the group's CSRF guard (`guard.CSRF`, cross-site and headerless posts get 403).
+- **Workers.** Search is a prefix on name and worker code; filters are status (Active, Suspended) and application; rows show the lock
+  state (Soft locked until ..., Hard locked), "No PIN" and app chips with the grant's source and date. The drawer has the details,
+  the applications (grant dialog, remove), the actions the state allows (Suspend or Activate, Unlock only while locked, Reset PIN,
+  Delete, each behind a confirmation) and the sign-in history from `field_login_attempts` (time, device, application, outcome with
+  the failure reason; 10 a page, Newer/Older links that patch only the history). The history is a section of the drawer, not a tab.
+  The ensure dialog (client, worker code, name, email, applications as checkboxes of the active applications the caller may grant)
+  is idempotent as the API: an existing code only gains the grants. It sets no PIN; a new worker cannot sign in until Reset PIN.
+- **Reset PIN shows the temporary PIN exactly once.** The answer to the post is a persistent dialog (no Escape, no mask dismiss)
+  with the PIN, a copy button and "This PIN will not be shown again"; Done closes it and removes it from the DOM. The response is
+  `Cache-Control: no-store`, and a native post (no JavaScript) gets the page itself with the dialog, never a redirect. The PIN is in no
+  URL, flash, cookie, signal, log or refreshed fragment: the drawer and table patches in the same answer, the flash ("PIN reset for
+  ANN") and every later GET of the list, drawer, history or dialogs are PIN-free (tests assert all of these). A supervisor-chosen PIN
+  is not offered (the API takes one; the console only generates).
+- **Devices.** Filters: status and mode. Rows show the mode, the attestation level (STRONGBOX and TEE green, SOFTWARE amber, NONE
+  red), status, the assigned worker's code, applications, last seen and the active session count. The drawer has the details and
+  Suspend, Activate and Revoke. **Revoke is terminal**: its confirmation is the danger tone and says it is permanent, ends every
+  session and needs a fresh enrolment (the kit's confirm dialog has no type-to-confirm). "Enrol Device" (client, mode, applications,
+  assigned worker by worker code, PERSONAL only, label) answers with a persistent dialog: the single-use code, a copy button, an
+  expiry countdown (a `data-init` interval on the dialog; the server also prints the time) and the QR of `fcfield:1:<base URL>:<code>`
+  (the API's `qrPayload`; the base URL is `FC_JWT_ISSUER`) drawn server-side as an inline SVG with `boombuler/barcode`, already a
+  dependency for the two-factor QR (`qrSVGLabeled`). The code is shown once on the same terms as the PIN; only its hash is stored.
+- **Policy.** Pick a client; the page says Default (no row; "Saving creates one") or Custom (with the last update). The form has the
+  API's ranges as `min`/`max` and in the help text, and the operation's own validation (`PutPolicyCommand.Build`) answers a refused
+  value on its field. A blank number takes the default, as an omitted field does in the API.
+
+Not verified in a browser: none of the pages has been opened in light, dark and narrow widths, and the copy buttons, the countdown and
+the dialogs removing themselves are covered by rendered markup in tests only. Open: the API's supervisor-chosen PIN, the worker update
+(name and email) and badges are not in the console; the assigned-worker field of the enrol dialog is a worker code, not a picker.
+
+Tests: `field_test.go` (list, filters, drawer and history paging, permission matrix, forged posts from a viewer, client boxing for
+workers, devices and policy, application-confined caller, the PIN shown once and in no later GET, the enrolment code shown once,
+policy ranges), `field_pg_test.go` (`-tags=integration`: the real operations on Postgres, PIN stored hashed, code stored under its
+hash only, another client's worker untouched, policy stored) and `internal/ui/ui_test.go` (cross-site and headerless field posts are
+refused by the CSRF guard).
+
 ## Service accounts (`/ui/service-accounts`)
 
 Mirrors `ServiceAccountListPage`, `ServiceAccountCreateDrawer` and `ServiceAccountDetailDrawer`. Routes: the list

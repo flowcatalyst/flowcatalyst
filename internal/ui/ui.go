@@ -163,6 +163,13 @@ type Config struct {
 	Portal    pages.PortalStore
 	PortalOps pages.PortalCommands
 
+	// Field and FieldOps back the field workers, field devices and field
+	// policy pages; their client select reads ClientStore. FieldBaseURL is the
+	// platform's public base URL, embedded in the enrolment QR payload.
+	Field        pages.FieldStore
+	FieldOps     pages.FieldCommands
+	FieldBaseURL string
+
 	// OAuthClients and OAuthClientOps back the OAuth clients page; its pickers
 	// read ApplicationStore, ClientStore and Portal. ResetApprovals backs the
 	// password reset approvals page.
@@ -275,6 +282,9 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.Functions{Functions: cfg.Functions, Ops: cfg.FunctionOps, Zones: cfg.FunctionZones, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Apps: cfg.ApplicationStore, ServiceAccounts: cfg.ServiceAccounts, Trace: trace, Shell: sh}).Mount(r)
 			(&pages.PortalApps{Store: cfg.Portal, Ops: cfg.PortalOps, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.PortalUsers{Store: cfg.Portal, Ops: cfg.PortalOps, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
+			(&pages.FieldWorkers{Store: cfg.Field, Ops: cfg.FieldOps, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
+			(&pages.FieldDevices{Store: cfg.Field, Ops: cfg.FieldOps, Clients: cfg.ClientStore, BaseURL: cfg.FieldBaseURL, Shell: sh}).Mount(r)
+			(&pages.FieldPolicy{Store: cfg.Field, Ops: cfg.FieldOps, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.OAuthClients{Clients: cfg.OAuthClients, Ops: cfg.OAuthClientOps, Apps: cfg.ApplicationStore, ClientNames: cfg.ClientStore, Portal: cfg.Portal, Shell: sh}).Mount(r)
 			(&pages.ResetApprovals{Service: cfg.ResetApprovals, Shell: sh}).Mount(r)
 			(&pages.IdentityProviders{Store: cfg.IdentityProviders, Ops: cfg.IdentityProviderOps, Roles: cfg.Roles, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Shell: sh}).Mount(r)

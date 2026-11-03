@@ -1,0 +1,104 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/framework/go/ui/kit"
+)
+
+templ fieldPolicyPage(v fieldPolicyView) {
+	@kit.PageHeader(kit.PageHeaderProps{
+		Title:    "Field Policy",
+		Subtitle: "The PIN, lock-out and session rules of a client's field workers. A client with no policy of its own uses the platform defaults.",
+	})
+	<form id="field-policy-client" method="get" action={ fieldPolicyPath } class="mb-4 flex flex-wrap items-end gap-3">
+		@kit.FilterSelect(v.clientSelect())
+		<noscript>
+			@kit.Button(kit.ButtonProps{Type: "submit"}) {
+				Show
+			}
+		</noscript>
+	</form>
+	@fieldPolicyBody(v)
+}
+
+// fieldPolicyBody is what a save patches: the state tag and the form, with
+// the values as saved (or as submitted when the save was refused).
+templ fieldPolicyBody(v fieldPolicyView) {
+	<div id={ fieldPolicyRegion }>
+		if v.Client == "" {
+			@kit.EmptyState(kit.EmptyStateProps{Message: "Select a client to view its field policy."})
+		} else {
+			<div class="mb-4 flex flex-wrap items-center gap-2">
+				if v.Policy.IsDefault {
+					<span title="This client has no policy of its own: the platform defaults apply. Saving creates one.">
+						@kit.Tag(kit.TagProps{Severity: kit.TagInfo, Label: "Default"})
+					</span>
+					<span class="text-sm text-muted-foreground">The platform defaults apply to { v.ClientName }.</span>
+				} else {
+					@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Custom"})
+					<span class="text-sm text-muted-foreground">
+						Set for { v.ClientName }, last updated
+						@kit.LocalTime(kit.LocalTimeProps{At: v.UpdatedAt, Empty: "—"})
+					</span>
+				}
+			</div>
+			<form id={ fieldPolicyForm } method="post" action={ fieldPolicyPath } data-on:submit={ kit.SubmitForm } style="max-width:44rem">
+				<input type="hidden" name="client" value={ v.Client }/>
+				if v.Errs.Form != "" {
+					@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Icon: "circle-alert", Description: v.Errs.Form, Class: "mb-4"})
+				}
+				@kit.FormSection(kit.FormSectionProps{Title: "PIN and lock-out"}) {
+					<div class="flex flex-col gap-4">
+						for _, f := range policyFields[:4] {
+							@policyInput(v, f)
+						}
+					</div>
+				}
+				@kit.FormSection(kit.FormSectionProps{Title: "Sessions"}) {
+					<div class="flex flex-col gap-4">
+						for _, f := range policyFields[4:] {
+							@policyInput(v, f)
+						}
+					</div>
+				}
+				@kit.FormSection(kit.FormSectionProps{Title: "Devices"}) {
+					@kit.Field(kit.FieldProps{Label: "Require device attestation", For: "field-policy-requireAttestation", Description: "Refuse devices that cannot prove their key is hardware-backed."}) {
+						@kit.Switch(kit.SwitchProps{ID: "field-policy-requireAttestation", Name: "requireAttestation", Value: "1", Checked: v.Attestation, Disabled: !v.CanManage})
+					}
+				}
+				if v.CanManage {
+					<div class="mt-4 flex justify-end gap-2">
+						@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Icon: "check"}) {
+							Save policy
+						}
+					</div>
+				} else {
+					<p class="mt-4 text-sm text-muted-foreground">You can view this policy but not change it.</p>
+				}
+			</form>
+		}
+	</div>
+}
+
+templ policyInput(v fieldPolicyView, f policyField) {
+	@kit.Field(kit.FieldProps{
+		Label: f.Label, For: "field-policy-" + f.Key, Description: f.Help, Error: v.Errs.Fields[f.Key], ErrorID: "field-policy-" + f.Key + "-err",
+	}) {
+		<div class="flex items-center gap-2">
+			@kit.Input(kit.InputProps{
+				ID: "field-policy-" + f.Key, Name: f.Key, Type: "number", Value: v.Values[f.Key], Disabled: !v.CanManage,
+				Invalid: v.Errs.Fields[f.Key] != "", DescribedBy: policyDescribedBy(v, f), Class: "w-40",
+				Attrs: templ.Attributes{"min": strconv.Itoa(f.Min), "max": strconv.Itoa(f.Max), "step": "1", "inputmode": "numeric"},
+			})
+			<span class="text-sm text-muted-foreground">{ f.Unit }</span>
+		</div>
+	}
+}
+
+func policyDescribedBy(v fieldPolicyView, f policyField) string {
+	if v.Errs.Fields[f.Key] != "" {
+		return "field-policy-" + f.Key + "-err"
+	}
+	return ""
+}

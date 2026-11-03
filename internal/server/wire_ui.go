@@ -154,6 +154,10 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 		Portal:    pages.PortalReader{Identities: repos.portalIdentityRepo, PortalApps: repos.portalAppRepo},
 		PortalOps: pages.PortalOps{Identities: repos.portalIdentityRepo, Apps: repos.portalAppRepo, Clients: repos.clientRepo, OAuthClients: repos.authRepo.OAuthClients, UoW: uow},
 
+		Field:        pages.FieldReader{Repos: repos.fieldRepos, Apps: repos.applicationRepo},
+		FieldOps:     pages.FieldOps{Ops: newFieldOps(repos), UoW: uow},
+		FieldBaseURL: cfg.JWTIssuer,
+
 		OAuthClients:   repos.authRepo.OAuthClients,
 		OAuthClientOps: pages.OAuthClientOps{Repo: repos.authRepo.OAuthClients, PortalApps: repos.portalAppRepo, UoW: uow},
 		ResetApprovals: resetApprovalState(cfg, repos, svcs),

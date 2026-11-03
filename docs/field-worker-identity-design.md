@@ -237,7 +237,11 @@ per the wire contract. The new surface gets its own section in `docs/wire-contra
   the app's confined service account gets `field-worker:manage` + `field-token:introspect` so a
   supervisor screen *in the app* can reset PINs through the SDK.
 
-### 4.3 Console (Vue, `frontend/src/pages/field/`)
+### 4.3 Console (server-rendered templ + Datastar under `/ui`, `internal/ui/pages/field_*`)
+
+The PrimeVue SPA is frozen, so the console is built in the server-rendered UI
+(`docs/ui-templ-migration-plan.md` §1), not Vue; the pages call the field operations in-process
+with the admin API's checks (`docs/ui/README.md`, "Field workers (P2)").
 
 Field Workers (list, search, app chips, lock state, PIN reset with a one-time display, badges),
 Devices (enrol → QR, mode, attestation badge, revoke), Policy (per client), and sign-in history.
@@ -398,7 +402,7 @@ wrappers (released through `make release-go-sdk`); then the Java mirror (`FieldT
 |---|---|---|---|---|
 | P0 | Owner decisions (§9); wire-contract section; fixture generator | S | Owner sign-off | — |
 | P1 | Migration, `fieldidentity` + `fieldauth`, pepper + Argon2id, policy, three-bucket lockout, enrolment, login/refresh/logout + proof + nonce, field token mint, **middleware allowlist fix**, admin API, events, audit | L | `go test -tags=integration` for brute-force, spray, refresh reuse, revoked device, proof replay, and field token rejected as API bearer; `make api-diff`; `/verify` | Single agent (the shared seams) |
-| P2 | Console pages (§4.3) | M | `vue-tsc -b`, `npm run build`, `/verify` | After the P1 API freezes; ∥ P3/P4 |
+| P2 | Console pages (§4.3), templ | M | `make ui-verify`, `go test ./internal/ui/...`, `go test -tags=integration ./internal/ui/...` | After the P1 API freezes; ∥ P3/P4 |
 | P3 | 5 server SDKs: verify + glue + admin wrappers | M (5×S) | Each SDK passes the shared fixtures | **One Sonnet agent per SDK**, spec = §6 + fixtures |
 | P4 | `field-js` + RN native module: PIN, device key, local biometric unlock | M | Example RN app on a real rugged device: enrol, login, background, unlock, revoke from the console | ∥ P2/P3 |
 | P5 | Server-verified unlock keys + attestation parsing | M | Attestation fixtures; SHARED device refused | After P4 |

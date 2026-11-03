@@ -161,6 +161,24 @@ func TestUIRouteGroup(t *testing.T) {
 			t.Fatalf("status %d Set-Cookie %q", rec.Code, rec.Header().Get("Set-Cookie"))
 		}
 	})
+	t.Run("cross-site field posts are blocked before any handler runs", func(t *testing.T) {
+		for _, target := range []string{
+			"/ui/field-workers/fwk_x/reset-pin", "/ui/field-workers/fwk_x/delete", "/ui/field-workers/new",
+			"/ui/field-devices/new", "/ui/field-devices/fdv_x/revoke", "/ui/field-policy",
+		} {
+			rec := do(t, h, req{
+				method: http.MethodPost, target: target, session: "admin",
+				headers: map[string]string{"Sec-Fetch-Site": "cross-site", "Origin": "https://evil.example"},
+			})
+			if rec.Code != http.StatusForbidden {
+				t.Errorf("cross-site POST %s: status %d", target, rec.Code)
+			}
+			// A post with neither Sec-Fetch-Site nor Origin is not a browser.
+			if rec := do(t, h, req{method: http.MethodPost, target: target, session: "admin"}); rec.Code != http.StatusForbidden {
+				t.Errorf("headerless POST %s: status %d", target, rec.Code)
+			}
+		}
+	})
 	t.Run("same-origin sign-out clears the cookie and goes to login", func(t *testing.T) {
 		rec := do(t, h, req{
 			method: http.MethodPost, target: "/ui/logout", session: "admin",

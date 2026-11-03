@@ -2,6 +2,7 @@ package pages
 
 import (
 	"fmt"
+	"html"
 	"strings"
 
 	"github.com/a-h/templ"
@@ -13,6 +14,12 @@ import (
 // ground with the four-module quiet zone the standard asks for. The markup
 // is built from integers only, so it carries nothing of the text.
 func qrSVG(text string) (templ.Component, error) {
+	return qrSVGLabeled(text, "Authenticator QR code")
+}
+
+// qrSVGLabeled is qrSVG with the image's accessible label. The label is a
+// page constant, never user data.
+func qrSVGLabeled(text, label string) (templ.Component, error) {
 	code, err := qr.Encode(text, qr.M, qr.Auto)
 	if err != nil {
 		return nil, err
@@ -28,6 +35,6 @@ func qrSVG(text string) (templ.Component, error) {
 			}
 		}
 	}
-	svg := fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %[1]d %[1]d" width="200" height="200" shape-rendering="crispEdges" role="img" aria-label="Authenticator QR code" class="mx-auto rounded-lg border border-border"><rect width="%[1]d" height="%[1]d" fill="#fff"/><path d="%[2]s" fill="#000"/></svg>`, size, path.String())
+	svg := fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %[1]d %[1]d" width="200" height="200" shape-rendering="crispEdges" role="img" aria-label="%[3]s" class="mx-auto rounded-lg border border-border"><rect width="%[1]d" height="%[1]d" fill="#fff"/><path d="%[2]s" fill="#000"/></svg>`, size, path.String(), html.EscapeString(label))
 	return templ.Raw(svg), nil
 }

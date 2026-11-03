@@ -1,0 +1,302 @@
+package pages
+
+import (
+	"strconv"
+	"time"
+
+	"github.com/flowcatalyst/framework/go/ui/kit"
+)
+
+func (v fieldDevicesView) columns() []kit.DataColumn {
+	return []kit.DataColumn{
+		{Label: "Device"}, {Label: "Mode"}, {Label: "Attestation"}, {Label: "Status"}, {Label: "Worker"}, {Label: "Apps"},
+		{Label: "Last seen"}, {Label: "Sessions"}, {Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v fieldDevicesView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	switch {
+	case v.Client == "":
+		return &kit.EmptyStateProps{Message: "Select a client to view its field devices."}
+	case v.filterCount() > 0:
+		return &kit.EmptyStateProps{Message: "No field devices match.", Status: true, ClearHref: v.clearURL()}
+	}
+	return &kit.EmptyStateProps{Message: "No field devices for this client yet."}
+}
+
+func (v fieldDevicesView) clientSelect() kit.FilterSelectProps {
+	return kit.FilterSelectProps{Name: fieldClientParam, Label: "Client", Placeholder: "Select a client", Options: v.ClientOptions, Selected: v.Client, AutoSubmit: true}
+}
+
+func (v fieldDevicesView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.filterCount() > 0 {
+		clear = v.clearURL()
+	}
+	hidden := append(v.Query.hidden(), kit.HiddenField{Name: fieldClientParam, Value: v.Client})
+	return kit.TableToolbarProps{
+		ID: fieldDevicesForm, Action: fieldDevicesPath, HideSearch: true,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.filterCount(), Hidden: hidden,
+		FormAttrs: templ.Attributes{"data-on:submit": fieldDevicesLive},
+		Filters:   fieldDevicesFilters(v),
+	}
+}
+
+func (v fieldDevicesView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "field-devices-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: fieldDeviceList.rows,
+		Noun: "field devices", HrefPattern: v.Query.pagePattern(), FormID: fieldDevicesForm,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func (v fieldDevicesView) newHref() string {
+	return fieldDevicesPath + "/new?" + fieldClientParam + "=" + v.Client
+}
+
+templ fieldDevicesPage(v fieldDevicesView) {
+	<div data-signals={ v.drawerSignals() }>
+		@kit.PageHeader(kit.PageHeaderProps{
+			Title:    "Field Devices",
+			Subtitle: "Devices enrolled for a client's field apps. A device holds a key; workers sign in on it with their PIN.",
+			Actions:  fieldDevicesActions(v),
+		})
+		<form id="field-devices-client" method="get" action={ fieldDevicesPath } class="mb-4 flex flex-wrap items-end gap-3">
+			@kit.FilterSelect(v.clientSelect())
+			<noscript>
+				@kit.Button(kit.ButtonProps{Type: "submit"}) {
+					Show
+				}
+			</noscript>
+		</form>
+		<div class="fc-card-flush">
+			if v.Client != "" {
+				@kit.TableToolbar(v.toolbar())
+			}
+			@fieldDevicesRegion(v)
+			if v.Client != "" {
+				@kit.Paginator(v.pager())
+			}
+		</div>
+		<p class="mt-2 text-xs text-muted-foreground" role="status" data-text="$fieldCopied"></p>
+		<div id={ fdDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		if v.CanManage {
+			@kit.ConfirmDialog(v.confirm(fdSuspendID, "Suspend field device", "Suspend this device? Nobody can sign in on it and its sessions are ended, until it is activated again.", "Suspend", kit.ToneWarn))
+			@kit.ConfirmDialog(v.confirm(fdActivateID, "Activate field device", "Activate this device? Workers can sign in on it again.", "Activate", kit.ToneDefault))
+			@kit.ConfirmDialog(v.confirm(fdRevokeID, "Revoke field device permanently", "Revoke this device PERMANENTLY? It is removed from service and every session on it ends at once. Revoking cannot be undone: to use the device again it must be enrolled from scratch with a new code.", "Revoke permanently", kit.ToneDanger))
+		}
+		@fieldDeviceDrawer(v.Drawer)
+	</div>
+}
+
+templ fieldDevicesActions(v fieldDevicesView) {
+	if v.CanManage {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: v.newHref(), Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Enrol Device
+		}
+	}
+}
+
+templ fieldDevicesFilters(v fieldDevicesView) {
+	@kit.FilterSelect(kit.FilterSelectProps{Name: "status", Label: "Status", Placeholder: "All statuses", Options: fieldDeviceStatusOptions, Selected: v.Query.Status, Attrs: templ.Attributes{"data-on:change": fieldDevicesLive}})
+	@kit.FilterSelect(kit.FilterSelectProps{Name: fieldModeFacet, Label: "Mode", Placeholder: "All modes", Options: fieldDeviceModeOptions, Selected: v.mode(), Attrs: templ.Attributes{"data-on:change": fieldDevicesLive}})
+}
+
+templ fieldDevicesRegion(v fieldDevicesView) {
+	<div id={ fieldDevicesTable }>
+		@kit.DataTable(kit.DataTableProps{ID: "field-devices-table", BodyID: "field-devices-rows", Columns: v.columns(), Empty: v.empty()}) {
+			for _, row := range v.Rows {
+				@kit.TR(kit.TRProps{ID: "fd-" + row.ID}) {
+					@kit.TD(kit.TDProps{}) {
+						<a href={ templ.SafeURL(row.DetailHref) } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }>{ row.name() }</a>
+						if row.Platform != "" || row.Model != "" {
+							<div class="text-xs text-muted-foreground">{ row.Platform } { row.Model }</div>
+						}
+					}
+					@kit.TD(kit.TDProps{}) {
+						@kit.Tag(kit.TagProps{Severity: row.ModeTag, Label: row.Mode})
+					}
+					@kit.TD(kit.TDProps{}) {
+						@kit.Tag(kit.TagProps{Severity: row.AttestTag, Label: row.Attestation})
+					}
+					@kit.TD(kit.TDProps{}) {
+						@kit.Tag(kit.TagProps{Severity: row.StatusTag, Label: row.Status})
+					}
+					@kit.TD(kit.TDProps{}) {
+						if row.Worker != "" {
+							<code class="text-xs">{ row.Worker }</code>
+						} else {
+							<span class="text-muted-foreground">—</span>
+						}
+					}
+					@kit.TD(kit.TDProps{}) {
+						{ fieldJoin(row.Apps) }
+					}
+					@kit.TD(kit.TDProps{}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: row.LastSeen, Empty: "Never"})
+					}
+					@kit.TD(kit.TDProps{}) {
+						{ strconv.Itoa(row.Sessions) }
+					}
+					@kit.RowActions(v.rowActions(row))
+				}
+			}
+		}
+	</div>
+}
+
+func fieldJoin(vals []string) string {
+	out := ""
+	for n, v := range vals {
+		if n > 0 {
+			out += ", "
+		}
+		out += v
+	}
+	if out == "" {
+		return "—"
+	}
+	return out
+}
+
+templ fieldDeviceDrawer(d *fieldDeviceDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@fieldDeviceDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: fdDrawerID, Signal: fdDrawerSig, Label: "Field device"})
+	}
+}
+
+templ fieldDeviceDrawerContent(d fieldDeviceDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@fieldDeviceDrawerBody(d)
+	}
+}
+
+templ fieldDeviceDrawerBody(d fieldDeviceDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Details"}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Label", Value: d.Label})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Device id"}) {
+				<code>{ d.ID }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
+				@kit.Tag(kit.TagProps{Severity: d.StatusTag, Label: d.Status})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Mode"}) {
+				@kit.Tag(kit.TagProps{Severity: d.ModeTag, Label: d.Mode})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Attestation"}) {
+				@kit.Tag(kit.TagProps{Severity: d.AttestTag, Label: d.Attestation})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Platform", Value: d.Platform})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Model", Value: d.Model})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Assigned worker"}) {
+				if d.Worker != "" {
+					<code>{ d.Worker }</code>
+				} else {
+					—
+				}
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Applications", Value: fieldJoin(d.Apps)})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Active sessions", Value: strconv.Itoa(d.Sessions)})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Key thumbprint"}) {
+				<code class="break-all text-xs">{ d.JKT }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Enrolled"}) {
+				@kit.LocalTime(kit.LocalTimeProps{At: d.Enrolled, Empty: "—"})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Last seen"}) {
+				@kit.LocalTime(kit.LocalTimeProps{At: d.LastSeen, Empty: "Never"})
+			}
+		</div>
+	}
+	if actions := d.actions(); len(actions) > 0 {
+		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
+			<div class="flex flex-col gap-4">
+				for _, a := range actions {
+					<div class="fc-danger-item">
+						<div><strong>{ a.Label }</strong><p>{ a.Hint }</p></div>
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: fieldActionVariant(a), Icon: a.Icon, Attrs: confirmTrigger(a.Dialog, a.Action)}) {
+							{ fieldActionButton(a) }
+						}
+					</div>
+				}
+			</div>
+		}
+	}
+}
+
+templ fieldDeviceFormDialog(f fieldDeviceForm) {
+	@kit.FormDialog(f.dialog()) {
+		@fieldDeviceFormField(f, "mode")
+		@fieldDeviceFormField(f, "apps")
+		@fieldDeviceFormField(f, "worker")
+		@fieldDeviceFormField(f, "label")
+	}
+}
+
+templ fieldDeviceFormField(f fieldDeviceForm, key string) {
+	switch key {
+		case "mode":
+			@kit.Field(f.fieldProps(key, "Mode", "Personal: one worker's own device. Shared: a pool device used by many workers in turn.", true)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: fieldDeviceModeOptions, Selected: f.Mode, Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key)})
+			}
+		case "apps":
+			@kit.Field(f.fieldProps(key, "Applications", "The applications the device may be used with.", true)) {
+				<div id={ f.id(key) } class="flex flex-col gap-2">
+					for n, o := range f.AppChoices {
+						@kit.Checkbox(kit.CheckboxProps{ID: f.id(key) + "-" + strconv.Itoa(n), Name: key, Value: o.Value, Label: o.Label, Checked: fieldContains(f.Apps, o.Value)})
+					}
+					if len(f.AppChoices) == 0 {
+						<span class="text-sm text-muted-foreground">There are no active applications you can enrol a device for.</span>
+					}
+				</div>
+			}
+		case "worker":
+			@kit.Field(f.fieldProps(key, "Assigned worker", "Personal devices only: the worker code of the worker this device is bound to. Optional.", false)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Worker, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off"}})
+			}
+		case "label":
+			@kit.Field(f.fieldProps(key, "Label", "Optional, for example \"Depot 3 scanner\".", false)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Label, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off", "maxlength": "100"}})
+			}
+	}
+}
+
+// fieldCodeDialog shows the enrolment code, its QR code and its expiry
+// countdown, once. Like the PIN dialog it cannot be dismissed by accident and
+// "Done" removes it from the page.
+templ fieldCodeDialog(c fieldCodeReveal) {
+	@kit.Dialog(kit.DialogProps{
+		ID:         "fd-code-reveal",
+		Title:      "Enrolment code",
+		Persistent: true,
+		Attrs:      templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()"},
+		Footer:     fieldPinFooter(),
+	}) {
+		<div class="flex flex-col items-center gap-3 text-center">
+			<p class="m-0 text-sm">Scan the QR code in the field app, or type the code. It works once.</p>
+			@fieldQR(c.Payload)
+			<div class="flex items-center gap-2">
+				<code id="fd-code-value" class="fc-mono-chip text-2xl">{ c.Code }</code>
+				@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy enrolment code", Attrs: templ.Attributes{"title": "Copy", "data-on:click": fieldCopyExpr("fd-code-value", "Code")}})
+			</div>
+			<p class="m-0 text-sm text-muted-foreground">
+				Expires in
+				<strong data-expires={ c.ExpiresAt.UTC().Format(time.RFC3339) } data-init={ fieldExpiryCountdown() }>{ fieldTime(c.ExpiresAt) }</strong>
+			</p>
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "This code will not be shown again."})
+		</div>
+	}
+}

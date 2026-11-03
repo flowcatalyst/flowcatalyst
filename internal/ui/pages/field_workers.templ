@@ -1,0 +1,464 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/framework/go/ui/kit"
+)
+
+func (v fieldWorkersView) columns() []kit.DataColumn {
+	return []kit.DataColumn{
+		{Label: "Worker"}, {Label: "Name"}, {Label: "Status"}, {Label: "Lock"}, {Label: "Apps"}, {Label: "Last sign-in"}, {Label: "Created"},
+		{Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v fieldWorkersView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	switch {
+	case v.Client == "":
+		return &kit.EmptyStateProps{Message: "Select a client to view its field workers."}
+	case v.filtered():
+		return &kit.EmptyStateProps{Message: "No field workers match.", Status: true, ClearHref: v.clearURL()}
+	}
+	return &kit.EmptyStateProps{Message: "No field workers for this client yet."}
+}
+
+func (v fieldWorkersView) clientSelect() kit.FilterSelectProps {
+	return kit.FilterSelectProps{Name: fieldClientParam, Label: "Client", Placeholder: "Select a client", Options: v.ClientOptions, Selected: v.Client, AutoSubmit: true}
+}
+
+func (v fieldWorkersView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.filtered() {
+		clear = v.clearURL()
+	}
+	hidden := append(v.Query.hidden(), kit.HiddenField{Name: fieldClientParam, Value: v.Client})
+	return kit.TableToolbarProps{
+		ID: fieldWorkersForm, Action: fieldWorkersPath, SearchPlaceholder: "Search name or worker code (starts with)", SearchValue: v.Query.Q,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.filterCount(), Hidden: hidden,
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": fieldWorkersLive},
+		FormAttrs:   templ.Attributes{"data-on:submit": fieldWorkersLive},
+		Filters:     fieldWorkersFilters(v),
+	}
+}
+
+func (v fieldWorkersView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "field-workers-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: fieldWorkerList.rows,
+		Noun: "field workers", HrefPattern: v.Query.pagePattern(), FormID: fieldWorkersForm,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func (v fieldWorkersView) newHref() string {
+	return fieldWorkersPath + "/new?" + fieldClientParam + "=" + v.Client
+}
+
+templ fieldWorkersPage(v fieldWorkersView) {
+	<div data-signals={ v.drawerSignals() }>
+		@kit.PageHeader(kit.PageHeaderProps{
+			Title:    "Field Workers",
+			Subtitle: "Drivers, pickers and yard staff who sign in to a client's field apps with a worker code and PIN. A separate population from platform users and portal users.",
+			Actions:  fieldWorkersActions(v),
+		})
+		<form id="field-workers-client" method="get" action={ fieldWorkersPath } class="mb-4 flex flex-wrap items-end gap-3">
+			@kit.FilterSelect(v.clientSelect())
+			<noscript>
+				@kit.Button(kit.ButtonProps{Type: "submit"}) {
+					Show
+				}
+			</noscript>
+		</form>
+		<div class="fc-card-flush">
+			if v.Client != "" {
+				@kit.TableToolbar(v.toolbar())
+			}
+			@fieldWorkersRegion(v)
+			if v.Client != "" {
+				@kit.Paginator(v.pager())
+			}
+		</div>
+		<p class="mt-2 text-xs text-muted-foreground" role="status" data-text="$fieldCopied"></p>
+		<div id={ fwDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		if v.CanManage {
+			@kit.ConfirmDialog(v.confirm(fwSuspendID, "Suspend field worker", "Suspend this field worker? They cannot sign in and every session they have is ended, until they are activated again.", "Suspend", kit.ToneWarn))
+			@kit.ConfirmDialog(v.confirm(fwActivateID, "Activate field worker", "Activate this field worker? They can sign in again with their current PIN.", "Activate", kit.ToneDefault))
+			@kit.ConfirmDialog(v.confirm(fwUnlockID, "Unlock field worker", "Clear this worker's soft and hard locks and their failed-attempt counter? Their PIN is unchanged.", "Unlock", kit.ToneDefault))
+			@kit.ConfirmDialog(v.confirm(fwResetPinID, "Reset PIN", "Set a new temporary PIN for this worker? It is shown to you once, must be changed by the worker at their next sign-in, and every session they have is ended.", "Reset PIN", kit.ToneWarn))
+			@kit.ConfirmDialog(v.confirm(fwRevokeID, "Remove application access", "Remove this worker's access to the application? Their sessions in that application are ended.", "Remove", kit.ToneDanger))
+			@kit.ConfirmDialog(v.confirm(fwDeleteID, "Delete field worker", "Delete this field worker? Their sessions are ended and they can no longer sign in. This cannot be undone.", "Delete", kit.ToneDanger))
+		}
+		@fieldWorkerDrawer(v.Drawer)
+	</div>
+}
+
+templ fieldWorkersActions(v fieldWorkersView) {
+	if v.CanManage {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: v.newHref(), Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			New Field Worker
+		}
+	}
+}
+
+templ fieldWorkersFilters(v fieldWorkersView) {
+	@kit.FilterSelect(kit.FilterSelectProps{Name: "status", Label: "Status", Placeholder: "All statuses", Options: fieldWorkerStatusOptions, Selected: v.Query.Status, Attrs: templ.Attributes{"data-on:change": fieldWorkersLive}})
+	if len(v.AppOptions) > 0 {
+		@kit.FilterSelect(kit.FilterSelectProps{Name: fieldAppFacet, Label: "Application", Placeholder: "All applications", Options: v.AppOptions, Selected: v.App, Attrs: templ.Attributes{"data-on:change": fieldWorkersLive}})
+	}
+}
+
+// fieldWorkersRegion is the table, what every change patches.
+templ fieldWorkersRegion(v fieldWorkersView) {
+	<div id={ fieldWorkersTable }>
+		@kit.DataTable(kit.DataTableProps{ID: "field-workers-table", BodyID: "field-workers-rows", Columns: v.columns(), Empty: v.empty()}) {
+			for _, row := range v.Rows {
+				@kit.TR(kit.TRProps{ID: "fw-" + row.ID}) {
+					@kit.TD(kit.TDProps{}) {
+						<a href={ templ.SafeURL(row.DetailHref) } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }><code class="font-mono text-[13px]">{ row.Code }</code></a>
+					}
+					@kit.TD(kit.TDProps{}) {
+						{ row.Name }
+						if row.Email != "" {
+							<div class="text-xs text-muted-foreground">{ row.Email }</div>
+						}
+					}
+					@kit.TD(kit.TDProps{}) {
+						@fieldWorkerStatusTag(row.Status, row.StatusSeverity)
+						if row.NoPin {
+							<span title="No PIN has been set: the worker cannot sign in until a PIN reset">
+								@kit.Tag(kit.TagProps{Severity: kit.TagInfo, Label: "No PIN"})
+							</span>
+						}
+					}
+					@kit.TD(kit.TDProps{}) {
+						if row.Lock != "" {
+							<span title={ row.LockTitle }>
+								@kit.Tag(kit.TagProps{Severity: row.LockSeverity, Label: row.Lock})
+							</span>
+						} else {
+							<span class="text-muted-foreground">—</span>
+						}
+					}
+					@kit.TD(kit.TDProps{}) {
+						@fieldWorkerApps(v.CanManage, row)
+					}
+					@kit.TD(kit.TDProps{}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: row.LastLogin, Empty: "—"})
+					}
+					@kit.TD(kit.TDProps{}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: row.Created, Empty: "—"})
+					}
+					@kit.RowActions(v.rowActions(row))
+				}
+			}
+		}
+	</div>
+}
+
+templ fieldWorkerStatusTag(label string, sev kit.TagSeverity) {
+	@kit.Tag(kit.TagProps{Severity: sev, Label: label})
+}
+
+templ fieldWorkerApps(canManage bool, row fieldWorkerRow) {
+	if len(row.Apps) > 0 {
+		<div class="flex flex-wrap gap-1">
+			for _, a := range row.Apps {
+				<span class="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs" title={ a.Title }>
+					{ a.Name }
+					if canManage && a.RevokeAction != "" {
+						@kit.IconButton(kit.IconButtonProps{Icon: "x", Label: "Remove " + a.Name + " access of " + row.Code, Attrs: confirmTrigger(fwRevokeID, a.RevokeAction)})
+					}
+				</span>
+			}
+		</div>
+	} else {
+		<span title="Not granted any application: the worker cannot sign in to anything">
+			@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "No apps"})
+		</span>
+	}
+}
+
+// ── drawer ─────────────────────────────────────────────────────────────
+templ fieldWorkerDrawer(d *fieldWorkerDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@fieldWorkerDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: fwDrawerID, Signal: fwDrawerSig, Label: "Field worker"})
+	}
+}
+
+templ fieldWorkerDrawerContent(d fieldWorkerDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@fieldWorkerDrawerBody(d)
+	}
+}
+
+templ fieldWorkerDrawerBody(d fieldWorkerDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Details"}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Worker code"}) {
+				<code>{ d.Code }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Name", Value: d.Name})
+			if d.Email != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Email", Value: d.Email})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
+				@fieldWorkerStatusTag(d.Status, d.StatusSeverity)
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Lock"}) {
+				if d.Lock != "" {
+					<span title={ d.LockTitle }>
+						@kit.Tag(kit.TagProps{Severity: d.LockSeverity, Label: d.Lock})
+					</span>
+				} else {
+					Not locked
+				}
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "PIN"}) {
+				if !d.HasPin {
+					Not set: the worker cannot sign in until a PIN reset
+				} else if d.PinChangeRequired {
+					Set; the worker must change it at their next sign-in
+				} else {
+					Set
+				}
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Failed attempts", Value: strconv.Itoa(d.FailedSinceSuccess)})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Last sign-in"}) {
+				@kit.LocalTime(kit.LocalTimeProps{At: d.LastLogin, Empty: "Never"})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created"}) {
+				@kit.LocalTime(kit.LocalTimeProps{At: d.Created, Empty: "—"})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Updated"}) {
+				@kit.LocalTime(kit.LocalTimeProps{At: d.Updated, Empty: "—"})
+			}
+		</div>
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Applications", Actions: fieldWorkerGrantButton(d)}) {
+		if len(d.Apps) == 0 {
+			<p class="m-0 text-sm text-muted-foreground">No applications granted: the worker cannot sign in to anything.</p>
+		} else {
+			<ul class="m-0 flex list-none flex-col gap-2 p-0">
+				for _, a := range d.Apps {
+					<li class="flex items-center justify-between gap-2 text-sm">
+						<span>{ a.Name } <code class="text-xs">{ a.Code }</code> <span class="text-xs text-muted-foreground">{ a.Title }</span></span>
+						if d.CanManage {
+							@kit.IconButton(kit.IconButtonProps{Icon: "x", Label: "Remove " + a.Name + " access", Attrs: confirmTrigger(fwRevokeID, a.RevokeAction)})
+						}
+					</li>
+				}
+			</ul>
+		}
+	}
+	if actions := d.actions(); len(actions) > 0 {
+		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
+			<div class="flex flex-col gap-4">
+				for _, a := range actions {
+					<div class="fc-danger-item">
+						<div><strong>{ a.Label }</strong><p>{ a.Hint }</p></div>
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: fieldActionVariant(a), Icon: a.Icon, Attrs: confirmTrigger(a.Dialog, a.Action)}) {
+							{ fieldActionButton(a) }
+						}
+					</div>
+				}
+			</div>
+		}
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Sign-in history"}) {
+		@fieldSignInsRegion(d)
+	}
+}
+
+templ fieldWorkerGrantButton(d fieldWorkerDetail) {
+	if d.CanManage && d.CanGrant {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.GrantHref, Icon: "circle-plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Grant
+		}
+	}
+}
+
+// fieldSignInsRegion is the paged history; the page links patch only it.
+templ fieldSignInsRegion(d fieldWorkerDetail) {
+	<div id={ fwSignInsID }>
+		@kit.DataTable(kit.DataTableProps{ID: "fw-history-table", BodyID: "fw-history-rows", Columns: []kit.DataColumn{{Label: "Time"}, {Label: "Device"}, {Label: "App"}, {Label: "Outcome"}}, Empty: fieldSignInsEmpty(d)}) {
+			for _, s := range d.SignIns {
+				@kit.TR(kit.TRProps{}) {
+					@kit.TD(kit.TDProps{}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: s.At, Empty: "—"})
+					}
+					@kit.TD(kit.TDProps{}) {
+						if s.Device != "" {
+							<code class="text-xs">{ s.Device }</code>
+						} else {
+							—
+						}
+					}
+					@kit.TD(kit.TDProps{}) {
+						if s.App != "" {
+							{ s.App }
+						} else {
+							—
+						}
+					}
+					@kit.TD(kit.TDProps{}) {
+						if s.Success {
+							@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Success"})
+						} else {
+							<span title={ s.Reason }>
+								@kit.Tag(kit.TagProps{Severity: kit.TagDanger, Label: "Failure"})
+							</span>
+							if s.Reason != "" {
+								<span class="text-xs text-muted-foreground">{ s.Reason }</span>
+							}
+						}
+					}
+				}
+			}
+		}
+		if d.SignInTotal > 0 {
+			<div class="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+				<span>Page { strconv.Itoa(d.SignInPage) } of { strconv.Itoa(d.SignInPages) } · { strconv.Itoa(d.SignInTotal) } attempts</span>
+				<span class="flex gap-3">
+					if d.PrevHref != "" {
+						<a href={ templ.SafeURL(d.PrevHref) } data-on:click__prevent={ liveLink }>Newer</a>
+					}
+					if d.NextHref != "" {
+						<a href={ templ.SafeURL(d.NextHref) } data-on:click__prevent={ liveLink }>Older</a>
+					}
+				</span>
+			</div>
+		}
+	</div>
+}
+
+func fieldSignInsEmpty(d fieldWorkerDetail) *kit.EmptyStateProps {
+	if len(d.SignIns) > 0 {
+		return nil
+	}
+	return &kit.EmptyStateProps{Message: "No sign-in attempts yet."}
+}
+
+func fieldActionVariant(a fieldAction) kit.LegacyVariant {
+	if a.Destructive {
+		return kit.LegacyDangerOutline
+	}
+	return kit.LegacyPrimaryOutline
+}
+
+// fieldActionButton is the button text: the label without its ellipsis.
+func fieldActionButton(a fieldAction) string {
+	l := []rune(a.Label)
+	if n := len(l); n > 0 && l[n-1] == '…' {
+		return string(l[:n-1])
+	}
+	return a.Label
+}
+
+// ── dialogs ────────────────────────────────────────────────────────────
+templ fieldWorkerFormDialog(f fieldWorkerForm) {
+	@kit.FormDialog(f.dialog()) {
+		@fieldWorkerFormField(f, "workerCode")
+		@fieldWorkerFormField(f, "name")
+		@fieldWorkerFormField(f, "email")
+		@fieldWorkerFormField(f, "apps")
+	}
+}
+
+templ fieldWorkerFormField(f fieldWorkerForm, key string) {
+	switch key {
+		case "workerCode":
+			@kit.Field(f.fieldProps(key, "Worker code", "Unique within the client; stored in upper case (up to 64 characters). Entering an existing code only adds the applications below.", true)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.WorkerCode, Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"maxlength": "64", "autofocus": true, "autocomplete": "off"}})
+			}
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", "", true)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Name, Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off"}})
+			}
+		case "email":
+			@kit.Field(f.fieldProps(key, "Email", "Optional.", false)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Type: "email", Value: f.Email, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off"}})
+			}
+		case "apps":
+			@kit.Field(f.fieldProps(key, "Applications", "The applications the worker may sign in to.", false)) {
+				<div id={ f.id(key) } class="flex flex-col gap-2">
+					for n, o := range f.AppChoices {
+						@kit.Checkbox(kit.CheckboxProps{ID: f.id(key) + "-" + strconv.Itoa(n), Name: key, Value: o.Value, Label: o.Label, Checked: fieldContains(f.Apps, o.Value)})
+					}
+					if len(f.AppChoices) == 0 {
+						<span class="text-sm text-muted-foreground">There are no active applications you can grant.</span>
+					}
+				</div>
+			}
+	}
+}
+
+func fieldContains(set []string, v string) bool {
+	for _, s := range set {
+		if s == v {
+			return true
+		}
+	}
+	return false
+}
+
+templ fieldGrantDialog(f fieldGrantForm) {
+	@kit.FormDialog(f.dialog()) {
+		@fieldGrantField(f)
+	}
+}
+
+templ fieldGrantField(f fieldGrantForm) {
+	@kit.Field(kit.FieldProps{Label: "Application", For: f.id("app"), Required: true, Error: f.Errs.Fields["app"], ErrorID: f.id("app") + "-err", Attrs: templ.Attributes{"id": f.id("app") + "-field"}}) {
+		@kit.Select(kit.SelectProps{ID: f.id("app"), Name: "app", Options: f.Choices, Selected: f.App, Required: true, Invalid: f.Errs.Fields["app"] != "", DescribedBy: f.describedBy()})
+	}
+}
+
+// fieldPinDialog shows the temporary PIN after a reset, once. It cannot be
+// dismissed by Escape or the mask: a close that was not the button reopens it.
+// The button closes it and removes it from the page, so the PIN does not
+// linger in the DOM.
+templ fieldPinDialog(p fieldPinReveal) {
+	@kit.Dialog(kit.DialogProps{
+		ID:         "fw-pin-reveal",
+		Title:      "Temporary PIN",
+		Persistent: true,
+		Attrs:      templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()"},
+		Footer:     fieldPinFooter(),
+	}) {
+		<div class="flex flex-col gap-3">
+			<p class="m-0 text-sm">
+				The PIN of <strong>{ p.Code }</strong>
+				if p.Name != "" {
+					({ p.Name })
+				}
+				has been reset. Give them this temporary PIN; they must change it at their next sign-in, and every session they had has ended.
+			</p>
+			<div class="fc-detail-field">
+				<span class="fc-field-label">Temporary PIN</span>
+				<div class="flex items-center gap-2">
+					<code id="fw-pin-value" class="fc-mono-chip text-2xl">{ p.PIN }</code>
+					@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy temporary PIN", Attrs: templ.Attributes{"title": "Copy", "data-on:click": fieldCopyExpr("fw-pin-value", "PIN")}})
+				</div>
+			</div>
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "This PIN will not be shown again. If you lose it, reset the PIN once more."})
+		</div>
+	}
+}
+
+templ fieldPinFooter() {
+	@kit.Button(kit.ButtonProps{Icon: "check", Attrs: templ.Attributes{"data-on:click": "const d = el.closest('dialog'); d.dataset.saved = '1'; d.close(); d.remove()"}}) {
+		Done
+	}
+}

@@ -114,6 +114,21 @@ const (
 	flashPortalAppGranted      = "portal-app-granted"
 	flashPortalAccessRevoked   = "portal-access-revoked"
 
+	flashFieldWorkerCreated    = "field-worker-created"
+	flashFieldWorkerEnsured    = "field-worker-ensured"
+	flashFieldWorkerSuspended  = "field-worker-suspended"
+	flashFieldWorkerActivated  = "field-worker-activated"
+	flashFieldWorkerUnlocked   = "field-worker-unlocked"
+	flashFieldWorkerDeleted    = "field-worker-deleted"
+	flashFieldWorkerPinReset   = "field-worker-pin-reset"
+	flashFieldWorkerAppGranted = "field-worker-app-granted"
+	flashFieldWorkerAppRevoked = "field-worker-app-revoked"
+	flashFieldDeviceSuspended  = "field-device-suspended"
+	flashFieldDeviceActivated  = "field-device-activated"
+	flashFieldDeviceRevoked    = "field-device-revoked"
+	flashFieldPolicySaved      = "field-policy-saved"
+	flashFieldCodeCreated      = "field-code-created"
+
 	flashIdpCreated = "identity-provider-created"
 	flashIdpUpdated = "identity-provider-updated"
 	flashIdpDeleted = "identity-provider-deleted"
@@ -307,6 +322,24 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashPortalUserDeleted:     success("Portal user deleted"),
 	flashPortalAppGranted:      success("Portal app access granted"),
 	flashPortalAccessRevoked:   success("Portal app access removed"),
+
+	// Field-worker identity pages. A Datastar answer names the worker or
+	// device; a flash key after a native post carries no request text. No
+	// message ever carries a PIN or an enrolment code.
+	flashFieldWorkerCreated:    success("Field worker created"),
+	flashFieldWorkerEnsured:    success("Field worker already existed; applications granted"),
+	flashFieldWorkerSuspended:  success("Field worker suspended"),
+	flashFieldWorkerActivated:  success("Field worker activated"),
+	flashFieldWorkerUnlocked:   success("Field worker unlocked"),
+	flashFieldWorkerDeleted:    success("Field worker deleted"),
+	flashFieldWorkerPinReset:   success("PIN reset"),
+	flashFieldWorkerAppGranted: success("Application access granted"),
+	flashFieldWorkerAppRevoked: success("Application access removed"),
+	flashFieldDeviceSuspended:  success("Field device suspended"),
+	flashFieldDeviceActivated:  success("Field device activated"),
+	flashFieldDeviceRevoked:    success("Field device revoked"),
+	flashFieldPolicySaved:      success("Field policy saved"),
+	flashFieldCodeCreated:      success("Enrolment code created"),
 
 	// The SPA's identity provider and email domain toasts name the record; a
 	// Datastar answer does too, a flash key after a native post carries no
