@@ -7,9 +7,11 @@
 // Every SDK's field-token verifier runs every case.
 //
 // The output is deterministic: fixed keys (derived from fixed seeds), a fixed
-// clock and a deterministic ES256 signer, so re-running the generator
-// reproduces the committed files byte for byte. The keys are test keys, public
-// by design.
+// clock and deterministic signers, so re-running the generator reproduces the
+// committed files byte for byte. Access tokens are signed RS256 (what the
+// platform mints; RSA PKCS#1 v1.5 is deterministic) with an embedded RSA-2048
+// test key; DPoP proofs are ES256 (device keys). The keys are test keys,
+// public by design.
 //
 //	go run ./tools/field-fixtures            # writes api/field-fixtures/
 //	go run ./tools/field-fixtures -out DIR
@@ -20,9 +22,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/hmac"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"math/big"
@@ -36,6 +42,52 @@ const (
 	appCode = "fixture-app"
 	kid     = "fixture-key"
 )
+
+// fixtureRSAKeyPEM is a PUBLIC, TEST-ONLY RSA-2048 private key. It signs the
+// fixture access tokens and nothing else; it protects nothing and must never
+// be used outside these vectors.
+const fixtureRSAKeyPEM = `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCwjyq4QciYbnQD
+QZOSsL6iwzyTMwAANR/QLqrW1IQb2cRNEN/J+W45cy5I8KkqA/d3IYSvU77VRLwK
+wiswzbu5YXI927bMAzuyztDoSL+rP5+O1OXgoTmdTju6ayOD3ka+RVfSVL/J6k77
+WITqnT18cVbIJq8hqJjbWXcQR+Uv57IW8fcFGiPveJqHUDn8e5L5yEKObCy7w7Cp
++ZU7TepPHl3lbhfncA5nx0x2YCrtUhGyooCISecb49zaujoC778Lgd94yWt2IJzH
+6KcSfRlG3EWGHt6vIXkosQcpjHjxE7CEehDwKspnMz2rYnEQQf82ldFXF9Y/blqZ
+N1YMFOSvAgMBAAECggEAFNjtcruUblM/GudSVSl4yQqD4N75FWKFyB91MqVTQrVF
+lX1JlLVWti0104z/HHlCw2v6GSL/+c9XjhmmiekGTSRcHeu55ir3kJcVBGhv9qOD
+jpTwM8Q1uQT0zn/kvfxanrrcsiF+/TN6cfkzcJRydHrZhAv1So8ixWZcmwKHkE6j
+1flDhPpRzVdf7/4LAg6xn5mnCD25iMoHlO/3QcrefEOYgg2oD6NqHOLxy5Ky2C9i
+ZqzBAONs0TOVt+AcLuAlYmOHkCY+rzqwAJjl1t/JLUJp5PlCq6Ah1663Scic7pQB
+XASrrMOLD0uc2uHoOERCr9SX1hm2x1KIszIdMYpGwQKBgQDtzIAs/igTct5kQWHs
+uuDBN6Evw8mAMTMO8Nf9oAZqtPmUqq/apVsRYw9H9M3FWHxYaSjEeNIOq0kG3XBm
+gKv5P315NhXv9SuKkeOmagCyAXozRRncFCgWSnbfakDCHo/IxrCGXEDT+OPo4wkQ
+UJpFTxLXLAn08d/FJBXiXVfFIQKBgQC+ErhQmNIad3gEmteV3jmfsg357aqWiSVV
+l2cJOrg4zVdMgrw6gKhSb/gNjbJXGze3KvUspodZQG9hN3D4q+d3EOWaBcUypwLs
+w4PKqiysiEcMmFyzT7rjxd8PLDz9syfRYIn6kXg7en6zIJY8CGimuYpVHCCFM4h5
+Ux4QjA2fzwKBgANMW9bD67BhXn5Lfd03tlhXui+capYRmKCzbHuDFbOzMOcD+w5w
+TrQOCK850QTUtlzPkJYxCtDTRV8IAUAatsftPoNI4cMDRohUf7DWNY5CgPxnD/XC
+fc/ZVo7AvYczv1DMmLQ0YV3PTPH0/DIyvAEMGLnNTZINLMpiNr9+BfKhAoGABVed
+WpaRATFubCK2AH5YfEaS4f1uGAEOzZMN0FKYLvCGjZ33EGXhVT/UZv0ekBgxvrI0
+ZebgUv/eoYrfX/3k6ZHOAkA7RKsxB9qO77lMvCSwaog1wsxw4koDdPe3VyIb8mSW
+PDaufG169inqTxGlb1ozqyS5PUUvhslxROHK2D0CgYEA2IDwFBAhO41i+LCiQmBu
+uCH7s8GgHkWJsC6ys2c4kKkGolMubozsdeYe5i0ce6/iMEcGR9nXHm9MApdM8gbl
+tPxoa5Ze6qll9lNONCbe5wDwNVLS+Pf4v1qmBTM1uwsXHpzhQ1eBDlYxI6kymp/Y
+cdH5S85GpJToxgXdNYF7Jy8=
+-----END PRIVATE KEY-----
+`
+
+// rsaSigner returns the fixture RSA key.
+func rsaSigner() *rsa.PrivateKey {
+	block, _ := pem.Decode([]byte(fixtureRSAKeyPEM))
+	if block == nil {
+		panic("fixture RSA key: bad PEM")
+	}
+	k, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		panic(err)
+	}
+	return k.(*rsa.PrivateKey)
+}
 
 // fixedNow is the verifier clock for every case unless a case overrides it.
 var fixedNow = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -140,6 +192,17 @@ func jws(key fixtureKey, header, claims map[string]any) string {
 	return input + "." + base64.RawURLEncoding.EncodeToString(key.sign(input))
 }
 
+// jwsRS256 signs header.claims with an RSA key (RS256, PKCS#1 v1.5).
+func jwsRS256(key *rsa.PrivateKey, header, claims map[string]any) string {
+	input := b64(header) + "." + b64(claims)
+	digest := sha256.Sum256([]byte(input))
+	sig, err := rsa.SignPKCS1v15(rand.Reader, key, 5, digest[:]) // 5 = crypto.SHA256
+	if err != nil {
+		panic(err)
+	}
+	return input + "." + base64.RawURLEncoding.EncodeToString(sig)
+}
+
 type tokenOpts struct {
 	typ      string
 	tokenUse string
@@ -147,9 +210,10 @@ type tokenOpts struct {
 	exp      time.Time
 	pcr      bool
 	jkt      string
+	alg      string // header alg override; the signature stays RS256
 }
 
-func accessToken(signer fixtureKey, o tokenOpts) string {
+func accessToken(signer *rsa.PrivateKey, o tokenOpts) string {
 	claims := map[string]any{
 		"iss": issuer, "sub": "fwu_0FIXTUREWORKER", "aud": o.aud,
 		"exp": o.exp.Unix(), "iat": fixedNow.Add(-time.Minute).Unix(), "nbf": fixedNow.Add(-time.Minute).Unix(),
@@ -163,7 +227,11 @@ func accessToken(signer fixtureKey, o tokenOpts) string {
 	if o.pcr {
 		claims["pcr"] = true
 	}
-	return jws(signer, map[string]any{"alg": "ES256", "typ": o.typ, "kid": kid}, claims)
+	alg := "RS256"
+	if o.alg != "" {
+		alg = o.alg
+	}
+	return jwsRS256(signer, map[string]any{"alg": alg, "typ": o.typ, "kid": kid}, claims)
 }
 
 type proofOpts struct {
@@ -201,7 +269,7 @@ type fixtureFile struct {
 }
 
 func generate() map[string][]byte {
-	signer := newKey("fc-field-fixture-token-signing-key")
+	signer := rsaSigner()
 	device := newKey("fc-field-fixture-device-key")
 	other := newKey("fc-field-fixture-other-device-key")
 	const method = "POST"
@@ -249,6 +317,8 @@ func generate() map[string][]byte {
 		mk("stale_proof", "stale_proof", valid, device, proofOpts{iat: fixedNow.Add(-time.Hour)}, nil),
 		mk("api_token_presented_as_field_token", "wrong_typ",
 			with(func(o *tokenOpts) { o.typ = "JWT"; o.tokenUse = "api"; o.aud = "flowcatalyst" }), device, proofOpts{}, nil),
+		// The header claims ES256 (the platform signs RS256 only): refused on the alg alone.
+		mk("alg_not_rs256", "invalid_token", with(func(o *tokenOpts) { o.alg = "ES256" }), device, proofOpts{}, nil),
 		mk("tampered_token_signature", "invalid_token", valid, device, proofOpts{}, func(t, p string) (string, string) {
 			// Re-point the signature at a different value: structurally valid, wrong key.
 			parts := splitToken(t)
@@ -262,14 +332,19 @@ func generate() map[string][]byte {
 		}
 	}
 
+	pub := signer.PublicKey
 	jwks, err := json.MarshalIndent(map[string]any{"keys": []map[string]string{
-		{"kty": "EC", "crv": "P-256", "x": signer.x, "y": signer.y, "kid": kid, "use": "sig", "alg": "ES256"},
+		{
+			"kty": "RSA", "n": base64.RawURLEncoding.EncodeToString(pub.N.Bytes()),
+			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes()),
+			"kid": kid, "use": "sig", "alg": "RS256",
+		},
 	}}, "", "  ")
 	if err != nil {
 		panic(err)
 	}
 	body, err := json.MarshalIndent(fixtureFile{
-		Description: "Field access-token vectors (docs/wire-contract.md, Field identity). The verifier is configured with the issuer, appCode and the JWKS next to this file; each case is verified at its own now. expect is \"valid\" or the refusal reason. Generated by tools/field-fixtures; do not edit.",
+		Description: "Field access-token vectors (docs/wire-contract.md, Field identity). Access tokens are RS256 (the platform's signer); DPoP proofs are ES256. The alg_not_rs256 case carries a header alg of ES256 and must be refused as invalid_token whatever the signature. The verifier is configured with the issuer, appCode and the JWKS next to this file; each case is verified at its own now. expect is \"valid\" or the refusal reason. Generated by tools/field-fixtures; do not edit.",
 		Issuer:      issuer, AppCode: appCode, Cases: cases,
 	}, "", "  ")
 	if err != nil {

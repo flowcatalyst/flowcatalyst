@@ -936,7 +936,9 @@ application verifies it with the SDK's `FieldTokenVerifier` (token: `typ`, signa
 `token_use`, `aud`; refuses `pcr`; proof: `cnf.jkt`, `htm`, `htu`, `ath`, `iat` within +-5 min) or
 asks `POST /api/field-tokens/introspect` (`active:false` for a `pcr` token). Nonce checking at the
 application is out of scope for the SDK (use the framework's stateless nonce for replay protection).
-Shared test vectors: `api/field-fixtures/` (`go run ./tools/field-fixtures`).
+Access tokens are signed RS256 only (the platform signer; a verifier refuses any other header `alg` as `invalid_token`, vector `alg_not_rs256`); DPoP proofs are ES256 only.
+Shared test vectors: `api/field-fixtures/` (`go run ./tools/field-fixtures`; access tokens RS256, proofs ES256).
+
 
 **Errors in one place.** `use_dpop_nonce` 401, `invalid_dpop_proof` 401, `invalid_token` 401
 (bearer routes), `UNKNOWN_DEVICE` 401, `DEVICE_SUSPENDED` 403, `DEVICE_REVOKED` 403,

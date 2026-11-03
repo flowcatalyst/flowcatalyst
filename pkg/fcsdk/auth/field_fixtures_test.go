@@ -2,12 +2,14 @@ package auth_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -141,4 +143,29 @@ func TestFieldMiddleware(t *testing.T) {
 	rec = do(byName["pcr_pin_change_only"])
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.JSONEq(t, `{"error":"pcr"}`, rec.Body.String())
+}
+
+// TestFieldVerifierPinsRS256: the access-token alg is RS256 only. Tokens whose
+// header says HS256 or none are refused as invalid_token before any key is
+// consulted (ES256 is the shared alg_not_rs256 vector).
+func TestFieldVerifierPinsRS256(t *testing.T) {
+	issuer, appCode, jwks, cases := loadFixtures(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(jwks) }))
+	t.Cleanup(srv.Close)
+	c := cases[0]
+	now, _ := time.Parse(time.RFC3339, c.Now)
+	v := auth.NewFieldTokenVerifier(auth.FieldTokenVerifierConfig{
+		Issuer: issuer, AppCode: appCode, JWKSURL: srv.URL, Now: func() time.Time { return now },
+	})
+	enc := base64.RawURLEncoding.EncodeToString
+	parts := strings.Split(c.AccessToken, ".")
+	for _, alg := range []string{"HS256", "none", "ES256"} {
+		hdr := enc([]byte(`{"alg":"` + alg + `","typ":"fc-field+jwt","kid":"fixture-key"}`))
+		tok := hdr + "." + parts[1] + "." + parts[2]
+		_, err := v.Verify(context.Background(), "DPoP "+tok, c.DPoPProof, c.Method, c.URL)
+		var fe *auth.FieldError
+		require.ErrorAs(t, err, &fe, alg)
+		assert.Equal(t, auth.FieldReasonInvalidToken, fe.Reason, alg)
+		assert.Contains(t, fe.Error(), "RS256", alg)
+	}
 }

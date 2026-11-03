@@ -179,7 +179,7 @@ whole `api/field-fixtures/cases.json` suite.
     The enrolment code is upper-cased and trimmed before hashing.
 11. Throttle pre-check counts `>= limit` (the 21st attempt in an hour is blocked, not the 22nd).
     With `FC_RATE_LIMIT_DISABLE` the PIN-failure buckets are off (the per-worker locks still apply).
-12. Fixtures are signed ES256 with fixed seed-derived keys and a deterministic nonce (HMAC of the
+12. Fixture access tokens are signed RS256 (what the platform mints) with an embedded public RSA-2048 test key (PKCS#1 v1.5 is deterministic); DPoP proofs are ES256 with fixed seed-derived device keys and a deterministic nonce (HMAC of the
     key and digest): public test keys only, never a pattern for real signing.
 
 Carried from slice A (rulings of 2026-11-03 recorded in the spec): idempotent ensure on

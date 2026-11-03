@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jws"
 	"github.com/lestrrat-go/jwx/v2/jwt"
@@ -218,6 +219,11 @@ func (v *FieldTokenVerifier) Verify(ctx context.Context, authorizationHeader, dp
 	}
 	if typ := msg.Signatures()[0].ProtectedHeaders().Type(); typ != "fc-field+jwt" {
 		return nil, fieldErr(FieldReasonWrongTyp, "typ is "+typ)
+	}
+	// The platform signs field access tokens RS256 only; refuse any other alg
+	// (HS256, none, ES256, ...) before touching the keys.
+	if alg := msg.Signatures()[0].ProtectedHeaders().Algorithm(); alg != jwa.RS256 {
+		return nil, fieldErr(FieldReasonInvalidToken, "alg must be RS256, got "+alg.String())
 	}
 	set, err := v.keys(ctx)
 	if err != nil {
