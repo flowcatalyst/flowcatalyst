@@ -33,7 +33,8 @@ import (
 //	})
 //	p, err := v.Verify(ctx, r.Header.Get("Authorization"), r.Header.Get("DPoP"), r.Method, fullURL)
 //
-// or, with net/http, auth.FieldMiddleware(v). Nonce checking is NOT done here:
+// or, with net/http, auth.FieldMiddleware(v) (which requires BaseURL in the
+// config and compares htu with BaseURL + path, never the Host header). Nonce checking is NOT done here:
 // an app that needs replay protection beyond the proof's iat window uses the
 // framework's stateless nonce (docs/field-worker-identity-design.md §6.1). A
 // PIN-change-only (pcr) token is refused: it is valid on the platform's
@@ -98,8 +99,11 @@ type FieldTokenVerifierConfig struct {
 	// ProofMaxAge is how far a proof's iat may be from now, either way
 	// (default 5 minutes). Widen it for devices with bad clocks.
 	ProofMaxAge time.Duration
-	// BaseURL is this service's public base URL, used by [FieldMiddleware] to
-	// rebuild the request URL behind a proxy (BaseURL + request path).
+	// BaseURL is this service's public base URL. [FieldMiddleware] REQUIRES it
+	// (it panics at construction without one): the proof's htu is compared
+	// against BaseURL + the request path, never against the Host header or
+	// X-Forwarded-* headers, which a client can set. Direct [FieldTokenVerifier.Verify]
+	// callers pass the full URL themselves and may leave it empty.
 	BaseURL string
 	// Now overrides the clock (tests, fixtures).
 	Now func() time.Time
@@ -245,6 +249,9 @@ func (v *FieldTokenVerifier) Verify(ctx context.Context, authorizationHeader, dp
 	if err := json.Unmarshal(msg.Payload(), &c); err != nil {
 		return nil, fieldErr(FieldReasonMalformed, "claims are not JSON")
 	}
+	if c.Exp == 0 {
+		return nil, fieldErr(FieldReasonInvalidToken, "the token has no exp")
+	}
 	if c.TokenUse != "field" {
 		return nil, fieldErr(FieldReasonWrongTokenUse, "token_use is "+c.TokenUse)
 	}
@@ -387,9 +394,13 @@ func FieldPrincipalFrom(ctx context.Context) (*FieldPrincipal, bool) {
 // FieldMiddleware verifies every request with v and puts the [FieldPrincipal]
 // in the request context ([FieldPrincipalFrom]). A refused request is a 401
 // {"error": <reason>} with WWW-Authenticate: DPoP; a key-fetch failure is 503.
-// The request URL is v's BaseURL plus the request path when BaseURL is set,
-// else scheme (X-Forwarded-Proto or TLS) and Host from the request.
+// The request URL is v's BaseURL plus the request path; the Host header and
+// X-Forwarded-* headers are never used. FieldMiddleware panics when v has no
+// BaseURL (a wiring error, caught at startup rather than as 401s at runtime).
 func FieldMiddleware(v *FieldTokenVerifier) func(http.Handler) http.Handler {
+	if strings.TrimRight(v.cfg.BaseURL, "/") == "" {
+		panic("auth.FieldMiddleware: FieldTokenVerifierConfig.BaseURL is required (the public base URL the proof's htu is compared against)")
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, err := v.Verify(r.Context(), r.Header.Get("Authorization"), r.Header.Get("DPoP"), r.Method, v.requestURL(r))
@@ -411,15 +422,5 @@ func FieldMiddleware(v *FieldTokenVerifier) func(http.Handler) http.Handler {
 }
 
 func (v *FieldTokenVerifier) requestURL(r *http.Request) string {
-	if b := strings.TrimRight(v.cfg.BaseURL, "/"); b != "" {
-		return b + r.URL.Path
-	}
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	if f := r.Header.Get("X-Forwarded-Proto"); f != "" {
-		scheme = f
-	}
-	return scheme + "://" + r.Host + r.URL.Path
+	return strings.TrimRight(v.cfg.BaseURL, "/") + r.URL.Path
 }

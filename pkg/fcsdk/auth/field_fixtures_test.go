@@ -169,3 +169,10 @@ func TestFieldVerifierPinsRS256(t *testing.T) {
 		assert.Contains(t, fe.Error(), "RS256", alg)
 	}
 }
+
+// TestFieldMiddlewareRequiresBaseURL: no BaseURL is a construction-time panic,
+// never a fallback to the Host header.
+func TestFieldMiddlewareRequiresBaseURL(t *testing.T) {
+	v := auth.NewFieldTokenVerifier(auth.FieldTokenVerifierConfig{Issuer: "https://fc.example.test", AppCode: "a"})
+	assert.Panics(t, func() { auth.FieldMiddleware(v) })
+}

@@ -195,19 +195,19 @@ func TestTokenValidatorSurfacesDiscoveryFailure(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestTokenValidatorTokenUseIsAnAllowlist: only token_use "api" (or no marker,
-// older tokens) is an API credential. Identity, field and unknown classes are
-// refused, as is a different case of "api".
+// TestTokenValidatorTokenUseIsAnAllowlist: token_use "api", "identity" or no
+// marker (older tokens) is accepted. Field and unknown classes are refused, as
+// is a different case of "api".
 func TestTokenValidatorTokenUseIsAnAllowlist(t *testing.T) {
 	f := newOIDCFixture(t)
 	v := auth.NewTokenValidator(auth.TokenValidatorConfig{IssuerURL: f.issuerURL, Audience: "my-app"})
-	for _, use := range []string{"identity", "field", "foo", "API", "id_token"} {
+	for _, use := range []string{"field", "foo", "API", "Identity", "id_token"} {
 		tok := f.mint(t, f.issuerURL, "my-app", "prn_1", time.Now().Add(time.Hour), map[string]any{"token_use": use})
 		_, err := v.Validate(context.Background(), tok)
 		require.Error(t, err, "token_use=%q must be refused", use)
 		assert.True(t, errors.Is(err, auth.ErrInvalidToken), "token_use=%q: %v", use, err)
 	}
-	for _, extras := range []map[string]any{{"token_use": "api"}, nil} {
+	for _, extras := range []map[string]any{{"token_use": "api"}, {"token_use": "identity"}, nil} {
 		tok := f.mint(t, f.issuerURL, "my-app", "prn_1", time.Now().Add(time.Hour), extras)
 		_, err := v.Validate(context.Background(), tok)
 		require.NoError(t, err, "extras=%v", extras)

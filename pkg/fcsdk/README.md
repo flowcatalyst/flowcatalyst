@@ -402,6 +402,19 @@ this tree through `replace ... => ./pkg/fcsdk`. The SDK imports nothing from
 the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock
 `api/openapi.lock.json`.
 
+## Unreleased
+
+Behaviour changes (next release):
+
+- **`FieldTokenVerifier` requires `exp`**: a field token with no `exp` claim is
+  refused as `invalid_token` (shared vector `missing_exp`).
+- **`auth.FieldMiddleware` requires `FieldTokenVerifierConfig.BaseURL`** and
+  panics at construction without it. The proof's `htu` is compared with
+  `BaseURL` + request path; the `Host` and `X-Forwarded-Proto` fallback is gone.
+- **`TokenValidator` accepts `token_use` `identity`** again (allowlist is `api`,
+  `identity` or absent; `field` and anything else stay refused). v0.0.12's
+  refusal of `identity` was an unintended break.
+
 ## Changes before 0.1.0
 
 The platform client was audited method by method against the OpenAPI lock.

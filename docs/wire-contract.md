@@ -931,11 +931,15 @@ JOSE header `typ: fc-field+jwt`, lifetime `FC_FIELD_ACCESS_TOKEN_TTL_SECS` (defa
 `device_id`, `device_mode`, `sid` (the family id), `amr` (`["pin"]`), `auth_time`, `cnf: {jkt}`
 and `pcr: true` only while a PIN change is required. No roles, scope, applications or clients
 claims. The platform API middleware refuses `token_use: "field"` (and `pkg/fcsdk/auth`
-`TokenValidator` refuses anything but `api`), so a field token is never an API credential. The
-application verifies it with the SDK's `FieldTokenVerifier` (token: `typ`, signature, `iss`, `exp`,
+`TokenValidator` accepts only `token_use` `api`, `identity` or absent; the platform-token validators
+of every SDK share that allowlist), so a field token is never an API credential. The
+application verifies it with the SDK's `FieldTokenVerifier` (token: `typ`, signature, `iss`, `exp`
+(REQUIRED: a token without `exp` is `invalid_token`, vector `missing_exp`),
 `token_use`, `aud`; refuses `pcr`; proof: `cnf.jkt`, `htm`, `htu`, `ath`, `iat` within +-5 min) or
 asks `POST /api/field-tokens/introspect` (`active:false` for a `pcr` token). Nonce checking at the
 application is out of scope for the SDK (use the framework's stateless nonce for replay protection).
+The verifier compares `htu` with the application's configured public base URL + the request path; the
+Host header and `X-Forwarded-*` headers are never used (the Go middleware requires a base URL).
 Access tokens are signed RS256 only (the platform signer; a verifier refuses any other header `alg` as `invalid_token`, vector `alg_not_rs256`); DPoP proofs are ES256 only.
 Shared test vectors: `api/field-fixtures/` (`go run ./tools/field-fixtures`; access tokens RS256, proofs ES256).
 
