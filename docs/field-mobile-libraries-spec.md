@@ -144,6 +144,16 @@ host answers by calling `window.__fcFieldBridge.receive(string)` through
 receive}` before content loads (`injectedJavaScriptBeforeContentLoaded`), which is what
 `bridgeAvailable()` checks.
 
+**Host stub and listener (ruling, 2026-11-03).** Before content loads the host injects
+`window.__fcFieldBridge = {version: 1, receive: function (m) { if (this._l) this._l(m); else (this._q = this._q || []).push(m); }}`.
+`_q` (the queue) and `_l` (the page's listener) may be absent initially. Every response is
+delivered as `window.__fcFieldBridge.receive(<JSON string literal>)`, where `m` is the JSON
+**string** of the response object. The page never replaces `receive`: on first use it sets
+`window.__fcFieldBridge._l = handler`, then drains the queue (`const q = bridge._q || [];
+bridge._q = [];`) and handles each entry. Responses whose `id` is unknown are ignored.
+`bridgeAvailable()` is `typeof window.__fcFieldBridge === "object" && window.__fcFieldBridge.version === 1
+&& typeof window.ReactNativeWebView?.postMessage === "function"`.
+
 Request (page → host), JSON:
 ```json
 {"fcField": 1, "id": "<unique per request>", "op": "<op>", "args": { }}
