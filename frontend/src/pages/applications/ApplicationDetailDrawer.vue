@@ -6,6 +6,7 @@ import { useConfirm } from "primevue/useconfirm";
 import {
 	applicationsApi,
 	type Application,
+	type ApplicationType,
 	type ServiceAccountCredentials,
 	type LoginClientCredentials,
 } from "@/api/applications";
@@ -36,7 +37,13 @@ const canProvisionServiceAccount = computed(() =>
 
 const editing = ref(false);
 
+const typeOptions = [
+	{ label: "Application", value: "APPLICATION" },
+	{ label: "Integration", value: "INTEGRATION" },
+];
+
 // Edit form
+const editType = ref<ApplicationType>("APPLICATION");
 const editName = ref("");
 const editDescription = ref("");
 const editDefaultBaseUrl = ref("");
@@ -46,6 +53,7 @@ const editLogo = ref("");
 const editLogoMimeType = ref("");
 
 const { dirty, markClean, reset: resetDirty } = useDirtyForm(() => ({
+	type: editType.value,
 	name: editName.value,
 	description: editDescription.value,
 	defaultBaseUrl: editDefaultBaseUrl.value,
@@ -152,6 +160,8 @@ async function loadAppDocs() {
 
 function startEditing() {
 	if (application.value) {
+		editType.value =
+			application.value.type === "INTEGRATION" ? "INTEGRATION" : "APPLICATION";
 		editName.value = application.value.name;
 		editDescription.value = application.value.description || "";
 		editDefaultBaseUrl.value = application.value.defaultBaseUrl || "";
@@ -177,6 +187,7 @@ async function saveChanges() {
 	try {
 		await applicationsApi.update(appId, {
 			name: editName.value,
+			type: editType.value,
 			description: editDescription.value || undefined,
 			defaultBaseUrl: editDefaultBaseUrl.value || undefined,
 			iconUrl: editIconUrl.value || undefined,
@@ -382,6 +393,22 @@ function formatDate(dateString: string) {
 
         <template v-if="editing">
           <div class="fc-form-grid">
+            <FcFormField
+              label="Type"
+              span
+              :help="
+                editType === 'INTEGRATION'
+                  ? 'Integration: can own ingestions; not offered when creating an OAuth client. Changing back to Application is refused while it owns ingestions.'
+                  : 'Application: users log into it; it cannot own ingestions.'
+              "
+            >
+              <SelectButton
+                v-model="editType"
+                :options="typeOptions"
+                optionLabel="label"
+                optionValue="value"
+              />
+            </FcFormField>
             <FcFormField label="Name" span>
               <template #default="{ id: fieldId }">
                 <InputText :id="fieldId" v-model="editName" />

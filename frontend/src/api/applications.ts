@@ -44,6 +44,7 @@ export interface UpdateApplicationRequest {
 	website?: string;
 	logo?: string;
 	logoMimeType?: string;
+	type?: ApplicationType; // Omitted leaves it unchanged
 }
 
 export interface ListApplicationsOptions {

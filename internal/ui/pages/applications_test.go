@@ -207,10 +207,23 @@ func TestApplicationCreateAndEdit(t *testing.T) {
 	edit := h.do(t, anchorAdmin(), req{target: "/ui/applications/app_1/edit", datastar: true})
 	mustContain(t, edit, "Edit Application", "Orders (orders)")
 	mustNotContain(t, edit, `name="code"`)
+	mustContain(t, edit, `type="radio" name="type" value="APPLICATION" class="sr-only" checked`, "Application: users log into it")
 	h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/applications/app_1/edit", datastar: true, form: url.Values{"name": {"Orders 2"}, "description": {""}, "website": {"https://o.example.com"}}})
-	if u := h.ops.updated[0]; *u.Name != "Orders 2" || u.Description != nil || deref(u.Website) != "https://o.example.com" {
+	if u := h.ops.updated[0]; *u.Name != "Orders 2" || u.Description != nil || deref(u.Website) != "https://o.example.com" || u.Type != nil {
 		t.Errorf("update = %+v", u)
 	}
+}
+
+// The edit dialog offers the type; a refused downgrade lands on that field.
+func TestApplicationEditChangesTheType(t *testing.T) {
+	h := newAppHarness()
+	h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/applications/app_1/edit", datastar: true, form: url.Values{"type": {"INTEGRATION"}, "name": {"Orders"}}})
+	if u := h.ops.updated[0]; u.Type == nil || *u.Type != "INTEGRATION" {
+		t.Errorf("update = %+v", u)
+	}
+	h.ops.err = usecase.Conflict("APPLICATION_TYPE_IN_USE", "application orders owns 2 ingestion(s); delete them or move them to another application first")
+	out := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/applications/app_1/edit", datastar: true, form: url.Values{"type": {"APPLICATION"}, "name": {"Orders"}}})
+	mustContain(t, out, `id="app-form-type-err"`, "owns 2 ingestion(s)")
 }
 
 // The logo textarea is bound to appFormLogo, so the edit dialog seeds that

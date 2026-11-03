@@ -25,6 +25,22 @@ run on every deploy. Where partial adoption matters, `removeUnlisted`
 controls whether unlisted SDK-sourced resources are pruned; documentation
 sync always replaces the whole set.
 
+## Application or integration
+
+An application has a **type**, set when it is created and changeable later
+(Applications → Edit, or `type` on `PUT /api/applications/{id}`):
+
+- **Application** — a system users log into. It is offered when creating an
+  OAuth client.
+- **Integration** — a connector or adapter. It can own ingestions, and is
+  not offered when creating an OAuth client.
+
+Turning an application into an integration is always allowed. Turning an
+integration back into an application is refused (`APPLICATION_TYPE_IN_USE`)
+while it owns any ingestion: delete the ingestions or move them to another
+integration first. The change is recorded in the application's audit log
+(`type`, and `previousType` when it changed).
+
 ## Credentials an application holds
 
 - **A confidential OAuth client** (client_credentials) for its service

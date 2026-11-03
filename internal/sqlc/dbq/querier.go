@@ -214,6 +214,7 @@ type Querier interface {
 	// which persists them with the platform config repository; these only read.
 	// One entry: the CLIENT-scoped value of the application at the client.
 	IngestionConfigEntryFind(ctx context.Context, arg IngestionConfigEntryFindParams) (IngestionConfigEntryFindRow, error)
+	IngestionCountByApplication(ctx context.Context, applicationID ids.ApplicationID) (int64, error)
 	// The database's clock, read once per transaction (now() is the
 	// transaction's start), so every replica times leases by the same clock.
 	IngestionDBNow(ctx context.Context) (time.Time, error)

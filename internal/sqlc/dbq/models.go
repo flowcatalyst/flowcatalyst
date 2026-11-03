@@ -108,6 +108,7 @@ type FieldDevice struct {
 	Jkt                string     `db:"jkt"`
 	PublicKeyJwk       string     `db:"public_key_jwk"`
 	AttestationLevel   string     `db:"attestation_level"`
+	AttestationChain   *string    `db:"attestation_chain"`
 	AssignedIdentityID *string    `db:"assigned_identity_id"`
 	Status             string     `db:"status"`
 	EnrolledBy         *string    `db:"enrolled_by"`

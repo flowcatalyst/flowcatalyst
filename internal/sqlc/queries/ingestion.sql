@@ -8,6 +8,9 @@ SELECT * FROM ing_ingestions WHERE id = $1;
 SELECT * FROM ing_ingestions
 WHERE application_id = $1 AND client_id = $2 AND code = $3;
 
+-- name: IngestionCountByApplication :one
+SELECT count(*) FROM ing_ingestions WHERE application_id = $1;
+
 -- name: IngestionInsert :exec
 INSERT INTO ing_ingestions
     (id, application_id, client_id, code, name, active, version, latest_version,

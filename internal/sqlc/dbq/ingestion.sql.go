@@ -13,6 +13,17 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
+const ingestionCountByApplication = `-- name: IngestionCountByApplication :one
+SELECT count(*) FROM ing_ingestions WHERE application_id = $1
+`
+
+func (q *Queries) IngestionCountByApplication(ctx context.Context, applicationID ids.ApplicationID) (int64, error) {
+	row := q.db.QueryRow(ctx, ingestionCountByApplication, applicationID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const ingestionDelete = `-- name: IngestionDelete :exec
 DELETE FROM ing_ingestions WHERE id = $1
 `

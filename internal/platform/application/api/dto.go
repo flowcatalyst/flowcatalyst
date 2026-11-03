@@ -46,6 +46,8 @@ type UpdateApplicationRequest struct {
 	Logo           *string `json:"logo,omitempty"`
 	LogoMimeType   *string `json:"logoMimeType,omitempty"`
 	DefaultBaseURL *string `json:"defaultBaseUrl,omitempty"`
+	// Type is APPLICATION or INTEGRATION; omitted leaves it unchanged.
+	Type *string `json:"type,omitempty" doc:"APPLICATION or INTEGRATION"`
 }
 
 func (r UpdateApplicationRequest) toCommand(id string) operations.UpdateCommand {
@@ -58,6 +60,7 @@ func (r UpdateApplicationRequest) toCommand(id string) operations.UpdateCommand 
 		Logo:           r.Logo,
 		LogoMimeType:   r.LogoMimeType,
 		DefaultBaseURL: r.DefaultBaseURL,
+		Type:           r.Type,
 	}
 }
 

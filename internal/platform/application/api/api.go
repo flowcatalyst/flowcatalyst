@@ -34,7 +34,9 @@ type State struct {
 	Roles            *role.Repository
 	ServiceAccounts  *serviceaccount.Repository
 	OAuthClients     *platformauth.OAuthClientRepo
-	UoW              *usecasepgx.UnitOfWork
+	// Ingestions backs the INTEGRATION to APPLICATION type-change guard.
+	Ingestions operations.IngestionCounter
+	UoW        *usecasepgx.UnitOfWork
 }
 
 const tag = "applications"
@@ -153,7 +155,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateApplication(s.Repo), in.Body.toCommand(string(in.ID)), ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateApplication(s.Repo, s.Ingestions), in.Body.toCommand(string(in.ID)), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

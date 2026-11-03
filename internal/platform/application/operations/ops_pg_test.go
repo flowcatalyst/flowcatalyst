@@ -179,6 +179,13 @@ func TestCreateApplication_DuplicateCode_Conflict(t *testing.T) {
 
 // ── Update ────────────────────────────────────────────────────────────────
 
+// fakeIngestions reports a fixed ingestion count, so the type guard runs
+// without seeding ingestions (the real count is covered in the ingestion
+// package's integration test).
+type fakeIngestions int
+
+func (f fakeIngestions) CountByApplication(context.Context, string) (int, error) { return int(f), nil }
+
 func TestUpdateApplication_HappyPath(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -186,7 +193,7 @@ func TestUpdateApplication_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateApp(t, repo, uow, "appupd1", "Before")
 
-	ev, err := runAuthorized(uow, operations.UpdateApplication(repo), operations.UpdateCommand{
+	ev, err := runAuthorized(uow, operations.UpdateApplication(repo, fakeIngestions(0)), operations.UpdateCommand{
 		ID:          seeded.ApplicationID,
 		Name:        new("  After  "),
 		Description: new("after"),
@@ -222,7 +229,7 @@ func TestUpdateApplication_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := runAuthorized(uow, operations.UpdateApplication(repo), tc.cmd)
+			_, err := runAuthorized(uow, operations.UpdateApplication(repo, fakeIngestions(0)), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -765,4 +772,69 @@ func TestProvisionServiceAccount_AssignsRoleAndScopesClient(t *testing.T) {
 	require.NotNil(t, oc)
 	assert.Equal(t, []string{app.ApplicationID}, oc.ApplicationIDs,
 		"SA OAuth client is scoped to its application")
+}
+
+// ── Update: type ──────────────────────────────────────────────────────────
+
+func TestUpdateApplication_Type(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := application.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	t.Run("application to integration is always allowed", func(t *testing.T) {
+		t.Parallel()
+		seeded := mustCreateApp(t, repo, uow, "apptype-up", "Up")
+		ev, err := runAuthorized(uow, operations.UpdateApplication(repo, fakeIngestions(5)),
+			operations.UpdateCommand{ID: seeded.ApplicationID, Type: new("INTEGRATION")})
+		require.NoError(t, err)
+		assert.Equal(t, "INTEGRATION", ev.Type)
+		assert.Equal(t, "APPLICATION", ev.PreviousType)
+		got, err := repo.FindByID(ctx, seeded.ApplicationID)
+		require.NoError(t, err)
+		assert.Equal(t, application.TypeIntegration, got.Type)
+	})
+
+	t.Run("integration to application without ingestions", func(t *testing.T) {
+		t.Parallel()
+		seeded := mustCreateApp(t, repo, uow, "apptype-down", "Down")
+		_, err := runAuthorized(uow, operations.UpdateApplication(repo, fakeIngestions(0)),
+			operations.UpdateCommand{ID: seeded.ApplicationID, Type: new("INTEGRATION")})
+		require.NoError(t, err)
+		ev, err := runAuthorized(uow, operations.UpdateApplication(repo, fakeIngestions(0)),
+			operations.UpdateCommand{ID: seeded.ApplicationID, Type: new("APPLICATION")})
+		require.NoError(t, err)
+		assert.Equal(t, "APPLICATION", ev.Type)
+		assert.Equal(t, "INTEGRATION", ev.PreviousType)
+	})
+
+	t.Run("integration to application is refused while it owns ingestions", func(t *testing.T) {
+		t.Parallel()
+		seeded := mustCreateApp(t, repo, uow, "apptype-busy", "Busy")
+		_, err := runAuthorized(uow, operations.UpdateApplication(repo, fakeIngestions(0)),
+			operations.UpdateCommand{ID: seeded.ApplicationID, Type: new("INTEGRATION")})
+		require.NoError(t, err)
+		_, err = runAuthorized(uow, operations.UpdateApplication(repo, fakeIngestions(2)),
+			operations.UpdateCommand{ID: seeded.ApplicationID, Type: new("APPLICATION"), Name: new("Renamed")})
+		testpg.RequireUsecaseError(t, err, usecase.KindConflict, "APPLICATION_TYPE_IN_USE")
+		assert.ErrorContains(t, err, "apptype-busy owns 2 ingestion(s)")
+		got, err := repo.FindByID(ctx, seeded.ApplicationID)
+		require.NoError(t, err)
+		assert.Equal(t, application.TypeIntegration, got.Type, "type unchanged")
+		assert.Equal(t, "Busy", got.Name, "nothing else is saved either")
+	})
+
+	t.Run("omitted or same type is unchanged and records no previous type", func(t *testing.T) {
+		t.Parallel()
+		seeded := mustCreateApp(t, repo, uow, "apptype-same", "Same")
+		ev, err := runAuthorized(uow, operations.UpdateApplication(repo, fakeIngestions(9)),
+			operations.UpdateCommand{ID: seeded.ApplicationID, Name: new("Same 2")})
+		require.NoError(t, err)
+		assert.Equal(t, "APPLICATION", ev.Type)
+		assert.Empty(t, ev.PreviousType)
+		ev, err = runAuthorized(uow, operations.UpdateApplication(repo, fakeIngestions(9)),
+			operations.UpdateCommand{ID: seeded.ApplicationID, Type: new("APPLICATION")})
+		require.NoError(t, err)
+		assert.Empty(t, ev.PreviousType)
+	})
 }

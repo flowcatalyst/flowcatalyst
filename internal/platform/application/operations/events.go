@@ -53,6 +53,10 @@ type ApplicationUpdated struct {
 	Metadata      usecase.EventMetadata
 	ApplicationID string
 	Name          string
+	// Type is the application's type after the update; PreviousType is set
+	// only when the update changed it.
+	Type         string
+	PreviousType string
 }
 
 func (e ApplicationUpdated) EventID() string       { return e.Metadata.EventID }
@@ -70,7 +74,9 @@ func (e ApplicationUpdated) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationID string `json:"applicationId"`
 		Name          string `json:"name"`
-	}{e.ApplicationID, e.Name})
+		Type          string `json:"type,omitempty"`
+		PreviousType  string `json:"previousType,omitempty"`
+	}{e.ApplicationID, e.Name, e.Type, e.PreviousType})
 }
 
 type ApplicationActivated struct {

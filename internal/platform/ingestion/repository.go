@@ -52,6 +52,14 @@ func (r *Repository) FindByCode(ctx context.Context, applicationID ids.Applicati
 	return rowToIngestion(*row)
 }
 
+// CountByApplication counts the ingestions an application owns, across all
+// clients. UpdateApplication reads it to refuse turning an integration back
+// into an application while it still owns ingestions.
+func (r *Repository) CountByApplication(ctx context.Context, applicationID string) (int, error) {
+	n, err := r.q.IngestionCountByApplication(ctx, ids.ApplicationID(applicationID))
+	return int(n), err
+}
+
 // ListFilter drives List. Non-nil fields are ANDed together.
 type ListFilter struct {
 	ApplicationCode *string

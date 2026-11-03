@@ -14860,6 +14860,10 @@
           "name": {
             "type": "string"
           },
+          "type": {
+            "description": "APPLICATION or INTEGRATION",
+            "type": "string"
+          },
           "website": {
             "type": "string"
           }

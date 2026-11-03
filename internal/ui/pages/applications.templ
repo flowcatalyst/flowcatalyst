@@ -372,6 +372,7 @@ templ appFormDialogC(f appForm) {
 				@defImportBar(appFormDialog, appImportDialog, f.Import)
 			}
 			if f.Edit {
+				@appField(f, "type")
 				@appField(f, "name")
 				@appField(f, "description")
 				@appField(f, "defaultBaseUrl")
@@ -418,6 +419,9 @@ templ appField(f appForm, key string) {
 					InputAttrs: templ.Attributes{"required": true, "data-bind:app-form-type": true},
 				})
 				<p id={ f.id(key) + "-help" } class="text-sm text-muted-foreground" data-text={ f.typeHelpExpr() }>{ f.typeHelp() }</p>
+				if f.fieldError(key) != "" {
+					<p id={ f.id(key) + "-err" } class="text-sm text-destructive" role="alert">{ f.fieldError(key) }</p>
+				}
 			</div>
 		case "code":
 			@kit.Field(f.fieldProps(key, "Code", "Unique identifier for the application. Cannot be changed after creation.", true)) {

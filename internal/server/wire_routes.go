@@ -164,6 +164,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Roles:            repos.roleRepo,
 			ServiceAccounts:  repos.serviceAccountRepo,
 			OAuthClients:     repos.authRepo.OAuthClients,
+			Ingestions:       ingestion.NewRepository(pool),
 			UoW:              uow,
 		})
 

@@ -32,6 +32,9 @@ var appFieldCodes = map[string]string{
 	"INVALID_CODE_FORMAT": "code",
 	"CODE_EXISTS":         "code",
 	"NAME_REQUIRED":       "name",
+
+	"APPLICATION_TYPE_INVALID": "type",
+	"APPLICATION_TYPE_IN_USE":  "type",
 }
 
 var appTypeOptions = []kit.Option{
@@ -64,7 +67,7 @@ func (f appForm) fieldError(key string) string { return f.Errs.Fields[key] }
 func (f appForm) keys() []string {
 	k := []string{"name", "description", "defaultBaseUrl", "iconUrl", "website", "logo", "logoMimeType"}
 	if f.Edit {
-		return k
+		return append([]string{"type"}, k...)
 	}
 	return append([]string{"type", "code"}, k...)
 }
@@ -178,7 +181,7 @@ func (h *Applications) editForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.showForm(w, r, ac, appForm{
-		Edit: true, AppID: string(a.ID), Subtitle: a.Name + " (" + a.Code + ")", Open: true,
+		Edit: true, AppID: string(a.ID), Subtitle: a.Name + " (" + a.Code + ")", Open: true, Type: string(a.Type),
 		Name: a.Name, Description: deref(a.Description), BaseURL: deref(a.DefaultBaseURL), IconURL: deref(a.IconURL),
 		Website: deref(a.Website), Logo: deref(a.Logo), LogoMimeType: deref(a.LogoMimeType),
 	})
@@ -207,7 +210,7 @@ func (h *Applications) update(w http.ResponseWriter, r *http.Request) {
 	// The SPA's PUT body: the name, the rest `|| undefined` (a blank field
 	// is not sent, so the use case keeps the stored value).
 	if err := h.Ops.Update(ctx, appops.UpdateCommand{
-		ID: id, Name: &f.Name, Description: optionalText(f.Description), DefaultBaseURL: optionalText(f.BaseURL),
+		ID: id, Name: &f.Name, Type: optionalText(f.Type), Description: optionalText(f.Description), DefaultBaseURL: optionalText(f.BaseURL),
 		IconURL: optionalText(f.IconURL), Website: optionalText(f.Website), Logo: optionalText(f.Logo), LogoMimeType: optionalText(f.LogoMimeType),
 	}); err != nil {
 		f.Errs.apply(r, err, appFieldCodes)
@@ -275,15 +278,34 @@ func (f appForm) inputProps(key, value, placeholder string, attrs templ.Attribut
 	return kit.InputProps{ID: f.id(key), Name: key, Value: value, Placeholder: placeholder, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: attrs}
 }
 
+// The edit dialog says what changing the type means; the create dialog
+// describes each kind.
+const (
+	appTypeHelpIntegration = "Third-party adapter or connector for integrations"
+	appTypeHelpApplication = "User-facing application that users can log into"
+
+	appTypeEditHelpIntegration = "Integration: can own ingestions; not offered when creating an OAuth client. Changing back to Application is refused while it owns ingestions."
+	appTypeEditHelpApplication = "Application: users log into it; it cannot own ingestions."
+)
+
 func (f appForm) typeHelpExpr() string {
-	return "$appFormType === 'INTEGRATION' ? 'Third-party adapter or connector for integrations' : 'User-facing application that users can log into'"
+	if f.Edit {
+		return "$appFormType === 'INTEGRATION' ? '" + appTypeEditHelpIntegration + "' : '" + appTypeEditHelpApplication + "'"
+	}
+	return "$appFormType === 'INTEGRATION' ? '" + appTypeHelpIntegration + "' : '" + appTypeHelpApplication + "'"
 }
 
 func (f appForm) typeHelp() string {
-	if f.Type == string(application.TypeIntegration) {
-		return "Third-party adapter or connector for integrations"
+	integration := f.Type == string(application.TypeIntegration)
+	switch {
+	case f.Edit && integration:
+		return appTypeEditHelpIntegration
+	case f.Edit:
+		return appTypeEditHelpApplication
+	case integration:
+		return appTypeHelpIntegration
 	}
-	return "User-facing application that users can log into"
+	return appTypeHelpApplication
 }
 
 // signals seeds the form's signals from its values. appFormLogo is bound to

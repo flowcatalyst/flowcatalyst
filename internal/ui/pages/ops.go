@@ -302,7 +302,9 @@ type ApplicationOps struct {
 	OAuthClients    *platformauth.OAuthClientRepo
 	// Roles backs the role ceiling on provisioning (F8).
 	Roles *role.Repository
-	UoW   *usecasepgx.UnitOfWork
+	// Ingestions backs the INTEGRATION to APPLICATION type-change guard.
+	Ingestions appops.IngestionCounter
+	UoW        *usecasepgx.UnitOfWork
 }
 
 // Create runs CreateApplication and returns the new application's id.
@@ -316,7 +318,7 @@ func (o ApplicationOps) Create(ctx context.Context, cmd appops.CreateCommand) (s
 
 // Update runs UpdateApplication.
 func (o ApplicationOps) Update(ctx context.Context, cmd appops.UpdateCommand) error {
-	_, err := usecaseop.Run(ctx, o.UoW, appops.UpdateApplication(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	_, err := usecaseop.Run(ctx, o.UoW, appops.UpdateApplication(o.Repo, o.Ingestions), cmd, auth.NewExecutionContext(ctx))
 	return err
 }
 
