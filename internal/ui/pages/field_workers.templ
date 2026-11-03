@@ -143,6 +143,12 @@ templ fieldWorkersRegion(v fieldWorkersView) {
 							<span title={ row.LockTitle }>
 								@kit.Tag(kit.TagProps{Severity: row.LockSeverity, Label: row.Lock})
 							</span>
+							if !row.LockUntil.IsZero() {
+								<span class="text-xs text-muted-foreground">
+									until{ " " }
+									@kit.LocalTime(kit.LocalTimeProps{At: row.LockUntil})
+								</span>
+							}
 						} else {
 							<span class="text-muted-foreground">—</span>
 						}
@@ -221,6 +227,12 @@ templ fieldWorkerDrawerBody(d fieldWorkerDetail) {
 					<span title={ d.LockTitle }>
 						@kit.Tag(kit.TagProps{Severity: d.LockSeverity, Label: d.Lock})
 					</span>
+					if !d.LockUntil.IsZero() {
+						<span class="text-xs text-muted-foreground">
+							until{ " " }
+							@kit.LocalTime(kit.LocalTimeProps{At: d.LockUntil})
+						</span>
+					}
 				} else {
 					Not locked
 				}
@@ -253,7 +265,13 @@ templ fieldWorkerDrawerBody(d fieldWorkerDetail) {
 			<ul class="m-0 flex list-none flex-col gap-2 p-0">
 				for _, a := range d.Apps {
 					<li class="flex items-center justify-between gap-2 text-sm">
-						<span>{ a.Name } <code class="text-xs">{ a.Code }</code> <span class="text-xs text-muted-foreground">{ a.Title }</span></span>
+						<span>
+							{ a.Name }
+							if a.Code != a.Name {
+								<code class="text-xs">{ a.Code }</code>
+							}
+							<span class="text-xs text-muted-foreground">{ a.Granted }</span>
+						</span>
 						if d.CanManage {
 							@kit.IconButton(kit.IconButtonProps{Icon: "x", Label: "Remove " + a.Name + " access", Attrs: confirmTrigger(fwRevokeID, a.RevokeAction)})
 						}
@@ -394,7 +412,9 @@ templ fieldWorkerFormField(f fieldWorkerForm, key string) {
 			@kit.Field(f.fieldProps(key, "Applications", "The applications the worker may sign in to.", false)) {
 				<div id={ f.id(key) } class="flex flex-col gap-2">
 					for n, o := range f.AppChoices {
-						@kit.Checkbox(kit.CheckboxProps{ID: f.id(key) + "-" + strconv.Itoa(n), Name: key, Value: o.Value, Label: o.Label, Checked: fieldContains(f.Apps, o.Value)})
+						<div class="flex items-center gap-2">
+							@kit.Checkbox(kit.CheckboxProps{ID: f.id(key) + "-" + strconv.Itoa(n), Name: key, Value: o.Value, Label: o.Label, Checked: fieldContains(f.Apps, o.Value)})
+						</div>
 					}
 					if len(f.AppChoices) == 0 {
 						<span class="text-sm text-muted-foreground">There are no active applications you can grant.</span>

@@ -251,7 +251,7 @@ func (h *FieldDevices) renderPage(w http.ResponseWriter, r *http.Request, status
 }
 
 func (v fieldDevicesView) patchTable(sse *ds.SSE) error {
-	return errors.Join(sse.Patch(fieldDevicesRegion(v)), sse.Patch(kit.Paginator(v.pager())))
+	return errors.Join(sse.Patch(fieldDevicesRegion(v), ds.WithMode(ds.ModeReplace)), sse.Patch(kit.Paginator(v.pager())))
 }
 
 func (v fieldDevicesView) url() string { return v.Query.URL() }

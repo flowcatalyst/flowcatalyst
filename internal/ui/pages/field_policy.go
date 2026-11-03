@@ -139,6 +139,28 @@ func policyErrorField(err error) string {
 	return ""
 }
 
+// policyMessage restates the operation's validation message with the form's
+// labels in place of the API's field names ("softLockSecs must be between 30
+// and 86400" becomes "Soft lock lasts must be between 30 and 86400"). The
+// API's error is unchanged; this is the UI layer only.
+func policyMessage(field, msg string) string {
+	label := func(f policyField) string { return f.Label }
+	rest := strings.TrimPrefix(msg, field)
+	if rest == msg {
+		return sentence(msg)
+	}
+	for _, f := range policyFields {
+		l := label(f)
+		rest = strings.ReplaceAll(rest, f.Key, strings.ToLower(l[:1])+l[1:])
+	}
+	for _, f := range policyFields {
+		if f.Key == field {
+			return label(f) + rest
+		}
+	}
+	return sentence(msg)
+}
+
 func (h *FieldPolicy) save(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
@@ -187,7 +209,7 @@ func (h *FieldPolicy) save(w http.ResponseWriter, r *http.Request) {
 		if err := h.Ops.PutPolicy(ctx, cmd); err != nil {
 			if f := policyErrorField(err); f != "" {
 				if ue := usecase.AsError(err); ue != nil {
-					v.Errs.field(f, sentence(ue.Message))
+					v.Errs.field(f, policyMessage(f, ue.Message))
 				}
 			} else {
 				v.Errs.apply(r, err, nil)

@@ -38,7 +38,7 @@ templ fieldPolicyBody(v fieldPolicyView) {
 				} else {
 					@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Custom"})
 					<span class="text-sm text-muted-foreground">
-						Set for { v.ClientName }, last updated
+						Set for { v.ClientName }, last updated{ " " }
 						@kit.LocalTime(kit.LocalTimeProps{At: v.UpdatedAt, Empty: "—"})
 					</span>
 				}

@@ -256,7 +256,9 @@ templ fieldDeviceFormField(f fieldDeviceForm, key string) {
 			@kit.Field(f.fieldProps(key, "Applications", "The applications the device may be used with.", true)) {
 				<div id={ f.id(key) } class="flex flex-col gap-2">
 					for n, o := range f.AppChoices {
-						@kit.Checkbox(kit.CheckboxProps{ID: f.id(key) + "-" + strconv.Itoa(n), Name: key, Value: o.Value, Label: o.Label, Checked: fieldContains(f.Apps, o.Value)})
+						<div class="flex items-center gap-2">
+							@kit.Checkbox(kit.CheckboxProps{ID: f.id(key) + "-" + strconv.Itoa(n), Name: key, Value: o.Value, Label: o.Label, Checked: fieldContains(f.Apps, o.Value)})
+						</div>
 					}
 					if len(f.AppChoices) == 0 {
 						<span class="text-sm text-muted-foreground">There are no active applications you can enrol a device for.</span>

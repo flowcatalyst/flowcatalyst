@@ -167,7 +167,7 @@ func TestFieldPagesAgainstPostgres(t *testing.T) {
 	// stored and read back.
 	assert.Contains(t, serve(acmeManager, req{target: "/ui/field-policy?client=" + acme}).body, "Default")
 	res = serve(acmeManager, postForm("/ui/field-policy", "client", acme, "pinMinLength", "3"))
-	assert.Contains(t, res.body, "PinMinLength must be between 4 and 12")
+	assert.Contains(t, res.body, "Minimum PIN length must be between 4 and 12")
 	p, err := repos.Policies.Effective(ctx, acme)
 	require.NoError(t, err)
 	assert.True(t, p.IsDefault)

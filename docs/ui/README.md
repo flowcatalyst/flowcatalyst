@@ -1334,7 +1334,16 @@ Routes: `/ui/field-workers?client=&q=&app=&status=&page=&rows=` (list), `/field-
   API's ranges as `min`/`max` and in the help text, and the operation's own validation (`PutPolicyCommand.Build`) answers a refused
   value on its field. A blank number takes the default, as an omitted field does in the API.
 
-Not verified in a browser: none of the pages has been opened in light, dark and narrow widths, and the copy buttons, the countdown and
+Fixes after a live browser check (also asserted in `field_test.go`): the application checkboxes of the enrol and ensure dialogs
+sit in a `flex items-center gap-2` row, so the box and its label share a line (`kit.Checkbox` emits the box and the label as
+siblings and leaves the row to the caller; `email_domains.templ`'s 2FA-method list has the same stacked layout and is not touched
+here); the policy header has a space before the update time; a refused policy value is worded with the form's label ("Soft lock
+lasts must be between 30 and 86400", mapped in `policyMessage`, the API's error is unchanged); the worker and device tables and the
+history are patched in **replace** mode, because a morph resets every `kit.LocalTime` to its UTC fallback without re-running the
+localisation (same cause as the dispatch-jobs table); the drawer's application line shows name and code once; a soft lock reads
+"Soft locked until <local time>" in the list and the drawer.
+
+Not verified in a browser (the fixes above were not re-checked there either): none of the pages has been opened in light, dark and narrow widths, and the copy buttons, the countdown and
 the dialogs removing themselves are covered by rendered markup in tests only. Open: the API's supervisor-chosen PIN, the worker update
 (name and email) and badges are not in the console; the assigned-worker field of the enrol dialog is a worker code, not a picker.
 

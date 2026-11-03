@@ -317,6 +317,7 @@ func TestFieldWorkersList(t *testing.T) {
 		`<h1 class="fc-page-title">Field Workers</h1>`,
 		"ANN", "Ann &lt;Picker&gt;", "BOB",
 		"Soft locked", "Hard locked", "Suspended", "Warehouse", "Transport",
+		`until <time datetime="`,
 		"Showing 1 to 2 of 2 field workers", `id="field-workers-pager"`,
 		`<dialog id="fw-suspend"`, `<dialog id="fw-reset-pin"`, `<dialog id="fw-delete"`, "New Field Worker",
 	)
@@ -351,6 +352,12 @@ func TestFieldWorkerDrawerAndSignIns(t *testing.T) {
 	ac := fieldCaller([]string{"clt_acme"}, permFieldWorkerManage)
 	rec := serveField(t, f, ac, req{target: "/ui/field-workers/fwk_ann", datastar: true})
 	body := rec.Body.String()
+	// The application line shows the name and the code once each.
+	if n := strings.Count(body, "<code class=\"text-xs\">wms</code>"); n != 1 {
+		t.Errorf("application code shown %d times in the drawer", n)
+	}
+	mustNotContain(t, body, "wms · granted")
+	mustContain(t, body, "granted ", "until ")
 	mustContain(t, body, "Sign-in history", "BAD_PIN", "Success", "Failure", "Applications", "Grant", `id="fw-history"`)
 	// The history pages.
 	f.signIns = nil
@@ -660,6 +667,7 @@ func TestFieldDeviceEnrolShowsTheCodeOnce(t *testing.T) {
 	f := fieldFixture()
 	ac := fieldCaller([]string{"clt_acme"}, permFieldDeviceView, permFieldDeviceManage, permFieldWorkerView)
 	form := fieldBody(t, f, ac, req{target: "/ui/field-devices/new?client=clt_acme", datastar: true})
+	mustContain(t, form, `<div class="flex items-center gap-2"><span`, `<label class="`)
 	mustContain(t, form, `id="fd-form"`, `value="PERSONAL"`, `value="SHARED"`, `name="apps" value="wms"`, "Assigned worker")
 	rec := serveField(t, f, ac, postForm("/ui/field-devices/new", "client", "clt_acme", "mode", "PERSONAL", "apps", "wms", "worker", "ann", "label", "Dock"))
 	body := rec.Body.String()
@@ -727,7 +735,8 @@ func TestFieldPolicy(t *testing.T) {
 	)
 	// Refused values keep what was typed and name the field; nothing is saved.
 	rec := serveField(t, f, manager, postForm("/ui/field-policy", "client", "clt_acme", "pinMinLength", "3", "softLockThreshold", "5", "softLockSecs", "900"))
-	mustContain(t, rec.Body.String(), "PinMinLength must be between 4 and 12", `value="3"`)
+	mustContain(t, rec.Body.String(), "Minimum PIN length must be between 4 and 12", `value="3"`)
+	mustNotContain(t, rec.Body.String(), "pinMinLength must", "PinMinLength")
 	if _, saved := f.policies["clt_acme"]; saved {
 		t.Error("an invalid policy was saved")
 	}
@@ -740,7 +749,7 @@ func TestFieldPolicy(t *testing.T) {
 		t.Errorf("saved policy %+v", p)
 	}
 	body = fieldBody(t, f, manager, req{target: "/ui/field-policy?client=clt_acme"})
-	mustContain(t, body, "Custom", `value="8"`)
+	mustContain(t, body, "Custom", `value="8"`, "last updated <time")
 	// A viewer sees the values, no save; a forged post is refused.
 	viewer := fieldCaller([]string{"clt_acme"}, permFieldDeviceView)
 	body = fieldBody(t, f, viewer, req{target: "/ui/field-policy?client=clt_acme"})

@@ -90,6 +90,7 @@ func (h *FieldWorkers) Mount(r chi.Router) {
 
 type fieldWorkerApp struct {
 	Code, Name, Title string
+	Granted           string // "granted <time> (<source>)", without the code
 	RevokeAction      string
 }
 
@@ -98,6 +99,7 @@ type fieldWorkerRow struct {
 	Status                string
 	StatusSeverity        kit.TagSeverity
 	Lock, LockTitle       string
+	LockUntil             time.Time
 	LockSeverity          kit.TagSeverity
 	Locked, Suspended     bool
 	NoPin                 bool
@@ -136,6 +138,7 @@ func fieldWorkerRowOf(i *fieldidentity.Identity, idx fieldApps, canManage bool, 
 		row.Lock, row.LockSeverity, row.LockTitle = "Hard locked", kit.TagDanger, "Locked until a supervisor unlocks or resets the PIN"
 	case i.LockedUntil != nil && i.LockedUntil.After(now):
 		row.Lock, row.LockSeverity, row.LockTitle = "Soft locked", kit.TagWarn, "Soft locked until "+fieldTime(*i.LockedUntil)
+		row.LockUntil = *i.LockedUntil
 	}
 	if i.LastLoginAt != nil {
 		row.LastLogin = *i.LastLoginAt
@@ -143,7 +146,8 @@ func fieldWorkerRowOf(i *fieldidentity.Identity, idx fieldApps, canManage bool, 
 	row.Created = i.CreatedAt
 	for _, g := range i.Apps {
 		code, name := idx.ref(g.AppID)
-		a := fieldWorkerApp{Code: code, Name: name, Title: code + " · granted " + fieldTime(g.GrantedAt) + " (" + g.Source + ")"}
+		granted := "granted " + fieldTime(g.GrantedAt) + " (" + g.Source + ")"
+		a := fieldWorkerApp{Code: code, Name: name, Title: code + " · " + granted, Granted: granted}
 		if canManage {
 			a.RevokeAction = base + "/apps/" + url.PathEscape(code) + "/revoke"
 		}
@@ -224,7 +228,7 @@ func (h *FieldWorkers) renderPage(w http.ResponseWriter, r *http.Request, status
 }
 
 func (v fieldWorkersView) patchTable(sse *ds.SSE) error {
-	return errors.Join(sse.Patch(fieldWorkersRegion(v)), sse.Patch(kit.Paginator(v.pager())))
+	return errors.Join(sse.Patch(fieldWorkersRegion(v), ds.WithMode(ds.ModeReplace)), sse.Patch(kit.Paginator(v.pager())))
 }
 
 func (v fieldWorkersView) url() string { return v.Query.URL() }
@@ -378,6 +382,7 @@ type fieldWorkerDetail struct {
 	StatusSeverity                  kit.TagSeverity
 	Suspended, Locked               bool
 	Lock, LockTitle                 string
+	LockUntil                       time.Time
 	LockSeverity                    kit.TagSeverity
 	HasPin, PinChangeRequired       bool
 	FailedSinceSuccess              int
@@ -419,7 +424,7 @@ func (h *FieldWorkers) detailFor(ctx context.Context, ac *auth.AuthContext, i *f
 	d := fieldWorkerDetail{
 		ID: i.ID, Code: i.WorkerCode, Name: i.Name, Email: i.Email, ClientID: i.ClientID,
 		Status: row.Status, StatusSeverity: row.StatusSeverity, Suspended: row.Suspended, Locked: row.Locked,
-		Lock: row.Lock, LockTitle: row.LockTitle, LockSeverity: row.LockSeverity,
+		Lock: row.Lock, LockTitle: row.LockTitle, LockUntil: row.LockUntil, LockSeverity: row.LockSeverity,
 		HasPin: i.HasPIN(), PinChangeRequired: i.PINChangeRequired, FailedSinceSuccess: i.FailedSinceSuccess,
 		LastLogin: row.LastLogin, Created: i.CreatedAt, Updated: i.UpdatedAt, Apps: row.Apps,
 		CanManage: canManage, Base: row.Base, GrantHref: row.Base + "/grant",
@@ -494,7 +499,7 @@ func (h *FieldWorkers) showDetail(w http.ResponseWriter, r *http.Request, onlySi
 		sse := ds.NewSSE(w, r)
 		var perr error
 		if onlySignIns {
-			perr = sse.Patch(fieldSignInsRegion(d))
+			perr = sse.Patch(fieldSignInsRegion(d), ds.WithMode(ds.ModeReplace))
 		} else {
 			perr = openFieldWorkerDrawer(sse, d)
 		}
