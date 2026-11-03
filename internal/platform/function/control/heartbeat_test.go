@@ -4,6 +4,7 @@ package control
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,6 +138,35 @@ func TestHeartbeat_RequiresRunnerIDAndPool(t *testing.T) {
 
 	_, err = s.heartbeat(ctx, &heartbeatInput{Body: fncontrol.Heartbeat{RunnerID: "r"}})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "POOL_REQUIRED")
+
+	_, err = s.heartbeat(ctx, &heartbeatInput{Body: fncontrol.Heartbeat{RunnerID: strings.Repeat("r", maxRunnerIDLen+1), Pool: "p"}})
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "RUNNER_ID_TOO_LONG")
+}
+
+// A runner names itself: the ingestor runtime's id is "runtime-<container
+// hostname>", far longer than a TSID. Its heartbeat must be stored and must
+// mark its version READY (migration 096; before it, every such heartbeat
+// failed with "value too long for type character varying(17)").
+func TestHeartbeat_RunnerChosenIDLongerThanATSID(t *testing.T) {
+	t.Parallel()
+	s := newTestState(t)
+	poolName := "pool-" + t.Name()
+	appID := "app_" + shortID(t)
+	appCode := "hblongid" + shortID(t)
+	seedApplication(t, testpg.Pool(t), appID, appCode)
+	fn := seedFunction(t, testpg.Pool(t), s.Repo, appID, appCode, "fn", func(f *function.Function) { f.Pool = &poolName })
+	seedVersion(t, s.Repo, fn.ID, 1, function.VersionPublished, "jvm", describeJSON(t))
+
+	_, err := s.heartbeat(anchorCtx(), &heartbeatInput{Body: fncontrol.Heartbeat{
+		RunnerID: "runtime-ip-10-100-11-189.eu-west-1.compute.internal", Pool: poolName,
+		Versions: []fncontrol.VersionReport{{FunctionID: fn.ID, Number: 1, State: fncontrol.StateLoaded}},
+	}})
+	require.NoError(t, err)
+
+	got, err := s.Repo.GetVersionByNumber(context.Background(), fn.ID, 1)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, function.VersionReady, got.Status)
 }
 
 // F22 race: a FAILED report from a runner that has not yet applied the

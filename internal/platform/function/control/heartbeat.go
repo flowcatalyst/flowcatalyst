@@ -21,6 +21,9 @@ type heartbeatInput struct {
 	Body fncontrol.Heartbeat
 }
 
+// maxRunnerIDLen is the longest runner id fng_runners holds.
+const maxRunnerIDLen = 255
+
 // pendingVersionUpdate is one version's PUBLISHED→READY or
 // PUBLISHED→FAILED transition, applied in heartbeat's single transaction.
 type pendingVersionUpdate struct {
@@ -57,6 +60,11 @@ func (s *State) heartbeat(ctx context.Context, in *heartbeatInput) (*apicommon.E
 	hb := in.Body
 	if strings.TrimSpace(hb.RunnerID) == "" {
 		return nil, usecase.Validation("RUNNER_ID_REQUIRED", "runnerId is required")
+	}
+	// fng_runners.id is VARCHAR(255) (migration 096): refuse a longer id
+	// here rather than failing every heartbeat in the database.
+	if len(hb.RunnerID) > maxRunnerIDLen {
+		return nil, usecase.Validation("RUNNER_ID_TOO_LONG", "runnerId is over "+strconv.Itoa(maxRunnerIDLen)+" characters")
 	}
 	if strings.TrimSpace(hb.Pool) == "" {
 		return nil, usecase.Validation("POOL_REQUIRED", "pool is required")
