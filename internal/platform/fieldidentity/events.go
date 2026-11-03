@@ -18,6 +18,7 @@ const (
 	WorkerSuspendedType  = "platform:iam:field-worker:suspended"
 	WorkerActivatedType  = "platform:iam:field-worker:activated"
 	WorkerPinResetType   = "platform:iam:field-worker:pin-reset"
+	WorkerPinChangedType = "platform:iam:field-worker:pin-changed"
 	WorkerUnlockedType   = "platform:iam:field-worker:unlocked"
 	WorkerAppGrantedType = "platform:iam:field-worker:app-granted"
 	WorkerAppRevokedType = "platform:iam:field-worker:app-revoked"

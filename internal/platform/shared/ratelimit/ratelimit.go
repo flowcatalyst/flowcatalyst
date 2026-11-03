@@ -40,6 +40,12 @@ const (
 	BucketPasswordResetEmail   Bucket = "password_reset_email"
 	BucketCheckDomainIP        Bucket = "check_domain_ip"
 	BucketPortalLogin          Bucket = "portal_login"
+	// Field-worker PIN-failure buckets (keyed by device id / client id) and the
+	// once-per-window throttle-event markers (docs/field-worker-identity-p1-spec.md §4.4).
+	BucketFieldPinDevice         Bucket = "field_pin_device"
+	BucketFieldPinClient         Bucket = "field_pin_client"
+	BucketFieldThrottleNoticeDev Bucket = "field_throttle_notice_device"
+	BucketFieldThrottleNoticeCli Bucket = "field_throttle_notice_client"
 )
 
 // Policy is "at most Limit events in any Window" for one (bucket, key).
@@ -60,6 +66,10 @@ type Policies struct {
 	// PortalLogin throttles POST /portal/auth/login per (client, email) —
 	// the portal plane's brute-force ceiling (it has no lockout table).
 	PortalLogin Policy
+	// FieldPinDevice / FieldPinClient cap PIN failures per device and per
+	// client per rolling hour on the field-worker plane.
+	FieldPinDevice Policy
+	FieldPinClient Policy
 }
 
 // PoliciesFromEnv reads the FC_RL_* knobs.
@@ -72,6 +82,8 @@ func PoliciesFromEnv() Policies {
 		PasswordResetIP:      Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_IP_PER_HOUR", 20)},
 		PasswordResetEmail:   Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_EMAIL_PER_HOUR", 5)},
 		PortalLogin:          Policy{15 * time.Minute, envutil.Uint32("FC_RL_PORTAL_LOGIN_PER_15MIN", 10)},
+		FieldPinDevice:       Policy{time.Hour, envutil.Uint32("FC_FIELD_DEVICE_FAILURES_PER_HOUR", 20)},
+		FieldPinClient:       Policy{time.Hour, envutil.Uint32("FC_FIELD_CLIENT_FAILURES_PER_HOUR", 300)},
 	}
 }
 
@@ -85,7 +97,7 @@ func (p Policies) MaxWindow() time.Duration {
 		p.OAuthTokenIP.Window, p.OAuthTokenClient.Window,
 		p.OAuthAuthorizeIP.Window, p.OAuthAuthorizeClient.Window,
 		p.PasswordResetIP.Window, p.PasswordResetEmail.Window,
-		p.PortalLogin.Window,
+		p.PortalLogin.Window, p.FieldPinDevice.Window, p.FieldPinClient.Window,
 	} {
 		if w > max {
 			max = w
@@ -109,6 +121,15 @@ type Store interface {
 	// Prune drops events older than the given age. Redis is a no-op
 	// (TTLs auto-expire); Postgres deletes old rows. Best-effort.
 	Prune(ctx context.Context, olderThan time.Duration) (int64, error)
+}
+
+// Counter is an optional Store capability: how many events a key has recorded
+// inside a window, without recording one. The field plane counts only PIN
+// failures, so it must read the count before a login rather than record one.
+type Counter interface {
+	// Count returns the in-window total and, when it is at or above limit, an
+	// estimate of the seconds until room frees up.
+	Count(ctx context.Context, bucket Bucket, key string, window time.Duration) (uint32, uint32, error)
 }
 
 // NoopStore always allows. Used when rate limiting is disabled.

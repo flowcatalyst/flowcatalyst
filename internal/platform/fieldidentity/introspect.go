@@ -18,20 +18,35 @@ type TokenClaims struct {
 	AMR       []string
 	AuthTime  time.Time
 	Expires   time.Time
+	// PINChangeRequired is the token's pcr claim: it may be used only to
+	// change the PIN, so introspection never reports it active.
+	PINChangeRequired bool
+	// JKT is the device key thumbprint the token is bound to (cnf.jkt).
+	JKT string
 }
 
 // TokenVerifier verifies a field access token's signature, typ and expiry and
-// returns its claims. The implementation arrives with the device protocol
-// (slice B, authservice.GenerateFieldAccessToken's counterpart).
+// returns its claims. The implementation is fieldauth.TokenVerifier, the
+// counterpart of authservice.GenerateFieldAccessToken.
 type TokenVerifier interface {
 	VerifyFieldAccessToken(ctx context.Context, token string) (*TokenClaims, error)
 }
 
 // TokenActive reports whether the claims still describe a usable credential:
-// not expired, the login family not revoked or expired, and both the worker
-// and the device ACTIVE. It reads current state, which is the point of an
-// online introspection check.
+// not expired, not a PIN-change-only (pcr) token, the login family not revoked
+// or expired, and both the worker and the device ACTIVE. It reads current
+// state, which is the point of an online introspection check.
 func (o *Ops) TokenActive(ctx context.Context, c *TokenClaims, now time.Time) (bool, error) {
+	if c == nil || c.PINChangeRequired {
+		return false, nil
+	}
+	return o.TokenUsable(ctx, c, now)
+}
+
+// TokenUsable is [Ops.TokenActive] without the pcr rule: the session, worker
+// and device are live. The PIN-change endpoint accepts a pcr token that is
+// usable.
+func (o *Ops) TokenUsable(ctx context.Context, c *TokenClaims, now time.Time) (bool, error) {
 	if c == nil || !c.Expires.After(now) {
 		return false, nil
 	}

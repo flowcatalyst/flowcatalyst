@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS field_devices (
     jkt                  VARCHAR(64)  NOT NULL,              -- RFC 7638 thumbprint of the device key
     public_key_jwk       TEXT         NOT NULL,
     attestation_level    VARCHAR(20)  NOT NULL DEFAULT 'NONE', -- STRONGBOX | TEE | SOFTWARE | NONE
+    attestation_chain    TEXT,                                 -- raw, as reported at enrolment; unverified in P1
     assigned_identity_id VARCHAR(17),
     status               VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE', -- ACTIVE | SUSPENDED | REVOKED
     enrolled_by          VARCHAR(100),

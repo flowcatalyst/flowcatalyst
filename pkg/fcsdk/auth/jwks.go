@@ -87,6 +87,12 @@ func (v *TokenValidator) Validate(ctx context.Context, token string) (*AuthConte
 	if derr != nil {
 		return nil, derr
 	}
+	// Only an API credential is an authority for an application backend: an
+	// ALLOWLIST ("api" or no marker on older tokens). Identity, field and any
+	// future token class are refused rather than treated as empty-authority.
+	if claims.TokenUse != "" && claims.TokenUse != "api" {
+		return nil, newErr(KindInvalidToken, "token_use "+claims.TokenUse+" is not an API credential")
+	}
 	return NewAuthContext(claims, token), nil
 }
 

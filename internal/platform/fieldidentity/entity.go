@@ -201,15 +201,18 @@ func (i *Identity) SessionRevocations() int { return len(i.sessions) }
 
 // Device is one enrolled, key-bound device.
 type Device struct {
-	ID                 string       `json:"id"`
-	ClientID           string       `json:"clientId"`
-	Mode               Mode         `json:"mode"`
-	Label              string       `json:"label,omitempty"`
-	Platform           string       `json:"platform,omitempty"`
-	Model              string       `json:"model,omitempty"`
-	JKT                string       `json:"jkt"`
-	PublicKeyJWK       string       `json:"-"`
-	AttestationLevel   string       `json:"attestationLevel"`
+	ID               string `json:"id"`
+	ClientID         string `json:"clientId"`
+	Mode             Mode   `json:"mode"`
+	Label            string `json:"label,omitempty"`
+	Platform         string `json:"platform,omitempty"`
+	Model            string `json:"model,omitempty"`
+	JKT              string `json:"jkt"`
+	PublicKeyJWK     string `json:"-"`
+	AttestationLevel string `json:"attestationLevel"`
+	// AttestationChain is the raw chain reported at enrolment (unverified in
+	// P1); write-only.
+	AttestationChain   string       `json:"-"`
 	AssignedIdentityID *string      `json:"assignedIdentityId,omitempty"`
 	Status             DeviceStatus `json:"status"`
 	EnrolledBy         string       `json:"enrolledBy,omitempty"`

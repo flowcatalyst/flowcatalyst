@@ -34,6 +34,7 @@ import (
 	emaildomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/api"
 	eventapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/event/api"
 	eventtypeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldauth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
 	fieldidentityapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/pin"
@@ -195,16 +196,11 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// Field-worker identity admin surface. The PIN pepper derives from
 		// FLOWCATALYST_APP_KEY; without it the Hasher is nil and every PIN
 		// operation fails closed (503 FIELD_IDENTITY_UNCONFIGURED).
-		fieldHasher, herr := pin.NewHasher(os.Getenv("FLOWCATALYST_APP_KEY"))
-		if herr != nil {
-			slog.Warn("field identity: PIN operations disabled; set FLOWCATALYST_APP_KEY", "err", herr)
-		}
 		fieldidentityapi.Register(humaAPI, &fieldidentityapi.State{
-			Ops: &fieldidentity.Ops{
-				R: repos.fieldRepos, Clients: repos.clientRepo, Apps: repos.applicationRepo, Hasher: fieldHasher,
-			},
-			UoW:     uow,
-			BaseURL: cfg.JWTIssuer,
+			Ops:      newFieldOps(repos),
+			UoW:      uow,
+			BaseURL:  cfg.JWTIssuer,
+			Verifier: fieldauth.TokenVerifier{Auth: svcs.authSvc},
 		})
 
 		// Phase 8: lost-device reset approval queue (client-admin gated).
@@ -599,5 +595,18 @@ func forPaths(mw func(http.Handler) http.Handler, paths ...string) func(http.Han
 			}
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// newFieldOps builds the field-identity operations over the shared repos. The
+// PIN pepper derives from FLOWCATALYST_APP_KEY; without it the Hasher is nil
+// and every PIN operation fails closed (503 FIELD_IDENTITY_UNCONFIGURED).
+func newFieldOps(repos *repoSet) *fieldidentity.Ops {
+	hasher, err := pin.NewHasher(os.Getenv("FLOWCATALYST_APP_KEY"))
+	if err != nil {
+		slog.Warn("field identity: PIN operations disabled; set FLOWCATALYST_APP_KEY", "err", err)
+	}
+	return &fieldidentity.Ops{
+		R: repos.fieldRepos, Clients: repos.clientRepo, Apps: repos.applicationRepo, Hasher: hasher,
 	}
 }

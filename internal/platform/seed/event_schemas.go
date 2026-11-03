@@ -443,6 +443,7 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:iam:field-worker:suspended"] = worker()
 	m["platform:iam:field-worker:activated"] = worker()
 	m["platform:iam:field-worker:pin-reset"] = worker(reqBool("pinChangeRequired"))
+	m["platform:iam:field-worker:pin-changed"] = worker(optStr("familyId"))
 	m["platform:iam:field-worker:unlocked"] = worker()
 	m["platform:iam:field-worker:app-granted"] = worker(reqStr("applicationId"), reqStr("applicationCode"))
 	m["platform:iam:field-worker:app-revoked"] = worker(reqStr("applicationId"), reqStr("applicationCode"))

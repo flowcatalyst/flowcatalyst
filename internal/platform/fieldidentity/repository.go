@@ -235,6 +235,15 @@ func (r *IdentityRepo) one(ctx context.Context, sql string, args ...any) (*Ident
 }
 
 func (r *IdentityRepo) attachApps(ctx context.Context, idents []Identity) error {
+	return attachAppsQ(ctx, r.pool, idents)
+}
+
+// querier is the read surface shared by a pool and a transaction.
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+func attachAppsQ(ctx context.Context, q querier, idents []Identity) error {
 	if len(idents) == 0 {
 		return nil
 	}
@@ -245,7 +254,7 @@ func (r *IdentityRepo) attachApps(ctx context.Context, idents []Identity) error 
 		index[idents[n].ID] = n
 		idents[n].Apps = []AppGrant{}
 	}
-	rows, err := r.pool.Query(ctx,
+	rows, err := q.Query(ctx,
 		`SELECT identity_id, application_id, source, granted_at FROM field_identity_apps
 		 WHERE identity_id = ANY($1) ORDER BY granted_at, application_id`, ids)
 	if err != nil {
@@ -380,15 +389,15 @@ func (r *DeviceRepo) Persist(ctx context.Context, d *Device, tx *usecasepgx.DbTx
 	if _, err := tx.Inner().Exec(ctx,
 		`INSERT INTO field_devices
 		     (id, client_id, mode, label, platform, model, jkt, public_key_jwk, attestation_level,
-		      assigned_identity_id, status, enrolled_by, enrolled_at, last_seen_at, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+		      assigned_identity_id, status, enrolled_by, enrolled_at, last_seen_at, updated_at, attestation_chain)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 		 ON CONFLICT (id) DO UPDATE SET
 		     label = EXCLUDED.label, status = EXCLUDED.status,
 		     assigned_identity_id = EXCLUDED.assigned_identity_id,
 		     attestation_level = EXCLUDED.attestation_level, updated_at = EXCLUDED.updated_at`,
 		d.ID, d.ClientID, string(d.Mode), emptyToNil(d.Label), emptyToNil(d.Platform), emptyToNil(d.Model),
 		d.JKT, d.PublicKeyJWK, d.AttestationLevel, d.AssignedIdentityID, string(d.Status),
-		emptyToNil(d.EnrolledBy), d.EnrolledAt, d.LastSeenAt, now); err != nil {
+		emptyToNil(d.EnrolledBy), d.EnrolledAt, d.LastSeenAt, now, emptyToNil(d.AttestationChain)); err != nil {
 		return err
 	}
 	for _, appID := range d.AppIDs {

@@ -75,6 +75,24 @@ func (s *PostgresStore) CheckAndRecord(ctx context.Context, bucket Bucket, key s
 	return Decision{Allowed: true}, nil
 }
 
+// Count implements [Counter]: the in-window total for the key, read-only.
+func (s *PostgresStore) Count(ctx context.Context, bucket Bucket, key string, window time.Duration) (uint32, uint32, error) {
+	windowStart := time.Now().UTC().Add(-window)
+	var count int64
+	var oldest *time.Time
+	if err := s.pool.QueryRow(ctx,
+		`SELECT COUNT(*), MIN(occurred_at) FROM iam_rate_limit_events
+		 WHERE bucket = $1 AND key = $2 AND occurred_at > $3`,
+		string(bucket), key, windowStart).Scan(&count, &oldest); err != nil {
+		return 0, 0, fmt.Errorf("rate-limit count: %w", err)
+	}
+	retryAfter := int64(window.Seconds())
+	if oldest != nil {
+		retryAfter -= max(int64(time.Since(*oldest).Seconds()), 0)
+	}
+	return clampU32(count), clampU32(max(retryAfter, 1)), nil
+}
+
 // Prune deletes events older than olderThan. Returns the number removed.
 func (s *PostgresStore) Prune(ctx context.Context, olderThan time.Duration) (int64, error) {
 	cutoff := time.Now().UTC().Add(-olderThan)

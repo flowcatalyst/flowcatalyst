@@ -771,7 +771,7 @@ ingestions" in `docs/published/80-ingestion.md`.
 The field-worker identity plane (workers with a PIN, enrolled devices) is a separate
 population from principals and portal users. Design: `docs/field-worker-identity-design.md`;
 build spec: `docs/field-worker-identity-p1-spec.md`. This section is the admin surface;
-the device-facing `/field/*` protocol is added with its own section when it lands.
+the device-facing `/field/*` protocol is the next section.
 
 **Authorization.** Every route needs a permission AND access to the target client:
 `platform:iam:field-worker:view|manage` (workers), `platform:iam:field-device:view|manage`
@@ -839,9 +839,115 @@ an error. `active` is true only while the token is unexpired, its login family (
 non-revoked unexpired session, and both the worker and the device are `ACTIVE`.
 
 **Events** (catalogued, `platform:iam:...`): `field-worker:created | ensured | updated | deleted |
-suspended | activated | pin-reset | unlocked | app-granted | app-revoked`, `field-device:enrolment-code-created
+suspended | activated | pin-reset | pin-changed | unlocked | app-granted | app-revoked`, `field-device:enrolment-code-created
 | enrolled | suspended | activated | revoked | throttled`, `field-session:revoked` (admin, reuse and worker
 revocations, not routine rotation), `field-policy:updated`. Payloads never carry a PIN or code.
+
+## Field identity (`/field/*`)
+
+The device-facing half of the field-worker plane. Public routes, mounted outside the platform
+API middleware (the device proof and the PIN authenticate), behind a per-IP governor
+(`FC_FIELD_RATE_PER_MIN` / `FC_FIELD_BURST`). All bodies are JSON, camelCase; every error is
+`{"error": CODE, "message": "..."}`. Without `FLOWCATALYST_APP_KEY` every route answers
+`503 FIELD_IDENTITY_UNCONFIGURED` (the plane fails closed). Design:
+`docs/field-worker-identity-design.md`; spec: `docs/field-worker-identity-p1-spec.md`.
+
+**Proof (every request).** Header `DPoP: <JWS>`: JOSE header `typ: dpop+jwt`, `alg: ES256` (only),
+`jwk` = the device's PUBLIC EC P-256 key (a private member is refused). Claims: `htm` (the method),
+`htu` (the platform's configured public base URL + the request path; never the Host header, no
+query), `iat` (must be present; accepted within +-24 h, devices have bad clocks), `jti` (present),
+`nonce` (required on every route but `/field/auth/nonce`), `ath` (base64url SHA-256 of the access
+token, required on bearer routes). The key's thumbprint is the RFC 7638 `jkt`
+(`SHA-256({"crv","kty","x","y"})`, base64url, no padding). A bad proof is `401 invalid_dpop_proof`
+with `WWW-Authenticate: DPoP error="invalid_dpop_proof", algs="ES256"`.
+
+**Nonces.** 32 random bytes, base64url, valid 5 minutes and **single use** (consumed atomically; a
+nonce cannot be replayed, so the platform keeps no `jti` cache). EVERY response, success or error,
+carries a fresh `DPoP-Nonce` header. A missing, used or expired nonce is `401 use_dpop_nonce` with
+`WWW-Authenticate: DPoP error="use_dpop_nonce"` and the fresh nonce; the client retries once.
+`POST /field/auth/nonce` (proof without a nonce) answers `{nonce, expiresAt}`, the same value as
+the header.
+
+**Devices.** After enrolment the proof key must be an enrolled device's key: `401 UNKNOWN_DEVICE`,
+`403 DEVICE_SUSPENDED`, `403 DEVICE_REVOKED`. `lastSeenAt` is touched at most once a minute.
+
+| Route | Request | Success |
+|---|---|---|
+| `POST /field/devices/enrol` | `{code, publicKeyJwk, attestationChain?, platform, model, label?}`; the proof key must be `publicKeyJwk` | `201 {deviceId, mode, clientId, appCodes[]}` |
+| `POST /field/auth/nonce` | `{}` | `{nonce, expiresAt}` |
+| `POST /field/auth/login` | `{appCode, workerCode, pin}` | `FieldTokenResponse` |
+| `POST /field/auth/refresh` | `{refreshToken}` | `FieldTokenResponse` |
+| `POST /field/auth/pin` | `{currentPin, newPin}`, `Authorization: DPoP <access>` | `204` |
+| `POST /field/auth/logout` | `{refreshToken, scope: "session" or "device-all"}` | `204` |
+
+`FieldTokenResponse = {accessToken, tokenType: "DPoP", expiresIn, refreshToken, refreshExpiresAt,
+idleExpiresAt, worker: {id, workerCode, name}, pinChangeRequired}`. `refreshExpiresAt` is the
+login's absolute deadline.
+
+**Enrol.** The code (10 characters, see the admin API) is consumed atomically with the device
+insert; a failure leaves it unused. `401 INVALID_ENROLMENT_CODE` (unknown, used or expired),
+`409 DEVICE_KEY_EXISTS` (the key is already enrolled), `422 ATTESTATION_REQUIRED` (the client's
+policy requires attestation, which P1 cannot verify), `403 CLIENT_INACTIVE`. `attestationChain` is
+stored raw; the level is recorded as reported-but-unverified `SOFTWARE`/`NONE`.
+
+**Login.** Checked in this order: device ACTIVE; device and client PIN-failure buckets
+(`429 TOO_MANY_ATTEMPTS` + `Retry-After`); worker exists (else a dummy PIN verify is spent and the
+failure counted, `401 INVALID_CREDENTIALS`); worker ACTIVE and has a PIN (else the same 401 after a
+dummy verify); hard lock (`423 WORKER_LOCKED`); soft lock (`429 WORKER_LOCKED_TEMPORARILY` +
+`Retry-After`); PIN verify. A wrong PIN is `401 INVALID_CREDENTIALS`. Only after the PIN verifies:
+the worker holds a grant for the application, the application is active, the device is enrolled for
+it, a PERSONAL device assigned to a worker is that worker's, and the client is ACTIVE; any failure is
+`403 NO_APP_ACCESS` (the reason is in the sign-in log, never in the response). A success resets the
+failure counter, stamps `lastLoginAt` and rehashes a `LEGACY` PIN hash to `PEPPER_V1`. Locks: the
+`soft_lock_threshold`-th consecutive failure soft-locks for `soft_lock_secs`, each further failure
+re-arms it, the `hard_lock_threshold`-th hard-locks until an administrator unlocks or resets. Device
+bucket `FC_FIELD_DEVICE_FAILURES_PER_HOUR` (20), client bucket `FC_FIELD_CLIENT_FAILURES_PER_HOUR`
+(300), each emitting one `field-device.throttled` event per window.
+
+**Sessions.** A login is a *family*; each refresh token is one row. The refresh token is 32 random
+bytes, base64url, prefixed `fwr_`; only its SHA-256 is stored. `POST /field/auth/refresh` rotates:
+the presented token is revoked `ROTATED` and a child with the same family, `amr` and absolute
+deadline is issued with `idle = now + idle`. Idle limit: `personal_idle_secs` (PERSONAL) or
+`shared_idle_secs` (SHARED); absolute limit: `shift_max_secs` (PERSONAL) or 43200 (SHARED). Past
+either: `401 SESSION_EXPIRED`. The device, worker and grant are re-checked. **Reuse:** a `ROTATED`
+token presented again with a valid proof from the session's own device key within **60 s** of its
+rotation is a lost-response retry: the family's live child is rotated and a fresh one issued.
+Any other presentation of a rotated token (later, or from another device) revokes the whole family
+(`REUSE`), emits `field-session.revoked` and answers `401 INVALID_GRANT`; an unknown, logged-out
+or otherwise revoked token is `401 INVALID_GRANT`. `POST /field/auth/logout`: `session` ends the
+token's family, `device-all` every session on the proof's device (a SHARED hand-over); idempotent,
+a token of another device is a quiet `204`.
+
+**PIN change.** `POST /field/auth/pin` takes `Authorization: DPoP <access token>` plus the proof
+(`ath`); a `pcr` token is accepted here and nowhere else. The current PIN goes through the same
+lockout accounting as a login. The new PIN must pass the client's policy (`422 PIN_POLICY`
+`{violations[]}`) and differ from the current one (`SAME_AS_CURRENT`). The worker's other families
+are revoked (`PIN_CHANGED`); the current one is kept, and the client refreshes to drop `pcr`.
+
+**Access token.** A JWT signed with the platform key (same `kid` and JWKS as every platform token),
+JOSE header `typ: fc-field+jwt`, lifetime `FC_FIELD_ACCESS_TOKEN_TTL_SECS` (default 600). Claims:
+`iss`, `sub` (the worker, `fwu_...`), `aud` (the application CODE, a bare string), `exp`, `iat`,
+`nbf`, `jti`, `token_use: "field"`, `client_id`, `client_identifier`, `worker_code`, `name`,
+`device_id`, `device_mode`, `sid` (the family id), `amr` (`["pin"]`), `auth_time`, `cnf: {jkt}`
+and `pcr: true` only while a PIN change is required. No roles, scope, applications or clients
+claims. The platform API middleware refuses `token_use: "field"` (and `pkg/fcsdk/auth`
+`TokenValidator` refuses anything but `api`), so a field token is never an API credential. The
+application verifies it with the SDK's `FieldTokenVerifier` (token: `typ`, signature, `iss`, `exp`,
+`token_use`, `aud`; refuses `pcr`; proof: `cnf.jkt`, `htm`, `htu`, `ath`, `iat` within +-5 min) or
+asks `POST /api/field-tokens/introspect` (`active:false` for a `pcr` token). Nonce checking at the
+application is out of scope for the SDK (use the framework's stateless nonce for replay protection).
+Shared test vectors: `api/field-fixtures/` (`go run ./tools/field-fixtures`).
+
+**Errors in one place.** `use_dpop_nonce` 401, `invalid_dpop_proof` 401, `invalid_token` 401
+(bearer routes), `UNKNOWN_DEVICE` 401, `DEVICE_SUSPENDED` 403, `DEVICE_REVOKED` 403,
+`INVALID_CREDENTIALS` 401, `WORKER_LOCKED` 423, `WORKER_LOCKED_TEMPORARILY` 429,
+`TOO_MANY_ATTEMPTS` 429, `NO_APP_ACCESS` 403, `INVALID_GRANT` 401, `SESSION_EXPIRED` 401,
+`PIN_POLICY` 422, `INVALID_ENROLMENT_CODE` 401, `DEVICE_KEY_EXISTS` 409, `ATTESTATION_REQUIRED`
+422, `CLIENT_INACTIVE` 403, `INVALID_REQUEST` / `INVALID_PUBLIC_KEY` 400,
+`FIELD_IDENTITY_UNCONFIGURED` 503.
+
+Sign-in attempts (success and failure, with device, method and the failure reason) are recorded in
+`field_login_attempts`, not `iam_login_attempts` (a field worker is not a principal).
 
 ## Non-contractual surface
 

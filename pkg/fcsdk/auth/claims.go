@@ -71,6 +71,10 @@ type AccessTokenClaims struct {
 	// "operant" from "operant:admin". Always present on tokens issued
 	// by FC but absent on older tokens.
 	Applications []string `json:"applications,omitempty"`
+	// TokenUse is the token class: "api" for a credential an application
+	// backend may accept, absent on older tokens. [TokenValidator.Validate]
+	// refuses every other value ("identity", "field", ...).
+	TokenUse string `json:"token_use,omitempty"`
 }
 
 // HasClientAccess reports whether the principal can access the given

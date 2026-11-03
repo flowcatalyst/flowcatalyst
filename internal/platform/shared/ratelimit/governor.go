@@ -73,6 +73,17 @@ func OIDCBridgeGovernorFromEnv() GovernorConfig {
 	}
 }
 
+// FieldGovernorFromEnv reads FC_FIELD_RATE_PER_MIN (600) and FC_FIELD_BURST
+// (200) — the per-IP quota on the /field/* device routes. Looser than the
+// browser flows: a yard or depot shares one NAT address across a whole shift
+// starting at once. The PIN-failure buckets are the brute-force control.
+func FieldGovernorFromEnv() GovernorConfig {
+	return GovernorConfig{
+		PerMinute: envutil.Uint32("FC_FIELD_RATE_PER_MIN", 600),
+		Burst:     envutil.Uint32("FC_FIELD_BURST", 200),
+	}
+}
+
 // NewGovernor builds a Governor for the supplied quota. PerMinute or Burst
 // below 1 are clamped to 1.
 func NewGovernor(cfg GovernorConfig) *Governor {

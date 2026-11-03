@@ -13,6 +13,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
 	dispatchsettled "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/settled"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldauth"
 	passwordresetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/publicapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
@@ -85,6 +86,18 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 		// lockstep.
 		Sessions:     svcs.authProvider,
 		CookieSecure: !cfg.AuthAllowTestHeaders,
+	})
+
+	// Field-worker device protocol (/field/*): authenticated by the DPoP proof
+	// and PIN, never by the platform bearer middleware, behind a per-IP governor.
+	fieldGov := ratelimit.NewGovernor(ratelimit.FieldGovernorFromEnv())
+	r.Group(func(g chi.Router) {
+		g.Use(platformmw.CorrelationID)
+		g.Use(ratelimit.GovernorMiddleware(fieldGov, "Too many requests"))
+		(&fieldauth.State{
+			Ops: newFieldOps(repos), UoW: uow, Auth: svcs.authSvc, BaseURL: cfg.JWTIssuer,
+			RateLimit: svcs.rlStore, Limits: svcs.rlPolicies,
+		}).RegisterRoutes(g)
 	})
 
 	// The OAuth/OIDC provider surface is mounted OUTSIDE the bearer-token

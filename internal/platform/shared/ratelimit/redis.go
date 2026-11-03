@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -72,6 +73,20 @@ func (s *RedisStore) CheckAndRecord(ctx context.Context, bucket Bucket, key stri
 		return Decision{Allowed: false, RetryAfterSecs: clampU32(retryAfter)}, nil
 	}
 	return Decision{Allowed: true}, nil
+}
+
+// Count implements [Counter] over the current fixed window.
+func (s *RedisStore) Count(ctx context.Context, bucket Bucket, key string, window time.Duration) (uint32, uint32, error) {
+	windowSecs := max(int64(window.Seconds()), 1)
+	nowSecs := time.Now().Unix()
+	n, err := s.client.Get(ctx, redisKey(bucket, key, nowSecs/windowSecs)).Int64()
+	if errors.Is(err, redis.Nil) {
+		return 0, 0, nil
+	}
+	if err != nil {
+		return 0, 0, fmt.Errorf("redis get: %w", err)
+	}
+	return clampU32(n), clampU32(max(windowSecs-nowSecs%windowSecs, 1)), nil
 }
 
 // Prune is a no-op for Redis (TTLs auto-expire fixed-window keys).

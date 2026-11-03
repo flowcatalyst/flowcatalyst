@@ -100,6 +100,7 @@ Resolution precedence: full URL
 |---|---|---|---|---|
 | `FLOWCATALYST_APP_KEY` | — | — | `internal/platform/shared/encryption`, `internal/server/subsystems.go`, `internal/server/wire_routes.go`, `cmd/fcdev`, `cmd/decrypt-check` | Field-encryption key (base64, AES-GCM). Also the source of the field-worker PIN pepper (HKDF info `fc-field-pin`, `internal/platform/fieldidentity/pin`): unset → every PIN set/verify fails closed (`503 FIELD_IDENTITY_UNCONFIGURED`). Unset → encryption disabled: confidential OAuth client-secret minting fails and TOTP enrollment degrades; the dispatch scheduler **refuses to start** (its HMAC dispatch-auth secret is HKDF-derived from this key). fcdev generates + persists one. |
 | `FLOWCATALYST_APP_KEY_PREVIOUS` | — | — | `internal/platform/shared/encryption` | Previous encryption key; decryption falls back to it during key rotation (new writes always use the current key). |
+| `FC_FIELD_ACCESS_TOKEN_TTL_SECS` | `600` | — | `internal/platform/auth/authservice` | Lifetime of a field-worker access token (`typ: fc-field+jwt`). Short by design: the refresh token, not the access token, carries the session, and introspection answers revocation online. |
 | `FLOWCATALYST_SIGNING_SECRET` | — | — | `pkg/fcsdk/webhook` | Webhook HMAC-SHA256 signing secret for consumer apps using the Go SDK's `ValidatorFromEnv` (required for SDK webhook validation — errors when unset). |
 
 ## 5. Rate limiting
@@ -123,6 +124,10 @@ as defence-in-depth.
 | `FC_OAUTH_TOKEN_CLIENT_BURST` | `30` | — | `internal/platform/shared/ratelimit` | Per-instance burst allowance per client_id at `/oauth/token`. |
 | `FC_OIDC_RATE_PER_MIN` | `60` | — | `internal/platform/shared/ratelimit` | Per-instance sustained rate per IP on the `/auth/oidc/*` bridge routes. |
 | `FC_OIDC_BURST` | `30` | — | `internal/platform/shared/ratelimit` | Per-instance burst allowance on the OIDC bridge routes. |
+| `FC_FIELD_RATE_PER_MIN` | `600` | — | `internal/platform/shared/ratelimit` | Per-instance in-memory sustained rate per source IP on the field-worker device routes (`/field/*`). Looser than the browser flows: a depot shares one NAT address across a whole shift starting at once. |
+| `FC_FIELD_BURST` | `200` | — | `internal/platform/shared/ratelimit` | Per-instance burst allowance per IP on `/field/*`. |
+| `FC_FIELD_DEVICE_FAILURES_PER_HOUR` | `20` | — | `internal/platform/shared/ratelimit` | Field-worker PIN failures per enrolled device per rolling hour (counted across ALL worker codes, so it catches spraying). At the limit, logins from that device answer `429` + `Retry-After` and one `field-device.throttled` event is emitted per hour. Disabled with `FC_RATE_LIMIT_DISABLE`. |
+| `FC_FIELD_CLIENT_FAILURES_PER_HOUR` | `300` | — | `internal/platform/shared/ratelimit` | Field-worker PIN failures per client per rolling hour; at the limit every device of the client gets `429` and one `field-device.throttled` (scope `CLIENT`) event is emitted per hour. |
 | `FC_RATE_LIMIT_DISABLE` | unset | — | `internal/platform/shared/ratelimit` | `1` replaces the distributed store with a no-op (everything allowed). |
 | `FC_REDIS_URL` | — | — | `internal/platform/shared/ratelimit` | Redis backend for the distributed rate-limit store; set + reachable → Redis, else falls back to the Postgres store. |
 

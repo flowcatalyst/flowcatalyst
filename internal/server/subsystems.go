@@ -28,6 +28,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalauth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
@@ -603,6 +604,7 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 	ceremonyRepo := webauthn.NewCeremonyRepository(pool)
 	portalFlowRepo := portalauth.NewFlowRepo(pool)
 	loginAttemptRepo := loginattempt.NewRepository(pool)
+	fieldSessions := fieldidentity.NewRepos(pool).Sessions
 
 	// The rate-limit reaper targets the Postgres events table specifically,
 	// rather than whatever store ratelimit.Build selected: Redis expires its
@@ -648,6 +650,13 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 				slog.Warn("portal login flow purge failed", "err", err)
 			} else if n > 0 {
 				slog.Debug("portal login flow purge", "removed", n)
+			}
+			// Field-worker plane: expired nonces, used/expired enrolment codes
+			// older than a day, sessions expired or revoked over 30 days ago.
+			if nonces, codes, sessions, err := fieldSessions.Purge(ctx); err != nil {
+				slog.Warn("field identity purge failed", "err", err)
+			} else if nonces+codes+sessions > 0 {
+				slog.Debug("field identity purge", "nonces", nonces, "enrolmentCodes", codes, "sessions", sessions)
 			}
 			if n, err := rlEvents.Prune(ctx, rlRetention); err != nil {
 				slog.Warn("rate-limit event prune failed", "err", err)
