@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/mcp"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/outbox"
 	outboxmongo "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/mongo"
@@ -605,6 +606,8 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 	portalFlowRepo := portalauth.NewFlowRepo(pool)
 	loginAttemptRepo := loginattempt.NewRepository(pool)
 	fieldSessions := fieldidentity.NewRepos(pool).Sessions
+	// Sign-in history retention for field workers; <= 0 keeps it forever.
+	fieldLoginRetentionDays := envutil.Int("FC_FIELD_LOGIN_ATTEMPT_RETENTION_DAYS", 90)
 
 	// The rate-limit reaper targets the Postgres events table specifically,
 	// rather than whatever store ratelimit.Build selected: Redis expires its
@@ -657,6 +660,11 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 				slog.Warn("field identity purge failed", "err", err)
 			} else if nonces+codes+sessions > 0 {
 				slog.Debug("field identity purge", "nonces", nonces, "enrolmentCodes", codes, "sessions", sessions)
+			}
+			if n, err := fieldSessions.PurgeLoginAttempts(ctx, fieldLoginRetentionDays); err != nil {
+				slog.Warn("field login attempt purge failed", "err", err)
+			} else if n > 0 {
+				slog.Debug("field login attempt purge", "removed", n, "retentionDays", fieldLoginRetentionDays)
 			}
 			if n, err := rlEvents.Prune(ctx, rlRetention); err != nil {
 				slog.Warn("rate-limit event prune failed", "err", err)

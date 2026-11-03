@@ -27,11 +27,11 @@ references). Ids: TSID prefixes `fwu` (worker), `fwd` (device), `fwe` (enrolment
 | `field_sessions` | One row per issued refresh token. `family_id` (= the login = the access token's `sid`), `refresh_hash` SHA-256 hex (unique), `amr TEXT[]`, `auth_time`, `issued_at`, `idle_expires_at`, `absolute_expires_at`, `rotated_at`, `revoked_at`, `revoked_reason` (ROTATED, REUSE, LOGOUT, DEVICE_REVOKED, WORKER_SUSPENDED, ADMIN, PIN_CHANGED), `pin_change_required`. Partial indexes on `identity_id` and `device_id` WHERE `revoked_at IS NULL`; index on `family_id` |
 | `field_policies` | One optional row per client; absent means defaults |
 | `field_nonces` | `nonce_hash BYTEA` PK (SHA-256), `expires_at`; consumed with `DELETE ... RETURNING` |
-| `field_login_attempts` | Sign-in log: client, identity (NULL if the code is unknown), worker_code, device, application, `auth_method` (PIN or PIN_CHANGE), `outcome`, `failure_reason`, `ip_address`. Dedicated table, not `iam_login_attempts` (that one keys on a principal and an email-shaped identifier and feeds the employee throttle). **Not purged**: retention is an open item |
+| `field_login_attempts` | Sign-in log: client, identity (NULL if the code is unknown), worker_code, device, application, `auth_method` (PIN or PIN_CHANGE), `outcome`, `failure_reason`, `ip_address`. Dedicated table, not `iam_login_attempts` (that one keys on a principal and an email-shaped identifier and feeds the employee throttle). Purged after 90 days by default (`FC_FIELD_LOGIN_ATTEMPT_RETENTION_DAYS`, `0` keeps forever), batched 5000 rows per DELETE |
 
 Purger (every minute with the other auth purges): delete expired nonces; enrolment codes used or
 expired more than 1 day ago; sessions whose `absolute_expires_at` or `revoked_at` is more than 30
-days old.
+days old; sign-in attempts older than the retention (default 90 days, batched `ctid` deletes of 5000, `attempted_at` index already exists) are deleted.
 
 ## 2. Admin API (huma, `/api/*`)
 
@@ -193,6 +193,6 @@ wire contract.
 ## 9. Not done / open
 
 Badges, unlock keys, offline receipts, legacy import endpoint, attestation verification, console
-pages, the other SDKs and the mobile libraries (all later phases per the spec). `field_login_attempts`
-retention. No per-IP failure bucket on enrolment (the 10-character code and the 10 minute TTL plus
+pages, the other SDKs and the mobile libraries (all later phases per the spec). (`field_login_attempts`
+retention: DONE.) No per-IP failure bucket on enrolment (the 10-character code and the 10 minute TTL plus
 the per-IP governor are the defence).

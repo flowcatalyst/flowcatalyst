@@ -234,6 +234,39 @@ func (r *SessionRepo) Purge(ctx context.Context) (nonces, codes, sessions int64,
 	return nonces, codes, tag.RowsAffected(), nil
 }
 
+// loginAttemptPurgeBatch bounds each DELETE so a purge tick never holds a long
+// lock or produces a huge WAL burst on a large sign-in log.
+const loginAttemptPurgeBatch = 5000
+
+// PurgeLoginAttempts deletes sign-in attempts older than retentionDays, in
+// batches of loginAttemptPurgeBatch rows (the attempted_at index makes the
+// scan cheap). retentionDays <= 0 keeps everything. It returns the rows
+// removed; a cancelled context stops between batches.
+func (r *SessionRepo) PurgeLoginAttempts(ctx context.Context, retentionDays int) (int64, error) {
+	if retentionDays <= 0 {
+		return 0, nil
+	}
+	var total int64
+	for {
+		tag, err := r.pool.Exec(ctx,
+			`DELETE FROM field_login_attempts WHERE ctid IN (
+			   SELECT ctid FROM field_login_attempts
+			   WHERE attempted_at < NOW() - make_interval(days => $1)
+			   LIMIT $2)`, retentionDays, loginAttemptPurgeBatch)
+		if err != nil {
+			return total, err
+		}
+		n := tag.RowsAffected()
+		total += n
+		if n < loginAttemptPurgeBatch {
+			return total, nil
+		}
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+	}
+}
+
 // ── sign-in attempts ─────────────────────────────────────────────────────
 
 // LoginAttempt is one field sign-in attempt, success or failure.

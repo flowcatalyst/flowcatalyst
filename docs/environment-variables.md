@@ -124,6 +124,7 @@ as defence-in-depth.
 | `FC_OAUTH_TOKEN_CLIENT_BURST` | `30` | — | `internal/platform/shared/ratelimit` | Per-instance burst allowance per client_id at `/oauth/token`. |
 | `FC_OIDC_RATE_PER_MIN` | `60` | — | `internal/platform/shared/ratelimit` | Per-instance sustained rate per IP on the `/auth/oidc/*` bridge routes. |
 | `FC_OIDC_BURST` | `30` | — | `internal/platform/shared/ratelimit` | Per-instance burst allowance on the OIDC bridge routes. |
+| `FC_FIELD_LOGIN_ATTEMPT_RETENTION_DAYS` | `90` | — | `internal/server` (purger) | Retention of the field-worker sign-in history (`field_login_attempts`). Older rows are deleted in batches of 5000 by the minute purger. `0` or negative keeps the history forever. |
 | `FC_FIELD_RATE_PER_MIN` | `600` | — | `internal/platform/shared/ratelimit` | Per-instance in-memory sustained rate per source IP on the field-worker device routes (`/field/*`). Looser than the browser flows: a depot shares one NAT address across a whole shift starting at once. |
 | `FC_FIELD_BURST` | `200` | — | `internal/platform/shared/ratelimit` | Per-instance burst allowance per IP on `/field/*`. |
 | `FC_FIELD_DEVICE_FAILURES_PER_HOUR` | `20` | — | `internal/platform/shared/ratelimit` | Field-worker PIN failures per enrolled device per rolling hour (counted across ALL worker codes, so it catches spraying). At the limit, logins from that device answer `429` + `Retry-After` and one `field-device.throttled` event is emitted per hour. Disabled with `FC_RATE_LIMIT_DISABLE`. |

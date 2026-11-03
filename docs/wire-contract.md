@@ -953,7 +953,9 @@ Shared test vectors: `api/field-fixtures/` (`go run ./tools/field-fixtures`; acc
 `FIELD_IDENTITY_UNCONFIGURED` 503.
 
 Sign-in attempts (success and failure, with device, method and the failure reason) are recorded in
-`field_login_attempts`, not `iam_login_attempts` (a field worker is not a principal).
+`field_login_attempts`, not `iam_login_attempts` (a field worker is not a principal). The history is
+retained for 90 days by default (`FC_FIELD_LOGIN_ATTEMPT_RETENTION_DAYS`; `0` keeps it forever) and purged in
+batches, so `GET /api/field-workers/{id}/sign-ins` only reaches back that far.
 
 ## Non-contractual surface
 
