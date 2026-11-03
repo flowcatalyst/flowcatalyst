@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -202,7 +203,7 @@ func TestUIRouteGroup(t *testing.T) {
 			t.Errorf("cross-site post: %d", refused.Code)
 		}
 	})
-	t.Run("text assets are served compressed (compress.Handler), a variant per ETag", func(t *testing.T) {
+	t.Run("text assets are served compressed (assets.WithCompression), a variant per ETag", func(t *testing.T) {
 		url := uiassets.URL("platform.css")
 		plain := do(t, h, req{method: http.MethodGet, target: url})
 		br := do(t, h, req{method: http.MethodGet, target: url, headers: map[string]string{"Accept-Encoding": "gzip, br"}})
@@ -213,7 +214,8 @@ func TestUIRouteGroup(t *testing.T) {
 		for coding, rec := range map[string]*httptest.ResponseRecorder{compress.Brotli: br, compress.Gzip: gz} {
 			hdr := rec.Header()
 			if hdr.Get("Content-Encoding") != coding || hdr.Get("Vary") != "Accept-Encoding" || hdr.Get("ETag") == plain.Header().Get("ETag") ||
-				!strings.Contains(hdr.Get("Cache-Control"), "immutable") || rec.Body.Len() >= plain.Body.Len()/3 {
+				!strings.Contains(hdr.Get("Cache-Control"), "immutable") || rec.Body.Len() >= plain.Body.Len()/3 ||
+				hdr.Get("Content-Length") != strconv.Itoa(rec.Body.Len()) {
 				t.Errorf("%s: %v (%d bytes, plain %d)", coding, hdr, rec.Body.Len(), plain.Body.Len())
 			}
 		}

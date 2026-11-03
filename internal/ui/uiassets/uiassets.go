@@ -11,6 +11,10 @@
 //   - fc-webauthn.js (+ LICENSE-webauthn.md): the passkey forms' glue, built by
 //     tools/vendor-webauthn.
 //
+// CSS, JavaScript and SVG files are served Brotli- or gzip-compressed, each
+// compressed once per coding by its first request and kept
+// (assets.WithCompression).
+//
 // The instance is built once at package initialisation (a missing file is a
 // build error caught by the first test run, so it panics); callers use the
 // package-level URL, Handler, HasIcon and SpriteURL, which keeps the pages'
@@ -50,7 +54,8 @@ func mustLoad() *assets.Assets {
 		panic(err)
 	}
 	a, err := assets.Load(assets.WithPrefix(Prefix),
-		assets.WithFiles(sub, Stylesheet, "fc-webauthn.js", "LICENSE-webauthn.md"))
+		assets.WithFiles(sub, Stylesheet, "fc-webauthn.js", "LICENSE-webauthn.md"),
+		assets.WithCompression())
 	if err != nil {
 		panic("uiassets: " + err.Error())
 	}

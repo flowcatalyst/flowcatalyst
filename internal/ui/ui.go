@@ -208,9 +208,9 @@ func Mount(r chi.Router, cfg Config) error {
 		return err
 	}
 	r.Route("/ui", func(r chi.Router) {
-		// Static, public, long-cached: no session needed (the future login
-		// page uses them too).
-		r.Handle("/assets/*", compress.Handler(uiassets.Handler()))
+		// Static, public, long-cached: no session needed (the sign-in pages
+		// use them too). The handler compresses each file once and keeps it.
+		r.Handle("/assets/*", uiassets.Handler())
 
 		// The sign-in pages are what a caller without a session reaches: no
 		// session guard, but the same compression, headers and CSRF check.
