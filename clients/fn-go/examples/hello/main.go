@@ -22,9 +22,12 @@ func init() {
 	fn.Platform("GET /hello/{name}", hello)
 	fn.Webhook("POST /events/greeting", onGreetingEvent)
 	fn.Open("POST /dispatch", onDispatch)
+	fn.Platform("POST /call-other", onCallOther)
 
 	fn.Emits("hello:greeting:greeting:sent")
 	fn.Dispatches("hello.logger", "/deliver", fn.DispatchPool("hello-pool"), fn.DispatchConnection("hello-conn"))
+	fn.UsesPlatformToken()
+	fn.HTTPAllow("other-app.example.com")
 }
 
 func main() {}
@@ -111,4 +114,29 @@ func onDispatch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(w).Encode(map[string]string{"jobId": jobID})
+}
+
+// onCallOther fetches a FlowCatalyst access token (the application's service
+// account, cached by the host) and would send it as a bearer to another
+// first-party application. The token is never logged or returned.
+func onCallOther(w http.ResponseWriter, r *http.Request) {
+	token, err := fn.PlatformToken(r.Context())
+	if err != nil {
+		if errors.Is(err, fn.ErrRetryable) {
+			fn.Retry(w, 5*time.Second)
+			return
+		}
+		fn.Log(r.Context()).Error("platform token refused", "error", err)
+		fn.Reject(w, "platform token refused")
+		return
+	}
+	req, _ := http.NewRequestWithContext(r.Context(), http.MethodGet, "https://other-app.example.com/api/ping", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := fn.HTTPClient().Do(req)
+	if err != nil {
+		fn.Retry(w, 5*time.Second)
+		return
+	}
+	defer resp.Body.Close()
+	w.WriteHeader(http.StatusOK)
 }

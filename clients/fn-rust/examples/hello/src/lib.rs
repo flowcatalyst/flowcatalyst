@@ -12,9 +12,12 @@ flowcatalyst_fn::export!(|app: &mut App| {
         .platform("GET /hello/{name}", hello)
         .webhook("POST /events/greeting", on_greeting_event)
         .open("POST /dispatch", on_dispatch)
+        .platform("POST /call-other", on_call_other)
         .config("GREETING")
         .emits("hello:greeting:greeting:sent")
-        .dispatches_with("hello.logger", "/deliver", DispatchOpts::new("hello-conn").pool("hello-pool"));
+        .dispatches_with("hello.logger", "/deliver", DispatchOpts::new("hello-conn").pool("hello-pool"))
+        .platform_token()
+        .http_allow("other-app.example.com");
 });
 
 fn health(_req: &Request, _ctx: &Context) -> Result<Response, Error> {
@@ -94,6 +97,22 @@ fn on_dispatch(_req: &Request, ctx: &Context) -> Result<Response, Error> {
             Ok(Response::new(422)
                 .with_header("FlowCatalyst-Outcome", "reject")
                 .with_body(b"dispatch refused".to_vec()))
+        }
+    }
+}
+
+/// Fetches a FlowCatalyst access token (the application's service account,
+/// cached by the host) to send as a bearer to another first-party application.
+/// The token is never logged or returned.
+fn on_call_other(_req: &Request, ctx: &Context) -> Result<Response, Error> {
+    match ctx.platform_token() {
+        Ok(_token) => Ok(Response::new(200)),
+        Err(e) if e.is_retryable() => Ok(Response::new(429).with_header("Retry-After", "5")),
+        Err(e) => {
+            ctx.log_error(&format!("platform token refused: {e}"));
+            Ok(Response::new(422)
+                .with_header("FlowCatalyst-Outcome", "reject")
+                .with_body(b"platform token refused".to_vec()))
         }
     }
 }

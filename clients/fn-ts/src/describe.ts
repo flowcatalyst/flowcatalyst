@@ -15,6 +15,7 @@ export interface DescribeDoc {
   emits?: string[];
   dispatches?: { target: string; path: string; pool?: string; connection: string }[];
   traceContexts?: { name: string; description?: string }[];
+  platformToken?: true;
 }
 
 export function buildDescribeDoc(): DescribeDoc {
@@ -64,6 +65,7 @@ export function buildDescribeDoc(): DescribeDoc {
       return dj;
     });
   if (registry.traceContexts.length > 0) doc.traceContexts = registry.traceContexts.map((c) => ({ ...c }));
+  if (registry.platformToken) doc.platformToken = true;
   return doc;
 }
 

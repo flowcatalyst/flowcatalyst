@@ -14,3 +14,4 @@ export const OpDispatch = 11;
 export const OpTrace = 12;
 export const OpTracing = 13;
 export const OpTraceReference = 14;
+export const OpPlatformToken = 15;

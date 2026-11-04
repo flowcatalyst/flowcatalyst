@@ -47,17 +47,18 @@ type schedDef struct {
 type registry struct {
 	mu sync.Mutex
 
-	mux        *http.ServeMux
-	endpoints  []endpointDef
-	subs       []subDef
-	scheds     []schedDef
-	config     []string
-	secret     []string
-	db         []string
-	httpAllow  []string
-	emits      []string
-	dispatches []dispatchJSON
-	traceCtxs  []TraceContext
+	mux           *http.ServeMux
+	endpoints     []endpointDef
+	subs          []subDef
+	scheds        []schedDef
+	config        []string
+	secret        []string
+	db            []string
+	httpAllow     []string
+	emits         []string
+	dispatches    []dispatchJSON
+	platformToken bool
+	traceCtxs     []TraceContext
 }
 
 func newRegistry() *registry {

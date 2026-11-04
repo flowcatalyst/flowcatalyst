@@ -569,6 +569,65 @@ impl Context {
         Ok(result.job_id)
     }
 
+    // --- op 15: platform.token ---------------------------------------------
+
+    /// Returns a FlowCatalyst access token to send as a bearer to another
+    /// first-party application that accepts FlowCatalyst tokens (host op 15,
+    /// platform.token). It is the service account linked to the function's
+    /// application; the function holds no client id or secret. Declare it with
+    /// `App::platform_token`. The host caches the token and renews it shortly
+    /// before it expires, so call this per request rather than keeping the
+    /// token. Never log it.
+    ///
+    /// `is_retryable()` is true only for UNAVAILABLE (platform trouble).
+    /// NOT_DECLARED, NOT_ALLOWED (the message carries the platform's code: not
+    /// declared there, no linked service account, account inactive) and
+    /// DEADLINE are final. A runner that predates the capability answers
+    /// UNKNOWN_OP, returned with a message saying it does not support
+    /// platform tokens.
+    pub fn platform_token(&self) -> Result<String, CapabilityError> {
+        self.platform_token_call(false)
+    }
+
+    /// Like `platform_token`, but skips the host's cache and fetches a new
+    /// token. Use it when the target answered 401 with the token you were given
+    /// (for example the account's roles changed).
+    pub fn refresh_platform_token(&self) -> Result<String, CapabilityError> {
+        self.platform_token_call(true)
+    }
+
+    fn platform_token_call(&self, refresh: bool) -> Result<String, CapabilityError> {
+        #[derive(serde::Serialize)]
+        struct TokenMeta {
+            #[serde(skip_serializing_if = "std::ops::Not::not")]
+            refresh: bool,
+        }
+        #[derive(serde::Deserialize, Default)]
+        struct TokenResult {
+            #[serde(default, rename = "accessToken")]
+            access_token: String,
+        }
+        let mb = serde_json::to_vec(&TokenMeta { refresh }).map_err(|e| CapabilityError::Transport(e.to_string()))?;
+        let (rm, _rb) = match host_call(op::PLATFORM_TOKEN, &mb, &[]) {
+            Err(HostOutcome::Host(e)) if e.code == crate::host::error_code::UNKNOWN_OP => {
+                return Err(CapabilityError::Host(HostError {
+                    code: e.code,
+                    message: "this runner does not support platform tokens (it predates host op 15, platform.token); upgrade the function runner".to_string(),
+                }));
+            }
+            other => other?,
+        };
+        let result: TokenResult = if rm.is_empty() {
+            TokenResult::default()
+        } else {
+            serde_json::from_slice(&rm).map_err(|e| CapabilityError::Transport(e.to_string()))?
+        };
+        if result.access_token.is_empty() {
+            return Err(CapabilityError::Transport("platform.token: host returned no access token".to_string()));
+        }
+        Ok(result.access_token)
+    }
+
     // --- ops 6-10: db -----------------------------------------------------
 
     pub fn db_query(
@@ -833,6 +892,63 @@ mod tests {
             assert_eq!(err.code(), Some(code));
             assert_eq!(err.is_retryable(), retryable, "{code}");
         }
+    }
+
+    #[test]
+    fn platform_token_returns_the_token_and_sends_empty_meta() {
+        set_fake_host(|o, meta, body| {
+            assert_eq!(o, op::PLATFORM_TOKEN);
+            assert_eq!(meta, b"{}");
+            assert!(body.is_empty());
+            Ok((br#"{"accessToken":"fake-token-1","expiresAt":1793736000000}"#.to_vec(), Vec::new()))
+        });
+        assert_eq!(ctx().platform_token().unwrap(), "fake-token-1");
+    }
+
+    #[test]
+    fn refresh_platform_token_sends_the_refresh_flag() {
+        set_fake_host(|o, meta, _body| {
+            assert_eq!(o, op::PLATFORM_TOKEN);
+            let m: serde_json::Value = serde_json::from_slice(meta).unwrap();
+            assert_eq!(m["refresh"], true);
+            Ok((br#"{"accessToken":"fake-token-2","expiresAt":1}"#.to_vec(), Vec::new()))
+        });
+        assert_eq!(ctx().refresh_platform_token().unwrap(), "fake-token-2");
+    }
+
+    #[test]
+    fn platform_token_error_classes() {
+        for (code, retryable) in [
+            (crate::host::error_code::UNAVAILABLE, true),
+            (crate::host::error_code::NOT_DECLARED, false),
+            (crate::host::error_code::NOT_ALLOWED, false),
+            (crate::host::error_code::DEADLINE, false),
+        ] {
+            set_fake_host(move |_o, _m, _b| {
+                Err(HostOutcome::Host(HostError {
+                    code: code.to_string(),
+                    message: "PLATFORM_TOKEN_NOT_DECLARED".to_string(),
+                }))
+            });
+            let err = ctx().platform_token().unwrap_err();
+            assert_eq!(err.code(), Some(code));
+            assert_eq!(err.is_retryable(), retryable, "{code}");
+            assert!(err.to_string().contains("PLATFORM_TOKEN_NOT_DECLARED"), "{err}");
+        }
+    }
+
+    #[test]
+    fn platform_token_unknown_op_is_a_clear_error() {
+        set_fake_host(|_o, _m, _b| {
+            Err(HostOutcome::Host(HostError {
+                code: crate::host::error_code::UNKNOWN_OP.to_string(),
+                message: "op 15".to_string(),
+            }))
+        });
+        let err = ctx().platform_token().unwrap_err();
+        assert_eq!(err.code(), Some("UNKNOWN_OP"));
+        assert!(err.to_string().contains("runner does not support platform tokens"), "{err}");
+        assert!(!err.is_retryable());
     }
 
     #[test]

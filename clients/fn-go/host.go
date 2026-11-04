@@ -20,6 +20,7 @@ const (
 	opTrace          opCode = 12
 	opTracing        opCode = 13
 	opTraceReference opCode = 14
+	opPlatformToken  opCode = 15
 )
 
 // Error codes shared across host ops (plan §5.3).
@@ -37,6 +38,7 @@ const (
 	ErrCodeDBUnavailable         = "DB_UNAVAILABLE"
 	ErrCodeDBError               = "DB_ERROR"
 	ErrCodeDBTxUnknown           = "DB_TX_UNKNOWN"
+	ErrCodeUnknownOp             = "UNKNOWN_OP"
 )
 
 // Error is returned when a host capability reports failure: its Code is one

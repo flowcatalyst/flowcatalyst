@@ -194,3 +194,14 @@ platform on every call, never overridable per call;
 returns its id. `metadata` is a `BTreeMap` and travels as the platform's `[{key, value}]` array.
 `CapabilityError::is_retryable()` is true only for platform trouble. Not idempotent. See
 `docs/function-runner-plan.md` §8.7.
+
+## Platform token
+
+`App::platform_token()` declares the capability (describe key `platformToken: true`);
+`Context::platform_token()` (host op 15) returns a FlowCatalyst access token to send as a bearer to
+another first-party application that accepts FlowCatalyst tokens. It is the service account linked to
+the function's application; the function holds no secret. The host caches the token and renews it
+before it expires, so call it per request; `Context::refresh_platform_token()` skips the cache (after a
+401 from the target). Never log it. `CapabilityError::is_retryable()` is true only for UNAVAILABLE;
+NOT_DECLARED, NOT_ALLOWED and DEADLINE are final. An older runner's UNKNOWN_OP comes back with a message
+saying the runner does not support platform tokens.

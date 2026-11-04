@@ -77,5 +77,24 @@ fn.open("POST /dispatch", async (req: FnRequest) => {
   }
 });
 
+// POST /call-other gets a FlowCatalyst access token (the application's service
+// account, cached by the host) to send as a bearer to another first-party
+// application. The token is never logged or returned.
+fn.platform("POST /call-other", async () => {
+  try {
+    const token = await fn.platformToken();
+    const res = await fn.fetch("https://other-app.example.com/api/ping", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    return fn.status(res.status);
+  } catch (err) {
+    if (isRetryable(err)) return fn.retry(5);
+    fn.log.error("platform token refused", { error: err instanceof FnError ? err.message : String(err) });
+    return fn.reject("platform token refused");
+  }
+});
+
 fn.emits("hello:greeting:greeting:sent");
+fn.httpAllow("other-app.example.com");
+fn.usesPlatformToken();
 fn.dispatches("hello.logger", "/deliver", { pool: "hello-pool", connection: "hello-conn" });

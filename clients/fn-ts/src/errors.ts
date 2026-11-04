@@ -13,6 +13,7 @@ export const ErrCodeDBTimeout = "DB_TIMEOUT";
 export const ErrCodeDBUnavailable = "DB_UNAVAILABLE";
 export const ErrCodeDBError = "DB_ERROR";
 export const ErrCodeDBTxUnknown = "DB_TX_UNKNOWN";
+export const ErrCodeUnknownOp = "UNKNOWN_OP";
 
 /**
  * FnError is thrown when a host capability reports failure: `code` is one of

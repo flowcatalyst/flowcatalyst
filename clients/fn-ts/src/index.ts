@@ -18,6 +18,7 @@ import { db, DBBinding, DBTx } from "./db";
 import { httpAllow, fetchFn, FnResponse } from "./http";
 import { emit, emits } from "./event";
 import { dispatch, dispatches } from "./job";
+import { platformToken, usesPlatformToken } from "./platformtoken";
 import { json, text, status, retry, reject } from "./respond";
 import { traceContexts } from "./trace";
 import { log, installConsole } from "./log";
@@ -31,6 +32,7 @@ export { ConfigValue, SecretValue, DBBinding, DBTx, FnResponse };
 export type { FnRequest, FnResponseLike, ResponseBody, Invocation } from "./types";
 export type { Caller } from "./caller";
 export type { EventInput } from "./event";
+export type { PlatformTokenOptions } from "./platformtoken";
 export type { DispatchInput, DispatchesOptions, MetadataEntry } from "./job";
 export type { FetchOptions } from "./http";
 export type { CORSConfig, EndpointOptions, SubOptions, SchedOptions, Auth } from "./registry";
@@ -72,10 +74,12 @@ export const fn = {
   emits,
   dispatches,
   traceContexts,
+  usesPlatformToken,
 
   // Capabilities.
   emit,
   dispatch,
+  platformToken,
   fetch: fetchFn,
   log,
 

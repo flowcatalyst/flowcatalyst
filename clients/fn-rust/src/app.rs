@@ -95,6 +95,7 @@ pub struct App {
     pub(crate) emits: Vec<String>,
     pub(crate) dispatches: Vec<(String, String, DispatchOpts)>,
     pub(crate) trace_contexts: Vec<(String, String)>,
+    pub(crate) platform_token: bool,
 }
 
 impl App {
@@ -186,6 +187,14 @@ impl App {
     /// it.
     pub fn dispatches_with(&mut self, target: &str, path: &str, opts: DispatchOpts) -> &mut Self {
         self.dispatches.push((target.to_string(), path.to_string(), opts));
+        self
+    }
+
+    /// Declares that this function calls `Context::platform_token` (describe
+    /// key `platformToken: true`). Without it the host refuses the call with
+    /// NOT_DECLARED.
+    pub fn platform_token(&mut self) -> &mut Self {
+        self.platform_token = true;
         self
     }
 
@@ -299,6 +308,9 @@ impl App {
                 .collect();
             doc.insert("dispatches".into(), serde_json::Value::Array(ds));
         }
+        if self.platform_token {
+            doc.insert("platformToken".into(), serde_json::Value::Bool(true));
+        }
         if !self.trace_contexts.is_empty() {
             let ts: Vec<_> = self
                 .trace_contexts
@@ -382,10 +394,18 @@ mod tests {
         app.open("GET /healthz", ok);
         let doc: serde_json::Value = serde_json::from_slice(&app.describe_json()).unwrap();
         let obj = doc.as_object().unwrap();
-        for key in ["subscriptions", "schedules", "config", "secrets", "db", "httpAllow", "emits", "dispatches", "traceContexts"] {
+        for key in ["subscriptions", "schedules", "config", "secrets", "db", "httpAllow", "emits", "dispatches", "traceContexts", "platformToken"] {
             assert!(!obj.contains_key(key), "expected {key} to be omitted when empty");
         }
         assert!(obj.contains_key("endpoints"));
+    }
+
+    #[test]
+    fn describe_declares_platform_token() {
+        let mut app = App::new();
+        app.open("GET /healthz", ok).platform_token();
+        let doc: serde_json::Value = serde_json::from_slice(&app.describe_json()).unwrap();
+        assert_eq!(doc["platformToken"], true);
     }
 
     #[test]

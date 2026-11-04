@@ -80,6 +80,14 @@ system does not have.
   names the dispatch pool; declared only, resolved by the platform on every call) and `Dispatch`
   (`fn.Job{Target, Path, Payload, Metadata, …}` → job id), wrapping host op 11; same error classes
   as `Emit`; not idempotent (see `docs/function-runner-plan.md` §8.7).
+- `platformtoken.go` — `UsesPlatformToken()` declares the capability (describe key `platformToken: true`) and
+  `PlatformToken(ctx, fn.Refresh())` returns a FlowCatalyst access token (host op 15) to send as a bearer to
+  another first-party application that accepts FlowCatalyst tokens. It is the service account linked to the
+  function's application; the function holds no secret. The host caches the token and renews it before it
+  expires, so call it per request; `fn.Refresh()` skips the cache (after a 401 from the target). Never log it.
+  Errors are `*Error` (`errors.Is(err, ErrRetryable)` for `UNAVAILABLE`; `NOT_DECLARED`, `NOT_ALLOWED`,
+  `DEADLINE` are final); an older runner's `UNKNOWN_OP` becomes an error saying the runner does not support
+  platform tokens.
 - `trace.go` — trace logs (host ops 12/13): `TraceContexts` declares named contexts (describe key
   `traceContexts`; a bad declaration panics at registration), `Trace(ctx, "orders", msg, data, fn.WithLevel(..),
   fn.WithReference(..))` records, `Tracing(ctx, "orders")` says whether the context is live for this invocation,

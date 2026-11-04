@@ -226,6 +226,15 @@ FN_EXAMPLE_WASM=$PWD/clients/fn-ts/examples/hello/dist/function.js \
   `metadata` may be an object (sorted by key) or `[{key, value}]` and always travels as the array.
   No URL, no credential; `isRetryable(err)` is true only for platform trouble. Not idempotent (no
   platform de-duplication). See `docs/function-runner-plan.md` §8.7.
+- **`platformToken()`** gives the function a FlowCatalyst access token (host op 15) to send as a bearer
+  to another first-party application that accepts FlowCatalyst tokens. `fn.usesPlatformToken()` at module
+  top level declares it (describe key `platformToken: true`); `await fn.platformToken()` returns the token
+  string, which is the service account linked to the function's application (no client id or secret in the
+  function). The host caches it and renews it before it expires, so call it per request;
+  `await fn.platformToken({ refresh: true })` skips the cache (after a 401 from the target). Never log it.
+  Errors are `FnError`; `isRetryable(err)` is true only for UNAVAILABLE, and NOT_DECLARED, NOT_ALLOWED and
+  DEADLINE are final. An older runner's UNKNOWN_OP is thrown as a `FnError` saying the runner does not
+  support platform tokens.
 - **`emit()`'s `data`** accepts `string | Uint8Array | object`; a plain
   object/array is JSON-encoded and defaults `contentType` to
   `application/json` unless the caller set one explicitly — the same

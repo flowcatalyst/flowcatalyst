@@ -21,6 +21,7 @@ pub mod error_code {
     pub const DB_UNAVAILABLE: &str = "DB_UNAVAILABLE";
     pub const DB_ERROR: &str = "DB_ERROR";
     pub const DB_TX_UNKNOWN: &str = "DB_TX_UNKNOWN";
+    pub const UNKNOWN_OP: &str = "UNKNOWN_OP";
 }
 
 /// A host capability failure (plan §5.3: the error frame is `{code,
@@ -54,6 +55,7 @@ pub(crate) mod op {
     pub const TRACE: i32 = 12;
     pub const TRACING: i32 = 13;
     pub const TRACE_REFERENCE: i32 = 14;
+    pub const PLATFORM_TOKEN: i32 = 15;
     pub const DB_QUERY: i32 = 6;
     pub const DB_EXEC: i32 = 7;
     pub const DB_BEGIN: i32 = 8;

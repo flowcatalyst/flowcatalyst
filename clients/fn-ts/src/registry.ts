@@ -66,6 +66,7 @@ export interface Registry {
   emits: string[];
   dispatches: { target: string; path: string; pool?: string; connection: string }[];
   traceContexts: { name: string; description?: string }[];
+  platformToken: boolean;
 }
 
 export const registry: Registry = {
@@ -79,6 +80,7 @@ export const registry: Registry = {
   emits: [],
   dispatches: [],
   traceContexts: [],
+  platformToken: false,
 };
 
 /** Clears every declaration. Test-only (see testing.ts): production code
@@ -95,6 +97,7 @@ export function resetRegistry(): void {
   registry.emits = [];
   registry.dispatches = [];
   registry.traceContexts = [];
+  registry.platformToken = false;
 }
 
 function registerEndpoint(auth: Auth, pattern: string, handler: Handler, options: EndpointOptions = {}): void {

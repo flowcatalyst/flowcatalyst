@@ -17,6 +17,7 @@ type describeDoc struct {
 	HTTPAllow     []string       `json:"httpAllow,omitempty"`
 	Emits         []string       `json:"emits,omitempty"`
 	Dispatches    []dispatchJSON `json:"dispatches,omitempty"`
+	PlatformToken bool           `json:"platformToken,omitempty"`
 	TraceContexts []TraceContext `json:"traceContexts,omitempty"`
 }
 
@@ -97,6 +98,7 @@ func buildDescribeDoc() describeDoc {
 	doc.HTTPAllow = append(doc.HTTPAllow, reg.httpAllow...)
 	doc.Emits = append(doc.Emits, reg.emits...)
 	doc.Dispatches = append(doc.Dispatches, reg.dispatches...)
+	doc.PlatformToken = reg.platformToken
 	doc.TraceContexts = append(doc.TraceContexts, reg.traceCtxs...)
 	return doc
 }
