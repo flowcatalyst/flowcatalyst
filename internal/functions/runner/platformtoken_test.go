@@ -114,15 +114,13 @@ func TestTokenCacheSharesOneFetchBetweenConcurrentCallers(t *testing.T) {
 	var wg sync.WaitGroup
 	tokens := make([]string, n)
 	for i := range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			e, aerr := c.get(t.Context(), "fnc_1", 1, false)
 			if aerr != nil {
 				t.Errorf("caller %d: %v", i, aerr)
 			}
 			tokens[i] = e.token
-		}()
+		})
 	}
 	// Let every caller reach the flight before the fetch returns.
 	deadline := time.Now().Add(5 * time.Second)
