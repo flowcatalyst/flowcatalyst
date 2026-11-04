@@ -18,6 +18,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/framework/go/ui/ds"
 	"github.com/flowcatalyst/framework/go/ui/kit"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -51,11 +52,13 @@ type fnsAliasRow struct {
 
 // fnsSettingRow is one config key, secret or database binding: declared by
 // the version, set on the platform, or both. A secret's or database's value
-// is not a field: it is never read.
+// is not a field: it is never read. A secret that is a reference to AWS (the
+// platform's list returns the reference, which is not a secret) shows it.
 type fnsSettingRow struct {
 	Key        string
 	Set        bool
 	Value      string
+	Reference  string
 	EditHref   string
 	RemoveHref string
 }
@@ -312,6 +315,8 @@ func (d *fnsDetail) fillSettings(settings []function.Setting) {
 				row.RemoveHref = seg + "/delete?key=" + url.QueryEscape(k)
 				if kind == function.SettingConfig {
 					row.Value = s.Value
+				} else if secretref.IsReference(s.Value) {
+					row.Reference = s.Value
 				}
 			}
 			// The SPA's computeMissingSettings: declared and not set.

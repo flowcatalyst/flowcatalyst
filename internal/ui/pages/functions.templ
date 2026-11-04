@@ -653,6 +653,8 @@ templ fnsSettingTable(d fnsDetail, kind string, title, keyLabel, empty, note str
 									}
 								} else if kind == "config" {
 									{ r.Value }
+								} else if r.Reference != "" {
+									<span class="text-muted-foreground" data-testid={ "fns-reference-" + r.Key }>reference: <code>{ r.Reference }</code></span>
 								} else {
 									@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSuccess}) {
 										set

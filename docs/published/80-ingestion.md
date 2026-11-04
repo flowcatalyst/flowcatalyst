@@ -207,6 +207,14 @@ with the problems); it starts by itself once the entry is valid.
   `value`; the entry and its secrets are written in one transaction, stored as `SECRET`
   values at the ingestion's client. `GET .../config` lists `secrets: [{field, name, set,
   updatedAt}]` for a caller who can update ingestions (names and state, never a value).
+  A secret's value may instead be a **reference** to AWS, `aws-sm://<name-or-arn>[#<key>]` or
+  `aws-ps://<parameter>` (see "Platform configuration", Secrets): the platform keeps the reference and
+  reads the secret each time the runtime fetches it, so a rotation in AWS needs no change here. A refusal
+  to resolve reaches the runtime as `409` with a `SECRET_REFERENCE_*` code, or `503
+  SECRET_REFERENCE_UNAVAILABLE` when AWS cannot be reached; the runtime backs off as for any failed
+  fetch. From a terminal, `fcdev ingest config set <application>/<client>/<code> <file.json>
+  --secrets-file <refs.json>` writes `{"<secret name>": "<reference>"}` with the entry without prompting
+  (references only; a plain value is refused before anything is sent).
   A value you supply needs no `bind-secrets`; a name without a value, or an address
   change that keeps the secrets, still does. The JSON editor used for a kind no
   runtime reports keeps secret settings as names.

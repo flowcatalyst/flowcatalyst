@@ -224,6 +224,18 @@ func TestConfigList(t *testing.T) {
 	mustContain(t, live, `id="cfg-actions"`, `id="cfg-table"`, `id="cfg-pager"`, `id="config-list-state"`)
 }
 
+// A secret that holds a secret reference shows the reference where any other
+// secret is masked: a reference is not a secret.
+func TestConfigListShowsASecretReference(t *testing.T) {
+	h := newCfgHarness()
+	ref := cfgRowFixture("pfc_9", "mail", "relay-password", platformconfig.ValueSecret, "encrypted:ciphertext-"+cfgSecretValue)
+	ref.Reference = "aws-sm://prod/mail#password"
+	h.cfg.rows = append(h.cfg.rows, ref)
+	body := h.do(t, cfgAdmin(), req{target: "/ui/platform/config"})
+	mustContain(t, body, `data-testid="cfg-reference-pfc_9"`, "reference:", "aws-sm://prod/mail#password", "••••••••")
+	mustNotContain(t, body, cfgSecretValue)
+}
+
 // The viewer's controls follow the permissions, and a forged post is refused
 // on the server whatever the page offered.
 func TestConfigPermissionMatrix(t *testing.T) {

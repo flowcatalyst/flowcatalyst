@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,6 +13,9 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -77,4 +81,73 @@ func TestListProperties_NamesTheClientIdentifier(t *testing.T) {
 		require.NotNil(t, r.ClientIdentifier)
 		require.Equal(t, "pcapi-listed", *r.ClientIdentifier)
 	}
+}
+
+// refsFake resolves a reference to a value, or to the failure "ERR:<code>".
+type refsFake map[string]string
+
+func (m refsFake) Resolve(_ context.Context, ref string) (string, error) {
+	v, ok := m[ref]
+	switch {
+	case !ok:
+		return "", &secretref.Error{Code: secretref.CodeNotFound, Ref: ref, Msg: "no such secret"}
+	case len(v) > 4 && v[:4] == "ERR:":
+		return "", &secretref.Error{Code: v[4:], Ref: ref, Msg: "fake failure"}
+	}
+	return v, nil
+}
+
+// A SECRET that is a secret reference: the list shows the reference where a
+// secret is masked, the reveal endpoint answers the secret it points at, and a
+// reference that does not resolve is 409 with its code, or 503
+// SECRET_REFERENCE_UNAVAILABLE when the secret store cannot be reached.
+func TestSecretReference_ListShowsReferenceAndRevealResolves(t *testing.T) {
+	// Not parallel: it swaps the process's resolver (the write check).
+	restore := secretref.SetDefault(secretref.New(secretref.Config{Allow: []string{"aws-sm://prod/"}}, nil))
+	defer restore()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	testpg.EnsureApplication(t, "pcapi-refs")
+	key, err := encryption.GenerateKey()
+	require.NoError(t, err)
+	enc, err := encryption.New(key)
+	require.NoError(t, err)
+	s := &State{Svc: &platformconfig.Service{
+		Repo: platformconfig.NewRepository(pool).WithEncryption(enc), UoW: testpg.NewUoW(t), Clients: client.NewRepository(pool), Audit: audit.NewRepository(pool),
+		Refs: refsFake{"aws-sm://prod/a#k": "resolved-value", "aws-sm://prod/down": "ERR:" + secretref.CodeUnavailable},
+	}}
+	admin := &auth.AuthContext{
+		PrincipalID: "prn_pcapiadmin03", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{"platform:admin:config:update", "platform:admin:config:view", "platform:admin:config:reveal"},
+	}
+	actx := testpg.WithAuth(ctx, admin)
+	secret := "SECRET"
+	for prop, v := range map[string]string{"ok": "aws-sm://prod/a#k", "down": "aws-sm://prod/down", "gone": "aws-sm://prod/gone", "plain": "plain-secret"} {
+		_, err := s.setProperty(actx, &setPropertyInput{App: "pcapi-refs", Section: "s", Property: prop, Body: SetPropertyRequest{Value: v, ValueType: &secret}})
+		require.NoError(t, err, prop)
+	}
+	_, err = s.setProperty(actx, &setPropertyInput{App: "pcapi-refs", Section: "s", Property: "bad", Body: SetPropertyRequest{Value: "aws-sm://elsewhere/x", ValueType: &secret}})
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, secretref.CodeNotAllowed)
+
+	out, err := s.listProperties(actx, &listPropsInput{App: "pcapi-refs"})
+	require.NoError(t, err)
+	shown := map[string]string{}
+	for _, r := range out.Body.Items {
+		shown[r.Property] = r.Value
+	}
+	require.Equal(t, "aws-sm://prod/a#k", shown["ok"])
+	require.Equal(t, "***", shown["plain"])
+
+	rev, err := s.revealSecret(actx, &propertyActInput{App: "pcapi-refs", Section: "s", Property: "ok"})
+	require.NoError(t, err)
+	require.Equal(t, "resolved-value", rev.Body.Value)
+
+	_, err = s.revealSecret(actx, &propertyActInput{App: "pcapi-refs", Section: "s", Property: "gone"})
+	testpg.RequireUsecaseError(t, err, usecase.KindConflict, secretref.CodeNotFound)
+
+	_, err = s.revealSecret(actx, &propertyActInput{App: "pcapi-refs", Section: "s", Property: "down"})
+	var em *httpcompat.ErrorModel
+	require.ErrorAs(t, err, &em)
+	require.Equal(t, http.StatusServiceUnavailable, em.GetStatus())
+	require.Equal(t, secretref.CodeUnavailable, em.Code)
 }

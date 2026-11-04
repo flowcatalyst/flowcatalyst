@@ -537,6 +537,46 @@ func TestIngestConfigSet(t *testing.T) {
 	require.Contains(t, errOut, "problem source.host: is required")
 }
 
+func TestIngestConfigSetSecretsFile(t *testing.T) {
+	newFnTestEnv(t)
+	p := newIngestPlatform(t)
+	dir := t.TempDir()
+	entry := filepath.Join(dir, "v.json")
+	require.NoError(t, os.WriteFile(entry, []byte(`{"host":"h"}`), 0o600))
+	refs := filepath.Join(dir, "refs.json")
+	require.NoError(t, os.WriteFile(refs, []byte(`{"mix-client-secret":"aws-sm://prod/mix#secret","mix-password":"aws-ps:///inhance/np/mix"}`), 0o600))
+
+	_, _, err := runCobra(t, newIngestConfigSetCmd(), "", append([]string{"ingest/acme/orders-sftp", entry, "--secrets-file", refs}, p.flags()...)...)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"value":{"host":"h"},"secrets":{"mix-client-secret":"aws-sm://prod/mix#secret","mix-password":"aws-ps:///inhance/np/mix"}}`,
+		p.bodies["PUT /api/ingestions/ing_1/config"])
+}
+
+func TestIngestConfigSetSecretsFileRefusals(t *testing.T) {
+	newFnTestEnv(t)
+	p := newIngestPlatform(t)
+	dir := t.TempDir()
+	entry := filepath.Join(dir, "v.json")
+	require.NoError(t, os.WriteFile(entry, []byte(`{"host":"h"}`), 0o600))
+	plain := filepath.Join(dir, "plain.json")
+	require.NoError(t, os.WriteFile(plain, []byte(`{"mix-password":"hunter2"}`), 0o600))
+	notObject := filepath.Join(dir, "list.json")
+	require.NoError(t, os.WriteFile(notObject, []byte(`["aws-sm://x"]`), 0o600))
+	before := p.writes()
+
+	_, _, err := runCobra(t, newIngestConfigSetCmd(), "", append([]string{"ingest/acme/orders-sftp", entry, "--secrets-file", plain}, p.flags()...)...)
+	require.ErrorContains(t, err, "a secrets file holds references only; use --secrets to type a value")
+	require.NotContains(t, err.Error(), "hunter2")
+
+	_, _, err = runCobra(t, newIngestConfigSetCmd(), "", append([]string{"ingest/acme/orders-sftp", entry, "--secrets-file", notObject}, p.flags()...)...)
+	require.ErrorContains(t, err, "not a JSON object")
+
+	_, _, err = runCobra(t, newIngestConfigSetCmd(), "", append([]string{"ingest/acme/orders-sftp", entry, "--secrets-file", plain, "--secrets"}, p.flags()...)...)
+	require.ErrorContains(t, err, "--secrets and --secrets-file cannot be used together")
+
+	require.Equal(t, before, p.writes(), "nothing is sent when the file is refused")
+}
+
 func TestIngestConfigSetRefusesANonObject(t *testing.T) {
 	newFnTestEnv(t)
 	p := newIngestPlatform(t)

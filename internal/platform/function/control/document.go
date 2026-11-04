@@ -7,6 +7,7 @@ import (
 
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
@@ -81,6 +82,7 @@ func (s *State) buildFunction(ctx context.Context, fn *function.Function, runtim
 	if err != nil {
 		return fncontrol.Function{}, false, usecase.Internal("REPO", "resolve_settings_for_control failed", err)
 	}
+	s.logUnresolved(fn, settings.Unresolved)
 	all, err := s.buildVersions(ctx, fn)
 	if err != nil {
 		return fncontrol.Function{}, false, err
@@ -115,6 +117,24 @@ func (s *State) buildFunction(ctx context.Context, fn *function.Function, runtim
 		Trace:         trace,
 		Versions:      versions,
 	}, len(all) > 0, nil
+}
+
+// logUnresolved logs, at ERROR, each SECRET/DB setting whose secret reference
+// did not resolve: the key is left out of the document (the guest's
+// secret(...) answers not-set and fails loudly at the point of use), and the
+// operator needs to know why. Once per (function, key, code) per resolver
+// TTL, as the document re-renders every few seconds per held long-poll. The
+// reference is logged, never a value.
+func (s *State) logUnresolved(fn *function.Function, unresolved []function.UnresolvedSetting) {
+	for _, u := range unresolved {
+		key := fn.ID + "|" + string(u.Kind) + "|" + u.Key + "|" + u.Code
+		if at, seen := s.unresolvedLogged.Load(key); seen && time.Since(at.(time.Time)) < secretref.Default().TTL() {
+			continue
+		}
+		s.unresolvedLogged.Store(key, time.Now())
+		slog.Error("function setting left out of the desired document: its secret reference did not resolve",
+			"address", fn.Address, "kind", string(u.Kind), "key", u.Key, "reference", u.Reference, "code", u.Code)
+	}
 }
 
 // traceStates is the function's trace windows that are live now

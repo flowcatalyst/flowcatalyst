@@ -17,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
@@ -53,8 +54,9 @@ func (c PutSettingCommand) AuditMaskedFields() []string {
 }
 
 // PutSetting writes one CONFIG/SECRET/DB value. SECRET and DB are encrypted
-// at rest (function.Repository.UpsertSettingTx); the write and the pool
-// revision bump commit atomically.
+// at rest (function.Repository.UpsertSettingTx), or kept as an aws-sm:// /
+// aws-ps:// reference the allow-list permits (resolved when the runner reads
+// the desired document); the write and the pool revision bump commit atomically.
 func PutSetting(repo *function.Repository) usecaseop.TxOperation[PutSettingCommand, function.Setting] {
 	return usecaseop.TxOperation[PutSettingCommand, function.Setting]{
 		Name: "PutFunctionSetting",
@@ -75,6 +77,11 @@ func PutSetting(repo *function.Repository) usecaseop.TxOperation[PutSettingComma
 			}
 			if cmd.Value == "" {
 				return usecase.Validation("VALUE_REQUIRED", "value is required")
+			}
+			if cmd.Kind != function.SettingConfig {
+				// A secret reference is checked against the allow-list here,
+				// not in the repository: the refusal is the caller's to see.
+				return secretref.CheckWrite(cmd.Value)
 			}
 			return nil
 		},

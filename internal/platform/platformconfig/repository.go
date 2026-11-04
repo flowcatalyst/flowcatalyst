@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
@@ -240,6 +241,20 @@ func (r *Repository) ApplicationEnabledClients(ctx context.Context, applicationI
 	return out, nil
 }
 
+// withReference sets c.Reference when c is a SECRET whose plaintext is a
+// secret reference: a reference is shown on reads where any other secret is
+// masked. A SECRET that cannot be opened here (no key, a failed decrypt) stays
+// masked; Reveal reports why.
+func (r *Repository) withReference(c *Config) *Config {
+	if c.ValueType != ValueSecret || r.enc == nil {
+		return c
+	}
+	if pt, _, err := r.revealValue(c); err == nil && secretref.IsReference(pt) {
+		c.Reference = pt
+	}
+	return c
+}
+
 // FindByID loads a config row by id.
 func (r *Repository) FindByID(ctx context.Context, id string) (*Config, error) {
 	res, err := r.q.PlatformConfigFindByID(ctx, id)
@@ -247,7 +262,11 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Config, error) {
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToConfig(*row)
+	c, err := rowToConfig(*row)
+	if err != nil {
+		return nil, err
+	}
+	return r.withReference(c), nil
 }
 
 // FindByCoordinate loads a config row by its (app, section, property, scope, clientID) key.
@@ -276,7 +295,11 @@ func (r *Repository) FindByCoordinate(ctx context.Context, app, section, propert
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToConfig(*row)
+	c, err := rowToConfig(*row)
+	if err != nil {
+		return nil, err
+	}
+	return r.withReference(c), nil
 }
 
 // FindConfigsByApplication returns all configs for an app.
@@ -294,7 +317,7 @@ func (r *Repository) FindConfigsByApplication(ctx context.Context, app string) (
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, *c)
+		out = append(out, *r.withReference(c))
 	}
 	return out, nil
 }

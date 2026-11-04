@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"slices"
 	"time"
 
@@ -11,7 +12,9 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/go-sdk/tsid"
 	"github.com/flowcatalyst/go-sdk/usecase"
 )
@@ -66,6 +69,10 @@ func (s *State) getSecret(ctx context.Context, in *getSecretInput) (*secretOutpu
 	f, out, err := s.fetchSecret(ctx, in)
 	if err != nil {
 		s.secretFetchFailed(ctx, ac, in, f, err)
+		if secretref.IsUnavailable(err) {
+			// The secret store could not be reached: retryable, not a refusal.
+			return nil, httpcompat.NewStatusError(http.StatusServiceUnavailable, secretref.CodeUnavailable, usecase.AsError(err).Message)
+		}
 		return nil, err
 	}
 	i := f.ingestion

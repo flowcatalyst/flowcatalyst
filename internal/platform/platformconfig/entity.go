@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/go-sdk/usecase"
 )
@@ -98,6 +99,10 @@ type Config struct {
 	Description     *string       `json:"description,omitempty"`
 	CreatedAt       time.Time     `json:"createdAt"`
 	UpdatedAt       time.Time     `json:"updatedAt"`
+	// Reference is the secret reference (aws-sm://..., aws-ps://...) a SECRET
+	// holds, set by the repository's reads. A reference is not a secret, so
+	// it is shown where the value would be "***". Never stored.
+	Reference string `json:"-"`
 	// Hidden is set by the read service (Service.List, Service.Get) on a row
 	// whose value the caller may not see, with Value blanked. It is never
 	// stored.
@@ -124,10 +129,21 @@ func NewConfig(app, section, property, value string) *Config {
 }
 
 // MaskedValue returns "***" for secret values and for a value the read service
-// hid from the caller (Hidden), the literal value otherwise. Use in list/get
-// responses when the caller doesn't have read-secrets permission.
+// hid from the caller (Hidden), the literal value otherwise. A SECRET that
+// holds a secret reference shows the reference (a reference is not a secret).
+// Use in list/get responses when the caller doesn't have read-secrets
+// permission.
 func (c *Config) MaskedValue() string {
-	if c.ValueType == ValueSecret || c.Hidden {
+	if c.Hidden {
+		return "***"
+	}
+	if c.ValueType == ValueSecret {
+		if c.Reference != "" {
+			return c.Reference
+		}
+		if secretref.IsReference(c.Value) { // about to be written, not yet sealed
+			return c.Value
+		}
 		return "***"
 	}
 	return c.Value

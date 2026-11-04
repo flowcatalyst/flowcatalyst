@@ -15,6 +15,8 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 )
 
 // dbSecret is the subset of an RDS-style AWS Secrets Manager secret we read.
@@ -84,16 +86,9 @@ func newSMClient(ctx context.Context, arn string) (*secretsmanager.Client, error
 	return secretsmanager.NewFromConfig(awsCfg), nil
 }
 
-// regionFromARN extracts the region from an ARN of the form
-// arn:partition:service:REGION:account:resource. Returns "" when s is not an
-// ARN with a region segment (e.g. a bare secret name was supplied instead).
-func regionFromARN(s string) string {
-	parts := strings.Split(s, ":")
-	if len(parts) < 4 || parts[0] != "arn" {
-		return ""
-	}
-	return parts[3]
-}
+// regionFromARN extracts the region from an ARN; "" for a bare name. See
+// secretref.RegionFromARN, which the secret reference resolver shares.
+func regionFromARN(s string) string { return secretref.RegionFromARN(s) }
 
 // fetchDBSecret loads + parses the RDS-style secret (username/password/port).
 func fetchDBSecret(ctx context.Context, sm *secretsmanager.Client, arn string) (dbSecret, error) {

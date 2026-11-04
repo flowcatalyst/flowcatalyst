@@ -101,6 +101,9 @@ type State struct {
 	// (function, reason): the document re-renders every few seconds per held
 	// long-poll, and one line per change is enough.
 	warned sync.Map
+	// unresolvedLogged dedups the "secret reference did not resolve" ERROR per
+	// (function, kind, key, code) for one resolver TTL (logUnresolved).
+	unresolvedLogged sync.Map
 	// Auth is the platform's token issuer + audience, reported verbatim in
 	// every Desired document (fncontrol.Desired.Auth) so a runner validates
 	// `auth: platform` bearer tokens against the same JWKS this process

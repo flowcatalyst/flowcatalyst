@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
@@ -31,6 +32,23 @@ type Repository struct {
 	// makes a write of a plaintext SECRET/DB value fail rather than store
 	// plaintext (see encryption.EncryptSecretRef).
 	enc *encryption.Service
+	// refs resolves aws-sm:// / aws-ps:// SECRET/DB values at read time. Nil
+	// means the process's resolver (secretref.Default).
+	refs secretref.Resolver
+}
+
+// WithSecretResolver returns the repository resolving secret references with
+// r (tests; production uses secretref.Default).
+func (r *Repository) WithSecretResolver(refs secretref.Resolver) *Repository {
+	r.refs = refs
+	return r
+}
+
+func (r *Repository) refResolver() secretref.Resolver {
+	if r.refs != nil {
+		return r.refs
+	}
+	return secretref.Default()
 }
 
 // NewRepository wires a repo.
@@ -586,7 +604,9 @@ func (r *Repository) ListSettings(ctx context.Context, functionID string) ([]Set
 				fmt.Sprintf("function %s has a setting with an unrecognised kind", row.FunctionID), nil)
 		}
 		value := row.Value
-		if kind != SettingConfig {
+		if kind != SettingConfig && !secretref.IsReference(value) {
+			// A reference is not a secret: it is shown, so a person can see
+			// what the setting points at. Everything else is write-only.
 			value = ""
 		}
 		out = append(out, Setting{

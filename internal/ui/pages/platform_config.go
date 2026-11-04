@@ -156,8 +156,11 @@ type cfgRow struct {
 	ID, Section, Property string
 	// Client is the client-scoped value's client (identifier when known);
 	// empty for the application-wide value.
-	Client              string
-	Secret              bool
+	Client string
+	Secret bool
+	// Reference is the secret reference (aws-sm://..., aws-ps://...) a secret
+	// holds: shown in place of the mask, since a reference is not a secret.
+	Reference           string
 	Value, ValueFull    string
 	Description         string
 	Updated, UpdatedISO string
@@ -351,9 +354,13 @@ func (h *PlatformConfig) toRow(ctx context.Context, ac *auth.AuthContext, c *pla
 			}
 		}
 	}
-	// A secret's value is not read here at all: only the mask is shown. A
-	// hidden value is blank already; the row says why.
+	// A secret's value is not read here at all: only the mask is shown, or the
+	// reference a secret holds. A hidden value is blank already; the row says
+	// why.
 	row.Hidden = c.Hidden
+	if row.Secret && !row.Hidden {
+		row.Reference = c.Reference
+	}
 	if !row.Secret && !row.Hidden {
 		row.ValueFull = c.Value
 		row.Value = c.Value

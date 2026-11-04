@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 )
 
@@ -66,9 +67,26 @@ type ResolvedSettings struct {
 	Config  map[string]string
 	Secrets map[string]string
 	DB      map[string]string
+	// Unresolved is the SECRET/DB settings whose value is a secret reference
+	// that did not resolve. They are left out of Secrets/DB (the guest's
+	// secret(...) then answers not-set and the function fails loudly at the
+	// point of use); the caller logs them.
+	Unresolved []UnresolvedSetting
 }
 
-// ResolveSettingsForControl loads and decrypts every setting for functionID.
+// UnresolvedSetting is one SECRET/DB setting whose secret reference did not
+// resolve (docs/external-secret-references.md section 4).
+type UnresolvedSetting struct {
+	Kind      SettingKind
+	Key       string
+	Reference string // the reference, which is not a secret
+	Code      string // a secretref.Code* value
+}
+
+// ResolveSettingsForControl loads and decrypts every setting for functionID. A
+// SECRET/DB value that is an aws-sm:// or aws-ps:// reference is resolved
+// (secretref, cached: this runs every 15 s per held poll); one that does not
+// resolve is left out and listed in Unresolved.
 func (r *Repository) ResolveSettingsForControl(ctx context.Context, functionID string) (ResolvedSettings, error) {
 	out := ResolvedSettings{Config: map[string]string{}, Secrets: map[string]string{}, DB: map[string]string{}}
 	rows, err := r.q.FunctionSettingList(ctx, functionID)
@@ -82,7 +100,18 @@ func (r *Repository) ResolveSettingsForControl(ctx context.Context, functionID s
 		}
 		value := row.Value
 		if kind == SettingSecret || kind == SettingDB {
-			value = decryptSettingValue(r.enc, value)
+			if secretref.IsReference(value) {
+				resolved, err := r.refResolver().Resolve(ctx, value)
+				if err != nil {
+					out.Unresolved = append(out.Unresolved, UnresolvedSetting{
+						Kind: kind, Key: row.Key, Reference: value, Code: secretref.CodeOf(err),
+					})
+					continue
+				}
+				value = resolved
+			} else {
+				value = decryptSettingValue(r.enc, value)
+			}
 		}
 		switch kind {
 		case SettingConfig:
@@ -99,11 +128,11 @@ func (r *Repository) ResolveSettingsForControl(ctx context.Context, functionID s
 // decryptSettingValue decrypts an at-rest SECRET/DB value, mirroring
 // serviceaccount's decryptSecretRef convention: a decrypt failure (a legacy
 // plaintext row predating encryption, or an external secret-manager
-// reference such as "aws-sm://…" this platform does not yet resolve at read
-// time) returns the stored value unchanged rather than dropping it — a
-// runner that receives a raw reference instead of a secret fails loudly at
-// the point of use, where silently blanking the value would fail silently
-// instead.
+// reference of a scheme this platform does not resolve, such as "gcp-sm://…")
+// returns the stored value unchanged rather than dropping it — a runner that
+// receives a raw reference instead of a secret fails loudly at the point of
+// use, where silently blanking the value would fail silently instead. The
+// resolvable references (secretref.IsReference) never reach here.
 func decryptSettingValue(enc *encryption.Service, value string) string {
 	if enc == nil || value == "" {
 		return value

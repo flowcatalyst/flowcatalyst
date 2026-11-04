@@ -154,7 +154,13 @@ templ cfgTable(v cfgView) {
 					}
 				}
 				@kit.TD(kit.TDProps{}) {
-					if row.Secret {
+					if row.Secret && row.Reference != "" {
+						<span class="inline-flex items-center gap-1.5 text-muted-foreground" data-testid={ "cfg-reference-" + row.ID }>
+							@kit.Icon(kit.IconProps{Name: "lock", Class: "size-3.5"})
+							reference:
+							<code class="block max-w-[300px] truncate font-mono text-[13px]" title={ row.Reference }>{ row.Reference }</code>
+						</span>
+					} else if row.Secret {
 						<span class="inline-flex items-center gap-1.5 tracking-wider text-muted-foreground">
 							@kit.Icon(kit.IconProps{Name: "lock", Class: "size-3.5"})
 							••••••••

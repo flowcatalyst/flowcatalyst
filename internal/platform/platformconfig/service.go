@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/go-sdk/tsid"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
@@ -64,6 +65,32 @@ type Service struct {
 	// Audit records every secret reveal. Required for Reveal: a reveal that
 	// cannot be recorded is refused.
 	Audit *audit.Repository
+	// Refs resolves a SECRET that is a secret reference (aws-sm://...,
+	// aws-ps://...) when it is handed out. Nil uses secretref.Default.
+	Refs secretref.Resolver
+}
+
+func (s *Service) refs() secretref.Resolver {
+	if s.Refs != nil {
+		return s.Refs
+	}
+	return secretref.Default()
+}
+
+// resolveSecret is the value a consumer is handed for a SECRET whose
+// plaintext is value: the secret a reference points at, else value itself. A
+// reference that does not resolve is refused: 409 with the SECRET_REFERENCE_*
+// code, or (unavailable, retryable) a KindInternal error the endpoints answer
+// 503.
+func (s *Service) resolveSecret(ctx context.Context, value string) (string, error) {
+	if !secretref.IsReference(value) {
+		return value, nil
+	}
+	v, err := s.refs().Resolve(ctx, value)
+	if err != nil {
+		return "", secretref.ToUsecase(err)
+	}
+	return v, nil
 }
 
 // repoApps adapts the repository's application lookup to AppLookup.
@@ -601,12 +628,21 @@ type Revealed struct {
 //   - the reveal is audited, and refused if the audit row cannot be written.
 //
 // What the caller does with the value (never cache it) is the caller's.
+//
+// A SECRET that holds a secret reference is revealed as the reference, not the
+// secret it points at: this is the administrator's view of what is stored.
+// RevealFor, the SDKs' and applications' read, resolves it.
 func (s *Service) Reveal(ctx context.Context, ac *auth.AuthContext, app, section, property, clientRef string) (*Revealed, error) {
-	return s.RevealFor(ctx, ac, app, section, property, clientRef, "")
+	cid, err := s.AuthorizeReveal(ctx, ac, app, clientRef)
+	if err != nil {
+		return nil, err
+	}
+	return s.revealAuthorised(ctx, ac, app, section, property, cid, nil, false)
 }
 
 // RevealFor is Reveal recording on whose behalf a service account reads the
-// value (onBehalfOf, see OnBehalfOf; "" for none) in the audit row.
+// value (onBehalfOf, see OnBehalfOf; "" for none) in the audit row, and
+// resolving a secret reference to the secret it points at.
 func (s *Service) RevealFor(ctx context.Context, ac *auth.AuthContext, app, section, property, clientRef, onBehalfOf string) (*Revealed, error) {
 	cid, err := s.AuthorizeReveal(ctx, ac, app, clientRef)
 	if err != nil {
@@ -616,7 +652,7 @@ func (s *Service) RevealFor(ctx context.Context, ac *auth.AuthContext, app, sect
 	if onBehalfOf != "" {
 		detail = map[string]string{"onBehalfOf": onBehalfOf}
 	}
-	return s.RevealAuthorised(ctx, ac, app, section, property, cid, detail)
+	return s.revealAuthorised(ctx, ac, app, section, property, cid, detail, true)
 }
 
 // configNotFoundCode is the error code of a missing property
@@ -630,6 +666,13 @@ const configNotFoundCode = "Config_NOT_FOUND"
 // row to say on whose behalf the value was read. (The ingestion runtime does
 // not use it: its fetches are FetchBoundSecretForIngestionRuntime.)
 func (s *Service) RevealAuthorised(ctx context.Context, ac *auth.AuthContext, app, section, property, clientID string, detail map[string]string) (*Revealed, error) {
+	return s.revealAuthorised(ctx, ac, app, section, property, clientID, detail, true)
+}
+
+// revealAuthorised is RevealAuthorised; resolve says whether a secret
+// reference is resolved (the consumers' read) or returned as stored (the
+// administrator's).
+func (s *Service) revealAuthorised(ctx context.Context, ac *auth.AuthContext, app, section, property, clientID string, detail map[string]string, resolve bool) (*Revealed, error) {
 	scope, scopeClient := ScopeFor(clientID)
 	c, err := s.Repo.FindByCoordinate(ctx, app, section, property, scope, scopeClient)
 	if err != nil {
@@ -647,6 +690,11 @@ func (s *Service) RevealAuthorised(ctx context.Context, ac *auth.AuthContext, ap
 	value, err := s.Repo.Reveal(ctx, c)
 	if err != nil {
 		return nil, usecase.Internal("REVEAL", "secret could not be decrypted", err)
+	}
+	if resolve {
+		if value, err = s.resolveSecret(ctx, value); err != nil {
+			return nil, err
+		}
 	}
 	fields := map[string]string{"applicationCode": c.ApplicationCode, "section": c.Section, "property": c.Property}
 	maps.Copy(fields, detail)
@@ -699,6 +747,9 @@ func (s *Service) FetchBoundSecretForIngestionRuntime(ctx context.Context, app, 
 	value, err := s.Repo.Reveal(ctx, c)
 	if err != nil {
 		return nil, usecase.Internal("REVEAL", "secret could not be decrypted", err)
+	}
+	if value, err = s.resolveSecret(ctx, value); err != nil {
+		return nil, err
 	}
 	return &Revealed{Config: c, Value: value}, nil
 }

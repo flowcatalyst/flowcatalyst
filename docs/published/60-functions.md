@@ -84,6 +84,34 @@ fcdev fn status billing.invoice-pdf
 
 A version must be loaded by a runner before it can be promoted (`deploy` waits for this).
 Promotion is refused while a config key, secret or database the version declares has no value.
+
+### Secrets that point at AWS
+
+A secret or database setting may be a **reference** to a secret kept in AWS instead of the secret, so it is
+set and rotated in one place:
+
+```sh
+fcdev fn set billing.invoice-pdf --secret STRIPE_KEY=aws-sm://prod/billing/stripe#apiKey
+fcdev fn set billing.invoice-pdf --secret ERP_TOKEN=aws-ps:///billing/np/erp-token
+```
+
+| Reference | Resolves to |
+|---|---|
+| `aws-sm://<name-or-arn>` | the secret's string value |
+| `aws-sm://<name-or-arn>#<key>` | field `<key>` of the secret read as a JSON object (a string as is, a number or bool as its text; a missing, null, object or array field is an error) |
+| `aws-ps://<parameter>` | the parameter's value, decrypted (a path parameter is `aws-ps:///path/to/param`) |
+
+The platform stores the reference, never the secret, and reads the secret when a runner fetches the
+function's settings, caching it for `FC_SECRET_REFERENCE_TTL` (5 minutes): a rotation in AWS reaches the
+function within that time with nothing to change here. If AWS cannot be reached the last value is served for
+up to `FC_SECRET_REFERENCE_MAX_STALE` (1 hour). A reference that cannot be resolved is **left out** of the
+function's settings, so `secrets().require(...)` fails at the point of use, and the platform logs an error
+naming the function, the key, the reference and the reason (`SECRET_REFERENCE_NOT_FOUND`, `_DENIED`,
+`_KEY_MISSING`, `_UNAVAILABLE`, `_NOT_ALLOWED`). The platform only accepts references that start with one of
+the prefixes in `FC_SECRET_REFERENCE_ALLOW` (otherwise `400 SECRET_REFERENCE_NOT_ALLOWED`), and its AWS role
+must be allowed to read them (`secretsmanager:GetSecretValue`, `ssm:GetParameter`, `kms:Decrypt`). Other
+schemes (`gcp-sm://`, `vault://`, `env://`) are refused (`400 SECRET_REFERENCE_UNSUPPORTED`). A reference is
+not a secret: the settings list shows it, where a real secret is blank.
 Against a local `fcdev` the commands sign in by themselves; in CI pass `--platform`,
 `--client-id` and `--client-secret` (or `FC_PLATFORM_URL`, `FC_CLIENT_ID`, `FC_CLIENT_SECRET`)
 for a service account holding `platform:function-deployer` (view, create, publish, promote, plus client and

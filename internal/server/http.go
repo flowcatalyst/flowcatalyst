@@ -12,6 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	schedulerpkg "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 )
 
 // swaggerUIHTML is a minimal Swagger UI page (served at /swagger-ui) that
@@ -110,7 +111,9 @@ func runtimeMetricsHandler(scheduler bool) http.Handler {
 	// scheduler or not.
 	// The ingestion runtime's secret-fetch counter (security telemetry): its
 	// series exist whether or not ingestion is enabled, zero when it is off.
-	gatherers := prometheus.Gatherers{reg, dispatchjob.MetricsRegistry, ingestion.MetricsRegistry}
+	// The secret reference resolver's counters (function settings, config
+	// secrets and ingestion secrets that point at AWS).
+	gatherers := prometheus.Gatherers{reg, dispatchjob.MetricsRegistry, ingestion.MetricsRegistry, secretref.MetricsRegistry}
 	if scheduler {
 		gatherers = append(gatherers, schedulerpkg.MetricsRegistry)
 	}

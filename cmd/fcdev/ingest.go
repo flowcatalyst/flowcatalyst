@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 )
 
 // This file is `fcdev ingest`: ingestion definitions as files, over the
@@ -1072,6 +1073,7 @@ func newIngestConfigGetCmd() *cobra.Command {
 func newIngestConfigSetCmd() *cobra.Command {
 	var pf fnPlatformFlags
 	var asJSON, yes, secrets bool
+	var secretsFile string
 	cmd := &cobra.Command{
 		Use:   "set <application>/<client>/<code> <file.json | ->",
 		Short: "Write the settings entry an ingestion's source names",
@@ -1086,9 +1088,29 @@ secret the entry uses (hidden, from the terminal; Enter keeps the value there is
 and sends them with the entry in one write. The platform names a secret that
 has no name yet. A value is never printed. With - the file is stdin, so
 --secrets then needs a terminal on stdin to answer the prompts and is refused
-otherwise.`,
+otherwise.
+
+--secrets-file <file.json> is the non-interactive way: the file is
+{ "<secret name>": "<reference>" } and every value must be a reference to a
+secret kept in AWS, aws-sm://<name>[#<key>] (Secrets Manager) or
+aws-ps://<parameter> (Parameter Store). The platform stores the reference, not
+the secret, and reads the secret when the ingestor asks for it, so rotating it
+in AWS needs no change here. The platform's allow-list
+(FC_SECRET_REFERENCE_ALLOW) decides which references it accepts. A plain value
+is refused before anything is sent; type one with --secrets. --secrets and
+--secrets-file together are refused.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if secrets && secretsFile != "" {
+				return errors.New("--secrets and --secrets-file cannot be used together")
+			}
+			var fileSecrets map[string]string
+			if secretsFile != "" {
+				var err error
+				if fileSecrets, err = readSecretsFile(secretsFile); err != nil {
+					return err
+				}
+			}
 			if secrets && !fnStdinIsTerminal() {
 				if args[1] == "-" {
 					return errors.New("--secrets reads the secrets from the terminal, but stdin holds the file: give the file as a path")
@@ -1118,6 +1140,9 @@ otherwise.`,
 				return err
 			}
 			body := map[string]any{"value": value}
+			if len(fileSecrets) > 0 {
+				body["secrets"] = fileSecrets
+			}
 			if secrets {
 				fields, err := promptEntrySecrets(cmd, api, r, data)
 				if err != nil {
@@ -1166,8 +1191,30 @@ otherwise.`,
 	pf.add(cmd)
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the answer as JSON on stdout; human output goes to stderr")
 	cmd.Flags().BoolVar(&secrets, "secrets", false, "ask (hidden, on the terminal) for the value of each secret the entry uses, and write them with the entry")
+	cmd.Flags().StringVar(&secretsFile, "secrets-file", "", `a JSON file of {"<secret name>": "<aws-sm:// or aws-ps:// reference>"}, written with the entry (references only, no values)`)
 	addYesFlag(cmd, &yes)
 	return cmd
+}
+
+// readSecretsFile reads a --secrets-file: a JSON object of secret name to
+// secret reference. Every value must be an aws-sm:// or aws-ps:// reference: a
+// plain value never goes through a file (it would sit on disk), so it is
+// refused before anything is sent. The refusal names the secret, not the value.
+func readSecretsFile(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]string
+	if err := json.Unmarshal(data, &out); err != nil || out == nil {
+		return nil, fmt.Errorf(`%s is not a JSON object of {"<secret name>": "<reference>"}`, path)
+	}
+	for name, v := range out {
+		if !secretref.IsReference(strings.TrimSpace(v)) {
+			return nil, fmt.Errorf("%s: %s is not a reference: a secrets file holds references only; use --secrets to type a value", path, name)
+		}
+	}
+	return out, nil
 }
 
 func isConfigured(src ingestion.Source) bool {

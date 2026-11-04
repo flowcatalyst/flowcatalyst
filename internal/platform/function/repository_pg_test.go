@@ -15,6 +15,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
@@ -435,4 +436,76 @@ func digest64(s string) string {
 		out[i] = s[0]
 	}
 	return string(out)
+}
+
+// fakeRefs is a secretref.Resolver over a map: a reference absent from it
+// fails with its error code.
+type fakeRefs struct {
+	values map[string]string
+	errs   map[string]string // reference -> secretref code
+}
+
+func (f fakeRefs) Resolve(_ context.Context, ref string) (string, error) {
+	if code, ok := f.errs[ref]; ok {
+		return "", &secretref.Error{Code: code, Ref: ref, Msg: "fake failure"}
+	}
+	return f.values[ref], nil
+}
+
+// TestRepository_ResolveSettingsForControl_SecretReferences proves a SECRET/DB
+// value that is an aws-sm:// / aws-ps:// reference is stored verbatim, listed
+// as the reference (not blanked), resolved in the desired document's settings,
+// and, when it does not resolve, left out and reported (never the reference in
+// place of the value).
+func TestRepository_ResolveSettingsForControl_SecretReferences(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := function.NewRepository(pool).WithSecretResolver(fakeRefs{
+		values: map[string]string{
+			"aws-sm://prod/stripe#key":      "sk_from_aws",
+			"aws-ps:///inhance/np/dsn":      "postgres://u:p@h/db",
+			"aws-sm://prod/other#something": "ignored",
+		},
+		errs: map[string]string{"aws-sm://prod/gone": secretref.CodeNotFound},
+	})
+	uow := testpg.NewUoW(t)
+	seedApplication(t, pool, "app_reporefs0001", "reporefsapp")
+	f := function.New("app_reporefs0001", "reporefsapp", "refs-fn")
+	mustPersist(t, uow, repo, f)
+
+	for _, s := range []function.Setting{
+		{Kind: function.SettingSecret, Key: "STRIPE_KEY", Value: "aws-sm://prod/stripe#key"},
+		{Kind: function.SettingSecret, Key: "GONE", Value: "aws-sm://prod/gone"},
+		{Kind: function.SettingSecret, Key: "PLAIN", Value: "plain-secret"},
+		{Kind: function.SettingDB, Key: "main", Value: "aws-ps:///inhance/np/dsn"},
+		{Kind: function.SettingConfig, Key: "GREETING", Value: "hello"},
+	} {
+		s.FunctionID = f.ID
+		require.NoError(t, repo.UpsertSetting(ctx, &s))
+	}
+
+	var stored string
+	require.NoError(t, pool.QueryRow(ctx, `SELECT value FROM fng_settings WHERE function_id = $1 AND key = 'STRIPE_KEY'`, f.ID).Scan(&stored))
+	assert.Equal(t, "aws-sm://prod/stripe#key", stored, "a reference is stored verbatim, never encrypted")
+
+	list, err := repo.ListSettings(ctx, f.ID)
+	require.NoError(t, err)
+	shown := map[string]string{}
+	for _, s := range list {
+		shown[s.Key] = s.Value
+	}
+	assert.Equal(t, "aws-sm://prod/stripe#key", shown["STRIPE_KEY"], "a reference is shown, it is not a secret")
+	assert.Empty(t, shown["PLAIN"], "a real secret stays write-only")
+
+	got, err := repo.ResolveSettingsForControl(ctx, f.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "sk_from_aws", got.Secrets["STRIPE_KEY"])
+	assert.Equal(t, "plain-secret", got.Secrets["PLAIN"])
+	assert.Equal(t, "postgres://u:p@h/db", got.DB["main"])
+	assert.Equal(t, "hello", got.Config["GREETING"])
+	assert.NotContains(t, got.Secrets, "GONE", "an unresolved key is left out, not replaced by its reference")
+	assert.Equal(t, []function.UnresolvedSetting{
+		{Kind: function.SettingSecret, Key: "GONE", Reference: "aws-sm://prod/gone", Code: secretref.CodeNotFound},
+	}, got.Unresolved)
 }

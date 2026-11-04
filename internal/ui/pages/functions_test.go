@@ -854,6 +854,18 @@ func TestFunctionPromoteAndAliases(t *testing.T) {
 
 // ── settings ───────────────────────────────────────────────────────────
 
+// A secret or database setting that is a reference to AWS shows the
+// reference (it is not a secret); a real secret still shows only "set".
+func TestFunctionSettingsShowAReference(t *testing.T) {
+	h := fnsHarnessNew()
+	h.store.settings["fn_1"] = append(h.store.settings["fn_1"],
+		function.Setting{FunctionID: "fn_1", Kind: function.SettingSecret, Key: "stripe", Value: "aws-sm://prod/stripe#key"},
+		function.Setting{FunctionID: "fn_1", Kind: function.SettingDB, Key: "ref_db", Value: "aws-ps:///inhance/np/dsn"})
+	body := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1?tab=settings"}))
+	mustContain(t, body, `data-testid="fns-reference-stripe"`, "aws-sm://prod/stripe#key", `data-testid="fns-reference-ref_db"`, "aws-ps:///inhance/np/dsn")
+	mustNotContain(t, body, `data-testid="fns-reference-api_key"`, fnsSecretValue, fnsDSNValue)
+}
+
 func TestFunctionSettings(t *testing.T) {
 	post := func(h *fnsHarness, kind string, form url.Values) string {
 		t.Helper()

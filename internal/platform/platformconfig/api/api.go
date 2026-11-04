@@ -13,8 +13,10 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
 )
@@ -249,6 +251,11 @@ func (s *State) revealSecret(ctx context.Context, in *propertyActInput) (*reveal
 	}
 	r, err := s.Svc.RevealFor(ctx, ac, in.App, in.Section, in.Property, in.ClientID, obo)
 	if err != nil {
+		if secretref.IsUnavailable(err) {
+			// The secret store behind a reference could not be reached:
+			// retryable, not a refusal.
+			return nil, httpcompat.NewStatusError(http.StatusServiceUnavailable, secretref.CodeUnavailable, usecase.AsError(err).Message)
+		}
 		return nil, err
 	}
 	c := r.Config

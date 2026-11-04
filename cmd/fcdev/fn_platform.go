@@ -780,6 +780,15 @@ func newFnSetCmd() *cobra.Command {
 		Long: `Sets config values (--config), secrets (--secret) and database DSNs (--db) on a
 function, and its webhook verifier identity.
 
+A --secret or --db value may be a reference to a secret kept in AWS instead of
+the secret: --secret KEY=aws-sm://<name>[#<key>] (Secrets Manager) or
+--secret KEY=aws-ps://<parameter> (Parameter Store; a path parameter is written
+aws-ps:///path/to/param). The platform stores the reference and reads the
+secret when a runner asks for the function's settings, caching it for a few
+minutes, so rotating it in AWS needs no change here. The platform's allow-list
+(FC_SECRET_REFERENCE_ALLOW) decides which references it accepts; a reference to
+any other scheme is refused.
+
 --service-account <account> names the service account (by code or id) whose
 signing secret the function's auth: webhook endpoints verify deliveries with.
 The platform validates that it exists, is active and that you may use it. The
@@ -839,7 +848,7 @@ service account.`,
 	}
 	pf.add(cmd)
 	cmd.Flags().StringArrayVar(&configs, "config", nil, "KEY=VALUE (repeatable)")
-	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "KEY=VALUE (repeatable; write-only)")
+	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "KEY=VALUE, or KEY=aws-sm://... / aws-ps://... to point at a secret kept in AWS (repeatable; write-only)")
 	cmd.Flags().StringArrayVar(&dbs, "db", nil, "NAME=DSN (repeatable; write-only)")
 	cmd.Flags().StringVar(&serviceAccount, "service-account", "", "the webhook verifier service account, by code or id (empty string clears it)")
 	cmd.Flags().BoolVar(&clearServiceAccount, "clear-service-account", false, "remove the function's own service account (back to the application's)")

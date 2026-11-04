@@ -71,6 +71,23 @@ fetch is logged as security telemetry, a log line, a counter and a "last
 fetched" record on the ingestion, not audited per read; a refused fetch is
 audited. See "Ingestion", Secrets.)
 
+**A secret may be a reference to AWS.** A secret's value may be `aws-sm://<name-or-arn>[#<key>]` (AWS
+Secrets Manager; `#key` picks a field of a JSON secret) or `aws-ps://<parameter>` (Parameter Store; a path
+parameter is `aws-ps:///path/to/param`) instead of the secret, so it is set and rotated once, in AWS. The
+reference is stored encrypted like any secret value and is not itself secret: the ordinary reads and the
+console show it (`aws-sm://...`) where a real secret shows `***`, and the console's reveal shows the
+reference. The **reveal** call below, and the ingestion runtime's fetch, return the secret it points at,
+read from AWS and cached by the platform for `FC_SECRET_REFERENCE_TTL` (5 minutes, so a rotation reaches
+readers within that time; the last value is served for up to `FC_SECRET_REFERENCE_MAX_STALE`, 1 hour, while
+AWS is unreachable). A reference that does not resolve is `409` with `SECRET_REFERENCE_NOT_FOUND`,
+`SECRET_REFERENCE_DENIED`, `SECRET_REFERENCE_KEY_MISSING` or `SECRET_REFERENCE_NOT_ALLOWED`, or `503
+SECRET_REFERENCE_UNAVAILABLE` (try again) when AWS cannot be reached; nothing is audited for a reveal that
+returned nothing. Only references starting with a prefix in `FC_SECRET_REFERENCE_ALLOW` are accepted
+(`400 SECRET_REFERENCE_NOT_ALLOWED` at the write; unset means none), and `gcp-sm://`, `vault://` and
+`env://` are refused (`400 SECRET_REFERENCE_UNSUPPORTED`). The platform's AWS role needs
+`secretsmanager:GetSecretValue` and `ssm:GetParameter` (plus `kms:Decrypt` for a customer key) on the
+allowed names.
+
 **Section `ingest` is reserved.** It holds the per-environment settings of
 ingestions (one `PLAIN` JSON value per client and key), which are written only
 through the ingestion that names them, after being checked against every

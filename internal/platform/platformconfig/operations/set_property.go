@@ -7,6 +7,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
 )
@@ -103,6 +104,7 @@ func SetProperty(repo *platformconfig.Repository) usecaseop.Operation[SetPropert
 			if existing != nil {
 				c = existing
 				c.Value = cmd.Value
+				c.Reference = ""
 				c.Description = cmd.Description
 			} else {
 				c = platformconfig.NewConfig(cmd.ApplicationCode, cmd.Section, cmd.Property, cmd.Value)
@@ -146,7 +148,8 @@ func NewPropertySet(ec usecase.ExecutionContext, c *platformconfig.Config) Prope
 
 // ValidSecretValue refuses a SECRET value that is the mask every read
 // returns, or empty: either written back would destroy the secret. A caller
-// that does not mean to change a secret does not set it.
+// that does not mean to change a secret does not set it. It also refuses a
+// secret reference that cannot be honoured (secretref.CheckWrite).
 func ValidSecretValue(v string) error {
 	switch strings.TrimSpace(v) {
 	case MaskedSecret:
@@ -155,5 +158,7 @@ func ValidSecretValue(v string) error {
 	case "":
 		return usecase.Validation("SECRET_VALUE_REQUIRED", "a secret's value is required")
 	}
-	return nil
+	// A secret reference to a scheme nothing resolves, or one the allow-list
+	// does not permit, is refused at the write.
+	return secretref.CheckWrite(v)
 }
