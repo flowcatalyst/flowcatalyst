@@ -456,6 +456,7 @@ func TestIdentityProvidersUpdateReleasesDomainsOnlyWhenConfirmed(t *testing.T) {
 	body := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/identity-providers/idp_2/edit", datastar: true, form: form()})
 	assert.Empty(t, h.ops.updated, "nothing is saved before the release is confirmed")
 	mustContain(t, body, "Remove Email Domains", "initech.com", "hooli.com", "fall back to internal password authentication", `name="confirmRelease"`)
+	checkboxInRow(t, body, "confirmRelease")
 
 	f := form()
 	f.Set("confirmRelease", "yes")

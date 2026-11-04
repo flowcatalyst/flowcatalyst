@@ -302,6 +302,37 @@ func mustContain(t *testing.T, body string, wants ...string) {
 	}
 }
 
+// checkboxInRow asserts that every checkbox input named name sits in a
+// "flex items-center gap-2" row: kit.Checkbox emits the box and its label as
+// siblings, so without the row a flex-col parent stacks the label under the box.
+func checkboxInRow(t *testing.T, body, name string) {
+	t.Helper()
+	const row = `<div class="flex items-center gap-2"><span`
+	needle := `type="checkbox"`
+	found := false
+	for i := 0; ; {
+		j := strings.Index(body[i:], `name="`+name+`"`)
+		if j < 0 {
+			break
+		}
+		at := i + j
+		i = at + 1
+		start := strings.LastIndex(body[:at], "<input")
+		if start < 0 || !strings.Contains(body[start:at], needle) {
+			continue
+		}
+		found = true
+		// The row opens the kit's wrapper span, and nothing closes between it and the input.
+		r := strings.LastIndex(body[:start], row)
+		if r < 0 || strings.Contains(body[r:start], "</") {
+			t.Errorf("checkbox %s is not inside a flex row", name)
+		}
+	}
+	if !found {
+		t.Errorf("no checkbox named %s", name)
+	}
+}
+
 func mustNotContain(t *testing.T, body string, unwanted ...string) {
 	t.Helper()
 	for _, u := range unwanted {

@@ -456,6 +456,7 @@ func TestTwoFactorStep(t *testing.T) {
 		assert.Contains(t, body, `name="mfaToken" value="PENDING.TOKEN"`)
 		assert.Contains(t, body, `name="method" value="TOTP"`)
 		assert.Contains(t, body, "Remember this device")
+		checkboxInRow(t, body, "rememberDevice")
 		assert.Contains(t, body, "Use an email code")
 		assert.Contains(t, body, "Use a recovery code")
 		assert.Empty(t, rec.Header().Values("Set-Cookie"))

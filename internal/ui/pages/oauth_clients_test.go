@@ -338,6 +338,7 @@ func TestOAuthClientCreateConfidentialShowsTheSecretOnce(t *testing.T) {
 		"Extra app_3 (code-app_3)", "Acme &lt;Corp&gt;", `name="redirectUris"`, `name="allowedOrigins"`, `name="postLogoutRedirectUris"`, "one per line")
 	// Defaults: public, PKCE on, authorization code and refresh token, the three scopes.
 	mustContain(t, form, `value="authorization_code" checked`, `value="openid" checked`)
+	checkboxInRow(t, form, "pkceRequired")
 
 	rec := h.rec(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/oauth-clients/new", datastar: true, form: url.Values{
 		"clientName": {"  Billing server "}, "clientType": {"CONFIDENTIAL"},

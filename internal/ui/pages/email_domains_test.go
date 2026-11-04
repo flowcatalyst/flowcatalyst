@@ -250,6 +250,7 @@ func TestEmailDomainsCreateForm(t *testing.T) {
 		`name="require2fa"`, `name="methods"`, "Authenticator app", "Email code", `name="days"`, `action="/ui/email-domains/new"`,
 		"Applies to password sign-in for this domain. Passkey sign-in is unaffected; federated (SSO) users are never prompted.",
 		"Internal (internal)", "Entra &lt;ID&gt; (entra)", `edmFormScope: &#39;CLIENT&#39;`, `edmFormOidc: [&#34;idp_2&#34;,&#34;idp_3&#34;]`, `edmFormMt: [&#34;idp_2&#34;]`)
+	checkboxInRow(t, body, "methods")
 }
 
 func TestEmailDomainsCreate(t *testing.T) {
@@ -430,6 +431,7 @@ func TestEmailDomainsMoveNeedsConfirmation(t *testing.T) {
 	body := h.post(t, anchorAdmin(), "/ui/email-domains/edm_1/edit", form())
 	assert.Zero(t, h.ops.calls(), "nothing is done before the move is confirmed")
 	mustContain(t, body, "Change Identity Provider", `name="confirmMove"`, "Move acme.com to Keycloak", "will sign in through Keycloak", "Password login for this domain will be disabled")
+	checkboxInRow(t, body, "confirmMove")
 
 	// To an internal provider: the SSO users are converted.
 	h = newEdmHarness()

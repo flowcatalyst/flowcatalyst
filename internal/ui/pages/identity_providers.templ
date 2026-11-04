@@ -442,7 +442,9 @@ templ idpRelease(f idpForm) {
 					@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: d})
 				}
 			</div>
-			@kit.Checkbox(kit.CheckboxProps{ID: f.id("release"), Name: "confirmRelease", Value: "yes", Label: "Save and release these domains", Attrs: templ.Attributes{"required": true}})
+			<div class="flex items-center gap-2">
+				@kit.Checkbox(kit.CheckboxProps{ID: f.id("release"), Name: "confirmRelease", Value: "yes", Label: "Save and release these domains", Attrs: templ.Attributes{"required": true}})
+			</div>
 		}
 	</div>
 }

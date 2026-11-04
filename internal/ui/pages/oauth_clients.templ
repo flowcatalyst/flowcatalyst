@@ -420,9 +420,13 @@ templ ocField(f ocForm, key string) {
 		case "pkceRequired":
 			<div id={ f.id(key) + "-field" } class="flex flex-col gap-1">
 				if f.Edit {
-					@kit.Checkbox(kit.CheckboxProps{ID: f.id(key), Name: key, Value: "true", Checked: f.PKCE, Disabled: f.Type == "PUBLIC", Label: "Require PKCE"})
+					<div class="flex items-center gap-2">
+						@kit.Checkbox(kit.CheckboxProps{ID: f.id(key), Name: key, Value: "true", Checked: f.PKCE, Disabled: f.Type == "PUBLIC", Label: "Require PKCE"})
+					</div>
 				} else {
-					@kit.Checkbox(kit.CheckboxProps{ID: f.id(key), Name: key, Value: "true", Checked: f.PKCE, Label: "Require PKCE", Attrs: templ.Attributes{"data-attr:disabled": "$ocFormType === 'PUBLIC'"}})
+					<div class="flex items-center gap-2">
+						@kit.Checkbox(kit.CheckboxProps{ID: f.id(key), Name: key, Value: "true", Checked: f.PKCE, Label: "Require PKCE", Attrs: templ.Attributes{"data-attr:disabled": "$ocFormType === 'PUBLIC'"}})
+					</div>
 				}
 				<p class="text-sm text-muted-foreground" data-show="$ocFormType === 'PUBLIC'" style="display: none">PKCE is always required for public clients</p>
 			</div>
@@ -442,7 +446,9 @@ templ ocField(f ocForm, key string) {
 			</div>
 		case "apiAccess":
 			<div id={ f.id(key) + "-field" } class="flex flex-col gap-1">
-				@kit.Checkbox(kit.CheckboxProps{ID: f.id(key), Name: key, Value: "true", Checked: f.APIAccess, Label: "API access (trusted first-party)", Attrs: templ.Attributes{"data-attr:disabled": "$ocFormPortal !== ''"}})
+				<div class="flex items-center gap-2">
+					@kit.Checkbox(kit.CheckboxProps{ID: f.id(key), Name: key, Value: "true", Checked: f.APIAccess, Label: "API access (trusted first-party)", Attrs: templ.Attributes{"data-attr:disabled": "$ocFormPortal !== ''"}})
+				</div>
 				<p class="text-sm text-muted-foreground">Interactive logins through this client mint authority-bearing access tokens, narrowed to the client's associated applications. Leave off for third-party apps — they should authenticate users from the id_token only. Not available for portal clients.</p>
 				if f.fieldError(key) != "" {
 					<p id={ f.id(key) + "-err" } class="text-sm text-destructive" role="alert">{ f.fieldError(key) }</p>

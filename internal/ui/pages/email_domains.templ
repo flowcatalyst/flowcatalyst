@@ -315,7 +315,9 @@ templ edmField(f edmForm, key string) {
 				<fieldset class="flex flex-col gap-2" aria-describedby={ f.describedBy(key) }>
 					<legend class="fc-field-label">Allowed 2FA Methods</legend>
 					for _, o := range edmMethodOptions {
-						@kit.Checkbox(kit.CheckboxProps{ID: f.id("methods-" + strings.ToLower(o.Value)), Name: "methods", Value: o.Value, Checked: slices.Contains(f.Methods, o.Value), Label: o.Label})
+						<div class="flex items-center gap-2">
+							@kit.Checkbox(kit.CheckboxProps{ID: f.id("methods-" + strings.ToLower(o.Value)), Name: "methods", Value: o.Value, Checked: slices.Contains(f.Methods, o.Value), Label: o.Label})
+						</div>
 					}
 					<p class="text-sm text-muted-foreground">Select at least one method.</p>
 					if f.fieldError(key) != "" {
@@ -350,7 +352,9 @@ templ edmMoveNotice(f edmForm) {
 	<div id={ f.id("move-field") } class="flex flex-col gap-2">
 		if f.Move != nil {
 			@kit.Alert(kit.AlertProps{Icon: "triangle-alert", Title: "Change Identity Provider", Description: f.Move.text()})
-			@kit.Checkbox(kit.CheckboxProps{ID: f.id("move"), Name: "confirmMove", Value: "yes", Label: "Move " + f.Domain + " to " + f.Move.To, Attrs: templ.Attributes{"required": true}})
+			<div class="flex items-center gap-2">
+				@kit.Checkbox(kit.CheckboxProps{ID: f.id("move"), Name: "confirmMove", Value: "yes", Label: "Move " + f.Domain + " to " + f.Move.To, Attrs: templ.Attributes{"required": true}})
+			</div>
 		}
 	</div>
 }

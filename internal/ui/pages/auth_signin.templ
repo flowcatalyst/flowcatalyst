@@ -225,7 +225,9 @@ templ signinTwoFactorStep(v signinView) {
 				Attrs:       templ.Attributes{"autocomplete": "one-time-code", "inputmode": "text", "autofocus": true},
 			})
 			if v.RememberAllowed {
-				@kit.Checkbox(kit.CheckboxProps{ID: "rememberDevice", Name: "rememberDevice", Value: "1", Label: "Remember this device for 30 days"})
+				<div class="flex items-center gap-2">
+					@kit.Checkbox(kit.CheckboxProps{ID: "rememberDevice", Name: "rememberDevice", Value: "1", Label: "Remember this device for 30 days"})
+				</div>
 			}
 			@signinSubmit("Verify", v.Theme)
 		}
