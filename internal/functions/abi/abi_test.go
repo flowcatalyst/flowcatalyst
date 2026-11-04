@@ -237,3 +237,23 @@ func TestOldPlatformRefusesPoolAndConnectionDeclarations(t *testing.T) {
 		}
 	}
 }
+
+func TestPlatformTokenDeclarationAndOp(t *testing.T) {
+	if OpPlatformToken != 15 || OpPlatformToken.String() != "platform.token" {
+		t.Fatalf("op = %d %q", OpPlatformToken, OpPlatformToken)
+	}
+	d, err := ParseDescribe([]byte(`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"platformToken":true}`))
+	if err != nil || !d.PlatformToken {
+		t.Fatalf("declared: %+v, %v", d, err)
+	}
+	d, err = ParseDescribe([]byte(`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}]}`))
+	if err != nil || d.PlatformToken {
+		t.Fatalf("undeclared: %+v, %v", d, err)
+	}
+	for _, v := range []string{`"yes"`, `1`, `{}`, `[true]`} {
+		doc := `{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"platformToken":` + v + `}`
+		if _, err := ParseDescribe([]byte(doc)); err == nil {
+			t.Errorf("platformToken %s must be refused", v)
+		}
+	}
+}

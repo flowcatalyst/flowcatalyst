@@ -190,6 +190,9 @@ func printDescribeTo(w io.Writer, path string, d *abi.Describe) {
 	for _, t := range d.Dispatches {
 		fmt.Fprintf(w, "  dispatches   %s%s%s\n", t.Target, t.Path, dispatchPlacement(t))
 	}
+	if d.PlatformToken {
+		fmt.Fprintln(w, "  platformToken yes")
+	}
 }
 
 // dispatchPlacement renders a dispatches entry's declared connection (always

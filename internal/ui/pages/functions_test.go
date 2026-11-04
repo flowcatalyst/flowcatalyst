@@ -1060,6 +1060,9 @@ func TestParseFnsDescribe(t *testing.T) {
 			t.Errorf("%q = %+v", raw, got)
 		}
 	}
+	if !parseFnsDescribe([]byte(`{"platformToken": true}`)).PlatformToken || parseFnsDescribe([]byte(`{"platformToken": "yes"}`)).PlatformToken || parseFnsDescribe([]byte(fnsDescribeJSON)).PlatformToken {
+		t.Error("platformToken is declared only by a JSON true")
+	}
 	if got := parseFnsDescribe([]byte(`{"config": [1, "ok"]}`)); !slices.Equal(got.Config, []string{"ok"}) {
 		t.Errorf("config = %v", got.Config)
 	}

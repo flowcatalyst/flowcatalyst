@@ -23,6 +23,7 @@ contract below (schema, guest ABI, manifest, API) is ours to choose. Written aga
 | Terminal reject outcome; scheduled jobs honour 429 (§13.2, §13.3) | built | dispatch-job processing, scheduled-job dispatcher, migration 060 |
 | Admin UI pages (functions list, detail: versions, aliases, declarations, settings) | built, live-verified in Chrome | `frontend/src/pages/functions` |
 | `dispatch` capability (ABI op 11, `fn.dispatch`): a function creates a dispatch job for a declared function target, no credential held | built 2026-10-15; TS, Go and Rust SDKs; e2e on an isolated platform | `internal/functions/{abi,control,runner}`, `internal/platform/function/control/dispatch.go`, §5.3/§5.4/§6.3/§8.3/§8.7 |
+| `platform.token` capability (ABI op 15): a function obtains a FlowCatalyst access token (the application's linked service account) to call another first-party application, no credential held | built 2026-11-04 (platform, Go runner, fcdev); SDKs and JVM host in parallel; spec `docs/function-platform-token.md` | `internal/functions/{abi,control,runner}`, `internal/platform/function/control/token.go`, `serviceaccount/operations.MintForFunction`, §5.3/§5.4/§6.3/§8.3/§8.8 |
 | Public routes: domain claims and route materialisation (platform side) | built | `internal/platform/functiondomain`, `internal/platform/function` (route.go, repository_routes.go, operations/routes.go), `internal/platform/function/control/document.go` |
 
 Owner decisions §13.1–13.3 were taken as proposed (two-label addresses, the reject outcome,
@@ -256,9 +257,11 @@ independent of the guest's allocator.
 | 7 | `db.exec` | same | `{"rowsAffected"}` |
 | 8–10 | `db.begin` / `db.commit` / `db.rollback` | `{"db"}` / `{"tx"}` | `{"tx"}` / — |
 | 11 | `dispatch.create` | `{"target","path","code","subject","metadata":[{"key","value"}],"messageGroup","mode","correlationId","causationId","contentType","descriptor","maxRetries","timeoutSeconds","dataOnly"}` / payload | `{"jobId"}` |
+| 15 | `platform.token` | `{"refresh"}` (may be empty or `{}`) / — | `{"accessToken","expiresAt"}` (unix ms, host clock) / — |
 
 Op 11 is additive: ABI v1 modules that never call it are unaffected, and a runner that predates it
 answers `UNKNOWN_OP` (a capability failure, not a trap). Only `target` and `path` are required.
+Op 15 is additive the same way (ops 12–14 are the trace ops, `docs/function-trace-design.md`).
 
 Error codes are shared across ops: `NOT_DECLARED`, `NOT_ALLOWED` (http allowlist, event type not
 owned, a dispatch the platform refuses), `DEADLINE`, `TOO_LARGE`, `UNAVAILABLE` (retryable), `BAD_REQUEST`, `CAPABILITY_UNAVAILABLE`
@@ -289,7 +292,8 @@ function's log at INFO/WARN.
   "config": ["GREETING"], "secrets": ["STRIPE_KEY"], "db": ["main"],
   "httpAllow": ["api.stripe.com", "*.acme.com"], "emits": ["orders:order:order:shipped"],
   "dispatches": [{"target": "orders.invoice-logger", "path": "/deliver",
-                  "connection": "yard-conn", "pool": "yard-process-pool"}]
+                  "connection": "yard-conn", "pool": "yard-process-pool"}],
+  "platformToken": true
 }
 ```
 
@@ -317,6 +321,8 @@ Validation at publish (strict; unknown keys rejected):
   (`DISPATCH_NOT_OWNED`) a target whose application is not the function's own, exactly as for
   `emits`. Whether the target exists, is live and takes a signed POST at the path is checked per
   call (§8.7), not at publish: the target may be deployed after its creator.
+- `platformToken` is a boolean (`true` declares the platform-token capability, §8.8); any other JSON
+  type is refused like any malformed field.
 - Keys match `^[A-Za-z][A-Za-z0-9_./-]{0,99}$`.
 - Paths use Go 1.22 `ServeMux` pattern syntax (`{id}`, `{rest...}`).
 
@@ -397,6 +403,11 @@ emit without per-call arithmetic.
   (§8.3) as itself, naming the function, the version, the invocation and the inbound request's
   `X-Correlation-Id`. The platform repeats the check and does everything else (§8.7). The function
   supplies no URL and holds no credential.
+- **platform.token:** the runner refuses a version whose describe lacks `platformToken: true`
+  (`NOT_DECLARED`), then serves the function's token from its cache or fetches one from the control
+  plane (§8.8). Platform 4xx (400/403/404/409) is `NOT_ALLOWED` (message carries the platform code); 5xx, 429,
+  408, unreachable and a 401 that outlived the fresh-token retry are `UNAVAILABLE` (retryable), context ended `DEADLINE`. The token is a live credential and is
+  never logged.
 - **db:** one `pgxpool.Pool` per distinct DSN, shared across functions, bounded per runner
   (`FC_FUNCTIONS_MAX_DB_POOLS`), closed when idle. A transaction is bound to the invocation and
   rolled back by `defer` if still open when the call ends. Rows are capped at 10,000 or 8 MiB
@@ -544,6 +555,7 @@ New routes go into the lockfile with `make api-bump`; `make api-diff` must pass.
 | `GET /artifacts/{digest}` | `302` to a presigned S3 URL, or streamed from the file store. The runner holds no storage credentials. |
 | `POST /events` `{functionId, event}` | Emit on a function's behalf (§6.3). |
 | `POST /dispatch-jobs` `{functionId, version, invocationId, requestCorrelationId, dispatch, payload}` | Create a dispatch job on a function's behalf (§6.3, §8.7). `201 {jobId}`. |
+| `POST /token` `{functionId, version}` | Mint the application's service-account token for a function that declares `platformToken` (§8.8). `200 {accessToken, tokenType, expiresIn}`. |
 
 Desired document, per function: `address`, `id`, `limits`, `warm`, `webhookSecret`, `config`,
 `secrets`, `db` (name → DSN), and versions `[{number, digest, abi, describe, roles:
@@ -709,6 +721,52 @@ not either), so there is no `dedupId`: a retry after an ambiguous failure can cr
 **Deferred.** Dispatching to the target's own dispatch pool (a pool exists only once it has a
 subscription or schedule; a declared `pool` now reaches any visible pool), per-call pool or
 connection override, `clientCode` for platform-owned functions, and absolute-URL targets.
+
+### 8.8 The `platform.token` capability (as built)
+
+A function calls another first-party application that accepts FlowCatalyst tokens (for example Integral's
+`auth:fc-token` routes) with a bearer token from its host, holding no client id or secret. Spec and rulings:
+`docs/function-platform-token.md`.
+
+**Identity.** The service account linked to the function's **application**
+(`applications.service_account_id`), always. There is no per-function account and no override; the
+function's optional webhook-verifier account (`fng_functions.service_account_id`) is not used. *Surprise worth
+knowing:* that column is a foreign key to `iam_principals` (migration 028), so it holds the account's SERVICE
+**principal** id; the handler reads the account off the principal (`principal.ServiceAccountID`). It is a
+different link from the one webhook signing uses (`iam_service_accounts.application_id`).
+
+**What the platform checks, per call** (`POST /control/functions/token`; runner role, anchor scope), in order:
+
+| Check | Status | Code |
+|---|---|---|
+| `functionId` empty | 400 | `FUNCTION_ID_REQUIRED` |
+| function not found | 404 | `Function_NOT_FOUND` |
+| version not found for the function | 404 | `Function version_NOT_FOUND` |
+| the version's describe lacks `platformToken: true` | 403 | `PLATFORM_TOKEN_NOT_DECLARED` |
+| the application has no linked service account | 409 | `APPLICATION_SERVICE_ACCOUNT_REQUIRED` |
+| the account or its principal is deactivated | 400 | `SERVICE_ACCOUNT_INACTIVE` |
+
+**The mint.** `serviceaccount/operations.MintForFunction` shares its body with `MintAdminToken` (find the
+account and principal, flatten the roles, `GenerateAccessTokenWithScope`, stamp last-used): the token is
+what the account's `client_credentials` grant gives (same claims, same scope, the grant's lifetime,
+`AccessTokenTTLSecs`). It does **not** run the role ceiling: the caller is a runner, whose authority is the
+runner role plus the declaration, and runners already receive every function's secrets. Every mint is
+audited best-effort: entity `SERVICE_ACCOUNT`, the account id, operation `TOKEN_MINTED_FOR_FUNCTION`,
+principal = the runner's, `operation_json` `{"function": "<address>"}`. Never the token. The OpenAPI schemas
+are `FunctionTokenRequest`/`FunctionTokenResponse` (huma names a schema after its Go type and `oauthapi`
+already owns `TokenResponse`; the wire types are `control.TokenRequest`/`TokenResponse`).
+
+**Host cache** (`runner/platformtoken.go`). Keyed by function id, one entry: token and expiry (host clock:
+fetch time + `expiresIn`). Served while more than `max(60 s, 10% of the lifetime)` remains; concurrent callers
+for a function share one fetch (the fetch is detached from the first caller, so its deadline does not fail the
+others); `refresh: true` replaces the entry; a failed fetch is not cached; an entry is dropped when its
+function leaves the desired document (and a fetch still running for it is not stored). The control call uses
+the runner's own control client (a 401 retries once with a fresh runner token).
+
+**Local.** `fn run` and `fn dev` have no platform: the op answers `CAPABILITY_UNAVAILABLE` (fn dev checks
+the declaration first, as the route would).
+
+**Not built.** Narrowing the token's scope or audience per target; switching any production function over.
 
 ## 9. Guest SDKs
 

@@ -101,6 +101,10 @@ const (
 	// stamps it on every later record of the call (trace, http and log). Additive
 	// like OpTrace: an older runner answers UNKNOWN_OP and the SDKs ignore it.
 	OpTraceReference Op = 14
+	// OpPlatformToken returns a FlowCatalyst access token for the service account
+	// linked to the function's application (docs/function-platform-token.md).
+	// Additive like OpDispatch: a runner that predates it answers UNKNOWN_OP.
+	OpPlatformToken Op = 15
 )
 
 func (o Op) String() string {
@@ -133,6 +137,8 @@ func (o Op) String() string {
 		return "tracing"
 	case OpTraceReference:
 		return "trace.reference"
+	case OpPlatformToken:
+		return "platform.token"
 	}
 	return "unknown"
 }
@@ -252,6 +258,22 @@ type Dispatch struct {
 // Dispatched is the result meta of OpDispatch.
 type Dispatched struct {
 	JobID string `json:"jobId"`
+}
+
+// PlatformTokenCall is the meta of an OpPlatformToken call (may be empty or
+// `{}`; there is no body). Refresh skips the host's cache and fetches a new
+// token, for a function whose target answered 401 because the account's roles
+// changed.
+type PlatformTokenCall struct {
+	Refresh bool `json:"refresh,omitempty"`
+}
+
+// PlatformTokenResult is the result meta of OpPlatformToken. ExpiresAt is unix
+// milliseconds on the host's clock. The token is a live credential: never
+// logged.
+type PlatformTokenResult struct {
+	AccessToken string `json:"accessToken"`
+	ExpiresAt   int64  `json:"expiresAt"`
 }
 
 // DBStatement is the meta of OpDBQuery / OpDBExec.

@@ -353,6 +353,9 @@ type fnsDeclared struct {
 	Schedules                             []fnsSchedule
 	Config, Secrets, DB, HTTPAllow, Emits []string
 	Dispatches                            []string
+	// PlatformToken: the version declares platformToken (it may obtain the
+	// application's service account token to call other applications).
+	PlatformToken bool
 }
 
 func parseFnsDescribe(raw []byte) fnsDeclared {
@@ -373,6 +376,7 @@ func parseFnsDescribe(raw []byte) fnsDeclared {
 	for _, e := range fnsObjects(obj["dispatches"]) {
 		out.Dispatches = append(out.Dispatches, fnsString(e["target"])+fnsString(e["path"]))
 	}
+	out.PlatformToken, _ = obj["platformToken"].(bool)
 	out.Config, out.Secrets, out.DB = fnsStrings(obj["config"]), fnsStrings(obj["secrets"]), fnsStrings(obj["db"])
 	out.HTTPAllow, out.Emits = fnsStrings(obj["httpAllow"]), fnsStrings(obj["emits"])
 	return out

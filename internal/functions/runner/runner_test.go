@@ -36,7 +36,11 @@ type fakeCP struct {
 	dispatches []control.DispatchRequest
 	// dispatchErr, when set, is what Dispatch answers instead of a job id.
 	dispatchErr *abi.Error
-	traces      fakeTraceSink
+	// tokenCalls are the platform-token fetches; tokenErr, when set, is what
+	// Token answers instead of a token.
+	tokenCalls []control.TokenRequest
+	tokenErr   *abi.Error
+	traces     fakeTraceSink
 }
 
 func newFakeCP() *fakeCP {
@@ -108,6 +112,16 @@ func (f *fakeCP) Dispatch(_ context.Context, r control.DispatchRequest) (*contro
 	}
 	f.dispatches = append(f.dispatches, r)
 	return &control.DispatchResponse{JobID: "djob_1"}, nil
+}
+
+func (f *fakeCP) Token(_ context.Context, r control.TokenRequest) (*control.TokenResponse, *abi.Error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.tokenCalls = append(f.tokenCalls, r)
+	if f.tokenErr != nil {
+		return nil, f.tokenErr
+	}
+	return &control.TokenResponse{AccessToken: "tok-" + strconv.Itoa(len(f.tokenCalls)), TokenType: "Bearer", ExpiresIn: 3600}, nil
 }
 
 func (f *fakeCP) lastHeartbeat() (control.Heartbeat, bool) {

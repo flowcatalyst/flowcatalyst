@@ -288,3 +288,14 @@ func (c *localCP) Dispatch(_ context.Context, r control.DispatchRequest) (*contr
 	slog.Info("function dispatched a job", "dispatch", string(d), "payload", string(r.Payload))
 	return &control.DispatchResponse{JobID: "djob_local_" + strconv.FormatInt(time.Now().UnixNano(), 36)}, nil
 }
+
+// errLocalToken is what the platform-token op answers locally: `fn run` and
+// `fn dev` have no platform to mint a token, and a made-up one would only be
+// refused by whatever the function sent it to.
+var errLocalToken = abi.Errorf(abi.CodeCapabilityUnavailable,
+	"platform tokens need a platform: fn run and fn dev have none, so a function that calls another application with one cannot run here")
+
+// Token answers that no token is available locally.
+func (c *localCP) Token(context.Context, control.TokenRequest) (*control.TokenResponse, *abi.Error) {
+	return nil, errLocalToken
+}

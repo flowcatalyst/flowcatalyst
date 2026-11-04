@@ -22,6 +22,8 @@ const (
 	PathEvents    = "/control/functions/events"    // POST EmitRequest → EmitResponse
 	// PathDispatchJobs: POST DispatchRequest → DispatchResponse.
 	PathDispatchJobs = "/control/functions/dispatch-jobs"
+	// PathToken: POST TokenRequest → TokenResponse (docs/function-platform-token.md).
+	PathToken = "/control/functions/token"
 	// PathTraceLog: POST TraceBatch → TraceAck (docs/function-trace-design.md section 5).
 	PathTraceLog = "/control/functions/trace-log"
 )
@@ -228,6 +230,26 @@ type DispatchRequest struct {
 // DispatchResponse is the platform's answer to a DispatchRequest.
 type DispatchResponse struct {
 	JobID string `json:"jobId"`
+}
+
+// TokenRequest asks the platform for a FlowCatalyst access token on a
+// function's behalf (the `platform.token` host call, ABI op 15). The platform
+// checks that the invoking version declares `platformToken`; the token is the
+// one of the service account linked to the function's application, whatever
+// the guest sends.
+type TokenRequest struct {
+	FunctionID string `json:"functionId"`
+	Version    int    `json:"version"`
+}
+
+// TokenResponse is the platform's answer to a TokenRequest: the same bearer the
+// account's client_credentials grant would give. It is a live credential and is
+// never logged.
+type TokenResponse struct {
+	AccessToken string `json:"accessToken"`
+	TokenType   string `json:"tokenType"`
+	// ExpiresIn is the token's lifetime in seconds.
+	ExpiresIn int64 `json:"expiresIn"`
 }
 
 // Trace record kinds.

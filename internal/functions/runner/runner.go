@@ -35,6 +35,7 @@ type ControlPlane interface {
 	Artifact(ctx context.Context, digest string) (io.ReadCloser, error)
 	Emit(ctx context.Context, r control.EmitRequest) (*control.EmitResponse, *abi.Error)
 	Dispatch(ctx context.Context, r control.DispatchRequest) (*control.DispatchResponse, *abi.Error)
+	TokenSource
 }
 
 // Config configures a Runner.
@@ -79,6 +80,7 @@ type Runner struct {
 	budget     *budget.Budget
 	artifacts  *artifactCache
 	tokens     TokenVerifier
+	fnTokens   *tokenCache // FlowCatalyst tokens handed to functions (platform.token)
 	jwks       *jwksVerifier
 	db         *dbPools
 	httpClient *http.Client
@@ -159,6 +161,7 @@ func New(ctx context.Context, cfg Config) (*Runner, error) {
 		wake:       make(chan struct{}, 1),
 	}
 	r.now = time.Now
+	r.fnTokens = newTokenCache(cfg.ControlPlane, func() time.Time { return r.now() })
 	if ship, ok := cfg.ControlPlane.(TraceShipper); ok {
 		queue := cfg.TraceQueue
 		if queue <= 0 {
@@ -286,6 +289,7 @@ func (r *Runner) apply(ctx context.Context, d *control.Desired) {
 				toClose = append(toClose, v)
 			}
 			delete(r.functions, df.Address)
+			r.fnTokens.drop(fn.id)
 			ok = false
 		}
 		if !ok {
@@ -364,6 +368,7 @@ func (r *Runner) apply(ctx context.Context, d *control.Desired) {
 			toClose = append(toClose, v)
 		}
 		delete(r.functions, addr)
+		r.fnTokens.drop(fn.id)
 	}
 	r.routes = buildRoutes(d.Routes)
 	r.revision = d.Revision

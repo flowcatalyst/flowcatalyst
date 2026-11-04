@@ -33,7 +33,9 @@ type capabilities struct {
 	emitter Emitter
 	// dispatcher creates dispatch jobs for the dispatch capability; correlation
 	// is the calling request's X-Correlation-Id ("" when it had none).
-	dispatcher  Dispatcher
+	dispatcher Dispatcher
+	// tokens serves the platform-token capability (shared across invocations).
+	tokens      *tokenCache
 	correlation string
 	http        *http.Client
 	database    DBProvider
@@ -45,6 +47,12 @@ type capabilities struct {
 // Emitter sends an event on a function's behalf (the control plane).
 type Emitter interface {
 	Emit(ctx context.Context, r control.EmitRequest) (*control.EmitResponse, *abi.Error)
+}
+
+// TokenSource fetches a FlowCatalyst access token on a function's behalf (the
+// control plane). The runner caches what it returns (tokenCache).
+type TokenSource interface {
+	Token(ctx context.Context, r control.TokenRequest) (*control.TokenResponse, *abi.Error)
 }
 
 // Dispatcher creates a dispatch job on a function's behalf (the control plane).
@@ -66,6 +74,8 @@ func (c *capabilities) Call(ctx context.Context, op abi.Op, meta, body []byte) (
 		return c.emit(ctx, meta, body)
 	case abi.OpDispatch:
 		return c.dispatch(ctx, meta, body)
+	case abi.OpPlatformToken:
+		return c.platformToken(ctx, meta)
 	case abi.OpTrace:
 		return c.traceOp(meta)
 	case abi.OpTracing:

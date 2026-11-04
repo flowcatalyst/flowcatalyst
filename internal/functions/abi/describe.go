@@ -38,6 +38,11 @@ type Describe struct {
 	// create dispatch jobs for through the dispatch capability (plan §5.3
 	// op 11). Like Emits it is a declaration the platform checks per call.
 	Dispatches []DispatchTarget `json:"dispatches,omitempty"`
+	// PlatformToken declares use of the platform-token capability (op 15): the
+	// function may obtain a FlowCatalyst access token for its application's
+	// service account to call another first-party application. A non-boolean
+	// value is refused by the strict decode like any other malformed field.
+	PlatformToken bool `json:"platformToken,omitempty"`
 	// TraceContexts are the named trace points the function writes to with
 	// the trace op; an operator switches each on for a bounded time
 	// (docs/function-trace-design.md section 3). The built-in "http" context

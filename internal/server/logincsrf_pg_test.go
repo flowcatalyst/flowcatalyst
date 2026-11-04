@@ -80,6 +80,7 @@ var notCredentialGuarded = map[string]string{
 	"POST /control/functions/events":             "function runner bearer token",
 	"POST /control/functions/dispatch-jobs":      "function runner bearer token",
 	"POST /control/functions/heartbeat":          "function runner bearer token",
+	"POST /control/functions/token":              "function runner bearer token",
 	"POST /control/functions/trace-log":          "function runner bearer token",
 }
 

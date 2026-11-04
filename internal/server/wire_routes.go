@@ -61,6 +61,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/sdksync"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	serviceaccountapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/api"
+	serviceaccountops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	bff "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/bff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -419,11 +420,18 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Connections:        repos.connectionRepo,
 			RunnerURLTemplate:  cfg.FunctionsRunnerURL,
 			RunnerURLByRuntime: cfg.FunctionsRunnerURLByRuntime,
-			Artifacts:          svcs.functionArtifacts,
-			Creds:              serviceaccount.NewCachedOutboundCredsResolver(repos.serviceAccountRepo, time.Minute),
-			AccountCreds:       serviceaccount.NewCachedOutboundCredsByIDResolver(repos.serviceAccountRepo, time.Minute),
-			Auth:               fncontrol.TokenAuth{Issuer: cfg.JWTIssuer, Audience: cfg.JWTIssuer},
-			Listener:           svcs.functionControlListener,
+			// Platform token (POST /control/functions/token): the application's
+			// service account, minted exactly as its client_credentials grant.
+			Apps: repos.applicationRepo,
+			Mint: serviceaccountops.MintDeps{
+				Repo: repos.serviceAccountRepo, Principals: repos.principalRepo, Roles: repos.roleRepo,
+				Auth: svcs.authSvc, FlattenPermissions: svcs.oauthTokenEP.FlattenPermissions, Audit: repos.auditRepo,
+			},
+			Artifacts:    svcs.functionArtifacts,
+			Creds:        serviceaccount.NewCachedOutboundCredsResolver(repos.serviceAccountRepo, time.Minute),
+			AccountCreds: serviceaccount.NewCachedOutboundCredsByIDResolver(repos.serviceAccountRepo, time.Minute),
+			Auth:         fncontrol.TokenAuth{Issuer: cfg.JWTIssuer, Audience: cfg.JWTIssuer},
+			Listener:     svcs.functionControlListener,
 		})
 
 		// SDK self-registration ("sync") endpoints, scoped under

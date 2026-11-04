@@ -24,6 +24,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
@@ -31,6 +32,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	saops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 )
 
@@ -78,6 +80,11 @@ type State struct {
 	// Connections resolves a declared connection code, the same way.
 	Connections       *connection.Repository
 	RunnerURLTemplate string
+	// Apps and Mint back the platform-token capability (token.go): the
+	// function's application names the service account, Mint mints its token
+	// (the same deps as the admin mint; Auth is required, nil refuses).
+	Apps *application.Repository
+	Mint saops.MintDeps
 	// RunnerURLByRuntime holds the per-runtime overrides
 	// (FC_FUNCTIONS_RUNNER_URL_<RT>); see function.RunnerURLs.
 	RunnerURLByRuntime map[string]string
@@ -155,5 +162,7 @@ func Register(api huma.API, s *State) {
 		"Emit an event on a function's behalf (function-runner role only)", 201, s.emit)
 	apiroute.Post(g, "postFunctionRunnerDispatchJob", fncontrol.PathDispatchJobs,
 		"Create a dispatch job on a function's behalf (function-runner role only)", 201, s.dispatch)
+	apiroute.Post(g, "postFunctionRunnerToken", fncontrol.PathToken,
+		"Mint the application's service account token for a function that declares platformToken (function-runner role only)", 200, s.token)
 	registerTraceLog(api, s)
 }

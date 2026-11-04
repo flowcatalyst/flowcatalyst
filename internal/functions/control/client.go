@@ -194,9 +194,56 @@ func (c *Client) Dispatch(ctx context.Context, r DispatchRequest) (*DispatchResp
 	return post[DispatchResponse](ctx, c, PathDispatchJobs, r, "dispatching")
 }
 
+// Token asks the platform for a FlowCatalyst access token for the service
+// account linked to a function's application. The answer carries a live
+// credential: it is never logged. Refusals are classified for the guest as the
+// plan's token table says, the same as the JVM host: 5xx, 429, 408 and a 401
+// that outlived the retry (the runner's own credential, not the function's
+// fault) are UNAVAILABLE (retryable); any other 4xx (not declared there, no
+// linked account, inactive account, function or version not found) is
+// NOT_ALLOWED carrying the platform's code. A 401 is retried once with a fresh
+// runner token when InvalidateToken is set.
+func (c *Client) Token(ctx context.Context, r TokenRequest) (*TokenResponse, *abi.Error) {
+	return postWith[TokenResponse](ctx, c, PathToken, r, "fetching a token", true, func(se *ErrStatus) *abi.Error {
+		switch se.Status {
+		case http.StatusTooManyRequests, http.StatusRequestTimeout, http.StatusUnauthorized:
+			return abi.Errorf(abi.CodeUnavailable, se.Message)
+		}
+		if se.Status >= 500 {
+			return abi.Errorf(abi.CodeUnavailable, se.Message)
+		}
+		msg := se.Message
+		if se.Code != "" {
+			msg = se.Code + ": " + msg
+		}
+		return abi.Errorf(abi.CodeNotAllowed, msg)
+	})
+}
+
 // post makes a function-behalf write and classifies the answer for the guest.
 func post[T any](ctx context.Context, c *Client, path string, body any, doing string) (*T, *abi.Error) {
+	return postWith[T](ctx, c, path, body, doing, false, func(se *ErrStatus) *abi.Error {
+		switch {
+		case se.Status >= 500:
+			return abi.Errorf(abi.CodeUnavailable, se.Message)
+		case se.Status == http.StatusForbidden:
+			return abi.Errorf(abi.CodeNotAllowed, se.Message)
+		}
+		return abi.Errorf(abi.CodeBadRequest, se.Message)
+	})
+}
+
+// postWith is post with the refusal classification supplied, and, when
+// retryAuth is set and the client has InvalidateToken, one retry with a fresh
+// runner token after a 401.
+func postWith[T any](ctx context.Context, c *Client, path string, body any, doing string, retryAuth bool, classify func(*ErrStatus) *abi.Error) (*T, *abi.Error) {
 	resp, err := c.do(ctx, http.MethodPost, path, body, nil)
+	if err == nil && retryAuth && resp.StatusCode == http.StatusUnauthorized && c.InvalidateToken != nil {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+		resp.Body.Close()
+		c.InvalidateToken()
+		resp, err = c.do(ctx, http.MethodPost, path, body, nil)
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, abi.Errorf(abi.CodeDeadline, "the invocation's deadline passed while "+doing)
@@ -212,14 +259,7 @@ func post[T any](ctx context.Context, c *Client, path string, body any, doing st
 		return &out, nil
 	}
 	if se, ok := errors.AsType[*ErrStatus](statusError(resp)); ok {
-		switch {
-		case se.Status >= 500:
-			return nil, abi.Errorf(abi.CodeUnavailable, se.Message)
-		case se.Status == http.StatusForbidden:
-			return nil, abi.Errorf(abi.CodeNotAllowed, se.Message)
-		default:
-			return nil, abi.Errorf(abi.CodeBadRequest, se.Message)
-		}
+		return nil, classify(se)
 	}
 	return nil, abi.Errorf(abi.CodeUnavailable, "unexpected answer")
 }

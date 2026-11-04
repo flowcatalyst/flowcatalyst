@@ -281,3 +281,14 @@ func (c *devCP) Dispatch(_ context.Context, r control.DispatchRequest) (*control
 	c.rec.note(describeWouldCreate(declared, r))
 	return &control.DispatchResponse{JobID: "djob_local_" + strconv.FormatInt(c.seq.Add(1), 10)}, nil
 }
+
+// Token refuses as `fn run` does, after checking the version declares it as the
+// real route would, so an undeclared use is caught here too.
+func (c *devCP) Token(_ context.Context, _ control.TokenRequest) (*control.TokenResponse, *abi.Error) {
+	if d := c.current(); d == nil || !d.PlatformToken {
+		c.rec.note("platform token refused: this version does not declare platformToken")
+		return nil, abi.Errorf(abi.CodeNotAllowed, "PLATFORM_TOKEN_NOT_DECLARED: this version does not declare platformToken")
+	}
+	c.rec.note("platform token refused: fn dev has no platform to mint one")
+	return nil, errLocalToken
+}

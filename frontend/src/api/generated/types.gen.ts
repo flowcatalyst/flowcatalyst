@@ -2271,6 +2271,26 @@ export type FunctionResponse = {
     warm: boolean;
 };
 
+export type FunctionTokenRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    functionId: string;
+    version: number;
+    [key: string]: unknown;
+};
+
+export type FunctionTokenResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    accessToken: string;
+    expiresIn: number;
+    tokenType: string;
+};
+
 export type GrantAccessRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -7396,6 +7416,18 @@ export type FunctionResponseWritable = {
     serviceAccountId?: string;
     updatedAt: string;
     warm: boolean;
+};
+
+export type FunctionTokenRequestWritable = {
+    functionId: string;
+    version: number;
+    [key: string]: unknown;
+};
+
+export type FunctionTokenResponseWritable = {
+    accessToken: string;
+    expiresIn: number;
+    tokenType: string;
 };
 
 export type GrantAccessRequestWritable = {
@@ -20436,6 +20468,31 @@ export type PostFunctionRunnerHeartbeatResponses = {
 };
 
 export type PostFunctionRunnerHeartbeatResponse = PostFunctionRunnerHeartbeatResponses[keyof PostFunctionRunnerHeartbeatResponses];
+
+export type PostFunctionRunnerTokenData = {
+    body: FunctionTokenRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/control/functions/token';
+};
+
+export type PostFunctionRunnerTokenErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PostFunctionRunnerTokenError = PostFunctionRunnerTokenErrors[keyof PostFunctionRunnerTokenErrors];
+
+export type PostFunctionRunnerTokenResponses = {
+    /**
+     * OK
+     */
+    200: FunctionTokenResponse;
+};
+
+export type PostFunctionRunnerTokenResponse = PostFunctionRunnerTokenResponses[keyof PostFunctionRunnerTokenResponses];
 
 export type PostFunctionRunnerTraceLogData = {
     body: TraceBatchWritable;

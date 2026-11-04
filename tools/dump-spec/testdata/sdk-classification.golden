@@ -372,5 +372,6 @@ internal	POST /auth/webauthn/register/complete	webauthnRegisterComplete
 internal	POST /control/functions/dispatch-jobs	postFunctionRunnerDispatchJob
 internal	POST /control/functions/events	postFunctionRunnerEvent
 internal	POST /control/functions/heartbeat	postFunctionRunnerHeartbeat
+internal	POST /control/functions/token	postFunctionRunnerToken
 internal	POST /control/functions/trace-log	postFunctionRunnerTraceLog
 internal	PUT /api/ingestion-runtime/v1/state/{ingestionId}/{key}	ingestionRuntimePutState

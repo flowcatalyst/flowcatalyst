@@ -2,6 +2,7 @@ package operations
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -109,61 +110,17 @@ type MintedToken struct {
 func MintAdminToken(ctx context.Context, d MintDeps, id string) (MintedToken, error) {
 	var zero MintedToken
 	ac := auth.FromContext(ctx)
-	if d.Auth == nil {
-		return zero, usecase.Internal("TOKEN", "token minting is not wired", nil)
-	}
-	sa, err := d.Repo.FindByID(ctx, id)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_by_id failed", err)
-	}
-	if sa == nil {
-		return zero, httperror.NotFound("ServiceAccount", id)
-	}
-	if !sa.Active {
-		return zero, usecase.Validation("SERVICE_ACCOUNT_INACTIVE",
-			"the service account is deactivated — reactivate it before minting a token")
-	}
-	p, err := d.Principals.FindByServiceAccount(ctx, id)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_by_service_account failed", err)
-	}
-	if p == nil {
-		return zero, usecase.Internal("PRINCIPAL", "service account has no linked principal", nil)
-	}
-	if !p.Active {
-		return zero, usecase.Validation("SERVICE_ACCOUNT_INACTIVE",
-			"the service account's principal is deactivated")
-	}
-
-	names := make([]string, 0, len(p.Roles))
-	for _, ra := range p.Roles {
-		names = append(names, ra.Role.String())
-	}
 	// The minted bearer carries the account's whole authority, so the caller
 	// must hold it: every platform permission of every role the account holds
 	// (the role ceiling, F8). Otherwise a holder of service-account:update
 	// could mint a token for an account a super-admin had made stronger than
 	// the caller. 403 ROLE_ABOVE_CALLER.
-	if err := requireMintWithinCaller(ctx, d.Roles, ac, names); err != nil {
+	minted, sa, err := mintForAccount(ctx, d, id, func(roleNames []string) error {
+		return requireMintWithinCaller(ctx, d.Roles, ac, roleNames)
+	})
+	if err != nil {
 		return zero, err
 	}
-
-	// Same grant computation as the client_credentials path: the principal's
-	// full permission ceiling, flattened from its roles.
-	var granted []string
-	if d.FlattenPermissions != nil {
-		if granted, err = d.FlattenPermissions(ctx, names); err != nil {
-			return zero, usecase.Internal("SCOPE", "permission flattening failed", err)
-		}
-	}
-	token, err := d.Auth.GenerateAccessTokenWithScope(p, granted)
-	if err != nil {
-		return zero, usecase.Internal("TOKEN", "token mint failed", err)
-	}
-
-	// A bearer was handed out for this account — a use of its credentials.
-	// Best-effort: a failed stamp must not fail the mint.
-	_ = d.Repo.TouchLastUsed(ctx, sa.ID)
 
 	// Best-effort audit: who obtained a credential for which account. Never
 	// the token itself.
@@ -178,13 +135,103 @@ func MintAdminToken(ctx context.Context, d MintDeps, id string) (MintedToken, er
 			PerformedAt: time.Now().UTC(),
 		})
 	}
+	return minted, nil
+}
+
+// MintForFunction mints the same bearer for a function: the token the account
+// would obtain from the client_credentials grant, handed to a function runner
+// for one of its functions that declares platformToken
+// (docs/function-platform-token.md). The caller is a runner, whose authority is
+// the runner role plus the function's declaration (both checked by the
+// caller), so unlike MintAdminToken there is no role ceiling: runners are
+// trusted infrastructure and already hold every function's secrets.
+//
+// Every mint is recorded (best-effort) with the runner's principal and the
+// function's address; never the token.
+func MintForFunction(ctx context.Context, d MintDeps, serviceAccountID, functionAddress string) (MintedToken, error) {
+	minted, sa, err := mintForAccount(ctx, d, serviceAccountID, func([]string) error { return nil })
+	if err != nil {
+		return MintedToken{}, err
+	}
+	if d.Audit != nil {
+		actor := auth.FromContext(ctx).PrincipalID
+		detail, _ := json.Marshal(map[string]string{"function": functionAddress})
+		_ = d.Audit.Insert(ctx, &audit.Log{
+			ID:            tsid.Generate(tsid.AuditLog),
+			EntityType:    "SERVICE_ACCOUNT",
+			EntityID:      sa.ID,
+			Operation:     "TOKEN_MINTED_FOR_FUNCTION",
+			OperationJSON: detail,
+			PrincipalID:   &actor,
+			PerformedAt:   time.Now().UTC(),
+		})
+	}
+	return minted, nil
+}
+
+// mintForAccount is the body the two mints share: find the account and its
+// principal (both must be active), let withinCeiling vet the account's role
+// names, flatten the roles into the permission ceiling, mint the bearer the
+// client_credentials grant would, and stamp the account used. The audit record
+// is each caller's own.
+func mintForAccount(ctx context.Context, d MintDeps, id string, withinCeiling func(roleNames []string) error) (MintedToken, *serviceaccount.ServiceAccount, error) {
+	if d.Auth == nil {
+		return MintedToken{}, nil, usecase.Internal("TOKEN", "token minting is not wired", nil)
+	}
+	sa, err := d.Repo.FindByID(ctx, id)
+	if err != nil {
+		return MintedToken{}, nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if sa == nil {
+		return MintedToken{}, nil, httperror.NotFound("ServiceAccount", id)
+	}
+	if !sa.Active {
+		return MintedToken{}, nil, usecase.Validation("SERVICE_ACCOUNT_INACTIVE",
+			"the service account is deactivated — reactivate it before minting a token")
+	}
+	p, err := d.Principals.FindByServiceAccount(ctx, id)
+	if err != nil {
+		return MintedToken{}, nil, usecase.Internal("REPO", "find_by_service_account failed", err)
+	}
+	if p == nil {
+		return MintedToken{}, nil, usecase.Internal("PRINCIPAL", "service account has no linked principal", nil)
+	}
+	if !p.Active {
+		return MintedToken{}, nil, usecase.Validation("SERVICE_ACCOUNT_INACTIVE",
+			"the service account's principal is deactivated")
+	}
+
+	names := make([]string, 0, len(p.Roles))
+	for _, ra := range p.Roles {
+		names = append(names, ra.Role.String())
+	}
+	if err := withinCeiling(names); err != nil {
+		return MintedToken{}, nil, err
+	}
+
+	// Same grant computation as the client_credentials path: the principal's
+	// full permission ceiling, flattened from its roles.
+	var granted []string
+	if d.FlattenPermissions != nil {
+		if granted, err = d.FlattenPermissions(ctx, names); err != nil {
+			return MintedToken{}, nil, usecase.Internal("SCOPE", "permission flattening failed", err)
+		}
+	}
+	token, err := d.Auth.GenerateAccessTokenWithScope(p, granted)
+	if err != nil {
+		return MintedToken{}, nil, usecase.Internal("TOKEN", "token mint failed", err)
+	}
+
+	// A bearer was handed out for this account — a use of its credentials.
+	// Best-effort: a failed stamp must not fail the mint.
+	_ = d.Repo.TouchLastUsed(ctx, sa.ID)
 
 	return MintedToken{
 		AccessToken: token,
-		// Mirrors the /oauth/token response contract (expires_in 3600).
-		ExpiresIn: 3600,
+		// The /oauth/token response contract: the grant's own lifetime.
+		ExpiresIn: d.Auth.AccessTokenTTLSecs(),
 		Scope:     strings.Join(granted, " "),
-	}, nil
+	}, sa, nil
 }
 
 // requireMintWithinCaller refuses a mint for an account holding a role the

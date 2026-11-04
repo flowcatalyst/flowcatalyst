@@ -548,6 +548,14 @@ templ fnsDeclares(d fnsDetail) {
 				@fnsChips("Outbound HTTP allow-list", d.Declared.HTTPAllow)
 				@fnsChips("Emits", d.Declared.Emits)
 				@fnsChips("Dispatches", d.Declared.Dispatches)
+				<div>
+					<h4 class="fc-field-label mb-2">Platform token</h4>
+					if d.Declared.PlatformToken {
+						<span>Calls other applications as the application's service account.</span>
+					} else {
+						<span class="text-muted-foreground">None declared.</span>
+					}
+				</div>
 			</div>
 		}
 	}

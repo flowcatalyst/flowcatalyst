@@ -294,6 +294,28 @@ func TestDevCPDispatchNotesPlacement(t *testing.T) {
 	}
 }
 
+// fn run and fn dev have no platform to mint a token: the op answers
+// CAPABILITY_UNAVAILABLE, and fn dev refuses an undeclared use as the real
+// route does, noting both.
+func TestLocalPlatformTokenIsUnavailable(t *testing.T) {
+	if _, aerr := (&localCP{}).Token(t.Context(), control.TokenRequest{}); aerr == nil || aerr.Code != abi.CodeCapabilityUnavailable {
+		t.Fatalf("fn run: %v", aerr)
+	}
+	var lines []string
+	cp := newDevCP(&localCP{}, &devRecorder{print: func(l string) { lines = append(lines, l) }})
+	cp.desc = &abi.Describe{}
+	if _, aerr := cp.Token(t.Context(), control.TokenRequest{}); aerr == nil || aerr.Code != abi.CodeNotAllowed || !strings.Contains(aerr.Message, "PLATFORM_TOKEN_NOT_DECLARED") {
+		t.Fatalf("fn dev undeclared: %v", aerr)
+	}
+	cp.desc = &abi.Describe{PlatformToken: true}
+	if _, aerr := cp.Token(t.Context(), control.TokenRequest{}); aerr == nil || aerr.Code != abi.CodeCapabilityUnavailable {
+		t.Fatalf("fn dev declared: %v", aerr)
+	}
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "platform token refused") || !strings.HasPrefix(lines[1], "platform token refused") {
+		t.Errorf("notes = %q", lines)
+	}
+}
+
 // --- the loop, end to end on the real runner with a fake builder -----------
 
 type syncBuf struct {

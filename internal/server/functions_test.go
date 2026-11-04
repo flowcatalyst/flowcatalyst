@@ -139,6 +139,10 @@ func (stubControlPlane) Dispatch(context.Context, control.DispatchRequest) (*con
 	return nil, &abi.Error{}
 }
 
+func (stubControlPlane) Token(context.Context, control.TokenRequest) (*control.TokenResponse, *abi.Error) {
+	return nil, &abi.Error{}
+}
+
 // TestShutdownRunnerDrainsBeforeStopping: shutdown marks the runner not-ready
 // first, lets a call in flight finish, and only then stops the runner (which
 // unloads versions and closes the engine). The old order stopped the runner

@@ -356,7 +356,7 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 		return
 	}
 
-	caps := &capabilities{fn: fn, ver: ver, invID: invID, log: r.guestLogger(fn, ver), emitter: r.cp, dispatcher: r.cp, correlation: correlation, http: r.httpClient, database: r.db, trace: tr}
+	caps := &capabilities{fn: fn, ver: ver, invID: invID, log: r.guestLogger(fn, ver), emitter: r.cp, dispatcher: r.cp, tokens: r.fnTokens, correlation: correlation, http: r.httpClient, database: r.db, trace: tr}
 	out, herr := func() ([]byte, error) {
 		defer caps.tx.rollbackAll()
 		if tr != nil {

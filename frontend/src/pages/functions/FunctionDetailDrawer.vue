@@ -828,6 +828,14 @@ function formatDate(dateString: string | undefined | null) {
               <span v-if="!declared.dispatches.length" class="empty-hint">None declared.</span>
             </div>
           </div>
+
+          <div class="declare-block">
+            <h4>Platform token</h4>
+            <div class="chip-row">
+              <span v-if="declared.platformToken">Calls other applications as the application's service account.</span>
+              <span v-else class="empty-hint">None declared.</span>
+            </div>
+          </div>
         </template>
       </FcFormSection>
 

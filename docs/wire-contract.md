@@ -672,7 +672,7 @@ its group.
 ## Function-runner control plane: runtimes and capabilities
 
 The runner-facing routes under `/control/functions/` (`desired`, `heartbeat`,
-`artifacts/{digest}`, `events`, `dispatch-jobs`, `trace-log`) are the Go v1 control
+`artifacts/{digest}`, `events`, `dispatch-jobs`, `token`, `trace-log`) are the Go v1 control
 protocol. Additions for runners of runtimes beyond the built-in `wasm` and
 `js` (all additive; a runner that predates them keeps working unchanged):
 
@@ -692,6 +692,15 @@ protocol. Additions for runners of runtimes beyond the built-in `wasm` and
   of the function's pool advertises (heartbeat within 60s) is refused
   `409 POOL_LACKS_RUNTIME`. For the built-in runtimes the guard applies only
   once the pool has at least one live runner.
+- `POST /control/functions/token` — `{functionId, version}` →
+  `200 {accessToken, tokenType: "Bearer", expiresIn}`: the access token of the
+  service account linked to the function's application (the same bearer its
+  `client_credentials` grant gives), for a version whose describe declares
+  `platformToken: true`. Runner role and anchor scope. Refusals: `400
+  FUNCTION_ID_REQUIRED`, `404` function or version, `403
+  PLATFORM_TOKEN_NOT_DECLARED`, `409 APPLICATION_SERVICE_ACCOUNT_REQUIRED`, `400
+  SERVICE_ACCOUNT_INACTIVE`. Every mint is audited (`TOKEN_MINTED_FOR_FUNCTION`);
+  the token is never logged. `docs/function-platform-token.md`.
 - `POST /control/functions/trace-log` — a runner ships trace records
   (`{runnerId, pool, records[]}`; `docs/function-trace-design.md` section 5):
   `202 {accepted, dropped}`. At most 500 records and 1 MiB per batch, per

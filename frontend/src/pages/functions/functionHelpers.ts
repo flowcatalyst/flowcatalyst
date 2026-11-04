@@ -59,6 +59,8 @@ export interface FunctionDescribe {
 	emits: string[];
 	/** Declared dispatch targets, as "address/path". */
 	dispatches: string[];
+	/** The version declares platformToken: it calls other applications as the application's service account. */
+	platformToken: boolean;
 }
 
 const EMPTY_DESCRIBE: FunctionDescribe = {
@@ -71,6 +73,7 @@ const EMPTY_DESCRIBE: FunctionDescribe = {
 	httpAllow: [],
 	emits: [],
 	dispatches: [],
+	platformToken: false,
 };
 
 function asStringArray(value: unknown): string[] {
@@ -137,6 +140,7 @@ export function parseDescribe(raw: unknown): FunctionDescribe {
 					.filter((e): e is Record<string, unknown> => !!e && typeof e === "object")
 					.map((e) => `${typeof e["target"] === "string" ? e["target"] : ""}${typeof e["path"] === "string" ? e["path"] : ""}`)
 			: [],
+		platformToken: obj["platformToken"] === true,
 	};
 }
 

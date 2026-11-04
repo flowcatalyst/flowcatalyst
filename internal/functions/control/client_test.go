@@ -135,3 +135,85 @@ func TestClientTraceLogRefreshesTokenOnAuthRefusal(t *testing.T) {
 		}
 	}
 }
+
+func TestClientTokenSendsTheRequestAndReturnsTheToken(t *testing.T) {
+	var got TokenRequest
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != PathToken || r.Header.Get("Authorization") != "Bearer tok" {
+			t.Errorf("%s %s auth=%q", r.Method, r.URL.Path, r.Header.Get("Authorization"))
+		}
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{"accessToken":"sekret","tokenType":"Bearer","expiresIn":3600}`))
+	})
+	out, aerr := c.Token(t.Context(), TokenRequest{FunctionID: "fnc_1", Version: 3})
+	if aerr != nil || out.AccessToken != "sekret" || out.TokenType != "Bearer" || out.ExpiresIn != 3600 {
+		t.Fatalf("out=%+v err=%v", out, aerr)
+	}
+	if got.FunctionID != "fnc_1" || got.Version != 3 {
+		t.Fatalf("server saw %+v", got)
+	}
+}
+
+// 400, 403 and 409 are the platform refusing this function (not declared there,
+// no linked account, inactive account): NOT_ALLOWED carrying the platform's
+// code. Platform trouble, including 429, is retryable.
+func TestClientTokenClassifiesRefusals(t *testing.T) {
+	for status, want := range map[int]string{
+		http.StatusBadGateway:          abi.CodeUnavailable,
+		http.StatusInternalServerError: abi.CodeUnavailable,
+		http.StatusTooManyRequests:     abi.CodeUnavailable,
+		http.StatusRequestTimeout:      abi.CodeUnavailable,
+		http.StatusUnauthorized:        abi.CodeUnavailable,
+		http.StatusForbidden:           abi.CodeNotAllowed,
+		http.StatusConflict:            abi.CodeNotAllowed,
+		http.StatusBadRequest:          abi.CodeNotAllowed,
+		http.StatusNotFound:            abi.CodeNotAllowed,
+	} {
+		c := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"error":"PLATFORM_TOKEN_NOT_DECLARED","message":"why"}`))
+		})
+		_, aerr := c.Token(t.Context(), TokenRequest{})
+		if aerr == nil || aerr.Code != want {
+			t.Errorf("%d: %+v, want %s", status, aerr, want)
+			continue
+		}
+		if want == abi.CodeNotAllowed && aerr.Message != "PLATFORM_TOKEN_NOT_DECLARED: why" {
+			t.Errorf("%d: message %q must carry the platform code", status, aerr.Message)
+		}
+	}
+}
+
+func TestClientTokenUnreachableAndDeadline(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	url := srv.URL
+	srv.Close()
+	c := NewClient(url, func(context.Context) (string, error) { return "tok", nil }, nil)
+	if _, aerr := c.Token(t.Context(), TokenRequest{}); aerr == nil || aerr.Code != abi.CodeUnavailable {
+		t.Fatalf("unreachable: %+v", aerr)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, aerr := c.Token(ctx, TokenRequest{}); aerr == nil || aerr.Code != abi.CodeDeadline {
+		t.Fatalf("deadline: %+v", aerr)
+	}
+}
+
+func TestClientTokenRetriesOnceWithAFreshRunnerToken(t *testing.T) {
+	calls, invalidated := 0, 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Header.Get("Authorization") == "Bearer old" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"accessToken":"t","tokenType":"Bearer","expiresIn":60}`))
+	}))
+	t.Cleanup(srv.Close)
+	tok := "old"
+	c := NewClient(srv.URL, func(context.Context) (string, error) { return tok, nil }, nil)
+	c.InvalidateToken = func() { invalidated++; tok = "new" }
+	if out, aerr := c.Token(t.Context(), TokenRequest{}); aerr != nil || out.AccessToken != "t" || calls != 2 || invalidated != 1 {
+		t.Fatalf("out=%+v err=%v calls=%d invalidated=%d", out, aerr, calls, invalidated)
+	}
+}
