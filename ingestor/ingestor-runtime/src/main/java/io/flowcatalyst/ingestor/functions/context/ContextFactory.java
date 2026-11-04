@@ -6,17 +6,19 @@ import io.flowcatalyst.ingestor.functions.control.ControlPlane;
 import io.flowcatalyst.ingestor.functions.control.Describe;
 import java.time.Clock;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /// Builds a [HostFunctionContext] from a desired-state function and one of its versions' describe documents:
-/// config and secrets restricted to what the describe declares, the allowlisting HTTP caller, and events and
-/// dispatch through the one [ControlPlane] the reconciler itself polls and heartbeats through.
+/// config and secrets restricted to what the describe declares, the allowlisting HTTP caller, and events, dispatch
+/// and platform tokens through the one [ControlPlane] the reconciler itself polls and heartbeats through.
 public final class ContextFactory {
 
     private final OutboundClients outbound;
     private final Clock clock;
     private final ControlPlane controlPlane;
     private final DbPools dbPools;
+    private final PlatformTokenCache platformTokens;
     private final LogBudget.Limits logLimits;
 
     /// One log budget per function address, shared by all its versions (docs/ingestor-failure-pacing.md R6).
@@ -34,6 +36,17 @@ public final class ContextFactory {
         this.outbound = Objects.requireNonNull(outbound, "outbound");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.controlPlane = Objects.requireNonNull(controlPlane, "controlPlane");
+        this.platformTokens = new PlatformTokenCache(controlPlane, clock);
+    }
+
+    /// Drops the cached platform tokens of every function not in `functionIds` (the ids in the desired document).
+    public void retainFunctions(Set<String> functionIds) {
+        platformTokens.retain(functionIds);
+    }
+
+    /// The host's platform-token cache.
+    public PlatformTokenCache platformTokens() {
+        return platformTokens;
     }
 
     /// @throws ContextLoadException the context cannot be built: the address is not one the function API can represent
@@ -55,6 +68,7 @@ public final class ContextFactory {
                 new AllowlistHttpCaller(outbound, describe.httpAllow(), clock),
                 new ControlPlaneEvents(controlPlane, function.id(), function.address(), version, describe.emits()),
                 new ControlPlaneDispatcher(controlPlane, function.id(), version, describe.dispatches()),
+                new PlatformTokenSource(platformTokens, function.id(), version, describe.platformToken(), clock),
                 clock,
                 describe.db(),
                 function.db(),

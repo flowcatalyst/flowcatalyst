@@ -6,6 +6,7 @@ import io.flowcatalyst.function.Events;
 import io.flowcatalyst.function.FunctionAddress;
 import io.flowcatalyst.function.FunctionContext;
 import io.flowcatalyst.function.HttpCaller;
+import io.flowcatalyst.function.PlatformTokenException;
 import io.flowcatalyst.function.Secrets;
 
 import javax.sql.DataSource;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /// A [FunctionContext] for unit-testing a function without a host. It lives in
 /// the API jar (package `io.flowcatalyst.function.testing`) so a function's
@@ -34,7 +36,10 @@ import java.util.Optional;
 /// lookups behave as the host's do: an undeclared key is empty, `require`
 /// throws [NoSuchElementException] naming the key, and secret values never
 /// appear in `toString`. `http()` and `dataSource(name)` throw
-/// [UnsupportedOperationException] unless set.
+/// [UnsupportedOperationException] unless set. `platformToken()` answers the token set with
+/// [Builder#platformToken], or throws the failure set with [Builder#platformTokenFailure]; with neither it
+/// throws `NOT_DECLARED`, as a host does for a function that did not declare it. Every call is counted
+/// ([#platformTokenCalls], [#platformTokenRefreshes]).
 public final class FakeFunctionContext implements FunctionContext {
 
     private final FunctionAddress address;
@@ -47,6 +52,10 @@ public final class FakeFunctionContext implements FunctionContext {
     private final Clock clock;
     private final HttpCaller http;
     private final Map<String, DataSource> dataSources;
+    private final String platformToken;
+    private final PlatformTokenException platformTokenFailure;
+    private final AtomicInteger platformTokenCalls = new AtomicInteger();
+    private final AtomicInteger platformTokenRefreshes = new AtomicInteger();
 
     private FakeFunctionContext(Builder b) {
         this.address = b.address;
@@ -60,6 +69,8 @@ public final class FakeFunctionContext implements FunctionContext {
         this.clock = b.clock;
         this.http = b.http;
         this.dataSources = Map.copyOf(b.dataSources);
+        this.platformToken = b.platformToken;
+        this.platformTokenFailure = b.platformTokenFailure;
         this.logger = new CapturingLogger("fn." + address.render());
     }
 
@@ -115,6 +126,31 @@ public final class FakeFunctionContext implements FunctionContext {
     }
 
     @Override
+    public String platformToken(boolean refresh) {
+        platformTokenCalls.incrementAndGet();
+        if (refresh) {
+            platformTokenRefreshes.incrementAndGet();
+        }
+        if (platformTokenFailure != null) {
+            throw platformTokenFailure;
+        }
+        if (platformToken == null) {
+            throw new PlatformTokenException("NOT_DECLARED", "this fake context has no platform token; set one with platformToken(...)");
+        }
+        return platformToken;
+    }
+
+    /// How many times `platformToken` was called, refreshes included.
+    public int platformTokenCalls() {
+        return platformTokenCalls.get();
+    }
+
+    /// How many of those calls asked for a refresh.
+    public int platformTokenRefreshes() {
+        return platformTokenRefreshes.get();
+    }
+
+    @Override
     public Clock clock() {
         return clock;
     }
@@ -150,6 +186,8 @@ public final class FakeFunctionContext implements FunctionContext {
         private final Map<String, DataSource> dataSources = new LinkedHashMap<>();
         private RecordingEvents events = new RecordingEvents();
         private RecordingDispatcher dispatcher = new RecordingDispatcher();
+        private String platformToken;
+        private PlatformTokenException platformTokenFailure;
         private Clock clock = Clock.fixed(Instant.parse("2026-09-20T00:00:00Z"), ZoneOffset.UTC);
         private HttpCaller http = call -> {
             throw new UnsupportedOperationException("this fake context has no HTTP caller; set one with http(...)");
@@ -191,6 +229,18 @@ public final class FakeFunctionContext implements FunctionContext {
 
         public Builder dispatcher(RecordingDispatcher dispatcher) {
             this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
+            return this;
+        }
+
+        /// The token every `platformToken` call answers (use an obviously fake string).
+        public Builder platformToken(String token) {
+            this.platformToken = Objects.requireNonNull(token, "token");
+            return this;
+        }
+
+        /// Makes every `platformToken` call throw `failure`.
+        public Builder platformTokenFailure(PlatformTokenException failure) {
+            this.platformTokenFailure = Objects.requireNonNull(failure, "failure");
             return this;
         }
 

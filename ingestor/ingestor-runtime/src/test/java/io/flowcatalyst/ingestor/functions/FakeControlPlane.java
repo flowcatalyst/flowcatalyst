@@ -2,6 +2,7 @@ package io.flowcatalyst.ingestor.functions;
 
 import io.flowcatalyst.function.DispatchException;
 import io.flowcatalyst.function.EmitResult;
+import io.flowcatalyst.function.PlatformTokenException;
 import io.flowcatalyst.ingestor.functions.control.Control;
 import io.flowcatalyst.ingestor.functions.control.ControlPlane;
 import io.flowcatalyst.ingestor.functions.control.ControlPlaneException;
@@ -34,6 +35,8 @@ public final class FakeControlPlane implements ControlPlane {
     public volatile @Nullable Function<String, ControlPlaneException> artifactFailure;
     public volatile Function<Control.EmitRequest, EmitResult> emitAnswer = r -> new EmitResult.Emitted("evt_1");
     public volatile Function<Control.DispatchRequest, String> dispatchAnswer = r -> "djb_1";
+    public final List<Control.TokenRequest> tokenRequests = new CopyOnWriteArrayList<>();
+    public volatile Function<Control.TokenRequest, Control.TokenResponse> tokenAnswer = r -> new Control.TokenResponse("fake-platform-token", "Bearer", 3600);
     public volatile @Nullable String lastRequestedPool;
 
     public void addArtifact(Fx.Jar jar) {
@@ -109,6 +112,12 @@ public final class FakeControlPlane implements ControlPlane {
     public String dispatch(Control.DispatchRequest request) throws DispatchException {
         dispatches.add(request);
         return dispatchAnswer.apply(request);
+    }
+
+    @Override
+    public Control.TokenResponse platformToken(Control.TokenRequest request) throws PlatformTokenException {
+        tokenRequests.add(request);
+        return tokenAnswer.apply(request);
     }
 
     /// The last heartbeat's report of version `number` of function `functionId`, or `null` if it is not reported.

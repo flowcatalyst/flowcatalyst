@@ -6,8 +6,8 @@ import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
 
 /// The wire contract with the platform's function control plane, as the Go runner speaks it
-/// (`internal/functions/control/control.go`): the desired-state document, the heartbeat, the emit request and
-/// the dispatch request. Field names are the JSON names. The desired document contains secrets: it is
+/// (`internal/functions/control/control.go`): the desired-state document, the heartbeat, the emit request,
+/// the dispatch request and the platform-token request. Field names are the JSON names. The desired document contains secrets: it is
 /// never logged.
 public final class Control {
 
@@ -20,6 +20,7 @@ public final class Control {
     public static final String PATH_ARTIFACTS = "/control/functions/artifacts";
     public static final String PATH_EVENTS = "/control/functions/events";
     public static final String PATH_DISPATCH_JOBS = "/control/functions/dispatch-jobs";
+    public static final String PATH_TOKEN = "/control/functions/token";
 
     /// The runtime tag this host serves.
     public static final String RUNTIME_JVM = "jvm";
@@ -194,5 +195,18 @@ public final class Control {
 
     /// `control.DispatchResponse`.
     public record DispatchResponse(@Nullable String jobId) {
+    }
+
+    /// `control.TokenRequest`.
+    public record TokenRequest(String functionId, int version) {
+    }
+
+    /// `control.TokenResponse`: `expiresIn` is the token's lifetime in seconds. `accessToken` is a credential and
+    /// never appears in a `toString`.
+    public record TokenResponse(@Nullable String accessToken, @Nullable String tokenType, long expiresIn) {
+        @Override
+        public String toString() {
+            return "TokenResponse[expiresIn=" + expiresIn + "]";
+        }
     }
 }

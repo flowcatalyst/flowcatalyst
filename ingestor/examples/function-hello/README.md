@@ -14,6 +14,9 @@ The function API and the framework are `provided`: the host gives them to every 
 holds only the function's own classes and `function.json`. One instance serves every call at once, each
 on its own virtual thread, so a function keeps no mutable state of its own.
 
+A function that calls another first-party application declares `platformToken` and calls `ctx.platformToken()`: see
+[docs/function-platform-token.md](../../docs/function-platform-token.md). This example does not use it.
+
 ## Run it locally
 
 From a checkout of the platform repository, with a JDK 25 (building) and nothing else installed:

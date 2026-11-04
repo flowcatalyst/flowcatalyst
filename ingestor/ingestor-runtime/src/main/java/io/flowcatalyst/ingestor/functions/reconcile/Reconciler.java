@@ -41,6 +41,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -435,6 +436,8 @@ public final class Reconciler implements AutoCloseable {
             functions.put(fn.address(), new FunctionView(fn, api, Map.copyOf(versions), live, Map.copyOf(aliases), fingerprint));
         }
         records.keySet().removeIf(k -> !seen.containsKey(k));
+        // A function that left the document keeps no platform token.
+        contextFactory.retainFunctions(doc.functions().stream().map(Control.FunctionDoc::id).collect(Collectors.toSet()));
         appliedRevision = doc.revision();
         snapshot = new Snapshot(doc.revision(), Map.copyOf(functions));
         notifyChange();

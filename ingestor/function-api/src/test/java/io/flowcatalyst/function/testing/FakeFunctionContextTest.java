@@ -7,6 +7,7 @@ import io.flowcatalyst.function.EmitResult;
 import io.flowcatalyst.function.Function;
 import io.flowcatalyst.function.FunctionAddress;
 import io.flowcatalyst.function.OutboundEvent;
+import io.flowcatalyst.function.PlatformTokenException;
 import io.flowcatalyst.function.Request;
 import io.flowcatalyst.function.Result;
 import io.flowcatalyst.function.Webhook;
@@ -34,6 +35,30 @@ class FakeFunctionContextTest {
         assertThat(ctx.logger().getName()).isEqualTo("fn.orders.fulfil");
         assertThatThrownBy(() -> ctx.http().send(null)).isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> ctx.dataSource("main")).isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void platformTokenAnswersTheSetTokenAndCountsCalls() {
+        FakeFunctionContext ctx = FakeFunctionContext.builder(ADDRESS).platformToken("fake-token").build();
+        assertThat(ctx.platformToken()).isEqualTo("fake-token");
+        assertThat(ctx.platformToken(true)).isEqualTo("fake-token");
+        assertThat(ctx.platformTokenCalls()).isEqualTo(2);
+        assertThat(ctx.platformTokenRefreshes()).isEqualTo(1);
+    }
+
+    @Test
+    void platformTokenThrowsTheSetFailureOrNotDeclared() {
+        FakeFunctionContext failing = FakeFunctionContext.builder(ADDRESS)
+                .platformTokenFailure(new PlatformTokenException("UNAVAILABLE", "down")).build();
+        assertThatThrownBy(failing::platformToken).isInstanceOfSatisfying(PlatformTokenException.class,
+                e -> assertThat(e.retryable()).isTrue());
+        assertThat(failing.platformTokenCalls()).isEqualTo(1);
+
+        FakeFunctionContext none = FakeFunctionContext.builder(ADDRESS).build();
+        assertThatThrownBy(none::platformToken).isInstanceOfSatisfying(PlatformTokenException.class, e -> {
+            assertThat(e.code()).isEqualTo("NOT_DECLARED");
+            assertThat(e.retryable()).isFalse();
+        });
     }
 
     @Test

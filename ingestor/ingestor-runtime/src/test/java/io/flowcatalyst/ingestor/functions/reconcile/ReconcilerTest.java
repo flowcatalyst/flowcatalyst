@@ -218,6 +218,21 @@ class ReconcilerTest {
     }
 
     @Test
+    void aFunctionLeavingTheDocumentLosesItsCachedPlatformToken() {
+        Fx.Jar v1 = Fx.hello("1");
+        h.plane.addArtifact(v1);
+        h.plane.push(Fx.desired(1, fn(Fx.version(1, v1, helloDescribe(), "live"))));
+        h.reconcile();
+        assertThat(h.contexts.platformTokens().token("fn_1", 1, false)).isEqualTo("fake-platform-token");
+        assertThat(h.contexts.platformTokens().size()).isEqualTo(1);
+
+        h.plane.push(Fx.desired(2));
+        h.reconcile();
+
+        assertThat(h.contexts.platformTokens().size()).isZero();
+    }
+
+    @Test
     void aFunctionWithNoLiveVersionIsClosedButItsCandidateIsStillProven() {
         Fx.Jar v1 = Fx.hello("1");
         h.plane.addArtifact(v1);

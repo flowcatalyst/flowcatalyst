@@ -12,6 +12,7 @@ import io.flowcatalyst.framework.httpclient.RetryPolicy;
 import io.flowcatalyst.framework.httpclient.ServiceOptions;
 import io.flowcatalyst.function.DispatchException;
 import io.flowcatalyst.function.EmitResult;
+import io.flowcatalyst.function.PlatformTokenException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -502,6 +503,69 @@ class HttpControlPlaneTest {
         platform.stop(0);
         assertThatThrownBy(() -> plane.dispatch(dispatchRequest()))
                 .isInstanceOfSatisfying(DispatchException.class, ex -> assertThat(ex.retryable()).isTrue());
+    }
+
+    @Test
+    void aTokenRequestIsPostedInThePlatformsShapeAndAnswersTheToken() throws Exception {
+        platformHandler = (e, s) -> reply(e, 200, "{\"accessToken\":\"fake-token\",\"tokenType\":\"Bearer\",\"expiresIn\":3600}");
+
+        Control.TokenResponse r = plane.platformToken(new Control.TokenRequest("fn_1", 3));
+
+        assertThat(r.accessToken()).isEqualTo("fake-token");
+        assertThat(r.tokenType()).isEqualTo("Bearer");
+        assertThat(r.expiresIn()).isEqualTo(3600);
+        assertThat(r.toString()).doesNotContain("fake-token");
+        Seen seen = platformSeen.get(0);
+        assertThat(seen.method()).isEqualTo("POST");
+        assertThat(seen.path()).isEqualTo("/control/functions/token");
+        assertThat(seen.header("authorization")).isEqualTo("Bearer tok-1");
+        assertThat(seen.json().path("functionId").asString()).isEqualTo("fn_1");
+        assertThat(seen.json().path("version").asInt()).isEqualTo(3);
+    }
+
+    @Test
+    void aRefusedTokenRequestIsNotAllowedAndNamesThePlatformsCode() {
+        for (int status : new int[] {403, 409, 400, 404}) {
+            platformHandler = (e, s) -> reply(e, status, "{\"error\":\"PLATFORM_TOKEN_NOT_DECLARED\",\"message\":\"nope\"}");
+            assertThatThrownBy(() -> plane.platformToken(new Control.TokenRequest("fn_1", 3)))
+                    .as("status %d", status)
+                    .isInstanceOfSatisfying(PlatformTokenException.class, ex -> {
+                        assertThat(ex.code()).isEqualTo("NOT_ALLOWED");
+                        assertThat(ex.retryable()).isFalse();
+                        assertThat(ex.getMessage()).contains("PLATFORM_TOKEN_NOT_DECLARED");
+                    });
+        }
+    }
+
+    @Test
+    void aTroubledPlatformMakesTheTokenRequestRetryable() {
+        for (int status : new int[] {500, 502, 503, 429, 408, 401}) {
+            platformHandler = (e, s) -> reply(e, status, "{\"error\":\"X\",\"message\":\"later\"}");
+            assertThatThrownBy(() -> plane.platformToken(new Control.TokenRequest("fn_1", 3)))
+                    .as("status %d", status)
+                    .isInstanceOfSatisfying(PlatformTokenException.class, ex -> {
+                        assertThat(ex.code()).isEqualTo("UNAVAILABLE");
+                        assertThat(ex.retryable()).isTrue();
+                    });
+        }
+        platformHandler = (e, s) -> reply(e, 200, "{\"tokenType\":\"Bearer\",\"expiresIn\":60}");
+        assertThatThrownBy(() -> plane.platformToken(new Control.TokenRequest("fn_1", 3)))
+                .isInstanceOfSatisfying(PlatformTokenException.class, ex -> assertThat(ex.retryable()).isTrue());
+    }
+
+    @Test
+    void aTokenRequestToAnUnreachablePlatformIsUnavailable() {
+        platform.stop(0);
+        assertThatThrownBy(() -> plane.platformToken(new Control.TokenRequest("fn_1", 3)))
+                .isInstanceOfSatisfying(PlatformTokenException.class, ex -> assertThat(ex.retryable()).isTrue());
+    }
+
+    @Test
+    void theDescribeReadsPlatformToken() throws Exception {
+        String base = "{\"abi\":1,\"jvm\":{\"entrypoint\":\"a.B\"},\"endpoints\":[{\"path\":\"/x\",\"auth\":\"none\"}]";
+        assertThat(Describe.parse(Json.mapper().readTree(base + ",\"platformToken\":true}")).platformToken()).isTrue();
+        assertThat(Describe.parse(Json.mapper().readTree(base + ",\"platformToken\":false}")).platformToken()).isFalse();
+        assertThat(Describe.parse(Json.mapper().readTree(base + "}")).platformToken()).isFalse();
     }
 
     @Test

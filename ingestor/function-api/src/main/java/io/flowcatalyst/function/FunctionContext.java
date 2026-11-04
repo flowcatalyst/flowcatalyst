@@ -11,9 +11,9 @@ import javax.sql.DataSource;
 ///
 /// [HttpCaller], [Events] and [Dispatcher] are interfaces with value types
 /// here; the host implements them. `config`, `secrets`, `dataSource`, `http`,
-/// `events` and `dispatcher` are limited to what the function declared in its
-/// describe document (`config`, `secrets`, `db`, `httpAllow`, `emits`,
-/// `dispatches`). For a unit test without a host see
+/// `events`, `dispatcher` and `platformToken` are limited to what the function
+/// declared in its describe document (`config`, `secrets`, `db`, `httpAllow`, `emits`,
+/// `dispatches`, `platformToken`). For a unit test without a host see
 /// [io.flowcatalyst.function.testing.FakeFunctionContext].
 ///
 /// Function traces (`traceContexts`) are a later slice and have no API here yet.
@@ -42,6 +42,24 @@ public interface FunctionContext {
     /// Creates dispatch jobs to declared targets on this function's behalf,
     /// through the host.
     Dispatcher dispatcher();
+
+    /// A FlowCatalyst access token for calling another first-party application, as the service account
+    /// linked to this function's application. The function declares `platformToken: true` in its describe
+    /// and holds no client id or secret. The host caches the token while it is valid and renews it shortly
+    /// before it expires, so call this per outbound request and do not keep the value. The token is a
+    /// credential: never log it.
+    ///
+    /// @throws PlatformTokenException not declared, not allowed by the platform, or the platform could not be
+    ///                                reached ([PlatformTokenException#retryable()])
+    default String platformToken() {
+        return platformToken(false);
+    }
+
+    /// As [#platformToken()]; `refresh` skips the cache and fetches a new token, for a target that answered
+    /// 401 because the account's roles changed.
+    ///
+    /// @throws PlatformTokenException as [#platformToken()]
+    String platformToken(boolean refresh);
 
     /// The host's clock — never `Clock.systemUTC()` read directly, so a test
     /// can fix time.

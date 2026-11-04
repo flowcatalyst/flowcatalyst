@@ -2,6 +2,7 @@ package io.flowcatalyst.ingestor.functions.control;
 
 import io.flowcatalyst.function.DispatchException;
 import io.flowcatalyst.function.EmitResult;
+import io.flowcatalyst.function.PlatformTokenException;
 import java.time.Duration;
 import org.jspecify.annotations.Nullable;
 
@@ -34,6 +35,13 @@ public interface ControlPlane {
     ///
     /// @throws DispatchException the platform refused the job or could not be reached
     String dispatch(Control.DispatchRequest request) throws DispatchException;
+
+    /// `POST /control/functions/token` on a function's behalf: a new access token for the service account linked
+    /// to the function's application. The host caches it ([io.flowcatalyst.ingestor.functions.context.PlatformTokenCache]).
+    ///
+    /// @throws PlatformTokenException the platform refused (`NOT_ALLOWED`, not retryable) or could not be reached
+    ///                                (`UNAVAILABLE`, retryable)
+    Control.TokenResponse platformToken(Control.TokenRequest request) throws PlatformTokenException;
 
     /// The outcome of one [#desired] call.
     sealed interface Fetched permits Fetched.NotModified, Fetched.Changed {

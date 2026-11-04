@@ -34,6 +34,7 @@ public final class HostFunctionContext implements FunctionContext {
     private final HttpCaller http;
     private final Events events;
     private final Dispatcher dispatcher;
+    private final PlatformTokenSource platformTokens;
     private final Clock clock;
     private final Logger logger;
     private final List<String> declaredDatabases;
@@ -42,14 +43,15 @@ public final class HostFunctionContext implements FunctionContext {
     private final Map<String, DataSource> dataSources = new ConcurrentHashMap<>();
 
     HostFunctionContext(FunctionAddress address, int version, Config config, Secrets secrets, HttpCaller http, Events events,
-            Dispatcher dispatcher, Clock clock, List<String> declaredDatabases, Map<String, String> databaseDsns, DbPools dbPools) {
-        this(address, version, config, secrets, http, events, dispatcher, clock, declaredDatabases, databaseDsns, dbPools,
+            Dispatcher dispatcher, PlatformTokenSource platformTokens, Clock clock, List<String> declaredDatabases,
+            Map<String, String> databaseDsns, DbPools dbPools) {
+        this(address, version, config, secrets, http, events, dispatcher, platformTokens, clock, declaredDatabases, databaseDsns, dbPools,
                 new LogBudget(LogBudget.Limits.DEFAULTS));
     }
 
     HostFunctionContext(FunctionAddress address, int version, Config config, Secrets secrets, HttpCaller http, Events events,
-            Dispatcher dispatcher, Clock clock, List<String> declaredDatabases, Map<String, String> databaseDsns, DbPools dbPools,
-            LogBudget logBudget) {
+            Dispatcher dispatcher, PlatformTokenSource platformTokens, Clock clock, List<String> declaredDatabases,
+            Map<String, String> databaseDsns, DbPools dbPools, LogBudget logBudget) {
         this.address = Objects.requireNonNull(address, "address");
         this.version = version;
         this.config = Objects.requireNonNull(config, "config");
@@ -57,6 +59,7 @@ public final class HostFunctionContext implements FunctionContext {
         this.http = Objects.requireNonNull(http, "http");
         this.events = Objects.requireNonNull(events, "events");
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
+        this.platformTokens = Objects.requireNonNull(platformTokens, "platformTokens");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.declaredDatabases = List.copyOf(declaredDatabases);
         this.databaseDsns = Map.copyOf(databaseDsns);
@@ -117,6 +120,12 @@ public final class HostFunctionContext implements FunctionContext {
     @Override
     public Dispatcher dispatcher() {
         return dispatcher;
+    }
+
+    /// Never logged: the token is a credential.
+    @Override
+    public String platformToken(boolean refresh) {
+        return platformTokens.token(refresh);
     }
 
     @Override

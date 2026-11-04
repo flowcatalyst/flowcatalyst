@@ -10,7 +10,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /// A version's describe document as the platform stores it (`internal/functions/abi/describe.go`): what the
-/// function declares it needs, plus `jvm.entrypoint`, the class implementing `Function`. The platform
+/// function declares it needs (including `platformToken`, a boolean), plus `jvm.entrypoint`, the class implementing `Function`. The platform
 /// validated it at publish; the host re-checks only what it routes and loads by. Subscriptions, schedules
 /// and trace contexts are the platform's business and are not read here.
 public record Describe(
@@ -22,6 +22,7 @@ public record Describe(
         List<String> httpAllow,
         List<String> emits,
         List<DispatchTarget> dispatches,
+        boolean platformToken,
         @Nullable Jvm jvm) {
 
     public static final String AUTH_WEBHOOK = "webhook";
@@ -40,6 +41,12 @@ public record Describe(
         httpAllow = httpAllow == null ? List.of() : List.copyOf(httpAllow);
         emits = emits == null ? List.of() : List.copyOf(emits);
         dispatches = dispatches == null ? List.of() : List.copyOf(dispatches);
+    }
+
+    /// A document that does not declare `platformToken`.
+    public Describe(int abi, List<Endpoint> endpoints, List<String> config, List<String> secrets, List<String> db,
+            List<String> httpAllow, List<String> emits, List<DispatchTarget> dispatches, @Nullable Jvm jvm) {
+        this(abi, endpoints, config, secrets, db, httpAllow, emits, dispatches, false, jvm);
     }
 
     /// One path the function answers, and how its callers authenticate (`abi.Endpoint`). An empty

@@ -72,6 +72,7 @@ public final class Harness implements AutoCloseable {
     public final HttpClients clients = HttpClients.create();
     public final io.flowcatalyst.ingestor.functions.context.DbPools dbPools;
     public final FunctionRegistry registry;
+    public final ContextFactory contexts;
     public final Reconciler reconciler;
     public final FunctionListener listener;
     public final TestClient http;
@@ -97,7 +98,7 @@ public final class Harness implements AutoCloseable {
         this.registry = new FunctionRegistry(64, clock);
         this.dbPools = new io.flowcatalyst.ingestor.functions.context.DbPools(io.flowcatalyst.ingestor.functions.context.DbPools.Limits.DEFAULTS, clock);
         ArtifactCache artifacts = new ArtifactCache(plane, null);
-        ContextFactory contexts = new ContextFactory(new OutboundClients(clients), clock, plane, dbPools);
+        this.contexts = new ContextFactory(new OutboundClients(clients), clock, plane, dbPools);
         this.failureLog = new FailureLog((message, cause) -> logged.add(new Logged(message, cause != null)), Duration.ofMinutes(1), clock);
         reconciler = new Reconciler(
                 "default", "runner-1", "test", plane, artifacts, new JvmFunctionLoader(), registry, contexts,

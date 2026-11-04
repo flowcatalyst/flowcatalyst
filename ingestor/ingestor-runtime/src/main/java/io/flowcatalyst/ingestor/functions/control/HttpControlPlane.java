@@ -7,6 +7,7 @@ import io.flowcatalyst.framework.httpclient.RequestBuilder;
 import io.flowcatalyst.framework.httpclient.ServiceClient;
 import io.flowcatalyst.function.DispatchException;
 import io.flowcatalyst.function.EmitResult;
+import io.flowcatalyst.function.PlatformTokenException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -171,6 +172,41 @@ public final class HttpControlPlane implements ControlPlane {
                 ? DispatchException.UNAVAILABLE
                 : "DISPATCH_NOT_DECLARED".equals(said.code()) ? "NOT_DECLARED" : classify(response.status());
         throw new DispatchException(code, said.message());
+    }
+
+    /// As the Go client does: 5xx, 429, 408 and 401 (the runner's own credential, refreshed once by the client
+    /// already, is not accepted: an operational fault, not the function's) and an unreachable platform are
+    /// `UNAVAILABLE`; any other refusal (403, 409, 400, 404 ...) is `NOT_ALLOWED` and its message names the
+    /// platform's code. The token never reaches a log or a message.
+    @Override
+    public Control.TokenResponse platformToken(Control.TokenRequest request) throws PlatformTokenException {
+        ClientResponse response;
+        try {
+            response = client.post(Control.PATH_TOKEN).json(request).timeout(Duration.ofSeconds(30)).send();
+        } catch (HttpClientException e) {
+            interruptedFlag(e);
+            throw new PlatformTokenException(PlatformTokenException.UNAVAILABLE, "the platform could not be reached");
+        }
+        if (response.isSuccess()) {
+            try {
+                Control.TokenResponse token = response.json(Control.TokenResponse.class);
+                String value = token.accessToken();
+                if (value != null && !value.isBlank()) {
+                    return token;
+                }
+            } catch (HttpClientException e) {
+                // fall through
+            }
+            throw new PlatformTokenException(PlatformTokenException.UNAVAILABLE, "the platform's answer was unreadable");
+        }
+        Said said = said(response);
+        int status = response.status();
+        boolean transientStatus = status >= 500 || status == 429 || status == 408 || status == 401;
+        if (transientStatus) {
+            throw new PlatformTokenException(PlatformTokenException.UNAVAILABLE, said.message());
+        }
+        String detail = said.code().isEmpty() ? said.message() : said.code() + ": " + said.message();
+        throw new PlatformTokenException("NOT_ALLOWED", detail);
     }
 
     /// The Go runner's classification of a non-2xx answer to a write made on a function's behalf.
