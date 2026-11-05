@@ -3,6 +3,7 @@ package ingestion
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -10,8 +11,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // The runtime contract's versions (docs/ingestion-design.md section 7). The
@@ -25,6 +28,78 @@ const (
 // DefaultLease is how long a lease lasts without being renewed
 // (FC_INGESTION_LEASE_SECONDS). A runtime renews it by polling, every minute.
 const DefaultLease = 3 * time.Minute
+
+// MinLease is the shortest lease the platform starts with: a runtime polls
+// every minute and stops a single-owner route before its lease would end, so
+// a shorter lease leaves it no room for one missed or slow poll.
+// FC_INGESTION_LEASE_SECONDS below it is a startup configuration error.
+const MinLease = 2 * time.Minute
+
+// Placement defaults (docs/ingestion-design.md section 7).
+const (
+	// DefaultUnhealthyCooldown is how long a FAILED or FAILING route state
+	// keeps an ingestion away from the runtime that reported it, while another
+	// live runtime has not failed it (FC_INGESTION_UNHEALTHY_COOLDOWN).
+	DefaultUnhealthyCooldown = 10 * time.Minute
+	// DefaultRecentWindow is how far back a runtime returning after a gap
+	// looks for the fleet it is part of: its new claims of a poll are capped
+	// at its share over the runtimes seen that recently
+	// (FC_INGESTION_RECENT_WINDOW).
+	DefaultRecentWindow = 10 * time.Minute
+)
+
+// UnhealthyCooldown is FC_INGESTION_UNHEALTHY_COOLDOWN (a Go duration such as
+// 10m), or DefaultUnhealthyCooldown when unset, unparseable or not positive.
+func UnhealthyCooldown() time.Duration {
+	return envDuration("FC_INGESTION_UNHEALTHY_COOLDOWN", DefaultUnhealthyCooldown)
+}
+
+// RecentWindow is FC_INGESTION_RECENT_WINDOW (a Go duration such as 10m), or
+// DefaultRecentWindow when unset, unparseable or not positive.
+func RecentWindow() time.Duration {
+	return envDuration("FC_INGESTION_RECENT_WINDOW", DefaultRecentWindow)
+}
+
+func envDuration(name string, def time.Duration) time.Duration {
+	if d, err := time.ParseDuration(envutil.Or(name, "")); err == nil && d > 0 {
+		return d
+	}
+	return def
+}
+
+// runtimeInUse is the 409 for a poll or release from a process other than the
+// live one that last polled as the runtime id.
+func runtimeInUse(runtimeID string) error {
+	return usecase.Conflict("RUNTIME_ID_IN_USE",
+		fmt.Sprintf("runtime id %s is in use by another live process", runtimeID))
+}
+
+// liveAt reports whether a runtime that last polled at lastSeen, and said
+// goodbye at left (nil: never), is live at now: it polled within one lease and
+// has not left since that poll.
+func liveAt(lastSeen time.Time, left *time.Time, now time.Time, lease time.Duration) bool {
+	return lastSeen.After(now.Add(-lease)) && (left == nil || left.Before(lastSeen))
+}
+
+// previousPoll reads (and locks) what the runtime's row said before this call
+// writes it; nil when the runtime has never polled (or was pruned).
+func previousPoll(ctx context.Context, q *dbq.Queries, runtimeID string) (*dbq.IngestionRuntimeFindForUpdateRow, error) {
+	row, err := q.IngestionRuntimeFindForUpdate(ctx, runtimeID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("runtime row: %w", err)
+	}
+	return &row, nil
+}
+
+// heldByAnother reports whether instance may not act as the runtime: another
+// instance polled as it within one lease and has not left since.
+func heldByAnother(prev *dbq.IngestionRuntimeFindForUpdateRow, instance string, now time.Time, lease time.Duration) bool {
+	return prev != nil && prev.InstanceID != nil && *prev.InstanceID != instance &&
+		liveAt(prev.LastSeenAt, prev.LeftAt, now, lease)
+}
 
 // maxTestsPerPoll bounds the test requests one poll claims.
 const maxTestsPerPoll = 10
@@ -55,6 +130,14 @@ type PollRequest struct {
 	Now time.Time
 	// Lease is how long the leases this poll takes or renews last.
 	Lease time.Duration
+	// InstanceID is the process the poll comes from (the contract's optional
+	// instanceId, new on every start). While another instance that polled as
+	// this runtime is live the poll is refused (RUNTIME_ID_IN_USE). Nil: no
+	// check, and none is stored.
+	InstanceID *string
+	// UnhealthyCooldown and RecentWindow are the placement windows; zero reads
+	// FC_INGESTION_UNHEALTHY_COOLDOWN and FC_INGESTION_RECENT_WINDOW.
+	UnhealthyCooldown, RecentWindow time.Duration
 }
 
 // PollResult is what a runtime should run and the tests it should try.
@@ -87,7 +170,20 @@ func clock(ctx context.Context, q *dbq.Queries, now time.Time) (time.Time, error
 // directly: a runtime that stops running an ingestion marks its lease released
 // and the lease passes to another runtime when it expires. A runtime that does
 // not carry an ingestion's kind never gets it.
+//
+// A poll from a process other than the live one that last polled as the
+// runtime id is refused (RUNTIME_ID_IN_USE) and changes nothing. A runtime
+// does not keep or take an ingestion it recently failed while another live
+// runtime that carries the kind has not (health-aware placement), and one
+// returning after a gap takes at most its share over the recently seen fleet
+// in new claims (docs/ingestion-design.md section 7).
 func (r *Repository) Poll(ctx context.Context, req PollRequest) (*PollResult, error) {
+	if req.UnhealthyCooldown <= 0 {
+		req.UnhealthyCooldown = UnhealthyCooldown()
+	}
+	if req.RecentWindow <= 0 {
+		req.RecentWindow = RecentWindow()
+	}
 	reported := req.Kinds
 	if reported == nil {
 		reported = []RuntimeKind{}
@@ -112,16 +208,28 @@ func (r *Repository) Poll(ctx context.Context, req PollRequest) (*PollResult, er
 			return err
 		}
 		req.Now, res.AsOf = now, now
+		// The instance guard comes before anything is written: a refused poll
+		// does not count as the runtime being seen, and takes nothing.
+		prev, err := previousPoll(ctx, q, req.RuntimeID)
+		if err != nil {
+			return err
+		}
+		if req.InstanceID != nil && heldByAnother(prev, *req.InstanceID, now, req.Lease) {
+			return runtimeInUse(req.RuntimeID)
+		}
+		// A runtime that was not live before this poll (new, silent for a
+		// lease, or gone with a goodbye) returns after a gap.
+		returning := prev == nil || !liveAt(prev.LastSeenAt, prev.LeftAt, now, req.Lease)
 		if err := q.IngestionRuntimeUpsert(ctx, dbq.IngestionRuntimeUpsertParams{
 			RuntimeID: req.RuntimeID, Kinds: kinds, BuiltinKinds: builtin, ContractVersion: int32(req.ContractVersion),
-			Url: req.URL, Now: now,
+			Url: req.URL, InstanceID: req.InstanceID, Now: now,
 		}); err != nil {
 			return fmt.Errorf("upsert runtime: %w", err)
 		}
 		if err := rememberRequirements(ctx, q, req.RuntimeID, reported, now); err != nil {
 			return err
 		}
-		live, err := liveIngestions(ctx, tx, req.Clients, req.Applications)
+		live, err := liveIngestions(ctx, tx, req.Clients, req.Applications, nil)
 		if err != nil {
 			return err
 		}
@@ -138,7 +246,37 @@ func (r *Repository) Poll(ctx context.Context, req PollRequest) (*PollResult, er
 		if err := q.IngestionLeasesLock(ctx); err != nil {
 			return fmt.Errorf("lock leases: %w", err)
 		}
-		shares, err := fairShares(ctx, q, live, req)
+		polled := polledKinds(live)
+		liveCarriers, err := carriersSeen(ctx, q, now.Add(-req.Lease), now)
+		if err != nil {
+			return err
+		}
+		shares := fairShares(polled, liveCarriers)
+		// A runtime returning after a gap claims at most its share over the
+		// runtimes seen recently: after a platform outage longer than a lease
+		// every runtime returns at once, and the first to poll would otherwise
+		// count only itself as live and claim everything.
+		var claimCap map[string]int
+		if returning {
+			recent, err := carriersSeen(ctx, q, now.Add(-req.RecentWindow), now)
+			if err != nil {
+				return err
+			}
+			claimCap = make(map[string]int, len(polled))
+			for kind, n := range polled {
+				claimCap[kind] = min(FairShare(n, len(recent[kind])), shares[kind])
+			}
+		}
+		avoid, err := unhealthyHere(ctx, q, req.RuntimeID, now.Add(-req.UnhealthyCooldown), live, liveCarriers)
+		if err != nil {
+			return err
+		}
+		// Ingestions another runtime recently failed and this one has not: it
+		// may hold them beyond its share, so one avoided there is never left
+		// unheld because every healthy runtime is already at its share. They
+		// count toward the share, so the next renewal sheds a healthy one
+		// instead, which the avoiding runtime can take: the fleet stays even.
+		rescue, err := failingElsewhere(ctx, q, req.RuntimeID, now.Add(-req.UnhealthyCooldown))
 		if err != nil {
 			return err
 		}
@@ -148,8 +286,8 @@ func (r *Repository) Poll(ctx context.Context, req PollRequest) (*PollResult, er
 		}
 
 		held := []string{} // not nil: sqlc sends a nil slice as NULL
-		heldOf := map[string]int{}
-		claim := func(item ListItem) (bool, error) {
+		heldOf, claimedOf := map[string]int{}, map[string]int{}
+		claim := func(item ListItem, renewal bool) (bool, error) {
 			n, err := q.IngestionLeaseClaim(ctx, dbq.IngestionLeaseClaimParams{
 				IngestionID: item.ID, RuntimeID: req.RuntimeID, Now: now, ExpiresAt: now.Add(req.Lease),
 			})
@@ -161,6 +299,9 @@ func (r *Repository) Poll(ctx context.Context, req PollRequest) (*PollResult, er
 			}
 			held = append(held, item.ID)
 			heldOf[RunKind(item.Definition.Source)]++
+			if !renewal {
+				claimedOf[RunKind(item.Definition.Source)]++
+			}
 			return true, nil
 		}
 		var runnable []ListItem
@@ -169,16 +310,24 @@ func (r *Repository) Poll(ctx context.Context, req PollRequest) (*PollResult, er
 				runnable = append(runnable, item)
 			}
 		}
-		// What this runtime already holds is renewed first, up to its share of
-		// the kind; then it claims unleased ones of the kind up to that share.
+		// What this runtime already holds is renewed first: a rescued one
+		// (failing elsewhere) whatever the share, then the rest up to its share
+		// of the kind; then it claims unleased ones of the kind up to that share
+		// (and, returning after a gap, up to its cap), or beyond it for a rescued
+		// one. An ingestion it should avoid is neither renewed nor claimed: its
+		// lease is released below, as any surplus is.
 		keep := map[string]bool{}
 		under := func(item ListItem) bool {
 			kind := RunKind(item.Definition.Source)
 			return heldOf[kind] < shares[kind]
 		}
+		capped := func(item ListItem) bool {
+			kind := RunKind(item.Definition.Source)
+			return claimCap != nil && claimedOf[kind] >= claimCap[kind]
+		}
 		for _, item := range runnable {
-			if item.Definition.Source.SingleOwner() && slices.Contains(mine, item.ID) && under(item) {
-				if ok, err := claim(item); err != nil {
+			if item.Definition.Source.SingleOwner() && slices.Contains(mine, item.ID) && !avoid[item.ID] && rescue[item.ID] {
+				if ok, err := claim(item, true); err != nil {
 					return err
 				} else if ok {
 					keep[item.ID] = true
@@ -186,10 +335,19 @@ func (r *Repository) Poll(ctx context.Context, req PollRequest) (*PollResult, er
 			}
 		}
 		for _, item := range runnable {
-			if !item.Definition.Source.SingleOwner() || keep[item.ID] || !under(item) {
+			if item.Definition.Source.SingleOwner() && slices.Contains(mine, item.ID) && !keep[item.ID] && !avoid[item.ID] && under(item) {
+				if ok, err := claim(item, true); err != nil {
+					return err
+				} else if ok {
+					keep[item.ID] = true
+				}
+			}
+		}
+		for _, item := range runnable {
+			if !item.Definition.Source.SingleOwner() || keep[item.ID] || avoid[item.ID] || (!under(item) && !rescue[item.ID]) || capped(item) {
 				continue
 			}
-			if ok, err := claim(item); err != nil {
+			if ok, err := claim(item, false); err != nil {
 				return err
 			} else if ok {
 				keep[item.ID] = true
@@ -214,26 +372,28 @@ func (r *Repository) Poll(ctx context.Context, req PollRequest) (*PollResult, er
 	return res, nil
 }
 
-// fairShares is, for each kind of polled (single-owner) ingestion, how many of
-// that kind one runtime may hold: the live ingestions of the kind spread
-// evenly over the live runtimes that carry it (those that polled within one
-// lease window, the asker included). Counting per kind keeps a mixed fleet
-// fair: a runtime that alone carries a kind takes all of it, whatever the
-// other runtimes hold of other kinds, and two runtimes that both carry a kind
-// split it. A runtime whose kinds row does not parse is left out of the count
-// (logged): it cannot run anything until it polls again anyway.
-func fairShares(ctx context.Context, q *dbq.Queries, live []ListItem, req PollRequest) (map[string]int, error) {
+// polledKinds counts the live polled (single-owner) ingestions of each kind.
+func polledKinds(live []ListItem) map[string]int {
 	polled := map[string]int{}
 	for _, item := range live {
 		if item.Definition.Source.SingleOwner() {
 			polled[RunKind(item.Definition.Source)]++
 		}
 	}
-	runtimes, err := q.IngestionRuntimesLiveKinds(ctx, dbq.IngestionRuntimesLiveKindsParams{Since: req.Now.Add(-req.Lease), Until: req.Now})
+	return polled
+}
+
+// carriersSeen lists, for each kind, the runtimes that polled after since (and
+// not after until), have not left since, and carry the kind. Over one lease
+// window these are the live runtimes, the asker included (it has just been
+// upserted). A runtime whose kinds row does not parse is left out (logged): it
+// cannot run anything until it polls again anyway.
+func carriersSeen(ctx context.Context, q *dbq.Queries, since, until time.Time) (map[string][]string, error) {
+	runtimes, err := q.IngestionRuntimesLiveKinds(ctx, dbq.IngestionRuntimesLiveKindsParams{Since: since, Until: until})
 	if err != nil {
 		return nil, fmt.Errorf("live runtimes: %w", err)
 	}
-	carriers := map[string]int{}
+	carriers := map[string][]string{}
 	for _, rt := range runtimes {
 		names, err := decodeCarried(rt.Kinds, rt.BuiltinKinds)
 		if err != nil {
@@ -241,21 +401,83 @@ func fairShares(ctx context.Context, q *dbq.Queries, live []ListItem, req PollRe
 			continue
 		}
 		for _, k := range names {
-			carriers[k]++
+			carriers[k] = append(carriers[k], rt.RuntimeID)
 		}
 	}
+	return carriers, nil
+}
+
+// fairShares is, for each kind of polled (single-owner) ingestion, how many of
+// that kind one runtime may hold: the live ingestions of the kind spread
+// evenly over the live runtimes that carry it. Counting per kind keeps a mixed
+// fleet fair: a runtime that alone carries a kind takes all of it, whatever the
+// other runtimes hold of other kinds, and two runtimes that both carry a kind
+// split it.
+func fairShares(polled map[string]int, liveCarriers map[string][]string) map[string]int {
 	shares := make(map[string]int, len(polled))
 	for kind, n := range polled {
-		shares[kind] = FairShare(n, carriers[kind])
+		shares[kind] = FairShare(n, len(liveCarriers[kind]))
 	}
-	return shares, nil
+	return shares
+}
+
+// unhealthyHere is the polled ingestions the runtime should neither renew nor
+// claim: those it reported FAILED or FAILING after since, while another live
+// runtime that carries the kind has not. An ingestion every live carrier has
+// failed recently stays where it is, so a definition broken everywhere stays
+// put and visible rather than moving around. A runtime that reports STARTED
+// again is not avoided: a route has one state per runtime, the latest.
+func unhealthyHere(ctx context.Context, q *dbq.Queries, runtimeID string, since time.Time, live []ListItem, liveCarriers map[string][]string) (map[string]bool, error) {
+	rows, err := q.IngestionRouteStatesUnhealthy(ctx, dbq.IngestionRouteStatesUnhealthyParams{Since: since, RuntimeID: runtimeID})
+	if err != nil {
+		return nil, fmt.Errorf("unhealthy route states: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	failedBy := map[string]map[string]bool{} // ingestion -> runtimes that recently failed it
+	for _, row := range rows {
+		if failedBy[row.IngestionID] == nil {
+			failedBy[row.IngestionID] = map[string]bool{}
+		}
+		failedBy[row.IngestionID][row.RuntimeID] = true
+	}
+	avoid := map[string]bool{}
+	for _, item := range live {
+		by, failed := failedBy[item.ID]
+		if !failed || !item.Definition.Source.SingleOwner() {
+			continue
+		}
+		for _, other := range liveCarriers[RunKind(item.Definition.Source)] {
+			if other != runtimeID && !by[other] {
+				avoid[item.ID] = true
+				break
+			}
+		}
+	}
+	return avoid, nil
+}
+
+// failingElsewhere is the ingestions another runtime reported FAILED or
+// FAILING after since while this one has not: this runtime may hold them
+// beyond its fair share (see Poll).
+func failingElsewhere(ctx context.Context, q *dbq.Queries, runtimeID string, since time.Time) (map[string]bool, error) {
+	ids, err := q.IngestionRouteStatesFailingElsewhere(ctx, dbq.IngestionRouteStatesFailingElsewhereParams{Since: since, RuntimeID: runtimeID})
+	if err != nil {
+		return nil, fmt.Errorf("route states failing elsewhere: %w", err)
+	}
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, nil
 }
 
 // liveIngestions reads the ingestions runtimes run: active, with a live
 // version (idx_ing_ingestions_active), of a client that is active (a
 // suspended or deactivated client's ingestions run nowhere), confined to the
-// caller's reach, in id order.
-func liveIngestions(ctx context.Context, tx pgx.Tx, clients, applications *[]string) ([]ListItem, error) {
+// caller's reach (and to ids when not nil), in id order.
+func liveIngestions(ctx context.Context, tx pgx.Tx, clients, applications, ids *[]string) ([]ListItem, error) {
 	var flt repocommon.Filter
 	flt.Cond("i.active AND i.version > 0")
 	flt.Cond("c.status = 'ACTIVE'")
@@ -264,6 +486,9 @@ func liveIngestions(ctx context.Context, tx pgx.Tx, clients, applications *[]str
 	}
 	if applications != nil {
 		flt.Clause("i.application_id = ANY($%d)", *applications)
+	}
+	if ids != nil {
+		flt.Clause("i.id = ANY($%d)", *ids)
 	}
 	rows, err := tx.Query(ctx, `SELECT i.*, a.code AS application_code, c.identifier AS client_identifier
 		FROM ing_ingestions i

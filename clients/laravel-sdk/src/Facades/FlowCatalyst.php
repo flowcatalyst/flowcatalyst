@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static IngestionSets ingestionSets()
  * @method static Subscriptions subscriptions()
  * @method static DispatchPools dispatchPools()
+ * @method static \FlowCatalyst\Client\Resources\DispatchJobs dispatchJobs()
  * @method static Roles roles()
  * @method static Permissions permissions()
  * @method static Applications applications()

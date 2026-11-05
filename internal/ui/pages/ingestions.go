@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
@@ -38,6 +39,10 @@ type IngestionStore interface {
 	// NoticesOf is the undismissed notices (rejected failures) of the
 	// ingestions shown.
 	NoticesOf(ctx context.Context, ids []string) (map[string]ingestion.Notices, error)
+	// Unheld is which of the ingestions shown are running polled ones no
+	// runtime has held for longer than a lease and two minutes, and since when
+	// (a zero now is the database's clock).
+	Unheld(ctx context.Context, ids []string, now time.Time, lease time.Duration) (map[string]time.Time, error)
 	// ListSecretFetches is when each runtime last fetched each of the
 	// ingestion's secrets (GET /api/ingestions/{id}/secrets).
 	ListSecretFetches(ctx context.Context, ingestionID string) ([]ingestion.SecretFetch, error)
@@ -79,6 +84,10 @@ type Ingestions struct {
 	Clients     ClientDirectory
 	ClientNames ClientStore
 	Shell       *shell.Shell
+	// Lease is the runtime API's lease (FC_INGESTION_LEASE_SECONDS); zero is
+	// ingestion.DefaultLease. It decides when a running polled ingestion no
+	// runtime holds is shown as not running.
+	Lease time.Duration
 }
 
 const (
@@ -299,6 +308,10 @@ type ingsRow struct {
 	Draft               bool
 	Set                 string
 	Notice              bool
+	// Unheld is set (the time since which no runtime has held it) for a
+	// running polled ingestion whose kind a runtime carries but that no
+	// runtime has held for longer than a lease and two minutes.
+	Unheld string
 	// NeedsSettings: the source names a config entry this environment has not
 	// set (or not validly), so the ingestion does not run; NeedsReason says why.
 	NeedsSettings bool
@@ -443,9 +456,16 @@ func (h *Ingestions) listView(ctx context.Context, ac *auth.AuthContext, q ingsQ
 	if err != nil {
 		return ingsView{}, usecase.Internal("REPO", "notices failed", err)
 	}
+	unheld, err := h.Store.Unheld(ctx, shown, time.Time{}, h.lease())
+	if err != nil {
+		return ingsView{}, usecase.Internal("REPO", "unheld ingestions failed", err)
+	}
 	for i := range page.Items {
 		item := &page.Items[i]
 		row := toIngsRow(ac, item, names, kinds, carries)
+		if !row.Notice {
+			row.Unheld = ingsUnheldSince(unheld, item.ID)
+		}
 		n := notices[item.ID]
 		row.Notices, row.LatestNotice = n.Count, n.LatestMessage
 		if _, byConfig := item.Definition.Source.(ingestion.Configured); byConfig {
@@ -494,6 +514,24 @@ func ingsNoticeCount(n int) string {
 		return "1 notice"
 	}
 	return strconv.Itoa(n) + " notices"
+}
+
+// lease is the runtime API's lease (Lease, or the default).
+func (h *Ingestions) lease() time.Duration {
+	if h.Lease > 0 {
+		return h.Lease
+	}
+	return ingestion.DefaultLease
+}
+
+// ingsUnheldSince is when no runtime has held the ingestion since, as the page
+// writes times, or "" when a runtime holds it.
+func ingsUnheldSince(unheld map[string]time.Time, id string) string {
+	since, ok := unheld[id]
+	if !ok {
+		return ""
+	}
+	return since.UTC().Format("2006-01-02 15:04:05 UTC")
 }
 
 func toIngsRow(ac *auth.AuthContext, item *ingestion.ListItem, names fnsNames, kinds ingsKindPerms, carries func(string) bool) ingsRow {
@@ -676,6 +714,8 @@ type ingsDetail struct {
 	ClientIdentifier                    string
 	Active, Draft, Notice               bool
 	Set                                 string
+	// Unheld: as ingsRow.Unheld.
+	Unheld string
 	// Notices and LatestNotice: the undismissed rejected failures.
 	Notices      int
 	LatestNotice string
@@ -833,6 +873,13 @@ func (h *Ingestions) buildDetail(ctx context.Context, ac *auth.AuthContext, i *i
 		return ingsDetail{}, usecase.Internal("REPO", "notices failed", err)
 	}
 	d.Notices, d.LatestNotice = notices[i.ID].Count, notices[i.ID].LatestMessage
+	if !d.Notice {
+		unheld, err := h.Store.Unheld(ctx, []string{i.ID}, time.Time{}, h.lease())
+		if err != nil {
+			return ingsDetail{}, usecase.Internal("REPO", "unheld ingestions failed", err)
+		}
+		d.Unheld = ingsUnheldSince(unheld, i.ID)
+	}
 	fetches, err := h.Store.ListSecretFetches(ctx, i.ID)
 	if err != nil {
 		return ingsDetail{}, usecase.Internal("REPO", "list_secret_fetches failed", err)

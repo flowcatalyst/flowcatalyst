@@ -3,15 +3,67 @@
 -- makes is hand-rolled in the repository (it shares the list's row type), and
 -- so are the retention deletes (chunked, as for the function trace log).
 
+-- A poll stores the instance it came from (NULL when it named none) and
+-- clears left_at: a runtime that polls again is back.
 -- name: IngestionRuntimeUpsert :exec
-INSERT INTO ing_runtimes (runtime_id, kinds, builtin_kinds, contract_version, url, first_seen_at, last_seen_at)
-VALUES (@runtime_id, @kinds, @builtin_kinds, @contract_version, @url, @now, @now)
+INSERT INTO ing_runtimes (runtime_id, kinds, builtin_kinds, contract_version, url, instance_id, first_seen_at, last_seen_at)
+VALUES (@runtime_id, @kinds, @builtin_kinds, @contract_version, @url, sqlc.narg('instance_id'), @now, @now)
 ON CONFLICT (runtime_id) DO UPDATE SET
     kinds = EXCLUDED.kinds,
     builtin_kinds = EXCLUDED.builtin_kinds,
     contract_version = EXCLUDED.contract_version,
     url = EXCLUDED.url,
+    instance_id = EXCLUDED.instance_id,
+    left_at = NULL,
     last_seen_at = EXCLUDED.last_seen_at;
+
+-- What a poll or a release knows of the runtime before it writes: the
+-- instance that last polled as it, when, and whether it has left since. The
+-- row is locked so two processes polling as one runtime id are decided one
+-- at a time (the second sees the first's instance). Taken before the lease
+-- lock, as the upsert's row lock is, so the two locks are always taken in
+-- the same order.
+-- name: IngestionRuntimeFindForUpdate :one
+SELECT instance_id, last_seen_at, left_at FROM ing_runtimes WHERE runtime_id = $1 FOR UPDATE;
+
+-- A runtime that says goodbye stops counting as live at once.
+-- name: IngestionRuntimeLeave :exec
+UPDATE ing_runtimes SET left_at = @now::timestamptz WHERE runtime_id = @runtime_id;
+
+-- A runtime hands back the leases of routes it has stopped: each ends now (an
+-- already expired one keeps its earlier end), so the next poll of another
+-- runtime may take it.
+-- name: IngestionLeasesReleaseNow :execrows
+UPDATE ing_leases SET expires_at = LEAST(expires_at, @now::timestamptz), released = TRUE
+WHERE runtime_id = @runtime_id AND ingestion_id = ANY(@ingestion_ids::text[]);
+
+-- The FAILED and FAILING route states reported since a time, of the
+-- ingestions the runtime itself reported as such since then: placement keeps
+-- an ingestion away from a runtime it fails on while another runtime has not
+-- failed it.
+-- name: IngestionRouteStatesUnhealthy :many
+SELECT f.ingestion_id, f.runtime_id FROM ing_route_states f
+WHERE f.status IN ('FAILED', 'FAILING') AND f.updated_at > @since::timestamptz
+  AND f.ingestion_id IN (
+    SELECT mine.ingestion_id FROM ing_route_states mine
+    WHERE mine.runtime_id = @runtime_id::text AND mine.status IN ('FAILED', 'FAILING') AND mine.updated_at > @since::timestamptz
+  );
+
+-- The ingestions another runtime reported FAILED or FAILING after @since
+-- while this one has not: this runtime may take them beyond its fair share
+-- (health-aware placement), so one avoided elsewhere is never left unheld.
+-- name: IngestionRouteStatesFailingElsewhere :many
+SELECT DISTINCT f.ingestion_id FROM ing_route_states f
+WHERE f.status IN ('FAILED', 'FAILING') AND f.updated_at > @since::timestamptz
+  AND f.runtime_id <> @runtime_id::text
+  AND f.ingestion_id NOT IN (
+    SELECT mine.ingestion_id FROM ing_route_states mine
+    WHERE mine.runtime_id = @runtime_id::text AND mine.status IN ('FAILED', 'FAILING') AND mine.updated_at > @since::timestamptz
+  );
+
+-- The leases of the ingestions named, held or not, for the unheld check.
+-- name: IngestionLeasesOf :many
+SELECT ingestion_id, runtime_id, expires_at FROM ing_leases WHERE ingestion_id = ANY(@ingestion_ids::text[]);
 
 -- The lease is taken in one statement: a conflicting row is taken over only by
 -- its holder (a renewal) or once it has expired, and two runtimes racing for

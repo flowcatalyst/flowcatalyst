@@ -338,3 +338,21 @@ func TestLoadEnv_IngestionEnabled(t *testing.T) {
 		t.Error("FC_INGESTION_ENABLED=true must turn it on")
 	}
 }
+
+// A lease below two minutes is a startup configuration error; unset and
+// unparseable are the default, and two minutes is allowed.
+func TestCheckIngestionLease(t *testing.T) {
+	for _, tc := range []struct {
+		env     string
+		refused bool
+	}{{"", false}, {"abc", false}, {"0", false}, {"120", false}, {"180", false}, {"119", true}, {"60", true}} {
+		t.Setenv("FC_INGESTION_LEASE_SECONDS", tc.env)
+		err := LoadEnv().CheckIngestionLease()
+		if (err != nil) != tc.refused {
+			t.Errorf("FC_INGESTION_LEASE_SECONDS=%q: err = %v, want refused %v", tc.env, err, tc.refused)
+		}
+	}
+	if err := (EnvCfg{}).CheckIngestionLease(); err != nil {
+		t.Errorf("a config built without a lease uses the default: %v", err)
+	}
+}

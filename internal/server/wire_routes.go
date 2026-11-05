@@ -348,6 +348,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 				Configs: repos.platformConfigRepo,
 				// Sets keep what each apply was given beside the function artifacts.
 				SetArchive: svcs.functionArtifacts,
+				Lease:      cfg.IngestionLease,
 			})
 			ingestionruntimeapi.Register(humaAPI, &ingestionruntimeapi.State{
 				Repo:   ingestion.NewRepository(pool),
@@ -569,7 +570,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Grants:     repos.principalGrantRepo,
 			Auth:       svcs.authSvc,
 		})
-		sdkapi.RegisterRoutes(r, &sdkapi.DispatchJobsBatchState{Repo: repos.dispatchJobRepo, Apps: repos.applicationRepo, Subs: repos.subscriptionRepo, Clients: repos.clientRepo, Principals: repos.principalRepo})
+		sdkapi.RegisterRoutes(r, &sdkapi.DispatchJobsBatchState{Repo: repos.dispatchJobRepo, Apps: repos.applicationRepo, Subs: repos.subscriptionRepo, Clients: repos.clientRepo, Connections: repos.connectionRepo, Principals: repos.principalRepo})
 		sdkapi.RegisterAuditRoutes(r, &sdkapi.AuditBatchState{Repo: repos.auditRepo, Apps: repos.applicationRepo, Clients: repos.clientRepo})
 	})
 

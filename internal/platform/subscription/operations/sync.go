@@ -230,22 +230,14 @@ func SyncSubscriptions(
 				}
 				// Scope consistency applies however the connection was named
 				// (ruling 2026-09-21 #5): its client must be absent, or equal to
-				// this subscription's client. A connectionCode lookup above can
-				// never violate this (it only ever resolves this client's own
-				// connection or a global one); a bare connectionId can name
+				// this subscription's client, and its application absent
+				// (shared) or this subscription's. A connectionCode lookup above
+				// can never violate this (it only ever resolves this client's
+				// own connection or a global one); a bare connectionId can name
 				// anything, so it needs the explicit check.
-				if c.ClientID != nil && (cmd.ClientID == nil || string(*c.ClientID) != *cmd.ClientID) {
+				if msg := c.ScopeProblem(cmd.ApplicationCode, cmd.ClientID); msg != "" {
 					return nil, usecase.Validation("CONNECTION_SCOPE_MISMATCH",
-						"Subscription '"+in.Code+"': connection '"+*in.ConnectionID+"' is scoped to a different client")
-				}
-				// The same goes for the application axis. A connection signs
-				// deliveries with its application's credentials, so an id must
-				// not reach across: a caller with access to this application
-				// only could otherwise borrow another application's. Shared
-				// (application-less) connections stay usable by anyone.
-				if c.ApplicationCode != nil && *c.ApplicationCode != cmd.ApplicationCode {
-					return nil, usecase.Validation("CONNECTION_SCOPE_MISMATCH",
-						"Subscription '"+in.Code+"': connection '"+*in.ConnectionID+"' belongs to a different application")
+						"Subscription '"+in.Code+"': connection '"+*in.ConnectionID+"' "+msg)
 				}
 			}
 

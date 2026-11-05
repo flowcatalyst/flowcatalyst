@@ -261,11 +261,12 @@ type DispatchJob struct {
 	Descriptor *string `json:"descriptor,omitempty"`
 	// ConnectionID is the connection the job is delivered through, when the
 	// job names one itself: a function's fn.dispatch always does (its
-	// subscription-less job has no other route to a connection). Pausing the
-	// connection holds the job PENDING, and the connection's service account
-	// signs its delivery. Nil for every other job, whose connection (if any)
-	// is its subscription's. Internal: not on the SDK request or the job's
-	// API representation.
+	// subscription-less job has no other route to a connection), and an SDK
+	// create may (connectionId on POST /api/dispatch-jobs(/batch), checked by
+	// sdk.JobConnections). Pausing the connection holds the job PENDING, and
+	// for a job with no subscription the connection's service account signs
+	// its delivery. Nil for every other job, whose connection (if any) is its
+	// subscription's. Not on the job's API representation.
 	ConnectionID   *string    `json:"connectionId,omitempty"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	UpdatedAt      time.Time  `json:"updatedAt"`

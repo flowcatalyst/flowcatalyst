@@ -640,6 +640,8 @@ type IngRuntime struct {
 	FirstSeenAt     time.Time       `db:"first_seen_at"`
 	LastSeenAt      time.Time       `db:"last_seen_at"`
 	BuiltinKinds    json.RawMessage `db:"builtin_kinds"`
+	InstanceID      *string         `db:"instance_id"`
+	LeftAt          *time.Time      `db:"left_at"`
 }
 
 type IngSecretFetch struct {
@@ -804,6 +806,14 @@ type MsgDispatchJobAttempt struct {
 	CompletedAt     *time.Time      `db:"completed_at"`
 	CreatedAt       time.Time       `db:"created_at"`
 	RequestInfo     json.RawMessage `db:"request_info"`
+}
+
+type MsgDispatchJobKey struct {
+	ApplicationCode string    `db:"application_code"`
+	ClientID        string    `db:"client_id"`
+	IdempotencyKey  string    `db:"idempotency_key"`
+	JobID           string    `db:"job_id"`
+	CreatedAt       time.Time `db:"created_at"`
 }
 
 type MsgDispatchJobProjectionFeed struct {

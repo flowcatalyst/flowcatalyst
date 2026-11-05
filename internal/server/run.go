@@ -76,6 +76,9 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	if err := platformmw.SetSessionSameSite(cfg.SessionCookieSameSite); err != nil {
 		return err
 	}
+	if err := cfg.CheckIngestionLease(); err != nil {
+		return err
+	}
 
 	// Always build a stream HealthService — empty when stream is off so
 	// the router's StreamHealthProvider reports zero streams gracefully.
@@ -219,6 +222,11 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 		go dispatchjob.RunReaper(ctx, dispatchjob.NewRepository(pool),
 			dispatchjob.DefaultReaperInterval, dispatchjob.DefaultProcessingLiveAfter)
 
+		// Idempotency keys of SDK-created dispatch jobs past
+		// dispatchjob.JobKeysRetention (migration 099). Not leader-gated:
+		// bounded, idempotent deletes, as the reaper above.
+		go dispatchjob.RunJobKeyRetention(ctx, dispatchjob.NewRepository(pool), 10*time.Minute)
+
 		// Function trace-log retention (docs/function-trace-design.md section
 		// 1, decision 8): a sweep of records past
 		// FC_FUNCTIONS_TRACE_RETENTION_DAYS across all functions every
@@ -237,6 +245,10 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 		if cfg.IngestionEnabled {
 			go ingestion.RunRetention(ctx, ingestion.NewRepository(pool),
 				ingestion.DefaultRetentionDelay, ingestion.DefaultRetentionInterval)
+			// fc_ingestion_unheld: the live polled ingestions no runtime has
+			// held for a lease and two minutes, recounted every minute. A
+			// read on every replica, not leader-gated.
+			go ingestion.RunUnheldGauge(ctx, ingestion.NewRepository(pool), cfg.IngestionLease, ingestion.UnheldInterval)
 		}
 
 		// Function control plane's NOTIFY fng_desired fan-out

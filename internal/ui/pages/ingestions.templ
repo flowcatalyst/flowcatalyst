@@ -159,6 +159,9 @@ templ ingsTable(v ingsView) {
 					if row.Notice {
 						<div class="mt-1 text-xs text-warning">No runtime carries this kind</div>
 					}
+					if row.Unheld != "" {
+						<div class="mt-1 text-xs text-warning" data-testid="ings-unheld">Not running: no runtime has held it since { row.Unheld }</div>
+					}
 					if row.NeedsSettings {
 						<div class="mt-1" data-testid="ings-needs-badge" title={ row.NeedsReason }>
 							@kit.Badge(kit.BadgeProps{Variant: kit.BadgeWarn}) {
@@ -269,6 +272,9 @@ templ ingsOverview(d ingsDetail) {
 	}
 	if d.Notice {
 		@kit.Alert(kit.AlertProps{ID: "ings-notice", Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "No runtime carries this kind", Description: "Nothing has failed: no live runtime reports the kind yet, so nobody is there to run it.", Class: "mb-4"})
+	}
+	if d.Unheld != "" {
+		@kit.Alert(kit.AlertProps{ID: "ings-unheld", Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "Not running", Description: "No runtime has held it since " + d.Unheld + ". A runtime carries its kind, but none has taken its lease: look at the runtimes (their logs, and whether they are at their share or failing it).", Class: "mb-4"})
 	}
 	if d.Config.Needs() {
 		@kit.Alert(kit.AlertProps{ID: "ings-needs-settings", Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "Needs settings", Description: d.Config.Reason() + ". It does not run, and takes no jobs, until the settings are set in this environment.", Class: "mb-4"})

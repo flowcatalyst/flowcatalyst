@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -40,6 +41,10 @@ type State struct {
 	// SetArchive keeps what each apply of a set was given (file:// or s3://,
 	// as for function artifacts).
 	SetArchive artifact.Store
+	// Lease is the runtime API's lease (FC_INGESTION_LEASE_SECONDS); zero is
+	// ingestion.DefaultLease. A running polled ingestion no runtime has held
+	// for longer than it and two minutes is shown as not running.
+	Lease time.Duration
 }
 
 // AppLookup is the slice of the application repository the responses need.
@@ -159,7 +164,7 @@ func (s *State) respond(ctx context.Context, i *ingestion.Ingestion) (*apicommon
 		return nil, usecase.Internal("REPO", "config entry lookup failed", err)
 	}
 	withConfig(&body, s.shown(ctx, res, i.Definition))
-	notice, err := s.runtimeNotices(ctx)
+	notice, err := s.runtimeNotices(ctx, []string{i.ID})
 	if err != nil {
 		return nil, err
 	}
@@ -219,13 +224,13 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Ingesti
 	if err != nil {
 		return nil, err
 	}
-	notice, err := s.runtimeNotices(ctx)
-	if err != nil {
-		return nil, err
-	}
 	shown := make([]string, 0, len(page.Items))
 	for _, item := range page.Items {
 		shown = append(shown, item.ID)
+	}
+	notice, err := s.runtimeNotices(ctx, shown)
+	if err != nil {
+		return nil, err
 	}
 	notices, err := s.Repo.NoticesOf(ctx, shown)
 	if err != nil {

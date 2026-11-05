@@ -10,6 +10,7 @@ use FlowCatalyst\Client\Auth\UserTokenProvider;
 use FlowCatalyst\Client\Resources\Applications;
 use FlowCatalyst\Client\Resources\AuditLogs;
 use FlowCatalyst\Client\Resources\Clients;
+use FlowCatalyst\Client\Resources\DispatchJobs;
 use FlowCatalyst\Client\Resources\DispatchPools;
 use FlowCatalyst\Client\Resources\EmailDomainMappings;
 use FlowCatalyst\Client\Resources\EventTypes;
@@ -51,6 +52,7 @@ class FlowCatalystClient
     private ?EventTypes $eventTypes = null;
     private ?Subscriptions $subscriptions = null;
     private ?DispatchPools $dispatchPools = null;
+    private ?DispatchJobs $dispatchJobs = null;
     private ?Roles $roles = null;
     private ?Permissions $permissions = null;
     private ?Applications $applications = null;
@@ -228,6 +230,15 @@ class FlowCatalystClient
     public function subscriptions(): Subscriptions
     {
         return $this->subscriptions ??= new Subscriptions($this);
+    }
+
+    /**
+     * Dispatch jobs created by calling the platform directly
+     * (`batch(array $jobs)`, `create($job)`), not through the outbox.
+     */
+    public function dispatchJobs(): DispatchJobs
+    {
+        return $this->dispatchJobs ??= new DispatchJobs($this);
     }
 
     /**

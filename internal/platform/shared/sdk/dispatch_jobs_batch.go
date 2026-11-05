@@ -23,6 +23,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -45,6 +46,9 @@ type DispatchJobsBatchState struct {
 	// Clients resolves an item's clientCode to its client (ClientCodes). Nil
 	// means every code is unknown, so an item carrying one is refused.
 	Clients *client.Repository
+	// Connections resolves an item's connectionId (JobConnections). Nil means
+	// every id is unknown, so an item carrying one is refused.
+	Connections *connection.Repository
 	// Principals resolves a serviceAccountId given as a principal id (prn_,
 	// which is what an application's own serviceAccountId is) to the service
 	// account it fronts (sac_), the id a delivery is signed by. Nil leaves a
@@ -130,7 +134,7 @@ func (s *DispatchJobsBatchState) checkJobApplication(ctx context.Context, ac *au
 
 // BatchItem is one row in the inbound batch.
 type BatchItem struct {
-	ID                 *string `json:"id,omitempty"` // SDK may supply for idempotency; otherwise minted server-side
+	ID                 *string `json:"id,omitempty"` // SDK may supply; otherwise minted server-side. Not an idempotency key (the table is partitioned by created_at): use IdempotencyKey
 	ExternalID         *string `json:"externalId,omitempty"`
 	Kind               string  `json:"kind" required:"false"`
 	Code               string  `json:"code"`
@@ -165,6 +169,15 @@ type BatchItem struct {
 	// Descriptor is what the job is, in words, for the dispatch-jobs grid.
 	// Optional.
 	Descriptor *string `json:"descriptor,omitempty" maxLength:"255"`
+	// ConnectionID is the connection the job is delivered through
+	// (JobConnections for the rules): pausing it holds the job, and for a job
+	// with no subscription its service account signs the delivery. Optional.
+	ConnectionID *string `json:"connectionId,omitempty"`
+	// IdempotencyKey makes the create idempotent: the first job to name a key
+	// within its application (the code's first segment) and client wins it,
+	// and a later item naming it answers that job's id, creating nothing
+	// (dispatchjob.InsertBatchKeyed). At most 100 characters; blank is none.
+	IdempotencyKey *string `json:"idempotencyKey,omitempty" maxLength:"100"`
 }
 
 // BatchRequest is the inbound POST shape.
@@ -223,6 +236,15 @@ func jobFromItem(it BatchItem) (dispatchjob.DispatchJob, error) {
 	if err := netguard.Default.ValidateURL(it.TargetURL); err != nil {
 		return dispatchjob.DispatchJob{}, httperror.BadRequest("INVALID_TARGET_URL", "targetUrl "+err.Error())
 	}
+	var idemKey *string
+	if k := NonBlank(it.IdempotencyKey); k != nil {
+		trimmed := strings.TrimSpace(*k)
+		if len(trimmed) > dispatchjob.MaxIdempotencyKeyLen {
+			return dispatchjob.DispatchJob{}, httperror.BadRequest("INVALID_IDEMPOTENCY_KEY",
+				fmt.Sprintf("idempotencyKey is over %d characters", dispatchjob.MaxIdempotencyKeyLen))
+		}
+		idemKey = &trimmed
+	}
 	var queue *string
 	if it.Queue != nil {
 		p, err := dispatchqueue.Parse(*it.Queue)
@@ -261,6 +283,7 @@ func jobFromItem(it BatchItem) (dispatchjob.DispatchJob, error) {
 		Metadata:           it.Metadata,
 		Queue:              queue,
 		Descriptor:         it.Descriptor,
+		IdempotencyKey:     idemKey,
 	}
 	if it.ID != nil && *it.ID != "" {
 		j.ID = *it.ID
@@ -304,6 +327,7 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 	jobs := make([]dispatchjob.DispatchJob, 0, len(body.Items))
 	scope := NewAppScope(s.Apps)
 	codes := NewClientCodes(s.Clients)
+	conns := s.newJobConnections()
 	subApp := map[string]string{}
 	for idx, it := range body.Items {
 		j, err := jobFromItem(it)
@@ -339,18 +363,26 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 			httperror.Write(w, httperror.Forbidden(fmt.Sprintf("items[%d]: %s", idx, msg)))
 			return
 		}
+		// The job's own connection, checked against the client and code
+		// settled above; any refusal rejects the whole batch.
+		if err := conns.Apply(r.Context(), &j, it.ConnectionID); err != nil {
+			httperror.Write(w, err)
+			return
+		}
 		jobs = append(jobs, j)
 	}
 
-	if err := s.Repo.InsertBatch(r.Context(), jobs); err != nil {
+	ids, err := s.Repo.InsertBatchKeyed(r.Context(), jobs)
+	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "insert batch failed", err))
 		return
 	}
 	// Per-item result list — 1:1 with the outbox/SDK contract. Insert is
-	// all-or-nothing here, so every persisted job reports SUCCESS.
+	// all-or-nothing here, so every item reports SUCCESS: with its new job's
+	// id, or, for an idempotencyKey already held, the id of the job holding it.
 	results := make([]BatchResultItem, len(jobs))
 	for i := range jobs {
-		results[i] = BatchResultItem{ID: jobs[i].ID, Status: "SUCCESS"}
+		results[i] = BatchResultItem{ID: ids[i], Status: "SUCCESS"}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

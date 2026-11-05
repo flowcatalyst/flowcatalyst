@@ -99,6 +99,7 @@ func BoundSecrets(names []string, fetches []SecretFetch) []BoundSecret {
 // the metrics listener's /metrics.
 //
 //	fc_ingestion_secret_fetch_total{outcome}  runtime fetches of bound secrets: success, refused, error
+//	fc_ingestion_unheld                       live polled ingestions no runtime has held for a lease and two minutes (RunUnheldGauge)
 //
 // Labels are the outcome only: which ingestion, secret and runtime is in the
 // security log line each fetch writes ("security.ingestion_secret_fetch"),

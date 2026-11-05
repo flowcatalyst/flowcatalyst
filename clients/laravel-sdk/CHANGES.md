@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Dispatch jobs: new `dispatchJobs()` resource (also on the `FlowCatalyst` facade) that calls
+  `POST /api/dispatch-jobs/batch` directly: `batch(array $jobs)` returns one `DispatchJobResult`
+  (`id`, `status`, `error`, `isSuccess()`) per job in order, and `create($job)` returns the job's id or
+  throws `FlowCatalystException` on the item's error. It sends the same item as the outbox
+  (`CreateDispatchJobDto::toBatchItem()`, which `toPayload()` now returns).
+- `CreateDispatchJobDto` gains `clientCode` and `clientId` (trailing constructor arguments,
+  `withClientCode()`, `withClientId()`), so a job can carry its client and its deliveries the
+  `X-FlowCatalyst-Client` header.
+- Fix: `metadata` is sent as the platform's list of `{key, value}`. An associative array (still
+  accepted) used to be sent as a JSON object, which made the platform refuse the whole batch.
+- `connectionId` and `idempotencyKey` were already sent and are now honoured by the platform: the
+  connection's service account signs a subscription-less job, and a repeated key answers the first
+  job's id instead of creating another (within the job's application and client; at most 100 characters).
+- `headers`, `retryStrategy`, `scheduledFor` and `expiresAt` are no longer sent: the batch route never
+  honoured them. `withHeaders()`, `scheduledFor()` and `expiresAt()` are deprecated no-ops kept for
+  source compatibility. An empty `dispatchPoolId` is now omitted instead of sent as `""`.
+- The DTO's withers now copy through one helper, so a wither can no longer drop a field.
 - Field-worker identity: `FieldTokenVerifier` verifies field access tokens (RS256 only, `typ fc-field+jwt`,
   `token_use field`, `aud` = app code, `pcr` refused) and their DPoP proofs (ES256 only, RFC 7638 `jkt`,
   `htm`, `htu`, `ath`, `iat` +-5 min), returning a `FieldPrincipal`; refusals throw `FieldTokenException`

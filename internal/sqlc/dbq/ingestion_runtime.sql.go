@@ -332,6 +332,59 @@ func (q *Queries) IngestionLeaseShareHeld(ctx context.Context, arg IngestionLeas
 	return ingestion_id, err
 }
 
+const ingestionLeasesOf = `-- name: IngestionLeasesOf :many
+SELECT ingestion_id, runtime_id, expires_at FROM ing_leases WHERE ingestion_id = ANY($1::text[])
+`
+
+type IngestionLeasesOfRow struct {
+	IngestionID string    `db:"ingestion_id"`
+	RuntimeID   string    `db:"runtime_id"`
+	ExpiresAt   time.Time `db:"expires_at"`
+}
+
+// The leases of the ingestions named, held or not, for the unheld check.
+func (q *Queries) IngestionLeasesOf(ctx context.Context, ingestionIds []string) ([]IngestionLeasesOfRow, error) {
+	rows, err := q.db.Query(ctx, ingestionLeasesOf, ingestionIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IngestionLeasesOfRow{}
+	for rows.Next() {
+		var i IngestionLeasesOfRow
+		if err := rows.Scan(&i.IngestionID, &i.RuntimeID, &i.ExpiresAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const ingestionLeasesReleaseNow = `-- name: IngestionLeasesReleaseNow :execrows
+UPDATE ing_leases SET expires_at = LEAST(expires_at, $1::timestamptz), released = TRUE
+WHERE runtime_id = $2 AND ingestion_id = ANY($3::text[])
+`
+
+type IngestionLeasesReleaseNowParams struct {
+	Now          time.Time `db:"now"`
+	RuntimeID    string    `db:"runtime_id"`
+	IngestionIds []string  `db:"ingestion_ids"`
+}
+
+// A runtime hands back the leases of routes it has stopped: each ends now (an
+// already expired one keeps its earlier end), so the next poll of another
+// runtime may take it.
+func (q *Queries) IngestionLeasesReleaseNow(ctx context.Context, arg IngestionLeasesReleaseNowParams) (int64, error) {
+	result, err := q.db.Exec(ctx, ingestionLeasesReleaseNow, arg.Now, arg.RuntimeID, arg.IngestionIds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const ingestionMetricUpsert = `-- name: IngestionMetricUpsert :exec
 INSERT INTO ing_exchange_metrics (ingestion_id, runtime_id, window_start, window_secs, completed, failed, records, jobs, polls, last_poll_at, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -403,6 +456,110 @@ func (q *Queries) IngestionRouteStateUpsert(ctx context.Context, arg IngestionRo
 	return err
 }
 
+const ingestionRouteStatesFailingElsewhere = `-- name: IngestionRouteStatesFailingElsewhere :many
+SELECT DISTINCT f.ingestion_id FROM ing_route_states f
+WHERE f.status IN ('FAILED', 'FAILING') AND f.updated_at > $1::timestamptz
+  AND f.runtime_id <> $2::text
+  AND f.ingestion_id NOT IN (
+    SELECT mine.ingestion_id FROM ing_route_states mine
+    WHERE mine.runtime_id = $2::text AND mine.status IN ('FAILED', 'FAILING') AND mine.updated_at > $1::timestamptz
+  )
+`
+
+type IngestionRouteStatesFailingElsewhereParams struct {
+	Since     time.Time `db:"since"`
+	RuntimeID string    `db:"runtime_id"`
+}
+
+// The ingestions another runtime reported FAILED or FAILING after @since
+// while this one has not: this runtime may take them beyond its fair share
+// (health-aware placement), so one avoided elsewhere is never left unheld.
+func (q *Queries) IngestionRouteStatesFailingElsewhere(ctx context.Context, arg IngestionRouteStatesFailingElsewhereParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, ingestionRouteStatesFailingElsewhere, arg.Since, arg.RuntimeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var ingestion_id string
+		if err := rows.Scan(&ingestion_id); err != nil {
+			return nil, err
+		}
+		items = append(items, ingestion_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const ingestionRouteStatesUnhealthy = `-- name: IngestionRouteStatesUnhealthy :many
+SELECT f.ingestion_id, f.runtime_id FROM ing_route_states f
+WHERE f.status IN ('FAILED', 'FAILING') AND f.updated_at > $1::timestamptz
+  AND f.ingestion_id IN (
+    SELECT mine.ingestion_id FROM ing_route_states mine
+    WHERE mine.runtime_id = $2::text AND mine.status IN ('FAILED', 'FAILING') AND mine.updated_at > $1::timestamptz
+  )
+`
+
+type IngestionRouteStatesUnhealthyParams struct {
+	Since     time.Time `db:"since"`
+	RuntimeID string    `db:"runtime_id"`
+}
+
+type IngestionRouteStatesUnhealthyRow struct {
+	IngestionID string `db:"ingestion_id"`
+	RuntimeID   string `db:"runtime_id"`
+}
+
+// The FAILED and FAILING route states reported since a time, of the
+// ingestions the runtime itself reported as such since then: placement keeps
+// an ingestion away from a runtime it fails on while another runtime has not
+// failed it.
+func (q *Queries) IngestionRouteStatesUnhealthy(ctx context.Context, arg IngestionRouteStatesUnhealthyParams) ([]IngestionRouteStatesUnhealthyRow, error) {
+	rows, err := q.db.Query(ctx, ingestionRouteStatesUnhealthy, arg.Since, arg.RuntimeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IngestionRouteStatesUnhealthyRow{}
+	for rows.Next() {
+		var i IngestionRouteStatesUnhealthyRow
+		if err := rows.Scan(&i.IngestionID, &i.RuntimeID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const ingestionRuntimeFindForUpdate = `-- name: IngestionRuntimeFindForUpdate :one
+SELECT instance_id, last_seen_at, left_at FROM ing_runtimes WHERE runtime_id = $1 FOR UPDATE
+`
+
+type IngestionRuntimeFindForUpdateRow struct {
+	InstanceID *string    `db:"instance_id"`
+	LastSeenAt time.Time  `db:"last_seen_at"`
+	LeftAt     *time.Time `db:"left_at"`
+}
+
+// What a poll or a release knows of the runtime before it writes: the
+// instance that last polled as it, when, and whether it has left since. The
+// row is locked so two processes polling as one runtime id are decided one
+// at a time (the second sees the first's instance). Taken before the lease
+// lock, as the upsert's row lock is, so the two locks are always taken in
+// the same order.
+func (q *Queries) IngestionRuntimeFindForUpdate(ctx context.Context, runtimeID string) (IngestionRuntimeFindForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, ingestionRuntimeFindForUpdate, runtimeID)
+	var i IngestionRuntimeFindForUpdateRow
+	err := row.Scan(&i.InstanceID, &i.LastSeenAt, &i.LeftAt)
+	return i, err
+}
+
 const ingestionRuntimeKinds = `-- name: IngestionRuntimeKinds :one
 SELECT kinds, builtin_kinds FROM ing_runtimes WHERE runtime_id = $1
 `
@@ -419,15 +576,32 @@ func (q *Queries) IngestionRuntimeKinds(ctx context.Context, runtimeID string) (
 	return i, err
 }
 
+const ingestionRuntimeLeave = `-- name: IngestionRuntimeLeave :exec
+UPDATE ing_runtimes SET left_at = $1::timestamptz WHERE runtime_id = $2
+`
+
+type IngestionRuntimeLeaveParams struct {
+	Now       time.Time `db:"now"`
+	RuntimeID string    `db:"runtime_id"`
+}
+
+// A runtime that says goodbye stops counting as live at once.
+func (q *Queries) IngestionRuntimeLeave(ctx context.Context, arg IngestionRuntimeLeaveParams) error {
+	_, err := q.db.Exec(ctx, ingestionRuntimeLeave, arg.Now, arg.RuntimeID)
+	return err
+}
+
 const ingestionRuntimeUpsert = `-- name: IngestionRuntimeUpsert :exec
 
-INSERT INTO ing_runtimes (runtime_id, kinds, builtin_kinds, contract_version, url, first_seen_at, last_seen_at)
-VALUES ($1, $2, $3, $4, $5, $6, $6)
+INSERT INTO ing_runtimes (runtime_id, kinds, builtin_kinds, contract_version, url, instance_id, first_seen_at, last_seen_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
 ON CONFLICT (runtime_id) DO UPDATE SET
     kinds = EXCLUDED.kinds,
     builtin_kinds = EXCLUDED.builtin_kinds,
     contract_version = EXCLUDED.contract_version,
     url = EXCLUDED.url,
+    instance_id = EXCLUDED.instance_id,
+    left_at = NULL,
     last_seen_at = EXCLUDED.last_seen_at
 `
 
@@ -437,6 +611,7 @@ type IngestionRuntimeUpsertParams struct {
 	BuiltinKinds    json.RawMessage `db:"builtin_kinds"`
 	ContractVersion int32           `db:"contract_version"`
 	Url             *string         `db:"url"`
+	InstanceID      *string         `db:"instance_id"`
 	Now             time.Time       `db:"now"`
 }
 
@@ -444,6 +619,8 @@ type IngestionRuntimeUpsertParams struct {
 // leases, state, reports and test requests. The live-ingestion read the poll
 // makes is hand-rolled in the repository (it shares the list's row type), and
 // so are the retention deletes (chunked, as for the function trace log).
+// A poll stores the instance it came from (NULL when it named none) and
+// clears left_at: a runtime that polls again is back.
 func (q *Queries) IngestionRuntimeUpsert(ctx context.Context, arg IngestionRuntimeUpsertParams) error {
 	_, err := q.db.Exec(ctx, ingestionRuntimeUpsert,
 		arg.RuntimeID,
@@ -451,6 +628,7 @@ func (q *Queries) IngestionRuntimeUpsert(ctx context.Context, arg IngestionRunti
 		arg.BuiltinKinds,
 		arg.ContractVersion,
 		arg.Url,
+		arg.InstanceID,
 		arg.Now,
 	)
 	return err

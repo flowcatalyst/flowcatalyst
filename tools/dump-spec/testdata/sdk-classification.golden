@@ -360,6 +360,7 @@ internal	GET /control/functions/artifacts/{digest}	getFunctionRunnerArtifact
 internal	GET /control/functions/desired	getFunctionRunnerDesired
 internal	POST /api/event-types/{id}/schemas	addEventTypeSchema
 internal	POST /api/ingestion-runtime/v1/ingestions/{id}/jobs	ingestionRuntimeCreateJobs
+internal	POST /api/ingestion-runtime/v1/leases/release	ingestionRuntimeReleaseLeases
 internal	POST /api/ingestion-runtime/v1/poll	ingestionRuntimePoll
 internal	POST /api/ingestion-runtime/v1/report	ingestionRuntimeReport
 internal	POST /api/ingestion-runtime/v1/traces	ingestionRuntimeTraces

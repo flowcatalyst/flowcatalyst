@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
@@ -143,6 +145,9 @@ func (d *HTTPDispatcher) SendBatch(ctx context.Context, items []Item) map[string
 	payloads := make([]json.RawMessage, len(items))
 	for i, it := range items {
 		payloads[i] = it.Payload
+		if it.ItemType == common.OutboxItemDispatchJob {
+			payloads[i] = normalizeDispatchJobPayload(it.Payload)
+		}
 	}
 	body, err := json.Marshal(map[string]any{"items": payloads})
 	if err != nil {
@@ -238,4 +243,59 @@ func (d *HTTPDispatcher) Send(ctx context.Context, item Item) DispatchOutcome {
 	// Unreachable in practice (SendBatch always keys every item), but never
 	// return a zero-value SUCCESS by accident — treat as retryable.
 	return DispatchOutcome{Status: common.OutboxInternalError, Message: "no outcome for item"}
+}
+
+// normalizeDispatchJobPayload puts a DISPATCH_JOB row's payload into the shape
+// POST /api/dispatch-jobs/batch decodes. Every field is forwarded as the SDK
+// wrote it (connectionId, idempotencyKey, clientCode/clientId and the rest are
+// batch item fields already) except `metadata`: the batch takes a list of
+// {key, value}, and the Laravel SDK before 2026-11-05 (and the TypeScript SDK)
+// wrote an object. Such a row would fail its whole batch with a 400 and sit
+// terminal BAD_REQUEST, so an object is turned into the list here, key-sorted
+// (the order the singular route stores a metadata map in); a non-string value
+// is carried as its JSON text. Rows still pending in an application's outbox
+// table from an older SDK therefore deliver.
+//
+// The row's own client_id column is not read: it is the outbox's owner (the
+// SDK's configured FlowCatalyst client), not the job's business client, which
+// the SDK writes in the payload as clientCode/clientId.
+//
+// Anything that does not parse, or has no object metadata, is returned
+// verbatim: the platform's answer for it is the one to record.
+func normalizeDispatchJobPayload(raw json.RawMessage) json.RawMessage {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return raw
+	}
+	meta, ok := fields["metadata"]
+	if !ok {
+		return raw
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(meta, &obj); err != nil || obj == nil {
+		return raw // already a list, null, or not metadata at all
+	}
+	type entry struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	}
+	list := make([]entry, 0, len(obj))
+	for _, k := range slices.Sorted(maps.Keys(obj)) {
+		v := obj[k]
+		var str string
+		if err := json.Unmarshal(v, &str); err != nil {
+			str = string(bytes.TrimSpace(v))
+		}
+		list = append(list, entry{Key: k, Value: str})
+	}
+	enc, err := json.Marshal(list)
+	if err != nil {
+		return raw
+	}
+	fields["metadata"] = enc
+	out, err := json.Marshal(fields)
+	if err != nil {
+		return raw
+	}
+	return out
 }

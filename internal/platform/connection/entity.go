@@ -106,3 +106,25 @@ func (c *Connection) Activate() {
 	c.Status = StatusActive
 	c.UpdatedAt = time.Now().UTC()
 }
+
+// ScopeProblem reports why the connection may not deliver work of the given
+// application and client, or "" when it may (owner ruling 2026-09-21 #5).
+// A connection signs deliveries with its service account, so an id must not
+// reach across tenants or applications:
+//
+//   - its client must be absent (a global connection), or equal clientID;
+//   - its application must be absent (a shared connection), or equal
+//     applicationCode.
+//
+// Used wherever a connection is named by a bare id (a subscription sync's
+// connectionId, an SDK-created dispatch job's connectionId); a lookup by code
+// already searches only the caller's own scopes.
+func (c *Connection) ScopeProblem(applicationCode string, clientID *string) string {
+	if c.ClientID != nil && (clientID == nil || string(*c.ClientID) != *clientID) {
+		return "is scoped to a different client"
+	}
+	if c.ApplicationCode != nil && *c.ApplicationCode != applicationCode {
+		return "belongs to a different application"
+	}
+	return ""
+}

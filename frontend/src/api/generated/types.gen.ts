@@ -515,6 +515,7 @@ export type BatchItem = {
     clientCode?: string;
     clientId?: string;
     code: string;
+    connectionId?: string;
     correlationId?: string;
     dataOnly?: boolean;
     descriptor?: string;
@@ -522,6 +523,7 @@ export type BatchItem = {
     eventId?: string;
     externalId?: string;
     id?: string;
+    idempotencyKey?: string;
     kind?: string;
     maxRetries?: number;
     messageGroup?: string;
@@ -928,6 +930,7 @@ export type CreateDispatchJobRequest = {
     clientCode?: string;
     clientId?: string;
     code: string;
+    connectionId?: string;
     correlationId?: string;
     dataOnly?: boolean;
     descriptor?: string;
@@ -2658,6 +2661,9 @@ export type IngestionResponse = {
      * Undismissed notices: rejected failures (GET .../failures?category=rejected&undismissed=true)
      */
     notices: number;
+    /**
+     * Set while a running ingestion runs nowhere: 'no runtime carries this kind', or, for a polled source, 'not running: no runtime has held it since <RFC 3339 time>' once no runtime has held its lease for a lease and two minutes
+     */
     runtimeNotice?: string;
     /**
      * What this create or update did: saved and made live, made an existing version live, saved as a draft awaiting promote, matched an existing draft, or changed nothing
@@ -3523,6 +3529,10 @@ export type PollRequest = {
      */
     contractVersion: number;
     /**
+     * The runtime process, new on every start (a random UUID). While another instance that polled as this runtimeId is live (polled within one lease and has not said goodbye since), the poll is refused with 409 RUNTIME_ID_IN_USE and changes nothing. Absent: no check.
+     */
+    instanceId?: string;
+    /**
      * The kinds the runtime's extensions add (and camel-route)
      */
     kinds?: Array<RuntimeKind>;
@@ -4066,6 +4076,41 @@ export type RegisterCompleteResponse = {
      */
     readonly $schema?: string;
     credentialId: string;
+};
+
+export type ReleaseRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The runtime is shutting down: it stops counting as live at once, for fair shares and for the instance guard.
+     */
+    goodbye: boolean;
+    /**
+     * Single-owner ingestions whose routes have stopped; their leases end now. One the runtime does not hold is ignored.
+     */
+    ingestionIds: Array<string>;
+    /**
+     * The runtime process, as on poll. When it differs from the instance stored for runtimeId the release is refused with 409 RUNTIME_ID_IN_USE and changes nothing.
+     */
+    instanceId?: string;
+    /**
+     * The releasing runtime
+     */
+    runtimeId: string;
+    [key: string]: unknown;
+};
+
+export type ReleaseResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * How many of the named leases the runtime held and now has ended
+     */
+    released: number;
 };
 
 export type ReportRequest = {
@@ -6571,6 +6616,7 @@ export type CreateDispatchJobRequestWritable = {
     clientCode?: string;
     clientId?: string;
     code: string;
+    connectionId?: string;
     correlationId?: string;
     dataOnly?: boolean;
     descriptor?: string;
@@ -7685,6 +7731,9 @@ export type IngestionResponseWritable = {
      * Undismissed notices: rejected failures (GET .../failures?category=rejected&undismissed=true)
      */
     notices: number;
+    /**
+     * Set while a running ingestion runs nowhere: 'no runtime carries this kind', or, for a polled source, 'not running: no runtime has held it since <RFC 3339 time>' once no runtime has held its lease for a lease and two minutes
+     */
     runtimeNotice?: string;
     /**
      * What this create or update did: saved and made live, made an existing version live, saved as a draft awaiting promote, matched an existing draft, or changed nothing
@@ -8108,6 +8157,10 @@ export type PollRequestWritable = {
      */
     contractVersion: number;
     /**
+     * The runtime process, new on every start (a random UUID). While another instance that polled as this runtimeId is live (polled within one lease and has not said goodbye since), the poll is refused with 409 RUNTIME_ID_IN_USE and changes nothing. Absent: no check.
+     */
+    instanceId?: string;
+    /**
      * The kinds the runtime's extensions add (and camel-route)
      */
     kinds?: Array<RuntimeKind>;
@@ -8431,6 +8484,33 @@ export type RegisterCompleteRequestWritable = {
 
 export type RegisterCompleteResponseWritable = {
     credentialId: string;
+};
+
+export type ReleaseRequestWritable = {
+    /**
+     * The runtime is shutting down: it stops counting as live at once, for fair shares and for the instance guard.
+     */
+    goodbye: boolean;
+    /**
+     * Single-owner ingestions whose routes have stopped; their leases end now. One the runtime does not hold is ignored.
+     */
+    ingestionIds: Array<string>;
+    /**
+     * The runtime process, as on poll. When it differs from the instance stored for runtimeId the release is refused with 409 RUNTIME_ID_IN_USE and changes nothing.
+     */
+    instanceId?: string;
+    /**
+     * The releasing runtime
+     */
+    runtimeId: string;
+    [key: string]: unknown;
+};
+
+export type ReleaseResponseWritable = {
+    /**
+     * How many of the named leases the runtime held and now has ended
+     */
+    released: number;
 };
 
 export type ReportRequestWritable = {
@@ -15564,6 +15644,39 @@ export type IngestionRuntimeGetSecretResponses = {
 
 export type IngestionRuntimeGetSecretResponse = IngestionRuntimeGetSecretResponses[keyof IngestionRuntimeGetSecretResponses];
 
+export type IngestionRuntimeReleaseLeasesData = {
+    body: ReleaseRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/ingestion-runtime/v1/leases/release';
+};
+
+export type IngestionRuntimeReleaseLeasesErrors = {
+    /**
+     * Conflict
+     */
+    409: ErrorModel;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorModel;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorModel;
+};
+
+export type IngestionRuntimeReleaseLeasesError = IngestionRuntimeReleaseLeasesErrors[keyof IngestionRuntimeReleaseLeasesErrors];
+
+export type IngestionRuntimeReleaseLeasesResponses = {
+    /**
+     * OK
+     */
+    200: ReleaseResponse;
+};
+
+export type IngestionRuntimeReleaseLeasesResponse = IngestionRuntimeReleaseLeasesResponses[keyof IngestionRuntimeReleaseLeasesResponses];
+
 export type IngestionRuntimePollData = {
     body: PollRequestWritable;
     path?: never;
@@ -15572,6 +15685,10 @@ export type IngestionRuntimePollData = {
 };
 
 export type IngestionRuntimePollErrors = {
+    /**
+     * Conflict
+     */
+    409: ErrorModel;
     /**
      * Unprocessable Entity
      */

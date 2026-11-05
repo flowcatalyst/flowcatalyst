@@ -96,8 +96,10 @@ type IngestionResponse struct {
 	IngestionDefinition
 	ManagedBy *string `json:"managedBy,omitempty" doc:"Id of the set that owns the ingestion; it is read-only until the set is released"`
 	// RuntimeNotice is set while a running ingestion's kind is carried by no
-	// live runtime: nothing has failed, nobody is there to run it yet.
-	RuntimeNotice *string `json:"runtimeNotice,omitempty"`
+	// live runtime (nothing has failed, nobody is there to run it yet), or
+	// while no runtime has held a running polled one for longer than a lease
+	// and two minutes (it is not running anywhere).
+	RuntimeNotice *string `json:"runtimeNotice,omitempty" doc:"Set while a running ingestion runs nowhere: 'no runtime carries this kind', or, for a polled source, 'not running: no runtime has held it since <RFC 3339 time>' once no runtime has held its lease for a lease and two minutes"`
 	// Save is what the create or update that answered did; absent from every
 	// other answer.
 	Save *IngestionSaveOutcome `json:"save,omitempty" doc:"What this create or update did: saved and made live, made an existing version live, saved as a draft awaiting promote, matched an existing draft, or changed nothing"`

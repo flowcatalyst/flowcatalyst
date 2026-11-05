@@ -106,7 +106,11 @@ func (r *Repository) PruneWith(ctx context.Context, now time.Time, maxChunks int
 		return p, fmt.Errorf("ingestion repo: prune trace windows: %w", err)
 	}
 	p.TraceWindows = ct.RowsAffected()
-	ct, err = r.pool.Exec(ctx, `DELETE FROM ing_leases WHERE expires_at < $1`, now)
+	// An expired lease of a live ingestion stays: its end is when the
+	// ingestion was last held, which the unheld notice and gauge read (Unheld).
+	// There is at most one per ingestion, and deleting the ingestion deletes it.
+	ct, err = r.pool.Exec(ctx, `DELETE FROM ing_leases l WHERE l.expires_at < $1 AND NOT EXISTS (
+		SELECT 1 FROM ing_ingestions i WHERE i.id = l.ingestion_id AND i.active AND i.version > 0)`, now)
 	if err != nil {
 		return p, fmt.Errorf("ingestion repo: prune leases: %w", err)
 	}

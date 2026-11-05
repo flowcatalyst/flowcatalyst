@@ -31,8 +31,9 @@ FROM ing_failures
 WHERE ingestion_id = ANY(@ids::text[]) AND category = 'rejected' AND dismissed_at IS NULL
 GROUP BY ingestion_id;
 
+-- A runtime that said goodbye after its last poll is not live.
 -- name: IngestionRuntimeKindsSeenSince :many
-SELECT kinds, builtin_kinds FROM ing_runtimes WHERE last_seen_at >= $1;
+SELECT kinds, builtin_kinds FROM ing_runtimes WHERE last_seen_at >= $1 AND (left_at IS NULL OR left_at < last_seen_at);
 
 -- The activity tab: what each runtime last said about the ingestion.
 -- name: IngestionRouteStateList :many

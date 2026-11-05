@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -60,6 +61,10 @@ func (noIngestions) SecretNamesOf(context.Context, ingestion.Source) ([]string, 
 }
 
 func (noIngestions) ListSecretFetches(context.Context, string) ([]ingestion.SecretFetch, error) {
+	return nil, nil
+}
+
+func (noIngestions) Unheld(context.Context, []string, time.Time, time.Duration) (map[string]time.Time, error) {
 	return nil, nil
 }
 

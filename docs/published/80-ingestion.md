@@ -744,6 +744,17 @@ runtime can sit behind a firewall.
   runtime that carries them. The polled ingestions of each kind are shared
   evenly over the runtimes that carry that kind, so a runtime that alone carries
   a kind runs all of it.
+- A runtime that keeps failing a polled ingestion (its route `FAILED` or
+  `FAILING`) hands it to another runtime that carries the kind and has not
+  failed it, for ten minutes (`FC_INGESTION_UNHEALTHY_COOLDOWN`). One that fails
+  everywhere stays where it is, so its errors stay in view.
+- A polled ingestion that no runtime has held for a lease and two minutes shows
+  as "not running: no runtime has held it since ...", and the platform's
+  `fc_ingestion_unheld` metric counts such ingestions: something is wrong with
+  the runtimes (look at their logs).
+- Two runtime processes configured with the same runtime id cannot both run:
+  the second is refused (`RUNTIME_ID_IN_USE`) until the first stops, and says so
+  in its readiness check.
 - The ingestions of a suspended or deactivated client run nowhere and take no
   jobs.
 - The runtime's account must be a **service account at anchor tier that belongs

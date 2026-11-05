@@ -269,6 +269,12 @@ type Querier interface {
 	// holds and then claims what is free, and two polls doing that in different
 	// row orders would deadlock.
 	IngestionLeasesLock(ctx context.Context) error
+	// The leases of the ingestions named, held or not, for the unheld check.
+	IngestionLeasesOf(ctx context.Context, ingestionIds []string) ([]IngestionLeasesOfRow, error)
+	// A runtime hands back the leases of routes it has stopped: each ends now (an
+	// already expired one keeps its earlier end), so the next poll of another
+	// runtime may take it.
+	IngestionLeasesReleaseNow(ctx context.Context, arg IngestionLeasesReleaseNowParams) (int64, error)
 	IngestionListManagedBy(ctx context.Context, managedBy *string) ([]IngIngestion, error)
 	// A window re-sent replaces the counts: it never adds to them. created_at is
 	// when the platform first wrote the window (retention prunes by it).
@@ -281,17 +287,40 @@ type Querier interface {
 	// The activity tab: what each runtime last said about the ingestion.
 	IngestionRouteStateList(ctx context.Context, ingestionID string) ([]IngRouteState, error)
 	IngestionRouteStateUpsert(ctx context.Context, arg IngestionRouteStateUpsertParams) error
+	// The ingestions another runtime reported FAILED or FAILING after @since
+	// while this one has not: this runtime may take them beyond its fair share
+	// (health-aware placement), so one avoided elsewhere is never left unheld.
+	IngestionRouteStatesFailingElsewhere(ctx context.Context, arg IngestionRouteStatesFailingElsewhereParams) ([]string, error)
+	// The FAILED and FAILING route states reported since a time, of the
+	// ingestions the runtime itself reported as such since then: placement keeps
+	// an ingestion away from a runtime it fails on while another runtime has not
+	// failed it.
+	IngestionRouteStatesUnhealthy(ctx context.Context, arg IngestionRouteStatesUnhealthyParams) ([]IngestionRouteStatesUnhealthyRow, error)
+	// What a poll or a release knows of the runtime before it writes: the
+	// instance that last polled as it, when, and whether it has left since. The
+	// row is locked so two processes polling as one runtime id are decided one
+	// at a time (the second sees the first's instance). Taken before the lease
+	// lock, as the upsert's row lock is, so the two locks are always taken in
+	// the same order.
+	IngestionRuntimeFindForUpdate(ctx context.Context, runtimeID string) (IngestionRuntimeFindForUpdateRow, error)
 	IngestionRuntimeKinds(ctx context.Context, runtimeID string) (IngestionRuntimeKindsRow, error)
+	// A runtime that said goodbye after its last poll is not live.
 	IngestionRuntimeKindsSeenSince(ctx context.Context, lastSeenAt time.Time) ([]IngestionRuntimeKindsSeenSinceRow, error)
+	// A runtime that says goodbye stops counting as live at once.
+	IngestionRuntimeLeave(ctx context.Context, arg IngestionRuntimeLeaveParams) error
 	// Queries for the runtime API (docs/ingestion-design.md section 7): runtimes,
 	// leases, state, reports and test requests. The live-ingestion read the poll
 	// makes is hand-rolled in the repository (it shares the list's row type), and
 	// so are the retention deletes (chunked, as for the function trace log).
+	// A poll stores the instance it came from (NULL when it named none) and
+	// clears left_at: a runtime that polls again is back.
 	IngestionRuntimeUpsert(ctx context.Context, arg IngestionRuntimeUpsertParams) error
-	// The runtimes that polled within the lease window, with what they carry: a
-	// runtime's fair share of the polled ingestions of a kind is counted over the
-	// live runtimes that carry that kind (the asking runtime has just been
-	// upserted, so it counts itself).
+	// The runtimes that polled within a window and have not left since, with
+	// what they carry: a runtime's fair share of the polled ingestions of a kind
+	// is counted over the live runtimes that carry that kind, the window being
+	// one lease (the asking runtime has just been upserted, so it counts itself).
+	// The cap on a runtime returning after a gap reads the same over the recent
+	// window.
 	IngestionRuntimesLiveKinds(ctx context.Context, arg IngestionRuntimesLiveKindsParams) ([]IngestionRuntimesLiveKindsRow, error)
 	IngestionSecretFetchList(ctx context.Context, ingestionID string) ([]IngSecretFetch, error)
 	// One row per (ingestion, secret, runtime): when the runtime last fetched the

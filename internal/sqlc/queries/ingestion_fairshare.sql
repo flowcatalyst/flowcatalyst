@@ -1,10 +1,13 @@
--- The runtimes that polled within the lease window, with what they carry: a
--- runtime's fair share of the polled ingestions of a kind is counted over the
--- live runtimes that carry that kind (the asking runtime has just been
--- upserted, so it counts itself).
+-- The runtimes that polled within a window and have not left since, with
+-- what they carry: a runtime's fair share of the polled ingestions of a kind
+-- is counted over the live runtimes that carry that kind, the window being
+-- one lease (the asking runtime has just been upserted, so it counts itself).
+-- The cap on a runtime returning after a gap reads the same over the recent
+-- window.
 -- name: IngestionRuntimesLiveKinds :many
 SELECT runtime_id, kinds, builtin_kinds FROM ing_runtimes
 WHERE last_seen_at > @since AND last_seen_at <= @until
+  AND (left_at IS NULL OR left_at < last_seen_at)
 ORDER BY runtime_id;
 
 -- The leases a runtime holds and has not released, to be renewed first.

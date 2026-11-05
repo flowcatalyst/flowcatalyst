@@ -57,6 +57,7 @@ func (q *Queries) IngestionLeasesLock(ctx context.Context) error {
 const ingestionRuntimesLiveKinds = `-- name: IngestionRuntimesLiveKinds :many
 SELECT runtime_id, kinds, builtin_kinds FROM ing_runtimes
 WHERE last_seen_at > $1 AND last_seen_at <= $2
+  AND (left_at IS NULL OR left_at < last_seen_at)
 ORDER BY runtime_id
 `
 
@@ -71,10 +72,12 @@ type IngestionRuntimesLiveKindsRow struct {
 	BuiltinKinds json.RawMessage `db:"builtin_kinds"`
 }
 
-// The runtimes that polled within the lease window, with what they carry: a
-// runtime's fair share of the polled ingestions of a kind is counted over the
-// live runtimes that carry that kind (the asking runtime has just been
-// upserted, so it counts itself).
+// The runtimes that polled within a window and have not left since, with
+// what they carry: a runtime's fair share of the polled ingestions of a kind
+// is counted over the live runtimes that carry that kind, the window being
+// one lease (the asking runtime has just been upserted, so it counts itself).
+// The cap on a runtime returning after a gap reads the same over the recent
+// window.
 func (q *Queries) IngestionRuntimesLiveKinds(ctx context.Context, arg IngestionRuntimesLiveKindsParams) ([]IngestionRuntimesLiveKindsRow, error) {
 	rows, err := q.db.Query(ctx, ingestionRuntimesLiveKinds, arg.Since, arg.Until)
 	if err != nil {

@@ -89,23 +89,29 @@ func TestFairShare_ConvergesForThreeRuntimes(t *testing.T) {
 	assert.ElementsMatch(t, ids, all, "every ingestion is held by exactly one runtime")
 }
 
+// A survivor that keeps polling takes a dead runtime's share once its leases
+// expire: it is continuously live, so the cap on a runtime returning after a
+// gap never slows the failover.
 func TestFairShare_ADeadRuntimeLosesItsShareToTheSurvivor(t *testing.T) {
 	e := newEnv(t)
 	tf := day(4)
 	e.polledAll(t, 4)
+	// Both poll every minute, as runtimes do, until they hold two each.
 	now := tf
-	e.poll(t, "fair-p", now)
-	e.poll(t, "fair-q", now.Add(time.Second))
-	for i := range 4 { // converge
-		now = now.Add(lease + time.Minute)
+	var q []string
+	for range 5 {
 		e.poll(t, "fair-p", now)
-		e.poll(t, "fair-q", now.Add(time.Second))
-		_ = i
+		q = given(e.poll(t, "fair-q", now.Add(time.Second)))
+		now = now.Add(time.Minute)
 	}
-	// q goes silent: after the lease window p is the only live runtime and takes all four.
-	now = now.Add(2 * lease)
-	e.poll(t, "fair-p", now) // p sees q gone, share 4, claims what has expired
-	now = now.Add(lease + time.Second)
+	require.Len(t, q, 2, "converged")
+	// q goes silent after its poll at +4m01s. p keeps polling: while q's leases
+	// run (to +7m01s) it keeps its own two; at +8m q is no longer live and its
+	// leases have expired, and p takes all four.
+	for range 3 {
+		assert.Len(t, given(e.poll(t, "fair-p", now)), 2)
+		now = now.Add(time.Minute)
+	}
 	assert.Len(t, given(e.poll(t, "fair-p", now)), 4)
 }
 

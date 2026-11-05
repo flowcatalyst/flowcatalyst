@@ -118,9 +118,9 @@ table holds a secret value.
 |---|---|---|
 | `ing_ingestions` | `ingestions` | `id`, `application_id` (FK), `client_id` (**not null**), `code`, `name`, `active`, `version`, `latest_version`, `source/split/target` JSONB, `keep_failed_payloads`, `managed_by` (the owning set), timestamps. Unique `(application_id, client_id, code)` |
 | `ing_versions` | `ingestion_versions` | one row per saved version: definition, `definition_digest` (093: sha256 hex of the definition's canonical form, computed by the database from the jsonb text, indexed with the ingestion id; a save that matches a version reuses it), `note`, `applied_from` (set apply), who and when. `live` is the version runtimes receive (see section 5) |
-| `ing_runtimes` | `runtimes` | `runtime_id`, `last_seen_at`, `kinds` JSONB (extension kinds), `builtin_kinds` JSONB (090; NULL is the v2 baseline), `contract_version`, `url` (informational); pruned 7 days unseen |
+| `ing_runtimes` | `runtimes` | `runtime_id`, `last_seen_at`, `kinds` JSONB (extension kinds), `builtin_kinds` JSONB (090; NULL is the v2 baseline), `contract_version`, `url` (informational), `instance_id` and `left_at` (097: the process that last polled as the id, and its goodbye; section 7); pruned 7 days unseen |
 | `ing_kind_requirements` | (new, 090) | per runtime-reported kind, the permission the last report declared; enforced while no runtime that reports the kind is live |
-| `ing_leases` | `ingestion_leases` | polled sources run on one runtime at a time; `expires_at`, `released`; timed by the database's clock |
+| `ing_leases` | `ingestion_leases` | polled sources run on one runtime at a time; `expires_at`, `released`; timed by the database's clock; an expired lease is pruned only once its ingestion is not running (its end is when a running one was last held, section 7) |
 | `ing_job_keys` | (new) | the idempotency key (`externalId`) of each job a runtime created, per ingestion; written with the job, **pruned** after 7 days |
 | `ing_state` | `ingestion_state` | small values a polled source keeps (watermark, cursor); only the lease holder writes |
 | `ing_route_states` | `ingestion_route_states` | per runtime: version, status, error; a runtime's rows are pruned once it is unseen for 7 days (or forgotten) |
@@ -275,7 +275,7 @@ of them (N-1, or a v2 runtime from before) is served as before.
 | C4 | (limits) | The jobs call takes bodies up to 10 MiB (`FC_INGESTION_JOBS_MAX_BYTES`), the report up to 4 MiB (`FC_INGESTION_REPORT_MAX_BYTES`), the rest huma's 1 MiB. NUL characters in report text (failure messages and excerpts, route errors, test steps and excerpts) are dropped before storing: Postgres refused the whole report over one |
 | C5 | jobs `externalId` | The runtime sends the sha256 hex (64 characters, within the 100 allowed) of each record's source identity when it has one. Of two records of one request with the same key the earlier makes the job and the later answers it, every time (the keys are claimed in a stable order) |
 
-- **Poll** (every minute): the runtime sends `{runtimeId, contractVersion, kinds, builtinKinds?, url?}`; the answer is the
+- **Poll** (every minute): the runtime sends `{runtimeId, contractVersion, kinds, builtinKinds?, url?, instanceId?}`; the answer is the
   ingestions it should run (live version only, of an **active** client: a suspended or deactivated client's run
   nowhere), the lease length, and pending test requests. Leased sources (`sftp`, `s3`, `database-poll`, `api-poll`,
   `custom`) are given to one runtime holding a lease in `ing_leases` (a runtime that cannot renew stops before the lease
@@ -293,6 +293,54 @@ of them (N-1, or a v2 runtime from before) is served as before.
   locked rows in different orders and deadlocked. Leases are taken, renewed, checked and expired by the **database's
   clock** (`now()` read once per transaction), so replicas whose clocks disagree agree on who holds what; `asOf` in the
   answer is that time.
+- **Robustness (2026-11-05, additive within contract version 2).**
+  - **Liveness.** A runtime is live while it polled within one lease and has not left since that poll
+    (`last_seen_at` within one lease AND (`left_at` IS NULL OR `left_at` < `last_seen_at`)). The fair share, the
+    instance guard and the "no runtime carries this kind" notice all read it (the notice over `RuntimeLiveWindow`, three
+    minutes, the default lease).
+  - **Instance guard.** The poll takes an optional `instanceId` (8 to 64 of `[A-Za-z0-9-]`, a random UUID per process
+    start), stored in `ing_runtimes.instance_id` (migration 097). A poll whose `instanceId` differs from a stored,
+    non-null one whose runtime is still live is refused **`409 RUNTIME_ID_IN_USE`** ("runtime id R is in use by another
+    live process") before anything is written: no `last_seen_at`, no lease renewed or claimed, nothing listed. The
+    runtime row is locked first, so two processes polling as one id together are decided one at a time. An accepted
+    poll stores its instance (NULL when it sent none: no check) and clears `left_at`. The refused runtime keeps polling
+    every interval, fails its readiness, and stops its single-owner routes as when the platform is unreachable.
+  - **Release.** `POST /api/ingestion-runtime/v1/leases/release` takes `{runtimeId, instanceId?, ingestionIds (at most
+    1000), goodbye}` and answers `200 {released}`, with the poll's auth. In one transaction, under the poll's lease lock
+    and by the database's clock, each named lease the runtime holds ends now (`expires_at = least(expires_at, now)`,
+    `released`), so another runtime takes it at its next poll instead of after it expires; ids it does not hold are
+    ignored and not counted. An `instanceId` other than the stored one is refused `409 RUNTIME_ID_IN_USE` and changes
+    nothing. `goodbye` sets `left_at = now`: the runtime stops counting as live at once, for fair shares and for the
+    instance guard. The runtime calls it only for routes it has actually stopped: after a rebalance (`goodbye: false`)
+    and at shutdown (`goodbye: true`, always, even with nothing to release); never from its watchdog.
+  - **Health-aware placement.** A poll reads the asker's route states that are `FAILED` or `FAILING` and were reported
+    within `FC_INGESTION_UNHEALTHY_COOLDOWN` (default 10 minutes). The asker neither renews nor claims such an
+    ingestion while another live runtime that carries its kind has no recent `FAILED`/`FAILING` state for it; its lease
+    is released like any surplus, and the other runtime takes it when the lease ends. When every live carrier has failed
+    it recently it stays where it is, so a definition broken everywhere stays put and visible. A runtime that reports
+    `STARTED` again is not avoided (one state per runtime, the latest), and after the cooldown the runtime is eligible
+    again. The fair share is counted as before, with one exception so an avoided ingestion is never left unheld: a
+    runtime that has not failed it may take an ingestion another runtime recently failed **beyond its share**
+    (renewing it before anything else it holds). It counts toward the share, so its next renewal sheds one of its
+    healthy ingestions instead, which the avoiding runtime takes: the fleet ends even again.
+  - **Cap on a runtime returning after a gap.** A runtime with no row, whose last poll is older than one lease, or that
+    said goodbye, returns after a gap. Its **new** claims in that poll are capped, per kind, at `FairShare(n, carriers
+    seen within FC_INGESTION_RECENT_WINDOW (default 10 minutes) that have not left, the asker included)`, never above
+    its share; renewals are not capped. After a platform outage longer than a lease every runtime returns at once, and
+    the first to poll counts only itself as live: without the cap it would claim everything. A runtime that kept
+    polling is never capped, so a survivor takes a dead runtime's share as soon as its leases expire; a new fleet's
+    first runtime has no recent peers and takes everything.
+  - **Lease minimum.** `FC_INGESTION_LEASE_SECONDS` below 120 refuses to start (`EnvCfg.CheckIngestionLease`, in
+    `server.Run`, so fc-server and fcdev alike): the runtime polls every minute and stops a single-owner route before
+    its lease ends, so a shorter lease stops routes at the first slow poll. The runtime reports a single-owner ingestion
+    it refuses because the lease cannot cover its poll interval as a `FAILED` route state, which placement then moves.
+  - **Unheld.** A live polled ingestion (active, live version, active client, its config entry usable) with no unexpired
+    lease for longer than one lease and two minutes is **unheld**, since the later of its last lease's `expires_at` and
+    the ingestion's `updated_at` (a resume or a promote is an update; with no lease row, `updated_at` alone). Expired
+    leases of running ingestions are therefore kept by retention. Where a runtime carries the kind, the API's
+    `runtimeNotice` reads "not running: no runtime has held it since <RFC 3339 time>" (the get and the list), the
+    console's list row and drawer say the same, and the gauge `fc_ingestion_unheld` (`ingestion.MetricsRegistry`,
+    recounted every minute on every replica) is the count of all of them, those of a kind no runtime carries included.
 - **The runtime's account.** A runtime holds the role `platform:ingestion-runtime`, and that role is **platform-wide**
   (owner 2026-10-24: one fleet serves every application's ingestions, no fleet per application): the runtime routes
   (poll, report, state, jobs, secrets) reach every client and every application. Because of that the account must be

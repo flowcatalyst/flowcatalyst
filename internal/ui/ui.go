@@ -8,6 +8,7 @@ package ui
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -112,6 +113,9 @@ type Config struct {
 	IngestionEnabled bool
 	Ingestions       pages.IngestionStore
 	IngestionOps     pages.IngestionCommands
+	// IngestionLease is FC_INGESTION_LEASE_SECONDS: when a running polled
+	// ingestion no runtime holds is shown as not running.
+	IngestionLease time.Duration
 	// IngestionTabs and IngestionAudit back the drawer's activity, failures
 	// and history panels; IngestionSets and IngestionSetOps the sets pages
 	// (who applied is named with DisplayName); IngestionTests and IngestionResolver
@@ -299,7 +303,7 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.Developer{Apps: cfg.DeveloperApps, Specs: cfg.DeveloperSpecs, EventTypes: cfg.DeveloperEventTypes, Processes: cfg.Processes, Shell: sh}).Mount(r)
 			(&pages.DeveloperUsers{Store: cfg.DeveloperUsers, Ops: cfg.DeveloperUserOps, Shell: sh}).Mount(r)
 			if cfg.IngestionEnabled {
-				(&pages.Ingestions{Store: cfg.Ingestions, Ops: cfg.IngestionOps, Apps: cfg.ApplicationStore, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Shell: sh}).Mount(r)
+				(&pages.Ingestions{Store: cfg.Ingestions, Ops: cfg.IngestionOps, Apps: cfg.ApplicationStore, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Shell: sh, Lease: cfg.IngestionLease}).Mount(r)
 				activity := &pages.IngestionActivity{Store: cfg.IngestionTabs, Ops: cfg.IngestionTraceOps, Shell: sh}
 				activity.Mount(r)
 				(&pages.IngestionTabs{Store: cfg.IngestionTabs, Audit: cfg.IngestionAudit, Page: activity, Shell: sh}).Mount(r)

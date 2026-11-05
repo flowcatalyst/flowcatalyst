@@ -444,9 +444,13 @@ func TestPrune(t *testing.T) {
 	for k, at := range []time.Time{now.Add(-8 * 24 * time.Hour), now.Add(-24 * time.Hour)} {
 		exec(`INSERT INTO ing_job_keys (ingestion_id, external_id, job_id, created_at) VALUES ($1, $2, $3, $4)`, ing.ID, fmt.Sprintf("k%d", k), "job"+unique()[:8], at)
 	}
-	// An expired lease on its own ingestion, and a live one; runtimes seen long ago and lately.
+	// An expired lease of a running ingestion, one of an ingestion not running
+	// (a draft), and a live one; runtimes seen long ago and lately.
 	live := e.live(t, "prune-live", e.sftp(t))
+	draft := e.newIngestion("prune-draft", e.sftp(t), false)
+	e.mustSave(t, draft)
 	exec(`INSERT INTO ing_leases (ingestion_id, runtime_id, acquired_at, expires_at) VALUES ($1, $2, $3, $4)`, ing.ID, rt, old, now.Add(-time.Minute))
+	exec(`INSERT INTO ing_leases (ingestion_id, runtime_id, acquired_at, expires_at) VALUES ($1, $2, $3, $4)`, draft.ID, rt, old, now.Add(-time.Minute))
 	exec(`INSERT INTO ing_leases (ingestion_id, runtime_id, acquired_at, expires_at) VALUES ($1, $2, $3, $4)`, live.ID, rt, now, now.Add(time.Minute))
 	exec(`INSERT INTO ing_runtimes (runtime_id, contract_version, first_seen_at, last_seen_at) VALUES ($1, 2, $2, $2)`, rt+"-old", now.Add(-8*24*time.Hour))
 	exec(`INSERT INTO ing_runtimes (runtime_id, contract_version, first_seen_at, last_seen_at) VALUES ($1, 2, $2, $2)`, rt+"-new", now.Add(-24*time.Hour))
@@ -464,7 +468,9 @@ func TestPrune(t *testing.T) {
 	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_failures WHERE runtime_id = $1`, rt))
 	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_test_requests WHERE client_id = $1`, e.client.ID))
 	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_job_keys WHERE ingestion_id = $1`, ing.ID), "the key from a day ago stays")
-	assert.Equal(t, 0, e.count(t, `SELECT count(*) FROM ing_leases WHERE ingestion_id = $1`, ing.ID), "the expired lease goes")
+	assert.Equal(t, 0, e.count(t, `SELECT count(*) FROM ing_leases WHERE ingestion_id = $1`, draft.ID), "the expired lease of an ingestion not running goes")
+	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_leases WHERE ingestion_id = $1`, ing.ID),
+		"the expired lease of a running ingestion stays: its end is when it was last held (Unheld)")
 	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_leases WHERE ingestion_id = $1`, live.ID), "the live lease stays")
 	assert.Equal(t, 0, e.count(t, `SELECT count(*) FROM ing_runtimes WHERE runtime_id = $1`, rt+"-old"))
 	assert.Equal(t, 1, e.count(t, `SELECT count(*) FROM ing_runtimes WHERE runtime_id = $1`, rt+"-new"))

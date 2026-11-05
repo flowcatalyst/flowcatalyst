@@ -1524,6 +1524,9 @@
           "code": {
             "type": "string"
           },
+          "connectionId": {
+            "type": "string"
+          },
           "correlationId": {
             "type": "string"
           },
@@ -1544,6 +1547,10 @@
             "type": "string"
           },
           "id": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "maxLength": 100,
             "type": "string"
           },
           "kind": {
@@ -2709,6 +2716,9 @@
             "type": "string"
           },
           "code": {
+            "type": "string"
+          },
+          "connectionId": {
             "type": "string"
           },
           "correlationId": {
@@ -7272,6 +7282,7 @@
             "type": "integer"
           },
           "runtimeNotice": {
+            "description": "Set while a running ingestion runs nowhere: 'no runtime carries this kind', or, for a polled source, 'not running: no runtime has held it since \u003cRFC 3339 time\u003e' once no runtime has held its lease for a lease and two minutes",
             "type": "string"
           },
           "save": {
@@ -9650,6 +9661,11 @@
             "minimum": 0,
             "type": "integer"
           },
+          "instanceId": {
+            "description": "The runtime process, new on every start (a random UUID). While another instance that polled as this runtimeId is live (polled within one lease and has not said goodbye since), the poll is refused with 409 RUNTIME_ID_IN_USE and changes nothing. Absent: no check.",
+            "pattern": "^[A-Za-z0-9-]{8,64}$",
+            "type": "string"
+          },
           "kinds": {
             "description": "The kinds the runtime's extensions add (and camel-route)",
             "items": {
@@ -11151,6 +11167,71 @@
         },
         "required": [
           "credentialId"
+        ],
+        "type": "object"
+      },
+      "ReleaseRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ReleaseRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "goodbye": {
+            "description": "The runtime is shutting down: it stops counting as live at once, for fair shares and for the instance guard.",
+            "type": "boolean"
+          },
+          "ingestionIds": {
+            "description": "Single-owner ingestions whose routes have stopped; their leases end now. One the runtime does not hold is ignored.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "instanceId": {
+            "description": "The runtime process, as on poll. When it differs from the instance stored for runtimeId the release is refused with 409 RUNTIME_ID_IN_USE and changes nothing.",
+            "pattern": "^[A-Za-z0-9-]{8,64}$",
+            "type": "string"
+          },
+          "runtimeId": {
+            "description": "The releasing runtime",
+            "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runtimeId",
+          "ingestionIds",
+          "goodbye"
+        ],
+        "type": "object"
+      },
+      "ReleaseResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ReleaseResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "released": {
+            "description": "How many of the named leases the runtime held and now has ended",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "released"
         ],
         "type": "object"
       },
@@ -20384,7 +20465,7 @@
         "x-sdk": "app"
       },
       "post": {
-        "description": "Requires platform:messaging:batch:dispatch-jobs-write. code, targetUrl, payload and serviceAccountId are required. Responds 201 with the new job id.",
+        "description": "Requires platform:messaging:batch:dispatch-jobs-write. code, targetUrl, payload and serviceAccountId are required. Responds 201 with the new job id, or, for an idempotencyKey already held in the job's application and client, the holding job's id (nothing is created).",
         "operationId": "createDispatchJob",
         "requestBody": {
           "content": {
@@ -20427,7 +20508,7 @@
     },
     "/api/dispatch-jobs/batch": {
       "post": {
-        "description": "Requires platform:messaging:batch:dispatch-jobs-write. At most 1000 items; any refused item (unknown kind, bad targetUrl, client or application the credential cannot ingest for) rejects the whole batch, and the insert is all-or-nothing. Responds 201 with one result per item, in order, status SUCCESS; an empty batch responds 200 with an empty results list.",
+        "description": "Requires platform:messaging:batch:dispatch-jobs-write. At most 1000 items; any refused item (unknown kind, bad targetUrl, client or application the credential cannot ingest for, unknown or out-of-scope connectionId, idempotencyKey over 100 characters) rejects the whole batch, and the insert is all-or-nothing. Responds 201 with one result per item, in order, status SUCCESS; an item whose idempotencyKey is already held in its application and client answers the holding job's id and creates nothing. An empty batch responds 200 with an empty results list.",
         "operationId": "batchCreateDispatchJobs",
         "requestBody": {
           "content": {
@@ -26693,6 +26774,67 @@
         ]
       }
     },
+    "/api/ingestion-runtime/v1/leases/release": {
+      "post": {
+        "operationId": "ingestionRuntimeReleaseLeases",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "A runtime hands back the leases of single-owner routes it has stopped, and says goodbye at shutdown (ingestion runtime only)",
+        "tags": [
+          "ingestion-runtime"
+        ]
+      }
+    },
     "/api/ingestion-runtime/v1/poll": {
       "post": {
         "operationId": "ingestionRuntimePoll",
@@ -26716,6 +26858,16 @@
               }
             },
             "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "422": {
             "content": {

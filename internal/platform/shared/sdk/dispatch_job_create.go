@@ -60,6 +60,9 @@ type CreateDispatchJobRequest struct {
 	// ("Notify Value of user logins"). Optional; a fanned-out job gets its
 	// subscription's name here.
 	Descriptor *string `json:"descriptor,omitempty" maxLength:"255"`
+	// ConnectionID is the job's own connection, checked as on the batch
+	// (JobConnections).
+	ConnectionID *string `json:"connectionId,omitempty"`
 }
 
 // CreatedResponse is the wire body for POST /api/dispatch-jobs: {id},
@@ -135,6 +138,7 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 		MaxRetries:         req.MaxRetries,
 		Queue:              req.Queue,
 		Descriptor:         req.Descriptor,
+		IdempotencyKey:     req.IdempotencyKey,
 	})
 	if err != nil {
 		httperror.Write(w, err)
@@ -163,7 +167,6 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 		}
 		j.RetryStrategy = retry
 	}
-	j.IdempotencyKey = req.IdempotencyKey
 	j.Metadata = metadataFromMap(req.Metadata)
 
 	// Application confinement (application-scoped callers only).
@@ -176,15 +179,21 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 		httperror.Write(w, httperror.Forbidden(msg))
 		return
 	}
+	if err := s.newJobConnections().Apply(r.Context(), &j, req.ConnectionID); err != nil {
+		httperror.Write(w, err)
+		return
+	}
 
-	if err := s.Repo.InsertBatch(r.Context(), []dispatchjob.DispatchJob{j}); err != nil {
+	// idempotencyKey: a repeat answers the first job's id (InsertBatchKeyed).
+	ids, err := s.Repo.InsertBatchKeyed(r.Context(), []dispatchjob.DispatchJob{j})
+	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "insert failed", err))
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(CreatedResponse{ID: j.ID})
+	_ = json.NewEncoder(w).Encode(CreatedResponse{ID: ids[0]})
 }
 
 // metadataFromMap converts the singular contract's string map into the

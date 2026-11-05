@@ -313,7 +313,9 @@ type EnvCfg struct {
 
 	// IngestionLease is how long a polled ingestion's lease lasts without
 	// being renewed by its runtime's poll (FC_INGESTION_LEASE_SECONDS;
-	// non-positive or unparseable = ingestion.DefaultLease, 3 minutes).
+	// non-positive or unparseable = ingestion.DefaultLease, 3 minutes). Below
+	// ingestion.MinLease (120 seconds) the server refuses to start
+	// (CheckIngestionLease).
 	IngestionLease time.Duration
 
 	// FunctionsRunnerURL is the function runner's base URL
@@ -652,6 +654,21 @@ func (c EnvCfg) ApplyDeliveryPolicy(p *netguard.Policy) {
 	for _, u := range c.FunctionsRunnerURLByRuntime {
 		p.AllowURL(u)
 	}
+}
+
+// CheckIngestionLease refuses an ingestion lease shorter than
+// ingestion.MinLease (FC_INGESTION_LEASE_SECONDS below 120). A runtime polls
+// every minute and stops a single-owner route before its lease would end, so
+// a shorter lease stops routes at the first slow poll, and at 60 seconds or
+// less the runtime refuses every single-owner ingestion. Run calls it before
+// anything starts, so fc-server and fcdev both fail at boot. Zero (a config
+// built by hand) is the default lease, as everywhere the lease is read.
+func (c EnvCfg) CheckIngestionLease() error {
+	if c.IngestionLease > 0 && c.IngestionLease < ingestion.MinLease {
+		return fmt.Errorf("FC_INGESTION_LEASE_SECONDS=%d is too short: a lease is at least %d seconds (the runtime polls every minute and must stop a single-owner route before its lease ends)",
+			int(c.IngestionLease/time.Second), int(ingestion.MinLease/time.Second))
+	}
+	return nil
 }
 
 // CheckTestHeadersAllowed refuses the X-FC-Test-Principal identity-spoof

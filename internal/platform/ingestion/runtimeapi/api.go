@@ -1,5 +1,5 @@
 // Package runtimeapi wires the routes an ingestion runtime calls
-// (docs/ingestion-design.md section 7): poll, report, state, job creation and secrets, under
+// (docs/ingestion-design.md section 7): poll, lease release, report, state, job creation and secrets, under
 // /api/ingestion-runtime/v1, as the runtime's service account holding
 // platform:ingestion:runtime:operate. The runtime is not an application SDK
 // client; these operations are not in the application SDKs.
@@ -107,6 +107,10 @@ const (
 	TracesOperationID = "ingestionRuntimeTraces"
 )
 
+// ReleaseOperationID is the lease release a runtime makes after it has stopped
+// single-owner routes, and with goodbye at shutdown.
+const ReleaseOperationID = "ingestionRuntimeReleaseLeases"
+
 // Register mounts the runtime endpoints. The server mounts them only when
 // FC_INGESTION_ENABLED is on; the spec generator always registers them.
 func Register(api huma.API, s *State) {
@@ -118,8 +122,17 @@ func Register(api huma.API, s *State) {
 		Summary:       "A runtime asks what it should run (ingestion runtime only)",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
-		Errors:        []int{http.StatusUpgradeRequired},
+		Errors:        []int{http.StatusConflict, http.StatusUpgradeRequired},
 	}, s.poll)
+	huma.Register(api, huma.Operation{
+		OperationID:   ReleaseOperationID,
+		Method:        http.MethodPost,
+		Path:          "/api/ingestion-runtime/v1/leases/release",
+		Summary:       "A runtime hands back the leases of single-owner routes it has stopped, and says goodbye at shutdown (ingestion runtime only)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+		Errors:        []int{http.StatusConflict},
+	}, s.release)
 	// The report and jobs calls carry payloads, so they take bigger bodies
 	// than apiroute's default; huma.Register directly sets MaxBodyBytes.
 	huma.Register(api, huma.Operation{
@@ -207,12 +220,12 @@ func (s *State) poll(ctx context.Context, in *pollInput) (*apicommon.Out[PollRes
 	}
 	req := ingestion.PollRequest{
 		RuntimeID: b.RuntimeID, ContractVersion: b.ContractVersion, Kinds: b.Kinds, BuiltinKinds: knownBuiltins(b.BuiltinKinds),
-		URL: b.URL, Now: s.now(), Lease: s.lease(),
+		URL: b.URL, Now: s.now(), Lease: s.lease(), InstanceID: b.InstanceID,
 	}
 	req.Clients, req.Applications = ingestion.ListReach(runtimeReach(ac))
 	res, err := s.Repo.Poll(ctx, req)
 	if err != nil {
-		return nil, usecase.Internal("REPO", "poll failed", err)
+		return nil, repoError(err, "poll failed")
 	}
 	body := PollResponse{
 		AsOf: jsontime.New(res.AsOf), LeaseFor: ingestion.Duration(s.lease()).String(),
@@ -244,6 +257,41 @@ func (s *State) poll(ctx context.Context, in *pollInput) (*apicommon.Out[PollRes
 		body.Tests = append(body.Tests, RuntimeTest{ID: t.ID, ExpiresAt: jsontime.New(t.ExpiresAt), Ingestion: ri})
 	}
 	return &apicommon.Out[PollResponse]{Body: body}, nil
+}
+
+type releaseInput struct {
+	Body ReleaseRequest
+}
+
+// release ends the leases of the single-owner routes the runtime has stopped,
+// so another runtime takes them at its next poll instead of after they expire,
+// and with goodbye marks the runtime gone.
+func (s *State) release(ctx context.Context, in *releaseInput) (*apicommon.Out[ReleaseResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.RequireIngestionRuntime(ac); err != nil {
+		return nil, err
+	}
+	b := in.Body
+	if len(b.IngestionIDs) > ingestion.MaxReleaseIDs {
+		// The schema's maxItems says so too; this holds whatever the body check lets through.
+		return nil, usecase.Validation("RELEASE_TOO_MANY", fmt.Sprintf("a release names at most %d ingestions", ingestion.MaxReleaseIDs))
+	}
+	n, err := s.Repo.Release(ctx, ingestion.ReleaseRequest{
+		RuntimeID: b.RuntimeID, InstanceID: b.InstanceID, IngestionIDs: b.IngestionIDs, Goodbye: b.Goodbye, Now: s.now(),
+	})
+	if err != nil {
+		return nil, repoError(err, "release failed")
+	}
+	return &apicommon.Out[ReleaseResponse]{Body: ReleaseResponse{Released: n}}, nil
+}
+
+// repoError passes a refusal (a *usecase.Error) through and makes anything
+// else a 500.
+func repoError(err error, msg string) error {
+	if usecase.AsError(err) != nil {
+		return err
+	}
+	return usecase.Internal("REPO", msg, err)
 }
 
 // traceWindows lists the open trace windows of the ingestions the answer lists
@@ -471,9 +519,4 @@ func (s *State) putState(ctx context.Context, in *putStateInput) (*apicommon.Emp
 }
 
 // stateError passes the lease refusal through and makes anything else a 500.
-func stateError(err error) error {
-	if usecase.AsError(err) != nil {
-		return err
-	}
-	return usecase.Internal("REPO", "state failed", err)
-}
+func stateError(err error) error { return repoError(err, "state failed") }

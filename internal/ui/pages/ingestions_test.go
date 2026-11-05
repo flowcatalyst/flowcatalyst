@@ -32,6 +32,8 @@ type fakeIngStore struct {
 	carried []string
 	// notices are the undismissed notices by ingestion id.
 	notices map[string]ingestion.Notices
+	// unheld are the running polled ingestions no runtime holds, by id.
+	unheld map[string]time.Time
 	// fetches are the secret fetch records by ingestion id.
 	fetches map[string][]ingestion.SecretFetch
 	// missing are the secret names that have no value; any other is set.
@@ -96,6 +98,16 @@ func (f *fakeIngStore) LiveKinds(context.Context) ([]ingestion.RuntimeKind, erro
 
 func (f *fakeIngStore) AnyLiveRuntimeCarries(context.Context) (func(string) bool, error) {
 	return func(kind string) bool { return slices.Contains(f.carried, kind) }, f.err
+}
+
+func (f *fakeIngStore) Unheld(_ context.Context, ids []string, _ time.Time, _ time.Duration) (map[string]time.Time, error) {
+	out := map[string]time.Time{}
+	for _, id := range ids {
+		if since, ok := f.unheld[id]; ok {
+			out[id] = since
+		}
+	}
+	return out, f.err
 }
 
 func (f *fakeIngStore) ListSecretFetches(_ context.Context, id string) ([]ingestion.SecretFetch, error) {
@@ -369,6 +381,26 @@ func TestIngestionsListSaysWhenNoRuntimeCarriesAKind(t *testing.T) {
 	h.store.items[4].Active = false
 	body = ingBody(t, h.do(t, ingAdmin(), req{target: "/ui/ingestions"}))
 	mustNotContain(t, body, "No runtime carries this kind")
+}
+
+// A running polled ingestion no runtime has held for a lease and two minutes
+// says it is not running, in the list and in the drawer; one whose kind no
+// runtime carries says that instead.
+func TestIngestionsSayWhenNoRuntimeHoldsAPolledIngestion(t *testing.T) {
+	h := newIngHarness()
+	since := time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
+	h.store.unheld = map[string]time.Time{"ing_3": since, "ing_5": since}
+	body := ingBody(t, h.do(t, ingAdmin(), req{target: "/ui/ingestions"}))
+	want := "Not running: no runtime has held it since 2030-01-01 12:00:00 UTC"
+	if got := strings.Count(body, want); got != 1 {
+		t.Errorf("the unheld notice appears %d times, want 1 (ing_5's kind is carried by no runtime, which says so instead)", got)
+	}
+	drawer := h.do(t, ingAdmin(), req{target: "/ui/ingestions/ing_3", datastar: true}).Body.String()
+	mustContain(t, drawer, `id="ings-unheld"`, "No runtime has held it since 2030-01-01 12:00:00 UTC")
+
+	h.store.unheld = nil
+	body = ingBody(t, h.do(t, ingAdmin(), req{target: "/ui/ingestions"}))
+	mustNotContain(t, body, "Not running: no runtime has held it")
 }
 
 func TestIngestionsListPermissions(t *testing.T) {

@@ -310,7 +310,7 @@ func (q *Queries) IngestionRouteStateList(ctx context.Context, ingestionID strin
 }
 
 const ingestionRuntimeKindsSeenSince = `-- name: IngestionRuntimeKindsSeenSince :many
-SELECT kinds, builtin_kinds FROM ing_runtimes WHERE last_seen_at >= $1
+SELECT kinds, builtin_kinds FROM ing_runtimes WHERE last_seen_at >= $1 AND (left_at IS NULL OR left_at < last_seen_at)
 `
 
 type IngestionRuntimeKindsSeenSinceRow struct {
@@ -318,6 +318,7 @@ type IngestionRuntimeKindsSeenSinceRow struct {
 	BuiltinKinds json.RawMessage `db:"builtin_kinds"`
 }
 
+// A runtime that said goodbye after its last poll is not live.
 func (q *Queries) IngestionRuntimeKindsSeenSince(ctx context.Context, lastSeenAt time.Time) ([]IngestionRuntimeKindsSeenSinceRow, error) {
 	rows, err := q.db.Query(ctx, ingestionRuntimeKindsSeenSince, lastSeenAt)
 	if err != nil {

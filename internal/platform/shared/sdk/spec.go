@@ -78,7 +78,7 @@ func RegisterSpec(api huma.API) {
 		Method:        http.MethodPost,
 		Path:          "/api/dispatch-jobs",
 		Summary:       "Create a single dispatch job (SDK)",
-		Description:   "Requires platform:messaging:batch:dispatch-jobs-write. code, targetUrl, payload and serviceAccountId are required. Responds 201 with the new job id.",
+		Description:   "Requires platform:messaging:batch:dispatch-jobs-write. code, targetUrl, payload and serviceAccountId are required. Responds 201 with the new job id, or, for an idempotencyKey already held in the job's application and client, the holding job's id (nothing is created).",
 		Tags:          []string{"dispatch-jobs"},
 		DefaultStatus: http.StatusCreated,
 	}, func(context.Context, *specCreateInput) (*specCreateOutput, error) { return nil, nil })
@@ -88,7 +88,7 @@ func RegisterSpec(api huma.API) {
 		Method:        http.MethodPost,
 		Path:          "/api/dispatch-jobs/batch",
 		Summary:       "Ingest a batch of dispatch jobs (SDK)",
-		Description:   "Requires platform:messaging:batch:dispatch-jobs-write. At most 1000 items; any refused item (unknown kind, bad targetUrl, client or application the credential cannot ingest for) rejects the whole batch, and the insert is all-or-nothing. Responds 201 with one result per item, in order, status SUCCESS; an empty batch responds 200 with an empty results list.",
+		Description:   "Requires platform:messaging:batch:dispatch-jobs-write. At most 1000 items; any refused item (unknown kind, bad targetUrl, client or application the credential cannot ingest for, unknown or out-of-scope connectionId, idempotencyKey over 100 characters) rejects the whole batch, and the insert is all-or-nothing. Responds 201 with one result per item, in order, status SUCCESS; an item whose idempotencyKey is already held in its application and client answers the holding job's id and creates nothing. An empty batch responds 200 with an empty results list.",
 		Tags:          []string{"dispatch-jobs"},
 		DefaultStatus: http.StatusCreated,
 	}, func(context.Context, *specDispatchBatchInput) (*specDispatchBatchOutput, error) { return nil, nil })

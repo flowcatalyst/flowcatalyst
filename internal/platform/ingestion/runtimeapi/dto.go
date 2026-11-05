@@ -18,6 +18,23 @@ type PollRequest struct {
 	// kinds it names in kinds).
 	BuiltinKinds []string `json:"builtinKinds,omitempty" maxItems:"50" doc:"The built-in source kinds the runtime carries (http, sftp, s3, sqs, rabbitmq, database-poll, api-poll); absent is all of them. Only ingestions of a kind the runtime carries are listed to it, and a polled kind's fair share counts only the runtimes that carry it."`
 	URL          *string  `json:"url,omitempty" pattern:"^https?://[^\\s]+$" maxLength:"500" doc:"Where the runtime can be reached; informational, the platform never calls it"`
+	// InstanceID is additive within contract version 2: a runtime that does
+	// not send it is not checked.
+	InstanceID *string `json:"instanceId,omitempty" pattern:"^[A-Za-z0-9-]{8,64}$" doc:"The runtime process, new on every start (a random UUID). While another instance that polled as this runtimeId is live (polled within one lease and has not said goodbye since), the poll is refused with 409 RUNTIME_ID_IN_USE and changes nothing. Absent: no check."`
+}
+
+// ReleaseRequest is the wire body for
+// POST /api/ingestion-runtime/v1/leases/release.
+type ReleaseRequest struct {
+	RuntimeID    string   `json:"runtimeId" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The releasing runtime"`
+	InstanceID   *string  `json:"instanceId,omitempty" pattern:"^[A-Za-z0-9-]{8,64}$" doc:"The runtime process, as on poll. When it differs from the instance stored for runtimeId the release is refused with 409 RUNTIME_ID_IN_USE and changes nothing."`
+	IngestionIDs []string `json:"ingestionIds" maxItems:"1000" doc:"Single-owner ingestions whose routes have stopped; their leases end now. One the runtime does not hold is ignored."`
+	Goodbye      bool     `json:"goodbye" doc:"The runtime is shutting down: it stops counting as live at once, for fair shares and for the instance guard."`
+}
+
+// ReleaseResponse answers a release.
+type ReleaseResponse struct {
+	Released int `json:"released" doc:"How many of the named leases the runtime held and now has ended"`
 }
 
 // RuntimeIngestion is an ingestion in the contract's form: what a runtime

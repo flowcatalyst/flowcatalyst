@@ -797,21 +797,46 @@ DomainEventHelpers::generateId('cmt');   // branded → "cmt_6F7JC2A6JFR7N"
 ### Creating Dispatch Jobs
 
 ```php
+use FlowCatalyst\Facades\FlowCatalyst;
 use FlowCatalyst\Facades\Outbox;
 use FlowCatalyst\Outbox\DTOs\CreateDispatchJobDto;
 
 // Create a dispatch job (direct webhook without subscription matching)
-$jobId = Outbox::createDispatchJob(
-    CreateDispatchJobDto::create(
+$job = CreateDispatchJobDto::create(
         source: 'order-service',
         code: 'shop:orders:warehouse:notify',
         targetUrl: 'https://warehouse.example.com/webhook',
         payload: ['orderId' => 'ORD-123', 'action' => 'prepare'],
         dispatchPoolId: $warehousePoolId,
     )->withCorrelationId('corr-abc-123')
-      ->withHeaders(['X-Priority' => 'high'])
-);
+    ->withClientCode('acme')                  // the job's client: deliveries carry X-FlowCatalyst-Client
+    ->withConnectionId($connectionId)         // its service account signs the delivery
+    ->withIdempotencyKey('warehouse-ORD-123') // a repeat answers the first job's id
+    ->withMetadata(['orderId' => 'ORD-123']); // sent as [{key, value}]
+
+// Through the outbox (returns the outbox row id)...
+$outboxId = Outbox::createDispatchJob($job);
+
+// ...or straight to the platform (POST /api/dispatch-jobs/batch; returns the job id)
+$jobId = FlowCatalyst::dispatchJobs()->create($job);
+$results = FlowCatalyst::dispatchJobs()->batch([$job, $other]); // list<DispatchJobResult>: id, status, error
 ```
+
+Both paths send the same item (`CreateDispatchJobDto::toBatchItem()`).
+
+- `withConnectionId()` names the connection the job is delivered through: pausing the connection holds
+  the job, and (for a job with no subscription) the connection's service account signs the delivery.
+  It must be a global connection or the job's client's, and shared or the job's application's.
+- `withIdempotencyKey()` (at most 100 characters) makes the create idempotent within the job's
+  application (the first segment of its code) and client: a repeat creates nothing and answers the
+  first job's id. Set one on direct calls, which the client retries on 429/502-504 and network errors.
+- `withClientCode()` / `withClientId()` set the job's FlowCatalyst client (an id wins over a code).
+- `withMetadata()` takes an associative array (sent key-sorted as `[{key, value}]`, values as strings)
+  or a list of `{key, value}` pairs.
+- `withHeaders()`, `scheduledFor()`, `expiresAt()` and the `retryStrategy` argument are **not sent**:
+  the platform's batch route does not honour them. They remain only so existing code compiles.
+- `dispatchJobs()` needs `platform:messaging:batch:dispatch-jobs-write`. The batch is all-or-nothing:
+  a refused item fails the request with a `FlowCatalystException` and creates nothing.
 
 ## Webhook Validation
 

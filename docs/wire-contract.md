@@ -351,6 +351,50 @@ that is absent, `null`, empty or whitespace counts as not given.
   `400 {"error":"CLIENT_NOT_FOUND","message":"Client not found: <clientCode>"}`.
 - Any refusal rejects the whole batch. Neither given: no client.
 
+**Dispatch-job connection** (`connectionId` on a batch item and on
+`POST /api/dispatch-jobs`, 2026-11-05; `internal/platform/shared/sdk/job_connection.go`).
+Optional; absent, `null` or blank is none. It is stored on the job
+(`connection_id`, the column a function's `fn.dispatch` job sets): pausing the
+connection holds the job PENDING, and for a job with no subscription the
+connection's service account signs the delivery (delivery credentials step 2b).
+Checked after the client and application rules, so the connection is one the
+caller reaches:
+
+- unknown: `400 CONNECTION_NOT_FOUND "Connection not found: <id>"`;
+- scoped to another client (or to a client when the job has none), or owned by
+  another application than the job code's first segment:
+  `400 CONNECTION_SCOPE_MISMATCH` (the rule a subscription sync applies to a
+  `connectionId`, `connection.ScopeProblem`);
+- with a `subscriptionId` whose connection is not this one:
+  `400 CONNECTION_MISMATCH` (a subscription's job is signed through its
+  subscription, so the id would otherwise be ignored);
+- status is not checked: a PAUSED connection's job is created and waits.
+
+Any refusal rejects the whole batch.
+
+**Dispatch-job idempotency** (`idempotencyKey` on a batch item and on
+`POST /api/dispatch-jobs`, 2026-11-05; migration 099,
+`dispatchjob.Repository.InsertBatchKeyed`). Optional; trimmed; blank is none;
+over 100 characters is `400 INVALID_IDEMPOTENCY_KEY`. A key is unique within
+the job's application (the first segment of its `code`) and client (none
+counts as its own scope). The first job to name it creates the job and holds
+the key (`msg_dispatch_job_keys`, written in the job's transaction); a later
+item with the same key in the same scope creates nothing and answers the
+holding job's id: in its `results[]` slot with status `SUCCESS` on the batch,
+as `{id}` with 201 on the singular route. Within one batch the earlier item
+wins. Keys are kept 7 days (`dispatchjob.JobKeysRetention`). An SDK-supplied
+`id` is not an idempotency key: `msg_dispatch_jobs` is partitioned by
+`created_at`, so a repeated id is a second row.
+
+**Dispatch-job batch fields not honoured.** A batch item's `metadata` is a list
+of `{key, value}` (an object fails the JSON decode: `400 INVALID_JSON`, whole
+batch). `headers`, `retryStrategy`, `scheduledFor` and `expiresAt` are not batch
+fields and are ignored (`retryStrategy` is taken by the singular route only).
+The outbox processor (`internal/outbox`) forwards a `DISPATCH_JOB` row's
+payload as written except that an object `metadata` (written by Laravel SDK
+releases before 2026-11-05, and by the TypeScript SDK) is turned into the
+key-sorted list, non-string values as their JSON text.
+
 **Event source** (both event routes): an absent, `null` or blank `source` is
 stored as the trimmed type's `{application}:{subdomain}`, its first two `:`
 segments (`orders:sales:order:created` → `orders:sales`), or the first alone
@@ -774,6 +818,28 @@ INVALID_CORRELATION_ID`, each as `{"error": CODE, "message"?}`. The request head
 `Idempotency-Key`, `X-Message-Group` (the records' group becomes
 `{ingestionId}:{value}`) and `X-Correlation-Id` are honoured. See "HTTP
 ingestions" in `docs/published/80-ingestion.md`.
+
+## Ingestion: the runtime's instance and lease release
+
+Additive within contract version 2 (`docs/ingestion-design.md` section 7, "Robustness"):
+
+- `POST /api/ingestion-runtime/v1/poll` takes an optional `instanceId` (8 to 64 of
+  `[A-Za-z0-9-]`, a random UUID per runtime process). While another instance that
+  polled as the same `runtimeId` is live (polled within one lease and has not said
+  goodbye since), the poll answers `409 {"error":"RUNTIME_ID_IN_USE","message":"runtime
+  id R is in use by another live process"}` and changes nothing. A poll without it is
+  not checked.
+- `POST /api/ingestion-runtime/v1/leases/release` (operation
+  `ingestionRuntimeReleaseLeases`, the poll's auth) takes `{runtimeId, instanceId?,
+  ingestionIds: [string] (0..1000), goodbye: boolean}` and answers `200 {"released":
+  int}`: the leases among `ingestionIds` the runtime holds end now (others are ignored
+  and not counted), and `goodbye` marks the runtime gone (no longer live). An
+  `instanceId` other than the stored one is `409 RUNTIME_ID_IN_USE`, changing nothing.
+  An older platform answers `404`; the runtime then stops calling it until restart.
+- `runtimeNotice` on `GET /api/ingestions` and `GET /api/ingestions/{id}` is either
+  `no runtime carries this kind` or, for a running polled ingestion no runtime has held
+  for one lease and two minutes, `not running: no runtime has held it since <RFC 3339
+  time>`.
 
 ## Field identity: the admin API (`/api/field-*`)
 

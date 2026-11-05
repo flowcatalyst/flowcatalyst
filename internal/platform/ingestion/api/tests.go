@@ -183,18 +183,38 @@ func (s *State) testResponse(ctx context.Context, t *ingestion.TestRequest) (*ap
 // that carries its kind: nothing has failed, nobody is there to run it yet.
 const noRuntimeNotice = "no runtime carries this kind"
 
-// runtimeNotices returns, for the ingestions of a response, the notice that no
-// runtime carries the kind of a running one: not a failure, nobody is there to
-// run it yet. nil for everything else.
-func (s *State) runtimeNotices(ctx context.Context) (func(*ingestion.Ingestion) *string, error) {
+// runtimeNotices returns, for the ingestions of a response (ids), the notice
+// that no runtime carries the kind of a running one (not a failure, nobody is
+// there to run it yet), or, when one does, that no runtime has held a running
+// polled one for longer than a lease and two minutes (ingestion.Unheld): it is
+// not running anywhere. nil for everything else.
+func (s *State) runtimeNotices(ctx context.Context, ids []string) (func(*ingestion.Ingestion) *string, error) {
 	carries, err := s.Repo.AnyLiveRuntimeCarries(ctx)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "live runtimes failed", err)
 	}
+	unheld, err := s.Repo.Unheld(ctx, ids, time.Time{}, s.lease())
+	if err != nil {
+		return nil, usecase.Internal("REPO", "unheld ingestions failed", err)
+	}
 	return func(i *ingestion.Ingestion) *string {
-		if i.Live() && !carries(ingestion.RunKind(i.Definition.Source)) {
+		if !i.Live() {
+			return nil
+		}
+		if !carries(ingestion.RunKind(i.Definition.Source)) {
 			return new(noRuntimeNotice)
+		}
+		if since, ok := unheld[i.ID]; ok {
+			return new(ingestion.UnheldNotice(since))
 		}
 		return nil
 	}, nil
+}
+
+// lease is the lease the runtime API runs with (State.Lease, or the default).
+func (s *State) lease() time.Duration {
+	if s.Lease > 0 {
+		return s.Lease
+	}
+	return ingestion.DefaultLease
 }
