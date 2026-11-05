@@ -21,13 +21,27 @@ const AllApplicationsSentinel = "*"
 // colon only, so an application code containing one survives intact in the
 // discarded half.
 func ParseApplicationsClaim(entries []string) (ids []string, allApplications bool) {
+	return parsePairClaim(entries)
+}
+
+// ParseClientsClaim turns the wire form of the `clients` claim ("id:identifier"
+// pairs, or "*" for an anchor) into bare client ids, the form
+// AuthContext.CanAccessClient and every tenant filter compare against. The "*"
+// is dropped: anchor access comes from the tier, not from this list. Bare ids
+// pass through unchanged.
+func ParseClientsClaim(entries []string) []string {
+	ids, _ := parsePairClaim(entries)
+	return ids
+}
+
+func parsePairClaim(entries []string) (ids []string, wildcard bool) {
 	if len(entries) == 0 {
 		return nil, false
 	}
 	ids = make([]string, 0, len(entries))
 	for _, e := range entries {
 		if e == AllApplicationsSentinel {
-			allApplications = true
+			wildcard = true
 			continue
 		}
 		if i := strings.Index(e, ":"); i > 0 {
@@ -37,5 +51,5 @@ func ParseApplicationsClaim(entries []string) (ids []string, allApplications boo
 			ids = append(ids, e)
 		}
 	}
-	return ids, allApplications
+	return ids, wildcard
 }

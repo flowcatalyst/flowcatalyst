@@ -13,6 +13,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -146,6 +147,70 @@ func TestAuthenticatorRejectsIdentityBearer(t *testing.T) {
 	}
 	if status, hadCtx := run(apiTok); status != http.StatusOK || !hadCtx {
 		t.Errorf("api bearer: status=%d hadCtx=%v; want 200 with AuthContext", status, hadCtx)
+	}
+}
+
+// TestAuthenticatorBearerClientsAreBareIDs: an access token's `clients` claim
+// carries "id:identifier" pairs, but everything behind the middleware
+// (CanAccessClient, tenant filters) compares bare client ids, as the session
+// cookie path already provides. A partner's bearer must reach its clients.
+func TestAuthenticatorBearerClientsAreBareIDs(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("gen key: %v", err)
+	}
+	privPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	pubPEM := string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: mustPKIX(t, &key.PublicKey)}))
+	prov, err := provider.NewProvider(provider.Config{
+		Issuer: "flowcatalyst", Audience: "flowcatalyst", SigningKey: privPEM,
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("provider: %v", err)
+	}
+	svc, err := authservice.NewWithRSA(authservice.DefaultConfig(), string(privPEM), pubPEM)
+	if err != nil {
+		t.Fatalf("authservice: %v", err)
+	}
+
+	run := func(p *principal.Principal) *auth.AuthContext {
+		tok, err := svc.GenerateAccessTokenWithScope(p, []string{"platform:iam:role:view"})
+		if err != nil {
+			t.Fatalf("mint: %v", err)
+		}
+		var ac *auth.AuthContext
+		h := Authenticator(AuthConfig{Provider: prov})(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) { ac = auth.FromContext(r.Context()) }))
+		r := httptest.NewRequest(http.MethodGet, "/api/thing", nil)
+		r.Header.Set("Authorization", "Bearer "+tok)
+		h.ServeHTTP(httptest.NewRecorder(), r)
+		if ac == nil {
+			t.Fatal("no AuthContext")
+		}
+		return ac
+	}
+
+	partner := principal.NewUser("p@example.com", principal.ScopePartner)
+	partner.AssignedClients = []ids.ClientID{"clt_a", "clt_b"}
+	partner.ClientIdentifierMap = map[ids.ClientID]string{"clt_a": "acme", "clt_b": "globex"}
+	ac := run(partner)
+	if !reflect.DeepEqual(ac.Clients, []string{"clt_a", "clt_b"}) {
+		t.Errorf("partner Clients = %q; want bare ids", ac.Clients)
+	}
+	if !ac.CanAccessClient("clt_a") || !ac.CanAccessClient("clt_b") || ac.CanAccessClient("clt_c") {
+		t.Errorf("partner CanAccessClient wrong for %q", ac.Clients)
+	}
+
+	home := ids.ClientID("clt_home")
+	member := principal.NewUser("c@example.com", principal.ScopeClient)
+	member.ClientID = &home
+	member.ClientIdentifierMap = map[ids.ClientID]string{home: "home"}
+	if ac := run(member); !reflect.DeepEqual(ac.Clients, []string{"clt_home"}) || !ac.CanAccessClient("clt_home") {
+		t.Errorf("client Clients = %q; want [clt_home]", ac.Clients)
+	}
+
+	// An anchor's "*" is the tier, not a client id.
+	if ac := run(principal.NewUser("a@example.com", principal.ScopeAnchor)); len(ac.Clients) != 0 || !ac.CanAccessClient("clt_any") {
+		t.Errorf("anchor Clients = %q; want none (anchor tier covers every client)", ac.Clients)
 	}
 }
 
