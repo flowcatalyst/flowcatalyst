@@ -457,8 +457,10 @@ POST: the run; the filter is the URL's query), `/requeue-errors` (the error pres
   **Newest** returns to the first page (kit `cursor-pager`). `FilterParams.Cursor` was added to the
   repository for it (the list's ORDER BY gained `id` as a tie-breaker); the match count and the
   requeue walk ignore it.
-- The table is patched in **replace** mode (not morph): a morph resets each `<time>` to its UTC
-  fallback without re-running the localisation (kit `local-time.md`); the drawer's body likewise.
+- The table is patched in **replace** mode (not morph): before go/ui v0.2.0 a morph reset each
+  `<time>` to its UTC fallback without re-running the localisation; the drawer's body likewise.
+  Since v0.2.0 `kit.LocalTime` survives a morph (kit `local-time.md`, Behaviour), so replace is no
+  longer needed for that; it is kept, as it is harmless.
 - The distinct statuses and codes (the API's filter-options, scoped to the caller's tenants since bug
   18's fix) are cached for 30 s per process and tenant scope: the SPA reads them once per visit, the
   live list on every request, and the two `DISTINCT`s cost ~10 ms each over 100k jobs.
@@ -1340,8 +1342,8 @@ siblings and leaves the row to the caller; the email-domain 2FA methods and move
 confirmation, the OAuth client's PKCE and API-access boxes and the sign-in "remember this device" box had the same stacked layout and
 now sit in the same row, asserted by `checkboxInRow`); the policy header has a space before the update time; a refused policy value is worded with the form's label ("Soft lock
 lasts must be between 30 and 86400", mapped in `policyMessage`, the API's error is unchanged); the worker and device tables and the
-history are patched in **replace** mode, because a morph resets every `kit.LocalTime` to its UTC fallback without re-running the
-localisation (same cause as the dispatch-jobs table); the drawer's application line shows name and code once; a soft lock reads
+history are patched in **replace** mode, because a morph reset every `kit.LocalTime` to its UTC fallback (same cause as the
+dispatch-jobs table; fixed in the kit from go/ui v0.2.0, replace kept); the drawer's application line shows name and code once; a soft lock reads
 "Soft locked until <local time>" in the list and the drawer.
 
 Not verified in a browser (the fixes above were not re-checked there either): none of the pages has been opened in light, dark and narrow widths, and the copy buttons, the countdown and
