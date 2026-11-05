@@ -26,8 +26,7 @@ import (
 // login to a tenant when the identifier half matches the tenant code, so both
 // identifiers must be there, read back from the database rather than hand-built.
 func TestToPartner_TokensCarryEveryGrantedClient(t *testing.T) {
-	// Not parallel: the platform-scope sync tests sweep every principal, and a
-	// user flipped while they run deadlocks with them.
+	t.Parallel()
 	ctx := context.Background()
 	repo := principal.NewRepository(testpg.Pool(t))
 	clients := client.NewRepository(testpg.Pool(t))

@@ -1240,7 +1240,10 @@ func TestSyncPrincipals_RemoveUnlisted_NarrowedToApplication(t *testing.T) {
 // combination would strip SDK_SYNC roles for every application system-wide.
 // A non-sweeping sync, or an application-scoped sweep, is unaffected.
 func TestSyncPrincipals_PlatformScope_RemoveUnlisted_AnchorOnly(t *testing.T) {
-	t.Parallel()
+	// Not parallel: the anchor's application-less sweep strips SDK_SYNC roles
+	// from every principal in the database, so alongside the parallel tests it
+	// rewrote their principals and deadlocked with them. Sequential tests run
+	// before the parallel ones start.
 	repo := principal.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 	ec := testpg.TestEC()

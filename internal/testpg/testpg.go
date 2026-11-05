@@ -104,6 +104,17 @@ func run(m *testing.M) int {
 		return 1
 	}
 
+	// A standing all-applications administrator, as every real installation
+	// has. The last-admin guard counts them database-wide, so without one two
+	// parallel tests that each demote their own anchor user serialise on its
+	// lock and the second is refused (LAST_ALL_APPLICATIONS_ADMIN). The guard's
+	// own tests (principal/lastadmin) demote every administrator first.
+	if _, err := p.Exec(ctx, `INSERT INTO iam_principals (id, type, scope, name, active, email, email_domain, idp_type, all_applications)
+		VALUES ('prn_0TESTPGADM1N0', 'USER', 'ANCHOR', 'Standing Admin', TRUE, 'standing-admin@testpg.invalid', 'testpg.invalid', 'INTERNAL', TRUE)`); err != nil {
+		fmt.Fprintf(os.Stderr, "testpg: seed standing admin: %v\n", err)
+		return 1
+	}
+
 	mu.Lock()
 	pool = p
 	mu.Unlock()
