@@ -90,6 +90,9 @@ flowchart TD
 Client administrators manage their own users, roles, and portal users
 inside their client boundary — the permission checks confine every
 operation with `CanAccessClient`, so delegation never crosses tenants.
+They also see the partners who have been granted their client, read-only:
+the user list shows only the granted clients the two share, and changing a
+partner stays with the platform administrators.
 
 Changing **which clients a user reaches** is reserved: a user's tier
 (`CLIENT`, `PARTNER`, `ANCHOR`, including creating a `PARTNER` or

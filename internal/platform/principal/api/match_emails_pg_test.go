@@ -120,3 +120,50 @@ func TestMatchEmails_Limits(t *testing.T) {
 	assert.Equal(t, []string{"junk"}, got.Invalid)
 	assert.Empty(t, got.Matches)
 }
+
+// TestPartnerVisibleToGrantedClientAdmins: a partner granted the caller's
+// client shows in the list, the match and by id, carrying only the granted
+// clients the caller shares; a partner of other clients only stays hidden.
+func TestPartnerVisibleToGrantedClientAdmins(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	s := &State{Repo: principal.NewRepository(pool)}
+	mine, theirs := "cli_matchem0031", "cli_matchem0032"
+	seedMatchUser(t, ctx, "prn_matchem0031", "PARTNER", nil, "Shared Partner", "matchem-shared@example.com", "USER")
+	seedMatchUser(t, ctx, "prn_matchem0032", "PARTNER", nil, "Other Partner", "matchem-otherp@example.com", "USER")
+	for i, g := range [][2]string{{"prn_matchem0031", mine}, {"prn_matchem0031", theirs}, {"prn_matchem0032", theirs}} {
+		_, err := pool.Exec(ctx, `INSERT INTO iam_client_access_grants (id, principal_id, client_id, granted_by) VALUES ($1, $2, $3, 'prn_matchemadmin')`,
+			"cag_matchem003"+string(rune('1'+i)), g[0], g[1])
+		require.NoError(t, err)
+	}
+
+	caller := auth.WithContext(ctx, clientScopedCaller("prn_matchemcaller", mine, testPermUserView))
+	got, err := s.MatchPrincipalEmails(caller, MatchEmailsRequest{Text: "matchem-shared@example.com matchem-otherp@example.com"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"matchem-shared@example.com"}, matchEmailsEmails(got))
+	assert.Equal(t, []string{"matchem-otherp@example.com"}, got.Unmatched)
+	require.Len(t, got.Matches, 1)
+	assert.Equal(t, []string{mine}, got.Matches[0].GrantedClientIDs, "the partner's other clients are not the caller's business")
+
+	list, err := s.ListPrincipals(caller, ListQuery{Q: "matchem-"})
+	require.NoError(t, err)
+	var names []string
+	for _, p := range list.Principals {
+		names = append(names, p.Name)
+		if p.Name == "Shared Partner" {
+			assert.Equal(t, []string{mine}, p.GrantedClientIDs)
+		}
+	}
+	assert.Contains(t, names, "Shared Partner")
+	assert.NotContains(t, names, "Other Partner")
+
+	one, err := s.GetPrincipal(caller, "prn_matchem0031")
+	require.NoError(t, err)
+	assert.Equal(t, []string{mine}, one.GrantedClientIDs)
+
+	// An anchor still sees every grant.
+	anchor := auth.WithContext(ctx, &auth.AuthContext{PrincipalID: "prn_matchemadmin", Scope: auth.ScopeAnchor, Permissions: []string{testPermUserView}})
+	all, err := s.GetPrincipal(anchor, "prn_matchem0031")
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{mine, theirs}, all.GrantedClientIDs)
+}

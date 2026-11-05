@@ -148,6 +148,11 @@ func (h *Users) buildDetail(ctx context.Context, ac *auth.AuthContext, id string
 		Self: ac != nil && ac.PrincipalID == u.ID, Perms: usrPermsFor(ac), Base: usrURL(u.ID),
 		HasTwoFactor: len(u.TwoFactorMethods) > 0, TwoFactor: "None",
 	}
+	if !ac.IsAnchor() && u.Scope != "CLIENT" {
+		// A client administrator sees the partners granted their client but
+		// manages only CLIENT users (operations.administers): read-only.
+		d.Perms.Update, d.Perms.Delete, d.Perms.AssignRoles, d.Perms.ManageAccess, d.Perms.GrantAllApps = false, false, false, false, false
+	}
 	d.Auth = cmp.Or(deref(u.IdpType), "—")
 	if d.Auth == "INTERNAL" {
 		d.Auth = "Internal"

@@ -193,18 +193,41 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Princip
 
 	out := make([]PrincipalResponse, 0, len(filtered))
 	for _, p := range filtered {
-		out = append(out, fromEntity(p))
+		out = append(out, forCaller(ac, fromEntity(p)))
 	}
 	return &apicommon.Out[PrincipalListResponse]{Body: PrincipalListResponse{Principals: out, Total: total}}, nil
 }
 
 // principalVisible is the list's per-row access rule, shared with
-// match-emails so the two cannot drift: anchors see all; non-anchors see only
-// client-scoped principals they can access. Platform-level principals
-// (client_id == nil) are hidden from non-anchors. (get-by-id stays lenient on
-// the nil case — it only checks access when client_id is set.)
+// match-emails so the two cannot drift: anchors see all; non-anchors see the
+// principals homed at a client they can access, and the partners granted one.
+// Other platform-level principals (anchors, partners of other clients) are
+// hidden from non-anchors. (get-by-id stays lenient on the nil case — it only
+// checks access when client_id is set.)
 func principalVisible(ac *auth.AuthContext, p *principal.Principal) bool {
-	return ac.IsAnchor() || (p.ClientID != nil && ac.CanAccessClient(string(*p.ClientID)))
+	if ac.IsAnchor() {
+		return true
+	}
+	if p.ClientID != nil {
+		return ac.CanAccessClient(string(*p.ClientID))
+	}
+	return p.Scope == principal.ScopePartner && slices.ContainsFunc(p.AssignedClients, func(c ids.ClientID) bool {
+		return ac.CanAccessClient(string(c))
+	})
+}
+
+// forCaller trims a principal response to what the caller may know: a
+// non-anchor sees only the granted clients it can access itself, so a client
+// administrator looking at a partner does not learn the partner's other
+// clients.
+func forCaller(ac *auth.AuthContext, r PrincipalResponse) PrincipalResponse {
+	if ac.IsAnchor() {
+		return r
+	}
+	r.GrantedClientIDs = slices.DeleteFunc(slices.Clone(r.GrantedClientIDs), func(c string) bool {
+		return !ac.CanAccessClient(c)
+	})
+	return r
 }
 
 // matchEmails resolves a pasted email list against the users the caller may
@@ -269,7 +292,7 @@ func (s *State) matchEmails(ctx context.Context, in *apicommon.In[MatchEmailsReq
 	}
 	for _, e := range emails {
 		if p, ok := byEmail[e]; ok {
-			out.Matches = append(out.Matches, fromEntity(p))
+			out.Matches = append(out.Matches, forCaller(ac, fromEntity(p)))
 		} else {
 			out.Unmatched = append(out.Unmatched, e)
 		}
@@ -382,7 +405,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if !isSelf && p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
-	resp := fromEntity(p)
+	resp := forCaller(ac, fromEntity(p))
 	// Enrich with the user's confirmed second factors so the admin detail view
 	// can show whether 2FA is enrolled (and which kind). Best-effort: an MFA
 	// lookup failure just leaves the list empty rather than failing the read.

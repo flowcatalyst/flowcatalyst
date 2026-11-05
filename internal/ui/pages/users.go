@@ -281,6 +281,8 @@ type usrRow struct {
 	Anchor    bool
 	Client    usrCell
 	Active    bool
+	// ClientUser: a CLIENT user, the only kind a client administrator manages.
+	ClientUser bool
 	// Roles are the first two role short names; MoreRoles the rest.
 	Roles                []string
 	MoreRoles            int
@@ -428,6 +430,7 @@ func toUsrRow(u *principalapi.PrincipalResponse, names usrClients) usrRow {
 		ID: u.ID, Name: u.Name, Email: deref(u.Email), Anchor: u.IsAnchorUser, Client: usrClientCell(u, names), Active: u.Active,
 		Created: u.CreatedAt.Underlying().UTC().Format("2006-01-02"), CreatedISO: u.CreatedAt.Underlying().UTC().Format("2006-01-02T15:04:05Z"),
 		DetailHref: usrURL(u.ID), EditHref: usrURL(u.ID) + "/edit",
+		ClientUser: u.Scope == "CLIENT",
 	}
 	row.TypeLabel, row.TypeBadge, row.TypeTip = usrType(u, names)
 	for i, r := range u.Roles {
@@ -440,11 +443,11 @@ func toUsrRow(u *principalapi.PrincipalResponse, names usrClients) usrRow {
 	return row
 }
 
-// rowActions: Edit inline for whoever may edit (the SPA's pencil), View
-// details in the menu.
+// rowActions: Edit inline for whoever may edit (the SPA's pencil; a client
+// administrator edits only CLIENT users), View details in the menu.
 func (v usrView) rowActions(row usrRow) kit.RowActionsProps {
 	p := kit.RowActionsProps{ID: "usr-" + row.ID + "-actions", RowLabel: row.Name}
-	if v.Perms.Update || v.Perms.ManageAccess {
+	if (v.Perms.Update || v.Perms.ManageAccess) && (v.Perms.Anchor || row.ClientUser) {
 		p.Actions = append(p.Actions, kit.RowAction{Icon: "pencil", Label: "Edit", Href: row.EditHref, Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}})
 	}
 	p.Menu = append(p.Menu, kit.RowAction{Icon: "eye", Label: "View details", Href: row.DetailHref, Attrs: templ.Attributes{"data-on:click__prevent": liveLink}})

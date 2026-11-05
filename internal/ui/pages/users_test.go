@@ -575,6 +575,21 @@ func TestUserDrawerPermissionMatrix(t *testing.T) {
 		mustNotContain(t, body, "Client Access", `/ui/users/prn_2/clients/new`, `/ui/users/prn_2/all-applications`, `data-action="/ui/users/prn_2/delete"`)
 		mustContain(t, body, `href="/ui/users/prn_2/edit"`, `href="/ui/users/prn_2/roles"`, `href="/ui/users/prn_2/applications"`, `href="/ui/users/prn_2/reset-password"`)
 	})
+	t.Run("a client administrator looking at a partner", func(t *testing.T) {
+		// Partners granted their client are listed, but only CLIENT users are
+		// theirs to change (operations.administers): no actions at all.
+		ca := usrClientAdmin(usrPermView, usrPermUpdate, usrPermDelete, usrPermAssign, usrPermRoles)
+		body := usrBody(t, h.do(t, ca, req{target: "/ui/users/prn_3", datastar: true}))
+		mustContain(t, body, "cara@partner.test")
+		mustNotContain(t, body, `/ui/users/prn_3/edit`, `/ui/users/prn_3/roles`, `/ui/users/prn_3/applications`,
+			`/ui/users/prn_3/deactivate`, `/ui/users/prn_3/send-reset`, "Account Actions")
+		// Nor does the list offer the partner's Edit (a CLIENT user's stays).
+		list := usrBody(t, h.do(t, ca, req{target: "/ui/users"}))
+		mustContain(t, list, `href="/ui/users/prn_2/edit"`)
+		mustNotContain(t, list, `href="/ui/users/prn_3/edit"`)
+		// An anchor with the same permissions is offered it.
+		mustContain(t, usrBody(t, h.do(t, usrAnchor(usrAllPerms...), req{target: "/ui/users"})), `href="/ui/users/prn_3/edit"`)
+	})
 	t.Run("a drawer needs the read permission", func(t *testing.T) {
 		rec := h.do(t, usrAnchor(usrPermUpdate), req{target: "/ui/users/prn_2", datastar: true})
 		mustContain(t, usrBody(t, rec), "permission required")
