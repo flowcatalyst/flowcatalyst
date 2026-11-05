@@ -115,6 +115,7 @@ type resetView struct {
 	Invite         bool
 	Portal         bool
 	Token          string
+	Email          string // the account, for the form's username field
 	RequiresFactor bool
 	Expired        bool
 	Error          string
@@ -174,6 +175,7 @@ func (s *SignIn) resetPage(w http.ResponseWriter, r *http.Request) {
 		Reason         *string `json:"reason"`
 		RequiresFactor bool    `json:"requiresFactor"`
 		Portal         bool    `json:"portal"`
+		Email          string  `json:"email"`
 	}
 	if resp.Status != http.StatusOK || !resp.decode(&out) || !out.Valid {
 		v.State, v.Token = resetInvalid, ""
@@ -181,7 +183,7 @@ func (s *SignIn) resetPage(w http.ResponseWriter, r *http.Request) {
 		s.renderReset(w, r, http.StatusOK, v)
 		return
 	}
-	v.State, v.RequiresFactor, v.Portal = resetForm, out.RequiresFactor, out.Portal
+	v.State, v.RequiresFactor, v.Portal, v.Email = resetForm, out.RequiresFactor, out.Portal, out.Email
 	s.renderReset(w, r, http.StatusOK, v)
 }
 
@@ -196,6 +198,11 @@ func (s *SignIn) resetConfirm(w http.ResponseWriter, r *http.Request) {
 		Token:          r.PostFormValue("token"),
 		RequiresFactor: r.PostFormValue("requiresFactor") == "1",
 		Portal:         r.PostFormValue("portal") == "1",
+		// Echoed back only to redisplay the form; confirm never reads it.
+		Email: r.PostFormValue("username"),
+	}
+	if len(v.Email) > 320 {
+		v.Email = ""
 	}
 	password, factor := r.PostFormValue("password"), strings.TrimSpace(r.PostFormValue("factorCode"))
 	switch {

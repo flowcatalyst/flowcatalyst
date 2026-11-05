@@ -64,6 +64,17 @@ func TestResetPage(t *testing.T) {
 		assert.NotContains(t, body, `name="factorCode"`)
 		assert.Equal(t, "token=TOK%2B1", up.callsTo("GET /auth/password-reset/validate")[0].query)
 	})
+	t.Run("the account's email is the form's username, for a password manager", func(t *testing.T) {
+		up := siThemed()
+		up.reply("GET /auth/password-reset/validate", 200, `{"valid":true,"requiresFactor":false,"email":"ann@example.com"}`)
+		body := siReq{target: "/ui/auth/reset-password?token=T"}.do(signInRouter(up, false)).Body.String()
+		assert.Regexp(t, `<input[^>]*name="username"[^>]*value="ann@example.com"[^>]*autocomplete="username"[^>]*readonly`, body)
+
+		up2 := siThemed()
+		up2.reply("GET /auth/password-reset/validate", 200, `{"valid":true}`)
+		body = siReq{target: "/ui/auth/reset-password?token=T"}.do(signInRouter(up2, false)).Body.String()
+		assert.NotContains(t, body, `name="username"`, "no email, no username field")
+	})
 	t.Run("the invite framing and a factor gate", func(t *testing.T) {
 		up := siThemed()
 		up.reply("GET /auth/password-reset/validate", 200, `{"valid":true,"requiresFactor":true}`)
@@ -114,6 +125,12 @@ func TestResetConfirm(t *testing.T) {
 		assert.NotContains(t, rec.Body.String(), "Correct-Horse-9!", "the password is not echoed")
 		assert.Contains(t, rec.Body.String(), `name="token" value="TOK"`, "the form stays usable")
 		assert.Empty(t, up.callsTo("POST /auth/password-reset/confirm"))
+	})
+	t.Run("a redisplayed form keeps the username field", func(t *testing.T) {
+		up := siThemed()
+		rec := siPost("/ui/auth/reset-password", "token", "TOK", "username", "ann@example.com", "password", "a", "confirmPassword", "b").do(signInRouter(up, false))
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+		assert.Contains(t, rec.Body.String(), `value="ann@example.com"`)
 	})
 	t.Run("a missing factor code is asked for", func(t *testing.T) {
 		up := siThemed()

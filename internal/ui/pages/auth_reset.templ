@@ -74,6 +74,16 @@ templ resetFormState(v resetView) {
 		if v.Portal {
 			<input type="hidden" name="portal" value="1"/>
 		}
+		// The account, as an autocomplete="username" field: without it a password
+		// manager offering to save the new password has to guess the account.
+		if v.Email != "" {
+			@kit.Field(kit.FieldProps{Label: "Email", For: "username"}) {
+				@kit.Input(kit.InputProps{
+					ID: "username", Name: "username", Type: "email", Value: v.Email,
+					Attrs: templ.Attributes{"autocomplete": "username", "readonly": true},
+				})
+			}
+		}
 		@kit.Field(kit.FieldProps{Label: "New password", For: "password"}) {
 			@kit.PasswordInput(kit.PasswordInputProps{
 				ID: "password", Name: "password", Signal: "newPassword", Required: true, Meter: true, Autocomplete: "new-password",

@@ -461,6 +461,11 @@ type validateTokenResponse struct {
 	// Portal marks a PORTAL-identity token: the set-password page then shows
 	// portal framing (no platform branding).
 	Portal bool `json:"portal,omitempty"`
+	// Email is the account the token sets a password for, on a valid token
+	// only. The page puts it in an autocomplete="username" field so a password
+	// manager saves the new password against the right account. The link went
+	// to this mailbox, so its holder learns nothing new.
+	Email string `json:"email,omitempty"`
 }
 
 // ── POST /auth/password-reset/request ───────────────────────────────────────
@@ -750,11 +755,32 @@ func (s *State) validateToken(w http.ResponseWriter, r *http.Request) {
 	case t.IsExpired():
 		writeJSON(w, http.StatusOK, validateTokenResponse{Valid: false, Reason: new("expired")})
 	default:
+		portal := strings.HasPrefix(t.PrincipalID, portalSubjectPrefix)
 		writeJSON(w, http.StatusOK, validateTokenResponse{
 			Valid: true, Reason: nil, RequiresFactor: t.RequiresFactor,
-			Portal: strings.HasPrefix(t.PrincipalID, portalSubjectPrefix),
+			Portal: portal, Email: s.tokenEmail(r.Context(), t.PrincipalID, portal),
 		})
 	}
+}
+
+// tokenEmail is the email of the account a token belongs to, or "" when it
+// cannot be read (the page then shows the form without it; confirm decides).
+func (s *State) tokenEmail(ctx context.Context, subjectID string, portal bool) string {
+	if portal {
+		if s.PortalIdentities == nil {
+			return ""
+		}
+		ident, err := s.PortalIdentities.FindByID(ctx, subjectID)
+		if err != nil || ident == nil {
+			return ""
+		}
+		return ident.Email
+	}
+	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(subjectID))
+	if err != nil || p == nil || p.UserIdentity == nil {
+		return ""
+	}
+	return p.UserIdentity.Email
 }
 
 // ── POST /auth/password-reset/confirm ───────────────────────────────────────
