@@ -16,6 +16,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	principalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -194,10 +195,11 @@ func devCredentialAccess(ac *auth.AuthContext, targetID string) error {
 	return auth.CanUpdatePrincipals(ac)
 }
 
-// devVisible is the principal list's scoping: an anchor sees everyone, any
-// other caller the principals of the clients they can reach.
+// devVisible is the principal list's scoping (principalapi.PrincipalVisible):
+// an anchor sees everyone, any other caller the principals of the clients they
+// can reach and the partners granted one.
 func devVisible(ac *auth.AuthContext, p *principal.Principal) bool {
-	return ac.IsAnchor() || (p.ClientID != nil && ac.CanAccessClient(string(*p.ClientID)))
+	return principalapi.PrincipalVisible(ac, p)
 }
 
 func devEmail(p *principal.Principal) string {

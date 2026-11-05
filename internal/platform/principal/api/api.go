@@ -160,7 +160,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Princip
 	filtered := make([]*principal.Principal, 0, len(rows))
 	for i := range rows {
 		p := &rows[i]
-		if !principalVisible(ac, p) {
+		if !PrincipalVisible(ac, p) {
 			continue
 		}
 		if wantType != "" && string(p.Type) != wantType {
@@ -198,13 +198,14 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Princip
 	return &apicommon.Out[PrincipalListResponse]{Body: PrincipalListResponse{Principals: out, Total: total}}, nil
 }
 
-// principalVisible is the list's per-row access rule, shared with
-// match-emails so the two cannot drift: anchors see all; non-anchors see the
+// PrincipalVisible is the list's per-row access rule, shared with
+// match-emails, the developer-users list and the console's Developer Users
+// page so they cannot drift: anchors see all; non-anchors see the
 // principals homed at a client they can access, and the partners granted one.
 // Other platform-level principals (anchors, partners of other clients) are
 // hidden from non-anchors. (get-by-id stays lenient on the nil case — it only
 // checks access when client_id is set.)
-func principalVisible(ac *auth.AuthContext, p *principal.Principal) bool {
+func PrincipalVisible(ac *auth.AuthContext, p *principal.Principal) bool {
 	if ac.IsAnchor() {
 		return true
 	}
@@ -280,7 +281,7 @@ func (s *State) matchEmails(ctx context.Context, in *apicommon.In[MatchEmailsReq
 	byEmail := make(map[string]*principal.Principal, len(rows))
 	for i := range rows {
 		p := &rows[i]
-		if p.Type != principal.TypeUser || p.UserIdentity == nil || !principalVisible(ac, p) {
+		if p.Type != principal.TypeUser || p.UserIdentity == nil || !PrincipalVisible(ac, p) {
 			continue
 		}
 		byEmail[strings.ToLower(p.UserIdentity.Email)] = p
@@ -1444,8 +1445,9 @@ func (s *State) revokeClientAccess(ctx context.Context, in *revokeClientAccessIn
 // listDeveloperUsers backs the Developer Users admin page: every USER
 // principal currently holding the developer role, so an admin can grant the
 // role to more users and manage existing developers' credentials. Gated the
-// same as the general principal list (CanReadPrincipals) — set/revoke on a
-// specific user go through the self-or-admin use cases below, not this read.
+// same as the general principal list (CanReadPrincipals), and scoped the same
+// way (PrincipalVisible, forCaller) — set/revoke on a specific user go through
+// the self-or-admin use cases below, not this read.
 func (s *State) listDeveloperUsers(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[DeveloperUserListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadPrincipals(ac); err != nil {
@@ -1457,7 +1459,10 @@ func (s *State) listDeveloperUsers(ctx context.Context, _ *apicommon.Empty) (*ap
 	}
 	out := make([]PrincipalResponse, 0, len(rows))
 	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
+		if !PrincipalVisible(ac, &rows[i]) {
+			continue
+		}
+		out = append(out, forCaller(ac, fromEntity(&rows[i])))
 	}
 	return &apicommon.Out[DeveloperUserListResponse]{Body: DeveloperUserListResponse{Principals: out, Total: len(out)}}, nil
 }

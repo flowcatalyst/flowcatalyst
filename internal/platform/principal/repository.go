@@ -379,6 +379,11 @@ func (r *Repository) FindByRole(ctx context.Context, roleName string) ([]Princip
 	if err := r.hydrateRolesAll(ctx, out); err != nil {
 		return nil, err
 	}
+	// Granted clients too: the developer-users list scopes partners by them
+	// and returns them, as the principal list does.
+	if err := r.hydrateClientGrantsAll(ctx, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 

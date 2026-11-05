@@ -190,6 +190,17 @@ func TestDeveloperUsersListChecks(t *testing.T) {
 	body := h.do(t, clientAdmin(permUserView), req{target: "/ui/developer-users"})
 	mustContain(t, body, "Cy Client")
 	mustNotContain(t, body, "Ann &lt;", "Bob Builder", "Grant Developer Role")
+
+	// A partner developer shows to the administrators of a client it was
+	// granted (the users list's rule), not to anyone else's.
+	pat := devUser("prn_pat", "Pat Partner", "pat@partner.test", []string{developerRole}, false, "")
+	pat.Scope, pat.AssignedClients = principal.ScopePartner, []ids.ClientID{"clt_acme"}
+	quinn := devUser("prn_quinn", "Quinn Partner", "quinn@partner.test", []string{developerRole}, false, "")
+	quinn.Scope, quinn.AssignedClients = principal.ScopePartner, []ids.ClientID{"clt_other"}
+	h.store.ps = append(h.store.ps, pat, quinn)
+	body = h.do(t, clientAdmin(permUserView), req{target: "/ui/developer-users"})
+	mustContain(t, body, "Pat Partner")
+	mustNotContain(t, body, "Quinn Partner")
 }
 
 func TestDeveloperUsersControls(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -166,4 +167,50 @@ func TestPartnerVisibleToGrantedClientAdmins(t *testing.T) {
 	all, err := s.GetPrincipal(anchor, "prn_matchem0031")
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{mine, theirs}, all.GrantedClientIDs)
+}
+
+// TestDeveloperUsers_ScopedLikeTheUserList: the developer-users list applies
+// the users list's visibility and grant narrowing. A client administrator sees
+// the developer homed at their client and the partner developer granted it,
+// not one homed elsewhere nor an anchor developer; an anchor sees all four,
+// with every grant.
+func TestDeveloperUsers_ScopedLikeTheUserList(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	s := &State{Repo: principal.NewRepository(pool)}
+	mine, theirs := "cli_devusers001", "cli_devusers002"
+	seedMatchUser(t, ctx, "prn_devusers0001", "CLIENT", &mine, "Dev Mine", "devusers-mine@example.com", "USER")
+	seedMatchUser(t, ctx, "prn_devusers0002", "CLIENT", &theirs, "Dev Theirs", "devusers-theirs@example.com", "USER")
+	seedMatchUser(t, ctx, "prn_devusers0003", "ANCHOR", nil, "Dev Anchor", "devusers-anchor@example.com", "USER")
+	seedMatchUser(t, ctx, "prn_devusers0004", "PARTNER", nil, "Dev Partner", "devusers-partner@example.com", "USER")
+	for i, id := range []string{"prn_devusers0001", "prn_devusers0002", "prn_devusers0003", "prn_devusers0004"} {
+		_, err := pool.Exec(ctx, `INSERT INTO iam_principal_roles (principal_id, role_name, assignment_source) VALUES ($1, 'platform:developer', 'MANUAL')`, id)
+		require.NoError(t, err, i)
+	}
+	for i, c := range []string{mine, theirs} {
+		_, err := pool.Exec(ctx, `INSERT INTO iam_client_access_grants (id, principal_id, client_id, granted_by) VALUES ($1, 'prn_devusers0004', $2, 'prn_matchemadmin')`,
+			"cag_devusers00"+string(rune('1'+i)), c)
+		require.NoError(t, err)
+	}
+	names := func(r *apicommon.Out[DeveloperUserListResponse]) map[string][]string {
+		out := map[string][]string{}
+		for _, p := range r.Body.Principals {
+			if strings.HasPrefix(p.Name, "Dev ") {
+				out[p.Name] = p.GrantedClientIDs
+			}
+		}
+		return out
+	}
+
+	caller := auth.WithContext(ctx, clientScopedCaller("prn_devuserscaller", mine, testPermUserView))
+	got, err := s.listDeveloperUsers(caller, nil)
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{"Dev Mine": {}, "Dev Partner": {mine}}, names(got))
+
+	anchor := auth.WithContext(ctx, &auth.AuthContext{PrincipalID: "prn_matchemadmin", Scope: auth.ScopeAnchor, Permissions: []string{testPermUserView}})
+	all, err := s.listDeveloperUsers(anchor, nil)
+	require.NoError(t, err)
+	gotAll := names(all)
+	assert.Len(t, gotAll, 4)
+	assert.ElementsMatch(t, []string{mine, theirs}, gotAll["Dev Partner"], "an anchor sees every grant")
 }
