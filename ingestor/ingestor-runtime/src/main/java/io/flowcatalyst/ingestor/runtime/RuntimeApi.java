@@ -7,7 +7,10 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 
-/** The two calls the runtime makes every interval to the platform's ingestion runtime API. */
+/**
+ * The two calls the runtime makes every interval to the platform's ingestion runtime API, and the
+ * one it makes when it has stopped single-owner routes the platform no longer lists, or shuts down.
+ */
 public interface RuntimeApi {
 
   /**
@@ -53,7 +56,8 @@ public interface RuntimeApi {
    * @param timeout how long to wait for the answer
    * @return the ingestions to run, how long the single-owner ones may run without another answer,
    *     the tests waiting for this runtime, and what could not be read
-   * @throws IOException when the platform cannot be reached or answers with an error
+   * @throws IOException when the platform cannot be reached or answers with an error; a {@link
+   *     RuntimeIdInUseException} when another live process polls under this runtime's id
    * @throws InterruptedException when interrupted while waiting
    */
   Polled poll(Duration timeout) throws IOException, InterruptedException;
@@ -68,4 +72,20 @@ public interface RuntimeApi {
    * @throws InterruptedException when interrupted while waiting
    */
   void report(RuntimeReport report, Duration timeout) throws IOException, InterruptedException;
+
+  /**
+   * Gives back the leases of single-owner ingestions whose routes have stopped, so the platform can
+   * hand them to another runtime at once. Sent once: one that fails is left, and the leases run out
+   * as they would have. A platform that does not have the call is asked once; after that the call
+   * does nothing until the runtime restarts.
+   *
+   * @param ingestionIds the ingestions, at most {@link io.flowcatalyst.ingestor.contract.LeaseRelease#MAX_IDS}
+   * @param goodbye whether the runtime is shutting down
+   * @param timeout how long to wait for the answer
+   * @return how many leases the platform ended
+   * @throws IOException when the platform cannot be reached or answers with an error; a {@link
+   *     RuntimeIdInUseException} when another live process holds this runtime's id
+   * @throws InterruptedException when interrupted while waiting
+   */
+  int release(List<String> ingestionIds, boolean goodbye, Duration timeout) throws IOException, InterruptedException;
 }

@@ -24,10 +24,19 @@ import java.time.InstantSource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.apache.camel.CamelContext;
 import org.apache.camel.CamelExecutionException;
+import org.apache.camel.Consumer;
+import org.apache.camel.Processor;
+import org.apache.camel.Producer;
 import org.apache.camel.Route;
 import org.apache.camel.impl.DefaultCamelContext;
+import org.apache.camel.support.DefaultConsumer;
+import org.apache.camel.support.DefaultEndpoint;
+import org.apache.camel.support.service.ServiceHelper;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,10 +58,21 @@ class RuntimeLoopTest {
     List<RuntimeApi.Unreadable> unreadable = List.of();
     List<Duration> timeouts = new ArrayList<>();
     @Nullable String failReportWith;
+    /** Every release call, in order. */
+    final List<Release> releases = new ArrayList<>();
+    boolean releaseDown;
+    /** Another live process holds the runtime id: polls and releases are refused with 409 RUNTIME_ID_IN_USE. */
+    boolean inUse;
+
+    /** One release call as the platform saw it. */
+    record Release(List<String> ingestionIds, boolean goodbye, Duration timeout) {}
 
     @Override
     public Polled poll(Duration timeout) throws IOException {
       timeouts.add(timeout);
+      if (inUse) {
+        throw new RuntimeIdInUseException("POST /poll answered 409: RUNTIME_ID_IN_USE, runtime id runtime-1 is in use by another live process");
+      }
       if (down) {
         throw new IOException("connection refused");
       }
@@ -72,6 +92,18 @@ class RuntimeLoopTest {
       }
       reports.add(report);
     }
+
+    @Override
+    public int release(List<String> ingestionIds, boolean goodbye, Duration timeout) throws IOException {
+      releases.add(new Release(List.copyOf(ingestionIds), goodbye, timeout));
+      if (inUse) {
+        throw new RuntimeIdInUseException("409 RUNTIME_ID_IN_USE");
+      }
+      if (down || releaseDown) {
+        throw new IOException("connection refused");
+      }
+      return ingestionIds.size();
+    }
   }
 
   final FakePlatform controlPlane = new FakePlatform();
@@ -80,6 +112,10 @@ class RuntimeLoopTest {
   boolean platformDown;
   boolean refuseJobs;
   int failNext;
+  /** While set, every batch waits for it: an exchange held in flight. */
+  volatile @Nullable CountDownLatch holdJobs;
+  /** Counted down when a batch starts waiting for {@link #holdJobs}. */
+  final CountDownLatch jobsHeld = new CountDownLatch(1);
   final InstantSource clock = InstantSource.system();
   final ExchangeCounters counters = new ExchangeCounters(clock);
   final SourceHealth health = new SourceHealth();
@@ -87,7 +123,7 @@ class RuntimeLoopTest {
   SourceEndpoints endpoints = (context, ingestion) -> context.getEndpoint("direct:" + ingestion.id());
   RuntimeLoop loop;
   Reconciler reconciler;
-  long monotonicNanos = 1_000_000_000L;
+  volatile long monotonicNanos = 1_000_000_000L;
 
   @BeforeEach
   void start() {
@@ -95,6 +131,15 @@ class RuntimeLoopTest {
     camel.start();
     JobSink sink =
         (ingestion, jobs) -> {
+          CountDownLatch hold = holdJobs;
+          if (hold != null) {
+            jobsHeld.countDown();
+            try {
+              hold.await();
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+            }
+          }
           if (platformDown) {
             throw new IOException("platform unavailable");
           }
@@ -554,6 +599,11 @@ class RuntimeLoopTest {
 
           @Override
           public void report(RuntimeReport report, Duration timeout) {}
+
+          @Override
+          public int release(List<String> ingestionIds, boolean goodbye, Duration timeout) {
+            return 0;
+          }
         };
     RuntimeLoop other =
         new RuntimeLoop("runtime-1", Duration.ofMinutes(1), broken, new Reconciler(camel, i -> null), counters, r -> null, clock, () -> monotonicNanos);
@@ -751,13 +801,14 @@ class RuntimeLoopTest {
     // Another thread holds the reconciler's lock, as a reconcile stopping a slow route does.
     Thread holder =
         Thread.ofPlatform().start(() -> {
-          synchronized (reconciler) {
+          reconciler.lock.lock();
+          try {
             inside.countDown();
-            try {
-              leave.await();
-            } catch (InterruptedException e) {
-              Thread.currentThread().interrupt();
-            }
+            leave.await();
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          } finally {
+            reconciler.lock.unlock();
           }
         });
     inside.await();
@@ -822,5 +873,322 @@ class RuntimeLoopTest {
     // A window with nothing in it is not reported.
     loop.tick();
     assertThat(lastReport().metrics()).isEmpty();
+  }
+
+  // Lease release, the runtime-id guard, the watchdog against a stuck reconcile, and too-short leases.
+
+  @Test
+  void aPollRefusedBecauseTheRuntimeIdIsInUseRenewsNoLeaseFailsReadinessAndKeepsPolling() throws Exception {
+    controlPlane.active = List.of(polled("files"), ingestion("queue", 1, new Split.None(), 1));
+    loop.tick();
+    assertThatCode(loop::requireRecentPoll).doesNotThrowAnyException();
+
+    controlPlane.inUse = true;
+    loop.tick();
+    assertThatThrownBy(loop::requireRecentPoll).isInstanceOf(IllegalStateException.class).hasMessageContaining("runtime id runtime-1 is in use");
+    // The lease of the last answer still covers the next interval.
+    assertThat(camel.getRoute("files")).isNotNull();
+
+    monotonicNanos += Duration.ofMinutes(1).toNanos();
+    loop.tick();
+    monotonicNanos += Duration.ofMinutes(1).toNanos();
+    loop.tick();
+    // Not renewed: stopped before the lease ends, as when the platform cannot be reached. The shared one runs on.
+    assertThat(camel.getRoute("files")).isNull();
+    assertThat(camel.getRoute("queue")).isNotNull();
+    assertThat(controlPlane.timeouts).hasSize(4);
+    assertThat(controlPlane.releases).isEmpty();
+    assertThatThrownBy(loop::requireRecentPoll).hasMessageContaining("runtime-1");
+
+    // The other process is gone: this one takes over.
+    controlPlane.inUse = false;
+    loop.tick();
+    assertThat(camel.getRoute("files")).isNotNull();
+    assertThatCode(loop::requireRecentPoll).doesNotThrowAnyException();
+  }
+
+  @Test
+  void aSingleOwnerRouteTheRoundStopsBecauseThePlatformNoLongerListsItHasItsLeaseGivenBackAndNoOtherDoes() throws Exception {
+    controlPlane.active =
+        List.of(polled("files"), polled("moved"), polled("unread"), ingestion("queue", 1, new Split.None(), 1));
+    loop.tick();
+
+    // files is no longer listed; moved is listed at a new version; unread is listed but cannot be read; queue is shared.
+    controlPlane.active = List.of(SourceHarness.ingestion("moved", 2, polled("moved").source(), new Split.None(), polled("moved").target(), false));
+    controlPlane.unreadable = List.of(new RuntimeApi.Unreadable("unread", 2, PlatformApi.NOT_SUPPORTED));
+    loop.tick();
+
+    assertThat(camel.getRoute("files")).isNull();
+    assertThat(camel.getRoute("unread")).isNull();
+    assertThat(camel.getRoute("queue")).isNull();
+    assertThat(controlPlane.releases).containsExactly(new FakePlatform.Release(List.of("files"), false, Duration.ofSeconds(30)));
+
+    loop.tick();
+    assertThat(controlPlane.releases).hasSize(1);
+  }
+
+  @Test
+  void aReleaseThatFailsIsLoggedAndNotTriedAgainAndTheRoundGoesOn() throws Exception {
+    controlPlane.active = List.of(polled("files"), polled("other"));
+    loop.tick();
+    int reports = controlPlane.reports.size();
+
+    controlPlane.releaseDown = true;
+    controlPlane.active = List.of(polled("other"));
+    loop.tick();
+    loop.tick();
+
+    assertThat(controlPlane.releases).extracting(FakePlatform.Release::ingestionIds).containsExactly(List.of("files"));
+    assertThat(controlPlane.reports).hasSize(reports + 2);
+  }
+
+  @Test
+  void aRouteCutOffWithItsExchangeStillRunningIsNotGivenBack() throws Exception {
+    controlPlane.active = List.of(polled("files"));
+    loop.tick();
+    CountDownLatch hold = new CountDownLatch(1);
+    holdJobs = hold;
+    Thread exchange =
+        Thread.ofPlatform().start(() -> {
+          try {
+            send("files", "A");
+          } catch (RuntimeException e) {
+            // Cut off when the route is stopped.
+          }
+        });
+    assertThat(jobsHeld.await(10, TimeUnit.SECONDS)).isTrue();
+    try {
+      controlPlane.active = List.of();
+      // Camel gives the exchange Reconciler.ROUTE_STOP, then forces the route down while it still runs.
+      loop.tick();
+      assertThat(camel.getRoute("files")).isNull();
+      assertThat(controlPlane.releases).isEmpty();
+    } finally {
+      holdJobs = null;
+      hold.countDown();
+      exchange.join();
+    }
+  }
+
+  @Test
+  void atShutdownTheSingleOwnerRoutesThatStoppedCleanlyAreGivenBackWithAGoodbye() throws Exception {
+    controlPlane.active = List.of(polled("files"), polled("other"), ingestion("queue", 1, new Split.None(), 1));
+    loop.tick();
+
+    Reconciler.Stopped stopped = reconciler.stop(i -> true, Duration.ofSeconds(12));
+    loop.goodbye(stopped.clean());
+
+    assertThat(stopped.count()).isEqualTo(3);
+    assertThat(controlPlane.releases).singleElement().satisfies(r -> {
+      assertThat(r.ingestionIds()).containsExactlyInAnyOrder("files", "other");
+      assertThat(r.goodbye()).isTrue();
+      assertThat(r.timeout()).isEqualTo(RuntimeLoop.GOODBYE_WITHIN);
+    });
+  }
+
+  @Test
+  void aGoodbyeIsSentEvenWithNothingToGiveBackAndALongListIsSplitWithTheGoodbyeLast() throws Exception {
+    loop.goodbye(List.of());
+    assertThat(controlPlane.releases).containsExactly(new FakePlatform.Release(List.of(), true, RuntimeLoop.GOODBYE_WITHIN));
+
+    controlPlane.releases.clear();
+    List<Ingestion> many = new ArrayList<>();
+    for (int i = 0; i <= io.flowcatalyst.ingestor.contract.LeaseRelease.MAX_IDS; i++) {
+      many.add(polled("ing_" + i));
+    }
+    loop.goodbye(many);
+    assertThat(controlPlane.releases).extracting(r -> r.ingestionIds().size()).containsExactly(1000, 1);
+    assertThat(controlPlane.releases).extracting(FakePlatform.Release::goodbye).containsExactly(false, true);
+  }
+
+  @Test
+  void theWatchdogAndAFailedPollNeverGiveALeaseBack() throws Exception {
+    controlPlane.active = List.of(polled("files"), polled("other"));
+    loop.tick();
+    monotonicNanos += Duration.ofMinutes(2).plusSeconds(1).toNanos();
+    loop.watch();
+    assertThat(camel.getRoute("files")).isNull();
+
+    // Answered again without them: nothing was stopped by this round, so nothing is given back.
+    controlPlane.active = List.of();
+    loop.tick();
+    assertThat(controlPlane.releases).isEmpty();
+
+    controlPlane.active = List.of(polled("files"));
+    loop.tick();
+    controlPlane.down = true;
+    monotonicNanos += Duration.ofMinutes(2).toNanos();
+    loop.tick();
+    assertThat(camel.getRoute("files")).isNull();
+    assertThat(controlPlane.releases).isEmpty();
+  }
+
+  @Test
+  void aLeaseTooShortForTheIntervalReportsTheSingleOwnerIngestionsFailedWithTheReason() throws Exception {
+    controlPlane.active = List.of(polled("files"), ingestion("queue", 1, new Split.None(), 1));
+    loop.tick();
+    assertThat(camel.getRoute("files")).isNotNull();
+
+    controlPlane.lease = Duration.ofSeconds(30);
+    loop.tick();
+
+    assertThat(camel.getRoute("files")).isNull();
+    assertThat(lastReport().routes())
+        .containsExactly(
+            new RouteState("queue", 1, RouteState.Status.STARTED, null),
+            new RouteState("files", 1, RouteState.Status.FAILED, "the lease (PT30S) is too short for the poll interval (PT1M)"));
+    // Still listed: its lease is not given back.
+    assertThat(controlPlane.releases).isEmpty();
+
+    loop.tick();
+    assertThat(lastReport().routes()).contains(new RouteState("files", 1, RouteState.Status.FAILED, "the lease (PT30S) is too short for the poll interval (PT1M)"));
+
+    controlPlane.lease = Duration.ofMinutes(3);
+    loop.tick();
+    assertThat(camel.getRoute("files")).isNotNull();
+    assertThat(lastReport().routes()).contains(new RouteState("files", 1, RouteState.Status.STARTED, null));
+  }
+
+  /** A source whose consumer does not return from its start until let go, as an extension's that waits on a server. */
+  static final class StuckEndpoint extends DefaultEndpoint {
+    private final CountDownLatch entered;
+    private final CountDownLatch leave;
+
+    StuckEndpoint(CamelContext camel, CountDownLatch entered, CountDownLatch leave) {
+      this.entered = entered;
+      this.leave = leave;
+      setCamelContext(camel);
+    }
+
+    @Override
+    protected String createEndpointUri() {
+      return "ingest-stuck:slow";
+    }
+
+    @Override
+    public Producer createProducer() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Consumer createConsumer(Processor processor) {
+      return new DefaultConsumer(this, processor) {
+        @Override
+        protected void doStart() throws Exception {
+          entered.countDown();
+          leave.await();
+          super.doStart();
+        }
+      };
+    }
+  }
+
+  @Test
+  void theWatchdogStopsASingleOwnerRouteWhileAReconcileIsStuckStartingAnotherAndALaterRoundStartsItAgain() throws Exception {
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch leave = new CountDownLatch(1);
+    endpoints = (context, ingestion) -> ingestion.id().equals("slow") ? new StuckEndpoint(context, entered, leave) : context.getEndpoint("direct:" + ingestion.id());
+    Ingestion queue = ingestion("queue", 1, new Split.None(), 1);
+    controlPlane.active = List.of(polled("files"), polled("gone"), queue);
+    loop.tick();
+    Route files = camel.getRoute("files");
+    Route gone = camel.getRoute("gone");
+
+    // The next round polls (renewing the lease once) and gets stuck starting slow, holding the
+    // reconciler's lock and the Camel context's.
+    controlPlane.active = List.of(polled("files"), polled("gone"), queue, polled("slow"));
+    Thread round =
+        Thread.ofPlatform().start(() -> {
+          try {
+            loop.tick();
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+        });
+    try {
+      assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+      // Within the watchdog's margin (1 minute) of the end of the three-minute lease.
+      monotonicNanos += Duration.ofMinutes(2).plusSeconds(1).toNanos();
+
+      CompletableFuture.runAsync(loop::watch).get(5, TimeUnit.SECONDS);
+
+      assertThat(ServiceHelper.isSuspended(files.getConsumer())).isTrue();
+      assertThat(ServiceHelper.isSuspended(gone.getConsumer())).isTrue();
+      assertThat(reconciler.running()).extracting(Ingestion::id).containsExactly("queue");
+      assertThat(round.isAlive()).isTrue();
+    } finally {
+      leave.countDown();
+      round.join();
+    }
+    // The stuck round's report leaves the revoked routes out.
+    assertThat(lastReport().routes()).extracting(RouteState::ingestionId).containsExactlyInAnyOrder("queue", "slow");
+
+    // Answered again: the revoked route still listed is started anew, the one no longer listed is
+    // removed, and neither lease is given back.
+    controlPlane.active = List.of(polled("files"), queue, polled("slow"));
+    loop.tick();
+    assertThat(camel.getRoute("gone")).isNull();
+    assertThat(camel.getRoute("files")).isNotSameAs(files);
+    assertThat(ServiceHelper.isStarted(camel.getRoute("files").getConsumer())).isTrue();
+    assertThat(reconciler.running()).extracting(Ingestion::id).containsExactlyInAnyOrder("files", "queue", "slow");
+    assertThat(lastReport().routes()).contains(new RouteState("files", 1, RouteState.Status.STARTED, null));
+    assertThat(controlPlane.releases).isEmpty();
+  }
+
+  @Test
+  void aRouteTheWatchdogRevokedWhileTheReconcilerWasBusyIsNotRebuiltNorCountedAsRunning() throws Exception {
+    controlPlane.active = List.of(polled("files"));
+    loop.tick();
+    CountDownLatch inside = new CountDownLatch(1);
+    CountDownLatch leave = new CountDownLatch(1);
+    Thread holder =
+        Thread.ofPlatform().start(() -> {
+          reconciler.lock.lock();
+          try {
+            inside.countDown();
+            leave.await();
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          } finally {
+            reconciler.lock.unlock();
+          }
+        });
+    inside.await();
+    try {
+      assertThat(reconciler.revoke(i -> true, Duration.ofSeconds(5))).isEqualTo(1);
+    } finally {
+      leave.countDown();
+      holder.join();
+    }
+
+    // A secret rotated meanwhile: the revoked route must not be started again by a rebuild.
+    assertThat(reconciler.rebuild("files")).isFalse();
+    assertThat(ServiceHelper.isSuspended(camel.getRoute("files").getConsumer())).isTrue();
+    assertThat(reconciler.running()).isEmpty();
+    assertThat(reconciler.revoke(i -> true, Duration.ofSeconds(5))).isZero();
+  }
+
+  @Test
+  void whileTheRuntimeIdIsInUseNoReportIsSentAndWhatWasCountedFollowsOnceThePollIsAccepted() throws Exception {
+    Ingestion queue = ingestion("queue", 1, new Split.None(), 1);
+    controlPlane.active = List.of(queue);
+    loop.tick();
+    int reports = controlPlane.reports.size();
+
+    controlPlane.inUse = true;
+    send("queue", "A");
+    counters.failure(queue, RuntimeReport.Failure.Kind.SOURCE, "while refused", null, null);
+    controlPlane.tests = List.of();
+    loop.tick();
+    send("queue", "B");
+    loop.tick();
+    assertThat(controlPlane.reports).hasSize(reports);
+
+    controlPlane.inUse = false;
+    loop.tick();
+    assertThat(controlPlane.reports).hasSize(reports + 1);
+    assertThat(lastReport().routes()).containsExactly(new RouteState("queue", 1, RouteState.Status.STARTED, null));
+    assertThat(lastReport().metrics()).extracting(RuntimeReport.ExchangeWindow::completed).containsExactly(1L, 1L);
+    assertThat(lastReport().failures()).extracting(RuntimeReport.Failure::message).containsExactly("while refused");
   }
 }

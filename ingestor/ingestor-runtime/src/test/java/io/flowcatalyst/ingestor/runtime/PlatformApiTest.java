@@ -441,4 +441,76 @@ class PlatformApiTest {
     platform.stop(0);
     assertThatThrownBy(() -> api.create(ingestion, List.of(new JobRecord("a", "text/plain", null, null, null, null)))).isInstanceOf(PlatformUnavailableException.class);
   }
+
+  // The runtime-id guard and the lease release (ingestor robustness contract, sections 1 and 2).
+
+  @Test
+  void everyPollAndReleaseCarriesTheSameInstanceIdMadeOncePerProcess() throws Exception {
+    answer = "{\"asOf\":\"2026-10-24T10:00:00Z\",\"leaseFor\":\"PT3M\",\"ingestions\":[]}";
+    api.poll(T);
+    api.poll(T);
+    answer = "{\"released\":0}";
+    api.release(List.of(), false, T);
+
+    List<String> sent = seen.stream().map(s -> Json.mapper().readTree(s.body()).get("instanceId").asString()).toList();
+    assertThat(sent).hasSize(3).containsOnly(api.instanceId());
+    assertThat(api.instanceId()).matches("[A-Za-z0-9-]{8,64}");
+    // Another process (another client) is another instance.
+    PlatformApi other = new PlatformApi(clients.service(ServiceOptions.builder("platform-other", URI.create("http://127.0.0.1:" + platform.getAddress().getPort())).build()), "runtime 1", null, List.of());
+    assertThat(other.instanceId()).isNotEqualTo(api.instanceId());
+  }
+
+  @Test
+  void aPollRefusedBecauseTheRuntimeIdIsInUseIsItsOwnFailureAndAnyOther409IsNot() {
+    statuses.addAll(List.of(409, 409));
+    answer = "{\"error\":\"RUNTIME_ID_IN_USE\",\"message\":\"runtime id runtime 1 is in use by another live process\"}";
+    assertThatThrownBy(() -> api.poll(T))
+        .isInstanceOf(RuntimeIdInUseException.class)
+        .hasMessageContaining("409")
+        .hasMessageContaining("is in use by another live process");
+
+    answer = "{\"error\":\"LEASE_NOT_HELD\",\"message\":\"no\"}";
+    assertThatThrownBy(() -> api.poll(T)).isInstanceOf(IOException.class).isNotInstanceOf(RuntimeIdInUseException.class);
+    assertThat(seen).hasSize(2);
+  }
+
+  @Test
+  void aReleaseNamesTheRuntimeTheInstanceTheIngestionsAndWhetherItIsAGoodbye() throws Exception {
+    answer = "{\"released\":2}";
+
+    int released = api.release(List.of("ing_1", "ing_2"), true, T);
+
+    assertThat(released).isEqualTo(2);
+    Seen call = seen.getFirst();
+    assertThat(call.method()).isEqualTo("POST");
+    assertThat(call.target()).isEqualTo("/api/ingestion-runtime/v1/leases/release");
+    assertThat(call.authorization()).isEqualTo("Bearer runtime-token");
+    JsonNode body = Json.mapper().readTree(call.body());
+    assertThat(body.propertyNames()).containsExactlyInAnyOrder("runtimeId", "instanceId", "ingestionIds", "goodbye");
+    assertThat(body.get("runtimeId").asString()).isEqualTo("runtime 1");
+    assertThat(body.get("instanceId").asString()).isEqualTo(api.instanceId());
+    assertThat(body.get("ingestionIds").valueStream().map(JsonNode::asString).toList()).containsExactly("ing_1", "ing_2");
+    assertThat(body.get("goodbye").asBoolean()).isTrue();
+  }
+
+  @Test
+  void aPlatformWithoutTheReleaseIsAskedOnceAndNotAgainUntilARestart() throws Exception {
+    statuses.add(404);
+    answer = "{\"title\":\"Not Found\",\"status\":404}";
+
+    assertThat(api.release(List.of("ing_1"), false, T)).isZero();
+    assertThat(api.release(List.of("ing_2"), true, T)).isZero();
+
+    assertThat(seen).hasSize(1);
+  }
+
+  @Test
+  void aReleaseThatFailsIsAFailureSentOnceAndAnImposterIsRefused() {
+    statuses.addAll(List.of(503, 409));
+    assertThatThrownBy(() -> api.release(List.of("ing_1"), false, T)).isInstanceOf(IOException.class).hasMessageContaining("503");
+
+    answer = "{\"error\":\"RUNTIME_ID_IN_USE\",\"message\":\"runtime id runtime 1 is in use by another live process\"}";
+    assertThatThrownBy(() -> api.release(List.of("ing_1"), true, T)).isInstanceOf(RuntimeIdInUseException.class);
+    assertThat(seen).hasSize(2);
+  }
 }

@@ -104,6 +104,33 @@ class WireContractTest {
   }
 
   @Test
+  void aPollNamesTheProcessAskingWhenItHasAnInstanceIdAndLeavesTheFieldOutWhenNot() {
+    JsonNode with = mapper.readTree(mapper.writeValueAsString(new RuntimePoll("runtime-a", List.of(), null, "0b4e3c1e-6a43-4b8e-9d0a-2f1c5d7e8a90")));
+    JsonNode without = mapper.readTree(mapper.writeValueAsString(new RuntimePoll("runtime-a", List.of(), null)));
+
+    assertThat(with.propertyNames()).containsExactlyInAnyOrder("runtimeId", "contractVersion", "kinds", "builtinKinds", "instanceId");
+    assertThat(with.get("instanceId").asString()).isEqualTo("0b4e3c1e-6a43-4b8e-9d0a-2f1c5d7e8a90");
+    assertThat(with.get("contractVersion").asInt()).isEqualTo(2);
+    assertThat(without.has("instanceId")).isFalse();
+    // Read back, as a platform written in Java would.
+    assertThat(mapper.readValue(with.toString(), RuntimePoll.class).instanceId()).isEqualTo("0b4e3c1e-6a43-4b8e-9d0a-2f1c5d7e8a90");
+  }
+
+  @Test
+  void aLeaseReleaseHasExactlyTheFieldsThePlatformTakesAndItsAnswerIsRead() {
+    JsonNode release = mapper.readTree(mapper.writeValueAsString(new LeaseRelease("runtime-a", "inst-1234", List.of("ing_1", "ing_2"), true)));
+
+    assertThat(release.propertyNames()).containsExactlyInAnyOrder("runtimeId", "instanceId", "ingestionIds", "goodbye");
+    assertThat(release.get("ingestionIds").valueStream().map(JsonNode::asString).toList()).containsExactly("ing_1", "ing_2");
+    assertThat(release.get("goodbye").asBoolean()).isTrue();
+    JsonNode empty = mapper.readTree(mapper.writeValueAsString(new LeaseRelease("runtime-a", null, List.of(), false)));
+    assertThat(empty.propertyNames()).containsExactlyInAnyOrder("runtimeId", "ingestionIds", "goodbye");
+    assertThat(empty.get("ingestionIds").isArray()).isTrue();
+    assertThat(empty.get("goodbye").asBoolean()).isFalse();
+    assertThat(mapper.readValue("{\"released\":2}", LeaseReleased.class).released()).isEqualTo(2);
+  }
+
+  @Test
   void aReportHasExactlyTheFieldsThePlatformTakes() {
     Instant at = Instant.parse("2026-10-24T10:00:00Z");
     RuntimeReport report =

@@ -9,6 +9,8 @@ import io.flowcatalyst.ingestor.contract.Ingestion;
 import io.flowcatalyst.ingestor.contract.JobRecord;
 import io.flowcatalyst.ingestor.contract.JobResult;
 import io.flowcatalyst.ingestor.contract.JobsAnswer;
+import io.flowcatalyst.ingestor.contract.LeaseRelease;
+import io.flowcatalyst.ingestor.contract.LeaseReleased;
 import io.flowcatalyst.ingestor.contract.PollAnswer;
 import io.flowcatalyst.ingestor.contract.RuntimeKind;
 import io.flowcatalyst.ingestor.contract.RuntimePoll;
@@ -27,6 +29,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -39,8 +43,10 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * The platform's ingestion runtime API ({@code /api/ingestion-runtime/v1}) over HTTP, as the runtime's
  * service account. The client retries what is safe to repeat (reading and storing a value, revealing
- * a secret); a poll, a report and a jobs request are sent once: the next round is a poll's and a
- * report's retry, and the source keeps what a jobs request did not make.
+ * a secret); a poll, a report, a lease release and a jobs request are sent once: the next round is a
+ * poll's and a report's retry, a lease not given back runs out, and the source keeps what a jobs
+ * request did not make. Every poll and release carries this process's instance id, made once per
+ * process start.
  */
 final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource, TraceUplink {
 
@@ -50,6 +56,7 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
   private static final String POLL = BASE + "/poll";
   private static final String REPORT = BASE + "/report";
   private static final String TRACES = BASE + "/traces";
+  private static final String RELEASE = BASE + "/leases/release";
   private static final String STATE = BASE + "/state/{ingestion}/{key}";
   private static final String JOBS = BASE + "/ingestions/{ingestion}/jobs";
   private static final String SECRET = BASE + "/ingestions/{ingestion}/secrets/{name}";
@@ -78,6 +85,10 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
   private final @Nullable String url;
   private final List<RuntimeKind> kinds;
   private final Runnable forgetToken;
+  private final String instanceId;
+
+  /** Set once the platform answers the release with 404: it predates the call, which is not made again until a restart. */
+  private final AtomicBoolean noRelease = new AtomicBoolean();
 
   /**
    * Creates the client.
@@ -102,6 +113,21 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
    *     403 (the client itself repeats a 401 once, with a new token)
    */
   PlatformApi(ServiceClient client, String runtimeId, @Nullable String url, List<RuntimeKind> kinds, Runnable forgetToken) {
+    this(client, runtimeId, url, kinds, forgetToken, UUID.randomUUID().toString());
+  }
+
+  /**
+   * Creates the client.
+   *
+   * @param client the platform, with the runtime's service-account token
+   * @param runtimeId names this runtime
+   * @param url where this runtime can be reached (informational), or null
+   * @param kinds the kinds this runtime adds to the built-in ones
+   * @param forgetToken drops the token held, so the next call fetches a new one
+   * @param instanceId this process, sent with every poll and release: made once per process start
+   */
+  PlatformApi(ServiceClient client, String runtimeId, @Nullable String url, List<RuntimeKind> kinds, Runnable forgetToken, String instanceId) {
+    this.instanceId = instanceId;
     this.client = client;
     this.runtimeId = runtimeId;
     this.url = url;
@@ -109,10 +135,19 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
     this.forgetToken = forgetToken;
   }
 
+  /**
+   * This process, as the platform is told in every poll and release.
+   *
+   * @return the instance id, made once when the runtime started
+   */
+  String instanceId() {
+    return instanceId;
+  }
+
   @Override
   public Polled poll(Duration timeout) throws IOException, InterruptedException {
     ClientResponse response =
-        succeeded(client.post(POLL).timeout(timeout).json(new RuntimePoll(runtimeId, kinds, url)), "POST " + POLL);
+        succeeded(client.post(POLL).timeout(timeout).json(new RuntimePoll(runtimeId, kinds, url, instanceId)), "POST " + POLL);
     Outline outline = read(response, Outline.class, "the platform's list of ingestions cannot be read");
     if (outline.asOf() == null || outline.leaseFor() == null) {
       throw new IOException("the platform's list of ingestions cannot be read");
@@ -176,6 +211,32 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
   @Override
   public void report(RuntimeReport report, Duration timeout) throws IOException, InterruptedException {
     succeeded(client.post(REPORT).timeout(timeout).json(report), "POST " + REPORT);
+  }
+
+  /**
+   * Gives back leases, once. A {@code 404} is a platform that predates the call: said once at INFO,
+   * and the call is not made again until the runtime restarts.
+   */
+  @Override
+  public int release(List<String> ingestionIds, boolean goodbye, Duration timeout) throws IOException, InterruptedException {
+    if (noRelease.get()) {
+      return 0;
+    }
+    ClientResponse response =
+        ServiceCalls.send(client.post(RELEASE).timeout(timeout).json(new LeaseRelease(runtimeId, instanceId, ingestionIds, goodbye)));
+    if (response.status() == 404) {
+      if (noRelease.compareAndSet(false, true)) {
+        LOG.info("the platform has no {} (it predates it); leases are left to run out until this runtime restarts", RELEASE);
+      }
+      return 0;
+    }
+    ClientResponse answered = failed(response, "POST " + RELEASE);
+    try {
+      return ANSWERS.readValue(answered.bodyBytes(), LeaseReleased.class).released();
+    } catch (JacksonException e) {
+      // The leases were given back; only the count is unreadable.
+      return 0;
+    }
   }
 
   /**
@@ -301,6 +362,9 @@ final class PlatformApi implements RuntimeApi, StateStore, JobSink, SecretSource
       forgetToken.run();
     }
     String message = what + " answered " + status + said(response);
+    if (status == 409 && RuntimeIdInUseException.CODE.equals(code(response))) {
+      throw new RuntimeIdInUseException(message);
+    }
     if (permanent(status)) {
       throw new RejectedException(message, status);
     }

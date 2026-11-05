@@ -17,8 +17,9 @@ The runtime talks to the platform only through that API, as a service account:
 
 | Call | What for |
 |---|---|
-| `POST /poll` | every `INGEST_POLL_INTERVAL`: the live ingestions this runtime should run, the lease length, pending "test connection" requests. Sends `contractVersion` 2, the kinds the runtime adds (`kinds`) and the built-in kinds it runs (`builtinKinds`) |
+| `POST /poll` | every `INGEST_POLL_INTERVAL`: the live ingestions this runtime should run, the lease length, pending "test connection" requests. Sends `contractVersion` 2, the kinds the runtime adds (`kinds`), the built-in kinds it runs (`builtinKinds`) and this process's `instanceId` |
 | `POST /report` | route states, exchange counts (with `polls` and `lastPollAt`), failures and test answers |
+| `POST /leases/release` | gives back the leases of single-owner ingestions whose routes have actually stopped: after a round stopped ones the platform no longer lists (`goodbye: false`), and once at shutdown (`goodbye: true`, even with none). Below, "Leases, stopping and shutting down" |
 | `POST /traces` | trace records (poll, exchange, http, error) captured while an operator has tracing on for an ingestion; redacted in the runtime before they leave it. See the repository's `docs/ingestion-trace-design.md` |
 | `GET/PUT /state/{ingestionId}/{key}` | the watermark or cursor of a polled source, kept on the platform so it follows the ingestion to another runtime |
 | `POST /ingestions/{id}/jobs` | the **only** way jobs are created: the runtime sends records, the platform builds each job from the ingestion's own target (URL, pool, connection, signer, client); for an `EVENT` target it stores one event per record instead, and the answer says which (`kind`) |
@@ -41,6 +42,16 @@ Every addition keeps `contractVersion` 2; a platform that predates a field ignor
   platform's own message.
 - **`acceptAnyHostKey`** on an `sftp` source (below).
 - **Idempotency keys** (`externalId`) on the records (below).
+- **`instanceId`** in the poll: a random UUID made once per process start, also sent with every lease release.
+  A newer platform refuses a poll with `409 RUNTIME_ID_IN_USE` while another process that polled within one
+  lease, and has not said goodbye, holds the same `runtimeId` (below).
+- **`POST /leases/release`** `{runtimeId, instanceId, ingestionIds (0..1000), goodbye}`, answered
+  `200 {released}`. A platform that answers it `404` predates it: the runtime says so once at INFO and does not
+  call it again until it restarts.
+- **A lease too short for the poll interval** (it would end before the next round could renew it) runs no
+  single-owner ingestion, as before, and now reports each of them as a `FAILED` route with
+  `the lease (<lease>) is too short for the poll interval (<interval>)` (ISO-8601 durations, such as
+  `the lease (PT30S) is too short for the poll interval (PT1M)`), so the platform shows why and can move them.
 
 ### When the platform refuses jobs
 
@@ -158,8 +169,9 @@ itself with `X-Message-Group` (and the correlation id with `X-Correlation-Id`).
 You need a platform with ingestion enabled (`FC_INGESTION_ENABLED=true`, on by default in `fcdev`), and a
 service account for the runtime holding the platform role `platform:ingestion-runtime`. The role is platform-wide: the runtime routes reach every client's and every application's ingestions, however the
 account was provisioned, so one fleet serves them all. With more than one runtime instance the platform spreads the polled
-sources evenly over the live ones (fair share), and an instance that stops polling hands its share to the others once its
-leases expire.
+sources evenly over the live ones (fair share). An instance that shuts down gives back the leases of the routes it stopped
+cleanly and says goodbye, so the others take them at their next poll; one that stops polling without that (killed, or a
+route that would not stop) hands its share over once its leases expire.
 
 ```
 java -jar ingestor-runtime-X.Y.Z-all.jar        # from a directory that holds config/application.yaml
@@ -178,7 +190,7 @@ Every value is a key in `config/application.yaml` and an environment variable na
 | `FLOWCATALYST_CLIENT_ID` | `flowcatalyst.client-id` | | OAuth client id of the runtime's service account. **Required** |
 | `FLOWCATALYST_CLIENT_SECRET` | `flowcatalyst.client-secret` | | its secret. **Required**; or `config/secrets.local.yaml` (never committed) |
 | `FLOWCATALYST_APPLICATION` | `flowcatalyst.application` | `ingestor` | names the account's application to the client library; the runtime API does not use it |
-| `INGEST_RUNTIME_ID` | `ingest.runtime-id` | `runtime-<hostname>` | names this runtime; two running runtimes must never share one. `[A-Za-z0-9._:-]`, at most 100 |
+| `INGEST_RUNTIME_ID` | `ingest.runtime-id` | `runtime-<hostname>` | names this runtime; two running runtimes must never share one. `[A-Za-z0-9._:-]`, at most 100. A second live process under the same id is refused by the platform (`409 RUNTIME_ID_IN_USE`): it renews no lease, logs an ERROR every round, fails readiness, and keeps polling until the other is gone |
 | `INGEST_EXTENSIONS_DIR` | `ingest.extensions-dir` | unset | a directory of extension jars, loaded at start in addition to those on the class path |
 | `INGEST_EXTENSIONS_MANIFEST` | `ingest.extensions-manifest` | unset | `s3://<bucket>/<key>` of a manifest pinning the extension jars (same bucket, SHA-256 checked) to load at start; exclusive with jars in `INGEST_EXTENSIONS_DIR`. See [docs/extensions.md](docs/extensions.md) |
 | `INGEST_CAMEL_ROUTES_ENABLED` | `ingest.camel-routes-enabled` | `false` | report and run the `camel-route` kind |
@@ -196,7 +208,7 @@ Every value is a key in `config/application.yaml` and an environment variable na
 | `INGEST_TRACE_QUEUE` | `ingest.trace-queue` | `2000` | trace records (and at most 16 MiB of them) waiting to be shipped to the platform while an operator has tracing switched on for an ingestion; when full the oldest are dropped and counted. Nothing is captured unless the platform lists a trace window for the ingestion |
 | `FLOWCATALYST_TIMEOUT` | `flowcatalyst.timeout` | `PT30S` | the longest a call to the platform waits; the poll and the report wait at most a sixth of the lease |
 | `INGEST_AWS_ENDPOINT` | `ingest.aws.endpoint` | unset | a stand-in for AWS (LocalStack, an S3-compatible store) |
-| `HTTP_PORT` / `HTTP_HOST` | `http.port` / `http.host` | `8091` / `0.0.0.0` | the listener for HTTP ingestions and `/health/live`, `/health/ready` |
+| `HTTP_PORT` / `HTTP_HOST` | `http.port` / `http.host` | `8091` / `0.0.0.0` | the listener for HTTP ingestions and `/health/live`, `/health/ready`. Readiness (`platform`) fails while the platform has not answered a poll for three intervals, and while it refuses the polls because the runtime id is in use, naming that id |
 | `APP_ENV` | | `local` (the image: `production`) | `local` also reads `config/application-local.yaml` and `config/secrets.local.yaml`; only `local` and `test` accept a platform on plain `http` and sources on loopback addresses |
 
 ### Secrets from the environment (`env:`)
@@ -243,19 +255,54 @@ round.
 
 A single-owner (polled) route runs under the lease the poll renews (3 minutes on the platform). It is stopped:
 
-- by the round, when a poll fails and the lease would end before the next round could renew it;
+- by the round, when a poll fails (or is refused, below) and the lease would end before the next round could
+  renew it;
+- by the round, when the platform no longer lists it (it moved to another runtime, was paused or deleted);
+- by the round, when the lease is too short to cover the next interval: it is then reported `FAILED` with
+  `the lease (<lease>) is too short for the poll interval (<interval>)`;
 - by a **watchdog** that runs every second apart from the rounds, once the lease is within its margin of the
   end without a renewal: 30 s or twice the poll's timeout, whichever is longer, at most half the lease (with
-  the defaults, 1 minute). A round stuck on a slow platform cannot keep a lapsed lease's routes running;
+  the defaults, 1 minute). A round stuck on a slow platform, or on a route whose source does not return from
+  its start, cannot keep a lapsed lease's routes running: the watchdog never waits for the round. It marks the
+  routes it takes as revoked and suspends their consumers directly (no new poll or message is taken; the
+  exchange in flight goes on), which takes neither the reconciler's lock nor the Camel context's; the routes are
+  then stopped and removed as below when nothing else is changing them, or by the next round, which starts them
+  anew if the platform lists them again;
 - on shutdown.
 
 The poll and the report wait at most `FLOWCATALYST_TIMEOUT` and at most a sixth of the lease (30 s for 3
 minutes). A route is stopped gracefully: its exchange in flight is given 10 s to finish (its jobs sent, its
 file moved, its message acknowledged), then cut off, and its payload stays with the source. Several routes are
-stopped at the same time; on shutdown all of them within 12 s (fcdev waits 15 s before it kills the JVM).
-The platform has no call to give a lease back, so a stopped runtime's polled ingestions move to another
-runtime when their lease runs out (at most 3 minutes after its last poll); their watermarks and cursors are on
-the platform, so nothing is read twice or skipped beyond what the idempotency keys absorb.
+stopped at the same time; on shutdown all of them within 12 s.
+
+**Giving a lease back.** The runtime gives a lease back (`POST /leases/release`) only for a route that has
+**actually stopped**: stopped within the bound, with no exchange still running in it (Camel cuts an exchange
+off at the timeout but cannot end its thread, so one cut off may still be running), and not revoked by the
+watchdog. A route still stopping is left to its lease.
+
+- After a round stopped single-owner routes the platform no longer lists, it gives those back
+  (`goodbye: false`), waiting at most the poll's timeout.
+- At shutdown, after stopping every route, it gives back the single-owner ones that stopped cleanly with
+  `goodbye: true`, once, even when there are none, waiting at most 5 s. The platform then hands them to
+  another runtime at its next poll, no longer counts this one as live for fair shares, and lets a successor
+  under the same runtime id poll at once. Shutdown takes about 20 s at most (12 s for the routes, 5 s and a
+  second's grace for the goodbye, 2 s for the last trace records), well inside ECS's 60 s `stopTimeout`; fcdev
+  waits 15 s before it kills the JVM, so there a slow stop can leave the goodbye unsent.
+- The watchdog's stops and those after a failed poll never give a lease back: the lease is ending anyway, and
+  the platform may not be reachable.
+- A release that fails is logged at WARN and not tried again; a platform that answers it `404` predates it, is
+  said so once at INFO, and is not asked again until the runtime restarts. Either way the lease runs out (at
+  most 3 minutes after the last poll), as before. The watermarks and cursors are on the platform, so nothing is
+  read twice or skipped beyond what the idempotency keys absorb.
+
+**One runtime id, one process.** Each process sends a random `instanceId`, made at start, with every poll and
+release. When the platform refuses a poll with `409 RUNTIME_ID_IN_USE` (another process polled under the same
+`runtimeId` within one lease and has not said goodbye), the runtime treats it as a platform it cannot reach for
+the leases: nothing is renewed, the watchdog stops the single-owner routes before the lease ends, the shared
+routes keep running. It sends no report (the platform reads route states from reports, and this process's
+would overwrite the owner's); what it counts is kept, within the usual caps, and reported once a poll is
+accepted. It logs an ERROR every round, readiness fails naming the runtime id, and it keeps polling
+every interval, so it takes over once the other process is gone.
 
 "Test connection" requests run on their own threads, at most 2 minutes each (or until the request expires);
 the round waits up to 10 s for them and reports the rest when they finish, or as failed at their deadline. A

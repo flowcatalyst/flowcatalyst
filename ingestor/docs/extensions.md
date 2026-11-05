@@ -207,6 +207,13 @@ still comes, after the wait described under [Failures are paced](#failures-are-p
 remembers what a poll dispatched lately, by key. A `ScheduledPollEndpoint` fits too (the generator's). The
 endpoint never produces (`createProducer` throws).
 
+When the lease is about to run out without a renewal, the runtime's watchdog first **suspends** the route's
+consumer (Camel's `ServiceHelper.suspendService`: `suspend()` for a `Suspendable` consumer, `stop()` for any
+other), without waiting for a round or for the Camel context, and stops and removes the route afterwards. A
+consumer must take nothing more from its source once suspended or stopped; the exchange in flight may finish.
+`PolledSource` and `ScheduledPollEndpoint` consumers do this. A consumer whose start does not return holds up
+the round that starts it, but not the watchdog.
+
 ### Failures are paced
 
 A failure that repeats is waited out and logged once in full, then summarised

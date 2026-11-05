@@ -16,10 +16,19 @@ import org.jspecify.annotations.Nullable;
  * @param builtinKinds the built-in source kinds this runtime can run ({@link #BUILTIN_KINDS}), so
  *     that a platform that knows a kind this runtime does not hands it to a runtime that does. A
  *     platform that predates the field ignores it
+ * @param instanceId the process asking: a value made once per process start (8 to 64 characters of
+ *     {@code [A-Za-z0-9-]}), so that the platform refuses a second live process under the same
+ *     {@code runtimeId} with {@code 409 RUNTIME_ID_IN_USE}. Absent, the platform does not check. A
+ *     platform that predates the field ignores it
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record RuntimePoll(
-    String runtimeId, int contractVersion, @Nullable List<RuntimeKind> kinds, @Nullable String url, @Nullable List<String> builtinKinds) {
+    String runtimeId,
+    int contractVersion,
+    @Nullable List<RuntimeKind> kinds,
+    @Nullable String url,
+    @Nullable List<String> builtinKinds,
+    @Nullable String instanceId) {
 
   /** The contract version this runtime speaks. Additions to it (such as {@code builtinKinds}) keep it. */
   public static final int CONTRACT_VERSION = 2;
@@ -35,6 +44,19 @@ public record RuntimePoll(
   }
 
   /**
+   * A poll without an instance id, as before the field was added.
+   *
+   * @param runtimeId the asking runtime
+   * @param contractVersion the contract version it speaks
+   * @param kinds the kinds it adds
+   * @param url where it can be reached, or null
+   * @param builtinKinds the built-in kinds it runs, or null
+   */
+  public RuntimePoll(String runtimeId, int contractVersion, @Nullable List<RuntimeKind> kinds, @Nullable String url, @Nullable List<String> builtinKinds) {
+    this(runtimeId, contractVersion, kinds, url, builtinKinds, null);
+  }
+
+  /**
    * A poll in the contract version this runtime speaks, naming the built-in kinds it runs.
    *
    * @param runtimeId the asking runtime
@@ -42,6 +64,19 @@ public record RuntimePoll(
    * @param url where it can be reached, or null
    */
   public RuntimePoll(String runtimeId, List<RuntimeKind> kinds, @Nullable String url) {
-    this(runtimeId, CONTRACT_VERSION, kinds, url, BUILTIN_KINDS);
+    this(runtimeId, CONTRACT_VERSION, kinds, url, BUILTIN_KINDS, null);
+  }
+
+  /**
+   * A poll in the contract version this runtime speaks, naming the built-in kinds it runs and the
+   * process asking.
+   *
+   * @param runtimeId the asking runtime
+   * @param kinds the kinds it adds
+   * @param url where it can be reached, or null
+   * @param instanceId the process asking, or null not to be checked
+   */
+  public RuntimePoll(String runtimeId, List<RuntimeKind> kinds, @Nullable String url, @Nullable String instanceId) {
+    this(runtimeId, CONTRACT_VERSION, kinds, url, BUILTIN_KINDS, instanceId);
   }
 }

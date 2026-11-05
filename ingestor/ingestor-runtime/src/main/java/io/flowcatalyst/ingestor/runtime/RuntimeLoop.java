@@ -4,6 +4,7 @@ import io.flowcatalyst.framework.core.MonotonicClock;
 import io.flowcatalyst.framework.http.Json;
 import io.flowcatalyst.ingestor.contract.ConnectionTest;
 import io.flowcatalyst.ingestor.contract.Ingestion;
+import io.flowcatalyst.ingestor.contract.LeaseRelease;
 import io.flowcatalyst.ingestor.contract.PollAnswer;
 import io.flowcatalyst.ingestor.contract.RuntimeReport;
 import io.flowcatalyst.ingestor.contract.RuntimeReport.ExchangeWindow;
@@ -16,9 +17,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.InstantSource;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
@@ -46,9 +49,17 @@ import org.slf4j.LoggerFactory;
  * runtime once the lease has run out, so this runtime stops it first: the round stops it when the
  * lease would end before the next round could renew it, and a watchdog ({@link #watch()}), run every
  * second apart from the rounds, stops it once the lease is within {@link #margin()} of its end, so a
- * round stuck on a slow platform cannot keep it running. The lease is counted on this runtime's own
- * monotonic clock from when it sent the poll; the poll and the report wait at most a sixth of the
- * lease for an answer.
+ * round stuck on a slow platform, or on a route that does not start, cannot keep it running: the
+ * watchdog never waits for the reconciler ({@link Reconciler#revoke}). The lease is counted on this
+ * runtime's own monotonic clock from when it sent the poll; the poll and the report wait at most a
+ * sixth of the lease for an answer.
+ *
+ * <p>A lease is given back ({@link RuntimeApi#release}) only for a route that has actually stopped:
+ * after a round stopped single-owner routes the platform no longer lists, and at shutdown ({@link
+ * #goodbye}). A route the watchdog or a failed poll stopped is left to its lease. When the platform
+ * refuses the poll because another live process holds this runtime's id, the leases are not renewed,
+ * exactly as when it cannot be reached, no report is sent (what is counted is kept, within the
+ * usual caps, for when this process takes over), readiness fails, and the polls go on.
  */
 final class RuntimeLoop {
 
@@ -81,6 +92,9 @@ final class RuntimeLoop {
   /** The longest the single-owner routes are given to stop when the lease runs out. */
   static final Duration STOP_WITHIN = Duration.ofSeconds(20);
 
+  /** The longest the lease release at shutdown may wait for the platform. */
+  static final Duration GOODBYE_WITHIN = Duration.ofSeconds(5);
+
   private record Running(Future<?> future, long deadlineNanos, AtomicBoolean answered) {}
 
   private final String runtimeId;
@@ -102,6 +116,9 @@ final class RuntimeLoop {
 
   /** The lease of the last answer, or null before the first. */
   private volatile @Nullable Duration lease;
+
+  /** What the platform said when it last refused a poll because another live process holds this runtime's id; null while it takes them. */
+  private volatile @Nullable String idInUse;
 
   private long nextSecretsCheck;
   private int failedReports;
@@ -227,10 +244,20 @@ final class RuntimeLoop {
       PollAnswer answer = polled.answer();
       lease = answer.leaseFor();
       leaseEndsNanos = asked + answer.leaseFor().toNanos();
+      idInUse = null;
       List<Ingestion> desired = answer.ingestions();
+      List<RuntimeApi.Unreadable> notRun = polled.unreadable();
       if (leaseEnding()) {
         // The answer took most of the lease to arrive, or the lease is shorter than two intervals.
         LOG.warn("the lease of {} cannot cover the next interval; not running single-owner ingestions", answer.leaseFor());
+        String reason = "the lease (" + answer.leaseFor() + ") is too short for the poll interval (" + interval + ")";
+        List<RuntimeApi.Unreadable> refused = new ArrayList<>(notRun);
+        for (Ingestion ingestion : desired) {
+          if (ingestion.source().singleOwner()) {
+            refused.add(new RuntimeApi.Unreadable(ingestion.id(), ingestion.version(), reason));
+          }
+        }
+        notRun = refused;
         desired = desired.stream().filter(i -> !i.source().singleOwner()).toList();
       }
       // Tracing is never worth failing a round for.
@@ -239,27 +266,146 @@ final class RuntimeLoop {
       } catch (RuntimeException e) {
         LOG.warn("the trace windows of the platform's answer could not be taken: {}", e.getMessage());
       }
-      reconciler.reconcile(desired, polled.unreadable());
+      List<Ingestion> stopped = reconciler.reconcile(desired, notRun);
       lastPoll = clock.instant();
       answeredPoll = true;
+      giveBack(unlisted(stopped, polled), false, callTimeout());
       answered.addAll(polled.unreadableTests());
       test(answer.testList());
+    } catch (RuntimeIdInUseException e) {
+      idInUse = e.getMessage();
+      LOG.error(
+          "the platform refuses this process's polls: runtime id {} is in use by another live process; its leases are not renewed, no report is sent, the shared routes keep running, and the polls go on ({})",
+          runtimeId,
+          e.getMessage());
+      stopIfLeaseEnding();
     } catch (IOException e) {
       LOG.warn("could not ask the platform what to run; keeping the shared routes: {}", e.getMessage());
-      if (leaseEnding()) {
-        int stopped = reconciler.stop(i -> i.source().singleOwner(), STOP_WITHIN);
-        if (stopped > 0) {
-          LOG.warn("stopped {} single-owner ingestion(s): their lease could not be renewed", stopped);
-        }
-      }
+      stopIfLeaseEnding();
     }
     secrets();
+    if (idInUse != null) {
+      // Another live process reports under this runtime id; this one's route states would overwrite
+      // the owner's. What was counted is kept for when this process takes over.
+      keepUnsent();
+      return;
+    }
     report(answeredPoll);
+  }
+
+  /** Takes what was counted and answered into the unsent lists, within their caps, without sending a report. */
+  private void keepUnsent() {
+    ExchangeCounters.Drained drained = counters.drain(clock.instant());
+    unsent.addAll(drained.windows());
+    unsentFailures.addAll(drained.failures());
+    overdueTests();
+    for (ConnectionTest test = answered.poll(); test != null; test = answered.poll()) {
+      unsentTests.add(test);
+    }
+    capUnsent();
+  }
+
+  private void capUnsent() {
+    if (unsentTests.size() > MAX_UNSENT_TESTS) {
+      unsentTests.subList(0, unsentTests.size() - MAX_UNSENT_TESTS).clear();
+    }
+    if (unsent.size() > MAX_UNSENT_WINDOWS) {
+      unsent.subList(0, unsent.size() - MAX_UNSENT_WINDOWS).clear();
+    }
+    if (unsentFailures.size() > MAX_UNSENT_FAILURES) {
+      unsentFailures.subList(0, unsentFailures.size() - MAX_UNSENT_FAILURES).clear();
+    }
+  }
+
+  /** A poll that was not answered: the single-owner routes are stopped when the lease would end before the next round. Their leases are not given back. */
+  private void stopIfLeaseEnding() {
+    if (leaseEnding()) {
+      int stopped = reconciler.stop(i -> i.source().singleOwner(), STOP_WITHIN).count();
+      if (stopped > 0) {
+        LOG.warn("stopped {} single-owner ingestion(s): their lease could not be renewed", stopped);
+      }
+    }
+  }
+
+  /** The single-owner ingestions among those stopped that the platform's answer no longer lists, in any form. */
+  private static List<String> unlisted(List<Ingestion> stopped, RuntimeApi.Polled polled) {
+    if (stopped.isEmpty()) {
+      return List.of();
+    }
+    Set<String> listed = new HashSet<>();
+    polled.answer().ingestions().forEach(i -> listed.add(i.id()));
+    polled.unreadable().forEach(u -> listed.add(u.ingestionId()));
+    return stopped.stream().filter(i -> i.source().singleOwner() && !listed.contains(i.id())).map(Ingestion::id).toList();
+  }
+
+  /**
+   * Gives back the leases of single-owner ingestions whose routes have stopped, in calls of at most
+   * {@link LeaseRelease#MAX_IDS}, all within {@code within}; with {@code goodbye}, one call is made
+   * even when there are none. A release that fails is logged and not tried again: the leases run out.
+   */
+  private void giveBack(List<String> ids, boolean goodbye, Duration within) throws InterruptedException {
+    if (ids.isEmpty() && !goodbye) {
+      return;
+    }
+    long deadline = monotonic.nanos() + within.toNanos();
+    int from = 0;
+    do {
+      int to = Math.min(ids.size(), from + LeaseRelease.MAX_IDS);
+      boolean last = to == ids.size();
+      long left = deadline - monotonic.nanos();
+      if (left <= 0) {
+        LOG.warn("no time left to give back {} lease(s); they run out", ids.size() - from);
+        return;
+      }
+      try {
+        int released = platform.release(ids.subList(from, to), goodbye && last, Duration.ofNanos(left));
+        if (released > 0) {
+          LOG.info("gave back {} lease(s) of stopped single-owner ingestion(s)", released);
+        }
+      } catch (IOException e) {
+        LOG.warn("could not give back {} lease(s); they run out instead: {}", to - from, e.getMessage());
+      }
+      from = to;
+    } while (from < ids.size());
+  }
+
+  /**
+   * At shutdown, after the routes were stopped: gives back the leases of the single-owner ones that
+   * stopped cleanly and tells the platform this runtime is leaving, once, even with none to give back,
+   * waiting at most {@link #GOODBYE_WITHIN} (and a second more for the call to give up).
+   *
+   * @param stoppedCleanly the ingestions whose routes stopped cleanly
+   */
+  void goodbye(List<Ingestion> stoppedCleanly) {
+    List<String> ids = stoppedCleanly.stream().filter(i -> i.source().singleOwner()).map(Ingestion::id).toList();
+    // On a thread of its own, so that nothing the call does (such as fetching a token) can hold the
+    // shutdown past the bound.
+    Thread call =
+        Thread.ofVirtual()
+            .name("ingest-goodbye")
+            .start(
+                () -> {
+                  try {
+                    giveBack(ids, true, GOODBYE_WITHIN);
+                  } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                  }
+                });
+    try {
+      if (!call.join(GOODBYE_WITHIN.plusSeconds(1))) {
+        LOG.warn("the platform did not answer the goodbye within {}; the leases run out instead", GOODBYE_WITHIN);
+        call.interrupt();
+      }
+    } catch (InterruptedException e) {
+      call.interrupt();
+      Thread.currentThread().interrupt();
+    }
   }
 
   /**
    * The lease watchdog: stops the single-owner routes once the lease is within {@link #margin()} of
-   * its end without a renewal, however long the round in progress takes. Run every second.
+   * its end without a renewal, however long the round in progress takes, and without waiting for it
+   * ({@link Reconciler#revoke}). Run every second. It never gives a lease back.
    */
   void watch() {
     try {
@@ -269,7 +415,7 @@ final class RuntimeLoop {
       if (reconciler.running().stream().noneMatch(i -> i.source().singleOwner())) {
         return;
       }
-      int stopped = reconciler.stop(i -> i.source().singleOwner(), STOP_WITHIN);
+      int stopped = reconciler.revoke(i -> i.source().singleOwner(), STOP_WITHIN);
       if (stopped > 0) {
         LOG.warn("stopped {} single-owner ingestion(s): their lease ends within {} and has not been renewed", stopped, margin());
       }
@@ -497,8 +643,14 @@ final class RuntimeLoop {
     testers.shutdownNow();
   }
 
-  /** Fails when the platform has not answered a poll within three intervals. */
+  /**
+   * Fails when the platform refuses the polls because another live process holds this runtime's id,
+   * or has not answered a poll within three intervals.
+   */
   void requireRecentPoll() {
+    if (idInUse != null) {
+      throw new IllegalStateException("runtime id " + runtimeId + " is in use by another live process; the platform refuses this process's polls");
+    }
     Instant last = lastPoll;
     if (last == null) {
       throw new IllegalStateException("the platform has not answered yet");

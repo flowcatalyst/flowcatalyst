@@ -419,6 +419,8 @@ public final class RuntimeModule implements Module {
     routes.post(HttpIngest.PATTERN, http::handle);
     routes.post(HttpIngest.PATTERN_WITH_APPLICATION, http::handleWithApplication);
     RuntimeLoop loop = app.get(RuntimeLoop.class);
+    LOG.info("runtime {} is instance {} (sent with every poll)", app.config().get(RUNTIME_ID), app.get(PlatformApi.class).instanceId());
+    // Also fails while the platform refuses the polls because another live process holds this runtime's id.
     app.health().add("platform", loop::requireRecentPoll);
     // Begins once every module has started, and is stopped before any module's shutdown.
     app.get(Background.class).loop(LOOP, LoopOptions.every(app.config().get(POLL_INTERVAL)), tick -> loop.tick());
@@ -431,9 +433,13 @@ public final class RuntimeModule implements Module {
 
   /**
    * Stops every route at once, each given {@link Reconciler#ROUTE_STOP} to finish its exchange in
-   * flight, all within {@link #STOP_WITHIN}. The platform has no call to give a lease back: a
-   * polled ingestion moves to another runtime when its lease runs out (at most the lease after the
-   * last poll), and its watermark or cursor is on the platform, so nothing read is lost.
+   * flight, all within {@link #STOP_WITHIN}; then gives back the leases of the single-owner ones
+   * that stopped cleanly and tells the platform this runtime is leaving, within {@link
+   * RuntimeLoop#GOODBYE_WITHIN}, so another runtime takes them at its next poll. A route still
+   * stopping, or a platform that does not answer or predates the call, leaves the lease to run out
+   * (at most the lease after the last poll). The watermark or cursor is on the platform, so nothing
+   * read is lost. With the trace flush, about 20 s in all (12 + 5, a second's grace, 2), well inside
+   * ECS's 60 s stop timeout.
    */
   @Override
   public void shutdown(App app) {
@@ -446,11 +452,13 @@ public final class RuntimeModule implements Module {
     if (dog != null) {
       // Booted all the way: the loop and the routes exist.
       dog.shutdownNow();
-      app.get(RuntimeLoop.class).close();
-      int stopped = app.get(Reconciler.class).stop(ingestion -> true, STOP_WITHIN);
-      if (stopped > 0) {
-        LOG.info("stopped {} ingestion route(s)", stopped);
+      RuntimeLoop loop = app.get(RuntimeLoop.class);
+      loop.close();
+      Reconciler.Stopped stopped = app.get(Reconciler.class).stop(ingestion -> true, STOP_WITHIN);
+      if (stopped.count() > 0) {
+        LOG.info("stopped {} ingestion route(s), {} of them cleanly", stopped.count(), stopped.clean().size());
       }
+      loop.goodbye(stopped.clean());
       // After the routes: what their last exchanges recorded is shipped, within a bound.
       app.get(TraceShipper.class).close(TRACE_FLUSH);
     }
