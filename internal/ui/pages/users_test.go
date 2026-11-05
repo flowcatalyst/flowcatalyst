@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -73,6 +74,7 @@ type fakeUsers struct {
 	passwordReset  principalapi.ResetPasswordRequest
 	imported       principalapi.BulkImportRequest
 	importResponse principalapi.BulkImportResponse
+	matchBody      principalapi.MatchEmailsRequest
 	// link is the sign-in link a create returns when asked for one.
 	link string
 }
@@ -271,6 +273,29 @@ func (f *fakeUsers) BulkImportPrincipals(_ context.Context, body principalapi.Bu
 	f.rec("import")
 	f.imported = body
 	return f.importResponse, f.err
+}
+
+// MatchPrincipalEmails resolves the parsed addresses against users; the
+// per-row visibility rule is the API's own (integration tests).
+func (f *fakeUsers) MatchPrincipalEmails(_ context.Context, body principalapi.MatchEmailsRequest) (principalapi.MatchEmailsResponse, error) {
+	f.rec("match")
+	f.matchBody = body
+	if f.err != nil {
+		return principalapi.MatchEmailsResponse{}, f.err
+	}
+	emails, invalid := principal.ParseEmailList(body.Text)
+	if len(emails) == 0 && len(invalid) == 0 {
+		return principalapi.MatchEmailsResponse{}, usecase.Validation("EMAILS_REQUIRED", "no email addresses supplied")
+	}
+	out := principalapi.MatchEmailsResponse{Matches: []principalapi.PrincipalResponse{}, Unmatched: []string{}, Invalid: invalid}
+	for _, e := range emails {
+		if i := slices.IndexFunc(f.users, func(u principalapi.PrincipalResponse) bool { return strings.EqualFold(deref(u.Email), e) }); i >= 0 {
+			out.Matches = append(out.Matches, f.users[i])
+		} else {
+			out.Unmatched = append(out.Unmatched, e)
+		}
+	}
+	return out, nil
 }
 
 type fakeUsrRoles struct{ roles []role.Role }

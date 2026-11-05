@@ -144,16 +144,19 @@ templ usrPage(v usrView) {
 }
 
 templ usrActions(v usrView) {
-	if v.Perms.Create {
-		<div class="flex flex-wrap items-center gap-2">
+	<div class="flex flex-wrap items-center gap-2">
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Href: usrMatchPath, Icon: "search"}) {
+			Match emails
+		}
+		if v.Perms.Create {
 			@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Href: usersPath + "/import", Icon: "upload", Attrs: usrLink()}) {
 				Import CSV
 			}
 			@kit.LegacyButton(kit.LegacyButtonProps{Href: usersPath + "/new", Icon: "user-plus", Attrs: usrLink()}) {
 				Add User
 			}
-		</div>
-	}
+		}
+	</div>
 }
 
 // usrLink fetches a dialog through Datastar instead of navigating.

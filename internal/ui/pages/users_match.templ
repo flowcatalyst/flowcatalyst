@@ -1,0 +1,96 @@
+package pages
+
+import "github.com/flowcatalyst/framework/go/ui/kit"
+
+templ usrMatchPage(v usrMatchView) {
+	@kit.PageHeader(kit.PageHeaderProps{Title: "Match emails", Subtitle: "Paste a list of email addresses to see which are users", Actions: usrMatchBack()})
+	<div class="flex flex-col gap-6">
+		<div class="fc-card">
+			<form id={ usrMatchForm + "-form" } method="post" action={ usrMatchPath } class="flex flex-col gap-4">
+				if v.Errs.Form != "" {
+					@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Description: v.Errs.Form})
+				}
+				@kit.Field(v.fieldProps(usrMatchKey, "Email addresses", "Paste emails separated by commas, semicolons or new lines. 'Name <email>' works too.", true)) {
+					@kit.Textarea(kit.TextareaProps{ID: v.id(usrMatchKey), Name: usrMatchKey, Value: v.Text, Rows: 8, Required: true, Invalid: v.fieldError(usrMatchKey) != "", DescribedBy: v.describedBy(usrMatchKey), Class: "font-mono text-[13px]", Attrs: templ.Attributes{"spellcheck": "false"}})
+				}
+				<div>
+					@kit.Button(kit.ButtonProps{Type: "submit"}) {
+						Match
+					}
+				</div>
+			</form>
+		</div>
+		if v.Done {
+			@usrMatchResult(v)
+		}
+	</div>
+}
+
+templ usrMatchBack() {
+	@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Href: usersPath, Icon: "arrow-left"}) {
+		Back to users
+	}
+}
+
+templ usrMatchResult(v usrMatchView) {
+	<div id="usr-match-result" class="flex flex-col gap-4">
+		<p class="text-sm font-medium">{ v.summary() }</p>
+		if len(v.Rows) > 0 {
+			@kit.Table(kit.TableProps{ID: "usr-match-rows", Dense: true}) {
+				@kit.THead(kit.THeadProps{Caps: true}) {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TH(kit.THProps{}) {
+							Name
+						}
+						@kit.TH(kit.THProps{}) {
+							Email
+						}
+						@kit.TH(kit.THProps{}) {
+							Scope
+						}
+						@kit.TH(kit.THProps{}) {
+							Client
+						}
+						@kit.TH(kit.THProps{}) {
+							Status
+						}
+					}
+				}
+				@kit.TBody(kit.TBodyProps{Striped: true}) {
+					for _, row := range v.Rows {
+						@kit.TR(kit.TRProps{Static: true}) {
+							@kit.TD(kit.TDProps{}) {
+								<a href={ templ.SafeURL(row.DetailHref) } class="font-medium text-foreground no-underline hover:underline">{ row.Name }</a>
+							}
+							@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+								{ row.Email }
+							}
+							@kit.TD(kit.TDProps{}) {
+								@usrTypeBadge(row.TypeLabel, row.TypeBadge, row.Anchor, row.TypeTip)
+							}
+							@kit.TD(kit.TDProps{}) {
+								@usrClientCellC(row.Client)
+							}
+							@kit.TD(kit.TDProps{}) {
+								@usrActiveBadge(row.Active)
+							}
+						}
+					}
+				}
+			}
+		}
+		if len(v.Unmatched) > 0 {
+			@usrMatchList("usr-match-unmatched", "Not found", v.rowsText(v.Unmatched), len(v.Unmatched))
+		}
+		if len(v.Invalid) > 0 {
+			@usrMatchList("usr-match-invalid", "Not an email", v.rowsText(v.Invalid), len(v.Invalid))
+		}
+	</div>
+}
+
+// usrMatchList is a copyable list: a read-only textarea, one entry per line.
+templ usrMatchList(id, label, text string, n int) {
+	@kit.Field(kit.FieldProps{Label: label, For: id}) {
+		@kit.Textarea(kit.TextareaProps{ID: id, Name: id, Value: text, Rows: min(n, 8), Class: "font-mono text-[13px]", Attrs: templ.Attributes{"readonly": true, "spellcheck": "false"}})
+	}
+}

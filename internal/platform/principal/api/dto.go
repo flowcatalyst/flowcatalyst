@@ -483,3 +483,25 @@ type BulkImportResponse struct {
 	Failed  int                `json:"failed"`
 	Results []BulkImportResult `json:"results"`
 }
+
+// Limits for POST /api/principals/match-emails.
+const (
+	maxMatchEmailsTextBytes = 200_000
+	maxMatchEmails          = 1000
+)
+
+// MatchEmailsRequest is the body of POST /api/principals/match-emails. Both
+// fields are optional; every entry of emails and the text go through the same
+// parser (principal.ParseEmailList), emails first.
+type MatchEmailsRequest struct {
+	Text   string   `json:"text,omitempty" doc:"Pasted address list: commas, semicolons, whitespace or 'Name <addr>' entries"`
+	Emails []string `json:"emails,omitempty" doc:"Addresses (each entry is parsed like text)"`
+}
+
+// MatchEmailsResponse is the outcome, in input order. Unmatched covers both
+// unknown addresses and users the caller may not see.
+type MatchEmailsResponse struct {
+	Matches   []PrincipalResponse `json:"matches"`
+	Unmatched []string            `json:"unmatched"`
+	Invalid   []string            `json:"invalid"`
+}

@@ -3265,6 +3265,32 @@ export type MappingResponse = {
     updatedAt: string;
 };
 
+export type MatchEmailsRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Addresses (each entry is parsed like text)
+     */
+    emails?: Array<string>;
+    /**
+     * Pasted address list: commas, semicolons, whitespace or 'Name <addr>' entries
+     */
+    text?: string;
+    [key: string]: unknown;
+};
+
+export type MatchEmailsResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    invalid: Array<string>;
+    matches: Array<PrincipalResponse>;
+    unmatched: Array<string>;
+};
+
 export type Metadata = {
     key: string;
     value: string;
@@ -7923,6 +7949,24 @@ export type MappingResponseWritable = {
     requiredOidcTenantId?: string;
     scopeType: string;
     updatedAt: string;
+};
+
+export type MatchEmailsRequestWritable = {
+    /**
+     * Addresses (each entry is parsed like text)
+     */
+    emails?: Array<string>;
+    /**
+     * Pasted address list: commas, semicolons, whitespace or 'Name <addr>' entries
+     */
+    text?: string;
+    [key: string]: unknown;
+};
+
+export type MatchEmailsResponseWritable = {
+    invalid: Array<string>;
+    matches: Array<PrincipalResponseWritable>;
+    unmatched: Array<string>;
 };
 
 export type MoveProviderRequestWritable = {
@@ -17815,6 +17859,31 @@ export type ListDeveloperUsersResponses = {
 };
 
 export type ListDeveloperUsersResponse = ListDeveloperUsersResponses[keyof ListDeveloperUsersResponses];
+
+export type MatchPrincipalEmailsData = {
+    body: MatchEmailsRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/principals/match-emails';
+};
+
+export type MatchPrincipalEmailsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type MatchPrincipalEmailsError = MatchPrincipalEmailsErrors[keyof MatchPrincipalEmailsErrors];
+
+export type MatchPrincipalEmailsResponses = {
+    /**
+     * OK
+     */
+    200: MatchEmailsResponse;
+};
+
+export type MatchPrincipalEmailsResponse = MatchPrincipalEmailsResponses[keyof MatchPrincipalEmailsResponses];
 
 export type SyncUsersData = {
     body: SyncUsersRequestWritable;

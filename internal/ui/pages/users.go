@@ -52,6 +52,7 @@ type UserService interface {
 	RevokePrincipalClientAccess(ctx context.Context, id, clientID string) error
 	SetPrincipalClientAssociation(ctx context.Context, id string, body principalapi.ClientAssociationRequest) (principalapi.PrincipalResponse, error)
 	BulkImportPrincipals(ctx context.Context, body principalapi.BulkImportRequest) (principalapi.BulkImportResponse, error)
+	MatchPrincipalEmails(ctx context.Context, body principalapi.MatchEmailsRequest) (principalapi.MatchEmailsResponse, error)
 }
 
 // UserRoles lists the roles the role picker offers (GET /bff/roles).
@@ -117,6 +118,7 @@ func (h *Users) Mount(r chi.Router) {
 	r.Get("/users", h.list)
 	r.Get("/users/new", h.createForm)
 	r.Get("/users/check-email", h.checkEmail)
+	r.Get("/users/match-emails", h.matchForm)
 	r.Get("/users/import", h.importForm)
 	r.Get("/users/import/template.csv", h.importTemplate)
 	r.Get("/users/{id}", h.detail)
@@ -127,6 +129,7 @@ func (h *Users) Mount(r chi.Router) {
 	r.Get("/users/{id}/reset-password", h.passwordForm)
 	post := r.With(parseForm)
 	post.Post("/users/new", h.create)
+	post.Post("/users/match-emails", h.match)
 	post.Post("/users/import", h.importCSV)
 	post.Post("/users/{id}/edit", h.update)
 	post.Post("/users/{id}/activate", h.activate)

@@ -191,3 +191,12 @@ func (s *State) BulkImportPrincipals(ctx context.Context, body BulkImportRequest
 	}
 	return out.Body, nil
 }
+
+// MatchPrincipalEmails is POST /api/principals/match-emails.
+func (s *State) MatchPrincipalEmails(ctx context.Context, body MatchEmailsRequest) (MatchEmailsResponse, error) {
+	out, err := s.matchEmails(ctx, &apicommon.In[MatchEmailsRequest]{Body: body})
+	if err != nil {
+		return MatchEmailsResponse{}, err
+	}
+	return out.Body, nil
+}

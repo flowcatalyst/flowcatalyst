@@ -199,6 +199,7 @@ admin	POST /api/portal-users/{id}/apps	grantPortalUserApp
 admin	POST /api/portal-users/{id}/deactivate	deactivatePortalUser
 admin	POST /api/principals	createPrincipal
 admin	POST /api/principals/bulk-import	bulkImportUsers
+admin	POST /api/principals/match-emails	matchPrincipalEmails
 admin	POST /api/principals/{id}/activate	activatePrincipal
 admin	POST /api/principals/{id}/client-access	grantPrincipalClientAccess
 admin	POST /api/principals/{id}/deactivate	deactivatePrincipal

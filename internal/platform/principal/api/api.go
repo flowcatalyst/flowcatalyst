@@ -92,6 +92,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "createPrincipal", "/api/principals", "Create a principal", http.StatusCreated, s.create)
 	apiroute.Post(g, "createUser", "/api/principals/users", "Create a user principal (scope optional, default CLIENT; ANCHOR/PARTNER must be backed by the email domain's setup)", http.StatusOK, s.createUser)
 	apiroute.Post(g, "bulkImportUsers", "/api/principals/bulk-import", "Bulk-import CLIENT users for a client (CSV onboarding)", http.StatusOK, s.bulkImport)
+	apiroute.Post(g, "matchPrincipalEmails", "/api/principals/match-emails", "Match a pasted list of email addresses against the users the caller can see", http.StatusOK, s.matchEmails)
 	apiroute.Post(g, "syncUsers", "/api/principals/sync", "Sync users (declarative upsert by email; no application scope)", http.StatusOK, s.syncUsers)
 	apiroute.Get(g, "getPrincipal", "/api/principals/{id}", "Get a principal by id", s.getByID)
 	apiroute.Get(g, "getPrincipalVersion", "/api/principals/{id}/version", "Get when a principal (or a role it holds) last changed — used by SDKs to detect a revoked/changed session", s.getVersion)
@@ -159,12 +160,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Princip
 	filtered := make([]*principal.Principal, 0, len(rows))
 	for i := range rows {
 		p := &rows[i]
-		// Access control: anchors see all;
-		// non-anchors see only client-scoped principals they can access.
-		// Platform-level principals (client_id == nil) are hidden from
-		// non-anchors. (get-by-id stays lenient on the nil case — it
-		// only checks access when client_id is set.)
-		if !ac.IsAnchor() && (p.ClientID == nil || !ac.CanAccessClient(string(*p.ClientID))) {
+		if !principalVisible(ac, p) {
 			continue
 		}
 		if wantType != "" && string(p.Type) != wantType {
@@ -200,6 +196,85 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Princip
 		out = append(out, fromEntity(p))
 	}
 	return &apicommon.Out[PrincipalListResponse]{Body: PrincipalListResponse{Principals: out, Total: total}}, nil
+}
+
+// principalVisible is the list's per-row access rule, shared with
+// match-emails so the two cannot drift: anchors see all; non-anchors see only
+// client-scoped principals they can access. Platform-level principals
+// (client_id == nil) are hidden from non-anchors. (get-by-id stays lenient on
+// the nil case — it only checks access when client_id is set.)
+func principalVisible(ac *auth.AuthContext, p *principal.Principal) bool {
+	return ac.IsAnchor() || (p.ClientID != nil && ac.CanAccessClient(string(*p.ClientID)))
+}
+
+// matchEmails resolves a pasted email list against the users the caller may
+// see. It filters FindAll in memory, exactly as list does: the same visibility
+// code path, and the platform user table is small enough that a per-email
+// lookup would only add a second copy of the access rule.
+func (s *State) matchEmails(ctx context.Context, in *apicommon.In[MatchEmailsRequest]) (*apicommon.Out[MatchEmailsResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReadPrincipals(ac); err != nil {
+		return nil, err
+	}
+	if len(in.Body.Text) > maxMatchEmailsTextBytes {
+		return nil, usecase.Validation("TEXT_TOO_LONG", "text is limited to 200000 bytes")
+	}
+
+	var emails, invalid []string
+	seenEmail := map[string]struct{}{}
+	seenInvalid := map[string]struct{}{}
+	collect := func(text string) {
+		es, is := principal.ParseEmailList(text)
+		for _, e := range es {
+			if _, ok := seenEmail[e]; !ok {
+				seenEmail[e] = struct{}{}
+				emails = append(emails, e)
+			}
+		}
+		for _, i := range is {
+			if _, ok := seenInvalid[i]; !ok {
+				seenInvalid[i] = struct{}{}
+				invalid = append(invalid, i)
+			}
+		}
+	}
+	for _, e := range in.Body.Emails {
+		collect(e)
+	}
+	collect(in.Body.Text)
+
+	if len(emails) == 0 && len(invalid) == 0 {
+		return nil, usecase.Validation("EMAILS_REQUIRED", "no email addresses supplied")
+	}
+	if len(emails) > maxMatchEmails {
+		return nil, usecase.Validation("TOO_MANY_EMAILS", "matching is limited to 1000 distinct email addresses")
+	}
+
+	rows, err := s.Repo.FindAll(ctx)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_all failed", err)
+	}
+	byEmail := make(map[string]*principal.Principal, len(rows))
+	for i := range rows {
+		p := &rows[i]
+		if p.Type != principal.TypeUser || p.UserIdentity == nil || !principalVisible(ac, p) {
+			continue
+		}
+		byEmail[strings.ToLower(p.UserIdentity.Email)] = p
+	}
+
+	out := MatchEmailsResponse{Matches: []PrincipalResponse{}, Unmatched: []string{}, Invalid: invalid}
+	if out.Invalid == nil {
+		out.Invalid = []string{}
+	}
+	for _, e := range emails {
+		if p, ok := byEmail[e]; ok {
+			out.Matches = append(out.Matches, fromEntity(p))
+		} else {
+			out.Unmatched = append(out.Unmatched, e)
+		}
+	}
+	return &apicommon.Out[MatchEmailsResponse]{Body: out}, nil
 }
 
 // --- list filtering / sorting / pagination helpers ---

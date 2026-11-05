@@ -99,6 +99,14 @@ Platform Super Admin and Platform IAM Admin hold it; a client
 administrator never does, and anchor tier alone is not enough. Without
 it, an administrator can still rename a user and see their client
 access, but not change it.
+
+To check a list of people against the platform, use **Match emails** on
+the Users page (or `POST /api/principals/match-emails`). Paste addresses
+separated by commas, semicolons or new lines — `Name <email>` entries work
+too — and it returns the matching users, the addresses with no user, and the
+entries that are not email addresses. You only ever match users you are
+allowed to see: a user outside your clients is reported as not found.
+
 All administrative identity actions land in the audit log, and every
 authentication attempt (success or failure, human or machine) lands in
 login attempts.

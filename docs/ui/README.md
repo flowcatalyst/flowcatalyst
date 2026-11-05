@@ -1707,6 +1707,7 @@ Pages: `users.go|templ` (list, filters, drawer frame), `users_detail.go` (the dr
 |---|---|---|
 | `/ui/users?q&status&client&roles&sort&dir&page&rows` | the list (100 rows; 50/100/250/500) | - |
 | `/ui/users/new` | the create dialog | create |
+| `/ui/users/match-emails` | the paste form; a post re-renders it with the matches, "Not found" and "Not an email" lists (`POST /api/principals/match-emails`, in process) | match the pasted list (`user:view`) |
 | `/ui/users/check-email?email=` | Datastar: the email's domain check, patched into `#usr-form-domain` | - |
 | `/ui/users/{id}` | the list with the drawer open; Datastar patches the drawer | - |
 | `/ui/users/{id}/edit` | the edit dialog | name, and with `user:manage-access` the type and client |
