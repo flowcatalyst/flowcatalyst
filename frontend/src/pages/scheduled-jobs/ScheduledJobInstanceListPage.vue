@@ -94,101 +94,178 @@ function onRowClick(event: { data: ScheduledJobInstance }) {
 </script>
 
 <template>
-	<div class="card">
-		<div class="text-sm text-gray-500">
-			<a
-				href="#"
-				class="hover:underline"
-				@click.prevent="returnTo('/scheduled-jobs')"
-			>Scheduled Jobs</a>
-			<span v-if="job"> /
-				<a
-					href="#"
-					class="hover:underline"
-					@click.prevent="forwardFrom(`/scheduled-jobs/${job.id}`)"
-				>{{ job.code }}</a>
-			</span>
-			/ Firings
-		</div>
-		<h2 v-if="job" class="mt-1">Firings: {{ job.name }}</h2>
+	<div class="page-container">
+		<nav class="breadcrumb" aria-label="Breadcrumb">
+			<a href="#" @click.prevent="returnTo('/scheduled-jobs')">Scheduled Jobs</a>
+			<template v-if="job">
+				<span class="sep">/</span>
+				<a href="#" @click.prevent="forwardFrom(`/scheduled-jobs/${job.id}`)">{{ job.code }}</a>
+			</template>
+			<span class="sep">/</span>
+			<span>Firings</span>
+		</nav>
 
-		<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+		<header class="page-header">
 			<div>
-				<label class="block text-sm font-medium mb-1">Status</label>
-				<Select
-					v-model="filters.status.value"
-					:options="STATUS_OPTIONS"
-					option-label="label"
-					option-value="value"
-					placeholder="All statuses"
-					show-clear
-				/>
+				<h1 class="page-title">Firings<template v-if="job">: {{ job.name }}</template></h1>
+				<p class="page-subtitle">Every firing of this job, newest first</p>
 			</div>
-			<div>
-				<label class="block text-sm font-medium mb-1">Trigger</label>
-				<Select
-					v-model="filters.triggerKind.value"
-					:options="TRIGGER_OPTIONS"
-					option-label="label"
-					option-value="value"
-					placeholder="All triggers"
-					show-clear
-				/>
-			</div>
-			<div class="flex items-end">
-				<Button
-					v-if="hasActiveFilters"
-					label="Clear"
-					icon="pi pi-filter-slash"
-					text
-					severity="secondary"
-					@click="clearFilters"
-				/>
-			</div>
-		</div>
+		</header>
 
-		<DataTable
-			:value="instances"
-			:loading="loading"
-			:total-records="total"
-			:rows="pageSize"
-			:first="page * pageSize"
-			lazy
-			paginator
-			:rows-per-page-options="[20, 50, 100, 200]"
-			data-key="id"
-			row-hover
-			selection-mode="single"
-			class="mt-4"
-			@row-click="onRowClick"
-			@page="onPage"
-		>
-			<Column header="Fired At">
-				<template #body="{ data }">{{ fmt(data.firedAt) }}</template>
-			</Column>
-			<Column header="Scheduled For">
-				<template #body="{ data }">{{ fmt(data.scheduledFor) }}</template>
-			</Column>
-			<Column header="Trigger" field="triggerKind" />
-			<Column header="Status">
-				<template #body="{ data }">
-					<Tag :value="data.status" :severity="statusSeverity(data.status)" />
+		<div class="fc-card table-card">
+			<div class="filters">
+				<div class="filter">
+					<label class="fc-field-label" for="firings-status">Status</label>
+					<Select
+						v-model="filters.status.value"
+						input-id="firings-status"
+						:options="STATUS_OPTIONS"
+						option-label="label"
+						option-value="value"
+						placeholder="All statuses"
+						show-clear
+						class="w-full"
+					/>
+				</div>
+				<div class="filter">
+					<label class="fc-field-label" for="firings-trigger">Trigger</label>
+					<Select
+						v-model="filters.triggerKind.value"
+						input-id="firings-trigger"
+						:options="TRIGGER_OPTIONS"
+						option-label="label"
+						option-value="value"
+						placeholder="All triggers"
+						show-clear
+						class="w-full"
+					/>
+				</div>
+				<div class="filter clear">
+					<Button
+						v-if="hasActiveFilters"
+						label="Clear"
+						icon="pi pi-filter-slash"
+						text
+						severity="secondary"
+						@click="clearFilters"
+					/>
+				</div>
+			</div>
+
+			<DataTable
+				:value="instances"
+				:loading="loading"
+				:total-records="total"
+				:rows="pageSize"
+				:first="page * pageSize"
+				lazy
+				paginator
+				:rows-per-page-options="[20, 50, 100, 200]"
+				data-key="id"
+				row-hover
+				selection-mode="single"
+				@row-click="onRowClick"
+				@page="onPage"
+			>
+				<template #empty>
+					<div class="empty-message">No firings found.</div>
 				</template>
-			</Column>
-			<Column header="Attempts" field="deliveryAttempts" />
-			<Column header="Delivered">
-				<template #body="{ data }">{{ fmt(data.deliveredAt) }}</template>
-			</Column>
-			<Column header="Completed">
-				<template #body="{ data }">{{ fmt(data.completedAt) }}</template>
-			</Column>
-			<Column header="Error" style="max-width: 200px">
-				<template #body="{ data }">
-					<span v-if="data.deliveryError" class="text-xs text-red-500 truncate">
-						{{ data.deliveryError }}
-					</span>
-				</template>
-			</Column>
-		</DataTable>
+				<Column header="Fired At">
+					<template #body="{ data }"><span class="nowrap">{{ fmt(data.firedAt) }}</span></template>
+				</Column>
+				<Column header="Scheduled For">
+					<template #body="{ data }"><span class="nowrap">{{ fmt(data.scheduledFor) }}</span></template>
+				</Column>
+				<Column header="Trigger" field="triggerKind" />
+				<Column header="Status">
+					<template #body="{ data }">
+						<Tag :value="data.status" :severity="statusSeverity(data.status)" />
+					</template>
+				</Column>
+				<Column header="Attempts" field="deliveryAttempts" />
+				<Column header="Delivered">
+					<template #body="{ data }"><span class="nowrap">{{ fmt(data.deliveredAt) }}</span></template>
+				</Column>
+				<Column header="Completed">
+					<template #body="{ data }"><span class="nowrap">{{ fmt(data.completedAt) }}</span></template>
+				</Column>
+				<Column header="Error" style="max-width: 240px">
+					<template #body="{ data }">
+						<span v-if="data.deliveryError" class="error-text" :title="data.deliveryError">
+							{{ data.deliveryError }}
+						</span>
+					</template>
+				</Column>
+			</DataTable>
+		</div>
 	</div>
 </template>
+
+<style scoped>
+.breadcrumb {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 8px;
+	font-size: 13px;
+	color: #627d98;
+}
+
+.breadcrumb a {
+	color: #627d98;
+	text-decoration: none;
+}
+
+.breadcrumb a:hover {
+	color: #102a43;
+	text-decoration: underline;
+}
+
+.sep {
+	color: #bcccdc;
+}
+
+.table-card {
+	padding: 0;
+	overflow: hidden;
+}
+
+.filters {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 12px;
+	padding: 16px;
+	border-bottom: 1px solid #e2e8f0;
+}
+
+@media (max-width: 768px) {
+	.filters {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+.clear {
+	display: flex;
+	align-items: flex-end;
+}
+
+.nowrap {
+	white-space: nowrap;
+}
+
+.error-text {
+	display: block;
+	overflow: hidden;
+	font-size: 12px;
+	color: #dc2626;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.empty-message {
+	padding: 24px;
+	text-align: center;
+	color: #64748b;
+}
+</style>
