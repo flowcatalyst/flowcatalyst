@@ -12,6 +12,7 @@ import io.flowcatalyst.framework.core.MonotonicClock;
 import io.flowcatalyst.framework.flowcatalyst.FlowCatalystModule;
 import io.flowcatalyst.framework.flowcatalyst.PlatformClient;
 import io.flowcatalyst.framework.http.Routes;
+import io.flowcatalyst.framework.metrics.Metrics;
 import io.flowcatalyst.framework.http.ratelimit.RateLimiter;
 import io.flowcatalyst.framework.httpclient.Auth;
 import io.flowcatalyst.framework.httpclient.HttpClients;
@@ -25,6 +26,7 @@ import io.flowcatalyst.ingestor.functions.FunctionHost;
 import io.flowcatalyst.ingestor.functions.context.DbPools;
 import io.flowcatalyst.ingestor.functions.context.LogBudget;
 import io.flowcatalyst.ingestor.functions.control.HttpControlPlane;
+import io.flowcatalyst.ingestor.functions.trace.FunctionTraceOptions;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -396,7 +398,9 @@ public final class RuntimeModule implements Module {
             Clock.systemUTC(),
             new DbPools.Limits(
                 config.get(FUNCTIONS_DB_MAX_POOLS), config.get(FUNCTIONS_DB_MAX_CONNS), config.get(FUNCTIONS_DB_IDLE_TTL)),
-            new LogBudget.Limits(config.get(FUNCTIONS_LOG_RATE), config.get(FUNCTIONS_LOG_BURST)));
+            new LogBudget.Limits(config.get(FUNCTIONS_LOG_RATE), config.get(FUNCTIONS_LOG_BURST)),
+            FunctionTraceOptions.fromEnvironment(System::getenv),
+            app.find(Metrics.class).orElseGet(Metrics::noop));
   }
 
   private void bootIngestion(App app) {

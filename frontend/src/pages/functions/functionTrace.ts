@@ -140,7 +140,7 @@ export const SINCE_CHOICES = [
 	{ label: "Last 24 hours", minutes: 24 * 60 },
 ] as const;
 
-export const KIND_CHOICES = ["trace", "http", "log"] as const;
+export const KIND_CHOICES = ["trace", "http", "outbound", "log"] as const;
 export const LEVEL_CHOICES = ["debug", "info", "warn", "error"] as const;
 
 export interface TraceFilters {

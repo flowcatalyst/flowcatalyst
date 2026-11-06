@@ -19,8 +19,29 @@ Make targets: `ingestor-build`, `ingestor-test`, `function-api-install`, `functi
 ingestor jar and installs the function API (`java-build`). The reader's guide is "JVM functions" in
 `docs/published/60-functions.md`; the fcdev walkthrough is in `docs/fcdev-ingestor.md`.
 
-**Not built yet:** function traces (`traceContexts` are accepted in a describe and recorded nowhere), public routes and
-domains (`isPublic` is always false), per-function metrics, and a readiness check for the function role.
+**Function traces** (spec: `docs/jvm-function-trace-plan.md`; the contract is `docs/function-trace-design.md`): built.
+The desired document's per-function `trace` windows are read (a window is live iff `enabledUntilMs` is after the host's
+clock, compared on every use); the describe's `traceContexts` are validated at load (`^[a-z][a-z0-9-]{0,39}$`, not
+`http`, at most 20, unique, description at most 200 bytes). After the concurrency permit is taken, the listener asks
+`FunctionTraces.begin` which contexts are live for the invocation (one sampler per function and context, one turn per
+invocation; a `429` takes none) and binds the answer as a `ScopedValue` (`InvocationTrace.CURRENT`); a function with no
+live window pays one field read. While `http` is live an invocation writes one `http` record (request, the response the
+host sent, outcome `ok`/`timeout`/`bad_response`/`error`, caller), a `log` record per line it logged through
+`ctx.logger()` (whatever the SLF4J level, at most 500; the host log and the `LogBudget` are unchanged) and an `outbound`
+record per attempt of its own HTTP client (the CTrack case: a vendor's credentials show up in login URLs and later
+paths; at most 100; calls to the platform are not recorded). `FunctionContext` gained `trace`, `tracing`,
+`setReference` and `conceal` (no-op defaults; `FakeFunctionContext` records them). Every record's message, data,
+headers, bodies, query and URL path pass through the ingestion trace's `TraceRedactor`, built per record from the
+function's declared secret values and the values concealed for it: those given to `ctx.conceal` and those learned from
+the credential fields of outbound answers (`SessionToken`, `access_token`, ...), so a session obtained by one call is
+out of the next call's URL path. Records ship through `FunctionTraceShipper` (one FIFO per function, a bounded queue
+that drops the oldest of the busiest function, batches of at most 500 records and under 1 MiB, `413` splits, `401`/`403`
+once more, `408`/`429`/`5xx` backed off) to `POST /control/functions/trace-log`; `FC_FN_TRACE_QUEUE` (5000),
+`FC_FN_TRACE_QUEUE_BYTES` (32 MiB) and `FC_FN_TRACE_BODY_BYTES` (64 KiB) tune it, and `fc_fn_trace_records_total{kind}`,
+`fc_fn_trace_dropped_total` and `fc_fn_trace_flush_failures_total` count it.
+
+**Not built yet:** public routes and domains (`isPublic` is always false), per-function metrics, and a readiness check
+for the function role.
 
 **Known limits:** a PEM `sslkey` in a function's database DSN is handed to the driver as it is (the host does no PEM
 conversion); the request body of every function is also capped by the ingestor server's own body limit
@@ -75,7 +96,7 @@ Copied from javalin `function-api`; zero dependencies beyond the JDK; `--release
    `clock`, `address`, `version`; **add `dispatcher()`** (a dispatch job to a declared
    `dispatches` target: `target`, `path`, `payload`, `contentType`, `messageGroup`,
    `correlationId`, `metadata`, `mode`, mirroring fn-ts `fn.dispatch`). Function traces
-   (`traceContexts`) are a later slice; leave a note, not an API.
+   (`traceContexts`) came later: `trace`, `tracing`, `setReference` and `conceal`, see the note above.
 6. `Webhook` / `Event`: parse our delivery envelope (`id`, `type`, `source`, `subject`,
    `correlationId`, `messageGroup`, `clientId`, `clientCode`, `time`, `dataContentType`,
    `attemptNumber`, `data`) and a `dataOnly` body; `Schedule`: our scheduled-job firing body.

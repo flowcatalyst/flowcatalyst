@@ -661,3 +661,39 @@ func TestTraceScope(t *testing.T) {
 	}
 	mustNotContain(t, rec.Body.String(), "ftl_3")
 }
+
+// A call a JVM function made (kind outbound) is shown as the ingestion trace
+// shows its calls: request and response panels under a one-line summary. A
+// viewer without view-bodies sees the method, the path and the status only.
+func TestTraceRecOfOutbound(t *testing.T) {
+	r := function.TraceLogRecord{
+		ID: "ftl_9", Kind: function.TraceKindOutbound, Level: "info", Context: "http", InvocationID: "inv-9",
+		Message: "GET https://ct.example/v/[redacted]/trips?limit=10 -> 200 (5 ms)",
+		Data: []byte(`{"client":"ct","request":{"method":"GET","url":"https://ct.example/v/[redacted]/trips?limit=10","headers":{"Accept":["application/json"]},"body":null,"bodyEncoding":"utf8","bodyBytes":0,"bodyTruncated":false},` +
+			`"response":{"status":200,"headers":{"Content-Type":["application/json"]},"body":"{\"Trips\":[]}","bodyEncoding":"utf8","bodyBytes":12,"bodyTruncated":false},"durationMs":5,"attempt":1}`),
+	}
+
+	full := traceRecOf(r, true, 1)
+	if full.HTTP == nil {
+		t.Fatal("an outbound record is shown as a call")
+	}
+	if !strings.Contains(full.HTTP.Summary, "GET https://ct.example/v/[redacted]/trips?limit=10 → 200") || len(full.HTTP.Panels) != 2 {
+		t.Fatalf("summary %q, %d panels", full.HTTP.Summary, len(full.HTTP.Panels))
+	}
+	if full.HTTP.Panels[1].Body.State == "hidden" || !strings.Contains(full.HTTP.Panels[1].Body.Text, "Trips") {
+		t.Fatalf("with view-bodies the answer is shown: %+v", full.HTTP.Panels[1].Body)
+	}
+
+	withheld := traceRecOf(r, false, 1)
+	if !withheld.Redacted || withheld.HTTP == nil {
+		t.Fatalf("without view-bodies the record is marked and still a call: %+v", withheld)
+	}
+	for _, s := range []string{withheld.HTTP.Summary, withheld.Message} {
+		if strings.Contains(s, "ct.example") || strings.Contains(s, "limit=") {
+			t.Fatalf("without view-bodies no host or query: %q", s)
+		}
+	}
+	if withheld.HTTP.Panels[1].Body.State != "hidden" || len(withheld.HTTP.Panels[0].Headers) != 0 {
+		t.Fatalf("without view-bodies no bodies or headers: %+v", withheld.HTTP.Panels)
+	}
+}

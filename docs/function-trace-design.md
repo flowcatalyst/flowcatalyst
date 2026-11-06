@@ -75,8 +75,9 @@ simply stop matching (they leave the document the next time it is re-rendered).
     "message": "resolved transport order", "data": { "lines": 3 } } ] }
 ```
 
-`kind` is `trace` (author), `http` (built-in capture) or `log` (stdout/stderr and `log` calls during an
-`http`-live invocation). For `kind:"http"`, `data` is:
+`kind` is `trace` (author), `http` (built-in capture), `log` (stdout/stderr and `log` calls during an
+`http`-live invocation) or `outbound` (a call the function made during an `http`-live invocation; JVM host only,
+added 2026-11-06, section 13). For `kind:"http"`, `data` is:
 
 ```json
 { "request":  { "method":"POST", "path":"/orders", "rawQuery":"a=1", "headers":{"content-type":["application/json"]},
@@ -227,3 +228,20 @@ Remedies (owner-approved, 2026-10-25), after a review of the "no time limit" opt
   limits count bytes everywhere.
 - **`/ui` follow stream** resolves the caller again every tick (`pages.ReauthWith` over the UI's authenticator) and
   stops when the session or the permission is gone; declared contexts are parsed once per version (cached).
+
+## 13. JVM host and the `outbound` kind (2026-11-06)
+
+The ingestor's JVM function host implements this design (spec: `docs/jvm-function-trace-plan.md`), and adds one
+record kind the Go runner does not write: **`outbound`**, context `http`, one record per call the function makes
+through its `HttpCaller` during an `http`-live invocation (at most 100 per invocation). Its data is the ingestion
+trace's `http` record shape (`client`, `request.{method, url, headers, body, ...}`, `response` or null,
+`durationMs`, `attempt`, `failure`), redacted by the ingestion trace's rules (`docs/ingestion-trace-design.md`
+section 6): every query value but paging and time-window ones, credential headers and body fields, and the
+function's secret values and concealed credentials (`ctx.conceal(value)`, and values learned from credential-named
+fields of the answers) wherever they appear, a URL's path included. The platform accepts the kind with the `http`
+data cap (65536 bytes). Without `view-bodies` a reader sees its client, method, URL path (no host, no query),
+status, sizes, duration, attempt and failure, and a message rebuilt from those (`httptrace.OutboundSummary`,
+shared with the ingestion trace). The `/ui` log shows it with request and response panels as the ingestion
+Activity page does; `fcdev fn trace log` prints `out <METHOD> <url> -> <status> (<ms>ms)`; the API's `kind`
+filter and record enum include it. The Go runner is unchanged (its fetch op is not captured).
+

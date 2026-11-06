@@ -5,8 +5,10 @@ import io.flowcatalyst.framework.auth.TestOidcProvider;
 import io.flowcatalyst.framework.http.Routes;
 import io.flowcatalyst.framework.http.TestClient;
 import io.flowcatalyst.framework.httpclient.HttpClients;
+import io.flowcatalyst.framework.metrics.Metrics;
 import io.flowcatalyst.ingestor.extension.FailureLog;
 import io.flowcatalyst.ingestor.functions.context.ContextFactory;
+import io.flowcatalyst.ingestor.functions.context.LogBudget;
 import io.flowcatalyst.ingestor.functions.context.OutboundClients;
 import io.flowcatalyst.ingestor.functions.http.FunctionListener;
 import io.flowcatalyst.ingestor.functions.load.FakeMetaspaceGauge;
@@ -15,6 +17,9 @@ import io.flowcatalyst.ingestor.functions.load.JvmFunctionLoader;
 import io.flowcatalyst.ingestor.functions.load.MetaspaceGuard;
 import io.flowcatalyst.ingestor.functions.reconcile.ArtifactCache;
 import io.flowcatalyst.ingestor.functions.reconcile.Reconciler;
+import io.flowcatalyst.ingestor.functions.trace.FunctionTraceOptions;
+import io.flowcatalyst.ingestor.functions.trace.FunctionTraceShipper;
+import io.flowcatalyst.ingestor.functions.trace.FunctionTraces;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -73,6 +78,7 @@ public final class Harness implements AutoCloseable {
     public final io.flowcatalyst.ingestor.functions.context.DbPools dbPools;
     public final FunctionRegistry registry;
     public final ContextFactory contexts;
+    public final FunctionTraceShipper traceShipper;
     public final Reconciler reconciler;
     public final FunctionListener listener;
     public final TestClient http;
@@ -98,7 +104,12 @@ public final class Harness implements AutoCloseable {
         this.registry = new FunctionRegistry(64, clock);
         this.dbPools = new io.flowcatalyst.ingestor.functions.context.DbPools(io.flowcatalyst.ingestor.functions.context.DbPools.Limits.DEFAULTS, clock);
         ArtifactCache artifacts = new ArtifactCache(plane, null);
-        this.contexts = new ContextFactory(new OutboundClients(clients), clock, plane, dbPools);
+        FunctionTraceOptions traceOptions = new FunctionTraceOptions(
+                5000, 32L << 20, 65536, 200, Duration.ofMillis(50), Duration.ofMillis(5), Duration.ofMillis(20));
+        this.traceShipper = new FunctionTraceShipper(plane, "runner-1", "default", traceOptions, Metrics.noop());
+        this.traceShipper.start();
+        this.contexts = new ContextFactory(new OutboundClients(clients), clock, plane, dbPools, LogBudget.Limits.DEFAULTS,
+                new FunctionTraces(clock, traceShipper, traceOptions.bodyBytes()));
         this.failureLog = new FailureLog((message, cause) -> logged.add(new Logged(message, cause != null)), Duration.ofMinutes(1), clock);
         reconciler = new Reconciler(
                 "default", "runner-1", "test", plane, artifacts, new JvmFunctionLoader(), registry, contexts,
@@ -118,6 +129,7 @@ public final class Harness implements AutoCloseable {
     @Override
     public void close() {
         reconciler.close();
+        traceShipper.close(Duration.ofSeconds(1));
         dbPools.close();
         platform.close();
         clients.close();

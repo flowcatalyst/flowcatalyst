@@ -18,7 +18,7 @@ import (
 
 // Filter choices (the SPA's KIND_CHOICES, LEVEL_CHOICES, SINCE_CHOICES).
 var (
-	traceKinds  = []string{"trace", "http", "log"}
+	traceKinds  = []string{"trace", "http", "outbound", "log"}
 	traceLevels = []string{"debug", "info", "warn", "error"}
 	// traceSinceChoices are "last N minutes"; the empty value is any time.
 	traceSinceChoices = []kit.Option{
@@ -217,6 +217,14 @@ func traceRecOf(r function.TraceLogRecord, bodies bool, count int) traceRec {
 		// An http record is never printed raw: its data holds the bodies.
 		if h := parseTraceHTTP(r.Data, r.ID, bodies); h != nil {
 			rec.HTTP = h
+		}
+		return rec
+	}
+	if r.Kind == function.TraceKindOutbound {
+		// A call the function made: shaped as an ingestion trace's http
+		// record, so it is read and shown the same way.
+		if h := parseIngTraceHTTP(r.Data, r.ID, bodies); h != nil {
+			rec.HTTP = &traceHTTP{Summary: h.Summary, Panels: h.Panels}
 		}
 		return rec
 	}

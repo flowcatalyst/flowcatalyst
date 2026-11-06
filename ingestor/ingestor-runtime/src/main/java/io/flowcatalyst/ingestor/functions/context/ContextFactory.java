@@ -4,6 +4,7 @@ import io.flowcatalyst.function.FunctionAddress;
 import io.flowcatalyst.ingestor.functions.control.Control;
 import io.flowcatalyst.ingestor.functions.control.ControlPlane;
 import io.flowcatalyst.ingestor.functions.control.Describe;
+import io.flowcatalyst.ingestor.functions.trace.FunctionTraces;
 import java.time.Clock;
 import java.util.Objects;
 import java.util.Set;
@@ -20,6 +21,7 @@ public final class ContextFactory {
     private final DbPools dbPools;
     private final PlatformTokenCache platformTokens;
     private final LogBudget.Limits logLimits;
+    private final FunctionTraces traces;
 
     /// One log budget per function address, shared by all its versions (docs/ingestor-failure-pacing.md R6).
     private final ConcurrentHashMap<String, LogBudget> logBudgets = new ConcurrentHashMap<>();
@@ -31,6 +33,14 @@ public final class ContextFactory {
 
     /// @param logLimits how many lines a second a function may log, and its burst
     public ContextFactory(OutboundClients outbound, Clock clock, ControlPlane controlPlane, DbPools dbPools, LogBudget.Limits logLimits) {
+        this(outbound, clock, controlPlane, dbPools, logLimits, FunctionTraces.disabled(clock));
+    }
+
+    /// @param traces the host's function-trace state: the contexts built here conceal and trace through it, and the
+    ///               listener opens each invocation's trace with it
+    public ContextFactory(OutboundClients outbound, Clock clock, ControlPlane controlPlane, DbPools dbPools, LogBudget.Limits logLimits,
+            FunctionTraces traces) {
+        this.traces = Objects.requireNonNull(traces, "traces");
         this.logLimits = Objects.requireNonNull(logLimits, "logLimits");
         this.dbPools = Objects.requireNonNull(dbPools, "dbPools");
         this.outbound = Objects.requireNonNull(outbound, "outbound");
@@ -42,6 +52,11 @@ public final class ContextFactory {
     /// Drops the cached platform tokens of every function not in `functionIds` (the ids in the desired document).
     public void retainFunctions(Set<String> functionIds) {
         platformTokens.retain(functionIds);
+    }
+
+    /// The host's function-trace state.
+    public FunctionTraces traces() {
+        return traces;
     }
 
     /// The host's platform-token cache.
@@ -73,6 +88,9 @@ public final class ContextFactory {
                 describe.db(),
                 function.db(),
                 dbPools,
-                logBudgets.computeIfAbsent(address.render(), a -> new LogBudget(logLimits)));
+                logBudgets.computeIfAbsent(address.render(), a -> new LogBudget(logLimits)),
+                traces,
+                function.address(),
+                describe.traceContextNames());
     }
 }

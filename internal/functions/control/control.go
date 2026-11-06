@@ -257,6 +257,11 @@ const (
 	TraceKindTrace = "trace" // written by the function with the trace op
 	TraceKindHTTP  = "http"  // the built-in request/response capture
 	TraceKindLog   = "log"   // stdout/stderr and log calls during an http-live invocation
+	// TraceKindOutbound is a call the function made during an http-live
+	// invocation (the JVM host records them; docs/jvm-function-trace-plan.md
+	// section 3). Its data is the ingestion trace's http record shape:
+	// client, request.url, response, durationMs, attempt, failure.
+	TraceKindOutbound = "outbound"
 )
 
 // Trace record outcomes (TraceHTTPData.Outcome).

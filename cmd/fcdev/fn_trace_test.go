@@ -383,6 +383,31 @@ func TestFnTraceLogHTTPRecords(t *testing.T) {
 	require.NotContains(t, out, "request body")
 }
 
+// A JVM function's own call (kind outbound) prints as one line: the method,
+// the URL as the runner redacted it and the status, never its bodies.
+func TestFnTraceLogOutboundRecords(t *testing.T) {
+	useLocalUTC(t)
+	p := newFakeTracePlatform(t)
+	at := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+	p.addRecord("o1", at, "outbound", "info", "GET https://ct.example/v/[redacted]/trips?limit=10 -> 200 (5 ms)", map[string]any{
+		"client":     "ct",
+		"request":    map[string]any{"method": "GET", "url": "https://ct.example/v/[redacted]/trips?limit=10", "body": nil, "bodyBytes": 0},
+		"response":   map[string]any{"status": 200, "body": `{"Trips":[]}`, "bodyBytes": 12},
+		"durationMs": 5, "attempt": 1,
+	})
+	p.addRecord("o2", at.Add(time.Second), "outbound", "error", "GET https://ct.example/v/[redacted]/trips failed: TIMEOUT", map[string]any{
+		"client":   "ct",
+		"request":  map[string]any{"method": "GET", "url": "https://ct.example/v/[redacted]/trips"},
+		"response": nil, "durationMs": 30000, "attempt": 1, "failure": "TIMEOUT",
+	})
+
+	out, err := runTrace(t, p, "log", "demo.logger")
+	require.NoError(t, err, out)
+	require.Contains(t, out, "out GET https://ct.example/v/[redacted]/trips?limit=10 -> 200 (5ms)")
+	require.Contains(t, out, "out GET https://ct.example/v/[redacted]/trips failed: TIMEOUT (30000ms)")
+	require.NotContains(t, out, "Trips")
+}
+
 // TestFnTraceLogFollow: the backlog prints once, then only new records,
 // each exactly once, with since advancing past the newest.
 func TestFnTraceLogFollow(t *testing.T) {

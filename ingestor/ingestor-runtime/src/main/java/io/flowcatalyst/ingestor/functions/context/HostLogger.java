@@ -1,5 +1,6 @@
 package io.flowcatalyst.ingestor.functions.context;
 
+import io.flowcatalyst.ingestor.functions.trace.InvocationTrace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,6 +23,12 @@ import org.jspecify.annotations.Nullable;
 /// matching SLF4J level; `ALL` logs at the lowest SLF4J level (`trace`) —
 /// never filtered out, matching what `isLoggable(ALL)` promises; `OFF` is
 /// never loggable, so [#log] never even reaches the emit step for it.
+///
+/// While the built-in `http` trace context is live for the invocation making the call
+/// ([io.flowcatalyst.ingestor.functions.trace.InvocationTrace]), every line is also recorded as a `log` trace record
+/// whatever the SLF4J level: `isLoggable` is then true for every level but `OFF`, so a function's debug lines (which a
+/// trace is switched on to see) reach the record. The host's own log output and the [LogBudget] are as without a trace:
+/// a line the SLF4J level filters out is not written to the host log and takes nothing from the budget.
 ///
 /// A function's log is bounded (docs/ingestor-failure-pacing.md R6): every line that passes the level check
 /// takes one from the address's [LogBudget] (100 a second, burst 1,000, by default) and is dropped when there is
@@ -63,6 +70,16 @@ public final class HostLogger implements System.Logger {
 
     @Override
     public boolean isLoggable(Level level) {
+        return level != Level.OFF && (slf4jLoggable(level) || tracing() != null);
+    }
+
+    /// The invocation's trace if it records the function's log lines, else null.
+    private static @Nullable InvocationTrace tracing() {
+        InvocationTrace trace = InvocationTrace.current();
+        return trace != null && trace.httpLive() ? trace : null;
+    }
+
+    private boolean slf4jLoggable(Level level) {
         return switch (level) {
             case ALL -> true;
             case TRACE -> slf4j.isTraceEnabled();
@@ -79,7 +96,7 @@ public final class HostLogger implements System.Logger {
         if (!isLoggable(level)) {
             return;
         }
-        emit(level, resolve(bundle, msg), thrown);
+        write(level, resolve(bundle, msg), thrown);
     }
 
     @Override
@@ -100,7 +117,18 @@ public final class HostLogger implements System.Logger {
         String formatted = (resolved != null && args != null && args.length > 0)
                 ? MessageFormat.format(resolved, args)
                 : resolved;
-        emit(level, formatted, cause);
+        write(level, formatted, cause);
+    }
+
+    /// The trace record if one is wanted, then the host log if the SLF4J level lets the line through.
+    private void write(Level level, @Nullable String message, @Nullable Throwable cause) {
+        InvocationTrace trace = tracing();
+        if (trace != null) {
+            trace.log(InvocationTrace.levelOf(level), cause == null ? message : (message == null ? "" : message) + " [" + cause + "]");
+        }
+        if (slf4jLoggable(level)) {
+            emit(level, message, cause);
+        }
     }
 
     private static @Nullable String resolve(@Nullable ResourceBundle bundle, @Nullable String key) {

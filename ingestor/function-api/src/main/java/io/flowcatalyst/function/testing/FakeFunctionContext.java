@@ -8,6 +8,7 @@ import io.flowcatalyst.function.FunctionContext;
 import io.flowcatalyst.function.HttpCaller;
 import io.flowcatalyst.function.PlatformTokenException;
 import io.flowcatalyst.function.Secrets;
+import io.flowcatalyst.function.TraceOptions;
 
 import javax.sql.DataSource;
 import java.lang.System.Logger;
@@ -15,11 +16,17 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /// A [FunctionContext] for unit-testing a function without a host. It lives in
 /// the API jar (package `io.flowcatalyst.function.testing`) so a function's
@@ -40,6 +47,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 /// [Builder#platformToken], or throws the failure set with [Builder#platformTokenFailure]; with neither it
 /// throws `NOT_DECLARED`, as a host does for a function that did not declare it. Every call is counted
 /// ([#platformTokenCalls], [#platformTokenRefreshes]).
+///
+/// Traces: every `trace` call is recorded ([#traces]) whether or not its context is live, since a unit test wants
+/// to see what the function wrote; `tracing(context)` answers `true` for the contexts given to [Builder#live] (or
+/// [#setLive]); `setReference` keeps the last reference ([#reference]) and `conceal` the values ([#concealed]).
 public final class FakeFunctionContext implements FunctionContext {
 
     private final FunctionAddress address;
@@ -56,6 +67,19 @@ public final class FakeFunctionContext implements FunctionContext {
     private final PlatformTokenException platformTokenFailure;
     private final AtomicInteger platformTokenCalls = new AtomicInteger();
     private final AtomicInteger platformTokenRefreshes = new AtomicInteger();
+    private final Set<String> live = ConcurrentHashMap.newKeySet();
+    private final List<TraceCall> traces = new CopyOnWriteArrayList<>();
+    private final List<String> concealed = new CopyOnWriteArrayList<>();
+    private volatile String reference = "";
+
+    /// One call to `trace`, as the function made it.
+    ///
+    /// @param context the context named
+    /// @param message the message
+    /// @param data    the data, or `null`
+    /// @param options the options, or `null`
+    public record TraceCall(String context, String message, @Nullable Map<String, ?> data, @Nullable TraceOptions options) {
+    }
 
     private FakeFunctionContext(Builder b) {
         this.address = b.address;
@@ -72,6 +96,7 @@ public final class FakeFunctionContext implements FunctionContext {
         this.platformToken = b.platformToken;
         this.platformTokenFailure = b.platformTokenFailure;
         this.logger = new CapturingLogger("fn." + address.render());
+        this.live.addAll(b.live);
     }
 
     /// Starts a context for the function at `address`, version 1.
@@ -151,6 +176,52 @@ public final class FakeFunctionContext implements FunctionContext {
     }
 
     @Override
+    public void trace(String context, String message, @Nullable Map<String, ?> data, @Nullable TraceOptions options) {
+        traces.add(new TraceCall(context, message, data, options));
+    }
+
+    @Override
+    public boolean tracing(String context) {
+        return live.contains(context);
+    }
+
+    @Override
+    public void setReference(String reference) {
+        this.reference = reference == null ? "" : reference;
+    }
+
+    @Override
+    public void conceal(String value) {
+        if (value != null) {
+            concealed.add(value);
+        }
+    }
+
+    /// Every `trace` call so far, in order.
+    public List<TraceCall> traces() {
+        return traces;
+    }
+
+    /// The reference set last with `setReference`; empty when none.
+    public String reference() {
+        return reference;
+    }
+
+    /// The values given to `conceal`, in order.
+    public List<String> concealed() {
+        return concealed;
+    }
+
+    /// Makes `tracing(context)` answer `live` from now on.
+    public void setLive(String context, boolean live) {
+        if (live) {
+            this.live.add(context);
+        } else {
+            this.live.remove(context);
+        }
+    }
+
+    @Override
     public Clock clock() {
         return clock;
     }
@@ -188,6 +259,7 @@ public final class FakeFunctionContext implements FunctionContext {
         private RecordingDispatcher dispatcher = new RecordingDispatcher();
         private String platformToken;
         private PlatformTokenException platformTokenFailure;
+        private final Set<String> live = new LinkedHashSet<>();
         private Clock clock = Clock.fixed(Instant.parse("2026-09-20T00:00:00Z"), ZoneOffset.UTC);
         private HttpCaller http = call -> {
             throw new UnsupportedOperationException("this fake context has no HTTP caller; set one with http(...)");
@@ -241,6 +313,12 @@ public final class FakeFunctionContext implements FunctionContext {
         /// Makes every `platformToken` call throw `failure`.
         public Builder platformTokenFailure(PlatformTokenException failure) {
             this.platformTokenFailure = Objects.requireNonNull(failure, "failure");
+            return this;
+        }
+
+        /// The trace contexts `tracing` answers `true` for.
+        public Builder live(String... contexts) {
+            live.addAll(List.of(contexts));
             return this;
         }
 

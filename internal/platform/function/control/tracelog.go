@@ -157,7 +157,7 @@ func (s *State) traceLog(ctx context.Context, in *traceLogInput) (*apicommon.Out
 
 func validTraceKind(k string) bool {
 	switch k {
-	case fncontrol.TraceKindTrace, fncontrol.TraceKindHTTP, fncontrol.TraceKindLog:
+	case fncontrol.TraceKindTrace, fncontrol.TraceKindHTTP, fncontrol.TraceKindLog, fncontrol.TraceKindOutbound:
 		return true
 	}
 	return false

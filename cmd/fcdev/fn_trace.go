@@ -122,7 +122,7 @@ func (f *traceFilter) add(cmd *cobra.Command, withContext bool) {
 	if withContext {
 		fl.StringVar(&f.context, "context", "", "only this context")
 	}
-	fl.StringVar(&f.kind, "kind", "", "only this kind: trace, http or log")
+	fl.StringVar(&f.kind, "kind", "", "only this kind: trace, http, outbound or log")
 	fl.StringVar(&f.level, "level", "", "only this level: debug, info, warn or error")
 	fl.StringVar(&f.reference, "reference", "", "only records with this business reference (trip or order number)")
 	fl.StringVar(&f.correlation, "correlation", "", "only records with this correlation id")
@@ -166,8 +166,8 @@ func (f *traceFilter) resolve(now time.Time) error {
 	if f.limit < 1 {
 		return errors.New("--limit must be >= 1")
 	}
-	if f.kind != "" && !slices.Contains([]string{"trace", "http", "log"}, f.kind) {
-		return fmt.Errorf("--kind %q: want trace, http or log", f.kind)
+	if f.kind != "" && !slices.Contains([]string{"trace", "http", "outbound", "log"}, f.kind) {
+		return fmt.Errorf("--kind %q: want trace, http, outbound or log", f.kind)
 	}
 	return nil
 }
@@ -801,6 +801,20 @@ type traceHTTP struct {
 	Outcome    string `json:"outcome"`
 }
 
+// traceOutbound is the data of a kind "outbound" record: a call the function
+// made, shaped as an ingestion trace's http record.
+type traceOutbound struct {
+	Request struct {
+		Method string `json:"method"`
+		URL    string `json:"url"`
+	} `json:"request"`
+	Response *struct {
+		Status int `json:"status"`
+	} `json:"response"`
+	DurationMs int64  `json:"durationMs"`
+	Failure    string `json:"failure"`
+}
+
 func printTraceRecord(w io.Writer, r traceRecord, v traceView) {
 	if v.json {
 		var b bytes.Buffer
@@ -819,9 +833,25 @@ func printTraceRecord(w io.Writer, r traceRecord, v traceView) {
 			h = nil
 		}
 	}
+	var out *traceOutbound
+	if r.Kind == "outbound" && len(r.Data) > 0 {
+		out = &traceOutbound{}
+		if json.Unmarshal(r.Data, out) != nil {
+			out = nil
+		}
+	}
 	switch {
 	case r.Redacted && r.Kind == "log":
 		msg = "(log line hidden: no view-bodies permission)"
+	case out != nil:
+		msg = "out " + out.Request.Method + " " + out.Request.URL
+		switch {
+		case out.Response != nil:
+			msg += fmt.Sprintf(" -> %d", out.Response.Status)
+		case out.Failure != "":
+			msg += " failed: " + out.Failure
+		}
+		msg += fmt.Sprintf(" (%dms)", out.DurationMs)
 	case h != nil:
 		path := h.Request.Path
 		if h.Request.RawQuery != "" {

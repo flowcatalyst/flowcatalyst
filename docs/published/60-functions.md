@@ -306,8 +306,8 @@ are never stored), and so is the value of any query parameter with one of those 
 `password` or `secret`.
 
 **What is stored, and for how long.** Each record has the time, function version, invocation id,
-correlation id (the request's `X-Correlation-Id`), reference, context, kind (`trace`, `http` or
-`log`), level, message and data. Records are kept for 30 days after they reach the platform and then
+correlation id (the request's `X-Correlation-Id`), reference, context, kind (`trace`, `http`, `log` or, for a JVM function, `outbound`),
+level, message and data. Records are kept for 30 days after they reach the platform and then
 deleted. Records are shipped
 by the runner in the background, so they survive whatever happens to the call itself.
 
@@ -440,6 +440,10 @@ match as you would expect.
 | `platformToken()`, `platformToken(boolean refresh)` | The access token (a `String`) of the application's linked service account, for calling other first-party applications; requires `platformToken: true` in the describe. `PlatformTokenException` carries the code and `retryable()` |
 | `clock()` | The host's clock; never read the system clock directly, so a test can fix time |
 | `address()`, `version()` | This function and the loaded version |
+| `trace(context, message)`, `trace(context, message, data)`, `trace(context, message, data, TraceOptions)` | Writes a record to a trace context you declared in `traceContexts` of the describe (`[{ "name": "orders", "description": "..." }]`); see "Trace logs". Never throws; a no-op unless an operator switched the context on and this call was sampled in. `data` is a `Map` (at most 32768 bytes of JSON); `TraceOptions(level, reference)` sets `debug`/`info`/`warn`/`error` and this record's own reference |
+| `tracing(context)` | Whether the context is on for this call, to guard building something expensive; `http` can be asked too |
+| `setReference(reference)` | The call's business key (at most 200 characters), stamped on every later record of the call, the `http` record included |
+| `conceal(value)` | Keeps a credential the function obtained at run time (a session id, a token) out of every trace record, in a URL's path as well as in bodies and queries; call it whenever one is obtained, in `init` too. Declared secrets need no call |
 
 For unit tests without a host, the API jar has `FakeFunctionContext`, `FakeRequest`,
 `RecordingEvents` and `RecordingDispatcher` in `io.flowcatalyst.function.testing`.
@@ -457,7 +461,7 @@ host's: use `dataSource`.
 
 The jar holds `META-INF/flowcatalyst/function.json`: the same describe document every function has
 (`abi`, `endpoints`, `subscriptions`, `schedules`, `config`, `secrets`, `db`, `httpAllow`, `emits`,
-`dispatches`), plus a `jvm` block naming the entrypoint class. A method-less endpoint matches every
+`dispatches`, `traceContexts`), plus a `jvm` block naming the entrypoint class. A method-less endpoint matches every
 method; list one endpoint per method otherwise.
 
 ```json
@@ -549,11 +553,39 @@ functions rejects a jar as an invalid Wasm module.
   every call is logged in full once (with the stack trace), then as one line a minute with a count.
 - A request body is also capped by the ingestor server's own request-body limit, whatever the function's limit says.
 
+### Trace logs for a JVM function
+
+Declare the contexts in the describe (`"traceContexts": [{ "name": "orders", "description": "What the mapping decided" }]`)
+and write to them with `ctx.trace`; everything under "Trace logs" applies (switches, sampling, limits, the
+`fcdev fn trace` commands). A JVM function has the built-in `http` context too: while it is on, each call records its
+`http` record, the lines the function logged through `ctx.logger()` (every level, whatever the host's log level) and an
+`outbound` record for each call it made with `ctx.http()`. The `outbound` record has the shape of an ingestion's `http`
+trace record (client, request URL, headers and body, response, duration). The host replaces your declared secrets, the
+values you give `ctx.conceal` and any credential an outbound answer hands out (`SessionToken`, `access_token`, ... in a JSON
+answer) wherever they appear in a record, and every query value but paging and time-window names (`limit`, `offset`,
+`page`, `since`, `until`, ...) is `[redacted]`, because a vendor may take a password or a session in a parameter of any name.
+
+```java
+@Override
+public void init(FunctionContext ctx) throws Exception {
+    ctx.conceal(login(ctx));   // a session obtained outside any call is kept out of traces too
+}
+
+@Override
+public Result handle(Request in, FunctionContext ctx) {
+    ctx.setReference(in.pathParams().get("trip"));
+    ctx.trace("orders", "mapping order", Map.of("lines", 3));
+    if (ctx.tracing("orders")) {
+        ctx.trace("orders", "full order", Map.of("order", order), new TraceOptions("debug", null));
+    }
+    return Result.ack();
+}
+```
+
 ### What a JVM function cannot do yet
 
-Trace contexts (`traceContexts`), public routes and domains, per-function metrics and a
-readiness check are not built for JVM functions; a describe that declares trace contexts is
-accepted but nothing records them. A PEM `sslkey` in a database DSN is passed to the driver as
+Public routes and domains, per-function metrics and a readiness check are not built for JVM
+functions. A PEM `sslkey` in a database DSN is passed to the driver as
 it is, not converted.
 
 ## Stability

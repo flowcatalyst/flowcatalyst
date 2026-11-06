@@ -2,6 +2,7 @@ package function
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -54,6 +55,24 @@ func TestWithholdTraceDetail(t *testing.T) {
 	if WithholdTraceDetail(&bare) {
 		t.Fatal("nothing to withhold")
 	}
+	outRec := TraceLogRecord{Kind: TraceKindOutbound, Message: "GET https://ct.example/v/[redacted]/trips?limit=10 -> 200 (5 ms)", Data: []byte(`{
+		"client":"ct","request":{"method":"GET","url":"https://ct.example/v/[redacted]/trips?limit=10&vehicleNodeId=[redacted]","headers":{"x":["y"]},"body":"b","bodyEncoding":"utf8","bodyBytes":1,"bodyTruncated":false},
+		"response":{"status":200,"headers":{"set-cookie":["c"]},"body":"{}","bodyEncoding":"utf8","bodyBytes":2,"bodyTruncated":false},
+		"durationMs":5,"attempt":1}`)}
+	if !WithholdTraceDetail(&outRec) {
+		t.Fatal("an outbound record always has something withheld")
+	}
+	if outRec.Message != "GET /v/%5Bredacted%5D/trips -> 200" && outRec.Message != "GET /v/[redacted]/trips -> 200" {
+		t.Fatalf("outbound message is rebuilt from method, path and status, without host or query: %q", outRec.Message)
+	}
+	if d := string(outRec.Data); strings.Contains(d, "ct.example") || strings.Contains(d, "limit=") || strings.Contains(d, "set-cookie") || strings.Contains(d, `"body":"`) {
+		t.Fatalf("outbound summary keeps no host, query, headers or bodies: %s", d)
+	}
+	brokenOut := TraceLogRecord{Kind: TraceKindOutbound, Message: "GET https://h/p?q=1", Data: []byte(`not json`)}
+	if WithholdTraceDetail(&brokenOut); brokenOut.Data != nil || strings.Contains(brokenOut.Message, "h/p") {
+		t.Fatalf("unparseable outbound data is dropped with its message: %+v", brokenOut)
+	}
+
 	broken := TraceLogRecord{Kind: TraceKindHTTP, Data: []byte(`not json`)}
 	if WithholdTraceDetail(&broken); broken.Data != nil {
 		t.Fatal("unparseable http data is dropped, never passed through")

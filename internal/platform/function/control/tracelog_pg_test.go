@@ -131,10 +131,11 @@ func TestTraceLog_AcceptanceRule(t *testing.T) {
 		unknownAddr,                               // dropped: unknown address
 		rec(fn, "live", "bogus-kind", time.Now()), // dropped: kind
 		rec(fn, "live", "http", time.Now()),       // accepted
+		rec(fn, "live", "outbound", time.Now()),   // accepted (a JVM function's own call)
 	)
 	require.NoError(t, err)
-	assert.Equal(t, fncontrol.TraceAck{Accepted: 3, Dropped: 5}, ack)
-	assert.Len(t, stored(t, s, fn.ID), 3)
+	assert.Equal(t, fncontrol.TraceAck{Accepted: 4, Dropped: 5}, ack)
+	assert.Len(t, stored(t, s, fn.ID), 4)
 }
 
 // The runner's `at` is bounded by the arrival time: a clock running ahead is
@@ -240,6 +241,10 @@ func TestTraceLog_Truncation(t *testing.T) {
 	bigHTTP.InvocationID = "big-http"
 	bigHTTP.Data = json.RawMessage(`{"x":"` + strings.Repeat("a", 70000) + `"}`)
 
+	midOutbound := rec(fn, "http", "outbound", time.Now())
+	midOutbound.InvocationID = "mid-outbound"
+	midOutbound.Data = json.RawMessage(`{"x":"` + strings.Repeat("a", 40000) + `"}`) // the http cap, not the trace one
+
 	badLevel := rec(fn, "orders", "trace", time.Now())
 	badLevel.InvocationID = "bad-level"
 	badLevel.Level = "shouting"
@@ -250,15 +255,16 @@ func TestTraceLog_Truncation(t *testing.T) {
 	nul.Message = "a\x00b"
 	nul.Data = json.RawMessage(`{"k":"x\u0000y"}`)
 
-	ack, err := ship(t, s, bigTrace, midHTTP, bigHTTP, badLevel, nul)
+	ack, err := ship(t, s, bigTrace, midHTTP, bigHTTP, midOutbound, badLevel, nul)
 	require.NoError(t, err)
-	assert.Equal(t, 5, ack.Accepted)
+	assert.Equal(t, 6, ack.Accepted)
 
 	by := map[string]function.TraceLogRecord{}
 	for _, r := range stored(t, s, fn.ID) {
 		by[r.InvocationID] = r
 	}
-	require.Len(t, by, 5)
+	require.Len(t, by, 6)
+	assert.Greater(t, len(by["mid-outbound"].Data), 40000, "an outbound record may carry up to 65536 bytes")
 
 	assert.Equal(t, 4096, len([]rune(by["big-trace"].Message)), "message cut to 4096 characters")
 	assert.Equal(t, 200, len(*by["big-trace"].Reference), "reference cut to 200")

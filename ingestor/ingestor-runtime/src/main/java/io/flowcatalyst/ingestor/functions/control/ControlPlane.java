@@ -43,6 +43,12 @@ public interface ControlPlane {
     ///                                (`UNAVAILABLE`, retryable)
     Control.TokenResponse platformToken(Control.TokenRequest request) throws PlatformTokenException;
 
+    /// `POST /control/functions/trace-log`: a batch of trace records (`202 {accepted, dropped}`). The caller
+    /// ([io.flowcatalyst.ingestor.functions.trace.FunctionTraceShipper]) decides from the exception's status whether to try again.
+    ///
+    /// @throws ControlPlaneException the platform refused the batch (its status) or could not be reached (status 0)
+    Control.TraceAck traceLog(Control.TraceBatch batch) throws ControlPlaneException;
+
     /// The outcome of one [#desired] call.
     sealed interface Fetched permits Fetched.NotModified, Fetched.Changed {
 

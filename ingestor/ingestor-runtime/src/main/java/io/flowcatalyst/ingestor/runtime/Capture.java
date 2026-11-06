@@ -127,38 +127,12 @@ final class Capture {
     try {
       // A credential the answer hands out (a login's session) is kept out of this record and every
       // later one: later calls may carry it where no name says what it is, such as a URL's path.
-      for (String credential : TraceRedactor.credentialsIn(call.responseBody(), contentType(call.responseHeaders()))) {
+      for (String credential : TraceRedactor.credentialsIn(call.responseBody(), HttpRecords.contentType(call.responseHeaders()))) {
         conceal.accept(credential);
       }
-      TraceRedactor redactor = redactor();
-      Map<String, Object> request = new LinkedHashMap<>();
-      request.put("method", call.method().name());
-      request.put("url", redactor.url(call.url()));
-      request.put("headers", redactor.headers(call.requestHeaders()));
-      request.putAll(redactor.body(call.requestBody(), contentType(call.requestHeaders())));
-      Map<String, Object> response = null;
-      if (call.failure() == null || call.status() != 0) {
-        response = new LinkedHashMap<>();
-        response.put("status", call.status());
-        response.put("headers", redactor.headers(call.responseHeaders()));
-        response.putAll(redactor.body(call.responseBody(), contentType(call.responseHeaders())));
-      }
-      long millis = Duration.ofNanos(call.nanos()).toMillis();
-      Map<String, Object> data = new LinkedHashMap<>();
-      data.put("client", call.service());
-      data.put("request", request);
-      data.put("response", response);
-      data.put("durationMs", millis);
-      data.put("attempt", call.attempt());
-      String failure = call.failure() == null ? null : call.failure().name();
-      if (failure != null) {
-        data.put("failure", failure);
-      }
-      String where = redactor.address(call.url());
-      String message = call.method().name() + " " + where + (failure != null ? " failed: " + failure : " -> " + call.status()) + " (" + millis + " ms)";
-      String level = failure != null ? "error" : call.status() >= 400 ? "warn" : "info";
+      HttpRecords.Built built = HttpRecords.build(call, redactor(), TraceRedactor.BODY_LIMIT);
       httpCalls.incrementAndGet();
-      write("http", level, message, data);
+      write("http", built.level(), built.message(), built.data());
     } catch (RuntimeException e) {
       LOG.debug("ingestion {}: an http call could not be traced", ingestion.id(), e);
     }
@@ -292,14 +266,5 @@ final class Capture {
             level,
             message,
             data));
-  }
-
-  private static @Nullable String contentType(Map<String, List<String>> headers) {
-    for (Map.Entry<String, List<String>> e : headers.entrySet()) {
-      if (e.getKey().equalsIgnoreCase("content-type") && !e.getValue().isEmpty()) {
-        return e.getValue().getFirst();
-      }
-    }
-    return null;
   }
 }

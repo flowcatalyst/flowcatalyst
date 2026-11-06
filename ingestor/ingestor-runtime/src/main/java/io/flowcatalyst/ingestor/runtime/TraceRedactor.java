@@ -35,16 +35,16 @@ import tools.jackson.databind.node.ObjectNode;
  * One redactor is made for a record, so it holds the secret values that are current then; it is never
  * logged and not kept.
  */
-final class TraceRedactor {
+public final class TraceRedactor {
 
   /** The replacement for a value that must not be kept. */
-  static final String REDACTED = HttpCapture.REDACTED;
+  public static final String REDACTED = HttpCapture.REDACTED;
 
   /** The most bytes of a body a record keeps. */
-  static final int BODY_LIMIT = 32 * 1024;
+  public static final int BODY_LIMIT = 32 * 1024;
 
   /** Secrets shorter than this are not searched for: a short value would cut a body to pieces. */
-  static final int MIN_SECRET = 4;
+  public static final int MIN_SECRET = 4;
 
   /** Past this a body is not parsed: its start is cut and redacted by pattern. */
   private static final int STRUCTURED_LIMIT = 1024 * 1024;
@@ -75,7 +75,7 @@ final class TraceRedactor {
    *
    * @param secretValues the secret values fetched for the ingestion, plain
    */
-  TraceRedactor(Collection<String> secretValues) {
+  public TraceRedactor(Collection<String> secretValues) {
     List<String> found = new ArrayList<>();
     for (String value : secretValues) {
       if (value.length() >= MIN_SECRET) {
@@ -92,7 +92,7 @@ final class TraceRedactor {
   }
 
   /** A redactor with no secret values to look for. */
-  static TraceRedactor withoutSecrets() {
+  public static TraceRedactor withoutSecrets() {
     return new TraceRedactor(List.of());
   }
 
@@ -107,7 +107,7 @@ final class TraceRedactor {
    * @param text any text a record would carry
    * @return the text
    */
-  String text(String text) {
+  public String text(String text) {
     String out = text;
     for (String secret : secrets) {
       if (out.contains(secret)) {
@@ -124,7 +124,7 @@ final class TraceRedactor {
    * @param headers names to values
    * @return a copy
    */
-  Map<String, List<String>> headers(Map<String, List<String>> headers) {
+  public Map<String, List<String>> headers(Map<String, List<String>> headers) {
     Map<String, List<String>> out = new LinkedHashMap<>();
     for (Map.Entry<String, List<String>> e : HttpCapture.redactHeaders(headers).entrySet()) {
       List<String> values = new ArrayList<>();
@@ -155,7 +155,7 @@ final class TraceRedactor {
    * @param uri the URL
    * @return the text
    */
-  String url(URI uri) {
+  public String url(URI uri) {
     String address = address(uri);
     if (uri.getRawQuery() == null) {
       return address;
@@ -169,7 +169,7 @@ final class TraceRedactor {
    * @param uri the URL
    * @return the text
    */
-  String address(URI uri) {
+  public String address(URI uri) {
     StringBuilder out = new StringBuilder();
     if (uri.getScheme() != null) {
       out.append(uri.getScheme()).append("://");
@@ -191,14 +191,27 @@ final class TraceRedactor {
   }
 
   /**
-   * A body as a record carries it.
+   * A body as a record carries it, cut to {@link #BODY_LIMIT} bytes.
    *
    * @param body the bytes, or null for none
    * @param contentType the {@code Content-Type}, or null
    * @return {@code body}, {@code bodyEncoding}, {@code bodyBytes} and {@code bodyTruncated}; the body
    *     is null when there was none
    */
-  Map<String, Object> body(byte @Nullable [] body, @Nullable String contentType) {
+  public Map<String, Object> body(byte @Nullable [] body, @Nullable String contentType) {
+    return body(body, contentType, BODY_LIMIT);
+  }
+
+  /**
+   * A body as a record carries it.
+   *
+   * @param body the bytes, or null for none
+   * @param contentType the {@code Content-Type}, or null
+   * @param limit the most bytes of the body to keep, at least 0
+   * @return {@code body}, {@code bodyEncoding}, {@code bodyBytes} and {@code bodyTruncated}; the body
+   *     is null when there was none
+   */
+  public Map<String, Object> body(byte @Nullable [] body, @Nullable String contentType, int limit) {
     Map<String, Object> out = new LinkedHashMap<>();
     if (body == null || body.length == 0) {
       out.put("body", null);
@@ -208,30 +221,41 @@ final class TraceRedactor {
       return out;
     }
     boolean huge = body.length > STRUCTURED_LIMIT;
-    byte[] work = huge ? java.util.Arrays.copyOf(body, BODY_LIMIT + 4) : body;
-    String text = huge ? decodeStart(work, BODY_LIMIT) : utf8(work);
+    byte[] work = huge ? java.util.Arrays.copyOf(body, limit + 4) : body;
+    String text = huge ? decodeStart(work, limit) : utf8(work);
     if (text == null) {
       // Not text (or text that holds a NUL, which the platform cannot store): its start, in base64.
-      int kept = Math.min(body.length, BODY_LIMIT);
+      int kept = Math.min(body.length, limit);
       out.put("body", Base64.getEncoder().encodeToString(java.util.Arrays.copyOf(body, kept)));
       out.put("bodyEncoding", "base64");
       out.put("bodyBytes", (long) body.length);
-      out.put("bodyTruncated", body.length > BODY_LIMIT);
+      out.put("bodyTruncated", body.length > limit);
       return out;
     }
     String redacted = text(redactText(text, contentType, huge));
     byte[] bytes = redacted.getBytes(StandardCharsets.UTF_8);
-    boolean truncated = huge || bytes.length > BODY_LIMIT;
-    out.put("body", bytes.length > BODY_LIMIT ? cut(bytes) : redacted);
+    boolean truncated = huge || bytes.length > limit;
+    out.put("body", bytes.length > limit ? cut(bytes, limit) : redacted);
     out.put("bodyEncoding", "utf8");
     out.put("bodyBytes", (long) body.length);
     out.put("bodyTruncated", truncated);
     return out;
   }
 
-  /** The start of the bytes at most {@link #BODY_LIMIT}, never in the middle of a character. */
-  private static String cut(byte[] bytes) {
-    int end = BODY_LIMIT;
+  /**
+   * A raw query string as a record carries it: every value replaced but those of paging and
+   * time-window names, and the secret values taken out of the rest.
+   *
+   * @param rawQuery the query as sent, without the {@code ?}
+   * @return the text
+   */
+  public String query(String rawQuery) {
+    return text(pairs(rawQuery, name -> !keptQuery(name)));
+  }
+
+  /** The start of the bytes at most {@code limit}, never in the middle of a character. */
+  private static String cut(byte[] bytes, int limit) {
+    int end = limit;
     // A continuation byte at the cut means the character began before it: leave that one out.
     while (end > 0 && (bytes[end] & 0xC0) == 0x80) {
       end--;
@@ -335,7 +359,7 @@ final class TraceRedactor {
    * @param contentType its {@code Content-Type}, or null
    * @return the values; empty when the body is not JSON or holds none
    */
-  static List<String> credentialsIn(byte @Nullable [] body, @Nullable String contentType) {
+  public static List<String> credentialsIn(byte @Nullable [] body, @Nullable String contentType) {
     if (body == null || body.length == 0 || body.length > STRUCTURED_LIMIT) {
       return List.of();
     }

@@ -96,6 +96,21 @@ public final class HttpControlPlane implements ControlPlane {
     }
 
     @Override
+    public Control.TraceAck traceLog(Control.TraceBatch batch) throws ControlPlaneException {
+        ClientResponse response = send(
+                client.post(Control.PATH_TRACE_LOG).json(batch).retryable(false).timeout(Duration.ofSeconds(15)), "trace log");
+        if (!response.isSuccess()) {
+            throw statusError(response);
+        }
+        try {
+            return response.json(Control.TraceAck.class);
+        } catch (HttpClientException e) {
+            // The batch was taken; only its counts are unreadable.
+            return new Control.TraceAck(batch.records().size(), 0);
+        }
+    }
+
+    @Override
     public byte[] artifact(String digest) throws ControlPlaneException {
         if (!DIGEST.matcher(digest).matches()) {
             throw new ControlPlaneException(0, "", "digest is not a sha256 hex digest", null, true);

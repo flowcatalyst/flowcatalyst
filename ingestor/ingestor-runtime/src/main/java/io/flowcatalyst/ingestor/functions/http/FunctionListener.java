@@ -3,6 +3,7 @@ package io.flowcatalyst.ingestor.functions.http;
 import io.flowcatalyst.framework.auth.PlatformTokens;
 import io.flowcatalyst.framework.auth.TokenResult;
 import io.flowcatalyst.framework.http.HttpException;
+import io.flowcatalyst.framework.http.Json;
 import io.flowcatalyst.framework.http.Request;
 import io.flowcatalyst.framework.http.Response;
 import io.flowcatalyst.framework.http.Routes;
@@ -15,6 +16,7 @@ import io.flowcatalyst.ingestor.functions.control.Control;
 import io.flowcatalyst.ingestor.functions.control.Describe;
 import io.flowcatalyst.ingestor.functions.load.LoadedFunction;
 import io.flowcatalyst.ingestor.functions.reconcile.Reconciler;
+import io.flowcatalyst.ingestor.functions.trace.InvocationTrace;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -225,14 +227,14 @@ public final class FunctionListener {
             }
             corsHeaders = cors.headers();
         }
-        Response response = invokeEndpoint(request, target, path, doc, served, function, handoff, limits, explicit, found, ep);
+        Response response = invokeEndpoint(request, target, path, doc, served, function, handoff, limits, explicit, found, ep, corsHeaders);
         return corsHeaders.isEmpty() ? response : withHeaders(response, corsHeaders);
     }
 
     private Response invokeEndpoint(
             Request request, Target target, String path, Control.FunctionDoc doc, Reconciler.Served served,
             LoadedFunction function, Handoff handoff, Control.Limits limits, Caller.@Nullable Principal explicit,
-            EndpointRouter.Matched.Found found, Describe.Endpoint ep) {
+            EndpointRouter.Matched.Found found, Describe.Endpoint ep, Map<String, String> corsHeaders) {
         String method = request.method().name();
 
         // Deliveries are always POST. A webhook endpoint that declares no method matches every method, so refuse the
@@ -300,49 +302,89 @@ public final class FunctionListener {
             return error(429, "FUNCTION_BUSY", "the function is at its concurrency limit", 1);
         }
 
-        FunctionContext ctx = function.context();
+        // The trace gate runs after the permit, so a busy refusal takes no sampling turn; with no window on the function
+        // it reads one field.
+        long startNanos = System.nanoTime();
+        String invocationId = UUID.randomUUID().toString().replace("-", "");
+        @Nullable InvocationTrace trace = reconciler.traces().begin(doc, served.number(), invocationId, request.header("X-Correlation-Id"));
+        Map<String, List<String>> headers = requestHeaders(request, Describe.AUTH_PLATFORM.equals(ep.auth()) || target.version() > 0);
+        Admitted admitted = new Admitted(request, doc, served, function, handoff, grant, ep, limits, caller, method, path, body, headers,
+                found.pathParams(), invocationId, trace);
+        Outcome outcome = execute(admitted);
+        if (trace != null && trace.httpLive()) {
+            try {
+                trace.http(inbound(request, method, path, caller, headers, body), sent(outcome, corsHeaders), outcome.outcome(),
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos));
+            } catch (RuntimeException e) {
+                LOG.debug("the http record of an invocation of {} could not be made", doc.address(), e);
+            }
+        }
+        return outcome.response();
+    }
+
+    /// Everything the invocation needs once its permit is held.
+    private record Admitted(
+            Request request, Control.FunctionDoc doc, Reconciler.Served served, LoadedFunction function, Handoff handoff,
+            Permits.Grant grant, Describe.Endpoint ep, Control.Limits limits, Caller caller, String method, String path, byte[] body,
+            Map<String, List<String>> headers, Map<String, String> pathParams, String invocationId, @Nullable InvocationTrace trace) {
+    }
+
+    /// What the call came to: the response, how the trace names the outcome (`ok`, `timeout`, `bad_response`, `error`) and
+    /// the response body (only kept when the call is traced; the framework's [Response] does not give its bytes back).
+    private record Outcome(Response response, String outcome, byte[] body) {
+    }
+
+    private static final byte[] NO_BODY = new byte[0];
+
+    /// Runs the admitted call: builds the function's request, runs it on its own virtual thread with the deadline, and
+    /// maps the way it ended. The permit is released here on every path that does not hand it to the invocation's thread.
+    private Outcome execute(Admitted a) {
+        Control.FunctionDoc doc = a.doc();
+        Reconciler.Served served = a.served();
+        Permits.Grant grant = a.grant();
+        @Nullable InvocationTrace trace = a.trace();
+        boolean traced = trace != null;
+        FunctionContext ctx = a.function().context();
         if (ctx == null) {
             grant.release();
             LOG.error("a loaded function has no context: {}", doc.address());
-            return error(500, "FUNCTION_FAILED", "the function failed", 0);
+            return failure(500, "FUNCTION_FAILED", "the function failed", 0, Control.TRACE_OUTCOME_ERROR, traced);
         }
 
-        long timeoutMs = limits.timeoutMs();
-        if (ep.timeoutMs() != null) {
-            timeoutMs = Math.min(timeoutMs, ep.timeoutMs());
+        long timeoutMs = a.limits().timeoutMs();
+        if (a.ep().timeoutMs() != null) {
+            timeoutMs = Math.min(timeoutMs, a.ep().timeoutMs());
         }
+        Request request = a.request();
         Instant deadline = clock.instant().plusMillis(timeoutMs);
-        String invocationId = UUID.randomUUID().toString().replace("-", "");
-
-        Map<String, List<String>> headers = requestHeaders(request, Describe.AUTH_PLATFORM.equals(ep.auth()) || target.version() > 0);
         io.flowcatalyst.function.Request fnRequest;
         try {
             fnRequest = new io.flowcatalyst.function.Request(
-                    invocationId,
-                    function.address(),
+                    a.invocationId(),
+                    a.function().address(),
                     served.number(),
-                    method,
-                    path,
+                    a.method(),
+                    a.path(),
                     request.rawQuery() == null ? "" : request.rawQuery(),
-                    headers,
-                    ep.pattern(),
-                    found.pathParams(),
-                    caller,
+                    a.headers(),
+                    a.ep().pattern(),
+                    a.pathParams(),
+                    a.caller(),
                     deadline,
                     request.header("Host") == null ? "" : request.header("Host"),
                     request.remoteAddress() == null ? "" : request.remoteAddress(),
                     false,
-                    body);
+                    a.body());
         } catch (RuntimeException e) {
             grant.release();
             LOG.warn("a request could not be built for {}: {}", doc.address(), e.getMessage());
-            return error(500, "FUNCTION_FAILED", "the request could not be encoded", 0);
+            return failure(500, "FUNCTION_FAILED", "the request could not be encoded", 0, Control.TRACE_OUTCOME_ERROR, traced);
         }
 
         InvocationRunner.Invocation invocation;
         try {
-            invocation = InvocationRunner.start(function, fnRequest, ctx, deadline, grant::release);
-            handoff.started = true; // the worker releases the function; the permit comes back with it
+            invocation = InvocationRunner.start(a.function(), fnRequest, ctx, deadline, grant::release, trace);
+            a.handoff().started = true; // the worker releases the function; the permit comes back with it
         } catch (RuntimeException | Error e) {
             grant.release();
             throw e;
@@ -354,23 +396,59 @@ public final class FunctionListener {
         } catch (TimeoutException e) {
             invocation.worker().interrupt();
             failures.failed(doc.address() + "@" + served.number() + ":timeout",
-                    "function " + doc.address() + " v" + served.number() + " did not finish before its deadline (invocation " + invocationId + ")", null);
-            return error(504, "FUNCTION_TIMEOUT", "the function did not finish before its deadline", 0);
+                    "function " + doc.address() + " v" + served.number() + " did not finish before its deadline (invocation " + a.invocationId() + ")", null);
+            return failure(504, "FUNCTION_TIMEOUT", "the function did not finish before its deadline", 0, Control.TRACE_OUTCOME_TIMEOUT, traced);
         } catch (InterruptedException e) {
             // The request thread was interrupted (the server is stopping, or the client went away).
             invocation.worker().interrupt();
             Thread.currentThread().interrupt();
-            return error(503, "FUNCTION_UNAVAILABLE", "the call was interrupted", 1);
+            return failure(503, "FUNCTION_UNAVAILABLE", "the call was interrupted", 1, Control.TRACE_OUTCOME_ERROR, traced);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
             // The exception is the function's own: its message goes to the log, never to the caller.
             failures.failed(doc.address() + "@" + served.number() + ":" + cause.getClass().getName(),
                     "function " + doc.address() + " v" + served.number() + " failed with " + cause.getClass().getName()
-                            + " (invocation " + invocationId + ")",
+                            + " (invocation " + a.invocationId() + ")",
                     cause);
-            return error(500, "FUNCTION_FAILED", "the function failed", 0);
+            return failure(500, "FUNCTION_FAILED", "the function failed", 0, Control.TRACE_OUTCOME_ERROR, traced);
         }
-        return answer(result, ep.cors() != null, invocationId);
+        return answer(result, a.ep().cors() != null, a.invocationId(), traced);
+    }
+
+    /// A refusal or failure as an outcome; its body is built only when `traced`.
+    private static Outcome failure(int status, String code, String message, int retryAfterSeconds, String outcome, boolean traced) {
+        return new Outcome(error(status, code, message, retryAfterSeconds), outcome, traced ? errorBody(code, message) : NO_BODY);
+    }
+
+    /// The request as the trace records it.
+    private static InvocationTrace.Inbound inbound(
+            Request request, String method, String path, Caller caller, Map<String, List<String>> headers, byte[] body) {
+        String kind;
+        String id = "";
+        switch (caller) {
+            case Caller.Platform p -> kind = "webhook";
+            case Caller.Principal p -> {
+                kind = "principal";
+                id = p.id();
+            }
+            case Caller.Anonymous a -> kind = "anonymous";
+        }
+        return new InvocationTrace.Inbound(method, path, request.rawQuery() == null ? "" : request.rawQuery(), headers, body, kind, id);
+    }
+
+    /// The response as the trace records it: what the host sent, `Access-Control-*` headers included.
+    private static InvocationTrace.Sent sent(Outcome outcome, Map<String, String> corsHeaders) {
+        Response response = outcome.response();
+        Map<String, List<String>> headers = new LinkedHashMap<>();
+        for (Response.Header h : response.headers()) {
+            headers.computeIfAbsent(h.name(), n -> new ArrayList<>()).add(h.value());
+        }
+        String contentType = response.contentType();
+        if (contentType != null && headers.keySet().stream().noneMatch(n -> n.equalsIgnoreCase("content-type"))) {
+            headers.put("Content-Type", List.of(contentType));
+        }
+        corsHeaders.forEach((name, value) -> headers.put(name, List.of(value)));
+        return new InvocationTrace.Sent(response.status(), headers, outcome.body());
     }
 
     // ── authentication ────────────────────────────────────────────────────────────────────────
@@ -436,11 +514,11 @@ public final class FunctionListener {
 
     /// The function's answer as the HTTP response. When the endpoint has a CORS policy the host already set the
     /// `Access-Control-*` headers from it; the function cannot add to or override them.
-    private static Response answer(Result result, boolean hostCors, String invocationId) {
+    private static Outcome answer(Result result, boolean hostCors, String invocationId, boolean traced) {
         int status = result.status();
         if (status < 200 || status > 599) {
             LOG.warn("a function returned an out-of-range status {} (invocation {})", status, invocationId);
-            return error(502, "FUNCTION_BAD_RESPONSE", "the function returned an invalid response", 0);
+            return failure(502, "FUNCTION_BAD_RESPONSE", "the function returned an invalid response", 0, Control.TRACE_OUTCOME_BAD_RESPONSE, traced);
         }
         String contentType = null;
         List<String[]> others = new ArrayList<>();
@@ -476,16 +554,25 @@ public final class FunctionListener {
             }
         } catch (IllegalArgumentException e) {
             LOG.warn("a function returned a header the server refuses (invocation {}): {}", invocationId, e.getMessage());
-            return error(502, "FUNCTION_BAD_RESPONSE", "the function returned an invalid response", 0);
+            return failure(502, "FUNCTION_BAD_RESPONSE", "the function returned an invalid response", 0, Control.TRACE_OUTCOME_BAD_RESPONSE, traced);
         }
-        return response.header("X-FlowCatalyst-Invocation", invocationId);
+        return new Outcome(response.header("X-FlowCatalyst-Invocation", invocationId), Control.TRACE_OUTCOME_OK, traced ? body : NO_BODY);
     }
 
-    static Response error(int status, String code, String message, int retryAfterSeconds) {
+    private static Map<String, String> errorEnvelope(String code, String message) {
         Map<String, String> body = new LinkedHashMap<>();
         body.put("error", code);
         body.put("message", message);
-        Response response = Response.json(status, body);
+        return body;
+    }
+
+    /// The JSON body [#error] sends.
+    static byte[] errorBody(String code, String message) {
+        return Json.mapper().writeValueAsBytes(errorEnvelope(code, message));
+    }
+
+    static Response error(int status, String code, String message, int retryAfterSeconds) {
+        Response response = Response.json(status, errorEnvelope(code, message));
         return retryAfterSeconds > 0 ? response.header("Retry-After", Integer.toString(retryAfterSeconds)) : response;
     }
 

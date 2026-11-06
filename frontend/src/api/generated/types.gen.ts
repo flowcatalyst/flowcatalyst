@@ -5639,12 +5639,12 @@ export type TraceRecordResponse = {
     context: string;
     correlationId: string | null;
     /**
-     * The record's data. For kind http: request, response, durationMs, outcome.
+     * The record's data. For kind http: request, response, durationMs, outcome. For kind outbound (a call the function made): client, request (with url), response, durationMs, attempt, failure.
      */
     data: unknown;
     id: string;
     invocationId: string;
-    kind: 'trace' | 'http' | 'log';
+    kind: 'trace' | 'http' | 'log' | 'outbound';
     level: string;
     message: string;
     /**
@@ -15116,7 +15116,7 @@ export type ListFunctionTraceLogData = {
         /**
          * Only this record kind
          */
-        kind?: 'trace' | 'http' | 'log';
+        kind?: 'trace' | 'http' | 'log' | 'outbound';
         /**
          * Only this level (debug, info, warn, error)
          */

@@ -5,15 +5,18 @@ import io.flowcatalyst.function.DispatchException;
 import io.flowcatalyst.function.DispatchJob;
 import io.flowcatalyst.function.EmitResult;
 import io.flowcatalyst.function.Function;
+import io.flowcatalyst.function.FunctionContext;
 import io.flowcatalyst.function.FunctionAddress;
 import io.flowcatalyst.function.OutboundEvent;
 import io.flowcatalyst.function.PlatformTokenException;
 import io.flowcatalyst.function.Request;
 import io.flowcatalyst.function.Result;
+import io.flowcatalyst.function.TraceOptions;
 import io.flowcatalyst.function.Webhook;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Map;
 import java.util.NoSuchElementException;
 
 import org.junit.jupiter.api.Test;
@@ -166,5 +169,73 @@ class FakeFunctionContextTest {
         assertThat(rejected.headers().get(Result.OUTCOME_HEADER)).containsExactly(Result.OUTCOME_REJECT);
 
         assertThat(fn.handle(FakeRequest.post("/fulfil").build(), ctx).status()).isEqualTo(401);
+    }
+
+    @Test
+    void traceCallsAreRecordedWhetherOrNotTheContextIsLive() {
+        FakeFunctionContext ctx = FakeFunctionContext.builder(ADDRESS).build();
+        Map<String, Object> data = Map.of("k", 1);
+        TraceOptions options = new TraceOptions("warn", "ref-1");
+
+        ctx.trace("sync", "one");
+        ctx.trace("sync", "two", data);
+        ctx.trace("other", "three", data, options);
+
+        assertThat(ctx.traces()).containsExactly(
+                new FakeFunctionContext.TraceCall("sync", "one", null, null),
+                new FakeFunctionContext.TraceCall("sync", "two", data, null),
+                new FakeFunctionContext.TraceCall("other", "three", data, options));
+    }
+
+    @Test
+    void tracingAnswersForTheContextsMarkedLive() {
+        FakeFunctionContext ctx = FakeFunctionContext.builder(ADDRESS).live("sync").build();
+
+        assertThat(ctx.tracing("sync")).isTrue();
+        assertThat(ctx.tracing("other")).isFalse();
+        ctx.setLive("other", true);
+        ctx.setLive("sync", false);
+        assertThat(ctx.tracing("other")).isTrue();
+        assertThat(ctx.tracing("sync")).isFalse();
+    }
+
+    @Test
+    void theLastReferenceAndTheConcealedValuesAreKept() {
+        FakeFunctionContext ctx = FakeFunctionContext.builder(ADDRESS).build();
+        assertThat(ctx.reference()).isEmpty();
+
+        ctx.setReference("order-1");
+        ctx.setReference("order-2");
+        ctx.conceal("session-1");
+        ctx.conceal("session-2");
+
+        assertThat(ctx.reference()).isEqualTo("order-2");
+        assertThat(ctx.concealed()).containsExactly("session-1", "session-2");
+        ctx.setReference("");
+        assertThat(ctx.reference()).isEmpty();
+    }
+
+    @Test
+    void aPlainContextHasNoOpTraceDefaults() {
+        FunctionContext plain = new FunctionContext() {
+            public java.lang.System.Logger logger() { return null; }
+            public io.flowcatalyst.function.Config config() { return null; }
+            public io.flowcatalyst.function.Secrets secrets() { return null; }
+            public javax.sql.DataSource dataSource(String name) { return null; }
+            public io.flowcatalyst.function.HttpCaller http() { return null; }
+            public io.flowcatalyst.function.Events events() { return null; }
+            public io.flowcatalyst.function.Dispatcher dispatcher() { return null; }
+            public String platformToken(boolean refresh) { return ""; }
+            public java.time.Clock clock() { return null; }
+            public FunctionAddress address() { return ADDRESS; }
+            public int version() { return 1; }
+        };
+
+        plain.trace("sync", "m");
+        plain.trace("sync", "m", Map.of());
+        plain.setReference("r");
+        plain.conceal("c");
+
+        assertThat(plain.tracing("sync")).isFalse();
     }
 }

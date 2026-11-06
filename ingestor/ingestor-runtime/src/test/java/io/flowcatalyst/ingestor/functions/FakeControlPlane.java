@@ -38,6 +38,22 @@ public final class FakeControlPlane implements ControlPlane {
     public final List<Control.TokenRequest> tokenRequests = new CopyOnWriteArrayList<>();
     public volatile Function<Control.TokenRequest, Control.TokenResponse> tokenAnswer = r -> new Control.TokenResponse("fake-platform-token", "Bearer", 3600);
     public volatile @Nullable String lastRequestedPool;
+    /// The trace batches the host shipped, in order (only those the fake took).
+    public final List<Control.TraceBatch> traceBatches = new CopyOnWriteArrayList<>();
+    public final AtomicInteger traceCalls = new AtomicInteger();
+    /// Answers a trace batch: returns normally to take it, throws to refuse it.
+    public volatile TraceAnswer traceAnswer = batch -> new Control.TraceAck(batch.records().size(), 0);
+
+    /// What the fake does with a trace batch.
+    @FunctionalInterface
+    public interface TraceAnswer {
+        Control.TraceAck answer(Control.TraceBatch batch) throws ControlPlaneException;
+    }
+
+    /// Every trace record shipped so far, in order.
+    public List<Control.TraceRecord> traceRecords() {
+        return traceBatches.stream().flatMap(b -> b.records().stream()).toList();
+    }
 
     public void addArtifact(Fx.Jar jar) {
         artifacts.put(jar.digest(), jar.bytes());
@@ -83,6 +99,14 @@ public final class FakeControlPlane implements ControlPlane {
             throw failure;
         }
         heartbeats.add(heartbeat);
+    }
+
+    @Override
+    public Control.TraceAck traceLog(Control.TraceBatch batch) throws ControlPlaneException {
+        traceCalls.incrementAndGet();
+        Control.TraceAck ack = traceAnswer.answer(batch);
+        traceBatches.add(batch);
+        return ack;
     }
 
     @Override

@@ -8,7 +8,11 @@ import (
 	"encoding/json"
 	"log/slog"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httptrace"
 )
 
 // TraceHTTPContext is the built-in context that captures requests and
@@ -295,6 +299,9 @@ const (
 	TraceKindTrace = "trace"
 	TraceKindHTTP  = "http"
 	TraceKindLog   = "log"
+	// TraceKindOutbound is a call the function made (JVM host); its data is
+	// shaped as an ingestion trace's http record.
+	TraceKindOutbound = "outbound"
 )
 
 // WithholdTraceDetail strips what a reader without
@@ -310,6 +317,16 @@ func WithholdTraceDetail(r *TraceLogRecord) bool {
 	switch r.Kind {
 	case TraceKindHTTP:
 		r.Data = httpTraceSummary(r.Data)
+		return true
+	case TraceKindOutbound:
+		// The runner's message names the host and may carry the query.
+		var method, path string
+		var status int
+		r.Data, method, path, status = httptrace.OutboundSummary(r.Data)
+		r.Message = strings.TrimSpace(method + " " + path)
+		if status != 0 {
+			r.Message += " -> " + strconv.Itoa(status)
+		}
 		return true
 	case TraceKindLog:
 		withheld := r.Message != "" || r.Data != nil

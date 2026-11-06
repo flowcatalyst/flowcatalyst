@@ -2,13 +2,13 @@ package ingestion
 
 import (
 	"encoding/json"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httptrace"
 )
 
 // This file is the platform side of ingestion traces
@@ -184,7 +184,7 @@ func WithholdTraceDetail(r *TraceLogRecord) bool {
 	case TraceKindHTTP:
 		var path, method string
 		var status int
-		r.Data, method, path, status = httpTraceSummary(r.Data)
+		r.Data, method, path, status = httptrace.OutboundSummary(r.Data)
 		r.Message = strings.TrimSpace(method + " " + path)
 		if status != 0 {
 			r.Message += " -> " + strconv.Itoa(status)
@@ -206,75 +206,6 @@ func WithholdTraceDetail(r *TraceLogRecord) bool {
 		r.Message, r.Data = "", nil
 		return true
 	}
-}
-
-// httpTraceSummary keeps the non-sensitive fields of an http record's data.
-func httpTraceSummary(data []byte) (out []byte, method, path string, status int) {
-	var in struct {
-		Client  string `json:"client"`
-		Request struct {
-			Method        string `json:"method"`
-			URL           string `json:"url"`
-			BodyBytes     int64  `json:"bodyBytes"`
-			BodyTruncated bool   `json:"bodyTruncated"`
-		} `json:"request"`
-		Response *struct {
-			Status        int   `json:"status"`
-			BodyBytes     int64 `json:"bodyBytes"`
-			BodyTruncated bool  `json:"bodyTruncated"`
-		} `json:"response"`
-		DurationMs int64   `json:"durationMs"`
-		Attempt    int     `json:"attempt"`
-		Failure    *string `json:"failure"`
-	}
-	if len(data) == 0 || json.Unmarshal(data, &in) != nil {
-		return nil, "", "", 0
-	}
-	path = urlPathOnly(in.Request.URL)
-	type request struct {
-		Method        string `json:"method"`
-		URL           string `json:"url"`
-		BodyBytes     int64  `json:"bodyBytes"`
-		BodyTruncated bool   `json:"bodyTruncated"`
-	}
-	type response struct {
-		Status        int   `json:"status"`
-		BodyBytes     int64 `json:"bodyBytes"`
-		BodyTruncated bool  `json:"bodyTruncated"`
-	}
-	kept := struct {
-		Client     string    `json:"client,omitempty"`
-		Request    request   `json:"request"`
-		Response   *response `json:"response"`
-		DurationMs int64     `json:"durationMs"`
-		Attempt    int       `json:"attempt"`
-		Failure    *string   `json:"failure,omitempty"`
-	}{
-		Client:     in.Client,
-		Request:    request{Method: in.Request.Method, URL: path, BodyBytes: in.Request.BodyBytes, BodyTruncated: in.Request.BodyTruncated},
-		DurationMs: in.DurationMs, Attempt: in.Attempt, Failure: in.Failure,
-	}
-	if in.Response != nil {
-		kept.Response = &response{Status: in.Response.Status, BodyBytes: in.Response.BodyBytes, BodyTruncated: in.Response.BodyTruncated}
-		status = in.Response.Status
-	}
-	out, err := json.Marshal(kept)
-	if err != nil {
-		return nil, "", "", 0
-	}
-	return out, in.Request.Method, path, status
-}
-
-// urlPathOnly is the path of a URL (scheme, host, user info and query
-// dropped); a value that does not parse as a URL is cut at the first ? or #.
-func urlPathOnly(raw string) string {
-	if u, err := url.Parse(raw); err == nil && (u.Scheme != "" || u.Host != "" || strings.HasPrefix(raw, "/")) {
-		return u.EscapedPath()
-	}
-	if i := strings.IndexAny(raw, "?#"); i >= 0 {
-		raw = raw[:i]
-	}
-	return raw
 }
 
 // exchangeTraceSummary keeps an exchange record's counts and outcome.

@@ -2,7 +2,9 @@ package io.flowcatalyst.function;
 
 import java.lang.System.Logger;
 import java.time.Clock;
+import java.util.Map;
 import javax.sql.DataSource;
+import org.jspecify.annotations.Nullable;
 
 /// Everything a function may reach outside its own invocation. The host
 /// builds one instance per loaded version and passes it to [Function#init],
@@ -16,7 +18,11 @@ import javax.sql.DataSource;
 /// `dispatches`, `platformToken`). For a unit test without a host see
 /// [io.flowcatalyst.function.testing.FakeFunctionContext].
 ///
-/// Function traces (`traceContexts`) are a later slice and have no API here yet.
+/// Function traces: an operator switches a trace context on for a function for a while (docs/function-trace-design.md),
+/// and while it is on the host records what the function writes with [#trace], plus, for the built-in `http`
+/// context, the request, the response, the function's log lines and its outbound calls. A function declares the
+/// contexts it writes to in `traceContexts` of its describe. The trace methods are no-ops when nothing is
+/// switched on and never throw; a function can call them freely.
 public interface FunctionContext {
 
     /// A logger carrying the host's MDC keys (function address, version,
@@ -64,6 +70,46 @@ public interface FunctionContext {
     /// The host's clock — never `Clock.systemUTC()` read directly, so a test
     /// can fix time.
     Clock clock();
+
+    /// Records `message` in the trace context `context`, if the context is switched on for this invocation.
+    /// Same as `trace(context, message, null, null)`.
+    default void trace(String context, String message) {
+        trace(context, message, null, null);
+    }
+
+    /// Records `message` and `data` in the trace context `context`. Same as `trace(context, message, data, null)`.
+    default void trace(String context, String message, @Nullable Map<String, ?> data) {
+        trace(context, message, data, null);
+    }
+
+    /// Records `message`, with `data` (serialized as JSON; a record whose data is over 32768 bytes is not written),
+    /// in the trace context `context`. The context must be declared in the describe's `traceContexts`: `http` is
+    /// built in and not writable, and an undeclared name records nothing (the host logs one warning). A record is
+    /// written only when the context is switched on and this invocation was sampled in; at most 500 records an
+    /// invocation. Declared secrets and values given to [#conceal] are replaced in it. Never throws.
+    ///
+    /// @param options the record's level and its own reference, or `null` for `info` and the invocation's reference
+    default void trace(String context, String message, @Nullable Map<String, ?> data, @Nullable TraceOptions options) {
+    }
+
+    /// Whether `context` (declared, or `http`) is switched on and sampled in for the current invocation, so building
+    /// an expensive [#trace] record is worth it. `false` outside an invocation.
+    default boolean tracing(String context) {
+        return false;
+    }
+
+    /// Sets the invocation's business key (cut to 200 characters), stamped on every record it writes from now on,
+    /// the `http` record of the call included. An empty reference clears it. Does nothing outside an invocation.
+    default void setReference(String reference) {
+    }
+
+    /// Keeps `value`, a credential the function obtained at run time (a session id, an access token), out of every
+    /// trace record, as its declared secrets are: replaced wherever it appears, in a URL's path as well. Call it each
+    /// time one is obtained, whether or not tracing is on, so a value that outlives the moment an operator switches
+    /// tracing on is covered. Values under four characters are ignored; the host holds the last 32 per function.
+    /// Works in [Function#init] too.
+    default void conceal(String value) {
+    }
 
     /// The address of the function this context was built for.
     FunctionAddress address();

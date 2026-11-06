@@ -95,6 +95,7 @@ public final class Fx {
         private String clientId;
         private final Map<String, String> config = new java.util.LinkedHashMap<>();
         private final Map<String, String> secrets = new java.util.LinkedHashMap<>();
+        private final List<Control.TraceState> trace = new ArrayList<>();
         private final List<Control.VersionDoc> versions = new ArrayList<>();
 
         private FunctionBuilder(String id, String address) {
@@ -132,13 +133,19 @@ public final class Fx {
             return this;
         }
 
+        /// A trace window of `context` that ends at `enabledUntilMs` (unix milliseconds), sampling one in `sampleRate`.
+        public FunctionBuilder trace(String context, long enabledUntilMs, int sampleRate) {
+            trace.add(new Control.TraceState(context, enabledUntilMs, sampleRate));
+            return this;
+        }
+
         public FunctionBuilder version(Control.VersionDoc v) {
             versions.add(v);
             return this;
         }
 
         public Control.FunctionDoc build() {
-            return new Control.FunctionDoc(id, address, "app_1", clientId, limits, warm, webhookSecret, config, secrets, Map.of(), versions);
+            return new Control.FunctionDoc(id, address, "app_1", clientId, limits, warm, webhookSecret, config, secrets, Map.of(), trace, versions);
         }
     }
 

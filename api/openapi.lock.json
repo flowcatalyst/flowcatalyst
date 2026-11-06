@@ -15294,7 +15294,7 @@
             ]
           },
           "data": {
-            "description": "The record's data. For kind http: request, response, durationMs, outcome."
+            "description": "The record's data. For kind http: request, response, durationMs, outcome. For kind outbound (a call the function made): client, request (with url), response, durationMs, attempt, failure."
           },
           "id": {
             "type": "string"
@@ -15306,7 +15306,8 @@
             "enum": [
               "trace",
               "http",
-              "log"
+              "log",
+              "outbound"
             ],
             "type": "string"
           },
@@ -26481,7 +26482,8 @@
               "enum": [
                 "trace",
                 "http",
-                "log"
+                "log",
+                "outbound"
               ],
               "type": "string"
             }

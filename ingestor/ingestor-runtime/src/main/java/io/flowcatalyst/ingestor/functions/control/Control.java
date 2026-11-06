@@ -1,5 +1,6 @@
 package io.flowcatalyst.ingestor.functions.control;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -21,6 +22,7 @@ public final class Control {
     public static final String PATH_EVENTS = "/control/functions/events";
     public static final String PATH_DISPATCH_JOBS = "/control/functions/dispatch-jobs";
     public static final String PATH_TOKEN = "/control/functions/token";
+    public static final String PATH_TRACE_LOG = "/control/functions/trace-log";
 
     /// The runtime tag this host serves.
     public static final String RUNTIME_JVM = "jvm";
@@ -66,18 +68,32 @@ public final class Control {
             Map<String, String> config,
             Map<String, String> secrets,
             Map<String, String> db,
+            List<TraceState> trace,
             List<VersionDoc> versions) {
         public FunctionDoc {
             config = config == null ? Map.of() : Map.copyOf(config);
             secrets = secrets == null ? Map.of() : Map.copyOf(secrets);
             db = db == null ? Map.of() : Map.copyOf(db);
+            trace = trace == null ? List.of() : List.copyOf(trace);
             versions = versions == null ? List.of() : List.copyOf(versions);
+        }
+
+        /// A function with no trace windows.
+        public FunctionDoc(String id, String address, @Nullable String applicationId, @Nullable String clientId,
+                @Nullable Limits limits, boolean warm, @Nullable String webhookSecret, Map<String, String> config,
+                Map<String, String> secrets, Map<String, String> db, List<VersionDoc> versions) {
+            this(id, address, applicationId, clientId, limits, warm, webhookSecret, config, secrets, db, List.of(), versions);
         }
 
         /// The limits with the runner's defaults for what the platform did not send (`limitsOf`).
         public Limits effectiveLimits() {
             return limits == null ? Limits.DEFAULTS : limits.withDefaults();
         }
+    }
+
+    /// One live trace window of a function (`control.TraceState`): the host compares `enabledUntilMs` (unix
+    /// milliseconds) with its own clock on every use, and traces one invocation in `sampleRate` (below 1 is 1).
+    public record TraceState(String context, long enabledUntilMs, int sampleRate) {
     }
 
     /// A function's resource limits.
@@ -209,4 +225,54 @@ public final class Control {
             return "TokenResponse[expiresIn=" + expiresIn + "]";
         }
     }
+
+    /// `control.TraceRecord`: one captured record. `id` is a random UUID, the same on every retry of its batch, so
+    /// the platform stores it once. `correlationId` and `reference` are empty when there is none; `data` (a JSON
+    /// object) is omitted when there is none.
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record TraceRecord(
+            String id,
+            long at,
+            String address,
+            int version,
+            String invocationId,
+            String correlationId,
+            String reference,
+            String context,
+            String kind,
+            String level,
+            String message,
+            @Nullable Object data) {
+    }
+
+    /// `control.TraceBatch`: the body of `POST /control/functions/trace-log`. The platform takes at most
+    /// [Control#MAX_TRACE_BATCH_RECORDS] records and [Control#MAX_TRACE_BATCH_BYTES] bytes of it.
+    public record TraceBatch(String runnerId, String pool, List<TraceRecord> records) {
+        public TraceBatch {
+            records = List.copyOf(records);
+        }
+    }
+
+    /// `control.TraceAck`: the answer (202) to a [TraceBatch].
+    public record TraceAck(int accepted, int dropped) {
+    }
+
+    /// Trace limits (`control.MaxTrace*`, docs/function-trace-design.md section 5).
+    public static final int MAX_TRACE_BATCH_RECORDS = 500;
+    public static final int MAX_TRACE_BATCH_BYTES = 1 << 20;
+    public static final int MAX_TRACE_MESSAGE = 4096;
+    public static final int MAX_TRACE_HTTP_DATA = 65536;
+    public static final int MAX_TRACE_DATA = 32768;
+
+    /// Trace record kinds (`control.TraceKind*`).
+    public static final String TRACE_KIND_TRACE = "trace";
+    public static final String TRACE_KIND_HTTP = "http";
+    public static final String TRACE_KIND_LOG = "log";
+    public static final String TRACE_KIND_OUTBOUND = "outbound";
+
+    /// Trace record outcomes (`control.TraceOutcome*`).
+    public static final String TRACE_OUTCOME_OK = "ok";
+    public static final String TRACE_OUTCOME_TIMEOUT = "timeout";
+    public static final String TRACE_OUTCOME_BAD_RESPONSE = "bad_response";
+    public static final String TRACE_OUTCOME_ERROR = "error";
 }

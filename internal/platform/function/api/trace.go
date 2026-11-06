@@ -74,10 +74,10 @@ type TraceRecordResponse struct {
 	CorrelationID *string         `json:"correlationId" nullable:"true"`
 	Reference     *string         `json:"reference" nullable:"true"`
 	Context       string          `json:"context"`
-	Kind          string          `json:"kind" enum:"trace,http,log"`
+	Kind          string          `json:"kind" enum:"trace,http,log,outbound"`
 	Level         string          `json:"level"`
 	Message       string          `json:"message"`
-	Data          json.RawMessage `json:"data" doc:"The record's data. For kind http: request, response, durationMs, outcome."`
+	Data          json.RawMessage `json:"data" doc:"The record's data. For kind http: request, response, durationMs, outcome. For kind outbound (a call the function made): client, request (with url), response, durationMs, attempt, failure."`
 	RunnerID      *string         `json:"runnerId" nullable:"true"`
 	// BodiesRedacted is true on an http record whose request and response bodies
 	// were withheld because the caller lacks platform:function:trace:view-bodies.
@@ -165,7 +165,7 @@ func (s *State) deleteTrace(ctx context.Context, in *deleteTraceInput) (*apicomm
 type traceLogInput struct {
 	ID            string `path:"id"`
 	Context       string `query:"context" doc:"Only this context"`
-	Kind          string `query:"kind" enum:"trace,http,log" doc:"Only this record kind"`
+	Kind          string `query:"kind" enum:"trace,http,log,outbound" doc:"Only this record kind"`
 	Level         string `query:"level" doc:"Only this level (debug, info, warn, error)"`
 	Reference     string `query:"reference" doc:"The author's business key, exact match"`
 	CorrelationID string `query:"correlationId" doc:"The request's X-Correlation-Id, exact match"`

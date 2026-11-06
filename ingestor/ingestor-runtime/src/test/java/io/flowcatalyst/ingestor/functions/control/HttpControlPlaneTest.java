@@ -584,4 +584,138 @@ class HttpControlPlaneTest {
         }
     }
 
+    // ── function traces ────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void desiredReadsAFunctionsTraceWindows() throws Exception {
+        platformHandler = (e, s) -> reply(e, 200, DESIRED.replace("[{\"context\":\"c\",\"enabledUntilMs\":1,\"sampleRate\":1}]",
+                "[{\"context\":\"http\",\"enabledUntilMs\":1790000000000,\"sampleRate\":3},{\"context\":\"ct-login\",\"enabledUntilMs\":5,\"sampleRate\":1}]"));
+
+        Control.FunctionDoc f = ((ControlPlane.Fetched.Changed) plane.desired("default", null, Duration.ZERO)).document().functions().get(0);
+
+        assertThat(f.trace()).containsExactly(new Control.TraceState("http", 1790000000000L, 3), new Control.TraceState("ct-login", 5, 1));
+    }
+
+    @Test
+    void desiredWithoutATraceFieldHasNoWindows() throws Exception {
+        platformHandler = (e, s) -> reply(e, 200, DESIRED.replace("\"trace\":[{\"context\":\"c\",\"enabledUntilMs\":1,\"sampleRate\":1}],", ""));
+
+        Control.FunctionDoc f = ((ControlPlane.Fetched.Changed) plane.desired("default", null, Duration.ZERO)).document().functions().get(0);
+
+        assertThat(f.trace()).isEmpty();
+    }
+
+    @Test
+    void desiredWithANullTraceFieldHasNoWindows() throws Exception {
+        platformHandler = (e, s) -> reply(e, 200, DESIRED.replace("[{\"context\":\"c\",\"enabledUntilMs\":1,\"sampleRate\":1}]", "null"));
+
+        Control.FunctionDoc f = ((ControlPlane.Fetched.Changed) plane.desired("default", null, Duration.ZERO)).document().functions().get(0);
+
+        assertThat(f.trace()).isEmpty();
+    }
+
+    private static final String DESCRIBE_HEAD = "{\"abi\":1,\"jvm\":{\"entrypoint\":\"a.B\"},\"endpoints\":[{\"path\":\"/x\",\"auth\":\"none\"}]";
+
+    private static Describe describeWith(String traceContexts) throws Exception {
+        return Describe.parse(Json.mapper().readTree(DESCRIBE_HEAD + ",\"traceContexts\":" + traceContexts + "}"));
+    }
+
+    @Test
+    void theDescribeReadsDeclaredTraceContexts() throws Exception {
+        Describe d = describeWith("[{\"name\":\"ct-login\",\"description\":\"the vendor login\"},{\"name\":\"sync\"}]");
+
+        assertThat(d.traceContexts()).containsExactly(new Describe.TraceContext("ct-login", "the vendor login"), new Describe.TraceContext("sync", null));
+        assertThat(d.traceContextNames()).containsExactlyInAnyOrder("ct-login", "sync");
+        assertThat(Describe.parse(Json.mapper().readTree(DESCRIBE_HEAD + "}")).traceContexts()).isEmpty();
+        assertThat(describeWith("null").traceContexts()).isEmpty();
+    }
+
+    @Test
+    void aDescribeWithABadTraceContextDoesNotLoad() {
+        List<String> bad = new ArrayList<>(List.of(
+                "[{\"name\":\"Upper\"}]",
+                "[{\"name\":\"1st\"}]",
+                "[{\"name\":\"has space\"}]",
+                "[{\"name\":\"under_score\"}]",
+                "[{\"name\":\"\"}]",
+                "[{\"description\":\"no name\"}]",
+                "[{\"name\":\"" + "a".repeat(41) + "\"}]",
+                "[{\"name\":\"http\"}]",
+                "[{\"name\":\"dup\"},{\"name\":\"dup\"}]",
+                "[{\"name\":\"ok\",\"description\":\"" + "d".repeat(201) + "\"}]",
+                "[{\"name\":\"ok\",\"description\":\"" + "\u00e9".repeat(101) + "\"}]"));
+        StringBuilder many = new StringBuilder("[");
+        for (int i = 0; i < 21; i++) {
+            many.append(i == 0 ? "" : ",").append("{\"name\":\"c").append(i).append("\"}");
+        }
+        bad.add(many.append(']').toString());
+        for (String contexts : bad) {
+            assertThatThrownBy(() -> describeWith(contexts)).as(contexts).isInstanceOf(Describe.DescribeException.class)
+                    .hasMessageContaining("traceContexts");
+        }
+    }
+
+    @Test
+    void theLimitsOfTraceContextsAreInclusive() throws Exception {
+        StringBuilder twenty = new StringBuilder("[");
+        for (int i = 0; i < 20; i++) {
+            twenty.append(i == 0 ? "" : ",").append("{\"name\":\"c").append(i).append("\"}");
+        }
+        assertThat(describeWith(twenty.append(']').toString()).traceContexts()).hasSize(20);
+        assertThat(describeWith("[{\"name\":\"" + "a".repeat(40) + "\",\"description\":\"" + "d".repeat(200) + "\"}]").traceContexts()).hasSize(1);
+        assertThat(describeWith("[{\"name\":\"ok\",\"description\":\"" + "\u00e9".repeat(100) + "\"}]").traceContexts()).hasSize(1);
+    }
+
+    @Test
+    void traceLogPostsTheBatchAndReadsTheAck() throws Exception {
+        platformHandler = (e, s) -> reply(e, 202, "{\"accepted\":2,\"dropped\":1}");
+        Control.TraceRecord withData = new Control.TraceRecord("id-1", 1700000000000L, "app.hello", 3, "inv1", "corr", "ref-9", "http", "http",
+                "info", "GET /x -> 200 (4 ms)", Map.of("durationMs", 4));
+        Control.TraceRecord bare = new Control.TraceRecord("id-2", 1700000000001L, "app.hello", 3, "inv1", "", "", "http", "log", "debug", "hi", null);
+
+        Control.TraceAck ack = plane.traceLog(new Control.TraceBatch("runner-1", "default", List.of(withData, bare)));
+
+        assertThat(ack).isEqualTo(new Control.TraceAck(2, 1));
+        Seen seen = platformSeen.get(0);
+        assertThat(seen.method()).isEqualTo("POST");
+        assertThat(seen.path()).isEqualTo("/control/functions/trace-log");
+        assertThat(seen.header("Authorization")).isEqualTo("Bearer tok-1");
+        JsonNode body = seen.json();
+        assertThat(body.path("runnerId").asString()).isEqualTo("runner-1");
+        assertThat(body.path("pool").asString()).isEqualTo("default");
+        JsonNode first = body.path("records").get(0);
+        assertThat(first.path("id").asString()).isEqualTo("id-1");
+        assertThat(first.path("at").asLong()).isEqualTo(1700000000000L);
+        assertThat(first.path("address").asString()).isEqualTo("app.hello");
+        assertThat(first.path("version").asInt()).isEqualTo(3);
+        assertThat(first.path("invocationId").asString()).isEqualTo("inv1");
+        assertThat(first.path("correlationId").asString()).isEqualTo("corr");
+        assertThat(first.path("reference").asString()).isEqualTo("ref-9");
+        assertThat(first.path("context").asString()).isEqualTo("http");
+        assertThat(first.path("kind").asString()).isEqualTo("http");
+        assertThat(first.path("level").asString()).isEqualTo("info");
+        assertThat(first.path("data").path("durationMs").asInt()).isEqualTo(4);
+        assertThat(body.path("records").get(1).has("data")).as("no data is no member, not null").isFalse();
+    }
+
+    @Test
+    void traceLogClassifiesAnswersByStatus() {
+        Control.TraceBatch batch = new Control.TraceBatch("runner-1", "default", List.of());
+        for (int status : new int[] {400, 401, 403, 413, 429, 500, 503}) {
+            platformHandler = (e, s) -> reply(e, status, "{\"error\":\"X\",\"message\":\"m\"}");
+            assertThatThrownBy(() -> plane.traceLog(batch)).as("status %d", status)
+                    .isInstanceOfSatisfying(ControlPlaneException.class, ex -> assertThat(ex.status()).isEqualTo(status));
+        }
+        platform.stop(0);
+        assertThatThrownBy(() -> plane.traceLog(batch))
+                .isInstanceOfSatisfying(ControlPlaneException.class, ex -> assertThat(ex.status()).isZero());
+    }
+
+    @Test
+    void anUnreadableAckStillMeansTheBatchWasTaken() throws Exception {
+        platformHandler = (e, s) -> reply(e, 202, "not json");
+        Control.TraceRecord r = new Control.TraceRecord("id-1", 1, "a.b", 1, "i", "", "", "http", "log", "info", "m", null);
+
+        assertThat(plane.traceLog(new Control.TraceBatch("r", "p", List.of(r, r)))).isEqualTo(new Control.TraceAck(2, 0));
+    }
 }

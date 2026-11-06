@@ -1,11 +1,13 @@
 package io.flowcatalyst.ingestor.functions.http;
 
+import io.flowcatalyst.framework.httpclient.HttpCapture;
 import io.flowcatalyst.function.FunctionContext;
 import io.flowcatalyst.function.Request;
 import io.flowcatalyst.function.Result;
 import io.flowcatalyst.ingestor.functions.context.InvocationDeadline;
 import io.flowcatalyst.ingestor.functions.context.InvocationInfo;
 import io.flowcatalyst.ingestor.functions.load.LoadedFunction;
+import io.flowcatalyst.ingestor.functions.trace.InvocationTrace;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -43,6 +45,14 @@ public final class InvocationRunner {
     /// @param deadline   when this invocation's [InvocationDeadline] expires — bound as a [ScopedValue] around the
     ///                    call, so an outbound call's timeout is capped to the time left
     public static Invocation start(LoadedFunction fn, Request request, FunctionContext ctx, Instant deadline, Runnable onReturned) {
+        return start(fn, request, ctx, deadline, onReturned, null);
+    }
+
+    /// As above; `trace`, when not null, is bound as [InvocationTrace#CURRENT] around the call, and, when its `http`
+    /// context is live, its outbound sink as [HttpCapture#CURRENT], so the function's outbound calls become `outbound`
+    /// records. Bind nothing for an invocation with no live context: the off path adds no binding.
+    public static Invocation start(
+            LoadedFunction fn, Request request, FunctionContext ctx, Instant deadline, Runnable onReturned, @Nullable InvocationTrace trace) {
         Objects.requireNonNull(fn, "fn");
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(ctx, "ctx");
@@ -50,13 +60,19 @@ public final class InvocationRunner {
         Objects.requireNonNull(onReturned, "onReturned");
         CompletableFuture<Result> future = new CompletableFuture<>();
         InvocationInfo info = new InvocationInfo(request.id(), request.header("X-Correlation-Id").orElse(null));
+        ScopedValue.Carrier scope = ScopedValue.where(InvocationDeadline.CURRENT, deadline).where(InvocationInfo.CURRENT, info);
+        if (trace != null) {
+            scope = scope.where(InvocationTrace.CURRENT, trace);
+            if (trace.httpLive()) {
+                scope = scope.where(HttpCapture.CURRENT, trace.outboundSink());
+            }
+        }
+        ScopedValue.Carrier bound = scope;
         Thread worker = Thread.ofVirtual().unstarted(() -> {
             Map<String, String> mdc = mdcFor(request);
             mdc.forEach(MDC::put);
             try {
-                Result result = ScopedValue.where(InvocationDeadline.CURRENT, deadline)
-                        .where(InvocationInfo.CURRENT, info)
-                        .call(() -> fn.invoke(request, ctx));
+                Result result = bound.call(() -> fn.invoke(request, ctx));
                 future.complete(result);
             } catch (Throwable t) {
                 future.completeExceptionally(t);

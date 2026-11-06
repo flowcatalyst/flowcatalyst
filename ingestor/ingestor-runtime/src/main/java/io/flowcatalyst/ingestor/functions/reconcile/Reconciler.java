@@ -11,6 +11,7 @@ import io.flowcatalyst.ingestor.functions.control.Control;
 import io.flowcatalyst.ingestor.functions.control.ControlPlane;
 import io.flowcatalyst.ingestor.functions.control.ControlPlaneException;
 import io.flowcatalyst.ingestor.functions.control.Describe;
+import io.flowcatalyst.ingestor.functions.trace.FunctionTraces;
 import io.flowcatalyst.ingestor.functions.http.EndpointRouter;
 import io.flowcatalyst.ingestor.functions.http.PinnedVersions;
 import io.flowcatalyst.ingestor.functions.load.FunctionRegistry;
@@ -282,6 +283,11 @@ public final class Reconciler implements AutoCloseable {
         return pinned;
     }
 
+    /// The host's function-trace state (windows come with each function's entry of the document).
+    public FunctionTraces traces() {
+        return contextFactory.traces();
+    }
+
     /// The addresses of the current document's functions.
     public java.util.Set<String> addresses() {
         return snapshot.functions().keySet();
@@ -438,6 +444,8 @@ public final class Reconciler implements AutoCloseable {
         records.keySet().removeIf(k -> !seen.containsKey(k));
         // A function that left the document keeps no platform token.
         contextFactory.retainFunctions(doc.functions().stream().map(Control.FunctionDoc::id).collect(Collectors.toSet()));
+        // ... nor concealed values or samplers.
+        contextFactory.traces().retain(functions.keySet());
         appliedRevision = doc.revision();
         snapshot = new Snapshot(doc.revision(), Map.copyOf(functions));
         notifyChange();
