@@ -221,63 +221,109 @@ func validateApply(cmd ApplySetCommand) ingestion.Problems {
 }
 
 // planItems resolves every item (its application, client, target and reach),
-// finds what exists for it, and decides what the apply does. Nothing is
-// written: a dry run is this and no more.
+// finds what exists for it, and decides what the apply does. An item for
+// every client (ingestion.AllClients) is planned once per client there is now.
+// Nothing is written: a dry run is this and no more.
 func planItems(ctx context.Context, repo *ingestion.Repository, resolver ingestion.Resolver, set *ingestion.Set, cmd ApplySetCommand) ([]planned, error) {
 	ac := auth.FromContext(ctx)
 	apps := map[string]*application.Application{}
 	seen := map[string]int{}
 	out := make([]planned, 0, len(cmd.Items))
+	var everyClient []*client.Client
 	for n, f := range cmd.Items {
-		at := func(err error) error { return inItem(n, err) }
 		app, ok := apps[f.Application]
 		if !ok {
 			var err error
 			if app, err = resolver.Application(ctx, strings.TrimSpace(f.Application)); err != nil {
-				return nil, at(err)
+				return nil, inItem(n, err)
 			}
 			apps[f.Application] = app
 		}
-		c, err := resolver.Client(ctx, clientRef(f.Client))
-		if err != nil {
-			return nil, at(err)
+		if strings.TrimSpace(f.Client) != ingestion.AllClients {
+			c, err := resolver.Client(ctx, clientRef(f.Client))
+			if err != nil {
+				return nil, inItem(n, err)
+			}
+			p, err := planItem(ctx, repo, resolver, set, ac, app, c, f, n, seen)
+			if err != nil {
+				return nil, inItem(n, err)
+			}
+			out = append(out, p)
+			continue
 		}
-		if err := auth.CheckScopeAccess(ac, new(string(c.ID))); err != nil {
-			return nil, at(err)
+		if !auth.CanAccessScope(ac, nil) {
+			return nil, inItem(n, usecase.Authorization("SCOPE_FORBIDDEN",
+				`client "*" is every client, which needs a caller that reaches every client (anchor tier)`))
 		}
-		if err := ingestion.CheckApplicationReach(ac, string(app.ID)); err != nil {
-			return nil, at(err)
+		if everyClient == nil {
+			var err error
+			if everyClient, err = resolver.Clients(ctx); err != nil {
+				return nil, inItem(n, err)
+			}
 		}
-		key := string(app.ID) + "/" + string(c.ID) + "/" + f.Code
-		if first, dup := seen[key]; dup {
-			return nil, usecase.Validation("INGESTION_INVALID",
-				fmt.Sprintf("items[%d].code is also item %d's, for the same application and client", n, first))
+		for _, c := range everyClient {
+			one := f
+			one.Client = c.Identifier
+			p, err := planItem(ctx, repo, resolver, set, ac, app, c, one, n, seen)
+			if err != nil {
+				return nil, inItem(n, forClient(c.Identifier, err))
+			}
+			out = append(out, p)
 		}
-		seen[key] = n
-
-		existing, err := repo.FindByCode(ctx, app.ID, c.ID, f.Code)
-		if err != nil {
-			return nil, usecase.Internal("REPO", "find_by_code failed", err)
-		}
-		// What saving the file over what exists asks of the caller: the kind's
-		// permission, the runtime identity, the secrets it points.
-		// A source that names a config entry is judged on the effective
-		// definition when the entry is there, and warned about when it is not.
-		effective, err := checkAuthor(ctx, repo, existing, identity{Application: app.Code, Client: c.ID, Code: f.Code}, f.Definition)
-		if err != nil {
-			return nil, at(err)
-		}
-		if _, err := resolver.Target(ctx, app.Code, c.ID, effective.Definition.Target); err != nil {
-			return nil, at(err)
-		}
-		p := planned{file: f, app: app, client: c, existing: existing}
-		p.change = ingestion.SetChange{Application: app.Code, Client: c.Identifier, Code: f.Code, Changed: []string{}, Warnings: effective.Warnings()}
-		if err := p.decide(ctx, repo, set); err != nil {
-			return nil, at(err)
-		}
-		out = append(out, p)
 	}
 	return out, nil
+}
+
+// planItem resolves and decides one ingestion: item n of the apply, for
+// client c.
+func planItem(ctx context.Context, repo *ingestion.Repository, resolver ingestion.Resolver, set *ingestion.Set, ac *auth.AuthContext,
+	app *application.Application, c *client.Client, f ingestion.File, n int, seen map[string]int,
+) (planned, error) {
+	if err := auth.CheckScopeAccess(ac, new(string(c.ID))); err != nil {
+		return planned{}, err
+	}
+	if err := ingestion.CheckApplicationReach(ac, string(app.ID)); err != nil {
+		return planned{}, err
+	}
+	key := string(app.ID) + "/" + string(c.ID) + "/" + f.Code
+	if first, dup := seen[key]; dup {
+		return planned{}, usecase.Validation("INGESTION_INVALID",
+			fmt.Sprintf("items[%d].code is also item %d's, for the same application and client", n, first))
+	}
+	seen[key] = n
+
+	existing, err := repo.FindByCode(ctx, app.ID, c.ID, f.Code)
+	if err != nil {
+		return planned{}, usecase.Internal("REPO", "find_by_code failed", err)
+	}
+	// What saving the file over what exists asks of the caller: the kind's
+	// permission, the runtime identity, the secrets it points.
+	// A source that names a config entry is judged on the effective
+	// definition when the entry is there, and warned about when it is not.
+	effective, err := checkAuthor(ctx, repo, existing, identity{Application: app.Code, Client: c.ID, Code: f.Code}, f.Definition)
+	if err != nil {
+		return planned{}, err
+	}
+	if _, err := resolver.Target(ctx, app.Code, c.ID, effective.Definition.Target); err != nil {
+		return planned{}, err
+	}
+	p := planned{file: f, app: app, client: c, existing: existing}
+	p.change = ingestion.SetChange{Application: app.Code, Client: c.Identifier, Code: f.Code, Changed: []string{}, Warnings: effective.Warnings()}
+	if err := p.decide(ctx, repo, set); err != nil {
+		return planned{}, err
+	}
+	return p, nil
+}
+
+// forClient says which client of an every-client item an error is about.
+func forClient(identifier string, err error) error {
+	ue := usecase.AsError(err)
+	if ue == nil {
+		return err
+	}
+	at := *ue
+	at.Message = "client " + identifier + ": " + ue.Message
+	return &at
 }
 
 // inItem says which item an error is about, keeping its kind and code so the

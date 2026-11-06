@@ -341,7 +341,7 @@ type IngestionTestResponse struct {
 // identity, whether it runs, and the definition.
 type IngestionSetItem struct {
 	Application string `json:"application" doc:"Code of the owning application, which must be of type INTEGRATION"`
-	Client      string `json:"client" doc:"The client's id (clt_...) or identifier"`
+	Client      string `json:"client" doc:"The client's id (clt_...) or identifier, or * for every client: one ingestion per client there is when the set is applied (needs a caller that reaches every client)"`
 	Code        string `json:"code"`
 	Active      *bool  `json:"active,omitempty" doc:"Whether the ingestion runs. When omitted: a new ingestion whose source names a config entry is created paused (set the entry and its secrets, then resume), any other is created active, and one that exists keeps its state, so a pause made since stays. When given, an apply enforces it."`
 	IngestionDefinition

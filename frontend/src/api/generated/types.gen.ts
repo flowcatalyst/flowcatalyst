@@ -2796,7 +2796,7 @@ export type IngestionSetItem = {
      */
     application: string;
     /**
-     * The client's id (clt_...) or identifier
+     * The client's id (clt_...) or identifier, or * for every client: one ingestion per client there is when the set is applied (needs a caller that reaches every client)
      */
     client: string;
     code: string;

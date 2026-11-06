@@ -41,6 +41,9 @@ type Resolver interface {
 	ApplicationByID(ctx context.Context, id string) (*application.Application, error)
 	// Client finds a client by id or identifier (INGESTION_CLIENT_INVALID).
 	Client(ctx context.Context, idOrIdentifier string) (*client.Client, error)
+	// Clients lists every client, whatever its status, by identifier: what a
+	// definition for AllClients is applied for.
+	Clients(ctx context.Context) ([]*client.Client, error)
 	// Target checks the target for an ingestion of this client and returns its
 	// references as ids (INGESTION_TARGET_INVALID).
 	Target(ctx context.Context, applicationCode string, clientID ids.ClientID, t Target) (ResolvedTarget, error)
@@ -115,6 +118,19 @@ func (r *RepoResolver) Client(ctx context.Context, idOrIdentifier string) (*clie
 		return nil, usecase.Validation("INGESTION_CLIENT_INVALID", fmt.Sprintf("no client %q", idOrIdentifier))
 	}
 	return c, nil
+}
+
+func (r *RepoResolver) Clients(ctx context.Context) ([]*client.Client, error) {
+	all, err := r.clients.FindAll(ctx)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "client list failed", err)
+	}
+	out := make([]*client.Client, len(all))
+	for n := range all {
+		out[n] = &all[n]
+	}
+	slices.SortFunc(out, func(a, b *client.Client) int { return strings.Compare(a.Identifier, b.Identifier) })
+	return out, nil
 }
 
 func (r *RepoResolver) Target(ctx context.Context, applicationCode string, clientID ids.ClientID, t Target) (ResolvedTarget, error) {

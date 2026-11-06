@@ -13,8 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 const permSetApply = "platform:ingestion:set:apply"
@@ -553,4 +555,70 @@ func TestSetValidation(t *testing.T) {
 	require.Equal(t, http.StatusOK, r.code, r.raw)
 	assert.Equal(t, map[string]string{code: "REMOVE"}, actions(r))
 	assert.Nil(t, e.byCode(e.appA.Code, string(e.clientA.ID), code))
+}
+
+// everyClientActions is the action of each change of code, by client identifier.
+func everyClientActions(r response, code string) map[string]string {
+	out := map[string]string{}
+	changes, _ := r.json["changes"].([]any)
+	for _, c := range changes {
+		m := c.(map[string]any)
+		if m["code"] == code {
+			out[m["client"].(string)], _ = m["action"].(string)
+		}
+	}
+	return out
+}
+
+// An item for every client (client "*") is applied once per client there is;
+// a client made since gets its ingestion at the next apply, a re-apply of the
+// archive included. It takes a caller that reaches every client, and it may
+// not be given beside an item of the same code for one of those clients.
+func TestSetEveryClient(t *testing.T) {
+	e := newEnv(t)
+	e.asSetAdmin()
+	name, code := e.setName(), "every-"+unique()
+	clients := e.count(`SELECT count(*) FROM tnt_clients`)
+
+	r := e.putSet(name, e.body(e.appA, ingestion.AllClients, code))
+	require.Equal(t, http.StatusOK, r.code, r.raw)
+	first := r.str("applyId")
+	got := everyClientActions(r, code)
+	assert.Len(t, got, clients, "one ingestion per client")
+	for _, action := range got {
+		assert.Equal(t, "CREATE", action)
+	}
+	for _, c := range []string{string(e.clientA.ID), string(e.clientB.ID)} {
+		i := e.byCode(e.appA.Code, c, code)
+		require.NotNil(t, i, c)
+		assert.NotNil(t, i.ManagedBy)
+	}
+
+	later := client.New("Later", "later-"+unique())
+	persist(t, e.uow, func(ctx context.Context, tx *usecasepgx.DbTx) error {
+		return client.NewRepository(e.pool).Persist(ctx, later, tx)
+	})
+	r = e.putSetQuery(name, "dryRun=true", e.body(e.appA, ingestion.AllClients, code))
+	require.Equal(t, http.StatusOK, r.code, r.raw)
+	got = everyClientActions(r, code)
+	assert.Equal(t, "CREATE", got[later.Identifier], "a client made since the apply")
+	assert.Equal(t, "UNCHANGED", got[e.clientA.Identifier])
+	r = e.do(http.MethodPost, "/api/ingestion-sets/"+name+"/applies/"+first+"/reapply", nil)
+	require.Equal(t, http.StatusOK, r.code, r.raw)
+	assert.Equal(t, "CREATE", everyClientActions(r, code)[later.Identifier], "a re-apply resolves * again")
+	assert.NotNil(t, e.byCode(e.appA.Code, string(later.ID), code))
+
+	r = e.putSet(name, e.body(e.appA, ingestion.AllClients, code), e.body(e.appA, e.clientA.Identifier, code))
+	assert.Equal(t, http.StatusBadRequest, r.code, r.raw)
+	assert.Contains(t, r.raw, "items[1].code is also item 0's")
+
+	e.as(clientTier([]string{string(e.clientA.ID)}, append(append([]string{}, ingestionPerms...), permSetApply)...))
+	r = e.putSet(e.setName(), e.body(e.appA, ingestion.AllClients, "tier-"+unique()))
+	assert.Equal(t, http.StatusForbidden, r.code, r.raw)
+	assert.Equal(t, "SCOPE_FORBIDDEN", r.errCode())
+
+	// Leave no ingestions behind for other tests' clients.
+	e.asSetAdmin()
+	require.Equal(t, http.StatusOK, e.putSet(name).code)
+	assert.Nil(t, e.byCode(e.appA.Code, string(e.clientB.ID), code))
 }

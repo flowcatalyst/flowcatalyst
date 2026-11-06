@@ -217,6 +217,33 @@ func TestIngestApplyPrintsThePlan(t *testing.T) {
 	require.Equal(t, ingestSftpFile, sent.Files[0].Content, "the archived file is as written")
 }
 
+// A file that lists its clients sends one item per client; the file itself is
+// kept as written.
+func TestIngestApplyClientsListSendsOneItemPerClient(t *testing.T) {
+	newFnTestEnv(t)
+	p := newIngestPlatform(t)
+	dir := filepath.Join(t.TempDir(), "Orders")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	listed := strings.Replace(ingestSftpFile, "client: acme\n", "clients:\n  - acme\n  - globex\n", 1)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sftp.yaml"), []byte(listed), 0o600))
+	_, _, err := runCobra(t, newIngestApplyCmd(), "", append([]string{dir}, p.flags()...)...)
+	require.NoError(t, err)
+
+	var sent struct {
+		Items []map[string]any `json:"items"`
+		Files []setFile        `json:"files"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(p.bodies["PUT /api/ingestion-sets/orders"]), &sent))
+	require.Len(t, sent.Items, 2)
+	for n, client := range []string{"acme", "globex"} {
+		require.Equal(t, client, sent.Items[n]["client"])
+		require.Equal(t, "orders-sftp", sent.Items[n]["code"])
+		require.NotContains(t, sent.Items[n], "clients")
+	}
+	require.Len(t, sent.Files, 1)
+	require.Equal(t, listed, sent.Files[0].Content, "the archived file is as written")
+}
+
 func TestIngestApplyDryRunWritesNothing(t *testing.T) {
 	newFnTestEnv(t)
 	p := newIngestPlatform(t)

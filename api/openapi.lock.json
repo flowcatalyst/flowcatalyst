@@ -7925,7 +7925,7 @@
             "type": "string"
           },
           "client": {
-            "description": "The client's id (clt_...) or identifier",
+            "description": "The client's id (clt_...) or identifier, or * for every client: one ingestion per client there is when the set is applied (needs a caller that reaches every client)",
             "type": "string"
           },
           "code": {

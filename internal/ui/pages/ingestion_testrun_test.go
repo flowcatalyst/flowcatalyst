@@ -140,6 +140,8 @@ func (fakeUitResolver) Client(_ context.Context, ref string) (*client.Client, er
 	return &client.Client{ID: "clt_a", Identifier: "acme"}, nil
 }
 
+func (fakeUitResolver) Clients(context.Context) ([]*client.Client, error) { return nil, nil }
+
 func (fakeUitResolver) Target(context.Context, string, ids.ClientID, ingestion.Target) (ingestion.ResolvedTarget, error) {
 	return ingestion.ResolvedTarget{}, nil
 }

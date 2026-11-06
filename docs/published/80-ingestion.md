@@ -21,7 +21,7 @@ ingestion = (application, client, code) + source + split + target + flags
 | Field | Meaning |
 |---|---|
 | `application` | The owning application, by code. **Required, and of type `INTEGRATION`.** It carries the permissions, the audit scope and the answer to "who owns this". |
-| `client` | **Required.** A client id (`clt_…`) or identifier. Data that is not one client's goes under a client the business keeps for the purpose; there is no client-less ingestion. |
+| `client` | **Required.** A client id (`clt_…`) or identifier. Data that is not one client's goes under a client the business keeps for the purpose; there is no client-less ingestion. A definition file may give `clients` (a list) instead, for one ingestion per client (see "Definition files and sets"). |
 | `code` | Stable, lower-case, unique within `(application, client)`. |
 | `name`, `active` | A label, and whether the ingestion runs. `active` has three states in a file: `true`, `false`, or not said. When it is not said, an ingestion whose source names a settings entry is created **paused** (its settings and secrets are set after the apply, and resuming checks they are there) and any other is created active; an ingestion that already exists keeps whatever state it is in. When it is said, every apply enforces it. |
 | `keepFailedPayloads` | Off unless the client has agreed. When on, a failure may carry the first 2 KB of the payload that failed. |
@@ -506,6 +506,46 @@ Unknown fields are errors. A file is the same in every environment: what
 differs between environments or clients (a vendor's login, an organisation id,
 the delivery address) is not in the file but in the platform's configuration of
 that environment (see "Settings per environment").
+
+### One definition for several clients
+
+A definition that is not particular to one client but runs for several lists
+them under `clients` in place of `client`:
+
+```yaml
+application: ingest
+clients:
+  - acme
+  - globex
+  - clt_0ABCDEFGHJKMN
+code: fuel-prices
+source:
+  kind: http
+  ...
+```
+
+It is read as one definition per client, in the order listed, each with that
+client and everything else the same. Each is an ordinary ingestion
+(`ingest/acme/fuel-prices`, `ingest/globex/fuel-prices`, ...): it has its own
+settings and secrets at its client (a `config:` source reads each client's own
+entry, so a vendor login can differ per client while the file is shared), its
+own place in its source, its own leases, failures and pause, and its jobs are
+its client's. The plan lists each one.
+
+For every client, write `clients: "*"`. It is resolved when the set is
+applied, to every client there is then, whatever its status (a suspended or
+inactive client's ingestion takes no jobs and runs on no runtime, so it is kept
+while the client is not active, not deleted). A client made later gets its
+ingestion at the **next apply**, not by itself; re-applying a kept apply
+resolves `"*"` again. Only a caller that reaches every client (anchor tier) may
+apply one. `"*"` stands alone: it is not an entry in a list.
+
+Adding a client to the list creates its ingestion at the next apply; taking one
+off **deletes** that client's ingestion, as for any definition a set no longer
+lists. A client may not be listed twice, `client` and `clients` may not both be
+given, and the same `(application, client, code)` may not come from two
+definitions (a list and a single-client file, say): give a client that needs a
+different definition its own code.
 
 A folder of files is applied as one **set**. Applying a set makes its
 ingestions what the files say. For each definition:

@@ -388,6 +388,12 @@ ingestion's settings, named by "config:" in the source and written with
 A source naming settings that are not set yet is saved with a CONFIG_MISSING
 warning, printed under its line; it runs once they are set.
 
+A definition that runs for several clients lists them under "clients:" in
+place of "client:"; it is applied as one ingestion per client, and a client
+taken off the list has its ingestion deleted. clients: "*" is every client
+there is when the set is applied; a client made later gets its ingestion at
+the next apply.
+
 The set is named by --set; for a folder it defaults to the folder's name.
 --dry-run prints the plan and writes nothing.`,
 		Args: cobra.MinimumNArgs(1),

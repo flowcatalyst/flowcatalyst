@@ -228,7 +228,10 @@ Errors use the platform envelope with codes in the platform's style (`INGESTION_
 `INGESTION_CODE_EXISTS`, `INGESTION_TARGET_INVALID`, `INGESTION_SET_OWNED`, `LEASE_NOT_HELD`).
 
 **Sets (built).** `PUT /api/ingestion-sets/{name}` takes `{items, files?}`: each item is a definition file with its
-`application`, `client` (id or identifier) and `code`. In one transaction, serialised with every other set apply, it
+`application`, `client` (id or identifier) and `code`. (A definition file may list `clients` instead of `client`; `fcdev`
+reads it as one item per client. `clients: "*"` is sent as one item with `client: "*"`, which the apply expands to every
+client there is, any status, in the apply's transaction; it needs a caller that reaches every client, and a re-apply
+resolves it again.) In one transaction, serialised with every other set apply, it
 resolves every item (application, client, target, reach, kind permission) and then, per item: **CREATE** when nothing
 has that (application, client, code); **UNCHANGED** when the set owns it and it says the same; **CHANGE** when the set
 owns it and it differs (the definition is saved as the next live version, `applied_from` naming the apply; `active` is

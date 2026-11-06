@@ -75,7 +75,9 @@ func (f File) MarshalJSON() ([]byte, error) {
 	return json.Marshal(fields)
 }
 
-// ParseFiles reads every YAML document of a definition file. An extension's
+// ParseFiles reads every YAML document of a definition file. A document that
+// lists clients (clients: [...]) in place of client gives one definition per
+// client (expandClients). An extension's
 // source is written flat, its type as the kind and its settings beside it
 // (kind: camel-route, yaml: ...); a built-in kind or kind: custom is read as
 // it is. Unknown fields are errors.
@@ -92,19 +94,86 @@ func ParseFiles(data []byte) ([]File, error) {
 		if doc == nil {
 			continue // an empty document, e.g. a leading ---
 		}
+		docs := []any{doc}
 		if m, ok := doc.(map[string]any); ok {
-			unflattenSource(m)
+			perClient, err := expandClients(m)
+			if err != nil {
+				return nil, fmt.Errorf("document %d: %w", n, err)
+			}
+			docs = docs[:0]
+			for _, d := range perClient {
+				unflattenSource(d)
+				docs = append(docs, d)
+			}
 		}
-		raw, err := json.Marshal(doc)
-		if err != nil {
-			return nil, fmt.Errorf("document %d: %w", n, err)
+		for _, d := range docs {
+			raw, err := json.Marshal(d)
+			if err != nil {
+				return nil, fmt.Errorf("document %d: %w", n, err)
+			}
+			var f File
+			if err := json.Unmarshal(raw, &f); err != nil {
+				return nil, fmt.Errorf("document %d: %w", n, err)
+			}
+			files = append(files, f)
 		}
-		var f File
-		if err := json.Unmarshal(raw, &f); err != nil {
-			return nil, fmt.Errorf("document %d: %w", n, err)
-		}
-		files = append(files, f)
 	}
+}
+
+// AllClients, as a definition's client (written clients: "*" in a file),
+// stands for every client there is when the set is applied: the apply makes
+// one ingestion per client, whatever its status (a suspended or inactive
+// client's ingestions take no jobs and run on no runtime, so its ingestion is
+// kept, not deleted, while it is not active). A client made after the apply
+// gets its ingestion at the next apply.
+const AllClients = "*"
+
+// expandClients reads a document that names its clients as a list
+// (clients: [acme, globex]) as one document per client, each with that client
+// and everything else the same, in the order listed. A document with client
+// is returned as it is, and clients: "*" as one document whose client is
+// AllClients, which the apply expands. Each client's ingestion is its own: its settings and
+// secrets are that client's, it keeps its own place in its source, and a set
+// apply deletes it once its client is no longer listed.
+func expandClients(doc map[string]any) ([]map[string]any, error) {
+	raw, listed := doc["clients"]
+	if !listed {
+		return []map[string]any{doc}, nil
+	}
+	if _, both := doc["client"]; both {
+		return nil, errors.New("client and clients: give one or the other")
+	}
+	if raw == AllClients {
+		one := maps.Clone(doc)
+		delete(one, "clients")
+		one["client"] = AllClients
+		return []map[string]any{one}, nil
+	}
+	list, ok := raw.([]any)
+	if !ok || len(list) == 0 {
+		return nil, errors.New(`clients: a list of client ids or identifiers, at least one, or "*" for every client`)
+	}
+	seen := map[string]bool{}
+	out := make([]map[string]any, 0, len(list))
+	for i, item := range list {
+		ref, ok := item.(string)
+		if !ok || strings.TrimSpace(ref) == "" {
+			return nil, fmt.Errorf("clients[%d]: a client id or identifier", i)
+		}
+		if strings.TrimSpace(ref) == AllClients {
+			return nil, fmt.Errorf(`clients[%d]: "*" is every client, written alone (clients: "*"), not in a list`, i)
+		}
+		key := strings.ToLower(strings.TrimSpace(ref))
+		if seen[key] {
+			return nil, fmt.Errorf("clients[%d]: %s is listed twice", i, ref)
+		}
+		seen[key] = true
+		one := maps.Clone(doc)
+		delete(one, "clients")
+		one["client"] = ref
+		out = append(out, one)
+	}
+	return out, nil
 }
 
 // unflattenSource turns a flat extension source into {kind: custom, type,

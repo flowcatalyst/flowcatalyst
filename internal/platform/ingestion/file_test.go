@@ -168,3 +168,84 @@ func TestSecretsStayNamesInTheFile(t *testing.T) {
 	out, _ := files[0].YAML()
 	assert.Contains(t, string(out), "name: sftp-password")
 }
+
+func TestClientsListGivesOneDefinitionPerClient(t *testing.T) {
+	doc := strings.Replace(sftpFile, "client: acme\n", "clients:\n  - acme\n  - clt_0ABCDEFGHJKMN\n  - Globex\n", 1)
+	files, err := ingestion.ParseFiles([]byte(doc))
+	require.NoError(t, err)
+	require.Len(t, files, 3)
+	single, err := ingestion.ParseFiles([]byte(sftpFile))
+	require.NoError(t, err)
+	for n, client := range []string{"acme", "clt_0ABCDEFGHJKMN", "Globex"} {
+		assert.Equal(t, client, files[n].Client, "in the order listed")
+		want := single[0]
+		want.Client = client
+		assert.Equal(t, want, files[n], "everything but the client is the file's")
+	}
+}
+
+func TestClientsListWithAnExtensionSource(t *testing.T) {
+	doc := `application: ingest
+clients: [acme, globex]
+code: heartbeat
+source:
+  kind: camel-route
+  yaml: "from: {uri: 'timer:x'}"
+split:
+  kind: json
+target:
+  code: acme:feed:beat:received
+  targetUrl: https://hooks.example.com/beat
+  pool: orders
+`
+	files, err := ingestion.ParseFiles([]byte(doc))
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	for _, f := range files {
+		c, ok := f.Source.(ingestion.Custom)
+		require.True(t, ok, "%T", f.Source)
+		assert.Equal(t, "camel-route", c.Type)
+		assert.Equal(t, "from: {uri: 'timer:x'}", c.Settings["yaml"])
+	}
+	assert.Equal(t, []string{"acme", "globex"}, []string{files[0].Client, files[1].Client})
+}
+
+func TestClientsListBesideOtherDocuments(t *testing.T) {
+	listed := strings.Replace(sftpFile, "client: acme\n", "clients: [acme, globex]\n", 1)
+	doc := sftpFile + "---\n" + strings.Replace(listed, "orders-sftp", "orders-two", 1)
+	files, err := ingestion.ParseFiles([]byte(doc))
+	require.NoError(t, err)
+	require.Len(t, files, 3)
+	assert.Equal(t, "acme/orders-sftp", files[0].Client+"/"+files[0].Code)
+	assert.Equal(t, "acme/orders-two", files[1].Client+"/"+files[1].Code)
+	assert.Equal(t, "globex/orders-two", files[2].Client+"/"+files[2].Code)
+}
+
+func TestClientsListRefusals(t *testing.T) {
+	cases := map[string]string{
+		"client and clients": strings.Replace(sftpFile, "client: acme\n", "client: acme\nclients: [globex]\n", 1),
+		"empty list":         strings.Replace(sftpFile, "client: acme\n", "clients: []\n", 1),
+		"not a list":         strings.Replace(sftpFile, "client: acme\n", "clients: acme\n", 1),
+		"blank entry":        strings.Replace(sftpFile, "client: acme\n", "clients: [acme, '']\n", 1),
+		"not a string":       strings.Replace(sftpFile, "client: acme\n", "clients: [acme, {a: 1}]\n", 1),
+		"listed twice":       strings.Replace(sftpFile, "client: acme\n", "clients: [acme, ACME]\n", 1),
+		"star in a list":     strings.Replace(sftpFile, "client: acme\n", "clients: [acme, '*']\n", 1),
+		"star and client":    strings.Replace(sftpFile, "client: acme\n", "client: acme\nclients: '*'\n", 1),
+		"other text":         strings.Replace(sftpFile, "client: acme\n", "clients: all\n", 1),
+	}
+	for name, doc := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := ingestion.ParseFiles([]byte(doc))
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestClientsStarIsEveryClient(t *testing.T) {
+	doc := strings.Replace(sftpFile, "client: acme\n", "clients: \"*\"\n", 1)
+	files, err := ingestion.ParseFiles([]byte(doc))
+	require.NoError(t, err)
+	require.Len(t, files, 1, "the apply expands it, against the clients there are then")
+	assert.Equal(t, ingestion.AllClients, files[0].Client)
+	assert.Empty(t, files[0].Validate())
+}
