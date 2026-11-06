@@ -31,7 +31,7 @@ func get(t *testing.T, method, target string) *httptest.ResponseRecorder {
 func TestMapping(t *testing.T) {
 	cases := []struct{ from, to string }{
 		{"/", "/ui/"},
-		{"/dashboard", "/ui/"},
+		{"/dashboard", "/ui/dashboard"},
 		{"/nonsense/page", "/ui/"},
 		{"/auth", "/ui/auth/login"},
 		{"/auth/login", "/ui/auth/login"},
@@ -165,7 +165,7 @@ func TestQueryAndRedirect(t *testing.T) {
 		{"/auth/login?redirect=%2Fdispatch-jobs%3Fstatus%3DERROR&client=acme", "/ui/auth/login?redirect=%2Fui%2Fdispatch-jobs%3Fstatus%3DERROR&client=acme"},
 		{"/auth/login?oauth=true&redirect=%2Fauthentication%2Foauth-clients%2Foac_1", "/ui/auth/login?oauth=true&redirect=%2Fui%2Foauth-clients%2Foac_1"},
 		{"/auth/login?redirect=%2Fui%2Fusers", "/ui/auth/login?redirect=%2Fui%2Fusers"},
-		{"/auth/login?redirect=%2Fdashboard", "/ui/auth/login?redirect=%2Fui%2F"},
+		{"/auth/login?redirect=%2Fdashboard", "/ui/auth/login?redirect=%2Fui%2Fdashboard"},
 		// Unmapped, absolute and protocol-relative returns are dropped.
 		{"/auth/login?redirect=%2Fnope%2Fnothing", "/ui/auth/login"},
 		{"/auth/login?redirect=https%3A%2F%2Fevil.example", "/ui/auth/login"},

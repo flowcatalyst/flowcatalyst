@@ -43,7 +43,8 @@ requests no other route matched. Go: `internal/consoleredirect` (wraps `frontend
 
 Exact pages unless marked "list". `{x}` segments are copied.
 
-- `/`, `/dashboard`, and any unknown non-file path -> `/ui/`
+- `/` and any unknown non-file path -> `/ui/` (which then lands per "Landing" below)
+- `/dashboard` -> `/ui/dashboard`
 - `/auth`, `/auth/login` -> `/ui/auth/login`; `/auth/forgot-password`, `/auth/reset-password`,
   `/auth/set-password` -> same under `/ui`; `/logout` -> `/ui/auth/logout`; `/portal/login` -> `/ui/auth/portal-login`
 - `/applications[/new|/{id}]`, `/clients[/new|/{id}|/{id}/theme]`, `/users[/new|/{id}]` -> same under `/ui`
@@ -71,6 +72,15 @@ Exact pages unless marked "list". `{x}` segments are copied.
 Server-side links that stay SPA-shaped and rely on the redirect (so the setting stays meaningful): the OAuth
 authorize endpoint's `/auth/login?oauth=true&...` redirect; emailed `/auth/reset-password?token=` and
 `/auth/set-password?token=` links; the portal's `/portal/login` page; the bridge's post-login `/dashboard` target.
+
+## Landing (`/ui/`)
+
+`/ui/` redirects by the caller's sidebar (Go: `Shell.Landing`, `internal/ui/shell/nav.go`): `/ui/dashboard` when the
+sidebar shows it (anchor scope and `platform:*:*:*`), else `/ui/dispatch-pools` when it shows that, else the first
+`/ui` page the sidebar shows, else `/ui/profile`. It never picks a page still linked to the SPA. `/ui/dashboard`
+itself: anchor + `platform:*:*:*` + `CanViewDashboardStats`; counts are exact for clients/active users/roles and
+`pg_class.reltuples` estimates for events, dispatch jobs, audit logs, login attempts; syncs (event types, roles,
+OpenAPI, all) follow their BFF endpoints' checks. Spec: `docs/ui/README.md`, "Dashboard".
 
 ## Tests (Go)
 

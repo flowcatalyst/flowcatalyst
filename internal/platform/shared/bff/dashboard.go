@@ -62,18 +62,30 @@ func (s *DashboardState) stats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exact, err := exactCounts(r.Context(), s.Pool)
+	resp, err := LoadDashboardStats(r.Context(), s.Pool)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("DB", "exact counts failed", err))
+		httperror.Write(w, err)
 		return
 	}
-	approx, err := reltuples(r.Context(), s.Pool,
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// LoadDashboardStats reads the dashboard's counts: exact for the bounded
+// control-plane tables, the planner's estimate (pg_class.reltuples, constant
+// time whatever the row count) for the high-volume message-plane ones. The
+// caller has made the endpoint's checks (RequireAnchor, CanViewDashboardStats).
+func LoadDashboardStats(ctx context.Context, pool *pgxpool.Pool) (DashboardStats, error) {
+	exact, err := exactCounts(ctx, pool)
+	if err != nil {
+		return DashboardStats{}, usecase.Internal("DB", "exact counts failed", err)
+	}
+	approx, err := reltuples(ctx, pool,
 		"msg_events", "msg_dispatch_jobs", "aud_logs", "iam_login_attempts")
 	if err != nil {
-		httperror.Write(w, usecase.Internal("DB", "approximate counts failed", err))
-		return
+		return DashboardStats{}, usecase.Internal("DB", "approximate counts failed", err)
 	}
-	resp := DashboardStats{
+	return DashboardStats{
 		TotalClients:        exact.totalClients,
 		ActiveUsers:         exact.activeUsers,
 		RolesDefined:        exact.rolesDefined,
@@ -81,9 +93,7 @@ func (s *DashboardState) stats(w http.ResponseWriter, r *http.Request) {
 		DispatchJobsApprox:  approx["msg_dispatch_jobs"],
 		AuditLogsApprox:     approx["aud_logs"],
 		LoginAttemptsApprox: approx["iam_login_attempts"],
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	}, nil
 }
 
 type exactCountsResult struct {

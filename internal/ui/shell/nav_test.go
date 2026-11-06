@@ -68,8 +68,8 @@ func TestNavigationLinksAndCurrent(t *testing.T) {
 	if conns.Href != "/ui/connections" || conns.Current {
 		t.Errorf("ported entry, not current: %+v", conns)
 	}
-	if subs.Href != "/dashboard" || subs.Current {
-		t.Errorf("unported entry should link to the SPA: %+v", subs)
+	if subs.Href != "/ui/dashboard" || subs.Current {
+		t.Errorf("ported entry, not current: %+v", subs)
 	}
 }
 
@@ -100,8 +100,23 @@ func TestSectionKeys(t *testing.T) {
 func TestLanding(t *testing.T) {
 	sh := &Shell{}
 	admin := &auth.AuthContext{Scope: auth.ScopeAnchor, Roles: []string{"platform:super-admin"}, Permissions: []string{"platform:*:*:*"}}
-	if got := sh.Landing(admin); got != "/ui/dispatch-pools" {
-		t.Errorf("admin lands on %s", got)
+	if got := sh.Landing(admin); got != "/ui/dashboard" {
+		t.Errorf("admin lands on %s, want /ui/dashboard", got)
+	}
+	// An anchor caller the dashboard is not offered to (no platform:*:*:*)
+	// lands on Dispatch Pools, as before there was a dashboard.
+	anchorOps := &auth.AuthContext{
+		Scope: auth.ScopeAnchor, Roles: []string{"platform:ops"},
+		Permissions: []string{"platform:messaging:dispatch-pool:view", "platform:iam:user:view"},
+	}
+	if got := sh.Landing(anchorOps); got != "/ui/dispatch-pools" {
+		t.Errorf("anchor without the dashboard lands on %s, want /ui/dispatch-pools", got)
+	}
+	// A client-scoped caller never lands on the dashboard, even holding the
+	// permission.
+	clientAll := &auth.AuthContext{Scope: auth.ScopeClient, Clients: []string{"clt_1"}, Roles: []string{"x"}, Permissions: []string{"platform:*:*:*"}}
+	if got := sh.Landing(clientAll); got == "/ui/dashboard" {
+		t.Errorf("a client-scoped caller lands on the dashboard")
 	}
 	clientAdmin := &auth.AuthContext{
 		Scope: auth.ScopeClient, Clients: []string{"clt_1"}, Roles: []string{"platform:client-admin"},
@@ -121,8 +136,13 @@ func TestLanding(t *testing.T) {
 	if got := sh.Landing(nobody); got != "/ui/profile" {
 		t.Errorf("a caller with no console page lands on %s, want /ui/profile", got)
 	}
-	// The SPA-linked Dashboard entry is never a landing.
+	// An SPA-linked entry is never a landing.
 	if got := landing([]kit.NavGroup{{Items: []kit.NavItem{{Href: "/dashboard"}, {Href: "/ui/roles"}}}}); got != "/ui/roles" {
+		t.Errorf("landing = %s", got)
+	}
+	// The dashboard outranks Dispatch Pools wherever each sits in the sidebar.
+	both := []kit.NavGroup{{Items: []kit.NavItem{{Href: "/ui/dispatch-pools"}}}, {Items: []kit.NavItem{{Href: "/ui/dashboard"}}}}
+	if got := landing(both); got != "/ui/dashboard" {
 		t.Errorf("landing = %s", got)
 	}
 }

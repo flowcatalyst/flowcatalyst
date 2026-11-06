@@ -75,7 +75,7 @@ func safeSegment(s string) bool {
 // page (marked "list").
 var pairs = [][2]string{
 	{"/", "/ui/"},
-	{"/dashboard", "/ui/"},
+	{"/dashboard", "/ui/dashboard"},
 
 	{"/auth", "/ui/auth/login"},
 	{"/auth/login", "/ui/auth/login"},

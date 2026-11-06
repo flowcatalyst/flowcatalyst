@@ -63,7 +63,7 @@ func (f Features) has(feature string) bool {
 
 var navigation = []navSection{
 	{"Overview", []navEntry{
-		{label: "Dashboard", icon: "house", spa: "/dashboard", permission: "platform:*:*:*", scope: scopeAnchor},
+		{label: "Dashboard", icon: "house", spa: "/dashboard", ui: "/ui/dashboard", permission: "platform:*:*:*", scope: scopeAnchor},
 	}},
 	{"Identity & Access", []navEntry{
 		{label: "User Management", icon: "users", spa: "/users", ui: "/ui/users", permission: "platform:iam:user:view", scope: scopeAnchor},
@@ -213,35 +213,45 @@ func sectionKey(label string) string {
 	return b.String()
 }
 
-// landingPreferred is where /ui/ sends a caller who may see it: the page /ui/
-// has always opened (there is no /ui dashboard yet).
-const landingPreferred = "/ui/dispatch-pools"
+// The pages /ui/ prefers to open, in order: the dashboard, then the page /ui/
+// opened before there was a dashboard.
+const (
+	landingDashboard = "/ui/dashboard"
+	landingPools     = "/ui/dispatch-pools"
+)
 
-// Landing is the page /ui/ opens for the caller: Dispatch Pools when the
-// sidebar shows it, else the first /ui page the sidebar shows them (a client
-// administrator lands on User Management), else their profile. It never picks
-// an entry that still links to the SPA, and never a page the caller's sidebar
-// does not offer, so nobody lands on a page they may not open.
+// Landing is the page /ui/ opens for the caller: the Dashboard when the
+// sidebar shows it, else Dispatch Pools when it shows that, else the first /ui
+// page the sidebar shows them (a client administrator lands on User
+// Management), else their profile. It never picks an entry that still links to
+// the SPA, and never a page the caller's sidebar does not offer, so nobody
+// lands on a page they may not open.
 func (s *Shell) Landing(ac *auth.AuthContext) string {
 	return landing(NavigationWith(ac, "", s.Features))
 }
 
 func landing(groups []kit.NavGroup) string {
-	first := ""
+	first, pools := "", false
 	for _, g := range groups {
 		for _, it := range g.Items {
 			for _, c := range append([]kit.NavItem{it}, it.Children...) {
 				if !strings.HasPrefix(c.Href, "/ui/") {
 					continue
 				}
-				if c.Href == landingPreferred {
-					return landingPreferred
+				switch c.Href {
+				case landingDashboard:
+					return landingDashboard
+				case landingPools:
+					pools = true
 				}
 				if first == "" {
 					first = c.Href
 				}
 			}
 		}
+	}
+	if pools {
+		return landingPools
 	}
 	if first != "" {
 		return first

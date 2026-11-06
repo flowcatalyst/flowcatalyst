@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/url"
 	"runtime/debug"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -30,7 +32,7 @@ import (
 // so the fc_session cookie and, in dev, the test headers behave the same) and
 // adds the UI's own CSRF, session and role guards. Handlers read the
 // repositories directly, with the API handlers' permission checks.
-func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.UnitOfWork, repos *repoSet, svcs *serviceSet) error {
+func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.UnitOfWork, repos *repoSet, svcs *serviceSet) error {
 	sjInstances := scheduledjob.NewInstanceRepository(pool)
 	ingestionRepo := ingestion.NewRepository(pool)
 	ingestionResolver := ingestion.NewResolver(repos.applicationRepo, repos.clientRepo,
@@ -69,6 +71,13 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 				return p.UserIdentity.DisplayName()
 			}
 			return ""
+		},
+		DashboardStats: pages.DashboardCounts{Pool: pool},
+		OpenAPISync: pages.OpenAPISyncOps{
+			Apps: repos.applicationRepo, Specs: openapispecs.NewRepository(pool), UoW: uow,
+			// The live document, marshalled on demand (the huma API reflects
+			// the routes registered at request time), as the BFF's sync does.
+			Spec: func() (json.RawMessage, error) { return humaAPI.OpenAPI().MarshalJSON() },
 		},
 		DispatchPools:    repos.dispatchPoolRepo,
 		DispatchPoolOps:  pages.PoolOps{Repo: repos.dispatchPoolRepo, UoW: uow},

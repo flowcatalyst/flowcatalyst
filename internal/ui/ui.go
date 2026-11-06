@@ -200,6 +200,13 @@ type Config struct {
 	Cors            pages.CorsStore
 	CorsOps         pages.CorsCommands
 
+	// DashboardStats and OpenAPISync back the dashboard (/ui/dashboard); its
+	// event-type and role syncs run EventTypeOps and RoleOps. A nil OpenAPISync
+	// leaves the OpenAPI sync out, a nil DashboardStats shows the counts as
+	// unavailable.
+	DashboardStats pages.DashboardStatsStore
+	OpenAPISync    pages.OpenAPISyncer
+
 	// SignInUpstream, when set, mounts the new sign-in pages under /ui/auth
 	// (docs/ui/README.md, "Sign-in pages"). It is the platform's router: each
 	// step of a sign-in is one in-process call to the public endpoint the
@@ -283,6 +290,7 @@ func Mount(r chi.Router, cfg Config) error {
 				http.Redirect(w, r, sh.Landing(auth.FromContext(r.Context())), http.StatusFound)
 			})
 			r.Post("/logout", signOut(cfg.CookieSecure))
+			(&pages.Dashboard{Stats: cfg.DashboardStats, EventTypes: cfg.EventTypeOps, Roles: cfg.RoleOps, OpenAPI: cfg.OpenAPISync, Shell: sh}).Mount(r)
 			(&pages.DispatchPools{Pools: cfg.DispatchPools, Ops: cfg.DispatchPoolOps, Clients: cfg.Clients, Shell: sh}).Mount(r)
 			(&pages.Connections{Connections: cfg.Connections, Ops: cfg.ConnectionOps, Clients: cfg.Clients, ServiceAccounts: cfg.ServiceAccounts, Shell: sh}).Mount(r)
 			(&pages.EventTypes{Store: cfg.EventTypes, Ops: cfg.EventTypeOps, Apps: cfg.Applications, Shell: sh}).Mount(r)

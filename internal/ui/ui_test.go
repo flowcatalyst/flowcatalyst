@@ -134,9 +134,9 @@ func TestUIRouteGroup(t *testing.T) {
 			t.Fatalf("status %d", rec.Code)
 		}
 	})
-	t.Run("/ui/ lands on the first ported page", func(t *testing.T) {
+	t.Run("/ui/ lands on the dashboard", func(t *testing.T) {
 		rec := do(t, h, req{method: http.MethodGet, target: "/ui/", session: "admin"})
-		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/ui/dispatch-pools" {
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/ui/dashboard" {
 			t.Fatalf("status %d Location %q", rec.Code, rec.Header().Get("Location"))
 		}
 	})

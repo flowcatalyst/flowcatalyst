@@ -9,7 +9,9 @@ The SPA code stays in the binary; `FC_CONSOLE=spa` turns the redirects off and s
 (no release needed to roll back; see `docs/environment-variables.md`). The redirect is
 `internal/consoleredirect` (wrapping the SPA fallback in `cmd/fcdev` and `cmd/fc-server`); **the SPA-to-/ui
 map lives in `internal/consoleredirect/routes.go`**, and a test (`internal/ui/consoleredirect_routes_test.go`)
-fails the build if a mapped target stops being a `/ui` route. No SPA code is removed without the owner's approval.
+fails the build if a mapped target stops being a `/ui` route. `/` maps to `/ui/`, which lands by the sidebar
+(Dashboard, then Dispatch Pools, then the first `/ui` page, then `/ui/profile`; `Shell.Landing`), and `/dashboard` maps to
+`/ui/dashboard` (see "Dashboard" below). No SPA code is removed without the owner's approval.
 
 Status (2026-10-10): foundations, the Phase 1 kit decisions (row actions, toolbar state part,
 flash stack and the Datastar error contract, an icon sprite, now 90 icons), and `/ui/dispatch-pools` and
@@ -1631,7 +1633,7 @@ permissions; the grant, remove and revoke toasts name the user on a Datastar ans
 `/ui/developer-users` (not under `/ui/developer`, which would mark two entries current). **Role changes are anchor only**: the principal API lets a non-anchor administrator with `user:assign-roles` assign
 application-scoped roles of reachable applications and refuses `platform:developer` to them (`operations.RequireAssignableRoles`, a platform role), a bound the handler applies and `AssignRoles` does not, so the page,
 which runs the use case, requires anchor scope instead of repeating the bound: it refuses what the API refuses for this one role. The portal pages are not filtered by the application access of the principal (`iam_principal_application_access`) because the BFF does not
-filter either, whatever its comment says. Sync Platform OpenAPI (`POST /bff/developer/sync-platform-openapi`) is not on these SPA pages (the SPA's dashboard calls it) and is not ported here.
+filter either, whatever its comment says. Sync Platform OpenAPI (`POST /bff/developer/sync-platform-openapi`) is not on these SPA pages (the SPA's dashboard calls it); it is on the /ui dashboard (see "Dashboard").
 
 Tests: `developer_test.go` (permission matrix over every route for a caller without the permission and a non-anchor, the tabs and their state in the URL, the processes tab without `process:view`, the
 docs rendering, `$ref` handling and the recursion cut, the download name, versions), `developer_users_test.go` (list, search, sort and scope; the controls per caller; forged posts for all four actions
@@ -2020,3 +2022,55 @@ Differences from the SPA: the three URL lists are textareas, one per line (the S
 Tests: `oauth_clients_test.go` and `reset_approvals_test.go` (unit, fakes of the use cases and of the API state: list, search and sort; the permission matrix with forged posts for six caller shapes across every route, controls hidden; drawer and overlap; create confidential/public with the SPA's bodies, validation and the use case's refusals, the shown-once dialog; edit bodies; rotation, no-store, no secret in a signal or a later page, a rotate-only caller; state actions; portal app options; the reset queue and decisions) and `oauth_clients_pg_test.go`, `reset_approvals_pg_test.go` (`-tags=integration`: the real use cases and the real API state on Postgres: the secrets shown are the stored ones, the 24-hour overlap and its revocation, immediate cutover, portal rules, audit, forged posts changing nothing; the reset queue confined by client, forged and repeated decisions refused, the link sent only on approval). Mutation checks (run, seen to fail, restored): dropping the rotate permission check fails `TestOAuthClientsPermissionMatrix` (a viewer's forged rotate ran and showed the secret); dropping the `noStore` writer fails `TestOAuthClientCreateConfidentialShowsTheSecretOnce` and `TestOAuthClientRotation`.
 
 Not verified in a browser: none of these pages has been opened in one (layout, dark mode, narrow widths, the dialogs, the copy buttons, the Datastar-driven PKCE and API-access switches and the portal app re-fetch, the persistent create dialog's reopen on Escape); they are covered by the rendered markup and the server responses in the tests only. New Tailwind classes: none beyond the kit's, so `make ui-kit-sync` was not run.
+
+## Dashboard (`/ui/dashboard`)
+
+At parity with the SPA's `DashboardPage` (2026-11-06). The SPA's `/dashboard` redirects here, and `/ui/` lands
+here for a caller whose sidebar shows it (then Dispatch Pools, then the first `/ui` page, then the profile).
+
+**What it shows.** Header "Dashboard" with "Welcome back, {name}"; six quick links (Applications, Clients, Users,
+Roles, Event Types, Subscriptions) to their `/ui` pages; **Platform Sync** (Sync All, and a card each for Event
+Types, Roles and OpenAPI with its own Sync button); **Platform Overview** (Total Clients, Active Users, Roles
+Defined, exact); **Message Plane (approx.)** (Events, Dispatch Jobs, Audit Logs, Login Attempts, shown with the
+SPA's `~` and its autovacuum caveat text).
+
+| Route | Page | Datastar | Action |
+| --- | --- | --- | --- |
+| `/ui/dashboard` | the page | - | - |
+| `/ui/dashboard/sync/event-types` | - | a flash | the event-type sync |
+| `/ui/dashboard/sync/roles` | - | a flash | the role sync |
+| `/ui/dashboard/sync/openapi` | - | a flash | the OpenAPI sync |
+| `/ui/dashboard/sync` | - | a flash per sync | Sync All |
+
+**Who sees it.** The SPA's rule, which is the sidebar entry's: anchor scope and the route permission
+`platform:*:*:*` (a client-scoped caller never sees it, whatever they hold), plus the stats endpoint's own check
+(`CanViewDashboardStats`). Anyone else gets the 403 page. The sync cards follow the endpoint each one calls, as the
+SPA's `admin-permissions.ts` does: Event Types needs anchor and `event-type:sync` or `:manage`; Roles needs anchor
+and all of `role:create`, `role:update`, `role:delete`; OpenAPI needs anchor and `application-openapi:sync`. A card
+the caller may not run is not shown; with none, the Platform Sync section (and Sync All) is absent. **Parity
+difference:** the SPA shows the OpenAPI card to everyone (and gets a 403 toast); here it follows its permission.
+
+**Data sources.** In process, no HTTP self-calls. The counts are `bff.LoadDashboardStats`, the function behind
+`GET /bff/dashboard/stats` (the endpoint now calls it too): exact `COUNT(*)` over the bounded control-plane tables
+(`tnt_clients`, active USER principals, `iam_roles`) and `pg_class.reltuples` for the high-volume ones
+(`msg_events`, `msg_dispatch_jobs`, `aud_logs`, `iam_login_attempts`). The estimates are constant-time whatever the
+table size, so nothing more was added: no caching, no scan, and the page costs one small query pair per load. The
+syncs run the same use cases as the BFF endpoints: `pages.EventTypeOps.SyncPlatform`, `pages.RolesOps.SyncPlatform`
+(shared with the event types and roles pages) and `pages.OpenAPISyncOps` (the BFF's OpenAPI sync, the live huma
+document captured by a closure in `wire_ui.go`).
+
+**Actions.** Each sync posts at once (no confirmation, as the SPA), the button shows busy while it runs, and the
+answer is the SPA's toast (`2 created, 1 updated (40 total)`, `v1.3.0 → v1.4.0 · breaking`, ...). **Sync All** runs
+the syncs the caller is offered, one after the other, each with its own toast; one failing does not stop the rest
+(the SPA ran them side by side, each toasting its own error), and its error toast is named for the sync. A native
+post (no JavaScript) redirects back with a flash. Every route repeats the access check and its sync's check before
+anything runs.
+
+**Failures.** If the counts cannot be read the cards show a dash (the SPA's) and an alert says so, rather than
+failing the page; the cause is logged, not shown.
+
+**Not in the SPA page, kept:** nothing added. **Dropped:** the "New UI preview" banner (the `/ui` console is the
+default now). Tests: `dashboard_test.go` (render, counts unavailable, visibility, per-sync offers, each sync and
+Sync All incl. a failing one, forged posts from five caller shapes on every route, native posts) and
+`dashboard_pg_test.go` (`-tags=integration`: the counts against the tables, and the OpenAPI sync publishing,
+finding no change, archiving, and failing without the platform application).

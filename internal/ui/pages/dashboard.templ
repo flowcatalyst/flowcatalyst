@@ -1,0 +1,103 @@
+package pages
+
+import "github.com/flowcatalyst/framework/go/ui/kit"
+
+templ dashPage(v dashView) {
+	<div>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Dashboard", Subtitle: "Welcome back, " + v.Name})
+		<div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+			for _, c := range dashCards {
+				<a href={ kit.SafeURL(c.Href) } class="flex items-start gap-4 rounded-xl border bg-card p-5 shadow-sm">
+					<span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-primary">
+						@kit.Icon(kit.IconProps{Name: c.Icon})
+					</span>
+					<span class="min-w-0 flex-1">
+						<span class="block font-semibold hover:underline">{ c.Title }</span>
+						<span class="mt-1 block text-sm text-muted-foreground">{ c.Description }</span>
+					</span>
+				</a>
+			}
+		</div>
+		if v.AnySync() {
+			@dashSync(v)
+		}
+		<section class="mb-8" aria-labelledby="dash-overview">
+			<h2 id="dash-overview" class="mb-4 text-lg font-semibold">Platform Overview</h2>
+			if v.StatsFailed {
+				@kit.Alert(kit.AlertProps{Icon: "info", Title: "Counts unavailable", Description: "The counts could not be read. Try again in a moment.", Class: "mb-4"})
+			}
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+				for _, s := range v.Overview {
+					@dashStatCard(s)
+				}
+			</div>
+		</section>
+		<section aria-labelledby="dash-plane">
+			<h2 id="dash-plane" class="mb-2 text-lg font-semibold">Message Plane (approx.)</h2>
+			<p class="mb-4 text-sm text-muted-foreground">
+				Estimates from the Postgres planner. Updated by autovacuum, so they can be a few % stale after a heavy bulk insert. Exact counts at this scale would require scanning the full table.
+			</p>
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+				for _, s := range v.Plane {
+					@dashStatCard(s)
+				}
+			</div>
+		</section>
+	</div>
+}
+
+templ dashStatCard(s dashStat) {
+	<div class="rounded-xl border bg-card p-5 shadow-sm">
+		<p class="mb-2 text-sm text-muted-foreground">{ s.Label }</p>
+		<p class="text-2xl font-semibold tabular-nums">{ s.Value }</p>
+	</div>
+}
+
+// dashAnyBusy is the button state while a sync runs: the button that started it,
+// and Sync All, are disabled while any sync is in flight (the SPA's loading
+// flags).
+const dashAnyBusy = "$dashBusyAll || $dashBusyEvents || $dashBusyRoles || $dashBusyOpenAPI"
+
+templ dashSync(v dashView) {
+	<section id={ dashRegionID } class="mb-8" aria-labelledby="dash-sync-title">
+		<div class="mb-4 flex items-start justify-between gap-4">
+			<div>
+				<h2 id="dash-sync-title" class="text-lg font-semibold">Platform Sync</h2>
+				<p class="mt-1 text-sm text-muted-foreground">Re-apply code-defined platform definitions (events + roles) without restarting the server.</p>
+			</div>
+			<form method="post" action={ dashPath + "/sync" } data-on:submit={ kit.SubmitForm } data-indicator="dashBusyAll">
+				@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Icon: "refresh-cw", Attrs: templ.Attributes{"data-attr:disabled": dashAnyBusy, "data-attr:aria-busy": "(" + dashAnyBusy + ") ? 'true' : 'false'"}}) {
+					Sync All
+				}
+			</form>
+		</div>
+		<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+			if v.Events {
+				@dashSyncCard("Event Types", "Platform event-type definitions and schemas.", "zap", "event-types", "dashBusyEvents")
+			}
+			if v.Roles {
+				@dashSyncCard("Roles", "Code-defined platform roles and their permissions.", "shield", "roles", "dashBusyRoles")
+			}
+			if v.OpenAPI {
+				@dashSyncCard("OpenAPI", "Publish this build's OpenAPI document to the Developer portal.", "book-open", "openapi", "dashBusyOpenAPI")
+			}
+		</div>
+	</section>
+}
+
+templ dashSyncCard(title, description, icon, slug, signal string) {
+	<div class="flex items-center gap-3 rounded-xl border bg-card px-4 py-3 shadow-sm">
+		<span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-primary">
+			@kit.Icon(kit.IconProps{Name: icon})
+		</span>
+		<div class="min-w-0 flex-1">
+			<h3 class="text-sm font-semibold">{ title }</h3>
+			<p class="text-xs text-muted-foreground">{ description }</p>
+		</div>
+		<form method="post" action={ dashPath + "/sync/" + slug } data-on:submit={ kit.SubmitForm } data-indicator={ signal }>
+			@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: kit.LegacyPrimaryOutline, Icon: "refresh-cw", Attrs: templ.Attributes{"data-attr:disabled": dashAnyBusy, "data-attr:aria-busy": "$" + signal + " ? 'true' : 'false'"}}) {
+				Sync
+			}
+		</form>
+	</div>
+}

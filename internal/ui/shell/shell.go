@@ -82,6 +82,12 @@ func (s *Shell) render(w http.ResponseWriter, r *http.Request, status int, page 
 	writeHTML(w, r, status, document(page.Title, collapsed, theme, props, flashes, content))
 }
 
+// UserName is the signed-in principal's display name (the email when there is
+// none), as the user menu shows it.
+func (s *Shell) UserName(ctx context.Context, ac *auth.AuthContext) string {
+	return s.user(ctx, ac).Name
+}
+
 func (s *Shell) user(ctx context.Context, ac *auth.AuthContext) kit.ShellUser {
 	if ac == nil {
 		return kit.ShellUser{}
