@@ -214,7 +214,7 @@ func PlatformRoles() []role.Role {
 		mk("field-administrator", "Field Administrator",
 			"Manage the client's field workers, devices and field policy",
 			[]string{
-				permFieldWorkerView, permFieldWorkerManage,
+				permFieldWorkerView, permFieldWorkerManage, permFieldWorkerImpersonate,
 				permFieldDeviceView, permFieldDeviceManage,
 			}),
 

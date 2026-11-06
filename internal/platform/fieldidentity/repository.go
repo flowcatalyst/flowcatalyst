@@ -22,6 +22,8 @@ type Repos struct {
 	Codes      *CodeRepo
 	Policies   *PolicyRepo
 	Sessions   *SessionRepo
+	Badges     *BadgeRepo
+	SignIns    *SignInCodeRepo
 }
 
 // NewRepos wires every field-identity repository against the pool.
@@ -32,6 +34,8 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 		Codes:      &CodeRepo{pool: pool},
 		Policies:   &PolicyRepo{pool: pool},
 		Sessions:   &SessionRepo{pool: pool},
+		Badges:     &BadgeRepo{pool: pool},
+		SignIns:    &SignInCodeRepo{pool: pool},
 	}
 }
 
@@ -62,7 +66,7 @@ type IdentityRepo struct{ pool *pgxpool.Pool }
 const identityColumns = `fi.id, fi.client_id, fi.worker_code, fi.name, fi.email, fi.status,
 	fi.pin_hash, fi.pin_scheme, fi.pepper_version, fi.pin_set_at, fi.pin_change_required,
 	fi.failed_since_success, fi.locked_until, fi.hard_locked, fi.last_login_at,
-	fi.created_at, fi.updated_at`
+	fi.can_impersonate, fi.is_test, fi.created_at, fi.updated_at`
 
 const identitySelect = `SELECT ` + identityColumns + ` FROM field_identities fi`
 
@@ -86,6 +90,8 @@ type IdentityFilter struct {
 	AppID string
 	// Status restricts to ACTIVE or DISABLED ("" = all).
 	Status Status
+	// IsTest, when non-nil, restricts to test (true) or real (false) identities.
+	IsTest *bool
 	// AppIDs, when non-nil, restricts to workers granted at least one of
 	// these applications (an application-confined caller's own set).
 	AppIDs []string
@@ -111,6 +117,9 @@ func (r *IdentityRepo) Search(ctx context.Context, f IdentityFilter) ([]Identity
 	}
 	if f.Status != "" {
 		where = append(where, `fi.status = `+add(string(f.Status)))
+	}
+	if f.IsTest != nil {
+		where = append(where, `fi.is_test = `+add(*f.IsTest))
 	}
 	if f.AppIDs != nil {
 		where = append(where, `EXISTS (SELECT 1 FROM field_identity_apps g
@@ -151,13 +160,13 @@ func (r *IdentityRepo) Persist(ctx context.Context, i *Identity, tx *usecasepgx.
 			`INSERT INTO field_identities
 			     (id, client_id, worker_code, name, email, status, pin_hash, pin_scheme, pepper_version,
 			      pin_set_at, pin_change_required, failed_since_success, locked_until, hard_locked,
-			      last_login_at, created_at, updated_at)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+			      last_login_at, can_impersonate, is_test, created_at, updated_at)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
 			 ON CONFLICT (client_id, worker_code) DO UPDATE SET updated_at = field_identities.updated_at
 			 RETURNING id`,
 			i.ID, i.ClientID, i.WorkerCode, i.Name, emptyToNil(i.Email), string(i.Status), i.PINHash,
 			i.PINScheme, i.PepperVersion, i.PINSetAt, i.PINChangeRequired, i.FailedSinceSuccess,
-			i.LockedUntil, i.HardLocked, i.LastLoginAt, i.CreatedAt, now).Scan(&rowID)
+			i.LockedUntil, i.HardLocked, i.LastLoginAt, i.CanImpersonate, i.IsTest, i.CreatedAt, now).Scan(&rowID)
 		if err != nil {
 			return err
 		}
@@ -166,11 +175,12 @@ func (r *IdentityRepo) Persist(ctx context.Context, i *Identity, tx *usecasepgx.
 		tag, err := tx.Inner().Exec(ctx,
 			`UPDATE field_identities SET name=$2, email=$3, status=$4, pin_hash=$5, pin_scheme=$6,
 			     pepper_version=$7, pin_set_at=$8, pin_change_required=$9, failed_since_success=$10,
-			     locked_until=$11, hard_locked=$12, last_login_at=$13, updated_at=$14
+			     locked_until=$11, hard_locked=$12, last_login_at=$13, can_impersonate=$14, is_test=$15,
+			     updated_at=$16
 			 WHERE id = $1`,
 			i.ID, i.Name, emptyToNil(i.Email), string(i.Status), i.PINHash, i.PINScheme,
 			i.PepperVersion, i.PINSetAt, i.PINChangeRequired, i.FailedSinceSuccess,
-			i.LockedUntil, i.HardLocked, i.LastLoginAt, now)
+			i.LockedUntil, i.HardLocked, i.LastLoginAt, i.CanImpersonate, i.IsTest, now)
 		if err != nil {
 			return err
 		}
@@ -195,7 +205,11 @@ func (r *IdentityRepo) Persist(ctx context.Context, i *Identity, tx *usecasepgx.
 		}
 	}
 	for _, s := range i.sessions {
-		if err := revokeSessions(ctx, tx, `identity_id = $1`, rowID, s.reason, s.appID); err != nil {
+		cond := `identity_id = $1`
+		if s.actor {
+			cond = `actor_id = $1 AND actor_type = '` + ActorFieldWorker + `'`
+		}
+		if err := revokeSessions(ctx, tx, cond, rowID, s.reason, s.appID); err != nil {
 			return err
 		}
 	}
@@ -203,11 +217,13 @@ func (r *IdentityRepo) Persist(ctx context.Context, i *Identity, tx *usecasepgx.
 	return nil
 }
 
-// Delete removes the worker: its sessions, its device assignments and unused
-// assigned enrolment codes are cleared first. Sign-in history is kept.
+// Delete removes the worker: its sessions (and the sessions it holds open as an
+// actor), its device assignments and unused assigned enrolment codes are
+// cleared first; badges and sign-in codes go with the row (cascade). Sign-in
+// history is kept.
 func (r *IdentityRepo) Delete(ctx context.Context, i *Identity, tx *usecasepgx.DbTx) error {
 	for _, q := range []string{
-		`DELETE FROM field_sessions WHERE identity_id = $1`,
+		`DELETE FROM field_sessions WHERE identity_id = $1 OR (actor_id = $1 AND actor_type = '` + ActorFieldWorker + `')`,
 		`UPDATE field_devices SET assigned_identity_id = NULL, updated_at = NOW() WHERE assigned_identity_id = $1`,
 		`DELETE FROM field_enrolment_codes WHERE assigned_identity_id = $1 AND used_at IS NULL`,
 		`DELETE FROM field_identities WHERE id = $1`,
@@ -284,7 +300,7 @@ func scanIdentities(rows pgx.Rows) ([]Identity, error) {
 		if err := rows.Scan(&i.ID, &i.ClientID, &i.WorkerCode, &i.Name, &email, &status,
 			&i.PINHash, &i.PINScheme, &i.PepperVersion, &i.PINSetAt, &i.PINChangeRequired,
 			&i.FailedSinceSuccess, &i.LockedUntil, &i.HardLocked, &i.LastLoginAt,
-			&i.CreatedAt, &i.UpdatedAt); err != nil {
+			&i.CanImpersonate, &i.IsTest, &i.CreatedAt, &i.UpdatedAt); err != nil {
 			return nil, err
 		}
 		i.Email = deref(email)
@@ -300,7 +316,7 @@ func scanIdentities(rows pgx.Rows) ([]Identity, error) {
 // to one application.
 func revokeSessions(ctx context.Context, tx *usecasepgx.DbTx, cond, ownerID, reason, appID string) error {
 	q := `UPDATE field_sessions SET revoked_at = NOW(), revoked_reason = $2
-	      WHERE ` + cond + ` AND revoked_at IS NULL`
+	      WHERE (` + cond + `) AND revoked_at IS NULL`
 	args := []any{ownerID, reason}
 	if appID != "" {
 		q += ` AND application_id = $3`
@@ -584,10 +600,12 @@ func (r *PolicyRepo) Effective(ctx context.Context, clientID string) (Policy, er
 	p := Policy{ClientID: clientID}
 	err := r.pool.QueryRow(ctx,
 		`SELECT pin_min_length, soft_lock_threshold, soft_lock_secs, hard_lock_threshold, shared_idle_secs,
-		        personal_idle_secs, shift_max_secs, require_attestation, pin_reauth_days, updated_at
+		        personal_idle_secs, shift_max_secs, require_attestation, pin_reauth_days,
+		        require_enrolled_device, unenrolled_idle_secs, badge_only_login, impersonation_max_secs, updated_at
 		 FROM field_policies WHERE client_id = $1`, clientID).
 		Scan(&p.PINMinLength, &p.SoftLockThreshold, &p.SoftLockSecs, &p.HardLockThreshold, &p.SharedIdleSecs,
-			&p.PersonalIdleSecs, &p.ShiftMaxSecs, &p.RequireAttestation, &p.PINReauthDays, &p.UpdatedAt)
+			&p.PersonalIdleSecs, &p.ShiftMaxSecs, &p.RequireAttestation, &p.PINReauthDays,
+			&p.RequireEnrolledDevice, &p.UnenrolledIdleSecs, &p.BadgeOnlyLogin, &p.ImpersonationMaxSecs, &p.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return DefaultPolicy(clientID), nil
 	}
@@ -604,16 +622,21 @@ func (r *PolicyRepo) Persist(ctx context.Context, p *Policy, tx *usecasepgx.DbTx
 	_, err := tx.Inner().Exec(ctx,
 		`INSERT INTO field_policies
 		     (client_id, pin_min_length, soft_lock_threshold, soft_lock_secs, hard_lock_threshold, shared_idle_secs,
-		      personal_idle_secs, shift_max_secs, require_attestation, pin_reauth_days, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		      personal_idle_secs, shift_max_secs, require_attestation, pin_reauth_days,
+		      require_enrolled_device, unenrolled_idle_secs, badge_only_login, impersonation_max_secs, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		 ON CONFLICT (client_id) DO UPDATE SET
 		     pin_min_length = EXCLUDED.pin_min_length, soft_lock_threshold = EXCLUDED.soft_lock_threshold,
 		     soft_lock_secs = EXCLUDED.soft_lock_secs, hard_lock_threshold = EXCLUDED.hard_lock_threshold,
 		     shared_idle_secs = EXCLUDED.shared_idle_secs, personal_idle_secs = EXCLUDED.personal_idle_secs,
 		     shift_max_secs = EXCLUDED.shift_max_secs, require_attestation = EXCLUDED.require_attestation,
-		     pin_reauth_days = EXCLUDED.pin_reauth_days, updated_at = EXCLUDED.updated_at`,
+		     pin_reauth_days = EXCLUDED.pin_reauth_days,
+		     require_enrolled_device = EXCLUDED.require_enrolled_device,
+		     unenrolled_idle_secs = EXCLUDED.unenrolled_idle_secs, badge_only_login = EXCLUDED.badge_only_login,
+		     impersonation_max_secs = EXCLUDED.impersonation_max_secs, updated_at = EXCLUDED.updated_at`,
 		p.ClientID, p.PINMinLength, p.SoftLockThreshold, p.SoftLockSecs, p.HardLockThreshold, p.SharedIdleSecs,
-		p.PersonalIdleSecs, p.ShiftMaxSecs, p.RequireAttestation, p.PINReauthDays, p.UpdatedAt)
+		p.PersonalIdleSecs, p.ShiftMaxSecs, p.RequireAttestation, p.PINReauthDays,
+		p.RequireEnrolledDevice, p.UnenrolledIdleSecs, p.BadgeOnlyLogin, p.ImpersonationMaxSecs, p.UpdatedAt)
 	return err
 }
 

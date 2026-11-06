@@ -542,9 +542,13 @@ func TestWrongKeyProofRefused(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, r.Code, r.Body.String())
 	assert.Equal(t, "invalid_dpop_proof", r.str("error"))
 
-	// 2. A valid proof from a key that was never enrolled.
+	// 2. A valid proof from a key that was never enrolled: refused when the
+	//    client requires an enrolled device (otherwise it is an unenrolled
+	//    sign-in, see TestUnenrolled*).
+	e.policy("require_enrolled_device", true)
+	unenrolledBody := map[string]any{"appCode": e.codeA, "clientIdentifier": e.ident, "workerCode": "wk-1", "pin": goodPIN}
 	attacker.nonce = r.Header().Get("DPoP-Nonce")
-	r = attacker.raw(http.MethodPost, path, body, attacker.proof(http.MethodPost, path, "", proofOpts{}), "")
+	r = attacker.raw(http.MethodPost, path, unenrolledBody, attacker.proof(http.MethodPost, path, "", proofOpts{}), "")
 	assert.Equal(t, http.StatusUnauthorized, r.Code)
 	assert.Equal(t, "UNKNOWN_DEVICE", r.str("error"))
 

@@ -1,5 +1,9 @@
 # Field-worker identity: platform-held PINs, device-bound sessions, biometric unlock
 
+> Status note (2026-11-06): device enrolment is now opt-in, and badges (QR, `field_badges`) are built;
+> so are impersonation and test identities. See `docs/field-worker-sign-in-options-spec.md`; where it and
+> this document disagree, the spec wins.
+
 Status: ACCEPTED (owner rulings 2026-10-19, recorded in §9). P1 in progress on branch
 `feat/field-identity` (2026-11-03): the build spec is `docs/field-worker-identity-p1-spec.md`.
 Slice A (schema, domain, admin API, PIN policy and hashing, events) landed on the branch 2026-11-03; slice B (the `/field/*` device protocol, token minting, introspection verifier, Go SDK `FieldTokenVerifier`, shared fixtures, Java hand-off `docs/java-handoff-2026-11-03-field-identity.md`) landed on the branch 2026-11-03.

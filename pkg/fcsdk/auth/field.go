@@ -22,9 +22,13 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
-// Field-worker tokens. A field worker signs in from an enrolled device with a
-// PIN; the platform issues a short-lived access token bound to the device key
-// (RFC 9449 DPoP style). The application backend verifies, per request, the
+// Field-worker tokens. A field worker signs in from a device with a PIN or a
+// badge (the device may or may not be enrolled); the platform issues a
+// short-lived access token bound to the device key (RFC 9449 DPoP style). A
+// token on a key that is not an enrolled device has no device_id and
+// device_mode "UNENROLLED". When someone else is signed in as the worker (a
+// supervisor, or an admin through a console sign-in code) the token carries an
+// act claim: the principal's Actor field. Test identities carry test. The application backend verifies, per request, the
 // token AND a proof signed by the same device key:
 //
 //	v := auth.NewFieldTokenVerifier(auth.FieldTokenVerifierConfig{
@@ -117,8 +121,10 @@ type FieldPrincipal struct {
 	WorkerCode       string
 	Name             string
 	AppCode          string
-	DeviceID         string
-	DeviceMode       string
+	// DeviceID is empty on a key that is not an enrolled device (DeviceMode is
+	// then "UNENROLLED").
+	DeviceID   string
+	DeviceMode string
 	// SessionID is the login family (sid).
 	SessionID string
 	AMR       []string
@@ -127,6 +133,19 @@ type FieldPrincipal struct {
 	// JKT is the thumbprint of the device key the request was proven with.
 	JKT     string
 	TokenID string
+	// Actor is non-nil when someone other than the worker is signed in as them
+	// (the act claim); the other fields are still the WORKER's.
+	Actor *FieldActor
+	// Test marks a test identity.
+	Test bool
+}
+
+// FieldActor is who is acting as the worker (RFC 8693 act claim). Type is
+// "field_worker" (a supervisor) or "principal" (a platform user).
+type FieldActor struct {
+	ID   string
+	Type string
+	Name string
 }
 
 // FieldTokenVerifier verifies field access tokens and their DPoP proofs.
@@ -204,6 +223,12 @@ type fieldClaims struct {
 		JKT string `json:"jkt"`
 	} `json:"cnf"`
 	PCR bool `json:"pcr"`
+	Act *struct {
+		Sub  string `json:"sub"`
+		Typ  string `json:"typ"`
+		Name string `json:"name"`
+	} `json:"act"`
+	Test bool `json:"test"`
 }
 
 // Verify checks a request's credentials: the Authorization header ("DPoP
@@ -287,12 +312,16 @@ func (v *FieldTokenVerifier) Verify(ctx context.Context, authorizationHeader, dp
 	if d := now.Sub(time.Unix(proof.iat, 0)); d > v.cfg.ProofMaxAge || d < -v.cfg.ProofMaxAge {
 		return nil, fieldErr(FieldReasonStaleProof, "")
 	}
-	return &FieldPrincipal{
+	p := &FieldPrincipal{
 		WorkerID: c.Sub, ClientID: c.ClientID, ClientIdentifier: c.ClientIdentifier, WorkerCode: c.WorkerCode,
 		Name: c.Name, AppCode: string(c.Aud), DeviceID: c.DeviceID, DeviceMode: c.DeviceMode, SessionID: c.SID,
 		AMR: c.AMR, AuthTime: time.Unix(c.AuthTime, 0).UTC(), ExpiresAt: time.Unix(c.Exp, 0).UTC(),
-		JKT: proof.jkt, TokenID: c.Jti,
-	}, nil
+		JKT: proof.jkt, TokenID: c.Jti, Test: c.Test,
+	}
+	if c.Act != nil && c.Act.Sub != "" {
+		p.Actor = &FieldActor{ID: c.Act.Sub, Type: c.Act.Typ, Name: c.Act.Name}
+	}
+	return p, nil
 }
 
 // sameURL compares scheme, host (case-insensitive) and path; query and

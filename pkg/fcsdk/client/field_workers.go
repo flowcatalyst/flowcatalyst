@@ -20,12 +20,20 @@ type EnsureFieldWorkerRequest struct {
 	// pinChangeRequired); ignored for an existing worker. Omit it and the
 	// worker cannot sign in until a PIN reset.
 	Pin *string `json:"pin,omitempty"`
+	// CanImpersonate (needs the impersonate permission) and IsTest apply to a
+	// NEW worker only.
+	CanImpersonate *bool `json:"canImpersonate,omitempty"`
+	IsTest         *bool `json:"isTest,omitempty"`
 }
 
 // UpdateFieldWorkerRequest — PUT /api/field-workers/{id}.
 type UpdateFieldWorkerRequest struct {
 	Name  string  `json:"name"`
 	Email *string `json:"email,omitempty"`
+	// CanImpersonate (changing it needs the impersonate permission) and IsTest
+	// replace the flag when non-nil.
+	CanImpersonate *bool `json:"canImpersonate,omitempty"`
+	IsTest         *bool `json:"isTest,omitempty"`
 }
 
 // ResetFieldWorkerPinRequest — POST /api/field-workers/{id}/pin-reset. Omit
@@ -47,6 +55,8 @@ type FieldWorkerFilters struct {
 	AppCode string
 	// Status is ACTIVE or DISABLED.
 	Status string
+	// IsTest limits to test identities (true) or real workers (false).
+	IsTest *bool
 	// Page is 0-based; PageSize defaults to 100 (max 1000). nil takes the
 	// platform default.
 	Page     *uint32
@@ -54,6 +64,14 @@ type FieldWorkerFilters struct {
 }
 
 // ─── Response DTOs ───────────────────────────────────────────────────
+
+// FieldWorkerBadgeRef is a worker's active badge.
+type FieldWorkerBadgeRef struct {
+	ID         string `json:"id"`
+	Status     string `json:"status"`
+	CreatedAt  string `json:"createdAt"`
+	LastUsedAt string `json:"lastUsedAt,omitempty"`
+}
 
 // FieldWorkerAppRef is one application a worker is granted.
 type FieldWorkerAppRef struct {
@@ -76,6 +94,11 @@ type FieldWorkerResponse struct {
 	// HasPin is false until a PIN is set (the worker cannot sign in).
 	HasPin            bool `json:"hasPin"`
 	PinChangeRequired bool `json:"pinChangeRequired"`
+	// CanImpersonate lets the worker act as other workers (supervisor act-as);
+	// IsTest marks a test identity; Badge is the ACTIVE badge, nil when none.
+	CanImpersonate bool                 `json:"canImpersonate"`
+	IsTest         bool                 `json:"isTest"`
+	Badge          *FieldWorkerBadgeRef `json:"badge"`
 	// Locked is true while a soft or hard lock is in force.
 	Locked             bool                `json:"locked"`
 	HardLocked         bool                `json:"hardLocked"`
@@ -117,6 +140,8 @@ type FieldWorkerSignInResponse struct {
 	AppCode       string `json:"appCode,omitempty"`
 	IPAddress     string `json:"ipAddress,omitempty"`
 	AttemptedAt   string `json:"attemptedAt"`
+	// ActorID is the supervisor or principal behind an impersonated sign-in.
+	ActorID string `json:"actorId,omitempty"`
 }
 
 // FieldWorkerSignInListResponse — GET /api/field-workers/{id}/sign-ins.
@@ -152,6 +177,7 @@ func (r *FieldWorkersResource) List(ctx context.Context, clientID string, filter
 		q = q.String("q", filters.Q).
 			String("appCode", filters.AppCode).
 			String("status", filters.Status).
+			Bool("isTest", filters.IsTest).
 			Uint32("page", filters.Page).
 			Uint32("pageSize", filters.PageSize)
 	}

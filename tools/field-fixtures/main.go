@@ -4,7 +4,9 @@
 //	{name, accessToken, dpopProof, method, url, now, expect}
 //
 // where expect is "valid" or the refusal reason ("wrong_typ", "pcr", ...).
-// Every SDK's field-token verifier runs every case.
+// A valid case may add principal, the fields a verifier must expose
+// (docs/field-worker-sign-in-options-spec.md section 5). Every SDK's
+// field-token verifier runs every case.
 //
 // The output is deterministic: fixed keys (derived from fixed seeds), a fixed
 // clock and deterministic signers, so re-running the generator reproduces the
@@ -212,6 +214,12 @@ type tokenOpts struct {
 	jkt      string
 	alg      string // header alg override; the signature stays RS256
 	noExp    bool   // omit the exp claim
+
+	// unenrolled omits device_id and sets device_mode UNENROLLED.
+	unenrolled bool
+	amr        []string      // default ["pin"]
+	act        *fixtureActor // the act claim of an impersonated token
+	test       bool          // the test claim
 }
 
 func accessToken(signer *rsa.PrivateKey, o tokenOpts) string {
@@ -224,6 +232,19 @@ func accessToken(signer *rsa.PrivateKey, o tokenOpts) string {
 		"device_id": "fwd_0FIXTUREDEVICE", "device_mode": "PERSONAL", "sid": "fws_0FIXTUREFAMILY",
 		"amr": []string{"pin"}, "auth_time": fixedNow.Add(-5 * time.Minute).Unix(),
 		"cnf": map[string]string{"jkt": o.jkt},
+	}
+	if o.unenrolled {
+		delete(claims, "device_id")
+		claims["device_mode"] = "UNENROLLED"
+	}
+	if o.amr != nil {
+		claims["amr"] = o.amr
+	}
+	if o.act != nil {
+		claims["act"] = map[string]string{"sub": o.act.ID, "typ": o.act.Type, "name": o.act.Name}
+	}
+	if o.test {
+		claims["test"] = true
 	}
 	if o.noExp {
 		delete(claims, "exp")
@@ -255,14 +276,33 @@ func ath(token string) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
+// fixtureActor is the expected (and minted) act claim.
+type fixtureActor struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+	Name string `json:"name"`
+}
+
+// fixturePrincipal is what a verifier must expose for a valid case that
+// carries it: deviceId is "" on an unenrolled key, actor is absent unless
+// someone else is signed in as the worker.
+type fixturePrincipal struct {
+	DeviceID   string        `json:"deviceId"`
+	DeviceMode string        `json:"deviceMode"`
+	AMR        []string      `json:"amr"`
+	Actor      *fixtureActor `json:"actor,omitempty"`
+	Test       bool          `json:"test"`
+}
+
 type fixtureCase struct {
-	Name        string `json:"name"`
-	AccessToken string `json:"accessToken"`
-	DPoPProof   string `json:"dpopProof"`
-	Method      string `json:"method"`
-	URL         string `json:"url"`
-	Now         string `json:"now"`
-	Expect      string `json:"expect"`
+	Name        string            `json:"name"`
+	AccessToken string            `json:"accessToken"`
+	DPoPProof   string            `json:"dpopProof"`
+	Method      string            `json:"method"`
+	URL         string            `json:"url"`
+	Now         string            `json:"now"`
+	Expect      string            `json:"expect"`
+	Principal   *fixturePrincipal `json:"principal,omitempty"`
 }
 
 type fixtureFile struct {
@@ -330,6 +370,24 @@ func generate() map[string][]byte {
 			return parts[0] + "." + parts[1] + "." + parts[2][:len(parts[2])-4] + "AAAA", p
 		}),
 	}
+	// Valid tokens with the sign-in-options claims: no device_id on an
+	// unenrolled key, an act claim when someone is signed in as the worker,
+	// test for a test identity. principal is what a verifier must expose.
+	supervisor := &fixtureActor{ID: "fwu_0FIXTURESUPERVISOR", Type: "field_worker", Name: "Fixture Supervisor"}
+	admin := &fixtureActor{ID: "prn_0FIXTUREADMIN", Type: "principal", Name: "Fixture Admin"}
+	withPrincipal := func(c fixtureCase, p fixturePrincipal) fixtureCase { c.Principal = &p; return c }
+	cases = append(cases,
+		withPrincipal(mk("valid_unenrolled", "valid", with(func(o *tokenOpts) { o.unenrolled = true }), device, proofOpts{}, nil),
+			fixturePrincipal{DeviceID: "", DeviceMode: "UNENROLLED", AMR: []string{"pin"}}),
+		withPrincipal(mk("valid_impersonated_supervisor", "valid",
+			with(func(o *tokenOpts) { o.act = supervisor; o.amr = []string{"pin", "imp"} }), device, proofOpts{}, nil),
+			fixturePrincipal{DeviceID: "fwd_0FIXTUREDEVICE", DeviceMode: "PERSONAL", AMR: []string{"pin", "imp"}, Actor: supervisor}),
+		withPrincipal(mk("valid_impersonated_principal", "valid",
+			with(func(o *tokenOpts) { o.act = admin; o.amr = []string{"code", "imp"}; o.unenrolled = true }), device, proofOpts{}, nil),
+			fixturePrincipal{DeviceID: "", DeviceMode: "UNENROLLED", AMR: []string{"code", "imp"}, Actor: admin}),
+		withPrincipal(mk("valid_test", "valid", with(func(o *tokenOpts) { o.test = true }), device, proofOpts{}, nil),
+			fixturePrincipal{DeviceID: "fwd_0FIXTUREDEVICE", DeviceMode: "PERSONAL", AMR: []string{"pin"}, Test: true}),
+	)
 	// The query-string case: same token and proof, URL carries a query.
 	for i := range cases {
 		if cases[i].Name == "valid_url_with_query_ignored" {
@@ -349,7 +407,7 @@ func generate() map[string][]byte {
 		panic(err)
 	}
 	body, err := json.MarshalIndent(fixtureFile{
-		Description: "Field access-token vectors (docs/wire-contract.md, Field identity). Access tokens are RS256 (the platform's signer); DPoP proofs are ES256. The missing_exp case is a correctly signed token with no exp claim and must be refused as invalid_token. The alg_not_rs256 case carries a header alg of ES256 and must be refused as invalid_token whatever the signature. The verifier is configured with the issuer, appCode and the JWKS next to this file; each case is verified at its own now. expect is \"valid\" or the refusal reason. Generated by tools/field-fixtures; do not edit.",
+		Description: "Field access-token vectors (docs/wire-contract.md, Field identity). Access tokens are RS256 (the platform's signer); DPoP proofs are ES256. The missing_exp case is a correctly signed token with no exp claim and must be refused as invalid_token. The alg_not_rs256 case carries a header alg of ES256 and must be refused as invalid_token whatever the signature. The verifier is configured with the issuer, appCode and the JWKS next to this file; each case is verified at its own now. expect is \"valid\" or the refusal reason. A valid case may carry principal: the fields the verifier must expose (deviceId empty and deviceMode UNENROLLED on a key that is not an enrolled device; actor when someone is signed in as the worker; test for a test identity). Generated by tools/field-fixtures; do not edit.",
 		Issuer:      issuer, AppCode: appCode, Cases: cases,
 	}, "", "  ")
 	if err != nil {

@@ -17,6 +17,11 @@ type PutFieldPolicyRequest struct {
 	ShiftMaxSecs       *int `json:"shiftMaxSecs,omitempty"`      // 3600 to 86400 (50400)
 	RequireAttestation bool `json:"requireAttestation"`
 	PinReauthDays      *int `json:"pinReauthDays,omitempty"` // 1 to 90 (7)
+	// A PUT replaces the policy: the two flags are false when omitted.
+	RequireEnrolledDevice bool `json:"requireEnrolledDevice,omitempty"`
+	UnenrolledIdleSecs    *int `json:"unenrolledIdleSecs,omitempty"` // 60 to 86400 (900)
+	BadgeOnlyLogin        bool `json:"badgeOnlyLogin,omitempty"`
+	ImpersonationMaxSecs  *int `json:"impersonationMaxSecs,omitempty"` // 300 to 43200 (14400)
 }
 
 // FieldPolicyResponse is a client's effective field policy.
@@ -31,6 +36,11 @@ type FieldPolicyResponse struct {
 	ShiftMaxSecs       int    `json:"shiftMaxSecs"`
 	RequireAttestation bool   `json:"requireAttestation"`
 	PinReauthDays      int    `json:"pinReauthDays"`
+	// Sign-in options (docs/field-worker-sign-in-options-spec.md).
+	RequireEnrolledDevice bool `json:"requireEnrolledDevice"`
+	UnenrolledIdleSecs    int  `json:"unenrolledIdleSecs"`
+	BadgeOnlyLogin        bool `json:"badgeOnlyLogin"`
+	ImpersonationMaxSecs  int  `json:"impersonationMaxSecs"`
 	// IsDefault is true when the client has no stored policy and these are
 	// the platform defaults.
 	IsDefault bool   `json:"isDefault"`

@@ -162,12 +162,16 @@ type device struct {
 	id    string // device id once enrolled
 	// lastProof is the most recent proof header, for replay tests.
 	lastProof string
+	// ip is the device's source address (X-Forwarded-For), unique per device
+	// so the per-IP failure bucket of one test never counts another's.
+	ip string
 }
 
 func (e *env) newDevice() *device {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(e.t, err)
-	return &device{t: e.t, e: e, key: k}
+	n := seq.Add(1)
+	return &device{t: e.t, e: e, key: k, ip: fmt.Sprintf("10.%d.%d.%d", n>>16&255, n>>8&255, n&255)}
 }
 
 func (d *device) jwk() map[string]string {
@@ -285,6 +289,7 @@ func (d *device) raw(method, path string, body any, proofHeader, accessToken str
 	}
 	req := httptest.NewRequest(method, path, &buf)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-For", d.ip)
 	if proofHeader != "" {
 		req.Header.Set("DPoP", proofHeader)
 	}
@@ -328,6 +333,21 @@ func (d *device) login(app, worker, pinValue string) resp {
 	return d.call("/field/auth/login", map[string]any{"appCode": app, "workerCode": worker, "pin": pinValue})
 }
 
+// loginUn is a PIN sign-in that names the client, as an unenrolled key must.
+func (d *device) loginUn(app, worker, pinValue string) resp {
+	return d.call("/field/auth/login", map[string]any{
+		"appCode": app, "clientIdentifier": d.e.ident, "workerCode": worker, "pin": pinValue,
+	})
+}
+
+func (d *device) loginBadge(app, token, pinValue string) resp {
+	body := map[string]any{"appCode": app, "badgeToken": token}
+	if pinValue != "" {
+		body["pin"] = pinValue
+	}
+	return d.call("/field/auth/login", body)
+}
+
 func (d *device) refresh(token string) resp {
 	return d.call("/field/auth/refresh", map[string]any{"refreshToken": token})
 }
@@ -352,6 +372,70 @@ func mustLogin(t *testing.T, d *device, app, worker, pinValue string) signedIn {
 	r := d.login(app, worker, pinValue)
 	require.Equal(t, http.StatusOK, r.Code, r.Body.String())
 	return signedIn{access: r.str("accessToken"), refresh: r.str("refreshToken"), body: r.json()}
+}
+
+// mustLoginUn signs a worker in from an unenrolled key.
+func mustLoginUn(t *testing.T, d *device, app, worker, pinValue string) signedIn {
+	t.Helper()
+	r := d.loginUn(app, worker, pinValue)
+	require.Equal(t, http.StatusOK, r.Code, r.Body.String())
+	return signedIn{access: r.str("accessToken"), refresh: r.str("refreshToken"), body: r.json()}
+}
+
+// policy sets one column of the client's field policy (creating the row).
+func (e *env) policy(column string, value any) {
+	e.t.Helper()
+	pool := testpg.Pool(e.t)
+	_, err := pool.Exec(context.Background(), `INSERT INTO field_policies (client_id) VALUES ($1) ON CONFLICT DO NOTHING`, e.clientID)
+	require.NoError(e.t, err)
+	_, err = pool.Exec(context.Background(), `UPDATE field_policies SET `+column+` = $2 WHERE client_id = $1`, e.clientID, value)
+	require.NoError(e.t, err)
+}
+
+// supervisor creates a worker who may act as others.
+func (e *env) supervisor(code, pinValue string, apps ...string) string {
+	e.t.Helper()
+	id := e.worker(code, pinValue, false, apps...)
+	_, err := testpg.Pool(e.t).Exec(context.Background(), `UPDATE field_identities SET can_impersonate = TRUE WHERE id = $1`, id)
+	require.NoError(e.t, err)
+	return id
+}
+
+// badge issues a badge for the worker through the admin use case and returns
+// its token.
+func (e *env) badge(workerID string) string {
+	e.t.Helper()
+	token, err := fieldidentity.NewBadgeToken()
+	require.NoError(e.t, err)
+	cmd := fieldidentity.IssueBadgeCommand{Token: token}
+	cmd.ClientID, cmd.ID = e.clientID, workerID
+	_, err = usecaseop.RunTx(e.actx, e.s.UoW, e.s.Ops.IssueBadge(), cmd, auth.NewExecutionContext(e.actx))
+	require.NoError(e.t, err)
+	return token
+}
+
+// principal inserts a platform principal and returns its id.
+func (e *env) principal(active bool) string {
+	e.t.Helper()
+	id := fmt.Sprintf("prn_fa%011d", seq.Add(1))
+	_, err := testpg.Pool(e.t).Exec(context.Background(),
+		`INSERT INTO iam_principals (id, type, scope, name, active) VALUES ($1, 'USER', 'ANCHOR', 'Console Admin', $2)`, id, active)
+	require.NoError(e.t, err)
+	return id
+}
+
+// signInCode mints a console sign-in code for (worker, app) as the principal.
+func (e *env) signInCode(workerID, appCode, principalID string) string {
+	e.t.Helper()
+	code, err := fieldidentity.NewSignInCodeValue()
+	require.NoError(e.t, err)
+	ec := auth.NewExecutionContext(e.actx)
+	ec.PrincipalID = principalID
+	cmd := fieldidentity.CreateSignInCodeCommand{AppCode: appCode, Code: code}
+	cmd.ClientID, cmd.ID = e.clientID, workerID
+	_, err = usecaseop.RunTx(e.actx, e.s.UoW, e.s.Ops.CreateSignInCode(), cmd, ec)
+	require.NoError(e.t, err)
+	return code
 }
 
 func (e *env) q(sql string, args ...any) int {

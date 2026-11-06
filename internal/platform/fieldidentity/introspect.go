@@ -17,7 +17,15 @@ type TokenClaims struct {
 	SessionID string
 	AMR       []string
 	AuthTime  time.Time
-	Expires   time.Time
+	// DeviceMode is the device_mode claim ("UNENROLLED" when DeviceID is empty).
+	DeviceMode string
+	// ActorSub / ActorType are the act claim of an impersonated token.
+	ActorSub  string
+	ActorType string
+	ActorName string
+	// Test is the test claim.
+	Test    bool
+	Expires time.Time
 	// PINChangeRequired is the token's pcr claim: it may be used only to
 	// change the PIN, so introspection never reports it active.
 	PINChangeRequired bool
@@ -34,7 +42,7 @@ type TokenVerifier interface {
 
 // TokenActive reports whether the claims still describe a usable credential:
 // not expired, not a PIN-change-only (pcr) token, the login family not revoked
-// or expired, and both the worker and the device ACTIVE. It reads current
+// or expired, the worker ACTIVE and (when the token names one) the device ACTIVE. It reads current
 // state, which is the point of an online introspection check.
 func (o *Ops) TokenActive(ctx context.Context, c *TokenClaims, now time.Time) (bool, error) {
 	if c == nil || c.PINChangeRequired {
@@ -57,6 +65,11 @@ func (o *Ops) TokenUsable(ctx context.Context, c *TokenClaims, now time.Time) (b
 	ident, err := o.R.Identities.FindByID(ctx, c.Subject)
 	if err != nil || ident == nil || ident.Status != StatusActive {
 		return false, err
+	}
+	// A token on an unenrolled key carries no device_id: there is no device row
+	// to check, the session row above is its liveness.
+	if c.DeviceID == "" {
+		return true, nil
 	}
 	dev, err := o.R.Devices.FindByID(ctx, c.DeviceID)
 	if err != nil || dev == nil || dev.Status != DeviceActive {

@@ -46,6 +46,11 @@ const (
 	BucketFieldPinClient         Bucket = "field_pin_client"
 	BucketFieldThrottleNoticeDev Bucket = "field_throttle_notice_device"
 	BucketFieldThrottleNoticeCli Bucket = "field_throttle_notice_client"
+	// BucketFieldPinIP / BucketFieldThrottleNoticeIP back an unenrolled key
+	// (no device bucket): PIN failures per source IP
+	// (docs/field-worker-sign-in-options-spec.md section 1.3).
+	BucketFieldPinIP            Bucket = "field_pin_ip"
+	BucketFieldThrottleNoticeIP Bucket = "field_throttle_notice_ip"
 )
 
 // Policy is "at most Limit events in any Window" for one (bucket, key).
@@ -70,6 +75,9 @@ type Policies struct {
 	// client per rolling hour on the field-worker plane.
 	FieldPinDevice Policy
 	FieldPinClient Policy
+	// FieldPinIP caps PIN failures per source IP per rolling hour for
+	// unenrolled keys (a depot shares one NAT address, so it is generous).
+	FieldPinIP Policy
 }
 
 // PoliciesFromEnv reads the FC_RL_* knobs.
@@ -84,6 +92,7 @@ func PoliciesFromEnv() Policies {
 		PortalLogin:          Policy{15 * time.Minute, envutil.Uint32("FC_RL_PORTAL_LOGIN_PER_15MIN", 10)},
 		FieldPinDevice:       Policy{time.Hour, envutil.Uint32("FC_FIELD_DEVICE_FAILURES_PER_HOUR", 20)},
 		FieldPinClient:       Policy{time.Hour, envutil.Uint32("FC_FIELD_CLIENT_FAILURES_PER_HOUR", 300)},
+		FieldPinIP:           Policy{time.Hour, envutil.Uint32("FC_FIELD_IP_FAILURES_PER_HOUR", 100)},
 	}
 }
 
@@ -97,7 +106,7 @@ func (p Policies) MaxWindow() time.Duration {
 		p.OAuthTokenIP.Window, p.OAuthTokenClient.Window,
 		p.OAuthAuthorizeIP.Window, p.OAuthAuthorizeClient.Window,
 		p.PasswordResetIP.Window, p.PasswordResetEmail.Window,
-		p.PortalLogin.Window, p.FieldPinDevice.Window, p.FieldPinClient.Window,
+		p.PortalLogin.Window, p.FieldPinDevice.Window, p.FieldPinClient.Window, p.FieldPinIP.Window,
 	} {
 		if w > max {
 			max = w

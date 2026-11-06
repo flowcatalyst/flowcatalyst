@@ -187,11 +187,13 @@ const (
 	permPortalUserManage = "platform:iam:portal-user:manage"
 
 	// Field-worker identity plane (docs/field-worker-identity-p1-spec.md).
-	permFieldWorkerView      = "platform:iam:field-worker:view"
-	permFieldWorkerManage    = "platform:iam:field-worker:manage"
-	permFieldDeviceView      = "platform:iam:field-device:view"
-	permFieldDeviceManage    = "platform:iam:field-device:manage"
-	permFieldTokenIntrospect = "platform:iam:field-token:introspect"
+	permFieldWorkerView   = "platform:iam:field-worker:view"
+	permFieldWorkerManage = "platform:iam:field-worker:manage"
+	// permFieldWorkerImpersonate: act as a worker (canImpersonate, sign-in codes).
+	permFieldWorkerImpersonate = "platform:iam:field-worker:impersonate"
+	permFieldDeviceView        = "platform:iam:field-device:view"
+	permFieldDeviceManage      = "platform:iam:field-device:manage"
+	permFieldTokenIntrospect   = "platform:iam:field-token:introspect"
 
 	permUserView        = "platform:iam:user:view"
 	permUserCreate      = "platform:iam:user:create"
@@ -1300,6 +1302,30 @@ func CanReadFieldWorkers(a *AuthContext, clientID string) error {
 // grants and deletion of a client's field workers.
 func CanManageFieldWorkers(a *AuthContext, clientID string) error {
 	return fieldClientGate(a, clientID, permFieldWorkerManage)
+}
+
+// CanImpersonateFieldWorkers authorizes the impersonation powers over a
+// client's field workers: granting canImpersonate and minting console sign-in
+// codes for a real (non-test) worker.
+func CanImpersonateFieldWorkers(a *AuthContext, clientID string) error {
+	return fieldClientGate(a, clientID, permFieldWorkerImpersonate)
+}
+
+// CanSignInAsFieldWorker authorizes a console sign-in code for a worker:
+// the impersonate permission, or (for a test identity only) manage. A service
+// account may mint codes for test identities only.
+func CanSignInAsFieldWorker(a *AuthContext, clientID string, testIdentity bool) error {
+	if testIdentity {
+		return fieldClientGate(a, clientID, permFieldWorkerImpersonate, permFieldWorkerManage)
+	}
+	if err := fieldClientGate(a, clientID, permFieldWorkerImpersonate); err != nil {
+		return err
+	}
+	if a.PrincipalType != PrincipalTypeUser {
+		return usecase.Authorization("PRINCIPAL_NOT_HUMAN",
+			"only a human principal may sign in as a real field worker; service accounts may do so for test identities")
+	}
+	return nil
 }
 
 // CanReadFieldDevices authorizes listing and reading a client's field devices

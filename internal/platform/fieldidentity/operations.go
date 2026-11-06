@@ -178,12 +178,16 @@ func appIDs(apps []resolvedApp) []string {
 	return ids
 }
 
+// actorCond selects the sessions a worker holds open as an actor (a supervisor
+// acting as another worker).
+const actorCond = `(actor_id = $1 AND actor_type = '` + ActorFieldWorker + `')`
+
 // countLive counts live sessions matching cond ($1 = owner id) inside the open
 // transaction.
 func countLive(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cond, ownerID, appID string) (int, error) {
 	n := 0
 	err := s.WithTx(ctx, func(tx pgx.Tx) error {
-		q := `SELECT COUNT(*) FROM field_sessions WHERE ` + cond + ` AND revoked_at IS NULL`
+		q := `SELECT COUNT(*) FROM field_sessions WHERE (` + cond + `) AND revoked_at IS NULL`
 		args := []any{ownerID}
 		if appID != "" {
 			q += ` AND application_id = $2`
@@ -236,6 +240,10 @@ type EnsureWorkerCommand struct {
 	// PIN is a supervisor-entered PIN for a NEW worker; it must pass the
 	// client's policy and is stored with pinChangeRequired.
 	PIN string `json:"-"`
+	// CanImpersonate and IsTest apply to a NEW worker only (an existing worker
+	// keeps every field).
+	CanImpersonate bool `json:"canImpersonate,omitempty"`
+	IsTest         bool `json:"isTest,omitempty"`
 }
 
 // EnsureWorker idempotently creates a worker and grants applications. An
@@ -289,6 +297,7 @@ func (o *Ops) EnsureWorker() usecaseop.Operation[EnsureWorkerCommand, Event] {
 			if created {
 				ident = NewIdentity(cmd.ClientID, cmd.WorkerCode, cmd.Name)
 				ident.Email = strings.TrimSpace(cmd.Email)
+				ident.CanImpersonate, ident.IsTest = cmd.CanImpersonate, cmd.IsTest
 				if cmd.PIN != "" {
 					if !o.Hasher.Configured() {
 						return nil, unconfigured()
@@ -314,13 +323,13 @@ func (o *Ops) EnsureWorker() usecaseop.Operation[EnsureWorkerCommand, Event] {
 				}
 			}
 			if created {
-				data := workerData(ident, map[string]any{"name": ident.Name})
+				data := workerData(ident, map[string]any{"name": ident.Name, "isTest": ident.IsTest})
 				if len(granted) > 0 {
 					data["applicationIds"] = granted
 				}
 				return usecaseop.Save(ident, o.R.Identities, NewEvent(ec, WorkerCreatedType, "field-worker", ident.ID, data)), nil
 			}
-			data := workerData(ident, nil)
+			data := workerData(ident, map[string]any{"isTest": ident.IsTest})
 			if len(granted) > 0 {
 				data["applicationIds"] = granted
 			}
@@ -349,9 +358,14 @@ type UpdateWorkerCommand struct {
 	WorkerRef
 	Name  string  `json:"name"`
 	Email *string `json:"email,omitempty"`
+	// CanImpersonate and IsTest, when non-nil, replace the flag. Clearing
+	// CanImpersonate revokes the sessions the worker holds open as an actor.
+	CanImpersonate *bool `json:"canImpersonate,omitempty"`
+	IsTest         *bool `json:"isTest,omitempty"`
 }
 
-// UpdateWorker renames a worker / changes the contact email.
+// UpdateWorker renames a worker / changes the contact email and the
+// canImpersonate / isTest flags.
 func (o *Ops) UpdateWorker() usecaseop.Operation[UpdateWorkerCommand, Event] {
 	return usecaseop.Operation[UpdateWorkerCommand, Event]{
 		Name: "UpdateFieldWorker",
@@ -381,7 +395,18 @@ func (o *Ops) UpdateWorker() usecaseop.Operation[UpdateWorkerCommand, Event] {
 			if cmd.Email != nil {
 				ident.Email = strings.TrimSpace(*cmd.Email)
 			}
-			ev := NewEvent(ec, WorkerUpdatedType, "field-worker", ident.ID, workerData(ident, map[string]any{"name": ident.Name}))
+			if cmd.IsTest != nil {
+				ident.IsTest = *cmd.IsTest
+			}
+			if cmd.CanImpersonate != nil {
+				if ident.CanImpersonate && !*cmd.CanImpersonate {
+					ident.RevokeActorSessions(ReasonActorSuspended)
+				}
+				ident.CanImpersonate = *cmd.CanImpersonate
+			}
+			ev := NewEvent(ec, WorkerUpdatedType, "field-worker", ident.ID, workerData(ident, map[string]any{
+				"name": ident.Name, "isTest": ident.IsTest, "canImpersonate": ident.CanImpersonate,
+			}))
 			return usecaseop.Save(ident, o.R.Identities, ev), nil
 		},
 	}
@@ -400,7 +425,7 @@ func (o *Ops) DeleteWorker() usecaseop.TxOperation[WorkerRef, Event] {
 			if err != nil {
 				return Event{}, err
 			}
-			live, err := countLive(ctx, s, `identity_id = $1`, ident.ID, "")
+			live, err := countLive(ctx, s, `identity_id = $1 OR `+actorCond, ident.ID, "")
 			if err != nil {
 				return Event{}, repoErr("count_sessions", err)
 			}
@@ -530,8 +555,13 @@ func (o *Ops) SuspendWorker() usecaseop.TxOperation[WorkerRef, Event] {
 			if err != nil {
 				return Event{}, repoErr("count_sessions", err)
 			}
+			actorLive, err := countLive(ctx, s, actorCond, ident.ID, "")
+			if err != nil {
+				return Event{}, repoErr("count_sessions", err)
+			}
 			ident.Status = StatusDisabled
 			ident.RevokeSessions(ReasonWorkerSuspended, "")
+			ident.RevokeActorSessions(ReasonActorSuspended)
 			ev := NewEvent(ec, WorkerSuspendedType, "field-worker", ident.ID, workerData(ident, nil))
 			out, err := usecase.Into(usecasepgx.CommitScoped(ctx, s, ident, o.R.Identities, ev, cmd))
 			if err != nil {
@@ -540,6 +570,12 @@ func (o *Ops) SuspendWorker() usecaseop.TxOperation[WorkerRef, Event] {
 			if live > 0 {
 				if _, err := usecase.Into(usecasepgx.EmitEventScoped(ctx, s,
 					sessionsRevokedEvent(ec, ident.ClientID, ReasonWorkerSuspended, live, ident.ID, "", ""), cmd)); err != nil {
+					return Event{}, err
+				}
+			}
+			if actorLive > 0 {
+				if _, err := usecase.Into(usecasepgx.EmitEventScoped(ctx, s,
+					sessionsRevokedEvent(ec, ident.ClientID, ReasonActorSuspended, actorLive, ident.ID, "", ""), cmd)); err != nil {
 					return Event{}, err
 				}
 			}
@@ -865,6 +901,13 @@ type PutPolicyCommand struct {
 	ShiftMaxSecs       *int   `json:"shiftMaxSecs,omitempty"`
 	RequireAttestation bool   `json:"requireAttestation"`
 	PINReauthDays      *int   `json:"pinReauthDays,omitempty"`
+	// RequireEnrolledDevice and BadgeOnlyLogin are plain flags (false when
+	// omitted: a PUT replaces the policy); the two numbers take their
+	// defaults (900, 14400) when omitted.
+	RequireEnrolledDevice bool `json:"requireEnrolledDevice"`
+	UnenrolledIdleSecs    *int `json:"unenrolledIdleSecs,omitempty"`
+	BadgeOnlyLogin        bool `json:"badgeOnlyLogin"`
+	ImpersonationMaxSecs  *int `json:"impersonationMaxSecs,omitempty"`
 }
 
 func pick(v *int, def int) int {
@@ -888,6 +931,11 @@ func (c PutPolicyCommand) Build() (Policy, error) {
 		ShiftMaxSecs:       pick(c.ShiftMaxSecs, def.ShiftMaxSecs),
 		RequireAttestation: c.RequireAttestation,
 		PINReauthDays:      pick(c.PINReauthDays, def.PINReauthDays),
+
+		RequireEnrolledDevice: c.RequireEnrolledDevice,
+		UnenrolledIdleSecs:    pick(c.UnenrolledIdleSecs, def.UnenrolledIdleSecs),
+		BadgeOnlyLogin:        c.BadgeOnlyLogin,
+		ImpersonationMaxSecs:  pick(c.ImpersonationMaxSecs, def.ImpersonationMaxSecs),
 	}
 	if c.HardLockThreshold == nil && p.PINMinLength < pin.DefaultMinLength {
 		p.HardLockThreshold = 5
@@ -915,6 +963,10 @@ func (c PutPolicyCommand) Build() (Policy, error) {
 		return p, bad("shiftMaxSecs", "between 3600 and 86400")
 	case p.PINReauthDays < 1 || p.PINReauthDays > 90:
 		return p, bad("pinReauthDays", "between 1 and 90")
+	case p.UnenrolledIdleSecs < 60 || p.UnenrolledIdleSecs > 86400:
+		return p, bad("unenrolledIdleSecs", "between 60 and 86400")
+	case p.ImpersonationMaxSecs < 300 || p.ImpersonationMaxSecs > 43200:
+		return p, bad("impersonationMaxSecs", "between 300 and 43200")
 	}
 	return p, nil
 }
@@ -949,7 +1001,11 @@ func (o *Ops) PutPolicy() usecaseop.Operation[PutPolicyCommand, Event] {
 			if err != nil {
 				return nil, err
 			}
-			ev := NewEvent(ec, PolicyUpdatedType, "field-policy", p.ClientID, map[string]any{"clientId": p.ClientID})
+			ev := NewEvent(ec, PolicyUpdatedType, "field-policy", p.ClientID, map[string]any{
+				"clientId": p.ClientID, "requireEnrolledDevice": p.RequireEnrolledDevice,
+				"unenrolledIdleSecs": p.UnenrolledIdleSecs, "badgeOnlyLogin": p.BadgeOnlyLogin,
+				"impersonationMaxSecs": p.ImpersonationMaxSecs,
+			})
 			return usecaseop.Save(&p, o.R.Policies, ev), nil
 		},
 	}

@@ -23,6 +23,11 @@ const (
 	WorkerAppGrantedType = "platform:iam:field-worker:app-granted"
 	WorkerAppRevokedType = "platform:iam:field-worker:app-revoked"
 
+	WorkerBadgeIssuedType       = "platform:iam:field-worker:badge-issued"
+	WorkerBadgeRevokedType      = "platform:iam:field-worker:badge-revoked"
+	WorkerImpersonatedType      = "platform:iam:field-worker:impersonated"
+	WorkerSignInCodeCreatedType = "platform:iam:field-worker:sign-in-code-created"
+
 	EnrolmentCodeCreatedType = "platform:iam:field-device:enrolment-code-created"
 	DeviceEnrolledType       = "platform:iam:field-device:enrolled"
 	DeviceSuspendedType      = "platform:iam:field-device:suspended"

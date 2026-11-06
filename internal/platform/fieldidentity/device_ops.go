@@ -260,7 +260,10 @@ func (o *Ops) RevokeSessionFamilyOnReuse() usecaseop.TxOperation[RevokeFamilyCom
 			}
 			data := map[string]any{
 				"clientId": cmd.ClientID, "reason": ReasonReuse, "count": n, "familyId": cmd.FamilyID,
-				"workerId": cmd.WorkerID, "deviceId": cmd.DeviceID,
+				"workerId": cmd.WorkerID,
+			}
+			if cmd.DeviceID != "" {
+				data["deviceId"] = cmd.DeviceID
 			}
 			ev := NewEvent(ec, SessionRevokedType, "field-session", cmd.WorkerID, data)
 			if _, err := usecase.Into(usecasepgx.EmitEventScoped(ctx, s, ev, cmd)); err != nil {
@@ -275,10 +278,11 @@ func (o *Ops) RevokeSessionFamilyOnReuse() usecaseop.TxOperation[RevokeFamilyCom
 
 // ThrottleCommand records that a PIN-failure bucket tripped.
 type ThrottleCommand struct {
-	// Scope is "DEVICE" or "CLIENT".
-	Scope    string `json:"scope"`
-	ClientID string `json:"clientId"`
-	DeviceID string `json:"deviceId,omitempty"`
+	// Scope is "DEVICE", "CLIENT" or "IP" (an unenrolled key's bucket).
+	Scope     string `json:"scope"`
+	ClientID  string `json:"clientId"`
+	DeviceID  string `json:"deviceId,omitempty"`
+	IPAddress string `json:"ipAddress,omitempty"`
 }
 
 // NoteThrottled emits field-device.throttled once per tripped bucket window.
@@ -292,6 +296,12 @@ func (o *Ops) NoteThrottled() usecaseop.TxOperation[ThrottleCommand, struct{}] {
 			if cmd.DeviceID != "" {
 				data["deviceId"] = cmd.DeviceID
 				id = cmd.DeviceID
+			}
+			if cmd.IPAddress != "" {
+				data["ipAddress"] = cmd.IPAddress
+				if id == "" {
+					id = cmd.IPAddress
+				}
 			}
 			ev := NewEvent(ec, DeviceThrottledType, "field-device", id, data)
 			_, err := usecase.Into(usecasepgx.EmitEventScoped(ctx, s, ev, cmd))

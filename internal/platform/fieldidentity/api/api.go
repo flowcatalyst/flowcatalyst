@@ -1,7 +1,8 @@
 // Package api serves the admin surface of the field-worker identity plane:
-// /api/field-workers, /api/field-devices, /api/field-policies and
-// /api/field-tokens/introspect (docs/field-worker-identity-p1-spec.md
-// section 3.3). The device-facing /field/* protocol is a separate package.
+// /api/field-workers (with their badges and console sign-in codes),
+// /api/field-devices, /api/field-policies and /api/field-tokens/introspect
+// (docs/field-worker-identity-p1-spec.md section 3.3,
+// docs/field-worker-sign-in-options-spec.md sections 3.4 and 4). The device-facing /field/* protocol is a separate package.
 //
 // Authorization: every endpoint is client-boxed (platform:iam:field-worker /
 // field-device permissions plus access to the target client). Application-
@@ -67,6 +68,11 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(w, "grantFieldWorkerApp", "/api/field-workers/{id}/apps", "Grant a field worker access to an application", http.StatusOK, s.grantApp)
 	apiroute.Delete(w, "revokeFieldWorkerApp", "/api/field-workers/{id}/apps/{appCode}", "Revoke a field worker's access to an application (and that application's sessions)", http.StatusOK, s.revokeApp)
 	apiroute.Get(w, "listFieldWorkerSignIns", "/api/field-workers/{id}/sign-ins", "A field worker's sign-in attempts, newest first", s.signIns)
+	apiroute.Post(w, "issueFieldWorkerBadge", "/api/field-workers/{id}/badges", "Issue a printed QR badge for a field worker (the token is shown once; earlier active badges are revoked)", http.StatusCreated, s.issueBadge)
+	apiroute.Get(w, "listFieldWorkerBadges", "/api/field-workers/{id}/badges", "A field worker's badges, newest first (never the token)", s.listBadges)
+	apiroute.Post(w, "revokeFieldWorkerBadge", "/api/field-workers/{id}/badges/{badgeId}/revoke", "Revoke a field worker's badge", http.StatusOK, s.revokeBadge)
+	apiroute.Post(w, "issueFieldWorkerBadges", "/api/field-workers/badges", "Issue badges for up to 200 field workers at once (for printing a sheet); all or nothing", http.StatusCreated, s.issueBadges)
+	apiroute.Post(w, "createFieldWorkerSignInCode", "/api/field-workers/{id}/sign-in-codes", "Create a single-use code that signs the worker in to an application on any device (impersonation)", http.StatusCreated, s.createSignInCode)
 
 	d := apiroute.New(api, devicesTag)
 	apiroute.Post(d, "createFieldEnrolmentCode", "/api/field-devices/enrolment-codes", "Create a single-use device enrolment code", http.StatusCreated, s.createCode)
@@ -184,6 +190,12 @@ type FieldWorkerResponse struct {
 	// HasPin is false until a PIN is set (the worker cannot sign in).
 	HasPin            bool `json:"hasPin"`
 	PinChangeRequired bool `json:"pinChangeRequired"`
+	// CanImpersonate lets the worker act as other workers of the client
+	// (supervisor act-as). IsTest marks a test identity.
+	CanImpersonate bool `json:"canImpersonate"`
+	IsTest         bool `json:"isTest"`
+	// Badge is the worker's ACTIVE badge, null when none.
+	Badge *FieldWorkerBadgeRef `json:"badge"`
 	// Locked is true while a soft or hard lock is in force.
 	Locked             bool                `json:"locked"`
 	HardLocked         bool                `json:"hardLocked"`
@@ -198,10 +210,26 @@ type FieldWorkerResponse struct {
 	Created *bool `json:"created,omitempty"`
 }
 
-func workerResponse(i *fieldidentity.Identity, idx appIndex, now time.Time) FieldWorkerResponse {
+// FieldWorkerBadgeRef is a worker's active badge, as the worker shows it.
+type FieldWorkerBadgeRef struct {
+	ID         string           `json:"id"`
+	Status     string           `json:"status" enum:"ACTIVE,REVOKED"`
+	CreatedAt  httpcompat.Time  `json:"createdAt"`
+	LastUsedAt *httpcompat.Time `json:"lastUsedAt,omitempty"`
+}
+
+func badgeRef(b *fieldidentity.Badge) *FieldWorkerBadgeRef {
+	if b == nil {
+		return nil
+	}
+	return &FieldWorkerBadgeRef{ID: b.ID, Status: string(b.Status), CreatedAt: jsontime.New(b.CreatedAt), LastUsedAt: opt(b.LastUsedAt)}
+}
+
+func workerResponse(i *fieldidentity.Identity, idx appIndex, now time.Time, badge *fieldidentity.Badge) FieldWorkerResponse {
 	r := FieldWorkerResponse{
 		ID: i.ID, ClientID: i.ClientID, WorkerCode: i.WorkerCode, Name: i.Name, Email: i.Email,
 		Status: string(i.Status), HasPin: i.HasPIN(), PinChangeRequired: i.PINChangeRequired,
+		CanImpersonate: i.CanImpersonate, IsTest: i.IsTest, Badge: badgeRef(badge),
 		Locked: i.IsLocked(now), HardLocked: i.HardLocked, LockedUntil: opt(i.LockedUntil),
 		FailedSinceSuccess: i.FailedSinceSuccess, LastLoginAt: opt(i.LastLoginAt),
 		Apps:      make([]FieldWorkerAppRef, 0, len(i.Apps)),
@@ -221,11 +249,22 @@ func workerResponse(i *fieldidentity.Identity, idx appIndex, now time.Time) Fiel
 // 403; an unknown id, another client's worker, or (for a confined caller) a
 // worker outside its applications is a 404.
 func (s *State) loadWorker(ctx context.Context, id string, write bool) (*fieldidentity.Identity, error) {
-	ac := auth.FromContext(ctx)
 	gate := auth.CanReadFieldWorkers
 	if write {
 		gate = auth.CanManageFieldWorkers
 	}
+	return s.loadWorkerWith(ctx, id, func(ac *auth.AuthContext, _ *fieldidentity.Identity, clientID string) error {
+		return gate(ac, clientID)
+	})
+}
+
+// loadWorkerWith is [State.loadWorker] with the gate chosen by the caller: it
+// gets the worker (nil when unknown) and its client id ("" when unknown), so
+// the permission may depend on the worker (a test identity).
+func (s *State) loadWorkerWith(ctx context.Context, id string,
+	gate func(ac *auth.AuthContext, ident *fieldidentity.Identity, clientID string) error,
+) (*fieldidentity.Identity, error) {
+	ac := auth.FromContext(ctx)
 	ident, err := s.Ops.R.Identities.FindByID(ctx, id)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_field_worker failed", err)
@@ -234,7 +273,7 @@ func (s *State) loadWorker(ctx context.Context, id string, write bool) (*fieldid
 	if ident != nil {
 		clientID = ident.ClientID
 	}
-	if gerr := gate(ac, clientID); gerr != nil && !isScopeForbidden(gerr) {
+	if gerr := gate(ac, ident, clientID); gerr != nil && !isScopeForbidden(gerr) {
 		return nil, gerr
 	} else if gerr != nil || ident == nil {
 		return nil, httperror.NotFound("FieldWorker", id)
@@ -257,6 +296,10 @@ type EnsureFieldWorkerRequest struct {
 	// client's PIN policy and is stored with pinChangeRequired. Ignored for an
 	// existing worker. Omit it and the worker cannot sign in until a PIN reset.
 	Pin *string `json:"pin,omitempty"`
+	// CanImpersonate (needs platform:iam:field-worker:impersonate) and IsTest
+	// apply to a NEW worker only.
+	CanImpersonate *bool `json:"canImpersonate,omitempty" doc:"New worker only; needs the impersonate permission"`
+	IsTest         *bool `json:"isTest,omitempty" doc:"New worker only: a test identity"`
 }
 
 type ensureOutput struct {
@@ -282,6 +325,17 @@ func (s *State) ensureWorker(ctx context.Context, in *apicommon.In[EnsureFieldWo
 	if in.Body.Pin != nil {
 		cmd.PIN = *in.Body.Pin
 	}
+	if in.Body.IsTest != nil {
+		cmd.IsTest = *in.Body.IsTest
+	}
+	if in.Body.CanImpersonate != nil && *in.Body.CanImpersonate {
+		// Granting the power to act as others is the impersonate permission's
+		// call, in addition to manage.
+		if err := auth.CanImpersonateFieldWorkers(ac, clientID); err != nil {
+			return nil, err
+		}
+		cmd.CanImpersonate = true
+	}
 	ev, err := usecaseop.Run(ctx, s.UoW, s.Ops.EnsureWorker(), cmd, auth.NewExecutionContext(ctx))
 	if err != nil {
 		return nil, fail(err)
@@ -294,7 +348,11 @@ func (s *State) ensureWorker(ctx context.Context, in *apicommon.In[EnsureFieldWo
 	if err != nil {
 		return nil, err
 	}
-	resp := workerResponse(ident, idx, time.Now().UTC())
+	badge, err := s.Ops.R.Badges.ActiveByIdentity(ctx, ident.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_field_badge failed", err)
+	}
+	resp := workerResponse(ident, idx, time.Now().UTC(), badge)
 	created := ev.Type == fieldidentity.WorkerCreatedType
 	resp.Created = &created
 	status := http.StatusOK
@@ -317,6 +375,7 @@ type listWorkersInput struct {
 	Q        string `query:"q" doc:"Case-insensitive prefix matched against name and worker code"`
 	AppCode  string `query:"appCode" doc:"Only workers granted this application"`
 	Status   string `query:"status" enum:"ACTIVE,DISABLED" doc:"Only workers in this state"`
+	IsTest   string `query:"isTest" enum:"true,false" doc:"Only test identities (true) or only real workers (false)"`
 	Page     int    `query:"page" doc:"0-based page index (default 0)"`
 	PageSize int    `query:"pageSize" doc:"Page size (default 100, max 1000)"`
 }
@@ -332,6 +391,10 @@ func (s *State) listWorkers(ctx context.Context, in *listWorkersInput) (*apicomm
 	}
 	f := fieldidentity.IdentityFilter{
 		ClientID: clientID, Query: in.Q, Status: fieldidentity.Status(in.Status), AppIDs: callerAppIDs(ac),
+	}
+	if in.IsTest != "" {
+		v := in.IsTest == "true"
+		f.IsTest = &v
 	}
 	if code := strings.TrimSpace(in.AppCode); code != "" {
 		app, err := s.Ops.Apps.FindByCode(ctx, code)
@@ -356,10 +419,18 @@ func (s *State) listWorkers(ctx context.Context, in *listWorkersInput) (*apicomm
 	if err != nil {
 		return nil, err
 	}
+	ids := make([]string, len(rows))
+	for n := range rows {
+		ids[n] = rows[n].ID
+	}
+	badges, err := s.Ops.R.Badges.ActiveByIdentities(ctx, ids)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_field_badges failed", err)
+	}
 	now := time.Now().UTC()
 	out := make([]FieldWorkerResponse, 0, len(rows))
 	for n := range rows {
-		out = append(out, workerResponse(&rows[n], idx, now))
+		out = append(out, workerResponse(&rows[n], idx, now, badges[rows[n].ID]))
 	}
 	return &apicommon.Out[FieldWorkerListResponse]{Body: FieldWorkerListResponse{Workers: out, Total: total, Page: page, Size: size}}, nil
 }
@@ -373,13 +444,22 @@ func (s *State) getWorker(ctx context.Context, in *apicommon.IDInput) (*apicommo
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[FieldWorkerResponse]{Body: workerResponse(ident, idx, time.Now().UTC())}, nil
+	badge, err := s.Ops.R.Badges.ActiveByIdentity(ctx, ident.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_field_badge failed", err)
+	}
+	return &apicommon.Out[FieldWorkerResponse]{Body: workerResponse(ident, idx, time.Now().UTC(), badge)}, nil
 }
 
 // UpdateFieldWorkerRequest is the body of PUT /api/field-workers/{id}.
 type UpdateFieldWorkerRequest struct {
 	Name  string  `json:"name"`
 	Email *string `json:"email,omitempty"`
+	// CanImpersonate changes need platform:iam:field-worker:impersonate in
+	// addition to manage; clearing it ends the sessions the worker holds open
+	// as an actor. IsTest marks or unmarks a test identity.
+	CanImpersonate *bool `json:"canImpersonate,omitempty" doc:"Changing it needs the impersonate permission; clearing it ends the sessions the worker holds as an actor"`
+	IsTest         *bool `json:"isTest,omitempty"`
 }
 
 type updateWorkerInput struct {
@@ -394,7 +474,15 @@ func (s *State) updateWorker(ctx context.Context, in *updateWorkerInput) (*apico
 	}
 	cmd := fieldidentity.UpdateWorkerCommand{
 		WorkerRef: refOf(ident),
-		Name:      in.Body.Name, Email: in.Body.Email,
+		Name:      in.Body.Name, Email: in.Body.Email, IsTest: in.Body.IsTest,
+	}
+	if v := in.Body.CanImpersonate; v != nil {
+		if *v != ident.CanImpersonate {
+			if err := auth.CanImpersonateFieldWorkers(auth.FromContext(ctx), ident.ClientID); err != nil {
+				return nil, err
+			}
+		}
+		cmd.CanImpersonate = v
 	}
 	if _, err := usecaseop.Run(ctx, s.UoW, s.Ops.UpdateWorker(), cmd, auth.NewExecutionContext(ctx)); err != nil {
 		return nil, fail(err)
@@ -554,14 +642,17 @@ func (s *State) revokeApp(ctx context.Context, in *revokeAppInput) (*apicommon.O
 
 // FieldWorkerSignInResponse is one sign-in attempt.
 type FieldWorkerSignInResponse struct {
-	ID            string          `json:"id"`
-	Outcome       string          `json:"outcome" enum:"SUCCESS,FAILURE"`
-	FailureReason string          `json:"failureReason,omitempty"`
-	AuthMethod    string          `json:"authMethod"`
-	DeviceID      string          `json:"deviceId,omitempty"`
-	AppCode       string          `json:"appCode,omitempty"`
-	IPAddress     string          `json:"ipAddress,omitempty"`
-	AttemptedAt   httpcompat.Time `json:"attemptedAt"`
+	ID            string `json:"id"`
+	Outcome       string `json:"outcome" enum:"SUCCESS,FAILURE"`
+	FailureReason string `json:"failureReason,omitempty"`
+	AuthMethod    string `json:"authMethod"`
+	DeviceID      string `json:"deviceId,omitempty"`
+	AppCode       string `json:"appCode,omitempty"`
+	IPAddress     string `json:"ipAddress,omitempty"`
+	// ActorID is the supervisor or principal behind an impersonated sign-in
+	// (authMethod ACT_AS or SIGN_IN_CODE).
+	ActorID     string          `json:"actorId,omitempty"`
+	AttemptedAt httpcompat.Time `json:"attemptedAt"`
 }
 
 // FieldWorkerSignInListResponse is the GET /api/field-workers/{id}/sign-ins envelope.
@@ -596,7 +687,7 @@ func (s *State) signIns(ctx context.Context, in *signInsInput) (*apicommon.Out[F
 	for _, a := range rows {
 		r := FieldWorkerSignInResponse{
 			ID: a.ID, Outcome: a.Outcome, FailureReason: a.FailureReason, AuthMethod: a.AuthMethod,
-			DeviceID: a.DeviceID, IPAddress: a.IPAddress, AttemptedAt: jsontime.New(a.AttemptedAt),
+			DeviceID: a.DeviceID, IPAddress: a.IPAddress, AttemptedAt: jsontime.New(a.AttemptedAt), ActorID: a.ActorID,
 		}
 		if a.ApplicationID != "" {
 			r.AppCode = idx.ref(a.ApplicationID).Code
@@ -833,6 +924,14 @@ type FieldPolicyResponse struct {
 	ShiftMaxSecs       int    `json:"shiftMaxSecs"`
 	RequireAttestation bool   `json:"requireAttestation"`
 	PinReauthDays      int    `json:"pinReauthDays"`
+	// RequireEnrolledDevice refuses sign-in from a key that is not an enrolled
+	// device. UnenrolledIdleSecs is the idle limit of an unenrolled session.
+	// BadgeOnlyLogin lets a badge sign in without a PIN on an enrolled device.
+	// ImpersonationMaxSecs caps an impersonated session.
+	RequireEnrolledDevice bool `json:"requireEnrolledDevice"`
+	UnenrolledIdleSecs    int  `json:"unenrolledIdleSecs"`
+	BadgeOnlyLogin        bool `json:"badgeOnlyLogin"`
+	ImpersonationMaxSecs  int  `json:"impersonationMaxSecs"`
 	// IsDefault is true when the client has no policy row and these are the
 	// platform defaults.
 	IsDefault bool             `json:"isDefault"`
@@ -845,6 +944,8 @@ func policyResponse(p fieldidentity.Policy) FieldPolicyResponse {
 		SoftLockSecs: p.SoftLockSecs, HardLockThreshold: p.HardLockThreshold, SharedIdleSecs: p.SharedIdleSecs,
 		PersonalIdleSecs: p.PersonalIdleSecs, ShiftMaxSecs: p.ShiftMaxSecs, RequireAttestation: p.RequireAttestation,
 		PinReauthDays: p.PINReauthDays, IsDefault: p.IsDefault,
+		RequireEnrolledDevice: p.RequireEnrolledDevice, UnenrolledIdleSecs: p.UnenrolledIdleSecs,
+		BadgeOnlyLogin: p.BadgeOnlyLogin, ImpersonationMaxSecs: p.ImpersonationMaxSecs,
 	}
 	if !p.IsDefault {
 		r.UpdatedAt = opt(&p.UpdatedAt)
@@ -880,6 +981,11 @@ type PutFieldPolicyRequest struct {
 	ShiftMaxSecs       *int `json:"shiftMaxSecs,omitempty" doc:"3600 to 86400 (default 50400)"`
 	RequireAttestation bool `json:"requireAttestation"`
 	PinReauthDays      *int `json:"pinReauthDays,omitempty" doc:"1 to 90 (default 7)"`
+	// A PUT replaces the policy: the two flags are false when omitted.
+	RequireEnrolledDevice bool `json:"requireEnrolledDevice,omitempty" doc:"Refuse sign-in from a key that is not an enrolled device (default false)"`
+	UnenrolledIdleSecs    *int `json:"unenrolledIdleSecs,omitempty" doc:"60 to 86400 (default 900)"`
+	BadgeOnlyLogin        bool `json:"badgeOnlyLogin,omitempty" doc:"Let a badge sign in without a PIN on an enrolled device (default false)"`
+	ImpersonationMaxSecs  *int `json:"impersonationMaxSecs,omitempty" doc:"300 to 43200 (default 14400)"`
 }
 
 type putPolicyInput struct {
@@ -896,7 +1002,8 @@ func (s *State) putPolicy(ctx context.Context, in *putPolicyInput) (*apicommon.O
 		ClientID: in.ClientID, PINMinLength: b.PinMinLength, SoftLockThreshold: b.SoftLockThreshold,
 		SoftLockSecs: b.SoftLockSecs, HardLockThreshold: b.HardLockThreshold, SharedIdleSecs: b.SharedIdleSecs,
 		PersonalIdleSecs: b.PersonalIdleSecs, ShiftMaxSecs: b.ShiftMaxSecs, RequireAttestation: b.RequireAttestation,
-		PINReauthDays: b.PinReauthDays,
+		PINReauthDays: b.PinReauthDays, RequireEnrolledDevice: b.RequireEnrolledDevice,
+		UnenrolledIdleSecs: b.UnenrolledIdleSecs, BadgeOnlyLogin: b.BadgeOnlyLogin, ImpersonationMaxSecs: b.ImpersonationMaxSecs,
 	}
 	if _, err := usecaseop.Run(ctx, s.UoW, s.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx)); err != nil {
 		return nil, fail(err)
@@ -923,6 +1030,17 @@ type FieldTokenIntrospectResponse struct {
 	Amr        []string         `json:"amr,omitempty"`
 	AuthTime   *httpcompat.Time `json:"authTime,omitempty"`
 	Exp        *httpcompat.Time `json:"exp,omitempty"`
+	// Act is present when someone other than the worker is signed in as them.
+	Act *FieldTokenActor `json:"act,omitempty"`
+	// Test is true for a test identity.
+	Test bool `json:"test,omitempty"`
+}
+
+// FieldTokenActor is the act claim: who is acting as the worker. Typ is
+// "field_worker" (a supervisor) or "principal" (a platform user).
+type FieldTokenActor struct {
+	Sub string `json:"sub"`
+	Typ string `json:"typ"`
 }
 
 func (s *State) introspect(ctx context.Context, in *apicommon.In[FieldTokenIntrospectRequest]) (*apicommon.Out[FieldTokenIntrospectResponse], error) {
@@ -960,8 +1078,13 @@ func (s *State) introspect(ctx context.Context, in *apicommon.In[FieldTokenIntro
 		return inactive, nil
 	}
 	authTime, exp := jsontime.New(claims.AuthTime), jsontime.New(claims.Expires)
-	return &apicommon.Out[FieldTokenIntrospectResponse]{Body: FieldTokenIntrospectResponse{
+	out := FieldTokenIntrospectResponse{
 		Active: true, Sub: claims.Subject, ClientID: claims.ClientID, WorkerCode: claims.WorkerCode,
 		DeviceID: claims.DeviceID, AppCode: claims.AppCode, Amr: claims.AMR, AuthTime: &authTime, Exp: &exp,
-	}}, nil
+		Test: claims.Test,
+	}
+	if claims.ActorSub != "" {
+		out.Act = &FieldTokenActor{Sub: claims.ActorSub, Typ: claims.ActorType}
+	}
+	return &apicommon.Out[FieldTokenIntrospectResponse]{Body: out}, nil
 }

@@ -20,6 +20,16 @@ type FieldTokenIntrospectResponse struct {
 	Amr        []string `json:"amr,omitempty"`
 	AuthTime   string   `json:"authTime,omitempty"`
 	Exp        string   `json:"exp,omitempty"`
+	// Act is present when someone other than the worker is signed in as them;
+	// Test is true for a test identity.
+	Act  *FieldTokenActor `json:"act,omitempty"`
+	Test bool             `json:"test,omitempty"`
+}
+
+// FieldTokenActor is the act claim: Typ is "field_worker" or "principal".
+type FieldTokenActor struct {
+	Sub string `json:"sub"`
+	Typ string `json:"typ"`
 }
 
 // FieldTokensResource — /api/field-tokens/*.

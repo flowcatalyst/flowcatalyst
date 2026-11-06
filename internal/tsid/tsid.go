@@ -106,6 +106,10 @@ const (
 	FieldDevice
 	FieldEnrolmentCode
 	FieldSession
+	// FieldBadge and FieldSignInCode back field_badges and field_sign_in_codes
+	// - docs/field-worker-sign-in-options-spec.md.
+	FieldBadge
+	FieldSignInCode
 )
 
 // Prefix returns the 3-character prefix for this entity type. These are
@@ -234,6 +238,10 @@ func (e EntityType) Prefix() string {
 		return "fwe"
 	case FieldSession:
 		return "fws"
+	case FieldBadge:
+		return "fwb"
+	case FieldSignInCode:
+		return "fwi"
 	default:
 		return "unk"
 	}

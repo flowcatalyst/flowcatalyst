@@ -436,9 +436,9 @@ func platformEventSchemas() map[string]json.RawMessage {
 	worker := func(extra ...prop) json.RawMessage {
 		return obj(append([]prop{reqStr("workerId"), reqStr("clientId"), reqStr("workerCode")}, extra...)...)
 	}
-	m["platform:iam:field-worker:created"] = worker(reqStr("name"), optStrArray("applicationIds"))
-	m["platform:iam:field-worker:ensured"] = worker(optStrArray("applicationIds"))
-	m["platform:iam:field-worker:updated"] = worker(reqStr("name"))
+	m["platform:iam:field-worker:created"] = worker(reqStr("name"), optStrArray("applicationIds"), reqBool("isTest"))
+	m["platform:iam:field-worker:ensured"] = worker(optStrArray("applicationIds"), reqBool("isTest"))
+	m["platform:iam:field-worker:updated"] = worker(reqStr("name"), reqBool("isTest"), reqBool("canImpersonate"))
 	m["platform:iam:field-worker:deleted"] = worker()
 	m["platform:iam:field-worker:suspended"] = worker()
 	m["platform:iam:field-worker:activated"] = worker()
@@ -447,6 +447,15 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:iam:field-worker:unlocked"] = worker()
 	m["platform:iam:field-worker:app-granted"] = worker(reqStr("applicationId"), reqStr("applicationCode"))
 	m["platform:iam:field-worker:app-revoked"] = worker(reqStr("applicationId"), reqStr("applicationCode"))
+	m["platform:iam:field-worker:badge-issued"] = worker(reqStr("badgeId"), reqStrArray("revokedBadgeIds"))
+	m["platform:iam:field-worker:badge-revoked"] = worker(reqStr("badgeId"))
+	m["platform:iam:field-worker:impersonated"] = worker(
+		reqStr("appCode"), reqEnum("actorType", "FIELD_WORKER", "PRINCIPAL"), reqStr("actorId"),
+		reqEnum("method", "ACT_AS", "SIGN_IN_CODE"), optStr("deviceId"), reqStr("sessionId"),
+	)
+	m["platform:iam:field-worker:sign-in-code-created"] = worker(
+		reqStr("appCode"), reqStr("createdBy"), reqStr("expiresAt"),
+	)
 	device := func(extra ...prop) json.RawMessage {
 		return obj(append([]prop{reqStr("deviceId"), reqStr("clientId"), reqStr("mode")}, extra...)...)
 	}
@@ -459,13 +468,16 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:iam:field-device:activated"] = device()
 	m["platform:iam:field-device:revoked"] = device()
 	m["platform:iam:field-device:throttled"] = obj(
-		reqEnum("scope", "DEVICE", "CLIENT"), reqStr("clientId"), optStr("deviceId"),
+		reqEnum("scope", "DEVICE", "CLIENT", "IP"), reqStr("clientId"), optStr("deviceId"), optStr("ipAddress"),
 	)
 	m["platform:iam:field-session:revoked"] = obj(
 		reqStr("clientId"), reqStr("reason"), reqU32("count"),
 		optStr("workerId"), optStr("deviceId"), optStr("familyId"), optStr("applicationId"),
 	)
-	m["platform:iam:field-policy:updated"] = obj(reqStr("clientId"))
+	m["platform:iam:field-policy:updated"] = obj(
+		reqStr("clientId"), reqBool("requireEnrolledDevice"), reqU32("unenrolledIdleSecs"),
+		reqBool("badgeOnlyLogin"), reqU32("impersonationMaxSecs"),
+	)
 
 	// ── platform:portal ─────────────────────────────────────────────────
 	for _, ev := range []string{"created", "updated", "deleted"} {

@@ -26,13 +26,29 @@ import (
 var fixtureDir = filepath.Join("..", "..", "..", "api", "field-fixtures")
 
 type fixtureCase struct {
-	Name        string `json:"name"`
-	AccessToken string `json:"accessToken"`
-	DPoPProof   string `json:"dpopProof"`
-	Method      string `json:"method"`
-	URL         string `json:"url"`
-	Now         string `json:"now"`
-	Expect      string `json:"expect"`
+	Name        string            `json:"name"`
+	AccessToken string            `json:"accessToken"`
+	DPoPProof   string            `json:"dpopProof"`
+	Method      string            `json:"method"`
+	URL         string            `json:"url"`
+	Now         string            `json:"now"`
+	Expect      string            `json:"expect"`
+	Principal   *fixturePrincipal `json:"principal"`
+}
+
+// fixturePrincipal is what a verifier must expose for a valid case that lists
+// it (the sign-in-options claims: no device on an unenrolled key, an actor
+// when someone is signed in as the worker, test identities).
+type fixturePrincipal struct {
+	DeviceID   string   `json:"deviceId"`
+	DeviceMode string   `json:"deviceMode"`
+	AMR        []string `json:"amr"`
+	Actor      *struct {
+		ID   string `json:"id"`
+		Type string `json:"type"`
+		Name string `json:"name"`
+	} `json:"actor"`
+	Test bool `json:"test"`
 }
 
 func loadFixtures(t *testing.T) (issuer, appCode string, jwks []byte, cases []fixtureCase) {
@@ -77,6 +93,19 @@ func TestFieldFixtures(t *testing.T) {
 				assert.Equal(t, "fixture-client", p.ClientIdentifier)
 				assert.Equal(t, "W001", p.WorkerCode)
 				assert.Equal(t, appCode, p.AppCode)
+				if want := c.Principal; want != nil {
+					assert.Equal(t, want.DeviceID, p.DeviceID)
+					assert.Equal(t, want.DeviceMode, p.DeviceMode)
+					assert.Equal(t, want.AMR, p.AMR)
+					assert.Equal(t, want.Test, p.Test)
+					if want.Actor == nil {
+						assert.Nil(t, p.Actor)
+					} else if assert.NotNil(t, p.Actor) {
+						assert.Equal(t, want.Actor.ID, p.Actor.ID)
+						assert.Equal(t, want.Actor.Type, p.Actor.Type)
+						assert.Equal(t, want.Actor.Name, p.Actor.Name)
+					}
+				}
 				return
 			}
 			require.Error(t, err)

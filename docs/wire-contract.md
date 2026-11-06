@@ -880,14 +880,16 @@ Additive within contract version 2 (`docs/ingestion-design.md` section 7, "Robus
 
 The field-worker identity plane (workers with a PIN, enrolled devices) is a separate
 population from principals and portal users. Design: `docs/field-worker-identity-design.md`;
-build spec: `docs/field-worker-identity-p1-spec.md`. This section is the admin surface;
+build spec: `docs/field-worker-identity-p1-spec.md`; sign-in options (unenrolled devices, badges,
+impersonation, test identities): `docs/field-worker-sign-in-options-spec.md`. This section is the admin surface;
 the device-facing `/field/*` protocol is the next section.
 
 **Authorization.** Every route needs a permission AND access to the target client:
 `platform:iam:field-worker:view|manage` (workers), `platform:iam:field-device:view|manage`
-(devices, enrolment codes, policy), `platform:iam:field-token:introspect`. Scope alone grants
-nothing (an anchor needs the permission too). The role `platform:field-administrator` holds
-the first four. By-id routes answer `404` (`FieldWorker_NOT_FOUND` / `FieldDevice_NOT_FOUND`)
+(devices, enrolment codes, policy), `platform:iam:field-token:introspect`, and
+`platform:iam:field-worker:impersonate` (granting `canImpersonate`, console sign-in codes for real
+workers). Scope alone grants nothing (an anchor needs the permission too). The role
+`platform:field-administrator` holds all but introspect. By-id routes answer `404` (`FieldWorker_NOT_FOUND` / `FieldDevice_NOT_FOUND`)
 for a resource of a client the caller cannot reach, and `403 PERMISSION_REQUIRED` without the
 permission; routes that take a `clientId` answer `403 SCOPE_FORBIDDEN`. An application-confined
 service account (an explicit application list) may only name its own applications
@@ -903,7 +905,12 @@ is an idempotent ensure on `(clientId, workerCode)` (the code is stored upper-ca
 the client's PIN policy (`400 PIN_POLICY`, `details.violations[]`) and is stored with
 `pinChangeRequired:true`; without one the worker has no PIN and cannot sign in until a reset.
 Responses carry `hasPin`, `pinChangeRequired`, `locked`, `hardLocked`, `lockedUntil?`,
-`failedSinceSuccess`, `apps[]` and never the hash. `GET /api/field-workers?clientId&q&appCode&status&page&pageSize`
+`failedSinceSuccess`, `apps[]`, `canImpersonate`, `isTest`, `badge` (`{id, status, createdAt, lastUsedAt?}`
+for the ACTIVE badge, else `null`) and never the hash. Ensure (new worker only) and PUT accept
+`canImpersonate?` and `isTest?`: setting or changing `canImpersonate` needs
+`platform:iam:field-worker:impersonate` in addition to manage (`403 PERMISSION_REQUIRED`), and clearing
+it revokes the sessions the worker holds open as an actor (`ACTOR_SUSPENDED`). Suspending or deleting a
+worker does the same. `GET /api/field-workers` also takes `isTest=true|false`. `GET /api/field-workers?clientId&q&appCode&status&page&pageSize`
 (`page` 0-based, `pageSize` default 100 max 1000; `q` is a case-insensitive prefix of name or
 worker code) answers `{workers, total, page, size}`; `GET|PUT|DELETE /api/field-workers/{id}`
 (PUT takes `{name, email?}`; DELETE revokes the worker's sessions and removes the row).
@@ -914,7 +921,28 @@ state cleared. `POST /{id}/unlock` clears both locks and the failure counter. `P
 sets `DISABLED` and revokes all sessions; `POST /{id}/activate` reverses the status.
 `POST /{id}/apps {appCode}` grants; `DELETE /{id}/apps/{appCode}` revokes and revokes that
 application's sessions for the worker; both idempotent. `GET /{id}/sign-ins?page&pageSize` lists
-sign-in attempts newest first (`{signIns, total, page, size}`).
+sign-in attempts newest first (`{signIns, total, page, size}`; each has `authMethod` (`PIN`,
+`BADGE_PIN`, `BADGE`, `ACT_AS`, `SIGN_IN_CODE`, `PIN_CHANGE`), `deviceId?` (absent for an unenrolled key)
+and `actorId?`, the supervisor or principal behind an impersonated sign-in).
+
+**Badges** (permission `platform:iam:field-worker:manage`, client-boxed like the worker routes).
+`POST /api/field-workers/{id}/badges {label?}` answers `201 {badge, token}`: `token` is `FWB1` plus 26
+Crockford base32 characters (the QR content, compared case-insensitively), shown once and stored only
+as its SHA-256; issuing revokes the worker's earlier ACTIVE badges in the same transaction (one active
+badge per worker). `GET .../badges` answers `{badges[]}` (all statuses, newest first, never the token);
+`POST .../badges/{badgeId}/revoke` answers the badge (idempotent). `POST /api/field-workers/badges
+{workerIds[1..200]}` issues one per worker in one transaction, all or nothing (a worker the caller
+cannot reach is `404`/`403` and nothing is issued): `201 {issued: [{workerId, workerCode, name, badge,
+token}]}`. `FieldBadge = {id, workerId, label?, status: ACTIVE|REVOKED, createdAt, createdBy?, revokedAt?,
+lastUsedAt?}`. Deleting a worker deletes its badges.
+
+**Console sign-in codes.** `POST /api/field-workers/{id}/sign-in-codes {appCode}` answers
+`201 {code, expiresAt, workerId, appCode}`: `code` is `FWS1` plus 26 characters, valid 10 minutes,
+single use, shown once, stored hashed. Needs `platform:iam:field-worker:impersonate`, or manage when
+the target is a test identity. The caller must be a human principal, except for a test identity
+(service accounts may drive QA with test identities); `403 PRINCIPAL_NOT_HUMAN` otherwise. The worker
+must be ACTIVE (`409 WORKER_UNAVAILABLE`) and granted the application (`409 NO_APP_ACCESS`). The
+device redeems it at `POST /field/auth/sign-in-code`.
 
 **Without `FLOWCATALYST_APP_KEY`** every operation that hashes a PIN (a supplied `pin`, a
 pin-reset) answers `503 FIELD_IDENTITY_UNCONFIGURED`; the field plane never hashes without the
@@ -934,24 +962,34 @@ terminal (sessions revoked; revoking twice is a no-op; suspend or activate on a 
 **Policy.** `GET /api/field-policies/{clientId}` answers the effective policy with `isDefault`
 (true when the client has no row). Defaults: `pinMinLength` 6, `softLockThreshold` 5,
 `softLockSecs` 900, `hardLockThreshold` 10, `sharedIdleSecs` 900, `personalIdleSecs` 7200,
-`shiftMaxSecs` 50400, `requireAttestation` false, `pinReauthDays` 7. `PUT` takes the same fields
+`shiftMaxSecs` 50400, `requireAttestation` false, `pinReauthDays` 7, `requireEnrolledDevice` false,
+`unenrolledIdleSecs` 900, `badgeOnlyLogin` false, `impersonationMaxSecs` 14400. `PUT` takes the same fields
 (numeric ones optional, defaults applied; ranges: `pinMinLength` 4..12, `softLockThreshold` 1..20,
 `softLockSecs` 30..86400, `hardLockThreshold` softLockThreshold..50, idle 60..86400, `shiftMaxSecs`
-3600..86400, `pinReauthDays` 1..90; a `pinMinLength` below 6 defaults `hardLockThreshold` to 5 and
+3600..86400, `pinReauthDays` 1..90, `unenrolledIdleSecs` 60..86400, `impersonationMaxSecs` 300..43200;
+`requireEnrolledDevice` and `badgeOnlyLogin` default to false when omitted; a `pinMinLength` below 6 defaults `hardLockThreshold` to 5 and
 caps it at 5) or `400 POLICY_INVALID`. PINs are digits only, at most 12, and may not be all one
 digit, a straight run (including wrap-around, `123456`, `890123`, `654321`), on the short common
 list, or the worker's own code.
 
 **Introspection.** `POST /api/field-tokens/introspect {token}` answers `{active, sub?, clientId?,
-workerCode?, deviceId?, appCode?, amr?, authTime?, exp?}`. A token that fails any check, belongs to
+workerCode?, deviceId?, appCode?, amr?, authTime?, exp?, act?: {sub, typ}, test?}` (`deviceId` is absent
+for a token on an unenrolled key; `act` when someone is signed in as the worker). A token that fails any check, belongs to
 a client or application the caller cannot reach, or is unknown answers `{"active": false}`, never
 an error. `active` is true only while the token is unexpired, its login family (`sid`) has a
-non-revoked unexpired session, and both the worker and the device are `ACTIVE`.
+non-revoked unexpired session, the worker is `ACTIVE` and, when the token names a device, the device is `ACTIVE`.
 
 **Events** (catalogued, `platform:iam:...`): `field-worker:created | ensured | updated | deleted |
-suspended | activated | pin-reset | pin-changed | unlocked | app-granted | app-revoked`, `field-device:enrolment-code-created
+suspended | activated | pin-reset | pin-changed | unlocked | app-granted | app-revoked | badge-issued
+| badge-revoked | impersonated | sign-in-code-created`, `field-device:enrolment-code-created
 | enrolled | suspended | activated | revoked | throttled`, `field-session:revoked` (admin, reuse and worker
-revocations, not routine rotation), `field-policy:updated`. Payloads never carry a PIN or code.
+revocations, not routine rotation), `field-policy:updated`. Payloads never carry a PIN, code or badge
+token. `created | ensured | updated` carry `isTest` (`updated` also `canImpersonate`); `badge-issued`
+`{workerId, clientId, badgeId, revokedBadgeIds[]}`; `badge-revoked {badgeId}`; `impersonated`
+`{workerId, clientId, appCode, actorType, actorId, method: ACT_AS|SIGN_IN_CODE, deviceId?, sessionId}`
+(audited as the ACTOR impersonating the worker); `sign-in-code-created {appCode, createdBy, expiresAt}`;
+`field-policy:updated` the four sign-in-option fields; `field-device:throttled` scope `DEVICE | CLIENT | IP`
+(`ipAddress` for IP).
 
 ## Field identity (`/field/*`)
 
@@ -978,17 +1016,26 @@ carries a fresh `DPoP-Nonce` header. A missing, used or expired nonce is `401 us
 `POST /field/auth/nonce` (proof without a nonce) answers `{nonce, expiresAt}`, the same value as
 the header.
 
-**Devices.** After enrolment the proof key must be an enrolled device's key: `401 UNKNOWN_DEVICE`,
-`403 DEVICE_SUSPENDED`, `403 DEVICE_REVOKED`. `lastSeenAt` is touched at most once a minute.
+**Devices and unenrolled keys.** Enrolment is opt-in. The proof is required on every route, and a
+key that is not an enrolled device's key is an *unenrolled* request: it may sign in, refresh and
+change the PIN, and its tokens stay bound to the key (`cnf.jkt`). When the client's policy has
+`requireEnrolledDevice` an unknown key gets `401 UNKNOWN_DEVICE` (login, PIN change, act-as,
+sign-in code, and refresh of an unenrolled session). An enrolled key that is `SUSPENDED` / `REVOKED`
+is `403 DEVICE_SUSPENDED` / `403 DEVICE_REVOKED` and never falls back to unenrolled. `lastSeenAt` is
+touched at most once a minute. What an unenrolled key loses: badge-only sign-in, biometric unlock,
+device revoke/suspend and the per-device failure budget, `scope: "device-all"` logout, the device's
+app restriction.
 
 | Route | Request | Success |
 |---|---|---|
 | `POST /field/devices/enrol` | `{code, publicKeyJwk, attestationChain?, platform, model, label?}`; the proof key must be `publicKeyJwk` | `201 {deviceId, mode, clientId, appCodes[]}` |
 | `POST /field/auth/nonce` | `{}` | `{nonce, expiresAt}` |
-| `POST /field/auth/login` | `{appCode, workerCode, pin}` | `FieldTokenResponse` |
+| `POST /field/auth/login` | `{appCode, clientIdentifier?, workerCode \| badgeToken, pin?}` | `FieldTokenResponse` |
 | `POST /field/auth/refresh` | `{refreshToken}` | `FieldTokenResponse` |
 | `POST /field/auth/pin` | `{currentPin, newPin}`, `Authorization: DPoP <access>` | `204` |
 | `POST /field/auth/logout` | `{refreshToken, scope: "session" or "device-all"}` | `204` |
+| `POST /field/auth/act-as` | `{workerCode \| workerId, pin}`, `Authorization: DPoP <supervisor access>` | `FieldTokenResponse` (for the worker, with `act`) |
+| `POST /field/auth/sign-in-code` | `{code}` | `FieldTokenResponse` (for the code's worker, with `act`) |
 
 `FieldTokenResponse = {accessToken, tokenType: "DPoP", expiresIn, refreshToken, refreshExpiresAt,
 idleExpiresAt, worker: {id, workerCode, name}, pinChangeRequired}`. `refreshExpiresAt` is the
@@ -1000,46 +1047,88 @@ insert; a failure leaves it unused. `401 INVALID_ENROLMENT_CODE` (unknown, used 
 policy requires attestation, which P1 cannot verify), `403 CLIENT_INACTIVE`. `attestationChain` is
 stored raw; the level is recorded as reported-but-unverified `SOFTWARE`/`NONE`.
 
-**Login.** Checked in this order: device ACTIVE; device and client PIN-failure buckets
-(`429 TOO_MANY_ATTEMPTS` + `Retry-After`); worker exists (else a dummy PIN verify is spent and the
+**Login.** Exactly one of `workerCode` / `badgeToken` (else `400 INVALID_REQUEST`). The client is
+resolved first: an enrolled device's client (a `clientIdentifier` naming another is `400 CLIENT_MISMATCH`);
+a badge's client (a `clientIdentifier` that does not match it is `401 INVALID_CREDENTIALS`); for an
+unenrolled key with a `workerCode`, `clientIdentifier` is required (`400 INVALID_REQUEST`) and an unknown
+or inactive client is `401 INVALID_CREDENTIALS` after a dummy verify (no client enumeration).
+`requireEnrolledDevice` is checked as soon as the client is known (`401 UNKNOWN_DEVICE`). Then, in this
+order: device ACTIVE (when enrolled); subject and client PIN-failure buckets (an enrolled device's device
+bucket; an unenrolled key's per-IP bucket `FC_FIELD_IP_FAILURES_PER_HOUR`, 100, scope `IP` with
+`ipAddress` in the throttle event; `429 TOO_MANY_ATTEMPTS` + `Retry-After`); worker exists (else a dummy PIN verify is spent and the
 failure counted, `401 INVALID_CREDENTIALS`); worker ACTIVE and has a PIN (else the same 401 after a
 dummy verify); hard lock (`423 WORKER_LOCKED`); soft lock (`429 WORKER_LOCKED_TEMPORARILY` +
-`Retry-After`); PIN verify. A wrong PIN is `401 INVALID_CREDENTIALS`. Only after the PIN verifies:
-the worker holds a grant for the application, the application is active, the device is enrolled for
-it, a PERSONAL device assigned to a worker is that worker's, and the client is ACTIVE; any failure is
+`Retry-After`); PIN verify. A wrong PIN is `401 INVALID_CREDENTIALS`. **Badge:** the token is
+upper-cased and hashed; unknown or revoked is `401 INVALID_CREDENTIALS` after a dummy verify and counts
+as a failure (reasons `UNKNOWN_BADGE` / `BADGE_REVOKED`). With a badge the `pin` is required (`400
+PIN_REQUIRED`, after the worker and lock checks) unless the client's policy has `badgeOnlyLogin` AND the
+device is enrolled; an unenrolled key always needs the PIN. `amr` is `["badge","pin"]` or `["badge"]`.
+Only after the PIN (or badge) verifies:
+the worker holds a grant for the application, the application is active, the device (when enrolled) is
+enrolled for it, a PERSONAL device assigned to a worker is that worker's (enrolled only), and the client
+is ACTIVE; any failure is
 `403 NO_APP_ACCESS` (the reason is in the sign-in log, never in the response). A success resets the
 failure counter, stamps `lastLoginAt` and rehashes a `LEGACY` PIN hash to `PEPPER_V1`. Locks: the
 `soft_lock_threshold`-th consecutive failure soft-locks for `soft_lock_secs`, each further failure
 re-arms it, the `hard_lock_threshold`-th hard-locks until an administrator unlocks or resets. Device
-bucket `FC_FIELD_DEVICE_FAILURES_PER_HOUR` (20), client bucket `FC_FIELD_CLIENT_FAILURES_PER_HOUR`
-(300), each emitting one `field-device.throttled` event per window.
+bucket `FC_FIELD_DEVICE_FAILURES_PER_HOUR` (20), per-IP bucket `FC_FIELD_IP_FAILURES_PER_HOUR` (100, an
+unenrolled key's stand-in for the device bucket; enrolled devices do not count against it), client bucket
+`FC_FIELD_CLIENT_FAILURES_PER_HOUR` (300), each emitting one `field-device.throttled` event per window.
 
 **Sessions.** A login is a *family*; each refresh token is one row. The refresh token is 32 random
 bytes, base64url, prefixed `fwr_`; only its SHA-256 is stored. `POST /field/auth/refresh` rotates:
 the presented token is revoked `ROTATED` and a child with the same family, `amr` and absolute
 deadline is issued with `idle = now + idle`. Idle limit: `personal_idle_secs` (PERSONAL) or
-`shared_idle_secs` (SHARED); absolute limit: `shift_max_secs` (PERSONAL) or 43200 (SHARED). Past
-either: `401 SESSION_EXPIRED`. The device, worker and grant are re-checked. **Reuse:** a `ROTATED`
+`shared_idle_secs` (SHARED) or `unenrolled_idle_secs` (an unenrolled key); absolute limit:
+`shift_max_secs` (PERSONAL) or 43200 (SHARED and unenrolled). Past either: `401 SESSION_EXPIRED`. The
+worker, grant and (enrolled sessions) device are re-checked. A session is bound to the proof key (`jkt`)
+it was created with, with no device for an unenrolled key; a key enrolled later keeps the session's
+unenrolled limits until the next sign-in. The refresh token must be presented with that key: any other
+key (or, for an enrolled session, device) is theft and revokes the family. **Reuse:** a `ROTATED`
 token presented again with a valid proof from the session's own device key within **60 s** of its
 rotation is a lost-response retry: the family's live child is rotated and a fresh one issued.
 Any other presentation of a rotated token (later, or from another device) revokes the whole family
 (`REUSE`), emits `field-session.revoked` and answers `401 INVALID_GRANT`; an unknown, logged-out
 or otherwise revoked token is `401 INVALID_GRANT`. `POST /field/auth/logout`: `session` ends the
-token's family, `device-all` every session on the proof's device (a SHARED hand-over); idempotent,
-a token of another device is a quiet `204`.
+token's family, `device-all` every session on the proof's device (a SHARED hand-over; needs an enrolled
+device, else `400 INVALID_REQUEST`); idempotent, a token not signed in with the proof key is a quiet `204`.
 
 **PIN change.** `POST /field/auth/pin` takes `Authorization: DPoP <access token>` plus the proof
 (`ath`); a `pcr` token is accepted here and nowhere else. The current PIN goes through the same
 lockout accounting as a login. The new PIN must pass the client's policy (`422 PIN_POLICY`
 `{violations[]}`) and differ from the current one (`SAME_AS_CURRENT`). The worker's other families
-are revoked (`PIN_CHANGED`); the current one is kept, and the client refreshes to drop `pcr`.
+are revoked (`PIN_CHANGED`); the current one is kept, and the client refreshes to drop `pcr`. It works
+from an unenrolled key; an impersonated session gets `403 IMPERSONATING`.
+
+**Impersonation** (`docs/field-worker-sign-in-options-spec.md` section 4). Both paths produce a session
+for the WORKER (`sub`, `worker_code`, `name`, `client_*` are the worker's) with an `act` claim for whoever
+is acting and `amr` ending `"imp"`; `pcr` is never set; the absolute limit is the lesser of the normal
+limit, the policy's `impersonation_max_secs` and (act-as) the supervisor's own session expiry; the idle
+limit is normal. `field_sessions.actor_type` (`FIELD_WORKER | PRINCIPAL`) / `actor_id` mark it and are
+copied to every rotated child; refresh re-checks that the actor may still act. `POST /field/auth/act-as`
+(bearer = the supervisor's own token): `403 IMPERSONATING` if that session is itself impersonated; the
+supervisor must be ACTIVE, `canImpersonate` and not locked (`403 IMPERSONATION_FORBIDDEN`, no PIN check);
+`pin` is the SUPERVISOR's PIN, verified with the full lockout accounting (`401 INVALID_CREDENTIALS`);
+then the target must be in the same client, ACTIVE (a locked target is allowed), not a supervisor, not
+the supervisor, and granted the token's application, else `403 NO_APP_ACCESS` (reason only in the
+sign-in log); device checks as login (a PERSONAL device assigned to the supervisor is acceptable).
+`amr` is `["pin","imp"]`; the supervisor's own session is untouched. `POST /field/auth/sign-in-code`:
+atomically consumes the code (`401 INVALID_CODE`: unknown, used, expired, or its creator no longer
+active; counts against the subject bucket), re-checks worker ACTIVE, grant, application, client,
+`requireEnrolledDevice` (`401 UNKNOWN_DEVICE`) and the device's app restriction (`403 NO_APP_ACCESS`; a
+failed redemption leaves the code unused); `act = {sub: principal id, typ: "principal", name}`, `amr`
+`["code","imp"]`. Both emit `field-worker:impersonated` and an audit row whose principal is the actor and
+entity the worker; attempts are logged with `auth_method` `ACT_AS` / `SIGN_IN_CODE` and `actor_id`.
 
 **Access token.** A JWT signed with the platform key (same `kid` and JWKS as every platform token),
 JOSE header `typ: fc-field+jwt`, lifetime `FC_FIELD_ACCESS_TOKEN_TTL_SECS` (default 600). Claims:
 `iss`, `sub` (the worker, `fwu_...`), `aud` (the application CODE, a bare string), `exp`, `iat`,
 `nbf`, `jti`, `token_use: "field"`, `client_id`, `client_identifier`, `worker_code`, `name`,
-`device_id`, `device_mode`, `sid` (the family id), `amr` (`["pin"]`), `auth_time`, `cnf: {jkt}`
-and `pcr: true` only while a PIN change is required. No roles, scope, applications or clients
+`device_id` (omitted on an unenrolled key, where `device_mode` is `"UNENROLLED"`), `device_mode`, `sid`
+(the family id), `amr` (`["pin"]`, `["badge","pin"]`, `["badge"]`, `["pin","imp"]`, `["code","imp"]`),
+`auth_time`, `cnf: {jkt}`, `pcr: true` only while a PIN change is required, `act: {sub, typ:
+"field_worker" | "principal", name}` only on an impersonated token, and `test: true` only for a test
+identity. No roles, scope, applications or clients
 claims. The platform API middleware refuses `token_use: "field"` (and `pkg/fcsdk/auth`
 `TokenValidator` accepts only `token_use` `api`, `identity` or absent; the platform-token validators
 of every SDK share that allowlist), so a field token is never an API credential. The
@@ -1052,14 +1141,18 @@ The verifier compares `htu` with the application's configured public base URL + 
 Host header and `X-Forwarded-*` headers are never used (the Go middleware requires a base URL).
 Access tokens are signed RS256 only (the platform signer; a verifier refuses any other header `alg` as `invalid_token`, vector `alg_not_rs256`); DPoP proofs are ES256 only.
 Shared test vectors: `api/field-fixtures/` (`go run ./tools/field-fixtures`; access tokens RS256, proofs ES256).
+Valid cases `valid_unenrolled`, `valid_impersonated_supervisor`, `valid_impersonated_principal` and
+`valid_test` carry a `principal` object (`deviceId` empty on an unenrolled key, `deviceMode`, `amr`, `actor?`,
+`test`) that a verifier must expose.
 
 
 **Errors in one place.** `use_dpop_nonce` 401, `invalid_dpop_proof` 401, `invalid_token` 401
 (bearer routes), `UNKNOWN_DEVICE` 401, `DEVICE_SUSPENDED` 403, `DEVICE_REVOKED` 403,
-`INVALID_CREDENTIALS` 401, `WORKER_LOCKED` 423, `WORKER_LOCKED_TEMPORARILY` 429,
+`INVALID_CREDENTIALS` 401, `CLIENT_MISMATCH` 400, `PIN_REQUIRED` 400, `IMPERSONATING` 403,
+`IMPERSONATION_FORBIDDEN` 403, `INVALID_CODE` 401, `WORKER_LOCKED` 423, `WORKER_LOCKED_TEMPORARILY` 429,
 `TOO_MANY_ATTEMPTS` 429, `NO_APP_ACCESS` 403, `INVALID_GRANT` 401, `SESSION_EXPIRED` 401,
 `PIN_POLICY` 422, `INVALID_ENROLMENT_CODE` 401, `DEVICE_KEY_EXISTS` 409, `ATTESTATION_REQUIRED`
-422, `CLIENT_INACTIVE` 403, `INVALID_REQUEST` / `INVALID_PUBLIC_KEY` 400,
+422, `CLIENT_INACTIVE` 403, `INVALID_REQUEST` / `INVALID_PUBLIC_KEY` 400 (the login `clientIdentifier` is required from an unenrolled key),
 `FIELD_IDENTITY_UNCONFIGURED` 503.
 
 Sign-in attempts (success and failure, with device, method and the failure reason) are recorded in

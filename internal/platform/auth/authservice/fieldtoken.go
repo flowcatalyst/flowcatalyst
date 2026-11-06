@@ -40,7 +40,9 @@ type FieldSubject struct {
 	WorkerCode       string
 	Name             string
 	// AppCode is the application the token is for (the aud claim).
-	AppCode    string
+	AppCode string
+	// DeviceID is empty on an unenrolled key, where DeviceMode is "UNENROLLED"
+	// and the device_id claim is omitted.
 	DeviceID   string
 	DeviceMode string
 	// SessionID is the login family (the sid claim).
@@ -51,6 +53,13 @@ type FieldSubject struct {
 	JKT string
 	// PINChangeRequired marks the token pcr: usable only on /field/auth/pin.
 	PINChangeRequired bool
+	// ActorID, ActorType ("field_worker" or "principal") and ActorName make the
+	// act claim of an impersonated token; ActorID empty = no act claim.
+	ActorID   string
+	ActorType string
+	ActorName string
+	// Test marks a test identity (the test claim).
+	Test bool
 }
 
 // FieldAccessTokenClaims is the wire shape of a field access token.
@@ -65,13 +74,25 @@ type FieldAccessTokenClaims struct {
 	ClientIdentifier string   `json:"client_identifier"`
 	WorkerCode       string   `json:"worker_code"`
 	Name             string   `json:"name"`
-	DeviceID         string   `json:"device_id"`
+	DeviceID         string   `json:"device_id,omitempty"`
 	DeviceMode       string   `json:"device_mode"`
 	SessionID        string   `json:"sid"`
 	AMR              []string `json:"amr"`
 	AuthTime         int64    `json:"auth_time"`
 	Cnf              FieldCnf `json:"cnf"`
 	PCR              bool     `json:"pcr,omitempty"`
+	// Act is the RFC 8693 actor of an impersonated token: someone other than
+	// the subject is signed in as them. Test marks a test identity.
+	Act  *FieldAct `json:"act,omitempty"`
+	Test bool      `json:"test,omitempty"`
+}
+
+// FieldAct is the act claim: who is acting as the worker. Typ is
+// "field_worker" (a supervisor) or "principal" (a platform user).
+type FieldAct struct {
+	Sub  string `json:"sub"`
+	Typ  string `json:"typ"`
+	Name string `json:"name,omitempty"`
 }
 
 // FieldCnf is the RFC 7800 confirmation claim binding the token to a device key.
@@ -107,6 +128,10 @@ func (s *AuthService) GenerateFieldAccessToken(sub FieldSubject) (string, error)
 		AuthTime:         sub.AuthTime.Unix(),
 		Cnf:              FieldCnf{JKT: sub.JKT},
 		PCR:              sub.PINChangeRequired,
+		Test:             sub.Test,
+	}
+	if sub.ActorID != "" {
+		claims.Act = &FieldAct{Sub: sub.ActorID, Typ: sub.ActorType, Name: sub.ActorName}
 	}
 	tok := jwt.NewWithClaims(s.signingMethod, claims)
 	tok.Header["typ"] = FieldTokenType

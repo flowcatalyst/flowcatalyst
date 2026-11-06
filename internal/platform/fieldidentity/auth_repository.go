@@ -98,35 +98,24 @@ func (t *AuthTx) RecordSuccess(ctx context.Context, i *Identity, rehash *string,
 
 // InsertSession stores a session row in the transaction.
 func (t *AuthTx) InsertSession(ctx context.Context, s *Session) error {
-	amr := s.AMR
-	if amr == nil {
-		amr = []string{}
-	}
-	_, err := t.tx.Exec(ctx,
-		`INSERT INTO field_sessions
-		     (id, family_id, identity_id, device_id, application_id, refresh_hash, amr, auth_time,
-		      issued_at, idle_expires_at, absolute_expires_at, rotated_at, revoked_at, revoked_reason,
-		      pin_change_required)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-		s.ID, s.FamilyID, s.IdentityID, s.DeviceID, s.ApplicationID, s.RefreshHash, amr, s.AuthTime,
-		s.IssuedAt, s.IdleExpiresAt, s.AbsoluteExpiresAt, s.RotatedAt, s.RevokedAt,
-		emptyToNil(s.RevokedReason), s.PINChangeRequired)
+	_, err := t.tx.Exec(ctx, sessionInsertSQL, sessionInsertArgs(s)...)
 	return err
 }
 
 func scanSession(row pgx.Row) (*Session, error) {
 	var s Session
-	var reason *string
-	err := row.Scan(&s.ID, &s.FamilyID, &s.IdentityID, &s.DeviceID, &s.ApplicationID, &s.RefreshHash, &s.AMR,
+	var reason, device, jkt, actorType, actorID *string
+	err := row.Scan(&s.ID, &s.FamilyID, &s.IdentityID, &device, &s.ApplicationID, &s.RefreshHash, &s.AMR,
 		&s.AuthTime, &s.IssuedAt, &s.IdleExpiresAt, &s.AbsoluteExpiresAt, &s.RotatedAt, &s.RevokedAt,
-		&reason, &s.PINChangeRequired)
+		&reason, &s.PINChangeRequired, &jkt, &actorType, &actorID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("field_session scan: %w", err)
 	}
-	s.RevokedReason = deref(reason)
+	s.RevokedReason, s.DeviceID, s.JKT = deref(reason), deref(device), deref(jkt)
+	s.ActorType, s.ActorID = deref(actorType), deref(actorID)
 	return &s, nil
 }
 
@@ -183,6 +172,12 @@ func (t *AuthTx) RevokeFamilySessions(ctx context.Context, familyID, reason stri
 func (t *AuthTx) ClearFamilyPINChange(ctx context.Context, familyID string) error {
 	_, err := t.tx.Exec(ctx,
 		`UPDATE field_sessions SET pin_change_required = FALSE WHERE family_id = $1 AND revoked_at IS NULL`, familyID)
+	return err
+}
+
+// TouchBadge stamps last_used_at on a badge that just signed a worker in.
+func (t *AuthTx) TouchBadge(ctx context.Context, id string, at time.Time) error {
+	_, err := t.tx.Exec(ctx, `UPDATE field_badges SET last_used_at = $2 WHERE id = $1`, id, at)
 	return err
 }
 

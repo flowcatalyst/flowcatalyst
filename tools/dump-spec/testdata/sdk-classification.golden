@@ -67,6 +67,7 @@ admin	GET /api/field-devices/{id}	getFieldDevice
 admin	GET /api/field-policies/{clientId}	getFieldPolicy
 admin	GET /api/field-workers	listFieldWorkers
 admin	GET /api/field-workers/{id}	getFieldWorker
+admin	GET /api/field-workers/{id}/badges	listFieldWorkerBadges
 admin	GET /api/field-workers/{id}/sign-ins	listFieldWorkerSignIns
 admin	GET /api/function-domains	listFunctionDomains
 admin	GET /api/functions	listFunctions
@@ -163,9 +164,13 @@ admin	POST /api/field-devices/{id}/revoke	revokeFieldDevice
 admin	POST /api/field-devices/{id}/suspend	suspendFieldDevice
 admin	POST /api/field-tokens/introspect	introspectFieldToken
 admin	POST /api/field-workers	ensureFieldWorker
+admin	POST /api/field-workers/badges	issueFieldWorkerBadges
 admin	POST /api/field-workers/{id}/activate	activateFieldWorker
 admin	POST /api/field-workers/{id}/apps	grantFieldWorkerApp
+admin	POST /api/field-workers/{id}/badges	issueFieldWorkerBadge
+admin	POST /api/field-workers/{id}/badges/{badgeId}/revoke	revokeFieldWorkerBadge
 admin	POST /api/field-workers/{id}/pin-reset	resetFieldWorkerPin
+admin	POST /api/field-workers/{id}/sign-in-codes	createFieldWorkerSignInCode
 admin	POST /api/field-workers/{id}/suspend	suspendFieldWorker
 admin	POST /api/field-workers/{id}/unlock	unlockFieldWorker
 admin	POST /api/function-domains	createFunctionDomain

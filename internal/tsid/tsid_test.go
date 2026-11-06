@@ -218,6 +218,8 @@ func TestIngestionPrefixes(t *testing.T) {
 		tsid.FieldDevice:        "fwd",
 		tsid.FieldEnrolmentCode: "fwe",
 		tsid.FieldSession:       "fws",
+		tsid.FieldBadge:         "fwb",
+		tsid.FieldSignInCode:    "fwi",
 	}
 	for et, prefix := range want {
 		assert.Equal(t, prefix, et.Prefix())

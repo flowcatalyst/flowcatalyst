@@ -1,14 +1,18 @@
 // Package fieldauth is the field-worker device protocol: the public /field/*
-// routes a mobile app speaks to enrol a device, sign a worker in with a PIN,
+// routes a mobile app speaks to enrol a device, sign a worker in with a PIN or
+// a badge, act as another worker (supervisor), redeem a console sign-in code,
 // refresh, change the PIN and sign out. Spec:
-// docs/field-worker-identity-p1-spec.md §4; wire contract:
+// docs/field-worker-identity-p1-spec.md §4 and
+// docs/field-worker-sign-in-options-spec.md §1-§4; wire contract:
 // docs/wire-contract.md "Field identity".
 //
 // Every request carries a DPoP-style proof (a JWS signed by the device key,
-// RFC 9449 shape, ES256 only) with a single-use server nonce. After
-// enrolment the proof key must be an ACTIVE device's key. The routes are
-// mounted OUTSIDE the platform API middleware (they authenticate the device
-// and worker themselves), behind the per-IP governor.
+// RFC 9449 shape, ES256 only) with a single-use server nonce. Device enrolment
+// is opt-in: a proof key that is not an enrolled device's key is an unenrolled
+// request (c.device == nil), still bound to its key, unless the client's policy
+// requires an enrolled device. The routes are mounted OUTSIDE the platform API
+// middleware (they authenticate the device and worker themselves), behind the
+// per-IP governor.
 //
 // Writes that change domain state (enrolment, PIN change, family revocation on
 // reuse, throttle notices) go through the usecase envelope
@@ -79,12 +83,14 @@ func (s *State) RegisterRoutes(r chi.Router) {
 	r.Post("/field/auth/refresh", s.handle(routeDevice, s.refresh))
 	r.Post("/field/auth/pin", s.handle(routeBearer, s.changePin))
 	r.Post("/field/auth/logout", s.handle(routeDevice, s.logout))
+	r.Post("/field/auth/act-as", s.handle(routeBearer, s.actAs))
+	r.Post("/field/auth/sign-in-code", s.handle(routeDevice, s.signInCode))
 }
 
 // route says which prelude checks a handler needs.
 type route struct {
 	nonce  bool // a fresh single-use nonce must be in the proof
-	device bool // the proof key must be an ACTIVE enrolled device
+	device bool // look the proof key up as a device; an unknown key is unenrolled (c.device == nil)
 	bearer bool // an access token (Authorization: DPoP) must accompany the proof
 }
 
@@ -97,9 +103,11 @@ var (
 
 // call is one request after the prelude.
 type call struct {
-	w      http.ResponseWriter
-	r      *http.Request
-	proof  *Proof
+	w     http.ResponseWriter
+	r     *http.Request
+	proof *Proof
+	// device is the enrolled device the proof key belongs to, nil on an
+	// unenrolled key.
 	device *fieldidentity.Device
 	claims *authservice.FieldAccessTokenClaims
 	// nonce is the fresh nonce issued on this response.
@@ -189,8 +197,14 @@ func (s *State) prelude(c *call, rt route) bool {
 	}
 	switch {
 	case dev == nil:
-		fail(c.w, http.StatusUnauthorized, "UNKNOWN_DEVICE", "this device is not enrolled")
-		return false
+		// Unenrolled: the key is still the credential's anchor (sessions and
+		// tokens bind to it). Whether the client allows it is each handler's
+		// call once it knows the client (requireEnrolledDevice).
+		c.device = nil
+		if !rt.bearer {
+			return true
+		}
+		return s.bearer(c)
 	case dev.Status == fieldidentity.DeviceRevoked:
 		fail(c.w, http.StatusForbidden, "DEVICE_REVOKED", "this device has been revoked")
 		return false
@@ -220,9 +234,12 @@ func (s *State) bearer(c *call) bool {
 	}
 	token = strings.TrimSpace(token)
 	claims, err := s.Auth.ValidateFieldToken(token)
-	if err != nil || claims.Cnf.JKT != c.proof.JKT || claims.DeviceID != c.device.ID {
+	// A token that names a device must be presented with that ACTIVE device's
+	// key; one without a device_id is bound to the proof key alone.
+	if err != nil || claims.Cnf.JKT != c.proof.JKT ||
+		(claims.DeviceID != "" && (c.device == nil || claims.DeviceID != c.device.ID)) {
 		c.w.Header().Set("WWW-Authenticate", `DPoP error="invalid_token"`)
-		fail(c.w, http.StatusUnauthorized, "invalid_token", "the access token is invalid, expired or not bound to this device")
+		fail(c.w, http.StatusUnauthorized, "invalid_token", "the access token is invalid, expired or not bound to this key")
 		return false
 	}
 	if c.proof.ATH != AccessTokenHash(token) {
@@ -248,7 +265,10 @@ func tokenClaims(c *authservice.FieldAccessTokenClaims) *fieldidentity.TokenClai
 	out := &fieldidentity.TokenClaims{
 		Subject: c.Subject, ClientID: c.ClientID, WorkerCode: c.WorkerCode, DeviceID: c.DeviceID,
 		AppCode: c.Aud, SessionID: c.SessionID, AMR: c.AMR, AuthTime: time.Unix(c.AuthTime, 0).UTC(),
-		PINChangeRequired: c.PCR, JKT: c.Cnf.JKT,
+		PINChangeRequired: c.PCR, JKT: c.Cnf.JKT, DeviceMode: c.DeviceMode, Test: c.Test,
+	}
+	if c.Act != nil {
+		out.ActorSub, out.ActorType, out.ActorName = c.Act.Sub, c.Act.Typ, c.Act.Name
 	}
 	if c.ExpiresAt != nil {
 		out.Expires = c.ExpiresAt.Time
@@ -313,7 +333,7 @@ func useCaseError(w http.ResponseWriter, err error) {
 	case fieldidentity.CodeUnconfigured:
 		fail(w, http.StatusServiceUnavailable, ue.Code, ue.Message)
 		return
-	case fieldidentity.CodeInvalidEnrolmentCode:
+	case fieldidentity.CodeInvalidEnrolmentCode, fieldidentity.CodeInvalidSignInCode, fieldidentity.CodeUnknownDevice:
 		fail(w, http.StatusUnauthorized, ue.Code, ue.Message)
 		return
 	case fieldidentity.CodeDeviceKeyExists:
@@ -438,30 +458,31 @@ func newRefreshToken() (token, hash string, err error) {
 	return token, fieldidentity.HashToken(token), nil
 }
 
-func idleSecs(pol fieldidentity.Policy, mode fieldidentity.Mode) int {
-	if mode == fieldidentity.ModeShared {
-		return pol.SharedIdleSecs
-	}
-	return pol.PersonalIdleSecs
-}
-
-func absoluteSecs(pol fieldidentity.Policy, mode fieldidentity.Mode) int {
-	if mode == fieldidentity.ModeShared {
-		return fieldidentity.SharedShiftMaxSecs
-	}
-	return pol.ShiftMaxSecs
-}
+// actor is who is signed in as a worker, for the act claim.
+type actor struct{ ID, Type, Name string }
 
 // issue mints the access token for a stored session and writes the response.
+// The token follows the session, not the request: a session with no device
+// (an unenrolled key) gets no device_id and device_mode UNENROLLED even when
+// the key has been enrolled since (no mid-session upgrade). act is nil unless
+// the session is impersonated.
 func (s *State) issue(c *call, ident *fieldidentity.Identity, cl *client.Client, app *application.Application,
-	sess *fieldidentity.Session, refreshToken string,
+	sess *fieldidentity.Session, refreshToken string, act *actor,
 ) {
-	access, err := s.Auth.GenerateFieldAccessToken(authservice.FieldSubject{
+	subject := authservice.FieldSubject{
 		WorkerID: ident.ID, ClientID: ident.ClientID, ClientIdentifier: cl.Identifier,
 		WorkerCode: ident.WorkerCode, Name: ident.Name, AppCode: app.Code,
-		DeviceID: c.device.ID, DeviceMode: string(c.device.Mode), SessionID: sess.FamilyID,
-		AMR: sess.AMR, AuthTime: sess.AuthTime, JKT: c.device.JKT, PINChangeRequired: sess.PINChangeRequired,
-	})
+		DeviceMode: fieldidentity.DeviceModeUnenrolled, SessionID: sess.FamilyID,
+		AMR: sess.AMR, AuthTime: sess.AuthTime, JKT: sess.JKT, PINChangeRequired: sess.PINChangeRequired,
+		Test: ident.IsTest,
+	}
+	if sess.DeviceID != "" && c.device != nil {
+		subject.DeviceID, subject.DeviceMode = c.device.ID, string(c.device.Mode)
+	}
+	if act != nil {
+		subject.ActorID, subject.ActorType, subject.ActorName = act.ID, act.Type, act.Name
+	}
+	access, err := s.Auth.GenerateFieldAccessToken(subject)
 	if err != nil {
 		slog.Error("field access token mint failed", "err", err)
 		fail(c.w, http.StatusInternalServerError, "INTERNAL", "could not mint the access token")
@@ -508,6 +529,7 @@ func (s *State) attempt(c *call, a fieldidentity.LoginAttempt) {
 	if c.device != nil {
 		a.DeviceID, a.ClientID = c.device.ID, c.device.ClientID
 	}
+	// device_id is NULL for an unenrolled key; the caller names the client.
 	if err := s.Ops.R.Sessions.RecordLoginAttempt(c.r.Context(), a); err != nil {
 		slog.Warn("field login attempt record failed", "err", err)
 	}
@@ -515,49 +537,61 @@ func (s *State) attempt(c *call, a fieldidentity.LoginAttempt) {
 
 // ── PIN-failure buckets ──────────────────────────────────────────────────
 
-// throttled reports whether the device or client PIN-failure bucket is full,
-// with the Retry-After to send.
-func (s *State) throttled(c *call, clientID, deviceID string) (scope string, retry uint32, hit bool) {
+// failureBucket is one PIN-failure budget a request counts against.
+type failureBucket struct {
+	bucket, notice ratelimit.Bucket
+	key            string
+	pol            ratelimit.Policy
+	scope          string
+}
+
+// failureBuckets are the budgets for a request: its subject (the enrolled
+// device, or the source IP of an unenrolled key; enrolled devices do not count
+// against the IP bucket) and, when the client is known, the client.
+func (s *State) failureBuckets(c *call, clientID string) []failureBucket {
+	var out []failureBucket
+	switch {
+	case c.device != nil:
+		out = append(out, failureBucket{ratelimit.BucketFieldPinDevice, ratelimit.BucketFieldThrottleNoticeDev, c.device.ID, s.Limits.FieldPinDevice, "DEVICE"})
+	case c.ip != "":
+		out = append(out, failureBucket{ratelimit.BucketFieldPinIP, ratelimit.BucketFieldThrottleNoticeIP, c.ip, s.Limits.FieldPinIP, "IP"})
+	}
+	if clientID != "" {
+		out = append(out, failureBucket{ratelimit.BucketFieldPinClient, ratelimit.BucketFieldThrottleNoticeCli, clientID, s.Limits.FieldPinClient, "CLIENT"})
+	}
+	return out
+}
+
+// throttled reports whether the request's subject (device or IP) or client
+// PIN-failure bucket is full, with the Retry-After to send.
+func (s *State) throttled(c *call, clientID string) (scope string, retry uint32, hit bool) {
 	cnt, ok := s.RateLimit.(ratelimit.Counter)
 	if !ok || s.RateLimit == nil {
 		return "", 0, false
 	}
-	check := func(b ratelimit.Bucket, key string, p ratelimit.Policy) (uint32, bool) {
-		n, retry, err := cnt.Count(c.r.Context(), b, key, p.Window)
+	for _, b := range s.failureBuckets(c, clientID) {
+		n, retry, err := cnt.Count(c.r.Context(), b.bucket, b.key, b.pol.Window)
 		if err != nil {
 			slog.Warn("field throttle check failed; failing open", "err", err)
-			return 0, false
+			continue
 		}
-		return retry, n >= p.Limit
-	}
-	if r, hit := check(ratelimit.BucketFieldPinDevice, deviceID, s.Limits.FieldPinDevice); hit {
-		return "DEVICE", r, true
-	}
-	if r, hit := check(ratelimit.BucketFieldPinClient, clientID, s.Limits.FieldPinClient); hit {
-		return "CLIENT", r, true
+		if n >= b.pol.Limit {
+			return b.scope, retry, true
+		}
 	}
 	return "", 0, false
 }
 
-// noteFailure counts a PIN failure against the device and client buckets and,
-// the first time a bucket is full inside its window, emits
+// noteFailure counts a PIN failure against the request's subject and client
+// buckets and, the first time a bucket is full inside its window, emits
 // field-device.throttled.
-func (s *State) noteFailure(c *call, clientID, deviceID string) {
+func (s *State) noteFailure(c *call, clientID string) {
 	if s.RateLimit == nil {
 		return
 	}
 	ctx := c.r.Context()
 	cnt, isCounter := s.RateLimit.(ratelimit.Counter)
-	for _, b := range []struct {
-		bucket, notice ratelimit.Bucket
-		key            string
-		pol            ratelimit.Policy
-		scope          string
-		device         string
-	}{
-		{ratelimit.BucketFieldPinDevice, ratelimit.BucketFieldThrottleNoticeDev, deviceID, s.Limits.FieldPinDevice, "DEVICE", deviceID},
-		{ratelimit.BucketFieldPinClient, ratelimit.BucketFieldThrottleNoticeCli, clientID, s.Limits.FieldPinClient, "CLIENT", ""},
-	} {
+	for _, b := range s.failureBuckets(c, clientID) {
 		rej := ratelimit.Enforce(ctx, s.RateLimit, b.bucket, b.key, b.pol)
 		full := rej != nil
 		if isCounter {
@@ -572,9 +606,14 @@ func (s *State) noteFailure(c *call, clientID, deviceID string) {
 		if ratelimit.Enforce(ctx, s.RateLimit, b.notice, b.key, ratelimit.Policy{Window: b.pol.Window, Limit: 1}) != nil {
 			continue
 		}
-		if _, err := usecaseop.RunTx(ctx, s.UoW, s.Ops.NoteThrottled(),
-			fieldidentity.ThrottleCommand{Scope: b.scope, ClientID: clientID, DeviceID: b.device},
-			usecase.NewExecutionContext("field:throttle")); err != nil {
+		cmd := fieldidentity.ThrottleCommand{Scope: b.scope, ClientID: clientID}
+		switch b.scope {
+		case "DEVICE":
+			cmd.DeviceID = b.key
+		case "IP":
+			cmd.IPAddress = b.key
+		}
+		if _, err := usecaseop.RunTx(ctx, s.UoW, s.Ops.NoteThrottled(), cmd, usecase.NewExecutionContext("field:throttle")); err != nil {
 			slog.Warn("field throttle event failed", "err", err)
 		}
 	}

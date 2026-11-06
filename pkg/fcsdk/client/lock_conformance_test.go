@@ -51,7 +51,7 @@ func lockCases() []lockCase {
 			return c.FieldWorkers().Ensure(ctx, &client.EnsureFieldWorkerRequest{ClientID: "clt_1", WorkerCode: "w1", Name: "W", Email: new("w@x.io"), AppCodes: []string{"a"}, Pin: new("123456")})
 		}},
 		{name: "FieldWorkers.List", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
-			return c.FieldWorkers().List(ctx, "clt_1", &client.FieldWorkerFilters{Q: "w", AppCode: "a", Status: "ACTIVE", Page: new(uint32(1)), PageSize: new(uint32(5))})
+			return c.FieldWorkers().List(ctx, "clt_1", &client.FieldWorkerFilters{Q: "w", AppCode: "a", Status: "ACTIVE", IsTest: new(true), Page: new(uint32(1)), PageSize: new(uint32(5))})
 		}},
 		{name: "FieldWorkers.Get", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.FieldWorkers().Get(ctx, "fwk_1")

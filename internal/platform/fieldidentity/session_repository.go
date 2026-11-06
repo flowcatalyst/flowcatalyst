@@ -29,46 +29,40 @@ func HashToken(token string) string {
 
 const sessionColumns = `id, family_id, identity_id, device_id, application_id, refresh_hash, amr,
 	auth_time, issued_at, idle_expires_at, absolute_expires_at, rotated_at, revoked_at,
-	revoked_reason, pin_change_required`
+	revoked_reason, pin_change_required, jkt, actor_type, actor_id`
+
+// sessionInsertSQL / sessionInsertArgs are shared by the pool and AuthTx inserts.
+const sessionInsertSQL = `INSERT INTO field_sessions
+	     (id, family_id, identity_id, device_id, application_id, refresh_hash, amr, auth_time,
+	      issued_at, idle_expires_at, absolute_expires_at, rotated_at, revoked_at, revoked_reason,
+	      pin_change_required, jkt, actor_type, actor_id)
+	 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`
+
+func sessionInsertArgs(s *Session) []any {
+	amr := s.AMR
+	if amr == nil {
+		amr = []string{}
+	}
+	return []any{
+		s.ID, s.FamilyID, s.IdentityID, emptyToNil(s.DeviceID), s.ApplicationID, s.RefreshHash, amr, s.AuthTime,
+		s.IssuedAt, s.IdleExpiresAt, s.AbsoluteExpiresAt, s.RotatedAt, s.RevokedAt,
+		emptyToNil(s.RevokedReason), s.PINChangeRequired, emptyToNil(s.JKT), emptyToNil(s.ActorType), emptyToNil(s.ActorID),
+	}
+}
 
 // NewSessionID returns a fresh session row id.
 func NewSessionID() string { return tsid.Generate(tsid.FieldSession) }
 
 // Insert stores a session row.
 func (r *SessionRepo) Insert(ctx context.Context, s *Session) error {
-	amr := s.AMR
-	if amr == nil {
-		amr = []string{}
-	}
-	_, err := r.pool.Exec(ctx,
-		`INSERT INTO field_sessions
-		     (id, family_id, identity_id, device_id, application_id, refresh_hash, amr, auth_time,
-		      issued_at, idle_expires_at, absolute_expires_at, rotated_at, revoked_at, revoked_reason,
-		      pin_change_required)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-		s.ID, s.FamilyID, s.IdentityID, s.DeviceID, s.ApplicationID, s.RefreshHash, amr, s.AuthTime,
-		s.IssuedAt, s.IdleExpiresAt, s.AbsoluteExpiresAt, s.RotatedAt, s.RevokedAt,
-		emptyToNil(s.RevokedReason), s.PINChangeRequired)
+	_, err := r.pool.Exec(ctx, sessionInsertSQL, sessionInsertArgs(s)...)
 	return err
 }
 
 // FindByRefreshHash returns the session for a stored refresh hash, nil if
 // absent.
 func (r *SessionRepo) FindByRefreshHash(ctx context.Context, hash string) (*Session, error) {
-	var s Session
-	var reason *string
-	err := r.pool.QueryRow(ctx, `SELECT `+sessionColumns+` FROM field_sessions WHERE refresh_hash = $1`, hash).
-		Scan(&s.ID, &s.FamilyID, &s.IdentityID, &s.DeviceID, &s.ApplicationID, &s.RefreshHash, &s.AMR,
-			&s.AuthTime, &s.IssuedAt, &s.IdleExpiresAt, &s.AbsoluteExpiresAt, &s.RotatedAt, &s.RevokedAt,
-			&reason, &s.PINChangeRequired)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("field_session repo: %w", err)
-	}
-	s.RevokedReason = deref(reason)
-	return &s, nil
+	return scanSession(r.pool.QueryRow(ctx, `SELECT `+sessionColumns+` FROM field_sessions WHERE refresh_hash = $1`, hash))
 }
 
 // MarkRotated revokes a session as ROTATED (a refresh consumed it) and stamps
@@ -122,22 +116,9 @@ func (r *SessionRepo) IsFamilyLive(ctx context.Context, familyID string, now tim
 
 // FamilyHead returns the live (un-revoked) session of a family, nil if none.
 func (r *SessionRepo) FamilyHead(ctx context.Context, familyID string) (*Session, error) {
-	var s Session
-	var reason *string
-	err := r.pool.QueryRow(ctx,
+	return scanSession(r.pool.QueryRow(ctx,
 		`SELECT `+sessionColumns+` FROM field_sessions
-		 WHERE family_id = $1 AND revoked_at IS NULL ORDER BY issued_at DESC LIMIT 1`, familyID).
-		Scan(&s.ID, &s.FamilyID, &s.IdentityID, &s.DeviceID, &s.ApplicationID, &s.RefreshHash, &s.AMR,
-			&s.AuthTime, &s.IssuedAt, &s.IdleExpiresAt, &s.AbsoluteExpiresAt, &s.RotatedAt, &s.RevokedAt,
-			&reason, &s.PINChangeRequired)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("field_session repo: %w", err)
-	}
-	s.RevokedReason = deref(reason)
-	return &s, nil
+		 WHERE family_id = $1 AND revoked_at IS NULL ORDER BY issued_at DESC LIMIT 1`, familyID))
 }
 
 // ActiveCountByDevice counts live, unexpired sessions per device id.
@@ -175,6 +156,17 @@ func (r *SessionRepo) ActiveCountByIdentity(ctx context.Context, identityID stri
 	return n, err
 }
 
+// PrincipalName returns a platform principal's display name and whether it is
+// active; found is false for an unknown id. It backs the act claim of a
+// session impersonated by a principal (console sign-in code).
+func (r *SessionRepo) PrincipalName(ctx context.Context, id string) (name string, active, found bool, err error) {
+	err = r.pool.QueryRow(ctx, `SELECT name, active FROM iam_principals WHERE id = $1`, id).Scan(&name, &active)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, false, nil
+	}
+	return name, active, err == nil, err
+}
+
 // ── nonces ───────────────────────────────────────────────────────────────
 
 func nonceHash(nonce string) []byte {
@@ -207,8 +199,8 @@ func (r *SessionRepo) ConsumeNonce(ctx context.Context, nonce string) (bool, err
 
 // ── purge ────────────────────────────────────────────────────────────────
 
-// Purge deletes expired nonces, used/expired enrolment codes older than a day,
-// and sessions whose absolute expiry or revocation is older than 30 days. It
+// Purge deletes expired nonces, used/expired enrolment codes and sign-in codes
+// (the latter counted with the former) older than a day, and sessions whose absolute expiry or revocation is older than 30 days. It
 // returns the rows removed per kind.
 func (r *SessionRepo) Purge(ctx context.Context) (nonces, codes, sessions int64, err error) {
 	tag, err := r.pool.Exec(ctx, `DELETE FROM field_nonces WHERE expires_at < NOW()`)
@@ -224,6 +216,12 @@ func (r *SessionRepo) Purge(ctx context.Context) (nonces, codes, sessions int64,
 		return nonces, 0, 0, err
 	}
 	codes = tag.RowsAffected()
+	tag, err = r.pool.Exec(ctx,
+		`DELETE FROM field_sign_in_codes WHERE expires_at < NOW() - INTERVAL '1 day'`)
+	if err != nil {
+		return nonces, codes, 0, err
+	}
+	codes += tag.RowsAffected()
 	tag, err = r.pool.Exec(ctx,
 		`DELETE FROM field_sessions
 		 WHERE absolute_expires_at < NOW() - INTERVAL '30 days'
@@ -282,6 +280,8 @@ type LoginAttempt struct {
 	FailureReason string
 	IPAddress     string
 	AttemptedAt   time.Time
+	// ActorID is the principal or supervisor behind an impersonated sign-in.
+	ActorID string
 }
 
 // Outcomes of a sign-in attempt.
@@ -300,16 +300,16 @@ func (r *SessionRepo) RecordLoginAttempt(ctx context.Context, a LoginAttempt) er
 		a.AttemptedAt = time.Now().UTC()
 	}
 	if a.AuthMethod == "" {
-		a.AuthMethod = "PIN"
+		a.AuthMethod = MethodPIN
 	}
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO field_login_attempts
 		     (id, client_id, identity_id, worker_code, device_id, application_id, auth_method, outcome,
-		      failure_reason, ip_address, attempted_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		      failure_reason, ip_address, attempted_at, actor_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
 		a.ID, emptyToNil(a.ClientID), emptyToNil(a.IdentityID), emptyToNil(a.WorkerCode), emptyToNil(a.DeviceID),
 		emptyToNil(a.ApplicationID), a.AuthMethod, a.Outcome, emptyToNil(a.FailureReason),
-		emptyToNil(a.IPAddress), a.AttemptedAt)
+		emptyToNil(a.IPAddress), a.AttemptedAt, emptyToNil(a.ActorID))
 	return err
 }
 
@@ -322,7 +322,7 @@ func (r *SessionRepo) SignIns(ctx context.Context, identityID string, offset, li
 	}
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, client_id, identity_id, worker_code, device_id, application_id, auth_method, outcome,
-		        failure_reason, ip_address, attempted_at
+		        failure_reason, ip_address, attempted_at, actor_id
 		 FROM field_login_attempts WHERE identity_id = $1
 		 ORDER BY attempted_at DESC, id DESC LIMIT $2 OFFSET $3`, identityID, limit, offset)
 	if err != nil {
@@ -332,13 +332,14 @@ func (r *SessionRepo) SignIns(ctx context.Context, identityID string, offset, li
 	out := []LoginAttempt{}
 	for rows.Next() {
 		var a LoginAttempt
-		var clientID, identity, code, device, app, reason, ip *string
+		var clientID, identity, code, device, app, reason, ip, actor *string
 		if err := rows.Scan(&a.ID, &clientID, &identity, &code, &device, &app, &a.AuthMethod, &a.Outcome,
-			&reason, &ip, &a.AttemptedAt); err != nil {
+			&reason, &ip, &a.AttemptedAt, &actor); err != nil {
 			return nil, 0, err
 		}
 		a.ClientID, a.IdentityID, a.WorkerCode = deref(clientID), deref(identity), deref(code)
 		a.DeviceID, a.ApplicationID, a.FailureReason, a.IPAddress = deref(device), deref(app), deref(reason), deref(ip)
+		a.ActorID = deref(actor)
 		out = append(out, a)
 	}
 	return out, total, rows.Err()
