@@ -10,6 +10,11 @@
  *   .withCorrelationId('corr-789')
  *   .withTimeoutSeconds(60);
  * ```
+ *
+ * The payload is an item of `POST /api/dispatch-jobs/batch`. Fields the
+ * platform does not honour on that route are kept for source compatibility but
+ * are NOT sent: `headers`, `retryStrategy`, `scheduledFor` and `expiresAt` (and
+ * their withers). Setting them has no effect.
  */
 import { assertQualifiedCode } from "./qualified-code.js";
 
@@ -30,7 +35,9 @@ export class CreateDispatchJobDto {
 	readonly subject: string | null;
 	readonly correlationId: string | null;
 	readonly eventId: string | null;
-	readonly metadata: Record<string, string>;
+	/** Metadata pairs in the order they were added; sent in this order. */
+	readonly metadataPairs: ReadonlyArray<readonly [string, string]>;
+	/** @deprecated Not sent: the platform does not take per-job headers. */
 	readonly headers: Record<string, string>;
 	readonly payloadContentType: string;
 	readonly dataOnly: boolean;
@@ -39,8 +46,11 @@ export class CreateDispatchJobDto {
 	readonly sequence: number | null;
 	readonly timeoutSeconds: number;
 	readonly maxRetries: number;
+	/** @deprecated Not sent: the batch route does not take one. */
 	readonly retryStrategy: string | null;
+	/** @deprecated Not sent: the batch route does not take one. */
 	readonly scheduledFor: Date | null;
+	/** @deprecated Not sent: the batch route does not take one. */
 	readonly expiresAt: Date | null;
 	readonly idempotencyKey: string | null;
 	readonly externalId: string | null;
@@ -56,7 +66,7 @@ export class CreateDispatchJobDto {
 		subject?: string | null;
 		correlationId?: string | null;
 		eventId?: string | null;
-		metadata?: Record<string, string>;
+		metadataPairs?: ReadonlyArray<readonly [string, string]>;
 		headers?: Record<string, string>;
 		payloadContentType?: string;
 		dataOnly?: boolean;
@@ -81,7 +91,7 @@ export class CreateDispatchJobDto {
 		this.subject = params.subject ?? null;
 		this.correlationId = params.correlationId ?? null;
 		this.eventId = params.eventId ?? null;
-		this.metadata = params.metadata ?? {};
+		this.metadataPairs = params.metadataPairs ?? [];
 		this.headers = params.headers ?? {};
 		this.payloadContentType = params.payloadContentType ?? "application/json";
 		this.dataOnly = params.dataOnly ?? true;
@@ -137,13 +147,37 @@ export class CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), eventId });
 	}
 
-	withMetadata(metadata: Record<string, string>): CreateDispatchJobDto {
-		return new CreateDispatchJobDto({
-			...this.toParams(),
-			metadata: { ...this.metadata, ...metadata },
-		});
+	/** The metadata as an object (a view: JavaScript orders integer-like keys first). */
+	get metadata(): Record<string, string> {
+		return Object.fromEntries(this.metadataPairs);
 	}
 
+	/**
+	 * Add metadata. An existing key keeps its place and takes the new value; a
+	 * new key goes last. Pairs are sent in this order. Pass `(key, value)` to
+	 * control order exactly: an object's own key order puts integer-like keys
+	 * first.
+	 */
+	withMetadata(key: string, value: string): CreateDispatchJobDto;
+	withMetadata(metadata: Record<string, string>): CreateDispatchJobDto;
+	withMetadata(
+		keyOrMetadata: string | Record<string, string>,
+		value?: string,
+	): CreateDispatchJobDto {
+		const added: Array<[string, string]> =
+			typeof keyOrMetadata === "string"
+				? [[keyOrMetadata, value ?? ""]]
+				: Object.entries(keyOrMetadata);
+		const pairs = this.metadataPairs.map(([k, v]) => [k, v] as [string, string]);
+		for (const [k, v] of added) {
+			const at = pairs.findIndex(([existing]) => existing === k);
+			if (at >= 0) pairs[at] = [k, v];
+			else pairs.push([k, v]);
+		}
+		return new CreateDispatchJobDto({ ...this.toParams(), metadataPairs: pairs });
+	}
+
+	/** @deprecated Not sent: the platform does not take per-job headers. Kept so existing callers compile. */
 	withHeaders(headers: Record<string, string>): CreateDispatchJobDto {
 		return new CreateDispatchJobDto({
 			...this.toParams(),
@@ -180,14 +214,20 @@ export class CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), maxRetries });
 	}
 
+	/** @deprecated Not sent: the batch route does not take one. Kept so existing callers compile. */
 	withRetryStrategy(retryStrategy: string): CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), retryStrategy });
 	}
 
+	/**
+	 * @deprecated Not sent: the batch route has no scheduledFor, so the job is
+	 * created for immediate dispatch. Kept so existing callers compile.
+	 */
 	withScheduledFor(scheduledFor: Date): CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), scheduledFor });
 	}
 
+	/** @deprecated Not sent: the batch route does not take one. Kept so existing callers compile. */
 	withExpiresAt(expiresAt: Date): CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), expiresAt });
 	}
@@ -241,19 +281,15 @@ export class CreateDispatchJobDto {
 			eventId: this.eventId,
 			// The platform takes a list of {key, value}; an object fails the whole batch.
 			metadata:
-				Object.keys(this.metadata).length > 0
-					? Object.entries(this.metadata).map(([key, value]) => ({ key, value: String(value) }))
+				this.metadataPairs.length > 0
+					? this.metadataPairs.map(([key, value]) => ({ key, value: String(value) }))
 					: null,
-			headers: Object.keys(this.headers).length > 0 ? this.headers : null,
 			dataOnly: this.dataOnly,
 			messageGroup: this.messageGroup,
 			mode: this.mode,
 			sequence: this.sequence,
 			timeoutSeconds: this.timeoutSeconds,
 			maxRetries: this.maxRetries,
-			retryStrategy: this.retryStrategy,
-			scheduledFor: this.scheduledFor?.toISOString() ?? null,
-			expiresAt: this.expiresAt?.toISOString() ?? null,
 			idempotencyKey: this.idempotencyKey,
 			externalId: this.externalId,
 			connectionId: this.connectionId,
@@ -271,7 +307,7 @@ export class CreateDispatchJobDto {
 			subject: this.subject,
 			correlationId: this.correlationId,
 			eventId: this.eventId,
-			metadata: this.metadata,
+			metadataPairs: this.metadataPairs,
 			headers: this.headers,
 			payloadContentType: this.payloadContentType,
 			dataOnly: this.dataOnly,

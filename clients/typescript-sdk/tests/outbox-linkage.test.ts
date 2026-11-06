@@ -85,6 +85,32 @@ test("CreateDispatchJobDto sends metadata as a {key, value} list in insertion or
 	assert.equal(bare.toPayload().metadata, undefined, "empty metadata is omitted");
 });
 
+test("CreateDispatchJobDto keeps metadata order across calls, integer-like keys included", () => {
+	const job = CreateDispatchJobDto.create("svc", "app:sub:agg:act", "https://x", "{}", "p")
+		.withMetadata("name", "a")
+		.withMetadata("2", "b")
+		.withMetadata({ "1": "c" })
+		.withMetadata("name", "d");
+	assert.deepEqual(job.toPayload().metadata, [
+		{ key: "name", value: "d" },
+		{ key: "2", value: "b" },
+		{ key: "1", value: "c" },
+	]);
+	assert.deepEqual(job.metadata, { name: "d", "2": "b", "1": "c" });
+});
+
+test("CreateDispatchJobDto does not send fields the batch route ignores", () => {
+	const p = CreateDispatchJobDto.create("svc", "app:sub:agg:act", "https://x", "{}", "p")
+		.withHeaders({ "X-A": "1" })
+		.withRetryStrategy("exponential")
+		.withScheduledFor(new Date("2030-01-01T00:00:00Z"))
+		.withExpiresAt(new Date("2030-01-02T00:00:00Z"))
+		.toPayload();
+	for (const field of ["headers", "retryStrategy", "scheduledFor", "expiresAt"]) {
+		assert.equal(field in p, false, `${field} must not be sent`);
+	}
+});
+
 test("CreateDispatchJobDto sends connectionId and idempotencyKey, and omits them when unset", () => {
 	const base = CreateDispatchJobDto.create("svc", "app:sub:agg:act", "https://x", "{}", "p");
 	assert.equal(base.toPayload().connectionId, undefined);

@@ -15,6 +15,12 @@ Additive: no signature breaks (new parameters are optional).
   the platform: the connection's service account signs a subscription-less job,
   and a repeated key answers the first job's id instead of creating another
   (within the job's application and client; at most 100 characters).
+- Metadata keeps the order pairs were added in, integer-like keys included (an
+  object reorders those first). New `withMetadata(key, value)` overload; an
+  existing key keeps its place and takes the new value. `metadata` is now a
+  read-only object view of the new `metadataPairs`.
+- `headers`, `retryStrategy`, `scheduledFor` and `expiresAt` (and their withers)
+  are deprecated and no longer sent: the batch route never honoured them.
 
 ### Field workers
 - `FieldTokenVerifier` / `verifyFieldToken` and `FieldPrincipal`: offline
