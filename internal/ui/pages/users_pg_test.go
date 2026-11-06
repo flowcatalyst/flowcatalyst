@@ -321,6 +321,15 @@ func TestUsersPageClientAdministratorCannotReachOthersAgainstPostgres(t *testing
 	list := p.get(ca, "/ui/users")
 	assert.NotContains(t, list, "anchor1@uiusr.test")
 	assert.NotContains(t, list, "b2@uiusr.test")
+	// The drawer follows the list's rule: an anchor user and another client's
+	// user are not found by id (the API's by-id read alone would answer for the anchor).
+	for _, id := range []string{anchorU, inB} {
+		body := p.get(ca, "/ui/users/"+id)
+		assert.Contains(t, body, "not found")
+		assert.NotContains(t, body, "anchor1@uiusr.test")
+		assert.NotContains(t, body, "b2@uiusr.test")
+	}
+	assert.Contains(t, p.get(ca, "/ui/users/"+partner), "p2@uiusr.test")
 
 	for name, id := range map[string]string{"anchor": anchorU, "other client": inB, "partner": partner} {
 		base := "/ui/users/" + id

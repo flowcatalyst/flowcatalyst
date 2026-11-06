@@ -13,6 +13,7 @@ import (
 	principalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/framework/go/ui/ds"
 	"github.com/flowcatalyst/framework/go/ui/kit"
 )
@@ -118,6 +119,16 @@ func (h *Users) buildDetail(ctx context.Context, ac *auth.AuthContext, id string
 	u, err := h.Users.GetPrincipal(ctx, id)
 	if err != nil {
 		return usrDetail{}, err
+	}
+	// The API's by-id read is lenient for a user with no home client (an
+	// anchor user, a partner): it answers any reader. The list is not, so the
+	// drawer applies the list's rule (principalapi.PrincipalVisible): a
+	// non-anchor caller finds only the users of their clients and the partners
+	// granted one (GrantedClientIDs is already trimmed to the caller's clients),
+	// and themself.
+	if !ac.IsAnchor() && ac.PrincipalID != u.ID && u.ClientID == nil &&
+		(u.Scope != "PARTNER" || len(u.GrantedClientIDs) == 0) {
+		return usrDetail{}, httperror.NotFound("Principal", id)
 	}
 	roles, err := h.Users.ListPrincipalRoles(ctx, id)
 	if err != nil {
