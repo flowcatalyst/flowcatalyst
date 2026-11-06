@@ -92,9 +92,9 @@ templ profileAccount(v profileView) {
 	</div>
 }
 
-// profilePasswordDialog is the change-password dialog: a native form, so it
-// works as the SPA's does without a script; a refusal or the second-factor
-// step comes back with the dialog open.
+// profilePasswordDialog is the change-password dialog: a native form (password,
+// new password, confirmation and, for a user with a second factor, the code, in
+// one step); a refusal comes back with the dialog open and every field empty.
 templ profilePasswordDialog(p profilePassword) {
 	@kit.Dialog(kit.DialogProps{
 		ID: profilePasswordID, Title: "Change Password", Persistent: true,
@@ -105,29 +105,14 @@ templ profilePasswordDialog(p profilePassword) {
 			if p.Error != "" {
 				@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "circle-x", Title: p.Error})
 			}
-			if p.Notice != "" {
-				@kit.Alert(kit.AlertProps{Role: "status", Icon: "mail", Title: p.Notice})
+			@kit.Field(kit.FieldProps{Label: "Current password", For: "cp-current"}) {
+				@kit.PasswordInput(kit.PasswordInputProps{ID: "cp-current", Name: "currentPassword", Signal: "cpCurrent", Required: true, Autocomplete: "current-password"})
 			}
-			if p.MFA {
-				<input type="hidden" name="mfa" value="1"/>
-				<input type="hidden" name="methods" value={ methodsValue(p.Methods) }/>
+			@kit.Field(kit.FieldProps{Label: "New password", For: "cp-new"}) {
+				@kit.PasswordInput(kit.PasswordInputProps{ID: "cp-new", Name: "newPassword", Signal: "cpNew", Required: true, Autocomplete: "new-password", Meter: true})
 			}
-			if p.MFA {
-				// The typed passwords ride along to the code step (this
-				// response is no-store) so the user does not type them twice.
-				<input type="hidden" name="currentPassword" value={ p.Current }/>
-				<input type="hidden" name="newPassword" value={ p.New }/>
-				<input type="hidden" name="confirmPassword" value={ p.Conf }/>
-			} else {
-				@kit.Field(kit.FieldProps{Label: "Current password", For: "cp-current"}) {
-					@kit.PasswordInput(kit.PasswordInputProps{ID: "cp-current", Name: "currentPassword", Signal: "cpCurrent", Required: true, Autocomplete: "current-password"})
-				}
-				@kit.Field(kit.FieldProps{Label: "New password", For: "cp-new"}) {
-					@kit.PasswordInput(kit.PasswordInputProps{ID: "cp-new", Name: "newPassword", Signal: "cpNew", Required: true, Autocomplete: "new-password", Meter: true})
-				}
-				@kit.Field(kit.FieldProps{Label: "Confirm new password", For: "cp-confirm"}) {
-					@kit.PasswordInput(kit.PasswordInputProps{ID: "cp-confirm", Name: "confirmPassword", Signal: "cpConfirm", Required: true, Autocomplete: "new-password"})
-				}
+			@kit.Field(kit.FieldProps{Label: "Confirm new password", For: "cp-confirm"}) {
+				@kit.PasswordInput(kit.PasswordInputProps{ID: "cp-confirm", Name: "confirmPassword", Signal: "cpConfirm", Required: true, Autocomplete: "new-password"})
 			}
 			if p.MFA {
 				<div class="flex flex-col gap-2 border-t border-border pt-4">
@@ -136,7 +121,7 @@ templ profilePasswordDialog(p profilePassword) {
 					}
 					if p.hasEmail() {
 						<div>
-							<button type="submit" formaction="/ui/profile/password/email-code" formnovalidate class="fc-btn fc-btn-text">Send email code</button>
+							<button type="button" class="fc-btn fc-btn-text" data-on:click="@post('/ui/profile/password/email-code', {retryMaxCount: 0})">Send email code</button>
 						</div>
 					}
 				</div>
@@ -152,17 +137,6 @@ func profilePasswordAttrs(open bool) templ.Attributes {
 	return templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()"}
 }
 
-func methodsValue(m []string) string {
-	out := ""
-	for i, s := range m {
-		if i > 0 {
-			out += ","
-		}
-		out += s
-	}
-	return out
-}
-
 func codeHint(p profilePassword) string {
 	switch {
 	case p.hasTOTP() && p.hasEmail():
@@ -170,7 +144,7 @@ func codeHint(p profilePassword) string {
 	case p.hasTOTP():
 		return "Enter the code from your authenticator app."
 	case p.hasEmail():
-		return "We sent a code to your email."
+		return "Send a code to your email, then enter it here."
 	}
 	return ""
 }
@@ -178,11 +152,7 @@ func codeHint(p profilePassword) string {
 templ profilePasswordFooter(p profilePassword) {
 	<button type="button" class="fc-btn fc-btn-text" data-on:click={ kit.CloseDialog }>Cancel</button>
 	<button type="submit" form="profile-password-form" class="fc-btn fc-btn-primary">
-		if p.MFA {
-			Verify &amp; Change
-		} else {
-			Change Password
-		}
+		Change Password
 	</button>
 }
 

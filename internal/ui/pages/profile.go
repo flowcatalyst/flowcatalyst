@@ -14,6 +14,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
+	"github.com/flowcatalyst/framework/go/ui/ds"
+	"github.com/flowcatalyst/framework/go/ui/kit"
 	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
@@ -59,9 +61,10 @@ const (
 // behind the role-less gate. POSTs are behind parseForm.
 func (h *Profile) Mount(r chi.Router) {
 	r.Get("/profile", h.page)
+	// The email-code action reads no form: it is a Datastar post of nothing.
+	r.Post("/profile/password/email-code", h.sendEmailCode)
 	post := r.With(parseForm)
 	post.Post("/profile/password", h.changePassword)
-	post.Post("/profile/password/email-code", h.sendEmailCode)
 	post.Post("/profile/developer-credential", h.setCredential)
 	post.Post("/profile/developer-credential/revoke", h.revokeCredential)
 }
@@ -89,12 +92,11 @@ type profilePassword struct {
 	// Open renders the dialog open (after a refusal or the second-factor step).
 	Open  bool
 	Error string
-	// Notice is the dialog's neutral line (a code was sent).
-	Notice string
-	// MFA is the second-factor step: the user has 2FA, so a code is needed.
-	MFA                bool
-	Methods            []string
-	Current, New, Conf string
+	// MFA shows the two-factor code field: the user has a confirmed second
+	// factor, so the change needs a code (the endpoint's rule). No typed
+	// password or code is ever part of this state: the fields render empty.
+	MFA     bool
+	Methods []string
 }
 
 func (p profilePassword) hasEmail() bool { return slices.Contains(p.Methods, "EMAIL_PIN") }
@@ -185,6 +187,13 @@ func (h *Profile) view(r *http.Request, ac *auth.AuthContext) (profileView, *pri
 		if err := h.Security.securityState(ctx, p, &v.Security); err != nil {
 			return v, p, err
 		}
+		// A user with a confirmed second factor must give a code to change
+		// the password (change_password.go): the field is there from the start.
+		for _, m := range v.Security.Methods {
+			v.Password.Methods = append(v.Password.Methods, m.Type)
+		}
+		v.Password.Methods = knownMethods(v.Password.Methods)
+		v.Password.MFA = len(v.Password.Methods) > 0
 	}
 	return v, p, nil
 }
@@ -279,10 +288,11 @@ func deviceLabel(ua string) string {
 
 // ── change password ────────────────────────────────────────────────────
 
-// changePassword is the SPA's submitChangePassword: the client-side checks
-// (policy, confirmation, the code once asked for), then /auth/change-password.
-// MFA_REQUIRED opens the second-factor step (and, for an email-only factor,
-// sends the code at once); success is a flash and a redirect.
+// changePassword is the SPA's submitChangePassword in one step: the
+// client-side checks (policy, confirmation, the code when the user has a second
+// factor), then /auth/change-password with the password and the code together.
+// Success is a flash and a redirect. Every refusal re-renders the dialog open
+// with the message and EMPTY fields: no response carries a typed password or code.
 func (h *Profile) changePassword(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	v, _, err := h.view(r, ac)
@@ -290,8 +300,6 @@ func (h *Profile) changePassword(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	pw := h.readPassword(r)
-	v.Password = pw
 	v.Password.Open = true
 	fail := func(msg string) {
 		v.Password.Error = msg
@@ -303,21 +311,22 @@ func (h *Profile) changePassword(w http.ResponseWriter, r *http.Request) {
 		h.render(w, r, http.StatusUnprocessableEntity, v)
 		return
 	}
-	if viol := passwordpolicy.Validate(pw.New, v.Me.Email, v.Me.Name); viol != nil {
+	current, next, confirm := r.PostFormValue("currentPassword"), r.PostFormValue("newPassword"), r.PostFormValue("confirmPassword")
+	if viol := passwordpolicy.Validate(next, v.Me.Email, v.Me.Name); viol != nil {
 		fail(viol.Message)
 		return
 	}
-	if pw.New != pw.Conf {
+	if next != confirm {
 		fail("New password and confirmation do not match.")
 		return
 	}
 	code := strings.TrimSpace(r.PostFormValue("code"))
-	if pw.MFA && code == "" {
+	if v.Password.MFA && code == "" {
 		fail("Enter your two-factor code.")
 		return
 	}
-	body := map[string]string{"currentPassword": pw.Current, "newPassword": pw.New}
-	if pw.MFA {
+	body := map[string]string{"currentPassword": current, "newPassword": next}
+	if code != "" {
 		body["code"] = code
 	}
 	resp := callUpstream(h.Upstream, r, http.MethodPost, "/auth/change-password", body)
@@ -327,62 +336,35 @@ func (h *Profile) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if resp.code() == "MFA_REQUIRED" {
+		// The user's factors changed since the page was drawn: show the code field.
 		var mfa struct {
 			Methods []string `json:"methods"`
 		}
 		resp.decode(&mfa)
 		v.Password.MFA = true
 		v.Password.Methods = knownMethods(mfa.Methods)
-		// An email-only factor gets its code now, as the SPA does.
-		if v.Password.hasEmail() && !v.Password.hasTOTP() {
-			if sent := h.emailCode(r); sent != "" {
-				v.Password.Notice = sent
-			}
-		}
-		fail(resp.message("Two-factor verification required."))
+		fail("Enter a code from your second factor.")
 		return
 	}
 	fail(resp.message("Could not change your password."))
 }
 
-// sendEmailCode asks for an email code from inside the dialog's second-factor
-// step; the typed passwords come back with the page.
+// sendEmailCode is the dialog's "Send email code": a Datastar action that
+// posts nothing but itself and answers with a flash, so the open form (and
+// whatever was typed in it) is never reloaded or sent back.
 func (h *Profile) sendEmailCode(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	v, _, err := h.view(r, ac)
-	if err != nil {
-		h.Shell.Fail(w, r, err)
+	resp := callUpstream(h.Upstream, r, http.MethodPost, "/auth/change-password/send-email-code", nil)
+	if !ds.IsDatastar(r) {
+		http.Redirect(w, r, profilePath, http.StatusSeeOther)
 		return
 	}
-	v.Password = h.readPassword(r)
-	v.Password.Open, v.Password.MFA = true, true
-	status := http.StatusOK
-	if msg := h.emailCode(r); msg != "" {
-		v.Password.Notice = msg
-	} else {
-		v.Password.Error = "Could not send a code."
-		status = http.StatusUnprocessableEntity
-	}
-	h.render(w, r, status, v)
-}
-
-// emailCode sends the change-password email code; "" when it was not sent,
-// else the platform's message.
-func (h *Profile) emailCode(r *http.Request) string {
-	resp := callUpstream(h.Upstream, r, http.MethodPost, "/auth/change-password/send-email-code", nil)
+	sse := ds.NewSSE(w, r)
+	flash := kit.FlashMessageProps{Kind: kit.FlashSuccess, Summary: "Code sent", Detail: resp.message("A code has been sent to your email.")}
 	if resp.Status != http.StatusOK {
-		return ""
+		flash = kit.FlashMessageProps{Kind: kit.FlashError, Summary: "Send failed", Detail: resp.message("Could not send a code.")}
 	}
-	return resp.message("A code has been sent to your email.")
-}
-
-func (h *Profile) readPassword(r *http.Request) profilePassword {
-	return profilePassword{
-		MFA:     r.PostFormValue("mfa") == "1",
-		Methods: knownMethods(strings.Split(r.PostFormValue("methods"), ",")),
-		Current: r.PostFormValue("currentPassword"),
-		New:     r.PostFormValue("newPassword"),
-		Conf:    r.PostFormValue("confirmPassword"),
+	if err := shell.Flash(sse, flash); err != nil {
+		slog.DebugContext(r.Context(), "ui: email code flash not delivered", "err", err)
 	}
 }
 

@@ -303,66 +303,142 @@ func TestProfileChangePasswordRefusals(t *testing.T) {
 	mustNotContain(t, rec.Body.String(), "wrong-pass-word", "N3w-Passw0rd-xyz")
 }
 
-func TestProfileChangePasswordSecondFactorStep(t *testing.T) {
-	h := newProfileHarness()
-	h.up.answers["POST /auth/change-password"] = fakeAnswer{400, map[string]any{
-		"code": "MFA_REQUIRED", "message": "Enter a code from your second factor to change your password.", "methods": []string{"TOTP", "EMAIL_PIN", "SMS"},
-	}}
-	rec := h.serve(t, profileSession(), profilePost("/ui/profile/password", passwordForm("old-pass-word", "N3w-Passw0rd-xyz!", "N3w-Passw0rd-xyz!")))
-	body := rec.Body.String()
-	mustContain(t, body, "Enter a code from your second factor", "Two-factor code", `name="mfa" value="1"`, `name="methods" value="TOTP,EMAIL_PIN"`,
-		"Verify &amp; Change", "Send email code", "Enter the code from your authenticator app, or send an email code below.",
-		`name="newPassword" value="N3w-Passw0rd-xyz!"`)
-	// A TOTP factor means no email is sent unasked.
-	if h.up.called("POST /auth/change-password/send-email-code") {
-		t.Error("an email code was sent although the user has an authenticator app")
-	}
+const (
+	sentinelCurrent = "SENTINEL-current-Pw-91xq"
+	sentinelNew     = "SENTINEL-new-Pw-47zk-Tangerine"
+	sentinelCode    = "SENTINEL-code-835219"
+)
 
-	// The code is required once asked for, then goes with the change.
+func TestProfileCodeFieldIsThereFromTheStartWhenTheUserHasASecondFactor(t *testing.T) {
+	h := newProfileHarness()
+	body := h.serve(t, profileSession(), req{target: "/ui/profile"}).Body.String()
+	mustNotContain(t, body, "Two-factor code", "Send email code", `name="mfa"`, `name="methods"`)
+
+	h.mfa.mfa.confirmed["prn_ann"] = []mfa.MethodType{mfa.MethodTOTP}
+	body = h.serve(t, profileSession(), req{target: "/ui/profile"}).Body.String()
+	mustContain(t, body, "Two-factor code", `name="code"`, "Enter the code from your authenticator app.")
+	mustNotContain(t, body, "Send email code", `name="mfa"`, `name="methods"`)
+
+	h.mfa.mfa.confirmed["prn_ann"] = []mfa.MethodType{mfa.MethodTOTP, mfa.MethodEmailPin}
+	body = h.serve(t, profileSession(), req{target: "/ui/profile"}).Body.String()
+	mustContain(t, body, "or send an email code below", "Send email code", "/ui/profile/password/email-code")
+	// The button never submits the form: it is not a submit button and has no formaction.
+	mustNotContain(t, body, "formaction")
+
+	h.mfa.mfa.confirmed["prn_ann"] = []mfa.MethodType{mfa.MethodEmailPin}
+	mustContain(t, h.serve(t, profileSession(), req{target: "/ui/profile"}).Body.String(), "Send a code to your email, then enter it here.", "Send email code")
+}
+
+func TestProfileChangePasswordWithASecondFactor(t *testing.T) {
+	h := newProfileHarness()
+	h.mfa.mfa.confirmed["prn_ann"] = []mfa.MethodType{mfa.MethodTOTP}
+
+	// No code: refused here, nothing sent to the platform.
+	rec := h.serve(t, profileSession(), profilePost("/ui/profile/password", passwordForm("old-pass-word", "N3w-Passw0rd-xyz!", "N3w-Passw0rd-xyz!")))
+	if rec.Code != http.StatusUnprocessableEntity || h.up.called("POST /auth/change-password") {
+		t.Fatalf("status %d, calls %v", rec.Code, h.up.calls)
+	}
+	mustContain(t, rec.Body.String(), "Enter your two-factor code.", "showModal()", "Two-factor code")
+
+	// Password and code go together, once.
 	form := passwordForm("old-pass-word", "N3w-Passw0rd-xyz!", "N3w-Passw0rd-xyz!")
-	form.Set("mfa", "1")
-	form.Set("methods", "TOTP")
-	rec = h.serve(t, profileSession(), profilePost("/ui/profile/password", form))
-	mustContain(t, rec.Body.String(), "Enter your two-factor code.")
 	form.Set("code", " 123456 ")
-	h.up.answers["POST /auth/change-password"] = fakeAnswer{200, map[string]any{"message": "ok"}}
 	rec = h.serve(t, profileSession(), profilePost("/ui/profile/password", form))
 	mfaWantRedirect(t, rec, "/ui/profile")
-	if h.up.bodies["/auth/change-password"]["code"] != "123456" {
-		t.Errorf("posted %v", h.up.bodies["/auth/change-password"])
+	got := h.up.bodies["/auth/change-password"]
+	if got["code"] != "123456" || got["currentPassword"] != "old-pass-word" || got["newPassword"] != "N3w-Passw0rd-xyz!" {
+		t.Errorf("posted %v", got)
 	}
 }
 
-func TestProfileEmailOnlyFactorGetsItsCodeAtOnce(t *testing.T) {
+// The endpoint is the authority: a user whose factors changed since the page
+// was drawn gets the code field with the message, and empty password fields.
+func TestProfileMFARequiredFromTheEndpointShowsTheCodeField(t *testing.T) {
 	h := newProfileHarness()
-	h.up.answers["POST /auth/change-password"] = fakeAnswer{400, map[string]any{"code": "MFA_REQUIRED", "message": "Enter a code.", "methods": []string{"EMAIL_PIN"}}}
+	h.up.answers["POST /auth/change-password"] = fakeAnswer{400, map[string]any{"code": "MFA_REQUIRED", "message": "Enter a code.", "methods": []string{"TOTP", "EMAIL_PIN", "SMS"}}}
 	rec := h.serve(t, profileSession(), profilePost("/ui/profile/password", passwordForm("old-pass-word", "N3w-Passw0rd-xyz!", "N3w-Passw0rd-xyz!")))
-	if !h.up.called("POST /auth/change-password/send-email-code") {
-		t.Fatalf("no email code sent: %v", h.up.calls)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d", rec.Code)
 	}
-	mustContain(t, rec.Body.String(), "A code has been sent to your email.", "We sent a code to your email.", "Send email code")
+	body := rec.Body.String()
+	mustContain(t, body, "Enter a code from your second factor.", "Two-factor code", "Send email code", "or send an email code below", "showModal()")
+	mustNotContain(t, body, "old-pass-word", "N3w-Passw0rd-xyz", `type="hidden"`)
 }
 
-func TestProfileSendEmailCode(t *testing.T) {
+func TestProfileSendEmailCodeIsADatastarActionThatAnswersAFlash(t *testing.T) {
 	h := newProfileHarness()
-	form := passwordForm("old-pass-word", "N3w-Passw0rd-xyz!", "N3w-Passw0rd-xyz!")
-	form.Set("mfa", "1")
-	form.Set("methods", "TOTP,EMAIL_PIN")
-	rec := h.serve(t, profileSession(), profilePost("/ui/profile/password/email-code", form))
+	rec := h.serve(t, profileSession(), req{method: http.MethodPost, target: "/ui/profile/password/email-code", datastar: true, headers: map[string]string{"Sec-Fetch-Site": "same-origin"}})
 	if rec.Code != http.StatusOK || !h.up.called("POST /auth/change-password/send-email-code") {
 		t.Fatalf("status %d, calls %v", rec.Code, h.up.calls)
 	}
-	mustContain(t, rec.Body.String(), "A code has been sent to your email.", "Two-factor code", "showModal()")
+	mustContain(t, rec.Body.String(), "Code sent", "A code has been sent to your email.")
 	if h.up.called("POST /auth/change-password") {
 		t.Error("sending a code changed the password")
 	}
 
-	h.up.answers["POST /auth/change-password/send-email-code"] = fakeAnswer{400, map[string]any{"code": "NO_EMAIL_2FA", "message": "email codes are not enabled for your account"}}
-	rec = h.serve(t, profileSession(), profilePost("/ui/profile/password/email-code", form))
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("refused send: status %d", rec.Code)
+	h.up.answers["POST /auth/change-password/send-email-code"] = fakeAnswer{429, map[string]any{"code": "RATE_LIMITED", "message": "Please wait before asking for another code."}}
+	rec = h.serve(t, profileSession(), req{method: http.MethodPost, target: "/ui/profile/password/email-code", datastar: true, headers: map[string]string{"Sec-Fetch-Site": "same-origin"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("refused send: status %d (a Datastar answer must be 200)", rec.Code)
 	}
-	mustContain(t, rec.Body.String(), "Could not send a code.")
+	mustContain(t, rec.Body.String(), "Send failed", "Please wait before asking for another code.")
+
+	// Not from Datastar: nothing to show it in, back to the page.
+	rec = h.serve(t, profileSession(), profilePost("/ui/profile/password/email-code", nil))
+	mfaWantRedirect(t, rec, "/ui/profile")
+}
+
+// No response of the password dialog, on any path, carries a password or a
+// code the user typed (the console's rule, as TestUserPagesNeverCarryCredentials).
+func TestProfilePasswordDialogNeverCarriesCredentials(t *testing.T) {
+	sentinels := []string{sentinelCurrent, sentinelNew, sentinelCode}
+	check := func(name string, rec *httptest.ResponseRecorder) {
+		t.Helper()
+		mustNotContain(t, rec.Body.String(), sentinels...)
+		for k, v := range rec.Header() {
+			for _, x := range v {
+				for _, s := range sentinels {
+					if strings.Contains(x, s) {
+						t.Errorf("%s: header %s carries a credential", name, k)
+					}
+				}
+			}
+		}
+	}
+	for _, withMFA := range []bool{false, true} {
+		h := newProfileHarness()
+		if withMFA {
+			h.mfa.mfa.confirmed["prn_ann"] = []mfa.MethodType{mfa.MethodTOTP, mfa.MethodEmailPin}
+		}
+		form := func(cur, nw, conf, code string) url.Values {
+			f := passwordForm(cur, nw, conf)
+			if code != "" {
+				f.Set("code", code)
+			}
+			return f
+		}
+		post := func(f url.Values) *httptest.ResponseRecorder {
+			return h.serve(t, profileSession(), profilePost("/ui/profile/password", f))
+		}
+		check("page", h.serve(t, profileSession(), req{target: "/ui/profile"}))
+		check("mismatch", post(form(sentinelCurrent, sentinelNew, sentinelNew+"x", sentinelCode)))
+		check("weak", post(form(sentinelCurrent, "abc", "abc", sentinelCode)))
+		check("missing code", post(form(sentinelCurrent, sentinelNew, sentinelNew, "")))
+
+		h.up.answers["POST /auth/change-password"] = fakeAnswer{401, map[string]any{"code": "INVALID_CURRENT_PASSWORD", "message": "Your current password is incorrect."}}
+		check("wrong current", post(form(sentinelCurrent, sentinelNew, sentinelNew, sentinelCode)))
+		h.up.answers["POST /auth/change-password"] = fakeAnswer{400, map[string]any{"code": "INVALID_CODE", "message": "That code didn't match — try again."}}
+		check("wrong code", post(form(sentinelCurrent, sentinelNew, sentinelNew, sentinelCode)))
+		h.up.answers["POST /auth/change-password"] = fakeAnswer{400, map[string]any{"code": "MFA_REQUIRED", "message": "Enter a code.", "methods": []string{"TOTP"}}}
+		check("mfa required", post(form(sentinelCurrent, sentinelNew, sentinelNew, "")))
+		h.up.answers["POST /auth/change-password"] = fakeAnswer{200, map[string]any{"message": "ok"}}
+		check("success", post(form(sentinelCurrent, sentinelNew, sentinelNew, sentinelCode)))
+		// The send-code action takes no form at all; a form sent to it is not echoed.
+		check("send code", h.serve(t, profileSession(), req{method: http.MethodPost, target: "/ui/profile/password/email-code", datastar: true, form: form(sentinelCurrent, sentinelNew, sentinelNew, sentinelCode), headers: map[string]string{"Sec-Fetch-Site": "same-origin"}}))
+		// SSO user.
+		h.up.me["ssoManaged"] = true
+		check("sso", post(form(sentinelCurrent, sentinelNew, sentinelNew, sentinelCode)))
+	}
 }
 
 func TestProfileSignInActivity(t *testing.T) {
