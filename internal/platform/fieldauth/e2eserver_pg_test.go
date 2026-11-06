@@ -13,11 +13,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/go-sdk/auth"
 )
 
@@ -47,7 +49,7 @@ func TestFieldJSE2EServer(t *testing.T) {
 	platURL := "http://" + platLn.Addr().String()
 	appURL := "http://" + appLn.Addr().String()
 
-	e := newEnv(t, envOpts{})
+	e := newEnv(t, envOpts{limits: roomyLimits()})
 	// The tokens' issuer and the proof htu must be the real listener URL.
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -82,16 +84,109 @@ func TestFieldJSE2EServer(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": keys})
 	})
 
-	// Application backend.
-	verifier := auth.NewFieldTokenVerifier(auth.FieldTokenVerifierConfig{
-		Issuer: platURL, AppCode: e.codeA, JWKSURL: platURL + "/jwks.json", BaseURL: appURL,
-	})
-	amux := http.NewServeMux()
-	amux.Handle("/app/whoami", auth.FieldMiddleware(verifier)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Application backend. Scenarios each get their own application, so the
+	// verifier is chosen by the ?app= query parameter.
+	var vmu sync.Mutex
+	verifiers := map[string]http.Handler{}
+	whoami := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p, _ := auth.FieldPrincipalFrom(r.Context())
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"workerCode": p.WorkerCode, "appCode": p.AppCode, "deviceId": p.DeviceID, "jkt": p.JKT})
-	})))
+		out := map[string]any{"workerCode": p.WorkerCode, "appCode": p.AppCode, "deviceId": p.DeviceID, "jkt": p.JKT, "test": p.Test}
+		if p.Actor != nil {
+			out["actor"] = map[string]any{"id": p.Actor.ID, "type": p.Actor.Type}
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	})
+	amux := http.NewServeMux()
+	amux.HandleFunc("/app/whoami", func(w http.ResponseWriter, r *http.Request) {
+		app := r.URL.Query().Get("app")
+		if app == "" {
+			app = e.codeA
+		}
+		vmu.Lock()
+		h, ok := verifiers[app]
+		if !ok {
+			v := auth.NewFieldTokenVerifier(auth.FieldTokenVerifierConfig{
+				Issuer: platURL, AppCode: app, JWKSURL: platURL + "/jwks.json", BaseURL: appURL,
+			})
+			h = auth.FieldMiddleware(v)(whoami)
+			verifiers[app] = h
+		}
+		vmu.Unlock()
+		h.ServeHTTP(w, r)
+	})
+
+	// Test-only admin hooks for the scenarios (seeding that has no device
+	// route): POST /e2e/new makes an isolated client with an application,
+	// POST /e2e/op performs one seeding step on it.
+	var emu sync.Mutex
+	scenarios := map[string]*env{}
+	reply := func(w http.ResponseWriter, v any) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(v)
+	}
+	pmux.HandleFunc("/e2e/new", func(w http.ResponseWriter, _ *http.Request) {
+		se := newEnv(t, envOpts{limits: roomyLimits()})
+		se.s.Auth, se.s.BaseURL = svc, platURL
+		emu.Lock()
+		scenarios[se.clientID] = se
+		emu.Unlock()
+		reply(w, map[string]string{"scenario": se.clientID, "clientIdentifier": se.ident, "appCode": se.codeA})
+	})
+	pmux.HandleFunc("/e2e/op", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Scenario string `json:"scenario"`
+			Op       string `json:"op"`
+			Code     string `json:"code"`
+			PIN      string `json:"pin"`
+			ID       string `json:"id"`
+			Column   string `json:"column"`
+			Value    any    `json:"value"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		emu.Lock()
+		se := scenarios[req.Scenario]
+		emu.Unlock()
+		if se == nil {
+			http.Error(w, "unknown scenario", http.StatusNotFound)
+			return
+		}
+		exec := func(sql string, args ...any) {
+			if _, err := testpg.Pool(t).Exec(r.Context(), sql, args...); err != nil {
+				t.Errorf("e2e op %s: %v", req.Op, err)
+			}
+		}
+		switch req.Op {
+		case "enrolCode":
+			reply(w, map[string]string{"code": se.enrolCode(fieldidentity.ModePersonal, "", se.codeA)})
+		case "worker":
+			reply(w, map[string]string{"id": se.worker(req.Code, req.PIN, false, se.codeA)})
+		case "supervisor":
+			reply(w, map[string]string{"id": se.supervisor(req.Code, req.PIN, se.codeA)})
+		case "testIdentity":
+			exec(`UPDATE field_identities SET is_test = TRUE WHERE id = $1`, req.ID)
+			reply(w, map[string]string{})
+		case "suspend":
+			exec(`UPDATE field_identities SET status = 'DISABLED' WHERE id = $1`, req.ID)
+			reply(w, map[string]string{})
+		case "badge": // a reissue revokes the previous badge
+			reply(w, map[string]string{"token": se.badge(req.ID)})
+		case "policy":
+			val := req.Value
+			if f, ok := val.(float64); ok {
+				val = int(f)
+			}
+			se.policy(req.Column, val)
+			reply(w, map[string]string{})
+		case "signInCode":
+			reply(w, map[string]string{"code": se.signInCode(req.ID, se.codeA, se.principal(true))})
+		default:
+			http.Error(w, "unknown op", http.StatusBadRequest)
+		}
+	})
 
 	psrv := &http.Server{Handler: pmux, ReadHeaderTimeout: 10 * time.Second}
 	asrv := &http.Server{Handler: amux, ReadHeaderTimeout: 10 * time.Second}
