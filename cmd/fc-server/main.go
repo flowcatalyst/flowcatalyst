@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/frontend"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/consoleredirect"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/logging"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
@@ -154,7 +155,7 @@ func main() {
 	// embedded.
 	runOpts := server.RunOptions{}
 	if cfg.PlatformEnabled && frontend.IsAvailable() {
-		runOpts.Fallback = frontend.Handler()
+		runOpts.Fallback = consoleredirect.Wrap(frontend.Handler(), frontend.ServesAsIs)
 		runOpts.IsAPIPath = frontend.IsAPIPath
 		slog.Info("embedded Vue SPA available")
 	}

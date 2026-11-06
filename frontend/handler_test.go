@@ -43,6 +43,19 @@ func get(t *testing.T, method, target string, hdr map[string]string) *httptest.R
 	return w
 }
 
+func TestServesAsIs(t *testing.T) {
+	withDist(t, fixtureDist())
+	for p, want := range map[string]bool{
+		"/": false, "/index.html": false, "/dashboard": false, "/dispatch-jobs/x": false,
+		"/assets/missing.js": true, "/assets/": true, "/logo.png": true, "/favicon.svg": true,
+		"/api/x": true, "/oauth/x": true,
+	} {
+		if got := ServesAsIs(p); got != want {
+			t.Errorf("ServesAsIs(%q) = %v, want %v", p, got, want)
+		}
+	}
+}
+
 func isIndex(w *httptest.ResponseRecorder) bool {
 	return strings.Contains(w.Body.String(), `<div id="app">`)
 }

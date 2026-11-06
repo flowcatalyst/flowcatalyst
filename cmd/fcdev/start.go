@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/flowcatalyst/flowcatalyst-go/frontend"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/consoleredirect"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/database"
@@ -295,7 +296,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	}
 	runOpts := server.RunOptions{}
 	if frontend.IsAvailable() {
-		runOpts.Fallback = frontend.Handler()
+		runOpts.Fallback = consoleredirect.Wrap(frontend.Handler(), frontend.ServesAsIs)
 		runOpts.IsAPIPath = frontend.IsAPIPath
 		slog.Info("embedded Vue SPA available")
 	} else {

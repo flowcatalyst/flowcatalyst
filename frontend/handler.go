@@ -80,6 +80,27 @@ var assetExtensions = map[string]bool{
 	".woff": true, ".woff2": true, ".ttf": true, ".otf": true, ".eot": true,
 }
 
+// ServesAsIs reports whether the handler answers URL path p from a real file
+// (or a 404 for a missing asset) rather than with the index.html client-route
+// shell: API prefixes, an exact file under dist/ other than index.html, and
+// anything under /assets/ or with a static-asset extension. Wrappers that
+// redirect client routes (internal/consoleredirect) leave these alone.
+func ServesAsIs(p string) bool {
+	if IsAPIPath(p) {
+		return true
+	}
+	reqPath := strings.TrimPrefix(path.Clean("/"+p), "/")
+	if reqPath == "" || reqPath == "index.html" {
+		return false
+	}
+	if distFS != nil {
+		if info, err := fs.Stat(distFS, reqPath); err == nil && !info.IsDir() {
+			return true
+		}
+	}
+	return reqPath == "assets" || strings.HasPrefix(reqPath, "assets/") || assetExtensions[strings.ToLower(path.Ext(reqPath))]
+}
+
 // contentSecurityPolicy restricts framing, plugins and <base> only. A policy
 // on scripts and styles is not set: PrimeVue injects <style> elements at
 // runtime and the Swagger UI chunk uses the Function constructor, and the SPA

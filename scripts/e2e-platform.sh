@@ -31,7 +31,7 @@
 # Overridable (environment): E2E_STATE_DIR, E2E_API_PORT, E2E_METRICS_PORT,
 # E2E_DB_NAME, E2E_DB_MODE (auto|shared|own), E2E_SHARED_PG_PORT,
 # E2E_OWN_PG_PORT, E2E_PG_BIN, E2E_CONTROL_PLANE_URL, E2E_RECEIVER_PORT,
-# E2E_SKIP_BUILD=1.
+# E2E_SKIP_BUILD=1, E2E_CONSOLE (ui|spa: FC_CONSOLE for the platform; default ui).
 set -euo pipefail
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -216,6 +216,7 @@ start_platform() {
 			FC_EMBEDDED_DB_PATH="$STATE/embedded-pg" \
 			FC_API_PORT="$API_PORT" \
 			FC_METRICS_PORT="$METRICS_PORT" \
+			${E2E_CONSOLE:+FC_CONSOLE=$E2E_CONSOLE} \
 			FC_MCP_ENABLED=false \
 			FC_FUNCTIONS_ENABLED=$([ "$FUNCTIONS" = 1 ] && echo true || echo false) \
 			FC_FUNCTIONS_PORT=$((API_PORT + 15)) \
