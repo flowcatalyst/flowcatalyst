@@ -1,5 +1,6 @@
-package io.flowcatalyst.field
+package io.flowcatalyst.field.rn
 
+import io.flowcatalyst.field.FcFieldException
 import android.app.KeyguardManager
 import android.content.Context
 import android.os.Build

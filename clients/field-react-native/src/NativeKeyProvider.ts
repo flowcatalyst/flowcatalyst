@@ -1,17 +1,17 @@
 import { fromBase64Url, toBase64Url } from "./base64url";
-import { getNativeModule, toFieldError, type FcFieldNative } from "./native";
+import { getNativeModule, toFieldError, type KeyStoreNative } from "./native";
 import type { DeviceKey, KeyProvider } from "./types";
 
 export class NativeKeyProvider implements KeyProvider {
-	private readonly native: () => FcFieldNative;
+	private readonly native: () => KeyStoreNative;
 
-	constructor(native?: FcFieldNative) {
+	constructor(native?: KeyStoreNative) {
 		this.native = native ? () => native : getNativeModule;
 	}
 
 	async getOrCreateDeviceKey(): Promise<DeviceKey> {
 		try {
-			return await this.native().getOrCreateDeviceKey();
+			return (await this.native().getOrCreateDeviceKey()) as DeviceKey;
 		} catch (e) {
 			throw toFieldError(e);
 		}

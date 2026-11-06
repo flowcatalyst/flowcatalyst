@@ -1,4 +1,4 @@
-package io.flowcatalyst.field
+package io.flowcatalyst.field.rn
 
 import java.security.PublicKey
 import java.security.SecureRandom

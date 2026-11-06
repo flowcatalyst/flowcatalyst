@@ -1,97 +1,150 @@
 # @flowcatalyst/field-react-native
 
-React Native native module for field-worker devices (Android Kotlin, iOS Swift). It holds the
-device's hardware-backed signing key and a secure store, and hosts the WebView bridge for
-`@flowcatalyst/field-js`. Spec: `docs/field-mobile-libraries-spec.md` §2-§4; design:
-`docs/field-worker-identity-design.md`. Unreleased (no release line yet).
+React Native bridge for field-worker devices. **New Architecture only** (TurboModule `FcField`, codegen spec
+`src/NativeFcField.ts`, React Native >= 0.76). Spec: `docs/field-native-session-spec.md` section 2; WebView
+bridge: `docs/field-mobile-libraries-spec.md`. Unreleased.
 
-Bare React Native only (no Expo dependency). Peer dependencies: `react`, `react-native`,
-`react-native-webview`.
+- **Android:** a thin bridge over the Kotlin `io.flowcatalyst.field.FieldSession` (`clients/field-android`), the one
+  owner of keys, tokens, refresh and nonces in the process. JS screens and a native foreground service share it.
+- **iOS:** only the key/store module exists (Secure Enclave key, Keychain store) for the WebView bridge.
+  `FieldClient` session methods reject with `NOT_SUPPORTED_ON_IOS_YET` until the Swift session owner is built.
+- **WebView pages** keep using `@flowcatalyst/field-js` through the bridge host (protocol v1). On Android its key
+  operations use the same Keystore key as `FieldSession` (alias `fc_field_device`): one device key per app.
+
+## Setup
+
+### Expo (prebuild / dev client; not Expo Go)
+
+```json
+{ "expo": { "plugins": [["@flowcatalyst/field-react-native", {
+  "faceIdPermission": "Unlock the app with Face ID",
+  "fieldAndroidVersion": "0.1.0"
+}]] } }
+```
+
+The plugin (`app.plugin.js`) adds `USE_BIOMETRIC`, raises `android.minSdkVersion` to at least 26 (option
+`minSdkVersion` to go higher), adds the GitHub Packages Maven repository
+(`https://maven.pkg.github.com/flowcatalyst/flowcatalyst`, credentials from gradle properties `gpr.user` / `gpr.key`
+or env `GITHUB_ACTOR` / `GITHUB_TOKEN`), adds `implementation "io.flowcatalyst:field-android:<version>"` to the app
+module, and sets `NSFaceIDUsageDescription` (`faceIdPermission: false` to skip; an existing value is kept). It is
+idempotent. Needs a Groovy `android/build.gradle` (the Expo default).
+
+### Bare React Native
+
+1. `minSdkVersion 26`; the host `Activity` must be a `FragmentActivity` (`ReactActivity` is).
+2. Add the Maven repository above to `allprojects.repositories` (with credentials), or, until
+   `io.flowcatalyst:field-android` is published, a composite build in the app's `settings.gradle`:
+   `includeBuild("../path/to/clients/field-android")`. The published coordinates replace the composite build.
+3. Autolinking registers `FcFieldPackage`. Override the library version with `ext.fieldAndroidVersion` in the root
+   `build.gradle`.
+4. iOS: `cd ios && pod install`, and `NSFaceIDUsageDescription` in Info.plist.
 
 ## Use
 
-From plain RN screens:
-
 ```ts
-import { NativeKeyProvider, NativeSecureStore } from "@flowcatalyst/field-react-native";
-const keys = new NativeKeyProvider();   // implements KeyProvider
-const store = new NativeSecureStore();  // implements SecureStore
+import { FieldClient } from "@flowcatalyst/field-react-native";
+
+const field = new FieldClient({
+  platformUrl: "https://platform.example.com",
+  appCode: "fulfil",
+  clientIdentifier: "acme",                                   // for worker-code sign-in on an unenrolled device
+  requireUnlock: { afterColdStart: true, afterBackgroundMs: 5 * 60_000 },
+  expiryWarningsMs: [30 * 60_000, 10 * 60_000],              // defaults
+  keepAliveLeadMs: 2 * 60_000,                                // default
+});
 ```
 
-Errors are `FieldError` with `code` in `KEY_INVALIDATED | BIOMETRIC_UNAVAILABLE |
-BIOMETRIC_CANCELLED | NO_SECURE_LOCK_SCREEN | INTERNAL`. A lost or invalidated key never crashes
-the app; it surfaces as `KEY_INVALIDATED` (or a fresh key from `getOrCreateDeviceKey`).
+The first method call (or `on`) configures the native owner (`FieldSession.get`); a second `FieldClient` with a
+different config rejects with `CONFIG_MISMATCH`.
 
-Hosting `field-js` in a WebView (the one-line install):
+### Sign-in flows
+
+Same names and `Session` shape as field-js `FieldAuth` (`worker, actor, test, deviceMode, deviceId, appCode,
+expiresAt, idleExpiresAt, refreshExpiresAt, pinChangeRequired`; times are ms since the epoch).
+
+```ts
+const { state, session } = await field.restore();            // SignedOut | SignedIn | Locked
+await field.enrol(qrPayloadOrCode, { label: "Truck 7" });
+await field.login({ workerCode: "W001", pin: "1234" });      // or { badgeToken, pin? }
+await field.redeemSignInCode(code);
+await field.actAs({ workerCode: "W002", pin: supervisorPin }); await field.endImpersonation();
+await field.changePin({ currentPin, newPin });               // changes, then refreshes
+await field.refresh(); await field.logout({ scope: "session" | "device-all" });
+```
+
+Failures reject with `FieldAuthError` (`code`, `status?`, `retryAfterSeconds?`, `violations`): the field-js codes
+(`INVALID_CREDENTIALS`, `INVALID_GRANT`, `SESSION_EXPIRED`, `DEVICE_REVOKED`, ...) plus `NETWORK`, `NOT_ENROLLED`,
+`NOT_CONFIGURED`, `CONFIG_MISMATCH`, `KEY_INVALIDATED`, `BIOMETRIC_*`, `NOT_SUPPORTED_ON_IOS_YET`, `INTERNAL`.
+
+### Events
+
+```ts
+const off = field.on("SessionEnded", ({ reason }) => navigateToSignIn(reason));
+```
+
+`SessionChanged {session|null}`, `SessionEnded {reason}`, `PinChangeRequired {session}`, `ExpiryWarning
+{remainingMs}`, `Locked {session}`, `WorkerLocked {hard, retryAfterSeconds?}`. Plain callbacks (no `EventTarget`, no
+DOM; works on Hermes). `off()` unsubscribes; `field.dispose()` drops everything.
+
+### Unlock
+
+Tokens are stored without user authentication so refresh works in the background and after a reboot. The biometric
+is an app unlock: when `state` is `Locked` (policy `requireUnlock`; enrolled PERSONAL, non-impersonated sessions
+only) show your lock screen and call `await field.unlock("Unlock")`. Never use it on SHARED devices (PIN only).
+
+### Requests to your backend, SSE, uploads
+
+```ts
+const res = await field.fetch("https://api.example.com/trips", { method: "POST", body });  // signs, retries once on 401 use_dpop_nonce
+const h = await field.headersFor("GET", url);        // { Authorization, DPoP }: refreshes first when needed
+// on 401 use_dpop_nonce: field.headersForRetry("GET", url, response.headers.get("DPoP-Nonce"))
+// any DPoP-Nonce you see elsewhere: field.noteNonce(url, nonce)
+```
+
+Use `headersFor` for things that are not `fetch` (SSE/EventSource polyfills, upload libraries). A proof is bound to
+one method + URL and one nonce.
+
+**Offline queue rule:** store requests unsigned and sign when sending. A stored proof fails anyway (single-use or
+5-minute nonces, `jti` replay memory, access tokens last 10 minutes).
+
+### Long shifts: keepAlive
+
+```ts
+await field.keepAlive(true);   // while a trip / tracking is active
+await field.keepAlive(false);
+```
+
+While on, the owner refreshes before the idle deadline. Turn it on only while the worker is genuinely busy. Use
+`ExpiryWarning` to ask for a new sign-in at a stop.
+
+### Foreground service
+
+A tracking service is plain Kotlin and uses `FieldSession` directly (`FieldSession.get(ctx, config).interceptor()`
+for OkHttp, or `headersForBlocking`). It MUST run in the app's process (no `android:process`) so JS and the service
+share the one owner. The config must equal the JS config (`CONFIG_MISMATCH` otherwise). The owner uses no alarm:
+the foreground service keeps the process alive. See `clients/field-android/README.md`.
+
+## WebView bridge and key/store (protocol v1)
 
 ```tsx
 const bridge = useFieldBridge({ allowedOrigins: ["https://field.example.com"], onMessage: myHandler });
 <WebView source={{ uri: "https://field.example.com" }} {...bridge} />
 ```
 
-The host answers only pages whose origin (from `nativeEvent.url`) is in `allowedOrigins`; others
-get no answer and a warning naming the origin only. Messages without `fcField: 1` go to your
-`onMessage`. Unknown ops answer `INTERNAL`. Values, data and signatures are never logged.
+`NativeKeyProvider` / `NativeSecureStore` implement the field-js `KeyProvider` / `SecureStore` over the same module
+(Keystore key shared with `FieldSession` on Android; Secure Enclave on iOS). Origin allow-listing, error codes and
+the no-logging rule are unchanged. On SHARED devices do not use biometrics for worker identity.
 
-## Android setup
-
-- `minSdkVersion 26` (the library declares 26; compile/target 35).
-- Dependencies pulled in: `androidx.biometric:biometric`, `androidx.fragment:fragment`.
-- Autolinking registers `FcFieldPackage`. The host `Activity` must be a `FragmentActivity`
-  (`ReactActivity` is) for the biometric prompt.
-- Manifest permission `USE_BIOMETRIC` is merged from the library.
-- Key: Keystore EC P-256 alias `fc_field_device`, StrongBox first then TEE; attestation chain sent when
-  the device provides one. Store keys: `fc_field_store` and `fc_field_store_bio`
-  (a Keystore RSA-2048 pair, decrypt gated by biometric-strong, invalidated by enrolment change).
-- `set` never prompts, even with `requireBiometric`; only `get` of a biometric entry prompts (a rotating
-  refresh token is rewritten every few minutes without bothering the worker). Biometric values use a
-  hybrid envelope: a fresh AES-256-GCM data key encrypts the value and is wrapped with the RSA public key;
-  `get` unwraps it through `BiometricPrompt` + `CryptoObject`. On iOS, `set` is `SecItemDelete` +
-  `SecItemAdd` with `.biometryCurrentSet` (adding does not prompt; never `SecItemUpdate`).
-
-## iOS setup
-
-- `cd ios && pod install`. Needs a Swift-enabled app target (`use_frameworks!` not required).
-- Info.plist: `NSFaceIDUsageDescription` (for example "Unlock your session with Face ID"). Without
-  it Face ID devices fail the biometric prompt.
-- Key: Secure Enclave P-256 (level `TEE`); simulator falls back to a Keychain software key (`SOFTWARE`).
-  Store: Keychain generic passwords; biometric entries use `.biometryCurrentSet`.
-
-## SHARED devices
-
-Biometrics belong to the device, not to a worker. On SHARED devices **do not use biometric
-unlock** (`requireBiometric` / `bio.available` must not drive worker identity); the platform
-refuses biometrics and unlock keys for SHARED devices (design §9 D5). Use the PIN path only.
-
-## Verification status
-
-Verified (2026-11-03, on a dev machine):
-
-- TypeScript: `pnpm lint` (tsc, strict) clean; `pnpm test` 14 tests (bridge host: origin allowlist,
-  non-bridge pass-through, unknown op, every op, error codes, escaping of quotes / `</script>` /
-  U+2028 / U+2029, no logging of values; adapters with the native module mocked).
-- Android: `./gradlew assembleRelease testDebugUnitTest` (AGP 8.7.3, Gradle 8.10.2, JDK 17,
-  compileSdk 35, react-android 0.76.9): library compiles; 12 JVM unit tests pass (DER<->raw, and the hybrid envelope: format, round-trip with a software RSA key, wrong key, tamper).
-- iOS (partial): `DerSignature.swift` tests ran on macOS with `swiftc` and a tiny XCTest shim
-  (6 tests incl. 200 real Keychain-signed round trips); `FcField.swift` type-checks against the macOS SDK
-  with a stubbed `React` module.
-
-NOT verified:
-
-- No Xcode / iOS SDK on the build machine: the Swift module and the Obj-C bridge file (`FcField.m`) were
-  never compiled for iOS, the podspec was never run through `pod lib lint`, and the Secure Enclave and
-  simulator-fallback branches were not compiled (`#if targetEnvironment(simulator)`).
-- Nothing was run on a device or emulator: Keystore/StrongBox key generation, attestation chains,
-  `BiometricPrompt` unwrap with a `CryptoObject` (and that a Keystore-generated RSA key accepts the OAEP SHA-256/MGF1-SHA-1 parameters on real devices), Keychain biometric items, and enrolment-change invalidation are
-  untested. `ios/Tests` (XCTest via `swift test`) needs full Xcode.
-- The React Native glue (`useFieldBridge` hook, native module registration) was not exercised in a real app.
-
-A run on a real rugged device (enrol, login, background, unlock, revoke) is still required
-(design §7 P4).
-
-## Develop
+## Develop and verify
 
 ```
-CI=true pnpm install && pnpm lint && pnpm test
-cd android && ANDROID_HOME=~/Library/Android/sdk ./gradlew assembleRelease testDebugUnitTest   # JDK 17
+CI=true pnpm install && pnpm lint && pnpm test               # tsc; JS + Expo plugin tests
+pnpm codegen                                                  # TurboModule spec -> android/build/codegen
+JAVA_HOME=<jdk17> ANDROID_HOME=~/Library/Android/sdk ./android/gradlew -p android \
+  -PfcCodegenJava=build/codegen/android/app/build/generated/source/codegen/java assembleRelease testDebugUnitTest
 ```
+
+Verified (2026-11-06): `tsc --noEmit` clean; 44 JS/plugin tests pass; Kotlin compiles (release and debug) against
+react-android 0.76.9, the codegen-generated `NativeFcFieldSpec` and `field-android` (composite build), 11 JVM tests
+pass. Not verified: a real app build with the React Native Gradle plugin and autolinking, a device or emulator run,
+the C++/JNI codegen half, and everything iOS (no Xcode; the Swift module is not New-Architecture-registered yet).

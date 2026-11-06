@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { NativeKeyProvider } from "../src/NativeKeyProvider";
 import { NativeSecureStore } from "../src/NativeSecureStore";
-import type { FcFieldNative } from "../src/native";
+import type { KeyStoreNative } from "../src/native";
 import { FieldError } from "../src/types";
 
-const base = (over: Partial<FcFieldNative>): FcFieldNative => ({
+const base = (over: Partial<KeyStoreNative>): KeyStoreNative => ({
 	getOrCreateDeviceKey: async () => ({ jwk: { kty: "EC", crv: "P-256", x: "x", y: "y" }, attestation: { level: "SOFTWARE" } }),
 	sign: async () => "AAEC",
 	deleteDeviceKey: async () => {},

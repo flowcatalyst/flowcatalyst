@@ -21,6 +21,8 @@ class DeviceKey(
     val y: String,
     /** Base64 DER certificates, leaf first; null when there is no attestation. */
     val attestationChain: List<String>?,
+    /** STRONGBOX, TEE, SOFTWARE or NONE (unknown). */
+    val level: String = "NONE",
 )
 
 /** The device's ES256 signing key. Failures are [FcFieldException]. */
