@@ -17,6 +17,7 @@ import (
 	appops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/mfa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
@@ -69,6 +70,7 @@ func newUsrPG(t *testing.T) *usrPG {
 	state := &principalapi.State{
 		Repo: repo, GrantRepo: principal.NewClientAccessGrantRepo(pool), Roles: roles, Applications: apps,
 		ClientConfigs: application.NewClientConfigRepo(pool), Clients: clients, UoW: uow, InviteEmailer: mail,
+		MFA: mfa.NewService(mfa.NewRepository(pool), nil, nil, mfa.Config{}),
 	}
 	p := &usrPG{t: t, repo: repo, uow: uow, mail: mail, page: &Users{Users: state, Roles: roles, Clients: clients, Shell: shellForTest()}}
 	run := func(ev any, err error) {
@@ -301,6 +303,58 @@ func TestUsersPageClientAdministratorAgainstPostgres(t *testing.T) {
 	body := p.post(ca, "/ui/users/"+inA+"/roles", url.Values{"roles": {p.clerk, p.platAdm}})
 	assert.Contains(t, body, "cannot access")
 	assert.Equal(t, []string{p.clerk}, usrRoleNames(p.user(inA)))
+}
+
+// A client administrator holding every user permission still cannot reach an
+// anchor user, another client's user or a partner through any /ui action: the
+// page's coarse check passes, so the refusal is the API's and the use cases'.
+func TestUsersPageClientAdministratorCannotReachOthersAgainstPostgres(t *testing.T) {
+	p := newUsrPG(t)
+	anchorU := p.seedAdmin("anchor1@uiusr.test")
+	inB := p.seed("b2@uiusr.test", "In B", "CLIENT", p.clientB)
+	partner := p.seed("p2@uiusr.test", "Partner", "PARTNER", p.clientA)
+	inA := p.seed("a2@uiusr.test", "In A", "CLIENT", p.clientA)
+	ca := usrClientAdmin(usrPermView, usrPermCreate, usrPermUpdate, usrPermDelete, usrPermAssign, usrPermRoles)
+	ca.Clients = []string{p.clientA}
+	pw := url.Values{"newPassword": {usrPasswordValue}, "confirmPassword": {usrPasswordValue}}
+
+	list := p.get(ca, "/ui/users")
+	assert.NotContains(t, list, "anchor1@uiusr.test")
+	assert.NotContains(t, list, "b2@uiusr.test")
+
+	for name, id := range map[string]string{"anchor": anchorU, "other client": inB, "partner": partner} {
+		base := "/ui/users/" + id
+		before := p.user(id)
+		p.post(ca, base+"/edit", url.Values{"name": {"Hijacked"}})
+		p.post(ca, base+"/deactivate", nil)
+		p.post(ca, base+"/activate", nil)
+		p.post(ca, base+"/reset-password", pw)
+		p.post(ca, base+"/send-reset", nil)
+		p.post(ca, base+"/reset-2fa", nil)
+		p.post(ca, base+"/roles", url.Values{"roles": {p.clerk}})
+		p.post(ca, base+"/applications", url.Values{"applicationIds": {p.appID}})
+		p.post(ca, base+"/all-applications/grant", nil)
+		p.post(ca, base+"/clients", url.Values{"clientId": {p.clientA}})
+		p.post(ca, base+"/delete", nil)
+		after := p.user(id)
+		require.NotNil(t, after, name)
+		assert.Equal(t, before.Name, after.Name, name)
+		assert.Equal(t, before.Active, after.Active, name)
+		assert.Equal(t, before.Scope, after.Scope, name)
+		assert.Equal(t, before.UserIdentity.PasswordHash, after.UserIdentity.PasswordHash, name)
+		assert.Equal(t, usrRoleNames(before), usrRoleNames(after), name)
+		assert.Equal(t, before.AccessibleApplicationIDs, after.AccessibleApplicationIDs, name)
+		assert.Equal(t, before.AssignedClients, after.AssignedClients, name)
+	}
+
+	// Their own client's user is theirs: the same posts are accepted.
+	p.post(ca, "/ui/users/"+inA+"/reset-password", pw)
+	assert.NotNil(t, p.user(inA).UserIdentity.PasswordHash)
+	p.post(ca, "/ui/users/"+inA+"/applications", url.Values{"applicationIds": {p.appID}})
+	assert.Equal(t, []ids.ApplicationID{ids.ApplicationID(p.appID)}, p.user(inA).AccessibleApplicationIDs)
+	assert.NotContains(t, p.post(ca, "/ui/users/"+inA+"/reset-2fa", nil), "not configured")
+	p.post(ca, "/ui/users/"+inA+"/deactivate", nil)
+	assert.False(t, p.user(inA).Active)
 }
 
 func TestUsersPageForgedPostsAgainstPostgres(t *testing.T) {
