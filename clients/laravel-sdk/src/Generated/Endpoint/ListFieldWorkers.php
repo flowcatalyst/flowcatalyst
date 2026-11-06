@@ -11,6 +11,7 @@ class ListFieldWorkers extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
      *    "appCode"?: string, //Only workers granted this application
      *    "status"?: string, //Only workers in this state
      *    "isTest"?: string, //Only test identities (true) or only real workers (false)
+     *    "linkedPrincipalId"?: string, //Only the worker linked to this platform user
      *    "page"?: int, //0-based page index (default 0)
      *    "pageSize"?: int, //Page size (default 100, max 1000)
      * } $queryParameters
@@ -39,7 +40,7 @@ class ListFieldWorkers extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['clientId', 'q', 'appCode', 'status', 'isTest', 'page', 'pageSize']);
+        $optionsResolver->setDefined(['clientId', 'q', 'appCode', 'status', 'isTest', 'linkedPrincipalId', 'page', 'pageSize']);
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
         $optionsResolver->addAllowedTypes('clientId', ['string']);
@@ -47,13 +48,14 @@ class ListFieldWorkers extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
         $optionsResolver->addAllowedTypes('appCode', ['string']);
         $optionsResolver->addAllowedTypes('status', ['string']);
         $optionsResolver->addAllowedTypes('isTest', ['string']);
+        $optionsResolver->addAllowedTypes('linkedPrincipalId', ['string']);
         $optionsResolver->addAllowedTypes('page', ['int']);
         $optionsResolver->addAllowedTypes('pageSize', ['int']);
         return $optionsResolver;
     }
     protected function getQueryStyles(): array
     {
-        return ['clientId' => ['style' => 'form', 'explode' => false], 'q' => ['style' => 'form', 'explode' => false], 'appCode' => ['style' => 'form', 'explode' => false], 'status' => ['style' => 'form', 'explode' => false], 'isTest' => ['style' => 'form', 'explode' => false], 'page' => ['style' => 'form', 'explode' => false], 'pageSize' => ['style' => 'form', 'explode' => false]];
+        return ['clientId' => ['style' => 'form', 'explode' => false], 'q' => ['style' => 'form', 'explode' => false], 'appCode' => ['style' => 'form', 'explode' => false], 'status' => ['style' => 'form', 'explode' => false], 'isTest' => ['style' => 'form', 'explode' => false], 'linkedPrincipalId' => ['style' => 'form', 'explode' => false], 'page' => ['style' => 'form', 'explode' => false], 'pageSize' => ['style' => 'form', 'explode' => false]];
     }
     /**
      * {@inheritdoc}

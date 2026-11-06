@@ -13,6 +13,7 @@ import io.flowcatalyst.sdk.generated.model.FieldWorkerResponse;
 import io.flowcatalyst.sdk.generated.model.FieldWorkerSignInListResponse;
 import io.flowcatalyst.sdk.generated.model.GrantFieldWorkerAppRequest;
 import io.flowcatalyst.sdk.generated.model.IssueFieldBadgeRequest;
+import io.flowcatalyst.sdk.generated.model.LinkFieldWorkerRequest;
 import io.flowcatalyst.sdk.generated.model.ResetFieldWorkerPinRequest;
 import io.flowcatalyst.sdk.generated.model.ResetFieldWorkerPinResponse;
 import io.flowcatalyst.sdk.generated.model.UpdateFieldWorkerRequest;
@@ -35,15 +36,22 @@ public final class FieldWorkersResource {
 
     /**
      * Query parameters for {@link #list}; every member is optional (null takes the default).
-     * {@code isTest} limits to test identities (true) or real workers (false).
+     * {@code isTest} limits to test identities (true) or real workers (false);
+     * {@code linkedPrincipalId} limits to the worker linked to that platform user.
      */
-    public record Filters(String q, String appCode, String status, Boolean isTest, Integer page, Integer pageSize) {
+    public record Filters(
+            String q, String appCode, String status, Boolean isTest, Integer page, Integer pageSize,
+            String linkedPrincipalId) {
+        public Filters(String q, String appCode, String status, Boolean isTest, Integer page, Integer pageSize) {
+            this(q, appCode, status, isTest, page, pageSize, null);
+        }
+
         public Filters(String q, String appCode, String status, Integer page, Integer pageSize) {
-            this(q, appCode, status, null, page, pageSize);
+            this(q, appCode, status, null, page, pageSize, null);
         }
 
         public static Filters none() {
-            return new Filters(null, null, null, null, null, null);
+            return new Filters(null, null, null, null, null, null, null);
         }
     }
 
@@ -64,6 +72,7 @@ public final class FieldWorkersResource {
             query.put("appCode", filters.appCode());
             query.put("status", filters.status());
             query.put("isTest", filters.isTest());
+            query.put("linkedPrincipalId", filters.linkedPrincipalId());
             query.put("page", filters.page());
             query.put("pageSize", filters.pageSize());
         }
@@ -72,6 +81,22 @@ public final class FieldWorkersResource {
 
     public FieldWorkerResponse get(String id) {
         return transport.get(path(id), null, FieldWorkerResponse.class);
+    }
+
+    /**
+     * Links the worker to a platform user, for audit correlation only: the worker's tokens then carry
+     * {@code linked_principal_id}; it grants nothing. 422 {@code INVALID_LINK} when the user cannot be
+     * linked, 409 {@code LINK_EXISTS} when another worker of the client already holds the link. The
+     * response carries {@code linkedPrincipal}.
+     */
+    public FieldWorkerResponse link(String id, String principalId) {
+        return transport.put(path(id) + "/link", new LinkFieldWorkerRequest().principalId(principalId),
+                FieldWorkerResponse.class);
+    }
+
+    /** Removes the worker's link to a platform user (idempotent). Returns the refreshed worker. */
+    public FieldWorkerResponse unlink(String id) {
+        return transport.delete(path(id) + "/link", FieldWorkerResponse.class);
     }
 
     /** Returns the refreshed worker. */

@@ -56,6 +56,7 @@ describe("shared conformance fixtures (api/field-fixtures)", () => {
 				amr: string[];
 				actor?: { id: string; type: string; name: string };
 				test: boolean;
+				linkedPrincipalId: string;
 			};
 		}[];
 	};
@@ -64,6 +65,10 @@ describe("shared conformance fixtures (api/field-fixtures)", () => {
 	assert.ok(
 		fx.cases.filter((c) => c.principal).length >= 4,
 		"expected the sign-in-options principal cases",
+	);
+	assert.ok(
+		fx.cases.some((c) => c.name === "valid_linked" && c.principal?.linkedPrincipalId),
+		"expected the valid_linked case",
 	);
 	for (const c of fx.cases) {
 		it(`${c.name} -> ${c.expect}`, async () => {
@@ -94,6 +99,7 @@ describe("shared conformance fixtures (api/field-fixtures)", () => {
 				assert.equal(p.deviceMode, want.deviceMode);
 				assert.deepEqual(p.amr, want.amr);
 				assert.equal(p.test, want.test);
+				assert.equal(p.linkedPrincipalId, want.linkedPrincipalId);
 				assert.deepEqual(p.actor, want.actor ?? null);
 			});
 		}

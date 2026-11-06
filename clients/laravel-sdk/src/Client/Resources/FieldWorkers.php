@@ -19,6 +19,7 @@ use FlowCatalyst\Generated\Model\FieldWorkerListResponse;
 use FlowCatalyst\Generated\Model\FieldWorkerResponse;
 use FlowCatalyst\Generated\Model\FieldWorkerSignInListResponse;
 use FlowCatalyst\Generated\Model\GrantFieldWorkerAppRequest;
+use FlowCatalyst\Generated\Model\LinkFieldWorkerRequest;
 use FlowCatalyst\Generated\Model\ResetFieldWorkerPinResponse;
 use FlowCatalyst\Generated\Model\ResetFieldWorkerPinRequest;
 use FlowCatalyst\Generated\Model\UpdateFieldWorkerRequest;
@@ -40,9 +41,10 @@ class FieldWorkers
     }
 
     /**
-     * `isTest` limits to test identities (true) or real workers (false).
+     * `isTest` limits to test identities (true) or real workers (false); `linkedPrincipalId` limits to the
+     * worker linked to that platform user.
      *
-     * @param array{q?: string, appCode?: string, status?: string, isTest?: bool|string, page?: int, pageSize?: int} $filters
+     * @param array{q?: string, appCode?: string, status?: string, isTest?: bool|string, linkedPrincipalId?: string, page?: int, pageSize?: int} $filters
      */
     public function list(string $clientId, array $filters = []): ?FieldWorkerListResponse
     {
@@ -60,6 +62,22 @@ class FieldWorkers
     public function update(string $id, UpdateFieldWorkerRequest $request): ?FieldWorkerResponse
     {
         return $this->client->generated()->updateFieldWorker($id, $request);
+    }
+
+    /**
+     * Link the worker to a platform user, for audit correlation only (the worker's tokens then carry
+     * `linked_principal_id`; it grants nothing). 422 INVALID_LINK when the user cannot be linked, 409
+     * LINK_EXISTS when another worker of the client already holds the link. The response carries `linkedPrincipal`.
+     */
+    public function link(string $id, string $principalId): ?FieldWorkerResponse
+    {
+        return $this->client->generated()->linkFieldWorker($id, (new LinkFieldWorkerRequest())->setPrincipalId($principalId));
+    }
+
+    /** Remove the worker's link to a platform user (idempotent). */
+    public function unlink(string $id): ?FieldWorkerResponse
+    {
+        return $this->client->generated()->unlinkFieldWorker($id);
     }
 
     public function delete(string $id): ?StatusChangeResponse

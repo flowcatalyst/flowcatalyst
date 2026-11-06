@@ -1,7 +1,6 @@
-# Java SDK 0.0.26 (unreleased)
+# Java SDK 0.0.26
 
-Changes since `java-sdk/v0.0.25`. Nothing is tagged or released: `make release-java-sdk BUMP=patch`
-cuts 0.0.26 when the owner decides.
+Changes since `java-sdk/v0.0.25`. Tagged `java-sdk/v0.0.26` on 2026-11-06.
 
 Sources of truth: `docs/wire-contract.md` (dispatch jobs), `api/openapi.lock.json`.
 

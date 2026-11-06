@@ -182,6 +182,7 @@ final class FieldTokenVerifier
             tokenId: $str('jti'),
             actor: $actor,
             test: ($claims['test'] ?? false) === true,
+            linkedPrincipalId: $str('linked_principal_id'),
         );
     }
 

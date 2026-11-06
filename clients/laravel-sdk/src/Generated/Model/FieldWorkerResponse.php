@@ -71,6 +71,10 @@ class FieldWorkerResponse
      */
     protected $lastLoginAt;
     /**
+     * @var FieldLinkedPrincipalRef|null
+     */
+    protected $linkedPrincipal;
+    /**
      * @var bool|null
      */
     protected $locked;
@@ -352,6 +356,24 @@ class FieldWorkerResponse
     {
         $this->initialized['lastLoginAt'] = true;
         $this->lastLoginAt = $lastLoginAt;
+        return $this;
+    }
+    /**
+     * @return FieldLinkedPrincipalRef|null
+     */
+    public function getLinkedPrincipal(): ?FieldLinkedPrincipalRef
+    {
+        return $this->linkedPrincipal;
+    }
+    /**
+     * @param FieldLinkedPrincipalRef|null $linkedPrincipal
+     *
+     * @return self
+     */
+    public function setLinkedPrincipal(?FieldLinkedPrincipalRef $linkedPrincipal): self
+    {
+        $this->initialized['linkedPrincipal'] = true;
+        $this->linkedPrincipal = $linkedPrincipal;
         return $this;
     }
     /**

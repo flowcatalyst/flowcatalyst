@@ -35,6 +35,11 @@
   `revokeBadge($id, $badgeId)`, `bulkIssueBadges(array $workerIds)` and `createSignInCode($id, $appCode)`
   (badge and sign-in-code secrets are returned once); `list()` takes an `isTest` filter; `ensure`/`update`
   requests carry `canImpersonate` and `isTest`. Passes the four new shared fixture cases.
+- Field-worker linked platform user: `FieldPrincipal::$linkedPrincipalId` (trailing constructor argument,
+  `''` when the worker is not linked, like `$deviceId`) from the `linked_principal_id` claim; audit
+  correlation only, it grants nothing. `fieldWorkers()` gains `link($id, $principalId)` (422 `INVALID_LINK`,
+  409 `LINK_EXISTS`) and `unlink($id)` (idempotent); worker responses carry `linkedPrincipal`; `list()` takes a
+  `linkedPrincipalId` filter. Passes the shared `valid_linked` fixture case; generated client regenerated.
 - Generated client regenerated with jane-php 7.14 (it was built with 7.11): query parameters that are
   null are now left out instead of sent empty, header names match case-insensitively, and the runtime
   gains JSON payload and form encoders. `jane-php/open-api-runtime` and `jane-php/open-api-3` now require

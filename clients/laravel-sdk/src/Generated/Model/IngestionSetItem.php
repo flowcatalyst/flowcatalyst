@@ -25,7 +25,7 @@ class IngestionSetItem
      */
     protected $application;
     /**
-     * The client's id (clt_...) or identifier
+     * The client's id (clt_...) or identifier, or * for every client: one ingestion per client there is when the set is applied (needs a caller that reaches every client)
      *
      * @var string|null
      */
@@ -105,7 +105,7 @@ class IngestionSetItem
         return $this;
     }
     /**
-     * The client's id (clt_...) or identifier
+     * The client's id (clt_...) or identifier, or * for every client: one ingestion per client there is when the set is applied (needs a caller that reaches every client)
      *
      * @return string|null
      */
@@ -114,7 +114,7 @@ class IngestionSetItem
         return $this->client;
     }
     /**
-     * The client's id (clt_...) or identifier
+     * The client's id (clt_...) or identifier, or * for every client: one ingestion per client there is when the set is applied (needs a caller that reaches every client)
      *
      * @param string|null $client
      *

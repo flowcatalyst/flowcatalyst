@@ -155,6 +155,29 @@ final class FieldResourcesTest extends TestCase
         $this->assertSame(['clientId' => 'clt_1', 'isTest' => 'true'], $q);
     }
 
+    public function test_link_unlink_and_linked_principal_filter(): void
+    {
+        $worker = ['id' => 'fwu_1', 'clientId' => 'clt_1', 'workerCode' => 'W1', 'name' => 'Ann'];
+        $c = $this->client([
+            $this->json($worker + ['linkedPrincipal' => ['id' => 'prn_1', 'name' => 'Pat', 'email' => 'pat@x.test']]),
+            $this->json($worker),
+            $this->json(['workers' => [], 'total' => 0, 'page' => 0, 'size' => 100]),
+        ]);
+        $w = $c->fieldWorkers();
+
+        $linked = $w->link('fwu_1', 'prn_1');
+        $this->assertSame(['PUT', '/api/field-workers/fwu_1/link'], array_slice($this->seen(0), 0, 2));
+        $this->assertSame(['principalId' => 'prn_1'], json_decode($this->seen(0)[3], true));
+        $this->assertSame('prn_1', $linked?->getLinkedPrincipal()?->getId());
+
+        $w->unlink('fwu_1');
+        $this->assertSame(['DELETE', '/api/field-workers/fwu_1/link'], array_slice($this->seen(1), 0, 2));
+
+        $w->list('clt_1', ['linkedPrincipalId' => 'prn_1']);
+        parse_str($this->seen(2)[2], $q);
+        $this->assertSame(['clientId' => 'clt_1', 'linkedPrincipalId' => 'prn_1'], $q);
+    }
+
     public function test_devices_policies_and_introspection_hit_the_right_endpoints(): void
     {
         $c = $this->client([

@@ -19,6 +19,8 @@ import java.util.List;
  * @param tokenId the access token's {@code jti}
  * @param actor who is signed in as the worker (the {@code act} claim), or null
  * @param test true for a test identity
+ * @param linkedPrincipalId the platform user the worker is linked to; empty when not linked. For audit
+ *     correlation only: it grants nothing on either side
  */
 public record FieldPrincipal(
         String workerId,
@@ -36,7 +38,30 @@ public record FieldPrincipal(
         String jkt,
         String tokenId,
         FieldActor actor,
-        boolean test) {
+        boolean test,
+        String linkedPrincipalId) {
+
+    /** The pre-link shape: not linked to a platform user. */
+    public FieldPrincipal(
+            String workerId,
+            String clientId,
+            String clientIdentifier,
+            String workerCode,
+            String name,
+            String appCode,
+            String deviceId,
+            String deviceMode,
+            String sessionId,
+            List<String> amr,
+            Instant authTime,
+            Instant expiresAt,
+            String jkt,
+            String tokenId,
+            FieldActor actor,
+            boolean test) {
+        this(workerId, clientId, clientIdentifier, workerCode, name, appCode, deviceId, deviceMode, sessionId,
+                amr, authTime, expiresAt, jkt, tokenId, actor, test, "");
+    }
 
     /** The pre-sign-in-options shape: no actor, not a test identity. */
     public FieldPrincipal(
@@ -55,6 +80,6 @@ public record FieldPrincipal(
             String jkt,
             String tokenId) {
         this(workerId, clientId, clientIdentifier, workerCode, name, appCode, deviceId, deviceMode, sessionId,
-                amr, authTime, expiresAt, jkt, tokenId, null, false);
+                amr, authTime, expiresAt, jkt, tokenId, null, false, "");
     }
 }

@@ -3,7 +3,8 @@
  *
  * Admin API for field-worker identities (workers who sign in on enrolled
  * devices with a PIN): ensure/list/get/update/delete, PIN reset, lock and
- * suspend controls, application grants and sign-in history. Mirrors the Go
+ * suspend controls, application grants, sign-in history and the optional link
+ * to a platform user. Mirrors the Go
  * SDK's `FieldWorkersResource`.
  */
 
@@ -35,6 +36,8 @@ import type {
 	RevokeFieldWorkerBadgeResponse,
 	IssueFieldWorkerBadgesResponse,
 	CreateFieldWorkerSignInCodeResponse,
+	LinkFieldWorkerResponse,
+	UnlinkFieldWorkerResponse,
 } from "../generated/types.gen.js";
 
 export type EnsureFieldWorkerRequest = EnsureFieldWorkerData["body"];
@@ -270,6 +273,36 @@ export class FieldWorkersResource {
 				path: { id },
 				body: { appCode },
 			}),
+		);
+	}
+
+	/**
+	 * Link the worker to a platform user, for audit correlation only (the
+	 * worker's tokens then carry `linked_principal_id`; it grants nothing).
+	 * 422 INVALID_LINK when the user cannot be linked, 409 LINK_EXISTS when
+	 * another worker of the client already holds the link. Responses carry
+	 * `linkedPrincipal`; `list` accepts a `linkedPrincipalId` filter.
+	 */
+	link(
+		id: string,
+		principalId: string,
+	): ResultAsync<LinkFieldWorkerResponse, SdkError> {
+		return this.client.request<LinkFieldWorkerResponse>(
+			(httpClient, headers) =>
+				sdk.linkFieldWorker({
+					client: httpClient,
+					headers,
+					path: { id },
+					body: { principalId },
+				}),
+		);
+	}
+
+	/** Remove the worker's link to a platform user. Idempotent. */
+	unlink(id: string): ResultAsync<UnlinkFieldWorkerResponse, SdkError> {
+		return this.client.request<UnlinkFieldWorkerResponse>(
+			(httpClient, headers) =>
+				sdk.unlinkFieldWorker({ client: httpClient, headers, path: { id } }),
 		);
 	}
 

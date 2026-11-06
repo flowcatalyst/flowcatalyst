@@ -114,6 +114,26 @@ class FieldResourcesTest {
     }
 
     @Test
+    void linkUnlinkAndFilter() {
+        String linked = WORKER.substring(0, WORKER.length() - 1)
+                + ",\"linkedPrincipal\":{\"id\":\"prn_1\",\"name\":\"Pat\",\"email\":\"pat@x.test\"}}";
+        server.on("PUT", "/api/field-workers/fwu_1/link", 200, linked);
+        var w = client().fieldWorkers().link("fwu_1", "prn_1");
+        assertThat(last().method()).isEqualTo("PUT");
+        assertThat(last().body()).contains("\"principalId\":\"prn_1\"");
+        assertThat(w.getLinkedPrincipal().getId()).isEqualTo("prn_1");
+
+        server.on("DELETE", "/api/field-workers/fwu_1/link", 200, WORKER);
+        client().fieldWorkers().unlink("fwu_1");
+        assertThat(last().method()).isEqualTo("DELETE");
+        assertThat(last().pathAndQuery()).isEqualTo("/api/field-workers/fwu_1/link");
+
+        server.on("GET", "/api/field-workers", 200, "{\"workers\":[],\"total\":0,\"page\":0,\"size\":100}");
+        client().fieldWorkers().list("clt_1", new FieldWorkersResource.Filters(null, null, null, null, null, null, "prn_1"));
+        assertThat(last().pathAndQuery()).isEqualTo("/api/field-workers?clientId=clt_1&linkedPrincipalId=prn_1");
+    }
+
+    @Test
     void getUpdateDeleteHitTheByIdRoutes() {
         server.on("GET", "/api/field-workers/fwu_1", 200, WORKER);
         server.on("PUT", "/api/field-workers/fwu_1", 200, WORKER);

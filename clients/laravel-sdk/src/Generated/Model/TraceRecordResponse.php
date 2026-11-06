@@ -29,7 +29,7 @@ class TraceRecordResponse
      */
     protected $correlationId;
     /**
-     * The record's data. For kind http: request, response, durationMs, outcome.
+     * The record's data. For kind http: request, response, durationMs, outcome. For kind outbound (a call the function made): client, request (with url), response, durationMs, attempt, failure.
      *
      * @var mixed|null
      */
@@ -145,7 +145,7 @@ class TraceRecordResponse
         return $this;
     }
     /**
-     * The record's data. For kind http: request, response, durationMs, outcome.
+     * The record's data. For kind http: request, response, durationMs, outcome. For kind outbound (a call the function made): client, request (with url), response, durationMs, attempt, failure.
      *
      * @return mixed
      */
@@ -154,7 +154,7 @@ class TraceRecordResponse
         return $this->data;
     }
     /**
-     * The record's data. For kind http: request, response, durationMs, outcome.
+     * The record's data. For kind http: request, response, durationMs, outcome. For kind outbound (a call the function made): client, request (with url), response, durationMs, attempt, failure.
      *
      * @param mixed $data
      *

@@ -5619,6 +5619,26 @@
         ],
         "type": "object"
       },
+      "FieldLinkedPrincipalRef": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email"
+        ],
+        "type": "object"
+      },
       "FieldPolicyResponse": {
         "additionalProperties": false,
         "properties": {
@@ -5822,6 +5842,9 @@
             "format": "date-time",
             "type": "string"
           },
+          "linkedPrincipalId": {
+            "type": "string"
+          },
           "sub": {
             "type": "string"
           },
@@ -5991,6 +6014,9 @@
             "format": "date-time",
             "type": "string"
           },
+          "linkedPrincipal": {
+            "$ref": "#/components/schemas/FieldLinkedPrincipalRef"
+          },
           "locked": {
             "type": "boolean"
           },
@@ -6029,6 +6055,7 @@
           "pinChangeRequired",
           "canImpersonate",
           "isTest",
+          "linkedPrincipal",
           "badge",
           "locked",
           "hardLocked",
@@ -7524,7 +7551,7 @@
             "type": "string"
           },
           "client": {
-            "description": "The client's id (clt_...) or identifier",
+            "description": "The client's id (clt_...) or identifier, or * for every client: one ingestion per client there is when the set is applied (needs a caller that reaches every client)",
             "type": "string"
           },
           "code": {
@@ -8419,6 +8446,28 @@
             "type": "integer"
           }
         },
+        "type": "object"
+      },
+      "LinkFieldWorkerRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/LinkFieldWorkerRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "principalId": {
+            "description": "The platform user (a USER, active, able to access the worker's client)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "principalId"
+        ],
         "type": "object"
       },
       "LinkedOAuthClient": {
@@ -14373,7 +14422,7 @@
             ]
           },
           "data": {
-            "description": "The record's data. For kind http: request, response, durationMs, outcome."
+            "description": "The record's data. For kind http: request, response, durationMs, outcome. For kind outbound (a call the function made): client, request (with url), response, durationMs, attempt, failure."
           },
           "id": {
             "type": "string"
@@ -14385,7 +14434,8 @@
             "enum": [
               "trace",
               "http",
-              "log"
+              "log",
+              "outbound"
             ],
             "type": "string"
           },
@@ -23145,6 +23195,16 @@
             }
           },
           {
+            "description": "Only the worker linked to this platform user",
+            "explode": false,
+            "in": "query",
+            "name": "linkedPrincipalId",
+            "schema": {
+              "description": "Only the worker linked to this platform user",
+              "type": "string"
+            }
+          },
+          {
             "description": "0-based page index (default 0)",
             "explode": false,
             "in": "query",
@@ -23679,6 +23739,96 @@
           }
         },
         "summary": "Revoke a field worker's badge",
+        "tags": [
+          "field-workers"
+        ]
+      }
+    },
+    "/api/field-workers/{id}/link": {
+      "delete": {
+        "operationId": "unlinkFieldWorker",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldWorkerResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Remove a field worker's platform user link",
+        "tags": [
+          "field-workers"
+        ]
+      },
+      "put": {
+        "operationId": "linkFieldWorker",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkFieldWorkerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldWorkerResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Link a field worker to a platform user (audit correlation only; grants nothing)",
         "tags": [
           "field-workers"
         ]
@@ -25067,7 +25217,8 @@
               "enum": [
                 "trace",
                 "http",
-                "log"
+                "log",
+                "outbound"
               ],
               "type": "string"
             }

@@ -53,6 +53,10 @@ class FieldTokenIntrospectResponse
     /**
      * @var string|null
      */
+    protected $linkedPrincipalId;
+    /**
+     * @var string|null
+     */
     protected $sub;
     /**
      * @var bool|null
@@ -226,6 +230,24 @@ class FieldTokenIntrospectResponse
     {
         $this->initialized['exp'] = true;
         $this->exp = $exp;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getLinkedPrincipalId(): ?string
+    {
+        return $this->linkedPrincipalId;
+    }
+    /**
+     * @param string|null $linkedPrincipalId
+     *
+     * @return self
+     */
+    public function setLinkedPrincipalId(?string $linkedPrincipalId): self
+    {
+        $this->initialized['linkedPrincipalId'] = true;
+        $this->linkedPrincipalId = $linkedPrincipalId;
         return $this;
     }
     /**

@@ -42,6 +42,11 @@ final class FieldPrincipal implements Authenticatable
         public readonly ?FieldActor $actor = null,
         /** True for a test identity. */
         public readonly bool $test = false,
+        /**
+         * The platform user the worker is linked to; empty string when not linked.
+         * For audit correlation only: it grants nothing on either side.
+         */
+        public readonly string $linkedPrincipalId = '',
     ) {}
 
     public function getAuthIdentifierName(): string

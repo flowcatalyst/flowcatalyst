@@ -125,6 +125,12 @@ class FieldTokenIntrospectResponseNormalizer implements DenormalizerInterface, N
         elseif (\array_key_exists('exp', $data) && $data['exp'] === null) {
             $object->setExp(null);
         }
+        if (\array_key_exists('linkedPrincipalId', $data) && $data['linkedPrincipalId'] !== null) {
+            $object->setLinkedPrincipalId($data['linkedPrincipalId']);
+        }
+        elseif (\array_key_exists('linkedPrincipalId', $data) && $data['linkedPrincipalId'] === null) {
+            $object->setLinkedPrincipalId(null);
+        }
         if (\array_key_exists('sub', $data) && $data['sub'] !== null) {
             $object->setSub($data['sub']);
         }
@@ -173,6 +179,9 @@ class FieldTokenIntrospectResponseNormalizer implements DenormalizerInterface, N
         }
         if ($data->isInitialized('exp') && null !== $data->getExp()) {
             $dataArray['exp'] = $data->getExp()->format('Y-m-d\TH:i:sP');
+        }
+        if ($data->isInitialized('linkedPrincipalId') && null !== $data->getLinkedPrincipalId()) {
+            $dataArray['linkedPrincipalId'] = $data->getLinkedPrincipalId();
         }
         if ($data->isInitialized('sub') && null !== $data->getSub()) {
             $dataArray['sub'] = $data->getSub();

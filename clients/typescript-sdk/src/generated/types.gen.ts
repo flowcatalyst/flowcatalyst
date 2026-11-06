@@ -2051,6 +2051,12 @@ export type FieldError = {
     message: string;
 };
 
+export type FieldLinkedPrincipalRef = {
+    email: string;
+    id: string;
+    name: string;
+};
+
 export type FieldPolicyResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2112,6 +2118,7 @@ export type FieldTokenIntrospectResponse = {
     clientId?: string;
     deviceId?: string;
     exp?: string;
+    linkedPrincipalId?: string;
     sub?: string;
     test?: boolean;
     workerCode?: string;
@@ -2161,6 +2168,7 @@ export type FieldWorkerResponse = {
     id: string;
     isTest: boolean;
     lastLoginAt?: string;
+    linkedPrincipal: FieldLinkedPrincipalRef;
     locked: boolean;
     lockedUntil?: string;
     name: string;
@@ -2777,7 +2785,7 @@ export type IngestionSetItem = {
      */
     application: string;
     /**
-     * The client's id (clt_...) or identifier
+     * The client's id (clt_...) or identifier, or * for every client: one ingestion per client there is when the set is applied (needs a caller that reaches every client)
      */
     client: string;
     code: string;
@@ -3159,6 +3167,18 @@ export type LimitsDto = {
     maxConcurrency?: number;
     memoryMb?: number;
     timeoutMs?: number;
+};
+
+export type LinkFieldWorkerRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The platform user (a USER, active, able to access the worker's client)
+     */
+    principalId: string;
+    [key: string]: unknown | string | undefined;
 };
 
 export type LinkedOAuthClient = {
@@ -5471,12 +5491,12 @@ export type TraceRecordResponse = {
     context: string;
     correlationId: string | null;
     /**
-     * The record's data. For kind http: request, response, durationMs, outcome.
+     * The record's data. For kind http: request, response, durationMs, outcome. For kind outbound (a call the function made): client, request (with url), response, durationMs, attempt, failure.
      */
     data: unknown;
     id: string;
     invocationId: string;
-    kind: 'trace' | 'http' | 'log';
+    kind: 'trace' | 'http' | 'log' | 'outbound';
     level: string;
     message: string;
     /**
@@ -7238,6 +7258,7 @@ export type FieldTokenIntrospectResponseWritable = {
     clientId?: string;
     deviceId?: string;
     exp?: string;
+    linkedPrincipalId?: string;
     sub?: string;
     test?: boolean;
     workerCode?: string;
@@ -7264,6 +7285,7 @@ export type FieldWorkerResponseWritable = {
     id: string;
     isTest: boolean;
     lastLoginAt?: string;
+    linkedPrincipal: FieldLinkedPrincipalRef;
     locked: boolean;
     lockedUntil?: string;
     name: string;
@@ -7773,6 +7795,14 @@ export type IssueFieldBadgeRequestWritable = {
      */
     label?: string;
     [key: string]: unknown | string | undefined;
+};
+
+export type LinkFieldWorkerRequestWritable = {
+    /**
+     * The platform user (a USER, active, able to access the worker's client)
+     */
+    principalId: string;
+    [key: string]: unknown | string;
 };
 
 export type ListOutputBodyWritable = {
@@ -13710,6 +13740,10 @@ export type ListFieldWorkersData = {
          */
         isTest?: 'true' | 'false';
         /**
+         * Only the worker linked to this platform user
+         */
+        linkedPrincipalId?: string;
+        /**
          * 0-based page index (default 0)
          */
         page?: number;
@@ -14033,6 +14067,60 @@ export type RevokeFieldWorkerBadgeResponses = {
 };
 
 export type RevokeFieldWorkerBadgeResponse = RevokeFieldWorkerBadgeResponses[keyof RevokeFieldWorkerBadgeResponses];
+
+export type UnlinkFieldWorkerData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/link';
+};
+
+export type UnlinkFieldWorkerErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type UnlinkFieldWorkerError = UnlinkFieldWorkerErrors[keyof UnlinkFieldWorkerErrors];
+
+export type UnlinkFieldWorkerResponses = {
+    /**
+     * OK
+     */
+    200: FieldWorkerResponse;
+};
+
+export type UnlinkFieldWorkerResponse = UnlinkFieldWorkerResponses[keyof UnlinkFieldWorkerResponses];
+
+export type LinkFieldWorkerData = {
+    body: LinkFieldWorkerRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/link';
+};
+
+export type LinkFieldWorkerErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type LinkFieldWorkerError = LinkFieldWorkerErrors[keyof LinkFieldWorkerErrors];
+
+export type LinkFieldWorkerResponses = {
+    /**
+     * OK
+     */
+    200: FieldWorkerResponse;
+};
+
+export type LinkFieldWorkerResponse = LinkFieldWorkerResponses[keyof LinkFieldWorkerResponses];
 
 export type ResetFieldWorkerPinData = {
     body: ResetFieldWorkerPinRequestWritable;
@@ -14838,7 +14926,7 @@ export type ListFunctionTraceLogData = {
         /**
          * Only this record kind
          */
-        kind?: 'trace' | 'http' | 'log';
+        kind?: 'trace' | 'http' | 'log' | 'outbound';
         /**
          * Only this level (debug, info, warn, error)
          */

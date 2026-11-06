@@ -55,6 +55,17 @@ Additive: no signature breaks (new parameters are optional).
 - Regenerated client: policy `requireEnrolledDevice`, `unenrolledIdleSecs`,
   `badgeOnlyLogin`, `impersonationMaxSecs`; introspection `act` and `test`.
 
+### Field workers: linked platform user
+- `FieldPrincipal.linkedPrincipalId` (`string`, `""` when the worker is not
+  linked, like `deviceId`): the platform user the worker is linked to, from the
+  `linked_principal_id` claim. Audit correlation only: it grants nothing.
+  Passes the shared `valid_linked` fixture case.
+- `fieldWorkers()`: `link(id, principalId)` (422 `INVALID_LINK`, 409
+  `LINK_EXISTS`) and `unlink(id)` (idempotent); worker responses carry
+  `linkedPrincipal`; `list` filters on `linkedPrincipalId`.
+- Regenerated client: link/unlink operations, `linkedPrincipal`, introspection
+  `linkedPrincipalId`.
+
 ### Ingestions
 - `Ingestion` gains `notices` (undismissed notices: failures the platform
   refused), `latestNotice`, `latestNoticeAt`, `warnings` (what the definition

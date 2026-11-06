@@ -1648,6 +1648,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "appCode"?: string, //Only workers granted this application
      *    "status"?: string, //Only workers in this state
      *    "isTest"?: string, //Only test identities (true) or only real workers (false)
+     *    "linkedPrincipalId"?: string, //Only the worker linked to this platform user
      *    "page"?: int, //0-based page index (default 0)
      *    "pageSize"?: int, //Page size (default 100, max 1000)
      * } $queryParameters
@@ -1773,6 +1774,27 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function revokeFieldWorkerBadge(string $id, string $badgeId, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RevokeFieldWorkerBadge($id, $badgeId), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldWorkerResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function unlinkFieldWorker(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\UnlinkFieldWorker($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\LinkFieldWorkerRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldWorkerResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function linkFieldWorker(string $id, ?\FlowCatalyst\Generated\Model\LinkFieldWorkerRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\LinkFieldWorker($id, $requestBody), $fetch);
     }
     /**
      * @param string $id

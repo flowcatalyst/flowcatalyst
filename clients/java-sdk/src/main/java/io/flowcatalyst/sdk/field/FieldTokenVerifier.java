@@ -361,7 +361,8 @@ public final class FieldTokenVerifier {
                 proof.jkt,
                 text(claims, "jti"),
                 actor,
-                test));
+                test,
+                text(claims, "linked_principal_id")));
     }
 
     private static FieldVerification invalid(String reason, String detail) {

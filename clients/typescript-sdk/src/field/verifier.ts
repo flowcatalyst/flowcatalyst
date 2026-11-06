@@ -144,6 +144,11 @@ export interface FieldPrincipal {
 	actor: FieldActor | null;
 	/** True for a test identity. */
 	test: boolean;
+	/**
+	 * The platform user the worker is linked to; empty string when not linked.
+	 * For audit correlation only: it grants nothing on either side.
+	 */
+	linkedPrincipalId: string;
 }
 
 const FIELD_TYP = "fc-field+jwt";
@@ -363,6 +368,7 @@ export class FieldTokenVerifier {
 			tokenId: claims.jti ?? "",
 			actor,
 			test: claims["test"] === true,
+			linkedPrincipalId: str("linked_principal_id"),
 		};
 	}
 }

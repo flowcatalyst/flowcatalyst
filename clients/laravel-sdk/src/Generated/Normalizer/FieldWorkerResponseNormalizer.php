@@ -170,6 +170,12 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
         elseif (\array_key_exists('lastLoginAt', $data) && $data['lastLoginAt'] === null) {
             $object->setLastLoginAt(null);
         }
+        if (\array_key_exists('linkedPrincipal', $data) && $data['linkedPrincipal'] !== null) {
+            $object->setLinkedPrincipal($this->denormalizer->denormalize($data['linkedPrincipal'], \FlowCatalyst\Generated\Model\FieldLinkedPrincipalRef::class, 'json', $context));
+        }
+        elseif (\array_key_exists('linkedPrincipal', $data) && $data['linkedPrincipal'] === null) {
+            $object->setLinkedPrincipal(null);
+        }
         if (\array_key_exists('locked', $data) && $data['locked'] !== null) {
             $object->setLocked($data['locked']);
         }
@@ -264,6 +270,7 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
         if ($data->isInitialized('lastLoginAt') && null !== $data->getLastLoginAt()) {
             $dataArray['lastLoginAt'] = $data->getLastLoginAt()->format('Y-m-d\TH:i:sP');
         }
+        $dataArray['linkedPrincipal'] = $data->getLinkedPrincipal() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getLinkedPrincipal(), 'json', $context));
         $dataArray['locked'] = $data->getLocked();
         if ($data->isInitialized('lockedUntil') && null !== $data->getLockedUntil()) {
             $dataArray['lockedUntil'] = $data->getLockedUntil()->format('Y-m-d\TH:i:sP');

@@ -314,6 +314,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\FieldError::class => \FlowCatalyst\Generated\Normalizer\FieldErrorNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\FieldLinkedPrincipalRef::class => \FlowCatalyst\Generated\Normalizer\FieldLinkedPrincipalRefNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\FieldPolicyResponse::class => \FlowCatalyst\Generated\Normalizer\FieldPolicyResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\FieldSignInCodeResponse::class => \FlowCatalyst\Generated\Normalizer\FieldSignInCodeResponseNormalizer::class,
@@ -453,6 +455,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\Limits::class => \FlowCatalyst\Generated\Normalizer\LimitsNormalizer::class,
         
         \FlowCatalyst\Generated\Model\LimitsDTO::class => \FlowCatalyst\Generated\Normalizer\LimitsDTONormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\LinkFieldWorkerRequest::class => \FlowCatalyst\Generated\Normalizer\LinkFieldWorkerRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\LinkedOAuthClient::class => \FlowCatalyst\Generated\Normalizer\LinkedOAuthClientNormalizer::class,
         

@@ -84,7 +84,7 @@ class FieldTokenVerifierTest {
         }
         assertThat(f.cases()).isNotEmpty();
         assertThat(f.cases().stream().filter(c -> c.principal() != null).map(Case::name))
-                .contains("valid_unenrolled", "valid_impersonated_supervisor", "valid_impersonated_principal", "valid_test");
+                .contains("valid_unenrolled", "valid_impersonated_supervisor", "valid_impersonated_principal", "valid_test", "valid_linked");
         List<DynamicTest> tests = new ArrayList<>();
         for (Case c : f.cases()) {
             tests.add(DynamicTest.dynamicTest(c.name(), () -> {
@@ -104,6 +104,7 @@ class FieldTokenVerifierTest {
                         assertThat(p.amr()).containsExactly("pin");
                         assertThat(p.actor()).isNull();
                         assertThat(p.test()).isFalse();
+                        assertThat(p.linkedPrincipalId()).isEmpty();
                     } else {
                         assertThat(p.deviceId()).isEqualTo(want.get("deviceId").asString());
                         assertThat(p.deviceMode()).isEqualTo(want.get("deviceMode").asString());
@@ -111,6 +112,7 @@ class FieldTokenVerifierTest {
                         want.get("amr").forEach(n -> amr.add(n.asString()));
                         assertThat(p.amr()).isEqualTo(amr);
                         assertThat(p.test()).isEqualTo(want.get("test").asBoolean());
+                        assertThat(p.linkedPrincipalId()).isEqualTo(want.get("linkedPrincipalId").asString());
                         JsonNode actor = want.get("actor");
                         if (actor == null) {
                             assertThat(p.actor()).isNull();
