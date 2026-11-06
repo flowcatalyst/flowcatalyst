@@ -1,4 +1,4 @@
-import { randomId } from "./encoding.js";
+import { b64uDecode, randomId } from "./encoding.js";
 import {
 	FieldAuthError,
 	FieldProviderError,
@@ -10,6 +10,10 @@ import type { DeviceKey, KeyProvider, SecureStore } from "./types.js";
 export const STORE_DEVICE = "fc.field.device";
 export const STORE_REFRESH = "fc.field.refresh";
 export const STORE_SESSION = "fc.field.session";
+/** The supervisor's session metadata, kept aside while a worker is impersonated. */
+export const STORE_SUPERVISOR = "fc.field.supervisor";
+/** The supervisor's refresh token (biometric when the supervisor's session was). */
+export const STORE_SUPERVISOR_REFRESH = "fc.field.supervisor.refresh";
 
 /** Refresh first when the access token expires within this many ms. */
 export const REFRESH_SKEW_MS = 30_000;
@@ -30,6 +34,12 @@ export interface FieldAuthOptions {
 	biometricUnlock?: boolean;
 	/** The prompt text shown for a biometric read. */
 	unlockPrompt?: string;
+	/**
+	 * The client's identifier (the `client_identifier` claim). Required to sign
+	 * in by worker code on a device that is not enrolled; [FieldAuth.login]
+	 * can override it per call.
+	 */
+	clientIdentifier?: string;
 }
 
 export interface DeviceInfo {
@@ -51,9 +61,26 @@ export interface DeviceRecord {
 	platformUrl: string;
 }
 
+/** How the device is known to the platform; UNENROLLED = a key the platform has not enrolled. */
+export type DeviceMode = "PERSONAL" | "SHARED" | "UNENROLLED";
+
+/** Who is acting as the worker (impersonation): a supervisor or a console admin. */
+export interface Actor {
+	id: string;
+	type: "field_worker" | "principal" | (string & {});
+	name: string;
+}
+
 /** All times are ms since the epoch on the device clock. */
 export interface Session {
 	worker: { id: string; workerCode: string; name: string };
+	/** Non-null while someone else is acting as the worker. */
+	actor: Actor | null;
+	/** A test identity. */
+	test: boolean;
+	deviceMode: DeviceMode;
+	/** Null on an unenrolled device. */
+	deviceId: string | null;
 	appCode: string;
 	/** When the access token expires. */
 	expiresAt: number;
@@ -87,6 +114,24 @@ export interface LockedDetail {
 export interface QrPayload {
 	platformUrl: string;
 	code: string;
+}
+
+/** Sign in by worker code (with PIN) or by badge (PIN unless the client allows badge-only). */
+export type LoginCredentials =
+	| { workerCode: string; pin: string; badgeToken?: never; clientIdentifier?: string }
+	| { badgeToken: string; pin?: string; workerCode?: never; clientIdentifier?: string };
+
+export type ActAsTarget =
+	| { workerCode: string; workerId?: never; pin: string }
+	| { workerId: string; workerCode?: never; pin: string };
+
+/**
+ * Normalises a scanned badge (or keyboard-wedge string, which usually ends
+ * with Enter): drops whitespace and control characters, upper-cases.
+ */
+export function normaliseBadgeToken(scanned: string): string {
+	// eslint-disable-next-line no-control-regex
+	return scanned.replace(/[\s\u0000-\u001f\u007f]+/g, "").toUpperCase();
 }
 
 const QR_PREFIX = "fcfield:1:";
@@ -123,6 +168,33 @@ interface TokenResponse {
 	pinChangeRequired: boolean;
 }
 
+interface AccessClaims {
+	act?: { sub?: unknown; typ?: unknown; name?: unknown };
+	test?: unknown;
+	device_id?: unknown;
+	device_mode?: unknown;
+}
+
+/** Reads (does not verify) the access token's claims; null when it is not a JWT. */
+function decodeClaims(jwt: string): AccessClaims | null {
+	const parts = jwt.split(".");
+	const part = parts[1];
+	if (parts.length !== 3 || !part) return null;
+	try {
+		const v = JSON.parse(new TextDecoder().decode(b64uDecode(part))) as unknown;
+		return v && typeof v === "object" ? (v as AccessClaims) : null;
+	} catch {
+		return null;
+	}
+}
+
+/** The kept-aside supervisor while a worker is impersonated. */
+interface Supervisor {
+	session: Session;
+	refreshToken: string | null;
+	access: { token: string; expiresAt: number } | null;
+}
+
 interface Reply {
 	status: number;
 	headers: Headers;
@@ -153,6 +225,7 @@ export class FieldAuth extends EventTarget {
 	private sessionState: Session | null = null;
 	private access: { token: string; expiresAt: number } | null = null;
 	private refreshToken: string | null = null;
+	private supervisor: Supervisor | null = null;
 	private jwk: DeviceKey["jwk"] | null = null;
 	private loaded: Promise<void> | null = null;
 	private refreshing: Promise<Session> | null = null;
@@ -178,6 +251,11 @@ export class FieldAuth extends EventTarget {
 	/** The signed-in session (metadata restored from the store counts), or null. */
 	get session(): Session | null {
 		return this.sessionState;
+	}
+
+	/** True while someone is acting as the signed-in worker (act-as or a sign-in code). */
+	get impersonating(): boolean {
+		return this.supervisor !== null || this.sessionState?.actor != null;
 	}
 
 	/** The enrolled device, once [restore] or [enrol] has run. */
@@ -210,11 +288,34 @@ export class FieldAuth extends EventTarget {
 		const ses = await this.store("get", STORE_SESSION);
 		if (ses) {
 			try {
-				this.sessionState = JSON.parse(ses) as Session;
+				this.sessionState = this.normaliseSession(JSON.parse(ses) as Partial<Session>);
 			} catch {
 				this.sessionState = null;
 			}
 		}
+		const sup = await this.store("get", STORE_SUPERVISOR);
+		if (sup && this.sessionState) {
+			try {
+				this.supervisor = {
+					session: this.normaliseSession(JSON.parse(sup) as Partial<Session>),
+					refreshToken: null,
+					access: null,
+				};
+			} catch {
+				this.supervisor = null;
+			}
+		}
+	}
+
+	/** Fills the fields a session stored by an older version lacks. */
+	private normaliseSession(s: Partial<Session>): Session {
+		return {
+			...(s as Session),
+			actor: s.actor ?? null,
+			test: s.test === true,
+			deviceMode: s.deviceMode ?? this.device?.mode ?? "UNENROLLED",
+			deviceId: s.deviceId ?? this.device?.deviceId ?? null,
+		};
 	}
 
 	/** Maps a provider failure to a [FieldAuthError] that carries only its code. */
@@ -240,17 +341,26 @@ export class FieldAuth extends EventTarget {
 		}
 	}
 
-	private requirePlatform(): string {
-		if (!this.platformUrl) {
-			throw new FieldAuthError("NOT_ENROLLED", "no platform URL: enrol this device first");
+	/** An authenticated platform POST; one retry with a fresh access token on invalid_token. */
+	private async bearerPost(path: string, body: unknown, secrets: string[]): Promise<Reply> {
+		const call = async (): Promise<Reply> => {
+			const bearer = await this.ensureAccess();
+			return this.platformPost(path, body, { bearer, secrets });
+		};
+		try {
+			return await call();
+		} catch (e) {
+			if (!(e instanceof FieldAuthError && e.code === "invalid_token")) throw e;
+			this.access = null;
+			return call();
 		}
-		return this.platformUrl;
 	}
 
-	private async requireDevice(): Promise<DeviceRecord> {
-		await this.restore();
-		if (!this.device) throw new FieldAuthError("NOT_ENROLLED", "this device is not enrolled");
-		return this.device;
+	private requirePlatform(): string {
+		if (!this.platformUrl) {
+			throw new FieldAuthError("NOT_ENROLLED", "no platform URL: configure platformUrl or enrol this device first");
+		}
+		return this.platformUrl;
 	}
 
 	private async publicKey(): Promise<{ jwk: DeviceKey["jwk"]; key: DeviceKey }> {
@@ -406,19 +516,170 @@ export class FieldAuth extends EventTarget {
 
 	// ── sign in ──────────────────────────────────────────────────────────
 
-	/** Signs a worker in. The PIN is passed through: never stored, never logged. */
-	async login(creds: { workerCode: string; pin: string }): Promise<Session> {
-		await this.requireDevice();
-		try {
-			const reply = await this.platformPost(
-				"/field/auth/login",
-				{ appCode: this.opts.appCode, workerCode: creds.workerCode, pin: creds.pin },
-				{ secrets: [creds.pin] },
+	/**
+	 * Signs a worker in by worker code or badge. Works without enrolment: the
+	 * key provider creates and keeps the signing key on first use. The PIN is
+	 * passed through: never stored, never logged.
+	 */
+	async login(creds: LoginCredentials): Promise<Session> {
+		await this.restore();
+		const badge = creds.badgeToken === undefined ? "" : normaliseBadgeToken(creds.badgeToken);
+		const hasCode = typeof creds.workerCode === "string" && creds.workerCode !== "";
+		if (hasCode === (badge !== "")) {
+			throw new FieldAuthError("INVALID_REQUEST", "give either a worker code or a badge token");
+		}
+		const clientIdentifier = creds.clientIdentifier ?? this.opts.clientIdentifier;
+		if (!this.device && hasCode && !clientIdentifier) {
+			throw new FieldAuthError(
+				"INVALID_REQUEST",
+				"clientIdentifier is required to sign in by worker code on a device that is not enrolled",
 			);
+		}
+		const body: Record<string, unknown> = { appCode: this.opts.appCode };
+		if (hasCode) body["workerCode"] = creds.workerCode;
+		else body["badgeToken"] = badge;
+		if (creds.pin !== undefined && creds.pin !== "") body["pin"] = creds.pin;
+		if (clientIdentifier) body["clientIdentifier"] = clientIdentifier;
+		try {
+			const reply = await this.platformPost("/field/auth/login", body, {
+				secrets: [creds.pin ?? "", badge],
+			});
+			await this.clearSupervisor();
 			return await this.apply(reply.json as unknown as TokenResponse);
 		} catch (e) {
 			throw this.noteFailure(e);
 		}
+	}
+
+	/**
+	 * Redeems a sign-in code an administrator created in the console. The
+	 * session is the worker's, with the admin as `actor`; no PIN is involved.
+	 */
+	async redeemSignInCode(code: string): Promise<Session> {
+		await this.restore();
+		const c = normaliseBadgeToken(code);
+		if (!c) throw new FieldAuthError("INVALID_REQUEST", "a sign-in code is required");
+		try {
+			const reply = await this.platformPost("/field/auth/sign-in-code", { code: c }, { secrets: [c] });
+			await this.clearSupervisor();
+			return await this.apply(reply.json as unknown as TokenResponse, { impersonated: true });
+		} catch (e) {
+			throw this.noteFailure(e);
+		}
+	}
+
+	/**
+	 * A supervisor acts as a worker on this device. The supervisor's own
+	 * session is kept aside and the active session becomes the worker's;
+	 * [endImpersonation] returns to it. The PIN is the supervisor's.
+	 */
+	async actAs(target: ActAsTarget): Promise<Session> {
+		await this.restore();
+		if (this.impersonating) {
+			throw new FieldAuthError("IMPERSONATING", "end the current impersonation first");
+		}
+		const hasCode = typeof target.workerCode === "string" && target.workerCode !== "";
+		const hasId = typeof target.workerId === "string" && target.workerId !== "";
+		if (hasCode === hasId) {
+			throw new FieldAuthError("INVALID_REQUEST", "give either a worker code or a worker id");
+		}
+		const body: Record<string, unknown> = { pin: target.pin };
+		if (hasCode) body["workerCode"] = target.workerCode;
+		else body["workerId"] = target.workerId;
+		let reply: Reply;
+		try {
+			reply = await this.bearerPost("/field/auth/act-as", body, [target.pin]);
+		} catch (e) {
+			throw this.noteFailure(e);
+		}
+		const before = this.sessionState;
+		if (!before || !this.refreshToken) {
+			throw new FieldAuthError("SESSION_EXPIRED", "there is no session");
+		}
+		// Keep the supervisor aside (its refresh token behind biometrics when it was) before the swap.
+		const bio = await this.useBiometricStore();
+		const sup: Supervisor = { session: before, refreshToken: this.refreshToken, access: this.access };
+		await this.store("set", STORE_SUPERVISOR_REFRESH, sup.refreshToken ?? "", bio);
+		await this.store("set", STORE_SUPERVISOR, JSON.stringify(before));
+		this.supervisor = sup;
+		return this.apply(reply.json as unknown as TokenResponse, { impersonated: true });
+	}
+
+	/**
+	 * Ends the impersonated session (logs out its family) and returns to the
+	 * supervisor's, refreshing it if its access token has lapsed. For a session
+	 * from a sign-in code there is nothing to return to: the session just ends
+	 * and this resolves null.
+	 */
+	async endImpersonation(): Promise<Session | null> {
+		await this.restore();
+		if (!this.impersonating) {
+			throw new FieldAuthError("NOT_IMPERSONATING", "no one is being impersonated");
+		}
+		const sup = this.supervisor;
+		if (sup) await this.supervisorToken(sup); // fail before anything is torn down
+		let token = this.refreshToken;
+		if (!token) {
+			try {
+				token = await this.store("get", STORE_REFRESH, this.opts.unlockPrompt);
+			} catch {
+				token = null;
+			}
+		}
+		let failure: unknown = null;
+		if (token) {
+			try {
+				await this.platformPost("/field/auth/logout", { refreshToken: token, scope: "session" }, { secrets: [token] });
+			} catch (e) {
+				failure = e;
+			}
+		}
+		if (!sup) {
+			await this.endSession("logout");
+			if (failure) throw failure;
+			return null;
+		}
+		await this.switchToSupervisor(sup, "logout");
+		if (!this.access || this.access.expiresAt - this.clock() < REFRESH_SKEW_MS) {
+			await this.refresh();
+		}
+		if (failure) throw failure;
+		return this.sessionState;
+	}
+
+	private async supervisorToken(sup: Supervisor): Promise<string> {
+		if (sup.refreshToken) return sup.refreshToken;
+		const t = await this.store("get", STORE_SUPERVISOR_REFRESH, this.opts.unlockPrompt);
+		if (!t) throw new FieldAuthError("SESSION_EXPIRED", "the supervisor session is gone");
+		sup.refreshToken = t;
+		return t;
+	}
+
+	/** Makes the kept-aside supervisor session the active one. */
+	private async switchToSupervisor(sup: Supervisor, reason: SessionEndedReason): Promise<void> {
+		const refreshToken = await this.supervisorToken(sup);
+		this.supervisor = null;
+		this.access = sup.access;
+		this.refreshToken = refreshToken;
+		this.sessionState = sup.session;
+		await this.persistSession(sup.session, refreshToken);
+		await this.clearSupervisorStore();
+		this.emit("sessionEnded", { reason });
+		this.emit("sessionChanged", sup.session);
+	}
+
+	private async clearSupervisorStore(): Promise<void> {
+		try {
+			await this.opts.store.delete(STORE_SUPERVISOR);
+			await this.opts.store.delete(STORE_SUPERVISOR_REFRESH);
+		} catch {
+			// best effort
+		}
+	}
+
+	private async clearSupervisor(): Promise<void> {
+		this.supervisor = null;
+		await this.clearSupervisorStore();
 	}
 
 	private noteFailure(e: unknown): unknown {
@@ -434,8 +695,10 @@ export class FieldAuth extends EventTarget {
 		return e;
 	}
 
-	private async useBiometricStore(): Promise<boolean> {
+	/** Biometric storage is for the signed-in worker's own enrolled PERSONAL session only. */
+	private async useBiometricStore(session: Session | null = this.sessionState): Promise<boolean> {
 		if (!this.opts.biometricUnlock || this.device?.mode !== "PERSONAL") return false;
+		if (!session || session.deviceMode !== "PERSONAL" || session.actor !== null) return false;
 		try {
 			return await this.opts.store.biometricAvailable();
 		} catch {
@@ -443,22 +706,53 @@ export class FieldAuth extends EventTarget {
 		}
 	}
 
+	private async persistSession(session: Session, refreshToken: string): Promise<void> {
+		await this.store("set", STORE_REFRESH, refreshToken, await this.useBiometricStore(session));
+		await this.store("set", STORE_SESSION, JSON.stringify(session));
+	}
+
 	/** Stores a token response and publishes the new session. */
-	private async apply(t: TokenResponse): Promise<Session> {
+	private async apply(t: TokenResponse, opts: { impersonated?: boolean } = {}): Promise<Session> {
 		const now = this.clock();
 		const prevApp = this.sessionState?.appCode;
+		const claims = decodeClaims(t.accessToken);
+		const act = claims?.act;
+		const actor: Actor | null =
+			act && typeof act.sub === "string"
+				? {
+						id: act.sub,
+						type: typeof act.typ === "string" ? act.typ : "field_worker",
+						name: typeof act.name === "string" ? act.name : "",
+					}
+				: null;
+		const mode = claims?.device_mode;
+		const deviceMode: DeviceMode =
+			mode === "PERSONAL" || mode === "SHARED" || mode === "UNENROLLED"
+				? mode
+				: (this.device?.mode ?? "UNENROLLED");
+		let deviceId: string | null;
+		if (typeof claims?.device_id === "string") deviceId = claims.device_id;
+		else if (claims) deviceId = null;
+		else deviceId = this.device?.deviceId ?? null;
 		const session: Session = {
 			worker: { id: t.worker.id, workerCode: t.worker.workerCode, name: t.worker.name },
+			actor,
+			test: claims?.test === true,
+			deviceMode,
+			deviceId,
 			appCode: prevApp ?? this.opts.appCode,
 			expiresAt: now + t.expiresIn * 1000,
 			idleExpiresAt: Date.parse(t.idleExpiresAt),
 			refreshExpiresAt: Date.parse(t.refreshExpiresAt),
 			pinChangeRequired: t.pinChangeRequired === true,
 		};
+		const impersonated = opts.impersonated === true || this.supervisor !== null || actor !== null;
 		this.access = { token: t.accessToken, expiresAt: session.expiresAt };
 		this.refreshToken = t.refreshToken;
 		this.sessionState = session;
-		await this.store("set", STORE_REFRESH, t.refreshToken, await this.useBiometricStore());
+		// An impersonated session is never kept behind biometrics.
+		const bio = !impersonated && (await this.useBiometricStore(session));
+		await this.store("set", STORE_REFRESH, t.refreshToken, bio);
 		await this.store("set", STORE_SESSION, JSON.stringify(session));
 		this.emit("sessionChanged", session);
 		if (session.pinChangeRequired) this.emit("pinChangeRequired", session);
@@ -470,12 +764,14 @@ export class FieldAuth extends EventTarget {
 		this.access = null;
 		this.refreshToken = null;
 		this.sessionState = null;
+		this.supervisor = null;
 		try {
 			await this.opts.store.delete(STORE_REFRESH);
 			await this.opts.store.delete(STORE_SESSION);
 		} catch {
 			// best effort: the in-memory state is already gone
 		}
+		await this.clearSupervisorStore();
 		this.emit("sessionEnded", { reason });
 		this.emit("sessionChanged", null);
 	}
@@ -491,7 +787,7 @@ export class FieldAuth extends EventTarget {
 	}
 
 	private async doRefresh(): Promise<Session> {
-		await this.requireDevice();
+		await this.restore();
 		let token = this.refreshToken;
 		if (!token) {
 			try {
@@ -513,7 +809,9 @@ export class FieldAuth extends EventTarget {
 			return await this.apply(reply.json as unknown as TokenResponse);
 		} catch (e) {
 			if (e instanceof FieldAuthError && SESSION_ENDING.has(String(e.code))) {
-				await this.endSession(String(e.code));
+				// An impersonation that ends on its own hands back to the supervisor.
+				if (this.supervisor) await this.switchToSupervisor(this.supervisor, String(e.code));
+				else await this.endSession(String(e.code));
 			}
 			throw e;
 		}
@@ -535,14 +833,23 @@ export class FieldAuth extends EventTarget {
 	 * the prompt), then refreshes. PERSONAL devices on a biometric store only.
 	 */
 	async unlock(): Promise<Session> {
-		const dev = await this.requireDevice();
+		await this.restore();
+		const dev = this.device;
 		let available = false;
 		try {
 			available = await this.opts.store.biometricAvailable();
 		} catch {
 			available = false;
 		}
-		if (dev.mode !== "PERSONAL" || !available) {
+		// Enrolled PERSONAL sessions of the worker themselves only: never unenrolled, never impersonated.
+		const sess = this.sessionState;
+		if (
+			!dev ||
+			dev.mode !== "PERSONAL" ||
+			!available ||
+			this.impersonating ||
+			(sess !== null && sess.deviceMode !== "PERSONAL")
+		) {
 			throw new FieldAuthError("BIOMETRIC_UNAVAILABLE", "biometric unlock is not available on this device");
 		}
 		let token: string | null;
@@ -568,23 +875,16 @@ export class FieldAuth extends EventTarget {
 
 	/** Changes the PIN, then refreshes (which drops a `pcr` token). */
 	async changePin(pins: { currentPin: string; newPin: string }): Promise<Session> {
-		await this.requireDevice();
-		const call = async (): Promise<void> => {
-			const bearer = await this.ensureAccess();
-			await this.platformPost(
+		await this.restore();
+		if (this.impersonating) {
+			throw new FieldAuthError("IMPERSONATING", "the PIN cannot be changed while impersonating");
+		}
+		try {
+			await this.bearerPost(
 				"/field/auth/pin",
 				{ currentPin: pins.currentPin, newPin: pins.newPin },
-				{ bearer, secrets: [pins.currentPin, pins.newPin] },
+				[pins.currentPin, pins.newPin],
 			);
-		};
-		try {
-			try {
-				await call();
-			} catch (e) {
-				if (!(e instanceof FieldAuthError && e.code === "invalid_token")) throw e;
-				this.access = null;
-				await call();
-			}
 		} catch (e) {
 			throw this.noteFailure(e);
 		}
@@ -593,8 +893,12 @@ export class FieldAuth extends EventTarget {
 
 	/** Ends the session (or every session on this device) and clears local state. */
 	async logout(opts: { scope?: "session" | "device-all" } = {}): Promise<void> {
-		await this.requireDevice();
+		await this.restore();
 		const scope = opts.scope ?? "session";
+		if (scope === "device-all" && !this.device) {
+			throw new FieldAuthError("INVALID_REQUEST", "device-all needs an enrolled device");
+		}
+		const sup = this.supervisor;
 		let token = this.refreshToken;
 		if (!token) {
 			try {
@@ -611,6 +915,15 @@ export class FieldAuth extends EventTarget {
 				failure = e;
 			}
 		}
+		// Signing out while impersonating also ends the supervisor's session.
+		if (sup) {
+			try {
+				const st = await this.supervisorToken(sup);
+				await this.platformPost("/field/auth/logout", { refreshToken: st, scope: "session" }, { secrets: [st] });
+			} catch {
+				// best effort: the supervisor's local state is cleared below either way
+			}
+		}
 		await this.endSession("logout");
 		if (failure) throw failure;
 	}
@@ -624,7 +937,7 @@ export class FieldAuth extends EventTarget {
 	 * the answer is still `invalid_token` emits `sessionEnded`.
 	 */
 	async fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-		await this.requireDevice();
+		await this.restore();
 		let refreshed = false;
 		if (!this.access || this.access.expiresAt - this.clock() < REFRESH_SKEW_MS) {
 			await this.refresh();

@@ -13,6 +13,24 @@ export const APP = "https://app.test";
 export const GOOD_PIN = "482915";
 export const NEW_PIN = "739162";
 
+export const GOOD_BADGE = "FWB1ABCDEFGHJKMNPQRSTVWXYZ";
+export const GOOD_CODE = "FWS1ABCDEFGHJKMNPQRSTVWXYZ";
+export const CLIENT_IDENTIFIER = "acme";
+
+interface Ctx {
+	jkt: string;
+	/** The session started on a key the platform had not enrolled; it stays so until the next login. */
+	unenrolled: boolean;
+	worker: { id: string; workerCode: string; name: string };
+	actor: { sub: string; typ: string; name: string } | null;
+	test: boolean;
+}
+
+function fakeJwt(claims: Record<string, unknown>): string {
+	const enc = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+	return `${enc({ typ: "fc-field+jwt", alg: "ES256" })}.${enc(claims)}.c2ln`;
+}
+
 export interface Logged {
 	method: string;
 	url: string;
@@ -74,8 +92,18 @@ export class FakePlatform {
 	private seq = 0;
 	private nonces = new Set<string>();
 	private deviceJkt: string | null = null;
-	private refreshTokens = new Map<string, string>(); // token -> family
-	private liveAccess = new Set<string>();
+	private refreshTokens = new Map<string, { family: string } & Ctx>(); // token -> session
+	private liveAccess = new Map<string, Ctx>();
+	/** Issue real-looking JWT access tokens carrying device/act/test claims. */
+	jwtClaims = false;
+	/** The next logins/refreshes mark the worker as a test identity. */
+	testIdentity = false;
+	/** The policy refuses unknown keys on login. */
+	requireEnrolled = false;
+	/** The policy lets an enrolled device sign in by badge alone. */
+	badgeOnly = false;
+	canImpersonate = true;
+	private codeUsed = false;
 	pin = GOOD_PIN;
 	expiresIn = 600;
 	mode: "PERSONAL" | "SHARED" = "PERSONAL";
@@ -155,8 +183,29 @@ export class FakePlatform {
 			this.deviceJkt = proof.jkt;
 			return json(201, { deviceId: "fdv_1", mode: this.mode, clientId: "clt_1", appCodes: ["yard"] }, h);
 		}
-		if (proof.jkt !== this.deviceJkt) return fail(401, "UNKNOWN_DEVICE");
+		const known = proof.jkt === this.deviceJkt;
+		if (!known && this.requireEnrolled) return fail(401, "UNKNOWN_DEVICE");
+		const ctx = (worker = { id: "fwu_1", workerCode: "w1", name: "Worker One" }): Ctx => ({
+			jkt: proof.jkt,
+			unenrolled: !known,
+			worker,
+			actor: null,
+			test: this.testIdentity,
+		});
 		if (path === "/field/auth/login") {
+			const hasBadge = body["badgeToken"] !== undefined;
+			if (hasBadge === (body["workerCode"] !== undefined)) return fail(400, "INVALID_REQUEST");
+			if (known && body["clientIdentifier"] !== undefined && body["clientIdentifier"] !== CLIENT_IDENTIFIER) {
+				return fail(400, "CLIENT_MISMATCH");
+			}
+			if (!known && !hasBadge && body["clientIdentifier"] === undefined) return fail(400, "INVALID_REQUEST");
+			if (hasBadge) {
+				if (body["badgeToken"] !== GOOD_BADGE) return fail(401, "INVALID_CREDENTIALS");
+				if (body["pin"] === undefined) {
+					if (!(this.badgeOnly && known)) return fail(400, "PIN_REQUIRED");
+					return json(200, this.issue("fam-1", ctx()), h);
+				}
+			}
 			if (body["workerCode"] === "locked") return fail(423, "WORKER_LOCKED");
 			if (body["workerCode"] === "slow") {
 				return fail(429, "TOO_MANY_ATTEMPTS", {}, { "Retry-After": "42" });
@@ -165,24 +214,45 @@ export class FakePlatform {
 				return fail(401, "INVALID_CREDENTIALS", { message: `bad pin ${String(body["pin"])}` });
 			}
 			if (body["pin"] !== this.pin) return fail(401, "INVALID_CREDENTIALS");
-			return json(200, this.issue("fam-1"), h);
+			return json(200, this.issue("fam-1", ctx()), h);
+		}
+		if (path === "/field/auth/sign-in-code") {
+			if (body["code"] !== GOOD_CODE || this.codeUsed) return fail(401, "INVALID_CODE");
+			this.codeUsed = true;
+			const c = ctx({ id: "fwu_3", workerCode: "w3", name: "Worker Three" });
+			c.actor = { sub: "prn_1", typ: "principal", name: "Admin Ann" };
+			return json(200, this.issue("fam-code", c), h);
+		}
+		if (path === "/field/auth/act-as") {
+			const tok = (headers["authorization"] ?? "").replace(/^DPoP /, "");
+			const sup = this.liveAccess.get(tok);
+			if (!sup) return fail(401, "invalid_token", {}, { "WWW-Authenticate": 'DPoP error="invalid_token"' });
+			if (sup.actor) return fail(403, "IMPERSONATING");
+			if (!this.canImpersonate) return fail(403, "IMPERSONATION_FORBIDDEN");
+			if (body["pin"] !== this.pin) return fail(401, "INVALID_CREDENTIALS");
+			if (body["workerCode"] === "sup2") return fail(403, "NO_APP_ACCESS");
+			const c = ctx({ id: "fwu_2", workerCode: String(body["workerCode"] ?? "w2"), name: "Worker Two" });
+			c.actor = { sub: sup.worker.id, typ: "field_worker", name: sup.worker.name };
+			return json(200, this.issue(`fam-imp-${++this.seq}`, c), h);
 		}
 		if (path === "/field/auth/refresh") {
 			this.refreshCount++;
 			if (this.refreshDelayMs) await new Promise((r) => setTimeout(r, this.refreshDelayMs));
 			if (this.refreshError) return fail(this.refreshError.status, this.refreshError.error);
-			const fam = this.refreshTokens.get(String(body["refreshToken"]));
-			if (!fam) return fail(401, "INVALID_GRANT");
+			const rec = this.refreshTokens.get(String(body["refreshToken"]));
+			if (!rec || rec.jkt !== proof.jkt) return fail(401, "INVALID_GRANT");
 			this.refreshTokens.delete(String(body["refreshToken"]));
 			this.pcr = false;
-			return json(200, this.issue(fam), h);
+			return json(200, this.issue(rec.family, rec), h);
 		}
 		if (path === "/field/auth/pin") {
 			const auth = headers["authorization"] ?? "";
 			const tok = auth.replace(/^DPoP /, "");
-			if (!this.liveAccess.has(tok)) {
+			const cur = this.liveAccess.get(tok);
+			if (!cur) {
 				return fail(401, "invalid_token", {}, { "WWW-Authenticate": 'DPoP error="invalid_token"' });
 			}
+			if (cur.actor) return fail(403, "IMPERSONATING");
 			const ath = createHash("sha256").update(tok).digest("base64url");
 			if (c["ath"] !== ath) return fail(401, "invalid_dpop_proof");
 			if (body["currentPin"] !== this.pin) return fail(401, "INVALID_CREDENTIALS");
@@ -193,17 +263,28 @@ export class FakePlatform {
 			return json(204, null, h);
 		}
 		if (path === "/field/auth/logout") {
+			if (body["scope"] === "device-all" && !known) return fail(400, "INVALID_REQUEST");
 			this.refreshTokens.delete(String(body["refreshToken"]));
 			return json(204, null, h);
 		}
 		return fail(404, "NOT_FOUND");
 	}
 
-	private issue(family: string): Record<string, unknown> {
-		const access = `acc-${++this.seq}`;
+	private issue(family: string, ctx: Ctx): Record<string, unknown> {
+		const n = ++this.seq;
+		const known = !ctx.unenrolled;
+		const access = this.jwtClaims
+			? fakeJwt({
+					sub: ctx.worker.id,
+					jti: `jti-${n}`,
+					...(known ? { device_id: "fdv_1", device_mode: this.mode } : { device_mode: "UNENROLLED" }),
+					...(ctx.actor ? { act: ctx.actor } : {}),
+					...(ctx.test ? { test: true } : {}),
+				})
+			: `acc-${n}`;
 		const refresh = `fwr_${++this.seq}secretrefresh`;
-		this.liveAccess.add(access);
-		this.refreshTokens.set(refresh, family);
+		this.liveAccess.set(access, ctx);
+		this.refreshTokens.set(refresh, { family, ...ctx });
 		return {
 			accessToken: access,
 			tokenType: "DPoP",
@@ -211,7 +292,7 @@ export class FakePlatform {
 			refreshToken: refresh,
 			refreshExpiresAt: "2030-01-01T00:00:00Z",
 			idleExpiresAt: "2029-01-01T00:00:00Z",
-			worker: { id: "fwu_1", workerCode: "w1", name: "Worker One" },
+			worker: ctx.worker,
 			pinChangeRequired: this.pcr,
 		};
 	}
@@ -236,7 +317,7 @@ export class FakePlatform {
 		}
 		const proof = await verifyProof(headers["dpop"] ?? "");
 		const ok =
-			proof.jkt === this.deviceJkt &&
+			proof.jkt === this.liveAccess.get(tok)?.jkt &&
 			proof.claims["htm"] === req.method &&
 			proof.claims["htu"] === APP + url.pathname &&
 			proof.claims["ath"] === createHash("sha256").update(tok).digest("base64url");
