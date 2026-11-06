@@ -303,6 +303,9 @@ var permsApplicationService = []string{
 	"platform:application-service:scheduled-job-instance:write",
 	"platform:application-service:docs:sync",
 	"platform:application-service:scheduled-job:sync",
+	// Look up and fire its own application's scheduled jobs (confined to the
+	// applications the account is bound to).
+	"platform:application-service:scheduled-job:fire",
 	"platform:application-service:process:view",
 	"platform:application-service:process:sync",
 	// Read and write its own application's platform config (list, get, set,

@@ -146,6 +146,9 @@ const (
 	permAppSvcConnectionUpdate   = "platform:application-service:connection:update"
 	permAppSvcConnectionDelete   = "platform:application-service:connection:delete"
 	permAppSvcScheduledJobSync   = "platform:application-service:scheduled-job:sync"
+	// permAppSvcScheduledJobFire lets an application's service account look up
+	// and fire its own applications' scheduled jobs (and nothing broader).
+	permAppSvcScheduledJobFire = "platform:application-service:scheduled-job:fire"
 	// permAppSvcScheduledJobInstanceWrite is the SDK's report on a firing it
 	// received (log line, completion), confined to its own applications' jobs.
 	permAppSvcScheduledJobInstanceWrite = "platform:application-service:scheduled-job-instance:write"
@@ -932,6 +935,53 @@ func CanReportScheduledJobInstance(a *AuthContext, applicationID *string) error 
 		return nil
 	}
 	return usecase.Authorization("APPLICATION_ACCESS_REQUIRED", "not authorised for this scheduled job's application")
+}
+
+// CanFireScheduledJobsAny is the coarse guard for POST /api/scheduled-jobs/{id}/fire:
+// the messaging fire grant, or the application-service fire grant an SDK
+// service account holds. A caller admitted only by the latter is confined by
+// CanFireScheduledJob to its own applications' jobs.
+func CanFireScheduledJobsAny(a *AuthContext) error {
+	return requireAny(a, permScheduledJobFire, permAppSvcScheduledJobFire)
+}
+
+// CanFireScheduledJob is the resource-level rule for firing one job owned by
+// applicationID (nil: a job of no application). The messaging fire grant fires
+// any job. A caller holding only the application-service fire grant fires only
+// jobs of an application it is bound to (CanAccessApplication); a job of no
+// application is refused.
+func CanFireScheduledJob(a *AuthContext, applicationID *string) error {
+	if err := CanFireScheduledJobsAny(a); err != nil {
+		return err
+	}
+	if a.HasPermission(permScheduledJobFire) {
+		return nil
+	}
+	if applicationID != nil && a.CanAccessApplication(*applicationID) {
+		return nil
+	}
+	return usecase.Authorization("APPLICATION_ACCESS_REQUIRED", "not authorised for this scheduled job's application")
+}
+
+// CanLookUpScheduledJobs is the coarse guard for the single-job reads
+// (GET /api/scheduled-jobs/{id} and /by-code/{code}): the messaging view grant,
+// or an application-service grant (fire, or the existing scheduled-job:sync)
+// that lets an SDK service account look up its own applications' jobs.
+func CanLookUpScheduledJobs(a *AuthContext) error {
+	return requireAny(a, permScheduledJobView, permAppSvcScheduledJobFire, permAppSvcScheduledJobSync)
+}
+
+// CanLookUpScheduledJob is the resource-level rule for reading one job owned by
+// applicationID (nil: no application). It reports whether the caller may see
+// the job at all: true for the messaging view grant; for a caller admitted only
+// by an application-service grant, true only for a job of an application it is
+// bound to. On false the handler answers 404 so another application's job is
+// not revealed.
+func CanLookUpScheduledJob(a *AuthContext, applicationID *string) bool {
+	if a.HasPermission(permScheduledJobView) {
+		return true
+	}
+	return applicationID != nil && a.CanAccessApplication(*applicationID)
 }
 
 // CanSyncProcesses guards POST /api/applications/{appCode}/processes/sync.

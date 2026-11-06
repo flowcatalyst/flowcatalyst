@@ -152,7 +152,9 @@ expressions (seconds first: `sec min hour day-of-month month day-of-week`), lock
 signed delivery to the target (bearer + HMAC, like webhooks), instance
 tracking with logs, and retention policies. Applications register their
 own scheduled jobs through the SDK; the admin UI can pause, fire manually,
-and inspect instances. Completion is acknowledged by the consumer; an
+and inspect instances. An application's service account (the
+`platform:application-service` role, permission `scheduled-job:fire`) can look up
+and fire the scheduled jobs of its own application only. Completion is acknowledged by the consumer; an
 instance that never acks stays visible as running rather than silently
 vanishing.
 

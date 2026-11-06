@@ -77,8 +77,9 @@ type ScheduledJobDeleted struct{ commonEvent }
 
 func (ScheduledJobDeleted) EventType() string { return ScheduledJobDeletedType }
 
-// ScheduledJobFiredManually is emitted when a human admin triggers a
-// fire outside the normal cron schedule. Recorded for audit; the
+// ScheduledJobFiredManually is emitted when a fire is triggered outside the
+// normal cron schedule: by a human admin, or by an application firing its own
+// job through its service account (the event's principal says which). Recorded for audit; the
 // resulting instance row is written by the scheduler dispatcher (Wave 3g).
 type ScheduledJobFiredManually struct {
 	commonEvent

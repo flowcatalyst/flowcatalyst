@@ -106,14 +106,14 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[apicomm
 
 func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ScheduledJobResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadScheduledJobs(ac); err != nil {
+	if err := auth.CanLookUpScheduledJobs(ac); err != nil {
 		return nil, err
 	}
 	j, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
-	if j == nil {
+	if j == nil || !auth.CanLookUpScheduledJob(ac, appIDOf(j)) {
 		return nil, httperror.NotFound("ScheduledJob", in.ID)
 	}
 	if j.ClientID != nil && !ac.CanAccessClient(string(*j.ClientID)) {
@@ -208,8 +208,20 @@ type fireNowInput struct {
 
 func (s *State) fireNow(ctx context.Context, in *fireNowInput) (*apicommon.Out[FireNowResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanFireScheduledJobs(ac); err != nil {
+	if err := auth.CanFireScheduledJobsAny(ac); err != nil {
 		return nil, err
+	}
+	// Resource rule: the messaging fire grant fires any job; an application's
+	// service account fires only its own applications' jobs. A missing job is
+	// left to the operation (404); the per-client scope (A2) is applied there.
+	job, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if job != nil {
+		if err := auth.CanFireScheduledJob(ac, appIDOf(job)); err != nil {
+			return nil, err
+		}
 	}
 	var correlationID *string
 	if in.Body != nil {
@@ -249,7 +261,7 @@ type byCodeInput struct {
 
 func (s *State) getByCode(ctx context.Context, in *byCodeInput) (*apicommon.Out[ScheduledJobResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadScheduledJobs(ac); err != nil {
+	if err := auth.CanLookUpScheduledJobs(ac); err != nil {
 		return nil, err
 	}
 	clientID := apicommon.OptStr(in.ClientID)
@@ -257,7 +269,7 @@ func (s *State) getByCode(ctx context.Context, in *byCodeInput) (*apicommon.Out[
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_code failed", err)
 	}
-	if j == nil {
+	if j == nil || !auth.CanLookUpScheduledJob(ac, appIDOf(j)) {
 		return nil, httperror.NotFound("ScheduledJob", in.Code)
 	}
 	if j.ClientID != nil && !ac.CanAccessClient(string(*j.ClientID)) {
@@ -350,6 +362,15 @@ func (s *State) listInstanceLogs(ctx context.Context, in *instanceInput) (*apico
 	}
 	out := apicommon.MapSlice(rows, instanceLogToResponse)
 	return &apicommon.Out[[]ScheduledJobInstanceLogResponse]{Body: out}, nil
+}
+
+// appIDOf is the job's owning application id, nil for a job of no application.
+func appIDOf(j *scheduledjob.ScheduledJob) *string {
+	if j == nil || j.ApplicationID == nil {
+		return nil
+	}
+	id := string(*j.ApplicationID)
+	return &id
 }
 
 // reportableInstance loads the firing a runner reports on (a log line or its

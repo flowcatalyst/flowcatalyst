@@ -514,6 +514,26 @@ invite token exists, `EXPIRED` otherwise (the token lapsed or was purged).
   invite tokens are deleted. The user record stays; reactivating it is a console
   action. Not an invitee in the application: `404`.
 
+## Scheduled jobs: an application looks up and fires its own jobs
+
+`platform:application-service:scheduled-job:fire` (seeded; held by the built-in
+`platform:application-service` role; migration 100 grants it to existing
+deployments) lets an application's service account look up and fire the
+scheduled jobs of its own application(s), and nothing broader.
+
+- `POST /api/scheduled-jobs/{id}/fire`: admitted by `platform:messaging:scheduled-job:fire`
+  (any job, as before) or by the application-service fire permission for a job
+  whose `applicationId` the caller may access (`applications` / `all_applications`
+  claims). Another application's job, or a job with no application, is
+  `403 APPLICATION_ACCESS_REQUIRED`. The per-client scope check still applies.
+- `GET /api/scheduled-jobs/{id}` and `GET /api/scheduled-jobs/by-code/{code}`:
+  admitted by `platform:messaging:scheduled-job:view` (unchanged), or by the
+  application-service fire permission or `...:scheduled-job:sync` for a job of an
+  application the caller may access. Any other job is `404` (not revealed).
+- The list, instances and logs reads stay `platform:messaging:scheduled-job:view`.
+- The audit event `platform:admin:scheduled-job:fired-manually` is unchanged on
+  the wire; its principal is the application's service account.
+
 ## Dispatch jobs: time window, requeue guard, write permissions
 
 **Time window.** The list-shaped reads are held to a `created_at` window:
