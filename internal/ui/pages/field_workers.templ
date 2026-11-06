@@ -2,15 +2,36 @@ package pages
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
+const (
+	// fwCountExpr counts the ticked rows into $fwSel and sets the select-all
+	// box to checked / mixed / clear. It sits on the table region (change
+	// bubbles), not on every row's box.
+	fwCountExpr = "const b = [...document.querySelectorAll('#field-workers-rows input[name=ids]')]; const n = b.filter(c => c.checked).length; $fwSel = n; const h = document.getElementById('fw-select-all'); if (h) { h.checked = n > 0 && n === b.length; h.indeterminate = n > 0 && n < b.length }"
+	// fwAllExpr is the select-all box: tick or clear every row on the page.
+	fwAllExpr = "document.querySelectorAll('#field-workers-rows input[name=ids]').forEach(c => c.checked = el.checked); " + fwCountExpr
+	// fwPrintForm is the form of the "Print badges" confirmation; the row
+	// boxes belong to it through their form attribute.
+	fwPrintForm = "fw-print-badges-form"
+	// fwPrintExpr prints the sheet of badge cards: a copy of the cards goes
+	// to a node directly under <body> and the print styles show only that
+	// node; the copy (and its tokens) is removed when printing ends.
+	fwPrintExpr = "const c = document.getElementById('fw-print-sheet').cloneNode(true); c.removeAttribute('id'); const root = document.createElement('div'); root.id = 'fw-print-root'; root.appendChild(c); document.body.appendChild(root); document.documentElement.classList.add('fw-printing'); window.addEventListener('afterprint', () => { root.remove(); document.documentElement.classList.remove('fw-printing') }, {once: true}); window.print()"
+)
+
 func (v fieldWorkersView) columns() []kit.DataColumn {
-	return []kit.DataColumn{
+	cols := []kit.DataColumn{
 		{Label: "Worker"}, {Label: "Name"}, {Label: "Status"}, {Label: "Lock"}, {Label: "Apps"}, {Label: "Last sign-in"}, {Label: "Created"},
 		{Label: "Actions", Class: "w-px"},
 	}
+	if v.CanManage {
+		cols = append([]kit.DataColumn{{Label: "Print", Class: "w-px"}}, cols...)
+	}
+	return cols
 }
 
 func (v fieldWorkersView) empty() *kit.EmptyStateProps {
@@ -94,6 +115,15 @@ templ fieldWorkersPage(v fieldWorkersView) {
 			@kit.ConfirmDialog(v.confirm(fwUnlockID, "Unlock field worker", "Clear this worker's soft and hard locks and their failed-attempt counter? Their PIN is unchanged.", "Unlock", kit.ToneDefault))
 			@kit.ConfirmDialog(v.confirm(fwResetPinID, "Reset PIN", "Set a new temporary PIN for this worker? It is shown to you once, must be changed by the worker at their next sign-in, and every session they have is ended.", "Reset PIN", kit.ToneWarn))
 			@kit.ConfirmDialog(v.confirm(fwRevokeID, "Remove application access", "Remove this worker's access to the application? Their sessions in that application are ended.", "Remove", kit.ToneDanger))
+			@kit.ConfirmDialog(v.confirm(fwBadgeIssueID, "Issue badge", "Issue a printed badge for this worker? The badge is shown once, as a card to print; only its hash is kept.", "Issue badge", kit.ToneDefault))
+			@kit.ConfirmDialog(v.confirm(fwBadgeReissueID, "Reissue badge", "Issue a new badge for this worker? Their current badge is cancelled at once and stops signing in. The new badge is shown once, as a card to print.", "Reissue badge", kit.ToneWarn))
+			@kit.ConfirmDialog(v.confirm(fwBadgeRevokeID, "Revoke badge", "Revoke this worker's badge? It stops signing in at once. They can still sign in with their PIN.", "Revoke badge", kit.ToneDanger))
+			@kit.ConfirmDialog(kit.ConfirmDialogProps{
+				ID: fwPrintBadgesID, Action: fieldWorkersPath + "/badges/print", Title: "Print badges",
+				Message:      "Issue a new badge for each selected worker and show a sheet to print? A worker who already has a badge loses it: the old badge is cancelled at once and stops signing in. The new badges are shown once, on the sheet.",
+				ConfirmLabel: "Issue and print", Tone: kit.ToneWarn,
+				FormAttrs: templ.Attributes{"id": fwPrintForm, "data-on:submit": kit.SubmitConfirm},
+			})
 			@kit.ConfirmDialog(v.confirm(fwDeleteID, "Delete field worker", "Delete this field worker? Their sessions are ended and they can no longer sign in. This cannot be undone.", "Delete", kit.ToneDanger))
 		}
 		@fieldWorkerDrawer(v.Drawer)
@@ -110,6 +140,7 @@ templ fieldWorkersActions(v fieldWorkersView) {
 
 templ fieldWorkersFilters(v fieldWorkersView) {
 	@kit.FilterSelect(kit.FilterSelectProps{Name: "status", Label: "Status", Placeholder: "All statuses", Options: fieldWorkerStatusOptions, Selected: v.Query.Status, Attrs: templ.Attributes{"data-on:change": fieldWorkersLive}})
+	@kit.FilterSelect(kit.FilterSelectProps{Name: fieldTestFacet, Label: "Identity", Placeholder: "All identities", Options: fieldWorkerTestOptions, Selected: v.Test, Attrs: templ.Attributes{"data-on:change": fieldWorkersLive}})
 	if len(v.AppOptions) > 0 {
 		@kit.FilterSelect(kit.FilterSelectProps{Name: fieldAppFacet, Label: "Application", Placeholder: "All applications", Options: v.AppOptions, Selected: v.App, Attrs: templ.Attributes{"data-on:change": fieldWorkersLive}})
 	}
@@ -117,10 +148,23 @@ templ fieldWorkersFilters(v fieldWorkersView) {
 
 // fieldWorkersRegion is the table, what every change patches.
 templ fieldWorkersRegion(v fieldWorkersView) {
-	<div id={ fieldWorkersTable }>
+	<div
+		id={ fieldWorkersTable }
+		if v.CanManage {
+			data-on:change={ fwCountExpr }
+		}
+	>
+		if v.CanManage && v.Client != "" {
+			@fieldWorkersBulkBar(v)
+		}
 		@kit.DataTable(kit.DataTableProps{ID: "field-workers-table", BodyID: "field-workers-rows", Columns: v.columns(), Empty: v.empty()}) {
 			for _, row := range v.Rows {
 				@kit.TR(kit.TRProps{ID: "fw-" + row.ID}) {
+					if v.CanManage {
+						@kit.TD(kit.TDProps{}) {
+							<input type="checkbox" name="ids" value={ row.ID } form={ fwPrintForm } class="accent-primary" aria-label={ "Select " + row.Code + " to print a badge" }/>
+						}
+					}
 					@kit.TD(kit.TDProps{}) {
 						<a href={ templ.SafeURL(row.DetailHref) } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }><code class="font-mono text-[13px]">{ row.Code }</code></a>
 					}
@@ -137,6 +181,7 @@ templ fieldWorkersRegion(v fieldWorkersView) {
 								@kit.Tag(kit.TagProps{Severity: kit.TagInfo, Label: "No PIN"})
 							</span>
 						}
+						@fieldWorkerFlagTags(row.IsTest, row.Supervisor)
 					}
 					@kit.TD(kit.TDProps{}) {
 						if row.Lock != "" {
@@ -171,6 +216,36 @@ templ fieldWorkersRegion(v fieldWorkersView) {
 
 templ fieldWorkerStatusTag(label string, sev kit.TagSeverity) {
 	@kit.Tag(kit.TagProps{Severity: sev, Label: label})
+}
+
+// fieldWorkerFlagTags marks a test identity (TEST) and a worker who may act as
+// other workers on a device (SUPERVISOR).
+templ fieldWorkerFlagTags(isTest, supervisor bool) {
+	if isTest {
+		<span title="A test identity: for app QA. A console sign-in code needs only the manage permission.">
+			@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "TEST"})
+		</span>
+	}
+	if supervisor {
+		<span title="May act as other workers of the client on a device (after entering their own PIN)">
+			@kit.Tag(kit.TagProps{Severity: kit.TagInfo, Label: "SUPERVISOR"})
+		</span>
+	}
+}
+
+// fieldWorkersBulkBar is the selection bar above the table: a select-all box
+// for the page and "Print badges" for the ticked rows. It sits in the table
+// region, so every change of the table clears the ticks it counts.
+templ fieldWorkersBulkBar(v fieldWorkersView) {
+	<div id="fw-bulk" class="flex flex-wrap items-center gap-3 border-b border-border px-3 py-2">
+		<input type="checkbox" id="fw-select-all" class="accent-primary" aria-label="Select all workers on this page" data-on:change={ fwAllExpr }/>
+		<span class="text-sm text-muted-foreground" data-text={ "$" + fwSelSig + " > 0 ? $" + fwSelSig + " + ' selected' : 'Tick workers to print their badges'" }>Tick workers to print their badges</span>
+		<button type="button" class="fc-btn fc-btn-outline fc-btn-sm" disabled data-attr:disabled={ "$" + fwSelSig + " === 0" } title="Issue a new badge for each ticked worker and print them; an existing badge is replaced" { confirmTrigger(fwPrintBadgesID, fieldWorkersPath+"/badges/print")... }>
+			@kit.Icon(kit.IconProps{Name: "id-card", Class: "size-[1rem]"})
+			<span data-text={ "$" + fwSelSig + " > 0 ? 'Print badges (' + $" + fwSelSig + " + ')' : 'Print badges'" }>Print badges</span>
+		</button>
+		<span class="text-xs text-muted-foreground">Printing issues new badges and cancels the workers' existing ones.</span>
+	</div>
 }
 
 templ fieldWorkerApps(canManage bool, row fieldWorkerRow) {
@@ -210,7 +285,7 @@ templ fieldWorkerDrawerContent(d fieldWorkerDetail) {
 }
 
 templ fieldWorkerDrawerBody(d fieldWorkerDetail) {
-	@kit.FormSection(kit.FormSectionProps{Title: "Details"}) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Details", Actions: fieldWorkerEditButton(d)}) {
 		<div class="fc-detail-grid">
 			@kit.DetailField(kit.DetailFieldProps{Label: "Worker code"}) {
 				<code>{ d.Code }</code>
@@ -221,6 +296,7 @@ templ fieldWorkerDrawerBody(d fieldWorkerDetail) {
 			}
 			@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
 				@fieldWorkerStatusTag(d.Status, d.StatusSeverity)
+				@fieldWorkerFlagTags(d.IsTest, d.Supervisor)
 			}
 			@kit.DetailField(kit.DetailFieldProps{Label: "Lock"}) {
 				if d.Lock != "" {
@@ -280,6 +356,8 @@ templ fieldWorkerDrawerBody(d fieldWorkerDetail) {
 			</ul>
 		}
 	}
+	@fieldWorkerBadgeSection(d)
+	@fieldWorkerSignInAs(d)
 	if actions := d.actions(); len(actions) > 0 {
 		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
 			<div class="flex flex-col gap-4">
@@ -299,6 +377,69 @@ templ fieldWorkerDrawerBody(d fieldWorkerDetail) {
 	}
 }
 
+templ fieldWorkerEditButton(d fieldWorkerDetail) {
+	if d.CanManage {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Edit
+		}
+	}
+}
+
+// fieldWorkerBadgeSection is the worker's badge: the state, and (to a manager)
+// issue / reissue / revoke. The token is never shown here: it is shown once, at
+// issue.
+templ fieldWorkerBadgeSection(d fieldWorkerDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Badge"}) {
+		if d.Badge == nil {
+			<p class="m-0 text-sm text-muted-foreground">No active badge. A badge is a printed QR code the worker scans to sign in (with their PIN, unless the client's policy allows badge-only sign-in on an enrolled device).</p>
+			if d.CanManage {
+				<div class="mt-3">
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Icon: "id-card", Attrs: confirmTrigger(fwBadgeIssueID, d.Base+"/badge")}) {
+						Issue badge
+					}
+				</div>
+			}
+		} else {
+			<div class="fc-detail-grid">
+				@kit.DetailField(kit.DetailFieldProps{Label: "Badge"}) {
+					@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Active"})
+				}
+				@kit.DetailField(kit.DetailFieldProps{Label: "Issued"}) {
+					@kit.LocalTime(kit.LocalTimeProps{At: d.Badge.Created, Empty: "—"})
+				}
+				@kit.DetailField(kit.DetailFieldProps{Label: "Last used"}) {
+					@kit.LocalTime(kit.LocalTimeProps{At: d.Badge.LastUsed, Empty: "Never"})
+				}
+			</div>
+			if d.CanManage {
+				<div class="mt-3 flex flex-wrap gap-2">
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Icon: "refresh-cw", Attrs: confirmTrigger(fwBadgeReissueID, d.Base+"/badge")}) {
+						Reissue badge
+					}
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "ban", Attrs: confirmTrigger(fwBadgeRevokeID, d.Base+"/badge/revoke")}) {
+						Revoke badge
+					}
+				</div>
+			}
+		}
+	}
+}
+
+// fieldWorkerSignInAs is the "Sign in as…" action, shown only to a caller the
+// API would let make a console sign-in code for this worker.
+templ fieldWorkerSignInAs(d fieldWorkerDetail) {
+	if d.CanSignIn {
+		@kit.FormSection(kit.FormSectionProps{Title: "Sign in as this worker"}) {
+			<div class="fc-danger-item">
+				<div><strong>Sign in as…</strong><p>Make a single-use code (ten minutes) that signs in as this worker in one of their applications, on any device. The sign-in is audited under your name.</p></div>
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Href: d.SignInAs, Icon: "log-in", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+					Sign in as
+				}
+			</div>
+		}
+	}
+}
+
 templ fieldWorkerGrantButton(d fieldWorkerDetail) {
 	if d.CanManage && d.CanGrant {
 		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.GrantHref, Icon: "circle-plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
@@ -310,11 +451,25 @@ templ fieldWorkerGrantButton(d fieldWorkerDetail) {
 // fieldSignInsRegion is the paged history; the page links patch only it.
 templ fieldSignInsRegion(d fieldWorkerDetail) {
 	<div id={ fwSignInsID }>
-		@kit.DataTable(kit.DataTableProps{ID: "fw-history-table", BodyID: "fw-history-rows", Columns: []kit.DataColumn{{Label: "Time"}, {Label: "Device"}, {Label: "App"}, {Label: "Outcome"}}, Empty: fieldSignInsEmpty(d)}) {
+		@kit.DataTable(kit.DataTableProps{ID: "fw-history-table", BodyID: "fw-history-rows", Columns: []kit.DataColumn{{Label: "Time"}, {Label: "Method"}, {Label: "Actor"}, {Label: "Device"}, {Label: "App"}, {Label: "Outcome"}}, Empty: fieldSignInsEmpty(d)}) {
 			for _, s := range d.SignIns {
 				@kit.TR(kit.TRProps{}) {
 					@kit.TD(kit.TDProps{}) {
 						@kit.LocalTime(kit.LocalTimeProps{At: s.At, Empty: "—"})
+					}
+					@kit.TD(kit.TDProps{}) {
+						if s.Method != "" {
+							<code class="text-xs">{ s.Method }</code>
+						} else {
+							—
+						}
+					}
+					@kit.TD(kit.TDProps{}) {
+						if s.Actor != "" {
+							{ s.Actor }
+						} else {
+							—
+						}
 					}
 					@kit.TD(kit.TDProps{}) {
 						if s.Device != "" {
@@ -391,6 +546,10 @@ templ fieldWorkerFormDialog(f fieldWorkerForm) {
 		@fieldWorkerFormField(f, "name")
 		@fieldWorkerFormField(f, "email")
 		@fieldWorkerFormField(f, "apps")
+		@fieldWorkerFormField(f, "isTest")
+		if f.MayImpersonate {
+			@fieldWorkerFormField(f, "canImpersonate")
+		}
 	}
 }
 
@@ -420,6 +579,14 @@ templ fieldWorkerFormField(f fieldWorkerForm, key string) {
 						<span class="text-sm text-muted-foreground">There are no active applications you can grant.</span>
 					}
 				</div>
+			}
+		case "isTest":
+			@kit.Field(f.fieldProps(key, "Test identity", testHelp, false)) {
+				@kit.Switch(kit.SwitchProps{ID: f.id(key), Name: key, Value: "true", Checked: f.IsTest})
+			}
+		case "canImpersonate":
+			@kit.Field(f.fieldProps(key, "May act as other workers", impersonateHelp, false)) {
+				@kit.Switch(kit.SwitchProps{ID: f.id(key), Name: key, Value: "true", Checked: f.CanImpersonate})
 			}
 	}
 }
@@ -481,4 +648,169 @@ templ fieldPinFooter() {
 	@kit.Button(kit.ButtonProps{Icon: "check", Attrs: templ.Attributes{"data-on:click": "const d = el.closest('dialog'); d.dataset.saved = '1'; d.close(); d.remove()"}}) {
 		Done
 	}
+}
+
+const (
+	testHelp        = "For app QA: tokens carry test=true, and a console sign-in code needs only the manage permission. Applies to a new worker only when the code is new."
+	impersonateHelp = "A supervisor: on a device they can sign in as another worker of the client after entering their own PIN. Needs the field-worker impersonate permission."
+)
+
+// ── edit ───────────────────────────────────────────────────────────────
+templ fieldEditDialog(f fieldEditForm) {
+	@kit.FormDialog(f.dialog()) {
+		for _, k := range f.keys() {
+			@fieldEditField(f, k)
+		}
+	}
+}
+
+templ fieldEditField(f fieldEditForm, key string) {
+	switch key {
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", "", true)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Name, Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off", "autofocus": true}})
+			}
+		case "email":
+			@kit.Field(f.fieldProps(key, "Email", "Optional. Blank removes it.", false)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Type: "email", Value: f.Email, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off"}})
+			}
+		case "isTest":
+			@kit.Field(f.fieldProps(key, "Test identity", testHelp, false)) {
+				@kit.Switch(kit.SwitchProps{ID: f.id(key), Name: key, Value: "true", Checked: f.IsTest})
+			}
+		case "canImpersonate":
+			@kit.Field(f.fieldProps(key, "May act as other workers", impersonateHelp+" Clearing it ends the sessions the worker holds as an actor.", false)) {
+				@kit.Switch(kit.SwitchProps{ID: f.id(key), Name: key, Value: "true", Checked: f.CanImpersonate})
+			}
+	}
+}
+
+// ── sign in as… ────────────────────────────────────────────────────────
+templ fieldSignInAsDialog(f fieldSignInAsForm) {
+	@kit.FormDialog(f.dialog()) {
+		@fieldSignInAsField(f)
+		@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "The code works once and expires in ten minutes. Using it signs in as the worker in that application, and the sign-in is recorded with your name."})
+	}
+}
+
+templ fieldSignInAsField(f fieldSignInAsForm) {
+	@kit.Field(kit.FieldProps{Label: "Application", For: f.id("app"), Required: true, Error: f.Errs.Fields["app"], ErrorID: f.id("app") + "-err", Attrs: templ.Attributes{"id": f.id("app") + "-field"}}) {
+		@kit.Select(kit.SelectProps{ID: f.id("app"), Name: "app", Options: f.Choices, Selected: f.App, Required: true, Invalid: f.Errs.Fields["app"] != "", DescribedBy: f.describedBy()})
+	}
+}
+
+// fieldSignInCodeDialog shows the console sign-in code, its QR code and its
+// expiry countdown, once, on the terms of the enrolment code dialog.
+templ fieldSignInCodeDialog(c fieldSignInCodeReveal) {
+	@kit.Dialog(kit.DialogProps{
+		ID:         fwCodeDialog,
+		Title:      "Sign-in code",
+		Persistent: true,
+		Attrs:      templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()"},
+		Footer:     fieldPinFooter(),
+	}) {
+		<div class="flex flex-col items-center gap-3 text-center">
+			<p class="m-0 text-sm">
+				Signs in as <strong>{ c.WorkerCode }</strong>
+				if c.WorkerName != "" {
+					({ c.WorkerName })
+				}
+				in <strong>{ c.AppCode }</strong>. Scan the QR code or type the code in the app's sign-in-code screen.
+			</p>
+			@fieldSignInQR(c)
+			<div class="flex items-center gap-2">
+				<code id="fw-code-value" class="fc-mono-chip text-2xl">{ c.Code }</code>
+				@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy sign-in code", Attrs: templ.Attributes{"title": "Copy", "data-on:click": fieldCopyExpr("fw-code-value", "Code")}})
+			</div>
+			<p class="m-0 text-sm text-muted-foreground">
+				Expires in
+				<strong data-expires={ c.ExpiresAt.UTC().Format(time.RFC3339) } data-init={ fieldExpiryCountdown() }>{ fieldTime(c.ExpiresAt) }</strong>
+			</p>
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "The code works once, and the sign-in is audited under your name. It will not be shown again."})
+		</div>
+	}
+}
+
+// ── badge card(s) ──────────────────────────────────────────────────────
+
+// fieldBadgeDialog shows the issued badge card(s), once, with a Print button.
+// Like the PIN dialog it cannot be dismissed by accident and "Done" removes it
+// from the page, so the tokens do not stay in the DOM. Only the cards print
+// (see fieldBadgeStyle).
+templ fieldBadgeDialog(b fieldBadgeReveal) {
+	@kit.Dialog(kit.DialogProps{
+		ID:         fwBadgeDialogID,
+		Title:      b.title(),
+		Persistent: true,
+		Width:      kit.WidthWide,
+		Attrs:      templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()"},
+		Footer:     fieldBadgeFooter(),
+	}) {
+		<div class="flex flex-col gap-3">
+			@fieldBadgeStyle()
+			if len(b.Cards) == 1 {
+				<p class="m-0 text-sm">
+					A new badge for <strong>{ b.Cards[0].Code }</strong>
+					if b.Cards[0].Name != "" {
+						({ b.Cards[0].Name })
+					}
+					. Print it and give it to the worker.
+					if b.Replaced {
+						Their previous badge has been cancelled and no longer signs in.
+					}
+				</p>
+			} else {
+				<p class="m-0 text-sm">
+					{ strconv.Itoa(len(b.Cards)) } new badges. Print the sheet and cut the cards out. Any badge these workers had before has been cancelled and no longer signs in.
+				</p>
+			}
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "These badges are shown once. Print them before you press Done: a lost or unprinted badge has to be reissued."})
+			<div id="fw-print-sheet" class="fw-sheet">
+				for _, c := range b.Cards {
+					<div class="fw-card">
+						<div class="fw-card-name">{ c.Name }</div>
+						<div class="fw-card-code"><code>{ c.Code }</code></div>
+						<div class="fw-card-client">{ c.Client }</div>
+						@fieldBadgeQR(c)
+						<div class="fw-card-token">{ c.Token }</div>
+					</div>
+				}
+			</div>
+		</div>
+	}
+}
+
+templ fieldBadgeFooter() {
+	@kit.Button(kit.ButtonProps{Icon: "file", Variant: kit.ButtonOutline, Attrs: templ.Attributes{"data-on:click": fwPrintExpr}}) {
+		Print
+	}
+	@fieldPinFooter()
+}
+
+// fieldBadgeStyle is the cards' look on screen and on paper. The print rules
+// show only the copy of the sheet that the Print button puts under <body>
+// (#fw-print-root): everything else is hidden, so the page, the drawer and the
+// dialog never print. The sheet is a two-column grid of cards that do not break
+// across pages, on A4.
+templ fieldBadgeStyle() {
+	<style>
+		.fw-sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.75rem; max-height: 55vh; overflow: auto; }
+		.fw-card { border: 1px solid var(--border, #ccc); border-radius: 0.5rem; padding: 0.75rem; text-align: center; background: #fff; color: #000; break-inside: avoid; }
+		.fw-card-name { font-weight: 600; font-size: 1rem; }
+		.fw-card-code code { font-size: 1.25rem; font-weight: 700; }
+		.fw-card-client { font-size: 0.8rem; margin-bottom: 0.4rem; }
+		.fw-card svg { width: 9rem; height: 9rem; border: 0; border-radius: 0; }
+		.fw-card-token { font-family: ui-monospace, monospace; font-size: 0.55rem; word-break: break-all; margin-top: 0.3rem; }
+		@media screen { #fw-print-root { display: none; } }
+		@media print {
+			@page { size: A4; margin: 10mm; }
+			html.fw-printing body > *:not(#fw-print-root) { display: none !important; }
+			html.fw-printing, html.fw-printing body { background: #fff !important; }
+			#fw-print-root { display: block; }
+			#fw-print-root .fw-sheet { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6mm; max-height: none; overflow: visible; }
+			#fw-print-root .fw-card { border: 0.3mm solid #000; border-radius: 3mm; padding: 5mm; }
+			#fw-print-root .fw-card svg { width: 40mm; height: 40mm; }
+			#fw-print-root .fw-card-token { font-size: 6.5pt; }
+		}
+	</style>
 }

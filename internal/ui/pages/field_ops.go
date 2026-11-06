@@ -23,6 +23,8 @@ type FieldStore interface {
 	ActiveSessions(ctx context.Context, deviceIDs []string) (map[string]int, error)
 	Policy(ctx context.Context, clientID string) (fieldidentity.Policy, error)
 	Applications(ctx context.Context) ([]application.Application, error)
+	ActiveBadge(ctx context.Context, identityID string) (*fieldidentity.Badge, error)
+	PrincipalName(ctx context.Context, id string) (name string, found bool, err error)
 }
 
 // FieldReader reads the field-identity repositories and the applications.
@@ -76,12 +78,25 @@ func (r FieldReader) Applications(ctx context.Context) ([]application.Applicatio
 	return r.Apps.FindWithFilters(ctx, nil, nil)
 }
 
+// ActiveBadge is a worker's ACTIVE badge, nil when it has none.
+func (r FieldReader) ActiveBadge(ctx context.Context, identityID string) (*fieldidentity.Badge, error) {
+	return r.Repos.Badges.ActiveByIdentity(ctx, identityID)
+}
+
+// PrincipalName is a platform principal's display name (the actor of a
+// sign-in made with a console code); found is false for an unknown id.
+func (r FieldReader) PrincipalName(ctx context.Context, id string) (string, bool, error) {
+	name, _, found, err := r.Repos.Sessions.PrincipalName(ctx, id)
+	return name, found, err
+}
+
 // FieldCommands are the field-identity operations the pages run; FieldOps
 // runs the API's operations. The permission check (CanManageFieldWorkers or
 // CanManageFieldDevices for the target's client) is the page's, as it is the
 // API handler's.
 type FieldCommands interface {
 	EnsureWorker(ctx context.Context, cmd fieldidentity.EnsureWorkerCommand) (fieldidentity.Event, error)
+	UpdateWorker(ctx context.Context, cmd fieldidentity.UpdateWorkerCommand) error
 	GrantWorkerApp(ctx context.Context, cmd fieldidentity.WorkerAppCommand) error
 	RevokeWorkerApp(ctx context.Context, cmd fieldidentity.WorkerAppCommand) error
 	SuspendWorker(ctx context.Context, ref fieldidentity.WorkerRef) error
@@ -89,6 +104,10 @@ type FieldCommands interface {
 	UnlockWorker(ctx context.Context, ref fieldidentity.WorkerRef) error
 	DeleteWorker(ctx context.Context, ref fieldidentity.WorkerRef) error
 	ResetWorkerPin(ctx context.Context, cmd fieldidentity.ResetPinCommand) (fieldidentity.ResetPinResult, error)
+	IssueBadge(ctx context.Context, cmd fieldidentity.IssueBadgeCommand) (fieldidentity.IssuedBadge, error)
+	IssueBadges(ctx context.Context, cmd fieldidentity.IssueBadgesCommand) ([]fieldidentity.IssuedBadge, error)
+	RevokeBadge(ctx context.Context, ref fieldidentity.BadgeRef) error
+	CreateSignInCode(ctx context.Context, cmd fieldidentity.CreateSignInCodeCommand) (fieldidentity.CreateSignInCodeResult, error)
 	CreateEnrolmentCode(ctx context.Context, cmd fieldidentity.CreateEnrolmentCodeCommand) (fieldidentity.CreateEnrolmentCodeResult, error)
 	SuspendDevice(ctx context.Context, ref fieldidentity.DeviceRef) error
 	ActivateDevice(ctx context.Context, ref fieldidentity.DeviceRef) error
@@ -105,6 +124,11 @@ type FieldOps struct {
 
 func (o FieldOps) EnsureWorker(ctx context.Context, cmd fieldidentity.EnsureWorkerCommand) (fieldidentity.Event, error) {
 	return usecaseop.Run(ctx, o.UoW, o.Ops.EnsureWorker(), cmd, auth.NewExecutionContext(ctx))
+}
+
+func (o FieldOps) UpdateWorker(ctx context.Context, cmd fieldidentity.UpdateWorkerCommand) error {
+	_, err := usecaseop.Run(ctx, o.UoW, o.Ops.UpdateWorker(), cmd, auth.NewExecutionContext(ctx))
+	return err
 }
 
 func (o FieldOps) GrantWorkerApp(ctx context.Context, cmd fieldidentity.WorkerAppCommand) error {
@@ -139,6 +163,23 @@ func (o FieldOps) DeleteWorker(ctx context.Context, ref fieldidentity.WorkerRef)
 
 func (o FieldOps) ResetWorkerPin(ctx context.Context, cmd fieldidentity.ResetPinCommand) (fieldidentity.ResetPinResult, error) {
 	return usecaseop.RunTx(ctx, o.UoW, o.Ops.ResetWorkerPin(), cmd, auth.NewExecutionContext(ctx))
+}
+
+func (o FieldOps) IssueBadge(ctx context.Context, cmd fieldidentity.IssueBadgeCommand) (fieldidentity.IssuedBadge, error) {
+	return usecaseop.RunTx(ctx, o.UoW, o.Ops.IssueBadge(), cmd, auth.NewExecutionContext(ctx))
+}
+
+func (o FieldOps) IssueBadges(ctx context.Context, cmd fieldidentity.IssueBadgesCommand) ([]fieldidentity.IssuedBadge, error) {
+	return usecaseop.RunTx(ctx, o.UoW, o.Ops.IssueBadges(), cmd, auth.NewExecutionContext(ctx))
+}
+
+func (o FieldOps) RevokeBadge(ctx context.Context, ref fieldidentity.BadgeRef) error {
+	_, err := usecaseop.RunTx(ctx, o.UoW, o.Ops.RevokeBadge(), ref, auth.NewExecutionContext(ctx))
+	return err
+}
+
+func (o FieldOps) CreateSignInCode(ctx context.Context, cmd fieldidentity.CreateSignInCodeCommand) (fieldidentity.CreateSignInCodeResult, error) {
+	return usecaseop.RunTx(ctx, o.UoW, o.Ops.CreateSignInCode(), cmd, auth.NewExecutionContext(ctx))
 }
 
 func (o FieldOps) CreateEnrolmentCode(ctx context.Context, cmd fieldidentity.CreateEnrolmentCodeCommand) (fieldidentity.CreateEnrolmentCodeResult, error) {

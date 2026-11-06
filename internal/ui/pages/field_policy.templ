@@ -57,7 +57,7 @@ templ fieldPolicyBody(v fieldPolicyView) {
 				}
 				@kit.FormSection(kit.FormSectionProps{Title: "Sessions"}) {
 					<div class="flex flex-col gap-4">
-						for _, f := range policyFields[4:] {
+						for _, f := range policyFields[4:8] {
 							@policyInput(v, f)
 						}
 					</div>
@@ -66,6 +66,18 @@ templ fieldPolicyBody(v fieldPolicyView) {
 					@kit.Field(kit.FieldProps{Label: "Require device attestation", For: "field-policy-requireAttestation", Description: "Refuse devices that cannot prove their key is hardware-backed."}) {
 						@kit.Switch(kit.SwitchProps{ID: "field-policy-requireAttestation", Name: "requireAttestation", Value: "1", Checked: v.Attestation, Disabled: !v.CanManage})
 					}
+				}
+				@kit.FormSection(kit.FormSectionProps{Title: "Sign-in options"}) {
+					<div class="flex flex-col gap-4">
+						@kit.Field(kit.FieldProps{Label: "Require an enrolled device", For: "field-policy-" + policyRequireEnrolled, Description: "Off by default: a worker can sign in with a worker code and PIN, or a badge, from any device. On: only enrolled devices can sign in, and anything else is refused as an unknown device."}) {
+							@kit.Switch(kit.SwitchProps{ID: "field-policy-" + policyRequireEnrolled, Name: policyRequireEnrolled, Value: "1", Checked: v.RequireEnroll, Disabled: !v.CanManage})
+						}
+						@policyInput(v, policyFieldByKey("unenrolledIdleSecs"))
+						@kit.Field(kit.FieldProps{Label: "Badge-only sign-in", For: "field-policy-" + policyBadgeOnly, Description: "Let a badge sign in without a PIN. Only on an enrolled device, and never when the device is not enrolled: a photocopied badge must not work from any phone."}) {
+							@kit.Switch(kit.SwitchProps{ID: "field-policy-" + policyBadgeOnly, Name: policyBadgeOnly, Value: "1", Checked: v.BadgeOnly, Disabled: !v.CanManage})
+						}
+						@policyInput(v, policyFieldByKey("impersonationMaxSecs"))
+					</div>
 				}
 				if v.CanManage {
 					<div class="mt-4 flex justify-end gap-2">

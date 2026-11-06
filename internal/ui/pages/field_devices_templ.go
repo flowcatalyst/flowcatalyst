@@ -106,7 +106,7 @@ func fieldDevicesPage(v fieldDevicesView) templ.Component {
 		}
 		templ_7745c5c3_Err = kit.PageHeader(kit.PageHeaderProps{
 			Title:    "Field Devices",
-			Subtitle: "Devices enrolled for a client's field apps. A device holds a key; workers sign in on it with their PIN.",
+			Subtitle: "Devices enrolled for a client's field apps. Enrolment is optional: a worker can sign in from any device with a worker code and PIN, unless the client's policy requires an enrolled device. Enrolling adds a device record you can restrict to applications, suspend or revoke, and biometric unlock on a personal device.",
 			Actions:  fieldDevicesActions(v),
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {

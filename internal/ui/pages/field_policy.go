@@ -61,7 +61,30 @@ var policyFields = []policyField{
 	{Key: "personalIdleSecs", Label: "Personal device idle timeout", Min: 60, Max: 86400, Unit: "seconds", Help: "60 to 86400 (default 7200).", get: func(p fieldidentity.Policy) int { return p.PersonalIdleSecs }},
 	{Key: "shiftMaxSecs", Label: "Maximum shift length", Min: 3600, Max: 86400, Unit: "seconds", Help: "3600 to 86400 (default 50400). A session on a shared device is also capped at 12 hours.", get: func(p fieldidentity.Policy) int { return p.ShiftMaxSecs }},
 	{Key: "pinReauthDays", Label: "PIN re-entry on a personal device", Min: 1, Max: 90, Unit: "days", Help: "1 to 90 (default 7).", get: func(p fieldidentity.Policy) int { return p.PINReauthDays }},
+	{Key: "unenrolledIdleSecs", Label: "Idle timeout when the device is not enrolled", Min: 60, Max: 86400, Unit: "seconds", Help: "60 to 86400 (default 900). A session from a device that is not enrolled also ends after 12 hours.", get: func(p fieldidentity.Policy) int { return p.UnenrolledIdleSecs }},
+	{Key: "impersonationMaxSecs", Label: "Longest session signed in as another worker", Min: 300, Max: 43200, Unit: "seconds", Help: "300 to 43200 (default 14400). Caps a supervisor's act-as session and a session started with a console sign-in code.", get: func(p fieldidentity.Policy) int { return p.ImpersonationMaxSecs }},
 }
+
+// policyFieldByKey is the numeric field with the key (a programming error when
+// there is none).
+func policyFieldByKey(key string) policyField {
+	for _, f := range policyFields {
+		if f.Key == key {
+			return f
+		}
+	}
+	panic("pages: no policy field " + key)
+}
+
+// The policy's switches. requireAttestation is a device rule; the two sign-in
+// switches and their two numbers are the sign-in options of
+// docs/field-worker-sign-in-options-spec.md. A switch posts nothing when it
+// is off, so every field the page shows must be posted back for a save to
+// keep it: the save builds the whole PUT body from the form.
+const (
+	policyRequireEnrolled = "requireEnrolledDevice"
+	policyBadgeOnly       = "badgeOnlyLogin"
+)
 
 type fieldPolicyView struct {
 	Client        string
@@ -71,15 +94,20 @@ type fieldPolicyView struct {
 	CanManage     bool
 	// Values are the form's inputs as shown (the saved ones, or what was
 	// submitted when a save was refused).
-	Values      map[string]string
-	Attestation bool
-	Errs        formErrors
-	UpdatedAt   time.Time
-	Status      int
+	Values        map[string]string
+	Attestation   bool
+	RequireEnroll bool
+	BadgeOnly     bool
+	Errs          formErrors
+	UpdatedAt     time.Time
+	Status        int
 }
 
 func newPolicyView(p fieldidentity.Policy) fieldPolicyView {
-	v := fieldPolicyView{Policy: p, Values: map[string]string{}, Attestation: p.RequireAttestation, UpdatedAt: p.UpdatedAt}
+	v := fieldPolicyView{
+		Policy: p, Values: map[string]string{}, Attestation: p.RequireAttestation, UpdatedAt: p.UpdatedAt,
+		RequireEnroll: p.RequireEnrolledDevice, BadgeOnly: p.BadgeOnlyLogin,
+	}
 	for _, f := range policyFields {
 		v.Values[f.Key] = strconv.Itoa(f.get(p))
 	}
@@ -187,7 +215,12 @@ func (h *FieldPolicy) save(w http.ResponseWriter, r *http.Request) {
 	}
 	v := cur
 	v.Attestation = r.PostFormValue("requireAttestation") != ""
-	cmd := fieldidentity.PutPolicyCommand{ClientID: clientID, RequireAttestation: v.Attestation}
+	v.RequireEnroll = r.PostFormValue(policyRequireEnrolled) != ""
+	v.BadgeOnly = r.PostFormValue(policyBadgeOnly) != ""
+	cmd := fieldidentity.PutPolicyCommand{
+		ClientID: clientID, RequireAttestation: v.Attestation,
+		RequireEnrolledDevice: v.RequireEnroll, BadgeOnlyLogin: v.BadgeOnly,
+	}
 	slots := make(map[string]*int, len(policyFields))
 	for _, f := range policyFields {
 		raw := strings.TrimSpace(r.PostFormValue(f.Key))
@@ -205,6 +238,7 @@ func (h *FieldPolicy) save(w http.ResponseWriter, r *http.Request) {
 	cmd.PINMinLength, cmd.SoftLockThreshold, cmd.SoftLockSecs = slots["pinMinLength"], slots["softLockThreshold"], slots["softLockSecs"]
 	cmd.HardLockThreshold, cmd.SharedIdleSecs, cmd.PersonalIdleSecs = slots["hardLockThreshold"], slots["sharedIdleSecs"], slots["personalIdleSecs"]
 	cmd.ShiftMaxSecs, cmd.PINReauthDays = slots["shiftMaxSecs"], slots["pinReauthDays"]
+	cmd.UnenrolledIdleSecs, cmd.ImpersonationMaxSecs = slots["unenrolledIdleSecs"], slots["impersonationMaxSecs"]
 	if !v.Errs.any() {
 		if err := h.Ops.PutPolicy(ctx, cmd); err != nil {
 			if f := policyErrorField(err); f != "" {

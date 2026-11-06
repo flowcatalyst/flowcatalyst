@@ -21,6 +21,7 @@ const (
 	permFieldWorkerManage = "platform:iam:field-worker:manage"
 	permFieldDeviceView   = "platform:iam:field-device:view"
 	permFieldDeviceManage = "platform:iam:field-device:manage"
+	permFieldWorkerImpers = "platform:iam:field-worker:impersonate"
 
 	tempPin = "7391-TEMP"
 )
@@ -36,6 +37,16 @@ type fakeField struct {
 	apps     []application.Application
 	signIns  []fieldidentity.LoginAttempt
 	sessions map[string]int
+	// badges are the workers' ACTIVE badges by worker id; principals name the
+	// platform principals that appear as actors.
+	badges     map[string]*fieldidentity.Badge
+	principals map[string]string
+
+	// What the last commands carried (tokens and flags are not in calls).
+	lastEnsure  fieldidentity.EnsureWorkerCommand
+	lastUpdate  fieldidentity.UpdateWorkerCommand
+	lastTokens  []string
+	lastCodeCmd fieldidentity.CreateSignInCodeCommand
 
 	calls []string
 	// failWith, when set, is returned by the next command.
@@ -52,6 +63,9 @@ func (f *fakeField) Workers(_ context.Context, flt fieldidentity.IdentityFilter)
 			continue
 		}
 		if flt.AppID != "" && !w.HasApp(flt.AppID) {
+			continue
+		}
+		if flt.IsTest != nil && w.IsTest != *flt.IsTest {
 			continue
 		}
 		if flt.AppIDs != nil && !slices.ContainsFunc(w.Apps, func(g fieldidentity.AppGrant) bool { return slices.Contains(flt.AppIDs, g.AppID) }) {
@@ -141,6 +155,15 @@ func (f *fakeField) Applications(context.Context) ([]application.Application, er
 	return f.apps, nil
 }
 
+func (f *fakeField) ActiveBadge(_ context.Context, identityID string) (*fieldidentity.Badge, error) {
+	return f.badges[identityID], nil
+}
+
+func (f *fakeField) PrincipalName(_ context.Context, id string) (string, bool, error) {
+	name, ok := f.principals[id]
+	return name, ok, nil
+}
+
 func (f *fakeField) record(s string) error {
 	f.calls = append(f.calls, s)
 	err := f.failWith
@@ -149,7 +172,59 @@ func (f *fakeField) record(s string) error {
 }
 
 func (f *fakeField) EnsureWorker(_ context.Context, cmd fieldidentity.EnsureWorkerCommand) (fieldidentity.Event, error) {
+	f.lastEnsure = cmd
 	return fieldidentity.Event{Type: fieldidentity.WorkerCreatedType, ID: "fwk_new"}, f.record("ensure " + cmd.ClientID + " " + cmd.WorkerCode + " " + strings.Join(cmd.AppCodes, ","))
+}
+
+func (f *fakeField) UpdateWorker(_ context.Context, cmd fieldidentity.UpdateWorkerCommand) error {
+	f.lastUpdate = cmd
+	return f.record("update " + cmd.ID)
+}
+
+func (f *fakeField) IssueBadge(_ context.Context, cmd fieldidentity.IssueBadgeCommand) (fieldidentity.IssuedBadge, error) {
+	err := f.record("issue-badge " + cmd.ID)
+	f.lastTokens = []string{cmd.Token}
+	w, _ := f.Worker(context.Background(), cmd.ID)
+	b := &fieldidentity.Badge{ID: "fwb_new", ClientID: cmd.ClientID, IdentityID: cmd.ID, Status: fieldidentity.BadgeActive, CreatedAt: fieldDay}
+	return fieldidentity.IssuedBadge{Worker: w, Badge: b}, err
+}
+
+func (f *fakeField) IssueBadges(_ context.Context, cmd fieldidentity.IssueBadgesCommand) ([]fieldidentity.IssuedBadge, error) {
+	err := f.record("issue-badges " + strings.Join(cmd.WorkerIDs, ","))
+	f.lastTokens = cmd.Tokens
+	var out []fieldidentity.IssuedBadge
+	for _, id := range cmd.WorkerIDs {
+		w, _ := f.Worker(context.Background(), id)
+		out = append(out, fieldidentity.IssuedBadge{Worker: w, Badge: &fieldidentity.Badge{ID: "fwb_" + id, IdentityID: id, Status: fieldidentity.BadgeActive, CreatedAt: fieldDay}})
+	}
+	return out, err
+}
+
+func (f *fakeField) RevokeBadge(_ context.Context, ref fieldidentity.BadgeRef) error {
+	return f.record("revoke-badge " + ref.ID + " " + ref.BadgeID)
+}
+
+// CreateSignInCode applies the operation's target checks (an active worker
+// granted the application).
+func (f *fakeField) CreateSignInCode(_ context.Context, cmd fieldidentity.CreateSignInCodeCommand) (fieldidentity.CreateSignInCodeResult, error) {
+	f.lastCodeCmd = cmd
+	err := f.record("sign-in-code " + cmd.ID + " " + cmd.AppCode)
+	w, _ := f.Worker(context.Background(), cmd.ID)
+	if err == nil && w != nil {
+		app := ""
+		for _, a := range f.apps {
+			if a.Code == cmd.AppCode {
+				app = string(a.ID)
+			}
+		}
+		switch {
+		case w.Status != fieldidentity.StatusActive:
+			err = usecase.Conflict(fieldidentity.CodeWorkerUnavailable, "the worker is not active")
+		case app == "" || !w.HasApp(app):
+			err = usecase.Conflict(fieldidentity.CodeNoAppAccess, "the worker is not granted that application")
+		}
+	}
+	return fieldidentity.CreateSignInCodeResult{CodeID: "fwi_1", WorkerID: cmd.ID, AppCode: cmd.AppCode, ExpiresAt: time.Now().UTC().Add(fieldidentity.SignInCodeTTL)}, err
 }
 
 func (f *fakeField) GrantWorkerApp(_ context.Context, cmd fieldidentity.WorkerAppCommand) error {

@@ -195,3 +195,195 @@ type fieldResult struct {
 	body   string
 	header http.Header
 }
+
+// The sign-in options of the field pages against Postgres: a badge issued,
+// reissued, revoked and printed in bulk; the test and supervisor flags with
+// their permission; a console sign-in code; the policy keeping its sign-in
+// fields across a save. The operations are the API's, so the rows are too.
+func TestFieldSignInOptionsAgainstPostgres(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	uow := testpg.NewUoW(t)
+	clients := client.NewRepository(pool)
+	hasher, err := pin.NewHasher("field-ui-test-app-key")
+	require.NoError(t, err)
+	n := time.Now().UnixNano() % 1_000_000_000
+	mkClient := func(name string) string {
+		ev, err := usecaseop.Run(ctx, uow, clientops.CreateClient(clients),
+			clientops.CreateCommand{Name: name, Identifier: fmt.Sprintf("field-so-%s-%d", strings.ToLower(name), n)}, testpg.TestEC())
+		require.NoError(t, err)
+		return ev.ClientID
+	}
+	acme, globex := mkClient("Acme"), mkClient("Globex")
+	appCode := fmt.Sprintf("fldso%d", n)
+	appID := testpg.EnsureApplication(t, appCode)
+
+	repos := fieldidentity.NewRepos(pool)
+	apps := application.NewRepository(pool)
+	store := FieldReader{Repos: repos, Apps: apps}
+	ops := FieldOps{Ops: &fieldidentity.Ops{R: repos, Clients: clients, Apps: apps, Hasher: hasher}, UoW: uow}
+	sh := shellForTest()
+	serve := func(ac *auth.AuthContext, q req) *fieldResult {
+		rec := serveMounted(t, ac, q,
+			&FieldWorkers{Store: store, Ops: ops, Clients: clients, Shell: sh},
+			&FieldDevices{Store: store, Ops: ops, Clients: clients, BaseURL: "https://fc.example.test", Shell: sh},
+			&FieldPolicy{Store: store, Ops: ops, Clients: clients, Shell: sh})
+		return &fieldResult{rec.Code, rec.Body.String(), rec.Header()}
+	}
+	manager := fieldCaller([]string{acme}, permFieldWorkerView, permFieldWorkerManage, permFieldDeviceView, permFieldDeviceManage)
+	supervisorAdmin := fieldCaller([]string{acme}, permFieldWorkerView, permFieldWorkerManage, permFieldWorkerImpers, permFieldDeviceView, permFieldDeviceManage)
+	tokenIn := regexp.MustCompile(`FWB1[0-9A-Z]{26}`)
+
+	// Two workers (one a test identity), made through the dialog.
+	res := serve(manager, postForm("/ui/field-workers/new", "client", acme, "workerCode", "so-ann", "name", "Ann", "apps", appCode))
+	require.Equal(t, http.StatusOK, res.code, res.body)
+	res = serve(manager, postForm("/ui/field-workers/new", "client", acme, "workerCode", "so-tess", "name", "Tess", "apps", appCode, "isTest", "true"))
+	require.Equal(t, http.StatusOK, res.code, res.body)
+	ann, err := repos.Identities.FindByClientAndCode(ctx, acme, "SO-ANN")
+	require.NoError(t, err)
+	tess, err := repos.Identities.FindByClientAndCode(ctx, acme, "SO-TESS")
+	require.NoError(t, err)
+	require.NotNil(t, ann)
+	require.NotNil(t, tess)
+	assert.False(t, ann.IsTest)
+	assert.True(t, tess.IsTest)
+	assert.Contains(t, serve(manager, req{target: "/ui/field-workers?client=" + acme}).body, ">TEST<")
+	filtered := serve(manager, req{target: "/ui/field-workers?client=" + acme + "&test=false"}).body
+	assert.Contains(t, filtered, "SO-ANN")
+	assert.NotContains(t, filtered, "SO-TESS")
+
+	// The supervisor flag: refused without the impersonate permission, set with it.
+	assert.Equal(t, http.StatusForbidden, serve(manager, nativePost("/ui/field-workers/new", "client", acme, "workerCode", "so-sup", "name", "Sup", "canImpersonate", "true")).code)
+	none, err := repos.Identities.FindByClientAndCode(ctx, acme, "SO-SUP")
+	require.NoError(t, err)
+	assert.Nil(t, none, "a refused create wrote nothing")
+	assert.Equal(t, http.StatusForbidden, serve(manager, nativePost("/ui/field-workers/"+ann.ID+"/edit", "name", "Ann", "canImpersonate", "true")).code)
+	ann, _ = repos.Identities.FindByID(ctx, ann.ID)
+	assert.False(t, ann.CanImpersonate)
+	res = serve(supervisorAdmin, postForm("/ui/field-workers/"+ann.ID+"/edit", "name", "Ann Lee", "email", "ann@acme.test", "flags", "1", "impersonateField", "1", "canImpersonate", "true"))
+	require.Equal(t, http.StatusOK, res.code, res.body)
+	ann, _ = repos.Identities.FindByID(ctx, ann.ID)
+	assert.True(t, ann.CanImpersonate)
+	assert.Equal(t, "Ann Lee", ann.Name)
+	assert.Equal(t, "ann@acme.test", ann.Email)
+	assert.Contains(t, serve(manager, req{target: "/ui/field-workers?client=" + acme}).body, ">SUPERVISOR<")
+
+	// Issue a badge: the token is in the answer once; only its hash is stored.
+	res = serve(manager, postForm("/ui/field-workers/"+ann.ID+"/badge", "drawer", ann.ID))
+	require.Equal(t, http.StatusOK, res.code, res.body)
+	first := tokenIn.FindString(res.body)
+	require.NotEmpty(t, first, res.body)
+	assert.Equal(t, 1, strings.Count(res.body, first))
+	assert.Equal(t, "no-store", res.header.Get("Cache-Control"))
+	b1, err := repos.Badges.ActiveByIdentity(ctx, ann.ID)
+	require.NoError(t, err)
+	require.NotNil(t, b1)
+	byHash, err := repos.Badges.FindByHash(ctx, fieldidentity.HashBadgeToken(first))
+	require.NoError(t, err)
+	require.NotNil(t, byHash, "the token is stored under its hash")
+	assert.Equal(t, b1.ID, byHash.ID)
+	plain, err := repos.Badges.FindByHash(ctx, first)
+	require.NoError(t, err)
+	assert.Nil(t, plain, "the token itself is not stored")
+	drawer := serve(manager, req{target: "/ui/field-workers/" + ann.ID, datastar: true}).body
+	assert.Contains(t, drawer, "Reissue badge")
+	assert.NotContains(t, drawer, first)
+
+	// Reissue: the old badge is cancelled in the same operation.
+	res = serve(manager, postForm("/ui/field-workers/"+ann.ID+"/badge", "drawer", ann.ID))
+	require.Equal(t, http.StatusOK, res.code, res.body)
+	second := tokenIn.FindString(res.body)
+	require.NotEmpty(t, second)
+	assert.NotEqual(t, first, second)
+	assert.Contains(t, res.body, "Their previous badge has been cancelled")
+	old, err := repos.Badges.FindByID(ctx, b1.ID)
+	require.NoError(t, err)
+	assert.Equal(t, fieldidentity.BadgeRevoked, old.Status)
+	b2, err := repos.Badges.ActiveByIdentity(ctx, ann.ID)
+	require.NoError(t, err)
+	require.NotNil(t, b2)
+	assert.NotEqual(t, b1.ID, b2.ID)
+
+	// Revoke it.
+	res = serve(manager, postForm("/ui/field-workers/"+ann.ID+"/badge/revoke", "drawer", ann.ID))
+	require.Equal(t, http.StatusOK, res.code, res.body)
+	gone, err := repos.Badges.ActiveByIdentity(ctx, ann.ID)
+	require.NoError(t, err)
+	assert.Nil(t, gone)
+
+	// A sheet for both workers, in one operation; the foreign worker fails the
+	// whole request and nothing is issued.
+	actx := testpg.WithAuth(ctx, fieldAnchor())
+	gw, err := usecaseop.Run(actx, uow, ops.Ops.EnsureWorker(),
+		fieldidentity.EnsureWorkerCommand{ClientID: globex, WorkerCode: "SO-GUS", Name: "Gus", AppCodes: []string{appCode}}, auth.NewExecutionContext(actx))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, serve(manager, nativePost("/ui/field-workers/badges/print", "ids", ann.ID, "ids", gw.ID)).code)
+	noBadge, err := repos.Badges.ActiveByIdentity(ctx, ann.ID)
+	require.NoError(t, err)
+	assert.Nil(t, noBadge, "a refused sheet issued nothing")
+	res = serve(manager, postForm("/ui/field-workers/badges/print", "ids", ann.ID, "ids", tess.ID))
+	require.Equal(t, http.StatusOK, res.code, res.body)
+	tokens := tokenIn.FindAllString(res.body, -1)
+	require.Len(t, tokens, 2, res.body)
+	assert.Equal(t, 2, strings.Count(res.body, `class="fw-card"`))
+	for _, id := range []string{ann.ID, tess.ID} {
+		b, err := repos.Badges.ActiveByIdentity(ctx, id)
+		require.NoError(t, err)
+		require.NotNil(t, b, "a badge for %s", id)
+	}
+	for _, tok := range tokens {
+		b, err := repos.Badges.FindByHash(ctx, fieldidentity.HashBadgeToken(tok))
+		require.NoError(t, err)
+		require.NotNil(t, b)
+	}
+	assert.Equal(t, http.StatusForbidden, serve(fieldCaller([]string{acme}, permFieldWorkerView), nativePost("/ui/field-workers/badges/print", "ids", ann.ID)).code)
+
+	// Sign in as: a manager may for the test identity only; the permission for a
+	// real worker. The code is stored under its hash.
+	assert.Equal(t, http.StatusForbidden, serve(manager, nativePost("/ui/field-workers/"+ann.ID+"/sign-in-as", "app", appCode)).code)
+	assert.NotContains(t, serve(manager, req{target: "/ui/field-workers/" + ann.ID, datastar: true}).body, "sign-in-as")
+	assert.Contains(t, serve(manager, req{target: "/ui/field-workers/" + tess.ID, datastar: true}).body, "/sign-in-as")
+	res = serve(manager, postForm("/ui/field-workers/"+tess.ID+"/sign-in-as", "app", appCode))
+	require.Equal(t, http.StatusOK, res.code, res.body)
+	code := regexp.MustCompile(`FWS1[0-9A-Z]{26}`).FindString(res.body)
+	require.NotEmpty(t, code, res.body)
+	assert.Contains(t, res.body, "data-expires=")
+	var codeRows int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT COUNT(*) FROM field_sign_in_codes WHERE identity_id = $1 AND code_hash = $2 AND used_at IS NULL`,
+		tess.ID, fieldidentity.HashBadgeToken(code)).Scan(&codeRows))
+	assert.Equal(t, 1, codeRows, "the code is stored under its hash")
+	res = serve(supervisorAdmin, postForm("/ui/field-workers/"+ann.ID+"/sign-in-as", "app", appCode))
+	require.Equal(t, http.StatusOK, res.code, res.body)
+	assert.NotEmpty(t, regexp.MustCompile(`FWS1[0-9A-Z]{26}`).FindString(res.body))
+
+	// The history shows the method and resolves the actor.
+	require.NoError(t, repos.Sessions.RecordLoginAttempt(ctx, fieldidentity.LoginAttempt{
+		ClientID: acme, IdentityID: tess.ID, WorkerCode: "SO-TESS", ApplicationID: appID, AuthMethod: fieldidentity.MethodActAs,
+		ActorID: ann.ID, Outcome: fieldidentity.OutcomeSuccess,
+	}))
+	hist := serve(manager, req{target: "/ui/field-workers/" + tess.ID + "/sign-ins", datastar: true}).body
+	assert.Contains(t, hist, "ACT_AS")
+	assert.Contains(t, hist, "Ann Lee (SO-ANN)")
+
+	// Policy: the sign-in options are saved and read back, and a save of the
+	// page keeps them.
+	res = serve(manager, postForm("/ui/field-policy", "client", acme, "requireEnrolledDevice", "1", "badgeOnlyLogin", "1",
+		"unenrolledIdleSecs", "1200", "impersonationMaxSecs", "7200"))
+	assert.Contains(t, res.body, "Field policy saved")
+	p, err := repos.Policies.Effective(ctx, acme)
+	require.NoError(t, err)
+	assert.True(t, p.RequireEnrolledDevice)
+	assert.True(t, p.BadgeOnlyLogin)
+	assert.Equal(t, 1200, p.UnenrolledIdleSecs)
+	assert.Equal(t, 7200, p.ImpersonationMaxSecs)
+	page := serve(manager, req{target: "/ui/field-policy?client=" + acme}).body
+	assert.Regexp(t, `name="requireEnrolledDevice"[^>]*checked`, page)
+	assert.Regexp(t, `name="badgeOnlyLogin"[^>]*checked`, page)
+	res = serve(manager, postForm("/ui/field-policy", "client", acme, "requireEnrolledDevice", "1", "badgeOnlyLogin", "1",
+		"unenrolledIdleSecs", "1200", "impersonationMaxSecs", "7200", "pinMinLength", "7"))
+	assert.Contains(t, res.body, "Field policy saved")
+	p, err = repos.Policies.Effective(ctx, acme)
+	require.NoError(t, err)
+	assert.True(t, p.RequireEnrolledDevice && p.BadgeOnlyLogin, "a save of the page lost a sign-in switch")
+	assert.Equal(t, 7, p.PINMinLength)
+}

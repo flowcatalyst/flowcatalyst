@@ -125,6 +125,11 @@ const (
 	flashFieldWorkerPinReset   = "field-worker-pin-reset"
 	flashFieldWorkerAppGranted = "field-worker-app-granted"
 	flashFieldWorkerAppRevoked = "field-worker-app-revoked"
+	flashFieldWorkerUpdated    = "field-worker-updated"
+	flashFieldBadgeIssued      = "field-badge-issued"
+	flashFieldBadgesIssued     = "field-badges-issued"
+	flashFieldBadgeRevoked     = "field-badge-revoked"
+	flashFieldSignInCode       = "field-sign-in-code-created"
 	flashFieldDeviceSuspended  = "field-device-suspended"
 	flashFieldDeviceActivated  = "field-device-activated"
 	flashFieldDeviceRevoked    = "field-device-revoked"
@@ -339,6 +344,11 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashFieldWorkerPinReset:   success("PIN reset"),
 	flashFieldWorkerAppGranted: success("Application access granted"),
 	flashFieldWorkerAppRevoked: success("Application access removed"),
+	flashFieldWorkerUpdated:    success("Field worker updated"),
+	flashFieldBadgeIssued:      success("Badge issued"),
+	flashFieldBadgesIssued:     success("Badges issued"),
+	flashFieldBadgeRevoked:     success("Badge revoked"),
+	flashFieldSignInCode:       success("Sign-in code created"),
 	flashFieldDeviceSuspended:  success("Field device suspended"),
 	flashFieldDeviceActivated:  success("Field device activated"),
 	flashFieldDeviceRevoked:    success("Field device revoked"),
