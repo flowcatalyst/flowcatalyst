@@ -57,7 +57,7 @@ func dashPage(v dashView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" class=\"flex items-start gap-4 rounded-xl border bg-card p-5 shadow-sm\"><span class=\"flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-primary\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" class=\"flex items-start gap-4 rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary hover:shadow-md\"><span class=\"flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-primary\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -165,7 +165,7 @@ func dashStatCard(s dashStat) templ.Component {
 			templ_7745c5c3_Var5 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"rounded-xl border bg-card p-5 shadow-sm\"><p class=\"mb-2 text-sm text-muted-foreground\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"rounded-xl border border-border bg-card p-5 shadow-sm\"><p class=\"mb-2 text-sm text-muted-foreground\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -341,7 +341,7 @@ func dashSyncCard(title, description, icon, slug, signal string) templ.Component
 			templ_7745c5c3_Var13 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<div class=\"flex items-center gap-3 rounded-xl border bg-card px-4 py-3 shadow-sm\"><span class=\"flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-primary\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<div class=\"flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm\"><span class=\"flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-primary\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
