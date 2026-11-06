@@ -43,6 +43,7 @@ class SyncOpenapiRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('spec', $data) && $data['spec'] !== null) {
             $object->setSpec($data['spec']);
@@ -50,6 +51,7 @@ class SyncOpenapiRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('spec', $data) && $data['spec'] === null) {
             $object->setSpec(null);
+            unset($data['spec']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -62,7 +64,7 @@ class SyncOpenapiRequestNormalizer implements DenormalizerInterface, NormalizerI
     {
         $dataArray = [];
         $dataArray['spec'] = $data->getSpec();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

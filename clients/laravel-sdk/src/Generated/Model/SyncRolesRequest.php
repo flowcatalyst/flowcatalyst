@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class SyncRolesRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class SyncRolesRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -61,5 +64,9 @@ class SyncRolesRequest extends \ArrayObject
         $this->initialized['roles'] = true;
         $this->roles = $roles;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'roles' => ['roles', 'getRoles', 'setRoles']];
     }
 }

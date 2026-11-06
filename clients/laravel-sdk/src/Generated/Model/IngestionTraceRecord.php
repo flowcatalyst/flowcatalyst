@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class IngestionTraceRecord extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class IngestionTraceRecord implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -267,5 +270,9 @@ class IngestionTraceRecord extends \ArrayObject
         $this->initialized['windowId'] = true;
         $this->windowId = $windowId;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['at' => ['at', 'getAt', 'setAt'], 'captureId' => ['captureId', 'getCaptureId', 'setCaptureId'], 'data' => ['data', 'getData', 'setData'], 'id' => ['id', 'getId', 'setId'], 'ingestionId' => ['ingestionId', 'getIngestionId', 'setIngestionId'], 'kind' => ['kind', 'getKind', 'setKind'], 'level' => ['level', 'getLevel', 'setLevel'], 'message' => ['message', 'getMessage', 'setMessage'], 'version' => ['version', 'getVersion', 'setVersion'], 'windowId' => ['windowId', 'getWindowId', 'setWindowId']];
     }
 }

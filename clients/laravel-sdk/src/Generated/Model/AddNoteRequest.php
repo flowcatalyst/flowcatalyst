@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class AddNoteRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class AddNoteRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -83,5 +86,9 @@ class AddNoteRequest extends \ArrayObject
         $this->initialized['text'] = true;
         $this->text = $text;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'category' => ['category', 'getCategory', 'setCategory'], 'text' => ['text', 'getText', 'setText']];
     }
 }

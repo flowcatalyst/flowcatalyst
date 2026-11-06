@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreatePortalAppRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreatePortalAppRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -171,5 +174,9 @@ class CreatePortalAppRequest extends \ArrayObject
         $this->initialized['redirectUris'] = true;
         $this->redirectUris = $redirectUris;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'clientType' => ['clientType', 'getClientType', 'setClientType'], 'code' => ['code', 'getCode', 'setCode'], 'description' => ['description', 'getDescription', 'setDescription'], 'name' => ['name', 'getName', 'setName'], 'redirectUris' => ['redirectUris', 'getRedirectUris', 'setRedirectUris']];
     }
 }

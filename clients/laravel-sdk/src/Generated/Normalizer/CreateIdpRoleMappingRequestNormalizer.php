@@ -43,6 +43,7 @@ class CreateIdpRoleMappingRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('idpRoleName', $data) && $data['idpRoleName'] !== null) {
             $object->setIdpRoleName($data['idpRoleName']);
@@ -50,6 +51,7 @@ class CreateIdpRoleMappingRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('idpRoleName', $data) && $data['idpRoleName'] === null) {
             $object->setIdpRoleName(null);
+            unset($data['idpRoleName']);
         }
         if (\array_key_exists('idpType', $data) && $data['idpType'] !== null) {
             $object->setIdpType($data['idpType']);
@@ -57,6 +59,7 @@ class CreateIdpRoleMappingRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('idpType', $data) && $data['idpType'] === null) {
             $object->setIdpType(null);
+            unset($data['idpType']);
         }
         if (\array_key_exists('platformRoleName', $data) && $data['platformRoleName'] !== null) {
             $object->setPlatformRoleName($data['platformRoleName']);
@@ -64,6 +67,7 @@ class CreateIdpRoleMappingRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('platformRoleName', $data) && $data['platformRoleName'] === null) {
             $object->setPlatformRoleName(null);
+            unset($data['platformRoleName']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -78,7 +82,7 @@ class CreateIdpRoleMappingRequestNormalizer implements DenormalizerInterface, No
         $dataArray['idpRoleName'] = $data->getIdpRoleName();
         $dataArray['idpType'] = $data->getIdpType();
         $dataArray['platformRoleName'] = $data->getPlatformRoleName();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

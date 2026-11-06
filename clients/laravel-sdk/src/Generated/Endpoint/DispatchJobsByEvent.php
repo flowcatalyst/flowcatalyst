@@ -19,7 +19,7 @@ class DispatchJobsByEvent extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
     }
     public function getUri(): string
     {
-        return str_replace(['{eventId}'], [$this->eventId], '/api/dispatch-jobs/event/{eventId}');
+        return str_replace(['{eventId}'], [rawurlencode($this->eventId)], '/api/dispatch-jobs/event/{eventId}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -39,10 +39,10 @@ class DispatchJobsByEvent extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\DispatchJobRead[]', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

@@ -43,6 +43,7 @@ class MoveProviderRequestNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('identityProviderId', $data) && $data['identityProviderId'] !== null) {
             $object->setIdentityProviderId($data['identityProviderId']);
@@ -50,6 +51,7 @@ class MoveProviderRequestNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('identityProviderId', $data) && $data['identityProviderId'] === null) {
             $object->setIdentityProviderId(null);
+            unset($data['identityProviderId']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -62,7 +64,7 @@ class MoveProviderRequestNormalizer implements DenormalizerInterface, Normalizer
     {
         $dataArray = [];
         $dataArray['identityProviderId'] = $data->getIdentityProviderId();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

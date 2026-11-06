@@ -67,7 +67,7 @@ class TraceLogResponseNormalizer implements DenormalizerInterface, NormalizerInt
         $dataArray['nextCursor'] = $data->getNextCursor();
         $values = [];
         foreach ($data->getRecords() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['records'] = $values;
         return $dataArray;

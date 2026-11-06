@@ -38,7 +38,19 @@ class RuntimeTestNormalizer implements DenormalizerInterface, NormalizerInterfac
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
         if (\array_key_exists('expiresAt', $data) && $data['expiresAt'] !== null) {
-            $object->setExpiresAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['expiresAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['expiresAt']);
+            if (false === $date) {
+                if (is_string($data['expiresAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['expiresAt'])) {
+                    try {
+                        $date = new \DateTime($data['expiresAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['expiresAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['expiresAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setExpiresAt($date);
         }
         elseif (\array_key_exists('expiresAt', $data) && $data['expiresAt'] === null) {
             $object->setExpiresAt(null);
@@ -62,7 +74,7 @@ class RuntimeTestNormalizer implements DenormalizerInterface, NormalizerInterfac
         $dataArray = [];
         $dataArray['expiresAt'] = $data->getExpiresAt()->format('Y-m-d\TH:i:sP');
         $dataArray['id'] = $data->getId();
-        $dataArray['ingestion'] = $this->normalizer->normalize($data->getIngestion(), 'json', $context);
+        $dataArray['ingestion'] = $data->getIngestion() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getIngestion(), 'json', $context));
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

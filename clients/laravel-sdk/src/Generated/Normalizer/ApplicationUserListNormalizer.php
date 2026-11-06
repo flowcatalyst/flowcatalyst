@@ -81,7 +81,7 @@ class ApplicationUserListNormalizer implements DenormalizerInterface, Normalizer
         $dataArray['total'] = $data->getTotal();
         $values = [];
         foreach ($data->getUsers() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['users'] = $values;
         return $dataArray;

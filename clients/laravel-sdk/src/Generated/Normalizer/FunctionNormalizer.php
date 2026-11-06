@@ -59,7 +59,7 @@ class FunctionNormalizer implements DenormalizerInterface, NormalizerInterface, 
             $object->setClientId(null);
         }
         if (\array_key_exists('config', $data) && $data['config'] !== null) {
-            $values = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            $values = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data['config'] as $key => $value) {
                 $values[$key] = $value;
             }
@@ -69,7 +69,7 @@ class FunctionNormalizer implements DenormalizerInterface, NormalizerInterface, 
             $object->setConfig(null);
         }
         if (\array_key_exists('db', $data) && $data['db'] !== null) {
-            $values_1 = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            $values_1 = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data['db'] as $key_1 => $value_1) {
                 $values_1[$key_1] = $value_1;
             }
@@ -91,7 +91,7 @@ class FunctionNormalizer implements DenormalizerInterface, NormalizerInterface, 
             $object->setLimits(null);
         }
         if (\array_key_exists('secrets', $data) && $data['secrets'] !== null) {
-            $values_2 = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            $values_2 = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data['secrets'] as $key_2 => $value_2) {
                 $values_2[$key_2] = $value_2;
             }
@@ -143,23 +143,23 @@ class FunctionNormalizer implements DenormalizerInterface, NormalizerInterface, 
             $dataArray['clientId'] = $data->getClientId();
         }
         if ($data->isInitialized('config') && null !== $data->getConfig()) {
-            $values = [];
+            $values = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data->getConfig() as $key => $value) {
                 $values[$key] = $value;
             }
             $dataArray['config'] = $values;
         }
         if ($data->isInitialized('db') && null !== $data->getDb()) {
-            $values_1 = [];
+            $values_1 = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data->getDb() as $key_1 => $value_1) {
                 $values_1[$key_1] = $value_1;
             }
             $dataArray['db'] = $values_1;
         }
         $dataArray['id'] = $data->getId();
-        $dataArray['limits'] = $this->normalizer->normalize($data->getLimits(), 'json', $context);
+        $dataArray['limits'] = $data->getLimits() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getLimits(), 'json', $context));
         if ($data->isInitialized('secrets') && null !== $data->getSecrets()) {
-            $values_2 = [];
+            $values_2 = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data->getSecrets() as $key_2 => $value_2) {
                 $values_2[$key_2] = $value_2;
             }
@@ -168,13 +168,13 @@ class FunctionNormalizer implements DenormalizerInterface, NormalizerInterface, 
         if ($data->isInitialized('trace') && null !== $data->getTrace()) {
             $values_3 = [];
             foreach ($data->getTrace() as $value_3) {
-                $values_3[] = $this->normalizer->normalize($value_3, 'json', $context);
+                $values_3[] = $value_3 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_3, 'json', $context));
             }
             $dataArray['trace'] = $values_3;
         }
         $values_4 = [];
         foreach ($data->getVersions() as $value_4) {
-            $values_4[] = $this->normalizer->normalize($value_4, 'json', $context);
+            $values_4[] = $value_4 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_4, 'json', $context));
         }
         $dataArray['versions'] = $values_4;
         $dataArray['warm'] = $data->getWarm();

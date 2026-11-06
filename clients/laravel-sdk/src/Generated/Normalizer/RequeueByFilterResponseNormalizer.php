@@ -99,7 +99,7 @@ class RequeueByFilterResponseNormalizer implements DenormalizerInterface, Normal
         $dataArray['skippedCompleted'] = $data->getSkippedCompleted();
         $dataArray['skippedInFlight'] = $data->getSkippedInFlight();
         $dataArray['truncated'] = $data->getTruncated();
-        $dataArray['window'] = $this->normalizer->normalize($data->getWindow(), 'json', $context);
+        $dataArray['window'] = $data->getWindow() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getWindow(), 'json', $context));
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

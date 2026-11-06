@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateIdpRoleMappingRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateIdpRoleMappingRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -105,5 +108,9 @@ class CreateIdpRoleMappingRequest extends \ArrayObject
         $this->initialized['platformRoleName'] = true;
         $this->platformRoleName = $platformRoleName;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'idpRoleName' => ['idpRoleName', 'getIdpRoleName', 'setIdpRoleName'], 'idpType' => ['idpType', 'getIdpType', 'setIdpType'], 'platformRoleName' => ['platformRoleName', 'getPlatformRoleName', 'setPlatformRoleName']];
     }
 }

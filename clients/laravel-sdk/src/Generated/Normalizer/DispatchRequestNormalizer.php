@@ -43,6 +43,7 @@ class DispatchRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('dispatch', $data) && $data['dispatch'] !== null) {
             $object->setDispatch($this->denormalizer->denormalize($data['dispatch'], \FlowCatalyst\Generated\Model\Dispatch::class, 'json', $context));
@@ -50,6 +51,7 @@ class DispatchRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('dispatch', $data) && $data['dispatch'] === null) {
             $object->setDispatch(null);
+            unset($data['dispatch']);
         }
         if (\array_key_exists('functionId', $data) && $data['functionId'] !== null) {
             $object->setFunctionId($data['functionId']);
@@ -57,6 +59,7 @@ class DispatchRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('functionId', $data) && $data['functionId'] === null) {
             $object->setFunctionId(null);
+            unset($data['functionId']);
         }
         if (\array_key_exists('invocationId', $data) && $data['invocationId'] !== null) {
             $object->setInvocationId($data['invocationId']);
@@ -64,6 +67,7 @@ class DispatchRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('invocationId', $data) && $data['invocationId'] === null) {
             $object->setInvocationId(null);
+            unset($data['invocationId']);
         }
         if (\array_key_exists('payload', $data) && $data['payload'] !== null) {
             $object->setPayload($data['payload']);
@@ -71,6 +75,7 @@ class DispatchRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('payload', $data) && $data['payload'] === null) {
             $object->setPayload(null);
+            unset($data['payload']);
         }
         if (\array_key_exists('requestCorrelationId', $data) && $data['requestCorrelationId'] !== null) {
             $object->setRequestCorrelationId($data['requestCorrelationId']);
@@ -78,6 +83,7 @@ class DispatchRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('requestCorrelationId', $data) && $data['requestCorrelationId'] === null) {
             $object->setRequestCorrelationId(null);
+            unset($data['requestCorrelationId']);
         }
         if (\array_key_exists('version', $data) && $data['version'] !== null) {
             $object->setVersion($data['version']);
@@ -85,6 +91,7 @@ class DispatchRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('version', $data) && $data['version'] === null) {
             $object->setVersion(null);
+            unset($data['version']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -96,7 +103,7 @@ class DispatchRequestNormalizer implements DenormalizerInterface, NormalizerInte
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $dataArray['dispatch'] = $this->normalizer->normalize($data->getDispatch(), 'json', $context);
+        $dataArray['dispatch'] = $data->getDispatch() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getDispatch(), 'json', $context));
         $dataArray['functionId'] = $data->getFunctionId();
         if ($data->isInitialized('invocationId') && null !== $data->getInvocationId()) {
             $dataArray['invocationId'] = $data->getInvocationId();
@@ -106,7 +113,7 @@ class DispatchRequestNormalizer implements DenormalizerInterface, NormalizerInte
             $dataArray['requestCorrelationId'] = $data->getRequestCorrelationId();
         }
         $dataArray['version'] = $data->getVersion();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

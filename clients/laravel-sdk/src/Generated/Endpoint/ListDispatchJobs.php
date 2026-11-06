@@ -89,6 +89,10 @@ class ListDispatchJobs extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
         $optionsResolver->addAllowedTypes('sort', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['status' => ['style' => 'form', 'explode' => false], 'clientId' => ['style' => 'form', 'explode' => false], 'dispatchPoolId' => ['style' => 'form', 'explode' => false], 'subscriptionId' => ['style' => 'form', 'explode' => false], 'code' => ['style' => 'form', 'explode' => false], 'since' => ['style' => 'form', 'explode' => false], 'until' => ['style' => 'form', 'explode' => false], 'messageGroup' => ['style' => 'form', 'explode' => false], 'clientIds' => ['style' => 'form', 'explode' => false], 'statuses' => ['style' => 'form', 'explode' => false], 'applications' => ['style' => 'form', 'explode' => false], 'subdomains' => ['style' => 'form', 'explode' => false], 'aggregates' => ['style' => 'form', 'explode' => false], 'codes' => ['style' => 'form', 'explode' => false], 'source' => ['style' => 'form', 'explode' => false], 'eventType' => ['style' => 'form', 'explode' => false], 'eventTypes' => ['style' => 'form', 'explode' => false], 'subscriptionIds' => ['style' => 'form', 'explode' => false], 'subscriptionCode' => ['style' => 'form', 'explode' => false], 'subscriptionName' => ['style' => 'form', 'explode' => false], 'connectionId' => ['style' => 'form', 'explode' => false], 'connectionCode' => ['style' => 'form', 'explode' => false], 'limit' => ['style' => 'form', 'explode' => false], 'offset' => ['style' => 'form', 'explode' => false], 'size' => ['style' => 'form', 'explode' => false], 'sort' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -99,10 +103,10 @@ class ListDispatchJobs extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\DispatchJobRead[]', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

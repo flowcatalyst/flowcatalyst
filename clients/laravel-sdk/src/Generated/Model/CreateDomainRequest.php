@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateDomainRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateDomainRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -95,5 +98,9 @@ class CreateDomainRequest extends \ArrayObject
         $this->initialized['zone'] = true;
         $this->zone = $zone;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'zone' => ['zone', 'getZone', 'setZone']];
     }
 }

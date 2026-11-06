@@ -19,7 +19,7 @@ class DeletePermission extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
     }
     public function getUri(): string
     {
-        return str_replace(['{permission}'], [$this->permission], '/api/roles/permissions/{permission}');
+        return str_replace(['{permission}'], [rawurlencode($this->permission)], '/api/roles/permissions/{permission}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -42,7 +42,7 @@ class DeletePermission extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
         if (204 === $status) {
             return null;
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

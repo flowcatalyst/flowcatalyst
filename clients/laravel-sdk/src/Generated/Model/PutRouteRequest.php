@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class PutRouteRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class PutRouteRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -151,5 +154,9 @@ class PutRouteRequest extends \ArrayObject
         $this->initialized['pathPrefix'] = true;
         $this->pathPrefix = $pathPrefix;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'alias' => ['alias', 'getAlias', 'setAlias'], 'aliasPrefixes' => ['aliasPrefixes', 'getAliasPrefixes', 'setAliasPrefixes'], 'hostname' => ['hostname', 'getHostname', 'setHostname'], 'pathPrefix' => ['pathPrefix', 'getPathPrefix', 'setPathPrefix']];
     }
 }

@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class TraceRecord extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class TraceRecord implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -275,5 +278,9 @@ class TraceRecord extends \ArrayObject
         $this->initialized['version'] = true;
         $this->version = $version;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['address' => ['address', 'getAddress', 'setAddress'], 'at' => ['at', 'getAt', 'setAt'], 'context' => ['context', 'getContext', 'setContext'], 'correlationId' => ['correlationId', 'getCorrelationId', 'setCorrelationId'], 'data' => ['data', 'getData', 'setData'], 'id' => ['id', 'getId', 'setId'], 'invocationId' => ['invocationId', 'getInvocationId', 'setInvocationId'], 'kind' => ['kind', 'getKind', 'setKind'], 'level' => ['level', 'getLevel', 'setLevel'], 'message' => ['message', 'getMessage', 'setMessage'], 'reference' => ['reference', 'getReference', 'setReference'], 'version' => ['version', 'getVersion', 'setVersion']];
     }
 }

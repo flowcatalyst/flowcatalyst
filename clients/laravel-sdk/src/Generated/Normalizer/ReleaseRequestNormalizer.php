@@ -46,6 +46,7 @@ class ReleaseRequestNormalizer implements DenormalizerInterface, NormalizerInter
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('goodbye', $data) && $data['goodbye'] !== null) {
             $object->setGoodbye($data['goodbye']);
@@ -53,6 +54,7 @@ class ReleaseRequestNormalizer implements DenormalizerInterface, NormalizerInter
         }
         elseif (\array_key_exists('goodbye', $data) && $data['goodbye'] === null) {
             $object->setGoodbye(null);
+            unset($data['goodbye']);
         }
         if (\array_key_exists('ingestionIds', $data) && $data['ingestionIds'] !== null) {
             $values = [];
@@ -64,6 +66,7 @@ class ReleaseRequestNormalizer implements DenormalizerInterface, NormalizerInter
         }
         elseif (\array_key_exists('ingestionIds', $data) && $data['ingestionIds'] === null) {
             $object->setIngestionIds(null);
+            unset($data['ingestionIds']);
         }
         if (\array_key_exists('instanceId', $data) && $data['instanceId'] !== null) {
             $object->setInstanceId($data['instanceId']);
@@ -71,6 +74,7 @@ class ReleaseRequestNormalizer implements DenormalizerInterface, NormalizerInter
         }
         elseif (\array_key_exists('instanceId', $data) && $data['instanceId'] === null) {
             $object->setInstanceId(null);
+            unset($data['instanceId']);
         }
         if (\array_key_exists('runtimeId', $data) && $data['runtimeId'] !== null) {
             $object->setRuntimeId($data['runtimeId']);
@@ -78,6 +82,7 @@ class ReleaseRequestNormalizer implements DenormalizerInterface, NormalizerInter
         }
         elseif (\array_key_exists('runtimeId', $data) && $data['runtimeId'] === null) {
             $object->setRuntimeId(null);
+            unset($data['runtimeId']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -99,7 +104,7 @@ class ReleaseRequestNormalizer implements DenormalizerInterface, NormalizerInter
             $dataArray['instanceId'] = $data->getInstanceId();
         }
         $dataArray['runtimeId'] = $data->getRuntimeId();
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

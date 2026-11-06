@@ -44,13 +44,37 @@ class IngestionTestResponseNormalizer implements DenormalizerInterface, Normaliz
             $object->setDollarSchema(null);
         }
         if (\array_key_exists('completedAt', $data) && $data['completedAt'] !== null) {
-            $object->setCompletedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['completedAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['completedAt']);
+            if (false === $date) {
+                if (is_string($data['completedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['completedAt'])) {
+                    try {
+                        $date = new \DateTime($data['completedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['completedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['completedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setCompletedAt($date);
         }
         elseif (\array_key_exists('completedAt', $data) && $data['completedAt'] === null) {
             $object->setCompletedAt(null);
         }
         if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
-            $object->setCreatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']);
+            if (false === $date_1) {
+                if (is_string($data['createdAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['createdAt'])) {
+                    try {
+                        $date_1 = new \DateTime($data['createdAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setCreatedAt($date_1);
         }
         elseif (\array_key_exists('createdAt', $data) && $data['createdAt'] === null) {
             $object->setCreatedAt(null);
@@ -62,7 +86,19 @@ class IngestionTestResponseNormalizer implements DenormalizerInterface, Normaliz
             $object->setExcerpt(null);
         }
         if (\array_key_exists('expiresAt', $data) && $data['expiresAt'] !== null) {
-            $object->setExpiresAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['expiresAt']));
+            $date_2 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['expiresAt']);
+            if (false === $date_2) {
+                if (is_string($data['expiresAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['expiresAt'])) {
+                    try {
+                        $date_2 = new \DateTime($data['expiresAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['expiresAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['expiresAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setExpiresAt($date_2);
         }
         elseif (\array_key_exists('expiresAt', $data) && $data['expiresAt'] === null) {
             $object->setExpiresAt(null);

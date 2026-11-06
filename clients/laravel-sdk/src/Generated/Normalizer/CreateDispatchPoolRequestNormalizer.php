@@ -43,6 +43,7 @@ class CreateDispatchPoolRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -50,6 +51,7 @@ class CreateDispatchPoolRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('code', $data) && $data['code'] !== null) {
             $object->setCode($data['code']);
@@ -57,6 +59,7 @@ class CreateDispatchPoolRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('code', $data) && $data['code'] === null) {
             $object->setCode(null);
+            unset($data['code']);
         }
         if (\array_key_exists('concurrency', $data) && $data['concurrency'] !== null) {
             $object->setConcurrency($data['concurrency']);
@@ -64,6 +67,7 @@ class CreateDispatchPoolRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('concurrency', $data) && $data['concurrency'] === null) {
             $object->setConcurrency(null);
+            unset($data['concurrency']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -71,6 +75,7 @@ class CreateDispatchPoolRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -78,6 +83,7 @@ class CreateDispatchPoolRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('rateLimit', $data) && $data['rateLimit'] !== null) {
             $object->setRateLimit($data['rateLimit']);
@@ -85,6 +91,7 @@ class CreateDispatchPoolRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('rateLimit', $data) && $data['rateLimit'] === null) {
             $object->setRateLimit(null);
+            unset($data['rateLimit']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -110,7 +117,7 @@ class CreateDispatchPoolRequestNormalizer implements DenormalizerInterface, Norm
         if ($data->isInitialized('rateLimit') && null !== $data->getRateLimit()) {
             $dataArray['rateLimit'] = $data->getRateLimit();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

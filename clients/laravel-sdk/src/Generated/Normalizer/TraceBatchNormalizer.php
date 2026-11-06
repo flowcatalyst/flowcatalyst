@@ -43,6 +43,7 @@ class TraceBatchNormalizer implements DenormalizerInterface, NormalizerInterface
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('pool', $data) && $data['pool'] !== null) {
             $object->setPool($data['pool']);
@@ -50,6 +51,7 @@ class TraceBatchNormalizer implements DenormalizerInterface, NormalizerInterface
         }
         elseif (\array_key_exists('pool', $data) && $data['pool'] === null) {
             $object->setPool(null);
+            unset($data['pool']);
         }
         if (\array_key_exists('records', $data) && $data['records'] !== null) {
             $values = [];
@@ -61,6 +63,7 @@ class TraceBatchNormalizer implements DenormalizerInterface, NormalizerInterface
         }
         elseif (\array_key_exists('records', $data) && $data['records'] === null) {
             $object->setRecords(null);
+            unset($data['records']);
         }
         if (\array_key_exists('runnerId', $data) && $data['runnerId'] !== null) {
             $object->setRunnerId($data['runnerId']);
@@ -68,6 +71,7 @@ class TraceBatchNormalizer implements DenormalizerInterface, NormalizerInterface
         }
         elseif (\array_key_exists('runnerId', $data) && $data['runnerId'] === null) {
             $object->setRunnerId(null);
+            unset($data['runnerId']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -82,11 +86,11 @@ class TraceBatchNormalizer implements DenormalizerInterface, NormalizerInterface
         $dataArray['pool'] = $data->getPool();
         $values = [];
         foreach ($data->getRecords() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['records'] = $values;
         $dataArray['runnerId'] = $data->getRunnerId();
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

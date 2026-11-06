@@ -66,7 +66,7 @@ class ServiceAccountListResponseNormalizer implements DenormalizerInterface, Nor
         $dataArray = [];
         $values = [];
         foreach ($data->getServiceAccounts() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['serviceAccounts'] = $values;
         $dataArray['total'] = $data->getTotal();

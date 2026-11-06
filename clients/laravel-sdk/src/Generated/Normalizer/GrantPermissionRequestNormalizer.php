@@ -43,6 +43,7 @@ class GrantPermissionRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('permission', $data) && $data['permission'] !== null) {
             $object->setPermission($data['permission']);
@@ -50,6 +51,7 @@ class GrantPermissionRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('permission', $data) && $data['permission'] === null) {
             $object->setPermission(null);
+            unset($data['permission']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -62,7 +64,7 @@ class GrantPermissionRequestNormalizer implements DenormalizerInterface, Normali
     {
         $dataArray = [];
         $dataArray['permission'] = $data->getPermission();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

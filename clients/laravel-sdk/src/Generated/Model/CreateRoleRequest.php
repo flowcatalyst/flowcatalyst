@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateRoleRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateRoleRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -201,5 +204,9 @@ class CreateRoleRequest extends \ArrayObject
         $this->initialized['roleName'] = true;
         $this->roleName = $roleName;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'applicationCode' => ['applicationCode', 'getApplicationCode', 'setApplicationCode'], 'clientManaged' => ['clientManaged', 'getClientManaged', 'setClientManaged'], 'description' => ['description', 'getDescription', 'setDescription'], 'displayName' => ['displayName', 'getDisplayName', 'setDisplayName'], 'permissions' => ['permissions', 'getPermissions', 'setPermissions'], 'roleName' => ['roleName', 'getRoleName', 'setRoleName']];
     }
 }

@@ -19,7 +19,7 @@ class GetRolesBySource extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
     }
     public function getUri(): string
     {
-        return str_replace(['{source}'], [$this->source], '/api/roles/by-source/{source}');
+        return str_replace(['{source}'], [rawurlencode($this->source)], '/api/roles/by-source/{source}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -39,10 +39,10 @@ class GetRolesBySource extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\RoleResponse[]', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

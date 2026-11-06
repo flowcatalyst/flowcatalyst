@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class SyncOpenapiRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class SyncOpenapiRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -67,5 +70,9 @@ class SyncOpenapiRequest extends \ArrayObject
         $this->initialized['spec'] = true;
         $this->spec = $spec;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'spec' => ['spec', 'getSpec', 'setSpec']];
     }
 }

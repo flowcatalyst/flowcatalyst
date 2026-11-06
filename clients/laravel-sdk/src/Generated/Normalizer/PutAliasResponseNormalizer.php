@@ -60,9 +60,9 @@ class PutAliasResponseNormalizer implements DenormalizerInterface, NormalizerInt
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $dataArray['alias'] = $this->normalizer->normalize($data->getAlias(), 'json', $context);
+        $dataArray['alias'] = $data->getAlias() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getAlias(), 'json', $context));
         if ($data->isInitialized('wiring') && null !== $data->getWiring()) {
-            $dataArray['wiring'] = $this->normalizer->normalize($data->getWiring(), 'json', $context);
+            $dataArray['wiring'] = $data->getWiring() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getWiring(), 'json', $context));
         }
         return $dataArray;
     }

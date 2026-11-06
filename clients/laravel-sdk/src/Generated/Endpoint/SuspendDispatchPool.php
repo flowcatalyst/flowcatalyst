@@ -19,7 +19,7 @@ class SuspendDispatchPool extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/dispatch-pools/{id}/suspend');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/dispatch-pools/{id}/suspend');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -42,7 +42,7 @@ class SuspendDispatchPool extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
         if (204 === $status) {
             return null;
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

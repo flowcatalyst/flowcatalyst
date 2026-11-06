@@ -19,7 +19,7 @@ class GetFieldPolicy extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint
     }
     public function getUri(): string
     {
-        return str_replace(['{clientId}'], [$this->clientId], '/api/field-policies/{clientId}');
+        return str_replace(['{clientId}'], [rawurlencode($this->clientId)], '/api/field-policies/{clientId}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -39,10 +39,10 @@ class GetFieldPolicy extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\FieldPolicyResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

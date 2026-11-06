@@ -22,7 +22,7 @@ class GetFunctionVersion extends \FlowCatalyst\Generated\Runtime\Client\BaseEndp
     }
     public function getUri(): string
     {
-        return str_replace(['{id}', '{number}'], [$this->id, $this->number], '/api/functions/{id}/versions/{number}');
+        return str_replace(['{id}', '{number}'], [rawurlencode($this->id), rawurlencode($this->number)], '/api/functions/{id}/versions/{number}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -42,10 +42,10 @@ class GetFunctionVersion extends \FlowCatalyst\Generated\Runtime\Client\BaseEndp
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\VersionResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

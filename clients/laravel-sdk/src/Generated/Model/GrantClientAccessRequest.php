@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class GrantClientAccessRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class GrantClientAccessRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -61,5 +64,9 @@ class GrantClientAccessRequest extends \ArrayObject
         $this->initialized['clientId'] = true;
         $this->clientId = $clientId;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientId' => ['clientId', 'getClientId', 'setClientId']];
     }
 }

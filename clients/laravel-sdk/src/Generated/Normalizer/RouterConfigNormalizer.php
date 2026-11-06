@@ -70,12 +70,12 @@ class RouterConfigNormalizer implements DenormalizerInterface, NormalizerInterfa
         $dataArray = [];
         $values = [];
         foreach ($data->getProcessingPools() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['processingPools'] = $values;
         $values_1 = [];
         foreach ($data->getQueues() as $value_1) {
-            $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+            $values_1[] = $value_1 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_1, 'json', $context));
         }
         $dataArray['queues'] = $values_1;
         return $dataArray;

@@ -43,6 +43,7 @@ class AddSchemaRequestNormalizer implements DenormalizerInterface, NormalizerInt
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('schema', $data) && $data['schema'] !== null) {
             $object->setSchema($data['schema']);
@@ -50,6 +51,7 @@ class AddSchemaRequestNormalizer implements DenormalizerInterface, NormalizerInt
         }
         elseif (\array_key_exists('schema', $data) && $data['schema'] === null) {
             $object->setSchema(null);
+            unset($data['schema']);
         }
         if (\array_key_exists('version', $data) && $data['version'] !== null) {
             $object->setVersion($data['version']);
@@ -57,6 +59,7 @@ class AddSchemaRequestNormalizer implements DenormalizerInterface, NormalizerInt
         }
         elseif (\array_key_exists('version', $data) && $data['version'] === null) {
             $object->setVersion(null);
+            unset($data['version']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -70,7 +73,7 @@ class AddSchemaRequestNormalizer implements DenormalizerInterface, NormalizerInt
         $dataArray = [];
         $dataArray['schema'] = $data->getSchema();
         $dataArray['version'] = $data->getVersion();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

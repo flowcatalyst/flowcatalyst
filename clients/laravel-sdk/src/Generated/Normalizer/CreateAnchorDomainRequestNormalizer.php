@@ -43,6 +43,7 @@ class CreateAnchorDomainRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('domain', $data) && $data['domain'] !== null) {
             $object->setDomain($data['domain']);
@@ -50,6 +51,7 @@ class CreateAnchorDomainRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('domain', $data) && $data['domain'] === null) {
             $object->setDomain(null);
+            unset($data['domain']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -62,7 +64,7 @@ class CreateAnchorDomainRequestNormalizer implements DenormalizerInterface, Norm
     {
         $dataArray = [];
         $dataArray['domain'] = $data->getDomain();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

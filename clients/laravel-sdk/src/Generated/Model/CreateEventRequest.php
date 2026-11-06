@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateEventRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateEventRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -319,5 +322,9 @@ class CreateEventRequest extends \ArrayObject
         $this->initialized['subject'] = true;
         $this->subject = $subject;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'causationId' => ['causationId', 'getCausationId', 'setCausationId'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'contextData' => ['contextData', 'getContextData', 'setContextData'], 'correlationId' => ['correlationId', 'getCorrelationId', 'setCorrelationId'], 'data' => ['data', 'getData', 'setData'], 'deduplicationId' => ['deduplicationId', 'getDeduplicationId', 'setDeduplicationId'], 'eventType' => ['eventType', 'getEventType', 'setEventType'], 'messageGroup' => ['messageGroup', 'getMessageGroup', 'setMessageGroup'], 'source' => ['source', 'getSource', 'setSource'], 'subject' => ['subject', 'getSubject', 'setSubject']];
     }
 }

@@ -22,7 +22,7 @@ class DeleteFunctionAlias extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
     }
     public function getUri(): string
     {
-        return str_replace(['{id}', '{name}'], [$this->id, $this->name], '/api/functions/{id}/aliases/{name}');
+        return str_replace(['{id}', '{name}'], [rawurlencode($this->id), rawurlencode($this->name)], '/api/functions/{id}/aliases/{name}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -42,10 +42,10 @@ class DeleteFunctionAlias extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\WiringResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

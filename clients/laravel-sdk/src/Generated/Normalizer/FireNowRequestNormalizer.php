@@ -43,6 +43,7 @@ class FireNowRequestNormalizer implements DenormalizerInterface, NormalizerInter
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('correlationId', $data) && $data['correlationId'] !== null) {
             $object->setCorrelationId($data['correlationId']);
@@ -50,6 +51,7 @@ class FireNowRequestNormalizer implements DenormalizerInterface, NormalizerInter
         }
         elseif (\array_key_exists('correlationId', $data) && $data['correlationId'] === null) {
             $object->setCorrelationId(null);
+            unset($data['correlationId']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -64,7 +66,7 @@ class FireNowRequestNormalizer implements DenormalizerInterface, NormalizerInter
         if ($data->isInitialized('correlationId') && null !== $data->getCorrelationId()) {
             $dataArray['correlationId'] = $data->getCorrelationId();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

@@ -60,7 +60,7 @@ class CreateOAuthClientResponseNormalizer implements DenormalizerInterface, Norm
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $dataArray['client'] = $this->normalizer->normalize($data->getClient(), 'json', $context);
+        $dataArray['client'] = $data->getClient() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getClient(), 'json', $context));
         if ($data->isInitialized('clientSecret') && null !== $data->getClientSecret()) {
             $dataArray['clientSecret'] = $data->getClientSecret();
         }

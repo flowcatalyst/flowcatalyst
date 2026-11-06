@@ -84,7 +84,7 @@ class IngestionSetPlanResponseNormalizer implements DenormalizerInterface, Norma
         }
         $values = [];
         foreach ($data->getChanges() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['changes'] = $values;
         $dataArray['dryRun'] = $data->getDryRun();

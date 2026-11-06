@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class BulkImportRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class BulkImportRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -89,5 +92,9 @@ class BulkImportRequest extends \ArrayObject
         $this->initialized['users'] = true;
         $this->users = $users;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'users' => ['users', 'getUsers', 'setUsers']];
     }
 }

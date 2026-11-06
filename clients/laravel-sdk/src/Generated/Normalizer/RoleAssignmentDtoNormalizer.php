@@ -38,7 +38,19 @@ class RoleAssignmentDTONormalizer implements DenormalizerInterface, NormalizerIn
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
         if (\array_key_exists('assignedAt', $data) && $data['assignedAt'] !== null) {
-            $object->setAssignedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['assignedAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['assignedAt']);
+            if (false === $date) {
+                if (is_string($data['assignedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['assignedAt'])) {
+                    try {
+                        $date = new \DateTime($data['assignedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['assignedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['assignedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setAssignedAt($date);
         }
         elseif (\array_key_exists('assignedAt', $data) && $data['assignedAt'] === null) {
             $object->setAssignedAt(null);

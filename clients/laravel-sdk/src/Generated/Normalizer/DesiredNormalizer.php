@@ -86,10 +86,10 @@ class DesiredNormalizer implements DenormalizerInterface, NormalizerInterface, D
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $dataArray['auth'] = $this->normalizer->normalize($data->getAuth(), 'json', $context);
+        $dataArray['auth'] = $data->getAuth() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getAuth(), 'json', $context));
         $values = [];
         foreach ($data->getFunctions() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['functions'] = $values;
         $dataArray['pool'] = $data->getPool();
@@ -97,7 +97,7 @@ class DesiredNormalizer implements DenormalizerInterface, NormalizerInterface, D
         if ($data->isInitialized('routes') && null !== $data->getRoutes()) {
             $values_1 = [];
             foreach ($data->getRoutes() as $value_1) {
-                $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+                $values_1[] = $value_1 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_1, 'json', $context));
             }
             $dataArray['routes'] = $values_1;
         }

@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class SyncSubscriptionsRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class SyncSubscriptionsRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -83,5 +86,9 @@ class SyncSubscriptionsRequest extends \ArrayObject
         $this->initialized['subscriptions'] = true;
         $this->subscriptions = $subscriptions;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'subscriptions' => ['subscriptions', 'getSubscriptions', 'setSubscriptions']];
     }
 }

@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class SearchClientRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class SearchClientRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -61,5 +64,9 @@ class SearchClientRequest extends \ArrayObject
         $this->initialized['term'] = true;
         $this->term = $term;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'term' => ['term', 'getTerm', 'setTerm']];
     }
 }

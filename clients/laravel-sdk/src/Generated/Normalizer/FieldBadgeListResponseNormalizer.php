@@ -60,7 +60,7 @@ class FieldBadgeListResponseNormalizer implements DenormalizerInterface, Normali
         $dataArray = [];
         $values = [];
         foreach ($data->getBadges() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['badges'] = $values;
         return $dataArray;

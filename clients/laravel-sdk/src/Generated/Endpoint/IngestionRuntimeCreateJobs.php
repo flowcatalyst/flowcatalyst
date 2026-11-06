@@ -25,12 +25,12 @@ class IngestionRuntimeCreateJobs extends \FlowCatalyst\Generated\Runtime\Client\
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/ingestion-runtime/v1/ingestions/{id}/jobs');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/ingestion-runtime/v1/ingestions/{id}/jobs');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
         if ($this->body instanceof \FlowCatalyst\Generated\Model\CreateJobsRequest) {
-            return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
+            return [['Content-Type' => ['application/json']], \FlowCatalyst\Generated\Runtime\Client\JsonPayload::encode($serializer, $this->body)];
         }
         return [[], null];
     }
@@ -47,6 +47,10 @@ class IngestionRuntimeCreateJobs extends \FlowCatalyst\Generated\Runtime\Client\
         $optionsResolver->addAllowedTypes('runtimeId', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['runtimeId' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -57,10 +61,10 @@ class IngestionRuntimeCreateJobs extends \FlowCatalyst\Generated\Runtime\Client\
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\CreateJobsResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

@@ -44,7 +44,19 @@ class IngestionSetArchiveResponseNormalizer implements DenormalizerInterface, No
             $object->setDollarSchema(null);
         }
         if (\array_key_exists('appliedAt', $data) && $data['appliedAt'] !== null) {
-            $object->setAppliedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['appliedAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['appliedAt']);
+            if (false === $date) {
+                if (is_string($data['appliedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['appliedAt'])) {
+                    try {
+                        $date = new \DateTime($data['appliedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['appliedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['appliedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setAppliedAt($date);
         }
         elseif (\array_key_exists('appliedAt', $data) && $data['appliedAt'] === null) {
             $object->setAppliedAt(null);
@@ -103,7 +115,7 @@ class IngestionSetArchiveResponseNormalizer implements DenormalizerInterface, No
         $dataArray['applyId'] = $data->getApplyId();
         $values = [];
         foreach ($data->getFiles() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['files'] = $values;
         if ($data->isInitialized('goingBackTo') && null !== $data->getGoingBackTo()) {
@@ -111,7 +123,7 @@ class IngestionSetArchiveResponseNormalizer implements DenormalizerInterface, No
         }
         $values_1 = [];
         foreach ($data->getItems() as $value_1) {
-            $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+            $values_1[] = $value_1 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_1, 'json', $context));
         }
         $dataArray['items'] = $values_1;
         $dataArray['set'] = $data->getSet();

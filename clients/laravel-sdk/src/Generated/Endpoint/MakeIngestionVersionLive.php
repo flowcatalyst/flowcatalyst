@@ -22,7 +22,7 @@ class MakeIngestionVersionLive extends \FlowCatalyst\Generated\Runtime\Client\Ba
     }
     public function getUri(): string
     {
-        return str_replace(['{id}', '{version}'], [$this->id, $this->version], '/api/ingestions/{id}/versions/{version}/live');
+        return str_replace(['{id}', '{version}'], [rawurlencode($this->id), rawurlencode($this->version)], '/api/ingestions/{id}/versions/{version}/live');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -42,10 +42,10 @@ class MakeIngestionVersionLive extends \FlowCatalyst\Generated\Runtime\Client\Ba
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\IngestionResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

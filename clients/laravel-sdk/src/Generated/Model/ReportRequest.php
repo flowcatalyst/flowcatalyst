@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class ReportRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class ReportRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -149,5 +152,9 @@ class ReportRequest extends \ArrayObject
         $this->initialized['tests'] = true;
         $this->tests = $tests;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'failures' => ['failures', 'getFailures', 'setFailures'], 'metrics' => ['metrics', 'getMetrics', 'setMetrics'], 'routes' => ['routes', 'getRoutes', 'setRoutes'], 'runtimeId' => ['runtimeId', 'getRuntimeId', 'setRuntimeId'], 'tests' => ['tests', 'getTests', 'setTests']];
     }
 }

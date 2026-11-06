@@ -43,6 +43,7 @@ class AddOriginRequestNormalizer implements DenormalizerInterface, NormalizerInt
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -50,6 +51,7 @@ class AddOriginRequestNormalizer implements DenormalizerInterface, NormalizerInt
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('origin', $data) && $data['origin'] !== null) {
             $object->setOrigin($data['origin']);
@@ -57,6 +59,7 @@ class AddOriginRequestNormalizer implements DenormalizerInterface, NormalizerInt
         }
         elseif (\array_key_exists('origin', $data) && $data['origin'] === null) {
             $object->setOrigin(null);
+            unset($data['origin']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -72,7 +75,7 @@ class AddOriginRequestNormalizer implements DenormalizerInterface, NormalizerInt
             $dataArray['description'] = $data->getDescription();
         }
         $dataArray['origin'] = $data->getOrigin();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

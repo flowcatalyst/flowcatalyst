@@ -43,6 +43,7 @@ class SyncDocsRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('docs', $data) && $data['docs'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class SyncDocsRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('docs', $data) && $data['docs'] === null) {
             $object->setDocs(null);
+            unset($data['docs']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -67,10 +69,10 @@ class SyncDocsRequestNormalizer implements DenormalizerInterface, NormalizerInte
         $dataArray = [];
         $values = [];
         foreach ($data->getDocs() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['docs'] = $values;
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

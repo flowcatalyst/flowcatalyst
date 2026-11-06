@@ -41,7 +41,19 @@ class IngestionTraceRecordResponseNormalizer implements DenormalizerInterface, N
             $data['redacted'] = (bool) $data['redacted'];
         }
         if (\array_key_exists('at', $data) && $data['at'] !== null) {
-            $object->setAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['at']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['at']);
+            if (false === $date) {
+                if (is_string($data['at']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['at'])) {
+                    try {
+                        $date = new \DateTime($data['at']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['at'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['at'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setAt($date);
         }
         elseif (\array_key_exists('at', $data) && $data['at'] === null) {
             $object->setAt(null);

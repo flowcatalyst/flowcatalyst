@@ -81,7 +81,7 @@ class IngestionDefinitionNormalizer implements DenormalizerInterface, Normalizer
         $dataArray['name'] = $data->getName();
         $dataArray['source'] = $data->getSource();
         $dataArray['split'] = $data->getSplit();
-        $dataArray['target'] = $this->normalizer->normalize($data->getTarget(), 'json', $context);
+        $dataArray['target'] = $data->getTarget() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getTarget(), 'json', $context));
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

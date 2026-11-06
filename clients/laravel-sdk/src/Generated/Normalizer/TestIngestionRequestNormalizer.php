@@ -43,6 +43,7 @@ class TestIngestionRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('application', $data) && $data['application'] !== null) {
             $object->setApplication($data['application']);
@@ -50,6 +51,7 @@ class TestIngestionRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('application', $data) && $data['application'] === null) {
             $object->setApplication(null);
+            unset($data['application']);
         }
         if (\array_key_exists('client', $data) && $data['client'] !== null) {
             $object->setClient($data['client']);
@@ -57,6 +59,7 @@ class TestIngestionRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('client', $data) && $data['client'] === null) {
             $object->setClient(null);
+            unset($data['client']);
         }
         if (\array_key_exists('code', $data) && $data['code'] !== null) {
             $object->setCode($data['code']);
@@ -64,6 +67,7 @@ class TestIngestionRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('code', $data) && $data['code'] === null) {
             $object->setCode(null);
+            unset($data['code']);
         }
         if (\array_key_exists('definition', $data) && $data['definition'] !== null) {
             $object->setDefinition($this->denormalizer->denormalize($data['definition'], \FlowCatalyst\Generated\Model\IngestionDefinition::class, 'json', $context));
@@ -71,6 +75,7 @@ class TestIngestionRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('definition', $data) && $data['definition'] === null) {
             $object->setDefinition(null);
+            unset($data['definition']);
         }
         if (\array_key_exists('ingestionId', $data) && $data['ingestionId'] !== null) {
             $object->setIngestionId($data['ingestionId']);
@@ -78,6 +83,7 @@ class TestIngestionRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('ingestionId', $data) && $data['ingestionId'] === null) {
             $object->setIngestionId(null);
+            unset($data['ingestionId']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -99,12 +105,12 @@ class TestIngestionRequestNormalizer implements DenormalizerInterface, Normalize
             $dataArray['code'] = $data->getCode();
         }
         if ($data->isInitialized('definition') && null !== $data->getDefinition()) {
-            $dataArray['definition'] = $this->normalizer->normalize($data->getDefinition(), 'json', $context);
+            $dataArray['definition'] = $data->getDefinition() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getDefinition(), 'json', $context));
         }
         if ($data->isInitialized('ingestionId') && null !== $data->getIngestionId()) {
             $dataArray['ingestionId'] = $data->getIngestionId();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

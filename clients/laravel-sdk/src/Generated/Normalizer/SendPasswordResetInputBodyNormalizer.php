@@ -46,6 +46,7 @@ class SendPasswordResetInputBodyNormalizer implements DenormalizerInterface, Nor
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('reset2fa', $data) && $data['reset2fa'] !== null) {
             $object->setReset2fa($data['reset2fa']);
@@ -53,6 +54,7 @@ class SendPasswordResetInputBodyNormalizer implements DenormalizerInterface, Nor
         }
         elseif (\array_key_exists('reset2fa', $data) && $data['reset2fa'] === null) {
             $object->setReset2fa(null);
+            unset($data['reset2fa']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -67,7 +69,7 @@ class SendPasswordResetInputBodyNormalizer implements DenormalizerInterface, Nor
         if ($data->isInitialized('reset2fa') && null !== $data->getReset2fa()) {
             $dataArray['reset2fa'] = $data->getReset2fa();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

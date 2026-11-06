@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class RequeueRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class RequeueRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -123,5 +126,9 @@ class RequeueRequest extends \ArrayObject
         $this->initialized['redriveCompleted'] = true;
         $this->redriveCompleted = $redriveCompleted;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'confirmRedriveCompleted' => ['confirmRedriveCompleted', 'getConfirmRedriveCompleted', 'setConfirmRedriveCompleted'], 'ids' => ['ids', 'getIds', 'setIds'], 'redriveCompleted' => ['redriveCompleted', 'getRedriveCompleted', 'setRedriveCompleted']];
     }
 }

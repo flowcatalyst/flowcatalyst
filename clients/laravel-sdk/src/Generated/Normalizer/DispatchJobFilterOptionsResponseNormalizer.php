@@ -159,7 +159,7 @@ class DispatchJobFilterOptionsResponseNormalizer implements DenormalizerInterfac
             $values_6[] = $value_6;
         }
         $dataArray['subscriptionIds'] = $values_6;
-        $dataArray['window'] = $this->normalizer->normalize($data->getWindow(), 'json', $context);
+        $dataArray['window'] = $data->getWindow() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getWindow(), 'json', $context));
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

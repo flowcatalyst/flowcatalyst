@@ -60,7 +60,7 @@ class ListOutputBodyNormalizer implements DenormalizerInterface, NormalizerInter
         $dataArray = [];
         $values = [];
         foreach ($data->getRequests() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['requests'] = $values;
         return $dataArray;

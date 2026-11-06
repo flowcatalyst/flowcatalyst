@@ -76,7 +76,7 @@ class ApplicationAccessListResponseNormalizer implements DenormalizerInterface, 
         $dataArray['allApplications'] = $data->getAllApplications();
         $values = [];
         foreach ($data->getApplications() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['applications'] = $values;
         $dataArray['total'] = $data->getTotal();

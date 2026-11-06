@@ -65,7 +65,7 @@ class ApplicationLoginClientCredentialsNormalizer implements DenormalizerInterfa
     {
         $dataArray = [];
         $dataArray['clientType'] = $data->getClientType();
-        $dataArray['oauthClient'] = $this->normalizer->normalize($data->getOauthClient(), 'json', $context);
+        $dataArray['oauthClient'] = $data->getOauthClient() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getOauthClient(), 'json', $context));
         $values = [];
         foreach ($data->getRedirectUris() as $value) {
             $values[] = $value;

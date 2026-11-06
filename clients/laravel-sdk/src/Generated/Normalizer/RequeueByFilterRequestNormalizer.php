@@ -46,6 +46,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('aggregates', $data) && $data['aggregates'] !== null) {
             $object->setAggregates($data['aggregates']);
@@ -53,6 +54,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('aggregates', $data) && $data['aggregates'] === null) {
             $object->setAggregates(null);
+            unset($data['aggregates']);
         }
         if (\array_key_exists('applications', $data) && $data['applications'] !== null) {
             $object->setApplications($data['applications']);
@@ -60,6 +62,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('applications', $data) && $data['applications'] === null) {
             $object->setApplications(null);
+            unset($data['applications']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -67,6 +70,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('clientIds', $data) && $data['clientIds'] !== null) {
             $object->setClientIds($data['clientIds']);
@@ -74,6 +78,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('clientIds', $data) && $data['clientIds'] === null) {
             $object->setClientIds(null);
+            unset($data['clientIds']);
         }
         if (\array_key_exists('code', $data) && $data['code'] !== null) {
             $object->setCode($data['code']);
@@ -81,6 +86,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('code', $data) && $data['code'] === null) {
             $object->setCode(null);
+            unset($data['code']);
         }
         if (\array_key_exists('codes', $data) && $data['codes'] !== null) {
             $object->setCodes($data['codes']);
@@ -88,6 +94,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('codes', $data) && $data['codes'] === null) {
             $object->setCodes(null);
+            unset($data['codes']);
         }
         if (\array_key_exists('confirmCount', $data) && $data['confirmCount'] !== null) {
             $object->setConfirmCount($data['confirmCount']);
@@ -95,6 +102,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('confirmCount', $data) && $data['confirmCount'] === null) {
             $object->setConfirmCount(null);
+            unset($data['confirmCount']);
         }
         if (\array_key_exists('confirmRedriveCompleted', $data) && $data['confirmRedriveCompleted'] !== null) {
             $object->setConfirmRedriveCompleted($data['confirmRedriveCompleted']);
@@ -102,6 +110,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('confirmRedriveCompleted', $data) && $data['confirmRedriveCompleted'] === null) {
             $object->setConfirmRedriveCompleted(null);
+            unset($data['confirmRedriveCompleted']);
         }
         if (\array_key_exists('connectionCode', $data) && $data['connectionCode'] !== null) {
             $object->setConnectionCode($data['connectionCode']);
@@ -109,6 +118,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('connectionCode', $data) && $data['connectionCode'] === null) {
             $object->setConnectionCode(null);
+            unset($data['connectionCode']);
         }
         if (\array_key_exists('connectionId', $data) && $data['connectionId'] !== null) {
             $object->setConnectionId($data['connectionId']);
@@ -116,6 +126,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('connectionId', $data) && $data['connectionId'] === null) {
             $object->setConnectionId(null);
+            unset($data['connectionId']);
         }
         if (\array_key_exists('dispatchPoolId', $data) && $data['dispatchPoolId'] !== null) {
             $object->setDispatchPoolId($data['dispatchPoolId']);
@@ -123,6 +134,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('dispatchPoolId', $data) && $data['dispatchPoolId'] === null) {
             $object->setDispatchPoolId(null);
+            unset($data['dispatchPoolId']);
         }
         if (\array_key_exists('eventType', $data) && $data['eventType'] !== null) {
             $object->setEventType($data['eventType']);
@@ -130,6 +142,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('eventType', $data) && $data['eventType'] === null) {
             $object->setEventType(null);
+            unset($data['eventType']);
         }
         if (\array_key_exists('eventTypes', $data) && $data['eventTypes'] !== null) {
             $object->setEventTypes($data['eventTypes']);
@@ -137,6 +150,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('eventTypes', $data) && $data['eventTypes'] === null) {
             $object->setEventTypes(null);
+            unset($data['eventTypes']);
         }
         if (\array_key_exists('limit', $data) && $data['limit'] !== null) {
             $object->setLimit($data['limit']);
@@ -144,6 +158,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('limit', $data) && $data['limit'] === null) {
             $object->setLimit(null);
+            unset($data['limit']);
         }
         if (\array_key_exists('messageGroup', $data) && $data['messageGroup'] !== null) {
             $object->setMessageGroup($data['messageGroup']);
@@ -151,6 +166,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('messageGroup', $data) && $data['messageGroup'] === null) {
             $object->setMessageGroup(null);
+            unset($data['messageGroup']);
         }
         if (\array_key_exists('redriveCompleted', $data) && $data['redriveCompleted'] !== null) {
             $object->setRedriveCompleted($data['redriveCompleted']);
@@ -158,6 +174,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('redriveCompleted', $data) && $data['redriveCompleted'] === null) {
             $object->setRedriveCompleted(null);
+            unset($data['redriveCompleted']);
         }
         if (\array_key_exists('since', $data) && $data['since'] !== null) {
             $object->setSince($data['since']);
@@ -165,6 +182,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('since', $data) && $data['since'] === null) {
             $object->setSince(null);
+            unset($data['since']);
         }
         if (\array_key_exists('source', $data) && $data['source'] !== null) {
             $object->setSource($data['source']);
@@ -172,6 +190,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('source', $data) && $data['source'] === null) {
             $object->setSource(null);
+            unset($data['source']);
         }
         if (\array_key_exists('status', $data) && $data['status'] !== null) {
             $object->setStatus($data['status']);
@@ -179,6 +198,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('status', $data) && $data['status'] === null) {
             $object->setStatus(null);
+            unset($data['status']);
         }
         if (\array_key_exists('statuses', $data) && $data['statuses'] !== null) {
             $object->setStatuses($data['statuses']);
@@ -186,6 +206,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('statuses', $data) && $data['statuses'] === null) {
             $object->setStatuses(null);
+            unset($data['statuses']);
         }
         if (\array_key_exists('subdomains', $data) && $data['subdomains'] !== null) {
             $object->setSubdomains($data['subdomains']);
@@ -193,6 +214,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('subdomains', $data) && $data['subdomains'] === null) {
             $object->setSubdomains(null);
+            unset($data['subdomains']);
         }
         if (\array_key_exists('subscriptionCode', $data) && $data['subscriptionCode'] !== null) {
             $object->setSubscriptionCode($data['subscriptionCode']);
@@ -200,6 +222,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('subscriptionCode', $data) && $data['subscriptionCode'] === null) {
             $object->setSubscriptionCode(null);
+            unset($data['subscriptionCode']);
         }
         if (\array_key_exists('subscriptionId', $data) && $data['subscriptionId'] !== null) {
             $object->setSubscriptionId($data['subscriptionId']);
@@ -207,6 +230,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('subscriptionId', $data) && $data['subscriptionId'] === null) {
             $object->setSubscriptionId(null);
+            unset($data['subscriptionId']);
         }
         if (\array_key_exists('subscriptionIds', $data) && $data['subscriptionIds'] !== null) {
             $object->setSubscriptionIds($data['subscriptionIds']);
@@ -214,6 +238,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('subscriptionIds', $data) && $data['subscriptionIds'] === null) {
             $object->setSubscriptionIds(null);
+            unset($data['subscriptionIds']);
         }
         if (\array_key_exists('subscriptionName', $data) && $data['subscriptionName'] !== null) {
             $object->setSubscriptionName($data['subscriptionName']);
@@ -221,6 +246,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('subscriptionName', $data) && $data['subscriptionName'] === null) {
             $object->setSubscriptionName(null);
+            unset($data['subscriptionName']);
         }
         if (\array_key_exists('until', $data) && $data['until'] !== null) {
             $object->setUntil($data['until']);
@@ -228,6 +254,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('until', $data) && $data['until'] === null) {
             $object->setUntil(null);
+            unset($data['until']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -315,7 +342,7 @@ class RequeueByFilterRequestNormalizer implements DenormalizerInterface, Normali
         if ($data->isInitialized('until') && null !== $data->getUntil()) {
             $dataArray['until'] = $data->getUntil();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

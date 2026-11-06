@@ -51,7 +51,19 @@ class PortalUserListItemNormalizer implements DenormalizerInterface, NormalizerI
             $object->setApps(null);
         }
         if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
-            $object->setCreatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']);
+            if (false === $date) {
+                if (is_string($data['createdAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['createdAt'])) {
+                    try {
+                        $date = new \DateTime($data['createdAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setCreatedAt($date);
         }
         elseif (\array_key_exists('createdAt', $data) && $data['createdAt'] === null) {
             $object->setCreatedAt(null);
@@ -75,19 +87,55 @@ class PortalUserListItemNormalizer implements DenormalizerInterface, NormalizerI
             $object->setIdentityId(null);
         }
         if (\array_key_exists('inviteExpiresAt', $data) && $data['inviteExpiresAt'] !== null) {
-            $object->setInviteExpiresAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['inviteExpiresAt']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['inviteExpiresAt']);
+            if (false === $date_1) {
+                if (is_string($data['inviteExpiresAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['inviteExpiresAt'])) {
+                    try {
+                        $date_1 = new \DateTime($data['inviteExpiresAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['inviteExpiresAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['inviteExpiresAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setInviteExpiresAt($date_1);
         }
         elseif (\array_key_exists('inviteExpiresAt', $data) && $data['inviteExpiresAt'] === null) {
             $object->setInviteExpiresAt(null);
         }
         if (\array_key_exists('invitedAt', $data) && $data['invitedAt'] !== null) {
-            $object->setInvitedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['invitedAt']));
+            $date_2 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['invitedAt']);
+            if (false === $date_2) {
+                if (is_string($data['invitedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['invitedAt'])) {
+                    try {
+                        $date_2 = new \DateTime($data['invitedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['invitedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['invitedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setInvitedAt($date_2);
         }
         elseif (\array_key_exists('invitedAt', $data) && $data['invitedAt'] === null) {
             $object->setInvitedAt(null);
         }
         if (\array_key_exists('lastLoginAt', $data) && $data['lastLoginAt'] !== null) {
-            $object->setLastLoginAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lastLoginAt']));
+            $date_3 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lastLoginAt']);
+            if (false === $date_3) {
+                if (is_string($data['lastLoginAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['lastLoginAt'])) {
+                    try {
+                        $date_3 = new \DateTime($data['lastLoginAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['lastLoginAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['lastLoginAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setLastLoginAt($date_3);
         }
         elseif (\array_key_exists('lastLoginAt', $data) && $data['lastLoginAt'] === null) {
             $object->setLastLoginAt(null);
@@ -117,7 +165,19 @@ class PortalUserListItemNormalizer implements DenormalizerInterface, NormalizerI
             $object->setStatus(null);
         }
         if (\array_key_exists('updatedAt', $data) && $data['updatedAt'] !== null) {
-            $object->setUpdatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']));
+            $date_4 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']);
+            if (false === $date_4) {
+                if (is_string($data['updatedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['updatedAt'])) {
+                    try {
+                        $date_4 = new \DateTime($data['updatedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['updatedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['updatedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setUpdatedAt($date_4);
         }
         elseif (\array_key_exists('updatedAt', $data) && $data['updatedAt'] === null) {
             $object->setUpdatedAt(null);
@@ -129,7 +189,7 @@ class PortalUserListItemNormalizer implements DenormalizerInterface, NormalizerI
         $dataArray = [];
         $values = [];
         foreach ($data->getApps() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['apps'] = $values;
         $dataArray['createdAt'] = $data->getCreatedAt()->format('Y-m-d\TH:i:sP');

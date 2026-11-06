@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class SuspendClientRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class SuspendClientRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -61,5 +64,9 @@ class SuspendClientRequest extends \ArrayObject
         $this->initialized['reason'] = true;
         $this->reason = $reason;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'reason' => ['reason', 'getReason', 'setReason']];
     }
 }

@@ -88,13 +88,25 @@ class IngestionConfigResponseNormalizer implements DenormalizerInterface, Normal
             $object->setStatus(null);
         }
         if (\array_key_exists('updatedAt', $data) && $data['updatedAt'] !== null) {
-            $object->setUpdatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']);
+            if (false === $date) {
+                if (is_string($data['updatedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['updatedAt'])) {
+                    try {
+                        $date = new \DateTime($data['updatedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['updatedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['updatedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setUpdatedAt($date);
         }
         elseif (\array_key_exists('updatedAt', $data) && $data['updatedAt'] === null) {
             $object->setUpdatedAt(null);
         }
         if (\array_key_exists('value', $data) && $data['value'] !== null) {
-            $values_2 = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            $values_2 = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data['value'] as $key => $value_2) {
                 $values_2[$key] = $value_2;
             }
@@ -120,7 +132,7 @@ class IngestionConfigResponseNormalizer implements DenormalizerInterface, Normal
         if ($data->isInitialized('problems') && null !== $data->getProblems()) {
             $values = [];
             foreach ($data->getProblems() as $value) {
-                $values[] = $this->normalizer->normalize($value, 'json', $context);
+                $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
             }
             $dataArray['problems'] = $values;
         }
@@ -128,7 +140,7 @@ class IngestionConfigResponseNormalizer implements DenormalizerInterface, Normal
         if ($data->isInitialized('secrets') && null !== $data->getSecrets()) {
             $values_1 = [];
             foreach ($data->getSecrets() as $value_1) {
-                $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+                $values_1[] = $value_1 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_1, 'json', $context));
             }
             $dataArray['secrets'] = $values_1;
         }
@@ -137,7 +149,7 @@ class IngestionConfigResponseNormalizer implements DenormalizerInterface, Normal
             $dataArray['updatedAt'] = $data->getUpdatedAt()->format('Y-m-d\TH:i:sP');
         }
         if ($data->isInitialized('value') && null !== $data->getValue()) {
-            $values_2 = [];
+            $values_2 = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data->getValue() as $key => $value_2) {
                 $values_2[$key] = $value_2;
             }

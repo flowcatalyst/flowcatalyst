@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateFunctionRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateFunctionRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -239,5 +242,9 @@ class CreateFunctionRequest extends \ArrayObject
         $this->initialized['warm'] = true;
         $this->warm = $warm;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'applicationId' => ['applicationId', 'getApplicationId', 'setApplicationId'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'description' => ['description', 'getDescription', 'setDescription'], 'limits' => ['limits', 'getLimits', 'setLimits'], 'name' => ['name', 'getName', 'setName'], 'pool' => ['pool', 'getPool', 'setPool'], 'serviceAccountId' => ['serviceAccountId', 'getServiceAccountId', 'setServiceAccountId'], 'warm' => ['warm', 'getWarm', 'setWarm']];
     }
 }

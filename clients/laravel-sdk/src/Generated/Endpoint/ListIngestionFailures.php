@@ -26,7 +26,7 @@ class ListIngestionFailures extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/ingestions/{id}/failures');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/ingestions/{id}/failures');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -48,6 +48,10 @@ class ListIngestionFailures extends \FlowCatalyst\Generated\Runtime\Client\BaseE
         $optionsResolver->addAllowedTypes('category', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['after' => ['style' => 'form', 'explode' => false], 'limit' => ['style' => 'form', 'explode' => false], 'undismissed' => ['style' => 'form', 'explode' => false], 'category' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -58,10 +62,10 @@ class ListIngestionFailures extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\IngestionFailureListResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

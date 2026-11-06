@@ -43,6 +43,7 @@ class PortalUserAppGrantBodyNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -50,6 +51,7 @@ class PortalUserAppGrantBodyNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('portalAppCode', $data) && $data['portalAppCode'] !== null) {
             $object->setPortalAppCode($data['portalAppCode']);
@@ -57,6 +59,7 @@ class PortalUserAppGrantBodyNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('portalAppCode', $data) && $data['portalAppCode'] === null) {
             $object->setPortalAppCode(null);
+            unset($data['portalAppCode']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -70,7 +73,7 @@ class PortalUserAppGrantBodyNormalizer implements DenormalizerInterface, Normali
         $dataArray = [];
         $dataArray['clientId'] = $data->getClientId();
         $dataArray['portalAppCode'] = $data->getPortalAppCode();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

@@ -49,6 +49,10 @@ class ListPortalUsers extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoin
         $optionsResolver->addAllowedTypes('size', ['int']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['clientId' => ['style' => 'form', 'explode' => false], 'q' => ['style' => 'form', 'explode' => false], 'portalAppCode' => ['style' => 'form', 'explode' => false], 'unassigned' => ['style' => 'form', 'explode' => false], 'page' => ['style' => 'form', 'explode' => false], 'size' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -59,10 +63,10 @@ class ListPortalUsers extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoin
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\PortalUserListResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

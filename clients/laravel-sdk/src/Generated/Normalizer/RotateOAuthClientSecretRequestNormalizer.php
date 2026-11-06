@@ -43,6 +43,7 @@ class RotateOAuthClientSecretRequestNormalizer implements DenormalizerInterface,
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('graceSeconds', $data) && $data['graceSeconds'] !== null) {
             $object->setGraceSeconds($data['graceSeconds']);
@@ -50,6 +51,7 @@ class RotateOAuthClientSecretRequestNormalizer implements DenormalizerInterface,
         }
         elseif (\array_key_exists('graceSeconds', $data) && $data['graceSeconds'] === null) {
             $object->setGraceSeconds(null);
+            unset($data['graceSeconds']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -64,7 +66,7 @@ class RotateOAuthClientSecretRequestNormalizer implements DenormalizerInterface,
         if ($data->isInitialized('graceSeconds') && null !== $data->getGraceSeconds()) {
             $dataArray['graceSeconds'] = $data->getGraceSeconds();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

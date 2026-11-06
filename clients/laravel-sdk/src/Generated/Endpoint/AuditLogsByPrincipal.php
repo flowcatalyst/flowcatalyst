@@ -19,7 +19,7 @@ class AuditLogsByPrincipal extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
     }
     public function getUri(): string
     {
-        return str_replace(['{principalId}'], [$this->principalId], '/api/audit-logs/principal/{principalId}');
+        return str_replace(['{principalId}'], [rawurlencode($this->principalId)], '/api/audit-logs/principal/{principalId}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -39,10 +39,10 @@ class AuditLogsByPrincipal extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\AuditLogListResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

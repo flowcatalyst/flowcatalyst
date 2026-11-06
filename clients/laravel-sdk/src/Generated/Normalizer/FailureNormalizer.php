@@ -43,13 +43,27 @@ class FailureNormalizer implements DenormalizerInterface, NormalizerInterface, D
         }
         elseif (\array_key_exists('afterRecords', $data) && $data['afterRecords'] === null) {
             $object->setAfterRecords(null);
+            unset($data['afterRecords']);
         }
         if (\array_key_exists('at', $data) && $data['at'] !== null) {
-            $object->setAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['at']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['at']);
+            if (false === $date) {
+                if (is_string($data['at']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['at'])) {
+                    try {
+                        $date = new \DateTime($data['at']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['at'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['at'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setAt($date);
             unset($data['at']);
         }
         elseif (\array_key_exists('at', $data) && $data['at'] === null) {
             $object->setAt(null);
+            unset($data['at']);
         }
         if (\array_key_exists('category', $data) && $data['category'] !== null) {
             $object->setCategory($data['category']);
@@ -57,6 +71,7 @@ class FailureNormalizer implements DenormalizerInterface, NormalizerInterface, D
         }
         elseif (\array_key_exists('category', $data) && $data['category'] === null) {
             $object->setCategory(null);
+            unset($data['category']);
         }
         if (\array_key_exists('excerpt', $data) && $data['excerpt'] !== null) {
             $object->setExcerpt($data['excerpt']);
@@ -64,6 +79,7 @@ class FailureNormalizer implements DenormalizerInterface, NormalizerInterface, D
         }
         elseif (\array_key_exists('excerpt', $data) && $data['excerpt'] === null) {
             $object->setExcerpt(null);
+            unset($data['excerpt']);
         }
         if (\array_key_exists('ingestionId', $data) && $data['ingestionId'] !== null) {
             $object->setIngestionId($data['ingestionId']);
@@ -71,6 +87,7 @@ class FailureNormalizer implements DenormalizerInterface, NormalizerInterface, D
         }
         elseif (\array_key_exists('ingestionId', $data) && $data['ingestionId'] === null) {
             $object->setIngestionId(null);
+            unset($data['ingestionId']);
         }
         if (\array_key_exists('kind', $data) && $data['kind'] !== null) {
             $object->setKind($data['kind']);
@@ -78,6 +95,7 @@ class FailureNormalizer implements DenormalizerInterface, NormalizerInterface, D
         }
         elseif (\array_key_exists('kind', $data) && $data['kind'] === null) {
             $object->setKind(null);
+            unset($data['kind']);
         }
         if (\array_key_exists('message', $data) && $data['message'] !== null) {
             $object->setMessage($data['message']);
@@ -85,6 +103,7 @@ class FailureNormalizer implements DenormalizerInterface, NormalizerInterface, D
         }
         elseif (\array_key_exists('message', $data) && $data['message'] === null) {
             $object->setMessage(null);
+            unset($data['message']);
         }
         if (\array_key_exists('version', $data) && $data['version'] !== null) {
             $object->setVersion($data['version']);
@@ -92,6 +111,7 @@ class FailureNormalizer implements DenormalizerInterface, NormalizerInterface, D
         }
         elseif (\array_key_exists('version', $data) && $data['version'] === null) {
             $object->setVersion(null);
+            unset($data['version']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -117,7 +137,7 @@ class FailureNormalizer implements DenormalizerInterface, NormalizerInterface, D
         $dataArray['kind'] = $data->getKind();
         $dataArray['message'] = $data->getMessage();
         $dataArray['version'] = $data->getVersion();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

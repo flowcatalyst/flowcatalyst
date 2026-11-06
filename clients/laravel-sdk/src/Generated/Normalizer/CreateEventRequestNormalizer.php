@@ -43,6 +43,7 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('causationId', $data) && $data['causationId'] !== null) {
             $object->setCausationId($data['causationId']);
@@ -50,6 +51,7 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('causationId', $data) && $data['causationId'] === null) {
             $object->setCausationId(null);
+            unset($data['causationId']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -57,6 +59,7 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('contextData', $data) && $data['contextData'] !== null) {
             $values = [];
@@ -68,6 +71,7 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('contextData', $data) && $data['contextData'] === null) {
             $object->setContextData(null);
+            unset($data['contextData']);
         }
         if (\array_key_exists('correlationId', $data) && $data['correlationId'] !== null) {
             $object->setCorrelationId($data['correlationId']);
@@ -75,6 +79,7 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('correlationId', $data) && $data['correlationId'] === null) {
             $object->setCorrelationId(null);
+            unset($data['correlationId']);
         }
         if (\array_key_exists('data', $data) && $data['data'] !== null) {
             $object->setData($data['data']);
@@ -82,6 +87,7 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('data', $data) && $data['data'] === null) {
             $object->setData(null);
+            unset($data['data']);
         }
         if (\array_key_exists('deduplicationId', $data) && $data['deduplicationId'] !== null) {
             $object->setDeduplicationId($data['deduplicationId']);
@@ -89,6 +95,7 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('deduplicationId', $data) && $data['deduplicationId'] === null) {
             $object->setDeduplicationId(null);
+            unset($data['deduplicationId']);
         }
         if (\array_key_exists('eventType', $data) && $data['eventType'] !== null) {
             $object->setEventType($data['eventType']);
@@ -96,6 +103,7 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('eventType', $data) && $data['eventType'] === null) {
             $object->setEventType(null);
+            unset($data['eventType']);
         }
         if (\array_key_exists('messageGroup', $data) && $data['messageGroup'] !== null) {
             $object->setMessageGroup($data['messageGroup']);
@@ -103,6 +111,7 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('messageGroup', $data) && $data['messageGroup'] === null) {
             $object->setMessageGroup(null);
+            unset($data['messageGroup']);
         }
         if (\array_key_exists('source', $data) && $data['source'] !== null) {
             $object->setSource($data['source']);
@@ -110,6 +119,7 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('source', $data) && $data['source'] === null) {
             $object->setSource(null);
+            unset($data['source']);
         }
         if (\array_key_exists('subject', $data) && $data['subject'] !== null) {
             $object->setSubject($data['subject']);
@@ -117,6 +127,7 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('subject', $data) && $data['subject'] === null) {
             $object->setSubject(null);
+            unset($data['subject']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -137,7 +148,7 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         if ($data->isInitialized('contextData') && null !== $data->getContextData()) {
             $values = [];
             foreach ($data->getContextData() as $value) {
-                $values[] = $this->normalizer->normalize($value, 'json', $context);
+                $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
             }
             $dataArray['contextData'] = $values;
         }
@@ -158,7 +169,7 @@ class CreateEventRequestNormalizer implements DenormalizerInterface, NormalizerI
         if ($data->isInitialized('subject') && null !== $data->getSubject()) {
             $dataArray['subject'] = $data->getSubject();
         }
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

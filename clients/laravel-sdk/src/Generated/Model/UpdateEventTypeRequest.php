@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class UpdateEventTypeRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class UpdateEventTypeRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -111,5 +114,9 @@ class UpdateEventTypeRequest extends \ArrayObject
         $this->initialized['name'] = true;
         $this->name = $name;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientScoped' => ['clientScoped', 'getClientScoped', 'setClientScoped'], 'description' => ['description', 'getDescription', 'setDescription'], 'name' => ['name', 'getName', 'setName']];
     }
 }

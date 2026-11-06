@@ -81,7 +81,7 @@ class FieldWorkerListResponseNormalizer implements DenormalizerInterface, Normal
         $dataArray['total'] = $data->getTotal();
         $values = [];
         foreach ($data->getWorkers() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['workers'] = $values;
         return $dataArray;

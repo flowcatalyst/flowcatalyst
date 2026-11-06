@@ -22,7 +22,7 @@ class DisableClientApplication extends \FlowCatalyst\Generated\Runtime\Client\Ba
     }
     public function getUri(): string
     {
-        return str_replace(['{id}', '{applicationId}'], [$this->id, $this->applicationId], '/api/clients/{id}/applications/{applicationId}/disable');
+        return str_replace(['{id}', '{applicationId}'], [rawurlencode($this->id), rawurlencode($this->applicationId)], '/api/clients/{id}/applications/{applicationId}/disable');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -45,7 +45,7 @@ class DisableClientApplication extends \FlowCatalyst\Generated\Runtime\Client\Ba
         if (204 === $status) {
             return null;
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

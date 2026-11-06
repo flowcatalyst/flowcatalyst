@@ -21,12 +21,12 @@ class GrantPortalUserApp extends \FlowCatalyst\Generated\Runtime\Client\BaseEndp
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/portal-users/{id}/apps');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/portal-users/{id}/apps');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
         if ($this->body instanceof \FlowCatalyst\Generated\Model\PortalUserAppGrantBody) {
-            return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
+            return [['Content-Type' => ['application/json']], \FlowCatalyst\Generated\Runtime\Client\JsonPayload::encode($serializer, $this->body)];
         }
         return [[], null];
     }
@@ -44,10 +44,10 @@ class GrantPortalUserApp extends \FlowCatalyst\Generated\Runtime\Client\BaseEndp
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\StatusChangeResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

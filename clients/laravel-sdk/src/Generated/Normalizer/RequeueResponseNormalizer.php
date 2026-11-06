@@ -86,7 +86,7 @@ class RequeueResponseNormalizer implements DenormalizerInterface, NormalizerInte
         $dataArray['requeued'] = $data->getRequeued();
         $values = [];
         foreach ($data->getSkipped() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['skipped'] = $values;
         $dataArray['skippedCompleted'] = $data->getSkippedCompleted();

@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class UpdateConnectionRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class UpdateConnectionRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -171,5 +174,9 @@ class UpdateConnectionRequest extends \ArrayObject
         $this->initialized['status'] = true;
         $this->status = $status;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'applicationCode' => ['applicationCode', 'getApplicationCode', 'setApplicationCode'], 'description' => ['description', 'getDescription', 'setDescription'], 'externalId' => ['externalId', 'getExternalId', 'setExternalId'], 'name' => ['name', 'getName', 'setName'], 'serviceAccountId' => ['serviceAccountId', 'getServiceAccountId', 'setServiceAccountId'], 'status' => ['status', 'getStatus', 'setStatus']];
     }
 }

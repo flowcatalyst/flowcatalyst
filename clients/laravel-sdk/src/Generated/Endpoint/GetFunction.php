@@ -19,7 +19,7 @@ class GetFunction extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint im
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/functions/{id}');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/functions/{id}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -39,10 +39,10 @@ class GetFunction extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint im
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\FunctionResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

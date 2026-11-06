@@ -21,12 +21,12 @@ class InviteApplicationUser extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     }
     public function getUri(): string
     {
-        return str_replace(['{appCode}'], [$this->appCode], '/api/applications/{appCode}/users');
+        return str_replace(['{appCode}'], [rawurlencode($this->appCode)], '/api/applications/{appCode}/users');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
         if ($this->body instanceof \FlowCatalyst\Generated\Model\InviteApplicationUserRequest) {
-            return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
+            return [['Content-Type' => ['application/json']], \FlowCatalyst\Generated\Runtime\Client\JsonPayload::encode($serializer, $this->body)];
         }
         return [[], null];
     }
@@ -44,10 +44,10 @@ class InviteApplicationUser extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (201 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (201 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\InviteApplicationUserResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

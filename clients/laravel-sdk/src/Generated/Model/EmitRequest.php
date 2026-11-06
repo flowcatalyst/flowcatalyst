@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class EmitRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class EmitRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -127,5 +130,9 @@ class EmitRequest extends \ArrayObject
         $this->initialized['version'] = true;
         $this->version = $version;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'data' => ['data', 'getData', 'setData'], 'event' => ['event', 'getEvent', 'setEvent'], 'functionId' => ['functionId', 'getFunctionId', 'setFunctionId'], 'version' => ['version', 'getVersion', 'setVersion']];
     }
 }

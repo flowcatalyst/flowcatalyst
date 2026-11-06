@@ -80,17 +80,17 @@ class EventFilterOptionsResponseNormalizer implements DenormalizerInterface, Nor
         $dataArray = [];
         $values = [];
         foreach ($data->getApplications() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['applications'] = $values;
         $values_1 = [];
         foreach ($data->getEventTypes() as $value_1) {
-            $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+            $values_1[] = $value_1 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_1, 'json', $context));
         }
         $dataArray['eventTypes'] = $values_1;
         $values_2 = [];
         foreach ($data->getSubdomains() as $value_2) {
-            $values_2[] = $this->normalizer->normalize($value_2, 'json', $context);
+            $values_2[] = $value_2 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_2, 'json', $context));
         }
         $dataArray['subdomains'] = $values_2;
         return $dataArray;

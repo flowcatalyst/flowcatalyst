@@ -22,7 +22,7 @@ class DeleteFunctionSecret extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
     }
     public function getUri(): string
     {
-        return str_replace(['{id}', '{key}'], [$this->id, $this->key], '/api/functions/{id}/secrets/{key}');
+        return str_replace(['{id}', '{key}'], [rawurlencode($this->id), rawurlencode($this->key)], '/api/functions/{id}/secrets/{key}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -45,7 +45,7 @@ class DeleteFunctionSecret extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
         if (204 === $status) {
             return null;
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

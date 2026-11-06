@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class UpdateDispatchPoolRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class UpdateDispatchPoolRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -139,5 +142,9 @@ class UpdateDispatchPoolRequest extends \ArrayObject
         $this->initialized['rateLimit'] = true;
         $this->rateLimit = $rateLimit;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'concurrency' => ['concurrency', 'getConcurrency', 'setConcurrency'], 'description' => ['description', 'getDescription', 'setDescription'], 'name' => ['name', 'getName', 'setName'], 'rateLimit' => ['rateLimit', 'getRateLimit', 'setRateLimit']];
     }
 }

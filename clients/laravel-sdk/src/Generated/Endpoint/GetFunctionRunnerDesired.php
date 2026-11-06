@@ -56,6 +56,10 @@ class GetFunctionRunnerDesired extends \FlowCatalyst\Generated\Runtime\Client\Ba
         $optionsResolver->addAllowedTypes('If-None-Match', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['pool' => ['style' => 'form', 'explode' => false], 'wait' => ['style' => 'form', 'explode' => false], 'runtimes' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -66,10 +70,10 @@ class GetFunctionRunnerDesired extends \FlowCatalyst\Generated\Runtime\Client\Ba
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\Desired', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

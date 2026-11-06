@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class BatchRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class BatchRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -61,5 +64,9 @@ class BatchRequest extends \ArrayObject
         $this->initialized['items'] = true;
         $this->items = $items;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'items' => ['items', 'getItems', 'setItems']];
     }
 }

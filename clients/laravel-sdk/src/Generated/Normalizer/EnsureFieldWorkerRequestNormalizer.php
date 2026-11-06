@@ -49,6 +49,7 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('appCodes', $data) && $data['appCodes'] !== null) {
             $values = [];
@@ -60,6 +61,7 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('appCodes', $data) && $data['appCodes'] === null) {
             $object->setAppCodes(null);
+            unset($data['appCodes']);
         }
         if (\array_key_exists('canImpersonate', $data) && $data['canImpersonate'] !== null) {
             $object->setCanImpersonate($data['canImpersonate']);
@@ -67,6 +69,7 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('canImpersonate', $data) && $data['canImpersonate'] === null) {
             $object->setCanImpersonate(null);
+            unset($data['canImpersonate']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -74,6 +77,7 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('email', $data) && $data['email'] !== null) {
             $object->setEmail($data['email']);
@@ -81,6 +85,7 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('email', $data) && $data['email'] === null) {
             $object->setEmail(null);
+            unset($data['email']);
         }
         if (\array_key_exists('isTest', $data) && $data['isTest'] !== null) {
             $object->setIsTest($data['isTest']);
@@ -88,6 +93,7 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('isTest', $data) && $data['isTest'] === null) {
             $object->setIsTest(null);
+            unset($data['isTest']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -95,6 +101,7 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('pin', $data) && $data['pin'] !== null) {
             $object->setPin($data['pin']);
@@ -102,6 +109,7 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('pin', $data) && $data['pin'] === null) {
             $object->setPin(null);
+            unset($data['pin']);
         }
         if (\array_key_exists('workerCode', $data) && $data['workerCode'] !== null) {
             $object->setWorkerCode($data['workerCode']);
@@ -109,6 +117,7 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('workerCode', $data) && $data['workerCode'] === null) {
             $object->setWorkerCode(null);
+            unset($data['workerCode']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -142,7 +151,7 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
             $dataArray['pin'] = $data->getPin();
         }
         $dataArray['workerCode'] = $data->getWorkerCode();
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

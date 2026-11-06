@@ -68,7 +68,7 @@ class AppDocsGroupNormalizer implements DenormalizerInterface, NormalizerInterfa
         $dataArray['applicationName'] = $data->getApplicationName();
         $values = [];
         foreach ($data->getDocs() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['docs'] = $values;
         return $dataArray;

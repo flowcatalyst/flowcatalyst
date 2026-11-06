@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class TestAnswer extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class TestAnswer implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -133,5 +136,9 @@ class TestAnswer extends \ArrayObject
         $this->initialized['steps'] = true;
         $this->steps = $steps;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['excerpt' => ['excerpt', 'getExcerpt', 'setExcerpt'], 'id' => ['id', 'getId', 'setId'], 'outcome' => ['outcome', 'getOutcome', 'setOutcome'], 'records' => ['records', 'getRecords', 'setRecords'], 'steps' => ['steps', 'getSteps', 'setSteps']];
     }
 }

@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class UpdateRoleRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class UpdateRoleRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -127,5 +130,9 @@ class UpdateRoleRequest extends \ArrayObject
         $this->initialized['permissions'] = true;
         $this->permissions = $permissions;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientManaged' => ['clientManaged', 'getClientManaged', 'setClientManaged'], 'description' => ['description', 'getDescription', 'setDescription'], 'displayName' => ['displayName', 'getDisplayName', 'setDisplayName'], 'permissions' => ['permissions', 'getPermissions', 'setPermissions']];
     }
 }

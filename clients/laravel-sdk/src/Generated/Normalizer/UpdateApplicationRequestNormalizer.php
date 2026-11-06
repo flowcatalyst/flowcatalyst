@@ -43,6 +43,7 @@ class UpdateApplicationRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('defaultBaseUrl', $data) && $data['defaultBaseUrl'] !== null) {
             $object->setDefaultBaseUrl($data['defaultBaseUrl']);
@@ -50,6 +51,7 @@ class UpdateApplicationRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('defaultBaseUrl', $data) && $data['defaultBaseUrl'] === null) {
             $object->setDefaultBaseUrl(null);
+            unset($data['defaultBaseUrl']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -57,6 +59,7 @@ class UpdateApplicationRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('iconUrl', $data) && $data['iconUrl'] !== null) {
             $object->setIconUrl($data['iconUrl']);
@@ -64,6 +67,7 @@ class UpdateApplicationRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('iconUrl', $data) && $data['iconUrl'] === null) {
             $object->setIconUrl(null);
+            unset($data['iconUrl']);
         }
         if (\array_key_exists('logo', $data) && $data['logo'] !== null) {
             $object->setLogo($data['logo']);
@@ -71,6 +75,7 @@ class UpdateApplicationRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('logo', $data) && $data['logo'] === null) {
             $object->setLogo(null);
+            unset($data['logo']);
         }
         if (\array_key_exists('logoMimeType', $data) && $data['logoMimeType'] !== null) {
             $object->setLogoMimeType($data['logoMimeType']);
@@ -78,6 +83,7 @@ class UpdateApplicationRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('logoMimeType', $data) && $data['logoMimeType'] === null) {
             $object->setLogoMimeType(null);
+            unset($data['logoMimeType']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -85,6 +91,7 @@ class UpdateApplicationRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('type', $data) && $data['type'] !== null) {
             $object->setType($data['type']);
@@ -92,6 +99,7 @@ class UpdateApplicationRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('type', $data) && $data['type'] === null) {
             $object->setType(null);
+            unset($data['type']);
         }
         if (\array_key_exists('website', $data) && $data['website'] !== null) {
             $object->setWebsite($data['website']);
@@ -99,6 +107,7 @@ class UpdateApplicationRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('website', $data) && $data['website'] === null) {
             $object->setWebsite(null);
+            unset($data['website']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -134,7 +143,7 @@ class UpdateApplicationRequestNormalizer implements DenormalizerInterface, Norma
         if ($data->isInitialized('website') && null !== $data->getWebsite()) {
             $dataArray['website'] = $data->getWebsite();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

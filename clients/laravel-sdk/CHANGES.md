@@ -34,8 +34,11 @@
   action and `$actor` as the operator. `fieldWorkers()` gains `issueBadge($id, ?$label)`, `listBadges($id)`,
   `revokeBadge($id, $badgeId)`, `bulkIssueBadges(array $workerIds)` and `createSignInCode($id, $appCode)`
   (badge and sign-in-code secrets are returned once); `list()` takes an `isTest` filter; `ensure`/`update`
-  requests carry `canImpersonate` and `isTest`. Generated client regenerated (jane-php 7.11.2, the version the
-  committed client was built with); passes the four new shared fixture cases.
+  requests carry `canImpersonate` and `isTest`. Passes the four new shared fixture cases.
+- Generated client regenerated with jane-php 7.14 (it was built with 7.11): query parameters that are
+  null are now left out instead of sent empty, header names match case-insensitively, and the runtime
+  gains JSON payload and form encoders. `jane-php/open-api-runtime` and `jane-php/open-api-3` now require
+  `^7.14`.
 - `AccessTokenValidator` (the `fc-token` guard and `fc.auth` middleware) now treats `token_use` as an
   allowlist: `api`, `identity` (accepted as before) or an absent claim; `field` and any other class are refused.
 - Ingestions: `Ingestion` gains `notices`, `latestNotice`, `latestNoticeAt`, `warnings` and `save`

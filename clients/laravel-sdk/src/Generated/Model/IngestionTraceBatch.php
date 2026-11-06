@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class IngestionTraceBatch extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class IngestionTraceBatch implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -83,5 +86,9 @@ class IngestionTraceBatch extends \ArrayObject
         $this->initialized['runtimeId'] = true;
         $this->runtimeId = $runtimeId;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'records' => ['records', 'getRecords', 'setRecords'], 'runtimeId' => ['runtimeId', 'getRuntimeId', 'setRuntimeId']];
     }
 }

@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class RouteState extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class RouteState implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -105,5 +108,9 @@ class RouteState extends \ArrayObject
         $this->initialized['version'] = true;
         $this->version = $version;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['error' => ['error', 'getError', 'setError'], 'ingestionId' => ['ingestionId', 'getIngestionId', 'setIngestionId'], 'status' => ['status', 'getStatus', 'setStatus'], 'version' => ['version', 'getVersion', 'setVersion']];
     }
 }

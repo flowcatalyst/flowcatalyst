@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class ResetPasswordRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class ResetPasswordRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -83,5 +86,9 @@ class ResetPasswordRequest extends \ArrayObject
         $this->initialized['newPassword'] = true;
         $this->newPassword = $newPassword;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'enforcePasswordComplexity' => ['enforcePasswordComplexity', 'getEnforcePasswordComplexity', 'setEnforcePasswordComplexity'], 'newPassword' => ['newPassword', 'getNewPassword', 'setNewPassword']];
     }
 }

@@ -43,6 +43,7 @@ class CreateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('applicationCode', $data) && $data['applicationCode'] !== null) {
             $object->setApplicationCode($data['applicationCode']);
@@ -50,6 +51,7 @@ class CreateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('applicationCode', $data) && $data['applicationCode'] === null) {
             $object->setApplicationCode(null);
+            unset($data['applicationCode']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -57,6 +59,7 @@ class CreateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('code', $data) && $data['code'] !== null) {
             $object->setCode($data['code']);
@@ -64,6 +67,7 @@ class CreateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('code', $data) && $data['code'] === null) {
             $object->setCode(null);
+            unset($data['code']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -71,6 +75,7 @@ class CreateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('externalId', $data) && $data['externalId'] !== null) {
             $object->setExternalId($data['externalId']);
@@ -78,6 +83,7 @@ class CreateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('externalId', $data) && $data['externalId'] === null) {
             $object->setExternalId(null);
+            unset($data['externalId']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -85,6 +91,7 @@ class CreateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] !== null) {
             $object->setServiceAccountId($data['serviceAccountId']);
@@ -92,6 +99,7 @@ class CreateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] === null) {
             $object->setServiceAccountId(null);
+            unset($data['serviceAccountId']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -118,7 +126,7 @@ class CreateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         $dataArray['name'] = $data->getName();
         $dataArray['serviceAccountId'] = $data->getServiceAccountId();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

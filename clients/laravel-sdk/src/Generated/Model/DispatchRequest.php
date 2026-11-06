@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class DispatchRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class DispatchRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -171,5 +174,9 @@ class DispatchRequest extends \ArrayObject
         $this->initialized['version'] = true;
         $this->version = $version;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'dispatch' => ['dispatch', 'getDispatch', 'setDispatch'], 'functionId' => ['functionId', 'getFunctionId', 'setFunctionId'], 'invocationId' => ['invocationId', 'getInvocationId', 'setInvocationId'], 'payload' => ['payload', 'getPayload', 'setPayload'], 'requestCorrelationId' => ['requestCorrelationId', 'getRequestCorrelationId', 'setRequestCorrelationId'], 'version' => ['version', 'getVersion', 'setVersion']];
     }
 }

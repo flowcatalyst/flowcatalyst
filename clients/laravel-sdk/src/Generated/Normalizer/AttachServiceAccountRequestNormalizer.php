@@ -43,6 +43,7 @@ class AttachServiceAccountRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('serviceAccountCode', $data) && $data['serviceAccountCode'] !== null) {
             $object->setServiceAccountCode($data['serviceAccountCode']);
@@ -50,6 +51,7 @@ class AttachServiceAccountRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('serviceAccountCode', $data) && $data['serviceAccountCode'] === null) {
             $object->setServiceAccountCode(null);
+            unset($data['serviceAccountCode']);
         }
         if (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] !== null) {
             $object->setServiceAccountId($data['serviceAccountId']);
@@ -57,6 +59,7 @@ class AttachServiceAccountRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] === null) {
             $object->setServiceAccountId(null);
+            unset($data['serviceAccountId']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -70,7 +73,7 @@ class AttachServiceAccountRequestNormalizer implements DenormalizerInterface, No
         $dataArray = [];
         $dataArray['serviceAccountCode'] = $data->getServiceAccountCode();
         $dataArray['serviceAccountId'] = $data->getServiceAccountId();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

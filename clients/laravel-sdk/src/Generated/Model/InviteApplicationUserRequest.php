@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class InviteApplicationUserRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class InviteApplicationUserRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -193,5 +196,9 @@ class InviteApplicationUserRequest extends \ArrayObject
         $this->initialized['sendInvitation'] = true;
         $this->sendInvitation = $sendInvitation;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'email' => ['email', 'getEmail', 'setEmail'], 'inviteRedirectUri' => ['inviteRedirectUri', 'getInviteRedirectUri', 'setInviteRedirectUri'], 'name' => ['name', 'getName', 'setName'], 'returnInviteLink' => ['returnInviteLink', 'getReturnInviteLink', 'setReturnInviteLink'], 'roles' => ['roles', 'getRoles', 'setRoles'], 'sendInvitation' => ['sendInvitation', 'getSendInvitation', 'setSendInvitation']];
     }
 }

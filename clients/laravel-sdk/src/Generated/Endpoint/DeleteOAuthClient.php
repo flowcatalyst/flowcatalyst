@@ -19,7 +19,7 @@ class DeleteOAuthClient extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpo
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/oauth-clients/{id}');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/oauth-clients/{id}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -42,7 +42,7 @@ class DeleteOAuthClient extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpo
         if (204 === $status) {
             return null;
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

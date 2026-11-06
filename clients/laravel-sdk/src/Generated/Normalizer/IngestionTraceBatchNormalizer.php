@@ -43,6 +43,7 @@ class IngestionTraceBatchNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('records', $data) && $data['records'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class IngestionTraceBatchNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('records', $data) && $data['records'] === null) {
             $object->setRecords(null);
+            unset($data['records']);
         }
         if (\array_key_exists('runtimeId', $data) && $data['runtimeId'] !== null) {
             $object->setRuntimeId($data['runtimeId']);
@@ -61,6 +63,7 @@ class IngestionTraceBatchNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('runtimeId', $data) && $data['runtimeId'] === null) {
             $object->setRuntimeId(null);
+            unset($data['runtimeId']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -74,11 +77,11 @@ class IngestionTraceBatchNormalizer implements DenormalizerInterface, Normalizer
         $dataArray = [];
         $values = [];
         foreach ($data->getRecords() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['records'] = $values;
         $dataArray['runtimeId'] = $data->getRuntimeId();
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

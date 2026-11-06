@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class FireNowRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class FireNowRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -61,5 +64,9 @@ class FireNowRequest extends \ArrayObject
         $this->initialized['correlationId'] = true;
         $this->correlationId = $correlationId;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'correlationId' => ['correlationId', 'getCorrelationId', 'setCorrelationId']];
     }
 }

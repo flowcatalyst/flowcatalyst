@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class ResetFieldWorkerPinRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class ResetFieldWorkerPinRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -61,5 +64,9 @@ class ResetFieldWorkerPinRequest extends \ArrayObject
         $this->initialized['pin'] = true;
         $this->pin = $pin;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'pin' => ['pin', 'getPin', 'setPin']];
     }
 }

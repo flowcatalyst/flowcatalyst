@@ -49,6 +49,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -56,6 +57,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('clientScoped', $data) && $data['clientScoped'] !== null) {
             $object->setClientScoped($data['clientScoped']);
@@ -63,6 +65,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('clientScoped', $data) && $data['clientScoped'] === null) {
             $object->setClientScoped(null);
+            unset($data['clientScoped']);
         }
         if (\array_key_exists('code', $data) && $data['code'] !== null) {
             $object->setCode($data['code']);
@@ -70,6 +73,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('code', $data) && $data['code'] === null) {
             $object->setCode(null);
+            unset($data['code']);
         }
         if (\array_key_exists('connectionId', $data) && $data['connectionId'] !== null) {
             $object->setConnectionId($data['connectionId']);
@@ -77,6 +81,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('connectionId', $data) && $data['connectionId'] === null) {
             $object->setConnectionId(null);
+            unset($data['connectionId']);
         }
         if (\array_key_exists('customConfig', $data) && $data['customConfig'] !== null) {
             $values = [];
@@ -88,6 +93,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('customConfig', $data) && $data['customConfig'] === null) {
             $object->setCustomConfig(null);
+            unset($data['customConfig']);
         }
         if (\array_key_exists('dataOnly', $data) && $data['dataOnly'] !== null) {
             $object->setDataOnly($data['dataOnly']);
@@ -95,6 +101,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('dataOnly', $data) && $data['dataOnly'] === null) {
             $object->setDataOnly(null);
+            unset($data['dataOnly']);
         }
         if (\array_key_exists('delaySeconds', $data) && $data['delaySeconds'] !== null) {
             $object->setDelaySeconds($data['delaySeconds']);
@@ -102,6 +109,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('delaySeconds', $data) && $data['delaySeconds'] === null) {
             $object->setDelaySeconds(null);
+            unset($data['delaySeconds']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -109,6 +117,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('dispatchPoolId', $data) && $data['dispatchPoolId'] !== null) {
             $object->setDispatchPoolId($data['dispatchPoolId']);
@@ -116,6 +125,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('dispatchPoolId', $data) && $data['dispatchPoolId'] === null) {
             $object->setDispatchPoolId(null);
+            unset($data['dispatchPoolId']);
         }
         if (\array_key_exists('endpoint', $data) && $data['endpoint'] !== null) {
             $object->setEndpoint($data['endpoint']);
@@ -123,6 +133,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('endpoint', $data) && $data['endpoint'] === null) {
             $object->setEndpoint(null);
+            unset($data['endpoint']);
         }
         if (\array_key_exists('eventTypes', $data) && $data['eventTypes'] !== null) {
             $values_1 = [];
@@ -134,6 +145,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('eventTypes', $data) && $data['eventTypes'] === null) {
             $object->setEventTypes(null);
+            unset($data['eventTypes']);
         }
         if (\array_key_exists('maxAgeSeconds', $data) && $data['maxAgeSeconds'] !== null) {
             $object->setMaxAgeSeconds($data['maxAgeSeconds']);
@@ -141,6 +153,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('maxAgeSeconds', $data) && $data['maxAgeSeconds'] === null) {
             $object->setMaxAgeSeconds(null);
+            unset($data['maxAgeSeconds']);
         }
         if (\array_key_exists('maxRetries', $data) && $data['maxRetries'] !== null) {
             $object->setMaxRetries($data['maxRetries']);
@@ -148,6 +161,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('maxRetries', $data) && $data['maxRetries'] === null) {
             $object->setMaxRetries(null);
+            unset($data['maxRetries']);
         }
         if (\array_key_exists('mode', $data) && $data['mode'] !== null) {
             $object->setMode($data['mode']);
@@ -155,6 +169,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('mode', $data) && $data['mode'] === null) {
             $object->setMode(null);
+            unset($data['mode']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -162,6 +177,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('queue', $data) && $data['queue'] !== null) {
             $object->setQueue($data['queue']);
@@ -169,6 +185,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('queue', $data) && $data['queue'] === null) {
             $object->setQueue(null);
+            unset($data['queue']);
         }
         if (\array_key_exists('sequence', $data) && $data['sequence'] !== null) {
             $object->setSequence($data['sequence']);
@@ -176,6 +193,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('sequence', $data) && $data['sequence'] === null) {
             $object->setSequence(null);
+            unset($data['sequence']);
         }
         if (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] !== null) {
             $object->setServiceAccountId($data['serviceAccountId']);
@@ -183,6 +201,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] === null) {
             $object->setServiceAccountId(null);
+            unset($data['serviceAccountId']);
         }
         if (\array_key_exists('timeoutSeconds', $data) && $data['timeoutSeconds'] !== null) {
             $object->setTimeoutSeconds($data['timeoutSeconds']);
@@ -190,6 +209,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('timeoutSeconds', $data) && $data['timeoutSeconds'] === null) {
             $object->setTimeoutSeconds(null);
+            unset($data['timeoutSeconds']);
         }
         foreach ($data as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
@@ -214,7 +234,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         if ($data->isInitialized('customConfig') && null !== $data->getCustomConfig()) {
             $values = [];
             foreach ($data->getCustomConfig() as $value) {
-                $values[] = $this->normalizer->normalize($value, 'json', $context);
+                $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
             }
             $dataArray['customConfig'] = $values;
         }
@@ -234,7 +254,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         if ($data->isInitialized('eventTypes') && null !== $data->getEventTypes()) {
             $values_1 = [];
             foreach ($data->getEventTypes() as $value_1) {
-                $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+                $values_1[] = $value_1 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_1, 'json', $context));
             }
             $dataArray['eventTypes'] = $values_1;
         }
@@ -260,7 +280,7 @@ class CreateSubscriptionRequestNormalizer implements DenormalizerInterface, Norm
         if ($data->isInitialized('timeoutSeconds') && null !== $data->getTimeoutSeconds()) {
             $dataArray['timeoutSeconds'] = $data->getTimeoutSeconds();
         }
-        foreach ($data as $key => $value_2) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_2;
             }

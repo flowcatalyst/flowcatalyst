@@ -44,7 +44,19 @@ class FieldWorkerAppRefNormalizer implements DenormalizerInterface, NormalizerIn
             $object->setCode(null);
         }
         if (\array_key_exists('grantedAt', $data) && $data['grantedAt'] !== null) {
-            $object->setGrantedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['grantedAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['grantedAt']);
+            if (false === $date) {
+                if (is_string($data['grantedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['grantedAt'])) {
+                    try {
+                        $date = new \DateTime($data['grantedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['grantedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['grantedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setGrantedAt($date);
         }
         elseif (\array_key_exists('grantedAt', $data) && $data['grantedAt'] === null) {
             $object->setGrantedAt(null);

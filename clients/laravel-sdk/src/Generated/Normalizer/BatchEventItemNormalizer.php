@@ -136,7 +136,7 @@ class BatchEventItemNormalizer implements DenormalizerInterface, NormalizerInter
         if ($data->isInitialized('contextData') && null !== $data->getContextData()) {
             $values = [];
             foreach ($data->getContextData() as $value) {
-                $values[] = $this->normalizer->normalize($value, 'json', $context);
+                $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
             }
             $dataArray['contextData'] = $values;
         }

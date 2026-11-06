@@ -46,6 +46,7 @@ class ResetPasswordRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('enforcePasswordComplexity', $data) && $data['enforcePasswordComplexity'] !== null) {
             $object->setEnforcePasswordComplexity($data['enforcePasswordComplexity']);
@@ -53,6 +54,7 @@ class ResetPasswordRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('enforcePasswordComplexity', $data) && $data['enforcePasswordComplexity'] === null) {
             $object->setEnforcePasswordComplexity(null);
+            unset($data['enforcePasswordComplexity']);
         }
         if (\array_key_exists('newPassword', $data) && $data['newPassword'] !== null) {
             $object->setNewPassword($data['newPassword']);
@@ -60,6 +62,7 @@ class ResetPasswordRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('newPassword', $data) && $data['newPassword'] === null) {
             $object->setNewPassword(null);
+            unset($data['newPassword']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -75,7 +78,7 @@ class ResetPasswordRequestNormalizer implements DenormalizerInterface, Normalize
             $dataArray['enforcePasswordComplexity'] = $data->getEnforcePasswordComplexity();
         }
         $dataArray['newPassword'] = $data->getNewPassword();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

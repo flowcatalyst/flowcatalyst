@@ -43,6 +43,7 @@ class ApplyIngestionSetRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('files', $data) && $data['files'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class ApplyIngestionSetRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('files', $data) && $data['files'] === null) {
             $object->setFiles(null);
+            unset($data['files']);
         }
         if (\array_key_exists('items', $data) && $data['items'] !== null) {
             $values_1 = [];
@@ -65,6 +67,7 @@ class ApplyIngestionSetRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('items', $data) && $data['items'] === null) {
             $object->setItems(null);
+            unset($data['items']);
         }
         foreach ($data as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
@@ -79,16 +82,16 @@ class ApplyIngestionSetRequestNormalizer implements DenormalizerInterface, Norma
         if ($data->isInitialized('files') && null !== $data->getFiles()) {
             $values = [];
             foreach ($data->getFiles() as $value) {
-                $values[] = $this->normalizer->normalize($value, 'json', $context);
+                $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
             }
             $dataArray['files'] = $values;
         }
         $values_1 = [];
         foreach ($data->getItems() as $value_1) {
-            $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+            $values_1[] = $value_1 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_1, 'json', $context));
         }
         $dataArray['items'] = $values_1;
-        foreach ($data as $key => $value_2) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_2;
             }

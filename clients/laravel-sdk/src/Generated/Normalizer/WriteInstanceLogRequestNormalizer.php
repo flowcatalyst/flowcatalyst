@@ -43,6 +43,7 @@ class WriteInstanceLogRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('level', $data) && $data['level'] !== null) {
             $object->setLevel($data['level']);
@@ -50,6 +51,7 @@ class WriteInstanceLogRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('level', $data) && $data['level'] === null) {
             $object->setLevel(null);
+            unset($data['level']);
         }
         if (\array_key_exists('message', $data) && $data['message'] !== null) {
             $object->setMessage($data['message']);
@@ -57,6 +59,7 @@ class WriteInstanceLogRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('message', $data) && $data['message'] === null) {
             $object->setMessage(null);
+            unset($data['message']);
         }
         if (\array_key_exists('metadata', $data) && $data['metadata'] !== null) {
             $object->setMetadata($data['metadata']);
@@ -64,6 +67,7 @@ class WriteInstanceLogRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('metadata', $data) && $data['metadata'] === null) {
             $object->setMetadata(null);
+            unset($data['metadata']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -80,7 +84,7 @@ class WriteInstanceLogRequestNormalizer implements DenormalizerInterface, Normal
         if ($data->isInitialized('metadata') && null !== $data->getMetadata()) {
             $dataArray['metadata'] = $data->getMetadata();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

@@ -46,6 +46,7 @@ class EnableTraceRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('indefinite', $data) && $data['indefinite'] !== null) {
             $object->setIndefinite($data['indefinite']);
@@ -53,6 +54,7 @@ class EnableTraceRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('indefinite', $data) && $data['indefinite'] === null) {
             $object->setIndefinite(null);
+            unset($data['indefinite']);
         }
         if (\array_key_exists('minutes', $data) && $data['minutes'] !== null) {
             $object->setMinutes($data['minutes']);
@@ -60,6 +62,7 @@ class EnableTraceRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('minutes', $data) && $data['minutes'] === null) {
             $object->setMinutes(null);
+            unset($data['minutes']);
         }
         if (\array_key_exists('sampleRate', $data) && $data['sampleRate'] !== null) {
             $object->setSampleRate($data['sampleRate']);
@@ -67,6 +70,7 @@ class EnableTraceRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('sampleRate', $data) && $data['sampleRate'] === null) {
             $object->setSampleRate(null);
+            unset($data['sampleRate']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -87,7 +91,7 @@ class EnableTraceRequestNormalizer implements DenormalizerInterface, NormalizerI
         if ($data->isInitialized('sampleRate') && null !== $data->getSampleRate()) {
             $dataArray['sampleRate'] = $data->getSampleRate();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

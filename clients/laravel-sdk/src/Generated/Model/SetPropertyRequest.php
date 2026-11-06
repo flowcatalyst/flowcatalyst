@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class SetPropertyRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class SetPropertyRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -133,5 +136,9 @@ class SetPropertyRequest extends \ArrayObject
         $this->initialized['valueType'] = true;
         $this->valueType = $valueType;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'description' => ['description', 'getDescription', 'setDescription'], 'value' => ['value', 'getValue', 'setValue'], 'valueType' => ['valueType', 'getValueType', 'setValueType']];
     }
 }

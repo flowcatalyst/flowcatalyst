@@ -43,6 +43,7 @@ class MatchEmailsRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('emails', $data) && $data['emails'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class MatchEmailsRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('emails', $data) && $data['emails'] === null) {
             $object->setEmails(null);
+            unset($data['emails']);
         }
         if (\array_key_exists('text', $data) && $data['text'] !== null) {
             $object->setText($data['text']);
@@ -61,6 +63,7 @@ class MatchEmailsRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('text', $data) && $data['text'] === null) {
             $object->setText(null);
+            unset($data['text']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -82,7 +85,7 @@ class MatchEmailsRequestNormalizer implements DenormalizerInterface, NormalizerI
         if ($data->isInitialized('text') && null !== $data->getText()) {
             $dataArray['text'] = $data->getText();
         }
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

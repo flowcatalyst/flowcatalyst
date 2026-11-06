@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class UpdateFunctionRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class UpdateFunctionRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -211,5 +214,9 @@ class UpdateFunctionRequest extends \ArrayObject
         $this->initialized['warm'] = true;
         $this->warm = $warm;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clearPool' => ['clearPool', 'getClearPool', 'setClearPool'], 'clearServiceAccount' => ['clearServiceAccount', 'getClearServiceAccount', 'setClearServiceAccount'], 'description' => ['description', 'getDescription', 'setDescription'], 'limits' => ['limits', 'getLimits', 'setLimits'], 'pool' => ['pool', 'getPool', 'setPool'], 'serviceAccountId' => ['serviceAccountId', 'getServiceAccountId', 'setServiceAccountId'], 'warm' => ['warm', 'getWarm', 'setWarm']];
     }
 }

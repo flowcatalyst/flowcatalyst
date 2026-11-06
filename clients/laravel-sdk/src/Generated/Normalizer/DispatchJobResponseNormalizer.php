@@ -75,7 +75,19 @@ class DispatchJobResponseNormalizer implements DenormalizerInterface, Normalizer
             $object->setCode(null);
         }
         if (\array_key_exists('completedAt', $data) && $data['completedAt'] !== null) {
-            $object->setCompletedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['completedAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['completedAt']);
+            if (false === $date) {
+                if (is_string($data['completedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['completedAt'])) {
+                    try {
+                        $date = new \DateTime($data['completedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['completedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['completedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setCompletedAt($date);
         }
         elseif (\array_key_exists('completedAt', $data) && $data['completedAt'] === null) {
             $object->setCompletedAt(null);
@@ -87,7 +99,19 @@ class DispatchJobResponseNormalizer implements DenormalizerInterface, Normalizer
             $object->setCorrelationId(null);
         }
         if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
-            $object->setCreatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']);
+            if (false === $date_1) {
+                if (is_string($data['createdAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['createdAt'])) {
+                    try {
+                        $date_1 = new \DateTime($data['createdAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setCreatedAt($date_1);
         }
         elseif (\array_key_exists('createdAt', $data) && $data['createdAt'] === null) {
             $object->setCreatedAt(null);
@@ -123,7 +147,19 @@ class DispatchJobResponseNormalizer implements DenormalizerInterface, Normalizer
             $object->setEventId(null);
         }
         if (\array_key_exists('expiresAt', $data) && $data['expiresAt'] !== null) {
-            $object->setExpiresAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['expiresAt']));
+            $date_2 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['expiresAt']);
+            if (false === $date_2) {
+                if (is_string($data['expiresAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['expiresAt'])) {
+                    try {
+                        $date_2 = new \DateTime($data['expiresAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['expiresAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['expiresAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setExpiresAt($date_2);
         }
         elseif (\array_key_exists('expiresAt', $data) && $data['expiresAt'] === null) {
             $object->setExpiresAt(null);
@@ -153,7 +189,19 @@ class DispatchJobResponseNormalizer implements DenormalizerInterface, Normalizer
             $object->setKind(null);
         }
         if (\array_key_exists('lastAttemptAt', $data) && $data['lastAttemptAt'] !== null) {
-            $object->setLastAttemptAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lastAttemptAt']));
+            $date_3 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lastAttemptAt']);
+            if (false === $date_3) {
+                if (is_string($data['lastAttemptAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['lastAttemptAt'])) {
+                    try {
+                        $date_3 = new \DateTime($data['lastAttemptAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['lastAttemptAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['lastAttemptAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setLastAttemptAt($date_3);
         }
         elseif (\array_key_exists('lastAttemptAt', $data) && $data['lastAttemptAt'] === null) {
             $object->setLastAttemptAt(null);
@@ -217,7 +265,19 @@ class DispatchJobResponseNormalizer implements DenormalizerInterface, Normalizer
             $object->setRetryStrategy(null);
         }
         if (\array_key_exists('scheduledFor', $data) && $data['scheduledFor'] !== null) {
-            $object->setScheduledFor(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['scheduledFor']));
+            $date_4 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['scheduledFor']);
+            if (false === $date_4) {
+                if (is_string($data['scheduledFor']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['scheduledFor'])) {
+                    try {
+                        $date_4 = new \DateTime($data['scheduledFor']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['scheduledFor'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['scheduledFor'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setScheduledFor($date_4);
         }
         elseif (\array_key_exists('scheduledFor', $data) && $data['scheduledFor'] === null) {
             $object->setScheduledFor(null);
@@ -277,7 +337,19 @@ class DispatchJobResponseNormalizer implements DenormalizerInterface, Normalizer
             $object->setTimeoutSeconds(null);
         }
         if (\array_key_exists('updatedAt', $data) && $data['updatedAt'] !== null) {
-            $object->setUpdatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']));
+            $date_5 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']);
+            if (false === $date_5) {
+                if (is_string($data['updatedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['updatedAt'])) {
+                    try {
+                        $date_5 = new \DateTime($data['updatedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['updatedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['updatedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setUpdatedAt($date_5);
         }
         elseif (\array_key_exists('updatedAt', $data) && $data['updatedAt'] === null) {
             $object->setUpdatedAt(null);
@@ -291,7 +363,7 @@ class DispatchJobResponseNormalizer implements DenormalizerInterface, Normalizer
         if ($data->isInitialized('attempts') && null !== $data->getAttempts()) {
             $values = [];
             foreach ($data->getAttempts() as $value) {
-                $values[] = $this->normalizer->normalize($value, 'json', $context);
+                $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
             }
             $dataArray['attempts'] = $values;
         }
@@ -343,7 +415,7 @@ class DispatchJobResponseNormalizer implements DenormalizerInterface, Normalizer
         if ($data->isInitialized('metadata') && null !== $data->getMetadata()) {
             $values_1 = [];
             foreach ($data->getMetadata() as $value_1) {
-                $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+                $values_1[] = $value_1 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_1, 'json', $context));
             }
             $dataArray['metadata'] = $values_1;
         }

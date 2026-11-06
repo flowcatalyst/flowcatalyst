@@ -43,6 +43,7 @@ class SyncRolesRequestNormalizer implements DenormalizerInterface, NormalizerInt
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('roles', $data) && $data['roles'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class SyncRolesRequestNormalizer implements DenormalizerInterface, NormalizerInt
         }
         elseif (\array_key_exists('roles', $data) && $data['roles'] === null) {
             $object->setRoles(null);
+            unset($data['roles']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -67,10 +69,10 @@ class SyncRolesRequestNormalizer implements DenormalizerInterface, NormalizerInt
         $dataArray = [];
         $values = [];
         foreach ($data->getRoles() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['roles'] = $values;
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

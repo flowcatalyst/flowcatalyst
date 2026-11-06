@@ -69,7 +69,7 @@ class IngestionHistoryResponseNormalizer implements DenormalizerInterface, Norma
         $dataArray = [];
         $values = [];
         foreach ($data->getEntries() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['entries'] = $values;
         $dataArray['hasMore'] = $data->getHasMore();

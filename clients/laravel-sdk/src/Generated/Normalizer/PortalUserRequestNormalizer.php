@@ -46,6 +46,7 @@ class PortalUserRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -53,6 +54,7 @@ class PortalUserRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('email', $data) && $data['email'] !== null) {
             $object->setEmail($data['email']);
@@ -60,6 +62,7 @@ class PortalUserRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('email', $data) && $data['email'] === null) {
             $object->setEmail(null);
+            unset($data['email']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -67,6 +70,7 @@ class PortalUserRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('portalAppCode', $data) && $data['portalAppCode'] !== null) {
             $object->setPortalAppCode($data['portalAppCode']);
@@ -74,6 +78,7 @@ class PortalUserRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('portalAppCode', $data) && $data['portalAppCode'] === null) {
             $object->setPortalAppCode(null);
+            unset($data['portalAppCode']);
         }
         if (\array_key_exists('redirectUri', $data) && $data['redirectUri'] !== null) {
             $object->setRedirectUri($data['redirectUri']);
@@ -81,6 +86,7 @@ class PortalUserRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('redirectUri', $data) && $data['redirectUri'] === null) {
             $object->setRedirectUri(null);
+            unset($data['redirectUri']);
         }
         if (\array_key_exists('returnInviteLink', $data) && $data['returnInviteLink'] !== null) {
             $object->setReturnInviteLink($data['returnInviteLink']);
@@ -88,6 +94,7 @@ class PortalUserRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('returnInviteLink', $data) && $data['returnInviteLink'] === null) {
             $object->setReturnInviteLink(null);
+            unset($data['returnInviteLink']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -113,7 +120,7 @@ class PortalUserRequestNormalizer implements DenormalizerInterface, NormalizerIn
         if ($data->isInitialized('returnInviteLink') && null !== $data->getReturnInviteLink()) {
             $dataArray['returnInviteLink'] = $data->getReturnInviteLink();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

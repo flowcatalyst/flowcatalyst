@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class EnableTraceRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class EnableTraceRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -123,5 +126,9 @@ class EnableTraceRequest extends \ArrayObject
         $this->initialized['sampleRate'] = true;
         $this->sampleRate = $sampleRate;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'indefinite' => ['indefinite', 'getIndefinite', 'setIndefinite'], 'minutes' => ['minutes', 'getMinutes', 'setMinutes'], 'sampleRate' => ['sampleRate', 'getSampleRate', 'setSampleRate']];
     }
 }

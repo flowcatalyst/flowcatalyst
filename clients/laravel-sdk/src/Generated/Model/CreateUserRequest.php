@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateUserRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateUserRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -237,5 +240,9 @@ class CreateUserRequest extends \ArrayObject
         $this->initialized['sendInvitation'] = true;
         $this->sendInvitation = $sendInvitation;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'email' => ['email', 'getEmail', 'setEmail'], 'enforcePasswordComplexity' => ['enforcePasswordComplexity', 'getEnforcePasswordComplexity', 'setEnforcePasswordComplexity'], 'inviteRedirectUri' => ['inviteRedirectUri', 'getInviteRedirectUri', 'setInviteRedirectUri'], 'name' => ['name', 'getName', 'setName'], 'password' => ['password', 'getPassword', 'setPassword'], 'returnInviteLink' => ['returnInviteLink', 'getReturnInviteLink', 'setReturnInviteLink'], 'scope' => ['scope', 'getScope', 'setScope'], 'sendInvitation' => ['sendInvitation', 'getSendInvitation', 'setSendInvitation']];
     }
 }

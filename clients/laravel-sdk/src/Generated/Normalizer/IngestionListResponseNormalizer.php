@@ -76,7 +76,7 @@ class IngestionListResponseNormalizer implements DenormalizerInterface, Normaliz
         $dataArray['hasMore'] = $data->getHasMore();
         $values = [];
         foreach ($data->getIngestions() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['ingestions'] = $values;
         if ($data->isInitialized('nextCursor') && null !== $data->getNextCursor()) {

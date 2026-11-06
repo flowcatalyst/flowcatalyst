@@ -22,7 +22,7 @@ class RevokeFieldWorkerBadge extends \FlowCatalyst\Generated\Runtime\Client\Base
     }
     public function getUri(): string
     {
-        return str_replace(['{id}', '{badgeId}'], [$this->id, $this->badgeId], '/api/field-workers/{id}/badges/{badgeId}/revoke');
+        return str_replace(['{id}', '{badgeId}'], [rawurlencode($this->id), rawurlencode($this->badgeId)], '/api/field-workers/{id}/badges/{badgeId}/revoke');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -42,10 +42,10 @@ class RevokeFieldWorkerBadge extends \FlowCatalyst\Generated\Runtime\Client\Base
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\FieldBadgeResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

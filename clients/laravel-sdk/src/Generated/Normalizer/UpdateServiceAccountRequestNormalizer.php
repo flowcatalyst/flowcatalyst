@@ -43,6 +43,7 @@ class UpdateServiceAccountRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('clientIds', $data) && $data['clientIds'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class UpdateServiceAccountRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('clientIds', $data) && $data['clientIds'] === null) {
             $object->setClientIds(null);
+            unset($data['clientIds']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -61,6 +63,7 @@ class UpdateServiceAccountRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -68,6 +71,7 @@ class UpdateServiceAccountRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('scope', $data) && $data['scope'] !== null) {
             $object->setScope($data['scope']);
@@ -75,6 +79,7 @@ class UpdateServiceAccountRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('scope', $data) && $data['scope'] === null) {
             $object->setScope(null);
+            unset($data['scope']);
         }
         if (\array_key_exists('webhookCredentials', $data) && $data['webhookCredentials'] !== null) {
             $object->setWebhookCredentials($this->denormalizer->denormalize($data['webhookCredentials'], \FlowCatalyst\Generated\Model\WebhookCredentialsDTO::class, 'json', $context));
@@ -82,6 +87,7 @@ class UpdateServiceAccountRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('webhookCredentials', $data) && $data['webhookCredentials'] === null) {
             $object->setWebhookCredentials(null);
+            unset($data['webhookCredentials']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -110,9 +116,9 @@ class UpdateServiceAccountRequestNormalizer implements DenormalizerInterface, No
             $dataArray['scope'] = $data->getScope();
         }
         if ($data->isInitialized('webhookCredentials') && null !== $data->getWebhookCredentials()) {
-            $dataArray['webhookCredentials'] = $this->normalizer->normalize($data->getWebhookCredentials(), 'json', $context);
+            $dataArray['webhookCredentials'] = $data->getWebhookCredentials() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getWebhookCredentials(), 'json', $context));
         }
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

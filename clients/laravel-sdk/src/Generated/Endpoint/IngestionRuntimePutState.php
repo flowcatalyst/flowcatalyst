@@ -28,12 +28,12 @@ class IngestionRuntimePutState extends \FlowCatalyst\Generated\Runtime\Client\Ba
     }
     public function getUri(): string
     {
-        return str_replace(['{ingestionId}', '{key}'], [$this->ingestionId, $this->key], '/api/ingestion-runtime/v1/state/{ingestionId}/{key}');
+        return str_replace(['{ingestionId}', '{key}'], [rawurlencode($this->ingestionId), rawurlencode($this->key)], '/api/ingestion-runtime/v1/state/{ingestionId}/{key}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
         if ($this->body instanceof \FlowCatalyst\Generated\Model\StateValue) {
-            return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
+            return [['Content-Type' => ['application/json']], \FlowCatalyst\Generated\Runtime\Client\JsonPayload::encode($serializer, $this->body)];
         }
         return [[], null];
     }
@@ -50,6 +50,10 @@ class IngestionRuntimePutState extends \FlowCatalyst\Generated\Runtime\Client\Ba
         $optionsResolver->addAllowedTypes('runtimeId', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['runtimeId' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -63,7 +67,7 @@ class IngestionRuntimePutState extends \FlowCatalyst\Generated\Runtime\Client\Ba
         if (204 === $status) {
             return null;
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

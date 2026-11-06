@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class PortalUserAppGrantBody extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class PortalUserAppGrantBody implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -83,5 +86,9 @@ class PortalUserAppGrantBody extends \ArrayObject
         $this->initialized['portalAppCode'] = true;
         $this->portalAppCode = $portalAppCode;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'portalAppCode' => ['portalAppCode', 'getPortalAppCode', 'setPortalAppCode']];
     }
 }

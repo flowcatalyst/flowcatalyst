@@ -23,7 +23,7 @@ class DeletePortalApp extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoin
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/portal-apps/{id}');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/portal-apps/{id}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -42,6 +42,10 @@ class DeletePortalApp extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoin
         $optionsResolver->addAllowedTypes('clientId', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['clientId' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -52,10 +56,10 @@ class DeletePortalApp extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoin
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\StatusChangeResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

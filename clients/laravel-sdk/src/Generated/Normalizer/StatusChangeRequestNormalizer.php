@@ -43,6 +43,7 @@ class StatusChangeRequestNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('reason', $data) && $data['reason'] !== null) {
             $object->setReason($data['reason']);
@@ -50,6 +51,7 @@ class StatusChangeRequestNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('reason', $data) && $data['reason'] === null) {
             $object->setReason(null);
+            unset($data['reason']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -62,7 +64,7 @@ class StatusChangeRequestNormalizer implements DenormalizerInterface, Normalizer
     {
         $dataArray = [];
         $dataArray['reason'] = $data->getReason();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

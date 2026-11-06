@@ -84,7 +84,7 @@ class CreatePortalAppResponseNormalizer implements DenormalizerInterface, Normal
         $dataArray['clientType'] = $data->getClientType();
         $dataArray['oauthClientId'] = $data->getOauthClientId();
         $dataArray['oauthClientRowId'] = $data->getOauthClientRowId();
-        $dataArray['portalApp'] = $this->normalizer->normalize($data->getPortalApp(), 'json', $context);
+        $dataArray['portalApp'] = $data->getPortalApp() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getPortalApp(), 'json', $context));
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

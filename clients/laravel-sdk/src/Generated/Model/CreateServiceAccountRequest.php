@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateServiceAccountRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateServiceAccountRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -221,5 +224,9 @@ class CreateServiceAccountRequest extends \ArrayObject
         $this->initialized['webhookCredentials'] = true;
         $this->webhookCredentials = $webhookCredentials;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'allApplications' => ['allApplications', 'getAllApplications', 'setAllApplications'], 'applicationId' => ['applicationId', 'getApplicationId', 'setApplicationId'], 'clientIds' => ['clientIds', 'getClientIds', 'setClientIds'], 'code' => ['code', 'getCode', 'setCode'], 'description' => ['description', 'getDescription', 'setDescription'], 'name' => ['name', 'getName', 'setName'], 'scope' => ['scope', 'getScope', 'setScope'], 'webhookCredentials' => ['webhookCredentials', 'getWebhookCredentials', 'setWebhookCredentials']];
     }
 }

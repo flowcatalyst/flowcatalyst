@@ -43,6 +43,7 @@ class EditPayloadRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('payload', $data) && $data['payload'] !== null) {
             $object->setPayload($data['payload']);
@@ -50,6 +51,7 @@ class EditPayloadRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('payload', $data) && $data['payload'] === null) {
             $object->setPayload(null);
+            unset($data['payload']);
         }
         if (\array_key_exists('payloadContentType', $data) && $data['payloadContentType'] !== null) {
             $object->setPayloadContentType($data['payloadContentType']);
@@ -57,6 +59,7 @@ class EditPayloadRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('payloadContentType', $data) && $data['payloadContentType'] === null) {
             $object->setPayloadContentType(null);
+            unset($data['payloadContentType']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -72,7 +75,7 @@ class EditPayloadRequestNormalizer implements DenormalizerInterface, NormalizerI
         if ($data->isInitialized('payloadContentType') && null !== $data->getPayloadContentType()) {
             $dataArray['payloadContentType'] = $data->getPayloadContentType();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

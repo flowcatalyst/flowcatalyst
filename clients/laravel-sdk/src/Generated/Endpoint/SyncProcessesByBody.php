@@ -27,7 +27,7 @@ class SyncProcessesByBody extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
         if ($this->body instanceof \FlowCatalyst\Generated\Model\SyncProcessesByBodyRequest) {
-            return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
+            return [['Content-Type' => ['application/json']], \FlowCatalyst\Generated\Runtime\Client\JsonPayload::encode($serializer, $this->body)];
         }
         return [[], null];
     }
@@ -44,6 +44,10 @@ class SyncProcessesByBody extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
         $optionsResolver->addAllowedTypes('removeUnlisted', ['bool']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['removeUnlisted' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -54,10 +58,10 @@ class SyncProcessesByBody extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\SyncResultResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

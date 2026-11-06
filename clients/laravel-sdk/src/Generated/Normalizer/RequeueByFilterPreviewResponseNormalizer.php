@@ -44,7 +44,7 @@ class RequeueByFilterPreviewResponseNormalizer implements DenormalizerInterface,
             $object->setDollarSchema(null);
         }
         if (\array_key_exists('byStatus', $data) && $data['byStatus'] !== null) {
-            $values = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            $values = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data['byStatus'] as $key => $value) {
                 $values[$key] = $value;
             }
@@ -94,7 +94,7 @@ class RequeueByFilterPreviewResponseNormalizer implements DenormalizerInterface,
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $values = [];
+        $values = new \FlowCatalyst\Generated\Runtime\JsonObject();
         foreach ($data->getByStatus() as $key => $value) {
             $values[$key] = $value;
         }
@@ -104,7 +104,7 @@ class RequeueByFilterPreviewResponseNormalizer implements DenormalizerInterface,
         $dataArray['eligibleCount'] = $data->getEligibleCount();
         $dataArray['inFlightCount'] = $data->getInFlightCount();
         $dataArray['redriveEligibleCount'] = $data->getRedriveEligibleCount();
-        $dataArray['window'] = $this->normalizer->normalize($data->getWindow(), 'json', $context);
+        $dataArray['window'] = $data->getWindow() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getWindow(), 'json', $context));
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

@@ -79,7 +79,7 @@ class FieldWorkerSignInListResponseNormalizer implements DenormalizerInterface, 
         $dataArray['page'] = $data->getPage();
         $values = [];
         foreach ($data->getSignIns() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['signIns'] = $values;
         $dataArray['size'] = $data->getSize();

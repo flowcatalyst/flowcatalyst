@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class ProvisionLoginClientRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class ProvisionLoginClientRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -111,5 +114,9 @@ class ProvisionLoginClientRequest extends \ArrayObject
         $this->initialized['redirectUris'] = true;
         $this->redirectUris = $redirectUris;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'allowedOrigins' => ['allowedOrigins', 'getAllowedOrigins', 'setAllowedOrigins'], 'clientType' => ['clientType', 'getClientType', 'setClientType'], 'redirectUris' => ['redirectUris', 'getRedirectUris', 'setRedirectUris']];
     }
 }

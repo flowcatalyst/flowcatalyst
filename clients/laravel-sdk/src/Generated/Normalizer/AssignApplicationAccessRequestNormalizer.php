@@ -49,6 +49,7 @@ class AssignApplicationAccessRequestNormalizer implements DenormalizerInterface,
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('allApplications', $data) && $data['allApplications'] !== null) {
             $object->setAllApplications($data['allApplications']);
@@ -56,6 +57,7 @@ class AssignApplicationAccessRequestNormalizer implements DenormalizerInterface,
         }
         elseif (\array_key_exists('allApplications', $data) && $data['allApplications'] === null) {
             $object->setAllApplications(null);
+            unset($data['allApplications']);
         }
         if (\array_key_exists('applicationIds', $data) && $data['applicationIds'] !== null) {
             $values = [];
@@ -67,6 +69,7 @@ class AssignApplicationAccessRequestNormalizer implements DenormalizerInterface,
         }
         elseif (\array_key_exists('applicationIds', $data) && $data['applicationIds'] === null) {
             $object->setApplicationIds(null);
+            unset($data['applicationIds']);
         }
         if (\array_key_exists('confirmSelfRestriction', $data) && $data['confirmSelfRestriction'] !== null) {
             $object->setConfirmSelfRestriction($data['confirmSelfRestriction']);
@@ -74,6 +77,7 @@ class AssignApplicationAccessRequestNormalizer implements DenormalizerInterface,
         }
         elseif (\array_key_exists('confirmSelfRestriction', $data) && $data['confirmSelfRestriction'] === null) {
             $object->setConfirmSelfRestriction(null);
+            unset($data['confirmSelfRestriction']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -96,7 +100,7 @@ class AssignApplicationAccessRequestNormalizer implements DenormalizerInterface,
         if ($data->isInitialized('confirmSelfRestriction') && null !== $data->getConfirmSelfRestriction()) {
             $dataArray['confirmSelfRestriction'] = $data->getConfirmSelfRestriction();
         }
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

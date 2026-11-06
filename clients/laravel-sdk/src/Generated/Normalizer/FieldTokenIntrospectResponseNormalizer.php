@@ -78,7 +78,19 @@ class FieldTokenIntrospectResponseNormalizer implements DenormalizerInterface, N
             $object->setAppCode(null);
         }
         if (\array_key_exists('authTime', $data) && $data['authTime'] !== null) {
-            $object->setAuthTime(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['authTime']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['authTime']);
+            if (false === $date) {
+                if (is_string($data['authTime']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['authTime'])) {
+                    try {
+                        $date = new \DateTime($data['authTime']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['authTime'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['authTime'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setAuthTime($date);
         }
         elseif (\array_key_exists('authTime', $data) && $data['authTime'] === null) {
             $object->setAuthTime(null);
@@ -96,7 +108,19 @@ class FieldTokenIntrospectResponseNormalizer implements DenormalizerInterface, N
             $object->setDeviceId(null);
         }
         if (\array_key_exists('exp', $data) && $data['exp'] !== null) {
-            $object->setExp(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['exp']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['exp']);
+            if (false === $date_1) {
+                if (is_string($data['exp']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['exp'])) {
+                    try {
+                        $date_1 = new \DateTime($data['exp']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['exp'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['exp'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setExp($date_1);
         }
         elseif (\array_key_exists('exp', $data) && $data['exp'] === null) {
             $object->setExp(null);
@@ -125,7 +149,7 @@ class FieldTokenIntrospectResponseNormalizer implements DenormalizerInterface, N
     {
         $dataArray = [];
         if ($data->isInitialized('act') && null !== $data->getAct()) {
-            $dataArray['act'] = $this->normalizer->normalize($data->getAct(), 'json', $context);
+            $dataArray['act'] = $data->getAct() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getAct(), 'json', $context));
         }
         $dataArray['active'] = $data->getActive();
         if ($data->isInitialized('amr') && null !== $data->getAmr()) {

@@ -19,7 +19,7 @@ class DeleteClient extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint i
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/clients/{id}');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/clients/{id}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -42,7 +42,7 @@ class DeleteClient extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint i
         if (204 === $status) {
             return null;
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

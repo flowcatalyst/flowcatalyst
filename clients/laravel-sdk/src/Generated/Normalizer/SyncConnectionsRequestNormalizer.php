@@ -43,6 +43,7 @@ class SyncConnectionsRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -50,6 +51,7 @@ class SyncConnectionsRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('connections', $data) && $data['connections'] !== null) {
             $values = [];
@@ -61,6 +63,7 @@ class SyncConnectionsRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('connections', $data) && $data['connections'] === null) {
             $object->setConnections(null);
+            unset($data['connections']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -77,10 +80,10 @@ class SyncConnectionsRequestNormalizer implements DenormalizerInterface, Normali
         }
         $values = [];
         foreach ($data->getConnections() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['connections'] = $values;
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

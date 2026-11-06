@@ -43,6 +43,7 @@ class RuntimeKindNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('kind', $data) && $data['kind'] !== null) {
             $object->setKind($data['kind']);
@@ -50,6 +51,7 @@ class RuntimeKindNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('kind', $data) && $data['kind'] === null) {
             $object->setKind(null);
+            unset($data['kind']);
         }
         if (\array_key_exists('requiredPermission', $data) && $data['requiredPermission'] !== null) {
             $object->setRequiredPermission($data['requiredPermission']);
@@ -57,6 +59,7 @@ class RuntimeKindNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('requiredPermission', $data) && $data['requiredPermission'] === null) {
             $object->setRequiredPermission(null);
+            unset($data['requiredPermission']);
         }
         if (\array_key_exists('settings', $data) && $data['settings'] !== null) {
             $object->setSettings($data['settings']);
@@ -64,6 +67,7 @@ class RuntimeKindNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('settings', $data) && $data['settings'] === null) {
             $object->setSettings(null);
+            unset($data['settings']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -85,7 +89,7 @@ class RuntimeKindNormalizer implements DenormalizerInterface, NormalizerInterfac
         if ($data->isInitialized('settings') && null !== $data->getSettings()) {
             $dataArray['settings'] = $data->getSettings();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

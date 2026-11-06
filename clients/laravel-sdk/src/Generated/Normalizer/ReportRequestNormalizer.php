@@ -43,6 +43,7 @@ class ReportRequestNormalizer implements DenormalizerInterface, NormalizerInterf
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('failures', $data) && $data['failures'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class ReportRequestNormalizer implements DenormalizerInterface, NormalizerInterf
         }
         elseif (\array_key_exists('failures', $data) && $data['failures'] === null) {
             $object->setFailures(null);
+            unset($data['failures']);
         }
         if (\array_key_exists('metrics', $data) && $data['metrics'] !== null) {
             $values_1 = [];
@@ -65,6 +67,7 @@ class ReportRequestNormalizer implements DenormalizerInterface, NormalizerInterf
         }
         elseif (\array_key_exists('metrics', $data) && $data['metrics'] === null) {
             $object->setMetrics(null);
+            unset($data['metrics']);
         }
         if (\array_key_exists('routes', $data) && $data['routes'] !== null) {
             $values_2 = [];
@@ -76,6 +79,7 @@ class ReportRequestNormalizer implements DenormalizerInterface, NormalizerInterf
         }
         elseif (\array_key_exists('routes', $data) && $data['routes'] === null) {
             $object->setRoutes(null);
+            unset($data['routes']);
         }
         if (\array_key_exists('runtimeId', $data) && $data['runtimeId'] !== null) {
             $object->setRuntimeId($data['runtimeId']);
@@ -83,6 +87,7 @@ class ReportRequestNormalizer implements DenormalizerInterface, NormalizerInterf
         }
         elseif (\array_key_exists('runtimeId', $data) && $data['runtimeId'] === null) {
             $object->setRuntimeId(null);
+            unset($data['runtimeId']);
         }
         if (\array_key_exists('tests', $data) && $data['tests'] !== null) {
             $values_3 = [];
@@ -94,6 +99,7 @@ class ReportRequestNormalizer implements DenormalizerInterface, NormalizerInterf
         }
         elseif (\array_key_exists('tests', $data) && $data['tests'] === null) {
             $object->setTests(null);
+            unset($data['tests']);
         }
         foreach ($data as $key => $value_4) {
             if (preg_match('/.*/', (string) $key)) {
@@ -108,21 +114,21 @@ class ReportRequestNormalizer implements DenormalizerInterface, NormalizerInterf
         if ($data->isInitialized('failures') && null !== $data->getFailures()) {
             $values = [];
             foreach ($data->getFailures() as $value) {
-                $values[] = $this->normalizer->normalize($value, 'json', $context);
+                $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
             }
             $dataArray['failures'] = $values;
         }
         if ($data->isInitialized('metrics') && null !== $data->getMetrics()) {
             $values_1 = [];
             foreach ($data->getMetrics() as $value_1) {
-                $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+                $values_1[] = $value_1 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_1, 'json', $context));
             }
             $dataArray['metrics'] = $values_1;
         }
         if ($data->isInitialized('routes') && null !== $data->getRoutes()) {
             $values_2 = [];
             foreach ($data->getRoutes() as $value_2) {
-                $values_2[] = $this->normalizer->normalize($value_2, 'json', $context);
+                $values_2[] = $value_2 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_2, 'json', $context));
             }
             $dataArray['routes'] = $values_2;
         }
@@ -130,11 +136,11 @@ class ReportRequestNormalizer implements DenormalizerInterface, NormalizerInterf
         if ($data->isInitialized('tests') && null !== $data->getTests()) {
             $values_3 = [];
             foreach ($data->getTests() as $value_3) {
-                $values_3[] = $this->normalizer->normalize($value_3, 'json', $context);
+                $values_3[] = $value_3 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_3, 'json', $context));
             }
             $dataArray['tests'] = $values_3;
         }
-        foreach ($data as $key => $value_4) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_4) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_4;
             }

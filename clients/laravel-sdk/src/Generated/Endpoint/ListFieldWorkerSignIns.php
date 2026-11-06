@@ -24,7 +24,7 @@ class ListFieldWorkerSignIns extends \FlowCatalyst\Generated\Runtime\Client\Base
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/field-workers/{id}/sign-ins');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/field-workers/{id}/sign-ins');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -44,6 +44,10 @@ class ListFieldWorkerSignIns extends \FlowCatalyst\Generated\Runtime\Client\Base
         $optionsResolver->addAllowedTypes('pageSize', ['int']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['page' => ['style' => 'form', 'explode' => false], 'pageSize' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -54,10 +58,10 @@ class ListFieldWorkerSignIns extends \FlowCatalyst\Generated\Runtime\Client\Base
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\FieldWorkerSignInListResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

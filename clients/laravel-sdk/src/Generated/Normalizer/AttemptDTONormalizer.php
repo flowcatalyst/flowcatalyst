@@ -47,13 +47,37 @@ class AttemptDTONormalizer implements DenormalizerInterface, NormalizerInterface
             $object->setAttemptNumber(null);
         }
         if (\array_key_exists('attemptedAt', $data) && $data['attemptedAt'] !== null) {
-            $object->setAttemptedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['attemptedAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['attemptedAt']);
+            if (false === $date) {
+                if (is_string($data['attemptedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['attemptedAt'])) {
+                    try {
+                        $date = new \DateTime($data['attemptedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['attemptedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['attemptedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setAttemptedAt($date);
         }
         elseif (\array_key_exists('attemptedAt', $data) && $data['attemptedAt'] === null) {
             $object->setAttemptedAt(null);
         }
         if (\array_key_exists('completedAt', $data) && $data['completedAt'] !== null) {
-            $object->setCompletedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['completedAt']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['completedAt']);
+            if (false === $date_1) {
+                if (is_string($data['completedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['completedAt'])) {
+                    try {
+                        $date_1 = new \DateTime($data['completedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['completedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['completedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setCompletedAt($date_1);
         }
         elseif (\array_key_exists('completedAt', $data) && $data['completedAt'] === null) {
             $object->setCompletedAt(null);
@@ -120,7 +144,7 @@ class AttemptDTONormalizer implements DenormalizerInterface, NormalizerInterface
             $dataArray['errorType'] = $data->getErrorType();
         }
         if ($data->isInitialized('request') && null !== $data->getRequest()) {
-            $dataArray['request'] = $this->normalizer->normalize($data->getRequest(), 'json', $context);
+            $dataArray['request'] = $data->getRequest() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getRequest(), 'json', $context));
         }
         if ($data->isInitialized('responseBody') && null !== $data->getResponseBody()) {
             $dataArray['responseBody'] = $data->getResponseBody();

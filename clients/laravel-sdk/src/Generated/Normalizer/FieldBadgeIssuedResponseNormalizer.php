@@ -60,7 +60,7 @@ class FieldBadgeIssuedResponseNormalizer implements DenormalizerInterface, Norma
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $dataArray['badge'] = $this->normalizer->normalize($data->getBadge(), 'json', $context);
+        $dataArray['badge'] = $data->getBadge() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getBadge(), 'json', $context));
         $dataArray['token'] = $data->getToken();
         return $dataArray;
     }

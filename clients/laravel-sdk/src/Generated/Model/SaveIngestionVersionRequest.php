@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class SaveIngestionVersionRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class SaveIngestionVersionRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -217,5 +220,9 @@ class SaveIngestionVersionRequest extends \ArrayObject
         $this->initialized['target'] = true;
         $this->target = $target;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'keepFailedPayloads' => ['keepFailedPayloads', 'getKeepFailedPayloads', 'setKeepFailedPayloads'], 'live' => ['live', 'getLive', 'setLive'], 'name' => ['name', 'getName', 'setName'], 'note' => ['note', 'getNote', 'setNote'], 'source' => ['source', 'getSource', 'setSource'], 'split' => ['split', 'getSplit', 'setSplit'], 'target' => ['target', 'getTarget', 'setTarget']];
     }
 }

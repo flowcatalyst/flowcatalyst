@@ -78,7 +78,19 @@ class FieldDeviceResponseNormalizer implements DenormalizerInterface, Normalizer
             $object->setClientId(null);
         }
         if (\array_key_exists('enrolledAt', $data) && $data['enrolledAt'] !== null) {
-            $object->setEnrolledAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['enrolledAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['enrolledAt']);
+            if (false === $date) {
+                if (is_string($data['enrolledAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['enrolledAt'])) {
+                    try {
+                        $date = new \DateTime($data['enrolledAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['enrolledAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['enrolledAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setEnrolledAt($date);
         }
         elseif (\array_key_exists('enrolledAt', $data) && $data['enrolledAt'] === null) {
             $object->setEnrolledAt(null);
@@ -102,7 +114,19 @@ class FieldDeviceResponseNormalizer implements DenormalizerInterface, Normalizer
             $object->setLabel(null);
         }
         if (\array_key_exists('lastSeenAt', $data) && $data['lastSeenAt'] !== null) {
-            $object->setLastSeenAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lastSeenAt']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lastSeenAt']);
+            if (false === $date_1) {
+                if (is_string($data['lastSeenAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['lastSeenAt'])) {
+                    try {
+                        $date_1 = new \DateTime($data['lastSeenAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['lastSeenAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['lastSeenAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setLastSeenAt($date_1);
         }
         elseif (\array_key_exists('lastSeenAt', $data) && $data['lastSeenAt'] === null) {
             $object->setLastSeenAt(null);
@@ -139,7 +163,7 @@ class FieldDeviceResponseNormalizer implements DenormalizerInterface, Normalizer
         $dataArray['activeSessions'] = $data->getActiveSessions();
         $values = [];
         foreach ($data->getApps() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['apps'] = $values;
         if ($data->isInitialized('assignedWorkerId') && null !== $data->getAssignedWorkerId()) {

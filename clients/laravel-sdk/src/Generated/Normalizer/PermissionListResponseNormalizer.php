@@ -66,7 +66,7 @@ class PermissionListResponseNormalizer implements DenormalizerInterface, Normali
         $dataArray = [];
         $values = [];
         foreach ($data->getPermissions() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['permissions'] = $values;
         $dataArray['total'] = $data->getTotal();

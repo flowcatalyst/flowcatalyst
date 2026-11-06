@@ -74,7 +74,19 @@ class EventReadNormalizer implements DenormalizerInterface, NormalizerInterface,
             $object->setMessageGroup(null);
         }
         if (\array_key_exists('projectedAt', $data) && $data['projectedAt'] !== null) {
-            $object->setProjectedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['projectedAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['projectedAt']);
+            if (false === $date) {
+                if (is_string($data['projectedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['projectedAt'])) {
+                    try {
+                        $date = new \DateTime($data['projectedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['projectedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['projectedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setProjectedAt($date);
         }
         elseif (\array_key_exists('projectedAt', $data) && $data['projectedAt'] === null) {
             $object->setProjectedAt(null);
@@ -98,7 +110,19 @@ class EventReadNormalizer implements DenormalizerInterface, NormalizerInterface,
             $object->setSubject(null);
         }
         if (\array_key_exists('time', $data) && $data['time'] !== null) {
-            $object->setTime(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['time']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['time']);
+            if (false === $date_1) {
+                if (is_string($data['time']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['time'])) {
+                    try {
+                        $date_1 = new \DateTime($data['time']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['time'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['time'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setTime($date_1);
         }
         elseif (\array_key_exists('time', $data) && $data['time'] === null) {
             $object->setTime(null);

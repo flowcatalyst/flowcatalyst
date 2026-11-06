@@ -43,6 +43,7 @@ class PutRouteRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('alias', $data) && $data['alias'] !== null) {
             $object->setAlias($data['alias']);
@@ -50,6 +51,7 @@ class PutRouteRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('alias', $data) && $data['alias'] === null) {
             $object->setAlias(null);
+            unset($data['alias']);
         }
         if (\array_key_exists('aliasPrefixes', $data) && $data['aliasPrefixes'] !== null) {
             $values = [];
@@ -61,6 +63,7 @@ class PutRouteRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('aliasPrefixes', $data) && $data['aliasPrefixes'] === null) {
             $object->setAliasPrefixes(null);
+            unset($data['aliasPrefixes']);
         }
         if (\array_key_exists('hostname', $data) && $data['hostname'] !== null) {
             $object->setHostname($data['hostname']);
@@ -68,6 +71,7 @@ class PutRouteRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('hostname', $data) && $data['hostname'] === null) {
             $object->setHostname(null);
+            unset($data['hostname']);
         }
         if (\array_key_exists('pathPrefix', $data) && $data['pathPrefix'] !== null) {
             $object->setPathPrefix($data['pathPrefix']);
@@ -75,6 +79,7 @@ class PutRouteRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         elseif (\array_key_exists('pathPrefix', $data) && $data['pathPrefix'] === null) {
             $object->setPathPrefix(null);
+            unset($data['pathPrefix']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -98,7 +103,7 @@ class PutRouteRequestNormalizer implements DenormalizerInterface, NormalizerInte
         }
         $dataArray['hostname'] = $data->getHostname();
         $dataArray['pathPrefix'] = $data->getPathPrefix();
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

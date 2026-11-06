@@ -49,6 +49,7 @@ class CreatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -56,6 +57,7 @@ class CreatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('email', $data) && $data['email'] !== null) {
             $object->setEmail($data['email']);
@@ -63,6 +65,7 @@ class CreatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('email', $data) && $data['email'] === null) {
             $object->setEmail(null);
+            unset($data['email']);
         }
         if (\array_key_exists('idpType', $data) && $data['idpType'] !== null) {
             $object->setIdpType($data['idpType']);
@@ -70,6 +73,7 @@ class CreatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('idpType', $data) && $data['idpType'] === null) {
             $object->setIdpType(null);
+            unset($data['idpType']);
         }
         if (\array_key_exists('inviteRedirectUri', $data) && $data['inviteRedirectUri'] !== null) {
             $object->setInviteRedirectUri($data['inviteRedirectUri']);
@@ -77,6 +81,7 @@ class CreatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('inviteRedirectUri', $data) && $data['inviteRedirectUri'] === null) {
             $object->setInviteRedirectUri(null);
+            unset($data['inviteRedirectUri']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -84,6 +89,7 @@ class CreatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('password', $data) && $data['password'] !== null) {
             $object->setPassword($data['password']);
@@ -91,6 +97,7 @@ class CreatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('password', $data) && $data['password'] === null) {
             $object->setPassword(null);
+            unset($data['password']);
         }
         if (\array_key_exists('returnInviteLink', $data) && $data['returnInviteLink'] !== null) {
             $object->setReturnInviteLink($data['returnInviteLink']);
@@ -98,6 +105,7 @@ class CreatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('returnInviteLink', $data) && $data['returnInviteLink'] === null) {
             $object->setReturnInviteLink(null);
+            unset($data['returnInviteLink']);
         }
         if (\array_key_exists('scope', $data) && $data['scope'] !== null) {
             $object->setScope($data['scope']);
@@ -105,6 +113,7 @@ class CreatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('scope', $data) && $data['scope'] === null) {
             $object->setScope(null);
+            unset($data['scope']);
         }
         if (\array_key_exists('sendInvitation', $data) && $data['sendInvitation'] !== null) {
             $object->setSendInvitation($data['sendInvitation']);
@@ -112,6 +121,7 @@ class CreatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('sendInvitation', $data) && $data['sendInvitation'] === null) {
             $object->setSendInvitation(null);
+            unset($data['sendInvitation']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -146,7 +156,7 @@ class CreatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         if ($data->isInitialized('sendInvitation') && null !== $data->getSendInvitation()) {
             $dataArray['sendInvitation'] = $data->getSendInvitation();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

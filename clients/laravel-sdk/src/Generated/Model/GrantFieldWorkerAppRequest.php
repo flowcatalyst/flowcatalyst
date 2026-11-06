@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class GrantFieldWorkerAppRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class GrantFieldWorkerAppRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -61,5 +64,9 @@ class GrantFieldWorkerAppRequest extends \ArrayObject
         $this->initialized['appCode'] = true;
         $this->appCode = $appCode;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'appCode' => ['appCode', 'getAppCode', 'setAppCode']];
     }
 }

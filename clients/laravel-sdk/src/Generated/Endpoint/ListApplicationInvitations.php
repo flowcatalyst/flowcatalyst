@@ -25,7 +25,7 @@ class ListApplicationInvitations extends \FlowCatalyst\Generated\Runtime\Client\
     }
     public function getUri(): string
     {
-        return str_replace(['{appCode}'], [$this->appCode], '/api/applications/{appCode}/invitations');
+        return str_replace(['{appCode}'], [rawurlencode($this->appCode)], '/api/applications/{appCode}/invitations');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -46,6 +46,10 @@ class ListApplicationInvitations extends \FlowCatalyst\Generated\Runtime\Client\
         $optionsResolver->addAllowedTypes('pageSize', ['int']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['status' => ['style' => 'form', 'explode' => false], 'page' => ['style' => 'form', 'explode' => false], 'pageSize' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -56,10 +60,10 @@ class ListApplicationInvitations extends \FlowCatalyst\Generated\Runtime\Client\
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ApplicationInvitationList', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

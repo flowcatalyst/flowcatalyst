@@ -85,7 +85,7 @@ class MatchEmailsResponseNormalizer implements DenormalizerInterface, Normalizer
         $dataArray['invalid'] = $values;
         $values_1 = [];
         foreach ($data->getMatches() as $value_1) {
-            $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+            $values_1[] = $value_1 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_1, 'json', $context));
         }
         $dataArray['matches'] = $values_1;
         $values_2 = [];

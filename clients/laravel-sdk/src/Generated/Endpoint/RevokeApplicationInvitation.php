@@ -22,7 +22,7 @@ class RevokeApplicationInvitation extends \FlowCatalyst\Generated\Runtime\Client
     }
     public function getUri(): string
     {
-        return str_replace(['{appCode}', '{id}'], [$this->appCode, $this->id], '/api/applications/{appCode}/invitations/{id}');
+        return str_replace(['{appCode}', '{id}'], [rawurlencode($this->appCode), rawurlencode($this->id)], '/api/applications/{appCode}/invitations/{id}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -45,7 +45,7 @@ class RevokeApplicationInvitation extends \FlowCatalyst\Generated\Runtime\Client
         if (204 === $status) {
             return null;
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

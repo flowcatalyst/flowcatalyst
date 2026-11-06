@@ -56,7 +56,19 @@ class RotateOAuthClientSecretResponseNormalizer implements DenormalizerInterface
             $object->setClientSecret(null);
         }
         if (\array_key_exists('previousSecretExpiresAt', $data) && $data['previousSecretExpiresAt'] !== null) {
-            $object->setPreviousSecretExpiresAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['previousSecretExpiresAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['previousSecretExpiresAt']);
+            if (false === $date) {
+                if (is_string($data['previousSecretExpiresAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['previousSecretExpiresAt'])) {
+                    try {
+                        $date = new \DateTime($data['previousSecretExpiresAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['previousSecretExpiresAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['previousSecretExpiresAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setPreviousSecretExpiresAt($date);
         }
         elseif (\array_key_exists('previousSecretExpiresAt', $data) && $data['previousSecretExpiresAt'] === null) {
             $object->setPreviousSecretExpiresAt(null);

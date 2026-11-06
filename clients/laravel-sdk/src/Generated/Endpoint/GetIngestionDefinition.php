@@ -22,7 +22,7 @@ class GetIngestionDefinition extends \FlowCatalyst\Generated\Runtime\Client\Base
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/ingestions/{id}/definition');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/ingestions/{id}/definition');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -47,7 +47,7 @@ class GetIngestionDefinition extends \FlowCatalyst\Generated\Runtime\Client\Base
         $body = (string) $response->getBody();
         if (200 === $status) {
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

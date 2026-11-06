@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class EditPayloadRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class EditPayloadRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -95,5 +98,9 @@ class EditPayloadRequest extends \ArrayObject
         $this->initialized['payloadContentType'] = true;
         $this->payloadContentType = $payloadContentType;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'payload' => ['payload', 'getPayload', 'setPayload'], 'payloadContentType' => ['payloadContentType', 'getPayloadContentType', 'setPayloadContentType']];
     }
 }

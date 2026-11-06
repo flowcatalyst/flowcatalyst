@@ -70,7 +70,7 @@ class IngestionSecretResponseNormalizer implements DenormalizerInterface, Normal
         $dataArray['bound'] = $data->getBound();
         $values = [];
         foreach ($data->getFetches() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['fetches'] = $values;
         $dataArray['name'] = $data->getName();

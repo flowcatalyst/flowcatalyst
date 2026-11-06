@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class RuntimeKind extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class RuntimeKind implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -99,5 +102,9 @@ class RuntimeKind extends \ArrayObject
         $this->initialized['settings'] = true;
         $this->settings = $settings;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['description' => ['description', 'getDescription', 'setDescription'], 'kind' => ['kind', 'getKind', 'setKind'], 'requiredPermission' => ['requiredPermission', 'getRequiredPermission', 'setRequiredPermission'], 'settings' => ['settings', 'getSettings', 'setSettings']];
     }
 }

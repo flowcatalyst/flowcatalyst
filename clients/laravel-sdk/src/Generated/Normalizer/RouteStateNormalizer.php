@@ -43,6 +43,7 @@ class RouteStateNormalizer implements DenormalizerInterface, NormalizerInterface
         }
         elseif (\array_key_exists('error', $data) && $data['error'] === null) {
             $object->setError(null);
+            unset($data['error']);
         }
         if (\array_key_exists('ingestionId', $data) && $data['ingestionId'] !== null) {
             $object->setIngestionId($data['ingestionId']);
@@ -50,6 +51,7 @@ class RouteStateNormalizer implements DenormalizerInterface, NormalizerInterface
         }
         elseif (\array_key_exists('ingestionId', $data) && $data['ingestionId'] === null) {
             $object->setIngestionId(null);
+            unset($data['ingestionId']);
         }
         if (\array_key_exists('status', $data) && $data['status'] !== null) {
             $object->setStatus($data['status']);
@@ -57,6 +59,7 @@ class RouteStateNormalizer implements DenormalizerInterface, NormalizerInterface
         }
         elseif (\array_key_exists('status', $data) && $data['status'] === null) {
             $object->setStatus(null);
+            unset($data['status']);
         }
         if (\array_key_exists('version', $data) && $data['version'] !== null) {
             $object->setVersion($data['version']);
@@ -64,6 +67,7 @@ class RouteStateNormalizer implements DenormalizerInterface, NormalizerInterface
         }
         elseif (\array_key_exists('version', $data) && $data['version'] === null) {
             $object->setVersion(null);
+            unset($data['version']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -81,7 +85,7 @@ class RouteStateNormalizer implements DenormalizerInterface, NormalizerInterface
         $dataArray['ingestionId'] = $data->getIngestionId();
         $dataArray['status'] = $data->getStatus();
         $dataArray['version'] = $data->getVersion();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

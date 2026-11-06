@@ -43,6 +43,7 @@ class PublishVersionRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('digest', $data) && $data['digest'] !== null) {
             $object->setDigest($data['digest']);
@@ -50,6 +51,7 @@ class PublishVersionRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('digest', $data) && $data['digest'] === null) {
             $object->setDigest(null);
+            unset($data['digest']);
         }
         if (\array_key_exists('runtime', $data) && $data['runtime'] !== null) {
             $object->setRuntime($data['runtime']);
@@ -57,6 +59,7 @@ class PublishVersionRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('runtime', $data) && $data['runtime'] === null) {
             $object->setRuntime(null);
+            unset($data['runtime']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -72,7 +75,7 @@ class PublishVersionRequestNormalizer implements DenormalizerInterface, Normaliz
         if ($data->isInitialized('runtime') && null !== $data->getRuntime()) {
             $dataArray['runtime'] = $data->getRuntime();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

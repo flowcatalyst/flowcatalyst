@@ -43,6 +43,7 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('address', $data) && $data['address'] === null) {
             $object->setAddress(null);
+            unset($data['address']);
         }
         if (\array_key_exists('at', $data) && $data['at'] !== null) {
             $object->setAt($data['at']);
@@ -50,6 +51,7 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('at', $data) && $data['at'] === null) {
             $object->setAt(null);
+            unset($data['at']);
         }
         if (\array_key_exists('context', $data) && $data['context'] !== null) {
             $object->setContext($data['context']);
@@ -57,6 +59,7 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('context', $data) && $data['context'] === null) {
             $object->setContext(null);
+            unset($data['context']);
         }
         if (\array_key_exists('correlationId', $data) && $data['correlationId'] !== null) {
             $object->setCorrelationId($data['correlationId']);
@@ -64,6 +67,7 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('correlationId', $data) && $data['correlationId'] === null) {
             $object->setCorrelationId(null);
+            unset($data['correlationId']);
         }
         if (\array_key_exists('data', $data) && $data['data'] !== null) {
             $object->setData($data['data']);
@@ -71,6 +75,7 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('data', $data) && $data['data'] === null) {
             $object->setData(null);
+            unset($data['data']);
         }
         if (\array_key_exists('id', $data) && $data['id'] !== null) {
             $object->setId($data['id']);
@@ -78,6 +83,7 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('id', $data) && $data['id'] === null) {
             $object->setId(null);
+            unset($data['id']);
         }
         if (\array_key_exists('invocationId', $data) && $data['invocationId'] !== null) {
             $object->setInvocationId($data['invocationId']);
@@ -85,6 +91,7 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('invocationId', $data) && $data['invocationId'] === null) {
             $object->setInvocationId(null);
+            unset($data['invocationId']);
         }
         if (\array_key_exists('kind', $data) && $data['kind'] !== null) {
             $object->setKind($data['kind']);
@@ -92,6 +99,7 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('kind', $data) && $data['kind'] === null) {
             $object->setKind(null);
+            unset($data['kind']);
         }
         if (\array_key_exists('level', $data) && $data['level'] !== null) {
             $object->setLevel($data['level']);
@@ -99,6 +107,7 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('level', $data) && $data['level'] === null) {
             $object->setLevel(null);
+            unset($data['level']);
         }
         if (\array_key_exists('message', $data) && $data['message'] !== null) {
             $object->setMessage($data['message']);
@@ -106,6 +115,7 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('message', $data) && $data['message'] === null) {
             $object->setMessage(null);
+            unset($data['message']);
         }
         if (\array_key_exists('reference', $data) && $data['reference'] !== null) {
             $object->setReference($data['reference']);
@@ -113,6 +123,7 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('reference', $data) && $data['reference'] === null) {
             $object->setReference(null);
+            unset($data['reference']);
         }
         if (\array_key_exists('version', $data) && $data['version'] !== null) {
             $object->setVersion($data['version']);
@@ -120,6 +131,7 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('version', $data) && $data['version'] === null) {
             $object->setVersion(null);
+            unset($data['version']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -151,7 +163,7 @@ class TraceRecordNormalizer implements DenormalizerInterface, NormalizerInterfac
             $dataArray['reference'] = $data->getReference();
         }
         $dataArray['version'] = $data->getVersion();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

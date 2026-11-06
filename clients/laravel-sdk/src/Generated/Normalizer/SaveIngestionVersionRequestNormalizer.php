@@ -49,6 +49,7 @@ class SaveIngestionVersionRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('keepFailedPayloads', $data) && $data['keepFailedPayloads'] !== null) {
             $object->setKeepFailedPayloads($data['keepFailedPayloads']);
@@ -56,6 +57,7 @@ class SaveIngestionVersionRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('keepFailedPayloads', $data) && $data['keepFailedPayloads'] === null) {
             $object->setKeepFailedPayloads(null);
+            unset($data['keepFailedPayloads']);
         }
         if (\array_key_exists('live', $data) && $data['live'] !== null) {
             $object->setLive($data['live']);
@@ -63,6 +65,7 @@ class SaveIngestionVersionRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('live', $data) && $data['live'] === null) {
             $object->setLive(null);
+            unset($data['live']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -70,6 +73,7 @@ class SaveIngestionVersionRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('note', $data) && $data['note'] !== null) {
             $object->setNote($data['note']);
@@ -77,6 +81,7 @@ class SaveIngestionVersionRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('note', $data) && $data['note'] === null) {
             $object->setNote(null);
+            unset($data['note']);
         }
         if (\array_key_exists('source', $data) && $data['source'] !== null) {
             $object->setSource($data['source']);
@@ -84,6 +89,7 @@ class SaveIngestionVersionRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('source', $data) && $data['source'] === null) {
             $object->setSource(null);
+            unset($data['source']);
         }
         if (\array_key_exists('split', $data) && $data['split'] !== null) {
             $object->setSplit($data['split']);
@@ -91,6 +97,7 @@ class SaveIngestionVersionRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('split', $data) && $data['split'] === null) {
             $object->setSplit(null);
+            unset($data['split']);
         }
         if (\array_key_exists('target', $data) && $data['target'] !== null) {
             $object->setTarget($this->denormalizer->denormalize($data['target'], \FlowCatalyst\Generated\Model\Target::class, 'json', $context));
@@ -98,6 +105,7 @@ class SaveIngestionVersionRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('target', $data) && $data['target'] === null) {
             $object->setTarget(null);
+            unset($data['target']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -121,8 +129,8 @@ class SaveIngestionVersionRequestNormalizer implements DenormalizerInterface, No
         }
         $dataArray['source'] = $data->getSource();
         $dataArray['split'] = $data->getSplit();
-        $dataArray['target'] = $this->normalizer->normalize($data->getTarget(), 'json', $context);
-        foreach ($data as $key => $value) {
+        $dataArray['target'] = $data->getTarget() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getTarget(), 'json', $context));
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

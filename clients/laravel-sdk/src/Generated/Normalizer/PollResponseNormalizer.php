@@ -44,7 +44,19 @@ class PollResponseNormalizer implements DenormalizerInterface, NormalizerInterfa
             $object->setDollarSchema(null);
         }
         if (\array_key_exists('asOf', $data) && $data['asOf'] !== null) {
-            $object->setAsOf(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['asOf']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['asOf']);
+            if (false === $date) {
+                if (is_string($data['asOf']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['asOf'])) {
+                    try {
+                        $date = new \DateTime($data['asOf']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['asOf'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['asOf'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setAsOf($date);
         }
         elseif (\array_key_exists('asOf', $data) && $data['asOf'] === null) {
             $object->setAsOf(null);
@@ -93,19 +105,19 @@ class PollResponseNormalizer implements DenormalizerInterface, NormalizerInterfa
         $dataArray['asOf'] = $data->getAsOf()->format('Y-m-d\TH:i:sP');
         $values = [];
         foreach ($data->getIngestions() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['ingestions'] = $values;
         $dataArray['leaseFor'] = $data->getLeaseFor();
         $values_1 = [];
         foreach ($data->getTests() as $value_1) {
-            $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+            $values_1[] = $value_1 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_1, 'json', $context));
         }
         $dataArray['tests'] = $values_1;
         if ($data->isInitialized('traces') && null !== $data->getTraces()) {
             $values_2 = [];
             foreach ($data->getTraces() as $value_2) {
-                $values_2[] = $this->normalizer->normalize($value_2, 'json', $context);
+                $values_2[] = $value_2 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_2, 'json', $context));
             }
             $dataArray['traces'] = $values_2;
         }

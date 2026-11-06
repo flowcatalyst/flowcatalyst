@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class UpdatePortalAppRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class UpdatePortalAppRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -127,5 +130,9 @@ class UpdatePortalAppRequest extends \ArrayObject
         $this->initialized['name'] = true;
         $this->name = $name;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'active' => ['active', 'getActive', 'setActive'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'description' => ['description', 'getDescription', 'setDescription'], 'name' => ['name', 'getName', 'setName']];
     }
 }

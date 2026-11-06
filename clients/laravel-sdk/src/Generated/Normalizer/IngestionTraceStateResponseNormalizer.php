@@ -47,7 +47,19 @@ class IngestionTraceStateResponseNormalizer implements DenormalizerInterface, No
             $object->setDollarSchema(null);
         }
         if (\array_key_exists('enabledAt', $data) && $data['enabledAt'] !== null) {
-            $object->setEnabledAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['enabledAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['enabledAt']);
+            if (false === $date) {
+                if (is_string($data['enabledAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['enabledAt'])) {
+                    try {
+                        $date = new \DateTime($data['enabledAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['enabledAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['enabledAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setEnabledAt($date);
         }
         elseif (\array_key_exists('enabledAt', $data) && $data['enabledAt'] === null) {
             $object->setEnabledAt(null);
@@ -59,7 +71,19 @@ class IngestionTraceStateResponseNormalizer implements DenormalizerInterface, No
             $object->setEnabledBy(null);
         }
         if (\array_key_exists('hardStop', $data) && $data['hardStop'] !== null) {
-            $object->setHardStop(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['hardStop']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['hardStop']);
+            if (false === $date_1) {
+                if (is_string($data['hardStop']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['hardStop'])) {
+                    try {
+                        $date_1 = new \DateTime($data['hardStop']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['hardStop'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['hardStop'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setHardStop($date_1);
         }
         elseif (\array_key_exists('hardStop', $data) && $data['hardStop'] === null) {
             $object->setHardStop(null);

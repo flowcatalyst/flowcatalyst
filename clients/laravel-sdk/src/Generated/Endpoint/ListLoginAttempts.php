@@ -53,6 +53,10 @@ class ListLoginAttempts extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpo
         $optionsResolver->addAllowedTypes('pageSize', ['int']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['attemptType' => ['style' => 'form', 'explode' => false], 'outcome' => ['style' => 'form', 'explode' => false], 'identifier' => ['style' => 'form', 'explode' => false], 'principalId' => ['style' => 'form', 'explode' => false], 'dateFrom' => ['style' => 'form', 'explode' => false], 'dateTo' => ['style' => 'form', 'explode' => false], 'after' => ['style' => 'form', 'explode' => false], 'pageSize' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -63,10 +67,10 @@ class ListLoginAttempts extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpo
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\LoginAttemptListResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

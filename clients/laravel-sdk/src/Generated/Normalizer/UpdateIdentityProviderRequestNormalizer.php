@@ -49,6 +49,7 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('allowedEmailDomains', $data) && $data['allowedEmailDomains'] !== null) {
             $values = [];
@@ -60,6 +61,7 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         elseif (\array_key_exists('allowedEmailDomains', $data) && $data['allowedEmailDomains'] === null) {
             $object->setAllowedEmailDomains(null);
+            unset($data['allowedEmailDomains']);
         }
         if (\array_key_exists('allowedRoleIds', $data) && $data['allowedRoleIds'] !== null) {
             $values_1 = [];
@@ -71,6 +73,7 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         elseif (\array_key_exists('allowedRoleIds', $data) && $data['allowedRoleIds'] === null) {
             $object->setAllowedRoleIds(null);
+            unset($data['allowedRoleIds']);
         }
         if (\array_key_exists('mappingScope', $data) && $data['mappingScope'] !== null) {
             $object->setMappingScope($data['mappingScope']);
@@ -78,6 +81,7 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         elseif (\array_key_exists('mappingScope', $data) && $data['mappingScope'] === null) {
             $object->setMappingScope(null);
+            unset($data['mappingScope']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -85,6 +89,7 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('oidcClientId', $data) && $data['oidcClientId'] !== null) {
             $object->setOidcClientId($data['oidcClientId']);
@@ -92,6 +97,7 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         elseif (\array_key_exists('oidcClientId', $data) && $data['oidcClientId'] === null) {
             $object->setOidcClientId(null);
+            unset($data['oidcClientId']);
         }
         if (\array_key_exists('oidcClientSecretRef', $data) && $data['oidcClientSecretRef'] !== null) {
             $object->setOidcClientSecretRef($data['oidcClientSecretRef']);
@@ -99,6 +105,7 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         elseif (\array_key_exists('oidcClientSecretRef', $data) && $data['oidcClientSecretRef'] === null) {
             $object->setOidcClientSecretRef(null);
+            unset($data['oidcClientSecretRef']);
         }
         if (\array_key_exists('oidcIssuerPattern', $data) && $data['oidcIssuerPattern'] !== null) {
             $object->setOidcIssuerPattern($data['oidcIssuerPattern']);
@@ -106,6 +113,7 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         elseif (\array_key_exists('oidcIssuerPattern', $data) && $data['oidcIssuerPattern'] === null) {
             $object->setOidcIssuerPattern(null);
+            unset($data['oidcIssuerPattern']);
         }
         if (\array_key_exists('oidcIssuerUrl', $data) && $data['oidcIssuerUrl'] !== null) {
             $object->setOidcIssuerUrl($data['oidcIssuerUrl']);
@@ -113,6 +121,7 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         elseif (\array_key_exists('oidcIssuerUrl', $data) && $data['oidcIssuerUrl'] === null) {
             $object->setOidcIssuerUrl(null);
+            unset($data['oidcIssuerUrl']);
         }
         if (\array_key_exists('oidcMultiTenant', $data) && $data['oidcMultiTenant'] !== null) {
             $object->setOidcMultiTenant($data['oidcMultiTenant']);
@@ -120,6 +129,7 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         elseif (\array_key_exists('oidcMultiTenant', $data) && $data['oidcMultiTenant'] === null) {
             $object->setOidcMultiTenant(null);
+            unset($data['oidcMultiTenant']);
         }
         if (\array_key_exists('primaryClientId', $data) && $data['primaryClientId'] !== null) {
             $object->setPrimaryClientId($data['primaryClientId']);
@@ -127,6 +137,7 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         elseif (\array_key_exists('primaryClientId', $data) && $data['primaryClientId'] === null) {
             $object->setPrimaryClientId(null);
+            unset($data['primaryClientId']);
         }
         if (\array_key_exists('syncRolesFromIdp', $data) && $data['syncRolesFromIdp'] !== null) {
             $object->setSyncRolesFromIdp($data['syncRolesFromIdp']);
@@ -134,6 +145,7 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         elseif (\array_key_exists('syncRolesFromIdp', $data) && $data['syncRolesFromIdp'] === null) {
             $object->setSyncRolesFromIdp(null);
+            unset($data['syncRolesFromIdp']);
         }
         foreach ($data as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
@@ -186,7 +198,7 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         if ($data->isInitialized('syncRolesFromIdp') && null !== $data->getSyncRolesFromIdp()) {
             $dataArray['syncRolesFromIdp'] = $data->getSyncRolesFromIdp();
         }
-        foreach ($data as $key => $value_2) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_2;
             }

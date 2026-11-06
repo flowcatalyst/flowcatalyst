@@ -76,7 +76,7 @@ class LoginAttemptListResponseNormalizer implements DenormalizerInterface, Norma
         $dataArray['hasMore'] = $data->getHasMore();
         $values = [];
         foreach ($data->getItems() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['items'] = $values;
         if ($data->isInitialized('nextCursor') && null !== $data->getNextCursor()) {

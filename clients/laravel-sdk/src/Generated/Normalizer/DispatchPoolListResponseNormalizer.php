@@ -66,7 +66,7 @@ class DispatchPoolListResponseNormalizer implements DenormalizerInterface, Norma
         $dataArray = [];
         $values = [];
         foreach ($data->getPools() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['pools'] = $values;
         $dataArray['total'] = $data->getTotal();

@@ -75,7 +75,7 @@ class AuditLogListResponseNormalizer implements DenormalizerInterface, Normalize
         $dataArray = [];
         $values = [];
         foreach ($data->getAuditLogs() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['auditLogs'] = $values;
         $dataArray['hasMore'] = $data->getHasMore();

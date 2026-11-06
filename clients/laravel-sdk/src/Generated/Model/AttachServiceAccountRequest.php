@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class AttachServiceAccountRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class AttachServiceAccountRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -83,5 +86,9 @@ class AttachServiceAccountRequest extends \ArrayObject
         $this->initialized['serviceAccountId'] = true;
         $this->serviceAccountId = $serviceAccountId;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'serviceAccountCode' => ['serviceAccountCode', 'getServiceAccountCode', 'setServiceAccountCode'], 'serviceAccountId' => ['serviceAccountId', 'getServiceAccountId', 'setServiceAccountId']];
     }
 }

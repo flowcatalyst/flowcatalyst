@@ -43,6 +43,7 @@ class FieldTokenIntrospectRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('token', $data) && $data['token'] !== null) {
             $object->setToken($data['token']);
@@ -50,6 +51,7 @@ class FieldTokenIntrospectRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('token', $data) && $data['token'] === null) {
             $object->setToken(null);
+            unset($data['token']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -62,7 +64,7 @@ class FieldTokenIntrospectRequestNormalizer implements DenormalizerInterface, No
     {
         $dataArray = [];
         $dataArray['token'] = $data->getToken();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

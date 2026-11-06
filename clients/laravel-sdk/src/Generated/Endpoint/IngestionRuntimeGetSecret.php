@@ -26,7 +26,7 @@ class IngestionRuntimeGetSecret extends \FlowCatalyst\Generated\Runtime\Client\B
     }
     public function getUri(): string
     {
-        return str_replace(['{id}', '{name}'], [$this->id, $this->name], '/api/ingestion-runtime/v1/ingestions/{id}/secrets/{name}');
+        return str_replace(['{id}', '{name}'], [rawurlencode($this->id), rawurlencode($this->name)], '/api/ingestion-runtime/v1/ingestions/{id}/secrets/{name}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -45,6 +45,10 @@ class IngestionRuntimeGetSecret extends \FlowCatalyst\Generated\Runtime\Client\B
         $optionsResolver->addAllowedTypes('runtimeId', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['runtimeId' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -55,10 +59,10 @@ class IngestionRuntimeGetSecret extends \FlowCatalyst\Generated\Runtime\Client\B
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\SecretValue', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

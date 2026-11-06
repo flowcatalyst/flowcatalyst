@@ -46,6 +46,7 @@ class UpdatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('active', $data) && $data['active'] !== null) {
             $object->setActive($data['active']);
@@ -53,6 +54,7 @@ class UpdatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('active', $data) && $data['active'] === null) {
             $object->setActive(null);
+            unset($data['active']);
         }
         if (\array_key_exists('email', $data) && $data['email'] !== null) {
             $object->setEmail($data['email']);
@@ -60,6 +62,7 @@ class UpdatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('email', $data) && $data['email'] === null) {
             $object->setEmail(null);
+            unset($data['email']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -67,6 +70,7 @@ class UpdatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -87,7 +91,7 @@ class UpdatePrincipalRequestNormalizer implements DenormalizerInterface, Normali
         if ($data->isInitialized('name') && null !== $data->getName()) {
             $dataArray['name'] = $data->getName();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

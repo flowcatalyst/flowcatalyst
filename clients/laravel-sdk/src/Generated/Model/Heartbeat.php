@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class Heartbeat extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class Heartbeat implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -193,5 +196,9 @@ class Heartbeat extends \ArrayObject
         $this->initialized['versions'] = true;
         $this->versions = $versions;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'budget' => ['budget', 'getBudget', 'setBudget'], 'capabilities' => ['capabilities', 'getCapabilities', 'setCapabilities'], 'pool' => ['pool', 'getPool', 'setPool'], 'revision' => ['revision', 'getRevision', 'setRevision'], 'runnerId' => ['runnerId', 'getRunnerId', 'setRunnerId'], 'startedAt' => ['startedAt', 'getStartedAt', 'setStartedAt'], 'versions' => ['versions', 'getVersions', 'setVersions']];
     }
 }

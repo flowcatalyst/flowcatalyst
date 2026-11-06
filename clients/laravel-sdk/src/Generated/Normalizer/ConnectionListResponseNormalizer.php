@@ -66,7 +66,7 @@ class ConnectionListResponseNormalizer implements DenormalizerInterface, Normali
         $dataArray = [];
         $values = [];
         foreach ($data->getConnections() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['connections'] = $values;
         $dataArray['total'] = $data->getTotal();

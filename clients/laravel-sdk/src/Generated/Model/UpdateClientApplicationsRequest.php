@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class UpdateClientApplicationsRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class UpdateClientApplicationsRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -61,5 +64,9 @@ class UpdateClientApplicationsRequest extends \ArrayObject
         $this->initialized['enabledApplicationIds'] = true;
         $this->enabledApplicationIds = $enabledApplicationIds;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'enabledApplicationIds' => ['enabledApplicationIds', 'getEnabledApplicationIds', 'setEnabledApplicationIds']];
     }
 }

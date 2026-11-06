@@ -43,6 +43,7 @@ class SyncEventTypesRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('eventTypes', $data) && $data['eventTypes'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class SyncEventTypesRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('eventTypes', $data) && $data['eventTypes'] === null) {
             $object->setEventTypes(null);
+            unset($data['eventTypes']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -67,10 +69,10 @@ class SyncEventTypesRequestNormalizer implements DenormalizerInterface, Normaliz
         $dataArray = [];
         $values = [];
         foreach ($data->getEventTypes() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['eventTypes'] = $values;
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

@@ -43,6 +43,7 @@ class ProvisionLoginClientRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('allowedOrigins', $data) && $data['allowedOrigins'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class ProvisionLoginClientRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('allowedOrigins', $data) && $data['allowedOrigins'] === null) {
             $object->setAllowedOrigins(null);
+            unset($data['allowedOrigins']);
         }
         if (\array_key_exists('clientType', $data) && $data['clientType'] !== null) {
             $object->setClientType($data['clientType']);
@@ -61,6 +63,7 @@ class ProvisionLoginClientRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('clientType', $data) && $data['clientType'] === null) {
             $object->setClientType(null);
+            unset($data['clientType']);
         }
         if (\array_key_exists('redirectUris', $data) && $data['redirectUris'] !== null) {
             $values_1 = [];
@@ -72,6 +75,7 @@ class ProvisionLoginClientRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('redirectUris', $data) && $data['redirectUris'] === null) {
             $object->setRedirectUris(null);
+            unset($data['redirectUris']);
         }
         foreach ($data as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
@@ -98,7 +102,7 @@ class ProvisionLoginClientRequestNormalizer implements DenormalizerInterface, No
             $values_1[] = $value_1;
         }
         $dataArray['redirectUris'] = $values_1;
-        foreach ($data as $key => $value_2) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_2;
             }

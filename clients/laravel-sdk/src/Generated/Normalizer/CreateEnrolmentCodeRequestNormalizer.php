@@ -43,6 +43,7 @@ class CreateEnrolmentCodeRequestNormalizer implements DenormalizerInterface, Nor
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('appCodes', $data) && $data['appCodes'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class CreateEnrolmentCodeRequestNormalizer implements DenormalizerInterface, Nor
         }
         elseif (\array_key_exists('appCodes', $data) && $data['appCodes'] === null) {
             $object->setAppCodes(null);
+            unset($data['appCodes']);
         }
         if (\array_key_exists('assignedWorkerId', $data) && $data['assignedWorkerId'] !== null) {
             $object->setAssignedWorkerId($data['assignedWorkerId']);
@@ -61,6 +63,7 @@ class CreateEnrolmentCodeRequestNormalizer implements DenormalizerInterface, Nor
         }
         elseif (\array_key_exists('assignedWorkerId', $data) && $data['assignedWorkerId'] === null) {
             $object->setAssignedWorkerId(null);
+            unset($data['assignedWorkerId']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -68,6 +71,7 @@ class CreateEnrolmentCodeRequestNormalizer implements DenormalizerInterface, Nor
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('label', $data) && $data['label'] !== null) {
             $object->setLabel($data['label']);
@@ -75,6 +79,7 @@ class CreateEnrolmentCodeRequestNormalizer implements DenormalizerInterface, Nor
         }
         elseif (\array_key_exists('label', $data) && $data['label'] === null) {
             $object->setLabel(null);
+            unset($data['label']);
         }
         if (\array_key_exists('mode', $data) && $data['mode'] !== null) {
             $object->setMode($data['mode']);
@@ -82,6 +87,7 @@ class CreateEnrolmentCodeRequestNormalizer implements DenormalizerInterface, Nor
         }
         elseif (\array_key_exists('mode', $data) && $data['mode'] === null) {
             $object->setMode(null);
+            unset($data['mode']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -106,7 +112,7 @@ class CreateEnrolmentCodeRequestNormalizer implements DenormalizerInterface, Nor
             $dataArray['label'] = $data->getLabel();
         }
         $dataArray['mode'] = $data->getMode();
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

@@ -21,12 +21,12 @@ class RotateOAuthClientSecret extends \FlowCatalyst\Generated\Runtime\Client\Bas
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/oauth-clients/{id}/rotate-secret');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/oauth-clients/{id}/rotate-secret');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
         if ($this->body instanceof \FlowCatalyst\Generated\Model\RotateOAuthClientSecretRequest) {
-            return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
+            return [['Content-Type' => ['application/json']], \FlowCatalyst\Generated\Runtime\Client\JsonPayload::encode($serializer, $this->body)];
         }
         return [[], null];
     }
@@ -44,10 +44,10 @@ class RotateOAuthClientSecret extends \FlowCatalyst\Generated\Runtime\Client\Bas
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\RotateOAuthClientSecretResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

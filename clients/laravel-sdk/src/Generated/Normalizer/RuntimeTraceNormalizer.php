@@ -38,7 +38,19 @@ class RuntimeTraceNormalizer implements DenormalizerInterface, NormalizerInterfa
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
         if (\array_key_exists('hardStop', $data) && $data['hardStop'] !== null) {
-            $object->setHardStop(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['hardStop']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['hardStop']);
+            if (false === $date) {
+                if (is_string($data['hardStop']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['hardStop'])) {
+                    try {
+                        $date = new \DateTime($data['hardStop']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['hardStop'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['hardStop'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setHardStop($date);
         }
         elseif (\array_key_exists('hardStop', $data) && $data['hardStop'] === null) {
             $object->setHardStop(null);

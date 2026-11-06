@@ -23,7 +23,7 @@ class GetScheduledJobByCode extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     }
     public function getUri(): string
     {
-        return str_replace(['{code}'], [$this->code], '/api/scheduled-jobs/by-code/{code}');
+        return str_replace(['{code}'], [rawurlencode($this->code)], '/api/scheduled-jobs/by-code/{code}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -42,6 +42,10 @@ class GetScheduledJobByCode extends \FlowCatalyst\Generated\Runtime\Client\BaseE
         $optionsResolver->addAllowedTypes('clientId', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['clientId' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -52,10 +56,10 @@ class GetScheduledJobByCode extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ScheduledJobResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

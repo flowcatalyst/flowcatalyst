@@ -52,6 +52,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('badgeOnlyLogin', $data) && $data['badgeOnlyLogin'] !== null) {
             $object->setBadgeOnlyLogin($data['badgeOnlyLogin']);
@@ -59,6 +60,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('badgeOnlyLogin', $data) && $data['badgeOnlyLogin'] === null) {
             $object->setBadgeOnlyLogin(null);
+            unset($data['badgeOnlyLogin']);
         }
         if (\array_key_exists('hardLockThreshold', $data) && $data['hardLockThreshold'] !== null) {
             $object->setHardLockThreshold($data['hardLockThreshold']);
@@ -66,6 +68,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('hardLockThreshold', $data) && $data['hardLockThreshold'] === null) {
             $object->setHardLockThreshold(null);
+            unset($data['hardLockThreshold']);
         }
         if (\array_key_exists('impersonationMaxSecs', $data) && $data['impersonationMaxSecs'] !== null) {
             $object->setImpersonationMaxSecs($data['impersonationMaxSecs']);
@@ -73,6 +76,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('impersonationMaxSecs', $data) && $data['impersonationMaxSecs'] === null) {
             $object->setImpersonationMaxSecs(null);
+            unset($data['impersonationMaxSecs']);
         }
         if (\array_key_exists('personalIdleSecs', $data) && $data['personalIdleSecs'] !== null) {
             $object->setPersonalIdleSecs($data['personalIdleSecs']);
@@ -80,6 +84,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('personalIdleSecs', $data) && $data['personalIdleSecs'] === null) {
             $object->setPersonalIdleSecs(null);
+            unset($data['personalIdleSecs']);
         }
         if (\array_key_exists('pinMinLength', $data) && $data['pinMinLength'] !== null) {
             $object->setPinMinLength($data['pinMinLength']);
@@ -87,6 +92,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('pinMinLength', $data) && $data['pinMinLength'] === null) {
             $object->setPinMinLength(null);
+            unset($data['pinMinLength']);
         }
         if (\array_key_exists('pinReauthDays', $data) && $data['pinReauthDays'] !== null) {
             $object->setPinReauthDays($data['pinReauthDays']);
@@ -94,6 +100,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('pinReauthDays', $data) && $data['pinReauthDays'] === null) {
             $object->setPinReauthDays(null);
+            unset($data['pinReauthDays']);
         }
         if (\array_key_exists('requireAttestation', $data) && $data['requireAttestation'] !== null) {
             $object->setRequireAttestation($data['requireAttestation']);
@@ -101,6 +108,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('requireAttestation', $data) && $data['requireAttestation'] === null) {
             $object->setRequireAttestation(null);
+            unset($data['requireAttestation']);
         }
         if (\array_key_exists('requireEnrolledDevice', $data) && $data['requireEnrolledDevice'] !== null) {
             $object->setRequireEnrolledDevice($data['requireEnrolledDevice']);
@@ -108,6 +116,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('requireEnrolledDevice', $data) && $data['requireEnrolledDevice'] === null) {
             $object->setRequireEnrolledDevice(null);
+            unset($data['requireEnrolledDevice']);
         }
         if (\array_key_exists('sharedIdleSecs', $data) && $data['sharedIdleSecs'] !== null) {
             $object->setSharedIdleSecs($data['sharedIdleSecs']);
@@ -115,6 +124,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('sharedIdleSecs', $data) && $data['sharedIdleSecs'] === null) {
             $object->setSharedIdleSecs(null);
+            unset($data['sharedIdleSecs']);
         }
         if (\array_key_exists('shiftMaxSecs', $data) && $data['shiftMaxSecs'] !== null) {
             $object->setShiftMaxSecs($data['shiftMaxSecs']);
@@ -122,6 +132,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('shiftMaxSecs', $data) && $data['shiftMaxSecs'] === null) {
             $object->setShiftMaxSecs(null);
+            unset($data['shiftMaxSecs']);
         }
         if (\array_key_exists('softLockSecs', $data) && $data['softLockSecs'] !== null) {
             $object->setSoftLockSecs($data['softLockSecs']);
@@ -129,6 +140,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('softLockSecs', $data) && $data['softLockSecs'] === null) {
             $object->setSoftLockSecs(null);
+            unset($data['softLockSecs']);
         }
         if (\array_key_exists('softLockThreshold', $data) && $data['softLockThreshold'] !== null) {
             $object->setSoftLockThreshold($data['softLockThreshold']);
@@ -136,6 +148,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('softLockThreshold', $data) && $data['softLockThreshold'] === null) {
             $object->setSoftLockThreshold(null);
+            unset($data['softLockThreshold']);
         }
         if (\array_key_exists('unenrolledIdleSecs', $data) && $data['unenrolledIdleSecs'] !== null) {
             $object->setUnenrolledIdleSecs($data['unenrolledIdleSecs']);
@@ -143,6 +156,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('unenrolledIdleSecs', $data) && $data['unenrolledIdleSecs'] === null) {
             $object->setUnenrolledIdleSecs(null);
+            unset($data['unenrolledIdleSecs']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -191,7 +205,7 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         if ($data->isInitialized('unenrolledIdleSecs') && null !== $data->getUnenrolledIdleSecs()) {
             $dataArray['unenrolledIdleSecs'] = $data->getUnenrolledIdleSecs();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

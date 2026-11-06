@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class UpdateAuthConfigRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class UpdateAuthConfigRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -237,5 +240,9 @@ class UpdateAuthConfigRequest extends \ArrayObject
         $this->initialized['primaryClientId'] = true;
         $this->primaryClientId = $primaryClientId;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'additionalClientIds' => ['additionalClientIds', 'getAdditionalClientIds', 'setAdditionalClientIds'], 'authProvider' => ['authProvider', 'getAuthProvider', 'setAuthProvider'], 'grantedClientIds' => ['grantedClientIds', 'getGrantedClientIds', 'setGrantedClientIds'], 'oidcClientId' => ['oidcClientId', 'getOidcClientId', 'setOidcClientId'], 'oidcClientSecretRef' => ['oidcClientSecretRef', 'getOidcClientSecretRef', 'setOidcClientSecretRef'], 'oidcIssuerPattern' => ['oidcIssuerPattern', 'getOidcIssuerPattern', 'setOidcIssuerPattern'], 'oidcIssuerUrl' => ['oidcIssuerUrl', 'getOidcIssuerUrl', 'setOidcIssuerUrl'], 'oidcMultiTenant' => ['oidcMultiTenant', 'getOidcMultiTenant', 'setOidcMultiTenant'], 'primaryClientId' => ['primaryClientId', 'getPrimaryClientId', 'setPrimaryClientId']];
     }
 }

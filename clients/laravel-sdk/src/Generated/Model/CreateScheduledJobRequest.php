@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateScheduledJobRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateScheduledJobRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -325,5 +328,9 @@ class CreateScheduledJobRequest extends \ArrayObject
         $this->initialized['tracksCompletion'] = true;
         $this->tracksCompletion = $tracksCompletion;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'applicationId' => ['applicationId', 'getApplicationId', 'setApplicationId'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'code' => ['code', 'getCode', 'setCode'], 'concurrent' => ['concurrent', 'getConcurrent', 'setConcurrent'], 'crons' => ['crons', 'getCrons', 'setCrons'], 'deliveryMaxAttempts' => ['deliveryMaxAttempts', 'getDeliveryMaxAttempts', 'setDeliveryMaxAttempts'], 'description' => ['description', 'getDescription', 'setDescription'], 'name' => ['name', 'getName', 'setName'], 'payload' => ['payload', 'getPayload', 'setPayload'], 'targetUrl' => ['targetUrl', 'getTargetUrl', 'setTargetUrl'], 'timeoutSeconds' => ['timeoutSeconds', 'getTimeoutSeconds', 'setTimeoutSeconds'], 'timezone' => ['timezone', 'getTimezone', 'setTimezone'], 'tracksCompletion' => ['tracksCompletion', 'getTracksCompletion', 'setTracksCompletion']];
     }
 }

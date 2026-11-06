@@ -66,7 +66,7 @@ class IdentityProviderListResponseNormalizer implements DenormalizerInterface, N
         $dataArray = [];
         $values = [];
         foreach ($data->getIdentityProviders() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['identityProviders'] = $values;
         $dataArray['total'] = $data->getTotal();

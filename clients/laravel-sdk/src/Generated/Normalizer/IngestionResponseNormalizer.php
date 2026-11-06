@@ -83,7 +83,19 @@ class IngestionResponseNormalizer implements DenormalizerInterface, NormalizerIn
             $object->setConfig(null);
         }
         if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
-            $object->setCreatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']);
+            if (false === $date) {
+                if (is_string($data['createdAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['createdAt'])) {
+                    try {
+                        $date = new \DateTime($data['createdAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setCreatedAt($date);
         }
         elseif (\array_key_exists('createdAt', $data) && $data['createdAt'] === null) {
             $object->setCreatedAt(null);
@@ -107,7 +119,19 @@ class IngestionResponseNormalizer implements DenormalizerInterface, NormalizerIn
             $object->setLatestNotice(null);
         }
         if (\array_key_exists('latestNoticeAt', $data) && $data['latestNoticeAt'] !== null) {
-            $object->setLatestNoticeAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['latestNoticeAt']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['latestNoticeAt']);
+            if (false === $date_1) {
+                if (is_string($data['latestNoticeAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['latestNoticeAt'])) {
+                    try {
+                        $date_1 = new \DateTime($data['latestNoticeAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['latestNoticeAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['latestNoticeAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setLatestNoticeAt($date_1);
         }
         elseif (\array_key_exists('latestNoticeAt', $data) && $data['latestNoticeAt'] === null) {
             $object->setLatestNoticeAt(null);
@@ -173,7 +197,19 @@ class IngestionResponseNormalizer implements DenormalizerInterface, NormalizerIn
             $object->setTarget(null);
         }
         if (\array_key_exists('updatedAt', $data) && $data['updatedAt'] !== null) {
-            $object->setUpdatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']));
+            $date_2 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']);
+            if (false === $date_2) {
+                if (is_string($data['updatedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['updatedAt'])) {
+                    try {
+                        $date_2 = new \DateTime($data['updatedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['updatedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['updatedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setUpdatedAt($date_2);
         }
         elseif (\array_key_exists('updatedAt', $data) && $data['updatedAt'] === null) {
             $object->setUpdatedAt(null);
@@ -204,7 +240,7 @@ class IngestionResponseNormalizer implements DenormalizerInterface, NormalizerIn
         $dataArray['clientId'] = $data->getClientId();
         $dataArray['clientIdentifier'] = $data->getClientIdentifier();
         $dataArray['code'] = $data->getCode();
-        $dataArray['config'] = $this->normalizer->normalize($data->getConfig(), 'json', $context);
+        $dataArray['config'] = $data->getConfig() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getConfig(), 'json', $context));
         $dataArray['createdAt'] = $data->getCreatedAt()->format('Y-m-d\TH:i:sP');
         $dataArray['id'] = $data->getId();
         if ($data->isInitialized('keepFailedPayloads') && null !== $data->getKeepFailedPayloads()) {
@@ -226,12 +262,12 @@ class IngestionResponseNormalizer implements DenormalizerInterface, NormalizerIn
             $dataArray['runtimeNotice'] = $data->getRuntimeNotice();
         }
         if ($data->isInitialized('save') && null !== $data->getSave()) {
-            $dataArray['save'] = $this->normalizer->normalize($data->getSave(), 'json', $context);
+            $dataArray['save'] = $data->getSave() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getSave(), 'json', $context));
         }
         $dataArray['source'] = $data->getSource();
         $dataArray['split'] = $data->getSplit();
         $dataArray['status'] = $data->getStatus();
-        $dataArray['target'] = $this->normalizer->normalize($data->getTarget(), 'json', $context);
+        $dataArray['target'] = $data->getTarget() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getTarget(), 'json', $context));
         $dataArray['updatedAt'] = $data->getUpdatedAt()->format('Y-m-d\TH:i:sP');
         $dataArray['version'] = $data->getVersion();
         if ($data->isInitialized('warnings') && null !== $data->getWarnings()) {

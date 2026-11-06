@@ -43,6 +43,7 @@ class SetPropertyRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -50,6 +51,7 @@ class SetPropertyRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -57,6 +59,7 @@ class SetPropertyRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('value', $data) && $data['value'] !== null) {
             $object->setValue($data['value']);
@@ -64,6 +67,7 @@ class SetPropertyRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('value', $data) && $data['value'] === null) {
             $object->setValue(null);
+            unset($data['value']);
         }
         if (\array_key_exists('valueType', $data) && $data['valueType'] !== null) {
             $object->setValueType($data['valueType']);
@@ -71,6 +75,7 @@ class SetPropertyRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('valueType', $data) && $data['valueType'] === null) {
             $object->setValueType(null);
+            unset($data['valueType']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -92,7 +97,7 @@ class SetPropertyRequestNormalizer implements DenormalizerInterface, NormalizerI
         if ($data->isInitialized('valueType') && null !== $data->getValueType()) {
             $dataArray['valueType'] = $data->getValueType();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

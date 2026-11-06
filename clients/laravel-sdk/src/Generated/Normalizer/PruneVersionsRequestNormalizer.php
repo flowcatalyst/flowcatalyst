@@ -46,6 +46,7 @@ class PruneVersionsRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('dryRun', $data) && $data['dryRun'] !== null) {
             $object->setDryRun($data['dryRun']);
@@ -53,6 +54,7 @@ class PruneVersionsRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('dryRun', $data) && $data['dryRun'] === null) {
             $object->setDryRun(null);
+            unset($data['dryRun']);
         }
         if (\array_key_exists('keep', $data) && $data['keep'] !== null) {
             $object->setKeep($data['keep']);
@@ -60,6 +62,7 @@ class PruneVersionsRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('keep', $data) && $data['keep'] === null) {
             $object->setKeep(null);
+            unset($data['keep']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -77,7 +80,7 @@ class PruneVersionsRequestNormalizer implements DenormalizerInterface, Normalize
         if ($data->isInitialized('keep') && null !== $data->getKeep()) {
             $dataArray['keep'] = $data->getKeep();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class WriteInstanceLogRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class WriteInstanceLogRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -111,5 +114,9 @@ class WriteInstanceLogRequest extends \ArrayObject
         $this->initialized['metadata'] = true;
         $this->metadata = $metadata;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'level' => ['level', 'getLevel', 'setLevel'], 'message' => ['message', 'getMessage', 'setMessage'], 'metadata' => ['metadata', 'getMetadata', 'setMetadata']];
     }
 }

@@ -33,7 +33,7 @@ class ListFunctionTraceLog extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/functions/{id}/trace-log');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/functions/{id}/trace-log');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -62,6 +62,10 @@ class ListFunctionTraceLog extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
         $optionsResolver->addAllowedTypes('cursor', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['context' => ['style' => 'form', 'explode' => false], 'kind' => ['style' => 'form', 'explode' => false], 'level' => ['style' => 'form', 'explode' => false], 'reference' => ['style' => 'form', 'explode' => false], 'correlationId' => ['style' => 'form', 'explode' => false], 'invocationId' => ['style' => 'form', 'explode' => false], 'version' => ['style' => 'form', 'explode' => false], 'since' => ['style' => 'form', 'explode' => false], 'until' => ['style' => 'form', 'explode' => false], 'limit' => ['style' => 'form', 'explode' => false], 'cursor' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -72,10 +76,10 @@ class ListFunctionTraceLog extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\TraceLogResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

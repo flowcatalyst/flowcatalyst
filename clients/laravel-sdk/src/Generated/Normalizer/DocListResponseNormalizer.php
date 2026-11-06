@@ -70,12 +70,12 @@ class DocListResponseNormalizer implements DenormalizerInterface, NormalizerInte
         $dataArray = [];
         $values = [];
         foreach ($data->getApplications() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['applications'] = $values;
         $values_1 = [];
         foreach ($data->getPlatform() as $value_1) {
-            $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+            $values_1[] = $value_1 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_1, 'json', $context));
         }
         $dataArray['platform'] = $values_1;
         return $dataArray;

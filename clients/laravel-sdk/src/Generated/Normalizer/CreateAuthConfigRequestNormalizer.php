@@ -46,6 +46,7 @@ class CreateAuthConfigRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('additionalClientIds', $data) && $data['additionalClientIds'] !== null) {
             $values = [];
@@ -57,6 +58,7 @@ class CreateAuthConfigRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('additionalClientIds', $data) && $data['additionalClientIds'] === null) {
             $object->setAdditionalClientIds(null);
+            unset($data['additionalClientIds']);
         }
         if (\array_key_exists('authProvider', $data) && $data['authProvider'] !== null) {
             $object->setAuthProvider($data['authProvider']);
@@ -64,6 +66,7 @@ class CreateAuthConfigRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('authProvider', $data) && $data['authProvider'] === null) {
             $object->setAuthProvider(null);
+            unset($data['authProvider']);
         }
         if (\array_key_exists('configType', $data) && $data['configType'] !== null) {
             $object->setConfigType($data['configType']);
@@ -71,6 +74,7 @@ class CreateAuthConfigRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('configType', $data) && $data['configType'] === null) {
             $object->setConfigType(null);
+            unset($data['configType']);
         }
         if (\array_key_exists('emailDomain', $data) && $data['emailDomain'] !== null) {
             $object->setEmailDomain($data['emailDomain']);
@@ -78,6 +82,7 @@ class CreateAuthConfigRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('emailDomain', $data) && $data['emailDomain'] === null) {
             $object->setEmailDomain(null);
+            unset($data['emailDomain']);
         }
         if (\array_key_exists('grantedClientIds', $data) && $data['grantedClientIds'] !== null) {
             $values_1 = [];
@@ -89,6 +94,7 @@ class CreateAuthConfigRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('grantedClientIds', $data) && $data['grantedClientIds'] === null) {
             $object->setGrantedClientIds(null);
+            unset($data['grantedClientIds']);
         }
         if (\array_key_exists('oidcClientId', $data) && $data['oidcClientId'] !== null) {
             $object->setOidcClientId($data['oidcClientId']);
@@ -96,6 +102,7 @@ class CreateAuthConfigRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('oidcClientId', $data) && $data['oidcClientId'] === null) {
             $object->setOidcClientId(null);
+            unset($data['oidcClientId']);
         }
         if (\array_key_exists('oidcClientSecretRef', $data) && $data['oidcClientSecretRef'] !== null) {
             $object->setOidcClientSecretRef($data['oidcClientSecretRef']);
@@ -103,6 +110,7 @@ class CreateAuthConfigRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('oidcClientSecretRef', $data) && $data['oidcClientSecretRef'] === null) {
             $object->setOidcClientSecretRef(null);
+            unset($data['oidcClientSecretRef']);
         }
         if (\array_key_exists('oidcIssuerPattern', $data) && $data['oidcIssuerPattern'] !== null) {
             $object->setOidcIssuerPattern($data['oidcIssuerPattern']);
@@ -110,6 +118,7 @@ class CreateAuthConfigRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('oidcIssuerPattern', $data) && $data['oidcIssuerPattern'] === null) {
             $object->setOidcIssuerPattern(null);
+            unset($data['oidcIssuerPattern']);
         }
         if (\array_key_exists('oidcIssuerUrl', $data) && $data['oidcIssuerUrl'] !== null) {
             $object->setOidcIssuerUrl($data['oidcIssuerUrl']);
@@ -117,6 +126,7 @@ class CreateAuthConfigRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('oidcIssuerUrl', $data) && $data['oidcIssuerUrl'] === null) {
             $object->setOidcIssuerUrl(null);
+            unset($data['oidcIssuerUrl']);
         }
         if (\array_key_exists('oidcMultiTenant', $data) && $data['oidcMultiTenant'] !== null) {
             $object->setOidcMultiTenant($data['oidcMultiTenant']);
@@ -124,6 +134,7 @@ class CreateAuthConfigRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('oidcMultiTenant', $data) && $data['oidcMultiTenant'] === null) {
             $object->setOidcMultiTenant(null);
+            unset($data['oidcMultiTenant']);
         }
         if (\array_key_exists('primaryClientId', $data) && $data['primaryClientId'] !== null) {
             $object->setPrimaryClientId($data['primaryClientId']);
@@ -131,6 +142,7 @@ class CreateAuthConfigRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('primaryClientId', $data) && $data['primaryClientId'] === null) {
             $object->setPrimaryClientId(null);
+            unset($data['primaryClientId']);
         }
         foreach ($data as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
@@ -175,7 +187,7 @@ class CreateAuthConfigRequestNormalizer implements DenormalizerInterface, Normal
         if ($data->isInitialized('primaryClientId') && null !== $data->getPrimaryClientId()) {
             $dataArray['primaryClientId'] = $data->getPrimaryClientId();
         }
-        foreach ($data as $key => $value_2) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_2;
             }

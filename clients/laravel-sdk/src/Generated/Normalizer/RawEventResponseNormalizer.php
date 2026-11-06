@@ -120,7 +120,19 @@ class RawEventResponseNormalizer implements DenormalizerInterface, NormalizerInt
             $object->setSubject(null);
         }
         if (\array_key_exists('time', $data) && $data['time'] !== null) {
-            $object->setTime(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['time']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['time']);
+            if (false === $date) {
+                if (is_string($data['time']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['time'])) {
+                    try {
+                        $date = new \DateTime($data['time']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['time'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['time'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setTime($date);
         }
         elseif (\array_key_exists('time', $data) && $data['time'] === null) {
             $object->setTime(null);
@@ -139,7 +151,7 @@ class RawEventResponseNormalizer implements DenormalizerInterface, NormalizerInt
         if ($data->isInitialized('contextData') && null !== $data->getContextData()) {
             $values = [];
             foreach ($data->getContextData() as $value) {
-                $values[] = $this->normalizer->normalize($value, 'json', $context);
+                $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
             }
             $dataArray['contextData'] = $values;
         }

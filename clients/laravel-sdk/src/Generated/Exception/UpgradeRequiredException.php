@@ -2,7 +2,7 @@
 
 namespace FlowCatalyst\Generated\Exception;
 
-class UpgradeRequiredException extends \RuntimeException implements ClientException
+abstract class UpgradeRequiredException extends \RuntimeException implements ClientException, WithResponseInterface
 {
     public function __construct(string $message)
     {

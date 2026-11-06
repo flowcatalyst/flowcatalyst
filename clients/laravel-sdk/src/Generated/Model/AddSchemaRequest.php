@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class AddSchemaRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class AddSchemaRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -95,5 +98,9 @@ class AddSchemaRequest extends \ArrayObject
         $this->initialized['version'] = true;
         $this->version = $version;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'schema' => ['schema', 'getSchema', 'setSchema'], 'version' => ['version', 'getVersion', 'setVersion']];
     }
 }

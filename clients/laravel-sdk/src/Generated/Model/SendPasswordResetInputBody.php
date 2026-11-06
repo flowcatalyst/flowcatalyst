@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class SendPasswordResetInputBody extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class SendPasswordResetInputBody implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -61,5 +64,9 @@ class SendPasswordResetInputBody extends \ArrayObject
         $this->initialized['reset2fa'] = true;
         $this->reset2fa = $reset2fa;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'reset2fa' => ['reset2fa', 'getReset2fa', 'setReset2fa']];
     }
 }

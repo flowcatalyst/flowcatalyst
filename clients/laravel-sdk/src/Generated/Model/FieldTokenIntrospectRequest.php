@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class FieldTokenIntrospectRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class FieldTokenIntrospectRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -61,5 +64,9 @@ class FieldTokenIntrospectRequest extends \ArrayObject
         $this->initialized['token'] = true;
         $this->token = $token;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'token' => ['token', 'getToken', 'setToken']];
     }
 }

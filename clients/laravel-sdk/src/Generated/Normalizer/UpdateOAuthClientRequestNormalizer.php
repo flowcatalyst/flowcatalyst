@@ -49,6 +49,7 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('allowedOrigins', $data) && $data['allowedOrigins'] !== null) {
             $values = [];
@@ -60,6 +61,7 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('allowedOrigins', $data) && $data['allowedOrigins'] === null) {
             $object->setAllowedOrigins(null);
+            unset($data['allowedOrigins']);
         }
         if (\array_key_exists('apiAccess', $data) && $data['apiAccess'] !== null) {
             $object->setApiAccess($data['apiAccess']);
@@ -67,6 +69,7 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('apiAccess', $data) && $data['apiAccess'] === null) {
             $object->setApiAccess(null);
+            unset($data['apiAccess']);
         }
         if (\array_key_exists('applicationIds', $data) && $data['applicationIds'] !== null) {
             $values_1 = [];
@@ -78,6 +81,7 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('applicationIds', $data) && $data['applicationIds'] === null) {
             $object->setApplicationIds(null);
+            unset($data['applicationIds']);
         }
         if (\array_key_exists('clientName', $data) && $data['clientName'] !== null) {
             $object->setClientName($data['clientName']);
@@ -85,6 +89,7 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('clientName', $data) && $data['clientName'] === null) {
             $object->setClientName(null);
+            unset($data['clientName']);
         }
         if (\array_key_exists('defaultScopes', $data) && $data['defaultScopes'] !== null) {
             $values_2 = [];
@@ -96,6 +101,7 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('defaultScopes', $data) && $data['defaultScopes'] === null) {
             $object->setDefaultScopes(null);
+            unset($data['defaultScopes']);
         }
         if (\array_key_exists('grantTypes', $data) && $data['grantTypes'] !== null) {
             $values_3 = [];
@@ -107,6 +113,7 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('grantTypes', $data) && $data['grantTypes'] === null) {
             $object->setGrantTypes(null);
+            unset($data['grantTypes']);
         }
         if (\array_key_exists('pkceRequired', $data) && $data['pkceRequired'] !== null) {
             $object->setPkceRequired($data['pkceRequired']);
@@ -114,6 +121,7 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('pkceRequired', $data) && $data['pkceRequired'] === null) {
             $object->setPkceRequired(null);
+            unset($data['pkceRequired']);
         }
         if (\array_key_exists('portalAppId', $data) && $data['portalAppId'] !== null) {
             $object->setPortalAppId($data['portalAppId']);
@@ -121,6 +129,7 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('portalAppId', $data) && $data['portalAppId'] === null) {
             $object->setPortalAppId(null);
+            unset($data['portalAppId']);
         }
         if (\array_key_exists('portalClientId', $data) && $data['portalClientId'] !== null) {
             $object->setPortalClientId($data['portalClientId']);
@@ -128,6 +137,7 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('portalClientId', $data) && $data['portalClientId'] === null) {
             $object->setPortalClientId(null);
+            unset($data['portalClientId']);
         }
         if (\array_key_exists('postLogoutRedirectUris', $data) && $data['postLogoutRedirectUris'] !== null) {
             $values_4 = [];
@@ -139,6 +149,7 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('postLogoutRedirectUris', $data) && $data['postLogoutRedirectUris'] === null) {
             $object->setPostLogoutRedirectUris(null);
+            unset($data['postLogoutRedirectUris']);
         }
         if (\array_key_exists('redirectUris', $data) && $data['redirectUris'] !== null) {
             $values_5 = [];
@@ -150,6 +161,7 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('redirectUris', $data) && $data['redirectUris'] === null) {
             $object->setRedirectUris(null);
+            unset($data['redirectUris']);
         }
         foreach ($data as $key => $value_6) {
             if (preg_match('/.*/', (string) $key)) {
@@ -218,7 +230,7 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
             }
             $dataArray['redirectUris'] = $values_5;
         }
-        foreach ($data as $key => $value_6) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_6) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_6;
             }

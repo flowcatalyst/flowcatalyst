@@ -55,6 +55,10 @@ class ListPrincipals extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint
         $optionsResolver->addAllowedTypes('sortOrder', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['type' => ['style' => 'form', 'explode' => false], 'clientId' => ['style' => 'form', 'explode' => false], 'active' => ['style' => 'form', 'explode' => false], 'q' => ['style' => 'form', 'explode' => false], 'roles' => ['style' => 'form', 'explode' => false], 'page' => ['style' => 'form', 'explode' => false], 'pageSize' => ['style' => 'form', 'explode' => false], 'sortField' => ['style' => 'form', 'explode' => false], 'sortOrder' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -65,10 +69,10 @@ class ListPrincipals extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\PrincipalListResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

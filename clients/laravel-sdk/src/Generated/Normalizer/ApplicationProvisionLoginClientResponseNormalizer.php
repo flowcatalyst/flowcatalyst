@@ -60,7 +60,7 @@ class ApplicationProvisionLoginClientResponseNormalizer implements DenormalizerI
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $dataArray['loginClient'] = $this->normalizer->normalize($data->getLoginClient(), 'json', $context);
+        $dataArray['loginClient'] = $data->getLoginClient() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getLoginClient(), 'json', $context));
         $dataArray['message'] = $data->getMessage();
         return $dataArray;
     }

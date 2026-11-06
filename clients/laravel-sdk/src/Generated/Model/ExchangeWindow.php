@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class ExchangeWindow extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class ExchangeWindow implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -221,5 +224,9 @@ class ExchangeWindow extends \ArrayObject
         $this->initialized['to'] = true;
         $this->to = $to;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['completed' => ['completed', 'getCompleted', 'setCompleted'], 'dispatchJobs' => ['dispatchJobs', 'getDispatchJobs', 'setDispatchJobs'], 'failed' => ['failed', 'getFailed', 'setFailed'], 'from' => ['from', 'getFrom', 'setFrom'], 'ingestionId' => ['ingestionId', 'getIngestionId', 'setIngestionId'], 'lastPollAt' => ['lastPollAt', 'getLastPollAt', 'setLastPollAt'], 'polls' => ['polls', 'getPolls', 'setPolls'], 'records' => ['records', 'getRecords', 'setRecords'], 'to' => ['to', 'getTo', 'setTo']];
     }
 }

@@ -28,7 +28,7 @@ class ListScheduledJobInstances extends \FlowCatalyst\Generated\Runtime\Client\B
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/scheduled-jobs/{id}/instances');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/scheduled-jobs/{id}/instances');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -52,6 +52,10 @@ class ListScheduledJobInstances extends \FlowCatalyst\Generated\Runtime\Client\B
         $optionsResolver->addAllowedTypes('page_size', ['int']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['status' => ['style' => 'form', 'explode' => false], 'page' => ['style' => 'form', 'explode' => false], 'size' => ['style' => 'form', 'explode' => false], 'limit' => ['style' => 'form', 'explode' => false], 'pageSize' => ['style' => 'form', 'explode' => false], 'page_size' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -62,10 +66,10 @@ class ListScheduledJobInstances extends \FlowCatalyst\Generated\Runtime\Client\B
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\OffsetPageScheduledJobInstanceResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

@@ -69,6 +69,10 @@ class ListEventsRaw extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint 
         $optionsResolver->addAllowedTypes('types', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['type' => ['style' => 'form', 'explode' => false], 'source' => ['style' => 'form', 'explode' => false], 'subject' => ['style' => 'form', 'explode' => false], 'clientId' => ['style' => 'form', 'explode' => false], 'principalId' => ['style' => 'form', 'explode' => false], 'correlationId' => ['style' => 'form', 'explode' => false], 'since' => ['style' => 'form', 'explode' => false], 'until' => ['style' => 'form', 'explode' => false], 'limit' => ['style' => 'form', 'explode' => false], 'offset' => ['style' => 'form', 'explode' => false], 'size' => ['style' => 'form', 'explode' => false], 'clientIds' => ['style' => 'form', 'explode' => false], 'applications' => ['style' => 'form', 'explode' => false], 'subdomains' => ['style' => 'form', 'explode' => false], 'aggregates' => ['style' => 'form', 'explode' => false], 'types' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -79,10 +83,10 @@ class ListEventsRaw extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint 
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\EventRead[]', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

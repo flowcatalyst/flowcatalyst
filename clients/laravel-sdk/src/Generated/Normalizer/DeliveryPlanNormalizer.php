@@ -50,7 +50,7 @@ class DeliveryPlanNormalizer implements DenormalizerInterface, NormalizerInterfa
             $object->setBody(null);
         }
         if (\array_key_exists('headers', $data) && $data['headers'] !== null) {
-            $values = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            $values = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data['headers'] as $key => $value) {
                 $values[$key] = $value;
             }
@@ -71,12 +71,12 @@ class DeliveryPlanNormalizer implements DenormalizerInterface, NormalizerInterfa
     {
         $dataArray = [];
         $dataArray['body'] = $data->getBody();
-        $values = [];
+        $values = new \FlowCatalyst\Generated\Runtime\JsonObject();
         foreach ($data->getHeaders() as $key => $value) {
             $values[$key] = $value;
         }
         $dataArray['headers'] = $values;
-        $dataArray['request'] = $this->normalizer->normalize($data->getRequest(), 'json', $context);
+        $dataArray['request'] = $data->getRequest() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getRequest(), 'json', $context));
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

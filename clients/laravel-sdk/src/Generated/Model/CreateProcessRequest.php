@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateProcessRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateProcessRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -189,5 +192,9 @@ class CreateProcessRequest extends \ArrayObject
         $this->initialized['tags'] = true;
         $this->tags = $tags;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'body' => ['body', 'getBody', 'setBody'], 'code' => ['code', 'getCode', 'setCode'], 'description' => ['description', 'getDescription', 'setDescription'], 'diagramType' => ['diagramType', 'getDiagramType', 'setDiagramType'], 'name' => ['name', 'getName', 'setName'], 'tags' => ['tags', 'getTags', 'setTags']];
     }
 }

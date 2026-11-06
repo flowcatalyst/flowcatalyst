@@ -78,7 +78,7 @@ class ApplicationInvitationListNormalizer implements DenormalizerInterface, Norm
         $dataArray = [];
         $values = [];
         foreach ($data->getInvitations() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['invitations'] = $values;
         $dataArray['page'] = $data->getPage();

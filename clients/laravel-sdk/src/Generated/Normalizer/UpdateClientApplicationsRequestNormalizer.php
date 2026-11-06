@@ -43,6 +43,7 @@ class UpdateClientApplicationsRequestNormalizer implements DenormalizerInterface
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('enabledApplicationIds', $data) && $data['enabledApplicationIds'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class UpdateClientApplicationsRequestNormalizer implements DenormalizerInterface
         }
         elseif (\array_key_exists('enabledApplicationIds', $data) && $data['enabledApplicationIds'] === null) {
             $object->setEnabledApplicationIds(null);
+            unset($data['enabledApplicationIds']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -70,7 +72,7 @@ class UpdateClientApplicationsRequestNormalizer implements DenormalizerInterface
             $values[] = $value;
         }
         $dataArray['enabledApplicationIds'] = $values;
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

@@ -43,6 +43,7 @@ class CreatePortalAppRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -50,6 +51,7 @@ class CreatePortalAppRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('clientType', $data) && $data['clientType'] !== null) {
             $object->setClientType($data['clientType']);
@@ -57,6 +59,7 @@ class CreatePortalAppRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('clientType', $data) && $data['clientType'] === null) {
             $object->setClientType(null);
+            unset($data['clientType']);
         }
         if (\array_key_exists('code', $data) && $data['code'] !== null) {
             $object->setCode($data['code']);
@@ -64,6 +67,7 @@ class CreatePortalAppRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('code', $data) && $data['code'] === null) {
             $object->setCode(null);
+            unset($data['code']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -71,6 +75,7 @@ class CreatePortalAppRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -78,6 +83,7 @@ class CreatePortalAppRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('redirectUris', $data) && $data['redirectUris'] !== null) {
             $values = [];
@@ -89,6 +95,7 @@ class CreatePortalAppRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('redirectUris', $data) && $data['redirectUris'] === null) {
             $object->setRedirectUris(null);
+            unset($data['redirectUris']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -116,7 +123,7 @@ class CreatePortalAppRequestNormalizer implements DenormalizerInterface, Normali
             }
             $dataArray['redirectUris'] = $values;
         }
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

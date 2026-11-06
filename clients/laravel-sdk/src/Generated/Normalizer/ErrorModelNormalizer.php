@@ -44,7 +44,7 @@ class ErrorModelNormalizer implements DenormalizerInterface, NormalizerInterface
             $object->setDollarSchema(null);
         }
         if (\array_key_exists('details', $data) && $data['details'] !== null) {
-            $values = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            $values = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data['details'] as $key => $value) {
                 $values[$key] = $value;
             }
@@ -71,7 +71,7 @@ class ErrorModelNormalizer implements DenormalizerInterface, NormalizerInterface
     {
         $dataArray = [];
         if ($data->isInitialized('details') && null !== $data->getDetails()) {
-            $values = [];
+            $values = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data->getDetails() as $key => $value) {
                 $values[$key] = $value;
             }

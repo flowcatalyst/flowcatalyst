@@ -47,13 +47,37 @@ class WindowResponseNormalizer implements DenormalizerInterface, NormalizerInter
             $object->setDefaulted(null);
         }
         if (\array_key_exists('from', $data) && $data['from'] !== null) {
-            $object->setFrom(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['from']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['from']);
+            if (false === $date) {
+                if (is_string($data['from']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['from'])) {
+                    try {
+                        $date = new \DateTime($data['from']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['from'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['from'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setFrom($date);
         }
         elseif (\array_key_exists('from', $data) && $data['from'] === null) {
             $object->setFrom(null);
         }
         if (\array_key_exists('to', $data) && $data['to'] !== null) {
-            $object->setTo(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['to']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['to']);
+            if (false === $date_1) {
+                if (is_string($data['to']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['to'])) {
+                    try {
+                        $date_1 = new \DateTime($data['to']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['to'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['to'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setTo($date_1);
         }
         elseif (\array_key_exists('to', $data) && $data['to'] === null) {
             $object->setTo(null);

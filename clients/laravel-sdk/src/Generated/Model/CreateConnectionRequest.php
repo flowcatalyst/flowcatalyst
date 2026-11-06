@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateConnectionRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateConnectionRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -205,5 +208,9 @@ class CreateConnectionRequest extends \ArrayObject
         $this->initialized['serviceAccountId'] = true;
         $this->serviceAccountId = $serviceAccountId;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'applicationCode' => ['applicationCode', 'getApplicationCode', 'setApplicationCode'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'code' => ['code', 'getCode', 'setCode'], 'description' => ['description', 'getDescription', 'setDescription'], 'externalId' => ['externalId', 'getExternalId', 'setExternalId'], 'name' => ['name', 'getName', 'setName'], 'serviceAccountId' => ['serviceAccountId', 'getServiceAccountId', 'setServiceAccountId']];
     }
 }

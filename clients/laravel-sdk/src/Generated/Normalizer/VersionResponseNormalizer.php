@@ -50,7 +50,19 @@ class VersionResponseNormalizer implements DenormalizerInterface, NormalizerInte
             $object->setAbi(null);
         }
         if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
-            $object->setCreatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']);
+            if (false === $date) {
+                if (is_string($data['createdAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['createdAt'])) {
+                    try {
+                        $date = new \DateTime($data['createdAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setCreatedAt($date);
         }
         elseif (\array_key_exists('createdAt', $data) && $data['createdAt'] === null) {
             $object->setCreatedAt(null);
@@ -98,7 +110,19 @@ class VersionResponseNormalizer implements DenormalizerInterface, NormalizerInte
             $object->setPublishedBy(null);
         }
         if (\array_key_exists('readyAt', $data) && $data['readyAt'] !== null) {
-            $object->setReadyAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['readyAt']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['readyAt']);
+            if (false === $date_1) {
+                if (is_string($data['readyAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['readyAt'])) {
+                    try {
+                        $date_1 = new \DateTime($data['readyAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['readyAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['readyAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setReadyAt($date_1);
         }
         elseif (\array_key_exists('readyAt', $data) && $data['readyAt'] === null) {
             $object->setReadyAt(null);

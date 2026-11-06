@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateMappingRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateMappingRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -299,5 +302,9 @@ class CreateMappingRequest extends \ArrayObject
         $this->initialized['scopeType'] = true;
         $this->scopeType = $scopeType;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'additionalClientIds' => ['additionalClientIds', 'getAdditionalClientIds', 'setAdditionalClientIds'], 'allowed2faMethods' => ['allowed2faMethods', 'getAllowed2faMethods', 'setAllowed2faMethods'], 'emailDomain' => ['emailDomain', 'getEmailDomain', 'setEmailDomain'], 'grantedClientIds' => ['grantedClientIds', 'getGrantedClientIds', 'setGrantedClientIds'], 'identityProviderId' => ['identityProviderId', 'getIdentityProviderId', 'setIdentityProviderId'], 'primaryClientId' => ['primaryClientId', 'getPrimaryClientId', 'setPrimaryClientId'], 'rememberDeviceDays' => ['rememberDeviceDays', 'getRememberDeviceDays', 'setRememberDeviceDays'], 'rememberDeviceEnabled' => ['rememberDeviceEnabled', 'getRememberDeviceEnabled', 'setRememberDeviceEnabled'], 'require2fa' => ['require2fa', 'getRequire2fa', 'setRequire2fa'], 'requiredOidcTenantId' => ['requiredOidcTenantId', 'getRequiredOidcTenantId', 'setRequiredOidcTenantId'], 'scopeType' => ['scopeType', 'getScopeType', 'setScopeType']];
     }
 }

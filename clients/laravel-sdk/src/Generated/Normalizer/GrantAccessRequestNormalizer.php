@@ -46,6 +46,7 @@ class GrantAccessRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('canWrite', $data) && $data['canWrite'] !== null) {
             $object->setCanWrite($data['canWrite']);
@@ -53,6 +54,7 @@ class GrantAccessRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('canWrite', $data) && $data['canWrite'] === null) {
             $object->setCanWrite(null);
+            unset($data['canWrite']);
         }
         if (\array_key_exists('roleCode', $data) && $data['roleCode'] !== null) {
             $object->setRoleCode($data['roleCode']);
@@ -60,6 +62,7 @@ class GrantAccessRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('roleCode', $data) && $data['roleCode'] === null) {
             $object->setRoleCode(null);
+            unset($data['roleCode']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -73,7 +76,7 @@ class GrantAccessRequestNormalizer implements DenormalizerInterface, NormalizerI
         $dataArray = [];
         $dataArray['canWrite'] = $data->getCanWrite();
         $dataArray['roleCode'] = $data->getRoleCode();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

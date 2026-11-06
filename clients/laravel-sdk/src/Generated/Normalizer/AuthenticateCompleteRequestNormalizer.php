@@ -43,6 +43,7 @@ class AuthenticateCompleteRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('credential', $data) && $data['credential'] !== null) {
             $object->setCredential($data['credential']);
@@ -50,6 +51,7 @@ class AuthenticateCompleteRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('credential', $data) && $data['credential'] === null) {
             $object->setCredential(null);
+            unset($data['credential']);
         }
         if (\array_key_exists('stateId', $data) && $data['stateId'] !== null) {
             $object->setStateId($data['stateId']);
@@ -57,6 +59,7 @@ class AuthenticateCompleteRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('stateId', $data) && $data['stateId'] === null) {
             $object->setStateId(null);
+            unset($data['stateId']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -70,7 +73,7 @@ class AuthenticateCompleteRequestNormalizer implements DenormalizerInterface, No
         $dataArray = [];
         $dataArray['credential'] = $data->getCredential();
         $dataArray['stateId'] = $data->getStateId();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

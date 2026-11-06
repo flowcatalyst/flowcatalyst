@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class AssignApplicationAccessRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class AssignApplicationAccessRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -105,5 +108,9 @@ class AssignApplicationAccessRequest extends \ArrayObject
         $this->initialized['confirmSelfRestriction'] = true;
         $this->confirmSelfRestriction = $confirmSelfRestriction;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'allApplications' => ['allApplications', 'getAllApplications', 'setAllApplications'], 'applicationIds' => ['applicationIds', 'getApplicationIds', 'setApplicationIds'], 'confirmSelfRestriction' => ['confirmSelfRestriction', 'getConfirmSelfRestriction', 'setConfirmSelfRestriction']];
     }
 }

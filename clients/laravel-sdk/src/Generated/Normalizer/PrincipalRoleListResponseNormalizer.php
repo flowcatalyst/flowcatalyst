@@ -60,7 +60,7 @@ class PrincipalRoleListResponseNormalizer implements DenormalizerInterface, Norm
         $dataArray = [];
         $values = [];
         foreach ($data->getRoles() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['roles'] = $values;
         return $dataArray;

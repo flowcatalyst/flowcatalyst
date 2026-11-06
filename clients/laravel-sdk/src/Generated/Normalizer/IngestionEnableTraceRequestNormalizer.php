@@ -43,6 +43,7 @@ class IngestionEnableTraceRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('sampleEverySecs', $data) && $data['sampleEverySecs'] !== null) {
             $object->setSampleEverySecs($data['sampleEverySecs']);
@@ -50,6 +51,7 @@ class IngestionEnableTraceRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('sampleEverySecs', $data) && $data['sampleEverySecs'] === null) {
             $object->setSampleEverySecs(null);
+            unset($data['sampleEverySecs']);
         }
         if (\array_key_exists('windowSecs', $data) && $data['windowSecs'] !== null) {
             $object->setWindowSecs($data['windowSecs']);
@@ -57,6 +59,7 @@ class IngestionEnableTraceRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('windowSecs', $data) && $data['windowSecs'] === null) {
             $object->setWindowSecs(null);
+            unset($data['windowSecs']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -74,7 +77,7 @@ class IngestionEnableTraceRequestNormalizer implements DenormalizerInterface, No
         if ($data->isInitialized('windowSecs') && null !== $data->getWindowSecs()) {
             $dataArray['windowSecs'] = $data->getWindowSecs();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

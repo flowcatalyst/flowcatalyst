@@ -65,7 +65,19 @@ class TraceContextResponseNormalizer implements DenormalizerInterface, Normalize
             $object->setDescription(null);
         }
         if (\array_key_exists('enabledUntil', $data) && $data['enabledUntil'] !== null) {
-            $object->setEnabledUntil(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['enabledUntil']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['enabledUntil']);
+            if (false === $date) {
+                if (is_string($data['enabledUntil']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['enabledUntil'])) {
+                    try {
+                        $date = new \DateTime($data['enabledUntil']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['enabledUntil'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['enabledUntil'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setEnabledUntil($date);
         }
         elseif (\array_key_exists('enabledUntil', $data) && $data['enabledUntil'] === null) {
             $object->setEnabledUntil(null);

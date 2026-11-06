@@ -21,12 +21,12 @@ class SyncOpenapi extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint im
     }
     public function getUri(): string
     {
-        return str_replace(['{appCode}'], [$this->appCode], '/api/applications/{appCode}/openapi/sync');
+        return str_replace(['{appCode}'], [rawurlencode($this->appCode)], '/api/applications/{appCode}/openapi/sync');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
         if ($this->body instanceof \FlowCatalyst\Generated\Model\SyncOpenapiRequest) {
-            return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
+            return [['Content-Type' => ['application/json']], \FlowCatalyst\Generated\Runtime\Client\JsonPayload::encode($serializer, $this->body)];
         }
         return [[], null];
     }
@@ -44,10 +44,10 @@ class SyncOpenapi extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint im
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\SyncOpenApiSpecResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

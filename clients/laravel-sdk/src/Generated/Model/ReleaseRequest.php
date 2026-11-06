@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class ReleaseRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class ReleaseRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -151,5 +154,9 @@ class ReleaseRequest extends \ArrayObject
         $this->initialized['runtimeId'] = true;
         $this->runtimeId = $runtimeId;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'goodbye' => ['goodbye', 'getGoodbye', 'setGoodbye'], 'ingestionIds' => ['ingestionIds', 'getIngestionIds', 'setIngestionIds'], 'instanceId' => ['instanceId', 'getInstanceId', 'setInstanceId'], 'runtimeId' => ['runtimeId', 'getRuntimeId', 'setRuntimeId']];
     }
 }

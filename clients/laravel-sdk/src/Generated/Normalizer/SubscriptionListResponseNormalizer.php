@@ -66,7 +66,7 @@ class SubscriptionListResponseNormalizer implements DenormalizerInterface, Norma
         $dataArray = [];
         $values = [];
         foreach ($data->getSubscriptions() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['subscriptions'] = $values;
         $dataArray['total'] = $data->getTotal();

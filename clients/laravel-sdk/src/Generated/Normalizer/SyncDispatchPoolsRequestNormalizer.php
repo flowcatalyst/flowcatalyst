@@ -43,6 +43,7 @@ class SyncDispatchPoolsRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('pools', $data) && $data['pools'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class SyncDispatchPoolsRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('pools', $data) && $data['pools'] === null) {
             $object->setPools(null);
+            unset($data['pools']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -67,10 +69,10 @@ class SyncDispatchPoolsRequestNormalizer implements DenormalizerInterface, Norma
         $dataArray = [];
         $values = [];
         foreach ($data->getPools() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['pools'] = $values;
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

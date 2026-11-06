@@ -43,6 +43,7 @@ class CreateDomainRequestNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -50,6 +51,7 @@ class CreateDomainRequestNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('zone', $data) && $data['zone'] !== null) {
             $object->setZone($data['zone']);
@@ -57,6 +59,7 @@ class CreateDomainRequestNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('zone', $data) && $data['zone'] === null) {
             $object->setZone(null);
+            unset($data['zone']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -72,7 +75,7 @@ class CreateDomainRequestNormalizer implements DenormalizerInterface, Normalizer
             $dataArray['clientId'] = $data->getClientId();
         }
         $dataArray['zone'] = $data->getZone();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

@@ -84,7 +84,19 @@ class EventResponseNormalizer implements DenormalizerInterface, NormalizerInterf
             $object->setCorrelationId(null);
         }
         if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
-            $object->setCreatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']);
+            if (false === $date) {
+                if (is_string($data['createdAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['createdAt'])) {
+                    try {
+                        $date = new \DateTime($data['createdAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setCreatedAt($date);
         }
         elseif (\array_key_exists('createdAt', $data) && $data['createdAt'] === null) {
             $object->setCreatedAt(null);
@@ -114,7 +126,19 @@ class EventResponseNormalizer implements DenormalizerInterface, NormalizerInterf
             $object->setMessageGroup(null);
         }
         if (\array_key_exists('projectedAt', $data) && $data['projectedAt'] !== null) {
-            $object->setProjectedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['projectedAt']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['projectedAt']);
+            if (false === $date_1) {
+                if (is_string($data['projectedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['projectedAt'])) {
+                    try {
+                        $date_1 = new \DateTime($data['projectedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['projectedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['projectedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setProjectedAt($date_1);
         }
         elseif (\array_key_exists('projectedAt', $data) && $data['projectedAt'] === null) {
             $object->setProjectedAt(null);
@@ -144,7 +168,19 @@ class EventResponseNormalizer implements DenormalizerInterface, NormalizerInterf
             $object->setSubject(null);
         }
         if (\array_key_exists('time', $data) && $data['time'] !== null) {
-            $object->setTime(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['time']));
+            $date_2 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['time']);
+            if (false === $date_2) {
+                if (is_string($data['time']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['time'])) {
+                    try {
+                        $date_2 = new \DateTime($data['time']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['time'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['time'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setTime($date_2);
         }
         elseif (\array_key_exists('time', $data) && $data['time'] === null) {
             $object->setTime(null);
@@ -175,7 +211,7 @@ class EventResponseNormalizer implements DenormalizerInterface, NormalizerInterf
         if ($data->isInitialized('contextData') && null !== $data->getContextData()) {
             $values = [];
             foreach ($data->getContextData() as $value) {
-                $values[] = $this->normalizer->normalize($value, 'json', $context);
+                $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
             }
             $dataArray['contextData'] = $values;
         }

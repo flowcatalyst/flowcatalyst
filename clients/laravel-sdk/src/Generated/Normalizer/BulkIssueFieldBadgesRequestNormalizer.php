@@ -43,6 +43,7 @@ class BulkIssueFieldBadgesRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('workerIds', $data) && $data['workerIds'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class BulkIssueFieldBadgesRequestNormalizer implements DenormalizerInterface, No
         }
         elseif (\array_key_exists('workerIds', $data) && $data['workerIds'] === null) {
             $object->setWorkerIds(null);
+            unset($data['workerIds']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -70,7 +72,7 @@ class BulkIssueFieldBadgesRequestNormalizer implements DenormalizerInterface, No
             $values[] = $value;
         }
         $dataArray['workerIds'] = $values;
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

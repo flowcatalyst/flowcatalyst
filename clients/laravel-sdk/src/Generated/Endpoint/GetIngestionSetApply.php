@@ -22,7 +22,7 @@ class GetIngestionSetApply extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
     }
     public function getUri(): string
     {
-        return str_replace(['{name}', '{applyId}'], [$this->name, $this->applyId], '/api/ingestion-sets/{name}/applies/{applyId}');
+        return str_replace(['{name}', '{applyId}'], [rawurlencode($this->name), rawurlencode($this->applyId)], '/api/ingestion-sets/{name}/applies/{applyId}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -42,10 +42,10 @@ class GetIngestionSetApply extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\IngestionSetArchiveResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

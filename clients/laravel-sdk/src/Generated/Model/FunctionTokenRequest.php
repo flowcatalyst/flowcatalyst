@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class FunctionTokenRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class FunctionTokenRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -83,5 +86,9 @@ class FunctionTokenRequest extends \ArrayObject
         $this->initialized['version'] = true;
         $this->version = $version;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'functionId' => ['functionId', 'getFunctionId', 'setFunctionId'], 'version' => ['version', 'getVersion', 'setVersion']];
     }
 }

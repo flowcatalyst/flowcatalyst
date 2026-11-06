@@ -43,9 +43,10 @@ class SetIngestionConfigRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('secretFields', $data) && $data['secretFields'] !== null) {
-            $values = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            $values = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data['secretFields'] as $key => $value) {
                 $values[$key] = $value;
             }
@@ -54,9 +55,10 @@ class SetIngestionConfigRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('secretFields', $data) && $data['secretFields'] === null) {
             $object->setSecretFields(null);
+            unset($data['secretFields']);
         }
         if (\array_key_exists('secrets', $data) && $data['secrets'] !== null) {
-            $values_1 = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            $values_1 = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data['secrets'] as $key_1 => $value_1) {
                 $values_1[$key_1] = $value_1;
             }
@@ -65,9 +67,10 @@ class SetIngestionConfigRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('secrets', $data) && $data['secrets'] === null) {
             $object->setSecrets(null);
+            unset($data['secrets']);
         }
         if (\array_key_exists('value', $data) && $data['value'] !== null) {
-            $values_2 = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            $values_2 = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data['value'] as $key_2 => $value_2) {
                 $values_2[$key_2] = $value_2;
             }
@@ -76,6 +79,7 @@ class SetIngestionConfigRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('value', $data) && $data['value'] === null) {
             $object->setValue(null);
+            unset($data['value']);
         }
         foreach ($data as $key_3 => $value_3) {
             if (preg_match('/.*/', (string) $key_3)) {
@@ -88,25 +92,25 @@ class SetIngestionConfigRequestNormalizer implements DenormalizerInterface, Norm
     {
         $dataArray = [];
         if ($data->isInitialized('secretFields') && null !== $data->getSecretFields()) {
-            $values = [];
+            $values = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data->getSecretFields() as $key => $value) {
                 $values[$key] = $value;
             }
             $dataArray['secretFields'] = $values;
         }
         if ($data->isInitialized('secrets') && null !== $data->getSecrets()) {
-            $values_1 = [];
+            $values_1 = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data->getSecrets() as $key_1 => $value_1) {
                 $values_1[$key_1] = $value_1;
             }
             $dataArray['secrets'] = $values_1;
         }
-        $values_2 = [];
+        $values_2 = new \FlowCatalyst\Generated\Runtime\JsonObject();
         foreach ($data->getValue() as $key_2 => $value_2) {
             $values_2[$key_2] = $value_2;
         }
         $dataArray['value'] = $values_2;
-        foreach ($data as $key_3 => $value_3) {
+        foreach ($data->additionalPropertyEntries() as $key_3 => $value_3) {
             if (preg_match('/.*/', (string) $key_3)) {
                 $dataArray[$key_3] = $value_3;
             }

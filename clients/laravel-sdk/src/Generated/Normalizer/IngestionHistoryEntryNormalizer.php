@@ -56,7 +56,19 @@ class IngestionHistoryEntryNormalizer implements DenormalizerInterface, Normaliz
             $object->setOperation(null);
         }
         if (\array_key_exists('performedAt', $data) && $data['performedAt'] !== null) {
-            $object->setPerformedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['performedAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['performedAt']);
+            if (false === $date) {
+                if (is_string($data['performedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['performedAt'])) {
+                    try {
+                        $date = new \DateTime($data['performedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['performedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['performedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setPerformedAt($date);
         }
         elseif (\array_key_exists('performedAt', $data) && $data['performedAt'] === null) {
             $object->setPerformedAt(null);

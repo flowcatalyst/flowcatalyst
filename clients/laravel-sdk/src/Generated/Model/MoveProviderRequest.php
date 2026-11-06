@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class MoveProviderRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class MoveProviderRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -67,5 +70,9 @@ class MoveProviderRequest extends \ArrayObject
         $this->initialized['identityProviderId'] = true;
         $this->identityProviderId = $identityProviderId;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'identityProviderId' => ['identityProviderId', 'getIdentityProviderId', 'setIdentityProviderId']];
     }
 }

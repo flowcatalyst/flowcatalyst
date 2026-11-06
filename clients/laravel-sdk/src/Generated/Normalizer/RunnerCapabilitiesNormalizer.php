@@ -38,7 +38,7 @@ class RunnerCapabilitiesNormalizer implements DenormalizerInterface, NormalizerI
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
         if (\array_key_exists('extra', $data) && $data['extra'] !== null) {
-            $values = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            $values = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data['extra'] as $key => $value) {
                 $values[$key] = $value;
             }
@@ -81,7 +81,7 @@ class RunnerCapabilitiesNormalizer implements DenormalizerInterface, NormalizerI
     {
         $dataArray = [];
         if ($data->isInitialized('extra') && null !== $data->getExtra()) {
-            $values = [];
+            $values = new \FlowCatalyst\Generated\Runtime\JsonObject();
             foreach ($data->getExtra() as $key => $value) {
                 $values[$key] = $value;
             }

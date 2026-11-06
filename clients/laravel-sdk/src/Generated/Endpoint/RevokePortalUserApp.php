@@ -26,7 +26,7 @@ class RevokePortalUserApp extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
     }
     public function getUri(): string
     {
-        return str_replace(['{id}', '{portalAppCode}'], [$this->id, $this->portalAppCode], '/api/portal-users/{id}/apps/{portalAppCode}');
+        return str_replace(['{id}', '{portalAppCode}'], [rawurlencode($this->id), rawurlencode($this->portalAppCode)], '/api/portal-users/{id}/apps/{portalAppCode}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -45,6 +45,10 @@ class RevokePortalUserApp extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
         $optionsResolver->addAllowedTypes('clientId', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['clientId' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -55,10 +59,10 @@ class RevokePortalUserApp extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\StatusChangeResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

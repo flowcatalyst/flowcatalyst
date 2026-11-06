@@ -90,7 +90,7 @@ class PruneVersionsResponseNormalizer implements DenormalizerInterface, Normaliz
         $dataArray['keep'] = $data->getKeep();
         $values = [];
         foreach ($data->getPruned() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['pruned'] = $values;
         $dataArray['untagged'] = $data->getUntagged();

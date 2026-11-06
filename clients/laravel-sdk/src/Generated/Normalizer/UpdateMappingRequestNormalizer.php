@@ -49,6 +49,7 @@ class UpdateMappingRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('additionalClientIds', $data) && $data['additionalClientIds'] !== null) {
             $values = [];
@@ -60,6 +61,7 @@ class UpdateMappingRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('additionalClientIds', $data) && $data['additionalClientIds'] === null) {
             $object->setAdditionalClientIds(null);
+            unset($data['additionalClientIds']);
         }
         if (\array_key_exists('allowed2faMethods', $data) && $data['allowed2faMethods'] !== null) {
             $values_1 = [];
@@ -71,6 +73,7 @@ class UpdateMappingRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('allowed2faMethods', $data) && $data['allowed2faMethods'] === null) {
             $object->setAllowed2faMethods(null);
+            unset($data['allowed2faMethods']);
         }
         if (\array_key_exists('grantedClientIds', $data) && $data['grantedClientIds'] !== null) {
             $values_2 = [];
@@ -82,6 +85,7 @@ class UpdateMappingRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('grantedClientIds', $data) && $data['grantedClientIds'] === null) {
             $object->setGrantedClientIds(null);
+            unset($data['grantedClientIds']);
         }
         if (\array_key_exists('primaryClientId', $data) && $data['primaryClientId'] !== null) {
             $object->setPrimaryClientId($data['primaryClientId']);
@@ -89,6 +93,7 @@ class UpdateMappingRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('primaryClientId', $data) && $data['primaryClientId'] === null) {
             $object->setPrimaryClientId(null);
+            unset($data['primaryClientId']);
         }
         if (\array_key_exists('rememberDeviceDays', $data) && $data['rememberDeviceDays'] !== null) {
             $object->setRememberDeviceDays($data['rememberDeviceDays']);
@@ -96,6 +101,7 @@ class UpdateMappingRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('rememberDeviceDays', $data) && $data['rememberDeviceDays'] === null) {
             $object->setRememberDeviceDays(null);
+            unset($data['rememberDeviceDays']);
         }
         if (\array_key_exists('rememberDeviceEnabled', $data) && $data['rememberDeviceEnabled'] !== null) {
             $object->setRememberDeviceEnabled($data['rememberDeviceEnabled']);
@@ -103,6 +109,7 @@ class UpdateMappingRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('rememberDeviceEnabled', $data) && $data['rememberDeviceEnabled'] === null) {
             $object->setRememberDeviceEnabled(null);
+            unset($data['rememberDeviceEnabled']);
         }
         if (\array_key_exists('require2fa', $data) && $data['require2fa'] !== null) {
             $object->setRequire2fa($data['require2fa']);
@@ -110,6 +117,7 @@ class UpdateMappingRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('require2fa', $data) && $data['require2fa'] === null) {
             $object->setRequire2fa(null);
+            unset($data['require2fa']);
         }
         if (\array_key_exists('requiredOidcTenantId', $data) && $data['requiredOidcTenantId'] !== null) {
             $object->setRequiredOidcTenantId($data['requiredOidcTenantId']);
@@ -117,6 +125,7 @@ class UpdateMappingRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('requiredOidcTenantId', $data) && $data['requiredOidcTenantId'] === null) {
             $object->setRequiredOidcTenantId(null);
+            unset($data['requiredOidcTenantId']);
         }
         foreach ($data as $key => $value_3) {
             if (preg_match('/.*/', (string) $key)) {
@@ -164,7 +173,7 @@ class UpdateMappingRequestNormalizer implements DenormalizerInterface, Normalize
         if ($data->isInitialized('requiredOidcTenantId') && null !== $data->getRequiredOidcTenantId()) {
             $dataArray['requiredOidcTenantId'] = $data->getRequiredOidcTenantId();
         }
-        foreach ($data as $key => $value_3) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_3) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_3;
             }

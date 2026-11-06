@@ -72,10 +72,10 @@ class CreateServiceAccountResponseNormalizer implements DenormalizerInterface, N
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $dataArray['oauth'] = $this->normalizer->normalize($data->getOauth(), 'json', $context);
+        $dataArray['oauth'] = $data->getOauth() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getOauth(), 'json', $context));
         $dataArray['principalId'] = $data->getPrincipalId();
-        $dataArray['serviceAccount'] = $this->normalizer->normalize($data->getServiceAccount(), 'json', $context);
-        $dataArray['webhook'] = $this->normalizer->normalize($data->getWebhook(), 'json', $context);
+        $dataArray['serviceAccount'] = $data->getServiceAccount() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getServiceAccount(), 'json', $context));
+        $dataArray['webhook'] = $data->getWebhook() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getWebhook(), 'json', $context));
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

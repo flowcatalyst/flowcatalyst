@@ -60,7 +60,7 @@ class BulkIssueFieldBadgesResponseNormalizer implements DenormalizerInterface, N
         $dataArray = [];
         $values = [];
         foreach ($data->getIssued() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['issued'] = $values;
         return $dataArray;

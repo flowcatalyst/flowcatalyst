@@ -43,6 +43,7 @@ class EmitRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('data', $data) && $data['data'] !== null) {
             $object->setData($data['data']);
@@ -50,6 +51,7 @@ class EmitRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('data', $data) && $data['data'] === null) {
             $object->setData(null);
+            unset($data['data']);
         }
         if (\array_key_exists('event', $data) && $data['event'] !== null) {
             $object->setEvent($this->denormalizer->denormalize($data['event'], \FlowCatalyst\Generated\Model\Event::class, 'json', $context));
@@ -57,6 +59,7 @@ class EmitRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('event', $data) && $data['event'] === null) {
             $object->setEvent(null);
+            unset($data['event']);
         }
         if (\array_key_exists('functionId', $data) && $data['functionId'] !== null) {
             $object->setFunctionId($data['functionId']);
@@ -64,6 +67,7 @@ class EmitRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('functionId', $data) && $data['functionId'] === null) {
             $object->setFunctionId(null);
+            unset($data['functionId']);
         }
         if (\array_key_exists('version', $data) && $data['version'] !== null) {
             $object->setVersion($data['version']);
@@ -71,6 +75,7 @@ class EmitRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('version', $data) && $data['version'] === null) {
             $object->setVersion(null);
+            unset($data['version']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -83,10 +88,10 @@ class EmitRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
     {
         $dataArray = [];
         $dataArray['data'] = $data->getData();
-        $dataArray['event'] = $this->normalizer->normalize($data->getEvent(), 'json', $context);
+        $dataArray['event'] = $data->getEvent() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getEvent(), 'json', $context));
         $dataArray['functionId'] = $data->getFunctionId();
         $dataArray['version'] = $data->getVersion();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

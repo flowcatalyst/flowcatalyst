@@ -43,6 +43,7 @@ class TestAnswerNormalizer implements DenormalizerInterface, NormalizerInterface
         }
         elseif (\array_key_exists('excerpt', $data) && $data['excerpt'] === null) {
             $object->setExcerpt(null);
+            unset($data['excerpt']);
         }
         if (\array_key_exists('id', $data) && $data['id'] !== null) {
             $object->setId($data['id']);
@@ -50,6 +51,7 @@ class TestAnswerNormalizer implements DenormalizerInterface, NormalizerInterface
         }
         elseif (\array_key_exists('id', $data) && $data['id'] === null) {
             $object->setId(null);
+            unset($data['id']);
         }
         if (\array_key_exists('outcome', $data) && $data['outcome'] !== null) {
             $object->setOutcome($data['outcome']);
@@ -57,6 +59,7 @@ class TestAnswerNormalizer implements DenormalizerInterface, NormalizerInterface
         }
         elseif (\array_key_exists('outcome', $data) && $data['outcome'] === null) {
             $object->setOutcome(null);
+            unset($data['outcome']);
         }
         if (\array_key_exists('records', $data) && $data['records'] !== null) {
             $object->setRecords($data['records']);
@@ -64,6 +67,7 @@ class TestAnswerNormalizer implements DenormalizerInterface, NormalizerInterface
         }
         elseif (\array_key_exists('records', $data) && $data['records'] === null) {
             $object->setRecords(null);
+            unset($data['records']);
         }
         if (\array_key_exists('steps', $data) && $data['steps'] !== null) {
             $values = [];
@@ -75,6 +79,7 @@ class TestAnswerNormalizer implements DenormalizerInterface, NormalizerInterface
         }
         elseif (\array_key_exists('steps', $data) && $data['steps'] === null) {
             $object->setSteps(null);
+            unset($data['steps']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -99,7 +104,7 @@ class TestAnswerNormalizer implements DenormalizerInterface, NormalizerInterface
             $values[] = $value;
         }
         $dataArray['steps'] = $values;
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

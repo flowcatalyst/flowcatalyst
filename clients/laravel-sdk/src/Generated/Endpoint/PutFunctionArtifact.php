@@ -24,7 +24,7 @@ class PutFunctionArtifact extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
     }
     public function getUri(): string
     {
-        return str_replace(['{id}', '{digest}'], [$this->id, $this->digest], '/api/functions/{id}/artifacts/{digest}');
+        return str_replace(['{id}', '{digest}'], [rawurlencode($this->id), rawurlencode($this->digest)], '/api/functions/{id}/artifacts/{digest}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -50,7 +50,7 @@ class PutFunctionArtifact extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
         if (201 === $status) {
             return null;
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

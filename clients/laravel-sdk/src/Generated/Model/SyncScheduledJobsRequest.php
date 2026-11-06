@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class SyncScheduledJobsRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class SyncScheduledJobsRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -105,5 +108,9 @@ class SyncScheduledJobsRequest extends \ArrayObject
         $this->initialized['jobs'] = true;
         $this->jobs = $jobs;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'archiveUnlisted' => ['archiveUnlisted', 'getArchiveUnlisted', 'setArchiveUnlisted'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'jobs' => ['jobs', 'getJobs', 'setJobs']];
     }
 }

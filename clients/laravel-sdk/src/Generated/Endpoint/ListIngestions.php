@@ -51,6 +51,10 @@ class ListIngestions extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint
         $optionsResolver->addAllowedTypes('limit', ['int']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['applicationCode' => ['style' => 'form', 'explode' => false], 'clientId' => ['style' => 'form', 'explode' => false], 'q' => ['style' => 'form', 'explode' => false], 'status' => ['style' => 'form', 'explode' => false], 'kind' => ['style' => 'form', 'explode' => false], 'after' => ['style' => 'form', 'explode' => false], 'limit' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -61,10 +65,10 @@ class ListIngestions extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\IngestionListResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

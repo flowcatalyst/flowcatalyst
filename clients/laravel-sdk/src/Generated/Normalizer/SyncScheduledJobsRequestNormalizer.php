@@ -46,6 +46,7 @@ class SyncScheduledJobsRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('archiveUnlisted', $data) && $data['archiveUnlisted'] !== null) {
             $object->setArchiveUnlisted($data['archiveUnlisted']);
@@ -53,6 +54,7 @@ class SyncScheduledJobsRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('archiveUnlisted', $data) && $data['archiveUnlisted'] === null) {
             $object->setArchiveUnlisted(null);
+            unset($data['archiveUnlisted']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -60,6 +62,7 @@ class SyncScheduledJobsRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('jobs', $data) && $data['jobs'] !== null) {
             $values = [];
@@ -71,6 +74,7 @@ class SyncScheduledJobsRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('jobs', $data) && $data['jobs'] === null) {
             $object->setJobs(null);
+            unset($data['jobs']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -90,10 +94,10 @@ class SyncScheduledJobsRequestNormalizer implements DenormalizerInterface, Norma
         }
         $values = [];
         foreach ($data->getJobs() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['jobs'] = $values;
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

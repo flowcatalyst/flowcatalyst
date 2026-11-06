@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class RequeueByFilterRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class RequeueByFilterRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -737,5 +740,9 @@ class RequeueByFilterRequest extends \ArrayObject
         $this->initialized['until'] = true;
         $this->until = $until;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'aggregates' => ['aggregates', 'getAggregates', 'setAggregates'], 'applications' => ['applications', 'getApplications', 'setApplications'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'clientIds' => ['clientIds', 'getClientIds', 'setClientIds'], 'code' => ['code', 'getCode', 'setCode'], 'codes' => ['codes', 'getCodes', 'setCodes'], 'confirmCount' => ['confirmCount', 'getConfirmCount', 'setConfirmCount'], 'confirmRedriveCompleted' => ['confirmRedriveCompleted', 'getConfirmRedriveCompleted', 'setConfirmRedriveCompleted'], 'connectionCode' => ['connectionCode', 'getConnectionCode', 'setConnectionCode'], 'connectionId' => ['connectionId', 'getConnectionId', 'setConnectionId'], 'dispatchPoolId' => ['dispatchPoolId', 'getDispatchPoolId', 'setDispatchPoolId'], 'eventType' => ['eventType', 'getEventType', 'setEventType'], 'eventTypes' => ['eventTypes', 'getEventTypes', 'setEventTypes'], 'limit' => ['limit', 'getLimit', 'setLimit'], 'messageGroup' => ['messageGroup', 'getMessageGroup', 'setMessageGroup'], 'redriveCompleted' => ['redriveCompleted', 'getRedriveCompleted', 'setRedriveCompleted'], 'since' => ['since', 'getSince', 'setSince'], 'source' => ['source', 'getSource', 'setSource'], 'status' => ['status', 'getStatus', 'setStatus'], 'statuses' => ['statuses', 'getStatuses', 'setStatuses'], 'subdomains' => ['subdomains', 'getSubdomains', 'setSubdomains'], 'subscriptionCode' => ['subscriptionCode', 'getSubscriptionCode', 'setSubscriptionCode'], 'subscriptionId' => ['subscriptionId', 'getSubscriptionId', 'setSubscriptionId'], 'subscriptionIds' => ['subscriptionIds', 'getSubscriptionIds', 'setSubscriptionIds'], 'subscriptionName' => ['subscriptionName', 'getSubscriptionName', 'setSubscriptionName'], 'until' => ['until', 'getUntil', 'setUntil']];
     }
 }

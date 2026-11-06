@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class UpdateFieldWorkerRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class UpdateFieldWorkerRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -133,5 +136,9 @@ class UpdateFieldWorkerRequest extends \ArrayObject
         $this->initialized['name'] = true;
         $this->name = $name;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'canImpersonate' => ['canImpersonate', 'getCanImpersonate', 'setCanImpersonate'], 'email' => ['email', 'getEmail', 'setEmail'], 'isTest' => ['isTest', 'getIsTest', 'setIsTest'], 'name' => ['name', 'getName', 'setName']];
     }
 }

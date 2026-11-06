@@ -43,6 +43,7 @@ class UpdateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('applicationCode', $data) && $data['applicationCode'] !== null) {
             $object->setApplicationCode($data['applicationCode']);
@@ -50,6 +51,7 @@ class UpdateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('applicationCode', $data) && $data['applicationCode'] === null) {
             $object->setApplicationCode(null);
+            unset($data['applicationCode']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -57,6 +59,7 @@ class UpdateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('externalId', $data) && $data['externalId'] !== null) {
             $object->setExternalId($data['externalId']);
@@ -64,6 +67,7 @@ class UpdateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('externalId', $data) && $data['externalId'] === null) {
             $object->setExternalId(null);
+            unset($data['externalId']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -71,6 +75,7 @@ class UpdateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] !== null) {
             $object->setServiceAccountId($data['serviceAccountId']);
@@ -78,6 +83,7 @@ class UpdateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] === null) {
             $object->setServiceAccountId(null);
+            unset($data['serviceAccountId']);
         }
         if (\array_key_exists('status', $data) && $data['status'] !== null) {
             $object->setStatus($data['status']);
@@ -85,6 +91,7 @@ class UpdateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('status', $data) && $data['status'] === null) {
             $object->setStatus(null);
+            unset($data['status']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -112,7 +119,7 @@ class UpdateConnectionRequestNormalizer implements DenormalizerInterface, Normal
         if ($data->isInitialized('status') && null !== $data->getStatus()) {
             $dataArray['status'] = $data->getStatus();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

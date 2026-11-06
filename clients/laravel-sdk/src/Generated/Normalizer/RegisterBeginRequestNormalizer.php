@@ -43,6 +43,7 @@ class RegisterBeginRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('displayName', $data) && $data['displayName'] !== null) {
             $object->setDisplayName($data['displayName']);
@@ -50,6 +51,7 @@ class RegisterBeginRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('displayName', $data) && $data['displayName'] === null) {
             $object->setDisplayName(null);
+            unset($data['displayName']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -64,7 +66,7 @@ class RegisterBeginRequestNormalizer implements DenormalizerInterface, Normalize
         if ($data->isInitialized('displayName') && null !== $data->getDisplayName()) {
             $dataArray['displayName'] = $data->getDisplayName();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

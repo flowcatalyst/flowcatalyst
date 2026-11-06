@@ -43,6 +43,7 @@ class CreateProcessRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('body', $data) && $data['body'] !== null) {
             $object->setBody($data['body']);
@@ -50,6 +51,7 @@ class CreateProcessRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('body', $data) && $data['body'] === null) {
             $object->setBody(null);
+            unset($data['body']);
         }
         if (\array_key_exists('code', $data) && $data['code'] !== null) {
             $object->setCode($data['code']);
@@ -57,6 +59,7 @@ class CreateProcessRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('code', $data) && $data['code'] === null) {
             $object->setCode(null);
+            unset($data['code']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -64,6 +67,7 @@ class CreateProcessRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('diagramType', $data) && $data['diagramType'] !== null) {
             $object->setDiagramType($data['diagramType']);
@@ -71,6 +75,7 @@ class CreateProcessRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('diagramType', $data) && $data['diagramType'] === null) {
             $object->setDiagramType(null);
+            unset($data['diagramType']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -78,6 +83,7 @@ class CreateProcessRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('tags', $data) && $data['tags'] !== null) {
             $values = [];
@@ -89,6 +95,7 @@ class CreateProcessRequestNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('tags', $data) && $data['tags'] === null) {
             $object->setTags(null);
+            unset($data['tags']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -118,7 +125,7 @@ class CreateProcessRequestNormalizer implements DenormalizerInterface, Normalize
             }
             $dataArray['tags'] = $values;
         }
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class EnsureFieldWorkerRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class EnsureFieldWorkerRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -233,5 +236,9 @@ class EnsureFieldWorkerRequest extends \ArrayObject
         $this->initialized['workerCode'] = true;
         $this->workerCode = $workerCode;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'appCodes' => ['appCodes', 'getAppCodes', 'setAppCodes'], 'canImpersonate' => ['canImpersonate', 'getCanImpersonate', 'setCanImpersonate'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'email' => ['email', 'getEmail', 'setEmail'], 'isTest' => ['isTest', 'getIsTest', 'setIsTest'], 'name' => ['name', 'getName', 'setName'], 'pin' => ['pin', 'getPin', 'setPin'], 'workerCode' => ['workerCode', 'getWorkerCode', 'setWorkerCode']];
     }
 }

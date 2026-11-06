@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class MatchEmailsRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class MatchEmailsRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -95,5 +98,9 @@ class MatchEmailsRequest extends \ArrayObject
         $this->initialized['text'] = true;
         $this->text = $text;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'emails' => ['emails', 'getEmails', 'setEmails'], 'text' => ['text', 'getText', 'setText']];
     }
 }

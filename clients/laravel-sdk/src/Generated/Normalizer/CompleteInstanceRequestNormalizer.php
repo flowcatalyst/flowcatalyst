@@ -43,6 +43,7 @@ class CompleteInstanceRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('completionResult', $data) && $data['completionResult'] !== null) {
             $object->setCompletionResult($data['completionResult']);
@@ -50,6 +51,7 @@ class CompleteInstanceRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('completionResult', $data) && $data['completionResult'] === null) {
             $object->setCompletionResult(null);
+            unset($data['completionResult']);
         }
         if (\array_key_exists('completionStatus', $data) && $data['completionStatus'] !== null) {
             $object->setCompletionStatus($data['completionStatus']);
@@ -57,6 +59,7 @@ class CompleteInstanceRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('completionStatus', $data) && $data['completionStatus'] === null) {
             $object->setCompletionStatus(null);
+            unset($data['completionStatus']);
         }
         if (\array_key_exists('result', $data) && $data['result'] !== null) {
             $object->setResult($data['result']);
@@ -64,6 +67,7 @@ class CompleteInstanceRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('result', $data) && $data['result'] === null) {
             $object->setResult(null);
+            unset($data['result']);
         }
         if (\array_key_exists('status', $data) && $data['status'] !== null) {
             $object->setStatus($data['status']);
@@ -71,6 +75,7 @@ class CompleteInstanceRequestNormalizer implements DenormalizerInterface, Normal
         }
         elseif (\array_key_exists('status', $data) && $data['status'] === null) {
             $object->setStatus(null);
+            unset($data['status']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -94,7 +99,7 @@ class CompleteInstanceRequestNormalizer implements DenormalizerInterface, Normal
         if ($data->isInitialized('status') && null !== $data->getStatus()) {
             $dataArray['status'] = $data->getStatus();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

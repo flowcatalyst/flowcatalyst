@@ -43,6 +43,7 @@ class AssignRolesRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('roles', $data) && $data['roles'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class AssignRolesRequestNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('roles', $data) && $data['roles'] === null) {
             $object->setRoles(null);
+            unset($data['roles']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -70,7 +72,7 @@ class AssignRolesRequestNormalizer implements DenormalizerInterface, NormalizerI
             $values[] = $value;
         }
         $dataArray['roles'] = $values;
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

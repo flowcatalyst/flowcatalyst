@@ -38,7 +38,19 @@ class IngestionSetApplyResponseNormalizer implements DenormalizerInterface, Norm
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
         if (\array_key_exists('appliedAt', $data) && $data['appliedAt'] !== null) {
-            $object->setAppliedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['appliedAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['appliedAt']);
+            if (false === $date) {
+                if (is_string($data['appliedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['appliedAt'])) {
+                    try {
+                        $date = new \DateTime($data['appliedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['appliedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['appliedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setAppliedAt($date);
         }
         elseif (\array_key_exists('appliedAt', $data) && $data['appliedAt'] === null) {
             $object->setAppliedAt(null);
@@ -100,7 +112,7 @@ class IngestionSetApplyResponseNormalizer implements DenormalizerInterface, Norm
         }
         $values = [];
         foreach ($data->getChanges() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['changes'] = $values;
         $dataArray['files'] = $data->getFiles();

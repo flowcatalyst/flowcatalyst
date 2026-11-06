@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class Failure extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class Failure implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -205,5 +208,9 @@ class Failure extends \ArrayObject
         $this->initialized['version'] = true;
         $this->version = $version;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['afterRecords' => ['afterRecords', 'getAfterRecords', 'setAfterRecords'], 'at' => ['at', 'getAt', 'setAt'], 'category' => ['category', 'getCategory', 'setCategory'], 'excerpt' => ['excerpt', 'getExcerpt', 'setExcerpt'], 'ingestionId' => ['ingestionId', 'getIngestionId', 'setIngestionId'], 'kind' => ['kind', 'getKind', 'setKind'], 'message' => ['message', 'getMessage', 'setMessage'], 'version' => ['version', 'getVersion', 'setVersion']];
     }
 }

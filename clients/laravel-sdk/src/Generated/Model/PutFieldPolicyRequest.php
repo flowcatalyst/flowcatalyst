@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class PutFieldPolicyRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class PutFieldPolicyRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -397,5 +400,9 @@ class PutFieldPolicyRequest extends \ArrayObject
         $this->initialized['unenrolledIdleSecs'] = true;
         $this->unenrolledIdleSecs = $unenrolledIdleSecs;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'badgeOnlyLogin' => ['badgeOnlyLogin', 'getBadgeOnlyLogin', 'setBadgeOnlyLogin'], 'hardLockThreshold' => ['hardLockThreshold', 'getHardLockThreshold', 'setHardLockThreshold'], 'impersonationMaxSecs' => ['impersonationMaxSecs', 'getImpersonationMaxSecs', 'setImpersonationMaxSecs'], 'personalIdleSecs' => ['personalIdleSecs', 'getPersonalIdleSecs', 'setPersonalIdleSecs'], 'pinMinLength' => ['pinMinLength', 'getPinMinLength', 'setPinMinLength'], 'pinReauthDays' => ['pinReauthDays', 'getPinReauthDays', 'setPinReauthDays'], 'requireAttestation' => ['requireAttestation', 'getRequireAttestation', 'setRequireAttestation'], 'requireEnrolledDevice' => ['requireEnrolledDevice', 'getRequireEnrolledDevice', 'setRequireEnrolledDevice'], 'sharedIdleSecs' => ['sharedIdleSecs', 'getSharedIdleSecs', 'setSharedIdleSecs'], 'shiftMaxSecs' => ['shiftMaxSecs', 'getShiftMaxSecs', 'setShiftMaxSecs'], 'softLockSecs' => ['softLockSecs', 'getSoftLockSecs', 'setSoftLockSecs'], 'softLockThreshold' => ['softLockThreshold', 'getSoftLockThreshold', 'setSoftLockThreshold'], 'unenrolledIdleSecs' => ['unenrolledIdleSecs', 'getUnenrolledIdleSecs', 'setUnenrolledIdleSecs']];
     }
 }

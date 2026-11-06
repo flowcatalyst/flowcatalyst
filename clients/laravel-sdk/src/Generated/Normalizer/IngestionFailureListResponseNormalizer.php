@@ -75,7 +75,7 @@ class IngestionFailureListResponseNormalizer implements DenormalizerInterface, N
         $dataArray = [];
         $values = [];
         foreach ($data->getFailures() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['failures'] = $values;
         $dataArray['hasMore'] = $data->getHasMore();

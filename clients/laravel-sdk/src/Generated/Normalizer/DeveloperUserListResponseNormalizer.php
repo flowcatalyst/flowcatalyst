@@ -66,7 +66,7 @@ class DeveloperUserListResponseNormalizer implements DenormalizerInterface, Norm
         $dataArray = [];
         $values = [];
         foreach ($data->getPrincipals() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['principals'] = $values;
         $dataArray['total'] = $data->getTotal();

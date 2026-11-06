@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class RequeueByFilterPreviewRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class RequeueByFilterPreviewRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -625,5 +628,9 @@ class RequeueByFilterPreviewRequest extends \ArrayObject
         $this->initialized['until'] = true;
         $this->until = $until;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'aggregates' => ['aggregates', 'getAggregates', 'setAggregates'], 'applications' => ['applications', 'getApplications', 'setApplications'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'clientIds' => ['clientIds', 'getClientIds', 'setClientIds'], 'code' => ['code', 'getCode', 'setCode'], 'codes' => ['codes', 'getCodes', 'setCodes'], 'connectionCode' => ['connectionCode', 'getConnectionCode', 'setConnectionCode'], 'connectionId' => ['connectionId', 'getConnectionId', 'setConnectionId'], 'dispatchPoolId' => ['dispatchPoolId', 'getDispatchPoolId', 'setDispatchPoolId'], 'eventType' => ['eventType', 'getEventType', 'setEventType'], 'eventTypes' => ['eventTypes', 'getEventTypes', 'setEventTypes'], 'messageGroup' => ['messageGroup', 'getMessageGroup', 'setMessageGroup'], 'since' => ['since', 'getSince', 'setSince'], 'source' => ['source', 'getSource', 'setSource'], 'status' => ['status', 'getStatus', 'setStatus'], 'statuses' => ['statuses', 'getStatuses', 'setStatuses'], 'subdomains' => ['subdomains', 'getSubdomains', 'setSubdomains'], 'subscriptionCode' => ['subscriptionCode', 'getSubscriptionCode', 'setSubscriptionCode'], 'subscriptionId' => ['subscriptionId', 'getSubscriptionId', 'setSubscriptionId'], 'subscriptionIds' => ['subscriptionIds', 'getSubscriptionIds', 'setSubscriptionIds'], 'subscriptionName' => ['subscriptionName', 'getSubscriptionName', 'setSubscriptionName'], 'until' => ['until', 'getUntil', 'setUntil']];
     }
 }

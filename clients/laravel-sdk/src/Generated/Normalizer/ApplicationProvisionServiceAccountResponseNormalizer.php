@@ -61,7 +61,7 @@ class ApplicationProvisionServiceAccountResponseNormalizer implements Denormaliz
     {
         $dataArray = [];
         $dataArray['message'] = $data->getMessage();
-        $dataArray['serviceAccount'] = $this->normalizer->normalize($data->getServiceAccount(), 'json', $context);
+        $dataArray['serviceAccount'] = $data->getServiceAccount() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getServiceAccount(), 'json', $context));
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

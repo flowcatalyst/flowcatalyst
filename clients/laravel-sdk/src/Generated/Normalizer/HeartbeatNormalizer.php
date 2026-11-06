@@ -43,6 +43,7 @@ class HeartbeatNormalizer implements DenormalizerInterface, NormalizerInterface,
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('budget', $data) && $data['budget'] !== null) {
             $object->setBudget($this->denormalizer->denormalize($data['budget'], \FlowCatalyst\Generated\Model\BudgetReport::class, 'json', $context));
@@ -50,6 +51,7 @@ class HeartbeatNormalizer implements DenormalizerInterface, NormalizerInterface,
         }
         elseif (\array_key_exists('budget', $data) && $data['budget'] === null) {
             $object->setBudget(null);
+            unset($data['budget']);
         }
         if (\array_key_exists('capabilities', $data) && $data['capabilities'] !== null) {
             $object->setCapabilities($this->denormalizer->denormalize($data['capabilities'], \FlowCatalyst\Generated\Model\RunnerCapabilities::class, 'json', $context));
@@ -57,6 +59,7 @@ class HeartbeatNormalizer implements DenormalizerInterface, NormalizerInterface,
         }
         elseif (\array_key_exists('capabilities', $data) && $data['capabilities'] === null) {
             $object->setCapabilities(null);
+            unset($data['capabilities']);
         }
         if (\array_key_exists('pool', $data) && $data['pool'] !== null) {
             $object->setPool($data['pool']);
@@ -64,6 +67,7 @@ class HeartbeatNormalizer implements DenormalizerInterface, NormalizerInterface,
         }
         elseif (\array_key_exists('pool', $data) && $data['pool'] === null) {
             $object->setPool(null);
+            unset($data['pool']);
         }
         if (\array_key_exists('revision', $data) && $data['revision'] !== null) {
             $object->setRevision($data['revision']);
@@ -71,6 +75,7 @@ class HeartbeatNormalizer implements DenormalizerInterface, NormalizerInterface,
         }
         elseif (\array_key_exists('revision', $data) && $data['revision'] === null) {
             $object->setRevision(null);
+            unset($data['revision']);
         }
         if (\array_key_exists('runnerId', $data) && $data['runnerId'] !== null) {
             $object->setRunnerId($data['runnerId']);
@@ -78,13 +83,27 @@ class HeartbeatNormalizer implements DenormalizerInterface, NormalizerInterface,
         }
         elseif (\array_key_exists('runnerId', $data) && $data['runnerId'] === null) {
             $object->setRunnerId(null);
+            unset($data['runnerId']);
         }
         if (\array_key_exists('startedAt', $data) && $data['startedAt'] !== null) {
-            $object->setStartedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['startedAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['startedAt']);
+            if (false === $date) {
+                if (is_string($data['startedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['startedAt'])) {
+                    try {
+                        $date = new \DateTime($data['startedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['startedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['startedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setStartedAt($date);
             unset($data['startedAt']);
         }
         elseif (\array_key_exists('startedAt', $data) && $data['startedAt'] === null) {
             $object->setStartedAt(null);
+            unset($data['startedAt']);
         }
         if (\array_key_exists('versions', $data) && $data['versions'] !== null) {
             $values = [];
@@ -96,6 +115,7 @@ class HeartbeatNormalizer implements DenormalizerInterface, NormalizerInterface,
         }
         elseif (\array_key_exists('versions', $data) && $data['versions'] === null) {
             $object->setVersions(null);
+            unset($data['versions']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -107,9 +127,9 @@ class HeartbeatNormalizer implements DenormalizerInterface, NormalizerInterface,
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        $dataArray['budget'] = $this->normalizer->normalize($data->getBudget(), 'json', $context);
+        $dataArray['budget'] = $data->getBudget() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getBudget(), 'json', $context));
         if ($data->isInitialized('capabilities') && null !== $data->getCapabilities()) {
-            $dataArray['capabilities'] = $this->normalizer->normalize($data->getCapabilities(), 'json', $context);
+            $dataArray['capabilities'] = $data->getCapabilities() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getCapabilities(), 'json', $context));
         }
         $dataArray['pool'] = $data->getPool();
         $dataArray['revision'] = $data->getRevision();
@@ -117,10 +137,10 @@ class HeartbeatNormalizer implements DenormalizerInterface, NormalizerInterface,
         $dataArray['startedAt'] = $data->getStartedAt()->format('Y-m-d\TH:i:sP');
         $values = [];
         foreach ($data->getVersions() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['versions'] = $values;
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

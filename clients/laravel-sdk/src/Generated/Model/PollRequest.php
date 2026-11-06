@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class PollRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class PollRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -207,5 +210,9 @@ class PollRequest extends \ArrayObject
         $this->initialized['url'] = true;
         $this->url = $url;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'builtinKinds' => ['builtinKinds', 'getBuiltinKinds', 'setBuiltinKinds'], 'contractVersion' => ['contractVersion', 'getContractVersion', 'setContractVersion'], 'instanceId' => ['instanceId', 'getInstanceId', 'setInstanceId'], 'kinds' => ['kinds', 'getKinds', 'setKinds'], 'runtimeId' => ['runtimeId', 'getRuntimeId', 'setRuntimeId'], 'url' => ['url', 'getUrl', 'setUrl']];
     }
 }

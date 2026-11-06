@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class PruneVersionsRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class PruneVersionsRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -95,5 +98,9 @@ class PruneVersionsRequest extends \ArrayObject
         $this->initialized['keep'] = true;
         $this->keep = $keep;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'dryRun' => ['dryRun', 'getDryRun', 'setDryRun'], 'keep' => ['keep', 'getKeep', 'setKeep']];
     }
 }

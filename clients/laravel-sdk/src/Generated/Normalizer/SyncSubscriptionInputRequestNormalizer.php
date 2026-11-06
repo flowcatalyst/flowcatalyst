@@ -148,7 +148,7 @@ class SyncSubscriptionInputRequestNormalizer implements DenormalizerInterface, N
         }
         $values = [];
         foreach ($data->getEventTypes() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['eventTypes'] = $values;
         if ($data->isInitialized('maxRetries') && null !== $data->getMaxRetries()) {

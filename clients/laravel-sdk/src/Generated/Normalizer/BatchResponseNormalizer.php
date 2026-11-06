@@ -60,7 +60,7 @@ class BatchResponseNormalizer implements DenormalizerInterface, NormalizerInterf
         $dataArray = [];
         $values = [];
         foreach ($data->getResults() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['results'] = $values;
         return $dataArray;

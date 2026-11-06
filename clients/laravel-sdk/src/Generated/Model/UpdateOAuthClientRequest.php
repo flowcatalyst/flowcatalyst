@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class UpdateOAuthClientRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class UpdateOAuthClientRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -281,5 +284,9 @@ class UpdateOAuthClientRequest extends \ArrayObject
         $this->initialized['redirectUris'] = true;
         $this->redirectUris = $redirectUris;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'allowedOrigins' => ['allowedOrigins', 'getAllowedOrigins', 'setAllowedOrigins'], 'apiAccess' => ['apiAccess', 'getApiAccess', 'setApiAccess'], 'applicationIds' => ['applicationIds', 'getApplicationIds', 'setApplicationIds'], 'clientName' => ['clientName', 'getClientName', 'setClientName'], 'defaultScopes' => ['defaultScopes', 'getDefaultScopes', 'setDefaultScopes'], 'grantTypes' => ['grantTypes', 'getGrantTypes', 'setGrantTypes'], 'pkceRequired' => ['pkceRequired', 'getPkceRequired', 'setPkceRequired'], 'portalAppId' => ['portalAppId', 'getPortalAppId', 'setPortalAppId'], 'portalClientId' => ['portalClientId', 'getPortalClientId', 'setPortalClientId'], 'postLogoutRedirectUris' => ['postLogoutRedirectUris', 'getPostLogoutRedirectUris', 'setPostLogoutRedirectUris'], 'redirectUris' => ['redirectUris', 'getRedirectUris', 'setRedirectUris']];
     }
 }

@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class UpdateIdentityProviderRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class UpdateIdentityProviderRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -299,5 +302,9 @@ class UpdateIdentityProviderRequest extends \ArrayObject
         $this->initialized['syncRolesFromIdp'] = true;
         $this->syncRolesFromIdp = $syncRolesFromIdp;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'allowedEmailDomains' => ['allowedEmailDomains', 'getAllowedEmailDomains', 'setAllowedEmailDomains'], 'allowedRoleIds' => ['allowedRoleIds', 'getAllowedRoleIds', 'setAllowedRoleIds'], 'mappingScope' => ['mappingScope', 'getMappingScope', 'setMappingScope'], 'name' => ['name', 'getName', 'setName'], 'oidcClientId' => ['oidcClientId', 'getOidcClientId', 'setOidcClientId'], 'oidcClientSecretRef' => ['oidcClientSecretRef', 'getOidcClientSecretRef', 'setOidcClientSecretRef'], 'oidcIssuerPattern' => ['oidcIssuerPattern', 'getOidcIssuerPattern', 'setOidcIssuerPattern'], 'oidcIssuerUrl' => ['oidcIssuerUrl', 'getOidcIssuerUrl', 'setOidcIssuerUrl'], 'oidcMultiTenant' => ['oidcMultiTenant', 'getOidcMultiTenant', 'setOidcMultiTenant'], 'primaryClientId' => ['primaryClientId', 'getPrimaryClientId', 'setPrimaryClientId'], 'syncRolesFromIdp' => ['syncRolesFromIdp', 'getSyncRolesFromIdp', 'setSyncRolesFromIdp']];
     }
 }

@@ -66,7 +66,7 @@ class PortalAppListResponseNormalizer implements DenormalizerInterface, Normaliz
         $dataArray = [];
         $values = [];
         foreach ($data->getPortalApps() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['portalApps'] = $values;
         if ($data->isInitialized('unassignedUsers') && null !== $data->getUnassignedUsers()) {

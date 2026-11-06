@@ -59,7 +59,19 @@ class IngestionVersionResponseNormalizer implements DenormalizerInterface, Norma
             $object->setAppliedFrom(null);
         }
         if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
-            $object->setCreatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']);
+            if (false === $date) {
+                if (is_string($data['createdAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['createdAt'])) {
+                    try {
+                        $date = new \DateTime($data['createdAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setCreatedAt($date);
         }
         elseif (\array_key_exists('createdAt', $data) && $data['createdAt'] === null) {
             $object->setCreatedAt(null);
@@ -178,11 +190,11 @@ class IngestionVersionResponseNormalizer implements DenormalizerInterface, Norma
             $dataArray['note'] = $data->getNote();
         }
         if ($data->isInitialized('save') && null !== $data->getSave()) {
-            $dataArray['save'] = $this->normalizer->normalize($data->getSave(), 'json', $context);
+            $dataArray['save'] = $data->getSave() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getSave(), 'json', $context));
         }
         $dataArray['source'] = $data->getSource();
         $dataArray['split'] = $data->getSplit();
-        $dataArray['target'] = $this->normalizer->normalize($data->getTarget(), 'json', $context);
+        $dataArray['target'] = $data->getTarget() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getTarget(), 'json', $context));
         $dataArray['version'] = $data->getVersion();
         if ($data->isInitialized('warnings') && null !== $data->getWarnings()) {
             $values = [];

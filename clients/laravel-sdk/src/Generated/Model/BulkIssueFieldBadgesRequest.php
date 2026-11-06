@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class BulkIssueFieldBadgesRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class BulkIssueFieldBadgesRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -67,5 +70,9 @@ class BulkIssueFieldBadgesRequest extends \ArrayObject
         $this->initialized['workerIds'] = true;
         $this->workerIds = $workerIds;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'workerIds' => ['workerIds', 'getWorkerIds', 'setWorkerIds']];
     }
 }

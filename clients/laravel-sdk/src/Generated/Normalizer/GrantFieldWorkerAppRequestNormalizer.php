@@ -43,6 +43,7 @@ class GrantFieldWorkerAppRequestNormalizer implements DenormalizerInterface, Nor
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('appCode', $data) && $data['appCode'] !== null) {
             $object->setAppCode($data['appCode']);
@@ -50,6 +51,7 @@ class GrantFieldWorkerAppRequestNormalizer implements DenormalizerInterface, Nor
         }
         elseif (\array_key_exists('appCode', $data) && $data['appCode'] === null) {
             $object->setAppCode(null);
+            unset($data['appCode']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -62,7 +64,7 @@ class GrantFieldWorkerAppRequestNormalizer implements DenormalizerInterface, Nor
     {
         $dataArray = [];
         $dataArray['appCode'] = $data->getAppCode();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

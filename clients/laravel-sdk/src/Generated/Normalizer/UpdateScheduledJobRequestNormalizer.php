@@ -49,6 +49,7 @@ class UpdateScheduledJobRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('concurrent', $data) && $data['concurrent'] !== null) {
             $object->setConcurrent($data['concurrent']);
@@ -56,6 +57,7 @@ class UpdateScheduledJobRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('concurrent', $data) && $data['concurrent'] === null) {
             $object->setConcurrent(null);
+            unset($data['concurrent']);
         }
         if (\array_key_exists('crons', $data) && $data['crons'] !== null) {
             $values = [];
@@ -67,6 +69,7 @@ class UpdateScheduledJobRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('crons', $data) && $data['crons'] === null) {
             $object->setCrons(null);
+            unset($data['crons']);
         }
         if (\array_key_exists('deliveryMaxAttempts', $data) && $data['deliveryMaxAttempts'] !== null) {
             $object->setDeliveryMaxAttempts($data['deliveryMaxAttempts']);
@@ -74,6 +77,7 @@ class UpdateScheduledJobRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('deliveryMaxAttempts', $data) && $data['deliveryMaxAttempts'] === null) {
             $object->setDeliveryMaxAttempts(null);
+            unset($data['deliveryMaxAttempts']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -81,6 +85,7 @@ class UpdateScheduledJobRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -88,6 +93,7 @@ class UpdateScheduledJobRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('payload', $data) && $data['payload'] !== null) {
             $object->setPayload($data['payload']);
@@ -95,6 +101,7 @@ class UpdateScheduledJobRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('payload', $data) && $data['payload'] === null) {
             $object->setPayload(null);
+            unset($data['payload']);
         }
         if (\array_key_exists('targetUrl', $data) && $data['targetUrl'] !== null) {
             $object->setTargetUrl($data['targetUrl']);
@@ -102,6 +109,7 @@ class UpdateScheduledJobRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('targetUrl', $data) && $data['targetUrl'] === null) {
             $object->setTargetUrl(null);
+            unset($data['targetUrl']);
         }
         if (\array_key_exists('timeoutSeconds', $data) && $data['timeoutSeconds'] !== null) {
             $object->setTimeoutSeconds($data['timeoutSeconds']);
@@ -109,6 +117,7 @@ class UpdateScheduledJobRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('timeoutSeconds', $data) && $data['timeoutSeconds'] === null) {
             $object->setTimeoutSeconds(null);
+            unset($data['timeoutSeconds']);
         }
         if (\array_key_exists('timezone', $data) && $data['timezone'] !== null) {
             $object->setTimezone($data['timezone']);
@@ -116,6 +125,7 @@ class UpdateScheduledJobRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('timezone', $data) && $data['timezone'] === null) {
             $object->setTimezone(null);
+            unset($data['timezone']);
         }
         if (\array_key_exists('tracksCompletion', $data) && $data['tracksCompletion'] !== null) {
             $object->setTracksCompletion($data['tracksCompletion']);
@@ -123,6 +133,7 @@ class UpdateScheduledJobRequestNormalizer implements DenormalizerInterface, Norm
         }
         elseif (\array_key_exists('tracksCompletion', $data) && $data['tracksCompletion'] === null) {
             $object->setTracksCompletion(null);
+            unset($data['tracksCompletion']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -168,7 +179,7 @@ class UpdateScheduledJobRequestNormalizer implements DenormalizerInterface, Norm
         if ($data->isInitialized('tracksCompletion') && null !== $data->getTracksCompletion()) {
             $dataArray['tracksCompletion'] = $data->getTracksCompletion();
         }
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

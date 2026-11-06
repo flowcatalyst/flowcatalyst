@@ -44,7 +44,19 @@ class IngestionSecretFetchResponseNormalizer implements DenormalizerInterface, N
             $object->setFetchCount(null);
         }
         if (\array_key_exists('lastFetchedAt', $data) && $data['lastFetchedAt'] !== null) {
-            $object->setLastFetchedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lastFetchedAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lastFetchedAt']);
+            if (false === $date) {
+                if (is_string($data['lastFetchedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['lastFetchedAt'])) {
+                    try {
+                        $date = new \DateTime($data['lastFetchedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['lastFetchedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['lastFetchedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setLastFetchedAt($date);
         }
         elseif (\array_key_exists('lastFetchedAt', $data) && $data['lastFetchedAt'] === null) {
             $object->setLastFetchedAt(null);

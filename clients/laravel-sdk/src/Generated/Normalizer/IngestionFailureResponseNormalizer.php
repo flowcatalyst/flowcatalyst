@@ -56,13 +56,37 @@ class IngestionFailureResponseNormalizer implements DenormalizerInterface, Norma
             $object->setCategory(null);
         }
         if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
-            $object->setCreatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']);
+            if (false === $date) {
+                if (is_string($data['createdAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['createdAt'])) {
+                    try {
+                        $date = new \DateTime($data['createdAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setCreatedAt($date);
         }
         elseif (\array_key_exists('createdAt', $data) && $data['createdAt'] === null) {
             $object->setCreatedAt(null);
         }
         if (\array_key_exists('dismissedAt', $data) && $data['dismissedAt'] !== null) {
-            $object->setDismissedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['dismissedAt']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['dismissedAt']);
+            if (false === $date_1) {
+                if (is_string($data['dismissedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['dismissedAt'])) {
+                    try {
+                        $date_1 = new \DateTime($data['dismissedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['dismissedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['dismissedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setDismissedAt($date_1);
         }
         elseif (\array_key_exists('dismissedAt', $data) && $data['dismissedAt'] === null) {
             $object->setDismissedAt(null);
@@ -98,7 +122,19 @@ class IngestionFailureResponseNormalizer implements DenormalizerInterface, Norma
             $object->setMessage(null);
         }
         if (\array_key_exists('occurredAt', $data) && $data['occurredAt'] !== null) {
-            $object->setOccurredAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['occurredAt']));
+            $date_2 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['occurredAt']);
+            if (false === $date_2) {
+                if (is_string($data['occurredAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['occurredAt'])) {
+                    try {
+                        $date_2 = new \DateTime($data['occurredAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['occurredAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['occurredAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setOccurredAt($date_2);
         }
         elseif (\array_key_exists('occurredAt', $data) && $data['occurredAt'] === null) {
             $object->setOccurredAt(null);

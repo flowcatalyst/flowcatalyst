@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class RegisterCompleteRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class RegisterCompleteRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -105,5 +108,9 @@ class RegisterCompleteRequest extends \ArrayObject
         $this->initialized['stateId'] = true;
         $this->stateId = $stateId;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'credential' => ['credential', 'getCredential', 'setCredential'], 'name' => ['name', 'getName', 'setName'], 'stateId' => ['stateId', 'getStateId', 'setStateId']];
     }
 }

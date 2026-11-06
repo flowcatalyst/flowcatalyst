@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateSubscriptionRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateSubscriptionRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -487,5 +490,9 @@ class CreateSubscriptionRequest extends \ArrayObject
         $this->initialized['timeoutSeconds'] = true;
         $this->timeoutSeconds = $timeoutSeconds;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'clientScoped' => ['clientScoped', 'getClientScoped', 'setClientScoped'], 'code' => ['code', 'getCode', 'setCode'], 'connectionId' => ['connectionId', 'getConnectionId', 'setConnectionId'], 'customConfig' => ['customConfig', 'getCustomConfig', 'setCustomConfig'], 'dataOnly' => ['dataOnly', 'getDataOnly', 'setDataOnly'], 'delaySeconds' => ['delaySeconds', 'getDelaySeconds', 'setDelaySeconds'], 'description' => ['description', 'getDescription', 'setDescription'], 'dispatchPoolId' => ['dispatchPoolId', 'getDispatchPoolId', 'setDispatchPoolId'], 'endpoint' => ['endpoint', 'getEndpoint', 'setEndpoint'], 'eventTypes' => ['eventTypes', 'getEventTypes', 'setEventTypes'], 'maxAgeSeconds' => ['maxAgeSeconds', 'getMaxAgeSeconds', 'setMaxAgeSeconds'], 'maxRetries' => ['maxRetries', 'getMaxRetries', 'setMaxRetries'], 'mode' => ['mode', 'getMode', 'setMode'], 'name' => ['name', 'getName', 'setName'], 'queue' => ['queue', 'getQueue', 'setQueue'], 'sequence' => ['sequence', 'getSequence', 'setSequence'], 'serviceAccountId' => ['serviceAccountId', 'getServiceAccountId', 'setServiceAccountId'], 'timeoutSeconds' => ['timeoutSeconds', 'getTimeoutSeconds', 'setTimeoutSeconds']];
     }
 }

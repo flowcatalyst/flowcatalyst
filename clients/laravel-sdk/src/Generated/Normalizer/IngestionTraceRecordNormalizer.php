@@ -43,6 +43,7 @@ class IngestionTraceRecordNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('at', $data) && $data['at'] === null) {
             $object->setAt(null);
+            unset($data['at']);
         }
         if (\array_key_exists('captureId', $data) && $data['captureId'] !== null) {
             $object->setCaptureId($data['captureId']);
@@ -50,6 +51,7 @@ class IngestionTraceRecordNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('captureId', $data) && $data['captureId'] === null) {
             $object->setCaptureId(null);
+            unset($data['captureId']);
         }
         if (\array_key_exists('data', $data) && $data['data'] !== null) {
             $object->setData($data['data']);
@@ -57,6 +59,7 @@ class IngestionTraceRecordNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('data', $data) && $data['data'] === null) {
             $object->setData(null);
+            unset($data['data']);
         }
         if (\array_key_exists('id', $data) && $data['id'] !== null) {
             $object->setId($data['id']);
@@ -64,6 +67,7 @@ class IngestionTraceRecordNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('id', $data) && $data['id'] === null) {
             $object->setId(null);
+            unset($data['id']);
         }
         if (\array_key_exists('ingestionId', $data) && $data['ingestionId'] !== null) {
             $object->setIngestionId($data['ingestionId']);
@@ -71,6 +75,7 @@ class IngestionTraceRecordNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('ingestionId', $data) && $data['ingestionId'] === null) {
             $object->setIngestionId(null);
+            unset($data['ingestionId']);
         }
         if (\array_key_exists('kind', $data) && $data['kind'] !== null) {
             $object->setKind($data['kind']);
@@ -78,6 +83,7 @@ class IngestionTraceRecordNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('kind', $data) && $data['kind'] === null) {
             $object->setKind(null);
+            unset($data['kind']);
         }
         if (\array_key_exists('level', $data) && $data['level'] !== null) {
             $object->setLevel($data['level']);
@@ -85,6 +91,7 @@ class IngestionTraceRecordNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('level', $data) && $data['level'] === null) {
             $object->setLevel(null);
+            unset($data['level']);
         }
         if (\array_key_exists('message', $data) && $data['message'] !== null) {
             $object->setMessage($data['message']);
@@ -92,6 +99,7 @@ class IngestionTraceRecordNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('message', $data) && $data['message'] === null) {
             $object->setMessage(null);
+            unset($data['message']);
         }
         if (\array_key_exists('version', $data) && $data['version'] !== null) {
             $object->setVersion($data['version']);
@@ -99,6 +107,7 @@ class IngestionTraceRecordNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('version', $data) && $data['version'] === null) {
             $object->setVersion(null);
+            unset($data['version']);
         }
         if (\array_key_exists('windowId', $data) && $data['windowId'] !== null) {
             $object->setWindowId($data['windowId']);
@@ -106,6 +115,7 @@ class IngestionTraceRecordNormalizer implements DenormalizerInterface, Normalize
         }
         elseif (\array_key_exists('windowId', $data) && $data['windowId'] === null) {
             $object->setWindowId(null);
+            unset($data['windowId']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -131,7 +141,7 @@ class IngestionTraceRecordNormalizer implements DenormalizerInterface, Normalize
         $dataArray['message'] = $data->getMessage();
         $dataArray['version'] = $data->getVersion();
         $dataArray['windowId'] = $data->getWindowId();
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

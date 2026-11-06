@@ -43,6 +43,7 @@ class PollRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('builtinKinds', $data) && $data['builtinKinds'] !== null) {
             $values = [];
@@ -54,6 +55,7 @@ class PollRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('builtinKinds', $data) && $data['builtinKinds'] === null) {
             $object->setBuiltinKinds(null);
+            unset($data['builtinKinds']);
         }
         if (\array_key_exists('contractVersion', $data) && $data['contractVersion'] !== null) {
             $object->setContractVersion($data['contractVersion']);
@@ -61,6 +63,7 @@ class PollRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('contractVersion', $data) && $data['contractVersion'] === null) {
             $object->setContractVersion(null);
+            unset($data['contractVersion']);
         }
         if (\array_key_exists('instanceId', $data) && $data['instanceId'] !== null) {
             $object->setInstanceId($data['instanceId']);
@@ -68,6 +71,7 @@ class PollRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('instanceId', $data) && $data['instanceId'] === null) {
             $object->setInstanceId(null);
+            unset($data['instanceId']);
         }
         if (\array_key_exists('kinds', $data) && $data['kinds'] !== null) {
             $values_1 = [];
@@ -79,6 +83,7 @@ class PollRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('kinds', $data) && $data['kinds'] === null) {
             $object->setKinds(null);
+            unset($data['kinds']);
         }
         if (\array_key_exists('runtimeId', $data) && $data['runtimeId'] !== null) {
             $object->setRuntimeId($data['runtimeId']);
@@ -86,6 +91,7 @@ class PollRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('runtimeId', $data) && $data['runtimeId'] === null) {
             $object->setRuntimeId(null);
+            unset($data['runtimeId']);
         }
         if (\array_key_exists('url', $data) && $data['url'] !== null) {
             $object->setUrl($data['url']);
@@ -93,6 +99,7 @@ class PollRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         }
         elseif (\array_key_exists('url', $data) && $data['url'] === null) {
             $object->setUrl(null);
+            unset($data['url']);
         }
         foreach ($data as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
@@ -118,7 +125,7 @@ class PollRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         if ($data->isInitialized('kinds') && null !== $data->getKinds()) {
             $values_1 = [];
             foreach ($data->getKinds() as $value_1) {
-                $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+                $values_1[] = $value_1 === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value_1, 'json', $context));
             }
             $dataArray['kinds'] = $values_1;
         }
@@ -126,7 +133,7 @@ class PollRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         if ($data->isInitialized('url') && null !== $data->getUrl()) {
             $dataArray['url'] = $data->getUrl();
         }
-        foreach ($data as $key => $value_2) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_2;
             }

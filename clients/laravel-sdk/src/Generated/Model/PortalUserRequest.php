@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class PortalUserRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class PortalUserRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -171,5 +174,9 @@ class PortalUserRequest extends \ArrayObject
         $this->initialized['returnInviteLink'] = true;
         $this->returnInviteLink = $returnInviteLink;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'email' => ['email', 'getEmail', 'setEmail'], 'name' => ['name', 'getName', 'setName'], 'portalAppCode' => ['portalAppCode', 'getPortalAppCode', 'setPortalAppCode'], 'redirectUri' => ['redirectUri', 'getRedirectUri', 'setRedirectUri'], 'returnInviteLink' => ['returnInviteLink', 'getReturnInviteLink', 'setReturnInviteLink']];
     }
 }

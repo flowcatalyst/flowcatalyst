@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateIngestionRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateIngestionRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -301,5 +304,9 @@ class CreateIngestionRequest extends \ArrayObject
         $this->initialized['target'] = true;
         $this->target = $target;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'application' => ['application', 'getApplication', 'setApplication'], 'client' => ['client', 'getClient', 'setClient'], 'code' => ['code', 'getCode', 'setCode'], 'keepFailedPayloads' => ['keepFailedPayloads', 'getKeepFailedPayloads', 'setKeepFailedPayloads'], 'live' => ['live', 'getLive', 'setLive'], 'name' => ['name', 'getName', 'setName'], 'note' => ['note', 'getNote', 'setNote'], 'source' => ['source', 'getSource', 'setSource'], 'split' => ['split', 'getSplit', 'setSplit'], 'target' => ['target', 'getTarget', 'setTarget']];
     }
 }

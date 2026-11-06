@@ -38,7 +38,19 @@ class NoteResponseNormalizer implements DenormalizerInterface, NormalizerInterfa
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
         if (\array_key_exists('addedAt', $data) && $data['addedAt'] !== null) {
-            $object->setAddedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['addedAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['addedAt']);
+            if (false === $date) {
+                if (is_string($data['addedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['addedAt'])) {
+                    try {
+                        $date = new \DateTime($data['addedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['addedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['addedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setAddedAt($date);
         }
         elseif (\array_key_exists('addedAt', $data) && $data['addedAt'] === null) {
             $object->setAddedAt(null);

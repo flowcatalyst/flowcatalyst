@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class IssueFieldBadgeRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class IssueFieldBadgeRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -67,5 +70,9 @@ class IssueFieldBadgeRequest extends \ArrayObject
         $this->initialized['label'] = true;
         $this->label = $label;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'label' => ['label', 'getLabel', 'setLabel']];
     }
 }

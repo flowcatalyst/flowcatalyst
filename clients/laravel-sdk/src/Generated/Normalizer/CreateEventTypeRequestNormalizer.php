@@ -46,6 +46,7 @@ class CreateEventTypeRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -53,6 +54,7 @@ class CreateEventTypeRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+            unset($data['clientId']);
         }
         if (\array_key_exists('clientScoped', $data) && $data['clientScoped'] !== null) {
             $object->setClientScoped($data['clientScoped']);
@@ -60,6 +62,7 @@ class CreateEventTypeRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('clientScoped', $data) && $data['clientScoped'] === null) {
             $object->setClientScoped(null);
+            unset($data['clientScoped']);
         }
         if (\array_key_exists('code', $data) && $data['code'] !== null) {
             $object->setCode($data['code']);
@@ -67,6 +70,7 @@ class CreateEventTypeRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('code', $data) && $data['code'] === null) {
             $object->setCode(null);
+            unset($data['code']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -74,6 +78,7 @@ class CreateEventTypeRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -81,6 +86,7 @@ class CreateEventTypeRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
+            unset($data['name']);
         }
         if (\array_key_exists('schema', $data) && $data['schema'] !== null) {
             $object->setSchema($data['schema']);
@@ -88,6 +94,7 @@ class CreateEventTypeRequestNormalizer implements DenormalizerInterface, Normali
         }
         elseif (\array_key_exists('schema', $data) && $data['schema'] === null) {
             $object->setSchema(null);
+            unset($data['schema']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -113,7 +120,7 @@ class CreateEventTypeRequestNormalizer implements DenormalizerInterface, Normali
         if ($data->isInitialized('schema') && null !== $data->getSchema()) {
             $dataArray['schema'] = $data->getSchema();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

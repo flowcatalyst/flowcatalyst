@@ -19,7 +19,7 @@ class DeleteEmailDomainMapping extends \FlowCatalyst\Generated\Runtime\Client\Ba
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/email-domain-mappings/{id}');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/email-domain-mappings/{id}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -42,7 +42,7 @@ class DeleteEmailDomainMapping extends \FlowCatalyst\Generated\Runtime\Client\Ba
         if (204 === $status) {
             return null;
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

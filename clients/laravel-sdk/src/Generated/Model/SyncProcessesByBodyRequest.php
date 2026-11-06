@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class SyncProcessesByBodyRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class SyncProcessesByBodyRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -89,5 +92,9 @@ class SyncProcessesByBodyRequest extends \ArrayObject
         $this->initialized['processes'] = true;
         $this->processes = $processes;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'applicationCode' => ['applicationCode', 'getApplicationCode', 'setApplicationCode'], 'processes' => ['processes', 'getProcesses', 'setProcesses']];
     }
 }

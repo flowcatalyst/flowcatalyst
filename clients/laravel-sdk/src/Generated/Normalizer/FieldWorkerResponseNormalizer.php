@@ -99,7 +99,19 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
             $object->setCreated(null);
         }
         if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
-            $object->setCreatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']));
+            $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']);
+            if (false === $date) {
+                if (is_string($data['createdAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['createdAt'])) {
+                    try {
+                        $date = new \DateTime($data['createdAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['createdAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setCreatedAt($date);
         }
         elseif (\array_key_exists('createdAt', $data) && $data['createdAt'] === null) {
             $object->setCreatedAt(null);
@@ -141,7 +153,19 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
             $object->setIsTest(null);
         }
         if (\array_key_exists('lastLoginAt', $data) && $data['lastLoginAt'] !== null) {
-            $object->setLastLoginAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lastLoginAt']));
+            $date_1 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lastLoginAt']);
+            if (false === $date_1) {
+                if (is_string($data['lastLoginAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['lastLoginAt'])) {
+                    try {
+                        $date_1 = new \DateTime($data['lastLoginAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['lastLoginAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['lastLoginAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setLastLoginAt($date_1);
         }
         elseif (\array_key_exists('lastLoginAt', $data) && $data['lastLoginAt'] === null) {
             $object->setLastLoginAt(null);
@@ -153,7 +177,19 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
             $object->setLocked(null);
         }
         if (\array_key_exists('lockedUntil', $data) && $data['lockedUntil'] !== null) {
-            $object->setLockedUntil(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lockedUntil']));
+            $date_2 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lockedUntil']);
+            if (false === $date_2) {
+                if (is_string($data['lockedUntil']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['lockedUntil'])) {
+                    try {
+                        $date_2 = new \DateTime($data['lockedUntil']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['lockedUntil'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['lockedUntil'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setLockedUntil($date_2);
         }
         elseif (\array_key_exists('lockedUntil', $data) && $data['lockedUntil'] === null) {
             $object->setLockedUntil(null);
@@ -177,7 +213,19 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
             $object->setStatus(null);
         }
         if (\array_key_exists('updatedAt', $data) && $data['updatedAt'] !== null) {
-            $object->setUpdatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']));
+            $date_3 = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']);
+            if (false === $date_3) {
+                if (is_string($data['updatedAt']) and 1 === preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $data['updatedAt'])) {
+                    try {
+                        $date_3 = new \DateTime($data['updatedAt']);
+                    } catch (\Exception) {
+                        throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['updatedAt'], 'Y-m-d\TH:i:sP');
+                    }
+                } else {
+                    throw new \FlowCatalyst\Generated\Runtime\Normalizer\InvalidDateException($data['updatedAt'], 'Y-m-d\TH:i:sP');
+                }
+            }
+            $object->setUpdatedAt($date_3);
         }
         elseif (\array_key_exists('updatedAt', $data) && $data['updatedAt'] === null) {
             $object->setUpdatedAt(null);
@@ -195,10 +243,10 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
         $dataArray = [];
         $values = [];
         foreach ($data->getApps() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['apps'] = $values;
-        $dataArray['badge'] = $this->normalizer->normalize($data->getBadge(), 'json', $context);
+        $dataArray['badge'] = $data->getBadge() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getBadge(), 'json', $context));
         $dataArray['canImpersonate'] = $data->getCanImpersonate();
         $dataArray['clientId'] = $data->getClientId();
         if ($data->isInitialized('created') && null !== $data->getCreated()) {

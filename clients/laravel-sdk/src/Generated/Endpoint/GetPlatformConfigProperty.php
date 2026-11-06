@@ -29,7 +29,7 @@ class GetPlatformConfigProperty extends \FlowCatalyst\Generated\Runtime\Client\B
     }
     public function getUri(): string
     {
-        return str_replace(['{app}', '{section}', '{property}'], [$this->app, $this->section, $this->property], '/api/config/{app}/{section}/{property}');
+        return str_replace(['{app}', '{section}', '{property}'], [rawurlencode($this->app), rawurlencode($this->section), rawurlencode($this->property)], '/api/config/{app}/{section}/{property}');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -48,6 +48,10 @@ class GetPlatformConfigProperty extends \FlowCatalyst\Generated\Runtime\Client\B
         $optionsResolver->addAllowedTypes('clientId', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['clientId' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -58,10 +62,10 @@ class GetPlatformConfigProperty extends \FlowCatalyst\Generated\Runtime\Client\B
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ConfigResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

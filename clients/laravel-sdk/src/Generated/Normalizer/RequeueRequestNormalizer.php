@@ -46,6 +46,7 @@ class RequeueRequestNormalizer implements DenormalizerInterface, NormalizerInter
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('confirmRedriveCompleted', $data) && $data['confirmRedriveCompleted'] !== null) {
             $object->setConfirmRedriveCompleted($data['confirmRedriveCompleted']);
@@ -53,6 +54,7 @@ class RequeueRequestNormalizer implements DenormalizerInterface, NormalizerInter
         }
         elseif (\array_key_exists('confirmRedriveCompleted', $data) && $data['confirmRedriveCompleted'] === null) {
             $object->setConfirmRedriveCompleted(null);
+            unset($data['confirmRedriveCompleted']);
         }
         if (\array_key_exists('ids', $data) && $data['ids'] !== null) {
             $values = [];
@@ -64,6 +66,7 @@ class RequeueRequestNormalizer implements DenormalizerInterface, NormalizerInter
         }
         elseif (\array_key_exists('ids', $data) && $data['ids'] === null) {
             $object->setIds(null);
+            unset($data['ids']);
         }
         if (\array_key_exists('redriveCompleted', $data) && $data['redriveCompleted'] !== null) {
             $object->setRedriveCompleted($data['redriveCompleted']);
@@ -71,6 +74,7 @@ class RequeueRequestNormalizer implements DenormalizerInterface, NormalizerInter
         }
         elseif (\array_key_exists('redriveCompleted', $data) && $data['redriveCompleted'] === null) {
             $object->setRedriveCompleted(null);
+            unset($data['redriveCompleted']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -93,7 +97,7 @@ class RequeueRequestNormalizer implements DenormalizerInterface, NormalizerInter
         if ($data->isInitialized('redriveCompleted') && null !== $data->getRedriveCompleted()) {
             $dataArray['redriveCompleted'] = $data->getRedriveCompleted();
         }
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }

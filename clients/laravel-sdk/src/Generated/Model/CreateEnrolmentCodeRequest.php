@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CreateEnrolmentCodeRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CreateEnrolmentCodeRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -155,5 +158,9 @@ class CreateEnrolmentCodeRequest extends \ArrayObject
         $this->initialized['mode'] = true;
         $this->mode = $mode;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'appCodes' => ['appCodes', 'getAppCodes', 'setAppCodes'], 'assignedWorkerId' => ['assignedWorkerId', 'getAssignedWorkerId', 'setAssignedWorkerId'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'label' => ['label', 'getLabel', 'setLabel'], 'mode' => ['mode', 'getMode', 'setMode']];
     }
 }

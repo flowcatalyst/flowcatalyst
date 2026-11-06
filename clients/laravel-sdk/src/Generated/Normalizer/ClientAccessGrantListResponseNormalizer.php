@@ -60,7 +60,7 @@ class ClientAccessGrantListResponseNormalizer implements DenormalizerInterface, 
         $dataArray = [];
         $values = [];
         foreach ($data->getGrants() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['grants'] = $values;
         return $dataArray;

@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class CompleteInstanceRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class CompleteInstanceRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -139,5 +142,9 @@ class CompleteInstanceRequest extends \ArrayObject
         $this->initialized['status'] = true;
         $this->status = $status;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'completionResult' => ['completionResult', 'getCompletionResult', 'setCompletionResult'], 'completionStatus' => ['completionStatus', 'getCompletionStatus', 'setCompletionStatus'], 'result' => ['result', 'getResult', 'setResult'], 'status' => ['status', 'getStatus', 'setStatus']];
     }
 }

@@ -84,7 +84,7 @@ class OffsetPageScheduledJobResponseNormalizer implements DenormalizerInterface,
         $dataArray = [];
         $values = [];
         foreach ($data->getData() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['data'] = $values;
         $dataArray['page'] = $data->getPage();

@@ -52,6 +52,7 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('clearPool', $data) && $data['clearPool'] !== null) {
             $object->setClearPool($data['clearPool']);
@@ -59,6 +60,7 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('clearPool', $data) && $data['clearPool'] === null) {
             $object->setClearPool(null);
+            unset($data['clearPool']);
         }
         if (\array_key_exists('clearServiceAccount', $data) && $data['clearServiceAccount'] !== null) {
             $object->setClearServiceAccount($data['clearServiceAccount']);
@@ -66,6 +68,7 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('clearServiceAccount', $data) && $data['clearServiceAccount'] === null) {
             $object->setClearServiceAccount(null);
+            unset($data['clearServiceAccount']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -73,6 +76,7 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('limits', $data) && $data['limits'] !== null) {
             $object->setLimits($this->denormalizer->denormalize($data['limits'], \FlowCatalyst\Generated\Model\LimitsDTO::class, 'json', $context));
@@ -80,6 +84,7 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('limits', $data) && $data['limits'] === null) {
             $object->setLimits(null);
+            unset($data['limits']);
         }
         if (\array_key_exists('pool', $data) && $data['pool'] !== null) {
             $object->setPool($data['pool']);
@@ -87,6 +92,7 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('pool', $data) && $data['pool'] === null) {
             $object->setPool(null);
+            unset($data['pool']);
         }
         if (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] !== null) {
             $object->setServiceAccountId($data['serviceAccountId']);
@@ -94,6 +100,7 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('serviceAccountId', $data) && $data['serviceAccountId'] === null) {
             $object->setServiceAccountId(null);
+            unset($data['serviceAccountId']);
         }
         if (\array_key_exists('warm', $data) && $data['warm'] !== null) {
             $object->setWarm($data['warm']);
@@ -101,6 +108,7 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         elseif (\array_key_exists('warm', $data) && $data['warm'] === null) {
             $object->setWarm(null);
+            unset($data['warm']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -122,7 +130,7 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
             $dataArray['description'] = $data->getDescription();
         }
         if ($data->isInitialized('limits') && null !== $data->getLimits()) {
-            $dataArray['limits'] = $this->normalizer->normalize($data->getLimits(), 'json', $context);
+            $dataArray['limits'] = $data->getLimits() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getLimits(), 'json', $context));
         }
         if ($data->isInitialized('pool') && null !== $data->getPool()) {
             $dataArray['pool'] = $data->getPool();
@@ -133,7 +141,7 @@ class UpdateFunctionRequestNormalizer implements DenormalizerInterface, Normaliz
         if ($data->isInitialized('warm') && null !== $data->getWarm()) {
             $dataArray['warm'] = $data->getWarm();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

@@ -70,7 +70,7 @@ class CreateEventResponseNormalizer implements DenormalizerInterface, Normalizer
     {
         $dataArray = [];
         $dataArray['dispatchJobCount'] = $data->getDispatchJobCount();
-        $dataArray['event'] = $this->normalizer->normalize($data->getEvent(), 'json', $context);
+        $dataArray['event'] = $data->getEvent() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getEvent(), 'json', $context));
         $dataArray['isDuplicate'] = $data->getIsDuplicate();
         return $dataArray;
     }

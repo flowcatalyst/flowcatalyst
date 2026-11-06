@@ -60,7 +60,7 @@ class IngestionVersionListResponseNormalizer implements DenormalizerInterface, N
         $dataArray = [];
         $values = [];
         foreach ($data->getVersions() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['versions'] = $values;
         return $dataArray;

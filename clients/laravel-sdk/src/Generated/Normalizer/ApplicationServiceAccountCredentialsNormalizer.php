@@ -61,7 +61,7 @@ class ApplicationServiceAccountCredentialsNormalizer implements DenormalizerInte
     {
         $dataArray = [];
         $dataArray['name'] = $data->getName();
-        $dataArray['oauthClient'] = $this->normalizer->normalize($data->getOauthClient(), 'json', $context);
+        $dataArray['oauthClient'] = $data->getOauthClient() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getOauthClient(), 'json', $context));
         $dataArray['principalId'] = $data->getPrincipalId();
         return $dataArray;
     }

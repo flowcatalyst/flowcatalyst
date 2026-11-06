@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class RotateOAuthClientSecretRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class RotateOAuthClientSecretRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -61,5 +64,9 @@ class RotateOAuthClientSecretRequest extends \ArrayObject
         $this->initialized['graceSeconds'] = true;
         $this->graceSeconds = $graceSeconds;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'graceSeconds' => ['graceSeconds', 'getGraceSeconds', 'setGraceSeconds']];
     }
 }

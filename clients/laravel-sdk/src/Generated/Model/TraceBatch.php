@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class TraceBatch extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class TraceBatch implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -105,5 +108,9 @@ class TraceBatch extends \ArrayObject
         $this->initialized['runnerId'] = true;
         $this->runnerId = $runnerId;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'pool' => ['pool', 'getPool', 'setPool'], 'records' => ['records', 'getRecords', 'setRecords'], 'runnerId' => ['runnerId', 'getRunnerId', 'setRunnerId']];
     }
 }

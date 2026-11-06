@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class IngestionEnableTraceRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class IngestionEnableTraceRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -95,5 +98,9 @@ class IngestionEnableTraceRequest extends \ArrayObject
         $this->initialized['windowSecs'] = true;
         $this->windowSecs = $windowSecs;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'sampleEverySecs' => ['sampleEverySecs', 'getSampleEverySecs', 'setSampleEverySecs'], 'windowSecs' => ['windowSecs', 'getWindowSecs', 'setWindowSecs']];
     }
 }

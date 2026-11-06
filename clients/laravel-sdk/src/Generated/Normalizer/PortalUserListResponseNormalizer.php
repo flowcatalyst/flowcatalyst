@@ -79,7 +79,7 @@ class PortalUserListResponseNormalizer implements DenormalizerInterface, Normali
         $dataArray['page'] = $data->getPage();
         $values = [];
         foreach ($data->getPortalUsers() as $value) {
-            $values[] = $this->normalizer->normalize($value, 'json', $context);
+            $values[] = $value === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($value, 'json', $context));
         }
         $dataArray['portalUsers'] = $values;
         $dataArray['size'] = $data->getSize();

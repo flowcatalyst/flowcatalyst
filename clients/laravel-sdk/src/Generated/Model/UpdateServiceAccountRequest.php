@@ -2,8 +2,11 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class UpdateServiceAccountRequest extends \ArrayObject
+use FlowCatalyst\Generated\Runtime\AdditionalAndPatternProperties;
+use FlowCatalyst\Generated\Runtime\AdditionalPropertiesInterface;
+class UpdateServiceAccountRequest implements AdditionalPropertiesInterface
 {
+    use AdditionalAndPatternProperties;
     /**
      * @var array
      */
@@ -161,5 +164,9 @@ class UpdateServiceAccountRequest extends \ArrayObject
         $this->initialized['webhookCredentials'] = true;
         $this->webhookCredentials = $webhookCredentials;
         return $this;
+    }
+    public function definedProperties(): array
+    {
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'clientIds' => ['clientIds', 'getClientIds', 'setClientIds'], 'description' => ['description', 'getDescription', 'setDescription'], 'name' => ['name', 'getName', 'setName'], 'scope' => ['scope', 'getScope', 'setScope'], 'webhookCredentials' => ['webhookCredentials', 'getWebhookCredentials', 'setWebhookCredentials']];
     }
 }

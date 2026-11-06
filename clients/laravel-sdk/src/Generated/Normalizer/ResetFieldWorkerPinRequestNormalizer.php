@@ -43,6 +43,7 @@ class ResetFieldWorkerPinRequestNormalizer implements DenormalizerInterface, Nor
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('pin', $data) && $data['pin'] !== null) {
             $object->setPin($data['pin']);
@@ -50,6 +51,7 @@ class ResetFieldWorkerPinRequestNormalizer implements DenormalizerInterface, Nor
         }
         elseif (\array_key_exists('pin', $data) && $data['pin'] === null) {
             $object->setPin(null);
+            unset($data['pin']);
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
@@ -64,7 +66,7 @@ class ResetFieldWorkerPinRequestNormalizer implements DenormalizerInterface, Nor
         if ($data->isInitialized('pin') && null !== $data->getPin()) {
             $dataArray['pin'] = $data->getPin();
         }
-        foreach ($data as $key => $value) {
+        foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;
             }

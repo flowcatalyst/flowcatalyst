@@ -29,7 +29,7 @@ class ListIngestionTraceLog extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     }
     public function getUri(): string
     {
-        return str_replace(['{id}'], [$this->id], '/api/ingestions/{id}/trace-log');
+        return str_replace(['{id}'], [rawurlencode($this->id)], '/api/ingestions/{id}/trace-log');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
@@ -54,6 +54,10 @@ class ListIngestionTraceLog extends \FlowCatalyst\Generated\Runtime\Client\BaseE
         $optionsResolver->addAllowedTypes('cursor', ['string']);
         return $optionsResolver;
     }
+    protected function getQueryStyles(): array
+    {
+        return ['kind' => ['style' => 'form', 'explode' => false], 'runtimeId' => ['style' => 'form', 'explode' => false], 'captureId' => ['style' => 'form', 'explode' => false], 'since' => ['style' => 'form', 'explode' => false], 'until' => ['style' => 'form', 'explode' => false], 'limit' => ['style' => 'form', 'explode' => false], 'cursor' => ['style' => 'form', 'explode' => false]];
+    }
     /**
      * {@inheritdoc}
      *
@@ -64,10 +68,10 @@ class ListIngestionTraceLog extends \FlowCatalyst\Generated\Runtime\Client\BaseE
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
-        if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+        if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\IngestionTraceLogResponse', 'json');
         }
-        if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
+        if (stripos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');
         }
     }

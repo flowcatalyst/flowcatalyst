@@ -46,6 +46,7 @@ class CreateRoleRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+            unset($data['$schema']);
         }
         if (\array_key_exists('applicationCode', $data) && $data['applicationCode'] !== null) {
             $object->setApplicationCode($data['applicationCode']);
@@ -53,6 +54,7 @@ class CreateRoleRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('applicationCode', $data) && $data['applicationCode'] === null) {
             $object->setApplicationCode(null);
+            unset($data['applicationCode']);
         }
         if (\array_key_exists('clientManaged', $data) && $data['clientManaged'] !== null) {
             $object->setClientManaged($data['clientManaged']);
@@ -60,6 +62,7 @@ class CreateRoleRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('clientManaged', $data) && $data['clientManaged'] === null) {
             $object->setClientManaged(null);
+            unset($data['clientManaged']);
         }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
@@ -67,6 +70,7 @@ class CreateRoleRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('description', $data) && $data['description'] === null) {
             $object->setDescription(null);
+            unset($data['description']);
         }
         if (\array_key_exists('displayName', $data) && $data['displayName'] !== null) {
             $object->setDisplayName($data['displayName']);
@@ -74,6 +78,7 @@ class CreateRoleRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('displayName', $data) && $data['displayName'] === null) {
             $object->setDisplayName(null);
+            unset($data['displayName']);
         }
         if (\array_key_exists('permissions', $data) && $data['permissions'] !== null) {
             $values = [];
@@ -85,6 +90,7 @@ class CreateRoleRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('permissions', $data) && $data['permissions'] === null) {
             $object->setPermissions(null);
+            unset($data['permissions']);
         }
         if (\array_key_exists('roleName', $data) && $data['roleName'] !== null) {
             $object->setRoleName($data['roleName']);
@@ -92,6 +98,7 @@ class CreateRoleRequestNormalizer implements DenormalizerInterface, NormalizerIn
         }
         elseif (\array_key_exists('roleName', $data) && $data['roleName'] === null) {
             $object->setRoleName(null);
+            unset($data['roleName']);
         }
         foreach ($data as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
@@ -117,7 +124,7 @@ class CreateRoleRequestNormalizer implements DenormalizerInterface, NormalizerIn
             $dataArray['permissions'] = $values;
         }
         $dataArray['roleName'] = $data->getRoleName();
-        foreach ($data as $key => $value_1) {
+        foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;
             }
