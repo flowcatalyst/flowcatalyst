@@ -264,3 +264,117 @@ func (r *FieldWorkersResource) SignIns(ctx context.Context, id string, page, pag
 	}
 	return &out, nil
 }
+
+// ─── Badges and console sign-in codes ────────────────────────────────
+
+// IssueFieldBadgeRequest — POST /api/field-workers/{id}/badges.
+type IssueFieldBadgeRequest struct {
+	// Label is a note for the printed badge (at most 255 characters).
+	Label string `json:"label,omitempty"`
+}
+
+// BulkIssueFieldBadgesRequest — POST /api/field-workers/badges.
+type BulkIssueFieldBadgesRequest struct {
+	// WorkerIDs is 1 to 200 workers, all in clients the caller can access.
+	WorkerIDs []string `json:"workerIds"`
+}
+
+// CreateFieldSignInCodeRequest — POST /api/field-workers/{id}/sign-in-codes.
+type CreateFieldSignInCodeRequest struct {
+	// AppCode is the application the worker is signed in to.
+	AppCode string `json:"appCode"`
+}
+
+// FieldBadgeResponse is one badge. The token is never part of it.
+type FieldBadgeResponse struct {
+	ID         string `json:"id"`
+	WorkerID   string `json:"workerId"`
+	Label      string `json:"label,omitempty"`
+	Status     string `json:"status"`
+	CreatedAt  string `json:"createdAt"`
+	CreatedBy  string `json:"createdBy,omitempty"`
+	LastUsedAt string `json:"lastUsedAt,omitempty"`
+	RevokedAt  string `json:"revokedAt,omitempty"`
+}
+
+// FieldBadgeIssuedResponse is a freshly issued badge. Token is the secret to
+// print (as a QR code); it is shown once and cannot be retrieved again.
+type FieldBadgeIssuedResponse struct {
+	Badge FieldBadgeResponse `json:"badge"`
+	Token string             `json:"token"`
+}
+
+// FieldBadgeListResponse — GET /api/field-workers/{id}/badges.
+type FieldBadgeListResponse struct {
+	Badges []FieldBadgeResponse `json:"badges"`
+}
+
+// BulkIssuedFieldBadge is one worker's new badge in a bulk issue.
+type BulkIssuedFieldBadge struct {
+	WorkerID   string             `json:"workerId"`
+	WorkerCode string             `json:"workerCode"`
+	Name       string             `json:"name"`
+	Badge      FieldBadgeResponse `json:"badge"`
+	Token      string             `json:"token"`
+}
+
+// BulkIssueFieldBadgesResponse — the result of a bulk issue.
+type BulkIssueFieldBadgesResponse struct {
+	Issued []BulkIssuedFieldBadge `json:"issued"`
+}
+
+// FieldSignInCodeResponse is a single-use code a console admin uses to sign in
+// as the worker on a device.
+type FieldSignInCodeResponse struct {
+	Code      string `json:"code"`
+	WorkerID  string `json:"workerId"`
+	AppCode   string `json:"appCode"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+// IssueBadge — POST /api/field-workers/{id}/badges. Replaces the worker's
+// active badge; the response's Token is shown once.
+func (r *FieldWorkersResource) IssueBadge(ctx context.Context, id string, req *IssueFieldBadgeRequest) (*FieldBadgeIssuedResponse, error) {
+	if req == nil {
+		req = &IssueFieldBadgeRequest{}
+	}
+	var out FieldBadgeIssuedResponse
+	if err := r.c.Post(ctx, "/api/field-workers/"+url.PathEscape(id)+"/badges", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListBadges — GET /api/field-workers/{id}/badges.
+func (r *FieldWorkersResource) ListBadges(ctx context.Context, id string) (*FieldBadgeListResponse, error) {
+	var out FieldBadgeListResponse
+	if err := r.c.Get(ctx, "/api/field-workers/"+url.PathEscape(id)+"/badges", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RevokeBadge — POST /api/field-workers/{id}/badges/{badgeId}/revoke.
+func (r *FieldWorkersResource) RevokeBadge(ctx context.Context, id, badgeID string) error {
+	return r.c.Post(ctx, "/api/field-workers/"+url.PathEscape(id)+"/badges/"+url.PathEscape(badgeID)+"/revoke", nil, nil)
+}
+
+// BulkIssueBadges — POST /api/field-workers/badges. Issues a badge for each
+// of 1 to 200 workers.
+func (r *FieldWorkersResource) BulkIssueBadges(ctx context.Context, workerIDs []string) (*BulkIssueFieldBadgesResponse, error) {
+	var out BulkIssueFieldBadgesResponse
+	if err := r.c.Post(ctx, "/api/field-workers/badges", &BulkIssueFieldBadgesRequest{WorkerIDs: workerIDs}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// CreateSignInCode — POST /api/field-workers/{id}/sign-in-codes. The code is
+// redeemed at the platform's field sign-in to start an impersonated session.
+func (r *FieldWorkersResource) CreateSignInCode(ctx context.Context, id, appCode string) (*FieldSignInCodeResponse, error) {
+	var out FieldSignInCodeResponse
+	if err := r.c.Post(ctx, "/api/field-workers/"+url.PathEscape(id)+"/sign-in-codes", &CreateFieldSignInCodeRequest{AppCode: appCode}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

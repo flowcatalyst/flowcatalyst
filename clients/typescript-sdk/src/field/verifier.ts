@@ -105,7 +105,22 @@ export interface FieldTokenVerifierConfig {
 	now?: () => Date;
 }
 
-/** A verified field worker on a verified device. */
+/**
+ * Who is signed in as the worker (the RFC 8693 `act` claim): a supervisor
+ * (`field_worker`) or a platform user (`principal`).
+ */
+export interface FieldActor {
+	id: string;
+	type: string;
+	name: string;
+}
+
+/**
+ * A verified field worker on a verified key. When `actor` is set, someone else
+ * is signed in as the worker: every other field is still the WORKER's, and an
+ * app's audit trail records the worker as the subject and `actor` as the
+ * operator.
+ */
 export interface FieldPrincipal {
 	workerId: string;
 	clientId: string;
@@ -113,7 +128,9 @@ export interface FieldPrincipal {
 	workerCode: string;
 	name: string;
 	appCode: string;
+	/** Empty when the key is not an enrolled device (`deviceMode` is then `UNENROLLED`). */
 	deviceId: string;
+	/** `PERSONAL`, `SHARED` or `UNENROLLED`. */
 	deviceMode: string;
 	/** The login family (`sid`). */
 	sessionId: string;
@@ -123,6 +140,10 @@ export interface FieldPrincipal {
 	/** Thumbprint of the device key the request was proven with. */
 	jkt: string;
 	tokenId: string;
+	/** Set when someone other than the worker is signed in as them. */
+	actor: FieldActor | null;
+	/** True for a test identity. */
+	test: boolean;
 }
 
 const FIELD_TYP = "fc-field+jwt";
@@ -310,6 +331,17 @@ export class FieldTokenVerifier {
 			typeof claims[k] === "string" ? (claims[k] as string) : "";
 		const num = (k: string): number =>
 			typeof claims[k] === "number" ? (claims[k] as number) : 0;
+		const act = claims["act"] as
+			| { sub?: unknown; typ?: unknown; name?: unknown }
+			| undefined;
+		const actor: FieldActor | null =
+			act && typeof act.sub === "string" && act.sub !== ""
+				? {
+						id: act.sub,
+						type: typeof act.typ === "string" ? act.typ : "",
+						name: typeof act.name === "string" ? act.name : "",
+					}
+				: null;
 		return {
 			workerId: claims.sub ?? "",
 			clientId: str("client_id"),
@@ -329,6 +361,8 @@ export class FieldTokenVerifier {
 			expiresAt: new Date(num("exp") * 1000),
 			jkt: proof.jkt,
 			tokenId: claims.jti ?? "",
+			actor,
+			test: claims["test"] === true,
 		};
 	}
 }

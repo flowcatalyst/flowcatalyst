@@ -34,6 +34,7 @@ class IngestionRuntimePoll extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
     /**
      * {@inheritdoc}
      *
+     * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollConflictException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollUnprocessableEntityException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollUpgradeRequiredException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollInternalServerErrorException
@@ -46,6 +47,9 @@ class IngestionRuntimePoll extends \FlowCatalyst\Generated\Runtime\Client\BaseEn
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\PollResponse', 'json');
+        }
+        if (is_null($contentType) === false && (409 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\IngestionRuntimePollConflictException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json'), $response);
         }
         if (is_null($contentType) === false && (422 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
             throw new \FlowCatalyst\Generated\Exception\IngestionRuntimePollUnprocessableEntityException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json'), $response);

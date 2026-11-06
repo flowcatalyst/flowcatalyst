@@ -1,10 +1,18 @@
 package io.flowcatalyst.sdk.resources;
 
+import io.flowcatalyst.sdk.generated.model.BulkIssueFieldBadgesRequest;
+import io.flowcatalyst.sdk.generated.model.BulkIssueFieldBadgesResponse;
+import io.flowcatalyst.sdk.generated.model.CreateFieldSignInCodeRequest;
 import io.flowcatalyst.sdk.generated.model.EnsureFieldWorkerRequest;
+import io.flowcatalyst.sdk.generated.model.FieldBadgeIssuedResponse;
+import io.flowcatalyst.sdk.generated.model.FieldBadgeListResponse;
+import io.flowcatalyst.sdk.generated.model.FieldBadgeResponse;
+import io.flowcatalyst.sdk.generated.model.FieldSignInCodeResponse;
 import io.flowcatalyst.sdk.generated.model.FieldWorkerListResponse;
 import io.flowcatalyst.sdk.generated.model.FieldWorkerResponse;
 import io.flowcatalyst.sdk.generated.model.FieldWorkerSignInListResponse;
 import io.flowcatalyst.sdk.generated.model.GrantFieldWorkerAppRequest;
+import io.flowcatalyst.sdk.generated.model.IssueFieldBadgeRequest;
 import io.flowcatalyst.sdk.generated.model.ResetFieldWorkerPinRequest;
 import io.flowcatalyst.sdk.generated.model.ResetFieldWorkerPinResponse;
 import io.flowcatalyst.sdk.generated.model.UpdateFieldWorkerRequest;
@@ -25,10 +33,17 @@ public final class FieldWorkersResource {
         this.transport = transport;
     }
 
-    /** Query parameters for {@link #list}; every member is optional (null takes the default). */
-    public record Filters(String q, String appCode, String status, Integer page, Integer pageSize) {
+    /**
+     * Query parameters for {@link #list}; every member is optional (null takes the default).
+     * {@code isTest} limits to test identities (true) or real workers (false).
+     */
+    public record Filters(String q, String appCode, String status, Boolean isTest, Integer page, Integer pageSize) {
+        public Filters(String q, String appCode, String status, Integer page, Integer pageSize) {
+            this(q, appCode, status, null, page, pageSize);
+        }
+
         public static Filters none() {
-            return new Filters(null, null, null, null, null);
+            return new Filters(null, null, null, null, null, null);
         }
     }
 
@@ -48,6 +63,7 @@ public final class FieldWorkersResource {
             query.put("q", filters.q());
             query.put("appCode", filters.appCode());
             query.put("status", filters.status());
+            query.put("isTest", filters.isTest());
             query.put("page", filters.page());
             query.put("pageSize", filters.pageSize());
         }
@@ -101,6 +117,42 @@ public final class FieldWorkersResource {
     /** Revokes an application, and that application's sessions (idempotent). */
     public void revokeApp(String id, String appCode) {
         transport.delete(path(id) + "/apps/" + Transport.enc(appCode), Void.class);
+    }
+
+    /**
+     * Issues a badge, replacing the worker's ACTIVE badge. The response's {@code token} is the
+     * secret to print as a QR code; it is shown once. {@code label} (at most 255 characters) may be
+     * null.
+     */
+    public FieldBadgeIssuedResponse issueBadge(String id, String label) {
+        return transport.post(path(id) + "/badges", new IssueFieldBadgeRequest().label(label), FieldBadgeIssuedResponse.class);
+    }
+
+    /** The worker's badges (tokens are never returned). */
+    public FieldBadgeListResponse listBadges(String id) {
+        return transport.get(path(id) + "/badges", null, FieldBadgeListResponse.class);
+    }
+
+    public FieldBadgeResponse revokeBadge(String id, String badgeId) {
+        return transport.post(path(id) + "/badges/" + Transport.enc(badgeId) + "/revoke", null, FieldBadgeResponse.class);
+    }
+
+    /**
+     * Issues a badge for each of 1 to 200 workers in one transaction (all or nothing). Each result
+     * carries the token, shown once.
+     */
+    public BulkIssueFieldBadgesResponse bulkIssueBadges(java.util.List<String> workerIds) {
+        return transport.post("/api/field-workers/badges", new BulkIssueFieldBadgesRequest().workerIds(workerIds),
+                BulkIssueFieldBadgesResponse.class);
+    }
+
+    /**
+     * Mints a single-use code a console admin redeems at the platform's field sign-in to start an
+     * impersonated session as the worker.
+     */
+    public FieldSignInCodeResponse createSignInCode(String id, String appCode) {
+        return transport.post(path(id) + "/sign-in-codes", new CreateFieldSignInCodeRequest().appCode(appCode),
+                FieldSignInCodeResponse.class);
     }
 
     /** Sign-in attempts, newest first. {@code page} is 0-based; either argument may be null. */

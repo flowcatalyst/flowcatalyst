@@ -23,6 +23,14 @@ class FieldWorkerResponse
      */
     protected $apps;
     /**
+     * @var FieldWorkerBadgeRef|null
+     */
+    protected $badge;
+    /**
+     * @var bool|null
+     */
+    protected $canImpersonate;
+    /**
      * @var string|null
      */
     protected $clientId;
@@ -54,6 +62,10 @@ class FieldWorkerResponse
      * @var string|null
      */
     protected $id;
+    /**
+     * @var bool|null
+     */
+    protected $isTest;
     /**
      * @var \DateTime|null
      */
@@ -124,6 +136,42 @@ class FieldWorkerResponse
     {
         $this->initialized['apps'] = true;
         $this->apps = $apps;
+        return $this;
+    }
+    /**
+     * @return FieldWorkerBadgeRef|null
+     */
+    public function getBadge(): ?FieldWorkerBadgeRef
+    {
+        return $this->badge;
+    }
+    /**
+     * @param FieldWorkerBadgeRef|null $badge
+     *
+     * @return self
+     */
+    public function setBadge(?FieldWorkerBadgeRef $badge): self
+    {
+        $this->initialized['badge'] = true;
+        $this->badge = $badge;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getCanImpersonate(): ?bool
+    {
+        return $this->canImpersonate;
+    }
+    /**
+     * @param bool|null $canImpersonate
+     *
+     * @return self
+     */
+    public function setCanImpersonate(?bool $canImpersonate): self
+    {
+        $this->initialized['canImpersonate'] = true;
+        $this->canImpersonate = $canImpersonate;
         return $this;
     }
     /**
@@ -268,6 +316,24 @@ class FieldWorkerResponse
     {
         $this->initialized['id'] = true;
         $this->id = $id;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getIsTest(): ?bool
+    {
+        return $this->isTest;
+    }
+    /**
+     * @param bool|null $isTest
+     *
+     * @return self
+     */
+    public function setIsTest(?bool $isTest): self
+    {
+        $this->initialized['isTest'] = true;
+        $this->isTest = $isTest;
         return $this;
     }
     /**

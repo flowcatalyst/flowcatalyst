@@ -19,9 +19,19 @@ class UpdateFieldWorkerRequest extends \ArrayObject
      */
     protected $dollarSchema;
     /**
+     * Changing it needs the impersonate permission; clearing it ends the sessions the worker holds as an actor
+     *
+     * @var bool|null
+     */
+    protected $canImpersonate;
+    /**
      * @var string|null
      */
     protected $email;
+    /**
+     * @var bool|null
+     */
+    protected $isTest;
     /**
      * @var string|null
      */
@@ -49,6 +59,28 @@ class UpdateFieldWorkerRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Changing it needs the impersonate permission; clearing it ends the sessions the worker holds as an actor
+     *
+     * @return bool|null
+     */
+    public function getCanImpersonate(): ?bool
+    {
+        return $this->canImpersonate;
+    }
+    /**
+     * Changing it needs the impersonate permission; clearing it ends the sessions the worker holds as an actor
+     *
+     * @param bool|null $canImpersonate
+     *
+     * @return self
+     */
+    public function setCanImpersonate(?bool $canImpersonate): self
+    {
+        $this->initialized['canImpersonate'] = true;
+        $this->canImpersonate = $canImpersonate;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getEmail(): ?string
@@ -64,6 +96,24 @@ class UpdateFieldWorkerRequest extends \ArrayObject
     {
         $this->initialized['email'] = true;
         $this->email = $email;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getIsTest(): ?bool
+    {
+        return $this->isTest;
+    }
+    /**
+     * @param bool|null $isTest
+     *
+     * @return self
+     */
+    public function setIsTest(?bool $isTest): self
+    {
+        $this->initialized['isTest'] = true;
+        $this->isTest = $isTest;
         return $this;
     }
     /**

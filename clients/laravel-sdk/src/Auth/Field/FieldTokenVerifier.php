@@ -155,6 +155,14 @@ final class FieldTokenVerifier
                 $amr[] = $a;
             }
         }
+        $act = $claims['act'] ?? null;
+        $actor = is_array($act) && is_string($act['sub'] ?? null) && $act['sub'] !== ''
+            ? new FieldActor(
+                id: $act['sub'],
+                type: is_string($act['typ'] ?? null) ? $act['typ'] : '',
+                name: is_string($act['name'] ?? null) ? $act['name'] : '',
+            )
+            : null;
         return new FieldPrincipal(
             workerId: $str('sub'),
             clientId: $str('client_id'),
@@ -172,6 +180,8 @@ final class FieldTokenVerifier
             expiresAt: new \DateTimeImmutable('@' . (int) $claims['exp']),
             jkt: $proof['jkt'],
             tokenId: $str('jti'),
+            actor: $actor,
+            test: ($claims['test'] ?? false) === true,
         );
     }
 

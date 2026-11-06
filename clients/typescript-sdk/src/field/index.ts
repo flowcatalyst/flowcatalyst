@@ -6,5 +6,6 @@ export {
 	FieldReason,
 	type FieldReasonCode,
 	type FieldPrincipal,
+	type FieldActor,
 	type FieldTokenVerifierConfig,
 } from "./verifier.js";

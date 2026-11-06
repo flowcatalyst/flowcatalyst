@@ -40,11 +40,20 @@ class FieldTokenIntrospectResponseNormalizer implements DenormalizerInterface, N
         if (\array_key_exists('active', $data) && \is_int($data['active'])) {
             $data['active'] = (bool) $data['active'];
         }
+        if (\array_key_exists('test', $data) && \is_int($data['test'])) {
+            $data['test'] = (bool) $data['test'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+        }
+        if (\array_key_exists('act', $data) && $data['act'] !== null) {
+            $object->setAct($this->denormalizer->denormalize($data['act'], \FlowCatalyst\Generated\Model\FieldTokenActor::class, 'json', $context));
+        }
+        elseif (\array_key_exists('act', $data) && $data['act'] === null) {
+            $object->setAct(null);
         }
         if (\array_key_exists('active', $data) && $data['active'] !== null) {
             $object->setActive($data['active']);
@@ -98,6 +107,12 @@ class FieldTokenIntrospectResponseNormalizer implements DenormalizerInterface, N
         elseif (\array_key_exists('sub', $data) && $data['sub'] === null) {
             $object->setSub(null);
         }
+        if (\array_key_exists('test', $data) && $data['test'] !== null) {
+            $object->setTest($data['test']);
+        }
+        elseif (\array_key_exists('test', $data) && $data['test'] === null) {
+            $object->setTest(null);
+        }
         if (\array_key_exists('workerCode', $data) && $data['workerCode'] !== null) {
             $object->setWorkerCode($data['workerCode']);
         }
@@ -109,6 +124,9 @@ class FieldTokenIntrospectResponseNormalizer implements DenormalizerInterface, N
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
+        if ($data->isInitialized('act') && null !== $data->getAct()) {
+            $dataArray['act'] = $this->normalizer->normalize($data->getAct(), 'json', $context);
+        }
         $dataArray['active'] = $data->getActive();
         if ($data->isInitialized('amr') && null !== $data->getAmr()) {
             $values = [];
@@ -134,6 +152,9 @@ class FieldTokenIntrospectResponseNormalizer implements DenormalizerInterface, N
         }
         if ($data->isInitialized('sub') && null !== $data->getSub()) {
             $dataArray['sub'] = $data->getSub();
+        }
+        if ($data->isInitialized('test') && null !== $data->getTest()) {
+            $dataArray['test'] = $data->getTest();
         }
         if ($data->isInitialized('workerCode') && null !== $data->getWorkerCode()) {
             $dataArray['workerCode'] = $data->getWorkerCode();

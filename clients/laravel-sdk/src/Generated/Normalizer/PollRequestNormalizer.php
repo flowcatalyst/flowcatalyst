@@ -62,6 +62,13 @@ class PollRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
         elseif (\array_key_exists('contractVersion', $data) && $data['contractVersion'] === null) {
             $object->setContractVersion(null);
         }
+        if (\array_key_exists('instanceId', $data) && $data['instanceId'] !== null) {
+            $object->setInstanceId($data['instanceId']);
+            unset($data['instanceId']);
+        }
+        elseif (\array_key_exists('instanceId', $data) && $data['instanceId'] === null) {
+            $object->setInstanceId(null);
+        }
         if (\array_key_exists('kinds', $data) && $data['kinds'] !== null) {
             $values_1 = [];
             foreach ($data['kinds'] as $value_1) {
@@ -105,6 +112,9 @@ class PollRequestNormalizer implements DenormalizerInterface, NormalizerInterfac
             $dataArray['builtinKinds'] = $values;
         }
         $dataArray['contractVersion'] = $data->getContractVersion();
+        if ($data->isInitialized('instanceId') && null !== $data->getInstanceId()) {
+            $dataArray['instanceId'] = $data->getInstanceId();
+        }
         if ($data->isInitialized('kinds') && null !== $data->getKinds()) {
             $values_1 = [];
             foreach ($data->getKinds() as $value_1) {

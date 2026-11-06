@@ -50,10 +50,21 @@ describe("shared conformance fixtures (api/field-fixtures)", () => {
 			url: string;
 			now: string;
 			expect: string;
+			principal?: {
+				deviceId: string;
+				deviceMode: string;
+				amr: string[];
+				actor?: { id: string; type: string; name: string };
+				test: boolean;
+			};
 		}[];
 	};
 	const jwks = JSON.parse(readFileSync(`${fixtureDir}jwks.json`, "utf8"));
-	assert.ok(fx.cases.length >= 16, "expected the full vector set");
+	assert.ok(fx.cases.length >= 20, "expected the full vector set");
+	assert.ok(
+		fx.cases.filter((c) => c.principal).length >= 4,
+		"expected the sign-in-options principal cases",
+	);
 	for (const c of fx.cases) {
 		it(`${c.name} -> ${c.expect}`, async () => {
 			const v = new FieldTokenVerifier({
@@ -67,6 +78,25 @@ describe("shared conformance fixtures (api/field-fixtures)", () => {
 			);
 			assert.equal(got, c.expect);
 		});
+		if (c.expect === "valid" && c.principal) {
+			const want = c.principal;
+			it(`${c.name} exposes the principal`, async () => {
+				const v = new FieldTokenVerifier({
+					issuer: fx.issuer,
+					appCode: fx.appCode,
+					keys: createLocalJWKSet(jwks),
+					now: () => new Date(c.now),
+				});
+				const p = await v.verify(`DPoP ${c.accessToken}`, c.dpopProof, c.method, c.url);
+				assert.equal(p.workerId, "fwu_0FIXTUREWORKER");
+				assert.equal(p.workerCode, "W001");
+				assert.equal(p.deviceId, want.deviceId);
+				assert.equal(p.deviceMode, want.deviceMode);
+				assert.deepEqual(p.amr, want.amr);
+				assert.equal(p.test, want.test);
+				assert.deepEqual(p.actor, want.actor ?? null);
+			});
+		}
 	}
 	it("valid case yields the principal", async () => {
 		const c = fx.cases[0]!;
@@ -97,6 +127,28 @@ describe("FieldTokenVerifier (generated tokens)", async () => {
 		const p = await mk().verify(`DPoP ${token}`, proof, "POST", `${URL_}?x=1`);
 		assert.equal(p.jkt, device.jkt);
 		assert.equal(p.clientIdentifier, "acme");
+	});
+
+	it("a token with no device_id is an unenrolled key; no act claim means no actor", async () => {
+		const token = await mintToken(platform, device, { device_id: undefined, device_mode: "UNENROLLED" });
+		const proof = await mintProof(device, token, "POST", URL_);
+		const p = await mk().verify(`DPoP ${token}`, proof, "POST", URL_);
+		assert.equal(p.deviceId, "");
+		assert.equal(p.deviceMode, "UNENROLLED");
+		assert.equal(p.actor, null);
+		assert.equal(p.test, false);
+	});
+
+	it("exposes act as actor and test", async () => {
+		const token = await mintToken(platform, device, {
+			act: { sub: "prn_1", typ: "principal", name: "Admin" },
+			test: true,
+		});
+		const proof = await mintProof(device, token, "POST", URL_);
+		const p = await mk().verify(`DPoP ${token}`, proof, "POST", URL_);
+		assert.deepEqual(p.actor, { id: "prn_1", type: "principal", name: "Admin" });
+		assert.equal(p.test, true);
+		assert.equal(p.workerId, "fwu_1");
 	});
 
 	it("refuses HS256, none and ES256 access tokens as invalid_token", async () => {

@@ -6,7 +6,15 @@ namespace FlowCatalyst\Client\Resources;
 
 use FlowCatalyst\Client\FlowCatalystClient;
 use FlowCatalyst\Generated\Model\StatusChangeResponse;
+use FlowCatalyst\Generated\Model\BulkIssueFieldBadgesRequest;
+use FlowCatalyst\Generated\Model\BulkIssueFieldBadgesResponse;
+use FlowCatalyst\Generated\Model\CreateFieldSignInCodeRequest;
 use FlowCatalyst\Generated\Model\EnsureFieldWorkerRequest;
+use FlowCatalyst\Generated\Model\FieldBadgeIssuedResponse;
+use FlowCatalyst\Generated\Model\FieldBadgeListResponse;
+use FlowCatalyst\Generated\Model\FieldBadgeResponse;
+use FlowCatalyst\Generated\Model\FieldSignInCodeResponse;
+use FlowCatalyst\Generated\Model\IssueFieldBadgeRequest;
 use FlowCatalyst\Generated\Model\FieldWorkerListResponse;
 use FlowCatalyst\Generated\Model\FieldWorkerResponse;
 use FlowCatalyst\Generated\Model\FieldWorkerSignInListResponse;
@@ -32,10 +40,15 @@ class FieldWorkers
     }
 
     /**
-     * @param array{q?: string, appCode?: string, status?: string, page?: int, pageSize?: int} $filters
+     * `isTest` limits to test identities (true) or real workers (false).
+     *
+     * @param array{q?: string, appCode?: string, status?: string, isTest?: bool|string, page?: int, pageSize?: int} $filters
      */
     public function list(string $clientId, array $filters = []): ?FieldWorkerListResponse
     {
+        if (isset($filters['isTest']) && is_bool($filters['isTest'])) {
+            $filters['isTest'] = $filters['isTest'] ? 'true' : 'false';
+        }
         return $this->client->generated()->listFieldWorkers(['clientId' => $clientId] + $filters);
     }
 
@@ -94,5 +107,49 @@ class FieldWorkers
     {
         $query = array_filter(['page' => $page, 'pageSize' => $pageSize], static fn ($v) => $v !== null);
         return $this->client->generated()->listFieldWorkerSignIns($id, $query);
+    }
+
+    /**
+     * Issue a badge (replaces the worker's ACTIVE badge). The response's `token`
+     * is the secret to print as a QR code; it is shown once.
+     */
+    public function issueBadge(string $id, ?string $label = null): ?FieldBadgeIssuedResponse
+    {
+        $body = new IssueFieldBadgeRequest();
+        if ($label !== null) {
+            $body->setLabel($label);
+        }
+        return $this->client->generated()->issueFieldWorkerBadge($id, $body);
+    }
+
+    /** The worker's badges (tokens are never returned). */
+    public function listBadges(string $id): ?FieldBadgeListResponse
+    {
+        return $this->client->generated()->listFieldWorkerBadges($id);
+    }
+
+    public function revokeBadge(string $id, string $badgeId): ?FieldBadgeResponse
+    {
+        return $this->client->generated()->revokeFieldWorkerBadge($id, $badgeId);
+    }
+
+    /**
+     * Issue a badge for each of 1 to 200 workers in one transaction (all or
+     * nothing). Each result carries the token, shown once.
+     *
+     * @param list<string> $workerIds
+     */
+    public function bulkIssueBadges(array $workerIds): ?BulkIssueFieldBadgesResponse
+    {
+        return $this->client->generated()->issueFieldWorkerBadges((new BulkIssueFieldBadgesRequest())->setWorkerIds($workerIds));
+    }
+
+    /**
+     * Mint a single-use code a console admin redeems at the platform's field
+     * sign-in to start an impersonated session as the worker.
+     */
+    public function createSignInCode(string $id, string $appCode): ?FieldSignInCodeResponse
+    {
+        return $this->client->generated()->createFieldWorkerSignInCode($id, (new CreateFieldSignInCodeRequest())->setAppCode($appCode));
     }
 }

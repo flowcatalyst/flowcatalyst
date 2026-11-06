@@ -555,6 +555,34 @@ export type BulkImportUser = {
     roles?: Array<string>;
 };
 
+export type BulkIssueFieldBadgesRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * 1 to 200 workers, all in clients the caller can access; otherwise nothing is issued
+     */
+    workerIds: Array<string>;
+    [key: string]: unknown | string | Array<string> | undefined;
+};
+
+export type BulkIssueFieldBadgesResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    issued: Array<BulkIssuedFieldBadge>;
+};
+
+export type BulkIssuedFieldBadge = {
+    badge: FieldBadgeResponse;
+    name: string;
+    token: string;
+    workerCode: string;
+    workerId: string;
+};
+
 export type CheckEmailDomainResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1004,6 +1032,18 @@ export type CreateEventTypeRequest = {
      */
     schema?: unknown;
     [key: string]: unknown | string | boolean | undefined;
+};
+
+export type CreateFieldSignInCodeRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The application the worker is signed in to
+     */
+    appCode: string;
+    [key: string]: unknown | string | undefined;
 };
 
 export type CreateFunctionRequest = {
@@ -1751,12 +1791,20 @@ export type EnsureFieldWorkerRequest = {
      * Applications the worker may sign in to; granted additively
      */
     appCodes?: Array<string>;
+    /**
+     * New worker only; needs the impersonate permission
+     */
+    canImpersonate?: boolean;
     clientId: string;
     email?: string;
+    /**
+     * New worker only: a test identity
+     */
+    isTest?: boolean;
     name: string;
     pin?: string;
     workerCode: string;
-    [key: string]: unknown | string | Array<string> | undefined;
+    [key: string]: unknown | string | Array<string> | boolean | undefined;
 };
 
 export type ErrorModel = {
@@ -1920,6 +1968,38 @@ export type FieldAppRef = {
     name: string;
 };
 
+export type FieldBadgeIssuedResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    badge: FieldBadgeResponse;
+    token: string;
+};
+
+export type FieldBadgeListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    badges: Array<FieldBadgeResponse>;
+};
+
+export type FieldBadgeResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    createdAt: string;
+    createdBy?: string;
+    id: string;
+    label?: string;
+    lastUsedAt?: string;
+    revokedAt?: string;
+    status: 'ACTIVE' | 'REVOKED';
+    workerId: string;
+};
+
 export type FieldDeviceListResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1976,18 +2056,38 @@ export type FieldPolicyResponse = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    badgeOnlyLogin: boolean;
     clientId: string;
     hardLockThreshold: number;
+    impersonationMaxSecs: number;
     isDefault: boolean;
     personalIdleSecs: number;
     pinMinLength: number;
     pinReauthDays: number;
     requireAttestation: boolean;
+    requireEnrolledDevice: boolean;
     sharedIdleSecs: number;
     shiftMaxSecs: number;
     softLockSecs: number;
     softLockThreshold: number;
+    unenrolledIdleSecs: number;
     updatedAt?: string;
+};
+
+export type FieldSignInCodeResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    appCode: string;
+    code: string;
+    expiresAt: string;
+    workerId: string;
+};
+
+export type FieldTokenActor = {
+    sub: string;
+    typ: string;
 };
 
 export type FieldTokenIntrospectRequest = {
@@ -2004,6 +2104,7 @@ export type FieldTokenIntrospectResponse = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    act?: FieldTokenActor;
     active: boolean;
     amr?: Array<string>;
     appCode?: string;
@@ -2012,6 +2113,7 @@ export type FieldTokenIntrospectResponse = {
     deviceId?: string;
     exp?: string;
     sub?: string;
+    test?: boolean;
     workerCode?: string;
 };
 
@@ -2021,6 +2123,13 @@ export type FieldWorkerAppRef = {
     id: string;
     name: string;
     source: string;
+};
+
+export type FieldWorkerBadgeRef = {
+    createdAt: string;
+    id: string;
+    lastUsedAt?: string;
+    status: 'ACTIVE' | 'REVOKED';
 };
 
 export type FieldWorkerListResponse = {
@@ -2040,6 +2149,8 @@ export type FieldWorkerResponse = {
      */
     readonly $schema?: string;
     apps: Array<FieldWorkerAppRef>;
+    badge: FieldWorkerBadgeRef;
+    canImpersonate: boolean;
     clientId: string;
     created?: boolean;
     createdAt: string;
@@ -2048,6 +2159,7 @@ export type FieldWorkerResponse = {
     hardLocked: boolean;
     hasPin: boolean;
     id: string;
+    isTest: boolean;
     lastLoginAt?: string;
     locked: boolean;
     lockedUntil?: string;
@@ -2070,6 +2182,7 @@ export type FieldWorkerSignInListResponse = {
 };
 
 export type FieldWorkerSignInResponse = {
+    actorId?: string;
     appCode?: string;
     attemptedAt: string;
     authMethod: string;
@@ -2140,6 +2253,26 @@ export type FunctionResponse = {
     serviceAccountId?: string;
     updatedAt: string;
     warm: boolean;
+};
+
+export type FunctionTokenRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    functionId: string;
+    version: number;
+    [key: string]: unknown | string | number | undefined;
+};
+
+export type FunctionTokenResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    accessToken: string;
+    expiresIn: number;
+    tokenType: string;
 };
 
 export type GrantAccessRequest = {
@@ -2509,6 +2642,9 @@ export type IngestionResponse = {
      * Undismissed notices: rejected failures (GET .../failures?category=rejected&undismissed=true)
      */
     notices: number;
+    /**
+     * Set while a running ingestion runs nowhere: 'no runtime carries this kind', or, for a polled source, 'not running: no runtime has held it since <RFC 3339 time>' once no runtime has held its lease for a lease and two minutes
+     */
     runtimeNotice?: string;
     /**
      * What this create or update did: saved and made live, made an existing version live, saved as a draft awaiting promote, matched an existing draft, or changed nothing
@@ -2960,6 +3096,18 @@ export type InviteApplicationUserResponse = {
     inviteLink?: string;
 };
 
+export type IssueFieldBadgeRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * A note for the printed badge (at most 255 characters)
+     */
+    label?: string;
+    [key: string]: unknown | string | undefined;
+};
+
 export type JobRecord = {
     /**
      * At most 100 characters
@@ -3078,6 +3226,32 @@ export type MappingResponse = {
     requiredOidcTenantId?: string;
     scopeType: string;
     updatedAt: string;
+};
+
+export type MatchEmailsRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Addresses (each entry is parsed like text)
+     */
+    emails?: Array<string>;
+    /**
+     * Pasted address list: commas, semicolons, whitespace or 'Name <addr>' entries
+     */
+    text?: string;
+    [key: string]: unknown | string | Array<string> | undefined;
+};
+
+export type MatchEmailsResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    invalid: Array<string>;
+    matches: Array<PrincipalResponse>;
+    unmatched: Array<string>;
 };
 
 export type MetadataDto = {
@@ -3230,6 +3404,10 @@ export type PollRequest = {
      */
     contractVersion: number;
     /**
+     * The runtime process, new on every start (a random UUID). While another instance that polled as this runtimeId is live (polled within one lease and has not said goodbye since), the poll is refused with 409 RUNTIME_ID_IN_USE and changes nothing. Absent: no check.
+     */
+    instanceId?: string;
+    /**
      * The kinds the runtime's extensions add (and camel-route)
      */
     kinds?: Array<RuntimeKind>;
@@ -3241,7 +3419,7 @@ export type PollRequest = {
      * Where the runtime can be reached; informational, the platform never calls it
      */
     url?: string;
-    [key: string]: unknown | string | Array<string> | number | Array<RuntimeKind> | string | string | undefined;
+    [key: string]: unknown | string | Array<string> | number | string | Array<RuntimeKind> | string | string | undefined;
 };
 
 export type PollResponse = {
@@ -3588,9 +3766,17 @@ export type PutFieldPolicyRequest = {
      */
     readonly $schema?: string;
     /**
+     * Let a badge sign in without a PIN on an enrolled device (default false)
+     */
+    badgeOnlyLogin?: boolean;
+    /**
      * softLockThreshold to 50 (default 10)
      */
     hardLockThreshold?: number;
+    /**
+     * 300 to 43200 (default 14400)
+     */
+    impersonationMaxSecs?: number;
     /**
      * 60 to 86400 (default 7200)
      */
@@ -3604,6 +3790,10 @@ export type PutFieldPolicyRequest = {
      */
     pinReauthDays?: number;
     requireAttestation: boolean;
+    /**
+     * Refuse sign-in from a key that is not an enrolled device (default false)
+     */
+    requireEnrolledDevice?: boolean;
     /**
      * 60 to 86400 (default 900)
      */
@@ -3620,7 +3810,11 @@ export type PutFieldPolicyRequest = {
      * 1 to 20 (default 5)
      */
     softLockThreshold?: number;
-    [key: string]: unknown | string | number | boolean | undefined;
+    /**
+     * 60 to 86400 (default 900)
+     */
+    unenrolledIdleSecs?: number;
+    [key: string]: unknown | string | boolean | number | undefined;
 };
 
 export type PutRouteRequest = {
@@ -3773,6 +3967,41 @@ export type RegisterCompleteResponse = {
      */
     readonly $schema?: string;
     credentialId: string;
+};
+
+export type ReleaseRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The runtime is shutting down: it stops counting as live at once, for fair shares and for the instance guard.
+     */
+    goodbye: boolean;
+    /**
+     * Single-owner ingestions whose routes have stopped; their leases end now. One the runtime does not hold is ignored.
+     */
+    ingestionIds: Array<string>;
+    /**
+     * The runtime process, as on poll. When it differs from the instance stored for runtimeId the release is refused with 409 RUNTIME_ID_IN_USE and changes nothing.
+     */
+    instanceId?: string;
+    /**
+     * The releasing runtime
+     */
+    runtimeId: string;
+    [key: string]: unknown | string | boolean | Array<string> | string | string | undefined;
+};
+
+export type ReleaseResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * How many of the named leases the runtime held and now has ended
+     */
+    released: number;
 };
 
 export type ReportRequest = {
@@ -5285,6 +5514,10 @@ export type UpdateApplicationRequest = {
     logo?: string;
     logoMimeType?: string;
     name?: string;
+    /**
+     * APPLICATION or INTEGRATION
+     */
+    type?: string;
     website?: string;
     [key: string]: unknown | string | undefined;
 };
@@ -5375,9 +5608,14 @@ export type UpdateFieldWorkerRequest = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Changing it needs the impersonate permission; clearing it ends the sessions the worker holds as an actor
+     */
+    canImpersonate?: boolean;
     email?: string;
+    isTest?: boolean;
     name: string;
-    [key: string]: unknown | string | undefined;
+    [key: string]: unknown | string | boolean | undefined;
 };
 
 export type UpdateFunctionRequest = {
@@ -5964,6 +6202,26 @@ export type BulkImportResponseWritable = {
     skipped: number;
 };
 
+export type BulkIssueFieldBadgesRequestWritable = {
+    /**
+     * 1 to 200 workers, all in clients the caller can access; otherwise nothing is issued
+     */
+    workerIds: Array<string>;
+    [key: string]: unknown | Array<string>;
+};
+
+export type BulkIssueFieldBadgesResponseWritable = {
+    issued: Array<BulkIssuedFieldBadgeWritable>;
+};
+
+export type BulkIssuedFieldBadgeWritable = {
+    badge: FieldBadgeResponseWritable;
+    name: string;
+    token: string;
+    workerCode: string;
+    workerId: string;
+};
+
 export type CheckEmailDomainResponseWritable = {
     allowedClientIds: Array<string>;
     authMethod: string;
@@ -6289,6 +6547,14 @@ export type CreateEventTypeRequestWritable = {
      */
     schema?: unknown;
     [key: string]: unknown | string | boolean | undefined;
+};
+
+export type CreateFieldSignInCodeRequestWritable = {
+    /**
+     * The application the worker is signed in to
+     */
+    appCode: string;
+    [key: string]: unknown | string;
 };
 
 export type CreateFunctionRequestWritable = {
@@ -6806,12 +7072,20 @@ export type EnsureFieldWorkerRequestWritable = {
      * Applications the worker may sign in to; granted additively
      */
     appCodes?: Array<string>;
+    /**
+     * New worker only; needs the impersonate permission
+     */
+    canImpersonate?: boolean;
     clientId: string;
     email?: string;
+    /**
+     * New worker only: a test identity
+     */
+    isTest?: boolean;
     name: string;
     pin?: string;
     workerCode: string;
-    [key: string]: unknown | Array<string> | string | undefined;
+    [key: string]: unknown | Array<string> | boolean | string | undefined;
 };
 
 export type ErrorModelWritable = {
@@ -6871,6 +7145,26 @@ export type EventTypeResponseWritable = {
     updatedAt: string;
 };
 
+export type FieldBadgeIssuedResponseWritable = {
+    badge: FieldBadgeResponseWritable;
+    token: string;
+};
+
+export type FieldBadgeListResponseWritable = {
+    badges: Array<FieldBadgeResponseWritable>;
+};
+
+export type FieldBadgeResponseWritable = {
+    createdAt: string;
+    createdBy?: string;
+    id: string;
+    label?: string;
+    lastUsedAt?: string;
+    revokedAt?: string;
+    status: 'ACTIVE' | 'REVOKED';
+    workerId: string;
+};
+
 export type FieldDeviceListResponseWritable = {
     devices: Array<FieldDeviceResponseWritable>;
     page: number;
@@ -6905,18 +7199,29 @@ export type FieldEnrolmentCodeResponseWritable = {
 };
 
 export type FieldPolicyResponseWritable = {
+    badgeOnlyLogin: boolean;
     clientId: string;
     hardLockThreshold: number;
+    impersonationMaxSecs: number;
     isDefault: boolean;
     personalIdleSecs: number;
     pinMinLength: number;
     pinReauthDays: number;
     requireAttestation: boolean;
+    requireEnrolledDevice: boolean;
     sharedIdleSecs: number;
     shiftMaxSecs: number;
     softLockSecs: number;
     softLockThreshold: number;
+    unenrolledIdleSecs: number;
     updatedAt?: string;
+};
+
+export type FieldSignInCodeResponseWritable = {
+    appCode: string;
+    code: string;
+    expiresAt: string;
+    workerId: string;
 };
 
 export type FieldTokenIntrospectRequestWritable = {
@@ -6925,6 +7230,7 @@ export type FieldTokenIntrospectRequestWritable = {
 };
 
 export type FieldTokenIntrospectResponseWritable = {
+    act?: FieldTokenActor;
     active: boolean;
     amr?: Array<string>;
     appCode?: string;
@@ -6933,6 +7239,7 @@ export type FieldTokenIntrospectResponseWritable = {
     deviceId?: string;
     exp?: string;
     sub?: string;
+    test?: boolean;
     workerCode?: string;
 };
 
@@ -6945,6 +7252,8 @@ export type FieldWorkerListResponseWritable = {
 
 export type FieldWorkerResponseWritable = {
     apps: Array<FieldWorkerAppRef>;
+    badge: FieldWorkerBadgeRef;
+    canImpersonate: boolean;
     clientId: string;
     created?: boolean;
     createdAt: string;
@@ -6953,6 +7262,7 @@ export type FieldWorkerResponseWritable = {
     hardLocked: boolean;
     hasPin: boolean;
     id: string;
+    isTest: boolean;
     lastLoginAt?: string;
     locked: boolean;
     lockedUntil?: string;
@@ -6997,6 +7307,18 @@ export type FunctionResponseWritable = {
     serviceAccountId?: string;
     updatedAt: string;
     warm: boolean;
+};
+
+export type FunctionTokenRequestWritable = {
+    functionId: string;
+    version: number;
+    [key: string]: unknown | string | number;
+};
+
+export type FunctionTokenResponseWritable = {
+    accessToken: string;
+    expiresIn: number;
+    tokenType: string;
 };
 
 export type GrantAccessRequestWritable = {
@@ -7228,6 +7550,9 @@ export type IngestionResponseWritable = {
      * Undismissed notices: rejected failures (GET .../failures?category=rejected&undismissed=true)
      */
     notices: number;
+    /**
+     * Set while a running ingestion runs nowhere: 'no runtime carries this kind', or, for a polled source, 'not running: no runtime has held it since <RFC 3339 time>' once no runtime has held its lease for a lease and two minutes
+     */
     runtimeNotice?: string;
     /**
      * What this create or update did: saved and made live, made an existing version live, saved as a draft awaiting promote, matched an existing draft, or changed nothing
@@ -7442,6 +7767,14 @@ export type InviteApplicationUserResponseWritable = {
     inviteLink?: string;
 };
 
+export type IssueFieldBadgeRequestWritable = {
+    /**
+     * A note for the printed badge (at most 255 characters)
+     */
+    label?: string;
+    [key: string]: unknown | string | undefined;
+};
+
 export type ListOutputBodyWritable = {
     requests: Array<RequestDto>;
 };
@@ -7473,6 +7806,24 @@ export type MappingResponseWritable = {
     requiredOidcTenantId?: string;
     scopeType: string;
     updatedAt: string;
+};
+
+export type MatchEmailsRequestWritable = {
+    /**
+     * Addresses (each entry is parsed like text)
+     */
+    emails?: Array<string>;
+    /**
+     * Pasted address list: commas, semicolons, whitespace or 'Name <addr>' entries
+     */
+    text?: string;
+    [key: string]: unknown | Array<string> | string | undefined;
+};
+
+export type MatchEmailsResponseWritable = {
+    invalid: Array<string>;
+    matches: Array<PrincipalResponseWritable>;
+    unmatched: Array<string>;
 };
 
 export type MoveProviderRequestWritable = {
@@ -7568,6 +7919,10 @@ export type PollRequestWritable = {
      */
     contractVersion: number;
     /**
+     * The runtime process, new on every start (a random UUID). While another instance that polled as this runtimeId is live (polled within one lease and has not said goodbye since), the poll is refused with 409 RUNTIME_ID_IN_USE and changes nothing. Absent: no check.
+     */
+    instanceId?: string;
+    /**
      * The kinds the runtime's extensions add (and camel-route)
      */
     kinds?: Array<RuntimeKind>;
@@ -7579,7 +7934,7 @@ export type PollRequestWritable = {
      * Where the runtime can be reached; informational, the platform never calls it
      */
     url?: string;
-    [key: string]: unknown | Array<string> | number | Array<RuntimeKind> | string | string | undefined;
+    [key: string]: unknown | Array<string> | number | string | Array<RuntimeKind> | string | string | undefined;
 };
 
 export type PollResponseWritable = {
@@ -7786,9 +8141,17 @@ export type PutAliasResponseWritable = {
 
 export type PutFieldPolicyRequestWritable = {
     /**
+     * Let a badge sign in without a PIN on an enrolled device (default false)
+     */
+    badgeOnlyLogin?: boolean;
+    /**
      * softLockThreshold to 50 (default 10)
      */
     hardLockThreshold?: number;
+    /**
+     * 300 to 43200 (default 14400)
+     */
+    impersonationMaxSecs?: number;
     /**
      * 60 to 86400 (default 7200)
      */
@@ -7802,6 +8165,10 @@ export type PutFieldPolicyRequestWritable = {
      */
     pinReauthDays?: number;
     requireAttestation: boolean;
+    /**
+     * Refuse sign-in from a key that is not an enrolled device (default false)
+     */
+    requireEnrolledDevice?: boolean;
     /**
      * 60 to 86400 (default 900)
      */
@@ -7818,7 +8185,11 @@ export type PutFieldPolicyRequestWritable = {
      * 1 to 20 (default 5)
      */
     softLockThreshold?: number;
-    [key: string]: unknown | number | boolean | undefined;
+    /**
+     * 60 to 86400 (default 900)
+     */
+    unenrolledIdleSecs?: number;
+    [key: string]: unknown | boolean | number | undefined;
 };
 
 export type PutRouteRequestWritable = {
@@ -7891,6 +8262,33 @@ export type RegisterCompleteRequestWritable = {
 
 export type RegisterCompleteResponseWritable = {
     credentialId: string;
+};
+
+export type ReleaseRequestWritable = {
+    /**
+     * The runtime is shutting down: it stops counting as live at once, for fair shares and for the instance guard.
+     */
+    goodbye: boolean;
+    /**
+     * Single-owner ingestions whose routes have stopped; their leases end now. One the runtime does not hold is ignored.
+     */
+    ingestionIds: Array<string>;
+    /**
+     * The runtime process, as on poll. When it differs from the instance stored for runtimeId the release is refused with 409 RUNTIME_ID_IN_USE and changes nothing.
+     */
+    instanceId?: string;
+    /**
+     * The releasing runtime
+     */
+    runtimeId: string;
+    [key: string]: unknown | boolean | Array<string> | string | string | undefined;
+};
+
+export type ReleaseResponseWritable = {
+    /**
+     * How many of the named leases the runtime held and now has ended
+     */
+    released: number;
 };
 
 export type ReportRequestWritable = {
@@ -8717,6 +9115,10 @@ export type UpdateApplicationRequestWritable = {
     logo?: string;
     logoMimeType?: string;
     name?: string;
+    /**
+     * APPLICATION or INTEGRATION
+     */
+    type?: string;
     website?: string;
     [key: string]: unknown | string | undefined;
 };
@@ -8779,9 +9181,14 @@ export type UpdateEventTypeRequestWritable = {
 };
 
 export type UpdateFieldWorkerRequestWritable = {
+    /**
+     * Changing it needs the impersonate permission; clearing it ends the sessions the worker holds as an actor
+     */
+    canImpersonate?: boolean;
     email?: string;
+    isTest?: boolean;
     name: string;
-    [key: string]: unknown | string | undefined;
+    [key: string]: unknown | boolean | string | undefined;
 };
 
 export type UpdateFunctionRequestWritable = {
@@ -13299,6 +13706,10 @@ export type ListFieldWorkersData = {
          */
         status?: 'ACTIVE' | 'DISABLED';
         /**
+         * Only test identities (true) or only real workers (false)
+         */
+        isTest?: 'true' | 'false';
+        /**
          * 0-based page index (default 0)
          */
         page?: number;
@@ -13352,6 +13763,31 @@ export type EnsureFieldWorkerResponses = {
 };
 
 export type EnsureFieldWorkerResponse = EnsureFieldWorkerResponses[keyof EnsureFieldWorkerResponses];
+
+export type IssueFieldWorkerBadgesData = {
+    body: BulkIssueFieldBadgesRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/field-workers/badges';
+};
+
+export type IssueFieldWorkerBadgesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type IssueFieldWorkerBadgesError = IssueFieldWorkerBadgesErrors[keyof IssueFieldWorkerBadgesErrors];
+
+export type IssueFieldWorkerBadgesResponses = {
+    /**
+     * Created
+     */
+    201: BulkIssueFieldBadgesResponse;
+};
+
+export type IssueFieldWorkerBadgesResponse = IssueFieldWorkerBadgesResponses[keyof IssueFieldWorkerBadgesResponses];
 
 export type DeleteFieldWorkerData = {
     body?: never;
@@ -13516,6 +13952,88 @@ export type RevokeFieldWorkerAppResponses = {
 
 export type RevokeFieldWorkerAppResponse = RevokeFieldWorkerAppResponses[keyof RevokeFieldWorkerAppResponses];
 
+export type ListFieldWorkerBadgesData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/badges';
+};
+
+export type ListFieldWorkerBadgesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFieldWorkerBadgesError = ListFieldWorkerBadgesErrors[keyof ListFieldWorkerBadgesErrors];
+
+export type ListFieldWorkerBadgesResponses = {
+    /**
+     * OK
+     */
+    200: FieldBadgeListResponse;
+};
+
+export type ListFieldWorkerBadgesResponse = ListFieldWorkerBadgesResponses[keyof ListFieldWorkerBadgesResponses];
+
+export type IssueFieldWorkerBadgeData = {
+    body: IssueFieldBadgeRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/badges';
+};
+
+export type IssueFieldWorkerBadgeErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type IssueFieldWorkerBadgeError = IssueFieldWorkerBadgeErrors[keyof IssueFieldWorkerBadgeErrors];
+
+export type IssueFieldWorkerBadgeResponses = {
+    /**
+     * Created
+     */
+    201: FieldBadgeIssuedResponse;
+};
+
+export type IssueFieldWorkerBadgeResponse = IssueFieldWorkerBadgeResponses[keyof IssueFieldWorkerBadgeResponses];
+
+export type RevokeFieldWorkerBadgeData = {
+    body?: never;
+    path: {
+        id: string;
+        badgeId: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/badges/{badgeId}/revoke';
+};
+
+export type RevokeFieldWorkerBadgeErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RevokeFieldWorkerBadgeError = RevokeFieldWorkerBadgeErrors[keyof RevokeFieldWorkerBadgeErrors];
+
+export type RevokeFieldWorkerBadgeResponses = {
+    /**
+     * OK
+     */
+    200: FieldBadgeResponse;
+};
+
+export type RevokeFieldWorkerBadgeResponse = RevokeFieldWorkerBadgeResponses[keyof RevokeFieldWorkerBadgeResponses];
+
 export type ResetFieldWorkerPinData = {
     body: ResetFieldWorkerPinRequestWritable;
     path: {
@@ -13542,6 +14060,33 @@ export type ResetFieldWorkerPinResponses = {
 };
 
 export type ResetFieldWorkerPinResponse2 = ResetFieldWorkerPinResponses[keyof ResetFieldWorkerPinResponses];
+
+export type CreateFieldWorkerSignInCodeData = {
+    body: CreateFieldSignInCodeRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/sign-in-codes';
+};
+
+export type CreateFieldWorkerSignInCodeErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateFieldWorkerSignInCodeError = CreateFieldWorkerSignInCodeErrors[keyof CreateFieldWorkerSignInCodeErrors];
+
+export type CreateFieldWorkerSignInCodeResponses = {
+    /**
+     * Created
+     */
+    201: FieldSignInCodeResponse;
+};
+
+export type CreateFieldWorkerSignInCodeResponse = CreateFieldWorkerSignInCodeResponses[keyof CreateFieldWorkerSignInCodeResponses];
 
 export type ListFieldWorkerSignInsData = {
     body?: never;
@@ -14821,6 +15366,39 @@ export type IngestionRuntimeGetSecretResponses = {
 
 export type IngestionRuntimeGetSecretResponse = IngestionRuntimeGetSecretResponses[keyof IngestionRuntimeGetSecretResponses];
 
+export type IngestionRuntimeReleaseLeasesData = {
+    body: ReleaseRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/ingestion-runtime/v1/leases/release';
+};
+
+export type IngestionRuntimeReleaseLeasesErrors = {
+    /**
+     * Conflict
+     */
+    409: ErrorModel;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorModel;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorModel;
+};
+
+export type IngestionRuntimeReleaseLeasesError = IngestionRuntimeReleaseLeasesErrors[keyof IngestionRuntimeReleaseLeasesErrors];
+
+export type IngestionRuntimeReleaseLeasesResponses = {
+    /**
+     * OK
+     */
+    200: ReleaseResponse;
+};
+
+export type IngestionRuntimeReleaseLeasesResponse = IngestionRuntimeReleaseLeasesResponses[keyof IngestionRuntimeReleaseLeasesResponses];
+
 export type IngestionRuntimePollData = {
     body: PollRequestWritable;
     path?: never;
@@ -14829,6 +15407,10 @@ export type IngestionRuntimePollData = {
 };
 
 export type IngestionRuntimePollErrors = {
+    /**
+     * Conflict
+     */
+    409: ErrorModel;
     /**
      * Unprocessable Entity
      */
@@ -16987,6 +17569,31 @@ export type ListDeveloperUsersResponses = {
 };
 
 export type ListDeveloperUsersResponse = ListDeveloperUsersResponses[keyof ListDeveloperUsersResponses];
+
+export type MatchPrincipalEmailsData = {
+    body: MatchEmailsRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/principals/match-emails';
+};
+
+export type MatchPrincipalEmailsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type MatchPrincipalEmailsError = MatchPrincipalEmailsErrors[keyof MatchPrincipalEmailsErrors];
+
+export type MatchPrincipalEmailsResponses = {
+    /**
+     * OK
+     */
+    200: MatchEmailsResponse;
+};
+
+export type MatchPrincipalEmailsResponse = MatchPrincipalEmailsResponses[keyof MatchPrincipalEmailsResponses];
 
 export type SyncUsersData = {
     body: SyncUsersRequestWritable;
@@ -19640,6 +20247,31 @@ export type PostFunctionRunnerHeartbeatResponses = {
 };
 
 export type PostFunctionRunnerHeartbeatResponse = PostFunctionRunnerHeartbeatResponses[keyof PostFunctionRunnerHeartbeatResponses];
+
+export type PostFunctionRunnerTokenData = {
+    body: FunctionTokenRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/control/functions/token';
+};
+
+export type PostFunctionRunnerTokenErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PostFunctionRunnerTokenError = PostFunctionRunnerTokenErrors[keyof PostFunctionRunnerTokenErrors];
+
+export type PostFunctionRunnerTokenResponses = {
+    /**
+     * OK
+     */
+    200: FunctionTokenResponse;
+};
+
+export type PostFunctionRunnerTokenResponse = PostFunctionRunnerTokenResponses[keyof PostFunctionRunnerTokenResponses];
 
 export type PostFunctionRunnerTraceLogData = {
     body: TraceBatchWritable;

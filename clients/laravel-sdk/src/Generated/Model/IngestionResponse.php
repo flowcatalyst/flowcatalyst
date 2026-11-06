@@ -87,6 +87,8 @@ class IngestionResponse
      */
     protected $notices;
     /**
+     * Set while a running ingestion runs nowhere: 'no runtime carries this kind', or, for a polled source, 'not running: no runtime has held it since <RFC 3339 time>' once no runtime has held its lease for a lease and two minutes
+     *
      * @var string|null
      */
     protected $runtimeNotice;
@@ -437,6 +439,8 @@ class IngestionResponse
         return $this;
     }
     /**
+     * Set while a running ingestion runs nowhere: 'no runtime carries this kind', or, for a polled source, 'not running: no runtime has held it since <RFC 3339 time>' once no runtime has held its lease for a lease and two minutes
+     *
      * @return string|null
      */
     public function getRuntimeNotice(): ?string
@@ -444,6 +448,8 @@ class IngestionResponse
         return $this->runtimeNotice;
     }
     /**
+     * Set while a running ingestion runs nowhere: 'no runtime carries this kind', or, for a polled source, 'not running: no runtime has held it since <RFC 3339 time>' once no runtime has held its lease for a lease and two minutes
+     *
      * @param string|null $runtimeNotice
      *
      * @return self

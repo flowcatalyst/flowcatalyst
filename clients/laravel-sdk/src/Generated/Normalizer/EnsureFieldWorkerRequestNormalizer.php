@@ -37,6 +37,12 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('canImpersonate', $data) && \is_int($data['canImpersonate'])) {
+            $data['canImpersonate'] = (bool) $data['canImpersonate'];
+        }
+        if (\array_key_exists('isTest', $data) && \is_int($data['isTest'])) {
+            $data['isTest'] = (bool) $data['isTest'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
             unset($data['$schema']);
@@ -55,6 +61,13 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         elseif (\array_key_exists('appCodes', $data) && $data['appCodes'] === null) {
             $object->setAppCodes(null);
         }
+        if (\array_key_exists('canImpersonate', $data) && $data['canImpersonate'] !== null) {
+            $object->setCanImpersonate($data['canImpersonate']);
+            unset($data['canImpersonate']);
+        }
+        elseif (\array_key_exists('canImpersonate', $data) && $data['canImpersonate'] === null) {
+            $object->setCanImpersonate(null);
+        }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
             unset($data['clientId']);
@@ -68,6 +81,13 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('email', $data) && $data['email'] === null) {
             $object->setEmail(null);
+        }
+        if (\array_key_exists('isTest', $data) && $data['isTest'] !== null) {
+            $object->setIsTest($data['isTest']);
+            unset($data['isTest']);
+        }
+        elseif (\array_key_exists('isTest', $data) && $data['isTest'] === null) {
+            $object->setIsTest(null);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -107,9 +127,15 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
             }
             $dataArray['appCodes'] = $values;
         }
+        if ($data->isInitialized('canImpersonate') && null !== $data->getCanImpersonate()) {
+            $dataArray['canImpersonate'] = $data->getCanImpersonate();
+        }
         $dataArray['clientId'] = $data->getClientId();
         if ($data->isInitialized('email') && null !== $data->getEmail()) {
             $dataArray['email'] = $data->getEmail();
+        }
+        if ($data->isInitialized('isTest') && null !== $data->getIsTest()) {
+            $dataArray['isTest'] = $data->getIsTest();
         }
         $dataArray['name'] = $data->getName();
         if ($data->isInitialized('pin') && null !== $data->getPin()) {

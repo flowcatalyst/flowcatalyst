@@ -29,6 +29,12 @@ import type {
 	RevokeFieldWorkerAppResponse,
 	ListFieldWorkerSignInsData,
 	ListFieldWorkerSignInsResponse,
+	ListFieldWorkerBadgesResponse,
+	IssueFieldWorkerBadgeData,
+	IssueFieldWorkerBadgeResponse,
+	RevokeFieldWorkerBadgeResponse,
+	IssueFieldWorkerBadgesResponse,
+	CreateFieldWorkerSignInCodeResponse,
 } from "../generated/types.gen.js";
 
 export type EnsureFieldWorkerRequest = EnsureFieldWorkerData["body"];
@@ -42,6 +48,15 @@ export type FieldWorkerDto = EnsureFieldWorkerResponse;
 export type FieldWorkerListResponse = ListFieldWorkersResponse;
 export type FieldWorkerSignInListResponse = ListFieldWorkerSignInsResponse;
 export type ResetFieldWorkerPinResult = ResetFieldWorkerPinResponse;
+export type IssueFieldBadgeRequest = NonNullable<
+	IssueFieldWorkerBadgeData["body"]
+>;
+/** A freshly issued badge: `token` is the secret to print, shown once. */
+export type FieldBadgeIssued = IssueFieldWorkerBadgeResponse;
+export type FieldBadgeListResponse = ListFieldWorkerBadgesResponse;
+export type BulkIssueFieldBadgesResult = IssueFieldWorkerBadgesResponse;
+/** A single-use code a console admin redeems to sign in as the worker. */
+export type FieldSignInCode = CreateFieldWorkerSignInCodeResponse;
 
 export class FieldWorkersResource {
 	private readonly client: FlowCatalystClient;
@@ -176,6 +191,85 @@ export class FieldWorkersResource {
 					headers,
 					path: { id, appCode },
 				}),
+		);
+	}
+
+	/**
+	 * Issue a badge (replaces the worker's ACTIVE badge). The response's
+	 * `token` is the secret to print as a QR code; it is shown once.
+	 */
+	issueBadge(
+		id: string,
+		data: IssueFieldBadgeRequest = {},
+	): ResultAsync<FieldBadgeIssued, SdkError> {
+		return this.client.request<FieldBadgeIssued>((httpClient, headers) =>
+			sdk.issueFieldWorkerBadge({
+				client: httpClient,
+				headers,
+				path: { id },
+				body: data,
+			}),
+		);
+	}
+
+	/** The worker's badges, newest first (tokens are never returned). */
+	listBadges(id: string): ResultAsync<FieldBadgeListResponse, SdkError> {
+		return this.client.request<FieldBadgeListResponse>(
+			(httpClient, headers) =>
+				sdk.listFieldWorkerBadges({
+					client: httpClient,
+					headers,
+					path: { id },
+				}),
+		);
+	}
+
+	revokeBadge(
+		id: string,
+		badgeId: string,
+	): ResultAsync<RevokeFieldWorkerBadgeResponse, SdkError> {
+		return this.client.request<RevokeFieldWorkerBadgeResponse>(
+			(httpClient, headers) =>
+				sdk.revokeFieldWorkerBadge({
+					client: httpClient,
+					headers,
+					path: { id, badgeId },
+				}),
+		);
+	}
+
+	/**
+	 * Issue a badge for each of 1 to 200 workers in one transaction (all or
+	 * nothing). Each result carries the token, shown once.
+	 */
+	bulkIssueBadges(
+		workerIds: string[],
+	): ResultAsync<BulkIssueFieldBadgesResult, SdkError> {
+		return this.client.request<BulkIssueFieldBadgesResult>(
+			(httpClient, headers) =>
+				sdk.issueFieldWorkerBadges({
+					client: httpClient,
+					headers,
+					body: { workerIds },
+				}),
+		);
+	}
+
+	/**
+	 * Mint a single-use code a console admin redeems at the platform's field
+	 * sign-in to start an impersonated session as the worker.
+	 */
+	createSignInCode(
+		id: string,
+		appCode: string,
+	): ResultAsync<FieldSignInCode, SdkError> {
+		return this.client.request<FieldSignInCode>((httpClient, headers) =>
+			sdk.createFieldWorkerSignInCode({
+				client: httpClient,
+				headers,
+				path: { id },
+				body: { appCode },
+			}),
 		);
 	}
 

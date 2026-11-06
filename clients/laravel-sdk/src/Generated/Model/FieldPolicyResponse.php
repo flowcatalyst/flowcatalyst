@@ -19,6 +19,10 @@ class FieldPolicyResponse
      */
     protected $dollarSchema;
     /**
+     * @var bool|null
+     */
+    protected $badgeOnlyLogin;
+    /**
      * @var string|null
      */
     protected $clientId;
@@ -26,6 +30,10 @@ class FieldPolicyResponse
      * @var int|null
      */
     protected $hardLockThreshold;
+    /**
+     * @var int|null
+     */
+    protected $impersonationMaxSecs;
     /**
      * @var bool|null
      */
@@ -47,6 +55,10 @@ class FieldPolicyResponse
      */
     protected $requireAttestation;
     /**
+     * @var bool|null
+     */
+    protected $requireEnrolledDevice;
+    /**
      * @var int|null
      */
     protected $sharedIdleSecs;
@@ -62,6 +74,10 @@ class FieldPolicyResponse
      * @var int|null
      */
     protected $softLockThreshold;
+    /**
+     * @var int|null
+     */
+    protected $unenrolledIdleSecs;
     /**
      * @var \DateTime|null
      */
@@ -86,6 +102,24 @@ class FieldPolicyResponse
     {
         $this->initialized['dollarSchema'] = true;
         $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getBadgeOnlyLogin(): ?bool
+    {
+        return $this->badgeOnlyLogin;
+    }
+    /**
+     * @param bool|null $badgeOnlyLogin
+     *
+     * @return self
+     */
+    public function setBadgeOnlyLogin(?bool $badgeOnlyLogin): self
+    {
+        $this->initialized['badgeOnlyLogin'] = true;
+        $this->badgeOnlyLogin = $badgeOnlyLogin;
         return $this;
     }
     /**
@@ -122,6 +156,24 @@ class FieldPolicyResponse
     {
         $this->initialized['hardLockThreshold'] = true;
         $this->hardLockThreshold = $hardLockThreshold;
+        return $this;
+    }
+    /**
+     * @return int|null
+     */
+    public function getImpersonationMaxSecs(): ?int
+    {
+        return $this->impersonationMaxSecs;
+    }
+    /**
+     * @param int|null $impersonationMaxSecs
+     *
+     * @return self
+     */
+    public function setImpersonationMaxSecs(?int $impersonationMaxSecs): self
+    {
+        $this->initialized['impersonationMaxSecs'] = true;
+        $this->impersonationMaxSecs = $impersonationMaxSecs;
         return $this;
     }
     /**
@@ -215,6 +267,24 @@ class FieldPolicyResponse
         return $this;
     }
     /**
+     * @return bool|null
+     */
+    public function getRequireEnrolledDevice(): ?bool
+    {
+        return $this->requireEnrolledDevice;
+    }
+    /**
+     * @param bool|null $requireEnrolledDevice
+     *
+     * @return self
+     */
+    public function setRequireEnrolledDevice(?bool $requireEnrolledDevice): self
+    {
+        $this->initialized['requireEnrolledDevice'] = true;
+        $this->requireEnrolledDevice = $requireEnrolledDevice;
+        return $this;
+    }
+    /**
      * @return int|null
      */
     public function getSharedIdleSecs(): ?int
@@ -284,6 +354,24 @@ class FieldPolicyResponse
     {
         $this->initialized['softLockThreshold'] = true;
         $this->softLockThreshold = $softLockThreshold;
+        return $this;
+    }
+    /**
+     * @return int|null
+     */
+    public function getUnenrolledIdleSecs(): ?int
+    {
+        return $this->unenrolledIdleSecs;
+    }
+    /**
+     * @param int|null $unenrolledIdleSecs
+     *
+     * @return self
+     */
+    public function setUnenrolledIdleSecs(?int $unenrolledIdleSecs): self
+    {
+        $this->initialized['unenrolledIdleSecs'] = true;
+        $this->unenrolledIdleSecs = $unenrolledIdleSecs;
         return $this;
     }
     /**

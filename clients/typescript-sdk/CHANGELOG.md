@@ -39,6 +39,22 @@ Additive: no signature breaks (new parameters are optional).
   `identity`, or absent): a field token, or any other plane's token, no longer
   authenticates as a platform principal even when no `expectedAudience` is set.
 
+### Field workers: sign-in options
+- `FieldPrincipal.deviceId` is `""` (and `deviceMode` `"UNENROLLED"`) when the
+  token's key is not an enrolled device. New `FieldPrincipal.actor`
+  (`FieldActor | null`: `{ id, type, name }` from the `act` claim; `type` is
+  `field_worker` for a supervisor or `principal` for a platform user) and
+  `FieldPrincipal.test`. Every other field is still the WORKER's, so an app
+  records the worker as the subject of an action and `actor` as the operator.
+  Passes the four new shared `api/field-fixtures` cases.
+- `fieldWorkers()`: `issueBadge(id, { label? })`, `listBadges(id)`,
+  `revokeBadge(id, badgeId)`, `bulkIssueBadges(workerIds)` (1 to 200, all or
+  nothing) and `createSignInCode(id, appCode)`. Badge and sign-in-code secrets
+  are returned once. `ensure`/`update` take `canImpersonate` and `isTest`;
+  `list` filters on `isTest`.
+- Regenerated client: policy `requireEnrolledDevice`, `unenrolledIdleSecs`,
+  `badgeOnlyLogin`, `impersonationMaxSecs`; introspection `act` and `test`.
+
 ### Ingestions
 - `Ingestion` gains `notices` (undismissed notices: failures the platform
   refused), `latestNotice`, `latestNoticeAt`, `warnings` (what the definition

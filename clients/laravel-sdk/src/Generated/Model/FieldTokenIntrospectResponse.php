@@ -19,6 +19,10 @@ class FieldTokenIntrospectResponse
      */
     protected $dollarSchema;
     /**
+     * @var FieldTokenActor|null
+     */
+    protected $act;
+    /**
      * @var bool|null
      */
     protected $active;
@@ -51,6 +55,10 @@ class FieldTokenIntrospectResponse
      */
     protected $sub;
     /**
+     * @var bool|null
+     */
+    protected $test;
+    /**
      * @var string|null
      */
     protected $workerCode;
@@ -74,6 +82,24 @@ class FieldTokenIntrospectResponse
     {
         $this->initialized['dollarSchema'] = true;
         $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
+     * @return FieldTokenActor|null
+     */
+    public function getAct(): ?FieldTokenActor
+    {
+        return $this->act;
+    }
+    /**
+     * @param FieldTokenActor|null $act
+     *
+     * @return self
+     */
+    public function setAct(?FieldTokenActor $act): self
+    {
+        $this->initialized['act'] = true;
+        $this->act = $act;
         return $this;
     }
     /**
@@ -218,6 +244,24 @@ class FieldTokenIntrospectResponse
     {
         $this->initialized['sub'] = true;
         $this->sub = $sub;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getTest(): ?bool
+    {
+        return $this->test;
+    }
+    /**
+     * @param bool|null $test
+     *
+     * @return self
+     */
+    public function setTest(?bool $test): self
+    {
+        $this->initialized['test'] = true;
+        $this->test = $test;
         return $this;
     }
     /**

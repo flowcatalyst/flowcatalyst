@@ -27,6 +27,15 @@
   failure -> 503). Config `flowcatalyst.field` (`app_code`, `app_base_url`, `proof_max_age_seconds`,
   `clock_skew_seconds`). New `fieldWorkers()`, `fieldDevices()`, `fieldPolicies()`, `fieldTokens()` and
   `introspectFieldToken($token)` over the generated client. Passes the shared `api/field-fixtures` vectors.
+- Field-worker sign-in options: `FieldPrincipal::$deviceId` is `''` (and `$deviceMode` `UNENROLLED`) when the
+  token's key is not an enrolled device. New trailing constructor arguments/properties `FieldPrincipal::$actor`
+  (`FieldActor|null`: `id`, `type` = `field_worker` or `principal`, `name`, from the `act` claim) and
+  `FieldPrincipal::$test`. Every other property is still the WORKER's: record the worker as the subject of an
+  action and `$actor` as the operator. `fieldWorkers()` gains `issueBadge($id, ?$label)`, `listBadges($id)`,
+  `revokeBadge($id, $badgeId)`, `bulkIssueBadges(array $workerIds)` and `createSignInCode($id, $appCode)`
+  (badge and sign-in-code secrets are returned once); `list()` takes an `isTest` filter; `ensure`/`update`
+  requests carry `canImpersonate` and `isTest`. Generated client regenerated (jane-php 7.11.2, the version the
+  committed client was built with); passes the four new shared fixture cases.
 - `AccessTokenValidator` (the `fc-token` guard and `fc.auth` middleware) now treats `token_use` as an
   allowlist: `api`, `identity` (accepted as before) or an absent claim; `field` and any other class are refused.
 - Ingestions: `Ingestion` gains `notices`, `latestNotice`, `latestNoticeAt`, `warnings` and `save`
