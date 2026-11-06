@@ -16,7 +16,7 @@ import (
 // sessionExpiredExpr: a Datastar action answered 401 (the session expired
 // while the page was open) navigates to the login page, returning here after.
 // Every other failed request is the flash stack's fallback (kit.FlashStack).
-const sessionExpiredExpr = "evt.detail.type === 'error' && evt.detail.argsRaw.status === '401' && window.location.assign('/auth/login?redirect=' + encodeURIComponent(location.pathname + location.search))"
+const sessionExpiredExpr = "evt.detail.type === 'error' && evt.detail.argsRaw.status === '401' && window.location.assign('/ui/auth/login?redirect=' + encodeURIComponent(location.pathname + location.search))"
 
 // FlashStackID is the flash stack (kit flash-stack.md) server patches append
 // flash messages to; its listener also shows the generic message for a

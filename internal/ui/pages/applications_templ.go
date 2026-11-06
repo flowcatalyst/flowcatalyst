@@ -1104,9 +1104,9 @@ func appDrawerBody(d appDetail) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var46 templ.SafeURL
-					templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinURLErrs("/platform/docs/" + d.Code + "/" + doc.Slug)
+					templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinURLErrs("/ui/platform/docs/" + d.Code + "/" + doc.Slug)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 210, Col: 59}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 210, Col: 62}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 					if templ_7745c5c3_Err != nil {

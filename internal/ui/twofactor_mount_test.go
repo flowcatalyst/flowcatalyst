@@ -44,12 +44,12 @@ func TestTwoFactorPagesMount(t *testing.T) {
 	}
 	// No challenge: back to the default sign-in.
 	rec = do(t, on, req{method: http.MethodGet, target: "/ui/auth/2fa"})
-	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/auth/login" {
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/ui/auth/login" {
 		t.Errorf("challenge without a cookie: status %d to %q", rec.Code, rec.Header().Get("Location"))
 	}
 	// The security page is behind the session guard.
 	rec = do(t, on, req{method: http.MethodGet, target: "/ui/auth/security"})
-	if rec.Code != http.StatusFound || !strings.HasPrefix(rec.Header().Get("Location"), "/auth/login?redirect=") {
+	if rec.Code != http.StatusFound || !strings.HasPrefix(rec.Header().Get("Location"), "/ui/auth/login?redirect=") {
 		t.Errorf("security page without a session: status %d to %q", rec.Code, rec.Header().Get("Location"))
 	}
 	rec = do(t, on, req{method: http.MethodPost, target: "/ui/auth/security/2fa/TOTP/remove", headers: map[string]string{"Sec-Fetch-Site": "same-origin"}})

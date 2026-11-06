@@ -141,7 +141,7 @@ func (h *AuthMFA) enrollPage(w http.ResponseWriter, r *http.Request) {
 		h.expired(w, r)
 		return
 	}
-	v := mfaEnrollView{Next: authNext(r.URL.Query().Get("next")), Methods: en.Methods}
+	v := mfaEnrollView{Next: authLanding(r.URL.Query().Get("next")), Methods: en.Methods}
 	h.render(w, r, http.StatusOK, "Set up two-factor authentication", nil, mfaEnroll(v))
 }
 
@@ -157,7 +157,7 @@ func (h *AuthMFA) enrollRefused(w http.ResponseWriter, r *http.Request, next str
 
 func (h *AuthMFA) enrollTOTPBegin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	next := authNext(r.PostFormValue("next"))
+	next := authLanding(r.PostFormValue("next"))
 	enr, err := h.Flow.BeginEnrollment(ctx, challengeToken(r), mfa.MethodTOTP)
 	if err == nil {
 		var setup mfaTOTPSetup
@@ -179,7 +179,7 @@ func (h *AuthMFA) enrollTOTPBegin(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthMFA) enrollTOTPConfirm(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	next := authNext(r.PostFormValue("next"))
+	next := authLanding(r.PostFormValue("next"))
 	_, codes, err := h.Flow.CompleteEnrollment(w, r, challengeToken(r), mfa.MethodTOTP, r.PostFormValue("code"))
 	if err == nil {
 		h.enrolled(w, r, codes, next)
@@ -200,7 +200,7 @@ func (h *AuthMFA) enrollTOTPConfirm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthMFA) enrollEmailBegin(w http.ResponseWriter, r *http.Request) {
-	next := authNext(r.PostFormValue("next"))
+	next := authLanding(r.PostFormValue("next"))
 	if _, err := h.Flow.BeginEnrollment(r.Context(), challengeToken(r), mfa.MethodEmailPin); err != nil {
 		if enrollGone(err) {
 			h.expired(w, r)
@@ -214,7 +214,7 @@ func (h *AuthMFA) enrollEmailBegin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthMFA) enrollEmailConfirm(w http.ResponseWriter, r *http.Request) {
-	next := authNext(r.PostFormValue("next"))
+	next := authLanding(r.PostFormValue("next"))
 	_, codes, err := h.Flow.CompleteEnrollment(w, r, challengeToken(r), mfa.MethodEmailPin, r.PostFormValue("code"))
 	if err == nil {
 		h.enrolled(w, r, codes, next)
@@ -237,5 +237,5 @@ func (h *AuthMFA) enrolled(w http.ResponseWriter, r *http.Request, codes []strin
 		return
 	}
 	h.clearChallengeCookie(w)
-	h.render(w, r, http.StatusOK, "Recovery codes", nil, mfaCodes(mfaCodesView{Codes: codes, Href: authNext(next)}))
+	h.render(w, r, http.StatusOK, "Recovery codes", nil, mfaCodes(mfaCodesView{Codes: codes, Href: authLanding(next)}))
 }

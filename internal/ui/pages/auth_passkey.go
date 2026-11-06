@@ -71,7 +71,7 @@ type passkeySignInView struct {
 }
 
 func (h *AuthPasskeys) page(w http.ResponseWriter, r *http.Request) {
-	v := passkeySignInView{Next: authNext(r.FormValue("next")), Email: strings.TrimSpace(r.FormValue("email"))}
+	v := passkeySignInView{Next: authLanding(r.FormValue("next")), Email: strings.TrimSpace(r.FormValue("email"))}
 	if len(v.Email) > 320 {
 		v.Email = ""
 	}

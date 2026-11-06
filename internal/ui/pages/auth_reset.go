@@ -117,6 +117,7 @@ type resetView struct {
 	Token          string
 	Email          string // the account, for the form's username field
 	RequiresFactor bool
+	EnrollToken    string // enrollment_required: the short-lived enroll token (not a session), posted on to /ui/auth/2fa/enroll/start
 	Expired        bool
 	Error          string
 }
@@ -248,9 +249,9 @@ func (s *SignIn) resetConfirm(w http.ResponseWriter, r *http.Request) {
 	resp.cookies(w)
 	switch {
 	case out.Status == "enrollment_required" && out.EnrollToken != "":
-		// The domain requires a second factor; setting one up (QR code,
-		// recovery codes) is done by the current sign-in page.
-		v.State = resetEnroll
+		// The domain requires a second factor; the token goes to the
+		// enrolment pages by POST (never in a URL).
+		v.State, v.EnrollToken = resetEnroll, out.EnrollToken
 		s.renderReset(w, r, http.StatusOK, v)
 	case out.RedirectURI != nil && safeInviteRedirect(*out.RedirectURI):
 		s.leave(w, r, *out.RedirectURI)

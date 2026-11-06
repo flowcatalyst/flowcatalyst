@@ -578,27 +578,9 @@ func (v signinView) loginLink() string {
 	return "/ui/auth/login"
 }
 
-// legacyLink is the current (SPA) sign-in with the same context, for what the
-// new pages do not cover.
-// uiNext is where this sign-in is going when that is a /ui page, else "".
-func (v signinView) uiNext() string {
-	if n := v.Ctx.landing(); n == "/ui" || strings.HasPrefix(n, "/ui/") {
-		return n
-	}
-	return ""
-}
-
-// passkeyOffered reports whether the passkey sign-in is offered: only for a
-// /ui destination (the passkey page returns to a /ui page). The page is
-// reached by a POST that carries the typed email, so the address is in no URL.
-func (v signinView) passkeyOffered() bool { return v.uiNext() != "" }
-
-func (v signinView) legacyLink() string {
-	if q := v.Ctx.query("reset", ""); q != "" {
-		return "/auth/login?" + q
-	}
-	return "/auth/login"
-}
+// next is the destination the passkey and enrolment pages carry (any landing;
+// they re-validate it with authLanding).
+func (v signinView) next() string { return v.Ctx.landing() }
 
 // render writes a sign-in page document.
 func (s *SignIn) render(w http.ResponseWriter, r *http.Request, status int, title string, th signinTheme, portal bool, content templ.Component) {
@@ -624,9 +606,12 @@ func (s *SignIn) renderLogin(w http.ResponseWriter, r *http.Request, status int,
 // 303; anything else gets a 200 page that navigates there itself (a meta
 // refresh, which is a new navigation rather than part of the submission, with
 // a link as the fallback). form-action stays 'self'.
-func (s *SignIn) leave(w http.ResponseWriter, r *http.Request, target string) {
+func (s *SignIn) leave(w http.ResponseWriter, r *http.Request, target string) { leaveTo(w, r, target) }
+
+// leaveTo is leave for any page (the second-factor pages end a form post too).
+func leaveTo(w http.ResponseWriter, r *http.Request, target string) {
 	if target != "" && safeUIRedirect(target) == target {
-		http.Redirect(w, r, target, http.StatusSeeOther)
+		http.Redirect(w, r, target, http.StatusSeeOther) //nolint:gosec // G710: target equals safeUIRedirect(target), a same-origin path under /ui
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -738,9 +723,8 @@ func (s *SignIn) afterCredentials(w http.ResponseWriter, r *http.Request, resp u
 			s.renderLogin(w, r, http.StatusOK, v)
 		case "enrollment_required":
 			// Enrolling a factor (QR code, recovery codes) is /ui/auth/2fa/enroll;
-			// the token goes there by POST, never in a URL. A sign-in that is not
-			// headed for a /ui page (an OAuth round trip) keeps using the current
-			// sign-in, which can return to it.
+			// the token goes there by POST, never in a URL. The landing (any
+			// destination) goes with it as next and is re-validated there.
 			v.Step, v.EnrollToken = stepEnroll, out.EnrollToken
 			s.renderLogin(w, r, http.StatusOK, v)
 		default:

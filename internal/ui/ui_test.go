@@ -87,7 +87,7 @@ func TestUIRouteGroup(t *testing.T) {
 
 	t.Run("signed-out navigation goes to the login page", func(t *testing.T) {
 		rec := do(t, h, req{method: http.MethodGet, target: "/ui/dispatch-pools"})
-		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/auth/login?redirect=%2Fui%2Fdispatch-pools" {
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/ui/auth/login?redirect=%2Fui%2Fdispatch-pools" {
 			t.Fatalf("status %d Location %q", rec.Code, rec.Header().Get("Location"))
 		}
 	})
@@ -184,7 +184,7 @@ func TestUIRouteGroup(t *testing.T) {
 			method: http.MethodPost, target: "/ui/logout", session: "admin",
 			headers: map[string]string{"Sec-Fetch-Site": "same-origin", "Origin": "https://fc.example"},
 		})
-		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/auth/login" {
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/ui/auth/login" {
 			t.Fatalf("status %d Location %q", rec.Code, rec.Header().Get("Location"))
 		}
 		c := rec.Header().Get("Set-Cookie")

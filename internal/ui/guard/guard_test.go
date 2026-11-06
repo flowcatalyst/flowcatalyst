@@ -96,9 +96,9 @@ func TestRequireSession(t *testing.T) {
 			"browser navigation redirects to login with a return path", http.MethodGet, "/ui/dispatch-pools?q=a%20b&status=ACTIVE",
 			map[string]string{"Accept": "text/html,application/xhtml+xml"},
 			false, http.StatusFound,
-			"/auth/login?redirect=%2Fui%2Fdispatch-pools%3Fq%3Da%2520b%26status%3DACTIVE",
+			"/ui/auth/login?redirect=%2Fui%2Fdispatch-pools%3Fq%3Da%2520b%26status%3DACTIVE",
 		},
-		{"HEAD navigation redirects too", http.MethodHead, "/ui/", map[string]string{"Accept": "text/html"}, false, http.StatusFound, "/auth/login?redirect=%2Fui%2F"},
+		{"HEAD navigation redirects too", http.MethodHead, "/ui/", map[string]string{"Accept": "text/html"}, false, http.StatusFound, "/ui/auth/login?redirect=%2Fui%2F"},
 		{
 			"Datastar action gets 401, not a redirect it would follow", http.MethodGet, "/ui/dispatch-pools",
 			map[string]string{"Accept": "text/event-stream, text/html, application/json", ds.RequestHeader: "true"},

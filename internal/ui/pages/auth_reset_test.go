@@ -179,13 +179,16 @@ func TestResetConfirm(t *testing.T) {
 		rec = siPost("/ui/auth/set-password", confirm()...).do(signInRouter(up2, false))
 		assert.Equal(t, "/ui/auth/login?reset=success", rec.Header().Get("Location"))
 	})
-	t.Run("a domain that compels 2FA is handed to the current sign-in, token unrendered", func(t *testing.T) {
+	t.Run("a domain that compels 2FA is handed to the enrolment page by POST", func(t *testing.T) {
 		up := siThemed()
 		up.reply("POST /auth/password-reset/confirm", 200, `{"status":"enrollment_required","enrollToken":"ENROLLTOK"}`)
 		rec := siPost("/ui/auth/reset-password", confirm()...).do(signInRouter(up, false))
 		require.Equal(t, http.StatusOK, rec.Code)
-		assert.Contains(t, rec.Body.String(), `href="/auth/login"`)
-		assert.NotContains(t, rec.Body.String(), "ENROLLTOK")
+		body := rec.Body.String()
+		assert.Contains(t, body, `action="/ui/auth/2fa/enroll/start"`)
+		assert.Contains(t, body, `name="token" value="ENROLLTOK"`)
+		assert.NotContains(t, body, `href="/auth/login"`)
+		assert.NotContains(t, body, "/ui/auth/2fa/enroll/start?", "never in a URL")
 	})
 	t.Run("a portal identity with no redirect stays off the platform login", func(t *testing.T) {
 		up := siThemed()

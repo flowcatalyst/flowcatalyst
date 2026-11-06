@@ -3,6 +3,7 @@ package pages
 import (
 	"context"
 	"errors"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -979,4 +980,126 @@ func TestPasskeySignInPageByPost(t *testing.T) {
 		t.Fatalf("status %d", rec.Code)
 	}
 	mustContain(t, rec.Body.String(), "data-fc-passkey-signin", `data-next="/ui/users"`, `value="ann@x.test"`)
+}
+
+// ── landings other than /ui (OAuth round trip, OIDC interaction) ───────
+
+const (
+	testOAuthLanding = "/oauth/authorize?client_id=app&code_challenge=CH&code_challenge_method=S256&redirect_uri=http%3A%2F%2Flocalhost%3A8090%2Fauth%2Fcallback&response_type=code&state=xyz"
+	testIntLanding   = "/oidc/interaction/abc_DEF-123/login"
+)
+
+func TestAuthLanding(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                                              "/ui/",
+		"/ui/users?q=1":                                 "/ui/users?q=1",
+		testOAuthLanding:                                testOAuthLanding,
+		testIntLanding:                                  testIntLanding,
+		"/oidc/interaction/a b/login":                   "/ui/",
+		"/oidc/interaction/../x/login":                  "/ui/",
+		"/oidc/interaction/abc/login?x=1":               "/ui/",
+		"/oidc/interaction/abc/login/extra":             "/ui/",
+		"//evil.test/oauth/authorize?client_id=a":       "/ui/",
+		"https://evil.test/oauth/authorize?client_id=a": "/ui/",
+		"/oauth/authorize":                              "/ui/",
+		"/oauth/authorize?":                             "/ui/",
+		"/oauth/authorize?evil=1":                       "/ui/",
+		"/oauth/token?client_id=a":                      "/ui/",
+		"/oauth/authorize/../x?client_id=a":             "/ui/",
+		// Only the allow-listed fields survive the rebuild.
+		"/oauth/authorize?client_id=app&prompt=none&evil=https://evil.test/&redirect_uri=http%3A%2F%2Flocalhost%3A8090%2Fcb": "/oauth/authorize?client_id=app&redirect_uri=http%3A%2F%2Flocalhost%3A8090%2Fcb",
+	} {
+		if got := authLanding(in); got != want {
+			t.Errorf("authLanding(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A sign-in headed for an OAuth round trip or an OIDC interaction enrols a
+// factor on /ui and still ends at that landing. The landing is not a /ui page,
+// so the final form post is answered with a navigating page (the pages' CSP
+// form-action 'self' would block a 303 that ends at another origin).
+func TestEnrolmentEndsAtAnyLanding(t *testing.T) {
+	for name, landing := range map[string]string{"oauth": testOAuthLanding, "interaction": testIntLanding, "ui": "/ui/users", "none": ""} {
+		want := landing
+		if want == "" {
+			want = "/ui/"
+		}
+		t.Run(name, func(t *testing.T) {
+			h := newMFAHarness()
+			h.policy.ev = mfaRequired(false, "EMAIL_PIN")
+
+			// start carries the landing to the enrol page.
+			rec := h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/start", url.Values{"token": {"enroll:prn_ann"}, "next": {landing}}, nil))
+			if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/ui/auth/2fa/enroll?next="+url.QueryEscape(want) {
+				t.Fatalf("start: %d %q", rec.Code, rec.Header().Get("Location"))
+			}
+			// the method pages carry it on.
+			body := h.serve(t, nil, req{target: rec.Header().Get("Location"), cookie: enrollCk("prn_ann")}).Body.String()
+			mustContain(t, body, `value="`+html.EscapeString(want)+`"`)
+			body = h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/email", url.Values{"next": {landing}}, enrollCk("prn_ann"))).Body.String()
+			mustContain(t, body, `name="next" value="`+html.EscapeString(want)+`"`)
+
+			// the last step finishes at the landing.
+			rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/email/confirm", url.Values{"code": {"654321"}, "next": {landing}}, enrollCk("prn_ann")))
+			if want == "/ui/" || want == "/ui/users" {
+				mfaWantRedirect(t, rec, want)
+				return
+			}
+			if rec.Code != http.StatusOK || rec.Header().Get("Location") != "" {
+				t.Fatalf("a landing outside /ui must not be a 303: %d %q", rec.Code, rec.Header().Get("Location"))
+			}
+			mustContain(t, rec.Body.String(), `http-equiv="refresh"`, `url=`+html.EscapeString(want))
+			if c := mfaCookie(rec, "fc_session"); c == nil || c.Value == "" {
+				t.Errorf("the session cookie was not issued: %v", c)
+			}
+		})
+	}
+}
+
+func TestEnrolmentRefusesATamperedLanding(t *testing.T) {
+	for _, bad := range []string{
+		"https://evil.test/", "//evil.test/", "/oauth/authorize?evil=https://evil.test/", "/oidc/interaction/../../x/login",
+		"/oidc/interaction/a/login?x=https://evil.test", "/api/anything", "javascript:alert(1)",
+	} {
+		h := newMFAHarness()
+		h.policy.ev = mfaRequired(false, "EMAIL_PIN")
+		rec := h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/start", url.Values{"token": {"enroll:prn_ann"}, "next": {bad}}, nil))
+		mfaWantRedirect(t, rec, "/ui/auth/2fa/enroll?next=%2Fui%2F")
+		rec = h.serve(t, nil, mfaPost("/ui/auth/2fa/enroll/email/confirm", url.Values{"code": {"654321"}, "next": {bad}}, enrollCk("prn_ann")))
+		mfaWantRedirect(t, rec, "/ui/")
+	}
+}
+
+func TestVerifyEndsAtAnyLanding(t *testing.T) {
+	h := newMFAHarness()
+	h.mfa.confirmed["prn_ann"] = []mfa.MethodType{mfa.MethodTOTP}
+	rec := h.serve(t, nil, mfaPost("/ui/auth/2fa/verify", url.Values{"method": {"TOTP"}, "code": {"123456"}, "next": {testOAuthLanding}}, pendingCk("prn_ann")))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	mustContain(t, rec.Body.String(), `url=`+html.EscapeString(testOAuthLanding))
+}
+
+func TestPasskeySignInPageCarriesAnyLanding(t *testing.T) {
+	h := newMFAHarness()
+	for name, tc := range map[string]struct{ in, want string }{
+		"oauth":       {testOAuthLanding, testOAuthLanding},
+		"interaction": {testIntLanding, testIntLanding},
+		"ui":          {"/ui/users", "/ui/users"},
+		"none":        {"", "/ui/"},
+		"tampered":    {"/oauth/authorize?evil=https://evil.test/", "/ui/"},
+		"foreign":     {"https://evil.test/", "/ui/"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, rec := range []*httptest.ResponseRecorder{
+				h.serve(t, nil, mfaPost("/ui/auth/passkey", url.Values{"next": {tc.in}, "email": {"ann@x.test"}}, nil)),
+				h.serve(t, nil, req{target: "/ui/auth/passkey?next=" + url.QueryEscape(tc.in)}),
+			} {
+				body := rec.Body.String()
+				mustContain(t, body, `data-next="`+html.EscapeString(tc.want)+`"`)
+				mustNotContain(t, body, "evil.test")
+			}
+		})
+	}
 }

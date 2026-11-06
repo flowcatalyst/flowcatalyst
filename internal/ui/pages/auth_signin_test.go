@@ -420,27 +420,62 @@ func TestPasswordStep(t *testing.T) {
 		assert.NotContains(t, body, "/ui/auth/2fa/enroll/start?", "never in a URL")
 		assert.Empty(t, rec.Header().Values("Set-Cookie"))
 	})
-	t.Run("an enrolment that must return to an OAuth round trip keeps using the current sign-in", func(t *testing.T) {
-		up := siThemed()
-		up.reply("POST /auth/login", 200, `{"status":"enrollment_required","enrollToken":"ENROLL","allowedMethods":["TOTP"]}`)
-		rec := siPost("/ui/auth/login/password", "email", "a@b.c", "password", "pw", "oauth", "true").do(signInRouter(up, false))
-		require.Equal(t, http.StatusOK, rec.Code)
-		body := rec.Body.String()
-		assert.Contains(t, body, `href="/auth/login`)
-		assert.NotContains(t, body, "ENROLL", "no token is rendered where the new enrolment page cannot return")
-		assert.Empty(t, rec.Header().Values("Set-Cookie"))
+	oauthFields := []string{"response_type", "code", "client_id", "app", "redirect_uri", "http://localhost:8090/auth/callback", "state", "xyz", "code_challenge", "CH", "code_challenge_method", "S256"}
+	const oauthLanding = "/oauth/authorize?client_id=app&code_challenge=CH&code_challenge_method=S256&redirect_uri=http%3A%2F%2Flocalhost%3A8090%2Fauth%2Fcallback&response_type=code&state=xyz"
+	t.Run("forced enrolment and the passkey button carry every destination", func(t *testing.T) {
+		for name, tc := range map[string]struct {
+			ctx  []string
+			want string
+		}{
+			"oauth round trip": {append([]string{"oauth", "true"}, oauthFields...), oauthLanding},
+			"oidc interaction": {[]string{"interaction", "abc_DEF-123"}, "/oidc/interaction/abc_DEF-123/login"},
+			"ui redirect":      {[]string{"redirect", "/ui/x"}, "/ui/x"},
+			"no context":       {nil, "/ui/"},
+		} {
+			t.Run(name, func(t *testing.T) {
+				up := siThemed()
+				up.reply("POST /auth/login", 200, `{"status":"enrollment_required","enrollToken":"ENROLL","allowedMethods":["TOTP"]}`)
+				kv := append([]string{"email", "a@b.c", "password", "pw"}, tc.ctx...)
+				rec := siPost("/ui/auth/login/password", kv...).do(signInRouter(up, false))
+				require.Equal(t, http.StatusOK, rec.Code)
+				body := rec.Body.String()
+				assert.Contains(t, body, `action="/ui/auth/2fa/enroll/start"`)
+				assert.Contains(t, body, `name="token" value="ENROLL"`)
+				assert.Contains(t, body, `name="next" value="`+html.EscapeString(tc.want)+`"`)
+				assert.NotContains(t, body, "Continue to the current sign-in")
+				assert.NotContains(t, body, `href="/auth/login`)
+				assert.NotContains(t, body, `value="pw"`, "the password is never echoed")
+				assert.Empty(t, rec.Header().Values("Set-Cookie"))
+
+				// The email step offers the passkey page with the same landing.
+				q := url.Values{}
+				for i := 0; i+1 < len(tc.ctx); i += 2 {
+					q.Set(tc.ctx[i], tc.ctx[i+1])
+				}
+				rec = siReq{target: "/ui/auth/login?" + q.Encode()}.do(signInRouter(up, false))
+				require.Equal(t, http.StatusOK, rec.Code)
+				body = rec.Body.String()
+				assert.Contains(t, body, `formaction="/ui/auth/passkey"`)
+				assert.Contains(t, body, `name="next" value="`+html.EscapeString(tc.want)+`"`)
+				assert.NotContains(t, body, "/ui/auth/passkey?")
+			})
+		}
 	})
-	t.Run("the login page offers a passkey only for a destination under /ui", func(t *testing.T) {
+	t.Run("tampered context never reaches the carried landing", func(t *testing.T) {
 		up := siThemed()
-		rec := siReq{target: "/ui/auth/login?redirect=%2Fui%2Fx"}.do(signInRouter(up, false))
-		require.Equal(t, http.StatusOK, rec.Code)
-		// A post of the email form (the typed address with it, never in a URL).
-		assert.Contains(t, rec.Body.String(), `formaction="/ui/auth/passkey"`)
-		assert.Contains(t, rec.Body.String(), `name="next" value="/ui/x"`)
-		assert.NotContains(t, rec.Body.String(), "/ui/auth/passkey?")
-		rec = siReq{target: "/ui/auth/login?oauth=true"}.do(signInRouter(up, false))
-		require.Equal(t, http.StatusOK, rec.Code)
-		assert.NotContains(t, rec.Body.String(), "/ui/auth/passkey")
+		up.reply("POST /auth/login", 200, `{"status":"enrollment_required","enrollToken":"ENROLL"}`)
+		rec := siPost("/ui/auth/login/password", "email", "a@b.c", "password", "pw",
+			"oauth", "true", "client_id", "app", "redirect_uri", "http://localhost:8090/cb", "evil", "https://evil.test/", "prompt", "none").do(signInRouter(up, false))
+		body := rec.Body.String()
+		assert.Contains(t, body, `name="next" value="/oauth/authorize?client_id=app&amp;redirect_uri=`)
+		assert.NotContains(t, body, "evil")
+		assert.NotContains(t, body, "prompt")
+
+		rec = siPost("/ui/auth/login/password", "email", "a@b.c", "password", "pw", "interaction", "../../x", "redirect", "https://evil.test/ui/").do(signInRouter(up, false))
+		body = rec.Body.String()
+		assert.Contains(t, body, `name="next" value="/ui/"`)
+		assert.NotContains(t, body, "evil")
+		assert.NotContains(t, body, "oidc/interaction")
 	})
 }
 

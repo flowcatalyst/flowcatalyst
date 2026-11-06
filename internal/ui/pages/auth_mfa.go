@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -101,7 +102,7 @@ func (h *AuthMFA) startChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.setChallengeCookie(w, token, h.Flow.PendingTTL())
-	http.Redirect(w, r, authChallengePath+"?next="+url.QueryEscape(authNext(r.PostFormValue("next"))), http.StatusSeeOther)
+	http.Redirect(w, r, authChallengePath+"?next="+url.QueryEscape(authLanding(r.PostFormValue("next"))), http.StatusSeeOther)
 }
 
 // startEnroll is the same for the enroll token (enrollment_required).
@@ -112,14 +113,14 @@ func (h *AuthMFA) startEnroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.setChallengeCookie(w, token, h.Flow.EnrollTTL())
-	http.Redirect(w, r, authEnrollPath+"?next="+url.QueryEscape(authNext(r.PostFormValue("next"))), http.StatusSeeOther)
+	http.Redirect(w, r, authEnrollPath+"?next="+url.QueryEscape(authLanding(r.PostFormValue("next"))), http.StatusSeeOther)
 }
 
 // signedIn ends a step the flow completed (it set the session cookie): the
 // challenge cookie goes, the browser goes on to next.
 func (h *AuthMFA) signedIn(w http.ResponseWriter, r *http.Request, next string) {
 	h.clearChallengeCookie(w)
-	http.Redirect(w, r, authNext(next), http.StatusSeeOther) //nolint:gosec // G710: authNext allows only a same-site path under /ui
+	leaveTo(w, r, authLanding(next))
 }
 
 // ── the challenge ──────────────────────────────────────────────────────
@@ -145,7 +146,7 @@ func (h *AuthMFA) challengePage(w http.ResponseWriter, r *http.Request) {
 		h.expired(w, r)
 		return
 	}
-	v := challengeView(c, authNext(r.URL.Query().Get("next")), r.URL.Query().Get("method"))
+	v := challengeView(c, authLanding(r.URL.Query().Get("next")), r.URL.Query().Get("method"))
 	h.render(w, r, http.StatusOK, "Two-factor verification", nil, mfaChallenge(v))
 }
 
@@ -189,7 +190,7 @@ func (h *AuthMFA) verify(w http.ResponseWriter, r *http.Request) {
 		h.expired(w, r)
 		return
 	}
-	next := authNext(r.PostFormValue("next"))
+	next := authLanding(r.PostFormValue("next"))
 	method := strings.ToUpper(strings.TrimSpace(r.PostFormValue("method")))
 	code := strings.TrimSpace(r.PostFormValue("code"))
 	retry := func(status int, msg string) {
@@ -231,7 +232,7 @@ func (h *AuthMFA) sendEmail(w http.ResponseWriter, r *http.Request) {
 		h.expired(w, r)
 		return
 	}
-	v := challengeView(c, authNext(r.PostFormValue("next")), string(mfa.MethodEmailPin))
+	v := challengeView(c, authLanding(r.PostFormValue("next")), string(mfa.MethodEmailPin))
 	err := h.Flow.SendChallengeEmail(r.Context(), challengeToken(r))
 	var resend *mfa.ResendError
 	status := http.StatusUnprocessableEntity
@@ -297,6 +298,37 @@ func (h *AuthMFA) expired(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── small helpers ──────────────────────────────────────────────────────
+
+// landingInteraction is an OIDC interaction's login path.
+var landingInteraction = regexp.MustCompile(`^/oidc/interaction/([A-Za-z0-9_-]{1,128})/login$`)
+
+// authLanding validates a landing carried through the second-factor and
+// passkey pages (it travels in a form field or a query string, so it is
+// re-validated on every hop): an OIDC interaction login path (uid checked), an
+// /oauth/authorize URL rebuilt from the allow-listed forwarded fields only, or
+// a /ui page (authNext). Anything else is /ui/.
+func authLanding(raw string) string {
+	if landingInteraction.MatchString(raw) {
+		return raw
+	}
+	if q, ok := strings.CutPrefix(raw, "/oauth/authorize?"); ok {
+		vals, err := url.ParseQuery(q)
+		if err != nil {
+			return "/ui/"
+		}
+		c := signinContext{vals: url.Values{}}
+		for _, f := range oauthForwardFields {
+			if v := strings.TrimSpace(vals.Get(f)); v != "" && len(v) <= 2048 {
+				c.vals.Set(f, v)
+			}
+		}
+		if len(c.vals) == 0 {
+			return "/ui/"
+		}
+		return c.authorizeURL()
+	}
+	return authNext(raw)
+}
 
 // authNext is the page to return to after sign-in: a path on this site under
 // /ui (the SPA's safeUiRedirect rule), else /ui/. The query is kept.

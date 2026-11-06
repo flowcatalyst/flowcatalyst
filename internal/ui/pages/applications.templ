@@ -207,7 +207,7 @@ templ appDrawerBody(d appDetail) {
 			<ul class="flex flex-col gap-1">
 				for _, doc := range d.Docs {
 					<li>
-						<a href={ "/platform/docs/" + d.Code + "/" + doc.Slug } class="inline-flex items-center gap-2 text-sm text-primary no-underline hover:underline">
+						<a href={ "/ui/platform/docs/" + d.Code + "/" + doc.Slug } class="inline-flex items-center gap-2 text-sm text-primary no-underline hover:underline">
 							@kit.Icon(kit.IconProps{Name: "book-open", Class: "size-[1rem]"})
 							{ doc.Title }
 						</a>

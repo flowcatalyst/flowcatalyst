@@ -91,7 +91,7 @@ func safeMethod(m string) bool {
 }
 
 // LoginPath is where an unauthenticated navigation is sent.
-const LoginPath = "/auth/login"
+const LoginPath = "/ui/auth/login"
 
 // IsHTMLNavigation reports whether r is a top-level browser navigation that
 // can follow a redirect to a login page: GET/HEAD, not a Datastar action,

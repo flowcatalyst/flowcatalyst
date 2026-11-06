@@ -47,7 +47,7 @@ func TestProfileMount(t *testing.T) {
 	}
 
 	rec = do(t, h, req{method: http.MethodGet, target: "/ui/profile"})
-	if rec.Code != http.StatusFound || !strings.HasPrefix(rec.Header().Get("Location"), "/auth/login?redirect=") {
+	if rec.Code != http.StatusFound || !strings.HasPrefix(rec.Header().Get("Location"), "/ui/auth/login?redirect=") {
 		t.Errorf("signed-out profile: status %d to %q", rec.Code, rec.Header().Get("Location"))
 	}
 

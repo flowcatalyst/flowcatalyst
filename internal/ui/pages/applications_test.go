@@ -179,7 +179,7 @@ func TestApplicationDrawer(t *testing.T) {
 	h := newAppHarness()
 	body := h.do(t, anchorAdmin(), req{target: "/ui/applications/app_1", datastar: true})
 	mustContain(t, body, "Application Details", "<code>sac_1</code>", "Provisioned", "Getting &lt;started&gt;",
-		`href="/platform/docs/orders/intro"`, "Deactivate Application", "Deactivate the application first.", `"selApp":"app_1"`)
+		`href="/ui/platform/docs/orders/intro"`, "Deactivate Application", "Deactivate the application first.", `"selApp":"app_1"`)
 	mustNotContain(t, body, "Provision Login Client", `data-action="/ui/applications/app_1/delete"`)
 	inactive := h.do(t, anchorAdmin(), req{target: "/ui/applications/app_2", datastar: true})
 	mustContain(t, inactive, "Provision Service Account", "Provision Login Client", `data-action="/ui/applications/app_2/delete"`,

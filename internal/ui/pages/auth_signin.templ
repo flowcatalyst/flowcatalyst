@@ -133,14 +133,12 @@ templ signinEmailStep(v signinView) {
 			})
 		}
 		@signinSubmit("Continue", v.Theme)
-		if v.passkeyOffered() {
-			// The passkey page, reached by a POST of this form so the typed
-			// address is in no URL.
-			<input type="hidden" name="next" value={ v.uiNext() }/>
-			<div style="text-align:center;font-size:14px">
-				<button type="submit" formaction="/ui/auth/passkey" formnovalidate style={ signinLinkStyle(v.Theme) }>Sign in with a passkey</button>
-			</div>
-		}
+		// The passkey page, reached by a POST of this form so the typed address
+		// is in no URL; it carries the landing as next.
+		<input type="hidden" name="next" value={ v.next() }/>
+		<div style="text-align:center;font-size:14px">
+			<button type="submit" formaction="/ui/auth/passkey" formnovalidate style={ signinLinkStyle(v.Theme) }>Sign in with a passkey</button>
+		</div>
 	</form>
 }
 
@@ -246,21 +244,16 @@ templ signinTwoFactorStep(v signinView) {
 }
 
 // signinEnrollStep: the account must enrol a second factor before it can sign
-// in. Enrolment (QR code, recovery codes) is done by the current sign-in page.
+// in. Enrolment (QR code, recovery codes) is /ui/auth/2fa/enroll; the token
+// goes there by POST with the landing as next.
 templ signinEnrollStep(v signinView) {
 	<div class="flex flex-col gap-5">
 		@kit.Alert(kit.AlertProps{Role: "status", Icon: "shield", Description: "Your account must set up two-factor authentication before it can sign in."})
-		if v.EnrollToken != "" && v.uiNext() != "" {
-			<form method="post" action="/ui/auth/2fa/enroll/start" class="flex flex-col gap-5">
-				<input type="hidden" name="token" value={ v.EnrollToken }/>
-				<input type="hidden" name="next" value={ v.uiNext() }/>
-				@signinSubmit("Set up two-factor authentication", v.Theme)
-			</form>
-		} else {
-			@kit.Button(kit.ButtonProps{Href: v.legacyLink(), Attrs: v.Theme.accentStyle()}) {
-				Continue to the current sign-in
-			}
-		}
+		<form method="post" action="/ui/auth/2fa/enroll/start" class="flex flex-col gap-5">
+			<input type="hidden" name="token" value={ v.EnrollToken }/>
+			<input type="hidden" name="next" value={ v.next() }/>
+			@signinSubmit("Set up two-factor authentication", v.Theme)
+		</form>
 	</div>
 }
 
