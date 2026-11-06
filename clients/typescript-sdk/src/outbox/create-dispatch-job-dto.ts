@@ -192,6 +192,11 @@ export class CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), expiresAt });
 	}
 
+	/**
+	 * Makes the create idempotent: the first job with a key, within its
+	 * application (the code's first segment) and client, wins it; a repeat
+	 * answers that job's id and creates nothing. At most 100 characters.
+	 */
 	withIdempotencyKey(idempotencyKey: string): CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), idempotencyKey });
 	}
@@ -200,6 +205,11 @@ export class CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), externalId });
 	}
 
+	/**
+	 * The connection the job is delivered through: pausing it holds the job,
+	 * and (with no subscription) its service account signs the delivery.
+	 * Must be global or the job's client's, shared or the job's application's.
+	 */
 	withConnectionId(connectionId: string): CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), connectionId });
 	}
@@ -229,7 +239,11 @@ export class CreateDispatchJobDto {
 			subject: this.subject,
 			correlationId: this.correlationId,
 			eventId: this.eventId,
-			metadata: Object.keys(this.metadata).length > 0 ? this.metadata : null,
+			// The platform takes a list of {key, value}; an object fails the whole batch.
+			metadata:
+				Object.keys(this.metadata).length > 0
+					? Object.entries(this.metadata).map(([key, value]) => ({ key, value: String(value) }))
+					: null,
 			headers: Object.keys(this.headers).length > 0 ? this.headers : null,
 			dataOnly: this.dataOnly,
 			messageGroup: this.messageGroup,

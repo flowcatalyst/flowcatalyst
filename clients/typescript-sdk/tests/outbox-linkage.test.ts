@@ -64,3 +64,33 @@ test("CreateDispatchJobDto carries an explicit queue but omits an unset one", ()
 	const withQueue = base.withQueue("HIGH_PRIORITY");
 	assert.equal(withQueue.toPayload().queue, "HIGH_PRIORITY");
 });
+
+test("CreateDispatchJobDto sends metadata as a {key, value} list in insertion order", () => {
+	const job = CreateDispatchJobDto.create(
+		"svc",
+		"app:sub:agg:act",
+		"https://example.com/hook",
+		"{}",
+		"pool-1",
+	)
+		.withMetadata({ zeta: "1", alpha: "2" })
+		.withMetadata({ mid: "3" });
+	assert.deepEqual(job.toPayload().metadata, [
+		{ key: "zeta", value: "1" },
+		{ key: "alpha", value: "2" },
+		{ key: "mid", value: "3" },
+	]);
+
+	const bare = CreateDispatchJobDto.create("svc", "app:sub:agg:act", "https://x", "{}", "p");
+	assert.equal(bare.toPayload().metadata, undefined, "empty metadata is omitted");
+});
+
+test("CreateDispatchJobDto sends connectionId and idempotencyKey, and omits them when unset", () => {
+	const base = CreateDispatchJobDto.create("svc", "app:sub:agg:act", "https://x", "{}", "p");
+	assert.equal(base.toPayload().connectionId, undefined);
+	assert.equal(base.toPayload().idempotencyKey, undefined);
+
+	const p = base.withConnectionId("con_1").withIdempotencyKey("order-42").toPayload();
+	assert.equal(p.connectionId, "con_1");
+	assert.equal(p.idempotencyKey, "order-42");
+});

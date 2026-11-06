@@ -392,7 +392,7 @@ batch). `headers`, `retryStrategy`, `scheduledFor` and `expiresAt` are not batch
 fields and are ignored (`retryStrategy` is taken by the singular route only).
 The outbox processor (`internal/outbox`) forwards a `DISPATCH_JOB` row's
 payload as written except that an object `metadata` (written by Laravel SDK
-releases before 2026-11-05, and by the TypeScript SDK) is turned into the
+and TypeScript SDK releases before 2026-11-06) is turned into the
 key-sorted list, non-string values as their JSON text.
 
 **Event source** (both event routes): an absent, `null` or blank `source` is

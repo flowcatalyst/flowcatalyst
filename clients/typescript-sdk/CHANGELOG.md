@@ -7,6 +7,15 @@ Notable changes to `@flowcatalyst/sdk`. Releases are tagged
 
 Additive: no signature breaks (new parameters are optional).
 
+### Dispatch jobs
+- Fix: the outbox `DISPATCH_JOB` payload sends `metadata` as the platform's list
+  of `{key, value}` (insertion order). It was sent as a JSON object, which the
+  platform had to convert on forward.
+- `connectionId` and `idempotencyKey` were already sent and are now honoured by
+  the platform: the connection's service account signs a subscription-less job,
+  and a repeated key answers the first job's id instead of creating another
+  (within the job's application and client; at most 100 characters).
+
 ### Field workers
 - `FieldTokenVerifier` / `verifyFieldToken` and `FieldPrincipal`: offline
   verification of field-worker access tokens (RS256, `typ fc-field+jwt`,

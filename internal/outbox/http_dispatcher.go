@@ -249,7 +249,7 @@ func (d *HTTPDispatcher) Send(ctx context.Context, item Item) DispatchOutcome {
 // POST /api/dispatch-jobs/batch decodes. Every field is forwarded as the SDK
 // wrote it (connectionId, idempotencyKey, clientCode/clientId and the rest are
 // batch item fields already) except `metadata`: the batch takes a list of
-// {key, value}, and the Laravel SDK before 2026-11-05 (and the TypeScript SDK)
+// {key, value}, and Laravel and TypeScript SDK releases before 2026-11-06
 // wrote an object. Such a row would fail its whole batch with a 400 and sit
 // terminal BAD_REQUEST, so an object is turned into the list here, key-sorted
 // (the order the singular route stores a metadata map in); a non-string value

@@ -59,14 +59,33 @@ class DispatchJobPayloadTest {
                 .withHeaders(Map.of("X-A", "1"))
                 .withRetryStrategy("EXPONENTIAL")
                 .withScheduledFor(Instant.parse("2026-10-13T00:00:00Z"))
-                .withExpiresAt(Instant.parse("2026-10-14T00:00:00Z"))
-                .withIdempotencyKey("k")
-                .withConnectionId("con_1");
+                .withExpiresAt(Instant.parse("2026-10-14T00:00:00Z"));
         JsonNode payload = written(job);
-        for (String ignored : List.of("headers", "retryStrategy", "scheduledFor", "expiresAt",
-                "idempotencyKey", "connectionId")) {
+        for (String ignored : List.of("headers", "retryStrategy", "scheduledFor", "expiresAt")) {
             assertFalse(payload.has(ignored), ignored + " is ignored by the batch endpoint");
         }
+    }
+
+    @Test
+    void connectionIdAndIdempotencyKeyAreWrittenWhenSetAndOmittedWhenNot() {
+        JsonNode payload = written(CreateDispatchJobDto.of("orders:export", "https://e.com/x")
+                .withConnectionId("con_1").withIdempotencyKey("  order-42  "));
+        assertEquals("con_1", payload.get("connectionId").asString());
+        assertEquals("order-42", payload.get("idempotencyKey").asString(), "the key is trimmed");
+
+        JsonNode unset = written(CreateDispatchJobDto.of("orders:export", "https://e.com/x")
+                .withIdempotencyKey("   "));
+        assertFalse(unset.has("connectionId"));
+        assertFalse(unset.has("idempotencyKey"), "a blank key is none");
+    }
+
+    @Test
+    void anOverlongIdempotencyKeyOrBadConnectionIdIsRefused() {
+        assertThrows(IllegalArgumentException.class, () -> CreateDispatchJobDto
+                .of("a:b", "https://e.com").withIdempotencyKey("k".repeat(101)).validate());
+        assertThrows(IllegalArgumentException.class, () -> CreateDispatchJobDto
+                .of("a:b", "https://e.com").withConnectionId("not a valid id!").validate());
+        CreateDispatchJobDto.of("a:b", "https://e.com").withIdempotencyKey("k".repeat(100)).validate();
     }
 
     @Test

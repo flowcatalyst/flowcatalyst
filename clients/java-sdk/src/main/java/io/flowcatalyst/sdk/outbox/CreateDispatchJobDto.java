@@ -415,11 +415,11 @@ public final class CreateDispatchJobDto {
     }
 
     /**
-     * Not sent: the batch endpoint has no {@code idempotencyKey}; use {@link #withId}.
-     *
-     * @deprecated ignored by the platform; kept so 0.0.12 code compiles
+     * Makes the create idempotent: the first job with a key, within its application (the code's
+     * first segment) and client, wins it; a repeat answers that job's id and creates nothing.
+     * Trimmed; blank is none; at most 100 characters. Kept 7 days. An id given with
+     * {@link #withId} is not an idempotency key.
      */
-    @Deprecated
     public CreateDispatchJobDto withIdempotencyKey(String idempotencyKey) {
         CreateDispatchJobDto c = copy();
         c.idempotencyKey = idempotencyKey;
@@ -434,11 +434,11 @@ public final class CreateDispatchJobDto {
     }
 
     /**
-     * Not sent: the batch endpoint has no {@code connectionId}.
-     *
-     * @deprecated ignored by the platform; kept so 0.0.12 code compiles
+     * The connection the job is delivered through: pausing it holds the job, and (with no
+     * subscription) its service account signs the delivery. Must be global or the job's
+     * client's, shared or the job's application's; the platform refuses the whole batch
+     * otherwise.
      */
-    @Deprecated
     public CreateDispatchJobDto withConnectionId(String connectionId) {
         CreateDispatchJobDto c = copy();
         c.connectionId = connectionId;
@@ -496,6 +496,7 @@ public final class CreateDispatchJobDto {
         ids.put("platformClientId", platformClientId);
         ids.put("subscriptionId", subscriptionId);
         ids.put("serviceAccountId", serviceAccountId);
+        ids.put("connectionId", connectionId);
         ids.put("dispatchPoolId", dispatchPoolId);
         for (Map.Entry<String, String> e : ids.entrySet()) {
             if (e.getValue() != null && !PLATFORM_ID.matcher(e.getValue()).matches()) {
@@ -508,6 +509,9 @@ public final class CreateDispatchJobDto {
         }
         if (clientCode != null && (clientCode.isBlank() || length(clientCode.strip()) > 100)) {
             throw new IllegalArgumentException("clientCode must be 1 to 100 characters");
+        }
+        if (idempotencyKey != null && length(idempotencyKey.strip()) > 100) {
+            throw new IllegalArgumentException("idempotencyKey must be at most 100 characters");
         }
         atLeastOne("sequence", sequence);
         atLeastOne("timeoutSeconds", timeoutSeconds);
@@ -596,6 +600,9 @@ public final class CreateDispatchJobDto {
             });
             p.put("metadata", pairs);
         }
+        putIfNotNull(p, "connectionId", connectionId);
+        putIfNotNull(p, "idempotencyKey",
+                idempotencyKey != null && !idempotencyKey.isBlank() ? idempotencyKey.strip() : null);
         putIfNotNull(p, "queue", queue != null ? queue.strip().toUpperCase(Locale.ROOT) : null);
         putIfNotNull(p, "descriptor", descriptor);
         return p;

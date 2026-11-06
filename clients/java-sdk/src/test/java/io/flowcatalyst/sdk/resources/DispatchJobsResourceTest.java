@@ -51,6 +51,7 @@ class DispatchJobsResourceTest {
         List<DispatchJobsResource.BatchResult> results = client().dispatchJobs().createBatch(List.of(
                 CreateDispatchJobDto.of("ingest:orders:record", "https://t.example.com/r")
                         .withId("j1").withClientCode("acme").withMetadata("source", "sftp")
+                        .withConnectionId("con_1").withIdempotencyKey("order-42")
                         .withPayload("a,b", "text/csv").withDataOnly(true),
                 CreateDispatchJobDto.of("ingest:orders:record", "https://t.example.com/r")));
 
@@ -64,6 +65,10 @@ class DispatchJobsResourceTest {
         assertEquals("acme", first.get("clientCode").asString());
         assertEquals("[{\"key\":\"source\",\"value\":\"sftp\"}]", first.get("metadata").toString());
         assertEquals("text/csv", first.get("payloadContentType").asString());
+        assertEquals("con_1", first.get("connectionId").asString());
+        assertEquals("order-42", first.get("idempotencyKey").asString());
+        assertFalse(body.get("items").get(1).has("connectionId"));
+        assertFalse(body.get("items").get(1).has("idempotencyKey"));
         assertFalse(body.get("items").get(1).has("id"), "no id: the platform mints one");
     }
 

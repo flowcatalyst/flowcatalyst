@@ -82,6 +82,18 @@ type DispatchJob struct {
 	Queue          string // DEFAULT or HIGH_PRIORITY
 	Descriptor     string
 
+	// ConnectionID is the connection the job is delivered through: pausing it
+	// holds the job, and (with no subscription) its service account signs the
+	// delivery. Must be global or the job's client's, shared or the job's
+	// application's; the platform refuses the whole batch otherwise.
+	ConnectionID string
+	// IdempotencyKey makes the create idempotent: the first job with a key,
+	// within its application (the code's first segment) and client, wins it; a
+	// repeat answers that job's id and creates nothing. Trimmed, blank is
+	// none, at most 100 characters; kept 7 days. An ID is not an idempotency
+	// key.
+	IdempotencyKey string
+
 	payloadSet bool
 }
 
@@ -113,6 +125,8 @@ func (j DispatchJob) WithTimeoutSeconds(n int) DispatchJob       { j.TimeoutSeco
 func (j DispatchJob) WithMaxRetries(n int) DispatchJob           { j.MaxRetries = &n; return j }
 func (j DispatchJob) WithQueue(q string) DispatchJob             { j.Queue = q; return j }
 func (j DispatchJob) WithDescriptor(d string) DispatchJob        { j.Descriptor = d; return j }
+func (j DispatchJob) WithConnectionID(id string) DispatchJob     { j.ConnectionID = id; return j }
+func (j DispatchJob) WithIdempotencyKey(k string) DispatchJob    { j.IdempotencyKey = k; return j }
 
 // WithMetadata appends one metadata pair.
 func (j DispatchJob) WithMetadata(key, value string) DispatchJob {
@@ -152,7 +166,7 @@ func (j DispatchJob) Validate() error {
 	}
 	for name, v := range map[string]string{
 		"eventId": j.EventID, "platformClientId": j.PlatformClientID, "subscriptionId": j.SubscriptionID,
-		"serviceAccountId": j.ServiceAccountID, "dispatchPoolId": j.DispatchPoolID,
+		"serviceAccountId": j.ServiceAccountID, "dispatchPoolId": j.DispatchPoolID, "connectionId": j.ConnectionID,
 	} {
 		if v != "" && !platformIDPattern.MatchString(v) {
 			return fmt.Errorf("%s must match [0-9A-Za-z_-]{1,17}", name)
@@ -163,6 +177,9 @@ func (j DispatchJob) Validate() error {
 	}
 	if j.ClientCode != "" && (strings.TrimSpace(j.ClientCode) == "" || utf8.RuneCountInString(j.ClientCode) > 100) {
 		return errors.New("clientCode must be 1 to 100 characters")
+	}
+	if utf8.RuneCountInString(strings.TrimSpace(j.IdempotencyKey)) > 100 {
+		return errors.New("idempotencyKey must be at most 100 characters")
 	}
 	for _, n := range []struct {
 		name string
@@ -235,6 +252,8 @@ type dispatchJobPayload struct {
 	TimeoutSeconds     *int            `json:"timeoutSeconds,omitempty"`
 	MaxRetries         *int            `json:"maxRetries,omitempty"`
 	Metadata           []MetadataEntry `json:"metadata,omitempty"`
+	ConnectionID       string          `json:"connectionId,omitempty"`
+	IdempotencyKey     string          `json:"idempotencyKey,omitempty"`
 	Queue              string          `json:"queue,omitempty"`
 	Descriptor         string          `json:"descriptor,omitempty"`
 }
@@ -277,7 +296,8 @@ func DispatchJobPayload(job DispatchJob) (DispatchJob, []byte, error) {
 		SubscriptionID: j.SubscriptionID, ServiceAccountID: j.ServiceAccountID,
 		DispatchPoolID: j.DispatchPoolID, MessageGroup: j.MessageGroup, Mode: j.Mode,
 		Sequence: j.Sequence, TimeoutSeconds: j.TimeoutSeconds, MaxRetries: j.MaxRetries,
-		Metadata: j.Metadata, Queue: j.Queue, Descriptor: j.Descriptor,
+		Metadata: j.Metadata, ConnectionID: j.ConnectionID, IdempotencyKey: strings.TrimSpace(j.IdempotencyKey),
+		Queue: j.Queue, Descriptor: j.Descriptor,
 	})
 	if err != nil {
 		return job, nil, err

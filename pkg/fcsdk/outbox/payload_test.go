@@ -202,6 +202,31 @@ func TestDispatchJobMetadataIsTheKeyValueArray(t *testing.T) {
 	assert.JSONEq(t, `[{"key":"b","value":"2"},{"key":"a","value":"1"}]`, string(members(t, raw)["metadata"]))
 }
 
+// The platform honours connectionId and idempotencyKey on a batch item; both are
+// written when set (key trimmed) and left out when not.
+func TestDispatchJobConnectionAndIdempotencyKey(t *testing.T) {
+	base := NewDispatchJob("shop:x", "https://a.example.com").WithID("j")
+	_, raw, err := DispatchJobPayload(base)
+	require.NoError(t, err)
+	m := members(t, raw)
+	assert.NotContains(t, m, "connectionId")
+	assert.NotContains(t, m, "idempotencyKey")
+
+	_, raw, err = DispatchJobPayload(base.WithConnectionID("con_0000000001").WithIdempotencyKey("  order-42  "))
+	require.NoError(t, err)
+	m = members(t, raw)
+	assert.JSONEq(t, `"con_0000000001"`, string(m["connectionId"]))
+	assert.JSONEq(t, `"order-42"`, string(m["idempotencyKey"]))
+
+	_, raw, err = DispatchJobPayload(base.WithIdempotencyKey("   "))
+	require.NoError(t, err)
+	assert.NotContains(t, members(t, raw), "idempotencyKey", "a blank key is none")
+
+	require.NoError(t, base.WithIdempotencyKey(strings.Repeat("k", 100)).Validate())
+	require.ErrorContains(t, base.WithIdempotencyKey(strings.Repeat("k", 101)).Validate(), "idempotencyKey")
+	require.ErrorContains(t, base.WithConnectionID("not a valid id!").Validate(), "connectionId")
+}
+
 func TestInsertStatementTable(t *testing.T) {
 	stmt, err := InsertStatement("app.outbox", PlaceholderDollar)
 	require.NoError(t, err)
