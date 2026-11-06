@@ -117,7 +117,7 @@ templ securityPasskeys(v securityView) {
 	<p class="m-0 mb-4 text-sm text-muted-foreground">
 		Passkeys let you sign in without a password using Touch ID, Face ID, Windows Hello, or a hardware security key.
 	</p>
-	<form data-fc-passkey-register data-done={ authSecurityPath + "?added=1" } class="mb-4 flex flex-col gap-2">
+	<form data-fc-passkey-register data-done={ v.passkeyDone() } class="mb-4 flex flex-col gap-2">
 		<div class="flex flex-wrap gap-2">
 			@kit.Input(kit.InputProps{ID: "passkey-name", Name: "name", Placeholder: "Name (e.g. 'My Computer/Phone')", Required: true, Class: "max-w-xs"})
 			@kit.Button(kit.ButtonProps{Type: "submit", Icon: "key-round"}) {

@@ -104,6 +104,8 @@ const (
 	flashDevRemoved = "developer-role-removed"
 	flashDevRevoked = "developer-credential-revoked"
 
+	flashProfilePassword = "password-changed"
+
 	flashPortalAppCreated      = "portal-app-created"
 	flashPortalAppUpdated      = "portal-app-updated"
 	flashPortalAppDeleted      = "portal-app-deleted"
@@ -310,6 +312,8 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashDevGranted: {Kind: kit.FlashSuccess, Summary: "Granted", Detail: "Developer role granted"},
 	flashDevRemoved: {Kind: kit.FlashSuccess, Summary: "Removed", Detail: "Developer role removed"},
 	flashDevRevoked: {Kind: kit.FlashSuccess, Summary: "Revoked", Detail: "Developer credential revoked"},
+
+	flashProfilePassword: {Kind: kit.FlashSuccess, Summary: "Password changed", Detail: "Your password has been updated."},
 
 	// The SPA's portal toasts name the app or the user; a Datastar answer does
 	// too, a flash key after a native post carries no request text.

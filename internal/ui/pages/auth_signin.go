@@ -121,6 +121,12 @@ var forwardedHeaders = []string{
 // returns what it answered. It starts from a fresh context: the router stores
 // its routing state there, and reusing this request's would misroute.
 func (s *SignIn) call(r *http.Request, method, target string, body any) upstreamResponse {
+	return callUpstream(s.Upstream, r, method, target, body)
+}
+
+// callUpstream is call for any platform handler (the profile page uses it for
+// the session-gated /auth/* endpoints).
+func callUpstream(upstream http.Handler, r *http.Request, method, target string, body any) upstreamResponse {
 	var rd *bytes.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -152,7 +158,7 @@ func (s *SignIn) call(r *http.Request, method, target string, body any) upstream
 		req.Header.Set("Content-Type", "application/json")
 	}
 	uw := &upstreamWriter{header: http.Header{}}
-	s.Upstream.ServeHTTP(uw, req)
+	upstream.ServeHTTP(uw, req)
 	if uw.status == 0 {
 		uw.status = http.StatusOK
 	}

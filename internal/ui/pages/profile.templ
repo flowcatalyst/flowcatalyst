@@ -1,0 +1,296 @@
+package pages
+
+import (
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
+	"github.com/flowcatalyst/framework/go/ui/kit"
+)
+
+// profilePage is the signed-in user's own page (/ui/profile): the SPA's
+// ProfilePage card by card (docs/ui/README.md, "Profile").
+templ profilePage(v profileView) {
+	if v.HasSecurity && v.Security.ShowPasskeys {
+		<script defer src={ uiassets.URL("fc-webauthn.js") }></script>
+	}
+	@kit.PageHeader(kit.PageHeaderProps{Title: "Profile", Subtitle: "Manage your account settings"})
+	if v.Error != "" {
+		@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "triangle-alert", Description: v.Error, Class: "mb-4"})
+	}
+	if v.Message != "" {
+		@kit.Alert(kit.AlertProps{Role: "status", Icon: "circle-check", Description: v.Message, Class: "mb-4"})
+	}
+	<div id="profile-grid" class="grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-2">
+		@kit.FormSection(kit.FormSectionProps{Title: "User Information", Card: true}) {
+			@profileInfo(v)
+		}
+		@kit.FormSection(kit.FormSectionProps{Title: "Account Settings", Card: true}) {
+			@profileAccount(v)
+		}
+		if v.HasSecurity && v.Security.ShowPasskeys {
+			@kit.FormSection(kit.FormSectionProps{Title: "Passkeys", Card: true}) {
+				@securityPasskeys(v.Security)
+			}
+		}
+		if v.HasSecurity {
+			@kit.FormSection(kit.FormSectionProps{Title: "Two-Factor Authentication", Card: true}) {
+				@securityTwoFactor(v.Security)
+			}
+		}
+		if v.Developer != nil {
+			@kit.FormSection(kit.FormSectionProps{Title: "Developer API Access", Card: true}) {
+				@profileDeveloperCard(*v.Developer)
+			}
+		}
+		@kit.FormSection(kit.FormSectionProps{Title: "Security", Card: true}) {
+			@profileActivityCard(v.Activity)
+		}
+	</div>
+	if !v.Me.SsoManaged {
+		@profilePasswordDialog(v.Password)
+	}
+	if v.Secret != nil {
+		@devSecretDialog(*v.Secret)
+	}
+}
+
+templ profileInfo(v profileView) {
+	<div class="flex items-start gap-5">
+		<div class="flex size-20 shrink-0 items-center justify-center rounded-full bg-primary text-2xl font-semibold text-primary-foreground" aria-hidden="true">{ v.Initials }</div>
+		<div class="min-w-0">
+			<h3 class="m-0 mb-1 text-lg font-semibold break-words">{ v.Me.displayName() }</h3>
+			<p class="m-0 mb-3 text-sm break-all text-muted-foreground">{ v.Me.Email }</p>
+			<div class="flex flex-wrap gap-2">
+				for _, role := range v.Me.Roles {
+					@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSecondary}) {
+						{ role }
+					}
+				}
+			</div>
+		</div>
+	</div>
+}
+
+templ profileAccount(v profileView) {
+	<div class="flex flex-col gap-4">
+		@kit.Field(kit.FieldProps{Label: "Display Name", For: "profile-name"}) {
+			@kit.Input(kit.InputProps{ID: "profile-name", Name: "name", Value: v.Me.displayName(), Disabled: true})
+		}
+		@kit.Field(kit.FieldProps{Label: "Email", For: "profile-email"}) {
+			@kit.Input(kit.InputProps{ID: "profile-email", Name: "email", Value: v.Me.Email, Disabled: true})
+		}
+		if v.Me.SsoManaged {
+			<p id="profile-sso-note" class="m-0 flex items-center gap-2 text-sm text-muted-foreground">
+				@kit.Icon(kit.IconProps{Name: "lock", Class: "size-4"})
+				Your password is managed by your organisation's identity provider.
+			</p>
+		} else {
+			<div>
+				@kit.Button(kit.ButtonProps{Variant: kit.ButtonOutline, Icon: "key-round", Attrs: kit.OpenModal(profilePasswordID)}) {
+					Change Password
+				}
+			</div>
+		}
+	</div>
+}
+
+// profilePasswordDialog is the change-password dialog: a native form, so it
+// works as the SPA's does without a script; a refusal or the second-factor
+// step comes back with the dialog open.
+templ profilePasswordDialog(p profilePassword) {
+	@kit.Dialog(kit.DialogProps{
+		ID: profilePasswordID, Title: "Change Password", Persistent: true,
+		Footer: profilePasswordFooter(p),
+		Attrs:  profilePasswordAttrs(p.Open),
+	}) {
+		<form id="profile-password-form" method="post" action="/ui/profile/password" class="flex flex-col gap-4">
+			if p.Error != "" {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "circle-x", Title: p.Error})
+			}
+			if p.Notice != "" {
+				@kit.Alert(kit.AlertProps{Role: "status", Icon: "mail", Title: p.Notice})
+			}
+			if p.MFA {
+				<input type="hidden" name="mfa" value="1"/>
+				<input type="hidden" name="methods" value={ methodsValue(p.Methods) }/>
+			}
+			if p.MFA {
+				// The typed passwords ride along to the code step (this
+				// response is no-store) so the user does not type them twice.
+				<input type="hidden" name="currentPassword" value={ p.Current }/>
+				<input type="hidden" name="newPassword" value={ p.New }/>
+				<input type="hidden" name="confirmPassword" value={ p.Conf }/>
+			} else {
+				@kit.Field(kit.FieldProps{Label: "Current password", For: "cp-current"}) {
+					@kit.PasswordInput(kit.PasswordInputProps{ID: "cp-current", Name: "currentPassword", Signal: "cpCurrent", Required: true, Autocomplete: "current-password"})
+				}
+				@kit.Field(kit.FieldProps{Label: "New password", For: "cp-new"}) {
+					@kit.PasswordInput(kit.PasswordInputProps{ID: "cp-new", Name: "newPassword", Signal: "cpNew", Required: true, Autocomplete: "new-password", Meter: true})
+				}
+				@kit.Field(kit.FieldProps{Label: "Confirm new password", For: "cp-confirm"}) {
+					@kit.PasswordInput(kit.PasswordInputProps{ID: "cp-confirm", Name: "confirmPassword", Signal: "cpConfirm", Required: true, Autocomplete: "new-password"})
+				}
+			}
+			if p.MFA {
+				<div class="flex flex-col gap-2 border-t border-border pt-4">
+					@kit.Field(kit.FieldProps{Label: "Two-factor code", For: "cp-code", Description: codeHint(p)}) {
+						@kit.Input(kit.InputProps{ID: "cp-code", Name: "code", Placeholder: "Enter your code", Required: true, Attrs: templ.Attributes{"autocomplete": "one-time-code"}})
+					}
+					if p.hasEmail() {
+						<div>
+							<button type="submit" formaction="/ui/profile/password/email-code" formnovalidate class="fc-btn fc-btn-text">Send email code</button>
+						</div>
+					}
+				</div>
+			}
+		</form>
+	}
+}
+
+func profilePasswordAttrs(open bool) templ.Attributes {
+	if !open {
+		return nil
+	}
+	return templ.Attributes{"open": true, "data-init": "el.removeAttribute('open'); el.showModal()"}
+}
+
+func methodsValue(m []string) string {
+	out := ""
+	for i, s := range m {
+		if i > 0 {
+			out += ","
+		}
+		out += s
+	}
+	return out
+}
+
+func codeHint(p profilePassword) string {
+	switch {
+	case p.hasTOTP() && p.hasEmail():
+		return "Enter the code from your authenticator app, or send an email code below."
+	case p.hasTOTP():
+		return "Enter the code from your authenticator app."
+	case p.hasEmail():
+		return "We sent a code to your email."
+	}
+	return ""
+}
+
+templ profilePasswordFooter(p profilePassword) {
+	<button type="button" class="fc-btn fc-btn-text" data-on:click={ kit.CloseDialog }>Cancel</button>
+	<button type="submit" form="profile-password-form" class="fc-btn fc-btn-primary">
+		if p.MFA {
+			Verify &amp; Change
+		} else {
+			Change Password
+		}
+	</button>
+}
+
+templ profileDeveloperCard(d profileDeveloper) {
+	<div class="flex flex-col gap-4">
+		<p class="m-0 text-sm text-muted-foreground">
+			Mint a client_credentials token as yourself to call this environment from local scripts or services — no OAuth client, no Docker stack, just your own secret.
+		</p>
+		<div class="flex flex-wrap items-center gap-3">
+			if d.Has {
+				@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSuccess}) {
+					Credential set
+				}
+			} else {
+				@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSecondary}) {
+					No credential set
+				}
+			}
+			<span class="text-xs text-muted-foreground">
+				Last rotated: 
+				@kit.LocalTime(kit.LocalTimeProps{At: d.Rotated, Empty: "Never"})
+			</span>
+		</div>
+		<pre class="m-0 overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-200"><code>{ d.curl() }</code></pre>
+		<div class="flex flex-wrap justify-end gap-2">
+			if d.Has {
+				@kit.Button(kit.ButtonProps{Variant: kit.ButtonDestructiveOutline, Icon: "ban", Attrs: kit.OpenModal("confirm-dev-revoke")}) {
+					Revoke
+				}
+				@kit.ConfirmDialog(kit.ConfirmDialogProps{
+					ID: "confirm-dev-revoke", Action: "/ui/profile/developer-credential/revoke",
+					Title: "Revoke Credential", Message: "Revoke your developer client secret? Any scripts using it will stop working immediately.",
+					ConfirmLabel: "Revoke", Tone: kit.ToneDanger,
+				})
+				@kit.Button(kit.ButtonProps{Variant: kit.ButtonOutline, Icon: "key-round", Attrs: kit.OpenModal("confirm-dev-rotate")}) {
+					Rotate Secret
+				}
+				@kit.ConfirmDialog(kit.ConfirmDialogProps{
+					ID: "confirm-dev-rotate", Action: "/ui/profile/developer-credential",
+					Title:        "Rotate developer secret?",
+					Message:      "Your current developer client secret stops working immediately. Any scripts or tools using it will fail to authenticate until they are given the new one. The new value is shown once, so copy it before closing.",
+					ConfirmLabel: "Rotate secret", Tone: kit.ToneWarn,
+				})
+			} else {
+				<form method="post" action="/ui/profile/developer-credential">
+					@kit.Button(kit.ButtonProps{Type: "submit", Variant: kit.ButtonOutline, Icon: "key-round"}) {
+						Set Secret
+					}
+				</form>
+			}
+		</div>
+	</div>
+}
+
+templ profileActivityCard(a profileActivity) {
+	<div class="flex flex-col gap-4">
+		<div class="flex items-center gap-4 rounded-lg bg-muted p-4">
+			<div class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-secondary" aria-hidden="true">
+				@kit.Icon(kit.IconProps{Name: "clock", Class: "size-5"})
+			</div>
+			<div class="flex-1">
+				<h4 class="m-0 mb-1 text-sm font-medium">Sign-in Activity</h4>
+				<p class="m-0 text-[13px] text-muted-foreground">Review recent sign-ins to your account</p>
+			</div>
+			if a.Shown {
+				<a href="/ui/profile" class="fc-btn fc-btn-outline fc-btn-sm">Hide</a>
+			} else {
+				<a href="/ui/profile?activity=1#profile-activity" class="fc-btn fc-btn-outline fc-btn-sm">View</a>
+			}
+		</div>
+		if a.Shown {
+			<div id="profile-activity" class="flex flex-col gap-3">
+				<p class="m-0 text-[13px] text-muted-foreground">
+					Sessions last up to 24 hours and can't be signed out individually. If you see activity you don't recognise, change your password.
+				</p>
+				if a.Error != "" {
+					@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "triangle-alert", Description: a.Error})
+				} else if len(a.Attempts) == 0 {
+					<p class="m-0 py-4 text-center text-sm text-muted-foreground">No recent sign-in activity.</p>
+				} else {
+					<ul class="m-0 flex list-none flex-col divide-y divide-border p-0">
+						for _, at := range a.Attempts {
+							<li class="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+								<span>
+									@kit.LocalTime(kit.LocalTimeProps{At: at.When, Empty: "—"})
+								</span>
+								if at.OK {
+									@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSuccess}) {
+										Success
+									}
+								} else {
+									@kit.Badge(kit.BadgeProps{Variant: kit.BadgeDestructive}) {
+										Failed
+									}
+								}
+								<span title={ at.UserAgent }>{ at.Device }</span>
+								<span class="font-mono text-xs text-muted-foreground">
+									if at.IP == "" {
+										—
+									} else {
+										{ at.IP }
+									}
+								</span>
+							</li>
+						}
+					</ul>
+				}
+			</div>
+		}
+	</div>
+}

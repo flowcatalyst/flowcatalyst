@@ -243,8 +243,11 @@ func Mount(r chi.Router, cfg Config) error {
 			})
 		}
 
-		r.Group(func(r chi.Router) {
-			r.Use(
+		// sessionGuards is the guard chain of every signed-in page. The profile
+		// group omits the role-less gate: a user without a platform role may
+		// reach their own profile (and the security page it links to) only.
+		sessionGuards := func(roleless bool) []func(http.Handler) http.Handler {
+			chain := []func(http.Handler) http.Handler{
 				// Pages and Datastar streams go out compressed (Brotli or
 				// gzip); every guard's own answer too.
 				compress.Handler,
@@ -253,16 +256,32 @@ func Mount(r chi.Router, cfg Config) error {
 				guard.SecurityHeaders,
 				csrf,
 				guard.RequireSession,
-				guard.ProfileOnly(sh.Deny),
-				withSprite,
-			)
+			}
+			if !roleless {
+				chain = append(chain, guard.ProfileOnly(sh.Deny))
+			}
+			return append(chain, withSprite)
+		}
+
+		r.Group(func(r chi.Router) {
+			r.Use(sessionGuards(true)...)
+			if cfg.TwoFactor != nil {
+				cfg.TwoFactor.MountSession(r)
+			}
+			if cfg.SignInUpstream != nil {
+				(&pages.Profile{
+					Upstream: cfg.SignInUpstream, Principals: cfg.DeveloperUsers, Credentials: cfg.DeveloperUserOps,
+					Security: cfg.TwoFactor, Shell: sh,
+				}).Mount(r)
+			}
+		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(sessionGuards(false)...)
 			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 				http.Redirect(w, r, "/ui/dispatch-pools", http.StatusFound)
 			})
 			r.Post("/logout", signOut(cfg.CookieSecure))
-			if cfg.TwoFactor != nil {
-				cfg.TwoFactor.MountSession(r)
-			}
 			(&pages.DispatchPools{Pools: cfg.DispatchPools, Ops: cfg.DispatchPoolOps, Clients: cfg.Clients, Shell: sh}).Mount(r)
 			(&pages.Connections{Connections: cfg.Connections, Ops: cfg.ConnectionOps, Clients: cfg.Clients, ServiceAccounts: cfg.ServiceAccounts, Shell: sh}).Mount(r)
 			(&pages.EventTypes{Store: cfg.EventTypes, Ops: cfg.EventTypeOps, Apps: cfg.Applications, Shell: sh}).Mount(r)

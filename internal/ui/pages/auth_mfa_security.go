@@ -70,6 +70,8 @@ type securityView struct {
 	// recovery codes.
 	Message, Error string
 	Panel          templ.Component
+	// DonePath is where adding a passkey ends (empty: this page).
+	DonePath string
 }
 
 func methodLabel(method string) string {
@@ -109,11 +111,19 @@ func (h *AuthMFA) securityPage(w http.ResponseWriter, r *http.Request) {
 // renderSecurity fills v (its banners and panel as the caller set them) with
 // the current state and writes the page.
 func (h *AuthMFA) renderSecurity(w http.ResponseWriter, r *http.Request, p *principal.Principal, status int, v securityView) {
-	ctx := r.Context()
-	st, err := h.Flow.Status(ctx, p)
-	if err != nil {
+	if err := h.securityState(r.Context(), p, &v); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
+	}
+	h.Shell.RenderStatus(w, r, status, shell.Page{Title: "Security", Path: authSecurityPath}, securityPageContent(v))
+}
+
+// securityState fills v with the user's two-factor and passkey state. The
+// profile page shows the same cards from the same state (profile.go).
+func (h *AuthMFA) securityState(ctx context.Context, p *principal.Principal, v *securityView) error {
+	st, err := h.Flow.Status(ctx, p)
+	if err != nil {
+		return err
 	}
 	v.Required = st.Required
 	for _, m := range st.Methods {
@@ -141,8 +151,7 @@ func (h *AuthMFA) renderSecurity(w http.ResponseWriter, r *http.Request, p *prin
 		v.ShowPasskeys = true
 		keys, err := h.Passkeys.FindByPrincipal(ctx, string(p.ID))
 		if err != nil {
-			h.Shell.Fail(w, r, err)
-			return
+			return err
 		}
 		for _, k := range keys {
 			row := securityPasskey{ID: k.ID, Name: "Unnamed passkey", Added: k.CreatedAt}
@@ -155,7 +164,7 @@ func (h *AuthMFA) renderSecurity(w http.ResponseWriter, r *http.Request, p *prin
 			v.Passkeys = append(v.Passkeys, row)
 		}
 	}
-	h.Shell.RenderStatus(w, r, status, shell.Page{Title: "Security", Path: authSecurityPath}, securityPageContent(v))
+	return nil
 }
 
 // refuse re-renders the page with an error banner.
@@ -330,4 +339,12 @@ func (h *AuthMFA) removePasskey(ctx context.Context, p *principal.Principal, id 
 		return httperror.NotFound("Credential", id)
 	}
 	return h.PasskeyOps.Revoke(ctx, id)
+}
+
+// passkeyDone is where the passkey form goes once a credential is registered.
+func (v securityView) passkeyDone() string {
+	if v.DonePath != "" {
+		return v.DonePath + "?added=1"
+	}
+	return authSecurityPath + "?added=1"
 }

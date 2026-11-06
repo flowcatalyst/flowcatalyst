@@ -44,6 +44,9 @@ type Page struct {
 	Path string
 }
 
+// ProfilePath is the signed-in user's own page.
+const ProfilePath = "/ui/profile"
+
 // SignOutPath is the UI's sign-out endpoint (POST).
 const SignOutPath = "/ui/logout"
 
@@ -66,7 +69,7 @@ func (s *Shell) render(w http.ResponseWriter, r *http.Request, status int, page 
 		Nav:           NavigationWith(ac, page.Path, s.Features),
 		User:          s.user(r.Context(), ac),
 		Version:       orDev(s.Version),
-		ProfileHref:   "/profile",
+		ProfileHref:   ProfilePath,
 		SignOutAction: SignOutPath,
 	}
 	collapsed := false

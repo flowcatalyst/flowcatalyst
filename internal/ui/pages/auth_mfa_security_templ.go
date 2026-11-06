@@ -500,9 +500,9 @@ func securityPasskeys(v securityView) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var18 string
-		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(authSecurityPath + "?added=1")
+		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.passkeyDone())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/auth_mfa_security.templ`, Line: 120, Col: 73}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/auth_mfa_security.templ`, Line: 120, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 		if templ_7745c5c3_Err != nil {
