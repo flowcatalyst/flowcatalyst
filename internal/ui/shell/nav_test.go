@@ -96,3 +96,33 @@ func TestSectionKeys(t *testing.T) {
 		seen[g.Key] = true
 	}
 }
+
+func TestLanding(t *testing.T) {
+	sh := &Shell{}
+	admin := &auth.AuthContext{Scope: auth.ScopeAnchor, Roles: []string{"platform:super-admin"}, Permissions: []string{"platform:*:*:*"}}
+	if got := sh.Landing(admin); got != "/ui/dispatch-pools" {
+		t.Errorf("admin lands on %s", got)
+	}
+	clientAdmin := &auth.AuthContext{
+		Scope: auth.ScopeClient, Clients: []string{"clt_1"}, Roles: []string{"platform:client-admin"},
+		Permissions: []string{"platform:iam:user:view", "platform:iam:user:update"},
+	}
+	if got := sh.Landing(clientAdmin); got != "/ui/users" {
+		t.Errorf("client admin lands on %s, want /ui/users", got)
+	}
+	withPools := &auth.AuthContext{
+		Scope: auth.ScopeClient, Clients: []string{"clt_1"}, Roles: []string{"platform:client-admin"},
+		Permissions: []string{"platform:iam:user:view", "platform:messaging:dispatch-pool:view"},
+	}
+	if got := sh.Landing(withPools); got != "/ui/dispatch-pools" {
+		t.Errorf("a caller who may see Dispatch Pools lands on %s", got)
+	}
+	nobody := &auth.AuthContext{Scope: auth.ScopeClient, Clients: []string{"clt_1"}, Roles: []string{"app:viewer"}}
+	if got := sh.Landing(nobody); got != "/ui/profile" {
+		t.Errorf("a caller with no console page lands on %s, want /ui/profile", got)
+	}
+	// The SPA-linked Dashboard entry is never a landing.
+	if got := landing([]kit.NavGroup{{Items: []kit.NavItem{{Href: "/dashboard"}, {Href: "/ui/roles"}}}}); got != "/ui/roles" {
+		t.Errorf("landing = %s", got)
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/guard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/pages"
@@ -279,7 +280,7 @@ func Mount(r chi.Router, cfg Config) error {
 		r.Group(func(r chi.Router) {
 			r.Use(sessionGuards(false)...)
 			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-				http.Redirect(w, r, "/ui/dispatch-pools", http.StatusFound)
+				http.Redirect(w, r, sh.Landing(auth.FromContext(r.Context())), http.StatusFound)
 			})
 			r.Post("/logout", signOut(cfg.CookieSecure))
 			(&pages.DispatchPools{Pools: cfg.DispatchPools, Ops: cfg.DispatchPoolOps, Clients: cfg.Clients, Shell: sh}).Mount(r)

@@ -212,3 +212,39 @@ func sectionKey(label string) string {
 	}
 	return b.String()
 }
+
+// landingPreferred is where /ui/ sends a caller who may see it: the page /ui/
+// has always opened (there is no /ui dashboard yet).
+const landingPreferred = "/ui/dispatch-pools"
+
+// Landing is the page /ui/ opens for the caller: Dispatch Pools when the
+// sidebar shows it, else the first /ui page the sidebar shows them (a client
+// administrator lands on User Management), else their profile. It never picks
+// an entry that still links to the SPA, and never a page the caller's sidebar
+// does not offer, so nobody lands on a page they may not open.
+func (s *Shell) Landing(ac *auth.AuthContext) string {
+	return landing(NavigationWith(ac, "", s.Features))
+}
+
+func landing(groups []kit.NavGroup) string {
+	first := ""
+	for _, g := range groups {
+		for _, it := range g.Items {
+			for _, c := range append([]kit.NavItem{it}, it.Children...) {
+				if !strings.HasPrefix(c.Href, "/ui/") {
+					continue
+				}
+				if c.Href == landingPreferred {
+					return landingPreferred
+				}
+				if first == "" {
+					first = c.Href
+				}
+			}
+		}
+	}
+	if first != "" {
+		return first
+	}
+	return "/ui/profile"
+}
