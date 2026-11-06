@@ -361,12 +361,23 @@ final class Extensions {
                 throw new InvalidSettingsException(String.valueOf(e.getMessage()));
               }
             });
-    return new Context(camel, ingestion, settings, state, http, names);
+    return new Context(camel, ingestion, settings, state, http, names, value -> secrets.conceal(ingestion.id(), value));
   }
 
   private record Context(
-      CamelContext camel, Ingestion ingestion, Settings settings, StateStore store, @Nullable ServiceClients clients, Function<String, String> names)
+      CamelContext camel,
+      Ingestion ingestion,
+      Settings settings,
+      StateStore store,
+      @Nullable ServiceClients clients,
+      Function<String, String> names,
+      java.util.function.Consumer<String> concealer)
       implements ExtensionContext {
+
+    @Override
+    public void conceal(String value) {
+      concealer.accept(value);
+    }
 
     @Override
     public ServiceClients http() {

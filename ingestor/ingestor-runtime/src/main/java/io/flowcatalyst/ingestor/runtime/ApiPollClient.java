@@ -107,6 +107,8 @@ final class ApiPollClient implements AutoCloseable {
   private final @Nullable Secret secret;
   private final String name;
   private final OutboundGuard guard;
+  /** Keeps a token the login or the token endpoint hands out out of the ingestion's traces. */
+  private final java.util.function.Consumer<String> conceal;
   private @Nullable Token token;
 
   /**
@@ -146,6 +148,7 @@ final class ApiPollClient implements AutoCloseable {
       LongSupplier nanos,
       OutboundGuard guard) {
     this.guard = guard;
+    this.conceal = value -> secrets.conceal(ingestion.id(), value);
     this.source = source;
     this.clients = clients;
     this.nanos = nanos;
@@ -360,6 +363,7 @@ final class ApiPollClient implements AutoCloseable {
     }
     JsonNode expiresIn = answer.get("expires_in");
     Duration lasts = expiresIn != null && expiresIn.canConvertToLong() ? Duration.ofSeconds(expiresIn.asLong()) : DEFAULT_TOKEN_LIFETIME;
+    conceal.accept(value);
     steps.add("Fetched a token from " + url + ", lasting " + lasts.toSeconds() + " s.");
     return new Token("Bearer " + value, expiry(lasts));
   }
@@ -384,6 +388,7 @@ final class ApiPollClient implements AutoCloseable {
         lasts = Duration.ofSeconds(seconds.asLong());
       }
     }
+    conceal.accept(value);
     steps.add("Logged in at " + url + "; the token is kept for " + lasts.toSeconds() + " s.");
     return new Token(login.prefix() + value, expiry(lasts));
   }

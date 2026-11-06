@@ -22,7 +22,7 @@ class TraceWindowsTest {
 
   final TestClock clock = new TestClock(T0);
   final List<TraceRecord> shipped = new ArrayList<>();
-  final TraceWindows windows = new TraceWindows(clock, shipped::add, id -> List.of());
+  final TraceWindows windows = new TraceWindows(clock, shipped::add, id -> List.of(), (id, value) -> {});
   final Ingestion ingestion = SourceHarness.ingestion("ing_1", Source.Custom.of("ticker", Map.of()), new Split.None());
 
   private TraceWindow window(String id, int secs, int every, Duration hardStopAfter) {

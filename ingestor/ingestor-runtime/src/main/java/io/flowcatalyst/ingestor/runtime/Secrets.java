@@ -80,8 +80,17 @@ final class Secrets {
   private final Map<Key, Failed> failedReveals = new ConcurrentHashMap<>();
   /** What each route read, by name: the salted hash of the value it was given. */
   private final Map<Route, Map<String, String>> used = new ConcurrentHashMap<>();
+  /** How many obtained credentials are kept for an ingestion; the oldest goes first. */
+  static final int MAX_CONCEALED = 32;
+
   /** The plain values each route was given, by name, for the trace redactor; held as long as the route's secrets are. */
   private final Map<Route, Map<String, Secret>> values = new ConcurrentHashMap<>();
+  /**
+   * Credentials each ingestion's source obtained while it ran (a login's session, a token grant's
+   * access token), oldest first, at most {@link #MAX_CONCEALED} each: never secrets the platform holds,
+   * but as much in need of keeping out of a trace.
+   */
+  private final Map<String, java.util.Deque<String>> concealed = new ConcurrentHashMap<>();
   private final Set<String> warned = ConcurrentHashMap.newKeySet();
   private final byte[] salt = new byte[16];
 
@@ -140,7 +149,7 @@ final class Secrets {
 
   /**
    * The plain values of every secret the ingestion's routes (any version still held) were given or
-   * read again, so a trace can take them out of anything it records. The caller must not log or keep
+   * read again, and of the credentials its source obtained ({@link #conceal}), so a trace can take them out of anything it records. The caller must not log or keep
    * them.
    *
    * @param ingestionId the ingestion
@@ -154,7 +163,37 @@ final class Secrets {
             secrets.values().forEach(secret -> found.add(secret.reveal()));
           }
         });
+    java.util.Deque<String> obtained = concealed.get(ingestionId);
+    if (obtained != null) {
+      synchronized (obtained) {
+        found.addAll(obtained);
+      }
+    }
     return found;
+  }
+
+  /**
+   * Keeps a credential the ingestion's source obtained at runtime (a session, an access token) out of
+   * its traces from now on, as its secrets are: wherever it appears in what a trace records. Called
+   * whenever one is obtained, whether or not tracing is on, so a session got before an operator
+   * switched tracing on is covered too. Held until the ingestion stops running here; a value shorter
+   * than {@link TraceRedactor#MIN_SECRET} is ignored.
+   *
+   * @param ingestionId the ingestion
+   * @param value the credential, plain
+   */
+  void conceal(String ingestionId, @Nullable String value) {
+    if (value == null || value.length() < TraceRedactor.MIN_SECRET) {
+      return;
+    }
+    java.util.Deque<String> held = concealed.computeIfAbsent(ingestionId, id -> new java.util.ArrayDeque<>());
+    synchronized (held) {
+      held.remove(value);
+      held.addLast(value);
+      while (held.size() > MAX_CONCEALED) {
+        held.removeFirst();
+      }
+    }
   }
 
   private void remember(Ingestion ingestion, String name, Secret secret) {
@@ -212,6 +251,7 @@ final class Secrets {
     }
     used.keySet().removeIf(route -> !routes.contains(route));
     values.keySet().removeIf(route -> !routes.contains(route));
+    concealed.keySet().removeIf(id -> routes.stream().noneMatch(route -> route.ingestionId().equals(id)));
     long now = nanos.getAsLong();
     failedReveals.entrySet().removeIf(e -> !routes.contains(new Route(e.getKey().ingestionId(), e.getKey().version())) || now - e.getValue().untilNanos() >= 0);
     kept.entrySet().removeIf(e -> !routes.contains(new Route(e.getKey().ingestionId(), e.getKey().version())) || now - e.getValue().expiresNanos() >= 0);
@@ -225,6 +265,7 @@ final class Secrets {
   void forget(String ingestionId) {
     used.keySet().removeIf(route -> route.ingestionId().equals(ingestionId));
     values.keySet().removeIf(route -> route.ingestionId().equals(ingestionId));
+    concealed.remove(ingestionId);
     kept.keySet().removeIf(key -> key.ingestionId().equals(ingestionId));
     failedReveals.keySet().removeIf(key -> key.ingestionId().equals(ingestionId));
   }

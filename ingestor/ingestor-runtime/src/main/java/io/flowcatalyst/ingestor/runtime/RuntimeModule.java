@@ -290,7 +290,7 @@ public final class RuntimeModule implements Module {
         TraceWindows.class,
         lookup -> {
           Secrets secrets = lookup.get(Secrets.class);
-          return new TraceWindows(lookup.get(InstantSource.class), lookup.get(TraceShipper.class), secrets::valuesOf);
+          return new TraceWindows(lookup.get(InstantSource.class), lookup.get(TraceShipper.class), secrets::valuesOf, secrets::conceal);
         });
     app.provide(ExchangeCounters.class, lookup -> new ExchangeCounters(lookup.get(InstantSource.class)));
     app.provide(SourceHealth.class, lookup -> new SourceHealth());

@@ -52,8 +52,18 @@ final class TraceRedactor {
   private static final Set<String> BODY_FIELDS =
       Set.of("client_secret", "access_token", "refresh_token", "id_token", "assertion", "credential", "private_key");
 
-  private static final Set<String> QUERY_FIELDS =
-      Set.of("access_token", "code", "token", "sig", "signature", "key", "apikey", "api_key", "password", "secret");
+  /**
+   * The query names whose values a record keeps: paging and time windows, which say which part of a
+   * listing a call asked for. Every other query value is replaced, whatever its name: an API may put a
+   * password or a session in a parameter of any name (a login by {@code GET ?username=&pwd=}).
+   */
+  private static final Set<String> KEPT_QUERY =
+      Set.of(
+          "page", "pagesize", "page_size", "per_page", "perpage", "limit", "offset", "size", "count", "cursor",
+          "since", "until", "from", "to", "start", "end", "sort", "order", "format");
+
+  /** A value learned from an answer is at least this long: shorter ones are not credentials worth hiding everywhere. */
+  static final int MIN_LEARNED = 16;
 
   /** A JSON member whose value is a string or a bare token; also matches a string cut off by the end. */
   private static final Pattern JSON_MEMBER = Pattern.compile("\"([^\"\\\\]{1,100})\"(\\s*:\\s*)(\"(?:[^\"\\\\]++|\\\\.)*+\"?|[^,}\\]\\s]+)");
@@ -139,8 +149,8 @@ final class TraceRedactor {
   }
 
   /**
-   * A URL as a record carries it: scheme, host, port, path and the query with its credentials
-   * redacted; the user info and the fragment are dropped.
+   * A URL as a record carries it: scheme, host, port, path and the query with every value redacted
+   * but those of paging and time-window names; the user info and the fragment are dropped.
    *
    * @param uri the URL
    * @return the text
@@ -150,7 +160,7 @@ final class TraceRedactor {
     if (uri.getRawQuery() == null) {
       return address;
     }
-    return text(address + "?" + pairs(uri.getRawQuery(), TraceRedactor::sensitiveQuery));
+    return text(address + "?" + pairs(uri.getRawQuery(), name -> !keptQuery(name)));
   }
 
   /**
@@ -310,9 +320,63 @@ final class TraceRedactor {
     return sensitive(name) || BODY_FIELDS.contains(name.toLowerCase(Locale.ROOT));
   }
 
-  private static boolean sensitiveQuery(String name) {
-    String lower = name.toLowerCase(Locale.ROOT);
-    return sensitive(name) || QUERY_FIELDS.contains(lower) || lower.startsWith("x-amz-");
+  private static boolean keptQuery(String name) {
+    return !sensitive(name) && KEPT_QUERY.contains(name.toLowerCase(Locale.ROOT));
+  }
+
+  /**
+   * The credentials an answer hands out, to be kept out of everything recorded after it: the string
+   * values, at least {@link #MIN_LEARNED} long and without whitespace, of the fields of a JSON body
+   * whose names look like credentials ({@code SessionToken}, {@code access_token}, ...). A login's
+   * answer is redacted by those names already; what this finds is what later calls carry elsewhere,
+   * such as a session in a URL's path.
+   *
+   * @param body the answer's bytes, or null
+   * @param contentType its {@code Content-Type}, or null
+   * @return the values; empty when the body is not JSON or holds none
+   */
+  static List<String> credentialsIn(byte @Nullable [] body, @Nullable String contentType) {
+    if (body == null || body.length == 0 || body.length > STRUCTURED_LIMIT) {
+      return List.of();
+    }
+    String type = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
+    String text = utf8(body);
+    if (text == null) {
+      return List.of();
+    }
+    String start = text.stripLeading();
+    if (!type.contains("json") && !start.startsWith("{") && !start.startsWith("[")) {
+      return List.of();
+    }
+    JsonNode tree;
+    try {
+      tree = Json.mapper().readTree(text);
+    } catch (JacksonException e) {
+      return List.of();
+    }
+    List<String> found = new ArrayList<>();
+    collect(tree, found);
+    return found;
+  }
+
+  private static void collect(@Nullable JsonNode node, List<String> found) {
+    if (node instanceof ObjectNode object) {
+      for (String name : object.propertyNames()) {
+        JsonNode value = object.get(name);
+        if (value != null && value.isString() && sensitiveField(name)) {
+          String text = value.asString();
+          if (text.length() >= MIN_LEARNED && text.chars().noneMatch(Character::isWhitespace)) {
+            found.add(text);
+          }
+        } else {
+          collect(value, found);
+        }
+      }
+    } else if (node instanceof ArrayNode array) {
+      for (JsonNode each : array) {
+        collect(each, found);
+      }
+    }
   }
 
   /** The bytes as text when they are UTF-8 without a NUL, else null. */

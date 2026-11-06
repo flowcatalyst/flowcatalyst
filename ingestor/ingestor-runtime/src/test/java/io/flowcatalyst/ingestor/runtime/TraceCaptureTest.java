@@ -52,7 +52,21 @@ class TraceCaptureTest {
   final List<TraceRecord> shipped = new CopyOnWriteArrayList<>();
   final List<List<JobRecord>> batches = new CopyOnWriteArrayList<>();
   final ExchangeCounters counters = new ExchangeCounters(clock);
-  final TraceWindows windows = new TraceWindows(clock, shipped::add, id -> List.of(PASSWORD));
+  static final String CTRACK_PASSWORD = "ctrack-pw-not-a-platform-secret";
+  static final String SESSION = "6f1c0d2e-9a4b-4c3d-8e7f-0a1b2c3d4e5f";
+
+  /** The runtime's store: the fetched secret PASSWORD, and what sources and answers hand it. */
+  final Secrets secrets = Secrets.of(Map.of());
+  final TraceWindows windows =
+      new TraceWindows(
+          clock,
+          shipped::add,
+          id -> {
+            List<String> values = new java.util.ArrayList<>(secrets.valuesOf(id));
+            values.add(PASSWORD);
+            return values;
+          },
+          secrets::conceal);
   HttpServer server;
   HttpClients http;
   CamelContext camel;
@@ -76,6 +90,24 @@ class TraceCaptureTest {
           byte[] out = "{\"items\":[1,2]}".getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().add("Content-Type", "application/json");
           exchange.sendResponseHeaders(String.valueOf(exchange.getRequestURI().getQuery()).contains("fail") ? 500 : 200, out.length);
+          exchange.getResponseBody().write(out);
+          exchange.close();
+        });
+    server.createContext(
+        "/DCTTPIEngine/TPIEngine/REST/Membership/Login",
+        exchange -> {
+          byte[] out = ("{\"ErrorCode\":0,\"SessionToken\":\"" + SESSION + "\",\"SessionDurationMinutes\":60}").getBytes(StandardCharsets.UTF_8);
+          exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
+          exchange.sendResponseHeaders(200, out.length);
+          exchange.getResponseBody().write(out);
+          exchange.close();
+        });
+    server.createContext(
+        "/DCTTPIEngine/TPIEngine/REST/Vehicles/",
+        exchange -> {
+          byte[] out = "{\"ErrorCode\":0,\"Trips\":[]}".getBytes(StandardCharsets.UTF_8);
+          exchange.getResponseHeaders().add("Content-Type", "application/json");
+          exchange.sendResponseHeaders(200, out.length);
           exchange.getResponseBody().write(out);
           exchange.close();
         });
@@ -231,6 +263,120 @@ class TraceCaptureTest {
       assertThat(w.lastPollAt()).isNotNull();
       assertThat(w.completed()).isEqualTo(1);
     });
+  }
+
+  /** A poll the way CTrack is called: the session from its login goes in the path of every later call. */
+  private PolledSource ctrack(Ingestion ingestion, ExtensionContext context, AtomicInteger polls) {
+    return new PolledSource(context, "ticker") {
+      String session;
+
+      @Override
+      protected Duration poll(Payloads payloads) throws Exception {
+        clock.advance(Duration.ofSeconds(2));
+        polls.incrementAndGet();
+        ServiceClient client = mix();
+        if (session == null) {
+          JsonNode login =
+              Json.mapper().readTree(client.get("/DCTTPIEngine/TPIEngine/REST/Membership/Login").query("username", "fleet").query("password", CTRACK_PASSWORD).send().bodyText());
+          session = login.get("SessionToken").asString();
+          context.conceal(session);
+        }
+        client.get("/DCTTPIEngine/TPIEngine/REST/Vehicles/" + session + "/GetVehicleTrips").query("vehicleNodeId", "42").query("limit", "10").send();
+        return Duration.ofMillis(50);
+      }
+
+      @Override
+      protected Duration retryDelay() {
+        return Duration.ofMillis(10);
+      }
+    };
+  }
+
+  private ExtensionContext concealing(Ingestion ingestion, boolean declares) {
+    ExtensionContext plain = context(ingestion);
+    return new ExtensionContext() {
+      @Override
+      public CamelContext camel() {
+        return plain.camel();
+      }
+
+      @Override
+      public Ingestion ingestion() {
+        return ingestion;
+      }
+
+      @Override
+      public Settings settings() {
+        return plain.settings();
+      }
+
+      @Override
+      public ServiceClients http() {
+        return plain.http();
+      }
+
+      @Override
+      public String clientName(String prefix) {
+        return prefix;
+      }
+
+      @Override
+      public State state() {
+        return plain.state();
+      }
+
+      @Override
+      public void conceal(String value) {
+        if (declares) {
+          secrets.conceal(ingestion.id(), value);
+        }
+      }
+    };
+  }
+
+  @Test
+  void aSessionTheLoginHandsOutIsLearnedAndKeptOutOfTheNextCallsPath() throws Exception {
+    switchOn(1);
+    Ingestion ingestion = ingestion(new Split.None());
+    AtomicInteger polls = new AtomicInteger();
+    // The source does not declare its session: the capture learns it from the login's answer.
+    PolledSource source = ctrack(ingestion, concealing(ingestion, false), polls);
+    Reconciler reconciler =
+        new Reconciler(camel, i -> new IngestionRoute(i, (c, x) -> source, (x, jobs) -> batches.add(jobs), counters, new SourceHealth(), windows));
+
+    reconciler.reconcile(List.of(ingestion));
+
+    await(() -> ofKind("poll").size() >= 2);
+    List<TraceRecord> calls = ofKind("http");
+    JsonNode login = json(calls.getFirst());
+    assertThat(login.get("request").get("url").asString()).endsWith("/Membership/Login?username=[redacted]&password=[redacted]");
+    JsonNode trips = json(calls.get(1));
+    assertThat(trips.get("request").get("url").asString()).endsWith("/REST/Vehicles/[redacted]/GetVehicleTrips?vehicleNodeId=[redacted]&limit=10");
+    assertThat(calls.get(1).message()).contains("/REST/Vehicles/[redacted]/GetVehicleTrips");
+
+    String everything = Json.mapper().writeValueAsString(shipped);
+    assertThat(everything).doesNotContain(SESSION).doesNotContain(CTRACK_PASSWORD);
+  }
+
+  @Test
+  void aSessionGotBeforeTracingWasSwitchedOnIsKeptOutWhenTheSourceDeclaresIt() throws Exception {
+    Ingestion ingestion = ingestion(new Split.None());
+    AtomicInteger polls = new AtomicInteger();
+    PolledSource source = ctrack(ingestion, concealing(ingestion, true), polls);
+    Reconciler reconciler =
+        new Reconciler(camel, i -> new IngestionRoute(i, (c, x) -> source, (x, jobs) -> batches.add(jobs), counters, new SourceHealth(), windows));
+
+    // Tracing off: the login happens and nothing is recorded.
+    reconciler.reconcile(List.of(ingestion));
+    await(() -> polls.get() >= 2);
+    assertThat(shipped).isEmpty();
+
+    // Switched on later: the polls reuse the session, and no answer in the window hands it out.
+    switchOn(1);
+    await(() -> !ofKind("http").isEmpty());
+    JsonNode trips = json(ofKind("http").getFirst());
+    assertThat(trips.get("request").get("url").asString()).contains("/REST/Vehicles/[redacted]/GetVehicleTrips");
+    assertThat(Json.mapper().writeValueAsString(shipped)).doesNotContain(SESSION);
   }
 
   @Test

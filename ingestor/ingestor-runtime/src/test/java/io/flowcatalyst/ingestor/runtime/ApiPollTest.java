@@ -188,6 +188,7 @@ class ApiPollTest {
       assertThat(state.values).containsEntry("ing_api/" + ApiPollEndpoint.CURSOR, "c3");
       assertThat(cursorsSent).startsWith("", "c2", "c3");
       assertThat(tokensIssued).hasValue(1);
+      assertThat(secrets.valuesOf("ing_api")).as("the token it was handed is kept out of its traces").contains("tok-1");
       assertThat(reconciler.states()).containsExactly(new RouteState("ing_api", 1, RouteState.Status.STARTED, null));
     } finally {
       camel.stop();

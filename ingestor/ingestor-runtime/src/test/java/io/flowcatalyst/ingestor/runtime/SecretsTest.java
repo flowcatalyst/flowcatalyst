@@ -194,4 +194,33 @@ class SecretsTest {
     value = Optional.of("now-set");
     assertThat(secrets.require(ingestion, new SecretRef("token")).matches("now-set")).isTrue();
   }
+
+  @Test
+  void credentialsTheSourceObtainedAreAmongTheValuesATraceTakesOutUntilTheIngestionStopsHere() {
+    Secrets secrets = Secrets.of(Map.of());
+    Ingestion other = SourceHarness.ingestion("ing_2", new Source.Sqs("eu-west-1", "q", null), new Split.None());
+
+    secrets.conceal(ingestion.id(), "session-one-0123456789");
+    secrets.conceal(ingestion.id(), "session-one-0123456789");
+    secrets.conceal(ingestion.id(), "abc");
+    secrets.conceal(ingestion.id(), null);
+    secrets.conceal(other.id(), "session-of-another-ingestion");
+
+    assertThat(secrets.valuesOf(ingestion.id())).containsExactly("session-one-0123456789");
+    assertThat(secrets.valuesOf(other.id())).containsExactly("session-of-another-ingestion");
+
+    for (int n = 0; n < Secrets.MAX_CONCEALED + 5; n++) {
+      secrets.conceal(ingestion.id(), "session-" + n + "-0123456789");
+    }
+    assertThat(secrets.valuesOf(ingestion.id()))
+        .hasSize(Secrets.MAX_CONCEALED)
+        .contains("session-" + (Secrets.MAX_CONCEALED + 4) + "-0123456789")
+        .doesNotContain("session-one-0123456789");
+
+    secrets.retain(List.of(ingestion));
+    assertThat(secrets.valuesOf(other.id())).isEmpty();
+    assertThat(secrets.valuesOf(ingestion.id())).hasSize(Secrets.MAX_CONCEALED);
+    secrets.forget(ingestion.id());
+    assertThat(secrets.valuesOf(ingestion.id())).isEmpty();
+  }
 }

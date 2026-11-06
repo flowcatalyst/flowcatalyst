@@ -830,7 +830,7 @@ class RuntimeLoopTest {
 
   @Test
   void theTraceWindowsOfAPollAnswerAreTakenAndAnIngestionNoLongerListedLosesItsWindow() throws Exception {
-    TraceWindows windows = new TraceWindows(clock, TraceSink.DISCARD, id -> List.of());
+    TraceWindows windows = new TraceWindows(clock, TraceSink.DISCARD, id -> List.of(), (id, value) -> {});
     RuntimeLoop tracing =
         new RuntimeLoop(
             "runtime-1",

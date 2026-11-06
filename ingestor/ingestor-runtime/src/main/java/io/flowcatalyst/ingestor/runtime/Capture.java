@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -50,6 +51,7 @@ final class Capture {
   private final TraceSink sink;
   private final InstantSource clock;
   private final Supplier<Collection<String>> secrets;
+  private final Consumer<String> conceal;
   private final boolean recording;
 
   private final AtomicInteger httpCalls = new AtomicInteger();
@@ -58,8 +60,13 @@ final class Capture {
   private final AtomicLong jobs = new AtomicLong();
 
   Capture(
-      Ingestion ingestion, String windowId, TraceSink sink, InstantSource clock, Supplier<Collection<String>> secrets) {
-    this(ingestion, windowId, "c-" + UUID.randomUUID(), sink, clock, secrets, true);
+      Ingestion ingestion,
+      String windowId,
+      TraceSink sink,
+      InstantSource clock,
+      Supplier<Collection<String>> secrets,
+      Consumer<String> conceal) {
+    this(ingestion, windowId, "c-" + UUID.randomUUID(), sink, clock, secrets, conceal, true);
   }
 
   private Capture(
@@ -69,6 +76,7 @@ final class Capture {
       TraceSink sink,
       InstantSource clock,
       Supplier<Collection<String>> secrets,
+      Consumer<String> conceal,
       boolean recording) {
     this.ingestion = ingestion;
     this.windowId = windowId;
@@ -76,6 +84,7 @@ final class Capture {
     this.sink = sink;
     this.clock = clock;
     this.secrets = secrets;
+    this.conceal = conceal;
     this.recording = recording;
   }
 
@@ -86,7 +95,7 @@ final class Capture {
    * @return the capture
    */
   static Capture discarding(Ingestion ingestion) {
-    return new Capture(ingestion, "", "", TraceSink.DISCARD, InstantSource.system(), List::of, false);
+    return new Capture(ingestion, "", "", TraceSink.DISCARD, InstantSource.system(), List::of, value -> {}, false);
   }
 
   /** Whether this capture writes records. */
@@ -116,6 +125,11 @@ final class Capture {
       return;
     }
     try {
+      // A credential the answer hands out (a login's session) is kept out of this record and every
+      // later one: later calls may carry it where no name says what it is, such as a URL's path.
+      for (String credential : TraceRedactor.credentialsIn(call.responseBody(), contentType(call.responseHeaders()))) {
+        conceal.accept(credential);
+      }
       TraceRedactor redactor = redactor();
       Map<String, Object> request = new LinkedHashMap<>();
       request.put("method", call.method().name());

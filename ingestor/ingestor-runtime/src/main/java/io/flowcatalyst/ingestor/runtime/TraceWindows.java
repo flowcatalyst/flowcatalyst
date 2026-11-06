@@ -11,6 +11,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -50,6 +51,7 @@ final class TraceWindows {
   private final InstantSource clock;
   private final TraceSink sink;
   private final Function<String, Collection<String>> secrets;
+  private final BiConsumer<String, String> conceal;
   private final Map<String, State> windows = new ConcurrentHashMap<>();
 
   /**
@@ -58,16 +60,20 @@ final class TraceWindows {
    * @param clock the time, local and the platform's hard stops compared on it
    * @param sink where a capture's records go
    * @param secrets the secret values fetched for an ingestion, by its id, which records must not carry
+   * @param conceal keeps a credential a captured answer handed out (ingestion id, value) among those
+   *     values from then on
    */
-  TraceWindows(InstantSource clock, TraceSink sink, Function<String, Collection<String>> secrets) {
+  TraceWindows(
+      InstantSource clock, TraceSink sink, Function<String, Collection<String>> secrets, BiConsumer<String, String> conceal) {
     this.clock = clock;
     this.sink = sink;
     this.secrets = secrets;
+    this.conceal = conceal;
   }
 
   /** A store that never captures: tracing is not wired. */
   static TraceWindows disabled() {
-    return new TraceWindows(InstantSource.system(), TraceSink.DISCARD, id -> List.of());
+    return new TraceWindows(InstantSource.system(), TraceSink.DISCARD, id -> List.of(), (id, value) -> {});
   }
 
   /**
@@ -127,7 +133,8 @@ final class TraceWindows {
       }
       state.lastCaptureStart = now;
     }
-    return new Capture(ingestion, state.windowId, sink, clock, () -> secrets.apply(ingestion.id()));
+    String id = ingestion.id();
+    return new Capture(ingestion, state.windowId, sink, clock, () -> secrets.apply(id), value -> conceal.accept(id, value));
   }
 
   /**

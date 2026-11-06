@@ -179,6 +179,7 @@ instance and asks it for a new endpoint per ingestion and version.
 | `http()` | the runtime's HTTP clients: register the extension's own (`registerScoped`) so their requests are measured, and close the registration when the endpoint stops. The runtime's checks of the addresses a definition names (loopback, link-local, metadata) do not cover an extension's own connections: an extension that connects to an address from its settings should refuse those itself |
 | `clientName(prefix)` | a name for such a client, unique among the runtime's |
 | `clock()` | the time, which tests set |
+| `conceal(value)` | keeps a credential the extension obtained while running (a login's session, a token grant's access token) out of the ingestion's traces, wherever it appears: a URL's path or query, a header, a body. Call it each time one is obtained, whether or not tracing is on; an API that puts a session in its paths (`/Vehicles/{session}/...`) otherwise shows it to anyone who may read the ingestion's trace metadata. Secrets read through `settings()` need no call |
 
 Throw `InvalidSettingsException` (with a message that holds no secret) when the settings cannot be used; the
 ingestion is reported `FAILED` with it. Any other exception is tried again on the runtime's next turn.

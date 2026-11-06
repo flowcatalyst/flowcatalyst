@@ -651,10 +651,14 @@ ingestion.
   poll`) instead of nothing.
 - **Records** are `poll`, `exchange`, `http` and `error`, grouped by capture. Bodies are
   kept to 32 KiB; credentials are redacted before a record leaves the runtime:
-  headers and query values whose name contains `auth`, `key`, `token`, `secret`,
-  `password`, `signature`, `cookie` or `session`, the same fields in JSON and form
-  bodies, user info in URLs, and the secret values the runtime fetched for the
-  ingestion wherever they appear verbatim. Records are kept 7 days
+  headers whose name contains `auth`, `key`, `token`, `secret`, `password`,
+  `signature`, `cookie` or `session`, the same fields in JSON and form bodies,
+  every query value except paging and time-window ones (`page`, `limit`, `offset`,
+  `cursor`, `since`, `until`, `from`, `to` and the like), user info in URLs, and,
+  wherever they appear verbatim (a URL's path included), the secret values the
+  runtime fetched for the ingestion and the credentials its source obtained while
+  running: a login's session or access token, as the source declares it or as a
+  captured answer hands it out. Records are kept 7 days
   (`FC_INGESTION_TRACE_RETENTION_DAYS`) and are deleted with the ingestion.
 - **Permissions.** `platform:ingestion:trace:manage` switches tracing on and off;
   `platform:ingestion:trace:view` reads a record's metadata (an HTTP call's client,

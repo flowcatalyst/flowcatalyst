@@ -41,13 +41,44 @@ class TraceRedactorTest {
   }
 
   @Test
-  void aUrlLosesItsUserInfoAndTheValuesOfCredentialQueryNames() {
+  void aUrlLosesItsUserInfoAndEveryQueryValueButPagingAndTimeWindows() {
     String url =
-        plain.url(URI.create("https://user:pw@api.example:8443/v1/items?access_token=A&page=2&X-Amz-Signature=x&code=9&name=Bob&sessionId=s&sig=q"));
+        plain.url(URI.create("https://user:pw@api.example:8443/v1/items?access_token=A&page=2&X-Amz-Signature=x&code=9&name=Bob&sessionId=s&sig=q&Limit=50&since=2026-10-30"));
 
     assertThat(url)
-        .isEqualTo("https://api.example:8443/v1/items?access_token=" + R + "&page=2&X-Amz-Signature=" + R + "&code=" + R + "&name=Bob&sessionId=" + R + "&sig=" + R);
+        .isEqualTo(
+            "https://api.example:8443/v1/items?access_token=" + R + "&page=2&X-Amz-Signature=" + R + "&code=" + R + "&name=" + R + "&sessionId=" + R + "&sig=" + R
+                + "&Limit=50&since=2026-10-30");
     assertThat(url).doesNotContain("user").doesNotContain("pw@");
+  }
+
+  @Test
+  void aLoginByQueryKeepsItsNamesButNotItsValuesWhateverTheyAreCalled() {
+    // CTrack's login: GET .../Membership/Login?username=&password=; another API's ?user=&pwd=.
+    assertThat(plain.url(URI.create("https://ct.example/DCTTPIEngine/TPIEngine/REST/Membership/Login?username=fleet&password=pw-1")))
+        .isEqualTo("https://ct.example/DCTTPIEngine/TPIEngine/REST/Membership/Login?username=" + R + "&password=" + R);
+    assertThat(plain.url(URI.create("https://h/login?user=fleet&pwd=pw-1&flag"))).isEqualTo("https://h/login?user=" + R + "&pwd=" + R + "&flag");
+  }
+
+  @Test
+  void anAnswerHandsOutTheCredentialsInItsCredentialNamedFields() {
+    String session = "6f1c0d2e-9a4b-4c3d-8e7f-0a1b2c3d4e5f";
+    String login = "{\"ErrorCode\":0,\"SessionToken\":\"" + session + "\",\"SessionDurationMinutes\":60,"
+        + "\"nested\":{\"access_token\":\"abcdefghijklmnopqrstuvwxyz\"},\"items\":[{\"refresh_token\":\"0123456789abcdefXYZ\"}],"
+        + "\"sortKey\":\"date\",\"token\":\"short\",\"session\":\"has a space in it, so not one\",\"tokenCount\":12345678901234567}";
+
+    assertThat(TraceRedactor.credentialsIn(bytes(login), "application/json"))
+        .containsExactlyInAnyOrder(session, "abcdefghijklmnopqrstuvwxyz", "0123456789abcdefXYZ");
+    assertThat(TraceRedactor.credentialsIn(bytes(login), null)).contains(session);
+    assertThat(TraceRedactor.credentialsIn(bytes("<a SessionToken=\"" + session + "\"/>"), "application/xml")).isEmpty();
+    assertThat(TraceRedactor.credentialsIn(bytes("{not json"), "application/json")).isEmpty();
+    assertThat(TraceRedactor.credentialsIn(null, "application/json")).isEmpty();
+
+    // Once learned, the session is taken out of a later call's path, which the metadata view shows.
+    TraceRedactor redactor = new TraceRedactor(List.of(session));
+    URI vehicles = URI.create("https://ct.example/DCTTPIEngine/TPIEngine/REST/Vehicles/" + session + "/GetVehicles");
+    assertThat(redactor.address(vehicles)).isEqualTo("https://ct.example/DCTTPIEngine/TPIEngine/REST/Vehicles/" + R + "/GetVehicles");
+    assertThat(redactor.url(vehicles)).doesNotContain(session);
   }
 
   @Test

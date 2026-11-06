@@ -107,8 +107,11 @@ granted in the migration as section 1 (8) says, following how `087`/`092` grant 
 - **Headers**: a name containing (case-insensitive) `auth`, `key`, `token`, `secret`, `password`,
   `signature`, `cookie` or `session` has its value replaced by `[redacted]` (the framework already does this
   for the headers it hands out, section 8; the runtime applies the same rule again to source headers).
-- **Query**: the values of `access_token`, `code`, `token`, `sig`, `signature`, `X-Amz-*`, `key`, `apikey`,
-  `api_key`, `password`, `secret`, and any name matching the header patterns, become `[redacted]`.
+- **Query**: every value becomes `[redacted]` except those of the paging and time-window names `page`,
+  `pagesize`, `page_size`, `per_page`, `perpage`, `limit`, `offset`, `size`, `count`, `cursor`, `since`,
+  `until`, `from`, `to`, `start`, `end`, `sort`, `order`, `format` (any case); the names stay. An API may put
+  a credential in a parameter of any name (CTrack logs in by `GET ...?username=&password=`), so a list of
+  credential names is not enough (changed 2026-11-06; it was such a list).
 - **Bodies**: a JSON body (and a form body, `application/x-www-form-urlencoded`) has the value of every field,
   at any depth, whose name matches the header patterns or is `client_secret`, `access_token`,
   `refresh_token`, `id_token`, `assertion`, `credential`, `private_key` replaced by `[redacted]`. So MiX's
@@ -117,7 +120,18 @@ granted in the migration as section 1 (8) says, following how `087`/`092` grant 
   as is (cut at 32 KiB).
 - **URLs**: user info is removed.
 - The secret values the runtime fetched for the ingestion are also replaced wherever they appear verbatim in
-  a captured header, query or body (a last line of defence for a secret sent in an unexpected place).
+  a captured URL (its path too), header, query or body (a last line of defence for a secret sent in an
+  unexpected place).
+- **Credentials obtained at runtime** are replaced the same way (added 2026-11-06). An API that hands out a
+  session at login and expects it in the path of every later call (CTrack:
+  `/Vehicles/{SessionToken}/GetVehicles`) would otherwise show it in the URL path, which `trace:view` reads
+  without `view-bodies`. The runtime keeps, per ingestion and in memory only, up to 32 such values, from two
+  places: (a) **declared**: api-poll's login and client-credentials grant add the token they get, and an
+  extension calls `ExtensionContext.conceal(value)` whenever it obtains one, tracing on or not, so a session
+  got before tracing was switched on is covered; (b) **learned**: a captured JSON answer's string fields whose
+  names match the header patterns or the body list above (`SessionToken`, `access_token`, ...), at least 16
+  characters and without whitespace, are added before the answer is recorded. Learning is a backstop: it sees
+  only answers captured while tracing records, so an extension that holds a session must declare it.
 
 ## 7. Platform API (`/api/ingestions/{id}/...`)
 

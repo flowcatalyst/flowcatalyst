@@ -59,6 +59,18 @@ public interface ExtensionContext {
   }
 
   /**
+   * Keeps a credential the endpoint obtained while running (a login's session, a token grant's
+   * access token) out of the ingestion's traces, as its secrets are: wherever it appears in what a
+   * trace records, a session carried in a URL's path or a query parameter included. Call it each time
+   * one is obtained, whether or not tracing is on, so a session that outlives the moment an operator
+   * switches tracing on is covered. The runtime holds the value in memory while the ingestion runs on
+   * it, and ignores a value under four characters. Secrets read from {@link #settings()} need no call.
+   *
+   * @param value the credential, plain
+   */
+  default void conceal(String value) {}
+
+  /**
    * Small values kept between polls, such as a watermark or a cursor. They are kept by the control
    * plane, so they follow the ingestion to whichever runtime runs it next.
    *
