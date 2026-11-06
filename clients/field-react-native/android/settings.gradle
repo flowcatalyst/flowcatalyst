@@ -13,3 +13,7 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "flowcatalyst-field-react-native"
+
+// Standalone builds only: until io.flowcatalyst:field-android is published, build against the sibling directory.
+// An app's own settings.gradle does the same (includeBuild) or adds the GitHub Packages repository.
+includeBuild("../../field-android")

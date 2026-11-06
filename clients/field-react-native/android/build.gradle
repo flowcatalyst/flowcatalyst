@@ -1,5 +1,9 @@
-// Standalone-buildable Android library. When consumed by a React Native app, the app's root
-// project supplies AGP/Kotlin and the react-android version (RN autolinking includes this module).
+// New Architecture only. In an app, the app's root project supplies AGP/Kotlin/react-android and the React
+// Native Gradle plugin runs codegen for src/NativeFcField.ts (-> com.facebook.fbreact.specs.NativeFcFieldSpec).
+//
+// Standalone build (CI / verification outside an app): generate the spec first, then point at it:
+//   pnpm codegen            (writes android/build/codegen/...)
+//   ./gradlew -PfcCodegenJava=build/codegen/android/app/build/generated/source/codegen/java assembleRelease testDebugUnitTest
 buildscript {
     ext.fcKotlinVersion = rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : "2.0.21"
     repositories {
@@ -14,13 +18,20 @@ buildscript {
 
 apply plugin: "com.android.library"
 apply plugin: "org.jetbrains.kotlin.android"
+if (!project.hasProperty("fcCodegenJava")) {
+    // Inside an app: generates the TurboModule spec for this library.
+    apply plugin: "com.facebook.react"
+}
 
 def safeExtGet(prop, fallback) {
     rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
 }
 
+// The field-android release this bridge was built against. Apps may override with ext.fieldAndroidVersion.
+def fieldAndroidVersion = safeExtGet("fieldAndroidVersion", "0.1.0")
+
 android {
-    namespace "io.flowcatalyst.field"
+    namespace "io.flowcatalyst.field.rn"
     compileSdk safeExtGet("compileSdkVersion", 35)
 
     defaultConfig {
@@ -37,12 +48,20 @@ android {
     testOptions {
         unitTests.returnDefaultValues = true
     }
+    if (project.hasProperty("fcCodegenJava")) {
+        sourceSets.main.java.srcDirs += project.property("fcCodegenJava")
+    }
 }
 
 dependencies {
     // Version is resolved by the app's React Native Gradle plugin; the fallback is for standalone builds.
     compileOnly "com.facebook.react:react-android:${safeExtGet('reactNativeVersion', '0.76.9')}"
+    // io.flowcatalyst:field-android: the Kotlin session owner. Until it is published, the app (or the standalone
+    // settings.gradle here) includes ../../field-android as a composite build, which substitutes this coordinate.
+    // Published: GitHub Packages, https://maven.pkg.github.com/flowcatalyst/flowcatalyst (the Expo plugin adds it).
+    api "io.flowcatalyst:field-android:${fieldAndroidVersion}"
     implementation "androidx.biometric:biometric:1.1.0"
     implementation "androidx.fragment:fragment:1.8.5"
     testImplementation "junit:junit:4.13.2"
+    testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0"
 }

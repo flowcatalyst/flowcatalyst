@@ -1,0 +1,68 @@
+name: Release field-android
+
+# Fires on `field-android/v*` (cut via `make release-field-android BUMP=…`).
+# Runs the library's JVM tests, then publishes the AAR as
+# io.flowcatalyst:field-android:X.Y.Z to this repository's GitHub Packages
+# Maven registry (https://maven.pkg.github.com/flowcatalyst/flowcatalyst).
+# Needs only GITHUB_TOKEN with packages: write. Consumers resolve it with a
+# token that has read:packages (GitHub Packages Maven always needs one).
+
+on:
+  push:
+    tags:
+      - 'field-android/v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)publish, e.g. field-android/v0.1.0'
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Test + publish field-android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag + version
+        id: meta
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [[ ! "$TAG" =~ ^field-android/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag '$TAG' does not match field-android/vX.Y.Z[-suffix]" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#field-android/v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+
+      - name: Check VERSION matches the tag
+        run: |
+          have="$(tr -d '[:space:]' < clients/field-android/VERSION)"
+          if [ "$have" != "${{ steps.meta.outputs.version }}" ]; then
+            echo "clients/field-android/VERSION is $have, tag says ${{ steps.meta.outputs.version }}" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test
+        run: ./clients/field-android/gradlew -p clients/field-android --console=plain testDebugUnitTest
+
+      - name: Publish
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./clients/field-android/gradlew -p clients/field-android --console=plain publishReleasePublicationToGitHubPackagesRepository

@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createBridgeHost, jsStringLiteral, originOf, type BridgeMessageEvent } from "../src/bridge";
-import type { FcFieldNative } from "../src/native";
+import type { KeyStoreNative } from "../src/native";
 import { FieldError } from "../src/types";
 
 const LS = String.fromCharCode(0x2028);
 const PS = String.fromCharCode(0x2029);
 
-function mockNative(over: Partial<FcFieldNative> = {}): FcFieldNative & { calls: string[] } {
+function mockNative(over: Partial<KeyStoreNative> = {}): KeyStoreNative & { calls: string[] } {
 	const calls: string[] = [];
-	const n: FcFieldNative = {
+	const n: KeyStoreNative = {
 		getOrCreateDeviceKey: async () => {
 			calls.push("getOrCreate");
 			return { jwk: { kty: "EC", crv: "P-256", x: "x", y: "y" }, attestation: { level: "TEE" } };
@@ -37,7 +37,7 @@ function mockNative(over: Partial<FcFieldNative> = {}): FcFieldNative & { calls:
 	return Object.assign(n, { calls });
 }
 
-function setup(opts: { native?: FcFieldNative; passed?: BridgeMessageEvent[] } = {}) {
+function setup(opts: { native?: KeyStoreNative; passed?: BridgeMessageEvent[] } = {}) {
 	const injected: string[] = [];
 	const warnings: string[] = [];
 	const host = createBridgeHost({

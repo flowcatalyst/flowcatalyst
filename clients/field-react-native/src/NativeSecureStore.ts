@@ -1,10 +1,10 @@
-import { getNativeModule, toFieldError, type FcFieldNative } from "./native";
+import { getNativeModule, toFieldError, type KeyStoreNative } from "./native";
 import type { SecureStore } from "./types";
 
 export class NativeSecureStore implements SecureStore {
-	private readonly native: () => FcFieldNative;
+	private readonly native: () => KeyStoreNative;
 
-	constructor(native?: FcFieldNative) {
+	constructor(native?: KeyStoreNative) {
 		this.native = native ? () => native : getNativeModule;
 	}
 

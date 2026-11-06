@@ -2,26 +2,55 @@
 	"name": "@flowcatalyst/field-react-native",
 	"version": "0.0.0",
 	"private": true,
-	"description": "React Native native module (Android Keystore / iOS Secure Enclave) and WebView bridge host for @flowcatalyst/field-js",
+	"description": "React Native (New Architecture) bridge over the Android FieldSession, with the key/store module and WebView bridge host for @flowcatalyst/field-js",
 	"license": "Apache-2.0",
 	"main": "./lib/index.js",
 	"types": "./lib/index.d.ts",
 	"react-native": "./src/index.ts",
-	"files": ["lib", "src", "android", "ios", "FlowcatalystFieldReactNative.podspec", "README.md"],
+	"exports": {
+		".": {
+			"react-native": "./src/index.ts",
+			"types": "./lib/index.d.ts",
+			"default": "./lib/index.js"
+		},
+		"./app.plugin": "./app.plugin.js",
+		"./app.plugin.js": "./app.plugin.js",
+		"./package.json": "./package.json"
+	},
+	"files": ["lib", "src", "android", "ios", "plugin", "app.plugin.js", "FlowcatalystFieldReactNative.podspec", "README.md"],
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
 		"lint": "tsc --noEmit",
-		"test": "node --import tsx --test --test-reporter=spec 'tests/**/*.test.ts'"
+		"test": "node --import tsx --test --test-reporter=spec 'tests/**/*.test.ts' 'plugin/tests/**/*.test.js'",
+		"codegen": "node node_modules/react-native/scripts/generate-codegen-artifacts.js -p . -o android/build/codegen -t android -s library"
+	},
+	"codegenConfig": {
+		"name": "FcFieldSpec",
+		"type": "modules",
+		"jsSrcsDir": "src",
+		"android": {
+			"javaPackageName": "io.flowcatalyst.field"
+		}
 	},
 	"peerDependencies": {
+		"expo": ">=51",
 		"react": ">=18",
-		"react-native": ">=0.73",
+		"react-native": ">=0.76",
 		"react-native-webview": ">=13"
 	},
+	"peerDependenciesMeta": {
+		"expo": { "optional": true },
+		"react-native-webview": { "optional": true }
+	},
+	"dependencies": {
+		"@expo/config-plugins": "^9.0.0"
+	},
 	"devDependencies": {
+		"@react-native/codegen": "0.76.9",
 		"@types/node": "^22.0.0",
 		"@types/react": "^18.3.0",
 		"react": "^18.3.1",
+		"react-native": "0.76.9",
 		"tsx": "^4.19.0",
 		"typescript": "^5.7.0"
 	}

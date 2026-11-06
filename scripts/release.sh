@@ -18,7 +18,7 @@ kind="${1:-}"
 bump="${2:-}"
 
 usage() {
-	echo "usage: scripts/release.sh <dev|ts|laravel|java|go-sdk|fn-ts|fn-rust|fn-go|ingestor> <patch|minor|major|X.Y.Z[-suffix]>" >&2
+	echo "usage: scripts/release.sh <dev|ts|laravel|java|go-sdk|fn-ts|fn-rust|fn-go|ingestor|field-android> <patch|minor|major|X.Y.Z[-suffix]>" >&2
 	exit 2
 }
 [ -n "$kind" ] && [ -n "$bump" ] || usage
@@ -64,6 +64,7 @@ case "$kind" in
 	fn-rust) prefix="fn-rust-sdk";    version_file="clients/fn-rust/VERSION";       label="fn-rust-sdk"; manifest_toml="clients/fn-rust/Cargo.toml"; lock_cargo="clients/fn-rust/Cargo.lock"; lock_cargo_crate="flowcatalyst-fn"; workflow="split-fn-rust-sdk.yml" ;;
 	fn-go)   prefix="clients/fn-go";  version_file="clients/fn-go/VERSION";         label="fn-go-sdk"; go_module="github.com/flowcatalyst/flowcatalyst/clients/fn-go"; go_mod_file="clients/fn-go/go.mod" ;;
 	ingestor) prefix="ingestor";      version_file="ingestor/VERSION";              label="ingestor"; manifest_revision="ingestor/pom.xml"; workflow="split-ingestor.yml" ;;
+	field-android) prefix="field-android"; version_file="clients/field-android/VERSION"; label="field-android"; workflow="release-field-android.yml" ;;
 	*)       echo "✗ unknown release kind: $kind" >&2; usage ;;
 esac
 

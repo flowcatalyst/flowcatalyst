@@ -1,4 +1,4 @@
-package io.flowcatalyst.field
+package io.flowcatalyst.field.rn
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals

@@ -1,19 +1,24 @@
-import { FIELD_ERROR_CODES, FieldError, type DeviceKey, type FieldErrorCode } from "./types";
+import { FIELD_ERROR_CODES, FieldError, type FieldErrorCode } from "./types";
+
+import type { Spec } from "./NativeFcField";
 
 /**
- * The native module surface (Android FcFieldModule / iOS FcField). Binary data crosses as
- * base64url strings. Native rejections carry `code` (one of FieldErrorCode).
+ * The native module surface (the codegen Spec: Android FcFieldModule / iOS FcField). Binary data crosses as
+ * base64url strings. Native rejections carry `code`.
  */
-export interface FcFieldNative {
-	getOrCreateDeviceKey(): Promise<DeviceKey>;
-	/** dataB64u -> base64url(raw r‖s) */
-	sign(dataB64u: string): Promise<string>;
-	deleteDeviceKey(): Promise<void>;
-	storeGet(key: string, prompt: string | null): Promise<string | null>;
-	storeSet(key: string, value: string, requireBiometric: boolean): Promise<void>;
-	storeDelete(key: string): Promise<void>;
-	biometricAvailable(): Promise<boolean>;
-}
+export type FcFieldNative = Spec;
+
+/** The key/store subset: what the WebView bridge and the key/store adapters use (also all iOS implements today). */
+export type KeyStoreNative = Pick<
+	Spec,
+	| "getOrCreateDeviceKey"
+	| "sign"
+	| "deleteDeviceKey"
+	| "storeGet"
+	| "storeSet"
+	| "storeDelete"
+	| "biometricAvailable"
+>;
 
 let override: FcFieldNative | undefined;
 
@@ -27,9 +32,9 @@ export function getNativeModule(): FcFieldNative {
 	// Lazy require so this file can be loaded outside React Native (tests, tooling).
 	// eslint-disable-next-line @typescript-eslint/no-require-imports
 	const rn = require("react-native") as {
-		NativeModules: Record<string, unknown>;
+		TurboModuleRegistry: { get(name: string): unknown };
 	};
-	const m = rn.NativeModules["FcField"] as FcFieldNative | undefined;
+	const m = rn.TurboModuleRegistry.get("FcField") as FcFieldNative | null | undefined;
 	if (!m) {
 		throw new FieldError(
 			"INTERNAL",

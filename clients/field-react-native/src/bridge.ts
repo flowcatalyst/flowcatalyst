@@ -1,6 +1,6 @@
 // WebView bridge host, protocol version 1: docs/field-mobile-libraries-spec.md §3.
 import { fromBase64Url, toBase64Url } from "./base64url";
-import { toFieldError, type FcFieldNative } from "./native";
+import { toFieldError, type KeyStoreNative } from "./native";
 import { FieldError } from "./types";
 
 export interface BridgeMessageEvent {
@@ -13,7 +13,7 @@ export interface InjectTarget {
 
 export interface BridgeHostOptions {
 	allowedOrigins: string[];
-	native: () => FcFieldNative;
+	native: () => KeyStoreNative;
 	getTarget: () => InjectTarget | null | undefined;
 	/** The app's own onMessage handler; receives every message that is not a bridge request. */
 	onMessage?: (event: BridgeMessageEvent) => void;
@@ -76,7 +76,7 @@ function str(args: Record<string, unknown>, k: string): string {
 	return v;
 }
 
-async function dispatch(native: FcFieldNative, req: BridgeRequest): Promise<unknown> {
+async function dispatch(native: KeyStoreNative, req: BridgeRequest): Promise<unknown> {
 	const a = req.args;
 	switch (req.op) {
 		case "key.getOrCreate":
