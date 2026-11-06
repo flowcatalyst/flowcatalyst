@@ -15,6 +15,7 @@ tag)`, commits the bump, tags `<prefix>/vX.Y.Z` and pushes `HEAD` plus the tag.
 | Function Go SDK | `make release-fn-go-sdk BUMP=…` | `clients/fn-go/vX.Y.Z` | nothing: the Go module proxy serves the tag |
 | Function TS SDK | `make release-fn-ts-sdk BUMP=…` | `fn-ts-sdk/vX.Y.Z` | `split-fn-ts-sdk.yml` (**off**) |
 | Function Rust SDK | `make release-fn-rust-sdk BUMP=…` | `fn-rust-sdk/vX.Y.Z` | `split-fn-rust-sdk.yml` (**off**) |
+| Field Android library | `make release-field-android BUMP=…` | `field-android/vX.Y.Z` | `release-field-android.yml`: tests, then publishes `io.flowcatalyst:field-android` to GitHub Packages |
 
 `BUMP` is `patch`, `minor`, `major` or an explicit `X.Y.Z[-suffix]`. Set
 `RELEASE_DRY_RUN=1` to run every check and print the would-be diff without
@@ -25,7 +26,7 @@ committing, tagging or pushing (`RELEASE_DRY_RUN=1 make release-fn-ts-sdk BUMP=0
 `make release-all-sdks BUMP=patch|minor|major` (default `patch`) runs
 `scripts/release-all-sdks.sh`. It prints a plan, asks once, then calls
 `scripts/release.sh` for each line whose directory changed since its last tag:
-ts, laravel, java, go-sdk, fn-ts, fn-rust, fn-go (and fcdev with `WITH_DEV=1`).
+ts, laravel, java, go-sdk, fn-ts, fn-rust, fn-go, field-android (and fcdev with `WITH_DEV=1`).
 
 - `RELEASE_ALL_PLAN=1` prints the plan only. `RELEASE_DRY_RUN=1` runs every
   check per line and changes and pushes nothing.
