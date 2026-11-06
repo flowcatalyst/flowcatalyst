@@ -185,9 +185,12 @@ describe("login, errors and events", () => {
 		assert.equal(r.auth.session, null);
 	});
 
-	it("is NOT_ENROLLED before enrolment", async () => {
-		const r = rig();
-		assert.equal((await errOf(r.auth.login({ workerCode: "w1", pin: GOOD_PIN }))).code, "NOT_ENROLLED");
+	it("is NOT_ENROLLED when there is neither a platform URL nor an enrolment", async () => {
+		const r = rig({ platformUrl: "" });
+		assert.equal(
+			(await errOf(r.auth.login({ workerCode: "w1", pin: GOOD_PIN, clientIdentifier: "acme" }))).code,
+			"NOT_ENROLLED",
+		);
 	});
 
 	it("maps a dead network to NETWORK", async () => {

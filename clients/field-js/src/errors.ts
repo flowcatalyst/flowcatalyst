@@ -53,6 +53,13 @@ export type FieldAuthErrorCode =
 	| "NETWORK"
 	| "NOT_ENROLLED"
 	| "BIOMETRIC_INVALIDATED"
+	| "CLIENT_MISMATCH"
+	| "PIN_REQUIRED"
+	| "IMPERSONATING"
+	| "IMPERSONATION_FORBIDDEN"
+	| "INVALID_CODE"
+	| "INVALID_REQUEST"
+	| "NOT_IMPERSONATING"
 	| ProviderErrorCode
 	| (string & {});
 
