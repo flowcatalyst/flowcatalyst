@@ -54,7 +54,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # The action's default packages include the long-removed `tools`, which
+      # sdkmanager now refuses. Gradle fetches the compileSdk platform itself.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
 
       - uses: gradle/actions/setup-gradle@v4
 
