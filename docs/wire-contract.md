@@ -534,6 +534,21 @@ scheduled jobs of its own application(s), and nothing broader.
 - The audit event `platform:admin:scheduled-job:fired-manually` is unchanged on
   the wire; its principal is the application's service account.
 
+## Principals by id: platform-level principals follow the list rule
+
+Owner ruling 2026-11-06 (completes PR-3/PR-4). `GET /api/principals/{id}` and its
+sub-routes `/version`, `/roles`, `/application-access` and `/available-applications`
+apply the list's visibility rule (`PrincipalVisible`) to every principal: an
+anchor sees all; a non-anchor sees principals homed at a client it can access
+and partners granted one of its clients. A principal with no home client that
+the caller may not see (an anchor user, a global service account, a partner of
+other clients) answers the same `404 {"code":"Principal_NOT_FOUND","message":"Principal not found: <id>"}`
+a missing id does. Before, these routes only checked access when the principal
+had a home client, so a client administrator could read an anchor user's name,
+email and roles by id. Reading yourself (`/{id}` and `/{id}/version` with your
+own id) is unchanged. The SDKs' revocation check reads its own principal, and
+fails open on any non-200, so it is unaffected.
+
 ## Dispatch jobs: time window, requeue guard, write permissions
 
 **Time window.** The list-shaped reads are held to a `created_at` window:

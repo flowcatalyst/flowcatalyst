@@ -203,8 +203,11 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Princip
 // page so they cannot drift: anchors see all; non-anchors see the
 // principals homed at a client they can access, and the partners granted one.
 // Other platform-level principals (anchors, partners of other clients) are
-// hidden from non-anchors. (get-by-id stays lenient on the nil case — it only
-// checks access when client_id is set.)
+// hidden from non-anchors. The by-id read and its sub-routes (version, roles,
+// application access, available applications) apply the same rule, answering
+// the not-found a missing id would (owner ruling PR-3/PR-4; the earlier
+// leniency for principals with no home client let a client administrator read
+// an anchor user by id).
 func PrincipalVisible(ac *auth.AuthContext, p *principal.Principal) bool {
 	if ac.IsAnchor() {
 		return true
@@ -403,7 +406,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	// Out-of-scope answers the SAME not-found a genuinely missing id would —
 	// never 403 — so an unauthorized caller can't use the response to learn
 	// whether an id is real (PR-3(b), docs/owner-rulings-todo.md #3).
-	if !isSelf && p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
+	if !isSelf && !PrincipalVisible(ac, p) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	resp := forCaller(ac, fromEntity(p))
@@ -443,7 +446,7 @@ func (s *State) getVersion(ctx context.Context, in *apicommon.IDInput) (*apicomm
 		if p == nil {
 			return nil, httperror.NotFound("Principal", in.ID)
 		}
-		if p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
+		if !PrincipalVisible(ac, p) {
 			return nil, httperror.NotFound("Principal", in.ID)
 		}
 	}
@@ -1791,7 +1794,7 @@ func (s *State) listRoles(ctx context.Context, in *apicommon.IDInput) (*apicommo
 	}
 	// PR-4: the same client-scope check as the by-id read — an out-of-scope
 	// target answers 404, byte-identical to not-found, never 403.
-	if p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
+	if !PrincipalVisible(ac, p) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	return &apicommon.Out[PrincipalRoleListResponse]{Body: PrincipalRoleListResponse{Roles: roleAssignmentDTOs(ids.PrincipalID(in.ID), p.Roles)}}, nil
@@ -1981,7 +1984,7 @@ func (s *State) listApplicationAccess(ctx context.Context, in *apicommon.IDInput
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	// PR-4: the same client-scope check as the by-id read.
-	if p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
+	if !PrincipalVisible(ac, p) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	apps, err := s.resolveApplications(ctx, ids.Strings(p.AccessibleApplicationIDs))
@@ -2029,7 +2032,7 @@ func (s *State) listAvailableApplications(ctx context.Context, in *apicommon.IDI
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	// PR-4: the same client-scope check as the by-id read.
-	if p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
+	if !PrincipalVisible(ac, p) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	// Available = all active applications the system knows about — the
