@@ -33,6 +33,7 @@ import (
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/pin"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
@@ -105,6 +106,7 @@ func newEnv(t *testing.T, o envOpts) *env {
 	e.s = &State{
 		Ops: &fieldidentity.Ops{
 			R: fieldidentity.NewRepos(pool), Clients: clients, Apps: application.NewRepository(pool), Hasher: hasher,
+			Principals: principal.NewRepository(pool),
 		},
 		UoW: uow, Auth: svc, BaseURL: baseURL, RateLimit: ratelimit.NewPostgresStore(pool), Limits: limits,
 	}

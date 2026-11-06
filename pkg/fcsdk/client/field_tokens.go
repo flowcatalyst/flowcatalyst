@@ -24,6 +24,9 @@ type FieldTokenIntrospectResponse struct {
 	// Test is true for a test identity.
 	Act  *FieldTokenActor `json:"act,omitempty"`
 	Test bool             `json:"test,omitempty"`
+	// LinkedPrincipalID is the platform user the worker is linked to, when
+	// linked (audit correlation only; it grants nothing).
+	LinkedPrincipalID string `json:"linkedPrincipalId,omitempty"`
 }
 
 // FieldTokenActor is the act claim: Typ is "field_worker" or "principal".

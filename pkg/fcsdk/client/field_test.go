@@ -316,3 +316,35 @@ func TestFieldWorkersCreateSignInCode(t *testing.T) {
 	assert.Equal(t, "ABC123", r.Code)
 	assert.Equal(t, "2026-01-01T00:05:00Z", r.ExpiresAt)
 }
+
+func TestFieldWorkersLinkUnlink(t *testing.T) {
+	linked := `{"id":"fwk_1","clientId":"clt_1","workerCode":"w1","name":"W","status":"ACTIVE","hasPin":true,"pinChangeRequired":false,"canImpersonate":false,"isTest":false,"linkedPrincipal":{"id":"prn_1","name":"Pat","email":"pat@x.io"},"badge":null,"locked":false,"hardLocked":false,"failedSinceSuccess":0,"apps":[],"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z"}`
+	srv, seen := newMockSrv(t, linked)
+	c := client.New(srv.URL)
+	ctx := context.Background()
+	r, err := c.FieldWorkers().Link(ctx, "fwk_1", "prn_1")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodPut, seen.method)
+	assert.Equal(t, "/api/field-workers/fwk_1/link", seen.path)
+	assert.JSONEq(t, `{"principalId":"prn_1"}`, seen.body)
+	require.NotNil(t, r.LinkedPrincipal)
+	assert.Equal(t, client.FieldLinkedPrincipal{ID: "prn_1", Name: "Pat", Email: "pat@x.io"}, *r.LinkedPrincipal)
+
+	srv2, seen2 := newMockSrv(t, `{"id":"fwk_1","clientId":"clt_1","workerCode":"w1","name":"W","status":"ACTIVE","linkedPrincipal":null,"apps":[]}`)
+	r, err = client.New(srv2.URL).FieldWorkers().Unlink(ctx, "fwk_1")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodDelete, seen2.method)
+	assert.Equal(t, "/api/field-workers/fwk_1/link", seen2.path)
+	assert.Nil(t, r.LinkedPrincipal)
+
+	_, err = c.FieldWorkers().List(ctx, "clt_1", &client.FieldWorkerFilters{LinkedPrincipalID: "prn_1"})
+	require.NoError(t, err)
+	assert.Equal(t, "prn_1", seen.query.Get("linkedPrincipalId"))
+}
+
+func TestFieldTokensIntrospectLinkedPrincipal(t *testing.T) {
+	srv, _ := newMockSrv(t, `{"active":true,"sub":"fwk_1","linkedPrincipalId":"prn_1"}`)
+	r, err := client.New(srv.URL).FieldTokens().Introspect(context.Background(), "tok")
+	require.NoError(t, err)
+	assert.Equal(t, "prn_1", r.LinkedPrincipalID)
+}

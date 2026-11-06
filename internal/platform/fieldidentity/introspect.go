@@ -24,8 +24,10 @@ type TokenClaims struct {
 	ActorType string
 	ActorName string
 	// Test is the test claim.
-	Test    bool
-	Expires time.Time
+	Test bool
+	// LinkedPrincipalID is the linked_principal_id claim.
+	LinkedPrincipalID string
+	Expires           time.Time
 	// PINChangeRequired is the token's pcr claim: it may be used only to
 	// change the PIN, so introspection never reports it active.
 	PINChangeRequired bool

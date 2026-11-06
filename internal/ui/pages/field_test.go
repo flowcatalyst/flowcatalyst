@@ -41,6 +41,8 @@ type fakeField struct {
 	// platform principals that appear as actors.
 	badges     map[string]*fieldidentity.Badge
 	principals map[string]string
+	// users are the platform users a worker can be linked to (by email).
+	users []fieldidentity.PrincipalRef
 
 	// What the last commands carried (tokens and flags are not in calls).
 	lastEnsure  fieldidentity.EnsureWorkerCommand
@@ -164,6 +166,25 @@ func (f *fakeField) PrincipalName(_ context.Context, id string) (string, bool, e
 	return name, ok, nil
 }
 
+func (f *fakeField) PrincipalRefs(_ context.Context, ids []string) (map[string]fieldidentity.PrincipalRef, error) {
+	out := map[string]fieldidentity.PrincipalRef{}
+	for _, u := range f.users {
+		if slices.Contains(ids, u.ID) {
+			out[u.ID] = u
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeField) PrincipalByEmail(_ context.Context, email string) (*fieldidentity.PrincipalRef, error) {
+	for _, u := range f.users {
+		if strings.EqualFold(u.Email, email) {
+			return &u, nil
+		}
+	}
+	return nil, nil
+}
+
 func (f *fakeField) record(s string) error {
 	f.calls = append(f.calls, s)
 	err := f.failWith
@@ -225,6 +246,14 @@ func (f *fakeField) CreateSignInCode(_ context.Context, cmd fieldidentity.Create
 		}
 	}
 	return fieldidentity.CreateSignInCodeResult{CodeID: "fwi_1", WorkerID: cmd.ID, AppCode: cmd.AppCode, ExpiresAt: time.Now().UTC().Add(fieldidentity.SignInCodeTTL)}, err
+}
+
+func (f *fakeField) LinkWorker(_ context.Context, cmd fieldidentity.LinkWorkerCommand) error {
+	return f.record("link " + cmd.ID + " " + cmd.PrincipalID)
+}
+
+func (f *fakeField) UnlinkWorker(_ context.Context, r fieldidentity.WorkerRef) error {
+	return f.record("unlink " + r.ID)
 }
 
 func (f *fakeField) GrantWorkerApp(_ context.Context, cmd fieldidentity.WorkerAppCommand) error {

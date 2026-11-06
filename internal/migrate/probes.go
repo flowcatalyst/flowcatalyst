@@ -123,6 +123,7 @@ var effectProbes = map[int64]string{
 	87:  tblExists("fng_trace_log"),
 	95:  tblExists("field_identities"),
 	101: tblExists("field_badges"),
+	102: colExists("field_identities", "linked_principal_id"),
 }
 
 // impliedBy: a migration with no effect of its own (it only alters columns of

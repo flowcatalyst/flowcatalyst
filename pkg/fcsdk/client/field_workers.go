@@ -57,6 +57,8 @@ type FieldWorkerFilters struct {
 	Status string
 	// IsTest limits to test identities (true) or real workers (false).
 	IsTest *bool
+	// LinkedPrincipalID limits to the worker linked to this platform user.
+	LinkedPrincipalID string
 	// Page is 0-based; PageSize defaults to 100 (max 1000). nil takes the
 	// platform default.
 	Page     *uint32
@@ -64,6 +66,21 @@ type FieldWorkerFilters struct {
 }
 
 // ─── Response DTOs ───────────────────────────────────────────────────
+
+// LinkFieldWorkerRequest — PUT /api/field-workers/{id}/link.
+type LinkFieldWorkerRequest struct {
+	// PrincipalID is the platform user: a USER (not a service account), active
+	// and able to access the worker's client.
+	PrincipalID string `json:"principalId"`
+}
+
+// FieldLinkedPrincipal is the platform user a worker is linked to. Name and
+// Email are empty when the user no longer exists.
+type FieldLinkedPrincipal struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
 
 // FieldWorkerBadgeRef is a worker's active badge.
 type FieldWorkerBadgeRef struct {
@@ -96,9 +113,12 @@ type FieldWorkerResponse struct {
 	PinChangeRequired bool `json:"pinChangeRequired"`
 	// CanImpersonate lets the worker act as other workers (supervisor act-as);
 	// IsTest marks a test identity; Badge is the ACTIVE badge, nil when none.
-	CanImpersonate bool                 `json:"canImpersonate"`
-	IsTest         bool                 `json:"isTest"`
-	Badge          *FieldWorkerBadgeRef `json:"badge"`
+	CanImpersonate bool `json:"canImpersonate"`
+	IsTest         bool `json:"isTest"`
+	// LinkedPrincipal is the platform user the worker is linked to (audit
+	// correlation only; it grants nothing), nil when none.
+	LinkedPrincipal *FieldLinkedPrincipal `json:"linkedPrincipal"`
+	Badge           *FieldWorkerBadgeRef  `json:"badge"`
 	// Locked is true while a soft or hard lock is in force.
 	Locked             bool                `json:"locked"`
 	HardLocked         bool                `json:"hardLocked"`
@@ -178,6 +198,7 @@ func (r *FieldWorkersResource) List(ctx context.Context, clientID string, filter
 			String("appCode", filters.AppCode).
 			String("status", filters.Status).
 			Bool("isTest", filters.IsTest).
+			String("linkedPrincipalId", filters.LinkedPrincipalID).
 			Uint32("page", filters.Page).
 			Uint32("pageSize", filters.PageSize)
 	}
@@ -240,6 +261,30 @@ func (r *FieldWorkersResource) Suspend(ctx context.Context, id string) error {
 // Activate — POST /api/field-workers/{id}/activate.
 func (r *FieldWorkersResource) Activate(ctx context.Context, id string) error {
 	return r.c.Post(ctx, "/api/field-workers/"+url.PathEscape(id)+"/activate", nil, nil)
+}
+
+// Link — PUT /api/field-workers/{id}/link. Links the worker to a platform user
+// for audit correlation (the token then carries linked_principal_id); it
+// grants nothing. 422 INVALID_LINK when the user cannot be linked (not a
+// user, inactive, or without access to the worker's client), 409 LINK_EXISTS
+// when another worker of the client already holds the link. Returns the
+// refreshed worker.
+func (r *FieldWorkersResource) Link(ctx context.Context, id, principalID string) (*FieldWorkerResponse, error) {
+	var out FieldWorkerResponse
+	if err := r.c.Put(ctx, "/api/field-workers/"+url.PathEscape(id)+"/link", &LinkFieldWorkerRequest{PrincipalID: principalID}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Unlink — DELETE /api/field-workers/{id}/link. Idempotent. Returns the
+// refreshed worker.
+func (r *FieldWorkersResource) Unlink(ctx context.Context, id string) (*FieldWorkerResponse, error) {
+	var out FieldWorkerResponse
+	if err := r.c.Delete(ctx, "/api/field-workers/"+url.PathEscape(id)+"/link", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // GrantApp — POST /api/field-workers/{id}/apps.

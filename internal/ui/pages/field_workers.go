@@ -56,6 +56,7 @@ const (
 	fwResetPinID = "fw-reset-pin"
 	fwDeleteID   = "fw-delete"
 	fwRevokeID   = "fw-revoke"
+	fwUnlinkID   = "fw-unlink"
 
 	fwBadgeIssueID   = "fw-badge-issue"
 	fwBadgeReissueID = "fw-badge-reissue"
@@ -92,6 +93,7 @@ func (h *FieldWorkers) Mount(r chi.Router) {
 	r.Get("/field-workers/{id}/grant", h.grantForm)
 	r.Get("/field-workers/{id}/edit", h.editForm)
 	r.Get("/field-workers/{id}/sign-in-as", h.signInAsForm)
+	r.Get("/field-workers/{id}/link", h.linkForm)
 	post := r.With(parseForm)
 	post.Post("/field-workers/new", h.create)
 	post.Post("/field-workers/badges/print", h.printBadges)
@@ -99,6 +101,8 @@ func (h *FieldWorkers) Mount(r chi.Router) {
 	post.Post("/field-workers/{id}/badge", h.issueBadge)
 	post.Post("/field-workers/{id}/badge/revoke", h.revokeBadge)
 	post.Post("/field-workers/{id}/sign-in-as", h.signInAs)
+	post.Post("/field-workers/{id}/link", h.link)
+	post.Post("/field-workers/{id}/unlink", h.unlink)
 	post.Post("/field-workers/{id}/grant", h.grant)
 	post.Post("/field-workers/{id}/suspend", h.suspend)
 	post.Post("/field-workers/{id}/activate", h.activate)
@@ -449,6 +453,13 @@ type fieldBadgeView struct {
 	Created, LastUsed time.Time
 }
 
+// fieldLinkView is the platform user a worker is linked to, as the drawer shows
+// it. Name and Email are empty when the user no longer exists (the link has no
+// foreign key).
+type fieldLinkView struct {
+	ID, Name, Email string
+}
+
 type fieldWorkerDetail struct {
 	ID, Code, Name, Email, ClientID string
 	Status                          string
@@ -464,6 +475,10 @@ type fieldWorkerDetail struct {
 	CanManage, CanGrant             bool
 	IsTest, Supervisor              bool
 	Badge                           *fieldBadgeView
+	// Link is the platform user the worker is linked to, nil when none.
+	// LinkHref and UnlinkAction are set for a manager.
+	Link                   *fieldLinkView
+	LinkHref, UnlinkAction string
 	// CanSignIn is the API's rule for a console sign-in code (impersonate, or
 	// manage for a test identity; a human principal for a real worker) on an
 	// active worker with an application to sign in to.
@@ -509,6 +524,17 @@ func (h *FieldWorkers) detailFor(ctx context.Context, ac *auth.AuthContext, i *f
 		LastLogin: row.LastLogin, Created: i.CreatedAt, Updated: i.UpdatedAt, Apps: row.Apps,
 		CanManage: canManage, Base: row.Base, GrantHref: row.Base + "/grant", EditHref: row.Base + "/edit", SignInAs: row.Base + "/sign-in-as",
 		IsTest: i.IsTest, Supervisor: i.CanImpersonate,
+	}
+	if i.LinkedPrincipalID != "" {
+		refs, err := h.Store.PrincipalRefs(ctx, []string{i.LinkedPrincipalID})
+		if err != nil {
+			return fieldWorkerDetail{}, usecase.Internal("REPO", "find_principals failed", err)
+		}
+		p := refs[i.LinkedPrincipalID]
+		d.Link = &fieldLinkView{ID: i.LinkedPrincipalID, Name: p.Name, Email: p.Email}
+	}
+	if canManage {
+		d.LinkHref, d.UnlinkAction = row.Base+"/link", row.Base+"/unlink"
 	}
 	if b, err := h.Store.ActiveBadge(ctx, i.ID); err != nil {
 		return fieldWorkerDetail{}, usecase.Internal("REPO", "find_field_badge failed", err)

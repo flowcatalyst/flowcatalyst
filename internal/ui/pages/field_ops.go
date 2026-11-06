@@ -25,6 +25,11 @@ type FieldStore interface {
 	Applications(ctx context.Context) ([]application.Application, error)
 	ActiveBadge(ctx context.Context, identityID string) (*fieldidentity.Badge, error)
 	PrincipalName(ctx context.Context, id string) (name string, found bool, err error)
+	// PrincipalRefs names the platform users workers are linked to; an id that
+	// no longer resolves is absent from the map.
+	PrincipalRefs(ctx context.Context, ids []string) (map[string]fieldidentity.PrincipalRef, error)
+	// PrincipalByEmail finds a platform user by email address, nil if none.
+	PrincipalByEmail(ctx context.Context, email string) (*fieldidentity.PrincipalRef, error)
 }
 
 // FieldReader reads the field-identity repositories and the applications.
@@ -90,6 +95,16 @@ func (r FieldReader) PrincipalName(ctx context.Context, id string) (string, bool
 	return name, found, err
 }
 
+// PrincipalRefs names the platform users the given ids belong to.
+func (r FieldReader) PrincipalRefs(ctx context.Context, ids []string) (map[string]fieldidentity.PrincipalRef, error) {
+	return r.Repos.Identities.PrincipalRefs(ctx, ids)
+}
+
+// PrincipalByEmail finds a platform user by email address.
+func (r FieldReader) PrincipalByEmail(ctx context.Context, email string) (*fieldidentity.PrincipalRef, error) {
+	return r.Repos.Identities.PrincipalByEmail(ctx, email)
+}
+
 // FieldCommands are the field-identity operations the pages run; FieldOps
 // runs the API's operations. The permission check (CanManageFieldWorkers or
 // CanManageFieldDevices for the target's client) is the page's, as it is the
@@ -102,6 +117,8 @@ type FieldCommands interface {
 	SuspendWorker(ctx context.Context, ref fieldidentity.WorkerRef) error
 	ActivateWorker(ctx context.Context, ref fieldidentity.WorkerRef) error
 	UnlockWorker(ctx context.Context, ref fieldidentity.WorkerRef) error
+	LinkWorker(ctx context.Context, cmd fieldidentity.LinkWorkerCommand) error
+	UnlinkWorker(ctx context.Context, ref fieldidentity.WorkerRef) error
 	DeleteWorker(ctx context.Context, ref fieldidentity.WorkerRef) error
 	ResetWorkerPin(ctx context.Context, cmd fieldidentity.ResetPinCommand) (fieldidentity.ResetPinResult, error)
 	IssueBadge(ctx context.Context, cmd fieldidentity.IssueBadgeCommand) (fieldidentity.IssuedBadge, error)
@@ -128,6 +145,16 @@ func (o FieldOps) EnsureWorker(ctx context.Context, cmd fieldidentity.EnsureWork
 
 func (o FieldOps) UpdateWorker(ctx context.Context, cmd fieldidentity.UpdateWorkerCommand) error {
 	_, err := usecaseop.Run(ctx, o.UoW, o.Ops.UpdateWorker(), cmd, auth.NewExecutionContext(ctx))
+	return err
+}
+
+func (o FieldOps) LinkWorker(ctx context.Context, cmd fieldidentity.LinkWorkerCommand) error {
+	_, err := usecaseop.Run(ctx, o.UoW, o.Ops.LinkWorker(), cmd, auth.NewExecutionContext(ctx))
+	return err
+}
+
+func (o FieldOps) UnlinkWorker(ctx context.Context, ref fieldidentity.WorkerRef) error {
+	_, err := usecaseop.Run(ctx, o.UoW, o.Ops.UnlinkWorker(), ref, auth.NewExecutionContext(ctx))
 	return err
 }
 

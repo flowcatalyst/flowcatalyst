@@ -266,6 +266,7 @@ func tokenClaims(c *authservice.FieldAccessTokenClaims) *fieldidentity.TokenClai
 		Subject: c.Subject, ClientID: c.ClientID, WorkerCode: c.WorkerCode, DeviceID: c.DeviceID,
 		AppCode: c.Aud, SessionID: c.SessionID, AMR: c.AMR, AuthTime: time.Unix(c.AuthTime, 0).UTC(),
 		PINChangeRequired: c.PCR, JKT: c.Cnf.JKT, DeviceMode: c.DeviceMode, Test: c.Test,
+		LinkedPrincipalID: c.LinkedPrincipalID,
 	}
 	if c.Act != nil {
 		out.ActorSub, out.ActorType, out.ActorName = c.Act.Sub, c.Act.Typ, c.Act.Name
@@ -474,7 +475,7 @@ func (s *State) issue(c *call, ident *fieldidentity.Identity, cl *client.Client,
 		WorkerCode: ident.WorkerCode, Name: ident.Name, AppCode: app.Code,
 		DeviceMode: fieldidentity.DeviceModeUnenrolled, SessionID: sess.FamilyID,
 		AMR: sess.AMR, AuthTime: sess.AuthTime, JKT: sess.JKT, PINChangeRequired: sess.PINChangeRequired,
-		Test: ident.IsTest,
+		Test: ident.IsTest, LinkedPrincipalID: ident.LinkedPrincipalID,
 	}
 	if sess.DeviceID != "" && c.device != nil {
 		subject.DeviceID, subject.DeviceMode = c.device.ID, string(c.device.Mode)

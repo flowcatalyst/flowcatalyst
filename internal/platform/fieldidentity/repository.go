@@ -66,7 +66,7 @@ type IdentityRepo struct{ pool *pgxpool.Pool }
 const identityColumns = `fi.id, fi.client_id, fi.worker_code, fi.name, fi.email, fi.status,
 	fi.pin_hash, fi.pin_scheme, fi.pepper_version, fi.pin_set_at, fi.pin_change_required,
 	fi.failed_since_success, fi.locked_until, fi.hard_locked, fi.last_login_at,
-	fi.can_impersonate, fi.is_test, fi.created_at, fi.updated_at`
+	fi.can_impersonate, fi.is_test, fi.linked_principal_id, fi.created_at, fi.updated_at`
 
 const identitySelect = `SELECT ` + identityColumns + ` FROM field_identities fi`
 
@@ -81,6 +81,62 @@ func (r *IdentityRepo) FindByClientAndCode(ctx context.Context, clientID, code s
 		clientID, NormalizeWorkerCode(code))
 }
 
+// FindByClientAndPrincipal returns the worker of the client linked to the
+// platform user, nil if none.
+func (r *IdentityRepo) FindByClientAndPrincipal(ctx context.Context, clientID, principalID string) (*Identity, error) {
+	return r.one(ctx, identitySelect+` WHERE fi.client_id = $1 AND fi.linked_principal_id = $2`,
+		clientID, principalID)
+}
+
+// PrincipalRef names a platform user a worker is linked to.
+type PrincipalRef struct {
+	ID    string
+	Name  string
+	Email string
+}
+
+// PrincipalRefs resolves platform users by id for display. An id that no
+// longer resolves (the principal was deleted; the link has no foreign key) is
+// absent from the map.
+func (r *IdentityRepo) PrincipalRefs(ctx context.Context, ids []string) (map[string]PrincipalRef, error) {
+	out := make(map[string]PrincipalRef, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := r.pool.Query(ctx, `SELECT id, name, email FROM iam_principals WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("field_identity principal refs: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p PrincipalRef
+		var email *string
+		if err := rows.Scan(&p.ID, &p.Name, &email); err != nil {
+			return nil, err
+		}
+		p.Email = deref(email)
+		out[p.ID] = p
+	}
+	return out, rows.Err()
+}
+
+// PrincipalByEmail resolves a platform principal by email address
+// (case-insensitive), nil if none; the link form's lookup.
+func (r *IdentityRepo) PrincipalByEmail(ctx context.Context, email string) (*PrincipalRef, error) {
+	var p PrincipalRef
+	var mail *string
+	err := r.pool.QueryRow(ctx, `SELECT id, name, email FROM iam_principals WHERE lower(email) = lower($1)`,
+		strings.TrimSpace(email)).Scan(&p.ID, &p.Name, &mail)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("field_identity principal by email: %w", err)
+	}
+	p.Email = deref(mail)
+	return &p, nil
+}
+
 // IdentityFilter narrows a client's workers for the admin list.
 type IdentityFilter struct {
 	ClientID string
@@ -92,6 +148,8 @@ type IdentityFilter struct {
 	Status Status
 	// IsTest, when non-nil, restricts to test (true) or real (false) identities.
 	IsTest *bool
+	// LinkedPrincipalID restricts to the worker linked to that platform user.
+	LinkedPrincipalID string
 	// AppIDs, when non-nil, restricts to workers granted at least one of
 	// these applications (an application-confined caller's own set).
 	AppIDs []string
@@ -120,6 +178,9 @@ func (r *IdentityRepo) Search(ctx context.Context, f IdentityFilter) ([]Identity
 	}
 	if f.IsTest != nil {
 		where = append(where, `fi.is_test = `+add(*f.IsTest))
+	}
+	if f.LinkedPrincipalID != "" {
+		where = append(where, `fi.linked_principal_id = `+add(f.LinkedPrincipalID))
 	}
 	if f.AppIDs != nil {
 		where = append(where, `EXISTS (SELECT 1 FROM field_identity_apps g
@@ -160,13 +221,14 @@ func (r *IdentityRepo) Persist(ctx context.Context, i *Identity, tx *usecasepgx.
 			`INSERT INTO field_identities
 			     (id, client_id, worker_code, name, email, status, pin_hash, pin_scheme, pepper_version,
 			      pin_set_at, pin_change_required, failed_since_success, locked_until, hard_locked,
-			      last_login_at, can_impersonate, is_test, created_at, updated_at)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+			      last_login_at, can_impersonate, is_test, linked_principal_id, created_at, updated_at)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
 			 ON CONFLICT (client_id, worker_code) DO UPDATE SET updated_at = field_identities.updated_at
 			 RETURNING id`,
 			i.ID, i.ClientID, i.WorkerCode, i.Name, emptyToNil(i.Email), string(i.Status), i.PINHash,
 			i.PINScheme, i.PepperVersion, i.PINSetAt, i.PINChangeRequired, i.FailedSinceSuccess,
-			i.LockedUntil, i.HardLocked, i.LastLoginAt, i.CanImpersonate, i.IsTest, i.CreatedAt, now).Scan(&rowID)
+			i.LockedUntil, i.HardLocked, i.LastLoginAt, i.CanImpersonate, i.IsTest, emptyToNil(i.LinkedPrincipalID),
+			i.CreatedAt, now).Scan(&rowID)
 		if err != nil {
 			return err
 		}
@@ -176,11 +238,11 @@ func (r *IdentityRepo) Persist(ctx context.Context, i *Identity, tx *usecasepgx.
 			`UPDATE field_identities SET name=$2, email=$3, status=$4, pin_hash=$5, pin_scheme=$6,
 			     pepper_version=$7, pin_set_at=$8, pin_change_required=$9, failed_since_success=$10,
 			     locked_until=$11, hard_locked=$12, last_login_at=$13, can_impersonate=$14, is_test=$15,
-			     updated_at=$16
+			     linked_principal_id=$16, updated_at=$17
 			 WHERE id = $1`,
 			i.ID, i.Name, emptyToNil(i.Email), string(i.Status), i.PINHash, i.PINScheme,
 			i.PepperVersion, i.PINSetAt, i.PINChangeRequired, i.FailedSinceSuccess,
-			i.LockedUntil, i.HardLocked, i.LastLoginAt, i.CanImpersonate, i.IsTest, now)
+			i.LockedUntil, i.HardLocked, i.LastLoginAt, i.CanImpersonate, i.IsTest, emptyToNil(i.LinkedPrincipalID), now)
 		if err != nil {
 			return err
 		}
@@ -295,15 +357,16 @@ func scanIdentities(rows pgx.Rows) ([]Identity, error) {
 	out := []Identity{}
 	for rows.Next() {
 		var i Identity
-		var email *string
+		var email, linked *string
 		var status string
 		if err := rows.Scan(&i.ID, &i.ClientID, &i.WorkerCode, &i.Name, &email, &status,
 			&i.PINHash, &i.PINScheme, &i.PepperVersion, &i.PINSetAt, &i.PINChangeRequired,
 			&i.FailedSinceSuccess, &i.LockedUntil, &i.HardLocked, &i.LastLoginAt,
-			&i.CanImpersonate, &i.IsTest, &i.CreatedAt, &i.UpdatedAt); err != nil {
+			&i.CanImpersonate, &i.IsTest, &linked, &i.CreatedAt, &i.UpdatedAt); err != nil {
 			return nil, err
 		}
 		i.Email = deref(email)
+		i.LinkedPrincipalID = deref(linked)
 		i.Status = Status(status)
 		i.Apps = []AppGrant{}
 		out = append(out, i)

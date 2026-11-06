@@ -48,7 +48,8 @@ type fixturePrincipal struct {
 		Type string `json:"type"`
 		Name string `json:"name"`
 	} `json:"actor"`
-	Test bool `json:"test"`
+	Test              bool   `json:"test"`
+	LinkedPrincipalID string `json:"linkedPrincipalId"`
 }
 
 func loadFixtures(t *testing.T) (issuer, appCode string, jwks []byte, cases []fixtureCase) {
@@ -98,6 +99,7 @@ func TestFieldFixtures(t *testing.T) {
 					assert.Equal(t, want.DeviceMode, p.DeviceMode)
 					assert.Equal(t, want.AMR, p.AMR)
 					assert.Equal(t, want.Test, p.Test)
+					assert.Equal(t, want.LinkedPrincipalID, p.LinkedPrincipalID)
 					if want.Actor == nil {
 						assert.Nil(t, p.Actor)
 					} else if assert.NotNil(t, p.Actor) {

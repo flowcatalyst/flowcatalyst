@@ -19,6 +19,7 @@ import (
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/pin"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
@@ -62,6 +63,7 @@ func newFixture(t *testing.T, hasher *pin.Hasher) *fixture {
 	f.s = &State{
 		Ops: &fieldidentity.Ops{
 			R: fieldidentity.NewRepos(pool), Clients: clients, Apps: application.NewRepository(pool), Hasher: hasher,
+			Principals: principal.NewRepository(pool),
 		},
 		UoW:     uow,
 		BaseURL: "https://fc.example.test/",

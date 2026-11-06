@@ -51,7 +51,7 @@ func lockCases() []lockCase {
 			return c.FieldWorkers().Ensure(ctx, &client.EnsureFieldWorkerRequest{ClientID: "clt_1", WorkerCode: "w1", Name: "W", Email: new("w@x.io"), AppCodes: []string{"a"}, Pin: new("123456")})
 		}},
 		{name: "FieldWorkers.List", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
-			return c.FieldWorkers().List(ctx, "clt_1", &client.FieldWorkerFilters{Q: "w", AppCode: "a", Status: "ACTIVE", IsTest: new(true), Page: new(uint32(1)), PageSize: new(uint32(5))})
+			return c.FieldWorkers().List(ctx, "clt_1", &client.FieldWorkerFilters{Q: "w", AppCode: "a", Status: "ACTIVE", IsTest: new(true), LinkedPrincipalID: "prn_1", Page: new(uint32(1)), PageSize: new(uint32(5))})
 		}},
 		{name: "FieldWorkers.Get", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.FieldWorkers().Get(ctx, "fwk_1")
@@ -73,6 +73,12 @@ func lockCases() []lockCase {
 		}},
 		{name: "FieldWorkers.Activate", discardsBody: true, call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return nil, c.FieldWorkers().Activate(ctx, "fwk_1")
+		}},
+		{name: "FieldWorkers.Link", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldWorkers().Link(ctx, "fwk_1", "prn_1")
+		}},
+		{name: "FieldWorkers.Unlink", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldWorkers().Unlink(ctx, "fwk_1")
 		}},
 		{name: "FieldWorkers.GrantApp", discardsBody: true, call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return nil, c.FieldWorkers().GrantApp(ctx, "fwk_1", "orders")

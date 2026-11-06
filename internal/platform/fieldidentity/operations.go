@@ -10,9 +10,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/pin"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -59,6 +61,8 @@ type Ops struct {
 	Clients *client.Repository
 	Apps    *application.Repository
 	Hasher  *pin.Hasher
+	// Principals resolves the platform user a worker is linked to.
+	Principals *principal.Repository
 }
 
 // ── shared helpers ───────────────────────────────────────────────────────
@@ -687,6 +691,113 @@ func (o *Ops) RevokeWorkerApp() usecaseop.TxOperation[WorkerAppCommand, Event] {
 				}
 			}
 			return out, nil
+		},
+	}
+}
+
+// ── platform user link ───────────────────────────────────────────────────
+
+// CodeInvalidLink is the error code of a link target that cannot be linked;
+// the admin API answers it 422.
+const CodeInvalidLink = "INVALID_LINK"
+
+// LinkWorkerCommand links a worker to one platform user.
+type LinkWorkerCommand struct {
+	WorkerRef
+	PrincipalID string `json:"principalId"`
+}
+
+// LinkWorker links a worker to a platform user, for audit correlation only (it
+// grants nothing on either side). The principal must exist, be a USER (not a
+// service account), be ACTIVE and be able to access the worker's client
+// (anchor, the client itself, or a granted/partner client): 422 INVALID_LINK
+// otherwise. A user already linked to another worker of the client is 409
+// LINK_EXISTS. Re-linking the same user to the same worker changes nothing but
+// still records the event; linking a different user replaces the link.
+func (o *Ops) LinkWorker() usecaseop.Operation[LinkWorkerCommand, Event] {
+	return usecaseop.Operation[LinkWorkerCommand, Event]{
+		Name: "LinkFieldWorker",
+		Validate: func(ctx context.Context, cmd LinkWorkerCommand) error {
+			if err := validateRef(ctx, cmd.WorkerRef); err != nil {
+				return err
+			}
+			if strings.TrimSpace(cmd.PrincipalID) == "" {
+				return usecase.Validation("PRINCIPAL_ID_REQUIRED", "principalId is required")
+			}
+			return nil
+		},
+		Authorize: usecaseop.Public[LinkWorkerCommand],
+		Execute: func(ctx context.Context, cmd LinkWorkerCommand, ec usecase.ExecutionContext) (usecaseop.Plan[Event], error) {
+			ident, err := o.loadWorker(ctx, cmd.ID, cmd.ClientID)
+			if err != nil {
+				return nil, err
+			}
+			principalID := strings.TrimSpace(cmd.PrincipalID)
+			p, err := o.Principals.FindByID(ctx, ids.PrincipalID(principalID))
+			if err != nil {
+				return nil, repoErr("find_principal", err)
+			}
+			if err := linkable(p, ident.ClientID); err != nil {
+				return nil, err
+			}
+			other, err := o.R.Identities.FindByClientAndPrincipal(ctx, ident.ClientID, principalID)
+			if err != nil {
+				return nil, repoErr("find_field_worker", err)
+			}
+			if other != nil && other.ID != ident.ID {
+				return nil, usecase.Conflict("LINK_EXISTS", "that user is already linked to another field worker of this client")
+			}
+			ident.LinkedPrincipalID = principalID
+			ev := NewEvent(ec, WorkerLinkedType, "field-worker", ident.ID,
+				workerData(ident, map[string]any{"principalId": principalID}))
+			return usecaseop.Save(ident, o.R.Identities, ev), nil
+		},
+	}
+}
+
+// linkable is the rule for a link target: a USER principal that is ACTIVE and
+// reaches the client. Its reasons are deliberately coarse.
+func linkable(p *principal.Principal, clientID string) error {
+	switch {
+	case p == nil:
+		return usecase.BusinessRule(CodeInvalidLink, "the platform user does not exist")
+	case !p.IsUser():
+		return usecase.BusinessRule(CodeInvalidLink, "only a platform user (not a service account) can be linked")
+	case !p.Active:
+		return usecase.BusinessRule(CodeInvalidLink, "the platform user is not active")
+	}
+	var home *string
+	if p.ClientID != nil {
+		h := string(*p.ClientID)
+		home = &h
+	}
+	assigned := make([]string, len(p.AssignedClients))
+	for n, c := range p.AssignedClients {
+		assigned[n] = string(c)
+	}
+	if !p.Scope.CanAccessClient(clientID, home, assigned) {
+		return usecase.BusinessRule(CodeInvalidLink, "the platform user cannot access the worker's client")
+	}
+	return nil
+}
+
+// UnlinkWorker removes a worker's platform user link. Idempotent: an unlinked
+// worker stays unlinked (the event is still recorded, with an empty principalId).
+func (o *Ops) UnlinkWorker() usecaseop.Operation[WorkerRef, Event] {
+	return usecaseop.Operation[WorkerRef, Event]{
+		Name:      "UnlinkFieldWorker",
+		Validate:  validateRef,
+		Authorize: usecaseop.Public[WorkerRef],
+		Execute: func(ctx context.Context, cmd WorkerRef, ec usecase.ExecutionContext) (usecaseop.Plan[Event], error) {
+			ident, err := o.loadWorker(ctx, cmd.ID, cmd.ClientID)
+			if err != nil {
+				return nil, err
+			}
+			previous := ident.LinkedPrincipalID
+			ident.LinkedPrincipalID = ""
+			ev := NewEvent(ec, WorkerUnlinkedType, "field-worker", ident.ID,
+				workerData(ident, map[string]any{"principalId": previous}))
+			return usecaseop.Save(ident, o.R.Identities, ev), nil
 		},
 	}
 }

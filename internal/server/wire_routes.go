@@ -618,5 +618,6 @@ func newFieldOps(repos *repoSet) *fieldidentity.Ops {
 	}
 	return &fieldidentity.Ops{
 		R: repos.fieldRepos, Clients: repos.clientRepo, Apps: repos.applicationRepo, Hasher: hasher,
+		Principals: repos.principalRepo,
 	}
 }

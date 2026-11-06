@@ -19,6 +19,7 @@ import (
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/pin"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -51,7 +52,7 @@ func TestFieldPagesAgainstPostgres(t *testing.T) {
 	repos := fieldidentity.NewRepos(pool)
 	apps := application.NewRepository(pool)
 	store := FieldReader{Repos: repos, Apps: apps}
-	ops := FieldOps{Ops: &fieldidentity.Ops{R: repos, Clients: clients, Apps: apps, Hasher: hasher}, UoW: uow}
+	ops := FieldOps{Ops: &fieldidentity.Ops{R: repos, Clients: clients, Apps: apps, Hasher: hasher, Principals: principal.NewRepository(pool)}, UoW: uow}
 	sh := shellForTest()
 	serve := func(ac *auth.AuthContext, q req) *fieldResult {
 		rec := serveMounted(t, ac, q,
@@ -221,7 +222,7 @@ func TestFieldSignInOptionsAgainstPostgres(t *testing.T) {
 	repos := fieldidentity.NewRepos(pool)
 	apps := application.NewRepository(pool)
 	store := FieldReader{Repos: repos, Apps: apps}
-	ops := FieldOps{Ops: &fieldidentity.Ops{R: repos, Clients: clients, Apps: apps, Hasher: hasher}, UoW: uow}
+	ops := FieldOps{Ops: &fieldidentity.Ops{R: repos, Clients: clients, Apps: apps, Hasher: hasher, Principals: principal.NewRepository(pool)}, UoW: uow}
 	sh := shellForTest()
 	serve := func(ac *auth.AuthContext, q req) *fieldResult {
 		rec := serveMounted(t, ac, q,
@@ -386,4 +387,126 @@ func TestFieldSignInOptionsAgainstPostgres(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, p.RequireEnrolledDevice && p.BadgeOnlyLogin, "a save of the page lost a sign-in switch")
 	assert.Equal(t, 7, p.PINMinLength)
+}
+
+// The worker drawer's "Linked platform user" against Postgres
+// (docs/field-native-session-spec.md section 5): link by email through the
+// dialog, the operation's refusals (a service account, an inactive user, a user
+// of another client, a user already linked in the client), unlink, and the
+// manage permission and client box.
+func TestFieldWorkerLinkAgainstPostgres(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	uow := testpg.NewUoW(t)
+	clients := client.NewRepository(pool)
+	hasher, err := pin.NewHasher("field-ui-test-app-key")
+	require.NoError(t, err)
+	n := time.Now().UnixNano() % 1_000_000_000
+	mkClient := func(name string) string {
+		ev, err := usecaseop.Run(ctx, uow, clientops.CreateClient(clients),
+			clientops.CreateCommand{Name: name, Identifier: fmt.Sprintf("field-lk-%s-%d", strings.ToLower(name), n)}, testpg.TestEC())
+		require.NoError(t, err)
+		return ev.ClientID
+	}
+	acme, globex := mkClient("Acme"), mkClient("Globex")
+	appCode := fmt.Sprintf("fldlk%d", n)
+	testpg.EnsureApplication(t, appCode)
+
+	repos := fieldidentity.NewRepos(pool)
+	apps := application.NewRepository(pool)
+	store := FieldReader{Repos: repos, Apps: apps}
+	ops := FieldOps{Ops: &fieldidentity.Ops{R: repos, Clients: clients, Apps: apps, Hasher: hasher, Principals: principal.NewRepository(pool)}, UoW: uow}
+	sh := shellForTest()
+	serve := func(ac *auth.AuthContext, q req) *fieldResult {
+		rec := serveMounted(t, ac, q, &FieldWorkers{Store: store, Ops: ops, Clients: clients, Shell: sh})
+		return &fieldResult{rec.Code, rec.Body.String(), rec.Header()}
+	}
+	manager := fieldCaller([]string{acme}, permFieldWorkerView, permFieldWorkerManage)
+	viewer := fieldCaller([]string{acme}, permFieldWorkerView)
+
+	user := func(typ, scope, home string, active bool) (id, email string) {
+		id = tsid.Generate(tsid.Principal)
+		email = id + "@link.example.test"
+		var homeArg any
+		if home != "" {
+			homeArg = home
+		}
+		_, err := pool.Exec(ctx, `INSERT INTO iam_principals (id, type, scope, client_id, name, active, email, email_domain)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,'link.example.test')`, id, typ, scope, homeArg, "Lee "+typ, active, email)
+		require.NoError(t, err)
+		return id, email
+	}
+	mk := func(code string) *fieldidentity.Identity {
+		res := serve(manager, postForm("/ui/field-workers/new", "client", acme, "workerCode", code, "name", code, "apps", appCode))
+		require.Equal(t, http.StatusOK, res.code, res.body)
+		w, err := repos.Identities.FindByClientAndCode(ctx, acme, code)
+		require.NoError(t, err)
+		require.NotNil(t, w)
+		return w
+	}
+	ann, bob := mk("LK-ANN"), mk("LK-BOB")
+	linkedTo := func(id string) string {
+		w, err := repos.Identities.FindByID(ctx, id)
+		require.NoError(t, err)
+		return w.LinkedPrincipalID
+	}
+
+	// The drawer offers Link while unlinked.
+	res := serve(manager, req{target: "/ui/field-workers/" + ann.ID, datastar: true})
+	assert.Contains(t, res.body, "Not linked")
+	assert.Contains(t, res.body, "Link platform user")
+
+	// Link by email: the row, the drawer and the flash name the user.
+	own, ownEmail := user("USER", "CLIENT", acme, true)
+	res = serve(manager, postForm("/ui/field-workers/"+ann.ID+"/link", "drawer", ann.ID, "email", strings.ToUpper(ownEmail)))
+	require.Equal(t, http.StatusOK, res.code, res.body)
+	assert.Contains(t, res.body, "LK-ANN is linked to "+ownEmail)
+	assert.Equal(t, own, linkedTo(ann.ID))
+	res = serve(manager, req{target: "/ui/field-workers/" + ann.ID, datastar: true})
+	assert.Contains(t, res.body, "Lee USER")
+	assert.Contains(t, res.body, ownEmail)
+	assert.Contains(t, res.body, "Unlink")
+
+	// Refusals are 422 on the email field and write nothing: a service
+	// account, an inactive user, a user of another client, an unknown address.
+	_, svcEmail := user("SERVICE", "CLIENT", acme, true)
+	_, offEmail := user("USER", "CLIENT", acme, false)
+	_, elsewhereEmail := user("USER", "CLIENT", globex, true)
+	for name, email := range map[string]string{"service account": svcEmail, "inactive user": offEmail, "another client": elsewhereEmail, "unknown": "nobody@link.example.test"} {
+		res = serve(manager, nativePost("/ui/field-workers/"+bob.ID+"/link", "email", email))
+		assert.Equal(t, http.StatusUnprocessableEntity, res.code, "%s: %s", name, res.body)
+		assert.Empty(t, linkedTo(bob.ID), "%s was linked", name)
+	}
+	assert.Contains(t, serve(manager, nativePost("/ui/field-workers/"+bob.ID+"/link", "email", svcEmail)).body, "not a service account")
+
+	// A user already linked to another worker of the client is a 409.
+	res = serve(manager, nativePost("/ui/field-workers/"+bob.ID+"/link", "email", ownEmail))
+	assert.Equal(t, http.StatusConflict, res.code, res.body)
+	assert.Contains(t, res.body, "already linked")
+	assert.Empty(t, linkedTo(bob.ID))
+
+	// Viewing needs view; changing needs manage, and another client's worker
+	// is not found.
+	assert.Contains(t, serve(viewer, req{target: "/ui/field-workers/" + ann.ID, datastar: true}).body, "Lee USER")
+	assert.NotContains(t, serve(viewer, req{target: "/ui/field-workers/" + ann.ID, datastar: true}).body, "Unlink")
+	assert.Equal(t, http.StatusForbidden, serve(viewer, nativePost("/ui/field-workers/"+ann.ID+"/unlink")).code)
+	assert.Equal(t, http.StatusForbidden, serve(viewer, nativePost("/ui/field-workers/"+bob.ID+"/link", "email", ownEmail)).code)
+	assert.Equal(t, own, linkedTo(ann.ID), "a refused unlink left the link")
+	actx := testpg.WithAuth(ctx, &auth.AuthContext{
+		PrincipalID: "prn_optestrunner1", Scope: auth.ScopeAnchor, Permissions: []string{"platform:*:*:*"},
+		AllApplications: true, PrincipalType: auth.PrincipalTypeUser,
+	})
+	gw, err := usecaseop.Run(actx, uow, ops.Ops.EnsureWorker(), fieldidentity.EnsureWorkerCommand{ClientID: globex, WorkerCode: "LK-GUS", Name: "Gus", AppCodes: []string{appCode}}, auth.NewExecutionContext(actx))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, serve(manager, nativePost("/ui/field-workers/"+gw.ID+"/link", "email", ownEmail)).code)
+	assert.Equal(t, http.StatusNotFound, serve(manager, nativePost("/ui/field-workers/"+gw.ID+"/unlink")).code)
+
+	// Unlink, then the user can be linked to the other worker.
+	res = serve(manager, postForm("/ui/field-workers/"+ann.ID+"/unlink", "drawer", ann.ID))
+	require.Equal(t, http.StatusOK, res.code, res.body)
+	assert.Contains(t, res.body, "LK-ANN is no longer linked to a platform user")
+	assert.Empty(t, linkedTo(ann.ID))
+	res = serve(manager, nativePost("/ui/field-workers/"+bob.ID+"/link", "email", ownEmail))
+	assert.Less(t, res.code, 400, res.body)
+	assert.Equal(t, own, linkedTo(bob.ID))
 }

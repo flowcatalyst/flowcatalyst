@@ -22,6 +22,8 @@ const (
 	WorkerUnlockedType   = "platform:iam:field-worker:unlocked"
 	WorkerAppGrantedType = "platform:iam:field-worker:app-granted"
 	WorkerAppRevokedType = "platform:iam:field-worker:app-revoked"
+	WorkerLinkedType     = "platform:iam:field-worker:linked"
+	WorkerUnlinkedType   = "platform:iam:field-worker:unlinked"
 
 	WorkerBadgeIssuedType       = "platform:iam:field-worker:badge-issued"
 	WorkerBadgeRevokedType      = "platform:iam:field-worker:badge-revoked"

@@ -905,12 +905,13 @@ is an idempotent ensure on `(clientId, workerCode)` (the code is stored upper-ca
 the client's PIN policy (`400 PIN_POLICY`, `details.violations[]`) and is stored with
 `pinChangeRequired:true`; without one the worker has no PIN and cannot sign in until a reset.
 Responses carry `hasPin`, `pinChangeRequired`, `locked`, `hardLocked`, `lockedUntil?`,
-`failedSinceSuccess`, `apps[]`, `canImpersonate`, `isTest`, `badge` (`{id, status, createdAt, lastUsedAt?}`
+`failedSinceSuccess`, `apps[]`, `canImpersonate`, `isTest`, `linkedPrincipal` (`{id, name, email}` of the
+linked platform user, else `null`; see "Link to a platform user"), `badge` (`{id, status, createdAt, lastUsedAt?}`
 for the ACTIVE badge, else `null`) and never the hash. Ensure (new worker only) and PUT accept
 `canImpersonate?` and `isTest?`: setting or changing `canImpersonate` needs
 `platform:iam:field-worker:impersonate` in addition to manage (`403 PERMISSION_REQUIRED`), and clearing
 it revokes the sessions the worker holds open as an actor (`ACTOR_SUSPENDED`). Suspending or deleting a
-worker does the same. `GET /api/field-workers` also takes `isTest=true|false`. `GET /api/field-workers?clientId&q&appCode&status&page&pageSize`
+worker does the same. `GET /api/field-workers` also takes `isTest=true|false` and `linkedPrincipalId`. `GET /api/field-workers?clientId&q&appCode&status&page&pageSize`
 (`page` 0-based, `pageSize` default 100 max 1000; `q` is a case-insensitive prefix of name or
 worker code) answers `{workers, total, page, size}`; `GET|PUT|DELETE /api/field-workers/{id}`
 (PUT takes `{name, email?}`; DELETE revokes the worker's sessions and removes the row).
@@ -924,6 +925,20 @@ application's sessions for the worker; both idempotent. `GET /{id}/sign-ins?page
 sign-in attempts newest first (`{signIns, total, page, size}`; each has `authMethod` (`PIN`,
 `BADGE_PIN`, `BADGE`, `ACT_AS`, `SIGN_IN_CODE`, `PIN_CHANGE`), `deviceId?` (absent for an unenrolled key)
 and `actorId?`, the supervisor or principal behind an impersonated sign-in).
+
+**Link to a platform user** (`docs/field-native-session-spec.md` section 5). Audit correlation only: it says
+"this dispatcher on the web is that driver on the phone" and grants nothing on either side (a field token
+stays a field token; the platform user gains nothing on field routes). `PUT /api/field-workers/{id}/link
+{principalId}` and `DELETE /api/field-workers/{id}/link` need `platform:iam:field-worker:manage` for the
+worker's client (client-boxed like the other worker routes: another client's worker is `404`) and answer the
+refreshed worker. The principal must exist, be a USER (not a service account), be ACTIVE and be able to access the
+worker's client (anchor scope, the client itself as home client, or a partner's granted client); otherwise
+`422 INVALID_LINK`. A user already linked to another worker of the same client is `409 LINK_EXISTS` (a person
+has at most one field identity per client; one platform user may be linked in several clients). Linking a
+different user replaces the link; linking the same user, and unlinking an unlinked worker, are no-ops. The
+link has no foreign key: deleting the principal leaves it, and `linkedPrincipal` then carries the id with an
+empty `name` and `email`. Schema: `field_identities.linked_principal_id VARCHAR(17) NULL`,
+`UNIQUE (client_id, linked_principal_id)` (migration 102).
 
 **Badges** (permission `platform:iam:field-worker:manage`, client-boxed like the worker routes).
 `POST /api/field-workers/{id}/badges {label?}` answers `201 {badge, token}`: `token` is `FWB1` plus 26
@@ -973,19 +988,22 @@ digit, a straight run (including wrap-around, `123456`, `890123`, `654321`), on 
 list, or the worker's own code.
 
 **Introspection.** `POST /api/field-tokens/introspect {token}` answers `{active, sub?, clientId?,
-workerCode?, deviceId?, appCode?, amr?, authTime?, exp?, act?: {sub, typ}, test?}` (`deviceId` is absent
-for a token on an unenrolled key; `act` when someone is signed in as the worker). A token that fails any check, belongs to
+workerCode?, deviceId?, appCode?, amr?, authTime?, exp?, act?: {sub, typ}, test?, linkedPrincipalId?}` (`deviceId` is absent
+for a token on an unenrolled key; `act` when someone is signed in as the worker; `linkedPrincipalId` is the token's
+`linked_principal_id` claim, absent when the worker was not linked when the token was minted). A token that fails any check, belongs to
 a client or application the caller cannot reach, or is unknown answers `{"active": false}`, never
 an error. `active` is true only while the token is unexpired, its login family (`sid`) has a
 non-revoked unexpired session, the worker is `ACTIVE` and, when the token names a device, the device is `ACTIVE`.
 
 **Events** (catalogued, `platform:iam:...`): `field-worker:created | ensured | updated | deleted |
 suspended | activated | pin-reset | pin-changed | unlocked | app-granted | app-revoked | badge-issued
-| badge-revoked | impersonated | sign-in-code-created`, `field-device:enrolment-code-created
+| badge-revoked | impersonated | sign-in-code-created | linked | unlinked`, `field-device:enrolment-code-created
 | enrolled | suspended | activated | revoked | throttled`, `field-session:revoked` (admin, reuse and worker
 revocations, not routine rotation), `field-policy:updated`. Payloads never carry a PIN, code or badge
 token. `created | ensured | updated` carry `isTest` (`updated` also `canImpersonate`); `badge-issued`
-`{workerId, clientId, badgeId, revokedBadgeIds[]}`; `badge-revoked {badgeId}`; `impersonated`
+`{workerId, clientId, badgeId, revokedBadgeIds[]}`; `badge-revoked {badgeId}`; `linked | unlinked`
+`{workerId, clientId, workerCode, principalId}` (audited as the calling admin; `principalId` of `unlinked` is the
+user that was linked, empty when there was none); `impersonated`
 `{workerId, clientId, appCode, actorType, actorId, method: ACT_AS|SIGN_IN_CODE, deviceId?, sessionId}`
 (audited as the ACTOR impersonating the worker); `sign-in-code-created {appCode, createdBy, expiresAt}`;
 `field-policy:updated` the four sign-in-option fields; `field-device:throttled` scope `DEVICE | CLIENT | IP`
@@ -1127,8 +1145,11 @@ JOSE header `typ: fc-field+jwt`, lifetime `FC_FIELD_ACCESS_TOKEN_TTL_SECS` (defa
 `device_id` (omitted on an unenrolled key, where `device_mode` is `"UNENROLLED"`), `device_mode`, `sid`
 (the family id), `amr` (`["pin"]`, `["badge","pin"]`, `["badge"]`, `["pin","imp"]`, `["code","imp"]`),
 `auth_time`, `cnf: {jkt}`, `pcr: true` only while a PIN change is required, `act: {sub, typ:
-"field_worker" | "principal", name}` only on an impersonated token, and `test: true` only for a test
-identity. No roles, scope, applications or clients
+"field_worker" | "principal", name}` only on an impersonated token, `test: true` only for a test
+identity, and `linked_principal_id` (the platform user the worker is linked to) only when linked: audit
+correlation, it grants nothing. It is copied at login and at every refresh (a link added or removed after
+login shows on the next refresh, within one access-token lifetime) and, on an impersonated session, is the
+TARGET worker's link, never the actor's. No roles, scope, applications or clients
 claims. The platform API middleware refuses `token_use: "field"` (and `pkg/fcsdk/auth`
 `TokenValidator` accepts only `token_use` `api`, `identity` or absent; the platform-token validators
 of every SDK share that allowlist), so a field token is never an API credential. The
@@ -1142,14 +1163,15 @@ Host header and `X-Forwarded-*` headers are never used (the Go middleware requir
 Access tokens are signed RS256 only (the platform signer; a verifier refuses any other header `alg` as `invalid_token`, vector `alg_not_rs256`); DPoP proofs are ES256 only.
 Shared test vectors: `api/field-fixtures/` (`go run ./tools/field-fixtures`; access tokens RS256, proofs ES256).
 Valid cases `valid_unenrolled`, `valid_impersonated_supervisor`, `valid_impersonated_principal` and
-`valid_test` carry a `principal` object (`deviceId` empty on an unenrolled key, `deviceMode`, `amr`, `actor?`,
-`test`) that a verifier must expose.
+`valid_test` and `valid_linked` carry a `principal` object (`deviceId` empty on an unenrolled key, `deviceMode`,
+`amr`, `actor?`, `test`, `linkedPrincipalId`, empty when absent) that a verifier must expose
+(`FieldPrincipal.LinkedPrincipalID` in the Go SDK).
 
 
 **Errors in one place.** `use_dpop_nonce` 401, `invalid_dpop_proof` 401, `invalid_token` 401
 (bearer routes), `UNKNOWN_DEVICE` 401, `DEVICE_SUSPENDED` 403, `DEVICE_REVOKED` 403,
 `INVALID_CREDENTIALS` 401, `CLIENT_MISMATCH` 400, `PIN_REQUIRED` 400, `IMPERSONATING` 403,
-`IMPERSONATION_FORBIDDEN` 403, `INVALID_CODE` 401, `WORKER_LOCKED` 423, `WORKER_LOCKED_TEMPORARILY` 429,
+`IMPERSONATION_FORBIDDEN` 403, `INVALID_LINK` 422 and `LINK_EXISTS` 409 (admin link), `INVALID_CODE` 401, `WORKER_LOCKED` 423, `WORKER_LOCKED_TEMPORARILY` 429,
 `TOO_MANY_ATTEMPTS` 429, `NO_APP_ACCESS` 403, `INVALID_GRANT` 401, `SESSION_EXPIRED` 401,
 `PIN_POLICY` 422, `INVALID_ENROLMENT_CODE` 401, `DEVICE_KEY_EXISTS` 409, `ATTESTATION_REQUIRED`
 422, `CLIENT_INACTIVE` 403, `INVALID_REQUEST` / `INVALID_PUBLIC_KEY` 400 (the login `clientIdentifier` is required from an unenrolled key),

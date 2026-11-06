@@ -115,6 +115,7 @@ templ fieldWorkersPage(v fieldWorkersView) {
 			@kit.ConfirmDialog(v.confirm(fwUnlockID, "Unlock field worker", "Clear this worker's soft and hard locks and their failed-attempt counter? Their PIN is unchanged.", "Unlock", kit.ToneDefault))
 			@kit.ConfirmDialog(v.confirm(fwResetPinID, "Reset PIN", "Set a new temporary PIN for this worker? It is shown to you once, must be changed by the worker at their next sign-in, and every session they have is ended.", "Reset PIN", kit.ToneWarn))
 			@kit.ConfirmDialog(v.confirm(fwRevokeID, "Remove application access", "Remove this worker's access to the application? Their sessions in that application are ended.", "Remove", kit.ToneDanger))
+			@kit.ConfirmDialog(v.confirm(fwUnlinkID, "Unlink platform user", "Remove the link between this worker and their platform user? Nothing else changes.", "Unlink", kit.ToneWarn))
 			@kit.ConfirmDialog(v.confirm(fwBadgeIssueID, "Issue badge", "Issue a printed badge for this worker? The badge is shown once, as a card to print; only its hash is kept.", "Issue badge", kit.ToneDefault))
 			@kit.ConfirmDialog(v.confirm(fwBadgeReissueID, "Reissue badge", "Issue a new badge for this worker? Their current badge is cancelled at once and stops signing in. The new badge is shown once, as a card to print.", "Reissue badge", kit.ToneWarn))
 			@kit.ConfirmDialog(v.confirm(fwBadgeRevokeID, "Revoke badge", "Revoke this worker's badge? It stops signing in at once. They can still sign in with their PIN.", "Revoke badge", kit.ToneDanger))
@@ -356,6 +357,7 @@ templ fieldWorkerDrawerBody(d fieldWorkerDetail) {
 			</ul>
 		}
 	}
+	@fieldWorkerLinkSection(d)
 	@fieldWorkerBadgeSection(d)
 	@fieldWorkerSignInAs(d)
 	if actions := d.actions(); len(actions) > 0 {
@@ -381,6 +383,45 @@ templ fieldWorkerEditButton(d fieldWorkerDetail) {
 	if d.CanManage {
 		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
 			Edit
+		}
+	}
+}
+
+// fieldWorkerLinkSection is the platform user the worker is linked to (audit
+// correlation only: it grants nothing) and, to a manager, link / change /
+// unlink.
+templ fieldWorkerLinkSection(d fieldWorkerDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Linked platform user"}) {
+		if d.Link == nil {
+			<p class="m-0 text-sm text-muted-foreground">Not linked. Linking says this worker and a platform user are the same person, so audit trails can be correlated. It grants nothing on either side.</p>
+		} else {
+			<div class="fc-detail-grid">
+				if d.Link.Name == "" && d.Link.Email == "" {
+					@kit.DetailField(kit.DetailFieldProps{Label: "User"}) {
+						<span class="text-sm text-muted-foreground">No longer exists</span>
+						<code class="text-xs">{ d.Link.ID }</code>
+					}
+				} else {
+					@kit.DetailField(kit.DetailFieldProps{Label: "User", Value: d.Link.Name})
+					@kit.DetailField(kit.DetailFieldProps{Label: "Email", Value: d.Link.Email})
+				}
+			</div>
+		}
+		if d.LinkHref != "" {
+			<div class="mt-3 flex flex-wrap gap-2">
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Href: d.LinkHref, Icon: "link", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+					if d.Link == nil {
+						Link platform user
+					} else {
+						Change
+					}
+				}
+				if d.Link != nil {
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "ban", Attrs: confirmTrigger(fwUnlinkID, d.UnlinkAction)}) {
+						Unlink
+					}
+				}
+			</div>
 		}
 	}
 }
@@ -682,6 +723,19 @@ templ fieldEditField(f fieldEditForm, key string) {
 			@kit.Field(f.fieldProps(key, "May act as other workers", impersonateHelp+" Clearing it ends the sessions the worker holds as an actor.", false)) {
 				@kit.Switch(kit.SwitchProps{ID: f.id(key), Name: key, Value: "true", Checked: f.CanImpersonate})
 			}
+	}
+}
+
+// ── link platform user ─────────────────────────────────────────────────
+templ fieldLinkDialog(f fieldLinkFormData) {
+	@kit.FormDialog(f.dialog()) {
+		@fieldLinkField(f)
+	}
+}
+
+templ fieldLinkField(f fieldLinkFormData) {
+	@kit.Field(kit.FieldProps{Label: "Platform user's email", For: f.id("email"), Description: "The user must be a person (not a service account), active, and able to access this client.", Required: true, Error: f.Errs.Fields["email"], ErrorID: f.id("email") + "-err", Attrs: templ.Attributes{"id": f.id("email") + "-field"}}) {
+		@kit.Input(kit.InputProps{ID: f.id("email"), Name: "email", Type: "email", Value: f.Email, Required: true, Invalid: f.Errs.Fields["email"] != "", DescribedBy: f.describedBy(), Attrs: templ.Attributes{"autocomplete": "off", "autofocus": true}})
 	}
 }
 

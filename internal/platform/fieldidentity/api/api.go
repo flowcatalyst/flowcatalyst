@@ -62,6 +62,8 @@ func Register(api huma.API, s *State) {
 	apiroute.Put(w, "updateFieldWorker", "/api/field-workers/{id}", "Update a field worker's name and email", http.StatusOK, s.updateWorker)
 	apiroute.Delete(w, "deleteFieldWorker", "/api/field-workers/{id}", "Delete a field worker (revokes their sessions first)", http.StatusOK, s.deleteWorker)
 	apiroute.Post(w, "resetFieldWorkerPin", "/api/field-workers/{id}/pin-reset", "Reset a field worker's PIN (a temporary PIN is returned once when none is supplied)", http.StatusOK, s.resetPin)
+	apiroute.Put(w, "linkFieldWorker", "/api/field-workers/{id}/link", "Link a field worker to a platform user (audit correlation only; grants nothing)", http.StatusOK, s.linkWorker)
+	apiroute.Delete(w, "unlinkFieldWorker", "/api/field-workers/{id}/link", "Remove a field worker's platform user link", http.StatusOK, s.unlinkWorker)
 	apiroute.Post(w, "unlockFieldWorker", "/api/field-workers/{id}/unlock", "Clear a field worker's soft and hard locks", http.StatusOK, s.unlockWorker)
 	apiroute.Post(w, "suspendFieldWorker", "/api/field-workers/{id}/suspend", "Suspend a field worker and revoke their sessions", http.StatusOK, s.suspendWorker)
 	apiroute.Post(w, "activateFieldWorker", "/api/field-workers/{id}/activate", "Reactivate a suspended field worker", http.StatusOK, s.activateWorker)
@@ -93,10 +95,15 @@ func Register(api huma.API, s *State) {
 // ── shared plumbing ──────────────────────────────────────────────────────
 
 // fail maps operation errors to the wire: an unconfigured PIN pepper is a 503,
-// everything else is left to the platform error transformer.
+// a link target that cannot be linked a 422, everything else is left to the platform error transformer.
 func fail(err error) error {
-	if ue := usecase.AsError(err); ue != nil && ue.Code == fieldidentity.CodeUnconfigured {
-		return httpcompat.NewStatusError(http.StatusServiceUnavailable, fieldidentity.CodeUnconfigured, ue.Message)
+	if ue := usecase.AsError(err); ue != nil {
+		switch ue.Code {
+		case fieldidentity.CodeUnconfigured:
+			return httpcompat.NewStatusError(http.StatusServiceUnavailable, fieldidentity.CodeUnconfigured, ue.Message)
+		case fieldidentity.CodeInvalidLink:
+			return httpcompat.NewStatusError(http.StatusUnprocessableEntity, fieldidentity.CodeInvalidLink, ue.Message)
+		}
 	}
 	return err
 }
@@ -194,6 +201,10 @@ type FieldWorkerResponse struct {
 	// (supervisor act-as). IsTest marks a test identity.
 	CanImpersonate bool `json:"canImpersonate"`
 	IsTest         bool `json:"isTest"`
+	// LinkedPrincipal is the platform user the worker is linked to, null when
+	// none. A link whose user was deleted keeps its id with an empty name and
+	// email (no foreign key).
+	LinkedPrincipal *FieldLinkedPrincipalRef `json:"linkedPrincipal"`
 	// Badge is the worker's ACTIVE badge, null when none.
 	Badge *FieldWorkerBadgeRef `json:"badge"`
 	// Locked is true while a soft or hard lock is in force.
@@ -208,6 +219,36 @@ type FieldWorkerResponse struct {
 	// Created is set only by the ensure endpoint: false when the worker
 	// already existed.
 	Created *bool `json:"created,omitempty"`
+}
+
+// FieldLinkedPrincipalRef is the platform user a worker is linked to.
+type FieldLinkedPrincipalRef struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+func linkedRef(i *fieldidentity.Identity, links map[string]fieldidentity.PrincipalRef) *FieldLinkedPrincipalRef {
+	if i.LinkedPrincipalID == "" {
+		return nil
+	}
+	p := links[i.LinkedPrincipalID]
+	return &FieldLinkedPrincipalRef{ID: i.LinkedPrincipalID, Name: p.Name, Email: p.Email}
+}
+
+// linkRefs resolves the platform users the workers are linked to.
+func (s *State) linkRefs(ctx context.Context, idents ...fieldidentity.Identity) (map[string]fieldidentity.PrincipalRef, error) {
+	var ids []string
+	for n := range idents {
+		if idents[n].LinkedPrincipalID != "" {
+			ids = append(ids, idents[n].LinkedPrincipalID)
+		}
+	}
+	refs, err := s.Ops.R.Identities.PrincipalRefs(ctx, ids)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_principals failed", err)
+	}
+	return refs, nil
 }
 
 // FieldWorkerBadgeRef is a worker's active badge, as the worker shows it.
@@ -225,11 +266,13 @@ func badgeRef(b *fieldidentity.Badge) *FieldWorkerBadgeRef {
 	return &FieldWorkerBadgeRef{ID: b.ID, Status: string(b.Status), CreatedAt: jsontime.New(b.CreatedAt), LastUsedAt: opt(b.LastUsedAt)}
 }
 
-func workerResponse(i *fieldidentity.Identity, idx appIndex, now time.Time, badge *fieldidentity.Badge) FieldWorkerResponse {
+func workerResponse(i *fieldidentity.Identity, idx appIndex, now time.Time, badge *fieldidentity.Badge,
+	links map[string]fieldidentity.PrincipalRef,
+) FieldWorkerResponse {
 	r := FieldWorkerResponse{
 		ID: i.ID, ClientID: i.ClientID, WorkerCode: i.WorkerCode, Name: i.Name, Email: i.Email,
 		Status: string(i.Status), HasPin: i.HasPIN(), PinChangeRequired: i.PINChangeRequired,
-		CanImpersonate: i.CanImpersonate, IsTest: i.IsTest, Badge: badgeRef(badge),
+		CanImpersonate: i.CanImpersonate, IsTest: i.IsTest, LinkedPrincipal: linkedRef(i, links), Badge: badgeRef(badge),
 		Locked: i.IsLocked(now), HardLocked: i.HardLocked, LockedUntil: opt(i.LockedUntil),
 		FailedSinceSuccess: i.FailedSinceSuccess, LastLoginAt: opt(i.LastLoginAt),
 		Apps:      make([]FieldWorkerAppRef, 0, len(i.Apps)),
@@ -352,7 +395,11 @@ func (s *State) ensureWorker(ctx context.Context, in *apicommon.In[EnsureFieldWo
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_field_badge failed", err)
 	}
-	resp := workerResponse(ident, idx, time.Now().UTC(), badge)
+	links, err := s.linkRefs(ctx, *ident)
+	if err != nil {
+		return nil, err
+	}
+	resp := workerResponse(ident, idx, time.Now().UTC(), badge, links)
 	created := ev.Type == fieldidentity.WorkerCreatedType
 	resp.Created = &created
 	status := http.StatusOK
@@ -371,13 +418,14 @@ type FieldWorkerListResponse struct {
 }
 
 type listWorkersInput struct {
-	ClientID string `query:"clientId" doc:"Tenant client whose workers to list"`
-	Q        string `query:"q" doc:"Case-insensitive prefix matched against name and worker code"`
-	AppCode  string `query:"appCode" doc:"Only workers granted this application"`
-	Status   string `query:"status" enum:"ACTIVE,DISABLED" doc:"Only workers in this state"`
-	IsTest   string `query:"isTest" enum:"true,false" doc:"Only test identities (true) or only real workers (false)"`
-	Page     int    `query:"page" doc:"0-based page index (default 0)"`
-	PageSize int    `query:"pageSize" doc:"Page size (default 100, max 1000)"`
+	ClientID          string `query:"clientId" doc:"Tenant client whose workers to list"`
+	Q                 string `query:"q" doc:"Case-insensitive prefix matched against name and worker code"`
+	AppCode           string `query:"appCode" doc:"Only workers granted this application"`
+	Status            string `query:"status" enum:"ACTIVE,DISABLED" doc:"Only workers in this state"`
+	IsTest            string `query:"isTest" enum:"true,false" doc:"Only test identities (true) or only real workers (false)"`
+	LinkedPrincipalID string `query:"linkedPrincipalId" doc:"Only the worker linked to this platform user"`
+	Page              int    `query:"page" doc:"0-based page index (default 0)"`
+	PageSize          int    `query:"pageSize" doc:"Page size (default 100, max 1000)"`
 }
 
 func (s *State) listWorkers(ctx context.Context, in *listWorkersInput) (*apicommon.Out[FieldWorkerListResponse], error) {
@@ -391,6 +439,7 @@ func (s *State) listWorkers(ctx context.Context, in *listWorkersInput) (*apicomm
 	}
 	f := fieldidentity.IdentityFilter{
 		ClientID: clientID, Query: in.Q, Status: fieldidentity.Status(in.Status), AppIDs: callerAppIDs(ac),
+		LinkedPrincipalID: strings.TrimSpace(in.LinkedPrincipalID),
 	}
 	if in.IsTest != "" {
 		v := in.IsTest == "true"
@@ -427,10 +476,14 @@ func (s *State) listWorkers(ctx context.Context, in *listWorkersInput) (*apicomm
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_field_badges failed", err)
 	}
+	links, err := s.linkRefs(ctx, rows...)
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC()
 	out := make([]FieldWorkerResponse, 0, len(rows))
 	for n := range rows {
-		out = append(out, workerResponse(&rows[n], idx, now, badges[rows[n].ID]))
+		out = append(out, workerResponse(&rows[n], idx, now, badges[rows[n].ID], links))
 	}
 	return &apicommon.Out[FieldWorkerListResponse]{Body: FieldWorkerListResponse{Workers: out, Total: total, Page: page, Size: size}}, nil
 }
@@ -448,7 +501,47 @@ func (s *State) getWorker(ctx context.Context, in *apicommon.IDInput) (*apicommo
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_field_badge failed", err)
 	}
-	return &apicommon.Out[FieldWorkerResponse]{Body: workerResponse(ident, idx, time.Now().UTC(), badge)}, nil
+	links, err := s.linkRefs(ctx, *ident)
+	if err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[FieldWorkerResponse]{Body: workerResponse(ident, idx, time.Now().UTC(), badge, links)}, nil
+}
+
+// LinkFieldWorkerRequest is the body of PUT /api/field-workers/{id}/link.
+type LinkFieldWorkerRequest struct {
+	PrincipalID string `json:"principalId" doc:"The platform user (a USER, active, able to access the worker's client)"`
+}
+
+type linkWorkerInput struct {
+	ID   string `path:"id"`
+	Body LinkFieldWorkerRequest
+}
+
+// linkWorker links the worker to a platform user: 422 INVALID_LINK for a
+// target that cannot be linked, 409 LINK_EXISTS when the user is already
+// linked to another worker of the client.
+func (s *State) linkWorker(ctx context.Context, in *linkWorkerInput) (*apicommon.Out[FieldWorkerResponse], error) {
+	ident, err := s.loadWorker(ctx, in.ID, true)
+	if err != nil {
+		return nil, err
+	}
+	cmd := fieldidentity.LinkWorkerCommand{WorkerRef: refOf(ident), PrincipalID: in.Body.PrincipalID}
+	if _, err := usecaseop.Run(ctx, s.UoW, s.Ops.LinkWorker(), cmd, auth.NewExecutionContext(ctx)); err != nil {
+		return nil, fail(err)
+	}
+	return s.getWorker(ctx, &apicommon.IDInput{ID: ident.ID})
+}
+
+func (s *State) unlinkWorker(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[FieldWorkerResponse], error) {
+	ident, err := s.loadWorker(ctx, in.ID, true)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := usecaseop.Run(ctx, s.UoW, s.Ops.UnlinkWorker(), refOf(ident), auth.NewExecutionContext(ctx)); err != nil {
+		return nil, fail(err)
+	}
+	return s.getWorker(ctx, &apicommon.IDInput{ID: ident.ID})
 }
 
 // UpdateFieldWorkerRequest is the body of PUT /api/field-workers/{id}.
@@ -1034,6 +1127,9 @@ type FieldTokenIntrospectResponse struct {
 	Act *FieldTokenActor `json:"act,omitempty"`
 	// Test is true for a test identity.
 	Test bool `json:"test,omitempty"`
+	// LinkedPrincipalID is the platform user the worker is linked to, when
+	// linked. Audit correlation only: it grants nothing.
+	LinkedPrincipalID string `json:"linkedPrincipalId,omitempty"`
 }
 
 // FieldTokenActor is the act claim: who is acting as the worker. Typ is
@@ -1081,7 +1177,7 @@ func (s *State) introspect(ctx context.Context, in *apicommon.In[FieldTokenIntro
 	out := FieldTokenIntrospectResponse{
 		Active: true, Sub: claims.Subject, ClientID: claims.ClientID, WorkerCode: claims.WorkerCode,
 		DeviceID: claims.DeviceID, AppCode: claims.AppCode, Amr: claims.AMR, AuthTime: &authTime, Exp: &exp,
-		Test: claims.Test,
+		Test: claims.Test, LinkedPrincipalID: claims.LinkedPrincipalID,
 	}
 	if claims.ActorSub != "" {
 		out.Act = &FieldTokenActor{Sub: claims.ActorSub, Typ: claims.ActorType}

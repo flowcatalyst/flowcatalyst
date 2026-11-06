@@ -60,6 +60,9 @@ type FieldSubject struct {
 	ActorName string
 	// Test marks a test identity (the test claim).
 	Test bool
+	// LinkedPrincipalID is the platform user the worker is linked to (the
+	// linked_principal_id claim); empty = no claim. Audit correlation only.
+	LinkedPrincipalID string
 }
 
 // FieldAccessTokenClaims is the wire shape of a field access token.
@@ -85,6 +88,9 @@ type FieldAccessTokenClaims struct {
 	// the subject is signed in as them. Test marks a test identity.
 	Act  *FieldAct `json:"act,omitempty"`
 	Test bool      `json:"test,omitempty"`
+	// LinkedPrincipalID is the platform user the worker is linked to; it grants
+	// nothing and is for audit correlation only.
+	LinkedPrincipalID string `json:"linked_principal_id,omitempty"`
 }
 
 // FieldAct is the act claim: who is acting as the worker. Typ is
@@ -129,6 +135,8 @@ func (s *AuthService) GenerateFieldAccessToken(sub FieldSubject) (string, error)
 		Cnf:              FieldCnf{JKT: sub.JKT},
 		PCR:              sub.PINChangeRequired,
 		Test:             sub.Test,
+
+		LinkedPrincipalID: sub.LinkedPrincipalID,
 	}
 	if sub.ActorID != "" {
 		claims.Act = &FieldAct{Sub: sub.ActorID, Typ: sub.ActorType, Name: sub.ActorName}

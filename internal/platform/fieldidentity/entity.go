@@ -137,6 +137,11 @@ type Identity struct {
 	CanImpersonate bool `json:"canImpersonate"`
 	IsTest         bool `json:"isTest"`
 
+	// LinkedPrincipalID is the platform user this worker is the same person as
+	// ("" = none). Audit correlation only: it grants nothing on either side
+	// (docs/field-native-session-spec.md section 5). No foreign key.
+	LinkedPrincipalID string `json:"linkedPrincipalId,omitempty"`
+
 	Apps      []AppGrant `json:"apps"`
 	CreatedAt time.Time  `json:"createdAt"`
 	UpdatedAt time.Time  `json:"updatedAt"`

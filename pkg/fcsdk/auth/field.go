@@ -28,7 +28,9 @@ import (
 // token on a key that is not an enrolled device has no device_id and
 // device_mode "UNENROLLED". When someone else is signed in as the worker (a
 // supervisor, or an admin through a console sign-in code) the token carries an
-// act claim: the principal's Actor field. Test identities carry test. The application backend verifies, per request, the
+// act claim: the principal's Actor field. Test identities carry test. A worker
+// an administrator linked to a platform user carries linked_principal_id
+// (LinkedPrincipalID: audit correlation only, it grants nothing). The application backend verifies, per request, the
 // token AND a proof signed by the same device key:
 //
 //	v := auth.NewFieldTokenVerifier(auth.FieldTokenVerifierConfig{
@@ -138,6 +140,9 @@ type FieldPrincipal struct {
 	Actor *FieldActor
 	// Test marks a test identity.
 	Test bool
+	// LinkedPrincipalID is the platform user the worker is linked to ("" when
+	// not linked). For audit correlation only: it grants nothing on either side.
+	LinkedPrincipalID string
 }
 
 // FieldActor is who is acting as the worker (RFC 8693 act claim). Type is
@@ -228,7 +233,8 @@ type fieldClaims struct {
 		Typ  string `json:"typ"`
 		Name string `json:"name"`
 	} `json:"act"`
-	Test bool `json:"test"`
+	Test              bool   `json:"test"`
+	LinkedPrincipalID string `json:"linked_principal_id"`
 }
 
 // Verify checks a request's credentials: the Authorization header ("DPoP
@@ -316,7 +322,7 @@ func (v *FieldTokenVerifier) Verify(ctx context.Context, authorizationHeader, dp
 		WorkerID: c.Sub, ClientID: c.ClientID, ClientIdentifier: c.ClientIdentifier, WorkerCode: c.WorkerCode,
 		Name: c.Name, AppCode: string(c.Aud), DeviceID: c.DeviceID, DeviceMode: c.DeviceMode, SessionID: c.SID,
 		AMR: c.AMR, AuthTime: time.Unix(c.AuthTime, 0).UTC(), ExpiresAt: time.Unix(c.Exp, 0).UTC(),
-		JKT: proof.jkt, TokenID: c.Jti, Test: c.Test,
+		JKT: proof.jkt, TokenID: c.Jti, Test: c.Test, LinkedPrincipalID: c.LinkedPrincipalID,
 	}
 	if c.Act != nil && c.Act.Sub != "" {
 		p.Actor = &FieldActor{ID: c.Act.Sub, Type: c.Act.Typ, Name: c.Act.Name}

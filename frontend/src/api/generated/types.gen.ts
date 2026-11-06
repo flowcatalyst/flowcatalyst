@@ -619,6 +619,34 @@ export type BulkImportUser = {
     roles?: Array<string>;
 };
 
+export type BulkIssueFieldBadgesRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * 1 to 200 workers, all in clients the caller can access; otherwise nothing is issued
+     */
+    workerIds: Array<string>;
+    [key: string]: unknown;
+};
+
+export type BulkIssueFieldBadgesResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    issued: Array<BulkIssuedFieldBadge>;
+};
+
+export type BulkIssuedFieldBadge = {
+    badge: FieldBadgeResponse;
+    name: string;
+    token: string;
+    workerCode: string;
+    workerId: string;
+};
+
 export type CheckEmailDomainResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1104,6 +1132,18 @@ export type CreateEventTypeRequest = {
      * Optional JSON Schema for the initial spec version
      */
     schema?: unknown;
+    [key: string]: unknown;
+};
+
+export type CreateFieldSignInCodeRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The application the worker is signed in to
+     */
+    appCode: string;
     [key: string]: unknown;
 };
 
@@ -1883,8 +1923,16 @@ export type EnsureFieldWorkerRequest = {
      * Applications the worker may sign in to; granted additively
      */
     appCodes?: Array<string>;
+    /**
+     * New worker only; needs the impersonate permission
+     */
+    canImpersonate?: boolean;
     clientId: string;
     email?: string;
+    /**
+     * New worker only: a test identity
+     */
+    isTest?: boolean;
     name: string;
     pin?: string;
     workerCode: string;
@@ -2052,6 +2100,38 @@ export type FieldAppRef = {
     name: string;
 };
 
+export type FieldBadgeIssuedResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    badge: FieldBadgeResponse;
+    token: string;
+};
+
+export type FieldBadgeListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    badges: Array<FieldBadgeResponse>;
+};
+
+export type FieldBadgeResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    createdAt: string;
+    createdBy?: string;
+    id: string;
+    label?: string;
+    lastUsedAt?: string;
+    revokedAt?: string;
+    status: 'ACTIVE' | 'REVOKED';
+    workerId: string;
+};
+
 export type FieldDeviceListResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2103,23 +2183,49 @@ export type FieldError = {
     message: string;
 };
 
+export type FieldLinkedPrincipalRef = {
+    email: string;
+    id: string;
+    name: string;
+};
+
 export type FieldPolicyResponse = {
     /**
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    badgeOnlyLogin: boolean;
     clientId: string;
     hardLockThreshold: number;
+    impersonationMaxSecs: number;
     isDefault: boolean;
     personalIdleSecs: number;
     pinMinLength: number;
     pinReauthDays: number;
     requireAttestation: boolean;
+    requireEnrolledDevice: boolean;
     sharedIdleSecs: number;
     shiftMaxSecs: number;
     softLockSecs: number;
     softLockThreshold: number;
+    unenrolledIdleSecs: number;
     updatedAt?: string;
+};
+
+export type FieldSignInCodeResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    appCode: string;
+    code: string;
+    expiresAt: string;
+    workerId: string;
+};
+
+export type FieldTokenActor = {
+    sub: string;
+    typ: string;
 };
 
 export type FieldTokenIntrospectRequest = {
@@ -2136,6 +2242,7 @@ export type FieldTokenIntrospectResponse = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    act?: FieldTokenActor;
     active: boolean;
     amr?: Array<string>;
     appCode?: string;
@@ -2143,7 +2250,9 @@ export type FieldTokenIntrospectResponse = {
     clientId?: string;
     deviceId?: string;
     exp?: string;
+    linkedPrincipalId?: string;
     sub?: string;
+    test?: boolean;
     workerCode?: string;
 };
 
@@ -2153,6 +2262,13 @@ export type FieldWorkerAppRef = {
     id: string;
     name: string;
     source: string;
+};
+
+export type FieldWorkerBadgeRef = {
+    createdAt: string;
+    id: string;
+    lastUsedAt?: string;
+    status: 'ACTIVE' | 'REVOKED';
 };
 
 export type FieldWorkerListResponse = {
@@ -2172,6 +2288,8 @@ export type FieldWorkerResponse = {
      */
     readonly $schema?: string;
     apps: Array<FieldWorkerAppRef>;
+    badge: FieldWorkerBadgeRef;
+    canImpersonate: boolean;
     clientId: string;
     created?: boolean;
     createdAt: string;
@@ -2180,7 +2298,9 @@ export type FieldWorkerResponse = {
     hardLocked: boolean;
     hasPin: boolean;
     id: string;
+    isTest: boolean;
     lastLoginAt?: string;
+    linkedPrincipal: FieldLinkedPrincipalRef;
     locked: boolean;
     lockedUntil?: string;
     name: string;
@@ -2202,6 +2322,7 @@ export type FieldWorkerSignInListResponse = {
 };
 
 export type FieldWorkerSignInResponse = {
+    actorId?: string;
     appCode?: string;
     attemptedAt: string;
     authMethod: string;
@@ -3134,6 +3255,18 @@ export type InviteApplicationUserResponse = {
     inviteLink?: string;
 };
 
+export type IssueFieldBadgeRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * A note for the printed badge (at most 255 characters)
+     */
+    label?: string;
+    [key: string]: unknown;
+};
+
 export type Jwk = {
     alg: string;
     e?: string;
@@ -3202,6 +3335,18 @@ export type LimitsDto = {
     maxConcurrency?: number;
     memoryMb?: number;
     timeoutMs?: number;
+};
+
+export type LinkFieldWorkerRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The platform user (a USER, active, able to access the worker's client)
+     */
+    principalId: string;
+    [key: string]: unknown;
 };
 
 export type LinkedOAuthClient = {
@@ -3891,9 +4036,17 @@ export type PutFieldPolicyRequest = {
      */
     readonly $schema?: string;
     /**
+     * Let a badge sign in without a PIN on an enrolled device (default false)
+     */
+    badgeOnlyLogin?: boolean;
+    /**
      * softLockThreshold to 50 (default 10)
      */
     hardLockThreshold?: number;
+    /**
+     * 300 to 43200 (default 14400)
+     */
+    impersonationMaxSecs?: number;
     /**
      * 60 to 86400 (default 7200)
      */
@@ -3907,6 +4060,10 @@ export type PutFieldPolicyRequest = {
      */
     pinReauthDays?: number;
     requireAttestation: boolean;
+    /**
+     * Refuse sign-in from a key that is not an enrolled device (default false)
+     */
+    requireEnrolledDevice?: boolean;
     /**
      * 60 to 86400 (default 900)
      */
@@ -3923,6 +4080,10 @@ export type PutFieldPolicyRequest = {
      * 1 to 20 (default 5)
      */
     softLockThreshold?: number;
+    /**
+     * 60 to 86400 (default 900)
+     */
+    unenrolledIdleSecs?: number;
     [key: string]: unknown;
 };
 
@@ -5776,7 +5937,12 @@ export type UpdateFieldWorkerRequest = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Changing it needs the impersonate permission; clearing it ends the sessions the worker holds as an actor
+     */
+    canImpersonate?: boolean;
     email?: string;
+    isTest?: boolean;
     name: string;
     [key: string]: unknown;
 };
@@ -6409,6 +6575,26 @@ export type BulkImportResponseWritable = {
     skipped: number;
 };
 
+export type BulkIssueFieldBadgesRequestWritable = {
+    /**
+     * 1 to 200 workers, all in clients the caller can access; otherwise nothing is issued
+     */
+    workerIds: Array<string>;
+    [key: string]: unknown;
+};
+
+export type BulkIssueFieldBadgesResponseWritable = {
+    issued: Array<BulkIssuedFieldBadgeWritable>;
+};
+
+export type BulkIssuedFieldBadgeWritable = {
+    badge: FieldBadgeResponseWritable;
+    name: string;
+    token: string;
+    workerCode: string;
+    workerId: string;
+};
+
 export type CheckEmailDomainResponseWritable = {
     allowedClientIds: Array<string>;
     authMethod: string;
@@ -6766,6 +6952,14 @@ export type CreateEventTypeRequestWritable = {
      * Optional JSON Schema for the initial spec version
      */
     schema?: unknown;
+    [key: string]: unknown;
+};
+
+export type CreateFieldSignInCodeRequestWritable = {
+    /**
+     * The application the worker is signed in to
+     */
+    appCode: string;
     [key: string]: unknown;
 };
 
@@ -7297,8 +7491,16 @@ export type EnsureFieldWorkerRequestWritable = {
      * Applications the worker may sign in to; granted additively
      */
     appCodes?: Array<string>;
+    /**
+     * New worker only; needs the impersonate permission
+     */
+    canImpersonate?: boolean;
     clientId: string;
     email?: string;
+    /**
+     * New worker only: a test identity
+     */
+    isTest?: boolean;
     name: string;
     pin?: string;
     workerCode: string;
@@ -7362,6 +7564,26 @@ export type EventTypeResponseWritable = {
     updatedAt: string;
 };
 
+export type FieldBadgeIssuedResponseWritable = {
+    badge: FieldBadgeResponseWritable;
+    token: string;
+};
+
+export type FieldBadgeListResponseWritable = {
+    badges: Array<FieldBadgeResponseWritable>;
+};
+
+export type FieldBadgeResponseWritable = {
+    createdAt: string;
+    createdBy?: string;
+    id: string;
+    label?: string;
+    lastUsedAt?: string;
+    revokedAt?: string;
+    status: 'ACTIVE' | 'REVOKED';
+    workerId: string;
+};
+
 export type FieldDeviceListResponseWritable = {
     devices: Array<FieldDeviceResponseWritable>;
     page: number;
@@ -7396,18 +7618,29 @@ export type FieldEnrolmentCodeResponseWritable = {
 };
 
 export type FieldPolicyResponseWritable = {
+    badgeOnlyLogin: boolean;
     clientId: string;
     hardLockThreshold: number;
+    impersonationMaxSecs: number;
     isDefault: boolean;
     personalIdleSecs: number;
     pinMinLength: number;
     pinReauthDays: number;
     requireAttestation: boolean;
+    requireEnrolledDevice: boolean;
     sharedIdleSecs: number;
     shiftMaxSecs: number;
     softLockSecs: number;
     softLockThreshold: number;
+    unenrolledIdleSecs: number;
     updatedAt?: string;
+};
+
+export type FieldSignInCodeResponseWritable = {
+    appCode: string;
+    code: string;
+    expiresAt: string;
+    workerId: string;
 };
 
 export type FieldTokenIntrospectRequestWritable = {
@@ -7416,6 +7649,7 @@ export type FieldTokenIntrospectRequestWritable = {
 };
 
 export type FieldTokenIntrospectResponseWritable = {
+    act?: FieldTokenActor;
     active: boolean;
     amr?: Array<string>;
     appCode?: string;
@@ -7423,7 +7657,9 @@ export type FieldTokenIntrospectResponseWritable = {
     clientId?: string;
     deviceId?: string;
     exp?: string;
+    linkedPrincipalId?: string;
     sub?: string;
+    test?: boolean;
     workerCode?: string;
 };
 
@@ -7436,6 +7672,8 @@ export type FieldWorkerListResponseWritable = {
 
 export type FieldWorkerResponseWritable = {
     apps: Array<FieldWorkerAppRef>;
+    badge: FieldWorkerBadgeRef;
+    canImpersonate: boolean;
     clientId: string;
     created?: boolean;
     createdAt: string;
@@ -7444,7 +7682,9 @@ export type FieldWorkerResponseWritable = {
     hardLocked: boolean;
     hasPin: boolean;
     id: string;
+    isTest: boolean;
     lastLoginAt?: string;
+    linkedPrincipal: FieldLinkedPrincipalRef;
     locked: boolean;
     lockedUntil?: string;
     name: string;
@@ -7963,8 +8203,24 @@ export type InviteApplicationUserResponseWritable = {
     inviteLink?: string;
 };
 
+export type IssueFieldBadgeRequestWritable = {
+    /**
+     * A note for the printed badge (at most 255 characters)
+     */
+    label?: string;
+    [key: string]: unknown;
+};
+
 export type JwksResponseWritable = {
     keys: Array<Jwk>;
+};
+
+export type LinkFieldWorkerRequestWritable = {
+    /**
+     * The platform user (a USER, active, able to access the worker's client)
+     */
+    principalId: string;
+    [key: string]: unknown;
 };
 
 export type ListOutputBodyWritable = {
@@ -8379,9 +8635,17 @@ export type PutAliasResponseWritable = {
 
 export type PutFieldPolicyRequestWritable = {
     /**
+     * Let a badge sign in without a PIN on an enrolled device (default false)
+     */
+    badgeOnlyLogin?: boolean;
+    /**
      * softLockThreshold to 50 (default 10)
      */
     hardLockThreshold?: number;
+    /**
+     * 300 to 43200 (default 14400)
+     */
+    impersonationMaxSecs?: number;
     /**
      * 60 to 86400 (default 7200)
      */
@@ -8395,6 +8659,10 @@ export type PutFieldPolicyRequestWritable = {
      */
     pinReauthDays?: number;
     requireAttestation: boolean;
+    /**
+     * Refuse sign-in from a key that is not an enrolled device (default false)
+     */
+    requireEnrolledDevice?: boolean;
     /**
      * 60 to 86400 (default 900)
      */
@@ -8411,6 +8679,10 @@ export type PutFieldPolicyRequestWritable = {
      * 1 to 20 (default 5)
      */
     softLockThreshold?: number;
+    /**
+     * 60 to 86400 (default 900)
+     */
+    unenrolledIdleSecs?: number;
     [key: string]: unknown;
 };
 
@@ -9450,7 +9722,12 @@ export type UpdateEventTypeRequestWritable = {
 };
 
 export type UpdateFieldWorkerRequestWritable = {
+    /**
+     * Changing it needs the impersonate permission; clearing it ends the sessions the worker holds as an actor
+     */
+    canImpersonate?: boolean;
     email?: string;
+    isTest?: boolean;
     name: string;
     [key: string]: unknown;
 };
@@ -14122,6 +14399,14 @@ export type ListFieldWorkersData = {
          */
         status?: 'ACTIVE' | 'DISABLED';
         /**
+         * Only test identities (true) or only real workers (false)
+         */
+        isTest?: 'true' | 'false';
+        /**
+         * Only the worker linked to this platform user
+         */
+        linkedPrincipalId?: string;
+        /**
          * 0-based page index (default 0)
          */
         page?: number;
@@ -14175,6 +14460,31 @@ export type EnsureFieldWorkerResponses = {
 };
 
 export type EnsureFieldWorkerResponse = EnsureFieldWorkerResponses[keyof EnsureFieldWorkerResponses];
+
+export type IssueFieldWorkerBadgesData = {
+    body: BulkIssueFieldBadgesRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/field-workers/badges';
+};
+
+export type IssueFieldWorkerBadgesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type IssueFieldWorkerBadgesError = IssueFieldWorkerBadgesErrors[keyof IssueFieldWorkerBadgesErrors];
+
+export type IssueFieldWorkerBadgesResponses = {
+    /**
+     * Created
+     */
+    201: BulkIssueFieldBadgesResponse;
+};
+
+export type IssueFieldWorkerBadgesResponse = IssueFieldWorkerBadgesResponses[keyof IssueFieldWorkerBadgesResponses];
 
 export type DeleteFieldWorkerData = {
     body?: never;
@@ -14339,6 +14649,142 @@ export type RevokeFieldWorkerAppResponses = {
 
 export type RevokeFieldWorkerAppResponse = RevokeFieldWorkerAppResponses[keyof RevokeFieldWorkerAppResponses];
 
+export type ListFieldWorkerBadgesData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/badges';
+};
+
+export type ListFieldWorkerBadgesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFieldWorkerBadgesError = ListFieldWorkerBadgesErrors[keyof ListFieldWorkerBadgesErrors];
+
+export type ListFieldWorkerBadgesResponses = {
+    /**
+     * OK
+     */
+    200: FieldBadgeListResponse;
+};
+
+export type ListFieldWorkerBadgesResponse = ListFieldWorkerBadgesResponses[keyof ListFieldWorkerBadgesResponses];
+
+export type IssueFieldWorkerBadgeData = {
+    body: IssueFieldBadgeRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/badges';
+};
+
+export type IssueFieldWorkerBadgeErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type IssueFieldWorkerBadgeError = IssueFieldWorkerBadgeErrors[keyof IssueFieldWorkerBadgeErrors];
+
+export type IssueFieldWorkerBadgeResponses = {
+    /**
+     * Created
+     */
+    201: FieldBadgeIssuedResponse;
+};
+
+export type IssueFieldWorkerBadgeResponse = IssueFieldWorkerBadgeResponses[keyof IssueFieldWorkerBadgeResponses];
+
+export type RevokeFieldWorkerBadgeData = {
+    body?: never;
+    path: {
+        id: string;
+        badgeId: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/badges/{badgeId}/revoke';
+};
+
+export type RevokeFieldWorkerBadgeErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RevokeFieldWorkerBadgeError = RevokeFieldWorkerBadgeErrors[keyof RevokeFieldWorkerBadgeErrors];
+
+export type RevokeFieldWorkerBadgeResponses = {
+    /**
+     * OK
+     */
+    200: FieldBadgeResponse;
+};
+
+export type RevokeFieldWorkerBadgeResponse = RevokeFieldWorkerBadgeResponses[keyof RevokeFieldWorkerBadgeResponses];
+
+export type UnlinkFieldWorkerData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/link';
+};
+
+export type UnlinkFieldWorkerErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type UnlinkFieldWorkerError = UnlinkFieldWorkerErrors[keyof UnlinkFieldWorkerErrors];
+
+export type UnlinkFieldWorkerResponses = {
+    /**
+     * OK
+     */
+    200: FieldWorkerResponse;
+};
+
+export type UnlinkFieldWorkerResponse = UnlinkFieldWorkerResponses[keyof UnlinkFieldWorkerResponses];
+
+export type LinkFieldWorkerData = {
+    body: LinkFieldWorkerRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/link';
+};
+
+export type LinkFieldWorkerErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type LinkFieldWorkerError = LinkFieldWorkerErrors[keyof LinkFieldWorkerErrors];
+
+export type LinkFieldWorkerResponses = {
+    /**
+     * OK
+     */
+    200: FieldWorkerResponse;
+};
+
+export type LinkFieldWorkerResponse = LinkFieldWorkerResponses[keyof LinkFieldWorkerResponses];
+
 export type ResetFieldWorkerPinData = {
     body: ResetFieldWorkerPinRequestWritable;
     path: {
@@ -14365,6 +14811,33 @@ export type ResetFieldWorkerPinResponses = {
 };
 
 export type ResetFieldWorkerPinResponse2 = ResetFieldWorkerPinResponses[keyof ResetFieldWorkerPinResponses];
+
+export type CreateFieldWorkerSignInCodeData = {
+    body: CreateFieldSignInCodeRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/sign-in-codes';
+};
+
+export type CreateFieldWorkerSignInCodeErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateFieldWorkerSignInCodeError = CreateFieldWorkerSignInCodeErrors[keyof CreateFieldWorkerSignInCodeErrors];
+
+export type CreateFieldWorkerSignInCodeResponses = {
+    /**
+     * Created
+     */
+    201: FieldSignInCodeResponse;
+};
+
+export type CreateFieldWorkerSignInCodeResponse = CreateFieldWorkerSignInCodeResponses[keyof CreateFieldWorkerSignInCodeResponses];
 
 export type ListFieldWorkerSignInsData = {
     body?: never;
