@@ -76,6 +76,44 @@ class FieldResourcesTest {
     }
 
     @Test
+    void badgesSignInCodesAndIdentityFlags() {
+        String badge = "{\"id\":\"fbg_1\",\"workerId\":\"fwu_1\",\"status\":\"ACTIVE\",\"createdAt\":\"2026-01-01T00:00:00Z\"}";
+        server.on("POST", "/api/field-workers/fwu_1/badges", 201, "{\"badge\":" + badge + ",\"token\":\"secret\"}");
+        var issued = client().fieldWorkers().issueBadge("fwu_1", "Depot A");
+        assertThat(last().body()).contains("\"label\":\"Depot A\"");
+        assertThat(issued.getToken()).isEqualTo("secret");
+        assertThat(issued.getBadge().getId()).isEqualTo("fbg_1");
+
+        server.on("GET", "/api/field-workers/fwu_1/badges", 200, "{\"badges\":[" + badge + "]}");
+        assertThat(client().fieldWorkers().listBadges("fwu_1").getBadges()).hasSize(1);
+
+        server.on("POST", "/api/field-workers/fwu_1/badges/fbg_1/revoke", 200, badge);
+        client().fieldWorkers().revokeBadge("fwu_1", "fbg_1");
+        assertThat(last().pathAndQuery()).isEqualTo("/api/field-workers/fwu_1/badges/fbg_1/revoke");
+
+        server.on("POST", "/api/field-workers/badges", 201,
+                "{\"issued\":[{\"workerId\":\"fwu_1\",\"workerCode\":\"W001\",\"name\":\"Ann\",\"badge\":" + badge + ",\"token\":\"t1\"}]}");
+        var bulk = client().fieldWorkers().bulkIssueBadges(List.of("fwu_1"));
+        assertThat(last().body()).contains("\"workerIds\":[\"fwu_1\"]");
+        assertThat(bulk.getIssued().getFirst().getToken()).isEqualTo("t1");
+
+        server.on("POST", "/api/field-workers/fwu_1/sign-in-codes", 201,
+                "{\"code\":\"ABC\",\"workerId\":\"fwu_1\",\"appCode\":\"orders\",\"expiresAt\":\"2026-01-01T00:05:00Z\"}");
+        var code = client().fieldWorkers().createSignInCode("fwu_1", "orders");
+        assertThat(last().body()).contains("\"appCode\":\"orders\"");
+        assertThat(code.getCode()).isEqualTo("ABC");
+
+        server.on("POST", "/api/field-workers", 201, WORKER);
+        client().fieldWorkers().ensure(new EnsureFieldWorkerRequest()
+                .clientId("clt_1").workerCode("W001").name("Ann").isTest(true).canImpersonate(true));
+        assertThat(last().body()).contains("\"isTest\":true", "\"canImpersonate\":true");
+
+        server.on("GET", "/api/field-workers", 200, "{\"workers\":[],\"total\":0,\"page\":0,\"size\":100}");
+        client().fieldWorkers().list("clt_1", new FieldWorkersResource.Filters(null, null, null, true, null, null));
+        assertThat(last().pathAndQuery()).isEqualTo("/api/field-workers?clientId=clt_1&isTest=true");
+    }
+
+    @Test
     void getUpdateDeleteHitTheByIdRoutes() {
         server.on("GET", "/api/field-workers/fwu_1", 200, WORKER);
         server.on("PUT", "/api/field-workers/fwu_1", 200, WORKER);

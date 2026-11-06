@@ -1646,6 +1646,85 @@
         ],
         "type": "object"
       },
+      "BulkIssueFieldBadgesRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/BulkIssueFieldBadgesRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "workerIds": {
+            "description": "1 to 200 workers, all in clients the caller can access; otherwise nothing is issued",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "workerIds"
+        ],
+        "type": "object"
+      },
+      "BulkIssueFieldBadgesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/BulkIssueFieldBadgesResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "issued": {
+            "items": {
+              "$ref": "#/components/schemas/BulkIssuedFieldBadge"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "issued"
+        ],
+        "type": "object"
+      },
+      "BulkIssuedFieldBadge": {
+        "additionalProperties": false,
+        "properties": {
+          "badge": {
+            "$ref": "#/components/schemas/FieldBadgeResponse"
+          },
+          "name": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "workerCode": {
+            "type": "string"
+          },
+          "workerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workerId",
+          "workerCode",
+          "name",
+          "badge",
+          "token"
+        ],
+        "type": "object"
+      },
       "CheckEmailDomainResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2740,6 +2819,28 @@
         "required": [
           "code",
           "name"
+        ],
+        "type": "object"
+      },
+      "CreateFieldSignInCodeRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateFieldSignInCodeRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "appCode": {
+            "description": "The application the worker is signed in to",
+            "type": "string"
+          }
+        },
+        "required": [
+          "appCode"
         ],
         "type": "object"
       },
@@ -4698,11 +4799,19 @@
             },
             "type": "array"
           },
+          "canImpersonate": {
+            "description": "New worker only; needs the impersonate permission",
+            "type": "boolean"
+          },
           "clientId": {
             "type": "string"
           },
           "email": {
             "type": "string"
+          },
+          "isTest": {
+            "description": "New worker only: a test identity",
+            "type": "boolean"
           },
           "name": {
             "type": "string"
@@ -5230,6 +5339,107 @@
         ],
         "type": "object"
       },
+      "FieldBadgeIssuedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/FieldBadgeIssuedResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "badge": {
+            "$ref": "#/components/schemas/FieldBadgeResponse"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "badge",
+          "token"
+        ],
+        "type": "object"
+      },
+      "FieldBadgeListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/FieldBadgeListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "badges": {
+            "items": {
+              "$ref": "#/components/schemas/FieldBadgeResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "badges"
+        ],
+        "type": "object"
+      },
+      "FieldBadgeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/FieldBadgeResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ACTIVE",
+              "REVOKED"
+            ],
+            "type": "string"
+          },
+          "workerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workerId",
+          "status",
+          "createdAt"
+        ],
+        "type": "object"
+      },
       "FieldDeviceListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -5421,10 +5631,17 @@
             "readOnly": true,
             "type": "string"
           },
+          "badgeOnlyLogin": {
+            "type": "boolean"
+          },
           "clientId": {
             "type": "string"
           },
           "hardLockThreshold": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "impersonationMaxSecs": {
             "format": "int64",
             "type": "integer"
           },
@@ -5446,6 +5663,9 @@
           "requireAttestation": {
             "type": "boolean"
           },
+          "requireEnrolledDevice": {
+            "type": "boolean"
+          },
           "sharedIdleSecs": {
             "format": "int64",
             "type": "integer"
@@ -5459,6 +5679,10 @@
             "type": "integer"
           },
           "softLockThreshold": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "unenrolledIdleSecs": {
             "format": "int64",
             "type": "integer"
           },
@@ -5478,7 +5702,61 @@
           "shiftMaxSecs",
           "requireAttestation",
           "pinReauthDays",
+          "requireEnrolledDevice",
+          "unenrolledIdleSecs",
+          "badgeOnlyLogin",
+          "impersonationMaxSecs",
           "isDefault"
+        ],
+        "type": "object"
+      },
+      "FieldSignInCodeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/FieldSignInCodeResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "appCode": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "workerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "expiresAt",
+          "workerId",
+          "appCode"
+        ],
+        "type": "object"
+      },
+      "FieldTokenActor": {
+        "additionalProperties": false,
+        "properties": {
+          "sub": {
+            "type": "string"
+          },
+          "typ": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sub",
+          "typ"
         ],
         "type": "object"
       },
@@ -5515,6 +5793,9 @@
             "readOnly": true,
             "type": "string"
           },
+          "act": {
+            "$ref": "#/components/schemas/FieldTokenActor"
+          },
           "active": {
             "type": "boolean"
           },
@@ -5543,6 +5824,9 @@
           },
           "sub": {
             "type": "string"
+          },
+          "test": {
+            "type": "boolean"
           },
           "workerCode": {
             "type": "string"
@@ -5579,6 +5863,35 @@
           "name",
           "source",
           "grantedAt"
+        ],
+        "type": "object"
+      },
+      "FieldWorkerBadgeRef": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ACTIVE",
+              "REVOKED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -5639,6 +5952,12 @@
             },
             "type": "array"
           },
+          "badge": {
+            "$ref": "#/components/schemas/FieldWorkerBadgeRef"
+          },
+          "canImpersonate": {
+            "type": "boolean"
+          },
           "clientId": {
             "type": "string"
           },
@@ -5664,6 +5983,9 @@
           },
           "id": {
             "type": "string"
+          },
+          "isTest": {
+            "type": "boolean"
           },
           "lastLoginAt": {
             "format": "date-time",
@@ -5705,6 +6027,9 @@
           "status",
           "hasPin",
           "pinChangeRequired",
+          "canImpersonate",
+          "isTest",
+          "badge",
           "locked",
           "hardLocked",
           "failedSinceSuccess",
@@ -5756,6 +6081,9 @@
       "FieldWorkerSignInResponse": {
         "additionalProperties": false,
         "properties": {
+          "actorId": {
+            "type": "string"
+          },
           "appCode": {
             "type": "string"
           },
@@ -5976,6 +6304,62 @@
           "limits",
           "createdAt",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "FunctionTokenRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/FunctionTokenRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "functionId": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "functionId",
+          "version"
+        ],
+        "type": "object"
+      },
+      "FunctionTokenResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/FunctionTokenResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "accessToken": {
+            "type": "string"
+          },
+          "expiresIn": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tokenType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accessToken",
+          "tokenType",
+          "expiresIn"
         ],
         "type": "object"
       },
@@ -6825,6 +7209,7 @@
             "type": "integer"
           },
           "runtimeNotice": {
+            "description": "Set while a running ingestion runs nowhere: 'no runtime carries this kind', or, for a polled source, 'not running: no runtime has held it since \u003cRFC 3339 time\u003e' once no runtime has held its lease for a lease and two minutes",
             "type": "string"
           },
           "save": {
@@ -7896,6 +8281,25 @@
         ],
         "type": "object"
       },
+      "IssueFieldBadgeRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/IssueFieldBadgeRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "label": {
+            "description": "A note for the printed badge (at most 255 characters)",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "JobRecord": {
         "additionalProperties": false,
         "properties": {
@@ -8261,6 +8665,70 @@
           "rememberDeviceDays",
           "createdAt",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "MatchEmailsRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MatchEmailsRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "emails": {
+            "description": "Addresses (each entry is parsed like text)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "text": {
+            "description": "Pasted address list: commas, semicolons, whitespace or 'Name \u003caddr\u003e' entries",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MatchEmailsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MatchEmailsResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "invalid": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/PrincipalResponse"
+            },
+            "type": "array"
+          },
+          "unmatched": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "matches",
+          "unmatched",
+          "invalid"
         ],
         "type": "object"
       },
@@ -8743,6 +9211,11 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "instanceId": {
+            "description": "The runtime process, new on every start (a random UUID). While another instance that polled as this runtimeId is live (polled within one lease and has not said goodbye since), the poll is refused with 409 RUNTIME_ID_IN_USE and changes nothing. Absent: no check.",
+            "pattern": "^[A-Za-z0-9-]{8,64}$",
+            "type": "string"
           },
           "kinds": {
             "description": "The kinds the runtime's extensions add (and camel-route)",
@@ -9782,8 +10255,17 @@
             "readOnly": true,
             "type": "string"
           },
+          "badgeOnlyLogin": {
+            "description": "Let a badge sign in without a PIN on an enrolled device (default false)",
+            "type": "boolean"
+          },
           "hardLockThreshold": {
             "description": "softLockThreshold to 50 (default 10)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "impersonationMaxSecs": {
+            "description": "300 to 43200 (default 14400)",
             "format": "int64",
             "type": "integer"
           },
@@ -9805,6 +10287,10 @@
           "requireAttestation": {
             "type": "boolean"
           },
+          "requireEnrolledDevice": {
+            "description": "Refuse sign-in from a key that is not an enrolled device (default false)",
+            "type": "boolean"
+          },
           "sharedIdleSecs": {
             "description": "60 to 86400 (default 900)",
             "format": "int64",
@@ -9822,6 +10308,11 @@
           },
           "softLockThreshold": {
             "description": "1 to 20 (default 5)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "unenrolledIdleSecs": {
+            "description": "60 to 86400 (default 900)",
             "format": "int64",
             "type": "integer"
           }
@@ -10245,6 +10736,71 @@
         },
         "required": [
           "credentialId"
+        ],
+        "type": "object"
+      },
+      "ReleaseRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ReleaseRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "goodbye": {
+            "description": "The runtime is shutting down: it stops counting as live at once, for fair shares and for the instance guard.",
+            "type": "boolean"
+          },
+          "ingestionIds": {
+            "description": "Single-owner ingestions whose routes have stopped; their leases end now. One the runtime does not hold is ignored.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "instanceId": {
+            "description": "The runtime process, as on poll. When it differs from the instance stored for runtimeId the release is refused with 409 RUNTIME_ID_IN_USE and changes nothing.",
+            "pattern": "^[A-Za-z0-9-]{8,64}$",
+            "type": "string"
+          },
+          "runtimeId": {
+            "description": "The releasing runtime",
+            "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runtimeId",
+          "ingestionIds",
+          "goodbye"
+        ],
+        "type": "object"
+      },
+      "ReleaseResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ReleaseResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "released": {
+            "description": "How many of the named leases the runtime held and now has ended",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "released"
         ],
         "type": "object"
       },
@@ -13949,6 +14505,10 @@
           "name": {
             "type": "string"
           },
+          "type": {
+            "description": "APPLICATION or INTEGRATION",
+            "type": "string"
+          },
           "website": {
             "type": "string"
           }
@@ -14152,8 +14712,15 @@
             "readOnly": true,
             "type": "string"
           },
+          "canImpersonate": {
+            "description": "Changing it needs the impersonate permission; clearing it ends the sessions the worker holds as an actor",
+            "type": "boolean"
+          },
           "email": {
             "type": "string"
+          },
+          "isTest": {
+            "type": "boolean"
           },
           "name": {
             "type": "string"
@@ -22564,6 +23131,20 @@
             }
           },
           {
+            "description": "Only test identities (true) or only real workers (false)",
+            "explode": false,
+            "in": "query",
+            "name": "isTest",
+            "schema": {
+              "description": "Only test identities (true) or only real workers (false)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "description": "0-based page index (default 0)",
             "explode": false,
             "in": "query",
@@ -22648,6 +23229,47 @@
           }
         },
         "summary": "Ensure a field worker exists for (client, workerCode) and grant applications",
+        "tags": [
+          "field-workers"
+        ]
+      }
+    },
+    "/api/field-workers/badges": {
+      "post": {
+        "operationId": "issueFieldWorkerBadges",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkIssueFieldBadgesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkIssueFieldBadgesResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Issue badges for up to 200 field workers at once (for printing a sheet); all or nothing",
         "tags": [
           "field-workers"
         ]
@@ -22923,6 +23545,145 @@
         ]
       }
     },
+    "/api/field-workers/{id}/badges": {
+      "get": {
+        "operationId": "listFieldWorkerBadges",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldBadgeListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "A field worker's badges, newest first (never the token)",
+        "tags": [
+          "field-workers"
+        ]
+      },
+      "post": {
+        "operationId": "issueFieldWorkerBadge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueFieldBadgeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldBadgeIssuedResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Issue a printed QR badge for a field worker (the token is shown once; earlier active badges are revoked)",
+        "tags": [
+          "field-workers"
+        ]
+      }
+    },
+    "/api/field-workers/{id}/badges/{badgeId}/revoke": {
+      "post": {
+        "operationId": "revokeFieldWorkerBadge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "badgeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldBadgeResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Revoke a field worker's badge",
+        "tags": [
+          "field-workers"
+        ]
+      }
+    },
     "/api/field-workers/{id}/pin-reset": {
       "post": {
         "operationId": "resetFieldWorkerPin",
@@ -22969,6 +23730,57 @@
           }
         },
         "summary": "Reset a field worker's PIN (a temporary PIN is returned once when none is supplied)",
+        "tags": [
+          "field-workers"
+        ]
+      }
+    },
+    "/api/field-workers/{id}/sign-in-codes": {
+      "post": {
+        "operationId": "createFieldWorkerSignInCode",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFieldSignInCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldSignInCodeResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a single-use code that signs the worker in to an application on any device (impersonation)",
         "tags": [
           "field-workers"
         ]
@@ -25154,6 +25966,67 @@
         ]
       }
     },
+    "/api/ingestion-runtime/v1/leases/release": {
+      "post": {
+        "operationId": "ingestionRuntimeReleaseLeases",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "A runtime hands back the leases of single-owner routes it has stopped, and says goodbye at shutdown (ingestion runtime only)",
+        "tags": [
+          "ingestion-runtime"
+        ]
+      }
+    },
     "/api/ingestion-runtime/v1/poll": {
       "post": {
         "operationId": "ingestionRuntimePoll",
@@ -25177,6 +26050,16 @@
               }
             },
             "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "422": {
             "content": {
@@ -28755,6 +29638,47 @@
           }
         },
         "summary": "List USER principals holding the developer role",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
+    "/api/principals/match-emails": {
+      "post": {
+        "operationId": "matchPrincipalEmails",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchEmailsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchEmailsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Match a pasted list of email addresses against the users the caller can see",
         "tags": [
           "principals"
         ]
@@ -32915,6 +33839,47 @@
           }
         },
         "summary": "A function runner's heartbeat report (function-runner role only)",
+        "tags": [
+          "function-control"
+        ]
+      }
+    },
+    "/control/functions/token": {
+      "post": {
+        "operationId": "postFunctionRunnerToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FunctionTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionTokenResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Mint the application's service account token for a function that declares platformToken (function-runner role only)",
         "tags": [
           "function-control"
         ]

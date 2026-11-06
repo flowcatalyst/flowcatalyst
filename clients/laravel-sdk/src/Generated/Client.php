@@ -1647,6 +1647,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "q"?: string, //Case-insensitive prefix matched against name and worker code
      *    "appCode"?: string, //Only workers granted this application
      *    "status"?: string, //Only workers in this state
+     *    "isTest"?: string, //Only test identities (true) or only real workers (false)
      *    "page"?: int, //0-based page index (default 0)
      *    "pageSize"?: int, //Page size (default 100, max 1000)
      * } $queryParameters
@@ -1667,6 +1668,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function ensureFieldWorker(?\FlowCatalyst\Generated\Model\EnsureFieldWorkerRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\EnsureFieldWorker($requestBody), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\BulkIssueFieldBadgesRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\BulkIssueFieldBadgesResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function issueFieldWorkerBadges(?\FlowCatalyst\Generated\Model\BulkIssueFieldBadgesRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\IssueFieldWorkerBadges($requestBody), $fetch);
     }
     /**
      * @param string $id
@@ -1733,6 +1744,38 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldBadgeListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listFieldWorkerBadges(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFieldWorkerBadges($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\IssueFieldBadgeRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldBadgeIssuedResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function issueFieldWorkerBadge(string $id, ?\FlowCatalyst\Generated\Model\IssueFieldBadgeRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\IssueFieldWorkerBadge($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $badgeId
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldBadgeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function revokeFieldWorkerBadge(string $id, string $badgeId, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RevokeFieldWorkerBadge($id, $badgeId), $fetch);
+    }
+    /**
+     * @param string $id
      * @param null|\FlowCatalyst\Generated\Model\ResetFieldWorkerPinRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -1741,6 +1784,17 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function resetFieldWorkerPin(string $id, ?\FlowCatalyst\Generated\Model\ResetFieldWorkerPinRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ResetFieldWorkerPin($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\CreateFieldSignInCodeRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldSignInCodeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function createFieldWorkerSignInCode(string $id, ?\FlowCatalyst\Generated\Model\CreateFieldSignInCodeRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\CreateFieldWorkerSignInCode($id, $requestBody), $fetch);
     }
     /**
      * @param string $id
@@ -2242,8 +2296,22 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\IngestionRuntimeGetSecret($id, $name, $queryParameters), $fetch);
     }
     /**
+     * @param null|\FlowCatalyst\Generated\Model\ReleaseRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimeReleaseLeasesConflictException
+     * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimeReleaseLeasesUnprocessableEntityException
+     * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimeReleaseLeasesInternalServerErrorException
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ReleaseResponse : \Psr\Http\Message\ResponseInterface)
+     */
+    public function ingestionRuntimeReleaseLeases(?\FlowCatalyst\Generated\Model\ReleaseRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\IngestionRuntimeReleaseLeases($requestBody), $fetch);
+    }
+    /**
      * @param null|\FlowCatalyst\Generated\Model\PollRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollConflictException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollUnprocessableEntityException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollUpgradeRequiredException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollInternalServerErrorException
@@ -3078,6 +3146,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function listDeveloperUsers(string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListDeveloperUsers(), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\MatchEmailsRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\MatchEmailsResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function matchPrincipalEmails(?\FlowCatalyst\Generated\Model\MatchEmailsRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\MatchPrincipalEmails($requestBody), $fetch);
     }
     /**
      * @param null|\FlowCatalyst\Generated\Model\SyncUsersRequest $requestBody
@@ -4111,6 +4189,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function postFunctionRunnerHeartbeat(?\FlowCatalyst\Generated\Model\Heartbeat $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostFunctionRunnerHeartbeat($requestBody), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\FunctionTokenRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FunctionTokenResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function postFunctionRunnerToken(?\FlowCatalyst\Generated\Model\FunctionTokenRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PostFunctionRunnerToken($requestBody), $fetch);
     }
     /**
      * @param null|\FlowCatalyst\Generated\Model\TraceBatch $requestBody

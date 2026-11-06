@@ -10,6 +10,7 @@ class ListFieldWorkers extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
      *    "q"?: string, //Case-insensitive prefix matched against name and worker code
      *    "appCode"?: string, //Only workers granted this application
      *    "status"?: string, //Only workers in this state
+     *    "isTest"?: string, //Only test identities (true) or only real workers (false)
      *    "page"?: int, //0-based page index (default 0)
      *    "pageSize"?: int, //Page size (default 100, max 1000)
      * } $queryParameters
@@ -38,13 +39,14 @@ class ListFieldWorkers extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['clientId', 'q', 'appCode', 'status', 'page', 'pageSize']);
+        $optionsResolver->setDefined(['clientId', 'q', 'appCode', 'status', 'isTest', 'page', 'pageSize']);
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
         $optionsResolver->addAllowedTypes('clientId', ['string']);
         $optionsResolver->addAllowedTypes('q', ['string']);
         $optionsResolver->addAllowedTypes('appCode', ['string']);
         $optionsResolver->addAllowedTypes('status', ['string']);
+        $optionsResolver->addAllowedTypes('isTest', ['string']);
         $optionsResolver->addAllowedTypes('page', ['int']);
         $optionsResolver->addAllowedTypes('pageSize', ['int']);
         return $optionsResolver;

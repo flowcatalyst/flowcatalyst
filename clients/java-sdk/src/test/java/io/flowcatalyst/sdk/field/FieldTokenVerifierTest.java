@@ -27,7 +27,8 @@ class FieldTokenVerifierTest {
     /** Sits outside this module: a standalone checkout of the SDK does not have it. */
     private static final Path DIR = Path.of("..", "..", "api", "field-fixtures");
 
-    private record Case(String name, String token, String proof, String method, String url, Instant now, String expect) {}
+    private record Case(
+            String name, String token, String proof, String method, String url, Instant now, String expect, JsonNode principal) {}
 
     private record Fixtures(String issuer, String appCode, String jwks, List<Case> cases) {}
 
@@ -46,7 +47,8 @@ class FieldTokenVerifierTest {
                     c.get("method").asString(),
                     c.get("url").asString(),
                     Instant.parse(c.get("now").asString()),
-                    c.get("expect").asString()));
+                    c.get("expect").asString(),
+                    c.get("principal")));
         }
         return new Fixtures(
                 root.get("issuer").asString(),
@@ -81,6 +83,8 @@ class FieldTokenVerifierTest {
                     () -> org.junit.jupiter.api.Assumptions.abort("field fixtures absent")));
         }
         assertThat(f.cases()).isNotEmpty();
+        assertThat(f.cases().stream().filter(c -> c.principal() != null).map(Case::name))
+                .contains("valid_unenrolled", "valid_impersonated_supervisor", "valid_impersonated_principal", "valid_test");
         List<DynamicTest> tests = new ArrayList<>();
         for (Case c : f.cases()) {
             tests.add(DynamicTest.dynamicTest(c.name(), () -> {
@@ -93,9 +97,31 @@ class FieldTokenVerifierTest {
                     assertThat(p.clientIdentifier()).isEqualTo("fixture-client");
                     assertThat(p.workerCode()).isEqualTo("W001");
                     assertThat(p.appCode()).isEqualTo(f.appCode());
-                    assertThat(p.deviceId()).isEqualTo("fwd_0FIXTUREDEVICE");
                     assertThat(p.jkt()).isNotBlank();
-                    assertThat(p.amr()).containsExactly("pin");
+                    JsonNode want = c.principal();
+                    if (want == null) {
+                        assertThat(p.deviceId()).isEqualTo("fwd_0FIXTUREDEVICE");
+                        assertThat(p.amr()).containsExactly("pin");
+                        assertThat(p.actor()).isNull();
+                        assertThat(p.test()).isFalse();
+                    } else {
+                        assertThat(p.deviceId()).isEqualTo(want.get("deviceId").asString());
+                        assertThat(p.deviceMode()).isEqualTo(want.get("deviceMode").asString());
+                        List<String> amr = new ArrayList<>();
+                        want.get("amr").forEach(n -> amr.add(n.asString()));
+                        assertThat(p.amr()).isEqualTo(amr);
+                        assertThat(p.test()).isEqualTo(want.get("test").asBoolean());
+                        JsonNode actor = want.get("actor");
+                        if (actor == null) {
+                            assertThat(p.actor()).isNull();
+                        } else {
+                            assertThat(p.actor())
+                                    .isEqualTo(new FieldActor(
+                                            actor.get("id").asString(),
+                                            actor.get("type").asString(),
+                                            actor.get("name").asString()));
+                        }
+                    }
                 } else {
                     assertThat(r).isInstanceOf(FieldVerification.Invalid.class);
                     assertThat(((FieldVerification.Invalid) r).reason()).isEqualTo(c.expect());

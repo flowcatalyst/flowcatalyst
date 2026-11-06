@@ -37,17 +37,29 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('badgeOnlyLogin', $data) && \is_int($data['badgeOnlyLogin'])) {
+            $data['badgeOnlyLogin'] = (bool) $data['badgeOnlyLogin'];
+        }
         if (\array_key_exists('isDefault', $data) && \is_int($data['isDefault'])) {
             $data['isDefault'] = (bool) $data['isDefault'];
         }
         if (\array_key_exists('requireAttestation', $data) && \is_int($data['requireAttestation'])) {
             $data['requireAttestation'] = (bool) $data['requireAttestation'];
         }
+        if (\array_key_exists('requireEnrolledDevice', $data) && \is_int($data['requireEnrolledDevice'])) {
+            $data['requireEnrolledDevice'] = (bool) $data['requireEnrolledDevice'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
+        }
+        if (\array_key_exists('badgeOnlyLogin', $data) && $data['badgeOnlyLogin'] !== null) {
+            $object->setBadgeOnlyLogin($data['badgeOnlyLogin']);
+        }
+        elseif (\array_key_exists('badgeOnlyLogin', $data) && $data['badgeOnlyLogin'] === null) {
+            $object->setBadgeOnlyLogin(null);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -60,6 +72,12 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('hardLockThreshold', $data) && $data['hardLockThreshold'] === null) {
             $object->setHardLockThreshold(null);
+        }
+        if (\array_key_exists('impersonationMaxSecs', $data) && $data['impersonationMaxSecs'] !== null) {
+            $object->setImpersonationMaxSecs($data['impersonationMaxSecs']);
+        }
+        elseif (\array_key_exists('impersonationMaxSecs', $data) && $data['impersonationMaxSecs'] === null) {
+            $object->setImpersonationMaxSecs(null);
         }
         if (\array_key_exists('isDefault', $data) && $data['isDefault'] !== null) {
             $object->setIsDefault($data['isDefault']);
@@ -91,6 +109,12 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
         elseif (\array_key_exists('requireAttestation', $data) && $data['requireAttestation'] === null) {
             $object->setRequireAttestation(null);
         }
+        if (\array_key_exists('requireEnrolledDevice', $data) && $data['requireEnrolledDevice'] !== null) {
+            $object->setRequireEnrolledDevice($data['requireEnrolledDevice']);
+        }
+        elseif (\array_key_exists('requireEnrolledDevice', $data) && $data['requireEnrolledDevice'] === null) {
+            $object->setRequireEnrolledDevice(null);
+        }
         if (\array_key_exists('sharedIdleSecs', $data) && $data['sharedIdleSecs'] !== null) {
             $object->setSharedIdleSecs($data['sharedIdleSecs']);
         }
@@ -115,6 +139,12 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
         elseif (\array_key_exists('softLockThreshold', $data) && $data['softLockThreshold'] === null) {
             $object->setSoftLockThreshold(null);
         }
+        if (\array_key_exists('unenrolledIdleSecs', $data) && $data['unenrolledIdleSecs'] !== null) {
+            $object->setUnenrolledIdleSecs($data['unenrolledIdleSecs']);
+        }
+        elseif (\array_key_exists('unenrolledIdleSecs', $data) && $data['unenrolledIdleSecs'] === null) {
+            $object->setUnenrolledIdleSecs(null);
+        }
         if (\array_key_exists('updatedAt', $data) && $data['updatedAt'] !== null) {
             $object->setUpdatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']));
         }
@@ -126,17 +156,21 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
+        $dataArray['badgeOnlyLogin'] = $data->getBadgeOnlyLogin();
         $dataArray['clientId'] = $data->getClientId();
         $dataArray['hardLockThreshold'] = $data->getHardLockThreshold();
+        $dataArray['impersonationMaxSecs'] = $data->getImpersonationMaxSecs();
         $dataArray['isDefault'] = $data->getIsDefault();
         $dataArray['personalIdleSecs'] = $data->getPersonalIdleSecs();
         $dataArray['pinMinLength'] = $data->getPinMinLength();
         $dataArray['pinReauthDays'] = $data->getPinReauthDays();
         $dataArray['requireAttestation'] = $data->getRequireAttestation();
+        $dataArray['requireEnrolledDevice'] = $data->getRequireEnrolledDevice();
         $dataArray['sharedIdleSecs'] = $data->getSharedIdleSecs();
         $dataArray['shiftMaxSecs'] = $data->getShiftMaxSecs();
         $dataArray['softLockSecs'] = $data->getSoftLockSecs();
         $dataArray['softLockThreshold'] = $data->getSoftLockThreshold();
+        $dataArray['unenrolledIdleSecs'] = $data->getUnenrolledIdleSecs();
         if ($data->isInitialized('updatedAt') && null !== $data->getUpdatedAt()) {
             $dataArray['updatedAt'] = $data->getUpdatedAt()->format('Y-m-d\TH:i:sP');
         }

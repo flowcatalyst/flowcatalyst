@@ -37,6 +37,12 @@ class FieldWorkerSignInResponseNormalizer implements DenormalizerInterface, Norm
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('actorId', $data) && $data['actorId'] !== null) {
+            $object->setActorId($data['actorId']);
+        }
+        elseif (\array_key_exists('actorId', $data) && $data['actorId'] === null) {
+            $object->setActorId(null);
+        }
         if (\array_key_exists('appCode', $data) && $data['appCode'] !== null) {
             $object->setAppCode($data['appCode']);
         }
@@ -90,6 +96,9 @@ class FieldWorkerSignInResponseNormalizer implements DenormalizerInterface, Norm
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
+        if ($data->isInitialized('actorId') && null !== $data->getActorId()) {
+            $dataArray['actorId'] = $data->getActorId();
+        }
         if ($data->isInitialized('appCode') && null !== $data->getAppCode()) {
             $dataArray['appCode'] = $data->getAppCode();
         }

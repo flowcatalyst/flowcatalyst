@@ -43,6 +43,12 @@ class UpdateApplicationRequest extends \ArrayObject
      */
     protected $name;
     /**
+     * APPLICATION or INTEGRATION
+     *
+     * @var string|null
+     */
+    protected $type;
+    /**
      * @var string|null
      */
     protected $website;
@@ -174,6 +180,28 @@ class UpdateApplicationRequest extends \ArrayObject
     {
         $this->initialized['name'] = true;
         $this->name = $name;
+        return $this;
+    }
+    /**
+     * APPLICATION or INTEGRATION
+     *
+     * @return string|null
+     */
+    public function getType(): ?string
+    {
+        return $this->type;
+    }
+    /**
+     * APPLICATION or INTEGRATION
+     *
+     * @param string|null $type
+     *
+     * @return self
+     */
+    public function setType(?string $type): self
+    {
+        $this->initialized['type'] = true;
+        $this->type = $type;
         return $this;
     }
     /**

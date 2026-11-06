@@ -113,6 +113,48 @@ final class FieldResourcesTest extends TestCase
         $this->assertSame(['page' => '1', 'pageSize' => '10'], $q);
     }
 
+    public function test_badges_sign_in_codes_and_identity_flags(): void
+    {
+        $badge = ['id' => 'fbg_1', 'workerId' => 'fwu_1', 'status' => 'ACTIVE', 'createdAt' => '2026-01-01T00:00:00Z'];
+        $c = $this->client([
+            $this->json(['badge' => $badge, 'token' => 'secret'], 201),
+            $this->json(['badges' => [$badge]]),
+            $this->json(['status' => 'REVOKED'] + $badge),
+            $this->json(['issued' => [['workerId' => 'fwu_1', 'workerCode' => 'W1', 'name' => 'Ann', 'badge' => $badge, 'token' => 't1']]], 201),
+            $this->json(['code' => 'ABC', 'workerId' => 'fwu_1', 'appCode' => 'depot', 'expiresAt' => '2026-01-01T00:05:00Z'], 201),
+            $this->json(['id' => 'fwu_1', 'clientId' => 'clt_1', 'workerCode' => 'W1', 'name' => 'Ann'], 201),
+            $this->json(['workers' => [], 'total' => 0, 'page' => 0, 'size' => 100]),
+        ]);
+        $w = $c->fieldWorkers();
+
+        $issued = $w->issueBadge('fwu_1', 'Depot A');
+        $this->assertSame(['POST', '/api/field-workers/fwu_1/badges'], array_slice($this->seen(0), 0, 2));
+        $this->assertSame(['label' => 'Depot A'], json_decode($this->seen(0)[3], true));
+        $this->assertSame('secret', $issued?->getToken());
+
+        $w->listBadges('fwu_1');
+        $this->assertSame(['GET', '/api/field-workers/fwu_1/badges'], array_slice($this->seen(1), 0, 2));
+        $w->revokeBadge('fwu_1', 'fbg_1');
+        $this->assertSame(['POST', '/api/field-workers/fwu_1/badges/fbg_1/revoke'], array_slice($this->seen(2), 0, 2));
+
+        $bulk = $w->bulkIssueBadges(['fwu_1']);
+        $this->assertSame(['POST', '/api/field-workers/badges'], array_slice($this->seen(3), 0, 2));
+        $this->assertSame(['workerIds' => ['fwu_1']], json_decode($this->seen(3)[3], true));
+        $this->assertSame('t1', $bulk?->getIssued()[0]->getToken());
+
+        $code = $w->createSignInCode('fwu_1', 'depot');
+        $this->assertSame(['POST', '/api/field-workers/fwu_1/sign-in-codes'], array_slice($this->seen(4), 0, 2));
+        $this->assertSame(['appCode' => 'depot'], json_decode($this->seen(4)[3], true));
+        $this->assertSame('ABC', $code?->getCode());
+
+        $w->ensure((new EnsureFieldWorkerRequest())->setClientId('clt_1')->setWorkerCode('W1')->setName('Ann')->setIsTest(true)->setCanImpersonate(true));
+        $this->assertEquals(['clientId' => 'clt_1', 'workerCode' => 'W1', 'name' => 'Ann', 'isTest' => true, 'canImpersonate' => true], json_decode($this->seen(5)[3], true));
+
+        $w->list('clt_1', ['isTest' => true]);
+        parse_str($this->seen(6)[2], $q);
+        $this->assertSame(['clientId' => 'clt_1', 'isTest' => 'true'], $q);
+    }
+
     public function test_devices_policies_and_introspection_hit_the_right_endpoints(): void
     {
         $c = $this->client([

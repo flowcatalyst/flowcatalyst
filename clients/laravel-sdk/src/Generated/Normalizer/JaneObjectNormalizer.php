@@ -126,6 +126,12 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\BulkImportUser::class => \FlowCatalyst\Generated\Normalizer\BulkImportUserNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\BulkIssueFieldBadgesRequest::class => \FlowCatalyst\Generated\Normalizer\BulkIssueFieldBadgesRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\BulkIssueFieldBadgesResponse::class => \FlowCatalyst\Generated\Normalizer\BulkIssueFieldBadgesResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\BulkIssuedFieldBadge::class => \FlowCatalyst\Generated\Normalizer\BulkIssuedFieldBadgeNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\CheckEmailDomainResponse::class => \FlowCatalyst\Generated\Normalizer\CheckEmailDomainResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ClientAccessGrantListResponse::class => \FlowCatalyst\Generated\Normalizer\ClientAccessGrantListResponseNormalizer::class,
@@ -183,6 +189,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\CreateEventResponse::class => \FlowCatalyst\Generated\Normalizer\CreateEventResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\CreateEventTypeRequest::class => \FlowCatalyst\Generated\Normalizer\CreateEventTypeRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\CreateFieldSignInCodeRequest::class => \FlowCatalyst\Generated\Normalizer\CreateFieldSignInCodeRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\CreateFunctionRequest::class => \FlowCatalyst\Generated\Normalizer\CreateFunctionRequestNormalizer::class,
         
@@ -292,6 +300,12 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\FieldAppRef::class => \FlowCatalyst\Generated\Normalizer\FieldAppRefNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\FieldBadgeIssuedResponse::class => \FlowCatalyst\Generated\Normalizer\FieldBadgeIssuedResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldBadgeListResponse::class => \FlowCatalyst\Generated\Normalizer\FieldBadgeListResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldBadgeResponse::class => \FlowCatalyst\Generated\Normalizer\FieldBadgeResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\FieldDeviceListResponse::class => \FlowCatalyst\Generated\Normalizer\FieldDeviceListResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\FieldDeviceResponse::class => \FlowCatalyst\Generated\Normalizer\FieldDeviceResponseNormalizer::class,
@@ -302,11 +316,17 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\FieldPolicyResponse::class => \FlowCatalyst\Generated\Normalizer\FieldPolicyResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\FieldSignInCodeResponse::class => \FlowCatalyst\Generated\Normalizer\FieldSignInCodeResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldTokenActor::class => \FlowCatalyst\Generated\Normalizer\FieldTokenActorNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\FieldTokenIntrospectRequest::class => \FlowCatalyst\Generated\Normalizer\FieldTokenIntrospectRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\FieldTokenIntrospectResponse::class => \FlowCatalyst\Generated\Normalizer\FieldTokenIntrospectResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\FieldWorkerAppRef::class => \FlowCatalyst\Generated\Normalizer\FieldWorkerAppRefNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldWorkerBadgeRef::class => \FlowCatalyst\Generated\Normalizer\FieldWorkerBadgeRefNormalizer::class,
         
         \FlowCatalyst\Generated\Model\FieldWorkerListResponse::class => \FlowCatalyst\Generated\Normalizer\FieldWorkerListResponseNormalizer::class,
         
@@ -323,6 +343,10 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\_Function::class => \FlowCatalyst\Generated\Normalizer\FunctionNormalizer::class,
         
         \FlowCatalyst\Generated\Model\FunctionResponse::class => \FlowCatalyst\Generated\Normalizer\FunctionResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FunctionTokenRequest::class => \FlowCatalyst\Generated\Normalizer\FunctionTokenRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FunctionTokenResponse::class => \FlowCatalyst\Generated\Normalizer\FunctionTokenResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\GrantAccessRequest::class => \FlowCatalyst\Generated\Normalizer\GrantAccessRequestNormalizer::class,
         
@@ -418,6 +442,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\InviteApplicationUserResponse::class => \FlowCatalyst\Generated\Normalizer\InviteApplicationUserResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\IssueFieldBadgeRequest::class => \FlowCatalyst\Generated\Normalizer\IssueFieldBadgeRequestNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\JobRecord::class => \FlowCatalyst\Generated\Normalizer\JobRecordNormalizer::class,
         
         \FlowCatalyst\Generated\Model\JobResult::class => \FlowCatalyst\Generated\Normalizer\JobResultNormalizer::class,
@@ -439,6 +465,10 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\MappingListResponse::class => \FlowCatalyst\Generated\Normalizer\MappingListResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\MappingResponse::class => \FlowCatalyst\Generated\Normalizer\MappingResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\MatchEmailsRequest::class => \FlowCatalyst\Generated\Normalizer\MatchEmailsRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\MatchEmailsResponse::class => \FlowCatalyst\Generated\Normalizer\MatchEmailsResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\MetadataDTO::class => \FlowCatalyst\Generated\Normalizer\MetadataDTONormalizer::class,
         
@@ -545,6 +575,10 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\RegisterCompleteRequest::class => \FlowCatalyst\Generated\Normalizer\RegisterCompleteRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\RegisterCompleteResponse::class => \FlowCatalyst\Generated\Normalizer\RegisterCompleteResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ReleaseRequest::class => \FlowCatalyst\Generated\Normalizer\ReleaseRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\ReleaseResponse::class => \FlowCatalyst\Generated\Normalizer\ReleaseResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ReportRequest::class => \FlowCatalyst\Generated\Normalizer\ReportRequestNormalizer::class,
         
@@ -898,6 +932,9 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\BulkImportResponse::class => false,
             \FlowCatalyst\Generated\Model\BulkImportResult::class => false,
             \FlowCatalyst\Generated\Model\BulkImportUser::class => false,
+            \FlowCatalyst\Generated\Model\BulkIssueFieldBadgesRequest::class => false,
+            \FlowCatalyst\Generated\Model\BulkIssueFieldBadgesResponse::class => false,
+            \FlowCatalyst\Generated\Model\BulkIssuedFieldBadge::class => false,
             \FlowCatalyst\Generated\Model\CheckEmailDomainResponse::class => false,
             \FlowCatalyst\Generated\Model\ClientAccessGrantListResponse::class => false,
             \FlowCatalyst\Generated\Model\ClientAccessGrantResponse::class => false,
@@ -927,6 +964,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\CreateEventRequest::class => false,
             \FlowCatalyst\Generated\Model\CreateEventResponse::class => false,
             \FlowCatalyst\Generated\Model\CreateEventTypeRequest::class => false,
+            \FlowCatalyst\Generated\Model\CreateFieldSignInCodeRequest::class => false,
             \FlowCatalyst\Generated\Model\CreateFunctionRequest::class => false,
             \FlowCatalyst\Generated\Model\CreateIdentityProviderRequest::class => false,
             \FlowCatalyst\Generated\Model\CreateIdpRoleMappingRequest::class => false,
@@ -981,14 +1019,20 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\ExchangeWindow::class => false,
             \FlowCatalyst\Generated\Model\Failure::class => false,
             \FlowCatalyst\Generated\Model\FieldAppRef::class => false,
+            \FlowCatalyst\Generated\Model\FieldBadgeIssuedResponse::class => false,
+            \FlowCatalyst\Generated\Model\FieldBadgeListResponse::class => false,
+            \FlowCatalyst\Generated\Model\FieldBadgeResponse::class => false,
             \FlowCatalyst\Generated\Model\FieldDeviceListResponse::class => false,
             \FlowCatalyst\Generated\Model\FieldDeviceResponse::class => false,
             \FlowCatalyst\Generated\Model\FieldEnrolmentCodeResponse::class => false,
             \FlowCatalyst\Generated\Model\FieldError::class => false,
             \FlowCatalyst\Generated\Model\FieldPolicyResponse::class => false,
+            \FlowCatalyst\Generated\Model\FieldSignInCodeResponse::class => false,
+            \FlowCatalyst\Generated\Model\FieldTokenActor::class => false,
             \FlowCatalyst\Generated\Model\FieldTokenIntrospectRequest::class => false,
             \FlowCatalyst\Generated\Model\FieldTokenIntrospectResponse::class => false,
             \FlowCatalyst\Generated\Model\FieldWorkerAppRef::class => false,
+            \FlowCatalyst\Generated\Model\FieldWorkerBadgeRef::class => false,
             \FlowCatalyst\Generated\Model\FieldWorkerListResponse::class => false,
             \FlowCatalyst\Generated\Model\FieldWorkerResponse::class => false,
             \FlowCatalyst\Generated\Model\FieldWorkerSignInListResponse::class => false,
@@ -997,6 +1041,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\FireNowResponse::class => false,
             \FlowCatalyst\Generated\Model\_Function::class => false,
             \FlowCatalyst\Generated\Model\FunctionResponse::class => false,
+            \FlowCatalyst\Generated\Model\FunctionTokenRequest::class => false,
+            \FlowCatalyst\Generated\Model\FunctionTokenResponse::class => false,
             \FlowCatalyst\Generated\Model\GrantAccessRequest::class => false,
             \FlowCatalyst\Generated\Model\GrantClientAccessRequest::class => false,
             \FlowCatalyst\Generated\Model\GrantFieldWorkerAppRequest::class => false,
@@ -1044,6 +1090,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\IngestionVersionResponse::class => false,
             \FlowCatalyst\Generated\Model\InviteApplicationUserRequest::class => false,
             \FlowCatalyst\Generated\Model\InviteApplicationUserResponse::class => false,
+            \FlowCatalyst\Generated\Model\IssueFieldBadgeRequest::class => false,
             \FlowCatalyst\Generated\Model\JobRecord::class => false,
             \FlowCatalyst\Generated\Model\JobResult::class => false,
             \FlowCatalyst\Generated\Model\KV::class => false,
@@ -1055,6 +1102,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\LoginAttemptResponse::class => false,
             \FlowCatalyst\Generated\Model\MappingListResponse::class => false,
             \FlowCatalyst\Generated\Model\MappingResponse::class => false,
+            \FlowCatalyst\Generated\Model\MatchEmailsRequest::class => false,
+            \FlowCatalyst\Generated\Model\MatchEmailsResponse::class => false,
             \FlowCatalyst\Generated\Model\MetadataDTO::class => false,
             \FlowCatalyst\Generated\Model\MoveProviderRequest::class => false,
             \FlowCatalyst\Generated\Model\MoveProviderResponse::class => false,
@@ -1108,6 +1157,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\RegisterBeginResponse::class => false,
             \FlowCatalyst\Generated\Model\RegisterCompleteRequest::class => false,
             \FlowCatalyst\Generated\Model\RegisterCompleteResponse::class => false,
+            \FlowCatalyst\Generated\Model\ReleaseRequest::class => false,
+            \FlowCatalyst\Generated\Model\ReleaseResponse::class => false,
             \FlowCatalyst\Generated\Model\ReportRequest::class => false,
             \FlowCatalyst\Generated\Model\RequestDTO::class => false,
             \FlowCatalyst\Generated\Model\RequestSummary::class => false,

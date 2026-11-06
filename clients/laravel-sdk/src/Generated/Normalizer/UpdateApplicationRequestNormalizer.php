@@ -86,6 +86,13 @@ class UpdateApplicationRequestNormalizer implements DenormalizerInterface, Norma
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
         }
+        if (\array_key_exists('type', $data) && $data['type'] !== null) {
+            $object->setType($data['type']);
+            unset($data['type']);
+        }
+        elseif (\array_key_exists('type', $data) && $data['type'] === null) {
+            $object->setType(null);
+        }
         if (\array_key_exists('website', $data) && $data['website'] !== null) {
             $object->setWebsite($data['website']);
             unset($data['website']);
@@ -120,6 +127,9 @@ class UpdateApplicationRequestNormalizer implements DenormalizerInterface, Norma
         }
         if ($data->isInitialized('name') && null !== $data->getName()) {
             $dataArray['name'] = $data->getName();
+        }
+        if ($data->isInitialized('type') && null !== $data->getType()) {
+            $dataArray['type'] = $data->getType();
         }
         if ($data->isInitialized('website') && null !== $data->getWebsite()) {
             $dataArray['website'] = $data->getWebsite();

@@ -37,6 +37,9 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('canImpersonate', $data) && \is_int($data['canImpersonate'])) {
+            $data['canImpersonate'] = (bool) $data['canImpersonate'];
+        }
         if (\array_key_exists('created', $data) && \is_int($data['created'])) {
             $data['created'] = (bool) $data['created'];
         }
@@ -45,6 +48,9 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
         }
         if (\array_key_exists('hasPin', $data) && \is_int($data['hasPin'])) {
             $data['hasPin'] = (bool) $data['hasPin'];
+        }
+        if (\array_key_exists('isTest', $data) && \is_int($data['isTest'])) {
+            $data['isTest'] = (bool) $data['isTest'];
         }
         if (\array_key_exists('locked', $data) && \is_int($data['locked'])) {
             $data['locked'] = (bool) $data['locked'];
@@ -67,6 +73,18 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('apps', $data) && $data['apps'] === null) {
             $object->setApps(null);
+        }
+        if (\array_key_exists('badge', $data) && $data['badge'] !== null) {
+            $object->setBadge($this->denormalizer->denormalize($data['badge'], \FlowCatalyst\Generated\Model\FieldWorkerBadgeRef::class, 'json', $context));
+        }
+        elseif (\array_key_exists('badge', $data) && $data['badge'] === null) {
+            $object->setBadge(null);
+        }
+        if (\array_key_exists('canImpersonate', $data) && $data['canImpersonate'] !== null) {
+            $object->setCanImpersonate($data['canImpersonate']);
+        }
+        elseif (\array_key_exists('canImpersonate', $data) && $data['canImpersonate'] === null) {
+            $object->setCanImpersonate(null);
         }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
@@ -115,6 +133,12 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('id', $data) && $data['id'] === null) {
             $object->setId(null);
+        }
+        if (\array_key_exists('isTest', $data) && $data['isTest'] !== null) {
+            $object->setIsTest($data['isTest']);
+        }
+        elseif (\array_key_exists('isTest', $data) && $data['isTest'] === null) {
+            $object->setIsTest(null);
         }
         if (\array_key_exists('lastLoginAt', $data) && $data['lastLoginAt'] !== null) {
             $object->setLastLoginAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['lastLoginAt']));
@@ -174,6 +198,8 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
             $values[] = $this->normalizer->normalize($value, 'json', $context);
         }
         $dataArray['apps'] = $values;
+        $dataArray['badge'] = $this->normalizer->normalize($data->getBadge(), 'json', $context);
+        $dataArray['canImpersonate'] = $data->getCanImpersonate();
         $dataArray['clientId'] = $data->getClientId();
         if ($data->isInitialized('created') && null !== $data->getCreated()) {
             $dataArray['created'] = $data->getCreated();
@@ -186,6 +212,7 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
         $dataArray['hardLocked'] = $data->getHardLocked();
         $dataArray['hasPin'] = $data->getHasPin();
         $dataArray['id'] = $data->getId();
+        $dataArray['isTest'] = $data->getIsTest();
         if ($data->isInitialized('lastLoginAt') && null !== $data->getLastLoginAt()) {
             $dataArray['lastLoginAt'] = $data->getLastLoginAt()->format('Y-m-d\TH:i:sP');
         }

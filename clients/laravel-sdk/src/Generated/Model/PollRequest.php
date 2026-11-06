@@ -31,6 +31,12 @@ class PollRequest extends \ArrayObject
      */
     protected $contractVersion;
     /**
+     * The runtime process, new on every start (a random UUID). While another instance that polled as this runtimeId is live (polled within one lease and has not said goodbye since), the poll is refused with 409 RUNTIME_ID_IN_USE and changes nothing. Absent: no check.
+     *
+     * @var string|null
+     */
+    protected $instanceId;
+    /**
      * The kinds the runtime's extensions add (and camel-route)
      *
      * @var list<RuntimeKind>|null
@@ -112,6 +118,28 @@ class PollRequest extends \ArrayObject
     {
         $this->initialized['contractVersion'] = true;
         $this->contractVersion = $contractVersion;
+        return $this;
+    }
+    /**
+     * The runtime process, new on every start (a random UUID). While another instance that polled as this runtimeId is live (polled within one lease and has not said goodbye since), the poll is refused with 409 RUNTIME_ID_IN_USE and changes nothing. Absent: no check.
+     *
+     * @return string|null
+     */
+    public function getInstanceId(): ?string
+    {
+        return $this->instanceId;
+    }
+    /**
+     * The runtime process, new on every start (a random UUID). While another instance that polled as this runtimeId is live (polled within one lease and has not said goodbye since), the poll is refused with 409 RUNTIME_ID_IN_USE and changes nothing. Absent: no check.
+     *
+     * @param string|null $instanceId
+     *
+     * @return self
+     */
+    public function setInstanceId(?string $instanceId): self
+    {
+        $this->initialized['instanceId'] = true;
+        $this->instanceId = $instanceId;
         return $this;
     }
     /**

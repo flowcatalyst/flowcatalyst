@@ -25,6 +25,12 @@ class EnsureFieldWorkerRequest extends \ArrayObject
      */
     protected $appCodes;
     /**
+     * New worker only; needs the impersonate permission
+     *
+     * @var bool|null
+     */
+    protected $canImpersonate;
+    /**
      * @var string|null
      */
     protected $clientId;
@@ -32,6 +38,12 @@ class EnsureFieldWorkerRequest extends \ArrayObject
      * @var string|null
      */
     protected $email;
+    /**
+     * New worker only: a test identity
+     *
+     * @var bool|null
+     */
+    protected $isTest;
     /**
      * @var string|null
      */
@@ -89,6 +101,28 @@ class EnsureFieldWorkerRequest extends \ArrayObject
         return $this;
     }
     /**
+     * New worker only; needs the impersonate permission
+     *
+     * @return bool|null
+     */
+    public function getCanImpersonate(): ?bool
+    {
+        return $this->canImpersonate;
+    }
+    /**
+     * New worker only; needs the impersonate permission
+     *
+     * @param bool|null $canImpersonate
+     *
+     * @return self
+     */
+    public function setCanImpersonate(?bool $canImpersonate): self
+    {
+        $this->initialized['canImpersonate'] = true;
+        $this->canImpersonate = $canImpersonate;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getClientId(): ?string
@@ -122,6 +156,28 @@ class EnsureFieldWorkerRequest extends \ArrayObject
     {
         $this->initialized['email'] = true;
         $this->email = $email;
+        return $this;
+    }
+    /**
+     * New worker only: a test identity
+     *
+     * @return bool|null
+     */
+    public function getIsTest(): ?bool
+    {
+        return $this->isTest;
+    }
+    /**
+     * New worker only: a test identity
+     *
+     * @param bool|null $isTest
+     *
+     * @return self
+     */
+    public function setIsTest(?bool $isTest): self
+    {
+        $this->initialized['isTest'] = true;
+        $this->isTest = $isTest;
         return $this;
     }
     /**

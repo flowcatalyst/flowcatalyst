@@ -19,11 +19,23 @@ class PutFieldPolicyRequest extends \ArrayObject
      */
     protected $dollarSchema;
     /**
+     * Let a badge sign in without a PIN on an enrolled device (default false)
+     *
+     * @var bool|null
+     */
+    protected $badgeOnlyLogin;
+    /**
      * softLockThreshold to 50 (default 10)
      *
      * @var int|null
      */
     protected $hardLockThreshold;
+    /**
+     * 300 to 43200 (default 14400)
+     *
+     * @var int|null
+     */
+    protected $impersonationMaxSecs;
     /**
      * 60 to 86400 (default 7200)
      *
@@ -46,6 +58,12 @@ class PutFieldPolicyRequest extends \ArrayObject
      * @var bool|null
      */
     protected $requireAttestation;
+    /**
+     * Refuse sign-in from a key that is not an enrolled device (default false)
+     *
+     * @var bool|null
+     */
+    protected $requireEnrolledDevice;
     /**
      * 60 to 86400 (default 900)
      *
@@ -71,6 +89,12 @@ class PutFieldPolicyRequest extends \ArrayObject
      */
     protected $softLockThreshold;
     /**
+     * 60 to 86400 (default 900)
+     *
+     * @var int|null
+     */
+    protected $unenrolledIdleSecs;
+    /**
      * A URL to the JSON Schema for this object.
      *
      * @return string|null
@@ -93,6 +117,28 @@ class PutFieldPolicyRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Let a badge sign in without a PIN on an enrolled device (default false)
+     *
+     * @return bool|null
+     */
+    public function getBadgeOnlyLogin(): ?bool
+    {
+        return $this->badgeOnlyLogin;
+    }
+    /**
+     * Let a badge sign in without a PIN on an enrolled device (default false)
+     *
+     * @param bool|null $badgeOnlyLogin
+     *
+     * @return self
+     */
+    public function setBadgeOnlyLogin(?bool $badgeOnlyLogin): self
+    {
+        $this->initialized['badgeOnlyLogin'] = true;
+        $this->badgeOnlyLogin = $badgeOnlyLogin;
+        return $this;
+    }
+    /**
      * softLockThreshold to 50 (default 10)
      *
      * @return int|null
@@ -112,6 +158,28 @@ class PutFieldPolicyRequest extends \ArrayObject
     {
         $this->initialized['hardLockThreshold'] = true;
         $this->hardLockThreshold = $hardLockThreshold;
+        return $this;
+    }
+    /**
+     * 300 to 43200 (default 14400)
+     *
+     * @return int|null
+     */
+    public function getImpersonationMaxSecs(): ?int
+    {
+        return $this->impersonationMaxSecs;
+    }
+    /**
+     * 300 to 43200 (default 14400)
+     *
+     * @param int|null $impersonationMaxSecs
+     *
+     * @return self
+     */
+    public function setImpersonationMaxSecs(?int $impersonationMaxSecs): self
+    {
+        $this->initialized['impersonationMaxSecs'] = true;
+        $this->impersonationMaxSecs = $impersonationMaxSecs;
         return $this;
     }
     /**
@@ -196,6 +264,28 @@ class PutFieldPolicyRequest extends \ArrayObject
     {
         $this->initialized['requireAttestation'] = true;
         $this->requireAttestation = $requireAttestation;
+        return $this;
+    }
+    /**
+     * Refuse sign-in from a key that is not an enrolled device (default false)
+     *
+     * @return bool|null
+     */
+    public function getRequireEnrolledDevice(): ?bool
+    {
+        return $this->requireEnrolledDevice;
+    }
+    /**
+     * Refuse sign-in from a key that is not an enrolled device (default false)
+     *
+     * @param bool|null $requireEnrolledDevice
+     *
+     * @return self
+     */
+    public function setRequireEnrolledDevice(?bool $requireEnrolledDevice): self
+    {
+        $this->initialized['requireEnrolledDevice'] = true;
+        $this->requireEnrolledDevice = $requireEnrolledDevice;
         return $this;
     }
     /**
@@ -284,6 +374,28 @@ class PutFieldPolicyRequest extends \ArrayObject
     {
         $this->initialized['softLockThreshold'] = true;
         $this->softLockThreshold = $softLockThreshold;
+        return $this;
+    }
+    /**
+     * 60 to 86400 (default 900)
+     *
+     * @return int|null
+     */
+    public function getUnenrolledIdleSecs(): ?int
+    {
+        return $this->unenrolledIdleSecs;
+    }
+    /**
+     * 60 to 86400 (default 900)
+     *
+     * @param int|null $unenrolledIdleSecs
+     *
+     * @return self
+     */
+    public function setUnenrolledIdleSecs(?int $unenrolledIdleSecs): self
+    {
+        $this->initialized['unenrolledIdleSecs'] = true;
+        $this->unenrolledIdleSecs = $unenrolledIdleSecs;
         return $this;
     }
 }

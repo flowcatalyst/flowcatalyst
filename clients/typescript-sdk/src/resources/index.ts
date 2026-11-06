@@ -110,6 +110,11 @@ export {
 	type FieldWorkerListResponse,
 	type FieldWorkerSignInListResponse,
 	type ResetFieldWorkerPinResult,
+	type IssueFieldBadgeRequest,
+	type FieldBadgeIssued,
+	type FieldBadgeListResponse,
+	type BulkIssueFieldBadgesResult,
+	type FieldSignInCode,
 } from "./field-workers.js";
 export {
 	FieldDevicesResource,

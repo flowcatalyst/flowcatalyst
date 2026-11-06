@@ -255,3 +255,64 @@ func TestFieldTokensIntrospect(t *testing.T) {
 	assert.False(t, r.Active)
 	assert.Empty(t, r.Sub)
 }
+
+func TestFieldWorkersEnsureUpdateIdentityFlags(t *testing.T) {
+	srv, seen := newMockSrv(t, workerJSON)
+	c := client.New(srv.URL)
+	ctx := context.Background()
+	_, err := c.FieldWorkers().Ensure(ctx, &client.EnsureFieldWorkerRequest{
+		ClientID: "clt_1", WorkerCode: "w1", Name: "W", CanImpersonate: new(true), IsTest: new(true),
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"clientId":"clt_1","workerCode":"w1","name":"W","canImpersonate":true,"isTest":true}`, seen.body)
+	_, err = c.FieldWorkers().Update(ctx, "fwk_1", &client.UpdateFieldWorkerRequest{Name: "W", IsTest: new(false)})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"name":"W","isTest":false}`, seen.body)
+}
+
+func TestFieldWorkersBadges(t *testing.T) {
+	const badge = `{"id":"fbg_1","workerId":"fwk_1","label":"L","status":"ACTIVE","createdAt":"2026-01-01T00:00:00Z","createdBy":"prn_1"}`
+	srv, seen := newMockSrv(t, `{"badge":`+badge+`,"token":"tok"}`)
+	c := client.New(srv.URL)
+	ctx := context.Background()
+
+	r, err := c.FieldWorkers().IssueBadge(ctx, "fwk_1", &client.IssueFieldBadgeRequest{Label: "L"})
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodPost, seen.method)
+	assert.Equal(t, "/api/field-workers/fwk_1/badges", seen.path)
+	assert.JSONEq(t, `{"label":"L"}`, seen.body)
+	assert.Equal(t, "tok", r.Token)
+	assert.Equal(t, "fbg_1", r.Badge.ID)
+
+	srv2, seen2 := newMockSrv(t, `{"badges":[`+badge+`]}`)
+	l, err := client.New(srv2.URL).FieldWorkers().ListBadges(ctx, "fwk_1")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodGet, seen2.method)
+	assert.Equal(t, "/api/field-workers/fwk_1/badges", seen2.path)
+	require.Len(t, l.Badges, 1)
+	assert.Equal(t, "ACTIVE", l.Badges[0].Status)
+
+	require.NoError(t, c.FieldWorkers().RevokeBadge(ctx, "fwk_1", "fbg_1"))
+	assert.Equal(t, http.MethodPost, seen.method)
+	assert.Equal(t, "/api/field-workers/fwk_1/badges/fbg_1/revoke", seen.path)
+
+	srv3, seen3 := newMockSrv(t, `{"issued":[{"workerId":"fwk_1","workerCode":"w1","name":"W","badge":`+badge+`,"token":"t1"}]}`)
+	b, err := client.New(srv3.URL).FieldWorkers().BulkIssueBadges(ctx, []string{"fwk_1"})
+	require.NoError(t, err)
+	assert.Equal(t, "/api/field-workers/badges", seen3.path)
+	assert.JSONEq(t, `{"workerIds":["fwk_1"]}`, seen3.body)
+	require.Len(t, b.Issued, 1)
+	assert.Equal(t, "t1", b.Issued[0].Token)
+	assert.Equal(t, "w1", b.Issued[0].WorkerCode)
+}
+
+func TestFieldWorkersCreateSignInCode(t *testing.T) {
+	srv, seen := newMockSrv(t, `{"code":"ABC123","workerId":"fwk_1","appCode":"orders","expiresAt":"2026-01-01T00:05:00Z"}`)
+	r, err := client.New(srv.URL).FieldWorkers().CreateSignInCode(context.Background(), "fwk_1", "orders")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodPost, seen.method)
+	assert.Equal(t, "/api/field-workers/fwk_1/sign-in-codes", seen.path)
+	assert.JSONEq(t, `{"appCode":"orders"}`, seen.body)
+	assert.Equal(t, "ABC123", r.Code)
+	assert.Equal(t, "2026-01-01T00:05:00Z", r.ExpiresAt)
+}

@@ -37,8 +37,14 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('badgeOnlyLogin', $data) && \is_int($data['badgeOnlyLogin'])) {
+            $data['badgeOnlyLogin'] = (bool) $data['badgeOnlyLogin'];
+        }
         if (\array_key_exists('requireAttestation', $data) && \is_int($data['requireAttestation'])) {
             $data['requireAttestation'] = (bool) $data['requireAttestation'];
+        }
+        if (\array_key_exists('requireEnrolledDevice', $data) && \is_int($data['requireEnrolledDevice'])) {
+            $data['requireEnrolledDevice'] = (bool) $data['requireEnrolledDevice'];
         }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
@@ -47,12 +53,26 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
         }
+        if (\array_key_exists('badgeOnlyLogin', $data) && $data['badgeOnlyLogin'] !== null) {
+            $object->setBadgeOnlyLogin($data['badgeOnlyLogin']);
+            unset($data['badgeOnlyLogin']);
+        }
+        elseif (\array_key_exists('badgeOnlyLogin', $data) && $data['badgeOnlyLogin'] === null) {
+            $object->setBadgeOnlyLogin(null);
+        }
         if (\array_key_exists('hardLockThreshold', $data) && $data['hardLockThreshold'] !== null) {
             $object->setHardLockThreshold($data['hardLockThreshold']);
             unset($data['hardLockThreshold']);
         }
         elseif (\array_key_exists('hardLockThreshold', $data) && $data['hardLockThreshold'] === null) {
             $object->setHardLockThreshold(null);
+        }
+        if (\array_key_exists('impersonationMaxSecs', $data) && $data['impersonationMaxSecs'] !== null) {
+            $object->setImpersonationMaxSecs($data['impersonationMaxSecs']);
+            unset($data['impersonationMaxSecs']);
+        }
+        elseif (\array_key_exists('impersonationMaxSecs', $data) && $data['impersonationMaxSecs'] === null) {
+            $object->setImpersonationMaxSecs(null);
         }
         if (\array_key_exists('personalIdleSecs', $data) && $data['personalIdleSecs'] !== null) {
             $object->setPersonalIdleSecs($data['personalIdleSecs']);
@@ -82,6 +102,13 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         elseif (\array_key_exists('requireAttestation', $data) && $data['requireAttestation'] === null) {
             $object->setRequireAttestation(null);
         }
+        if (\array_key_exists('requireEnrolledDevice', $data) && $data['requireEnrolledDevice'] !== null) {
+            $object->setRequireEnrolledDevice($data['requireEnrolledDevice']);
+            unset($data['requireEnrolledDevice']);
+        }
+        elseif (\array_key_exists('requireEnrolledDevice', $data) && $data['requireEnrolledDevice'] === null) {
+            $object->setRequireEnrolledDevice(null);
+        }
         if (\array_key_exists('sharedIdleSecs', $data) && $data['sharedIdleSecs'] !== null) {
             $object->setSharedIdleSecs($data['sharedIdleSecs']);
             unset($data['sharedIdleSecs']);
@@ -110,6 +137,13 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         elseif (\array_key_exists('softLockThreshold', $data) && $data['softLockThreshold'] === null) {
             $object->setSoftLockThreshold(null);
         }
+        if (\array_key_exists('unenrolledIdleSecs', $data) && $data['unenrolledIdleSecs'] !== null) {
+            $object->setUnenrolledIdleSecs($data['unenrolledIdleSecs']);
+            unset($data['unenrolledIdleSecs']);
+        }
+        elseif (\array_key_exists('unenrolledIdleSecs', $data) && $data['unenrolledIdleSecs'] === null) {
+            $object->setUnenrolledIdleSecs(null);
+        }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $object[$key] = $value;
@@ -120,8 +154,14 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
+        if ($data->isInitialized('badgeOnlyLogin') && null !== $data->getBadgeOnlyLogin()) {
+            $dataArray['badgeOnlyLogin'] = $data->getBadgeOnlyLogin();
+        }
         if ($data->isInitialized('hardLockThreshold') && null !== $data->getHardLockThreshold()) {
             $dataArray['hardLockThreshold'] = $data->getHardLockThreshold();
+        }
+        if ($data->isInitialized('impersonationMaxSecs') && null !== $data->getImpersonationMaxSecs()) {
+            $dataArray['impersonationMaxSecs'] = $data->getImpersonationMaxSecs();
         }
         if ($data->isInitialized('personalIdleSecs') && null !== $data->getPersonalIdleSecs()) {
             $dataArray['personalIdleSecs'] = $data->getPersonalIdleSecs();
@@ -133,6 +173,9 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
             $dataArray['pinReauthDays'] = $data->getPinReauthDays();
         }
         $dataArray['requireAttestation'] = $data->getRequireAttestation();
+        if ($data->isInitialized('requireEnrolledDevice') && null !== $data->getRequireEnrolledDevice()) {
+            $dataArray['requireEnrolledDevice'] = $data->getRequireEnrolledDevice();
+        }
         if ($data->isInitialized('sharedIdleSecs') && null !== $data->getSharedIdleSecs()) {
             $dataArray['sharedIdleSecs'] = $data->getSharedIdleSecs();
         }
@@ -144,6 +187,9 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         if ($data->isInitialized('softLockThreshold') && null !== $data->getSoftLockThreshold()) {
             $dataArray['softLockThreshold'] = $data->getSoftLockThreshold();
+        }
+        if ($data->isInitialized('unenrolledIdleSecs') && null !== $data->getUnenrolledIdleSecs()) {
+            $dataArray['unenrolledIdleSecs'] = $data->getUnenrolledIdleSecs();
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {

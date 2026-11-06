@@ -340,6 +340,11 @@ public final class FieldTokenVerifier {
         List<String> amr = new ArrayList<>();
         claims.path("amr").forEach(n -> amr.add(n.asString()));
         Long authTime = epoch(claims, "auth_time");
+        JsonNode act = claims.get("act");
+        FieldActor actor = act != null && act.isObject() && !text(act, "sub").isEmpty()
+                ? new FieldActor(text(act, "sub"), text(act, "typ"), text(act, "name"))
+                : null;
+        boolean test = claims.path("test").isBoolean() && claims.path("test").asBoolean();
         return new FieldVerification.Valid(new FieldPrincipal(
                 text(claims, "sub"),
                 text(claims, "client_id"),
@@ -354,7 +359,9 @@ public final class FieldTokenVerifier {
                 Instant.ofEpochSecond(authTime == null ? 0 : authTime),
                 Instant.ofEpochSecond(exp),
                 proof.jkt,
-                text(claims, "jti")));
+                text(claims, "jti"),
+                actor,
+                test));
     }
 
     private static FieldVerification invalid(String reason, String detail) {

@@ -77,9 +77,36 @@ final class FieldTokenVerifierTest extends TestCase
         $this->assertSame('fixture-client', $p->clientIdentifier);
         $this->assertSame('W001', $p->workerCode);
         $this->assertSame('fixture-app', $p->appCode);
-        $this->assertSame(['pin'], $p->amr);
         $this->assertNotSame('', $p->jkt);
-        $this->assertNotSame('', $p->deviceId);
+        $want = $case['principal'] ?? null;
+        if ($want === null) {
+            $this->assertSame(['pin'], $p->amr);
+            $this->assertNotSame('', $p->deviceId);
+            $this->assertNull($p->actor);
+            $this->assertFalse($p->test);
+            return;
+        }
+        $this->assertSame($want['deviceId'], $p->deviceId, $case['name']);
+        $this->assertSame($want['deviceMode'], $p->deviceMode, $case['name']);
+        $this->assertSame($want['amr'], $p->amr, $case['name']);
+        $this->assertSame($want['test'], $p->test, $case['name']);
+        if (!isset($want['actor'])) {
+            $this->assertNull($p->actor, $case['name']);
+        } else {
+            $this->assertNotNull($p->actor, $case['name']);
+            $this->assertSame($want['actor']['id'], $p->actor->id);
+            $this->assertSame($want['actor']['type'], $p->actor->type);
+            $this->assertSame($want['actor']['name'], $p->actor->name);
+        }
+    }
+
+    public function test_sign_in_options_cases_are_in_the_fixture_set(): void
+    {
+        $this->valid();
+        $names = array_column(array_filter(self::load()['cases'], static fn ($c) => isset($c['principal'])), 'name');
+        foreach (['valid_unenrolled', 'valid_impersonated_supervisor', 'valid_impersonated_principal', 'valid_test'] as $n) {
+            $this->assertContains($n, $names);
+        }
     }
 
     /** @return array<string, mixed> */

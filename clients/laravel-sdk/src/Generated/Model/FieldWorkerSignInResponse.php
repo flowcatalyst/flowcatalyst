@@ -15,6 +15,10 @@ class FieldWorkerSignInResponse
     /**
      * @var string|null
      */
+    protected $actorId;
+    /**
+     * @var string|null
+     */
     protected $appCode;
     /**
      * @var \DateTime|null
@@ -44,6 +48,24 @@ class FieldWorkerSignInResponse
      * @var string|null
      */
     protected $outcome;
+    /**
+     * @return string|null
+     */
+    public function getActorId(): ?string
+    {
+        return $this->actorId;
+    }
+    /**
+     * @param string|null $actorId
+     *
+     * @return self
+     */
+    public function setActorId(?string $actorId): self
+    {
+        $this->initialized['actorId'] = true;
+        $this->actorId = $actorId;
+        return $this;
+    }
     /**
      * @return string|null
      */

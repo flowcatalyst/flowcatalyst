@@ -514,6 +514,9 @@
           "code": {
             "type": "string"
           },
+          "connectionId": {
+            "type": "string"
+          },
           "correlationId": {
             "type": "string"
           },
@@ -534,6 +537,10 @@
             "type": "string"
           },
           "id": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "maxLength": 100,
             "type": "string"
           },
           "kind": {
@@ -1035,6 +1042,9 @@
             "type": "string"
           },
           "code": {
+            "type": "string"
+          },
+          "connectionId": {
             "type": "string"
           },
           "correlationId": {
@@ -6804,7 +6814,7 @@
         "x-sdk": "app"
       },
       "post": {
-        "description": "Requires platform:messaging:batch:dispatch-jobs-write. code, targetUrl, payload and serviceAccountId are required. Responds 201 with the new job id.",
+        "description": "Requires platform:messaging:batch:dispatch-jobs-write. code, targetUrl, payload and serviceAccountId are required. Responds 201 with the new job id, or, for an idempotencyKey already held in the job's application and client, the holding job's id (nothing is created).",
         "operationId": "createDispatchJob",
         "requestBody": {
           "content": {
@@ -6847,7 +6857,7 @@
     },
     "/api/dispatch-jobs/batch": {
       "post": {
-        "description": "Requires platform:messaging:batch:dispatch-jobs-write. At most 1000 items; any refused item (unknown kind, bad targetUrl, client or application the credential cannot ingest for) rejects the whole batch, and the insert is all-or-nothing. Responds 201 with one result per item, in order, status SUCCESS; an empty batch responds 200 with an empty results list.",
+        "description": "Requires platform:messaging:batch:dispatch-jobs-write. At most 1000 items; any refused item (unknown kind, bad targetUrl, client or application the credential cannot ingest for, unknown or out-of-scope connectionId, idempotencyKey over 100 characters) rejects the whole batch, and the insert is all-or-nothing. Responds 201 with one result per item, in order, status SUCCESS; an item whose idempotencyKey is already held in its application and client answers the holding job's id and creates nothing. An empty batch responds 200 with an empty results list.",
         "operationId": "batchCreateDispatchJobs",
         "requestBody": {
           "content": {
