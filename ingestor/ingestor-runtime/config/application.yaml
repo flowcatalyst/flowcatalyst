@@ -3,6 +3,13 @@
 # (FLOWCATALYST_CLIENT_SECRET) goes in config/secrets.local.yaml, which is never committed, or in the
 # environment.
 
+# Each shutdown step (the route stops and the goodbye; a round in progress) may take this long before
+# the framework interrupts it. ECS gives the task 60 s (stopTimeout): the routes get their 12 s, the goodbye
+# 5 s, the last trace records 2 s. fcdev writes its own config with 10 s (it kills the runtime after 15 s).
+app:
+  shutdown:
+    drain: 20s
+
 http:
   port: 8091
 

@@ -31,7 +31,11 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.InstantSource;
+import io.flowcatalyst.ingestor.contract.Ingestion;
+import java.util.List;
 import java.util.Optional;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -172,11 +176,33 @@ public final class RuntimeModule implements Module {
 
   private static final Pattern RUNTIME_NAME = Pattern.compile("[A-Za-z0-9._:-]{1,100}");
 
-  /** The longest stopping every route may take when the runtime stops; fcdev and most orchestrators wait 15 s or more. */
+  /**
+   * The longest stopping every route may take when the runtime stops, when the framework's bound on
+   * the module's shutdown ({@code app.shutdown.drain}) leaves that much after the goodbye's reserve.
+   */
   static final Duration STOP_WITHIN = Duration.ofSeconds(12);
 
   /** The longest the last trace records are given to be shipped when the runtime stops. */
   static final Duration TRACE_FLUSH = Duration.ofSeconds(2);
+
+  /**
+   * The longest the stop waits for the reconciler, which a round stuck starting a route may hold,
+   * before it stops what the routes take without it ({@link Reconciler#shutdown}).
+   */
+  static final Duration SHUTDOWN_LOCK_WAIT = Duration.ofSeconds(3);
+
+  /** The longest the shutdown waits for the function host to close before it goes on to the routes; the host goes on closing. */
+  static final Duration FUNCTIONS_CLOSE_WAIT = Duration.ofSeconds(2);
+
+  /**
+   * Kept, at the end of the framework's bound on this module's shutdown, for the goodbye: its call
+   * (at most {@link RuntimeLoop#GOODBYE_WITHIN}, at least this less {@link RuntimeLoop#GOODBYE_GRACE})
+   * and the grace for it to give up.
+   */
+  static final Duration GOODBYE_RESERVE = Duration.ofMillis(3_500);
+
+  /** Kept before the end of the framework's bound, which interrupts the shutdown and moves on. */
+  static final Duration SHUTDOWN_MARGIN = Duration.ofMillis(500);
 
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeModule.class);
 
@@ -437,38 +463,102 @@ public final class RuntimeModule implements Module {
 
   /**
    * Stops every route at once, each given {@link Reconciler#ROUTE_STOP} to finish its exchange in
-   * flight, all within {@link #STOP_WITHIN}; then gives back the leases of the single-owner ones
-   * that stopped cleanly and tells the platform this runtime is leaving, within {@link
-   * RuntimeLoop#GOODBYE_WITHIN}, so another runtime takes them at its next poll. A route still
-   * stopping, or a platform that does not answer or predates the call, leaves the lease to run out
-   * (at most the lease after the last poll). The watermark or cursor is on the platform, so nothing
-   * read is lost. With the trace flush, about 20 s in all (12 + 5, a second's grace, 2), well inside
-   * ECS's 60 s stop timeout.
+   * flight, all within what the framework's bound on this step ({@code app.shutdown.drain}: 20 s in
+   * the image's config, 10 s in the one fcdev writes) leaves after the goodbye's reserve; then gives
+   * back the leases of the single-owner ones that stopped cleanly and tells the platform this runtime
+   * is leaving, so another runtime takes them at its next poll ({@link #stop}). A route still
+   * stopping, or a platform that does not answer or predates the call, leaves the lease to run out (at
+   * most the lease after the last poll). The watermark or cursor is on the platform, so nothing read is
+   * lost.
    */
   @Override
   public void shutdown(App app) {
     FunctionHost host = functions;
-    if (host != null) {
-      host.close();
-    }
-    // The loop has already been stopped; the Camel context is closed by the application after this.
+    // The loop has already been stopped (the framework waits for a round in progress at most
+    // app.shutdown.drain, then interrupts it and moves on); the Camel context is closed by the
+    // application after this.
     ScheduledExecutorService dog = watchdog;
     if (dog != null) {
       // Booted all the way: the loop and the routes exist.
-      dog.shutdownNow();
       RuntimeLoop loop = app.get(RuntimeLoop.class);
-      loop.close();
-      Reconciler.Stopped stopped = app.get(Reconciler.class).stop(ingestion -> true, STOP_WITHIN);
-      if (stopped.count() > 0) {
-        LOG.info("stopped {} ingestion route(s), {} of them cleanly", stopped.count(), stopped.clean().size());
-      }
-      loop.goodbye(stopped.clean());
-      // After the routes: what their last exchanges recorded is shipped, within a bound.
-      app.get(TraceShipper.class).close(TRACE_FLUSH);
+      TraceShipper traces = app.get(TraceShipper.class);
+      stop(
+          new Parts(host == null ? null : host::close, dog::shutdownNow, loop::close, app.get(Reconciler.class), loop::goodbye, traces::close),
+          app.shutdownDrain());
+    } else if (host != null) {
+      host.close();
     }
     ProducerTemplate template = producer;
     if (template != null) {
       template.stop();
     }
+  }
+
+  /**
+   * What a shutdown stops, in the order it stops them.
+   *
+   * @param functions closes the function host; null when this process hosts none
+   * @param watchdog stops the lease watchdog
+   * @param loop stops the round's work still running (its connection tests)
+   * @param routes the routes
+   * @param goodbye gives back the leases of the routes that stopped cleanly and says goodbye, within a bound
+   * @param traces ships the last trace records, within a bound
+   */
+  record Parts(
+      @Nullable Runnable functions,
+      Runnable watchdog,
+      Runnable loop,
+      Reconciler routes,
+      BiConsumer<List<Ingestion>, Duration> goodbye,
+      Consumer<Duration> traces) {}
+
+  /**
+   * Stops in order: the function host (waited for at most {@link #FUNCTIONS_CLOSE_WAIT}), the
+   * watchdog, the loop's work, the routes, then the goodbye with the routes that stopped cleanly,
+   * then the last trace records; all within {@code bound}, the framework's bound on this module's
+   * shutdown, after which it interrupts the shutdown and moves on. The routes get at most {@link
+   * #STOP_WITHIN}, and never so long that the goodbye, kept {@link #GOODBYE_RESERVE} at the end, would
+   * be cut off; the reconciler is waited for at most {@link #SHUTDOWN_LOCK_WAIT} of that ({@link
+   * Reconciler#shutdown}). With the image's bound of 20 s, the routes get their 12 s, the goodbye
+   * its 5 s and the traces their 2 s; with fcdev's 10 s, the routes get 6 s, the goodbye at least 2.5 s and
+   * the traces what is left.
+   *
+   * @param parts what is stopped
+   * @param bound the longest the whole shutdown may take
+   */
+  static void stop(Parts parts, Duration bound) {
+    long end = System.nanoTime() + bound.minus(SHUTDOWN_MARGIN).toNanos();
+    Runnable functions = parts.functions();
+    if (functions != null) {
+      Thread closing = Thread.ofVirtual().name("function-host-close").start(functions);
+      try {
+        if (!closing.join(min(FUNCTIONS_CLOSE_WAIT, left(end)))) {
+          LOG.warn("the function host has not closed within {}; stopping the routes while it goes on closing", FUNCTIONS_CLOSE_WAIT);
+        }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
+    parts.watchdog().run();
+    parts.loop().run();
+    Duration routes = min(STOP_WITHIN, left(end).minus(GOODBYE_RESERVE));
+    Reconciler.Stopped stopped = parts.routes().shutdown(routes, min(SHUTDOWN_LOCK_WAIT, routes));
+    if (stopped.count() > 0) {
+      LOG.info("stopped {} ingestion route(s), {} of them cleanly", stopped.count(), stopped.clean().size());
+    }
+    parts.goodbye().accept(stopped.clean(), min(RuntimeLoop.GOODBYE_WITHIN, left(end).minus(RuntimeLoop.GOODBYE_GRACE)));
+    // After the routes: what their last exchanges recorded is shipped, within what is left.
+    parts.traces().accept(min(TRACE_FLUSH, left(end)));
+  }
+
+  /** The time until {@code end}, never negative. */
+  private static Duration left(long end) {
+    return Duration.ofNanos(Math.max(0, end - System.nanoTime()));
+  }
+
+  /** The shorter of the two, never negative. */
+  private static Duration min(Duration a, Duration b) {
+    Duration shorter = a.compareTo(b) < 0 ? a : b;
+    return shorter.isNegative() ? Duration.ZERO : shorter;
   }
 }

@@ -95,6 +95,9 @@ final class RuntimeLoop {
   /** The longest the lease release at shutdown may wait for the platform. */
   static final Duration GOODBYE_WITHIN = Duration.ofSeconds(5);
 
+  /** How much longer than its bound the goodbye's call is waited for, to give up. */
+  static final Duration GOODBYE_GRACE = Duration.ofSeconds(1);
+
   private record Running(Future<?> future, long deadlineNanos, AtomicBoolean answered) {}
 
   private final String runtimeId;
@@ -377,6 +380,17 @@ final class RuntimeLoop {
    * @param stoppedCleanly the ingestions whose routes stopped cleanly
    */
   void goodbye(List<Ingestion> stoppedCleanly) {
+    goodbye(stoppedCleanly, GOODBYE_WITHIN);
+  }
+
+  /**
+   * {@link #goodbye(List)}, waiting at most {@code within} for the platform (and {@link
+   * #GOODBYE_GRACE} more for the call to give up).
+   *
+   * @param stoppedCleanly the ingestions whose routes stopped cleanly
+   * @param within the longest the platform is given to answer
+   */
+  void goodbye(List<Ingestion> stoppedCleanly, Duration within) {
     List<String> ids = stoppedCleanly.stream().filter(i -> i.source().singleOwner()).map(Ingestion::id).toList();
     // On a thread of its own, so that nothing the call does (such as fetching a token) can hold the
     // shutdown past the bound.
@@ -386,14 +400,14 @@ final class RuntimeLoop {
             .start(
                 () -> {
                   try {
-                    giveBack(ids, true, GOODBYE_WITHIN);
+                    giveBack(ids, true, within);
                   } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                   }
                 });
     try {
-      if (!call.join(GOODBYE_WITHIN.plusSeconds(1))) {
-        LOG.warn("the platform did not answer the goodbye within {}; the leases run out instead", GOODBYE_WITHIN);
+      if (!call.join(within.plus(GOODBYE_GRACE))) {
+        LOG.warn("the platform did not answer the goodbye within {}; the leases run out instead", within);
         call.interrupt();
       }
     } catch (InterruptedException e) {

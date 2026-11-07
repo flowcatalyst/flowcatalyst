@@ -573,6 +573,9 @@ func TestApplicationYAMLAndConfigDir(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(b), "port: 18091")
 	assert.Contains(t, string(b), "base-url: http://localhost:18080")
+	// fcdev kills the runtime 15 s after SIGTERM: the framework bounds each shutdown step by
+	// 10 s, the ingestor fits its route stops and goodbye inside that.
+	assert.Contains(t, string(b), "app:\n  shutdown:\n    drain: 10s\n")
 	assert.NotContains(t, string(b), "secret")
 }
 

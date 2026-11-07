@@ -118,7 +118,9 @@ platform's ingestion API as well.) The `fcdev-ingestor` credential is then not t
 ## Stopping and crashes
 
 On a normal stop (`fcdev stop`, Ctrl-C, SIGTERM) fcdev sends the JVM SIGTERM and kills it after 15 s if it has
-not exited. On Linux the kernel also kills the JVM if fcdev dies without cleanup. On macOS there is no such
+not exited. The config fcdev writes for the runtime sets `app.shutdown.drain` to 10 s (the image ships 20 s), so
+the runtime stops its routes within 6 s and gives its leases back well before the 15 s are up (see the ingestor
+README, "Leases, stopping and shutting down"). On Linux the kernel also kills the JVM if fcdev dies without cleanup. On macOS there is no such
 facility: if fcdev is killed with SIGKILL the runtime keeps running and holds its port; the next start logs that
 the port is in use and skips the ingestor. Stop the leftover (its pid is in `ingestor.pid`) and restart. On
 Windows the JVM is ended outright (no graceful signal) on a normal stop.
