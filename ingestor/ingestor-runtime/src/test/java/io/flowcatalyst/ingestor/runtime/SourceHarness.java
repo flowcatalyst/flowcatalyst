@@ -15,30 +15,63 @@ import java.time.InstantSource;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
+import java.util.function.UnaryOperator;
 import org.apache.camel.CamelContext;
+import org.apache.camel.Endpoint;
 import org.apache.camel.impl.DefaultCamelContext;
 
 /** What every source's test needs: a Camel context, a stand-in platform, and the real endpoints. */
 final class SourceHarness implements AutoCloseable {
 
   final List<List<JobRecord>> batches = new CopyOnWriteArrayList<>();
+  /** For each batch sent, whether the thread that sent it (the route's, which consumed the payload) was virtual. */
+  final List<Boolean> virtual = new CopyOnWriteArrayList<>();
   final MemoryState state = new MemoryState();
   final ExchangeCounters counters = new ExchangeCounters(InstantSource.system());
+  final SourceHealth health = new SourceHealth();
   final CamelContext camel = new DefaultCamelContext();
   final Reconciler reconciler;
   volatile boolean platformDown;
+  /** The platform is not taking jobs and the runtime knows it (R2): a batch fails at once, without retries. */
+  volatile boolean platformHeld;
 
   SourceHarness(Secrets secrets, URI awsEndpoint) {
+    this(secrets, awsEndpoint, Pacing.system(), UnaryOperator.identity());
+  }
+
+  /**
+   * A harness whose routes pace and log by {@code pacing}, and whose endpoints {@code adjust} may change
+   * before the route starts (give one a client of the test's own, say).
+   */
+  SourceHarness(Secrets secrets, URI awsEndpoint, Pacing pacing, UnaryOperator<Endpoint> adjust) {
     camel.start();
     JobSink sink =
         (ingestion, jobs) -> {
+          virtual.add(Thread.currentThread().isVirtual());
+          if (platformHeld) {
+            throw new PlatformHeldException("the platform is not taking jobs");
+          }
           if (platformDown) {
             throw new IOException("platform unavailable");
           }
           batches.add(jobs);
         };
-    SourceEndpoints endpoints = new CamelSourceEndpoints(secrets, state, awsEndpoint);
-    reconciler = new Reconciler(camel, ingestion -> new IngestionRoute(ingestion, endpoints, sink, counters));
+    CamelSourceEndpoints real = new CamelSourceEndpoints(secrets, state, awsEndpoint);
+    SourceEndpoints endpoints =
+        new SourceEndpoints() {
+          @Override
+          public Endpoint endpoint(CamelContext context, Ingestion ingestion) {
+            return adjust.apply(real.endpoint(context, ingestion));
+          }
+
+          @Override
+          public Runnable guard(Ingestion ingestion) {
+            return real.guard(ingestion);
+          }
+        };
+    reconciler =
+        new Reconciler(
+            camel, ingestion -> new IngestionRoute(ingestion, endpoints, sink, counters, health, TraceWindows.disabled(), pacing), health);
   }
 
   /** The secrets of client {@code acme}, by name; no other client has any. */

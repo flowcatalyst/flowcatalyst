@@ -140,11 +140,33 @@ class ReportingPollStrategyTest {
     strategy.handleException("Failed polling endpoint", poll);
     // An exchange the route failed was counted and logged by the route.
     Exchange failed = new DefaultExchange(new DefaultCamelContext());
+    failed.setProperty(IngestionRoute.PENDING, "begun by the route");
     failed.setException(new IOException("cut off"));
     strategy.handleException("Error processing exchange", failed, failed.getException());
 
     assertThat(reported()).hasSize(1);
     assertThat(lines).hasSize(1);
+  }
+
+  @Test
+  void aFailedExchangeTheRouteNeverBeganIsReportedHereAsTheComponentsOwnLineIsTurnedDown() {
+    Exchange failed = new DefaultExchange(new DefaultCamelContext());
+    failed.setException(new IllegalStateException("rejected before the route ran"));
+    strategy.begin(null, null);
+    strategy.handleException("Error processing exchange", failed, failed.getException());
+    // Camel may hand it over a second time (the consumer's callback, then its rollback): reported once.
+    strategy.handleException("Exchange failed", failed, failed.getException());
+
+    assertThat(reported()).singleElement().satisfies(f -> {
+      assertThat(f.kind()).isEqualTo(Failure.Kind.SOURCE);
+      assertThat(f.message()).contains("rejected before the route ran");
+    });
+    assertThat(lines).singleElement().satisfies(l -> {
+      assertThat(l.message()).contains("ingestion ing_sftp: a payload failed and the source keeps it: rejected before the route ran");
+      assertThat(l.cause()).hasMessage("rejected before the route ran");
+    });
+    strategy.commit(null, null, 1);
+    assertThat(pacer.lastFailed()).isTrue();
   }
 
   @Test

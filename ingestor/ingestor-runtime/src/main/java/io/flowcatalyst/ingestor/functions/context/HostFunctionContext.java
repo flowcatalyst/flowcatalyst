@@ -31,7 +31,10 @@ import org.slf4j.LoggerFactory;
 /// `dataSource(name)` borrows from the host's shared pool for the DSN bound to the name in the desired document
 /// (see [DbPools]); the DSNs are the ones in the document this version was loaded with, and a changed DSN loads a
 /// new version of the context.
-public final class HostFunctionContext implements FunctionContext {
+///
+/// Closing it (the version is unloaded, or the host stops: [io.flowcatalyst.ingestor.functions.load.LoadedFunction]
+/// closes its context) writes the "N log lines dropped" summary the function has pending.
+public final class HostFunctionContext implements FunctionContext, AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(HostFunctionContext.class);
 
@@ -44,7 +47,7 @@ public final class HostFunctionContext implements FunctionContext {
     private final Dispatcher dispatcher;
     private final PlatformTokenSource platformTokens;
     private final Clock clock;
-    private final System.Logger logger;
+    private final HostLogger logger;
     private final List<String> declaredDatabases;
     private final Map<String, String> databaseDsns;
     private final DbPools dbPools;
@@ -95,6 +98,12 @@ public final class HostFunctionContext implements FunctionContext {
     @Override
     public System.Logger logger() {
         return logger;
+    }
+
+    /// Writes the summary of the log lines the function dropped and has not had reported yet.
+    @Override
+    public void close() {
+        logger.flushDropped();
     }
 
     @Override

@@ -108,6 +108,22 @@ for one that is, and `eventId` / `eventIds` when the ingestion's target is an ev
 with an `Idempotency-Key` a resend answers the same ids. The reader's description, with examples, is "HTTP
 ingestions" in `docs/published/80-ingestion.md`.
 
+### SQS queues
+
+An `sqs` source long-polls (20 s) and takes up to 10 messages a poll, asking SQS how many times each has been
+received (`ApproximateReceiveCount`). The route deletes a message itself once its exchange ends without failing:
+its jobs are made, or it was rejected (unreadable, or refused for good by the platform). A message whose jobs the
+platform did not take is not deleted and comes back after the queue's visibility timeout. A delete that fails is
+a failed commit, as a file not moved: a `SOURCE` failure `read and sent, but could not be deleted from the queue:
+<why>; it will be read again`, the route `FAILING`, and the next poll paced; the message comes back and its
+identity keeps it from making new jobs. A message received more than 5 times (it keeps failing, or it is not
+being deleted) is reported: a WARN naming the queue and the count, and a `SOURCE` failure, each at most once a
+minute for the ingestion, not once a message; the route is not `FAILING` for it.
+
+**Give every source queue a dead-letter queue** (a redrive policy with a `maxReceiveCount`, 5 to 10). The
+platform keeps a record's identity for 7 days and SQS keeps a message up to 14: a message that is never deleted,
+or that keeps failing, would otherwise come back after the 7 days and make its jobs again.
+
 ### SFTP host keys
 
 An `sftp` source checks the server's host key against `knownHosts` (a `known_hosts` line). Without one the
@@ -200,7 +216,7 @@ Every value is a key in `config/application.yaml` and an environment variable na
 | `INGEST_FUNCTIONS_DB_MAX_POOLS` | `ingest.functions-db-max-pools` | `32` | database pools the host keeps for `ctx.dataSource(name)`: one per distinct DSN, shared by every function; at the cap the least recently used is closed (as the Go runner) |
 | `INGEST_FUNCTIONS_DB_MAX_CONNS` | `ingest.functions-db-max-conns` | `4` | connections per pool |
 | `INGEST_FUNCTIONS_DB_IDLE_TTL` | `ingest.functions-db-idle-ttl` | `PT10M` | a pool unused this long is closed (made again by the next call) |
-| `INGEST_FUNCTIONS_LOG_RATE` | `ingest.functions-log-rate` | `100` | the most log lines a second one function may write; over it, lines are dropped and counted |
+| `INGEST_FUNCTIONS_LOG_RATE` | `ingest.functions-log-rate` | `100` | the most log lines a second one function may write; over it, lines are dropped and counted, and one WARN a minute per function says how many (written by one timer for the host, so a function that floods and falls silent is reported too, and when the function is closed) |
 | `INGEST_FUNCTIONS_LOG_BURST` | `ingest.functions-log-burst` | `1000` | the most log lines one function may write in a burst |
 | `INGEST_INGESTION_ENABLED` | `ingest.ingestion-enabled` | `true` | run ingestions. `false` makes a functions-only process: it never polls for ingestions, so it takes no ingestion leases, runs no routes and serves no `/ingest/` endpoint |
 | `INGEST_ADVERTISED_URL` | `ingest.advertised-url` | unset | where this runtime can be reached; shown by the platform for information, never called |
@@ -336,7 +352,13 @@ extension) waits `5 s * 2^(n-1)` (at most 5 minutes, with jitter, never less tha
 read and sent but not marked done (a file not moved, a row not marked) counts as a failure. While the platform
 is not taking jobs (no answer, 5xx, 429, 401 or 403) every ingestion is held for the same kind of wait, or the
 platform's `Retry-After`, and one probe tests it. A failure is logged in full the first time and then at most
-once a minute with a count. The rulings, the building blocks (`Backoff`, `FailureLog`) and the tests are in
+once a minute with a count. Camel's own line for the same failure is handed to the runtime (a consumer's
+exception handler), or, where a component logs it itself on every failed poll or exchange (`Sqs2Consumer` "Error
+while polling", the S3 consumer's "Exchange failed, so rolling back", the file consumer's "Rollback file
+strategy", the SFTP connect's "SftpReconnect does not have more budget"), that logger is turned down in
+`ingestor-runtime/src/main/resources/simplelogger.properties`; only lines whose failure the runtime reports
+itself are. A `-Dorg.slf4j.simpleLogger.log.<logger>=<level>` system property overrides it. The rulings, the
+building blocks (`Backoff`, `FailureLog`) and the tests are in
 [docs/ingestor-failure-pacing.md](../docs/ingestor-failure-pacing.md).
 
 ## Extensions

@@ -2,6 +2,7 @@ package io.flowcatalyst.ingestor.functions.context;
 
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
 
 /// How many log lines one function address may write: a token bucket of `burst` lines refilled at `rate` a second
@@ -13,9 +14,10 @@ import java.util.function.LongSupplier;
 /// (`1/rate`) and is allowed while `tat` stays no more than `burst` intervals ahead of now. One compare-and-set
 /// per line, no allocation.
 ///
-/// Lines over the budget are dropped and counted. The count is reported by [#takeDropped], which the logger calls
-/// on its log calls once a minute has passed since the last report (no timer thread: a function that floods and
-/// then falls silent has its last minute reported at its next line).
+/// Lines over the budget are dropped and counted. The host's one timer ([LogBudgets]) takes the count once a minute
+/// with [#takeAll] and writes the summary, so a function that floods and then falls silent still has its last
+/// minute reported; closing a function takes what is pending the same way. Without a running timer (a budget made
+/// on its own) the logger takes it on its log calls once a minute has passed ([#takeDropped]).
 public final class LogBudget {
 
     /// The most lines a second, and the most in a burst.
@@ -42,6 +44,7 @@ public final class LogBudget {
     private final AtomicLong tat;
     private final AtomicLong nextReport;
     private final LongAdder dropped = new LongAdder();
+    private final BooleanSupplier timed;
 
     public LogBudget(Limits limits) {
         this(limits, System::nanoTime);
@@ -49,8 +52,15 @@ public final class LogBudget {
 
     /// @param nanos a monotonic clock in nanoseconds (tests move it)
     LogBudget(Limits limits, LongSupplier nanos) {
+        this(limits, nanos, () -> false);
+    }
+
+    /// @param nanos a monotonic clock in nanoseconds (tests move it)
+    /// @param timed whether the host's timer writes this budget's summaries (then the logger does not)
+    LogBudget(Limits limits, LongSupplier nanos, BooleanSupplier timed) {
         this.limits = limits;
         this.nanos = nanos;
+        this.timed = timed;
         this.intervalNanos = Math.max(1, 1_000_000_000L / limits.rate());
         this.windowNanos = intervalNanos * limits.burst();
         long now = nanos.getAsLong();
@@ -76,6 +86,18 @@ public final class LogBudget {
                 return true;
             }
         }
+    }
+
+    /// Whether the host's timer writes this budget's summaries, so that a log call does not.
+    public boolean timed() {
+        return timed.getAsBoolean();
+    }
+
+    /// The lines dropped since the last report, whenever asked (the timer's minute, a close). Resets the count, and
+    /// the next [#takeDropped] is a minute from now.
+    public long takeAll() {
+        nextReport.set(nanos.getAsLong() + REPORT_EVERY_NANOS);
+        return dropped.sumThenReset();
     }
 
     /// The lines dropped since the last report, when a minute has passed since it; otherwise 0. Resets the count.

@@ -139,6 +139,7 @@ final class ReportingPollStrategy implements PollingConsumerPollStrategy, Except
     return switch (ingestion.source()) {
       case Source.Sftp _, Source.S3 _ -> "moved or deleted";
       case Source.DatabasePoll _ -> "marked as read";
+      case Source.Sqs _ -> "deleted from the queue";
       default -> "marked as done";
     };
   }
@@ -159,7 +160,8 @@ final class ReportingPollStrategy implements PollingConsumerPollStrategy, Except
 
   // The consumer's exception handler. A poll that threw was reported by rollback() before Camel calls
   // this, an exchange the route failed was reported by the route, and what is left is a step after a
-  // good exchange (a commit) or something outside both.
+  // good exchange (a commit), an exchange that failed before the route began it, or something outside
+  // all of them.
 
   @Override
   public void handleException(Throwable exception) {
@@ -178,7 +180,16 @@ final class ReportingPollStrategy implements PollingConsumerPollStrategy, Except
       return;
     }
     if (exchange != null && exchange.isFailed()) {
-      // The route reported the exchange; a failing rollback after it adds nothing.
+      if (exchange.getProperty(IngestionRoute.PENDING) == null) {
+        // It failed before the route began it, so the route did not report it; the component's own line
+        // for a failed exchange is turned down (simplelogger.properties), so it is reported here.
+        reported = exception;
+        String text = ExchangeCounters.clean(exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage());
+        failures.failed(pollKey, "ingestion " + ingestion.id() + ": a payload failed and the source keeps it: " + text, exception);
+        counters.failure(ingestion, Failure.Kind.SOURCE, text, null, null);
+        pacer.sourceFailed();
+      }
+      // Else the route reported the exchange; a failing rollback after it adds nothing.
       return;
     }
     if (exchange != null) {

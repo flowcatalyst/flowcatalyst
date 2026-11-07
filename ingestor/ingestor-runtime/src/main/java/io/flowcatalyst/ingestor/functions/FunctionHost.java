@@ -7,6 +7,7 @@ import io.flowcatalyst.framework.httpclient.HttpClients;
 import io.flowcatalyst.ingestor.functions.context.ContextFactory;
 import io.flowcatalyst.ingestor.functions.context.DbPools;
 import io.flowcatalyst.ingestor.functions.context.LogBudget;
+import io.flowcatalyst.ingestor.functions.context.LogBudgets;
 import io.flowcatalyst.ingestor.functions.context.OutboundClients;
 import io.flowcatalyst.ingestor.functions.control.ControlPlane;
 import io.flowcatalyst.ingestor.functions.http.FunctionListener;
@@ -48,10 +49,12 @@ public final class FunctionHost implements AutoCloseable {
     private final DbPools dbPools;
     private final ScheduledExecutorService dbSweeper;
     private final FunctionTraceShipper traceShipper;
+    private final LogBudgets logBudgets;
 
     private FunctionHost(Reconciler reconciler, ReconcileLoop loop, FunctionListener listener, DbPools dbPools,
-            ScheduledExecutorService dbSweeper, FunctionTraceShipper traceShipper) {
+            ScheduledExecutorService dbSweeper, FunctionTraceShipper traceShipper, LogBudgets logBudgets) {
         this.traceShipper = traceShipper;
+        this.logBudgets = logBudgets;
         this.reconciler = reconciler;
         this.loop = loop;
         this.listener = listener;
@@ -133,6 +136,8 @@ public final class FunctionHost implements AutoCloseable {
         ArtifactCache artifacts = new ArtifactCache(controlPlane, null);
         FunctionRegistry registry = new FunctionRegistry(MAX_LOADED, clock);
         ContextFactory contexts = new ContextFactory(new OutboundClients(clients), clock, controlPlane, dbPools, logLimits, traces);
+        // One timer for the whole host writes every function's "N log lines dropped" summary once a minute.
+        contexts.logBudgets().start();
         Reconciler reconciler = new Reconciler(
                 pool, runnerId, version, controlPlane, artifacts, new JvmFunctionLoader(), registry, contexts,
                 MetaspaceGuard.system(), clock, Reconciler.Timing.DEFAULTS);
@@ -148,7 +153,7 @@ public final class FunctionHost implements AutoCloseable {
         long everySeconds = Math.clamp(dbLimits.idleTtl().toSeconds() / 2, 1, 60);
         sweeper.scheduleWithFixedDelay(dbPools::sweep, everySeconds, everySeconds, TimeUnit.SECONDS);
         LOG.info("function host started: pool={} runner={}", pool, runnerId);
-        return new FunctionHost(reconciler, loop, listener, dbPools, sweeper, traceShipper);
+        return new FunctionHost(reconciler, loop, listener, dbPools, sweeper, traceShipper, contexts.logBudgets());
     }
 
     public Reconciler reconciler() {
@@ -159,11 +164,18 @@ public final class FunctionHost implements AutoCloseable {
         return listener;
     }
 
+    /// The functions' log budgets, whose one timer this host runs while it is started.
+    public LogBudgets logBudgets() {
+        return logBudgets;
+    }
+
     @Override
     public void close() {
         reconciler.drain();
         loop.close();
         reconciler.close();
+        // The functions are closed (each wrote its pending summary); the timer stops and writes anything left.
+        logBudgets.close();
         dbSweeper.shutdownNow();
         dbPools.close();
         // After the calls in flight have ended: what they recorded is shipped, within a bound.
