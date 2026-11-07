@@ -156,9 +156,10 @@ three faults. It proves what no unit test does and guards A1/A2.
 
 | Item | Status |
 |---|---|
-| A1–A3 | in progress |
-| B1–B4 | in progress |
-| C1–C2 | in progress |
-| D | in progress |
-| `fc_ingestion_unheld` alarm | investigating where the metric goes |
-| Runtime load test | after the above |
+| A1–A3 | built (merged 2026-11-07). The module's shutdown fits the framework's bound (`app.shutdown.drain`: 20 s in the image, 10 s under fcdev); the watchdog suspends only the source's intake |
+| Extension API (owner, 2026-11-07) | built: `PolledSource.polling()`, suspendable pollers, `Payloads.stopping()`, `Payloads.dispatchTaken()` (destructive reads); API major stays 1. mix and webiq check `stopping()` (mono-repo, local branch); ctrack as a patch |
+| B1–B4 | built (merged) |
+| C1–C3 | built (merged); C3 is the "ingestions unheld" WARN line |
+| D | built (merged): `make ingestor-fleet-test` |
+| `fc_ingestion_unheld` alarm | the gauge is not scraped in AWS: an iac log metric filter + alarm on the C3 line (iac branch `feat/ingestion-unheld-alarm`, not pushed) |
+| Runtime load test | not started |
