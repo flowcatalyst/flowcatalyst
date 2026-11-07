@@ -20,8 +20,8 @@
 #     probes information_schema across every schema (internal/migrate), so it
 #     would see the other instance's goose ledger and skip or misapply
 #     migrations.
-#   - Its own ports for every listener (API, metrics; MCP, function runner and
-#     the outbox admin API are off), its own process, PID file, signing key,
+#   - Its own ports for every listener (API, metrics; MCP, function runner, the
+#     outbox admin API and fcdev's own ingestor child are off), its own process, PID file, signing key,
 #     encryption key and HOME, so nothing lands in the developer's
 #     ~/Library/{Caches,Application Support} (fcdev writes MCP and fn-CLI
 #     credentials there on first boot).
@@ -225,6 +225,7 @@ start_platform() {
 			FC_FUNCTIONS_ARTIFACT_STORE="file://$STATE/functions" \
 			FC_OUTBOX_ENABLED=false \
 			FC_OUTBOX_ADMIN_PORT=0 \
+			FC_INGESTOR_ENABLED=false \
 			FC_SCHEDULER_DB_MAX_CONNECTIONS=4 \
 			FC_DEV_PID_FILE="$STATE/fcdev-self.pid" \
 			FC_FN_CLI_CREDENTIALS_PATH="$STATE/home/fng-cli.json" \

@@ -118,7 +118,7 @@ Everything else the process writes stays in the state dir: it runs with `env -i`
 `FC_*`), `HOME` and `XDG_*` pointed at `tmp/e2e-platform/home` (fcdev otherwise writes the MCP
 credential file into the shared `~/Library/Caches/flowcatalyst-dev/`), its own PID file, JWT
 signing key and app key. Listeners: 18080 and 19090 only; the function runner (8095/8096), MCP
-(8090) and the outbox admin API are off.
+(8090), the outbox admin API and fcdev's own ingestor runtime child (8091) are off.
 
 ## Caveats
 
