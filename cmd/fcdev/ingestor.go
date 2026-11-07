@@ -186,11 +186,17 @@ func ingestorExtensionsDir() string {
 	return d
 }
 
-// applicationYAML is the config/application.yaml the jar insists on. Every
-// value is overridden by the environment fcdev sets, so this carries only the
-// shape.
+// applicationYAML is the config/application.yaml the jar insists on. The
+// environment fcdev sets overrides every value but app.shutdown.drain, so
+// this carries the shape and that bound: fcdev kills the runtime 15 s after
+// SIGTERM, so each shutdown step gets 10 s rather than the image's 20 s.
 func applicationYAML(cfg ingestorConfig) string {
 	return fmt.Sprintf(`# Written by fcdev on every start; edit nothing here. The environment wins.
+# fcdev kills the runtime 15 s after SIGTERM: each shutdown step gets 10 s (the image ships 20 s).
+app:
+  shutdown:
+    drain: 10s
+
 http:
   port: %d
 

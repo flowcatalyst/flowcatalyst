@@ -264,30 +264,63 @@ A single-owner (polled) route runs under the lease the poll renews (3 minutes on
   end without a renewal: 30 s or twice the poll's timeout, whichever is longer, at most half the lease (with
   the defaults, 1 minute). A round stuck on a slow platform, or on a route whose source does not return from
   its start, cannot keep a lapsed lease's routes running: the watchdog never waits for the round. It marks the
-  routes it takes as revoked and suspends their consumers directly (no new poll or message is taken; the
-  exchange in flight goes on), which takes neither the reconciler's lock nor the Camel context's; the routes are
-  then stopped and removed as below when nothing else is changing them, or by the next round, which starts them
-  anew if the platform lists them again;
+  routes it takes as revoked and suspends, directly, the consumer of the route that reads each one's source (no
+  new poll or message is taken; a batch ends after the exchange in flight; the exchange in flight goes on, through
+  a camel-route ingestion's own routes behind it, which keep running), which takes neither the reconciler's lock
+  nor the Camel context's; the routes are then stopped and removed as below when nothing else is changing them,
+  or by the next round, which starts them anew if the platform lists them again;
 - on shutdown.
 
 The poll and the report wait at most `FLOWCATALYST_TIMEOUT` and at most a sixth of the lease (30 s for 3
-minutes). A route is stopped gracefully: its exchange in flight is given 10 s to finish (its jobs sent, its
-file moved, its message acknowledged), then cut off, and its payload stays with the source. Several routes are
-stopped at the same time; on shutdown all of them within 12 s.
+minutes).
+
+A route is stopped gracefully, and the routes a round or a shutdown stops are stopped together, in three
+steps. First every one of them stops taking from its source at once: the consumer that reads the source is
+suspended directly, without the Camel context's lock. A file (SFTP), S3 or SQS poll in the middle of a batch
+ends it after the exchange in flight, as Camel's own graceful stop does, and what the batch did not reach
+stays with the source: a file or object is not moved, an SQS message is not deleted and comes back after its
+visibility timeout (the same message id, so the same record identity). Then each is given up to 10 s, at the
+same time as the others, to finish its exchange in flight (its jobs sent, its file moved, its message
+acknowledged) and, for a polled source, the poll in progress (a database poll stores its watermark or marks its
+rows after the exchange). Last they are stopped and removed one after another (Camel stops one route at a time
+under its context's lock), which is quick once nothing is in flight; one that has not finished by then is given
+a second more and cut off, and its payload stays with the source.
 
 **Giving a lease back.** The runtime gives a lease back (`POST /leases/release`) only for a route that has
 **actually stopped**: stopped within the bound, with no exchange still running in it (Camel cuts an exchange
-off at the timeout but cannot end its thread, so one cut off may still be running), and not revoked by the
-watchdog. A route still stopping is left to its lease.
+off at the timeout but cannot end its thread, so one cut off may still be running) and, for a polled source,
+no poll still running, and not revoked by the watchdog. A route still stopping is left to its lease.
 
 - After a round stopped single-owner routes the platform no longer lists, it gives those back
   (`goodbye: false`), waiting at most the poll's timeout.
-- At shutdown, after stopping every route, it gives back the single-owner ones that stopped cleanly with
-  `goodbye: true`, once, even when there are none, waiting at most 5 s. The platform then hands them to
-  another runtime at its next poll, no longer counts this one as live for fair shares, and lets a successor
-  under the same runtime id poll at once. Shutdown takes about 20 s at most (12 s for the routes, 5 s and a
-  second's grace for the goodbye, 2 s for the last trace records), well inside ECS's 60 s `stopTimeout`; fcdev
-  waits 15 s before it kills the JVM, so there a slow stop can leave the goodbye unsent.
+- At shutdown it closes the function host (waiting at most 2 s for it; it goes on closing), stops the
+  watchdog and the round's connection tests, stops every route, then gives back the single-owner ones that
+  stopped cleanly with `goodbye: true`, once, even when there are none, then ships the last trace records. The
+  platform then hands them to another runtime at its next poll, no longer counts this one as live for fair
+  shares, and lets a successor under the same runtime id poll at once.
+- The application framework gives each shutdown step `app.shutdown.drain` and then interrupts it and moves
+  on; the image's `config/application.yaml` sets it to 20 s (the framework's own default is 10 s). The
+  shutdown fits itself inside it: it keeps 3.5 s at the end for the goodbye (its call waits at most 5 s, at least
+  2.5 s, and a second more to give up) and half a second of margin; the routes get the rest, at most 12 s; the
+  trace records get what is left, at most 2 s. With 20 s the routes get their 12 s, the goodbye its 5 s and the
+  trace records their 2 s. Before the modules shut down, the framework waits at most `app.shutdown.drain` for a
+  round in progress, then interrupts it and moves on; HTTP requests in flight get as long (`http.shutdown-grace`
+  defaults to it). A shutdown takes about 20 s at most; when a round was stuck, about 20 s (the round) + 20 s
+  (the module) + Camel's own close (its graceful stop gives routes 10 s), about 50 s, inside ECS's 60 s
+  `stopTimeout`. If the stuck start still holds the Camel context's lock, its close may wait for the whole
+  bound, and ECS may end the process during it, after the goodbye was sent.
+- fcdev kills the runtime 15 s after SIGTERM, so the config it writes for the runtime sets
+  `app.shutdown.drain` to 10 s: the routes get 6 s there, the goodbye at least 2.5 s. A slow stop after a stuck
+  round can still leave the goodbye unsent under fcdev.
+- A round stuck starting a route whose source does not answer holds the reconciler's lock, and the Camel
+  context's. The shutdown waits for the reconciler at most 3 s, then goes on without it, the watchdog's way:
+  every started ingestion is revoked and the consumer that reads its source suspended directly, which takes
+  neither lock; each that, within what is left of the routes' time, has no exchange in flight in any of its
+  routes and no poll in progress counts as stopped cleanly and is given back (it takes nothing more from its
+  source and nothing of it is running, so it can make no job and move no watermark). The others are left to
+  their leases, and so is a route the stuck round starts afterwards; the Camel context's close stops them.
+  From the start of the shutdown no route is started any more, so a round still running cannot start again an
+  ingestion whose lease the goodbye gave back.
 - The watchdog's stops and those after a failed poll never give a lease back: the lease is ending anyway, and
   the platform may not be reachable.
 - A release that fails is logged at WARN and not tried again; a platform that answers it `404` predates it, is

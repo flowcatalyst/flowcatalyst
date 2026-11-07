@@ -10,6 +10,7 @@ import io.flowcatalyst.ingestor.contract.JobRecord;
 import io.flowcatalyst.ingestor.contract.Source;
 import io.flowcatalyst.ingestor.contract.Split;
 import java.io.IOException;
+import java.time.Duration;
 import java.time.InstantSource;
 import java.util.ArrayList;
 import java.util.List;
@@ -219,6 +220,35 @@ class CamelRouteTest {
     reconciler.reconcile(List.of(route("ing_f", 2, filtered.formatted("OPEN"))));
     await(() -> !batches.isEmpty());
     assertThat(batches.getFirst()).extracting(JobRecord::payload).containsExactly("{\"incident\":\"OPEN\"}");
+  }
+
+  @Test
+  void theWatchdogStopsWhatARouteReadsButLetsItsExchangeInFlightFinishThroughTheRoutesBehindIt() throws Exception {
+    String slow =
+        """
+        - from:
+            uri: timer:slow
+            parameters:
+              period: 60000
+              repeatCount: 1
+            steps:
+              - setBody:
+                  constant: '[{"order":7}]'
+              - delay:
+                  constant: 1500
+        """;
+    reconciler.reconcile(List.of(route("ing_w", 1, slow)));
+    // The payload is in the route that reads the source, on its way to the ingestion's own routes.
+    await(() -> camel.getInflightRepository().size("ing_w" + IngestionRoute.SOURCE_ROUTE) > 0);
+
+    long began = System.nanoTime();
+    assertThat(reconciler.revoke(i -> true, Duration.ofSeconds(5))).isEqualTo(1);
+
+    // Nothing more is read, but what was read made its jobs: the routes behind the source were not
+    // suspended under it, so the routes stopped cleanly and at once.
+    assertThat(Duration.ofNanos(System.nanoTime() - began)).isLessThan(Duration.ofSeconds(5));
+    assertThat(batches).singleElement().satisfies(b -> assertThat(b).extracting(JobRecord::payload).containsExactly("{\"order\":7}"));
+    assertThat(routeIds()).isEmpty();
   }
 
   @Test

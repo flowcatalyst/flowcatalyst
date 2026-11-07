@@ -20,6 +20,8 @@ import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
 import org.apache.camel.Route;
 import org.apache.camel.RoutesBuilder;
+import org.apache.camel.support.ScheduledBatchPollingConsumer;
+import org.apache.camel.support.ScheduledPollConsumer;
 import org.apache.camel.support.service.ServiceHelper;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -35,8 +37,13 @@ import org.slf4j.LoggerFactory;
  * copy taken after each change, so an HTTP ingestion is found while another route is being stopped or
  * built. The lease watchdog's {@link #revoke} never waits for the lock (a change may be stuck starting
  * a route whose source does not answer): it marks the started ingestions it takes as revoked, which
- * every reader and every later change treats as no longer started, and suspends their consumers
- * directly, which takes neither this lock nor the Camel context's.
+ * every reader and every later change treats as no longer started, and suspends the consumers that
+ * read their sources directly, which takes neither this lock nor the Camel context's. The runtime's
+ * own stop ({@link #shutdown}) waits for the lock a bounded while and then does the same.
+ *
+ * <p>Routes are stopped together ({@link #removeAll}): every one stops taking at once, each finishes
+ * what it took at the same time as the others, and only then are they stopped one by one under the
+ * Camel context's lock, which is quick once nothing is in flight.
  */
 final class Reconciler {
 
@@ -68,6 +75,8 @@ final class Reconciler {
     final Ingestion ingestion;
     final List<Route> routes;
     final AtomicBoolean revoked = new AtomicBoolean();
+    /** Set once the consumer that reads the source was suspended (or, one that cannot be, stopped) without failing. */
+    private volatile boolean intakeStopped;
 
     Live(Ingestion ingestion, List<Route> routes) {
       this.ingestion = ingestion;
@@ -78,14 +87,52 @@ final class Reconciler {
       return revoked.get();
     }
 
-    /** Stops the routes reading: no new poll or message is taken; the exchange in flight goes on. */
-    void suspend() {
-      for (Route route : routes) {
-        try {
-          ServiceHelper.suspendService(route.getConsumer());
-        } catch (RuntimeException e) {
-          LOG.warn("route {} could not be suspended", route.getId(), e);
+    /**
+     * Stops the route that reads the source taking anything more, leaving the routes behind it (a
+     * camel-route ingestion's) running, so the exchange in flight can finish through them.
+     */
+    void suspendIntake() {
+      if (routes.isEmpty()) {
+        intakeStopped = true;
+        return;
+      }
+      org.apache.camel.Consumer consumer = routes.getFirst().getConsumer();
+      // A consumer whose suspension failed is FAILED, which Camel also counts as stopped.
+      intakeStopped = quiesce(routes.getFirst()) && (ServiceHelper.isSuspended(consumer) || ServiceHelper.isStopped(consumer));
+    }
+
+    /**
+     * Whether the route that reads the source has stopped taking: suspended, or stopped (a consumer
+     * that cannot be suspended is stopped instead), without failing. True when there is none.
+     */
+    boolean intakeStopped() {
+      return intakeStopped;
+    }
+
+    /** Whether the route that reads the source is in the middle of a poll (listing, reading, committing). */
+    boolean polling() {
+      return !routes.isEmpty() && routes.getFirst().getConsumer() instanceof ScheduledPollConsumer poller && poller.isPolling();
+    }
+
+    /**
+     * Suspends a route's consumer without the Camel context's lock. A batch consumer (a file, S3 or
+     * SQS poll) goes on through the rest of its batch while merely suspended, so it is first told,
+     * as Camel's own graceful stop tells it, to end the batch after the exchange in flight; what the
+     * batch did not reach stays with the source.
+     *
+     * @return false when it failed
+     */
+    private static boolean quiesce(Route route) {
+      try {
+        org.apache.camel.Consumer consumer = route.getConsumer();
+        if (consumer instanceof ScheduledBatchPollingConsumer batch) {
+          batch.deferShutdown(route.getShutdownRunningTask());
         }
+        ServiceHelper.suspendService(consumer);
+        return true;
+      } catch (RuntimeException e) {
+        LOG.warn("route {} could not be suspended", route.getId(), e);
+        return false;
       }
     }
   }
@@ -103,6 +150,22 @@ final class Reconciler {
 
   /** What the readers read: a copy of {@code started}, replaced after every change. */
   private volatile List<Live> published = List.of();
+
+  /**
+   * Set when the runtime begins to shut down ({@link #shutdown}): from then on no route is started,
+   * so a round still running (one stuck starting a route, or one the application left behind) cannot
+   * start again an ingestion whose lease the goodbye gave back.
+   */
+  private volatile boolean closed;
+
+  /** How often a stop looks at whether the routes it stopped taking have finished what they took. */
+  private static final Duration DRAIN_POLL = Duration.ofMillis(50);
+
+  /** Of a stop's bound, what is kept for stopping and removing the routes once drained. */
+  private static final Duration STOP_RESERVE = Duration.ofSeconds(1);
+
+  /** The graceful bound Camel is given to stop a route that did not drain in time: it is then cut off. */
+  private static final Duration CUT_OFF = Duration.ofSeconds(1);
 
   Reconciler(CamelContext camel, Function<Ingestion, RoutesBuilder> routes) {
     this(camel, routes, new SourceHealth());
@@ -195,6 +258,11 @@ final class Reconciler {
       }
       List<Ingestion> stopped = removeAll(leaving, ROUTE_STOP.multipliedBy(2));
       for (Ingestion ingestion : wanted.values()) {
+        if (closed) {
+          // The runtime is shutting down (it may have begun while this round was starting a
+          // route): nothing more is started.
+          break;
+        }
         if (!states.containsKey(ingestion.id())) {
           states.put(ingestion.id(), add(ingestion));
         }
@@ -238,6 +306,133 @@ final class Reconciler {
   }
 
   /**
+   * The runtime's stop: from now on no route is started; every started ingestion is stopped as by
+   * {@link #stop(Predicate, Duration)}, if {@link #lock} can be had within {@code lockWait}. A change
+   * may hold it, stuck starting a route whose source does not answer (and holding the Camel context's
+   * lock too), so after {@code lockWait} it goes on without it, the watchdog's way: every started
+   * ingestion is revoked and the consumer that reads its source suspended directly (a batch consumer
+   * told to end its batch after the exchange in flight, one that cannot be suspended stopped), and each is
+   * waited for, within what is left of {@code within}, to finish what it took: no exchange in flight
+   * in any of its routes and no poll in progress. One that got there counts as stopped cleanly, though
+   * its routes are left for the Camel context's close: it takes nothing more from its source and
+   * nothing of it is running, so it can make no job and move no watermark. A route the stuck change
+   * starts after this is not among them: it was not started when they were taken.
+   *
+   * @param within the longest the whole stop may take
+   * @param lockWait the longest it waits for the lock before going on without it
+   * @return how many were stopped, and which of them stopped cleanly
+   */
+  Stopped shutdown(Duration within, Duration lockWait) {
+    closed = true;
+    long deadline = System.nanoTime() + within.toNanos();
+    boolean locked = false;
+    try {
+      locked = lock.tryLock(Math.min(lockWait.toNanos(), within.toNanos()), TimeUnit.NANOSECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    if (locked) {
+      try {
+        List<String> ids = List.copyOf(started.keySet());
+        List<Ingestion> clean = removeAll(ids, left(deadline));
+        publish();
+        return new Stopped(ids.size(), clean);
+      } finally {
+        lock.unlock();
+      }
+    }
+    LOG.warn("a change of the routes has not let go of them within {}; stopping what they take without waiting for it", lockWait);
+    List<Live> taken = take(live -> true);
+    // Only what reads the source: a camel-route ingestion's exchange in flight finishes through the routes behind it.
+    Map<Live, Thread> suspending = suspendAll(taken, Live::suspendIntake);
+    Set<Live> drained = drain(suspending, deadline);
+    List<Ingestion> clean = new ArrayList<>();
+    for (Live live : taken) {
+      if (drained.contains(live) && live.intakeStopped()) {
+        clean.add(live.ingestion);
+      }
+    }
+    LOG.info("stopped taking for {} ingestion(s); {} of them have nothing left running", taken.size(), clean.size());
+    return new Stopped(taken.size(), clean);
+  }
+
+  private static Duration left(long deadline) {
+    return Duration.ofNanos(Math.max(0, deadline - System.nanoTime()));
+  }
+
+  /** Marks revoked, and returns, the published started ingestions that match and were not revoked already. */
+  private List<Live> take(Predicate<Ingestion> which) {
+    List<Live> taken = new ArrayList<>();
+    for (Live live : published) {
+      if (which.test(live.ingestion) && live.revoked.compareAndSet(false, true)) {
+        taken.add(live);
+      }
+    }
+    return taken;
+  }
+
+  /** Suspends each, at the same time, each on its own thread; taking neither lock. */
+  private static Map<Live, Thread> suspendAll(List<Live> lives, Consumer<Live> how) {
+    Map<Live, Thread> suspending = new LinkedHashMap<>();
+    for (Live live : lives) {
+      suspending.put(live, Thread.ofVirtual().name("suspend-" + live.ingestion.id()).start(() -> how.accept(live)));
+    }
+    return suspending;
+  }
+
+  /**
+   * Waits, until {@code deadline}, for each to be suspended and then quiet ({@link #quiet}) twice in a
+   * row, {@link #DRAIN_POLL} apart (a poll that passed its last check before the suspension may still
+   * be about to begin).
+   *
+   * @return those that got there
+   */
+  private Set<Live> drain(Map<Live, Thread> suspending, long deadline) {
+    Map<Live, Boolean> once = new LinkedHashMap<>();
+    Set<Live> drained = new HashSet<>();
+    while (true) {
+      for (Map.Entry<Live, Thread> each : suspending.entrySet()) {
+        Live live = each.getKey();
+        if (drained.contains(live)) {
+          continue;
+        }
+        boolean quiet = !each.getValue().isAlive() && quiet(live);
+        if (quiet && once.getOrDefault(live, false)) {
+          drained.add(live);
+        }
+        once.put(live, quiet);
+      }
+      long left = deadline - System.nanoTime();
+      if (drained.size() == suspending.size() || left <= 0) {
+        return drained;
+      }
+      try {
+        Thread.sleep(Duration.ofNanos(Math.min(left, DRAIN_POLL.toNanos())));
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return drained;
+      }
+    }
+  }
+
+  /**
+   * Whether nothing of the ingestion is running: no exchange in flight in any of its routes and,
+   * for a single-owner one, no poll in progress (a poll lists or reads before it makes an exchange,
+   * and a database poll stores its watermark after it). Read without any lock.
+   */
+  private boolean quiet(Live live) {
+    if (live.ingestion.source().singleOwner() && live.polling()) {
+      return false;
+    }
+    for (Route route : live.routes) {
+      if (camel.getInflightRepository().size(route.getId()) > 0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * Stops and forgets every started ingestion that matches, as {@link #stop(Predicate, Duration)}.
    *
    * @param which the ingestions to stop
@@ -252,7 +447,9 @@ final class Reconciler {
    * may hold, nor for the Camel context's, which that start may hold too. Each matching started
    * ingestion is marked revoked (from then on it is not {@linkplain #running running}, not reported,
    * not rebuilt, and the next change stops its routes and, if it is listed again, starts it anew) and
-   * its routes' consumers are suspended, so they take nothing more from the source. When nothing holds
+   * the consumer of the route that reads its source is suspended, so it takes nothing more from the
+   * source; the routes behind it (a camel-route ingestion's) keep running, so the exchange in flight
+   * finishes through them. When nothing holds
    * the lock the revoked routes are then stopped and removed as usual; otherwise the next change does
    * it.
    *
@@ -261,25 +458,17 @@ final class Reconciler {
    * @return how many were revoked
    */
   int revoke(Predicate<Ingestion> which, Duration within) {
-    List<Live> taken = new ArrayList<>();
-    for (Live live : published) {
-      if (which.test(live.ingestion) && live.revoked.compareAndSet(false, true)) {
-        taken.add(live);
-      }
-    }
+    List<Live> taken = take(which);
     if (taken.isEmpty()) {
       return 0;
     }
-    List<Thread> suspending = new ArrayList<>();
-    for (Live live : taken) {
-      suspending.add(Thread.ofVirtual().name("revoke-" + live.ingestion.id()).start(live::suspend));
-    }
+    Map<Live, Thread> suspending = suspendAll(taken, Live::suspendIntake);
     long deadline = System.nanoTime() + within.toNanos();
-    for (int i = 0; i < suspending.size(); i++) {
+    for (Map.Entry<Live, Thread> each : suspending.entrySet()) {
       try {
         long left = deadline - System.nanoTime();
-        if (left <= 0 || !suspending.get(i).join(Duration.ofNanos(left))) {
-          LOG.warn("ingestion {} was not suspended within {}; it goes on being suspended", taken.get(i).ingestion.id(), within);
+        if (left <= 0 || !each.getValue().join(Duration.ofNanos(left))) {
+          LOG.warn("ingestion {} was not suspended within {}; it goes on being suspended", each.getKey().ingestion.id(), within);
         }
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
@@ -404,16 +593,32 @@ final class Reconciler {
   }
 
   /**
-   * Forgets the ingestions and stops their routes at the same time. A route that has not stopped
-   * within {@code within} is left to finish stopping on its own thread; it is no longer started.
+   * Forgets the ingestions and stops their routes, all at the same time, in three steps:
+   *
+   * <ol>
+   *   <li>the consumer that reads each one's source is suspended at once, each on its own thread and
+   *       without the Camel context's lock, so none takes anything more while the others finish;
+   *   <li>each is waited for, at the same time, until nothing of it is running ({@link #quiet}),
+   *       each at most {@link #ROUTE_STOP} and all within {@code within} (less {@link #STOP_RESERVE},
+   *       kept for the next step);
+   *   <li>the routes are stopped and removed, the drained ones first: Camel stops one route at a time
+   *       under its context's lock, which is quick once nothing is in flight. One that did not drain
+   *       is given {@link #CUT_OFF} to finish and is then cut off; its payload stays with the source.
+   * </ol>
+   *
+   * A route that has not stopped within {@code within} is left to finish stopping on its own thread;
+   * it is no longer started.
    *
    * @return the started ingestions among them whose routes stopped within {@code within}, each with
-   *     no exchange left running in it, and that the watchdog had not revoked
+   *     no exchange left running in it (and, for a single-owner one, no poll), and that the watchdog
+   *     had not revoked
    */
   private List<Ingestion> removeAll(List<String> ids, Duration within) {
     if (ids.isEmpty()) {
       return List.of();
     }
+    long start = System.nanoTime();
+    long deadline = start + within.toNanos();
     Map<String, Live> lives = new LinkedHashMap<>();
     for (String id : ids) {
       health.forget(id);
@@ -424,33 +629,23 @@ final class Reconciler {
       }
     }
     publish();
-    Set<String> clean = java.util.concurrent.ConcurrentHashMap.newKeySet();
-    List<Thread> stopping = new ArrayList<>();
+    // 1. Nothing more is taken from any of them.
+    Map<Live, Thread> suspending = suspendAll(List.copyOf(lives.values()), Live::suspendIntake);
+    // 2. What each took is finished, at the same time.
+    long drainedBy = Math.min(start + ROUTE_STOP.toNanos(), deadline - Math.min(STOP_RESERVE.toNanos(), within.toNanos() / 4));
+    Set<Live> drained = drain(suspending, drainedBy);
+    // 3. Stopped and removed: the drained ones, quick, then the others, cut off.
+    List<String> first = new ArrayList<>();
+    List<String> then = new ArrayList<>();
     for (String id : ids) {
-      stopping.add(
-          Thread.ofVirtual()
-              .name("stop-" + id)
-              .start(
-                  () -> {
-                    if (removeRoute(id)) {
-                      clean.add(id);
-                    }
-                  }));
+      Live live = lives.get(id);
+      (live == null || drained.contains(live) ? first : then).add(id);
     }
+    Set<String> clean = java.util.concurrent.ConcurrentHashMap.newKeySet();
     Set<String> inTime = new HashSet<>();
-    long deadline = System.nanoTime() + within.toNanos();
-    for (int i = 0; i < ids.size(); i++) {
-      try {
-        long left = deadline - System.nanoTime();
-        if (left > 0 && stopping.get(i).join(Duration.ofNanos(left))) {
-          inTime.add(ids.get(i));
-        } else {
-          LOG.warn("route {} did not stop within {}; it goes on stopping, and its lease is left to run out", ids.get(i), within);
-        }
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        break;
-      }
+    boolean interrupted = stopAll(first, lives, clean, inTime, deadline, within);
+    if (!interrupted) {
+      stopAll(then, lives, clean, inTime, deadline, within);
     }
     ids.forEach(forgotten);
     List<Ingestion> stopped = new ArrayList<>();
@@ -464,18 +659,62 @@ final class Reconciler {
   }
 
   /**
-   * Stops and removes an ingestion's routes.
+   * Stops and removes the ingestions' routes, each on its own thread, and waits for them until
+   * {@code deadline}; adds to {@code clean} those that stopped cleanly, to {@code inTime} those that
+   * stopped by then.
+   *
+   * @return whether the wait was interrupted
+   */
+  private boolean stopAll(List<String> ids, Map<String, Live> lives, Set<String> clean, Set<String> inTime, long deadline, Duration within) {
+    List<Thread> stopping = new ArrayList<>();
+    for (String id : ids) {
+      Live live = lives.get(id);
+      // A drained route stops at once; one that is not is cut off after a short while.
+      Duration grace = live == null || quiet(live) ? ROUTE_STOP : CUT_OFF;
+      stopping.add(
+          Thread.ofVirtual()
+              .name("stop-" + id)
+              .start(
+                  () -> {
+                    if (removeRoute(id, grace) && (live == null || !live.ingestion.source().singleOwner() || !live.polling())) {
+                      clean.add(id);
+                    }
+                  }));
+    }
+    for (int i = 0; i < ids.size(); i++) {
+      try {
+        long left = deadline - System.nanoTime();
+        if (left > 0 && stopping.get(i).join(Duration.ofNanos(left))) {
+          inTime.add(ids.get(i));
+        } else {
+          LOG.warn("route {} did not stop within {}; it goes on stopping, and its lease is left to run out", ids.get(i), within);
+        }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Stops and removes an ingestion's routes, each given {@link #ROUTE_STOP} to finish its exchange in flight. */
+  private boolean removeRoute(String ingestionId) {
+    return removeRoute(ingestionId, ROUTE_STOP);
+  }
+
+  /**
+   * Stops and removes an ingestion's routes, each given {@code grace} to finish its exchange in flight.
    *
    * @return whether each stopped with no exchange left running in it (none cut off at the timeout
    *     and still going) and was removed
    */
-  private boolean removeRoute(String ingestionId) {
+  private boolean removeRoute(String ingestionId, Duration grace) {
     boolean clean = true;
     // A camel-route ingestion's own route first, so nothing is sent to the routes behind it.
     for (String extra : List.of(ingestionId + IngestionRoute.SOURCE_ROUTE, ingestionId + IngestionRoute.FAILURES_ROUTE)) {
       if (camel.getRoute(extra) != null) {
         try {
-          camel.getRouteController().stopRoute(extra, ROUTE_STOP.toSeconds(), TimeUnit.SECONDS);
+          camel.getRouteController().stopRoute(extra, grace.toMillis(), TimeUnit.MILLISECONDS);
           clean &= atRest(extra);
           clean &= camel.removeRoute(extra);
         } catch (Exception e) {
@@ -492,7 +731,7 @@ final class Reconciler {
       Endpoint source = route.getEndpoint();
       // Gracefully: the exchange in flight finishes (its jobs are sent, the file moved) or, after
       // the timeout, is cut off and its payload stays with the source.
-      camel.getRouteController().stopRoute(ingestionId, ROUTE_STOP.toSeconds(), TimeUnit.SECONDS);
+      camel.getRouteController().stopRoute(ingestionId, grace.toMillis(), TimeUnit.MILLISECONDS);
       clean &= atRest(ingestionId);
       clean &= camel.removeRoute(ingestionId);
       // The endpoint was built for this route alone: let go of its connections and clients.

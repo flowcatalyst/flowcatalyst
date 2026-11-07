@@ -43,6 +43,8 @@ class IngestRuntimeTest {
       assertThat(app.health().criticality("background:" + RuntimeModule.LOOP)).isNotNull();
       // The runtime is named after its host unless told, and carries no camel-route unless enabled.
       assertThat(app.config().get(RuntimeModule.RUNTIME_ID)).startsWith("runtime-");
+      // The framework bounds each shutdown step by it: the routes get their 12 s, the goodbye 5 s, the traces 2 s.
+      assertThat(app.shutdownDrain()).isEqualTo(java.time.Duration.ofSeconds(20));
       assertThat(app.get(Extensions.class).kinds()).extracting(RuntimeKind::kind).doesNotContain("camel-route");
     }
   }
