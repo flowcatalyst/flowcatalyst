@@ -211,9 +211,93 @@ endpoint never produces (`createProducer` throws).
 When the lease is about to run out without a renewal, the runtime's watchdog first **suspends** the route's
 consumer (Camel's `ServiceHelper.suspendService`: `suspend()` for a `Suspendable` consumer, `stop()` for any
 other), without waiting for a round or for the Camel context, and stops and removes the route afterwards. A
+route the platform moves, and every route at shutdown, is suspended the same way and then waited for. A
 consumer must take nothing more from its source once suspended or stopped; the exchange in flight may finish.
 `PolledSource` and `ScheduledPollEndpoint` consumers do this. A consumer whose start does not return holds up
 the round that starts it, but not the watchdog.
+
+### Stopping cleanly
+
+A `PolledSource` is suspended, not stopped outright: no further poll is scheduled, and the poll in progress is
+**not interrupted** but asked to stop. From then on:
+
+- `payloads.dispatch(...)` returns `false` at once, without running the route (`dispatchTaken`, below, still
+  runs it). This is not a failure: it is not
+  reported, the ingestion does not show `FAILING`, and the next poll is not delayed; a `partFailed` or an
+  exception from the poll while it is stopping is logged at DEBUG only.
+- `payloads.stopping()` is `true`.
+
+So a poll that stops moving on as soon as a dispatch returns `false` (do not store the cursor, the token or the
+page past the payload that was not taken) already stops cleanly: it ends at its next dispatch, and whichever
+runtime runs the ingestion next reads that payload again. The runtime waits for the poll to end, within the
+stop's bound, and only then counts the route as stopped and gives the ingestion's lease back (`polling()` says
+whether a poll is running). A poll still running at the end of the bound is interrupted, and the lease is left
+to run out.
+
+A poll with costly work before its first dispatch can ask `stopping()` first and skip it. For example, one that
+asks a vendor for many assets on a pool before it dispatches anything:
+
+```java
+@Override
+protected Duration poll(Payloads payloads) throws Exception {
+  List<Future<Rows>> answers = new ArrayList<>();
+  try (ExecutorService pool = Executors.newFixedThreadPool(concurrency, Thread.ofVirtual().factory())) {
+    for (Asset asset : assets) {
+      answers.add(pool.submit(() -> payloads.stopping() ? null : vendor.rows(asset)));  // skip the calls not yet made
+    }
+  }
+  if (payloads.stopping()) {
+    return every;  // nothing dispatched, nothing moved: the next runtime asks again
+  }
+  for (int i = 0; i < answers.size(); i++) {
+    Rows rows = answers.get(i).get();
+    if (!payloads.dispatch(rows.json(), rows.identity())) {
+      break;  // not taken (or stopping): do not move past it
+    }
+    seen.add(rows.keys());
+  }
+  return every;
+}
+```
+
+A source that takes a payload away as it reads it (a queue that empties as it serves, with no acknowledgement)
+cannot read it again, so it must not lose what it has read:
+
+- ask `stopping()` just before each read, and do not read when it is true;
+- dispatch what has been read with `payloads.dispatchTaken(body, identity)`, not `dispatch`: it runs the route
+  even while the source is stopping, so a page read before the stop came still makes its jobs. A `false` from
+  it is the platform's answer (the jobs were not created; the route has reported why), never the stop's. The
+  runtime waits for it, within the stop's bound, before it counts the route as stopped;
+- then return.
+
+```java
+@Override
+protected Duration poll(Payloads payloads) throws Exception {
+  for (int page = 0; page < MOST_PAGES; page++) {
+    if (payloads.stopping()) {
+      return every;  // read nothing more: the queue would lose it
+    }
+    List<Position> positions = vendor.takePage(limit);  // gone from the vendor's queue once served
+    if (positions.isEmpty()) {
+      break;
+    }
+    String body = json(positions);
+    if (!payloads.dispatchTaken(body, identity(body))) {
+      held = body;  // the platform did not take it: offered again at the next poll
+      return every;
+    }
+  }
+  return every;
+}
+```
+
+A page the platform did not take can only be kept in memory, as before; it is lost if the route goes away
+before the next poll offers it again.
+
+`stopping()`, `dispatchTaken(...)` and `polling()` are additions to extension API 1 (`Ingestor-Extension-Api: 1`
+is unchanged): an extension built before them stops cleanly without a change. One that calls
+`payloads.stopping()` or `payloads.dispatchTaken(...)` needs a runtime that has them (an older runtime's
+`Payloads` has no such methods, and the call fails the poll with `NoSuchMethodError`): deploy the runtime first.
 
 ### Failures are paced
 
@@ -224,7 +308,8 @@ doing anything:
 - After a poll that succeeded, the wait it returned is used, but never less than 250 ms: a loop that returns
   `Duration.ZERO` still drains a backlog, and cannot spin.
 - A poll that throws, reports a part of itself with `partFailed`, or has `payloads.dispatch(...)` return
-  `false` at least once is a failure, whatever it returned. Dispatching `false` is not an exception and has no
+  `false` at least once is a failure, whatever it returned. (Not while the source is stopping: see
+  [Stopping cleanly](#stopping-cleanly).) Dispatching `false` is not an exception and has no
   stack trace in the log; the route has reported it. After `n` failures in a row the next poll waits
   `Backoff.FAILURES.delay(n, max(retryDelay(), 1 s))` (5 s doubling to 5 min, with jitter), and not less than
   the wait the poll returned. The first poll that succeeds ends the streak.

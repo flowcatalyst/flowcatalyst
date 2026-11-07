@@ -3,6 +3,7 @@ package io.flowcatalyst.ingestor.runtime;
 import io.flowcatalyst.ingestor.contract.Ingestion;
 import io.flowcatalyst.ingestor.contract.RuntimeReport.RouteState;
 import io.flowcatalyst.ingestor.extension.FailureLog;
+import io.flowcatalyst.ingestor.extension.PolledSource;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -109,9 +110,17 @@ final class Reconciler {
       return intakeStopped;
     }
 
-    /** Whether the route that reads the source is in the middle of a poll (listing, reading, committing). */
+    /**
+     * Whether the route that reads the source is in the middle of a poll (listing, reading,
+     * committing): a Camel polled consumer's, or an extension's ({@link PolledSource#polling()}).
+     */
     boolean polling() {
-      return !routes.isEmpty() && routes.getFirst().getConsumer() instanceof ScheduledPollConsumer poller && poller.isPolling();
+      if (routes.isEmpty()) {
+        return false;
+      }
+      Route intake = routes.getFirst();
+      return (intake.getConsumer() instanceof ScheduledPollConsumer poller && poller.isPolling())
+          || (intake.getEndpoint() instanceof PolledSource source && source.polling());
     }
 
     /**

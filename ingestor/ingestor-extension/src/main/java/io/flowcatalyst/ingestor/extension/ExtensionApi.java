@@ -6,6 +6,12 @@ package io.flowcatalyst.ingestor.extension;
  * the major version it was built against in its manifest, as {@value #MANIFEST_ATTRIBUTE}, and the
  * runtime refuses to start with a jar of another major version. The major changes only when an
  * existing extension would stop working; additions do not change it.
+ *
+ * <p>Additions to major 1: {@code PolledSource.Payloads#dispatch(String, String)} and {@code
+ * PayloadIdentity} (idempotency keys); {@code PolledSource.Payloads#stopping()}, {@code
+ * PolledSource.Payloads#dispatchTaken} and {@code PolledSource#polling()}, with a {@code
+ * PolledSource} suspended rather than interrupted when its route stops (docs/extensions.md,
+ * "Stopping cleanly").
  */
 public final class ExtensionApi {
 

@@ -282,9 +282,11 @@ stays with the source: a file or object is not moved, an SQS message is not dele
 visibility timeout (the same message id, so the same record identity). Then each is given up to 10 s, at the
 same time as the others, to finish its exchange in flight (its jobs sent, its file moved, its message
 acknowledged) and, for a polled source, the poll in progress (a database poll stores its watermark or marks its
-rows after the exchange). Last they are stopped and removed one after another (Camel stops one route at a time
-under its context's lock), which is quick once nothing is in flight; one that has not finished by then is given
-a second more and cut off, and its payload stays with the source.
+rows after the exchange; an extension's poll is not interrupted but told to stop: its next dispatch is not
+taken, and it ends there, see docs/extensions.md, "Stopping cleanly"). Last they are stopped and removed one
+after another (Camel stops one route at a time under its context's lock), which is quick once nothing is in
+flight; one that has not finished by then is given a second more and cut off (an extension's poll half a
+second, then it is interrupted), and its payload stays with the source.
 
 **Giving a lease back.** The runtime gives a lease back (`POST /leases/release`) only for a route that has
 **actually stopped**: stopped within the bound, with no exchange still running in it (Camel cuts an exchange
@@ -379,7 +381,10 @@ classes (the contract, the extension API, Camel). The jar's manifest must declar
 built against, `Ingestor-Extension-Api: 1`; the runtime refuses to start with a jar of another major version,
 or one that declares none, naming the jar. Extensions on the class path (a build that depends on
 `ingestor-runtime` and its own extension modules) are not checked: they are compiled with the runtime.
-See [docs/extensions.md](docs/extensions.md); `ingestor-extensions/generator` is the worked example.
+See [docs/extensions.md](docs/extensions.md); `ingestor-extensions/generator` is the worked example. A
+`PolledSource` is suspended rather than interrupted when its route stops: its next `dispatch` returns `false`
+and `payloads.stopping()` is true, so a poll that does not move past a payload not taken stops cleanly (see
+"Stopping cleanly" there).
 
 ## Build and test
 

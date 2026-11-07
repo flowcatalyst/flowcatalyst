@@ -461,6 +461,94 @@ class ShutdownTest {
     assertThat(camel.getRoute("after")).isNull();
   }
 
+  /** An extension's polled source whose first poll waits, before its first dispatch, until let go. */
+  static final class TickerSource extends io.flowcatalyst.ingestor.extension.PolledSource {
+    final CountDownLatch entered = new CountDownLatch(1);
+    final CountDownLatch go = new CountDownLatch(1);
+    final List<String> seen = new CopyOnWriteArrayList<>();
+
+    TickerSource(CamelContext camel, Ingestion ingestion) {
+      super(ExtensionStopTest.context(camel, ingestion), "ticker");
+    }
+
+    @Override
+    protected Duration poll(Payloads payloads) throws Exception {
+      entered.countDown();
+      try {
+        go.await();
+      } catch (InterruptedException e) {
+        seen.add("interrupted");
+        throw e;
+      }
+      seen.add("stopping=" + payloads.stopping());
+      seen.add("dispatch=" + payloads.dispatch("T"));
+      return Duration.ofHours(1);
+    }
+
+    @Override
+    protected Duration retryDelay() {
+      return Duration.ofSeconds(1);
+    }
+  }
+
+  @Test
+  void theShutdownFallbackSuspendsAnExtensionSourceMidPollWithoutLocksAndGivesItBackOnceItsPollEnds() throws Exception {
+    Ingestion ext = SourceHarness.ingestion("ext", 1, Source.Custom.of("ticker", Map.of()), new Split.None(), SourceHarness.target(Target.Mode.IMMEDIATE, 1), false);
+    TickerSource ticker = new TickerSource(camel, ext);
+    special.put("ext", context -> ticker);
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch leave = new CountDownLatch(1);
+    special.put("slow", context -> new RuntimeLoopTest.StuckEndpoint(context, entered, leave));
+    platform.active = List.of(ext);
+    loop.tick();
+    assertThat(ticker.entered.await(10, TimeUnit.SECONDS)).isTrue();
+
+    // A round stuck starting slow holds the reconciler's lock and Camel's.
+    platform.active = List.of(ext, polled("slow"));
+    Thread round =
+        Thread.ofPlatform()
+            .start(
+                () -> {
+                  try {
+                    loop.tick();
+                  } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                  }
+                });
+    Map<String, Boolean> atGoodbye = new TreeMap<>();
+    platform.onRelease =
+        () -> {
+          atGoodbye.put("suspended", suspended("ext"));
+          atGoodbye.put("polling", ticker.polling());
+          atGoodbye.put("round stuck", round.isAlive());
+        };
+    try {
+      assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+      // The poll goes on while the shutdown waits for the lock and then drains; it ends at its dispatch.
+      Thread.ofVirtual()
+          .start(
+              () -> {
+                try {
+                  Thread.sleep(4_000);
+                } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+                }
+                ticker.go.countDown();
+              });
+
+      stopWithin(parts(), Duration.ofSeconds(15));
+
+      assertThat(platform.releases).singleElement().satisfies(r -> assertThat(r.ingestionIds()).containsExactly("ext"));
+      assertThat(atGoodbye).containsExactlyInAnyOrderEntriesOf(Map.of("suspended", true, "polling", false, "round stuck", true));
+      assertThat(ticker.seen).containsExactly("stopping=true", "dispatch=false");
+      assertThat(taken).isEmpty();
+    } finally {
+      ticker.go.countDown();
+      leave.countDown();
+      round.join();
+    }
+  }
+
   // A2: routes stopped at the same time.
 
   @Test
