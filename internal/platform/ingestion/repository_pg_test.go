@@ -70,7 +70,14 @@ func unique() string { return strings.ToLower(tsid.GenerateUntyped()) }
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	e := &env{pool: testpg.Pool(t), uow: testpg.NewUoW(t), t0: tBase.AddDate(0, 0, int(envSeq.Add(1)))}
+	return newEnvOn(t, testpg.Pool(t), testpg.NewUoW(t))
+}
+
+// newEnvOn is newEnv on the given database (a scratch one, for a test that
+// needs the whole table to itself).
+func newEnvOn(t *testing.T, pool *pgxpool.Pool, uow *usecasepgx.UnitOfWork) *env {
+	t.Helper()
+	e := &env{pool: pool, uow: uow, t0: tBase.AddDate(0, 0, int(envSeq.Add(1)))}
 	e.repo = ingestion.NewRepository(e.pool)
 	e.app = application.NewIntegration("ing-"+unique(), "Ingest")
 	e.client = client.New("Acme", "acme-"+unique())

@@ -16,7 +16,6 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
@@ -59,7 +58,7 @@ func TestJobs_InactiveClientIsRefused(t *testing.T) {
 	require.Len(t, e.poll(rt, ingestion.ContractVersion).list("ingestions"), 2)
 
 	e.client.SetStatus(client.StatusSuspended, nil)
-	e.persist(testpg.NewUoW(t), func(ctx context.Context, tx *usecasepgx.DbTx) error {
+	e.persist(e.uow(), func(ctx context.Context, tx *usecasepgx.DbTx) error {
 		return client.NewRepository(e.pool).Persist(ctx, e.client, tx)
 	})
 	body := map[string]any{"records": records(1, "susp")}

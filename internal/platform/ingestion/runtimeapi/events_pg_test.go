@@ -14,7 +14,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/stream"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
@@ -24,7 +23,7 @@ func (e *env) eventType() string {
 	code := e.app.Code + ":orders:order:received"
 	et, err := eventtype.New(code, "Order received")
 	require.NoError(e.t, err)
-	e.persist(testpg.NewUoW(e.t), func(ctx context.Context, tx *usecasepgx.DbTx) error {
+	e.persist(e.uow(), func(ctx context.Context, tx *usecasepgx.DbTx) error {
 		return eventtype.NewRepository(e.pool).Persist(ctx, et, tx)
 	})
 	return code

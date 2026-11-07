@@ -15,10 +15,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 )
 
-// RuntimeLiveWindow is how long after its last poll a runtime counts as live:
-// runtimes poll every minute, so three missed polls.
-const RuntimeLiveWindow = 3 * time.Minute
-
 // RuntimeKind is a source kind a runtime reports (ing_runtimes.kinds) in its
 // poll: one built on an extension, or camel-route. The platform stores and
 // lists it and enforces RequiredPermission; it knows nothing else about the
@@ -127,7 +123,7 @@ func decodeBuiltin(raw json.RawMessage) ([]string, error) {
 // carries it: false is "no runtime carries this kind", which is not a failure
 // of the ingestion, only of there being nobody to run it yet.
 func (r *Repository) AnyLiveRuntimeCarries(ctx context.Context) (func(kind string) bool, error) {
-	rows, err := r.q.IngestionRuntimeKindsSeenSince(ctx, time.Now().UTC().Add(-RuntimeLiveWindow))
+	rows, err := r.q.IngestionRuntimeKindsSeenSince(ctx, time.Now().UTC().Add(-r.Lease()))
 	if err != nil {
 		return nil, fmt.Errorf("ingestion repo: runtime kinds: %w", err)
 	}
@@ -154,7 +150,7 @@ var builtInRequirements = map[string]string{"camel-route": auth.PermIngestionRou
 // runtime is kept). A kind that does not parse is skipped and logged: one
 // runtime's bad report must not hide the others.
 func (r *Repository) LiveKinds(ctx context.Context) ([]RuntimeKind, error) {
-	rows, err := r.q.IngestionRuntimeKindsSeenSince(ctx, time.Now().UTC().Add(-RuntimeLiveWindow))
+	rows, err := r.q.IngestionRuntimeKindsSeenSince(ctx, time.Now().UTC().Add(-r.Lease()))
 	if err != nil {
 		return nil, fmt.Errorf("ingestion repo: runtime kinds: %w", err)
 	}

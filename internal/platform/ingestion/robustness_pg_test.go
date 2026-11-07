@@ -3,8 +3,11 @@
 package ingestion_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -12,6 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
+	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
 // Runtime robustness (docs/ingestion-design.md section 7): the instance guard,
@@ -470,4 +476,58 @@ func TestUnheldGauge(t *testing.T) {
 		}
 	}
 	assert.Equal(t, float64(len(want)), value, fmt.Sprintf("fc_ingestion_unheld counts the %d unheld ingestions", len(want)))
+}
+
+// The minute recount also logs one structured WARN line when something is
+// unheld, for a log metric filter (the gauge is not scraped everywhere): count
+// a top-level number, the ids capped, and nothing at all when nothing is unheld.
+// On a database of its own, so no other test's ingestions count.
+func TestCountUnheld_LogsOneLine(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.ScratchDB(t, "ing_unheld_log_"+unique())
+	e := newEnvOn(t, pool, usecasepgx.New(pool, platformsink.New()))
+
+	var buf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	lines := func() []map[string]any {
+		var out []map[string]any
+		for line := range bytes.SplitSeq(buf.Bytes(), []byte("\n")) {
+			var rec map[string]any
+			if json.Unmarshal(line, &rec) == nil && rec["msg"] == "ingestions unheld" {
+				out = append(out, rec)
+			}
+		}
+		return out
+	}
+
+	require.NoError(t, ingestion.CountUnheld(ctx, e.repo, lease))
+	assert.Empty(t, lines(), "nothing unheld: nothing logged")
+
+	i := e.live(t, "unheld-log", e.sftp(t))
+	_, err := pool.Exec(ctx, `UPDATE ing_ingestions SET updated_at = now() - interval '1 hour' WHERE id = $1`, i.ID)
+	require.NoError(t, err)
+	buf.Reset()
+	require.NoError(t, ingestion.CountUnheld(ctx, e.repo, lease))
+	got := lines()
+	require.Len(t, got, 1)
+	assert.Equal(t, "WARN", got[0]["level"])
+	assert.EqualValues(t, 1, got[0]["count"], "a top-level JSON number")
+	assert.Equal(t, []any{i.ID}, got[0]["ids"])
+	assert.EqualValues(t, 0, got[0]["more"])
+
+	// Past the cap: the first UnheldLogIDs ids, the rest counted.
+	for n := range ingestion.UnheldLogIDs + 2 {
+		extra := e.live(t, fmt.Sprintf("unheld-log-%d", n), e.sftp(t))
+		_, err := pool.Exec(ctx, `UPDATE ing_ingestions SET updated_at = now() - interval '1 hour' WHERE id = $1`, extra.ID)
+		require.NoError(t, err)
+	}
+	buf.Reset()
+	require.NoError(t, ingestion.CountUnheld(ctx, e.repo, lease))
+	got = lines()
+	require.Len(t, got, 1)
+	assert.EqualValues(t, ingestion.UnheldLogIDs+3, got[0]["count"])
+	assert.Len(t, got[0]["ids"], ingestion.UnheldLogIDs)
+	assert.EqualValues(t, 3, got[0]["more"])
 }

@@ -34,20 +34,6 @@ const (
 	permApplySet = "platform:ingestion:set:apply"
 )
 
-// newConfigEnv is newEnv for a test that leaves ingestions behind: the runtime
-// reach is platform-wide and the fair share counts every live polled ingestion,
-// so a live sftp ingestion nobody leases would be claimed by the next test's
-// runtime ahead of that test's own. The ingestions go when the test ends.
-func newConfigEnv(t *testing.T) *env {
-	t.Helper()
-	e := newEnv(t)
-	t.Cleanup(func() {
-		_, err := e.pool.Exec(context.Background(), `DELETE FROM ing_ingestions WHERE application_id = $1`, string(e.app.ID))
-		assert.NoError(t, err)
-	})
-	return e
-}
-
 // as makes the one principal of the environment hold exactly these permissions
 // (it is a runtime's service account, so the runtime calls work too).
 func (e *env) as(perms ...string) { e.who = e.principal(append([]string{permRuntime}, perms...)...) }
@@ -120,7 +106,7 @@ func sqsEntry(secret string) string {
 // having entered the environment's values first), and runs nowhere until the
 // entry is valid. Every answer that saves says so.
 func TestConfig_SaveWithMissingEntryIsSavedWithAWarning(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator()
 
@@ -166,7 +152,7 @@ func TestConfig_SaveWithMissingEntryIsSavedWithAWarning(t *testing.T) {
 // makes of the effective definition: pointing a secret at a new host needs
 // bind-secrets, exactly as a save of an inline definition does.
 func TestConfig_PutNeedsBindSecretsToPointASecretSomewhereNew(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator()
 	id := e.mustCreate("feed", `{"kind":"sftp","config":"vendor"}`, tg.refTarget())
@@ -213,7 +199,7 @@ func TestConfig_PutNeedsBindSecretsToPointASecretSomewhereNew(t *testing.T) {
 // an inline source has, with no config key. (A shared kind: a polled one is
 // subject to the fair share of every runtime the other tests left live.)
 func TestConfig_PollGivesTheRuntimeTheEffectiveSource(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator(permBind, permIdentity)
 	id := e.mustCreate("queue", `{"kind":"sqs","config":"vendor-queue"}`, tg.refTarget())
@@ -240,7 +226,7 @@ func TestConfig_PollGivesTheRuntimeTheEffectiveSource(t *testing.T) {
 // names its key, so a value must suit each: the check names the one it does not
 // suit, and nothing is written.
 func TestConfig_PutIsCheckedAgainstEveryIngestionNamingTheKey(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator(permBind, permIdentity)
 	a := e.mustCreate("feed-a", `{"kind":"sftp","config":"vendor"}`, tg.refTarget())
@@ -278,7 +264,7 @@ func TestConfig_PutIsCheckedAgainstEveryIngestionNamingTheKey(t *testing.T) {
 // An ingestion's settings can be inline or in an entry, never both, and the
 // endpoints say so for one that holds them inline.
 func TestConfig_InlineIngestionHasNoEntry(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator(permBind, permIdentity)
 	id := e.mustCreate("inline", sqsSource, tg.target(""))
@@ -303,7 +289,7 @@ func TestConfig_InlineIngestionHasNoEntry(t *testing.T) {
 // The secrets call answers the secrets of the effective live source: a name the
 // entry's value binds, and no other.
 func TestConfig_SecretsCallAllowsOnlyNamesOfTheEffectiveLiveSource(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator(permBind)
 	id := e.mustCreate("feed", `{"kind":"sqs","config":"vendor"}`, tg.refTarget())
@@ -342,7 +328,7 @@ func TestConfig_SecretsCallAllowsOnlyNamesOfTheEffectiveLiveSource(t *testing.T)
 // The jobs call builds jobs from the effective target: the delivery URL is the
 // entry's when the definition leaves it out.
 func TestConfig_JobsUseTheValuesTargetUrl(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator(permBind, permIdentity)
 	id := e.mustCreate("queue", `{"kind":"sqs","config":true}`, tg.refTarget())
@@ -374,7 +360,7 @@ func TestConfig_JobsUseTheValuesTargetUrl(t *testing.T) {
 
 // Deleting the entry makes every ingestion that names it wait for it again.
 func TestConfig_DeleteMakesTheNamingIngestionsMissing(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator(permBind, permIdentity)
 	a := e.mustCreate("feed-a", `{"kind":"sqs","config":"shared"}`, tg.refTarget())
@@ -396,7 +382,7 @@ func TestConfig_DeleteMakesTheNamingIngestionsMissing(t *testing.T) {
 // The write is audited on the ingestion and emits config-set; the value is in
 // neither.
 func TestConfig_PutIsAuditedOnTheIngestionAndEmitsAnEvent(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator(permBind)
 	id := e.mustCreate("feed", `{"kind":"sftp","config":"vendor"}`, tg.refTarget())
@@ -426,7 +412,7 @@ func TestConfig_PutIsAuditedOnTheIngestionAndEmitsAnEvent(t *testing.T) {
 // a draft whose effective source points secrets somewhere new needs
 // bind-secrets of whoever makes it live, not only of whoever saved it.
 func TestMakeLive_JudgedOnTheEffectiveSourceAgainstWhatIsLiveNow(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator(permBind, permIdentity)
 	id := e.mustCreate("feed", `{"kind":"sftp","config":"vendor"}`, tg.refTarget())
@@ -458,7 +444,7 @@ func TestMakeLive_JudgedOnTheEffectiveSourceAgainstWhatIsLiveNow(t *testing.T) {
 // of an unsaved one, from the entry read when it is queued. A missing entry is
 // a 400, not a test no runtime could run.
 func TestConfig_TestsAreQueuedWithTheEffectiveDefinition(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator(permBind)
 	id := e.mustCreate("feed", `{"kind":"sftp","config":"vendor"}`, tg.refTarget())
@@ -512,7 +498,7 @@ func TestConfig_TestsAreQueuedWithTheEffectiveDefinition(t *testing.T) {
 // An extension kind's value is checked against the field list a live runtime
 // reports for it; with none reporting the kind it is stored with a warning.
 func TestConfig_ExtensionKindSchemaIsCheckedWhileARuntimeReportsIt(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator(permBind)
 	kind := "acme-" + unique()
@@ -561,7 +547,7 @@ func TestConfig_ExtensionKindSchemaIsCheckedWhileARuntimeReportsIt(t *testing.T)
 // The generic config surfaces cannot write section ingest, and show it
 // read-only (reads are as for any section).
 func TestConfig_GenericSetPropertyRefusesTheSection(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator(permBind)
 	id := e.mustCreate("feed", `{"kind":"sftp","config":"vendor"}`, tg.refTarget())
@@ -570,7 +556,7 @@ func TestConfig_GenericSetPropertyRefusesTheSection(t *testing.T) {
 	admin := testpg.WithAuth(context.Background(), &auth.AuthContext{
 		PrincipalID: "prn_optestrunner1", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:*:*:*"},
 	})
-	_, err := usecaseop.Run(admin, testpg.NewUoW(t), platformconfigops.SetProperty(e.config.Repo), platformconfigops.SetPropertyCommand{
+	_, err := usecaseop.Run(admin, e.uow(), platformconfigops.SetProperty(e.config.Repo), platformconfigops.SetPropertyCommand{
 		ApplicationCode: e.app.Code, Section: "ingest", Property: "vendor", Value: `{}`, ClientID: new(string(e.client.ID)),
 	}, testpg.TestEC())
 	require.Error(t, err)
@@ -588,7 +574,7 @@ func TestConfig_GenericSetPropertyRefusesTheSection(t *testing.T) {
 // entry is written through a set-owned ingestion with the same permission as
 // through any other, while its definition stays read-only.
 func TestConfig_PutWorksOnAnIngestionASetOwns(t *testing.T) {
-	e := newConfigEnv(t)
+	e := newEnv(t)
 	tg := e.makeTargets()
 	e.operator(permBind)
 	id := e.mustCreate("owned", `{"kind":"sftp","config":"vendor"}`, tg.refTarget())

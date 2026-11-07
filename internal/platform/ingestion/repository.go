@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -23,11 +24,34 @@ import (
 type Repository struct {
 	pool *pgxpool.Pool // retained for the filtered list
 	q    *dbq.Queries
+	// lease is the configured ingestion lease (FC_INGESTION_LEASE_SECONDS); zero
+	// is DefaultLease. A runtime that polled within one lease is live, so the
+	// "no runtime carries this kind" reads (LiveKinds, AnyLiveRuntimeCarries)
+	// ask the same question the fair share and the unheld count do.
+	lease time.Duration
 }
 
-// NewRepository wires a repo.
+// NewRepository wires a repo with the default lease; WithLease sets the
+// configured one.
 func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool, q: dbq.New(pool)}
+}
+
+// WithLease returns a copy of the repo that counts a runtime as live for d
+// after its last poll (zero or negative: DefaultLease). The server passes the
+// configured lease here once, where it builds the repo.
+func (r *Repository) WithLease(d time.Duration) *Repository {
+	c := *r
+	c.lease = d
+	return &c
+}
+
+// Lease is the lease this repo's liveness reads use.
+func (r *Repository) Lease() time.Duration {
+	if r.lease > 0 {
+		return r.lease
+	}
+	return DefaultLease
 }
 
 // FindByID loads by primary key.

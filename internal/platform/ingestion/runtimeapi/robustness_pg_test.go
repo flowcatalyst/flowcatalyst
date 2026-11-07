@@ -14,32 +14,11 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 )
 
-// forget removes the runtime and its leases when the test ends. These tests'
-// runtimes poll with the platform-wide reach, so they take leases of other
-// tests' ingestions and count in other tests' fair shares; gone, they leave
-// the database as they found it.
-func (e *env) forget(runtime string) {
-	e.t.Cleanup(func() {
-		ctx := context.Background()
-		_, _ = e.pool.Exec(ctx, `DELETE FROM ing_leases WHERE runtime_id = $1`, runtime)
-		_, _ = e.pool.Exec(ctx, `DELETE FROM ing_runtimes WHERE runtime_id = $1`, runtime)
-	})
-}
-
-// retire pauses the test's ingestions when it ends: a polled one left free
-// would be claimed, in id order, ahead of a later test's own.
-func (e *env) retire() {
-	e.t.Cleanup(func() {
-		_, _ = e.pool.Exec(context.Background(), `UPDATE ing_ingestions SET active = FALSE WHERE application_id = $1`, e.app.ID)
-	})
-}
-
 // The instance guard on the wire: a second process polling as a live runtime's
 // id is answered 409 RUNTIME_ID_IN_USE in the platform's error envelope.
 func TestPoll_RuntimeIDInUse(t *testing.T) {
 	e := newEnv(t)
 	rt := "rt-" + unique()
-	e.forget(rt)
 	poll := func(instance string) response {
 		return e.do(http.MethodPost, base+"/poll", map[string]any{
 			"runtimeId": rt, "contractVersion": ingestion.ContractVersion, "instanceId": instance,
@@ -62,9 +41,7 @@ func TestPoll_RuntimeIDInUse(t *testing.T) {
 func TestRelease_Route(t *testing.T) {
 	e := newEnv(t)
 	i := e.save("release", sftpSource, true)
-	e.retire()
 	rt := "rt-" + unique()
-	e.forget(rt)
 	instance := "6f1c2a9e-1b7d-4c55-9a8e-0d1e2f3a4b5c"
 	r := e.do(http.MethodPost, base+"/poll", map[string]any{"runtimeId": rt, "contractVersion": ingestion.ContractVersion, "instanceId": instance})
 	require.Equal(t, http.StatusOK, r.code, r.raw)
@@ -99,13 +76,10 @@ func TestRelease_Route(t *testing.T) {
 func TestRelease_UnknownIsNeverNotFound(t *testing.T) {
 	e := newEnv(t)
 	held := e.save("held-elsewhere", sftpSource, true)
-	e.retire()
 	holder := "rt-" + unique()
-	e.forget(holder)
 	require.Equal(t, http.StatusOK, e.poll(holder, ingestion.ContractVersion).code)
 
 	unknown := "rt-never-seen-" + unique()
-	e.forget(unknown)
 	for _, body := range []map[string]any{
 		{"runtimeId": unknown, "ingestionIds": []string{"ing_doesnotexist0"}, "goodbye": false},
 		{"runtimeId": unknown, "instanceId": "6f1c2a9e-1b7d-4c55-9a8e-0d1e2f3a4b5c", "ingestionIds": []string{"ing_doesnotexist0", held.ID}, "goodbye": true},
@@ -126,12 +100,10 @@ func TestRelease_UnknownIsNeverNotFound(t *testing.T) {
 func TestIngestion_UnheldNotice(t *testing.T) {
 	e := newEnv(t)
 	i := e.save("unheld", sftpSource, true)
-	e.retire()
 	ctx := context.Background()
 	_, err := e.pool.Exec(ctx, `UPDATE ing_ingestions SET updated_at = now() - interval '10 minutes' WHERE id = $1`, i.ID)
 	require.NoError(t, err)
 	carrier := "rt-carrier-" + unique()
-	e.forget(carrier)
 	_, err = e.pool.Exec(ctx, `INSERT INTO ing_runtimes (runtime_id, contract_version, first_seen_at, last_seen_at) VALUES ($1, 2, now(), now())`, carrier)
 	require.NoError(t, err)
 

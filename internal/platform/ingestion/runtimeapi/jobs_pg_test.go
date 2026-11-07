@@ -49,7 +49,7 @@ func (e *env) makeTargets() targets {
 	tg.account.ApplicationID = &e.app.ID
 	tg.connectionAcc = serviceaccount.New("csa-"+unique(), "Connection signer")
 	tg.connection = connection.New("conn-"+unique(), "Connection", tg.connectionAcc.ID)
-	e.persist(testpg.NewUoW(e.t), func(ctx context.Context, tx *usecasepgx.DbTx) error {
+	e.persist(e.uow(), func(ctx context.Context, tx *usecasepgx.DbTx) error {
 		sas := serviceaccount.NewRepository(e.pool)
 		if err := sas.Persist(ctx, tg.account, tx); err != nil {
 			return err
@@ -85,7 +85,7 @@ func (e *env) saveTarget(code, source, target string, live bool) *ingestion.Inge
 	def, err := ingestion.ParseDefinition([]byte(`{"name":"Orders","source":` + source + `,"split":{"kind":"none"},"target":` + target + `}`))
 	require.NoError(e.t, err)
 	i := ingestion.New(e.app.ID, e.client.ID, code, def, live, nil, nil)
-	e.persist(testpg.NewUoW(e.t), func(ctx context.Context, tx *usecasepgx.DbTx) error { return e.repo.Persist(ctx, i, tx) })
+	e.persist(e.uow(), func(ctx context.Context, tx *usecasepgx.DbTx) error { return e.repo.Persist(ctx, i, tx) })
 	return i
 }
 
@@ -95,7 +95,7 @@ func (e *env) pause(id string) {
 	i, err := e.repo.FindByID(context.Background(), id)
 	require.NoError(e.t, err)
 	i.Pause()
-	e.persist(testpg.NewUoW(e.t), func(ctx context.Context, tx *usecasepgx.DbTx) error { return e.repo.Persist(ctx, i, tx) })
+	e.persist(e.uow(), func(ctx context.Context, tx *usecasepgx.DbTx) error { return e.repo.Persist(ctx, i, tx) })
 }
 
 func jobsPath(id, runtime string) string {
@@ -317,7 +317,7 @@ func TestJobs_UnknownPausedAndNotLive(t *testing.T) {
 	// A target that no longer resolves is a conflict on the ingestion.
 	broken := e.saveTarget("broken", sqsSource, tg.viaAccount(), true)
 	tg.pool.Suspend()
-	e.persist(testpg.NewUoW(t), func(ctx context.Context, tx *usecasepgx.DbTx) error {
+	e.persist(e.uow(), func(ctx context.Context, tx *usecasepgx.DbTx) error {
 		return dispatchpool.NewRepository(e.pool).Persist(ctx, tg.pool, tx)
 	})
 	r = e.do(http.MethodPost, jobsPath(broken.ID, rt), body)
@@ -417,7 +417,7 @@ func (e *env) setSecret(name, value string, clientID *string) {
 	admin := testpg.WithAuth(context.Background(), &auth.AuthContext{
 		PrincipalID: "prn_optestrunner1", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:*:*:*"},
 	})
-	_, err := usecaseop.Run(admin, testpg.NewUoW(e.t), platformconfigops.SetProperty(e.config.Repo), platformconfigops.SetPropertyCommand{
+	_, err := usecaseop.Run(admin, e.uow(), platformconfigops.SetProperty(e.config.Repo), platformconfigops.SetPropertyCommand{
 		ApplicationCode: e.app.Code, Section: secretsSection, Property: name, Value: value, ValueType: &secret, ClientID: clientID,
 	}, testpg.TestEC())
 	require.NoError(e.t, err)
@@ -660,7 +660,7 @@ func TestSecrets_RefusalIsAuditedAndLogged(t *testing.T) {
 	assert.Equal(t, 1, refusals("LEASE_NOT_HELD"), "no lease where one is needed")
 
 	e.client.SetStatus(client.StatusSuspended, nil)
-	e.persist(testpg.NewUoW(t), func(ctx context.Context, tx *usecasepgx.DbTx) error {
+	e.persist(e.uow(), func(ctx context.Context, tx *usecasepgx.DbTx) error {
 		return client.NewRepository(e.pool).Persist(ctx, e.client, tx)
 	})
 	r = e.do(http.MethodGet, secretPath(i.ID, "sftp-password", holder), nil)

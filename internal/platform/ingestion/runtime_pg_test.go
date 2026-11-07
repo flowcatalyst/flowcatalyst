@@ -207,6 +207,37 @@ func TestPoll_KindCapabilityFiltering(t *testing.T) {
 	assert.Equal(t, []string{sqs.ID}, given(e.poll(t, limited, e.t0, ingestion.RuntimeKind{Kind: "sqs"})))
 }
 
+// "No runtime carries this kind" asks the configured lease, like the fair share
+// and the unheld count: a runtime that polled four minutes ago is live under a
+// five-minute lease and gone under the default three.
+func TestAnyLiveRuntimeCarries_UsesConfiguredLease(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	kind := "lease" + unique()
+	e.poll(t, "rt-lease-"+unique(), time.Now().UTC().Add(-4*time.Minute), ingestion.RuntimeKind{Kind: kind})
+
+	for _, tc := range []struct {
+		name  string
+		repo  *ingestion.Repository
+		carry bool
+	}{
+		{"default lease", e.repo, false},
+		{"five-minute lease", e.repo.WithLease(5 * time.Minute), true},
+	} {
+		carries, err := tc.repo.AnyLiveRuntimeCarries(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, tc.carry, carries(kind), "AnyLiveRuntimeCarries, %s", tc.name)
+
+		listed, err := tc.repo.LiveKinds(ctx)
+		require.NoError(t, err)
+		found := false
+		for _, k := range listed {
+			found = found || k.Kind == kind
+		}
+		assert.Equal(t, tc.carry, found, "LiveKinds, %s", tc.name)
+	}
+}
+
 // Polled-source state belongs to the lease holder: another runtime cannot
 // write or read it, nor can a holder whose lease has run out; the value stays
 // for the next holder.
