@@ -58,6 +58,11 @@ jobs:
           java-version: '25'
           cache: maven
           cache-dependency-path: ingestor/pom.xml
+          # The framework is on GitHub Packages (ingestor/pom.xml, server github-framework), which needs a
+          # token with read:packages for flowcatalyst/framework; GITHUB_TOKEN cannot read another repo's packages.
+          server-id: github-framework
+          server-username: GITHUB_ACTOR
+          server-password: FRAMEWORK_PACKAGES_TOKEN
 
       - name: Verify go.mod tidy (all modules)
         run: make tidy-verify
@@ -67,14 +72,22 @@ jobs:
 
       - name: Build
         run: make build
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          FRAMEWORK_PACKAGES_TOKEN: ${{ secrets.FRAMEWORK_PACKAGES_TOKEN }}
 
       - name: Unit tests
         run: make test-unit
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          FRAMEWORK_PACKAGES_TOKEN: ${{ secrets.FRAMEWORK_PACKAGES_TOKEN }}
 
       - name: Integration tests
         run: make test-integration
         env:
           POSTGRES_URL: postgres://flowcatalyst:flowcatalyst@localhost:5432/flowcatalyst_test?sslmode=disable
+          GITHUB_ACTOR: ${{ github.actor }}
+          FRAMEWORK_PACKAGES_TOKEN: ${{ secrets.FRAMEWORK_PACKAGES_TOKEN }}
 
       - name: Custom UoW seal analyzer
         run: make analyze
