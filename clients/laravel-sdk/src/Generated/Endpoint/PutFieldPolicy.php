@@ -6,7 +6,7 @@ class PutFieldPolicy extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint
 {
     protected $clientId;
     /**
-     * @param string $clientId
+     * @param string $clientId A clt_ id or the client's identifier
      * @param null|\FlowCatalyst\Generated\Model\PutFieldPolicyRequest $requestBody
      */
     public function __construct(string $clientId, ?\FlowCatalyst\Generated\Model\PutFieldPolicyRequest $requestBody = null)

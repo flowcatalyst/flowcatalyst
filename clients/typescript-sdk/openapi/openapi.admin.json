@@ -2012,6 +2012,7 @@
             "type": "string"
           },
           "clientId": {
+            "description": "A clt_ id or the client's identifier",
             "type": "string"
           },
           "label": {
@@ -3463,6 +3464,7 @@
             "type": "boolean"
           },
           "clientId": {
+            "description": "A clt_ id or the client's identifier",
             "type": "string"
           },
           "email": {
@@ -13923,12 +13925,12 @@
         "operationId": "listFieldDevices",
         "parameters": [
           {
-            "description": "Tenant client whose devices to list",
+            "description": "Tenant client whose devices to list: a clt_ id or the client's identifier",
             "explode": false,
             "in": "query",
             "name": "clientId",
             "schema": {
-              "description": "Tenant client whose devices to list",
+              "description": "Tenant client whose devices to list: a clt_ id or the client's identifier",
               "type": "string"
             }
           },
@@ -14224,10 +14226,12 @@
         "operationId": "getFieldPolicy",
         "parameters": [
           {
+            "description": "A clt_ id or the client's identifier",
             "in": "path",
             "name": "clientId",
             "required": true,
             "schema": {
+              "description": "A clt_ id or the client's identifier",
               "type": "string"
             }
           }
@@ -14264,10 +14268,12 @@
         "operationId": "putFieldPolicy",
         "parameters": [
           {
+            "description": "A clt_ id or the client's identifier",
             "in": "path",
             "name": "clientId",
             "required": true,
             "schema": {
+              "description": "A clt_ id or the client's identifier",
               "type": "string"
             }
           }
@@ -14358,12 +14364,12 @@
         "operationId": "listFieldWorkers",
         "parameters": [
           {
-            "description": "Tenant client whose workers to list",
+            "description": "Tenant client whose workers to list: a clt_ id or the client's identifier",
             "explode": false,
             "in": "query",
             "name": "clientId",
             "schema": {
-              "description": "Tenant client whose workers to list",
+              "description": "Tenant client whose workers to list: a clt_ id or the client's identifier",
               "type": "string"
             }
           },

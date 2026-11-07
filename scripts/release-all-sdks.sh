@@ -11,7 +11,7 @@
 #   RELEASE_ALL_PLAN=1        only print the plan (no checks that need a clean tree)
 #   RELEASE_ALL_YES=1         do not ask for the single up-front confirmation
 #
-# Lines: ts laravel java go-sdk fn-ts fn-rust fn-go field-android (+ dev). A line is released
+# Lines: ts laravel java go-sdk fn-ts fn-rust fn-go field-android field-js field-rn (+ dev). A line is released
 # only if its directory changed since its highest <prefix>/v* tag (VERSION and
 # manifests are ignored: they change in the release commit itself). A line that
 # has never been released (VERSION 0.0.0, no tag) is skipped unless it is named in
@@ -39,6 +39,8 @@ lines=(
 	"fn-rust|fn-rust-sdk|clients/fn-rust|clients/fn-rust/VERSION"
 	"fn-go|clients/fn-go|clients/fn-go|clients/fn-go/VERSION"
 	"field-android|field-android|clients/field-android|clients/field-android/VERSION"
+	"field-js|field-js|clients/field-js|clients/field-js/VERSION"
+	"field-rn|field-react-native|clients/field-react-native|clients/field-react-native/VERSION"
 )
 if [ "${WITH_DEV:-}" = "1" ]; then
 	lines+=("dev|fcdev|cmd/fcdev|cmd/fcdev/VERSION")

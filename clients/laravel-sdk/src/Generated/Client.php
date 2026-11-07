@@ -1546,7 +1546,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param array{
-     *    "clientId"?: string, //Tenant client whose devices to list
+     *    "clientId"?: string, //Tenant client whose devices to list: a clt_ id or the client's identifier
      *    "status"?: string,
      *    "mode"?: string,
      *    "page"?: int, //0-based page index (default 0)
@@ -1611,7 +1611,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SuspendFieldDevice($id), $fetch);
     }
     /**
-     * @param string $clientId
+     * @param string $clientId A clt_ id or the client's identifier
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldPolicyResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
@@ -1621,7 +1621,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetFieldPolicy($clientId), $fetch);
     }
     /**
-     * @param string $clientId
+     * @param string $clientId A clt_ id or the client's identifier
      * @param null|\FlowCatalyst\Generated\Model\PutFieldPolicyRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -1643,7 +1643,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param array{
-     *    "clientId"?: string, //Tenant client whose workers to list
+     *    "clientId"?: string, //Tenant client whose workers to list: a clt_ id or the client's identifier
      *    "q"?: string, //Case-insensitive prefix matched against name and worker code
      *    "appCode"?: string, //Only workers granted this application
      *    "status"?: string, //Only workers in this state

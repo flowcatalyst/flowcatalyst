@@ -34,6 +34,8 @@ class EnsureFieldWorkerRequest implements AdditionalPropertiesInterface
      */
     protected $canImpersonate;
     /**
+     * A clt_ id or the client's identifier
+     *
      * @var string|null
      */
     protected $clientId;
@@ -126,6 +128,8 @@ class EnsureFieldWorkerRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
+     * A clt_ id or the client's identifier
+     *
      * @return string|null
      */
     public function getClientId(): ?string
@@ -133,6 +137,8 @@ class EnsureFieldWorkerRequest implements AdditionalPropertiesInterface
         return $this->clientId;
     }
     /**
+     * A clt_ id or the client's identifier
+     *
      * @param string|null $clientId
      *
      * @return self

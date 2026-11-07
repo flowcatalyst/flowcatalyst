@@ -1,9 +1,16 @@
 {
 	"name": "@flowcatalyst/field-react-native",
 	"version": "0.0.0",
-	"private": true,
 	"description": "React Native (New Architecture) bridge over the Android FieldSession, with the key/store module and WebView bridge host for @flowcatalyst/field-js",
 	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/flowcatalyst/flowcatalyst.git",
+		"directory": "clients/field-react-native"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"main": "./lib/index.js",
 	"types": "./lib/index.d.ts",
 	"react-native": "./src/index.ts",
@@ -17,9 +24,10 @@
 		"./app.plugin.js": "./app.plugin.js",
 		"./package.json": "./package.json"
 	},
-	"files": ["lib", "src", "android", "ios", "plugin", "app.plugin.js", "FlowcatalystFieldReactNative.podspec", "README.md"],
+	"files": ["lib", "src", "android", "ios", "plugin", "app.plugin.js", "FlowcatalystFieldReactNative.podspec", "README.md", "!**/*.test.js", "!android/src/test", "!ios/Tests"],
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
+		"prepack": "npm run build",
 		"lint": "tsc --noEmit",
 		"test": "node --import tsx --test --test-reporter=spec 'tests/**/*.test.ts' 'plugin/tests/**/*.test.js'",
 		"codegen": "node node_modules/react-native/scripts/generate-codegen-artifacts.js -p . -o android/build/codegen -t android -s library"

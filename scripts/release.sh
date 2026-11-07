@@ -3,7 +3,8 @@
 #
 # Usage: scripts/release.sh <kind> <bump>
 #   <kind>  release line: dev (the fcdev developer binary), ts, laravel, java,
-#           go-sdk, fn-ts, fn-rust, fn-go, ingestor (the Camel ingest runtime)
+#           go-sdk, fn-ts, fn-rust, fn-go, ingestor (the Camel ingest runtime),
+#           field-android, field-js, field-rn (the field npm packages)
 #   <bump>  patch | minor | major | X.Y.Z[-suffix]
 #
 # The version source of truth is a per-line VERSION file, seeded from the Rust
@@ -18,7 +19,7 @@ kind="${1:-}"
 bump="${2:-}"
 
 usage() {
-	echo "usage: scripts/release.sh <dev|ts|laravel|java|go-sdk|fn-ts|fn-rust|fn-go|ingestor|field-android> <patch|minor|major|X.Y.Z[-suffix]>" >&2
+	echo "usage: scripts/release.sh <dev|ts|laravel|java|go-sdk|fn-ts|fn-rust|fn-go|ingestor|field-android|field-js|field-rn> <patch|minor|major|X.Y.Z[-suffix]>" >&2
 	exit 2
 }
 [ -n "$kind" ] && [ -n "$bump" ] || usage
@@ -65,6 +66,8 @@ case "$kind" in
 	fn-go)   prefix="clients/fn-go";  version_file="clients/fn-go/VERSION";         label="fn-go-sdk"; go_module="github.com/flowcatalyst/flowcatalyst/clients/fn-go"; go_mod_file="clients/fn-go/go.mod" ;;
 	ingestor) prefix="ingestor";      version_file="ingestor/VERSION";              label="ingestor"; manifest_revision="ingestor/pom.xml"; workflow="split-ingestor.yml" ;;
 	field-android) prefix="field-android"; version_file="clients/field-android/VERSION"; label="field-android"; workflow="release-field-android.yml" ;;
+	field-js) prefix="field-js";      version_file="clients/field-js/VERSION";      label="field-js"; manifest="clients/field-js/package.json"; workflow="release-field-js.yml" ;;
+	field-rn) prefix="field-react-native"; version_file="clients/field-react-native/VERSION"; label="field-react-native"; manifest="clients/field-react-native/package.json"; workflow="release-field-react-native.yml" ;;
 	*)       echo "✗ unknown release kind: $kind" >&2; usage ;;
 esac
 

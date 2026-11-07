@@ -1036,6 +1036,9 @@ export type CreateEnrolmentCodeRequest = {
      * PERSONAL devices only
      */
     assignedWorkerId?: string;
+    /**
+     * A clt_ id or the client's identifier
+     */
     clientId: string;
     label?: string;
     mode: 'PERSONAL' | 'SHARED';
@@ -1927,6 +1930,9 @@ export type EnsureFieldWorkerRequest = {
      * New worker only; needs the impersonate permission
      */
     canImpersonate?: boolean;
+    /**
+     * A clt_ id or the client's identifier
+     */
     clientId: string;
     email?: string;
     /**
@@ -6868,6 +6874,9 @@ export type CreateEnrolmentCodeRequestWritable = {
      * PERSONAL devices only
      */
     assignedWorkerId?: string;
+    /**
+     * A clt_ id or the client's identifier
+     */
     clientId: string;
     label?: string;
     mode: 'PERSONAL' | 'SHARED';
@@ -7495,6 +7504,9 @@ export type EnsureFieldWorkerRequestWritable = {
      * New worker only; needs the impersonate permission
      */
     canImpersonate?: boolean;
+    /**
+     * A clt_ id or the client's identifier
+     */
     clientId: string;
     email?: string;
     /**
@@ -14131,7 +14143,7 @@ export type ListFieldDevicesData = {
     path?: never;
     query?: {
         /**
-         * Tenant client whose devices to list
+         * Tenant client whose devices to list: a clt_ id or the client's identifier
          */
         clientId?: string;
         status?: 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
@@ -14302,6 +14314,9 @@ export type SuspendFieldDeviceResponse = SuspendFieldDeviceResponses[keyof Suspe
 export type GetFieldPolicyData = {
     body?: never;
     path: {
+        /**
+         * A clt_ id or the client's identifier
+         */
         clientId: string;
     };
     query?: never;
@@ -14329,6 +14344,9 @@ export type GetFieldPolicyResponse = GetFieldPolicyResponses[keyof GetFieldPolic
 export type PutFieldPolicyData = {
     body: PutFieldPolicyRequestWritable;
     path: {
+        /**
+         * A clt_ id or the client's identifier
+         */
         clientId: string;
     };
     query?: never;
@@ -14383,7 +14401,7 @@ export type ListFieldWorkersData = {
     path?: never;
     query?: {
         /**
-         * Tenant client whose workers to list
+         * Tenant client whose workers to list: a clt_ id or the client's identifier
          */
         clientId?: string;
         /**

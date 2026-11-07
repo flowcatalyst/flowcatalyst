@@ -4,7 +4,7 @@
 	lint lint-fix analyze fmt fmt-check sqlc sqlc-verify ui-generate ui-fmt ui-verify ui-kit-sync ci clean \
 	dump-spec api-bump api-diff release-dev sdk-spec sdk-generate \
 	release-ts-sdk release-laravel-sdk build-java-sdk release-java-sdk \
-	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk release-ingestor release-field-android release-all-sdks install-tools help \
+	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk release-ingestor release-field-android release-field-js release-field-rn release-all-sdks install-tools help \
 	test-go-sdk test-go-sdk-tests lint-go-sdk go-sdk-smoke release-go-sdk e2e-platform ingestor-fleet-test \
 	tools tidy-verify vet ci-fast pre-push install-hooks \
 	ingestor-build ingestor-test function-api-install function-hello java-build
@@ -390,6 +390,15 @@ release-ingestor: ## Cut an ingestor runtime release: BUMP=… (bumps ingestor/p
 # to GitHub Packages.
 release-field-android: ## Cut a field-android release: BUMP=… (tags field-android/vX.Y.Z, publishes the AAR)
 	@scripts/release.sh field-android "$(BUMP)"
+
+# The field npm packages (clients/field-js, clients/field-react-native): the tag
+# fires release-field-js.yml / release-field-react-native.yml, which test, build
+# and `npm publish` @flowcatalyst/field-js / @flowcatalyst/field-react-native.
+release-field-js: ## Cut a field-js release: BUMP=… (bumps package.json, tags field-js/vX.Y.Z, publishes to npm)
+	@scripts/release.sh field-js "$(BUMP)"
+
+release-field-rn: ## Cut a field-react-native release: BUMP=… (bumps package.json, tags field-react-native/vX.Y.Z, publishes to npm)
+	@scripts/release.sh field-rn "$(BUMP)"
 
 # Pinned tools live in ./.tools (gitignored), built with the local Go toolchain.
 tools: $(GOLANGCI_LINT) $(SQLC) ## Build the pinned lint/codegen tools into ./.tools with the local Go
