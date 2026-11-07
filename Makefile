@@ -5,7 +5,7 @@
 	dump-spec api-bump api-diff release-dev sdk-spec sdk-generate \
 	release-ts-sdk release-laravel-sdk build-java-sdk release-java-sdk \
 	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk release-ingestor release-field-android release-all-sdks install-tools help \
-	test-go-sdk test-go-sdk-tests lint-go-sdk go-sdk-smoke release-go-sdk e2e-platform \
+	test-go-sdk test-go-sdk-tests lint-go-sdk go-sdk-smoke release-go-sdk e2e-platform ingestor-fleet-test \
 	tools tidy-verify vet ci-fast pre-push install-hooks \
 	ingestor-build ingestor-test function-api-install function-hello java-build
 
@@ -158,6 +158,9 @@ go-sdk-smoke: ## Consume the Go SDK from a scratch module (local replace + `go g
 
 e2e-platform: ## Isolated platform for app end-to-end checks; CMD=up|down|status|env|verify|drop (docs/e2e-platform.md)
 	@scripts/e2e-platform.sh $(or $(CMD),up)
+
+ingestor-fleet-test: ## Fleet test: isolated platform + 3 ingestor runtimes under kill/outage/rolling-restart/freeze faults, about 13 min (docs/ingestor-fleet-test.md)
+	@scripts/ingestor-fleet-test.sh
 
 test-integration: ## Run integration tests (embedded Postgres via internal/testpg)
 	# -p 1 serializes test binaries: each integration package boots its own
