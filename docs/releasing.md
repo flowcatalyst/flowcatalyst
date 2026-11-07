@@ -8,8 +8,8 @@ tag)`, commits the bump, tags `<prefix>/vX.Y.Z` and pushes `HEAD` plus the tag.
 | Line | Target | Tag | What the tag triggers |
 |---|---|---|---|
 | fcdev | `make release-dev BUMP=…` | `fcdev/vX.Y.Z` | `release-fcdev.yml` |
-| TypeScript SDK | `make release-ts-sdk BUMP=…` | `typescript-sdk/vX.Y.Z` | `split-typescript-sdk.yml` (disabled, `if: false`) |
-| Laravel SDK | `make release-laravel-sdk BUMP=…` | `laravel-sdk/vX.Y.Z` | `split-laravel-sdk.yml` (disabled, `if: false`) |
+| TypeScript SDK | `make release-ts-sdk BUMP=…` | `typescript-sdk/vX.Y.Z` | `split-typescript-sdk.yml`: splits `clients/typescript-sdk` to `flowcatalyst/typescript-sdk`, builds `dist/`, tags `vX.Y.Z` (token `TYPESCRIPT_SDK_TOKEN`) |
+| Laravel SDK | `make release-laravel-sdk BUMP=…` | `laravel-sdk/vX.Y.Z` | `split-laravel-sdk.yml`: splits `clients/laravel-sdk` to `flowcatalyst/laravel-sdk`, tags `vX.Y.Z` (token `LARAVEL_SDK_TOKEN`) |
 | Java SDK | `make release-java-sdk BUMP=…` | `java-sdk/vX.Y.Z` | none |
 | Go SDK | `make release-go-sdk BUMP=…` | `go-sdk/vX.Y.Z` | nothing: the script itself publishes `vX.Y.Z` to `flowcatalyst/go-sdk` |
 | Function Go SDK | `make release-fn-go-sdk BUMP=…` | `clients/fn-go/vX.Y.Z` | nothing: the Go module proxy serves the tag |
