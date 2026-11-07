@@ -6,7 +6,6 @@ import (
 	"context"
 	"net/http"
 	"net/url"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -74,6 +73,8 @@ func TestEventTypesPageAgainstPostgres(t *testing.T) {
 	assert.Nil(t, gone)
 	assert.Equal(t, 7, auditCount(t, et.ID), "create, update, add schema, finalise, deprecate, archive and delete are each audited")
 
+	// Not "No event types found": with no uipg event type left the app filter has no such
+	// option and is dropped, so other tests' event types in the shared database are listed.
 	list := do(req{target: "/ui/event-types?app=uipg"})
-	assert.True(t, strings.Contains(list, "No event types found"))
+	assert.NotContains(t, list, et.ID, "the deleted event type is not listed")
 }

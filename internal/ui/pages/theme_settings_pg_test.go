@@ -40,10 +40,13 @@ func TestThemeAndNamesPagesAgainstPostgres(t *testing.T) {
 		_, _ = pool.Exec(context.Background(),
 			`DELETE FROM app_platform_configs WHERE application_code = 'platform' AND ((section = 'login' AND property = 'theme') OR (section = 'branding' AND property = 'platform-name'))`)
 	})
+	// The settings are the platform application's: seed it, not rely on a test that ran before.
+	_, err := pool.Exec(ctx, `INSERT INTO app_applications (id, code, name) VALUES ('app_uitheme000001', 'platform', 'Platform') ON CONFLICT (code) DO NOTHING`)
+	require.NoError(t, err)
 	repo := platformconfig.NewRepository(pool)
 	clients := client.NewRepository(pool)
 	uow := testpg.NewUoW(t)
-	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, clientops.CreateClient(clients), clientops.CreateCommand{Name: "UI Theme Co", Identifier: "ui-themeco"}, testpg.TestEC())
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, clientops.CreateClient(clients), clientops.CreateCommand{Name: "UI Theme Co", Identifier: "ui-themeco"}, testpg.TestEC())
 	require.NoError(t, err)
 	clientID := *clientIDOf(t, clients, "ui-themeco")
 
