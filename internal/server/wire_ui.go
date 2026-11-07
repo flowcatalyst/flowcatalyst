@@ -34,7 +34,7 @@ import (
 // repositories directly, with the API handlers' permission checks.
 func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.UnitOfWork, repos *repoSet, svcs *serviceSet) error {
 	sjInstances := scheduledjob.NewInstanceRepository(pool)
-	ingestionRepo := ingestion.NewRepository(pool)
+	ingestionRepo := ingestion.NewRepository(pool).WithLease(cfg.IngestionLease)
 	ingestionResolver := ingestion.NewResolver(repos.applicationRepo, repos.clientRepo,
 		repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, repos.eventTypeRepo, nil)
 	return ui.Mount(r, ui.Config{

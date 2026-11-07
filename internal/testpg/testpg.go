@@ -47,8 +47,9 @@ import (
 )
 
 var (
-	mu   sync.Mutex
-	pool *pgxpool.Pool
+	mu        sync.Mutex
+	pool      *pgxpool.Pool
+	templates = map[string]bool{}
 )
 
 // RunMain is the TestMain adapter: boots embedded Postgres, runs the
@@ -276,4 +277,38 @@ func CloneDB(t *testing.T, template, name string, runtimeParams map[string]strin
 		_, _ = base.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
 	})
 	return p
+}
+
+// MigratedTemplate returns the name of a fully migrated database, created on first
+// use under name and kept for the life of the test binary, with no sessions open
+// on it: the template for CloneDB. A package whose tests must not see each
+// other's rows clones one per test (each clone takes a fraction of a second, a
+// migration several).
+func MigratedTemplate(t *testing.T, name string) string {
+	t.Helper()
+	ctx := context.Background()
+	base := Pool(t)
+	mu.Lock()
+	defer mu.Unlock()
+	if templates[name] {
+		return name
+	}
+	if _, err := base.Exec(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
+		t.Fatalf("testpg: drop template: %v", err)
+	}
+	if _, err := base.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+		t.Fatalf("testpg: create template: %v", err)
+	}
+	cfg := base.Config().Copy()
+	cfg.ConnConfig.Database = name
+	mp, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatalf("testpg: connect to template: %v", err)
+	}
+	defer mp.Close()
+	if err := migrate.Run(ctx, mp); err != nil {
+		t.Fatalf("testpg: migrate template: %v", err)
+	}
+	templates[name] = true
+	return name
 }

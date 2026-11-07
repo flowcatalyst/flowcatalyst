@@ -34,6 +34,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
@@ -87,12 +88,17 @@ type env struct {
 func newEnv(t *testing.T) *env {
 	t.Helper()
 	httpcompat.Init()
-	e := &env{t: t, pool: testpg.Pool(t), now: time.Now().UTC()}
+	// A database of its own, cloned from the migrated template: the runtime
+	// reach is platform-wide and the fair share counts every live polled
+	// ingestion and runtime, so tests sharing one database would take each
+	// other's leases and shares, whatever the order they run in.
+	clone := testpg.CloneDB(t, testpg.MigratedTemplate(t, "ingr_template"), "ingr_"+unique(), nil)
+	e := &env{t: t, pool: clone, now: time.Now().UTC()}
 	e.repo = ingestion.NewRepository(e.pool)
 	e.app = application.NewIntegration("ingr-"+unique(), "Ingest runtime")
 	e.client = client.New("Acme", "acme-"+unique())
 	e.who = e.principal(permRuntime, permTest, permView)
-	uow := testpg.NewUoW(t)
+	uow := e.uow()
 	apps, clients := application.NewRepository(e.pool), client.NewRepository(e.pool)
 	e.persist(uow, func(ctx context.Context, tx *usecasepgx.DbTx) error {
 		if err := apps.Persist(ctx, e.app, tx); err != nil {
@@ -147,6 +153,9 @@ func clientTier(a *auth.AuthContext, client string) *auth.AuthContext {
 	return a
 }
 
+// uow is a unit of work on the test's own database.
+func (e *env) uow() *usecasepgx.UnitOfWork { return usecasepgx.New(e.pool, platformsink.New()) }
+
 func (e *env) persist(uow *usecasepgx.UnitOfWork, fn func(context.Context, *usecasepgx.DbTx) error) {
 	e.t.Helper()
 	ctx := context.Background()
@@ -165,7 +174,7 @@ func (e *env) save(code, source string, live bool) *ingestion.Ingestion {
 	def, err := ingestion.ParseDefinition([]byte(e.definitionJSON(source)))
 	require.NoError(e.t, err)
 	i := ingestion.New(e.app.ID, e.client.ID, code, def, live, nil, nil)
-	e.persist(testpg.NewUoW(e.t), func(ctx context.Context, tx *usecasepgx.DbTx) error { return e.repo.Persist(ctx, i, tx) })
+	e.persist(e.uow(), func(ctx context.Context, tx *usecasepgx.DbTx) error { return e.repo.Persist(ctx, i, tx) })
 	return i
 }
 
@@ -289,7 +298,7 @@ func TestPoll_LiveVersionOnly(t *testing.T) {
 	i, err = e.repo.FindByID(context.Background(), i.ID)
 	require.NoError(t, err)
 	i.SaveVersion(next, false, nil, nil)
-	e.persist(testpg.NewUoW(t), func(ctx context.Context, tx *usecasepgx.DbTx) error { return e.repo.Persist(ctx, i, tx) })
+	e.persist(e.uow(), func(ctx context.Context, tx *usecasepgx.DbTx) error { return e.repo.Persist(ctx, i, tx) })
 
 	got := e.poll("rt-"+unique(), ingestion.ContractVersion).list("ingestions")
 	require.Len(t, got, 1)

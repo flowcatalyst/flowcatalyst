@@ -299,8 +299,8 @@ of them (N-1, or a v2 runtime from before) is served as before.
 - **Robustness (2026-11-05, additive within contract version 2).**
   - **Liveness.** A runtime is live while it polled within one lease and has not left since that poll
     (`last_seen_at` within one lease AND (`left_at` IS NULL OR `left_at` < `last_seen_at`)). The fair share, the
-    instance guard and the "no runtime carries this kind" notice all read it (the notice over `RuntimeLiveWindow`, three
-    minutes, the default lease).
+    instance guard and the "no runtime carries this kind" notice all read it (the notice over the configured lease, `FC_INGESTION_LEASE_SECONDS`, via
+    `Repository.WithLease`; the default is three minutes).
   - **Instance guard.** The poll takes an optional `instanceId` (8 to 64 of `[A-Za-z0-9-]`, a random UUID per process
     start), stored in `ing_runtimes.instance_id` (migration 097). A poll whose `instanceId` differs from a stored,
     non-null one whose runtime is still live is refused **`409 RUNTIME_ID_IN_USE`** ("runtime id R is in use by another
@@ -343,7 +343,10 @@ of them (N-1, or a v2 runtime from before) is served as before.
     leases of running ingestions are therefore kept by retention. Where a runtime carries the kind, the API's
     `runtimeNotice` reads "not running: no runtime has held it since <RFC 3339 time>" (the get and the list), the
     console's list row and drawer say the same, and the gauge `fc_ingestion_unheld` (`ingestion.MetricsRegistry`,
-    recounted every minute on every replica) is the count of all of them, those of a kind no runtime carries included.
+    recounted every minute on every replica) is the count of all of them, those of a kind no runtime carries included. The same recount logs one WARN line when the count is above 0 (nothing
+    when it is 0), for a log metric filter where the gauge is not scraped: msg `ingestions unheld`, `count` (a top-level
+    number), `ids` (the unheld ingestion ids, sorted, at most 20) and `more` (how many beyond those). It matches
+    `{ $.msg = "ingestions unheld" }` with `$.count` as the value.
 - **The runtime's account.** A runtime holds the role `platform:ingestion-runtime`, and that role is **platform-wide**
   (owner 2026-10-24: one fleet serves every application's ingestions, no fleet per application): the runtime routes
   (poll, report, state, jobs, secrets) reach every client and every application. Because of that the account must be

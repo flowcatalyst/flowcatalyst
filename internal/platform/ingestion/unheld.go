@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -137,13 +138,31 @@ func RunUnheldGauge(ctx context.Context, repo *Repository, lease, interval time.
 	}
 }
 
-// CountUnheld sets fc_ingestion_unheld to the number of unheld ingestions now.
-// On error the gauge keeps its last value.
+// UnheldLogIDs caps the ids the "ingestions unheld" line names; the rest are
+// counted in its "more" attribute.
+const UnheldLogIDs = 20
+
+// CountUnheld sets fc_ingestion_unheld to the number of unheld ingestions now,
+// and, when there are any, logs one WARN line "ingestions unheld" with the
+// count, up to UnheldLogIDs ids (sorted) and how many more there are. The
+// metric is not scraped everywhere; a log metric filter on that line (count is
+// a top-level number) can drive an alarm. Nothing is logged for none. On error
+// the gauge keeps its last value.
 func CountUnheld(ctx context.Context, repo *Repository, lease time.Duration) error {
 	unheld, err := repo.Unheld(ctx, nil, time.Time{}, lease)
 	if err != nil {
 		return err
 	}
 	unheldGauge.Set(float64(len(unheld)))
+	if len(unheld) > 0 {
+		ids := make([]string, 0, len(unheld))
+		for id := range unheld {
+			ids = append(ids, id)
+		}
+		slices.Sort(ids)
+		more := max(len(ids)-UnheldLogIDs, 0)
+		ids = ids[:len(ids)-more]
+		slog.Warn("ingestions unheld", "count", len(unheld), "ids", ids, "more", more)
+	}
 	return nil
 }

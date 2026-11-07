@@ -338,7 +338,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// FC_INGESTION_ENABLED is on, so off they answer 404.
 		if cfg.IngestionEnabled {
 			ingestionapi.Register(humaAPI, &ingestionapi.State{
-				Repo: ingestion.NewRepository(pool),
+				Repo: ingestion.NewRepository(pool).WithLease(cfg.IngestionLease),
 				Resolver: ingestion.NewResolver(repos.applicationRepo, repos.clientRepo,
 					repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, repos.eventTypeRepo, nil),
 				Apps:    repos.applicationRepo,
@@ -351,7 +351,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 				Lease:      cfg.IngestionLease,
 			})
 			ingestionruntimeapi.Register(humaAPI, &ingestionruntimeapi.State{
-				Repo:   ingestion.NewRepository(pool),
+				Repo:   ingestion.NewRepository(pool).WithLease(cfg.IngestionLease),
 				Jobs:   repos.dispatchJobRepo,
 				Events: repos.eventRepo,
 				Resolver: ingestion.NewResolver(repos.applicationRepo, repos.clientRepo,
