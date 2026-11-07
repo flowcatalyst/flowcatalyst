@@ -2,7 +2,11 @@
 
 React Native bridge for field-worker devices. **New Architecture only** (TurboModule `FcField`, codegen spec
 `src/NativeFcField.ts`, React Native >= 0.76). Spec: `docs/field-native-session-spec.md` section 2; WebView
-bridge: `docs/field-mobile-libraries-spec.md`. Unreleased.
+bridge: `docs/field-mobile-libraries-spec.md`.
+
+Installed from git, not a registry: `"@flowcatalyst/field-react-native": "github:flowcatalyst/field-react-native#vX.Y.Z"`
+(the published repository holds the built package; see `docs/releasing.md`). Metro reads the TypeScript source
+(`src/`) through the `react-native` entry; `lib/` carries the JS and `.d.ts` types for everything else.
 
 - **Android:** a thin bridge over the Kotlin `io.flowcatalyst.field.FieldSession` (`clients/field-android`), the one
   owner of keys, tokens, refresh and nonces in the process. JS screens and a native foreground service share it.

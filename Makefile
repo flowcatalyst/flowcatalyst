@@ -391,13 +391,14 @@ release-ingestor: ## Cut an ingestor runtime release: BUMP=… (bumps ingestor/p
 release-field-android: ## Cut a field-android release: BUMP=… (tags field-android/vX.Y.Z, publishes the AAR)
 	@scripts/release.sh field-android "$(BUMP)"
 
-# The field npm packages (clients/field-js, clients/field-react-native): the tag
-# fires release-field-js.yml / release-field-react-native.yml, which test, build
-# and `npm publish` @flowcatalyst/field-js / @flowcatalyst/field-react-native.
-release-field-js: ## Cut a field-js release: BUMP=… (bumps package.json, tags field-js/vX.Y.Z, publishes to npm)
+# The field JS packages (clients/field-js, clients/field-react-native) are installed
+# from git, not a registry: release.sh checks and packs the package, tags here, then
+# scripts/publish-git-package.sh pushes the packed package as one commit tagged vX.Y.Z
+# to github.com/flowcatalyst/field-js / field-react-native. No workflow, no token.
+release-field-js: ## Cut a field-js release: BUMP=… (bumps package.json, tags field-js/vX.Y.Z, publishes to github.com/flowcatalyst/field-js)
 	@scripts/release.sh field-js "$(BUMP)"
 
-release-field-rn: ## Cut a field-react-native release: BUMP=… (bumps package.json, tags field-react-native/vX.Y.Z, publishes to npm)
+release-field-rn: ## Cut a field-react-native release: BUMP=… (bumps package.json, tags field-react-native/vX.Y.Z, publishes to github.com/flowcatalyst/field-react-native)
 	@scripts/release.sh field-rn "$(BUMP)"
 
 # Pinned tools live in ./.tools (gitignored), built with the local Go toolchain.

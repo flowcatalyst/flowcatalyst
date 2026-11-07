@@ -16,8 +16,8 @@ tag)`, commits the bump, tags `<prefix>/vX.Y.Z` and pushes `HEAD` plus the tag.
 | Function TS SDK | `make release-fn-ts-sdk BUMP=…` | `fn-ts-sdk/vX.Y.Z` | `split-fn-ts-sdk.yml` (**off**) |
 | Function Rust SDK | `make release-fn-rust-sdk BUMP=…` | `fn-rust-sdk/vX.Y.Z` | `split-fn-rust-sdk.yml` (**off**) |
 | Field Android library | `make release-field-android BUMP=…` | `field-android/vX.Y.Z` | `release-field-android.yml`: tests, then publishes `io.flowcatalyst:field-android` to GitHub Packages |
-| Field JS library | `make release-field-js BUMP=…` | `field-js/vX.Y.Z` | `release-field-js.yml`: typecheck, tests, build, then `npm publish` of `@flowcatalyst/field-js` |
-| Field React Native library | `make release-field-rn BUMP=…` | `field-react-native/vX.Y.Z` | `release-field-react-native.yml`: lint, tests, build, then `npm publish` of `@flowcatalyst/field-react-native` |
+| Field JS library | `make release-field-js BUMP=…` | `field-js/vX.Y.Z` | nothing: the script checks, packs and publishes `vX.Y.Z` to `flowcatalyst/field-js` |
+| Field React Native library | `make release-field-rn BUMP=…` | `field-react-native/vX.Y.Z` | nothing: the script checks, packs and publishes `vX.Y.Z` to `flowcatalyst/field-react-native` |
 
 `BUMP` is `patch`, `minor`, `major` or an explicit `X.Y.Z[-suffix]`. Set
 `RELEASE_DRY_RUN=1` to run every check and print the would-be diff without
@@ -40,30 +40,47 @@ ts, laravel, java, go-sdk, fn-ts, fn-rust, fn-go, field-android, field-js, field
 - `release.sh` pushes `HEAD`, so every unpushed commit goes up with the first
   release. A failed line stops the run; rerun with `ONLY` set to the rest.
 
-## Field npm packages (`clients/field-js`, `clients/field-react-native`)
+## Field JS packages (`clients/field-js`, `clients/field-react-native`)
 
-`@flowcatalyst/field-js` and `@flowcatalyst/field-react-native` are published
-straight from this repository to npm: no split repository. Both start at
-`0.0.0`, so the **first release of each must be explicit**
-(`make release-field-js BUMP=0.1.0`, `make release-field-rn BUMP=0.1.0`).
-`release.sh` bumps `VERSION` and the package's `"version"`; the workflow
-refuses a tag that disagrees with either, installs with the committed
-`pnpm-lock.yaml` (`--frozen-lockfile`), runs the checks and the build, and runs
-`npm publish --access public` (a `-suffix` version publishes under the `next`
-dist-tag). Both packages build in `prepack`, so a publish cannot ship without
-`dist/` or `lib/`.
+`@flowcatalyst/field-js` and `@flowcatalyst/field-react-native` are installed
+from git, not from a registry (owner ruling 2026-11-07). Each has its own
+repository, `github.com/flowcatalyst/field-js` and
+`github.com/flowcatalyst/field-react-native`, and an app depends on a tag:
 
-Owner setup before the first release (nothing here is created by the repo):
+```json
+"@flowcatalyst/field-js": "github:flowcatalyst/field-js#v0.1.0",
+"@flowcatalyst/field-react-native": "github:flowcatalyst/field-react-native#v0.1.0"
+```
 
-1. **npm scope.** Own the `@flowcatalyst` scope on npmjs.com (the scope that
-   publishes `@flowcatalyst/sdk`), with permission to create the two new
-   packages.
-2. **Token.** Create an npm automation (or granular, read-write, scoped to
-   `@flowcatalyst`) token and store it as the repository secret `NPM_TOKEN` on
-   `flowcatalyst/flowcatalyst`. The workflows fail early with a clear message
-   when it is missing.
-3. **First release**, one per invocation: `make release-field-js BUMP=0.1.0`,
-   then `make release-field-rn BUMP=0.1.0`.
+npm, pnpm and yarn all install that; a private repository needs the
+installer's own git access (SSH key or token), nothing else.
+
+- **What a release does.** `release.sh` first runs
+  `scripts/publish-git-package.sh` in check-only mode on `HEAD`: it exports the
+  package as committed, installs with its `pnpm-lock.yaml`
+  (`--frozen-lockfile`), runs `typecheck`, `lint` and `test` where the package
+  has them, and packs it (`prepack` builds `dist/` or `lib/`). Then it bumps
+  `VERSION` and `"version"`, commits, tags `<prefix>/vX.Y.Z` here and pushes,
+  and runs the script for real on that tag: one commit whose tree is exactly
+  what `npm pack` produced, parented on the published repository's `main`,
+  message `Release vX.Y.Z` (naming the source commit), pushed as `main` plus
+  the tag `vX.Y.Z`. The published `package.json` has no `scripts` and no
+  `devDependencies`, so installing from git never builds on the consumer's
+  machine. It runs locally with your own git access: no workflow, no token.
+- **Checks.** `release.sh` refuses before committing if the published
+  repository can't be reached or already has `vX.Y.Z`, or if the package's
+  checks fail. If publishing fails after the push here, rerun
+  `scripts/publish-git-package.sh <dir> <prefix>/vX.Y.Z X.Y.Z <repo-url>`: it
+  says "already published" for the same tree and refuses a different tree (cut
+  a new version rather than move a tag an app may have locked).
+- **Changes go here, not there.** The published repositories are output; the
+  next release replaces their tree.
+- Both start at `0.0.0`, so the **first release of each must be explicit**:
+  `make release-field-js BUMP=0.1.0`, then `make release-field-rn BUMP=0.1.0`.
+
+Owner setup before the first release: create the two repositories on GitHub,
+**empty** (no README or licence commit; the first release makes `main`), and
+make sure the people who install them can read them.
 
 `field-react-native` drives the native module in `clients/field-android`; it
 does not depend on it at the npm level (the Android library is consumed from

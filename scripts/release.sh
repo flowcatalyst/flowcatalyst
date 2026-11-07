@@ -4,7 +4,8 @@
 # Usage: scripts/release.sh <kind> <bump>
 #   <kind>  release line: dev (the fcdev developer binary), ts, laravel, java,
 #           go-sdk, fn-ts, fn-rust, fn-go, ingestor (the Camel ingest runtime),
-#           field-android, field-js, field-rn (the field npm packages)
+#           field-android, field-js, field-rn (the field JS packages, published
+#           to their own git repositories)
 #   <bump>  patch | minor | major | X.Y.Z[-suffix]
 #
 # The version source of truth is a per-line VERSION file, seeded from the Rust
@@ -39,6 +40,12 @@ usage() {
 # scripts/publish-go-sdk.sh pushes one commit tagged vX.Y.Z to
 # github.com/flowcatalyst/go-sdk.
 #
+# The field JS packages (field-js, field-rn) are installed from git, not a
+# registry (git_pkg_dir/git_pkg_repo): before anything is committed the package
+# is checked and packed from HEAD, and after the tag is pushed
+# scripts/publish-git-package.sh pushes one commit, the packed package, tagged
+# vX.Y.Z to its own repository.
+#
 # The ingestor adds manifest_revision: the <revision> property of its parent
 # pom.xml, which every Maven module's version reads.
 #
@@ -55,6 +62,8 @@ workflow=""
 go_module=""
 go_mod_file=""
 publish_go_sdk=""
+git_pkg_dir=""
+git_pkg_repo=""
 case "$kind" in
 	dev)     prefix="fcdev";         version_file="cmd/fcdev/VERSION";             label="fcdev" ;;
 	ts)      prefix="typescript-sdk"; version_file="clients/typescript-sdk/VERSION"; label="typescript-sdk"; manifest="clients/typescript-sdk/package.json" ;;
@@ -66,10 +75,16 @@ case "$kind" in
 	fn-go)   prefix="clients/fn-go";  version_file="clients/fn-go/VERSION";         label="fn-go-sdk"; go_module="github.com/flowcatalyst/flowcatalyst/clients/fn-go"; go_mod_file="clients/fn-go/go.mod" ;;
 	ingestor) prefix="ingestor";      version_file="ingestor/VERSION";              label="ingestor"; manifest_revision="ingestor/pom.xml"; workflow="split-ingestor.yml" ;;
 	field-android) prefix="field-android"; version_file="clients/field-android/VERSION"; label="field-android"; workflow="release-field-android.yml" ;;
-	field-js) prefix="field-js";      version_file="clients/field-js/VERSION";      label="field-js"; manifest="clients/field-js/package.json"; workflow="release-field-js.yml" ;;
-	field-rn) prefix="field-react-native"; version_file="clients/field-react-native/VERSION"; label="field-react-native"; manifest="clients/field-react-native/package.json"; workflow="release-field-react-native.yml" ;;
+	field-js) prefix="field-js";      version_file="clients/field-js/VERSION";      label="field-js"; manifest="clients/field-js/package.json"; git_pkg_dir="clients/field-js"; git_pkg_repo="git@github.com:flowcatalyst/field-js.git" ;;
+	field-rn) prefix="field-react-native"; version_file="clients/field-react-native/VERSION"; label="field-react-native"; manifest="clients/field-react-native/package.json"; git_pkg_dir="clients/field-react-native"; git_pkg_repo="git@github.com:flowcatalyst/field-react-native.git" ;;
 	*)       echo "✗ unknown release kind: $kind" >&2; usage ;;
 esac
+
+# RELEASE_GIT_PKG_REPO replaces the published repository URL (a test passes a local
+# bare repository).
+if [ -n "$git_pkg_repo" ] && [ -n "${RELEASE_GIT_PKG_REPO:-}" ]; then
+	git_pkg_repo="$RELEASE_GIT_PKG_REPO"
+fi
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
@@ -164,6 +179,20 @@ if [ -n "$publish_go_sdk" ]; then
 		echo "✗ github.com/flowcatalyst/go-sdk already has v$new." >&2
 		exit 1
 	fi
+fi
+# field-js/field-rn: the published repo must be reachable and must not have the
+# version yet, and the package must pass its checks and pack, before anything
+# is committed here.
+if [ -n "$git_pkg_repo" ]; then
+	published="$(git ls-remote "$git_pkg_repo" "refs/tags/v$new")" || {
+		echo "✗ cannot reach $git_pkg_repo. Create the repository (empty) and check your access." >&2
+		exit 1
+	}
+	if [ -n "$published" ]; then
+		echo "✗ $git_pkg_repo already has v$new." >&2
+		exit 1
+	fi
+	PUBLISH_CHECK_ONLY=1 scripts/publish-git-package.sh "$git_pkg_dir" HEAD "$new" "$git_pkg_repo"
 fi
 
 echo ""
@@ -295,11 +324,21 @@ if [ -n "$publish_go_sdk" ]; then
 		exit 1
 	}
 fi
+if [ -n "$git_pkg_repo" ]; then
+	scripts/publish-git-package.sh "$git_pkg_dir" "$prefix/v$new" "$new" "$git_pkg_repo" || {
+		echo "✗ Tagged $prefix/v$new here, but publishing to $git_pkg_repo failed. Fix it and rerun: scripts/publish-git-package.sh $git_pkg_dir $prefix/v$new $new $git_pkg_repo" >&2
+		exit 1
+	}
+fi
 
 echo ""
 echo "✓ Released $label v$new"
 if [ -n "$go_module" ]; then
 	echo "  Consume:  go get $go_module@v$new (module proxy; no workflow)"
+elif [ -n "$git_pkg_repo" ]; then
+	name="$(node -p "require('./$git_pkg_dir/package.json').name")"
+	gh_path="${git_pkg_repo#git@github.com:}"
+	echo "  Consume:  \"$name\": \"github:${gh_path%.git}#v$new\" (no workflow, no registry)"
 else
 	echo "  Workflow: https://github.com/flowcatalyst/flowcatalyst-go/actions/workflows/${workflow:-release-$prefix.yml}"
 fi
