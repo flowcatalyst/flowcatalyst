@@ -6,7 +6,7 @@ class ListFieldWorkers extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
 {
     /**
      * @param array{
-     *    "clientId"?: string, //Tenant client whose workers to list
+     *    "clientId"?: string, //Tenant client whose workers to list: a clt_ id or the client's identifier
      *    "q"?: string, //Case-insensitive prefix matched against name and worker code
      *    "appCode"?: string, //Only workers granted this application
      *    "status"?: string, //Only workers in this state

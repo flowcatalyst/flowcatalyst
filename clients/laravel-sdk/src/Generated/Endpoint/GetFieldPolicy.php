@@ -6,7 +6,7 @@ class GetFieldPolicy extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint
 {
     protected $clientId;
     /**
-     * @param string $clientId
+     * @param string $clientId A clt_ id or the client's identifier
      */
     public function __construct(string $clientId)
     {

@@ -32,6 +32,8 @@ class CreateEnrolmentCodeRequest implements AdditionalPropertiesInterface
      */
     protected $assignedWorkerId;
     /**
+     * A clt_ id or the client's identifier
+     *
      * @var string|null
      */
     protected $clientId;
@@ -106,6 +108,8 @@ class CreateEnrolmentCodeRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
+     * A clt_ id or the client's identifier
+     *
      * @return string|null
      */
     public function getClientId(): ?string
@@ -113,6 +117,8 @@ class CreateEnrolmentCodeRequest implements AdditionalPropertiesInterface
         return $this->clientId;
     }
     /**
+     * A clt_ id or the client's identifier
+     *
      * @param string|null $clientId
      *
      * @return self

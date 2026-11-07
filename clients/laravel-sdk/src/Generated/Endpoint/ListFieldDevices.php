@@ -6,7 +6,7 @@ class ListFieldDevices extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
 {
     /**
      * @param array{
-     *    "clientId"?: string, //Tenant client whose devices to list
+     *    "clientId"?: string, //Tenant client whose devices to list: a clt_ id or the client's identifier
      *    "status"?: string,
      *    "mode"?: string,
      *    "page"?: int, //0-based page index (default 0)

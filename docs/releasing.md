@@ -16,6 +16,8 @@ tag)`, commits the bump, tags `<prefix>/vX.Y.Z` and pushes `HEAD` plus the tag.
 | Function TS SDK | `make release-fn-ts-sdk BUMP=…` | `fn-ts-sdk/vX.Y.Z` | `split-fn-ts-sdk.yml` (**off**) |
 | Function Rust SDK | `make release-fn-rust-sdk BUMP=…` | `fn-rust-sdk/vX.Y.Z` | `split-fn-rust-sdk.yml` (**off**) |
 | Field Android library | `make release-field-android BUMP=…` | `field-android/vX.Y.Z` | `release-field-android.yml`: tests, then publishes `io.flowcatalyst:field-android` to GitHub Packages |
+| Field JS library | `make release-field-js BUMP=…` | `field-js/vX.Y.Z` | `release-field-js.yml`: typecheck, tests, build, then `npm publish` of `@flowcatalyst/field-js` |
+| Field React Native library | `make release-field-rn BUMP=…` | `field-react-native/vX.Y.Z` | `release-field-react-native.yml`: lint, tests, build, then `npm publish` of `@flowcatalyst/field-react-native` |
 
 `BUMP` is `patch`, `minor`, `major` or an explicit `X.Y.Z[-suffix]`. Set
 `RELEASE_DRY_RUN=1` to run every check and print the would-be diff without
@@ -26,7 +28,7 @@ committing, tagging or pushing (`RELEASE_DRY_RUN=1 make release-fn-ts-sdk BUMP=0
 `make release-all-sdks BUMP=patch|minor|major` (default `patch`) runs
 `scripts/release-all-sdks.sh`. It prints a plan, asks once, then calls
 `scripts/release.sh` for each line whose directory changed since its last tag:
-ts, laravel, java, go-sdk, fn-ts, fn-rust, fn-go, field-android (and fcdev with `WITH_DEV=1`).
+ts, laravel, java, go-sdk, fn-ts, fn-rust, fn-go, field-android, field-js, field-rn (and fcdev with `WITH_DEV=1`).
 
 - `RELEASE_ALL_PLAN=1` prints the plan only. `RELEASE_DRY_RUN=1` runs every
   check per line and changes and pushes nothing.
@@ -37,6 +39,35 @@ ts, laravel, java, go-sdk, fn-ts, fn-rust, fn-go, field-android (and fcdev with 
   change files (stale spec): run `make sdk-generate`, review and commit first.
 - `release.sh` pushes `HEAD`, so every unpushed commit goes up with the first
   release. A failed line stops the run; rerun with `ONLY` set to the rest.
+
+## Field npm packages (`clients/field-js`, `clients/field-react-native`)
+
+`@flowcatalyst/field-js` and `@flowcatalyst/field-react-native` are published
+straight from this repository to npm: no split repository. Both start at
+`0.0.0`, so the **first release of each must be explicit**
+(`make release-field-js BUMP=0.1.0`, `make release-field-rn BUMP=0.1.0`).
+`release.sh` bumps `VERSION` and the package's `"version"`; the workflow
+refuses a tag that disagrees with either, installs with the committed
+`pnpm-lock.yaml` (`--frozen-lockfile`), runs the checks and the build, and runs
+`npm publish --access public` (a `-suffix` version publishes under the `next`
+dist-tag). Both packages build in `prepack`, so a publish cannot ship without
+`dist/` or `lib/`.
+
+Owner setup before the first release (nothing here is created by the repo):
+
+1. **npm scope.** Own the `@flowcatalyst` scope on npmjs.com (the scope that
+   publishes `@flowcatalyst/sdk`), with permission to create the two new
+   packages.
+2. **Token.** Create an npm automation (or granular, read-write, scoped to
+   `@flowcatalyst`) token and store it as the repository secret `NPM_TOKEN` on
+   `flowcatalyst/flowcatalyst`. The workflows fail early with a clear message
+   when it is missing.
+3. **First release**, one per invocation: `make release-field-js BUMP=0.1.0`,
+   then `make release-field-rn BUMP=0.1.0`.
+
+`field-react-native` drives the native module in `clients/field-android`; it
+does not depend on it at the npm level (the Android library is consumed from
+GitHub Packages by the app). Release `field-js` first if the two change together.
 
 ## Go SDK (`pkg/fcsdk`)
 

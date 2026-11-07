@@ -944,22 +944,11 @@ func (s *State) resolveClientRef(ctx context.Context, ref string) (*string, erro
 	if s.Clients == nil {
 		return &ref, nil // handler tests without a client repo: pass through
 	}
-	c, err := s.Clients.FindByID(ctx, ref)
+	id, err := s.Clients.ResolveRef(ctx, ref)
 	if err != nil {
-		return nil, usecase.Internal("REPO", "client lookup failed", err)
+		return nil, err
 	}
-	if c == nil {
-		// Identifiers are lowercase-normalised at create time (CreateClient),
-		// so match case-insensitively here.
-		c, err = s.Clients.FindByIdentifier(ctx, strings.ToLower(ref))
-		if err != nil {
-			return nil, usecase.Internal("REPO", "client lookup failed", err)
-		}
-	}
-	if c == nil {
-		return nil, httperror.NotFound("Client", ref)
-	}
-	return ids.StringPtr(&c.ID), nil
+	return &id, nil
 }
 
 func derefStr(s *string) string {

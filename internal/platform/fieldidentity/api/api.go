@@ -46,6 +46,16 @@ type State struct {
 	Verifier fieldidentity.TokenVerifier
 }
 
+// resolveClient canonicalises a request's client reference (a clt_ id or the
+// client's identifier) to the client id. Stored values and responses always
+// carry the id.
+func (s *State) resolveClient(ctx context.Context, ref string) (string, error) {
+	if s.Ops.Clients == nil {
+		return ref, nil
+	}
+	return s.Ops.Clients.ResolveRef(ctx, ref)
+}
+
 const (
 	workersTag  = "field-workers"
 	devicesTag  = "field-devices"
@@ -330,7 +340,7 @@ func (s *State) loadWorkerWith(ctx context.Context, id string,
 
 // EnsureFieldWorkerRequest is the body of POST /api/field-workers.
 type EnsureFieldWorkerRequest struct {
-	ClientID   string   `json:"clientId"`
+	ClientID   string   `json:"clientId" doc:"A clt_ id or the client's identifier"`
 	WorkerCode string   `json:"workerCode"`
 	Name       string   `json:"name"`
 	Email      *string  `json:"email,omitempty"`
@@ -355,6 +365,10 @@ func (s *State) ensureWorker(ctx context.Context, in *apicommon.In[EnsureFieldWo
 	clientID := strings.TrimSpace(in.Body.ClientID)
 	if clientID == "" {
 		return nil, usecase.Validation("CLIENT_ID_REQUIRED", "clientId is required")
+	}
+	clientID, err := s.resolveClient(ctx, clientID)
+	if err != nil {
+		return nil, err
 	}
 	if err := auth.CanManageFieldWorkers(ac, clientID); err != nil {
 		return nil, err
@@ -418,7 +432,7 @@ type FieldWorkerListResponse struct {
 }
 
 type listWorkersInput struct {
-	ClientID          string `query:"clientId" doc:"Tenant client whose workers to list"`
+	ClientID          string `query:"clientId" doc:"Tenant client whose workers to list: a clt_ id or the client's identifier"`
 	Q                 string `query:"q" doc:"Case-insensitive prefix matched against name and worker code"`
 	AppCode           string `query:"appCode" doc:"Only workers granted this application"`
 	Status            string `query:"status" enum:"ACTIVE,DISABLED" doc:"Only workers in this state"`
@@ -433,6 +447,10 @@ func (s *State) listWorkers(ctx context.Context, in *listWorkersInput) (*apicomm
 	clientID := strings.TrimSpace(in.ClientID)
 	if clientID == "" {
 		return nil, usecase.Validation("CLIENT_ID_REQUIRED", "clientId query param is required")
+	}
+	clientID, err := s.resolveClient(ctx, clientID)
+	if err != nil {
+		return nil, err
 	}
 	if err := auth.CanReadFieldWorkers(ac, clientID); err != nil {
 		return nil, err
@@ -794,7 +812,7 @@ func (s *State) signIns(ctx context.Context, in *signInsInput) (*apicommon.Out[F
 
 // CreateEnrolmentCodeRequest is the body of POST /api/field-devices/enrolment-codes.
 type CreateEnrolmentCodeRequest struct {
-	ClientID         string   `json:"clientId"`
+	ClientID         string   `json:"clientId" doc:"A clt_ id or the client's identifier"`
 	Mode             string   `json:"mode" enum:"PERSONAL,SHARED"`
 	AppCodes         []string `json:"appCodes"`
 	AssignedWorkerID *string  `json:"assignedWorkerId,omitempty" doc:"PERSONAL devices only"`
@@ -814,6 +832,10 @@ func (s *State) createCode(ctx context.Context, in *apicommon.In[CreateEnrolment
 	clientID := strings.TrimSpace(in.Body.ClientID)
 	if clientID == "" {
 		return nil, usecase.Validation("CLIENT_ID_REQUIRED", "clientId is required")
+	}
+	clientID, err := s.resolveClient(ctx, clientID)
+	if err != nil {
+		return nil, err
 	}
 	if err := auth.CanManageFieldDevices(auth.FromContext(ctx), clientID); err != nil {
 		return nil, err
@@ -908,7 +930,7 @@ type FieldDeviceListResponse struct {
 }
 
 type listDevicesInput struct {
-	ClientID string `query:"clientId" doc:"Tenant client whose devices to list"`
+	ClientID string `query:"clientId" doc:"Tenant client whose devices to list: a clt_ id or the client's identifier"`
 	Status   string `query:"status" enum:"ACTIVE,SUSPENDED,REVOKED"`
 	Mode     string `query:"mode" enum:"PERSONAL,SHARED"`
 	Page     int    `query:"page" doc:"0-based page index (default 0)"`
@@ -920,6 +942,10 @@ func (s *State) listDevices(ctx context.Context, in *listDevicesInput) (*apicomm
 	clientID := strings.TrimSpace(in.ClientID)
 	if clientID == "" {
 		return nil, usecase.Validation("CLIENT_ID_REQUIRED", "clientId query param is required")
+	}
+	clientID, err := s.resolveClient(ctx, clientID)
+	if err != nil {
+		return nil, err
 	}
 	if err := auth.CanReadFieldDevices(ac, clientID); err != nil {
 		return nil, err
@@ -1047,14 +1073,18 @@ func policyResponse(p fieldidentity.Policy) FieldPolicyResponse {
 }
 
 type policyInput struct {
-	ClientID string `path:"clientId"`
+	ClientID string `path:"clientId" doc:"A clt_ id or the client's identifier"`
 }
 
 func (s *State) getPolicy(ctx context.Context, in *policyInput) (*apicommon.Out[FieldPolicyResponse], error) {
-	if err := auth.CanReadFieldDevices(auth.FromContext(ctx), in.ClientID); err != nil {
+	clientID, err := s.resolveClient(ctx, strings.TrimSpace(in.ClientID))
+	if err != nil {
 		return nil, err
 	}
-	p, err := s.Ops.R.Policies.Effective(ctx, in.ClientID)
+	if err := auth.CanReadFieldDevices(auth.FromContext(ctx), clientID); err != nil {
+		return nil, err
+	}
+	p, err := s.Ops.R.Policies.Effective(ctx, clientID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_field_policy failed", err)
 	}
@@ -1082,17 +1112,21 @@ type PutFieldPolicyRequest struct {
 }
 
 type putPolicyInput struct {
-	ClientID string `path:"clientId"`
+	ClientID string `path:"clientId" doc:"A clt_ id or the client's identifier"`
 	Body     PutFieldPolicyRequest
 }
 
 func (s *State) putPolicy(ctx context.Context, in *putPolicyInput) (*apicommon.Out[FieldPolicyResponse], error) {
-	if err := auth.CanManageFieldDevices(auth.FromContext(ctx), in.ClientID); err != nil {
+	clientID, err := s.resolveClient(ctx, strings.TrimSpace(in.ClientID))
+	if err != nil {
+		return nil, err
+	}
+	if err := auth.CanManageFieldDevices(auth.FromContext(ctx), clientID); err != nil {
 		return nil, err
 	}
 	b := in.Body
 	cmd := fieldidentity.PutPolicyCommand{
-		ClientID: in.ClientID, PINMinLength: b.PinMinLength, SoftLockThreshold: b.SoftLockThreshold,
+		ClientID: clientID, PINMinLength: b.PinMinLength, SoftLockThreshold: b.SoftLockThreshold,
 		SoftLockSecs: b.SoftLockSecs, HardLockThreshold: b.HardLockThreshold, SharedIdleSecs: b.SharedIdleSecs,
 		PersonalIdleSecs: b.PersonalIdleSecs, ShiftMaxSecs: b.ShiftMaxSecs, RequireAttestation: b.RequireAttestation,
 		PINReauthDays: b.PinReauthDays, RequireEnrolledDevice: b.RequireEnrolledDevice,
@@ -1101,7 +1135,7 @@ func (s *State) putPolicy(ctx context.Context, in *putPolicyInput) (*apicommon.O
 	if _, err := usecaseop.Run(ctx, s.UoW, s.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx)); err != nil {
 		return nil, fail(err)
 	}
-	return s.getPolicy(ctx, &policyInput{ClientID: in.ClientID})
+	return s.getPolicy(ctx, &policyInput{ClientID: clientID})
 }
 
 // ── introspection ────────────────────────────────────────────────────────

@@ -11,13 +11,16 @@
 	"license": "Apache-2.0",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/yourusername/flowcatalyst.git",
+		"url": "https://github.com/flowcatalyst/flowcatalyst.git",
 		"directory": "clients/field-js"
 	},
 	"files": [
 		"dist",
 		"README.md"
 	],
+	"publishConfig": {
+		"access": "public"
+	},
 	"type": "module",
 	"main": "./dist/index.js",
 	"module": "./dist/index.js",
@@ -30,6 +33,7 @@
 	},
 	"scripts": {
 		"build": "tsc",
+		"prepack": "npm run build",
 		"dev": "tsc --watch",
 		"typecheck": "tsc --noEmit -p tsconfig.test.json",
 		"test": "node --import tsx --test --test-reporter=spec 'tests/unit/**/*.test.ts'",
