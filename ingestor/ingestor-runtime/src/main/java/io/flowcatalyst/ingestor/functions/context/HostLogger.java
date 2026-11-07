@@ -32,7 +32,9 @@ import org.jspecify.annotations.Nullable;
 ///
 /// A function's log is bounded (docs/ingestor-failure-pacing.md R6): every line that passes the level check
 /// takes one from the address's [LogBudget] (100 a second, burst 1,000, by default) and is dropped when there is
-/// none; a message over [#MAX_MESSAGE] is cut; and a minute's drops are reported as one WARN from the host.
+/// none; a message over [#MAX_MESSAGE] is cut; and a minute's drops are reported as one WARN from the host: by the
+/// host's one timer ([LogBudgets]) while it runs, else on the next log call after the minute; [#flushDropped] (a
+/// function closing) writes what is pending.
 public final class HostLogger implements System.Logger {
 
     /// The longest message kept, in characters; longer is cut and says how many bytes it was.
@@ -142,10 +144,22 @@ public final class HostLogger implements System.Logger {
         }
     }
 
-    private void emit(Level level, @Nullable String message, @Nullable Throwable cause) {
-        long dropped = budget.takeDropped();
+    /// Writes the summary of what the budget dropped and has not reported yet, if anything: a function closing.
+    void flushDropped() {
+        summarise(slf4j, address, budget.takeAll(), budget.limits().rate());
+    }
+
+    /// The one WARN for a function's dropped lines, when there are any.
+    static void summarise(Logger slf4j, String address, long dropped, int rate) {
         if (dropped > 0) {
-            slf4j.warn("function {} dropped {} log lines in the last minute (limit {}/s)", address, dropped, budget.limits().rate());
+            slf4j.warn("function {} dropped {} log lines in the last minute (limit {}/s)", address, dropped, rate);
+        }
+    }
+
+    private void emit(Level level, @Nullable String message, @Nullable Throwable cause) {
+        if (!budget.timed()) {
+            // No timer writes the summary: the first line after the minute does.
+            summarise(slf4j, address, budget.takeDropped(), budget.limits().rate());
         }
         if (!budget.tryAcquire()) {
             return;

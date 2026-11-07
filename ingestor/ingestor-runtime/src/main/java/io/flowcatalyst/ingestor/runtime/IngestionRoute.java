@@ -19,6 +19,8 @@ import java.io.UncheckedIOException;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.InstantSource;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,6 +46,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.services.sqs.model.MessageSystemAttributeName;
 
 /**
  * The route for one ingestion: consume from its source, split the payload into records, and create
@@ -65,7 +68,8 @@ final class IngestionRoute extends RouteBuilder {
 
   private static final Logger LOG = LoggerFactory.getLogger(IngestionRoute.class);
 
-  private static final String PENDING = "ingest.pending";
+  /** Exchange property: the payload's jobs not yet sent; set when the route begins the exchange. */
+  static final String PENDING = "ingest.pending";
 
   /** Exchange property: why the payload was rejected. Absent when it was not. */
   static final String REJECTED = "ingestRejected";
@@ -168,8 +172,13 @@ final class IngestionRoute extends RouteBuilder {
   private final TraceWindows traces;
   private final PollPacer pacer;
   private final FailureLog failures;
+  private final InstantSource clock;
   /** The endpoint the route consumes from, once configured. */
   private @Nullable Endpoint consumed;
+  /** The poll strategy of a source Camel polls, once configured: where a failed commit is reported. */
+  private @Nullable ReportingPollStrategy polls;
+  /** When an SQS message received again and again was last reported to the platform. */
+  private volatile Instant receivesReported = Instant.MIN;
 
   IngestionRoute(
       Ingestion ingestion, SourceEndpoints endpoints, JobSink sink, ExchangeCounters counters) {
@@ -196,6 +205,7 @@ final class IngestionRoute extends RouteBuilder {
       Pacing pacing) {
     this.pacer = pacing.pacer();
     this.failures = pacing.failures();
+    this.clock = pacing.clock();
     this.traces = traces;
     this.ingestion = ingestion;
     this.endpoints = endpoints;
@@ -240,6 +250,7 @@ final class IngestionRoute extends RouteBuilder {
     consumed = source;
     boolean route = CamelRoutes.yaml(ingestion.source()) != null;
     ReportingPollStrategy polls = new ReportingPollStrategy(ingestion, counters, health, endpoints.guard(ingestion), pacer, failures);
+    this.polls = polls;
     switch (source) {
       case ScheduledPollEndpoint polled -> {
         polled.setPollStrategy(polls);
@@ -446,6 +457,9 @@ final class IngestionRoute extends RouteBuilder {
     Object heldBody = capture == null ? null : exchange.getMessage().getBody();
     exchange.setProperty(PENDING, pending);
     exchange.setProperty(FOLDER, ".done");
+    // An SQS message the route deletes itself, from the component's queue (a stand-in endpoint has nothing to delete).
+    @Nullable Runnable delete =
+        ingestion.source() instanceof Source.Sqs sqs && exchange.getFromEndpoint() instanceof Sqs2Endpoint ? received(exchange, sqs) : null;
     exchange
         .getExchangeExtension()
         .addOnCompletion(
@@ -458,6 +472,9 @@ final class IngestionRoute extends RouteBuilder {
                   counters.exchangeCompleted(ingestion);
                 }
                 traced(capture, pending, sourceHeaders, heldBody, done, pending.rejected ? "rejected" : "completed", done.getProperty(REJECTED, String.class));
+                if (delete != null) {
+                  delete.run();
+                }
               }
 
               @Override
@@ -486,6 +503,98 @@ final class IngestionRoute extends RouteBuilder {
                 traced(capture, pending, sourceHeaders, heldBody, done, "failed", cause == null ? "the payload was not taken" : cause.getMessage());
               }
             });
+  }
+
+  /**
+   * An SQS message has been received: one received more than {@link
+   * CamelSourceEndpoints#SQS_RECEIVES_WARN} times is reported, and what deletes it once its exchange
+   * ends without failing is returned (taken now, while the exchange holds the message's headers).
+   */
+  private Runnable received(Exchange exchange, Source.Sqs sqs) {
+    int receives = receiveCount(exchange);
+    if (receives > CamelSourceEndpoints.SQS_RECEIVES_WARN) {
+      receivedOften(sqs, receives);
+    }
+    String receipt = exchange.getMessage().getHeader(Sqs2Constants.RECEIPT_HANDLE, String.class);
+    Endpoint from = exchange.getFromEndpoint();
+    return () -> {
+      try {
+        deleteMessage(from, receipt);
+      } catch (CommitFailedException e) {
+        commitFailed(e);
+      }
+    };
+  }
+
+  /** How many times SQS says the message has been received, 0 when it does not say. */
+  private static int receiveCount(Exchange exchange) {
+    Object count = null;
+    if (exchange.getMessage().getHeader(Sqs2Constants.ATTRIBUTES) instanceof Map<?, ?> attributes) {
+      count = attributes.get(MessageSystemAttributeName.APPROXIMATE_RECEIVE_COUNT);
+    }
+    if (count == null) {
+      count = exchange.getMessage().getHeader(MessageSystemAttributeName.APPROXIMATE_RECEIVE_COUNT.toString());
+    }
+    try {
+      return count == null ? 0 : Integer.parseInt(count.toString().strip());
+    } catch (NumberFormatException e) {
+      return 0;
+    }
+  }
+
+  /**
+   * A message keeps coming back: its exchange keeps failing, or it is not deleted. Logged through the
+   * failure log (a line a minute for the ingestion, not one a message) and reported to the platform
+   * at most once a minute; the source is not failing for it, and it is not paced for it.
+   */
+  private void receivedOften(Source.Sqs sqs, int receives) {
+    String message =
+        "a message on the sqs queue " + sqs.queue() + " (" + sqs.region() + ") has been received " + receives + " times (more than "
+            + CamelSourceEndpoints.SQS_RECEIVES_WARN + "): it keeps failing, or it is not being deleted; give the queue a dead-letter queue (maxReceiveCount)";
+    failures.failed(ingestion.id() + ":receives", "ingestion " + ingestion.id() + ": " + message, null);
+    Instant now = clock.instant();
+    if (!now.isBefore(receivesReported.plus(RECEIVES_REPORTED_EVERY))) {
+      receivesReported = now;
+      counters.failure(ingestion, Failure.Kind.SOURCE, message, null, null);
+    }
+  }
+
+  /** How often a message received again and again is reported to the platform, at most. */
+  private static final Duration RECEIVES_REPORTED_EVERY = Duration.ofMinutes(1);
+
+  /**
+   * Deletes an SQS message whose exchange ended without failing: its jobs are made, or it was
+   * rejected. The same point a file is moved or a row marked (R4).
+   *
+   * @throws CommitFailedException when it could not be deleted; it comes back after its visibility
+   *     timeout and its identity keeps that from making new jobs
+   */
+  private static void deleteMessage(@Nullable Endpoint from, @Nullable String receipt) throws CommitFailedException {
+    // The queue's address is set on the endpoint when it is built (CamelSourceEndpoints).
+    String url = from instanceof Sqs2Endpoint queue ? queue.getConfiguration().getQueueUrl() : null;
+    if (!(from instanceof Sqs2Endpoint queue) || url == null || receipt == null) {
+      throw new CommitFailedException(DELETED, new IllegalStateException("the message carries no receipt handle, or the queue no address"));
+    }
+    try {
+      queue.getClient().deleteMessage(request -> request.queueUrl(url).receiptHandle(receipt));
+    } catch (RuntimeException e) {
+      throw new CommitFailedException(DELETED, e);
+    }
+  }
+
+  private static final String DELETED = "deleted from the queue";
+
+  /** A payload read and sent could not be marked done: a failed commit, reported and paced as the poll strategy does. */
+  private void commitFailed(CommitFailedException e) {
+    ReportingPollStrategy strategy = polls;
+    if (strategy != null) {
+      strategy.commitFailed(e.getMessage(), e);
+    } else {
+      failures.failed(ingestion.id() + ":commit", "ingestion " + ingestion.id() + ": " + ExchangeCounters.clean(e.getMessage()), e);
+      counters.failure(ingestion, Failure.Kind.SOURCE, e.getMessage(), null, null);
+      health.failing(ingestion, String.valueOf(e.getMessage()));
+      pacer.sourceFailed();
+    }
   }
 
   /**

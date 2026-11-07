@@ -168,9 +168,29 @@ format and level stay as they are apart from the summaries above.
 | R6 (function host) | committed `4811de79` |
 | WebIQ (mono-repo): stop on refused login/429/refused dispatch | mono-repo `9fd7632` |
 | iac: alerts topic, log-volume alarm, optional budget | iac `d04c644` |
+| Gap fixes B1–B3 (docs/ingestor-gap-fixes.md): SQS delete by the route, Camel's own lines, summary timer | built (uncommitted) |
 
-**Not met (no hook without reaching into a component):** Camel components' own log lines on a failed poll
-(`Sqs2Consumer` "Error while polling", the S3 rollback line, the file rollback WARN) still appear, but only as often
-as the paced polls; an SQS delete-after-read failure is not reported as a commit failure. **Limit:** a function's
-"N log lines dropped" summary is written on its next log call after the minute (no timer), so a function that floods
-and then falls silent reports its last minute only when it logs again.
+**Hooked (gap fixes B1–B3, 2026-11-07).** Camel's lines on a failed poll or exchange now go through the runtime's
+pacing. Those a consumer hands to its exception handler (`ScheduledPollConsumer` "Failed polling endpoint", the
+consumers' "Error during processing exchange", the SQS/S3 delete or move and the file move "Error during commit")
+reach `ReportingPollStrategy`, which is every polled endpoint's handler. Those a component logs itself, with no hook,
+are turned down in the runtime's `simplelogger.properties`, each only because the runtime reports the same failure:
+`Sqs2Consumer` "Error while polling" (`off`: the receive also fails the poll, one receive a poll), the S3 consumer's
+"Exchange failed, so rolling back" (`error`: the route reports the exchange), the file consumer's "Rollback file
+strategy" (`error`: same), Camel's `BackgroundTask` "SftpReconnect does not have more budget" (`error`: the poll then
+fails with "Cannot connect"). A failed exchange the route never began (so did not report) is now reported by
+`ReportingPollStrategy`, so turning those lines down hides nothing. Tests: `SourceLogLinesTest` (sqs unreachable,
+sftp down, a file the platform does not take) and `AwsIngestTest` (an S3 object the platform does not take) count
+every WARN/ERROR line over N failed polls: one. The route deletes an SQS message itself after its jobs are made, and a
+failed delete is a paced commit failure ("could not be deleted from the queue"); a message received more than 5
+times is reported a line a minute per ingestion. A function's "N log lines dropped" summary is written once a minute
+by one timer for the host (`LogBudgets`), and when the function is closed.
+
+**Still not hooked:** a component line that is not a copy of a reported failure is left as it is: JSch's WARN
+"Permanently added … to the list of known hosts" through `SftpOperations`, on every connect of an `acceptAnyHostKey`
+sftp source (each poll; not a failure), and `IngestionRoute`'s WARN for each rejected payload (the payload is let go
+of; not a repeating failure). A `camel-route` ingestion's own `from` consumer (in its YAML, a timer say) logs
+"Error processing exchange" through Camel's default exception handler for each exchange its steps fail; the
+failures route reports those through the failure log, but the YAML's consumer is not given the runtime's handler. An
+extension that uses Camel's `BackgroundTask` itself would have its "no more budget" WARN turned down too (no built-in
+or bundled extension does).

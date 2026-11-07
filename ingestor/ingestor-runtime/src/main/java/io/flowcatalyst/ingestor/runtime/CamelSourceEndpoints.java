@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.model.MessageSystemAttributeName;
 
 /**
  * The sources this runtime can run. Every endpoint is built new for its route and is not shared,
@@ -46,6 +47,19 @@ final class CamelSourceEndpoints implements SourceEndpoints {
    * queue waits at SQS instead of being asked ten times a second.
    */
   static final int SQS_WAIT_SECONDS = 20;
+
+  /**
+   * The most messages one poll receives: one receive call (SQS gives at most 10 a call), so a receive
+   * that fails fails the poll, which is reported and paced. With more, the component makes several
+   * calls and only logs one that fails while another does not.
+   */
+  static final int SQS_MESSAGES_PER_POLL = 10;
+
+  /**
+   * A message received more times than this is reported (paced, a line a minute per ingestion): it
+   * keeps failing, or it is not being deleted. A queue should have a dead-letter queue.
+   */
+  static final int SQS_RECEIVES_WARN = 5;
 
   /**
    * The AWS components refuse to build an endpoint that names no credentials, so every endpoint
@@ -230,9 +244,10 @@ final class CamelSourceEndpoints implements SourceEndpoints {
   }
 
   /**
-   * An SQS queue, long-polled. The queue must exist. A message is deleted when its exchange ends
-   * without failing, which includes a message that was rejected as unreadable; a failed one is
-   * left alone and comes back when its visibility timeout is over.
+   * An SQS queue, long-polled. The queue must exist. The route deletes a message when its exchange
+   * ends without failing, which includes a message that was rejected as unreadable, and reports a
+   * delete that fails ({@link IngestionRoute}); a failed one is left alone and comes back when its
+   * visibility timeout is over.
    */
   private Endpoint sqs(CamelContext camel, Ingestion ingestion, Source.Sqs sqs) {
     require(REGION.matcher(sqs.region()).matches(), "the sqs region is not valid");
@@ -255,12 +270,16 @@ final class CamelSourceEndpoints implements SourceEndpoints {
         create(
             camel,
             "aws2-sqs",
-            "aws2-sqs://" + sqs.queue() + "?delay=" + SQS_DELAY.toMillis() + "&maxMessagesPerPoll=10" + OWN_IDENTITY,
+            "aws2-sqs://" + sqs.queue() + "?delay=" + SQS_DELAY.toMillis() + "&maxMessagesPerPoll=" + SQS_MESSAGES_PER_POLL + OWN_IDENTITY,
             Sqs2Endpoint.class);
     Sqs2Configuration configuration = endpoint.getConfiguration();
     configuration.setRegion(sqs.region());
     configuration.setAutoCreateQueue(false);
-    configuration.setDeleteAfterRead(true);
+    // The route deletes a message once its jobs are made, and reports a delete that fails as a failed
+    // commit (paced); the component's own delete would only log it (B1).
+    configuration.setDeleteAfterRead(false);
+    // How many times a message has been received: one that keeps coming back is reported.
+    configuration.setAttributeNames(MessageSystemAttributeName.APPROXIMATE_RECEIVE_COUNT.toString());
     configuration.setWaitTimeSeconds(SQS_WAIT_SECONDS);
     if (sqs.credential() != null) {
       configuration.setUseDefaultCredentialsProvider(false);

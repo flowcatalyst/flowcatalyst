@@ -75,6 +75,16 @@ class DatabasePollTest {
   }
 
   @Test
+  void rowsAreProcessedOnAVirtualThread() throws Exception {
+    insert(1, "2026-10-09 10:00:01");
+    harness.reconciler.reconcile(List.of(table(new Track.Watermark("id", Track.Watermark.Type.NUMBER))));
+
+    await(() -> harness.payloads().size() == 1);
+    // Recorded where the route sends the rows' jobs, on the thread that polled them.
+    assertThat(harness.virtual).isNotEmpty().containsOnly(true);
+  }
+
+  @Test
   void rowsPastANumberWatermarkBecomeJobsAFewAtATimeAndNewRowsFollow() throws Exception {
     for (int id = 1; id <= 5; id++) {
       insert(id, "2026-10-09 10:00:0" + id);

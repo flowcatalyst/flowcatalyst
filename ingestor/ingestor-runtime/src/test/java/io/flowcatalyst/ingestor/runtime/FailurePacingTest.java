@@ -53,6 +53,27 @@ class FailurePacingTest {
   }
 
   @Test
+  void anSqsSourceLeavesTheDeleteToTheRouteAsksHowOftenAMessageWasReceivedAndReceivesOnceAPoll() throws Exception {
+    CamelContext camel = new DefaultCamelContext();
+    camel.start();
+    try {
+      CamelSourceEndpoints endpoints = new CamelSourceEndpoints(SourceHarness.secrets(Map.of()), new MemoryState(), null);
+      Ingestion ingestion = SourceHarness.ingestion("ing_q", new Source.Sqs("eu-west-1", "orders", null), new Split.None());
+
+      Sqs2Endpoint endpoint = endpoints.sqsEndpoint(camel, ingestion, (Source.Sqs) ingestion.source());
+
+      // Camel's own delete would log a failure and nothing more; the route deletes and reports it (B1).
+      assertThat(endpoint.getConfiguration().isDeleteAfterRead()).isFalse();
+      assertThat(endpoint.getConfiguration().getAttributeNames()).contains("ApproximateReceiveCount");
+      // One receive call a poll: a receive that fails then fails the poll, which is reported; with more than
+      // one, a call that fails among others that do not is only logged by the component.
+      assertThat(endpoint.getMaxMessagesPerPoll()).isBetween(1, 10);
+    } finally {
+      camel.stop();
+    }
+  }
+
+  @Test
   void anSftpSourceFailsAPollWhenTheLoginIsRefusedOrTheHostIsDown() throws Exception {
     CamelContext camel = new DefaultCamelContext();
     camel.start();

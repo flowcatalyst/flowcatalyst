@@ -8,7 +8,6 @@ import io.flowcatalyst.ingestor.functions.trace.FunctionTraces;
 import java.time.Clock;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /// Builds a [HostFunctionContext] from a desired-state function and one of its versions' describe documents:
 /// config and secrets restricted to what the describe declares, the allowlisting HTTP caller, and events, dispatch
@@ -20,11 +19,11 @@ public final class ContextFactory {
     private final ControlPlane controlPlane;
     private final DbPools dbPools;
     private final PlatformTokenCache platformTokens;
-    private final LogBudget.Limits logLimits;
     private final FunctionTraces traces;
 
-    /// One log budget per function address, shared by all its versions (docs/ingestor-failure-pacing.md R6).
-    private final ConcurrentHashMap<String, LogBudget> logBudgets = new ConcurrentHashMap<>();
+    /// One log budget per function address, shared by all its versions (docs/ingestor-failure-pacing.md R6), and the
+    /// host's one timer for their summaries (started by the host).
+    private final LogBudgets logBudgets;
 
     /// @param dbPools the host's shared database pools (the host owns and closes them)
     public ContextFactory(OutboundClients outbound, Clock clock, ControlPlane controlPlane, DbPools dbPools) {
@@ -41,7 +40,7 @@ public final class ContextFactory {
     public ContextFactory(OutboundClients outbound, Clock clock, ControlPlane controlPlane, DbPools dbPools, LogBudget.Limits logLimits,
             FunctionTraces traces) {
         this.traces = Objects.requireNonNull(traces, "traces");
-        this.logLimits = Objects.requireNonNull(logLimits, "logLimits");
+        this.logBudgets = new LogBudgets(Objects.requireNonNull(logLimits, "logLimits"));
         this.dbPools = Objects.requireNonNull(dbPools, "dbPools");
         this.outbound = Objects.requireNonNull(outbound, "outbound");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -57,6 +56,11 @@ public final class ContextFactory {
     /// The host's function-trace state.
     public FunctionTraces traces() {
         return traces;
+    }
+
+    /// The host's log budgets and the timer that writes their summaries.
+    public LogBudgets logBudgets() {
+        return logBudgets;
     }
 
     /// The host's platform-token cache.
@@ -88,7 +92,7 @@ public final class ContextFactory {
                 describe.db(),
                 function.db(),
                 dbPools,
-                logBudgets.computeIfAbsent(address.render(), a -> new LogBudget(logLimits)),
+                logBudgets.budget(address.render()),
                 traces,
                 function.address(),
                 describe.traceContextNames());
