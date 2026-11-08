@@ -71,12 +71,11 @@ class DispatchJobPayloadTest {
         JsonNode payload = written(CreateDispatchJobDto.of("orders:export", "https://e.com/x")
                 .withConnectionId("con_1").withIdempotencyKey("  order-42  "));
         assertEquals("con_1", payload.get("connectionId").asString());
-        assertEquals("order-42", payload.get("idempotencyKey").asString(), "the key is trimmed");
+        assertEquals("  order-42  ", payload.get("idempotencyKey").asString(), "the key is written untrimmed");
 
-        JsonNode unset = written(CreateDispatchJobDto.of("orders:export", "https://e.com/x")
-                .withIdempotencyKey("   "));
+        JsonNode unset = written(CreateDispatchJobDto.of("orders:export", "https://e.com/x"));
         assertFalse(unset.has("connectionId"));
-        assertFalse(unset.has("idempotencyKey"), "a blank key is none");
+        assertFalse(unset.has("idempotencyKey"));
     }
 
     @Test
@@ -174,5 +173,69 @@ class DispatchJobPayloadTest {
         assertEquals("j1", CreateDispatchJobDto.of("a:b", "https://e.com").withId("j1").toBatchItem().get("id"));
         assertThrows(IllegalArgumentException.class,
                 () -> CreateDispatchJobDto.of("A:b", "https://e.com").toBatchItem());
+    }
+
+    // ── the client a job defaults to, and the idempotency key ────────────
+
+    private static final String KEY_ERROR = "idempotencyKey must not be blank and at most 100 bytes (UTF-8)";
+
+    private static CreateDispatchJobDto job() {
+        return CreateDispatchJobDto.of("shop:x", "https://example.com/hook").withId("j");
+    }
+
+    private static JsonNode writtenBy(String clientCode, CreateDispatchJobDto job) {
+        OutboxManagerTest.CapturingDriver driver = new OutboxManagerTest.CapturingDriver();
+        new OutboxManager(driver, "clt_TEST123456789", clientCode, java.time.InstantSource.system())
+                .createDispatchJob(job);
+        return MAPPER.readTree(driver.inserted.getFirst().payload());
+    }
+
+    @Test
+    void aJobNamingNoClientGetsTheWritersClientCode() {
+        assertEquals("acme", writtenBy("acme", job()).get("clientCode").asString());
+    }
+
+    @Test
+    void thePlatformClientGetsNoClientCode() {
+        assertFalse(writtenBy(OutboxManager.PLATFORM_CLIENT_CODE, job()).has("clientCode"));
+        assertFalse(writtenBy(null, job()).has("clientCode"), "no configured code, none written");
+    }
+
+    @Test
+    void theJobsOwnClientWins() {
+        assertEquals("other", writtenBy("acme", job().withClientCode("other")).get("clientCode").asString());
+        assertEquals("other",
+                writtenBy(OutboxManager.PLATFORM_CLIENT_CODE, job().withClientCode("other")).get("clientCode").asString());
+        JsonNode byId = writtenBy("acme", job().withPlatformClientId("clt_1"));
+        assertFalse(byId.has("clientCode"), "platformClientId suppresses the default");
+        assertEquals("clt_1", byId.get("clientId").asString());
+    }
+
+    @Test
+    void anIdempotencyKeyIsWrittenExactlyAsGiven() {
+        assertEquals("  order-42  ", writtenBy(null, job().withIdempotencyKey("  order-42  "))
+                .get("idempotencyKey").asString());
+        assertFalse(writtenBy(null, job()).has("idempotencyKey"));
+    }
+
+    @Test
+    void anIdempotencyKeyIsLimitedToHundredBytesNotCharacters() {
+        job().withIdempotencyKey("k".repeat(100)).validate();
+        job().withIdempotencyKey("é".repeat(50)).validate();
+        for (String bad : List.of("   ", "k".repeat(101), "é".repeat(51))) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                    () -> job().withIdempotencyKey(bad).validate());
+            assertEquals(KEY_ERROR, e.getMessage());
+        }
+    }
+
+    @Test
+    void connectionIdAndIdempotencyKeyComeLast() {
+        JsonNode p = writtenBy(null, job().withIdempotencyKey("k").withConnectionId("con_1")
+                .withDescriptor("d").withQueue("DEFAULT"));
+        List<String> names = new java.util.ArrayList<>();
+        p.propertyNames().forEach(names::add);
+        assertEquals(List.of("queue", "descriptor", "connectionId", "idempotencyKey"),
+                names.subList(names.size() - 4, names.size()));
     }
 }

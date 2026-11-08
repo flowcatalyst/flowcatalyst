@@ -113,7 +113,7 @@ class OutboxConformanceTest {
             String correlation = text(ctx, "correlation");
 
             OutboxManagerTest.CapturingDriver driver = new OutboxManagerTest.CapturingDriver();
-            OutboxManager outbox = new OutboxManager(driver, client, InstantSource.fixed(now));
+            OutboxManager outbox = new OutboxManager(driver, client, client, InstantSource.fixed(now));
 
             // The framework's write order: the events, the dispatch jobs, the audit row.
             List<CreateEventDto> events = new ArrayList<>();
@@ -257,6 +257,8 @@ class OutboxConformanceTest {
                 case "mode" -> job.withMode(CreateDispatchJobDto.DispatchMode.valueOf(v.asString()));
                 case "queue" -> job.withQueue(v.asString());
                 case "descriptor" -> job.withDescriptor(v.asString());
+                case "connectionId" -> job.withConnectionId(v.asString());
+                case "idempotencyKey" -> job.withIdempotencyKey(v.asString());
                 case "dataOnly" -> job.withDataOnly(v.asBoolean());
                 case "sequence" -> job.withSequence(v.asInt());
                 case "timeoutSeconds" -> job.withTimeoutSeconds(v.asInt());

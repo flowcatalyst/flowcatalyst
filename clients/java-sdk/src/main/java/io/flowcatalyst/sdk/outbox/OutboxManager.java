@@ -27,8 +27,12 @@ import java.util.Map;
  */
 public final class OutboxManager {
 
+    /** The client code of platform-scoped writers; dispatch jobs written under it carry no clientCode. */
+    public static final String PLATFORM_CLIENT_CODE = "_platform";
+
     private final OutboxDriver driver;
     private final String clientId;
+    private final String clientCode;
     private final InstantSource clock;
     private final ObjectMapper mapper = Json.newMapper();
 
@@ -46,8 +50,20 @@ public final class OutboxManager {
      * {@code performedAt}.
      */
     public OutboxManager(OutboxDriver driver, String clientId, InstantSource clock) {
+        this(driver, clientId, null, clock);
+    }
+
+    /**
+     * As {@link #OutboxManager(OutboxDriver, String, InstantSource)}, with the client's identifier
+     * slug: a dispatch job that names no client of its own is written with it as its
+     * {@code clientCode}, except under {@link #PLATFORM_CLIENT_CODE} (the platform scopes such a
+     * job by the credential). Events and audit entries are unaffected: they carry the
+     * {@code clientCode} their DTO sets.
+     */
+    public OutboxManager(OutboxDriver driver, String clientId, String clientCode, InstantSource clock) {
         this.driver = driver;
         this.clientId = clientId;
+        this.clientCode = clientCode;
         this.clock = clock;
     }
 
@@ -108,7 +124,7 @@ public final class OutboxManager {
         ensureClientId();
         String id = job.id() != null ? job.id() : Tsid.generate();
         driver.insert(buildMessage(id, OutboxMessage.MessageType.DISPATCH_JOB,
-                serialize(job.toPayload(id)), job.messageGroup(), null, clock.instant()), tx);
+                serialize(job.withDefaultClientCode(clientCode).toPayload(id)), job.messageGroup(), null, clock.instant()), tx);
         return id;
     }
 
@@ -131,7 +147,7 @@ public final class OutboxManager {
             String id = job.id() != null ? job.id() : Tsid.generate();
             ids.add(id);
             messages.add(buildMessage(id, OutboxMessage.MessageType.DISPATCH_JOB,
-                    serialize(job.toPayload(id)), job.messageGroup(), null, now));
+                    serialize(job.withDefaultClientCode(clientCode).toPayload(id)), job.messageGroup(), null, now));
         }
         driver.insertBatch(messages, tx);
         return ids;

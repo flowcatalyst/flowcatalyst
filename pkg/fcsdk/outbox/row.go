@@ -90,6 +90,10 @@ func nullable(s string) any {
 	return s
 }
 
+// PlatformClientCode is the client code of platform-scoped writers. Events
+// and audit rows still carry it; dispatch jobs do not (no clientCode).
+const PlatformClientCode = "_platform"
+
 // Config is what the writers need beyond the row's own data.
 type Config struct {
 	// ClientID is stored in every row's client_id column (the outbox
@@ -101,6 +105,8 @@ type Config struct {
 	// client (a domain event implementing ClientCoded overrides it). Empty
 	// leaves it out: the platform then scopes by the credential (an anchor
 	// writes platform-scoped rows, a single-client credential its client).
+	// Dispatch jobs that name no client of their own default to it, except
+	// under PlatformClientCode.
 	ClientCode string
 	// ApplicationCode is written as each audit row's applicationCode. The
 	// platform requires it of an application-scoped credential.
@@ -146,6 +152,10 @@ func AuditRow(cfg Config, event usecase.DomainEvent, command any) (Row, error) {
 // DispatchJobRow builds the DISPATCH_JOB row of a job: the row id is the
 // job id, message_group the job's message group.
 func DispatchJobRow(cfg Config, job DispatchJob) (Row, error) {
+	if code := strings.TrimSpace(cfg.ClientCode); job.PlatformClientID == "" && job.ClientCode == "" &&
+		code != "" && code != PlatformClientCode {
+		job.ClientCode = code
+	}
 	j, payload, err := DispatchJobPayload(job)
 	if err != nil {
 		return Row{}, err

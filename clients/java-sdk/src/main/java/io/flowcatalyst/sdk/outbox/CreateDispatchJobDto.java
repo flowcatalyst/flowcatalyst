@@ -3,6 +3,7 @@ package io.flowcatalyst.sdk.outbox;
 import io.flowcatalyst.sdk.http.Json;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -417,8 +418,8 @@ public final class CreateDispatchJobDto {
     /**
      * Makes the create idempotent: the first job with a key, within its application (the code's
      * first segment) and client, wins it; a repeat answers that job's id and creates nothing.
-     * Trimmed; blank is none; at most 100 characters. Kept 7 days. An id given with
-     * {@link #withId} is not an idempotency key.
+     * Written exactly as given; when set, not blank and at most 100 bytes of UTF-8. Kept 7 days.
+     * An id given with {@link #withId} is not an idempotency key.
      */
     public CreateDispatchJobDto withIdempotencyKey(String idempotencyKey) {
         CreateDispatchJobDto c = copy();
@@ -510,8 +511,9 @@ public final class CreateDispatchJobDto {
         if (clientCode != null && (clientCode.isBlank() || length(clientCode.strip()) > 100)) {
             throw new IllegalArgumentException("clientCode must be 1 to 100 characters");
         }
-        if (idempotencyKey != null && length(idempotencyKey.strip()) > 100) {
-            throw new IllegalArgumentException("idempotencyKey must be at most 100 characters");
+        if (idempotencyKey != null && !idempotencyKey.isEmpty()
+                && (idempotencyKey.isBlank() || idempotencyKey.getBytes(StandardCharsets.UTF_8).length > 100)) {
+            throw new IllegalArgumentException("idempotencyKey must not be blank and at most 100 bytes (UTF-8)");
         }
         atLeastOne("sequence", sequence);
         atLeastOne("timeoutSeconds", timeoutSeconds);
@@ -559,6 +561,19 @@ public final class CreateDispatchJobDto {
         return payload(id);
     }
 
+    /**
+     * The job with {@code code} as its client when it names none (neither a platform client id nor
+     * a client code of its own). A null or blank code, or the platform client's
+     * ({@link OutboxManager#PLATFORM_CLIENT_CODE}), leaves the job as it is.
+     */
+    CreateDispatchJobDto withDefaultClientCode(String code) {
+        if (platformClientId != null || clientCode != null || code == null || code.isBlank()
+                || code.strip().equals(OutboxManager.PLATFORM_CLIENT_CODE)) {
+            return this;
+        }
+        return withClientCode(code);
+    }
+
     /** The outbox payload: validated, with {@code rowId} as the job id. */
     Map<String, Object> toPayload(String rowId) {
         validate();
@@ -600,11 +615,10 @@ public final class CreateDispatchJobDto {
             });
             p.put("metadata", pairs);
         }
-        putIfNotNull(p, "connectionId", connectionId);
-        putIfNotNull(p, "idempotencyKey",
-                idempotencyKey != null && !idempotencyKey.isBlank() ? idempotencyKey.strip() : null);
         putIfNotNull(p, "queue", queue != null ? queue.strip().toUpperCase(Locale.ROOT) : null);
         putIfNotNull(p, "descriptor", descriptor);
+        putIfNotNull(p, "connectionId", connectionId);
+        putIfNotNull(p, "idempotencyKey", idempotencyKey != null && !idempotencyKey.isEmpty() ? idempotencyKey : null);
         return p;
     }
 

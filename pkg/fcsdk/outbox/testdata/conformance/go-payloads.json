@@ -45,22 +45,22 @@
     "case": "dispatch jobs: defaults, then every optional field",
     "row": 1,
     "type": "DISPATCH_JOB",
-    "payloadSize": 234,
-    "payloadText": "{\"id\":\"job-defaults\",\"kind\":\"TASK\",\"code\":\"shop:billing:export-invoice\",\"source\":\"shop\",\"targetUrl\":\"https://billing.example.com/export\",\"payload\":\"{}\",\"payloadContentType\":\"application/json\",\"dataOnly\":false,\"correlationId\":\"corr-3\"}"
+    "payloadSize": 254,
+    "payloadText": "{\"id\":\"job-defaults\",\"kind\":\"TASK\",\"code\":\"shop:billing:export-invoice\",\"source\":\"shop\",\"targetUrl\":\"https://billing.example.com/export\",\"payload\":\"{}\",\"payloadContentType\":\"application/json\",\"dataOnly\":false,\"correlationId\":\"corr-3\",\"clientCode\":\"acme\"}"
   },
   {
     "case": "dispatch jobs: defaults, then every optional field",
     "row": 2,
     "type": "DISPATCH_JOB",
-    "payloadSize": 705,
-    "payloadText": "{\"id\":\"job-full\",\"kind\":\"EVENT\",\"code\":\"shop:billing:export-invoice\",\"source\":\"shop:billing\",\"subject\":\"billing.invoice.inv_9\",\"targetUrl\":\"https://billing.example.com/export?x=1\",\"payload\":\"{\\\"invoiceId\\\":\\\"inv_9\\\",\\\"amounts\\\":[1,2]}\",\"payloadContentType\":\"application/json\",\"dataOnly\":true,\"externalId\":\"ext-1\",\"eventId\":\"0ABCDEFGHJKMR\",\"correlationId\":\"corr-3\",\"clientId\":\"0CLIENT0000001\",\"subscriptionId\":\"sub_1\",\"serviceAccountId\":\"sa_1\",\"dispatchPoolId\":\"pool_1\",\"messageGroup\":\"invoice:inv_9\",\"mode\":\"BLOCK_ON_ERROR\",\"sequence\":2,\"timeoutSeconds\":15,\"maxRetries\":4,\"metadata\":[{\"key\":\"tenant\",\"value\":\"acme\"},{\"key\":\"attempt\",\"value\":\"1\"}],\"queue\":\"HIGH_PRIORITY\",\"descriptor\":\"export one invoice\"}"
+    "payloadSize": 770,
+    "payloadText": "{\"id\":\"job-full\",\"kind\":\"EVENT\",\"code\":\"shop:billing:export-invoice\",\"source\":\"shop:billing\",\"subject\":\"billing.invoice.inv_9\",\"targetUrl\":\"https://billing.example.com/export?x=1\",\"payload\":\"{\\\"invoiceId\\\":\\\"inv_9\\\",\\\"amounts\\\":[1,2]}\",\"payloadContentType\":\"application/json\",\"dataOnly\":true,\"externalId\":\"ext-1\",\"eventId\":\"0ABCDEFGHJKMR\",\"correlationId\":\"corr-3\",\"clientId\":\"0CLIENT0000001\",\"subscriptionId\":\"sub_1\",\"serviceAccountId\":\"sa_1\",\"dispatchPoolId\":\"pool_1\",\"messageGroup\":\"invoice:inv_9\",\"mode\":\"BLOCK_ON_ERROR\",\"sequence\":2,\"timeoutSeconds\":15,\"maxRetries\":4,\"metadata\":[{\"key\":\"tenant\",\"value\":\"acme\"},{\"key\":\"attempt\",\"value\":\"1\"}],\"queue\":\"HIGH_PRIORITY\",\"descriptor\":\"export one invoice\",\"connectionId\":\"con_0ABCDEFGH01\",\"idempotencyKey\":\"export:inv_9\"}"
   },
   {
     "case": "dispatch jobs: defaults, then every optional field",
     "row": 3,
     "type": "DISPATCH_JOB",
-    "payloadSize": 208,
-    "payloadText": "{\"id\":\"job-text\",\"kind\":\"TASK\",\"code\":\"shop:notify\",\"source\":\"shop\",\"targetUrl\":\"http://hooks.example.com:8080/n\",\"payload\":\"hello\",\"payloadContentType\":\"text/plain\",\"dataOnly\":false,\"correlationId\":\"corr-3\"}"
+    "payloadSize": 228,
+    "payloadText": "{\"id\":\"job-text\",\"kind\":\"TASK\",\"code\":\"shop:notify\",\"source\":\"shop\",\"targetUrl\":\"http://hooks.example.com:8080/n\",\"payload\":\"hello\",\"payloadContentType\":\"text/plain\",\"dataOnly\":false,\"correlationId\":\"corr-3\",\"clientCode\":\"acme\"}"
   },
   {
     "case": "dispatch jobs: defaults, then every optional field",
@@ -68,5 +68,26 @@
     "type": "AUDIT_LOG",
     "payloadSize": 205,
     "payloadText": "{\"entityType\":\"Invoice\",\"entityId\":\"inv_9\",\"operation\":\"cancel-invoice\",\"principalId\":\"user-1\",\"performedAt\":\"2026-10-08T10:15:31.500Z\",\"source\":\"shop:billing\",\"correlationId\":\"corr-3\",\"clientCode\":\"acme\"}"
+  },
+  {
+    "case": "dispatch jobs in the platform's context: no clientCode",
+    "row": 0,
+    "type": "EVENT",
+    "payloadSize": 343,
+    "payloadText": "{\"specVersion\":\"1.0\",\"type\":\"shop:billing:invoice:cancelled\",\"source\":\"shop:billing\",\"subject\":\"billing.invoice.inv_10\",\"data\":{\"orderId\":\"ord_10\",\"reason\":\"sweep\"},\"correlationId\":\"corr-4\",\"deduplicationId\":\"0ABCDEFGHJKMS\",\"messageGroup\":\"billing:invoice:inv_10\",\"clientCode\":\"_platform\",\"contextData\":[{\"key\":\"principalId\",\"value\":\"svc-1\"}]}"
+  },
+  {
+    "case": "dispatch jobs in the platform's context: no clientCode",
+    "row": 1,
+    "type": "DISPATCH_JOB",
+    "payloadSize": 260,
+    "payloadText": "{\"id\":\"job-platform\",\"kind\":\"TASK\",\"code\":\"shop:billing:sweep\",\"source\":\"shop\",\"targetUrl\":\"https://billing.example.com/sweep\",\"payload\":\"{}\",\"payloadContentType\":\"application/json\",\"dataOnly\":false,\"correlationId\":\"corr-4\",\"idempotencyKey\":\"sweep:2026-10-08\"}"
+  },
+  {
+    "case": "dispatch jobs in the platform's context: no clientCode",
+    "row": 2,
+    "type": "AUDIT_LOG",
+    "payloadSize": 206,
+    "payloadText": "{\"entityType\":\"Invoice\",\"entityId\":\"inv_10\",\"operation\":\"sweep-invoices\",\"principalId\":\"svc-1\",\"performedAt\":\"2026-10-08T10:15:32Z\",\"source\":\"shop:billing\",\"correlationId\":\"corr-4\",\"clientCode\":\"_platform\"}"
   }
 ]

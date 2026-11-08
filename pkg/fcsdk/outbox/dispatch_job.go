@@ -63,7 +63,8 @@ type DispatchJob struct {
 	// PlatformClientID is the platform's client id (never a slug). ClientCode
 	// is the client's identifier slug, which the platform resolves at ingest
 	// (an unknown code refuses the whole batch: 400 for an anchor, 403
-	// otherwise). Set at most one; without either the job has no client.
+	// otherwise). Set at most one. Without either, DispatchJobRow gives the
+	// job the writer's Config.ClientCode (none for PlatformClientCode).
 	PlatformClientID string
 	ClientCode       string
 
@@ -89,9 +90,9 @@ type DispatchJob struct {
 	ConnectionID string
 	// IdempotencyKey makes the create idempotent: the first job with a key,
 	// within its application (the code's first segment) and client, wins it; a
-	// repeat answers that job's id and creates nothing. Trimmed, blank is
-	// none, at most 100 characters; kept 7 days. An ID is not an idempotency
-	// key.
+	// repeat answers that job's id and creates nothing. Written exactly as
+	// given; when set, not blank and at most 100 bytes of UTF-8; kept 7 days.
+	// An ID is not an idempotency key.
 	IdempotencyKey string
 
 	payloadSet bool
@@ -178,8 +179,8 @@ func (j DispatchJob) Validate() error {
 	if j.ClientCode != "" && (strings.TrimSpace(j.ClientCode) == "" || utf8.RuneCountInString(j.ClientCode) > 100) {
 		return errors.New("clientCode must be 1 to 100 characters")
 	}
-	if utf8.RuneCountInString(strings.TrimSpace(j.IdempotencyKey)) > 100 {
-		return errors.New("idempotencyKey must be at most 100 characters")
+	if j.IdempotencyKey != "" && (strings.TrimSpace(j.IdempotencyKey) == "" || len(j.IdempotencyKey) > 100) {
+		return errors.New("idempotencyKey must not be blank and at most 100 bytes (UTF-8)")
 	}
 	for _, n := range []struct {
 		name string
@@ -252,10 +253,10 @@ type dispatchJobPayload struct {
 	TimeoutSeconds     *int            `json:"timeoutSeconds,omitempty"`
 	MaxRetries         *int            `json:"maxRetries,omitempty"`
 	Metadata           []MetadataEntry `json:"metadata,omitempty"`
-	ConnectionID       string          `json:"connectionId,omitempty"`
-	IdempotencyKey     string          `json:"idempotencyKey,omitempty"`
 	Queue              string          `json:"queue,omitempty"`
 	Descriptor         string          `json:"descriptor,omitempty"`
+	ConnectionID       string          `json:"connectionId,omitempty"`
+	IdempotencyKey     string          `json:"idempotencyKey,omitempty"`
 }
 
 // Resolved returns the job with its defaults applied (id generated, kind
@@ -296,7 +297,7 @@ func DispatchJobPayload(job DispatchJob) (DispatchJob, []byte, error) {
 		SubscriptionID: j.SubscriptionID, ServiceAccountID: j.ServiceAccountID,
 		DispatchPoolID: j.DispatchPoolID, MessageGroup: j.MessageGroup, Mode: j.Mode,
 		Sequence: j.Sequence, TimeoutSeconds: j.TimeoutSeconds, MaxRetries: j.MaxRetries,
-		Metadata: j.Metadata, ConnectionID: j.ConnectionID, IdempotencyKey: strings.TrimSpace(j.IdempotencyKey),
+		Metadata: j.Metadata, ConnectionID: j.ConnectionID, IdempotencyKey: j.IdempotencyKey,
 		Queue: j.Queue, Descriptor: j.Descriptor,
 	})
 	if err != nil {

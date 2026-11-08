@@ -203,7 +203,7 @@ func TestDispatchJobMetadataIsTheKeyValueArray(t *testing.T) {
 }
 
 // The platform honours connectionId and idempotencyKey on a batch item; both are
-// written when set (key trimmed) and left out when not.
+// written when set (key exactly as given) and left out when not.
 func TestDispatchJobConnectionAndIdempotencyKey(t *testing.T) {
 	base := NewDispatchJob("shop:x", "https://a.example.com").WithID("j")
 	_, raw, err := DispatchJobPayload(base)
@@ -216,15 +216,55 @@ func TestDispatchJobConnectionAndIdempotencyKey(t *testing.T) {
 	require.NoError(t, err)
 	m = members(t, raw)
 	assert.JSONEq(t, `"con_0000000001"`, string(m["connectionId"]))
-	assert.JSONEq(t, `"order-42"`, string(m["idempotencyKey"]))
+	assert.JSONEq(t, `"  order-42  "`, string(m["idempotencyKey"]), "written untrimmed")
 
-	_, raw, err = DispatchJobPayload(base.WithIdempotencyKey("   "))
-	require.NoError(t, err)
-	assert.NotContains(t, members(t, raw), "idempotencyKey", "a blank key is none")
+	require.EqualError(t, base.WithIdempotencyKey("   ").Validate(), idempotencyKeyErr)
 
 	require.NoError(t, base.WithIdempotencyKey(strings.Repeat("k", 100)).Validate())
-	require.ErrorContains(t, base.WithIdempotencyKey(strings.Repeat("k", 101)).Validate(), "idempotencyKey")
+	require.EqualError(t, base.WithIdempotencyKey(strings.Repeat("k", 101)).Validate(), idempotencyKeyErr)
 	require.ErrorContains(t, base.WithConnectionID("not a valid id!").Validate(), "connectionId")
+}
+
+const idempotencyKeyErr = "idempotencyKey must not be blank and at most 100 bytes (UTF-8)"
+
+// The limit is bytes, not characters: 50 two-byte runes fit, 51 do not.
+func TestDispatchJobIdempotencyKeyByteLimit(t *testing.T) {
+	base := NewDispatchJob("shop:x", "https://a.example.com").WithID("j")
+	require.NoError(t, base.WithIdempotencyKey(strings.Repeat("é", 50)).Validate())
+	require.EqualError(t, base.WithIdempotencyKey(strings.Repeat("é", 51)).Validate(), idempotencyKeyErr)
+	require.NoError(t, base.WithIdempotencyKey(strings.Repeat("k", 100)).Validate())
+	require.EqualError(t, base.WithIdempotencyKey(strings.Repeat("k", 100)+"k").Validate(), idempotencyKeyErr)
+}
+
+// A job naming no client gets the writer's client code, except the platform's.
+func TestDispatchJobRowClientCodeDefault(t *testing.T) {
+	job := NewDispatchJob("shop:x", "https://a.example.com").WithID("j")
+	code := func(cfg Config, j DispatchJob) (string, bool) {
+		row, err := DispatchJobRow(cfg, j)
+		require.NoError(t, err)
+		v, ok := members(t, row.Payload)["clientCode"]
+		var s string
+		if ok {
+			require.NoError(t, json.Unmarshal(v, &s))
+		}
+		return s, ok
+	}
+	got, ok := code(Config{ClientCode: "acme"}, job)
+	assert.True(t, ok)
+	assert.Equal(t, "acme", got)
+
+	_, ok = code(Config{ClientCode: PlatformClientCode}, job)
+	assert.False(t, ok, "no clientCode under the platform client")
+	_, ok = code(Config{}, job)
+	assert.False(t, ok, "no configured code, none written")
+
+	got, _ = code(Config{ClientCode: "acme"}, job.WithClientCode("other"))
+	assert.Equal(t, "other", got, "the job's own code wins")
+	got, _ = code(Config{ClientCode: PlatformClientCode}, job.WithClientCode("other"))
+	assert.Equal(t, "other", got)
+
+	_, ok = code(Config{ClientCode: "acme"}, job.WithPlatformClientID("clt_1"))
+	assert.False(t, ok, "platformClientId suppresses the default")
 }
 
 func TestInsertStatementTable(t *testing.T) {
