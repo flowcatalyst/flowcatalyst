@@ -242,6 +242,10 @@ func buildDispatchJob(t *testing.T, in map[string]any, raw map[string]json.RawMe
 			j = j.WithQueue(str(k))
 		case "descriptor":
 			j = j.WithDescriptor(str(k))
+		case "connectionId":
+			j = j.WithConnectionID(str(k))
+		case "idempotencyKey":
+			j = j.WithIdempotencyKey(str(k))
 		case "dataOnly":
 			if v == true {
 				j = j.DataOnlyEnabled()
