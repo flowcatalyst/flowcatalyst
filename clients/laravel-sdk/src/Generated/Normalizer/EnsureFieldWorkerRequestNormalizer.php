@@ -103,6 +103,14 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
             $object->setName(null);
             unset($data['name']);
         }
+        if (\array_key_exists('phone', $data) && $data['phone'] !== null) {
+            $object->setPhone($data['phone']);
+            unset($data['phone']);
+        }
+        elseif (\array_key_exists('phone', $data) && $data['phone'] === null) {
+            $object->setPhone(null);
+            unset($data['phone']);
+        }
         if (\array_key_exists('pin', $data) && $data['pin'] !== null) {
             $object->setPin($data['pin']);
             unset($data['pin']);
@@ -147,6 +155,9 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
             $dataArray['isTest'] = $data->getIsTest();
         }
         $dataArray['name'] = $data->getName();
+        if ($data->isInitialized('phone') && null !== $data->getPhone()) {
+            $dataArray['phone'] = $data->getPhone();
+        }
         if ($data->isInitialized('pin') && null !== $data->getPin()) {
             $dataArray['pin'] = $data->getPin();
         }

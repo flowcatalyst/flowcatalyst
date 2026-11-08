@@ -13,6 +13,7 @@ type EnsureFieldWorkerRequest struct {
 	WorkerCode string  `json:"workerCode"`
 	Name       string  `json:"name"`
 	Email      *string `json:"email,omitempty"`
+	Phone      *string `json:"phone,omitempty"`
 	// AppCodes are the applications the worker may sign in to; granted
 	// additively.
 	AppCodes []string `json:"appCodes,omitempty"`
@@ -30,6 +31,8 @@ type EnsureFieldWorkerRequest struct {
 type UpdateFieldWorkerRequest struct {
 	Name  string  `json:"name"`
 	Email *string `json:"email,omitempty"`
+	// Phone nil leaves the number unchanged; "" clears it.
+	Phone *string `json:"phone,omitempty"`
 	// CanImpersonate (changing it needs the impersonate permission) and IsTest
 	// replace the flag when non-nil.
 	CanImpersonate *bool `json:"canImpersonate,omitempty"`
@@ -106,6 +109,7 @@ type FieldWorkerResponse struct {
 	WorkerCode string `json:"workerCode"`
 	Name       string `json:"name"`
 	Email      string `json:"email,omitempty"`
+	Phone      string `json:"phone,omitempty"`
 	// Status is ACTIVE or DISABLED (suspended).
 	Status string `json:"status"`
 	// HasPin is false until a PIN is set (the worker cannot sign in).

@@ -5219,6 +5219,10 @@
           "name": {
             "type": "string"
           },
+          "phone": {
+            "description": "Optional contact number, stored as entered; new worker only",
+            "type": "string"
+          },
           "pin": {
             "type": "string"
           },
@@ -6428,6 +6432,9 @@
             "type": "string"
           },
           "name": {
+            "type": "string"
+          },
+          "phone": {
             "type": "string"
           },
           "pinChangeRequired": {
@@ -15697,6 +15704,10 @@
           },
           "name": {
             "type": "string"
+          },
+          "phone": {
+            "description": "Omit to leave unchanged; an empty string clears it",
+            "type": "string"
           }
         },
         "required": [
@@ -24843,7 +24854,7 @@
             "description": "Error"
           }
         },
-        "summary": "Update a field worker's name and email",
+        "summary": "Update a field worker's name, email and phone",
         "tags": [
           "field-workers"
         ],

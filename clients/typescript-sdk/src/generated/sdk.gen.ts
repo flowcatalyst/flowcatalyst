@@ -1074,7 +1074,7 @@ export const deleteFieldWorker = <ThrowOnError extends boolean = false>(options:
 export const getFieldWorker = <ThrowOnError extends boolean = false>(options: Options<GetFieldWorkerData, ThrowOnError>) => (options.client ?? client).get<GetFieldWorkerResponses, GetFieldWorkerErrors, ThrowOnError>({ url: '/api/field-workers/{id}', ...options });
 
 /**
- * Update a field worker's name and email
+ * Update a field worker's name, email and phone
  */
 export const updateFieldWorker = <ThrowOnError extends boolean = false>(options: Options<UpdateFieldWorkerData, ThrowOnError>) => (options.client ?? client).put<UpdateFieldWorkerResponses, UpdateFieldWorkerErrors, ThrowOnError>({
     url: '/api/field-workers/{id}',

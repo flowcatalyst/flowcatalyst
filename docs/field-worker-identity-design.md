@@ -256,7 +256,7 @@ Devices (enrol → QR, mode, attestation badge, revoke), Policy (per client), an
 `docs/migration-bootstrap.md`)
 
 ```
-field_identities      id fwu_ PK, client_id, worker_code (normalised upper), name, email NULL,
+field_identities      id fwu_ PK, client_id, worker_code (normalised upper), name, email NULL, phone NULL,
                       status ACTIVE|DISABLED, pin_hash NULL, pin_scheme, pepper_version,
                       pin_set_at, pin_change_required, failed_since_success INT, locked_until,
                       hard_locked BOOL, last_login_at, created_at, updated_at;

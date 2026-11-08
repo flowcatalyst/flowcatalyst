@@ -54,6 +54,12 @@ class EnsureFieldWorkerRequest implements AdditionalPropertiesInterface
      */
     protected $name;
     /**
+     * Optional contact number, stored as entered; new worker only
+     *
+     * @var string|null
+     */
+    protected $phone;
+    /**
      * @var string|null
      */
     protected $pin;
@@ -208,6 +214,28 @@ class EnsureFieldWorkerRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
+     * Optional contact number, stored as entered; new worker only
+     *
+     * @return string|null
+     */
+    public function getPhone(): ?string
+    {
+        return $this->phone;
+    }
+    /**
+     * Optional contact number, stored as entered; new worker only
+     *
+     * @param string|null $phone
+     *
+     * @return self
+     */
+    public function setPhone(?string $phone): self
+    {
+        $this->initialized['phone'] = true;
+        $this->phone = $phone;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getPin(): ?string
@@ -245,6 +273,6 @@ class EnsureFieldWorkerRequest implements AdditionalPropertiesInterface
     }
     public function definedProperties(): array
     {
-        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'appCodes' => ['appCodes', 'getAppCodes', 'setAppCodes'], 'canImpersonate' => ['canImpersonate', 'getCanImpersonate', 'setCanImpersonate'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'email' => ['email', 'getEmail', 'setEmail'], 'isTest' => ['isTest', 'getIsTest', 'setIsTest'], 'name' => ['name', 'getName', 'setName'], 'pin' => ['pin', 'getPin', 'setPin'], 'workerCode' => ['workerCode', 'getWorkerCode', 'setWorkerCode']];
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'appCodes' => ['appCodes', 'getAppCodes', 'setAppCodes'], 'canImpersonate' => ['canImpersonate', 'getCanImpersonate', 'setCanImpersonate'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'email' => ['email', 'getEmail', 'setEmail'], 'isTest' => ['isTest', 'getIsTest', 'setIsTest'], 'name' => ['name', 'getName', 'setName'], 'phone' => ['phone', 'getPhone', 'setPhone'], 'pin' => ['pin', 'getPin', 'setPin'], 'workerCode' => ['workerCode', 'getWorkerCode', 'setWorkerCode']];
     }
 }

@@ -63,7 +63,7 @@ func escapeLike(s string) string {
 // usecasepgx.Persist[Identity].
 type IdentityRepo struct{ pool *pgxpool.Pool }
 
-const identityColumns = `fi.id, fi.client_id, fi.worker_code, fi.name, fi.email, fi.status,
+const identityColumns = `fi.id, fi.client_id, fi.worker_code, fi.name, fi.email, fi.phone, fi.status,
 	fi.pin_hash, fi.pin_scheme, fi.pepper_version, fi.pin_set_at, fi.pin_change_required,
 	fi.failed_since_success, fi.locked_until, fi.hard_locked, fi.last_login_at,
 	fi.can_impersonate, fi.is_test, fi.linked_principal_id, fi.created_at, fi.updated_at`
@@ -219,13 +219,13 @@ func (r *IdentityRepo) Persist(ctx context.Context, i *Identity, tx *usecasepgx.
 	if i.ID != "" && i.isNew() {
 		err := tx.Inner().QueryRow(ctx,
 			`INSERT INTO field_identities
-			     (id, client_id, worker_code, name, email, status, pin_hash, pin_scheme, pepper_version,
+			     (id, client_id, worker_code, name, email, phone, status, pin_hash, pin_scheme, pepper_version,
 			      pin_set_at, pin_change_required, failed_since_success, locked_until, hard_locked,
 			      last_login_at, can_impersonate, is_test, linked_principal_id, created_at, updated_at)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
 			 ON CONFLICT (client_id, worker_code) DO UPDATE SET updated_at = field_identities.updated_at
 			 RETURNING id`,
-			i.ID, i.ClientID, i.WorkerCode, i.Name, emptyToNil(i.Email), string(i.Status), i.PINHash,
+			i.ID, i.ClientID, i.WorkerCode, i.Name, emptyToNil(i.Email), emptyToNil(i.Phone), string(i.Status), i.PINHash,
 			i.PINScheme, i.PepperVersion, i.PINSetAt, i.PINChangeRequired, i.FailedSinceSuccess,
 			i.LockedUntil, i.HardLocked, i.LastLoginAt, i.CanImpersonate, i.IsTest, emptyToNil(i.LinkedPrincipalID),
 			i.CreatedAt, now).Scan(&rowID)
@@ -235,12 +235,12 @@ func (r *IdentityRepo) Persist(ctx context.Context, i *Identity, tx *usecasepgx.
 		i.fresh = false
 	} else {
 		tag, err := tx.Inner().Exec(ctx,
-			`UPDATE field_identities SET name=$2, email=$3, status=$4, pin_hash=$5, pin_scheme=$6,
-			     pepper_version=$7, pin_set_at=$8, pin_change_required=$9, failed_since_success=$10,
-			     locked_until=$11, hard_locked=$12, last_login_at=$13, can_impersonate=$14, is_test=$15,
-			     linked_principal_id=$16, updated_at=$17
+			`UPDATE field_identities SET name=$2, email=$3, phone=$4, status=$5, pin_hash=$6, pin_scheme=$7,
+			     pepper_version=$8, pin_set_at=$9, pin_change_required=$10, failed_since_success=$11,
+			     locked_until=$12, hard_locked=$13, last_login_at=$14, can_impersonate=$15, is_test=$16,
+			     linked_principal_id=$17, updated_at=$18
 			 WHERE id = $1`,
-			i.ID, i.Name, emptyToNil(i.Email), string(i.Status), i.PINHash, i.PINScheme,
+			i.ID, i.Name, emptyToNil(i.Email), emptyToNil(i.Phone), string(i.Status), i.PINHash, i.PINScheme,
 			i.PepperVersion, i.PINSetAt, i.PINChangeRequired, i.FailedSinceSuccess,
 			i.LockedUntil, i.HardLocked, i.LastLoginAt, i.CanImpersonate, i.IsTest, emptyToNil(i.LinkedPrincipalID), now)
 		if err != nil {
@@ -357,15 +357,16 @@ func scanIdentities(rows pgx.Rows) ([]Identity, error) {
 	out := []Identity{}
 	for rows.Next() {
 		var i Identity
-		var email, linked *string
+		var email, phone, linked *string
 		var status string
-		if err := rows.Scan(&i.ID, &i.ClientID, &i.WorkerCode, &i.Name, &email, &status,
+		if err := rows.Scan(&i.ID, &i.ClientID, &i.WorkerCode, &i.Name, &email, &phone, &status,
 			&i.PINHash, &i.PINScheme, &i.PepperVersion, &i.PINSetAt, &i.PINChangeRequired,
 			&i.FailedSinceSuccess, &i.LockedUntil, &i.HardLocked, &i.LastLoginAt,
 			&i.CanImpersonate, &i.IsTest, &linked, &i.CreatedAt, &i.UpdatedAt); err != nil {
 			return nil, err
 		}
 		i.Email = deref(email)
+		i.Phone = deref(phone)
 		i.LinkedPrincipalID = deref(linked)
 		i.Status = Status(status)
 		i.Apps = []AppGrant{}

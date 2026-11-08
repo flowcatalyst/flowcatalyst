@@ -83,6 +83,14 @@ class UpdateFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
             $object->setName(null);
             unset($data['name']);
         }
+        if (\array_key_exists('phone', $data) && $data['phone'] !== null) {
+            $object->setPhone($data['phone']);
+            unset($data['phone']);
+        }
+        elseif (\array_key_exists('phone', $data) && $data['phone'] === null) {
+            $object->setPhone(null);
+            unset($data['phone']);
+        }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $object[$key] = $value;
@@ -103,6 +111,9 @@ class UpdateFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
             $dataArray['isTest'] = $data->getIsTest();
         }
         $dataArray['name'] = $data->getName();
+        if ($data->isInitialized('phone') && null !== $data->getPhone()) {
+            $dataArray['phone'] = $data->getPhone();
+        }
         foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;

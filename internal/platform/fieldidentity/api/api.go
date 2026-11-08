@@ -69,7 +69,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(w, "ensureFieldWorker", "/api/field-workers", "Ensure a field worker exists for (client, workerCode) and grant applications", http.StatusCreated, s.ensureWorker)
 	apiroute.Get(w, "listFieldWorkers", "/api/field-workers", "Search a client's field workers", s.listWorkers)
 	apiroute.Get(w, "getFieldWorker", "/api/field-workers/{id}", "Get a field worker", s.getWorker)
-	apiroute.Put(w, "updateFieldWorker", "/api/field-workers/{id}", "Update a field worker's name and email", http.StatusOK, s.updateWorker)
+	apiroute.Put(w, "updateFieldWorker", "/api/field-workers/{id}", "Update a field worker's name, email and phone", http.StatusOK, s.updateWorker)
 	apiroute.Delete(w, "deleteFieldWorker", "/api/field-workers/{id}", "Delete a field worker (revokes their sessions first)", http.StatusOK, s.deleteWorker)
 	apiroute.Post(w, "resetFieldWorkerPin", "/api/field-workers/{id}/pin-reset", "Reset a field worker's PIN (a temporary PIN is returned once when none is supplied)", http.StatusOK, s.resetPin)
 	apiroute.Put(w, "linkFieldWorker", "/api/field-workers/{id}/link", "Link a field worker to a platform user (audit correlation only; grants nothing)", http.StatusOK, s.linkWorker)
@@ -202,6 +202,7 @@ type FieldWorkerResponse struct {
 	WorkerCode string `json:"workerCode"`
 	Name       string `json:"name"`
 	Email      string `json:"email,omitempty"`
+	Phone      string `json:"phone,omitempty"`
 	// Status is ACTIVE or DISABLED (suspended).
 	Status string `json:"status" enum:"ACTIVE,DISABLED"`
 	// HasPin is false until a PIN is set (the worker cannot sign in).
@@ -280,7 +281,7 @@ func workerResponse(i *fieldidentity.Identity, idx appIndex, now time.Time, badg
 	links map[string]fieldidentity.PrincipalRef,
 ) FieldWorkerResponse {
 	r := FieldWorkerResponse{
-		ID: i.ID, ClientID: i.ClientID, WorkerCode: i.WorkerCode, Name: i.Name, Email: i.Email,
+		ID: i.ID, ClientID: i.ClientID, WorkerCode: i.WorkerCode, Name: i.Name, Email: i.Email, Phone: i.Phone,
 		Status: string(i.Status), HasPin: i.HasPIN(), PinChangeRequired: i.PINChangeRequired,
 		CanImpersonate: i.CanImpersonate, IsTest: i.IsTest, LinkedPrincipal: linkedRef(i, links), Badge: badgeRef(badge),
 		Locked: i.IsLocked(now), HardLocked: i.HardLocked, LockedUntil: opt(i.LockedUntil),
@@ -344,6 +345,7 @@ type EnsureFieldWorkerRequest struct {
 	WorkerCode string   `json:"workerCode"`
 	Name       string   `json:"name"`
 	Email      *string  `json:"email,omitempty"`
+	Phone      *string  `json:"phone,omitempty" doc:"Optional contact number, stored as entered; new worker only"`
 	AppCodes   []string `json:"appCodes,omitempty" doc:"Applications the worker may sign in to; granted additively"`
 	// Pin is a supervisor-entered PIN for a NEW worker; it must pass the
 	// client's PIN policy and is stored with pinChangeRequired. Ignored for an
@@ -378,6 +380,9 @@ func (s *State) ensureWorker(ctx context.Context, in *apicommon.In[EnsureFieldWo
 	}
 	if in.Body.Email != nil {
 		cmd.Email = *in.Body.Email
+	}
+	if in.Body.Phone != nil {
+		cmd.Phone = *in.Body.Phone
 	}
 	if in.Body.Pin != nil {
 		cmd.PIN = *in.Body.Pin
@@ -566,6 +571,7 @@ func (s *State) unlinkWorker(ctx context.Context, in *apicommon.IDInput) (*apico
 type UpdateFieldWorkerRequest struct {
 	Name  string  `json:"name"`
 	Email *string `json:"email,omitempty"`
+	Phone *string `json:"phone,omitempty" doc:"Omit to leave unchanged; an empty string clears it"`
 	// CanImpersonate changes need platform:iam:field-worker:impersonate in
 	// addition to manage; clearing it ends the sessions the worker holds open
 	// as an actor. IsTest marks or unmarks a test identity.
@@ -585,7 +591,7 @@ func (s *State) updateWorker(ctx context.Context, in *updateWorkerInput) (*apico
 	}
 	cmd := fieldidentity.UpdateWorkerCommand{
 		WorkerRef: refOf(ident),
-		Name:      in.Body.Name, Email: in.Body.Email, IsTest: in.Body.IsTest,
+		Name:      in.Body.Name, Email: in.Body.Email, Phone: in.Body.Phone, IsTest: in.Body.IsTest,
 	}
 	if v := in.Body.CanImpersonate; v != nil {
 		if *v != ident.CanImpersonate {

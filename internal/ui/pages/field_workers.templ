@@ -295,6 +295,9 @@ templ fieldWorkerDrawerBody(d fieldWorkerDetail) {
 			if d.Email != "" {
 				@kit.DetailField(kit.DetailFieldProps{Label: "Email", Value: d.Email})
 			}
+			if d.Phone != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Phone", Value: d.Phone})
+			}
 			@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
 				@fieldWorkerStatusTag(d.Status, d.StatusSeverity)
 				@fieldWorkerFlagTags(d.IsTest, d.Supervisor)
@@ -586,6 +589,7 @@ templ fieldWorkerFormDialog(f fieldWorkerForm) {
 		@fieldWorkerFormField(f, "workerCode")
 		@fieldWorkerFormField(f, "name")
 		@fieldWorkerFormField(f, "email")
+		@fieldWorkerFormField(f, "phone")
 		@fieldWorkerFormField(f, "apps")
 		@fieldWorkerFormField(f, "isTest")
 		if f.MayImpersonate {
@@ -607,6 +611,10 @@ templ fieldWorkerFormField(f fieldWorkerForm, key string) {
 		case "email":
 			@kit.Field(f.fieldProps(key, "Email", "Optional.", false)) {
 				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Type: "email", Value: f.Email, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off"}})
+			}
+		case "phone":
+			@kit.Field(f.fieldProps(key, "Phone", "Optional. Digits with an optional leading +.", false)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Type: "tel", Value: f.Phone, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off"}})
 			}
 		case "apps":
 			@kit.Field(f.fieldProps(key, "Applications", "The applications the worker may sign in to.", false)) {
@@ -714,6 +722,10 @@ templ fieldEditField(f fieldEditForm, key string) {
 		case "email":
 			@kit.Field(f.fieldProps(key, "Email", "Optional. Blank removes it.", false)) {
 				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Type: "email", Value: f.Email, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off"}})
+			}
+		case "phone":
+			@kit.Field(f.fieldProps(key, "Phone", "Optional. Blank removes it.", false)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Type: "tel", Value: f.Phone, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off"}})
 			}
 		case "isTest":
 			@kit.Field(f.fieldProps(key, "Test identity", testHelp, false)) {

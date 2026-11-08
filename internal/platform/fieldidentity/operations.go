@@ -240,6 +240,7 @@ type EnsureWorkerCommand struct {
 	WorkerCode string   `json:"workerCode"`
 	Name       string   `json:"name"`
 	Email      string   `json:"email,omitempty"`
+	Phone      string   `json:"phone,omitempty"`
 	AppCodes   []string `json:"appCodes,omitempty"`
 	// PIN is a supervisor-entered PIN for a NEW worker; it must pass the
 	// client's policy and is stored with pinChangeRequired.
@@ -274,6 +275,9 @@ func (o *Ops) EnsureWorker() usecaseop.Operation[EnsureWorkerCommand, Event] {
 					return usecase.Validation("EMAIL_INVALID", "email is not valid")
 				}
 			}
+			if !validPhone(cmd.Phone) {
+				return usecase.Validation("PHONE_INVALID", "phone is not a valid phone number")
+			}
 			return nil
 		},
 		Authorize: func(ctx context.Context, cmd EnsureWorkerCommand) error {
@@ -301,6 +305,7 @@ func (o *Ops) EnsureWorker() usecaseop.Operation[EnsureWorkerCommand, Event] {
 			if created {
 				ident = NewIdentity(cmd.ClientID, cmd.WorkerCode, cmd.Name)
 				ident.Email = strings.TrimSpace(cmd.Email)
+				ident.Phone = strings.TrimSpace(cmd.Phone)
 				ident.CanImpersonate, ident.IsTest = cmd.CanImpersonate, cmd.IsTest
 				if cmd.PIN != "" {
 					if !o.Hasher.Configured() {
@@ -357,18 +362,20 @@ func validateRef(_ context.Context, cmd WorkerRef) error {
 	return nil
 }
 
-// UpdateWorkerCommand changes a worker's name and email.
+// UpdateWorkerCommand changes a worker's name, email and phone.
 type UpdateWorkerCommand struct {
 	WorkerRef
 	Name  string  `json:"name"`
 	Email *string `json:"email,omitempty"`
+	// Phone nil leaves the number unchanged; "" clears it.
+	Phone *string `json:"phone,omitempty"`
 	// CanImpersonate and IsTest, when non-nil, replace the flag. Clearing
 	// CanImpersonate revokes the sessions the worker holds open as an actor.
 	CanImpersonate *bool `json:"canImpersonate,omitempty"`
 	IsTest         *bool `json:"isTest,omitempty"`
 }
 
-// UpdateWorker renames a worker / changes the contact email and the
+// UpdateWorker renames a worker / changes the contact email and phone and the
 // canImpersonate / isTest flags.
 func (o *Ops) UpdateWorker() usecaseop.Operation[UpdateWorkerCommand, Event] {
 	return usecaseop.Operation[UpdateWorkerCommand, Event]{
@@ -387,6 +394,9 @@ func (o *Ops) UpdateWorker() usecaseop.Operation[UpdateWorkerCommand, Event] {
 					}
 				}
 			}
+			if cmd.Phone != nil && !validPhone(*cmd.Phone) {
+				return usecase.Validation("PHONE_INVALID", "phone is not a valid phone number")
+			}
 			return nil
 		},
 		Authorize: usecaseop.Public[UpdateWorkerCommand],
@@ -398,6 +408,9 @@ func (o *Ops) UpdateWorker() usecaseop.Operation[UpdateWorkerCommand, Event] {
 			ident.Name = strings.TrimSpace(cmd.Name)
 			if cmd.Email != nil {
 				ident.Email = strings.TrimSpace(*cmd.Email)
+			}
+			if cmd.Phone != nil {
+				ident.Phone = strings.TrimSpace(*cmd.Phone)
 			}
 			if cmd.IsTest != nil {
 				ident.IsTest = *cmd.IsTest
@@ -1120,4 +1133,29 @@ func (o *Ops) PutPolicy() usecaseop.Operation[PutPolicyCommand, Event] {
 			return usecaseop.Save(&p, o.R.Policies, ev), nil
 		},
 	}
+}
+
+// validPhone accepts an empty number, or digits with spaces, '-', '.', '(' and
+// ')' and at most one leading '+'. It needs 7 to 15 digits (E.164 allows 15)
+// and at most 32 characters. The number is stored as entered.
+func validPhone(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return true
+	}
+	if len(s) > 32 {
+		return false
+	}
+	digits := 0
+	for i, c := range s {
+		switch {
+		case c >= '0' && c <= '9':
+			digits++
+		case c == ' ' || c == '-' || c == '.' || c == '(' || c == ')':
+		case c == '+' && i == 0:
+		default:
+			return false
+		}
+	}
+	return digits >= 7 && digits <= 15
 }

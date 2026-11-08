@@ -119,6 +119,7 @@ type Identity struct {
 	WorkerCode string `json:"workerCode"`
 	Name       string `json:"name"`
 	Email      string `json:"email,omitempty"`
+	Phone      string `json:"phone,omitempty"`
 	Status     Status `json:"status"`
 
 	// PINHash is nil until a PIN is set; never serialised.

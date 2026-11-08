@@ -27,7 +27,7 @@ import (
 // (details, apps, sign-in history) and the supervisor actions of the admin
 // API (ensure, grant and revoke apps, suspend, activate, unlock, reset PIN,
 // delete), the badge section (issue, reissue, revoke, a printable card shown
-// once), the bulk "Print badges" sheet, edit (name, email, the test and
+// once), the bulk "Print badges" sheet, edit (name, email, phone, the test and
 // supervisor flags) and "Sign in as…" (a single-use console sign-in code).
 // Reads make the API's check (CanReadFieldWorkers); every change
 // CanManageFieldWorkers for the worker's client, as the API's handlers.
@@ -461,20 +461,20 @@ type fieldLinkView struct {
 }
 
 type fieldWorkerDetail struct {
-	ID, Code, Name, Email, ClientID string
-	Status                          string
-	StatusSeverity                  kit.TagSeverity
-	Suspended, Locked               bool
-	Lock, LockTitle                 string
-	LockUntil                       time.Time
-	LockSeverity                    kit.TagSeverity
-	HasPin, PinChangeRequired       bool
-	FailedSinceSuccess              int
-	LastLogin, Created, Updated     time.Time
-	Apps                            []fieldWorkerApp
-	CanManage, CanGrant             bool
-	IsTest, Supervisor              bool
-	Badge                           *fieldBadgeView
+	ID, Code, Name, Email, Phone, ClientID string
+	Status                                 string
+	StatusSeverity                         kit.TagSeverity
+	Suspended, Locked                      bool
+	Lock, LockTitle                        string
+	LockUntil                              time.Time
+	LockSeverity                           kit.TagSeverity
+	HasPin, PinChangeRequired              bool
+	FailedSinceSuccess                     int
+	LastLogin, Created, Updated            time.Time
+	Apps                                   []fieldWorkerApp
+	CanManage, CanGrant                    bool
+	IsTest, Supervisor                     bool
+	Badge                                  *fieldBadgeView
 	// Link is the platform user the worker is linked to, nil when none.
 	// LinkHref and UnlinkAction are set for a manager.
 	Link                   *fieldLinkView
@@ -517,7 +517,7 @@ func (h *FieldWorkers) detailFor(ctx context.Context, ac *auth.AuthContext, i *f
 	canManage := auth.CanManageFieldWorkers(ac, i.ClientID) == nil
 	row := fieldWorkerRowOf(i, idx, canManage, now)
 	d := fieldWorkerDetail{
-		ID: i.ID, Code: i.WorkerCode, Name: i.Name, Email: i.Email, ClientID: i.ClientID,
+		ID: i.ID, Code: i.WorkerCode, Name: i.Name, Email: i.Email, Phone: i.Phone, ClientID: i.ClientID,
 		Status: row.Status, StatusSeverity: row.StatusSeverity, Suspended: row.Suspended, Locked: row.Locked,
 		Lock: row.Lock, LockTitle: row.LockTitle, LockUntil: row.LockUntil, LockSeverity: row.LockSeverity,
 		HasPin: i.HasPIN(), PinChangeRequired: i.PINChangeRequired, FailedSinceSuccess: i.FailedSinceSuccess,
@@ -846,15 +846,15 @@ const (
 
 var fieldWorkerFieldCodes = map[string]string{
 	"WORKER_CODE_REQUIRED": "workerCode", "WORKER_CODE_INVALID": "workerCode",
-	"NAME_REQUIRED": "name", "EMAIL_INVALID": "email",
+	"NAME_REQUIRED": "name", "EMAIL_INVALID": "email", "PHONE_INVALID": "phone",
 	"UNKNOWN_APPLICATION": "apps", "APPLICATION_FORBIDDEN": "apps",
 }
 
 type fieldWorkerForm struct {
-	Client, ClientName      string
-	WorkerCode, Name, Email string
-	Apps                    []string
-	AppChoices              []kit.Option
+	Client, ClientName             string
+	WorkerCode, Name, Email, Phone string
+	Apps                           []string
+	AppChoices                     []kit.Option
 	// IsTest marks a test identity; CanImpersonate lets the worker act as
 	// others. The latter is offered (and accepted) only for a caller with
 	// platform:iam:field-worker:impersonate (MayImpersonate).
@@ -874,7 +874,7 @@ func (f fieldWorkerForm) dialog() kit.FormDialogProps {
 }
 
 func (f fieldWorkerForm) keys() []string {
-	keys := []string{"workerCode", "name", "email", "apps", "isTest"}
+	keys := []string{"workerCode", "name", "email", "phone", "apps", "isTest"}
 	if f.MayImpersonate {
 		keys = append(keys, "canImpersonate")
 	}
@@ -990,7 +990,7 @@ func (h *FieldWorkers) create(w http.ResponseWriter, r *http.Request) {
 	f := fieldWorkerForm{
 		Client:     strings.TrimSpace(r.PostFormValue(fieldClientParam)),
 		WorkerCode: strings.TrimSpace(r.PostFormValue("workerCode")), Name: strings.TrimSpace(r.PostFormValue("name")),
-		Email: strings.TrimSpace(r.PostFormValue("email")), Apps: formSet(r.PostForm["apps"]),
+		Email: strings.TrimSpace(r.PostFormValue("email")), Phone: strings.TrimSpace(r.PostFormValue("phone")), Apps: formSet(r.PostForm["apps"]),
 		IsTest: r.PostFormValue("isTest") != "", CanImpersonate: r.PostFormValue("canImpersonate") != "",
 	}
 	clientID, err := h.manageClient(r, ac)
@@ -1013,7 +1013,7 @@ func (h *FieldWorkers) create(w http.ResponseWriter, r *http.Request) {
 		f.AppChoices = fieldAppChoices(idx.reachable(ac, true))
 	}
 	ev, err := h.Ops.EnsureWorker(ctx, fieldidentity.EnsureWorkerCommand{
-		ClientID: clientID, WorkerCode: f.WorkerCode, Name: f.Name, Email: f.Email, AppCodes: f.Apps,
+		ClientID: clientID, WorkerCode: f.WorkerCode, Name: f.Name, Email: f.Email, Phone: f.Phone, AppCodes: f.Apps,
 		IsTest: f.IsTest, CanImpersonate: f.CanImpersonate,
 	})
 	if err != nil {
@@ -1201,16 +1201,16 @@ const (
 	fwEditSig  = "fwEditForm"
 )
 
-var fieldWorkerEditCodes = map[string]string{"NAME_REQUIRED": "name", "EMAIL_INVALID": "email"}
+var fieldWorkerEditCodes = map[string]string{"NAME_REQUIRED": "name", "EMAIL_INVALID": "email", "PHONE_INVALID": "phone"}
 
-// fieldEditForm is PUT /api/field-workers/{id}: name, email and the two
+// fieldEditForm is PUT /api/field-workers/{id}: name, email, phone and the two
 // flags. The "flags" marker says the test switch was part of the form (an
 // unticked switch posts nothing); "impersonateField" says the same of the
 // supervisor switch, which only a caller with the impersonate permission is
 // shown.
 type fieldEditForm struct {
 	WorkerID, Code                         string
-	Name, Email                            string
+	Name, Email, Phone                     string
 	IsTest, CanImpersonate, MayImpersonate bool
 	Errs                                   formErrors
 	Open                                   bool
@@ -1225,13 +1225,13 @@ func (f fieldEditForm) dialog() kit.FormDialogProps {
 	}
 	return kit.FormDialogProps{
 		ID: fwEditForm, Signal: fwEditSig, Action: fieldWorkersPath + "/" + url.PathEscape(f.WorkerID) + "/edit", Open: f.Open, Error: f.Errs.Form,
-		Title: "Edit field worker", Description: "Change the name, the contact email and how " + f.Code + " is treated. The worker code cannot change.",
+		Title: "Edit field worker", Description: "Change the name, the contact email and phone and how " + f.Code + " is treated. The worker code cannot change.",
 		SubmitLabel: "Save", Hidden: hidden,
 	}
 }
 
 func (f fieldEditForm) keys() []string {
-	keys := []string{"name", "email", "isTest"}
+	keys := []string{"name", "email", "phone", "isTest"}
 	if f.MayImpersonate {
 		keys = append(keys, "canImpersonate")
 	}
@@ -1271,7 +1271,7 @@ func (f fieldEditForm) fieldProps(key, label, help string, required bool) kit.Fi
 
 func (h *FieldWorkers) editFormOf(ac *auth.AuthContext, i *fieldidentity.Identity) fieldEditForm {
 	return fieldEditForm{
-		WorkerID: i.ID, Code: i.WorkerCode, Name: i.Name, Email: i.Email, IsTest: i.IsTest, CanImpersonate: i.CanImpersonate,
+		WorkerID: i.ID, Code: i.WorkerCode, Name: i.Name, Email: i.Email, Phone: i.Phone, IsTest: i.IsTest, CanImpersonate: i.CanImpersonate,
 		MayImpersonate: auth.CanImpersonateFieldWorkers(ac, i.ClientID) == nil,
 	}
 }
@@ -1324,7 +1324,8 @@ func (h *FieldWorkers) edit(w http.ResponseWriter, r *http.Request) {
 	}
 	f := h.editFormOf(ac, i)
 	f.Name, f.Email = strings.TrimSpace(r.PostFormValue("name")), strings.TrimSpace(r.PostFormValue("email"))
-	cmd := fieldidentity.UpdateWorkerCommand{WorkerRef: refOfWorker(i), Name: f.Name, Email: &f.Email}
+	f.Phone = strings.TrimSpace(r.PostFormValue("phone"))
+	cmd := fieldidentity.UpdateWorkerCommand{WorkerRef: refOfWorker(i), Name: f.Name, Email: &f.Email, Phone: &f.Phone}
 	if r.PostForm.Has("flags") {
 		f.IsTest = r.PostFormValue("isTest") != ""
 		cmd.IsTest = &f.IsTest

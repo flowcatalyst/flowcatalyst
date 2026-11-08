@@ -1808,6 +1808,10 @@ export type EnsureFieldWorkerRequest = {
      */
     isTest?: boolean;
     name: string;
+    /**
+     * Optional contact number, stored as entered; new worker only
+     */
+    phone?: string;
     pin?: string;
     workerCode: string;
     [key: string]: unknown | string | Array<string> | boolean | undefined;
@@ -2178,6 +2182,7 @@ export type FieldWorkerResponse = {
     locked: boolean;
     lockedUntil?: string;
     name: string;
+    phone?: string;
     pinChangeRequired: boolean;
     status: 'ACTIVE' | 'DISABLED';
     updatedAt: string;
@@ -5641,6 +5646,10 @@ export type UpdateFieldWorkerRequest = {
     email?: string;
     isTest?: boolean;
     name: string;
+    /**
+     * Omit to leave unchanged; an empty string clears it
+     */
+    phone?: string;
     [key: string]: unknown | string | boolean | undefined;
 };
 
@@ -7115,6 +7124,10 @@ export type EnsureFieldWorkerRequestWritable = {
      */
     isTest?: boolean;
     name: string;
+    /**
+     * Optional contact number, stored as entered; new worker only
+     */
+    phone?: string;
     pin?: string;
     workerCode: string;
     [key: string]: unknown | Array<string> | boolean | string | undefined;
@@ -7301,6 +7314,7 @@ export type FieldWorkerResponseWritable = {
     locked: boolean;
     lockedUntil?: string;
     name: string;
+    phone?: string;
     pinChangeRequired: boolean;
     status: 'ACTIVE' | 'DISABLED';
     updatedAt: string;
@@ -9230,6 +9244,10 @@ export type UpdateFieldWorkerRequestWritable = {
     email?: string;
     isTest?: boolean;
     name: string;
+    /**
+     * Omit to leave unchanged; an empty string clears it
+     */
+    phone?: string;
     [key: string]: unknown | boolean | string | undefined;
 };
 

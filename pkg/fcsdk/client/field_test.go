@@ -11,7 +11,7 @@ import (
 	"github.com/flowcatalyst/go-sdk/client"
 )
 
-const workerJSON = `{"id":"fwk_1","clientId":"clt_1","workerCode":"w1","name":"W","email":"w@x.io","status":"ACTIVE","hasPin":true,"pinChangeRequired":true,"locked":false,"hardLocked":false,"failedSinceSuccess":2,"apps":[{"id":"app_1","code":"orders","name":"Orders","source":"API","grantedAt":"2026-01-01T00:00:00Z"}],"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z","created":true}`
+const workerJSON = `{"id":"fwk_1","clientId":"clt_1","workerCode":"w1","name":"W","email":"w@x.io","phone":"+27 82 123 4567","status":"ACTIVE","hasPin":true,"pinChangeRequired":true,"locked":false,"hardLocked":false,"failedSinceSuccess":2,"apps":[{"id":"app_1","code":"orders","name":"Orders","source":"API","grantedAt":"2026-01-01T00:00:00Z"}],"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z","created":true}`
 
 func TestFieldWorkersEnsure(t *testing.T) {
 	srv, seen := newMockSrv(t, workerJSON)
@@ -70,12 +70,13 @@ func TestFieldWorkersGetUpdateDelete(t *testing.T) {
 	assert.Equal(t, http.MethodGet, seen.method)
 	assert.Equal(t, "/api/field-workers/fwk_1", seen.path)
 	assert.Equal(t, "W", r.Name)
+	assert.Equal(t, "+27 82 123 4567", r.Phone)
 
-	r, err = c.FieldWorkers().Update(ctx, "fwk_1", &client.UpdateFieldWorkerRequest{Name: "W2", Email: new("n@x.io")})
+	r, err = c.FieldWorkers().Update(ctx, "fwk_1", &client.UpdateFieldWorkerRequest{Name: "W2", Email: new("n@x.io"), Phone: new("+27 82 123 4567")})
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodPut, seen.method)
 	assert.Equal(t, "/api/field-workers/fwk_1", seen.path)
-	assert.JSONEq(t, `{"name":"W2","email":"n@x.io"}`, seen.body)
+	assert.JSONEq(t, `{"name":"W2","email":"n@x.io","phone":"+27 82 123 4567"}`, seen.body)
 	assert.Equal(t, "fwk_1", r.ID)
 
 	srv2, seen2 := newMockSrv(t, `{"message":"Field worker deleted"}`)

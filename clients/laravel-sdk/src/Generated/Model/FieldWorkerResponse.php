@@ -87,6 +87,10 @@ class FieldWorkerResponse
      */
     protected $name;
     /**
+     * @var string|null
+     */
+    protected $phone;
+    /**
      * @var bool|null
      */
     protected $pinChangeRequired;
@@ -428,6 +432,24 @@ class FieldWorkerResponse
     {
         $this->initialized['name'] = true;
         $this->name = $name;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getPhone(): ?string
+    {
+        return $this->phone;
+    }
+    /**
+     * @param string|null $phone
+     *
+     * @return self
+     */
+    public function setPhone(?string $phone): self
+    {
+        $this->initialized['phone'] = true;
+        $this->phone = $phone;
         return $this;
     }
     /**

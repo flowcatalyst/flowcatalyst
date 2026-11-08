@@ -206,6 +206,12 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
         }
+        if (\array_key_exists('phone', $data) && $data['phone'] !== null) {
+            $object->setPhone($data['phone']);
+        }
+        elseif (\array_key_exists('phone', $data) && $data['phone'] === null) {
+            $object->setPhone(null);
+        }
         if (\array_key_exists('pinChangeRequired', $data) && $data['pinChangeRequired'] !== null) {
             $object->setPinChangeRequired($data['pinChangeRequired']);
         }
@@ -276,6 +282,9 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
             $dataArray['lockedUntil'] = $data->getLockedUntil()->format('Y-m-d\TH:i:sP');
         }
         $dataArray['name'] = $data->getName();
+        if ($data->isInitialized('phone') && null !== $data->getPhone()) {
+            $dataArray['phone'] = $data->getPhone();
+        }
         $dataArray['pinChangeRequired'] = $data->getPinChangeRequired();
         $dataArray['status'] = $data->getStatus();
         $dataArray['updatedAt'] = $data->getUpdatedAt()->format('Y-m-d\TH:i:sP');

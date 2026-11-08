@@ -81,13 +81,13 @@ DEVICE_REVOKED | WORKER_SUSPENDED | ADMIN | PIN_CHANGED`. Add `field_sessions.ro
 
 ### 3.3 Admin API (huma, `/api/*`, client-boxed via `AuthContext.CanAccessClient`)
 Design §4.2, minus badges. Concretely:
-- `POST /api/field-workers` `{clientId, workerCode, name, email?, appCodes?[], pin?}` → 201
+- `POST /api/field-workers` `{clientId, workerCode, name, email?, phone?, appCodes?[], pin?}` → 201
   `{id, ..., temporaryPin?}`. Idempotent ensure on `(clientId, workerCode)`: existing row →
   200 with `created:false`, fields not overwritten except `appCodes` grants added. If `pin`
   given it must pass policy and is stored with `pin_change_required=true` (supervisor-entered);
   if absent, no PIN is set (worker cannot log in until reset).
 - `GET /api/field-workers?clientId&q&appCode&status&page&pageSize` (paging like portal users),
-  `GET/PUT/DELETE /api/field-workers/{id}` (PUT: name, email; DELETE = hard delete, revokes
+  `GET/PUT/DELETE /api/field-workers/{id}` (PUT: name, email, phone; DELETE = hard delete, revokes
   sessions first).
 - `POST /api/field-workers/{id}/pin-reset` `{pin?}` → `{temporaryPin?, pinChangeRequired:true}`.
   No `pin` ⇒ a random policy-valid temporary PIN returned **once**. Revokes all the worker's

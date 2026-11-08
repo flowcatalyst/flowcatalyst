@@ -898,13 +898,13 @@ its applications (others are `404`), must name its application in `appCodes` whe
 worker, may grant its own application to a worker it cannot yet see, and may not change the
 client's policy. Application codes resolve to active applications, else `400 UNKNOWN_APPLICATION`.
 
-**Workers.** `POST /api/field-workers {clientId, workerCode, name, email?, appCodes?[], pin?}`
+**Workers.** `POST /api/field-workers {clientId, workerCode, name, email?, phone?, appCodes?[], pin?}`
 is an idempotent ensure on `(clientId, workerCode)` (the code is stored upper-case): `201` with
 `created:true` for a new worker, `200` with `created:false` for an existing one, whose fields
 (including any PIN) are not overwritten; `appCodes` grants are added. A supplied `pin` must pass
 the client's PIN policy (`400 PIN_POLICY`, `details.violations[]`) and is stored with
 `pinChangeRequired:true`; without one the worker has no PIN and cannot sign in until a reset.
-Responses carry `hasPin`, `pinChangeRequired`, `locked`, `hardLocked`, `lockedUntil?`,
+Responses carry `phone?` (optional contact number, see the 2026-11-08 hand-off), `hasPin`, `pinChangeRequired`, `locked`, `hardLocked`, `lockedUntil?`,
 `failedSinceSuccess`, `apps[]`, `canImpersonate`, `isTest`, `linkedPrincipal` (`{id, name, email}` of the
 linked platform user, else `null`; see "Link to a platform user"), `badge` (`{id, status, createdAt, lastUsedAt?}`
 for the ACTIVE badge, else `null`) and never the hash. Ensure (new worker only) and PUT accept
@@ -914,7 +914,7 @@ it revokes the sessions the worker holds open as an actor (`ACTOR_SUSPENDED`). S
 worker does the same. `GET /api/field-workers` also takes `isTest=true|false` and `linkedPrincipalId`. `GET /api/field-workers?clientId&q&appCode&status&page&pageSize`
 (`page` 0-based, `pageSize` default 100 max 1000; `q` is a case-insensitive prefix of name or
 worker code) answers `{workers, total, page, size}`; `GET|PUT|DELETE /api/field-workers/{id}`
-(PUT takes `{name, email?}`; DELETE revokes the worker's sessions and removes the row).
+(PUT takes `{name, email?, phone?}`; DELETE revokes the worker's sessions and removes the row).
 `POST /{id}/pin-reset {pin?}` answers `{temporaryPin?, pinChangeRequired:true}`: with no `pin`
 the platform generates a policy-valid PIN, returned this once and recorded nowhere readable
 (not in events or audit); every session of the worker is revoked (`PIN_CHANGED`) and the lock
