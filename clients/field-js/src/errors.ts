@@ -89,3 +89,32 @@ export class FieldAuthError extends Error {
 		if (extra.violations !== undefined) this.violations = extra.violations;
 	}
 }
+
+/** Codes of a failed push subscribe (docs/contracts/push.md section 6.1), plus the library's own. */
+export type PushErrorCode =
+	| "NO_TOPICS"
+	| "PUSH_LIMIT"
+	| "VALIDATION"
+	| "UNAUTHORIZED"
+	| "STREAM_TOKEN_INVALID"
+	| "STREAM_TOKEN_EXPIRED"
+	| "NETWORK"
+	| "BAD_RESPONSE"
+	| "HANDLER"
+	| (string & {});
+
+/** An error from the push reader. */
+export class PushError extends Error {
+	readonly code: PushErrorCode;
+	/** HTTP status when the host answered. */
+	readonly status?: number;
+	readonly cause?: unknown;
+
+	constructor(code: PushErrorCode, message?: string, extra: { status?: number; cause?: unknown } = {}) {
+		super(message ?? code);
+		this.name = "PushError";
+		this.code = code;
+		if (extra.status !== undefined) this.status = extra.status;
+		if (extra.cause !== undefined) this.cause = extra.cause;
+	}
+}

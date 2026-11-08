@@ -34,8 +34,20 @@ export {
 	defaultProviders,
 } from "./bridge.js";
 export type { BridgeClientOptions, BridgeGlobal } from "./bridge.js";
-export { FieldAuthError, FieldProviderError } from "./errors.js";
-export type { FieldAuthErrorCode, ProviderErrorCode } from "./errors.js";
+export { FieldAuthError, FieldProviderError, PushError } from "./errors.js";
+export type { FieldAuthErrorCode, ProviderErrorCode, PushErrorCode } from "./errors.js";
+export { PushStream, PushStreamEvent, SseParser, topicMatches } from "./push.js";
+export type {
+	DeniedTopic,
+	EventSourceLike,
+	PushMessage,
+	PushStreamEventType,
+	PushStreamOptions,
+	PushStreamState,
+	ResetDetail,
+	SseMessage,
+	SubscribedDetail,
+} from "./push.js";
 export { definePinPad } from "./pin-pad.js";
 export type { FcPinPadElement, PinEventDetail } from "./pin-pad.js";
 export { accessTokenHash, buildProof, jwkThumbprint } from "./proof.js";
