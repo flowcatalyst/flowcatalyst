@@ -175,6 +175,7 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 	// client).
 	codes := sdk.NewClientCodes(s.Clients)
 	appScope := sdk.NewAppScope(s.Apps)
+	now := time.Now().UTC()
 	for i, it := range in.Body.Items {
 		if msg := validateBatchItem(&it); msg != "" {
 			results[i] = BatchResultItem{ID: it.ID, Status: "BAD_REQUEST", Error: msg}
@@ -195,6 +196,16 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 		// encoded object; store the object (F13, sdk.UnwrapEncodedJSON for
 		// the exact rule). The singular POST /api/events is not changed.
 		ev := event.New(it.Type, it.Source, it.Subject, sdk.UnwrapEncodedJSON(it.Data))
+		// The producer's own time, when it sent one; createdAt (ingest
+		// time, the partition key and every ordering's clock) is not moved.
+		occurred, msg := batchItemTime(it.Time, now)
+		if msg != "" {
+			results[i] = BatchResultItem{ID: it.ID, Status: "BAD_REQUEST", Error: msg}
+			continue
+		}
+		if occurred != nil {
+			ev.Time = *occurred
+		}
 		if it.ID != "" {
 			ev.ID = it.ID
 		}
@@ -235,6 +246,28 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 		results[eventSlot[j]] = BatchResultItem{ID: events[j].ID, Status: "SUCCESS"}
 	}
 	return &apicommon.Out[BatchResponse]{Body: BatchResponse{Results: results}}, nil
+}
+
+// maxEventTimeSkew is how far ahead of the platform's clock a batch item's
+// time may be: clock skew, not a future-dated event.
+const maxEventTimeSkew = 5 * time.Minute
+
+// batchItemTime parses an item's optional time. nil, "" = absent (the event
+// keeps the ingest time). A value that is not RFC 3339, or that lies more
+// than maxEventTimeSkew after now, is the item's error message.
+func batchItemTime(v *string, now time.Time) (*time.Time, string) {
+	if v == nil || strings.TrimSpace(*v) == "" {
+		return nil, ""
+	}
+	t, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(*v))
+	if err != nil {
+		return nil, "time must be an RFC 3339 timestamp (e.g. 2026-11-09T10:15:02.481Z)"
+	}
+	if t.After(now.Add(maxEventTimeSkew)) {
+		return nil, "time is in the future (more than 5 minutes ahead of the platform's clock)"
+	}
+	t = t.UTC()
+	return &t, ""
 }
 
 // eventTypeAppRefused is the message for an event whose application the

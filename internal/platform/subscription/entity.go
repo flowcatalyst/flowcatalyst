@@ -3,6 +3,8 @@
 package subscription
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -62,11 +64,43 @@ func ParseSource(s string) (Source, bool) {
 
 // EventTypeBinding maps an event-type pattern (with wildcards) to this
 // subscription. Stored in msg_subscription_event_types.
+//
+// Filter is wire input only, and only an empty one is accepted
+// (CheckBindingFilter). A per-binding filter was carried by the API and the
+// SDK sync but never defined — no syntax was ever specified (SDK tests used
+// both "subject like 'orders.%'" and "$.data.kind == 'x'"), no column stores
+// it and the fan-out never evaluated it — so a filter that was sent was
+// silently dropped and every event of the type was delivered. Refusing it
+// says so instead (owner ruling 2026-11-09). It is never stored or echoed.
 type EventTypeBinding struct {
 	EventTypeID   *string `json:"eventTypeId,omitempty"`
 	EventTypeCode string  `json:"eventTypeCode"`
 	SpecVersion   *string `json:"specVersion,omitempty"`
 	Filter        *string `json:"filter,omitempty"`
+}
+
+// CheckBindingFilter refuses a non-blank event-type binding filter (see
+// EventTypeBinding). Absent, null or blank is accepted.
+func CheckBindingFilter(filter *string) error {
+	if filter == nil || strings.TrimSpace(*filter) == "" {
+		return nil
+	}
+	return errFilterNotSupported
+}
+
+var errFilterNotSupported = errors.New("event-type filters are not supported: a binding receives every event of its " +
+	"type; remove the filter (it was never applied)")
+
+// CheckBindingFilters applies CheckBindingFilter to every binding and clears
+// the (blank) filters, so nothing carries one past validation.
+func CheckBindingFilters(bindings []EventTypeBinding) error {
+	for i := range bindings {
+		if err := CheckBindingFilter(bindings[i].Filter); err != nil {
+			return fmt.Errorf("event type %q: %w", bindings[i].EventTypeCode, err)
+		}
+		bindings[i].Filter = nil
+	}
+	return nil
 }
 
 // NewEventTypeBinding builds an EventTypeBinding.
@@ -153,9 +187,14 @@ func New(code, name, endpoint string) *Subscription {
 		Mode:           common.DefaultDispatchMode,
 		TimeoutSeconds: 30,
 		MaxRetries:     3,
-		DataOnly:       true,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		// The envelope is the documented default (docs/published/20-messaging-
+		// and-delivery.md: "The envelope (the default, dataOnly false)"), and
+		// what an SDK sync that leaves dataOnly out has always produced. A
+		// create through the API or the console used to default to data-only
+		// instead (owner ruling 2026-11-09: one default; new subscriptions only).
+		DataOnly:  false,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 

@@ -14,7 +14,10 @@ type EventTypeBindingDTO struct {
 	EventTypeID   *string `json:"eventTypeId,omitempty"`
 	EventTypeCode string  `json:"eventTypeCode"`
 	SpecVersion   *string `json:"specVersion,omitempty"`
-	Filter        *string `json:"filter,omitempty"`
+	// Filter is refused unless blank: binding filters were never defined or
+	// applied (see subscription.EventTypeBinding). Kept on the wire so a
+	// client that sends an empty one still parses; never echoed.
+	Filter *string `json:"filter,omitempty" doc:"Not supported. Must be absent or empty; a non-empty filter is refused with 400 FILTER_NOT_SUPPORTED (filters were never applied: a binding receives every event of its type)."`
 }
 
 func (b EventTypeBindingDTO) toEntity() subscription.EventTypeBinding {
@@ -31,7 +34,6 @@ func eventTypeBindingFromEntity(b subscription.EventTypeBinding) EventTypeBindin
 		EventTypeID:   b.EventTypeID,
 		EventTypeCode: b.EventTypeCode,
 		SpecVersion:   b.SpecVersion,
-		Filter:        b.Filter,
 	}
 }
 

@@ -272,9 +272,11 @@ func SyncSubscriptions(
 
 				bindings := make([]subscription.EventTypeBinding, 0, len(in.EventTypes))
 				for _, et := range in.EventTypes {
-					b := subscription.NewEventTypeBinding(et.EventTypeCode)
-					b.Filter = et.Filter
-					bindings = append(bindings, b)
+					if err := subscription.CheckBindingFilter(et.Filter); err != nil {
+						return nil, usecase.Validation("FILTER_NOT_SUPPORTED",
+							"Subscription '"+in.Code+"', event type '"+et.EventTypeCode+"': "+err.Error())
+					}
+					bindings = append(bindings, subscription.NewEventTypeBinding(et.EventTypeCode))
 				}
 
 				if cur, ok := existingByCode[in.Code]; ok {
@@ -297,7 +299,10 @@ func SyncSubscriptions(
 					if in.TimeoutSeconds != nil {
 						next.TimeoutSeconds = *in.TimeoutSeconds
 					}
-					resolveDispatchPool(ctx, poolRepo, in.DispatchPoolCode, &next.DispatchPoolID, &next.DispatchPoolCode)
+					archived := resolveDispatchPool(ctx, poolRepo, in.DispatchPoolCode, &next.DispatchPoolID, &next.DispatchPoolCode)
+					if archived && !syncdiff.SameText(cur.DispatchPoolID, next.DispatchPoolID) {
+						return nil, archivedPoolError(in.Code, next.DispatchPoolCode)
+					}
 					if !subscriptionChanged(cur, &next) {
 						continue
 					}
@@ -332,7 +337,9 @@ func SyncSubscriptions(
 				if in.TimeoutSeconds != nil {
 					sub.TimeoutSeconds = *in.TimeoutSeconds
 				}
-				resolveDispatchPool(ctx, poolRepo, in.DispatchPoolCode, &sub.DispatchPoolID, &sub.DispatchPoolCode)
+				if resolveDispatchPool(ctx, poolRepo, in.DispatchPoolCode, &sub.DispatchPoolID, &sub.DispatchPoolCode) {
+					return nil, archivedPoolError(in.Code, sub.DispatchPoolCode)
+				}
 				saves = append(saves, usecasepgx.SyncSaveItem[subscription.Subscription]{
 					Aggregate: sub,
 					Event: SubscriptionCreated{
@@ -383,19 +390,32 @@ func SyncSubscriptions(
 // resolveDispatchPool resolves a pool code to (id, code) via the global pool
 // lookup and writes them through the supplied pointers. An empty/nil code or
 // an unresolvable code leaves the targets untouched (a missing pool is
-// silently ignored).
-func resolveDispatchPool(ctx context.Context, poolRepo *dispatchpool.Repository, code *string, idOut, codeOut **string) {
+// silently ignored). Reports whether the resolved pool is ARCHIVED: the caller
+// refuses a NEW binding to it (an archived pool takes no new jobs) and keeps
+// an unchanged one.
+func resolveDispatchPool(ctx context.Context, poolRepo *dispatchpool.Repository, code *string, idOut, codeOut **string) (archived bool) {
 	if code == nil || strings.TrimSpace(*code) == "" {
-		return
+		return false
 	}
 	pool, err := poolRepo.FindByCode(ctx, *code, nil)
 	if err != nil || pool == nil {
-		return
+		return false
 	}
 	id := pool.ID
 	c := pool.Code
 	*idOut = &id
 	*codeOut = &c
+	return pool.Status == dispatchpool.StatusArchived
+}
+
+// archivedPoolError is the sync's refusal of a new binding to an archived pool.
+func archivedPoolError(subCode string, poolCode *string) error {
+	pc := ""
+	if poolCode != nil {
+		pc = *poolCode
+	}
+	return usecase.Conflict("POOL_ARCHIVED",
+		"Subscription '"+subCode+"': dispatch pool '"+pc+"' is archived and takes no new jobs")
 }
 
 // subscriptionChanged reports whether applying a definition changed anything

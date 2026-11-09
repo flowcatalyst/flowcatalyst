@@ -37,9 +37,10 @@ func TestSyncSubscriptions_UnchangedSubscriptionsAreNotUpdated(t *testing.T) {
 		require.NoError(t, err)
 		return out
 	}
-	// A binding filter is not persisted (no column), so it must not make a
+	// A blank binding filter is accepted (a non-blank one is refused, see
+	// TestSubscriptionRefusals) and not persisted, so it must not make a
 	// subscription look changed on every sync.
-	filter := "$.data.kind == 'x'"
+	filter := "  "
 	base := operations.SyncSubscriptionInput{
 		Code: "f30-notify", Name: "Notify", Description: new("d"), Target: "https://f30.example.test/hook",
 		EventTypes: []operations.SyncEventTypeBindingInput{

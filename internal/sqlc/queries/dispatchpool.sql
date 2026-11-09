@@ -43,3 +43,9 @@ ON CONFLICT (id) DO UPDATE SET
 
 -- name: DispatchPoolDelete :exec
 DELETE FROM msg_dispatch_pools WHERE id = $1;
+
+-- name: DispatchPoolHeldIDs :many
+-- The pools that take no deliveries: SUSPENDED (they wait) and ARCHIVED
+-- (refused for new jobs; existing ones wait like suspended). Read by the
+-- scheduler's claim and the delivery callback through HeldPoolCache.
+SELECT id FROM msg_dispatch_pools WHERE status IN ('SUSPENDED', 'ARCHIVED');

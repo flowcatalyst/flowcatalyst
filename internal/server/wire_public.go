@@ -13,6 +13,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
 	dispatchsettled "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/settled"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldauth"
 	passwordresetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/publicapi"
@@ -155,6 +156,10 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 			// above; see client.NewCachedIdentifierResolver for the
 			// permanent-hit/bounded-miss policy.
 			WithClientCodeResolver(client.NewCachedIdentifierResolver(repos.clientRepo, time.Minute)).
+			// A job of a SUSPENDED or ARCHIVED pool already on the queue is
+			// handed back to PENDING, undelivered (the scheduler holds the
+			// rest, on its PausedCacheTTL). Refreshed every 5s: one small read.
+			WithPoolHeldResolver(dispatchpool.NewHeldPoolCache(repos.dispatchPoolRepo, 5*time.Second).IsHeld).
 			Mount(r)
 
 		// POST /api/dispatch/settled — the router→platform settled-message

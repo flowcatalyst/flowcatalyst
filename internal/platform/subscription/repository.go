@@ -41,16 +41,16 @@ func (r *Repository) ClientIdentifier(ctx context.Context, clientID *string) (*s
 // DispatchPoolCode is the code of the dispatch pool with this id, or nil
 // when no pool has it. Create and update store it beside the pool id, as the
 // SDK sync does, so the pool shows by code.
-func (r *Repository) DispatchPoolCode(ctx context.Context, poolID string) (*string, error) {
-	var code string
-	err := r.pool.QueryRow(ctx, `SELECT code FROM msg_dispatch_pools WHERE id = $1`, poolID).Scan(&code)
+func (r *Repository) DispatchPoolCode(ctx context.Context, poolID string) (code *string, archived bool, err error) {
+	var c, status string
+	err = r.pool.QueryRow(ctx, `SELECT code, status FROM msg_dispatch_pools WHERE id = $1`, poolID).Scan(&c, &status)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+		return nil, false, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("subscription repo: dispatch pool code: %w", err)
+		return nil, false, fmt.Errorf("subscription repo: dispatch pool code: %w", err)
 	}
-	return &code, nil
+	return &c, status == "ARCHIVED", nil
 }
 
 func (r *Repository) FindByID(ctx context.Context, id string) (*Subscription, error) {

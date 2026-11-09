@@ -149,6 +149,33 @@ func (q *Queries) DispatchPoolFindByID(ctx context.Context, id string) (MsgDispa
 	return i, err
 }
 
+const dispatchPoolHeldIDs = `-- name: DispatchPoolHeldIDs :many
+SELECT id FROM msg_dispatch_pools WHERE status IN ('SUSPENDED', 'ARCHIVED')
+`
+
+// The pools that take no deliveries: SUSPENDED (they wait) and ARCHIVED
+// (refused for new jobs; existing ones wait like suspended). Read by the
+// scheduler's claim and the delivery callback through HeldPoolCache.
+func (q *Queries) DispatchPoolHeldIDs(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, dispatchPoolHeldIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const dispatchPoolUpsert = `-- name: DispatchPoolUpsert :exec
 INSERT INTO msg_dispatch_pools
     (id, code, name, description, rate_limit, concurrency, client_id,

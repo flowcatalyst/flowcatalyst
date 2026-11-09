@@ -26,19 +26,14 @@ import (
 // this call is deliberately best-effort: fire-and-forget, its own bounded
 // timeout, never blocking ackBuffered or holding a pool worker/semaphore
 // slot. A router with no reporter wired (a standalone router with no
-// platform, or before the wiring below has landed) behaves exactly as it
-// does today — silently; see SetSettledReporter's doc comment.
+// platform URL) behaves exactly as it did before the hook existed — silently;
+// see SetSettledReporter's doc comment.
 //
-// Deferred wiring (another lane's files, not this one): construct one
-// HTTPSettledReporter per Server from the platform base URL already used
-// elsewhere for router→platform calls, then call SetSettledReporter on
-// every Pool the Manager creates:
-//
-//	reporter := router.NewHTTPSettledReporter(router.SettledReporterConfig{Endpoint: platformBaseURL})
-//	pool.SetSettledReporter(reporter) // once per Pool, e.g. inside Manager.NewPool's caller
-//
-// A nil reporter (never calling SetSettledReporter) is the correct default
-// until that wiring lands.
+// Wiring: internal/server/run.go builds one HTTPSettledReporter from
+// cfg.RouterPlatformURL (FC_ROUTER_PLATFORM_URL, or its fallbacks) and hands it to
+// Manager.SetSettledReporter before the first Reconfigure, so every pool the
+// Manager creates — configured and synthesised alike — holds it. No platform
+// URL leaves it nil, and the platform-side reaper remains the backstop.
 
 // SettledJob pairs an ACKed dispatch-job id with the scheduler-signed HMAC
 // token the router already holds for it (common.Message.AuthToken — the

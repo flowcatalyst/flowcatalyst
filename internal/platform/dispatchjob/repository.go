@@ -3,6 +3,7 @@ package dispatchjob
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -373,7 +374,7 @@ func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]DispatchJo
 		        timeout_seconds, schema_id, status, max_retries, retry_strategy,
 		        scheduled_for, expires_at, attempt_count, last_attempt_at,
 		        completed_at, duration_millis, last_error, idempotency_key,
-		        queue, descriptor, connection_id, created_at, updated_at
+		        queue, descriptor, connection_id, not_before, created_at, updated_at
 		   FROM msg_dispatch_jobs
 		  ORDER BY created_at DESC
 		  LIMIT $1`, limit)
@@ -517,6 +518,35 @@ func (r *Repository) Reschedule(ctx context.Context, id string, createdAt time.T
 func (r *Repository) Hold(ctx context.Context, id string, createdAt time.Time, scheduledFor time.Time) error {
 	_, err := r.lc.Hold(ctx, id, createdAt, scheduledFor)
 	return err
+}
+
+// Expire settles a live job the delivery callback reached after its
+// expires_at (live -> EXPIRED), recording reason in last_error. Nothing is
+// delivered and no attempt is counted.
+func (r *Repository) Expire(ctx context.Context, id string, createdAt time.Time, reason string) error {
+	_, err := r.lc.Expire(ctx, id, createdAt, reason)
+	return err
+}
+
+// AwaitNotBefore stamps updated_at on a QUEUED job whose delivery was handed
+// back to the router until its not_before (see Lifecycle.AwaitNotBefore).
+func (r *Repository) AwaitNotBefore(ctx context.Context, id string, createdAt time.Time) error {
+	_, err := r.lc.AwaitNotBefore(ctx, id, createdAt)
+	return err
+}
+
+// EventMessageGroup reads the message group of the event a fan-out job was
+// raised from. The job's created_at is its event's (fan-out copies it), so the
+// lookup is by the event's full primary key. Nil when the event has no group
+// or is gone (its partition dropped).
+func (r *Repository) EventMessageGroup(ctx context.Context, eventID string, createdAt time.Time) (*string, error) {
+	var group *string
+	err := r.pool.QueryRow(ctx,
+		`SELECT message_group FROM msg_events WHERE id = $1 AND created_at = $2`, eventID, createdAt).Scan(&group)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return group, err
 }
 
 // GroupHeldBefore reports whether an EARLIER job in the message group is
@@ -689,6 +719,7 @@ func findByIDRowToJob(r dbq.DispatchJobFindByIDRow) (*DispatchJob, error) {
 		DurationMillis: r.DurationMillis, LastError: r.LastError,
 		IdempotencyKey: r.IdempotencyKey, Queue: r.Queue, Descriptor: r.Descriptor,
 		ConnectionID: r.ConnectionID,
+		NotBefore:    r.NotBefore,
 		CreatedAt:    r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	})
 }
@@ -804,6 +835,7 @@ type rawRow struct {
 	Queue              *string
 	Descriptor         *string
 	ConnectionID       *string
+	NotBefore          *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 }
@@ -860,6 +892,7 @@ func rowToJob(r rawRow) (*DispatchJob, error) {
 		Queue:            r.Queue,
 		Descriptor:       r.Descriptor,
 		ConnectionID:     r.ConnectionID,
+		NotBefore:        r.NotBefore,
 		CreatedAt:        r.CreatedAt,
 		UpdatedAt:        r.UpdatedAt,
 		ScheduledFor:     r.ScheduledFor,

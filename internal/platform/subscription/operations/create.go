@@ -69,6 +69,9 @@ func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[Creat
 			if len(cmd.EventTypes) == 0 {
 				return usecase.Validation("EVENT_TYPES_REQUIRED", "at least one event type binding is required")
 			}
+			if err := subscription.CheckBindingFilters(cmd.EventTypes); err != nil {
+				return usecase.Validation("FILTER_NOT_SUPPORTED", err.Error())
+			}
 			if cmd.Queue != nil {
 				if _, err := dispatchqueue.Parse(*cmd.Queue); err != nil {
 					return err
@@ -168,14 +171,19 @@ func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[Creat
 
 // poolCode is the code of the dispatch pool a create or update points at (nil
 // for no pool, or an id that names no pool): stored beside the id as the SDK
-// sync stores it.
+// sync stores it. An ARCHIVED pool is refused (409 POOL_ARCHIVED): it takes no
+// new jobs, so a subscription newly bound to it could raise none.
 func poolCode(ctx context.Context, repo *subscription.Repository, poolID *string) (*string, error) {
 	if poolID == nil || *poolID == "" {
 		return nil, nil
 	}
-	code, err := repo.DispatchPoolCode(ctx, *poolID)
+	code, archived, err := repo.DispatchPoolCode(ctx, *poolID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "dispatch pool lookup failed", err)
+	}
+	if archived {
+		return nil, usecase.Conflict("POOL_ARCHIVED",
+			"dispatch pool "+*code+" is archived and takes no new jobs")
 	}
 	return code, nil
 }

@@ -22,8 +22,10 @@ the lifecycle and before/after diagrams drawn).
    reordering the one thing an ordered group exists to protect.
 4. For the platform's own dispatch jobs the **router never sees delivery failure**:
    `/api/dispatch/process` records the outcome itself and returns `200 {ack:true}` either
-   way. Their mode semantics are enforced platform-side. The router's mode handling governs
-   messages whose failures it *can* observe.
+   way. Their mode semantics are enforced platform-side, per subscription (§4). The only
+   `ack:false` it sends is "not yet": a job whose delay has not elapsed (with `notBefore`),
+   a delivery still in progress elsewhere, or a 503 when it could not handle the call. The
+   router's mode handling governs messages whose failures it *can* observe.
 
 ---
 
@@ -100,7 +102,7 @@ This table is the router's operational contract.
 |---|---|---|
 | `2xx` | ack | Delivered. The outcome carries the **real** status — a 201 is a 201. |
 | `3xx` | ack | Redirect **not followed**, and permanent: the target reproduces it every time. Following it is not the alternative — 301/302/303 downgrade POST to GET and drop the body, so the redirect target would receive nothing and the router would record a success. |
-| `2xx` + `ack:false` | retry in place | Target is healthy and deferring deliberately. Own curve, 5s→60s. |
+| `2xx` + `ack:false` | retry in place | Target is healthy and deferring deliberately. Own curve, 5s→60s. With a named delay (`notBefore` or `delaySeconds`), released at exactly that delay — see below. |
 | `4xx` | ack | Client error; retrying cannot change the answer. |
 | `500`, `505`+ (any 5xx not below) | ack | **Single attempt, no burst** (R-57). The app ran the request and answered, so retrying the same message unchanged cannot help; a CONFIGURATION warning is the deleted message's trace. Re-send once resolved. |
 | `501` | ack | Same family — app reached, endpoint not implemented (CRITICAL warning). |
@@ -126,13 +128,22 @@ Two properties worth not breaking:
   every `Nack` call is a hand-back, so shortening the visibility timeout no longer races
   an in-process retry the way it would have before R1), Postgres via `makeVisible`, NATS
   via `NakWithDelay`.
-- **A delay-bearing `Deferred` (2xx + `ack:false` + `delaySeconds`) skips the in-place
+- **The delay a target names.** `ack:false` may carry `notBefore` (RFC 3339: redeliver no
+  earlier than this instant) and/or `delaySeconds`. `notBefore` wins when it parses: the
+  mediator turns it into whole seconds from now, rounded up, at least 1 (a past instant
+  means "come straight back"); otherwise `delaySeconds`; otherwise no delay is named.
+  The platform's `/api/dispatch/process` sends both for a job whose subscription's
+  `delaySeconds` has not elapsed (2026-11-09), so an older router that reads only
+  `delaySeconds` still waits the right time.
+- **A delay-bearing `Deferred` (2xx + `ack:false` + a named delay) skips the in-place
   retry budget entirely on a broker that honours a delayed return** (R1/R5, same doc): it
   is released on its first occurrence with exactly the requested delay, not retried
   in-pipeline on the deferred curve first. NATS does not honour a delayed return
   (`queue.Consumer.HonoursDelayedReturn()` is false — no per-group subject, so a delayed
   head's successors would deliver ahead of it), so a delay-bearing deferral on NATS keeps
-  the pre-R1 in-place-retry behaviour. `DispositionOf` decides
+  the pre-R1 in-place-retry behaviour — but waits the named delay itself (capped at the
+  deferred curve's 60 s ceiling, the target re-answering the time left), not the curve,
+  which could come back up to a minute late. `DispositionOf` decides
   this once, for both dispatch paths, so an ordered group's released head automatically
   carries the same delay the unordered path would have used for the same outcome (R2) —
   there is no separate fixed redelivery delay hard-coded for the ordered case the way an
@@ -214,8 +225,12 @@ has no connection to the failure being resolved — and by then the head has bee
 so the first successor becomes the new head and is delivered. "Add item" applied to an order
 that was never created: precisely what the mode is named after preventing. The messages are
 not lost by acking — they remain as dispatch-job rows in the platform store, which is the
-system of record; the queue copy is a delivery attempt, not the data. **Known gap:** nothing
-marks those rows for review, so they sit at `QUEUED`/`PROCESSING` rather than `FAILED`.
+system of record; the queue copy is a delivery attempt, not the data. For the platform's
+dispatch jobs those rows are put back to `PENDING` — by the settled-message hook
+(`POST /api/dispatch/settled`, which the router calls from `ackBuffered` when
+`FC_ROUTER_PLATFORM_URL` is set; `internal/router/settled.go`) and, as the backstop, by the
+platform's reaper (`dispatchjob.RunReaper`) — where the claim-time hold keeps them until
+the head is resolved.
 
 **Ordering is defined only relative to a group.** A message in an ordered mode that
 carries no `messageGroupId` dispatches concurrently, exactly as `IMMEDIATE` would. This is
@@ -258,9 +273,38 @@ sequences it. Treating them as holders would reduce every ordered group to one j
 
 The comparison is **positional**, over the same `(sequence, created_at, id)` the claim orders
 by — not set membership. "This group contains a held job" would include the held job itself
-the moment its backoff expired, and the group would never move again. Note that `sequence` is
-a *subscription* priority, so in a group fanned out to several subscribers a stalled job in
-the earlier-sequenced subscription holds the later-sequenced one too.
+the moment its backoff expired, and the group would never move again.
+
+**A group is per subscription** (owner ruling 2026-11-09). The event fan-out stores each
+job's group as `<subscription id>:<event message group>`
+(`dispatchjob.SubscriptionMessageGroup`; an event group too long for the 200-character
+column becomes `<subscription id>:sha256:<hex>`), so the scheduler, the router, the
+delivery-time check, the settled hook and the reaper all key ordering and holds by the
+subscriber: one subscriber's `BLOCK_ON_ERROR` failure holds only its own later jobs, and
+blocks them until resolved; another subscriber of the same event group keeps flowing.
+(Before, the group was the bare event group shared across subscriptions, and since
+`sequence` is a subscription priority a stalled job of the earlier-sequenced subscription
+held every later-sequenced one.) The subscriber is still told the event's own group in the
+envelope's `messageGroup`. Jobs created any other way (SDK routes, functions, ingestion)
+keep the group their creator gave. Jobs raised before the change keep the bare group;
+`scripts/ops/109-dispatch-group-per-subscription.sql` optionally re-keys the PENDING and
+FAILED ones.
+
+**What else the delivery callback enforces** (2026-11-09), before it claims a job:
+
+- **Expiry.** A job reached at or after its `expires_at` — `created_at` + the
+  subscription's `maxAgeSeconds`, set at fan-out, or an `expiresAt` the job was created
+  with — is settled `EXPIRED` (no delivery, no attempt counted) and acked. An `EXPIRED`
+  job holds no group.
+- **Held pool.** A job whose dispatch pool is `SUSPENDED` or `ARCHIVED` goes back to
+  `PENDING` (no attempt) and is acked; the scheduler's claim excludes such jobs, so they
+  wait until the pool is resumed.
+- **Not before.** A job reached before its `not_before` — `created_at` + the
+  subscription's `delaySeconds`, set at fan-out — is answered `200 {"ack": false,
+  "notBefore": …, "delaySeconds": …}` and stays `QUEUED`; the router redelivers it then. One
+  answer holds at most 5 minutes (the job's `updated_at` is stamped each time so the
+  15-minute stale-`QUEUED` recovery does not republish it); a longer delay is a series of
+  holds, the last ending exactly at `not_before`.
 
 The router's own mode handling governs operator-submitted messages (which set `DispatchMode`
 from the request and target a real URL) and any producer pointing a message at a subscriber

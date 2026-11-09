@@ -382,8 +382,8 @@ func (p *Pool) UpdateRateLimit(perMinute *uint32) {
 // SetSettledReporter wires (or clears, with nil) the T3/A-01
 // settled-message-hook reporter this pool's ackBuffered fires when a
 // BLOCK_ON_ERROR head fails terminally. NOT a NewPool parameter — it is set
-// after construction (see settled.go's header comment for the intended
-// one-line wiring) so every existing NewPool call site keeps working
+// after construction (Manager.SetSettledReporter hands every pool it creates
+// the reporter internal/server/run.go wires) so every NewPool call site keeps working
 // unchanged. nil is the correct default for a standalone router with no
 // platform behind it, and ackBuffered stays completely silent in that case:
 // no goroutine, no log, ACKs proceed exactly as before this feature existed.
@@ -1757,6 +1757,15 @@ func DispositionOf(outcome common.MediationOutcome, attempts uint, mode common.D
 				Metric:     MetricTransient,
 				RetryAfter: time.Duration(outcome.DelaySeconds) * time.Second,
 			}
+		}
+		if outcome.DelaySeconds > 0 {
+			// A broker that does not honour a delayed return (NATS) keeps the
+			// message in memory, but the wait is still the one the target
+			// named — not the curve, which would come back up to a minute late
+			// for a short remaining delay (a not-before deferral answers the
+			// exact time left). Capped at the deferred ceiling: a longer wait
+			// is served as several, the target re-answering the time left.
+			return retryOrRelease(attempts, min(time.Duration(outcome.DelaySeconds)*time.Second, deferredMaxDelay), MetricTransient)
 		}
 		return retryOrRelease(attempts, deferredDelay(attempts, outcome.DelaySeconds), MetricTransient)
 

@@ -59,6 +59,9 @@ func UpdateSubscription(repo *subscription.Repository) usecaseop.Operation[Updat
 					return err
 				}
 			}
+			if err := subscription.CheckBindingFilters(cmd.EventTypes); err != nil {
+				return usecase.Validation("FILTER_NOT_SUPPORTED", err.Error())
+			}
 			return nil
 		},
 		// Per-resource authz needs the loaded row, so it runs post-load in

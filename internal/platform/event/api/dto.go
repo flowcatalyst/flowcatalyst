@@ -274,6 +274,9 @@ type BatchEventItem struct {
 	// sends these as `contextData`; mirrors the single-event create + the event
 	// entity's context array (stored in context_data).
 	Context []ContextEntryDTO `json:"contextData,omitempty"`
+	// Time is when the event happened, as the producer recorded it (RFC 3339).
+	// Absent: the ingest time, as before. createdAt is always the ingest time.
+	Time *string `json:"time,omitempty" doc:"When the event occurred, RFC 3339 (e.g. 2026-11-09T10:15:02.481Z). Optional; absent means the ingest time. At most 5 minutes ahead of the platform's clock. createdAt is always the ingest time."`
 }
 
 // UnmarshalJSON accepts both the camelCase API keys and the snake_case SDK
@@ -304,6 +307,7 @@ func (b *BatchEventItem) UnmarshalJSON(data []byte) error {
 		CausationIDAlt     *string           `json:"causation_id"`
 		ContextData        []ContextEntryDTO `json:"contextData"`
 		ContextDataAlt     []ContextEntryDTO `json:"context_data"`
+		Time               *string           `json:"time"`
 	}
 	if err := json.Unmarshal(data, &r); err != nil {
 		return err
@@ -324,6 +328,7 @@ func (b *BatchEventItem) UnmarshalJSON(data []byte) error {
 	if b.Context == nil {
 		b.Context = r.ContextDataAlt
 	}
+	b.Time = r.Time
 	return nil
 }
 

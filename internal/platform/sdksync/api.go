@@ -287,8 +287,10 @@ func (s *State) syncRoles(ctx context.Context, in *syncRolesInput) (*syncResultO
 // ── Subscriptions ─────────────────────────────────────────────────────────
 
 type syncSubscriptionEventTypeRequest struct {
-	EventTypeCode string  `json:"eventTypeCode"`
-	Filter        *string `json:"filter,omitempty"`
+	EventTypeCode string `json:"eventTypeCode"`
+	// Filter is refused unless blank (see subscription.EventTypeBinding):
+	// binding filters were never defined or applied.
+	Filter *string `json:"filter,omitempty" doc:"Not supported. Must be absent or empty; a non-empty filter is refused with 400 FILTER_NOT_SUPPORTED (filters were never applied: a binding receives every event of its type)."`
 }
 
 type syncSubscriptionInputRequest struct {

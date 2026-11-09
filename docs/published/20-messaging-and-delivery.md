@@ -145,6 +145,30 @@ the envelope would have carried arrives in headers instead: `X-Dispatch-Job-Id`,
 Both are signed the same way (`X-FlowCatalyst-Signature` over timestamp plus body, with
 `X-FlowCatalyst-Timestamp`); the signature covers the body alone.
 
+## Ordering, delay and age
+
+- **Ordering is per subscriber.** Events that share a `messageGroup` are delivered in order
+  to each subscription separately. Under `BLOCK_ON_ERROR`, a failed delivery holds that
+  subscription's later events of the group until the failure is resolved; other
+  subscriptions of the same events keep receiving them. The envelope's `messageGroup` is
+  the event's own group.
+- **`delaySeconds`** on a subscription holds each delivery until that many seconds after
+  the event was ingested. **`maxAgeSeconds`** (24 hours unless set) is the limit: a delivery
+  not made within that time of the event is not made — the dispatch job becomes
+  `EXPIRED`. Both are fixed when the event arrives; editing the subscription affects later
+  events only. A requeued job is delivered regardless of its age.
+- **Retries** follow the job's `retryStrategy`: `exponential` (the default: 5 s, 15 s, 30 s,
+  60 s, then every 120 s), `fixed` (every 30 s) or `immediate`.
+- **A subscriber can say when to come back:** a 2xx `{"ack": false, "notBefore":
+  "<RFC 3339>"}` (or `delaySeconds`), or a 429 with `Retry-After` in seconds or as a date.
+  None of these spends a retry.
+- **Dispatch pools:** a `SUSPENDED` pool's jobs wait until it is resumed; an `ARCHIVED`
+  pool takes no new jobs or subscriptions (`409 POOL_ARCHIVED`), and its existing jobs
+  wait.
+- **Event-type filters** on a subscription are not supported; a binding receives every
+  event of its type (a non-empty `filter` is refused).
+- A subscription created without `dataOnly` is delivered **the envelope**.
+
 ## Scheduled jobs
 
 Cron-driven work lives in **scheduled jobs** (`sjb_…`): 6-field cron
