@@ -10,7 +10,7 @@ namespace FlowCatalyst\Sync;
  * `code` is the platform-side identifier; convention is
  * `{application}:{job-name}` but not enforced. `crons` requires 6-field,
  * seconds-first expressions (`sec min hour dom month dow`) — a standard
- * 5-field cron passes validation but never fires; the platform evaluates
+ * 5-field cron is rejected by the platform; the platform evaluates
  * them in `timezone` (defaults to UTC server-side when null).
  *
  * `concurrent: true` lets the platform fire while a previous invocation

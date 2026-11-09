@@ -30,7 +30,7 @@ use Attribute;
  * string, and auto-handler wiring keys on it verbatim.
  *
  * `crons` requires 6-field, seconds-first expressions (`sec min hour dom
- * month dow`) — a standard 5-field cron passes validation but never fires.
+ * month dow`) — a standard 5-field cron is rejected by the platform.
  * `timezone` defaults to UTC server-side when omitted. `concurrent` controls
  * whether the platform fires a new tick while a previous invocation is
  * still running (default false). `tracksCompletion` flips the platform

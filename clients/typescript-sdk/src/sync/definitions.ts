@@ -310,8 +310,8 @@ export interface ProcessDefinition {
  * A scheduled-job declaration.
  *
  * `crons` requires 6-field, seconds-first cron expressions (`sec min hour
- * dom month dow`) — a standard 5-field cron passes validation but never
- * fires. The platform's scheduler evaluates them in `timezone` (defaults
+ * dom month dow`) — a standard 5-field cron is rejected by the
+ * platform. The platform's scheduler evaluates them in `timezone` (defaults
  * to UTC server-side).
  *
  * `concurrent: true` lets the platform fire a new tick while a previous

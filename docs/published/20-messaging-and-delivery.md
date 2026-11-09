@@ -148,15 +148,38 @@ Both are signed the same way (`X-FlowCatalyst-Signature` over timestamp plus bod
 ## Scheduled jobs
 
 Cron-driven work lives in **scheduled jobs** (`sjb_…`): 6-field cron
-expressions (seconds first: `sec min hour day-of-month month day-of-week`), locking so exactly one instance fires per tick even in HA,
+expressions only (seconds first: `sec min hour day-of-month month day-of-week`;
+5- and 7-field forms are rejected when saved, since they would never fire),
 signed delivery to the target (bearer + HMAC, like webhooks), instance
 tracking with logs, and retention policies. Applications register their
 own scheduled jobs through the SDK; the admin UI can pause, fire manually,
 and inspect instances. An application's service account (the
 `platform:application-service` role, permission `scheduled-job:fire`) can look up
-and fire the scheduled jobs of its own application only. Completion is acknowledged by the consumer; an
-instance that never acks stays visible as running rather than silently
-vanishing.
+and fire the scheduled jobs of its own application only.
+
+How firing behaves:
+
+- **One firing per tick.** Each (job, scheduled tick) is claimed in the
+  database before an instance is created, so a tick fires once even if two
+  platform nodes both believe they are the leader. Ticks missed during downtime
+  are skipped: only the latest missed tick fires on recovery.
+- **Timing.** The scheduler sleeps until the next due tick, so schedules faster
+  than 30 seconds (down to one second) fire on time.
+- **Concurrency is the receiver's job.** The job's `concurrent` flag is sent to
+  the receiver in the firing envelope but the platform does not enforce it: it
+  fires every tick regardless of earlier runs. A receiver that must not overlap
+  runs enforces that itself (the SDK runners do, when `concurrent` is false).
+- **Timeout.** The platform's HTTP call to the target uses the job's
+  `timeoutSeconds` (default 10 seconds, at most 300). The same value is sent to
+  the receiver.
+- **Delivery and failures.** Any 2xx response means delivered; other responses
+  are retried up to the job's delivery max attempts, then the instance is
+  `DELIVERY_FAILED`. Completion is acknowledged by the consumer; an instance
+  that never acks stays visible as running rather than silently vanishing.
+- **Crash recovery never re-fires.** An instance left `IN_FLIGHT` by a platform
+  crash is, after the call timeout plus a margin (6 minutes by default), marked
+  `DELIVERY_FAILED` with an `ABANDONED` reason and an error log entry. It is not
+  sent again, because the receiver may already have received it.
 
 ## Processes
 

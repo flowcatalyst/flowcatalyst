@@ -22,7 +22,7 @@ import (
 func TestMain(m *testing.M) { testpg.RunMain(m) }
 
 // validCrons is the canonical 6-field seconds-first shape the firing parser
-// accepts; ValidateCronShape allows 5-7 fields.
+// accepts; ValidateCron requires exactly 6.
 var validCrons = []string{"0 0 * * * *"}
 
 // mustCreate seeds a scheduled job through the public operation — the same
@@ -119,6 +119,12 @@ func TestCreateScheduledJob_Validation(t *testing.T) {
 		}, "CRON_INVALID_SHAPE"},
 		{"eight-field cron", operations.CreateCommand{
 			Code: "sjcrt-shape8", Name: "X", Crons: []string{"0 0 0 1 1 1 2026 extra"},
+		}, "CRON_INVALID_SHAPE"},
+		{"five-field cron", operations.CreateCommand{
+			Code: "sjcrt-shape5", Name: "X", Crons: []string{"* * * * *"},
+		}, "CRON_INVALID_SHAPE"},
+		{"seven-field cron", operations.CreateCommand{
+			Code: "sjcrt-shape7", Name: "X", Crons: []string{"0 0 0 * * * 2030"},
 		}, "CRON_INVALID_SHAPE"},
 	}
 	for _, tc := range cases {

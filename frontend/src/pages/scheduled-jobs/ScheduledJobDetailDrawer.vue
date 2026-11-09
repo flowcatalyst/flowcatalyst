@@ -370,6 +370,10 @@ function onRecentRowClick(event: { data: ScheduledJobInstance }) {
                   <Checkbox v-model="editConcurrent" :binary="true" input-id="editConcurrent" />
                   <label for="editConcurrent" class="toggle-label">Allow concurrent firings</label>
                 </div>
+                <small class="field-hint">
+                  Passed to the receiver; not enforced by the platform. The receiving service
+                  must enforce concurrency itself.
+                </small>
                 <div class="toggle-row">
                   <Checkbox v-model="editTracksCompletion" :binary="true" input-id="editTracksCompletion" />
                   <label for="editTracksCompletion" class="toggle-label">SDK reports completion</label>

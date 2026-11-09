@@ -68,7 +68,7 @@ func CreateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Creat
 				if strings.TrimSpace(c) == "" {
 					return usecase.Validation("INVALID_CRON", "cron expressions cannot be empty")
 				}
-				if err := scheduledjob.ValidateCronShape(c); err != nil {
+				if err := scheduledjob.ValidateCron(c); err != nil {
 					return usecase.Validation("CRON_INVALID_SHAPE", err.Error())
 				}
 			}
@@ -167,7 +167,7 @@ func UpdateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Updat
 					if strings.TrimSpace(c) == "" {
 						return usecase.Validation("INVALID_CRON", "cron expressions cannot be empty")
 					}
-					if err := scheduledjob.ValidateCronShape(c); err != nil {
+					if err := scheduledjob.ValidateCron(c); err != nil {
 						return usecase.Validation("CRON_INVALID_SHAPE", err.Error())
 					}
 				}

@@ -14,23 +14,40 @@ func mustTime(t *testing.T, s string) time.Time {
 	return ts.UTC()
 }
 
-func TestValidateCronShape(t *testing.T) {
+func TestValidateCron(t *testing.T) {
 	ok := []string{
-		"* * * * *",        // 5-field
-		"0 * * * * *",      // 6-field (sec-first)
-		"0 0 0 * * * 2030", // 7-field (with year)
-		"  0 0 * * * *  ",  // surrounding whitespace
+		"0 * * * * *",     // 6-field (sec-first)
+		"*/10 * * * * *",  // every 10 seconds
+		"  0 0 * * * *  ", // surrounding whitespace
+		"0 30 9 * * 1-5",
 	}
 	for _, c := range ok {
-		if err := ValidateCronShape(c); err != nil {
-			t.Errorf("ValidateCronShape(%q) = %v, want nil", c, err)
+		if err := ValidateCron(c); err != nil {
+			t.Errorf("ValidateCron(%q) = %v, want nil", c, err)
 		}
 	}
-	bad := []string{"", "* * *", "* * * *", "a b c d e f g h"}
+	bad := []string{
+		"", "* * *", "* * * *",
+		"* * * * *",        // 5-field: seconds required
+		"0 0 0 * * * 2030", // 7-field: no year support
+		"a b c d e f",      // right count, unparseable
+		"99 * * * * *",     // out of range
+	}
 	for _, c := range bad {
-		if err := ValidateCronShape(c); err == nil {
-			t.Errorf("ValidateCronShape(%q) = nil, want error", c)
+		if err := ValidateCron(c); err == nil {
+			t.Errorf("ValidateCron(%q) = nil, want error", c)
 		}
+	}
+}
+
+func TestNextSlotAfter(t *testing.T) {
+	after := mustTime(t, "2026-05-29T10:00:03Z")
+	got, ok := NextSlotAfter([]string{"*/10 * * * * *", "0 0 * * * *"}, "UTC", after)
+	if !ok || !got.Equal(mustTime(t, "2026-05-29T10:00:10Z")) {
+		t.Errorf("NextSlotAfter = %v %v, want 10:00:10", got, ok)
+	}
+	if _, ok := NextSlotAfter([]string{"* * * * *"}, "UTC", after); ok {
+		t.Error("5-field must yield no slot")
 	}
 }
 
@@ -79,12 +96,8 @@ func TestLatestSlotInWindow_MultipleCronsTakesLatest(t *testing.T) {
 	}
 }
 
-func TestLatestSlotInWindow_FiveFieldNeverFires(t *testing.T) {
-	// A 5-field POSIX expression passes ValidateCronShape but the firing
-	// parser requires seconds, so it yields no slot.
-	if err := ValidateCronShape("* * * * *"); err != nil {
-		t.Fatalf("5-field should pass shape validation: %v", err)
-	}
+func TestLatestSlotInWindow_FiveFieldYieldsNoSlot(t *testing.T) {
+	// A legacy 5-field expression (stored before ValidateCron) yields no slot.
 	after := mustTime(t, "2026-05-29T10:00:00Z")
 	upTo := mustTime(t, "2026-05-29T10:05:00Z")
 	if _, ok := LatestSlotInWindow([]string{"* * * * *"}, "UTC", after, upTo); ok {

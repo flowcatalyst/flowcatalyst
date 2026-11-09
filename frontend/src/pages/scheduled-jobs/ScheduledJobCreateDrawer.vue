@@ -209,8 +209,8 @@ async function submit() {
         </div>
         <Button label="Add another" icon="pi pi-plus" text size="small" @click="addCron" />
         <small class="field-hint">
-          6-field cron syntax (sec min hour day month dow). Multiple expressions
-          are unioned at fire time.
+          6-field cron syntax, seconds first (sec min hour day month dow); 5- and
+          7-field forms are rejected. Multiple expressions are unioned at fire time.
         </small>
       </div>
     </section>
@@ -237,9 +237,9 @@ async function submit() {
           <InputNumber v-model="form.deliveryMaxAttempts" :min="1" :max="20" class="full-width" />
         </div>
         <div class="form-field">
-          <label>Timeout Seconds (hint)</label>
+          <label>Timeout Seconds</label>
           <InputNumber v-model="form.timeoutSeconds" :min="1" placeholder="—" class="full-width" />
-          <small class="field-hint">Hint passed to the SDK; not enforced by the platform.</small>
+          <small class="field-hint">Sent to the receiver and used as the platform's call timeout (default 10s, max 300s).</small>
         </div>
       </div>
 
@@ -247,6 +247,10 @@ async function submit() {
         <Checkbox v-model="form.concurrent" :binary="true" input-id="concurrent" />
         <label for="concurrent" class="toggle-label">Allow concurrent firings</label>
       </div>
+      <small class="field-hint">
+        Passed to the receiver; the platform does not enforce it. The receiving service must
+        enforce concurrency itself (the platform fires every tick on schedule).
+      </small>
 
       <div class="toggle-row">
         <Checkbox v-model="form.tracksCompletion" :binary="true" input-id="tracksCompletion" />

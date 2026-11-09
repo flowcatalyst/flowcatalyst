@@ -73,6 +73,12 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 					return usecase.Validation("INVALID_SYNC_ENTRY",
 						"Sync entry '"+j.Code+"' must have code, name, and at least one cron")
 				}
+				for _, c := range j.Crons {
+					if err := scheduledjob.ValidateCron(c); err != nil {
+						return usecase.Validation("CRON_INVALID_SHAPE",
+							"Sync entry '"+j.Code+"': "+err.Error())
+					}
+				}
 				if err := validateTargetURL(j.TargetURL); err != nil {
 					return err
 				}

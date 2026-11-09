@@ -18,6 +18,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
 // Signature headers on delivered firings. Byte-format matches the router's
@@ -62,6 +63,8 @@ type dispatcher struct {
 	// fc-signature middleware then rejects with a descriptive 401 that lands
 	// in delivery_error, making the missing pairing diagnosable.
 	creds DeliveryCredsResolver
+	// wake is signalled by the poller when it queues an instance.
+	wake <-chan struct{}
 }
 
 // webhookEnvelope is the POST body delivered to a job's target URL. Field
@@ -97,12 +100,76 @@ func (d *dispatcher) run(ctx context.Context) {
 			slog.Info("scheduled-job dispatcher stopped")
 			return
 		case <-t.C:
-			if !d.isLeader() {
-				continue
-			}
-			if err := d.tick(ctx); err != nil {
-				slog.Warn("scheduled-job dispatcher tick error", "err", err)
-			}
+		case <-d.wake:
+		}
+		if !d.isLeader() {
+			continue
+		}
+		d.recoverStuck(ctx)
+		if err := d.tick(ctx); err != nil {
+			slog.Warn("scheduled-job dispatcher tick error", "err", err)
+		}
+	}
+}
+
+// requestTimeout is the deadline for one delivery call: the job's
+// timeoutSeconds, bounded to [1s, MaxHTTPTimeout] (default 300s), or
+// HTTPTimeout (default 10s) when the job sets none.
+func (c Config) requestTimeout(job *scheduledjob.ScheduledJob) time.Duration {
+	def := c.HTTPTimeout
+	if def <= 0 {
+		def = 10 * time.Second
+	}
+	if job == nil || job.TimeoutSeconds == nil || *job.TimeoutSeconds <= 0 {
+		return def
+	}
+	return min(time.Duration(*job.TimeoutSeconds)*time.Second, c.maxHTTPTimeout())
+}
+
+func (c Config) maxHTTPTimeout() time.Duration {
+	if c.MaxHTTPTimeout <= 0 {
+		return 300 * time.Second
+	}
+	return c.MaxHTTPTimeout
+}
+
+// inFlightGrace is how long an instance may stay IN_FLIGHT: the longest
+// possible delivery call plus a margin. Beyond it the process that held the
+// instance is presumed dead.
+func (c Config) inFlightGrace() time.Duration {
+	m := c.InFlightMargin
+	if m <= 0 {
+		m = 60 * time.Second
+	}
+	return c.maxHTTPTimeout() + m
+}
+
+// recoverStuck abandons instances left IN_FLIGHT by a crash. They are marked
+// DELIVERY_FAILED with an explicit reason and an instance log entry, never
+// re-sent: whether the receiver got the call is unknown and the platform
+// promises at most one firing per tick.
+func (d *dispatcher) recoverStuck(ctx context.Context) {
+	reason := fmt.Sprintf("ABANDONED: instance was IN_FLIGHT for over %s with no recorded outcome "+
+		"(the platform likely restarted mid-delivery); NOT re-fired — the receiver may or may not have received it",
+		d.cfg.inFlightGrace())
+	abandoned, err := d.instances.AbandonStuckInFlight(ctx, time.Now().Add(-d.cfg.inFlightGrace()), reason)
+	if err != nil {
+		slog.Warn("scheduled-job dispatcher: recover stuck in-flight failed", "err", err)
+		return
+	}
+	for _, a := range abandoned {
+		slog.Warn("scheduled-job dispatcher: abandoned stuck IN_FLIGHT instance (not re-fired)",
+			"instance_id", a.ID, "job_id", a.ScheduledJobID)
+		jid := a.ScheduledJobID
+		if err := d.instances.WriteLog(ctx, &scheduledjob.ScheduledJobInstanceLog{
+			ID:             tsid.Generate(tsid.ScheduledJobInstanceLog),
+			InstanceID:     a.ID,
+			ScheduledJobID: &jid,
+			ClientID:       a.ClientID,
+			Level:          "ERROR",
+			Message:        reason,
+		}); err != nil {
+			slog.Warn("scheduled-job dispatcher: write abandon log failed", "instance_id", a.ID, "err", err)
 		}
 	}
 }
@@ -188,7 +255,9 @@ func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.Schedule
 		return
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, *job.TargetURL, bytes.NewReader(body))
+	callCtx, cancel := context.WithTimeout(ctx, d.cfg.requestTimeout(job))
+	defer cancel()
+	req, err := http.NewRequestWithContext(callCtx, http.MethodPost, *job.TargetURL, bytes.NewReader(body))
 	if err != nil {
 		d.handleFailure(ctx, job, inst, attemptsAfter, "build request: "+err.Error())
 		return

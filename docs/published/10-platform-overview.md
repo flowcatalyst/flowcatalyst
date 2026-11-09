@@ -17,7 +17,7 @@ and customer-portal identities.
 | **Event ingestion** | Applications POST events (singly or in batches) labelled with an event type (registered event types carry optional JSON schemas that document the payload; ingestion does not enforce them). |
 | **Routing** | **Subscriptions** bind event types to consumers; the router turns matched events into **dispatch jobs**. |
 | **Delivery** | Dispatch jobs deliver as HMAC-signed webhooks with retries, backoff, and per-pool rate limiting (**dispatch pools**). |
-| **Scheduling** | **Scheduled jobs** fire on cron expressions with locking, retention, and instance tracking. |
+| **Scheduling** | **Scheduled jobs** fire on 6-field cron expressions, exactly once per tick, with retention and instance tracking. |
 | **Processes** | Multi-step process definitions with diagrams, instances, and logs. |
 | **Identity** | OAuth2/OIDC provider: interactive login (password, passkey, org SSO), 2FA, service accounts, token issuance. |
 | **Access control** | Roles built from 4-segment permissions, delegable to client administrators, synced from application SDKs. |

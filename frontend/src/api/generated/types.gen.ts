@@ -1474,13 +1474,22 @@ export type CreateScheduledJobRequest = {
     applicationId?: string;
     clientId?: string;
     code: string;
+    /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     */
     concurrent: boolean;
+    /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     */
     crons: Array<string>;
     deliveryMaxAttempts?: number;
     description?: string;
     name: string;
     payload?: unknown;
     targetUrl?: string;
+    /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     */
     timeoutSeconds?: number;
     timezone?: string;
     tracksCompletion: boolean;
@@ -4023,6 +4032,71 @@ export type PublishVersionRequest = {
     [key: string]: unknown;
 };
 
+export type PushSettings = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Largest push data, in bytes (default 16,384; at most 65,536)
+     */
+    maxDataBytes?: number;
+    /**
+     * Open streams that listen to the application's topics (default 20,000)
+     */
+    maxStreams?: number;
+    /**
+     * Ingest answers 429 for the application until unpaused; open streams stay connected
+     */
+    paused: boolean;
+    /**
+     * Burst of the publish rate (default 2,000; at least the rate)
+     */
+    publishBurst?: number;
+    /**
+     * Pushes per second per gateway task (default 500)
+     */
+    publishRate?: number;
+    [key: string]: unknown;
+};
+
+export type PushSettingsResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    applicationCode: string;
+    effective: PushSettingsResponseEffectiveStruct;
+    settings: PushSettings;
+    updatedAt?: string;
+    updatedBy?: string;
+};
+
+export type PushSettingsResponseEffectiveStruct = {
+    maxDataBytes: number;
+    maxStreams: number;
+    publishBurst: number;
+    publishRate: number;
+};
+
+export type PushSyncCounts = {
+    created: number;
+    deleted: number;
+    updated: number;
+};
+
+export type PushSyncResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    applicationCode: string;
+    keys: PushSyncCounts;
+    rules: PushSyncCounts;
+    syncedKids: Array<string>;
+    syncedPatterns: Array<string>;
+};
+
 export type PutAliasRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -4912,9 +4986,15 @@ export type ScheduledJobResponse = {
     applicationId?: string;
     clientId?: string;
     code: string;
+    /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     */
     concurrent: boolean;
     createdAt: string;
     createdBy?: string;
+    /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     */
     crons: Array<string>;
     deliveryMaxAttempts: number;
     description?: string;
@@ -4925,6 +5005,9 @@ export type ScheduledJobResponse = {
     payload?: unknown;
     status: string;
     targetUrl?: string;
+    /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     */
     timeoutSeconds?: number;
     timezone: string;
     tracksCompletion: boolean;
@@ -5403,6 +5486,59 @@ export type SyncProcessesRequest = {
     readonly $schema?: string;
     processes: Array<SyncProcessInputRequest>;
     [key: string]: unknown;
+};
+
+export type SyncPushKeyRequest = {
+    alg?: string;
+    /**
+     * Ed25519
+     */
+    crv: string;
+    /**
+     * The key id tickets name in their header
+     */
+    kid: string;
+    /**
+     * OKP
+     */
+    kty: string;
+    use?: string;
+    /**
+     * The public key, base64url
+     */
+    x: string;
+};
+
+export type SyncPushKeysRequest = {
+    /**
+     * At most 4 public Ed25519 keys: the current and the previous during a rotation
+     */
+    keys: Array<SyncPushKeyRequest>;
+};
+
+export type SyncPushRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    keys: SyncPushKeysRequest;
+    rules: Array<SyncPushRuleRequest>;
+    [key: string]: unknown;
+};
+
+export type SyncPushRuleRequest = {
+    /**
+     * {application}:{segment}(:{segment})*, the first segment the application's own code; a segment may be a {placeholder}
+     */
+    pattern: string;
+    /**
+     * A deliberately open topic: anyone may subscribe, with or without credentials. Required for a rule with neither {principal} nor requires.
+     */
+    public?: boolean;
+    /**
+     * Permissions the subscriber must all hold
+     */
+    requires?: Array<string>;
 };
 
 export type SyncResultResponse = {
@@ -6132,13 +6268,22 @@ export type UpdateScheduledJobRequest = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     */
     concurrent?: boolean;
+    /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     */
     crons?: Array<string>;
     deliveryMaxAttempts?: number;
     description?: string;
     name?: string;
     payload?: unknown;
     targetUrl?: string;
+    /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     */
     timeoutSeconds?: number;
     timezone?: string;
     tracksCompletion?: boolean;
@@ -7241,13 +7386,22 @@ export type CreateScheduledJobRequestWritable = {
     applicationId?: string;
     clientId?: string;
     code: string;
+    /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     */
     concurrent: boolean;
+    /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     */
     crons: Array<string>;
     deliveryMaxAttempts?: number;
     description?: string;
     name: string;
     payload?: unknown;
     targetUrl?: string;
+    /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     */
     timeoutSeconds?: number;
     timezone?: string;
     tracksCompletion: boolean;
@@ -8649,6 +8803,46 @@ export type PublishVersionRequestWritable = {
     [key: string]: unknown;
 };
 
+export type PushSettingsWritable = {
+    /**
+     * Largest push data, in bytes (default 16,384; at most 65,536)
+     */
+    maxDataBytes?: number;
+    /**
+     * Open streams that listen to the application's topics (default 20,000)
+     */
+    maxStreams?: number;
+    /**
+     * Ingest answers 429 for the application until unpaused; open streams stay connected
+     */
+    paused: boolean;
+    /**
+     * Burst of the publish rate (default 2,000; at least the rate)
+     */
+    publishBurst?: number;
+    /**
+     * Pushes per second per gateway task (default 500)
+     */
+    publishRate?: number;
+    [key: string]: unknown;
+};
+
+export type PushSettingsResponseWritable = {
+    applicationCode: string;
+    effective: PushSettingsResponseEffectiveStruct;
+    settings: PushSettingsWritable;
+    updatedAt?: string;
+    updatedBy?: string;
+};
+
+export type PushSyncResponseWritable = {
+    applicationCode: string;
+    keys: PushSyncCounts;
+    rules: PushSyncCounts;
+    syncedKids: Array<string>;
+    syncedPatterns: Array<string>;
+};
+
 export type PutAliasRequestWritable = {
     version: number;
     [key: string]: unknown;
@@ -9224,9 +9418,15 @@ export type ScheduledJobResponseWritable = {
     applicationId?: string;
     clientId?: string;
     code: string;
+    /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     */
     concurrent: boolean;
     createdAt: string;
     createdBy?: string;
+    /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     */
     crons: Array<string>;
     deliveryMaxAttempts: number;
     description?: string;
@@ -9237,6 +9437,9 @@ export type ScheduledJobResponseWritable = {
     payload?: unknown;
     status: string;
     targetUrl?: string;
+    /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     */
     timeoutSeconds?: number;
     timezone: string;
     tracksCompletion: boolean;
@@ -9479,6 +9682,12 @@ export type SyncProcessesByBodyRequestWritable = {
 
 export type SyncProcessesRequestWritable = {
     processes: Array<SyncProcessInputRequest>;
+    [key: string]: unknown;
+};
+
+export type SyncPushRequestWritable = {
+    keys: SyncPushKeysRequest;
+    rules: Array<SyncPushRuleRequest>;
     [key: string]: unknown;
 };
 
@@ -9892,13 +10101,22 @@ export type UpdateRoleRequestWritable = {
 };
 
 export type UpdateScheduledJobRequestWritable = {
+    /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     */
     concurrent?: boolean;
+    /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     */
     crons?: Array<string>;
     deliveryMaxAttempts?: number;
     description?: string;
     name?: string;
     payload?: unknown;
     targetUrl?: string;
+    /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     */
     timeoutSeconds?: number;
     timezone?: string;
     tracksCompletion?: boolean;
@@ -10615,6 +10833,96 @@ export type SyncProcessesResponses = {
 };
 
 export type SyncProcessesResponse = SyncProcessesResponses[keyof SyncProcessesResponses];
+
+export type GetPushSettingsData = {
+    body?: never;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/push/settings';
+};
+
+export type GetPushSettingsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetPushSettingsError = GetPushSettingsErrors[keyof GetPushSettingsErrors];
+
+export type GetPushSettingsResponses = {
+    /**
+     * OK
+     */
+    200: PushSettingsResponse;
+};
+
+export type GetPushSettingsResponse = GetPushSettingsResponses[keyof GetPushSettingsResponses];
+
+export type PutPushSettingsData = {
+    body: PushSettingsWritable;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/push/settings';
+};
+
+export type PutPushSettingsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PutPushSettingsError = PutPushSettingsErrors[keyof PutPushSettingsErrors];
+
+export type PutPushSettingsResponses = {
+    /**
+     * OK
+     */
+    200: PushSettingsResponse;
+};
+
+export type PutPushSettingsResponse = PutPushSettingsResponses[keyof PutPushSettingsResponses];
+
+export type SyncPushData = {
+    body: SyncPushRequestWritable;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/push/sync';
+};
+
+export type SyncPushErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type SyncPushError = SyncPushErrors[keyof SyncPushErrors];
+
+export type SyncPushResponses = {
+    /**
+     * OK
+     */
+    200: PushSyncResponse;
+};
+
+export type SyncPushResponse = SyncPushResponses[keyof SyncPushResponses];
 
 export type SyncRolesData = {
     body: SyncRolesRequestWritable;

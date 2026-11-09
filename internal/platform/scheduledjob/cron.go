@@ -8,39 +8,56 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// cronParser: seconds are REQUIRED, so the canonical firing form is
-// the 6-field "sec min hour dom mon dow".
-//
-// robfig/cron does not model an optional 7th *year* field — a 7-field
-// expression therefore fails to parse
-// here and the slot is simply skipped. A bare 5-field POSIX expression also
-// fails to parse (seconds required): such an
-// expression is accepted at create time by ValidateCronShape but never fires.
+// cronParser: seconds are REQUIRED, so the one accepted (and firing) form is
+// the 6-field "sec min hour dom mon dow". robfig/cron does not model an
+// optional year field, so 7-field expressions do not parse; a bare 5-field
+// POSIX expression fails too (seconds required).
 var cronParser = cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-// ValidateCronShape checks that a cron expression
-// has 5–7 whitespace-separated fields. This is a *shape* gate at
-// create/update time; the firing parser (cronParser) is stricter (it needs
-// the 6-field seconds-first form), so a 5-field
-// expression passes validation but never produces a fire slot.
-func ValidateCronShape(expr string) error {
-	n := len(strings.Fields(strings.TrimSpace(expr)))
-	if n < 5 || n > 7 {
-		return fmt.Errorf("cron expression must have 5-7 whitespace-separated fields, got %d: '%s'",
-			n, strings.TrimSpace(expr))
+// ValidateCron accepts exactly what fires: a 6-field, seconds-first cron
+// expression that the firing parser (cronParser) can parse. Used on
+// create/update/sync and function publish, so a stored expression always
+// produces fire slots — a 5- or 7-field expression is rejected up front
+// instead of being saved and then silently never firing. The wire contract and
+// every SDK document 6-field only; nothing is auto-converted at the API.
+func ValidateCron(expr string) error {
+	trimmed := strings.TrimSpace(expr)
+	if n := len(strings.Fields(trimmed)); n != 6 {
+		return fmt.Errorf("cron expression must have exactly 6 whitespace-separated fields "+
+			"(seconds first: sec min hour dom mon dow), got %d: '%s'", n, trimmed)
+	}
+	if _, err := cronParser.Parse(trimmed); err != nil {
+		return fmt.Errorf("invalid cron expression '%s': %w", trimmed, err)
 	}
 	return nil
 }
 
-// ValidateCronFires parses expr with the same strict, seconds-first parser
-// the firing loop uses (cronParser) — unlike ValidateCronShape, which only
-// checks the field count, this proves the expression will actually produce
-// fire slots. Used by function publish (docs/function-runner-plan.md §8.2,
-// work package 4) to reject a describe `schedules[].cron` that would
-// silently never fire.
-func ValidateCronFires(expr string) error {
-	_, err := cronParser.Parse(expr)
-	return err
+// ValidateCronFires is retained for function publish; same rule as ValidateCron.
+func ValidateCronFires(expr string) error { return ValidateCron(expr) }
+
+// NextSlotAfter returns the earliest slot strictly after `after` across all of
+// a job's cron expressions, evaluated in tzName (unparseable expressions are
+// skipped). ok=false when none exists. The poller sleeps until this instant.
+func NextSlotAfter(crons []string, tzName string, after time.Time) (time.Time, bool) {
+	loc, err := time.LoadLocation(tzName)
+	if err != nil {
+		loc = time.UTC
+	}
+	var best time.Time
+	found := false
+	for _, expr := range crons {
+		sched, err := cronParser.Parse(expr)
+		if err != nil {
+			continue
+		}
+		if slot := sched.Next(after.In(loc)); !slot.IsZero() && (!found || slot.Before(best)) {
+			best, found = slot, true
+		}
+	}
+	if !found {
+		return time.Time{}, false
+	}
+	return best.UTC(), true
 }
 
 // LatestSlotInWindow returns the latest cron slot in the half-open window
@@ -50,8 +67,7 @@ func ValidateCronFires(expr string) error {
 // semantics: when a long downtime means several slots elapsed, only the
 // LATEST fires; older missed slots are dropped. Returns ok=false when no slot
 // falls in the window (including after >= upTo). Unparseable expressions are
-// skipped (a 5- or 7-field expression that passed ValidateCronShape simply
-// yields no slot).
+// skipped (a legacy 5/7-field expression that predates ValidateCron yields no slot).
 func LatestSlotInWindow(crons []string, tzName string, after, upTo time.Time) (time.Time, bool) {
 	if !after.Before(upTo) {
 		return time.Time{}, false

@@ -317,10 +317,11 @@ unset or unparseable → the built-in default.
 
 | Variable | Default | Aliases | Read in | Purpose |
 |---|---|---|---|---|
-| `FC_SCHEDULED_JOB_POLL_SECONDS` | `30` | — | `internal/platform/scheduledjob/scheduler` | Cron-poller wake-up interval. |
+| `FC_SCHEDULED_JOB_POLL_SECONDS` | `30` | — | `internal/platform/scheduledjob/scheduler` | Upper bound on the cron poller's sleep (it wakes earlier for the next due tick, so sub-30s schedules fire on time); also how soon new or edited jobs are noticed. |
 | `FC_SCHEDULED_JOB_DISPATCH_SECONDS` | `5` | — | `internal/platform/scheduledjob/scheduler` | Dispatcher wake-up interval. |
 | `FC_SCHEDULED_JOB_DISPATCH_BATCH` | `32` | — | `internal/platform/scheduledjob/scheduler` | Max QUEUED instances per dispatch tick. |
-| `FC_SCHEDULED_JOB_HTTP_TIMEOUT_SECONDS` | `10` | — | `internal/platform/scheduledjob/scheduler` | Per-webhook HTTP timeout. |
+| `FC_SCHEDULED_JOB_HTTP_TIMEOUT_SECONDS` | `10` | — | `internal/platform/scheduledjob/scheduler` | Webhook HTTP timeout for jobs that set no `timeoutSeconds`; a job's `timeoutSeconds` overrides it. |
+| `FC_SCHEDULED_JOB_HTTP_TIMEOUT_MAX_SECONDS` | `300` | — | `internal/platform/scheduledjob/scheduler` | Ceiling on a job's `timeoutSeconds` as the webhook timeout. An instance IN_FLIGHT longer than this plus 60 s is abandoned (DELIVERY_FAILED, not re-fired). |
 
 ### Standby / leader election
 

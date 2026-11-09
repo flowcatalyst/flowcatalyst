@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
@@ -140,11 +141,66 @@ func (r *InstanceRepository) MarkComplete(ctx context.Context, instanceID string
 	return nil
 }
 
-// Insert writes a fresh instance row. The poller (CRON) and FireNow (MANUAL)
-// both start an instance at QUEUED with delivery_attempts=0; the dispatcher
-// loop then advances it. Direct infrastructure write — instances are the
-// firing-history projection, not an aggregate.
+// execer is the Exec surface shared by the pool and a pgx.Tx.
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+// Insert writes a fresh instance row. FireNow (MANUAL) starts an instance at
+// QUEUED with delivery_attempts=0; the dispatcher loop then advances it. Cron
+// firings go through [InstanceRepository.InsertCronTick] instead. Direct
+// infrastructure write — instances are the firing-history projection, not an
+// aggregate.
 func (r *InstanceRepository) Insert(ctx context.Context, inst *ScheduledJobInstance) error {
+	return insertInstance(ctx, r.pool, inst)
+}
+
+// InsertCronTick claims the (job, scheduled_for) tick and inserts its instance
+// in one transaction. It returns inserted=false, writing nothing, when the tick
+// was already claimed — by an earlier poll, or by another poller (split brain,
+// failover overlap). This is the database guarantee that a tick fires at most
+// once; the leader gate alone is not. inst.ScheduledFor must be set.
+func (r *InstanceRepository) InsertCronTick(ctx context.Context, inst *ScheduledJobInstance) (inserted bool, err error) {
+	if inst.ScheduledFor == nil {
+		return false, errors.New("scheduled_job_instance insert_cron_tick: ScheduledFor is required")
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("scheduled_job_instance insert_cron_tick: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `
+		INSERT INTO msg_scheduled_job_ticks (scheduled_job_id, scheduled_for, instance_id)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (scheduled_job_id, scheduled_for) DO NOTHING`,
+		inst.ScheduledJobID, *inst.ScheduledFor, inst.ID)
+	if err != nil {
+		return false, fmt.Errorf("scheduled_job_instance insert_cron_tick: claim: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
+	if err := insertInstance(ctx, tx, inst); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("scheduled_job_instance insert_cron_tick: commit: %w", err)
+	}
+	return true, nil
+}
+
+// PruneTicks deletes tick claims created before the cutoff. A tick can only be
+// re-claimed while its slot is inside the poller's (last_fired_at, now] window,
+// so old claims are dead weight.
+func (r *InstanceRepository) PruneTicks(ctx context.Context, before time.Time) (int64, error) {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM msg_scheduled_job_ticks WHERE created_at < $1`, before)
+	if err != nil {
+		return 0, fmt.Errorf("scheduled_job_tick prune: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
+func insertInstance(ctx context.Context, db execer, inst *ScheduledJobInstance) error {
 	if inst.CreatedAt.IsZero() {
 		inst.CreatedAt = time.Now().UTC()
 	}
@@ -152,7 +208,7 @@ func (r *InstanceRepository) Insert(ctx context.Context, inst *ScheduledJobInsta
 	if len(inst.CompletionResult) > 0 {
 		completionResult = []byte(inst.CompletionResult)
 	}
-	_, err := r.pool.Exec(ctx, `
+	_, err := db.Exec(ctx, `
 		INSERT INTO msg_scheduled_job_instances
 		    (id, scheduled_job_id, client_id, job_code, trigger_kind, scheduled_for,
 		     fired_at, delivered_at, completed_at, status, delivery_attempts,
@@ -168,12 +224,49 @@ func (r *InstanceRepository) Insert(ctx context.Context, inst *ScheduledJobInsta
 	return nil
 }
 
+// AbandonedInstance identifies an instance [InstanceRepository.AbandonStuckInFlight] gave up on.
+type AbandonedInstance struct {
+	ID             string
+	ScheduledJobID string
+	ClientID       *string
+}
+
+// AbandonStuckInFlight recovers instances orphaned IN_FLIGHT (the process died
+// between marking the instance and recording the outcome). Any instance that
+// has been IN_FLIGHT since before olderThan is moved to DELIVERY_FAILED with
+// reason in delivery_error. It is deliberately NOT returned to QUEUED: whether
+// the receiver got the call is unknown, and re-sending would break the
+// at-most-once-per-tick guarantee. in_flight_at is NULL on rows from before
+// it existed; fired_at stands in.
+func (r *InstanceRepository) AbandonStuckInFlight(ctx context.Context, olderThan time.Time, reason string) ([]AbandonedInstance, error) {
+	rows, err := r.pool.Query(ctx, `
+		UPDATE msg_scheduled_job_instances
+		   SET status = 'DELIVERY_FAILED', delivery_error = $2
+		 WHERE status = 'IN_FLIGHT'
+		   AND COALESCE(in_flight_at, fired_at) < $1
+		RETURNING id, scheduled_job_id, client_id`, olderThan, reason)
+	if err != nil {
+		return nil, fmt.Errorf("scheduled_job_instance abandon_stuck: %w", err)
+	}
+	defer rows.Close()
+	var out []AbandonedInstance
+	for rows.Next() {
+		var a AbandonedInstance
+		if err := rows.Scan(&a.ID, &a.ScheduledJobID, &a.ClientID); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // MarkInFlight flips a QUEUED instance to IN_FLIGHT and bumps
 // delivery_attempts, just before the dispatcher POSTs.
 func (r *InstanceRepository) MarkInFlight(ctx context.Context, instanceID string) error {
 	_, err := r.pool.Exec(ctx, `
 		UPDATE msg_scheduled_job_instances
-		   SET status = 'IN_FLIGHT', delivery_attempts = delivery_attempts + 1
+		   SET status = 'IN_FLIGHT', delivery_attempts = delivery_attempts + 1,
+		       in_flight_at = NOW()
 		 WHERE id = $1`, instanceID)
 	if err != nil {
 		return fmt.Errorf("scheduled_job_instance mark_in_flight: %w", err)
