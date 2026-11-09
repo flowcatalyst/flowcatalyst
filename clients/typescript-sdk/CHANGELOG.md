@@ -7,6 +7,9 @@ Notable changes to `@flowcatalyst/sdk`. Releases are tagged
 
 Additive: no signature breaks (new parameters are optional).
 
+### Fixed
+- Events written through `OutboxManager` now carry `deduplicationId` = the outbox row id unless `withDeduplicationId` sets one, so a batch the outbox processor sends again no longer creates duplicate events (as the Go and Java SDKs do). `CreateEventDto.toPayload(rowId?)` takes the row id.
+
 ### Push to clients (push gateway)
 - `PUSH` outbox rows: `CreatePushDto` and `OutboxManager.createPush` /
   `createPushes`. Validated at write (`PushError`: `TOPIC_INVALID`,

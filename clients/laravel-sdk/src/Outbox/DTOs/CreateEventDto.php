@@ -226,8 +226,12 @@ class CreateEventDto
 
     /**
      * Build the event payload for the outbox.
+     *
+     * Without an explicit deduplicationId the outbox row's id ($rowId) is used, so a
+     * batch the outbox processor sends again after a lost response does not create a
+     * second event.
      */
-    public function toPayload(): array
+    public function toPayload(?string $rowId = null): array
     {
         return array_filter([
             'specVersion' => '1.0',
@@ -237,7 +241,9 @@ class CreateEventDto
             'data' => json_encode($this->data),
             'correlationId' => $this->correlationId,
             'causationId' => $this->causationId,
-            'deduplicationId' => $this->deduplicationId,
+            'deduplicationId' => $this->deduplicationId === null || trim($this->deduplicationId) === ''
+                ? $rowId
+                : $this->deduplicationId,
             'messageGroup' => $this->messageGroup,
             'clientCode' => $this->clientCode,
             'contextData' => !empty($this->contextData) ? $this->contextData : null,

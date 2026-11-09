@@ -103,8 +103,14 @@ export class CreateEventDto {
 		});
 	}
 
-	/** Build the event payload for the outbox. Filters out null values. */
-	toPayload(): Record<string, unknown> {
+	/**
+	 * Build the event payload for the outbox. Filters out null values.
+	 *
+	 * Without an explicit `deduplicationId`, `rowId` (the outbox row's id) is
+	 * used, so a batch the outbox processor sends again after a lost response
+	 * does not create a second event.
+	 */
+	toPayload(rowId?: string): Record<string, unknown> {
 		return filterNulls({
 			specVersion: "1.0",
 			type: this.type,
@@ -113,7 +119,10 @@ export class CreateEventDto {
 			data: JSON.stringify(this.data),
 			correlationId: this.correlationId,
 			causationId: this.causationId,
-			deduplicationId: this.deduplicationId,
+			deduplicationId:
+				this.deduplicationId === null || this.deduplicationId.trim() === ""
+					? (rowId ?? null)
+					: this.deduplicationId,
 			messageGroup: this.messageGroup,
 			clientCode: this.clientCode,
 			contextData: this.contextData.length > 0 ? this.contextData : null,

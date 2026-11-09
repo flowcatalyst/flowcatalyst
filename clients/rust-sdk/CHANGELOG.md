@@ -5,6 +5,8 @@ All notable changes to `flowcatalyst-sdk` (Rust). Versions are tagged
 
 ## Unreleased (0.1.0)
 
+- Fix: `OutboxManager` writes an event's `deduplicationId` as the outbox row id unless `CreateEventDto::deduplication_id` sets one, so a batch the outbox processor sends again no longer creates duplicate events (as the Go and Java SDKs do). New `CreateEventDto::to_payload_for_row(row_id)`; `to_payload()` is unchanged.
+
 First version, seeded from `flowcatalyst-rust/crates/fc-sdk` with the wire
 shapes fixed to the platform contract. The README lists every change from
 fc-sdk and the wire-contract ambiguities found. Summary:

@@ -114,9 +114,11 @@ outbox.createDispatchJob(CreateDispatchJobDto
         .withMetadata("source", "sftp"), tx);
 ```
 
-`metadata` is written as the platform's `[{"key","value"}]` array, and the
-members the batch endpoint ignores (`headers`, `retryStrategy`,
-`scheduledFor`, `expiresAt`, `idempotencyKey`, `connectionId`) are not written.
+`metadata` is written as the platform's `[{"key","value"}]` array.
+`connectionId` and `idempotencyKey` are written when set (the batch endpoint
+honours both); `idempotencyKey` is never defaulted, so set one when a resent
+batch must not create a second job. The members the endpoint ignores
+(`headers`, `retryStrategy`, `scheduledFor`, `expiresAt`) are not written.
 An unknown `clientCode` refuses the whole batch (400 for an anchor, 403
 otherwise). Jobs that need not be atomic with a database write can go straight
 to the platform: `client.dispatchJobs().createBatch(jobs)`.

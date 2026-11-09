@@ -52,7 +52,7 @@ class OutboxManager
         $activeDriver = $driver ?? $this->driver;
 
         $id = TsidGenerator::generate();
-        $payload = json_encode($event->toPayload());
+        $payload = json_encode($event->toPayload($id));
         $now = date('Y-m-d H:i:s');
 
         $message = $this->buildMessage(
@@ -122,7 +122,7 @@ class OutboxManager
             $id = TsidGenerator::generate();
             $ids[] = $id;
 
-            $payload = json_encode($event->toPayload());
+            $payload = json_encode($event->toPayload($id));
 
             $messages[] = $this->buildMessage(
                 $id,
